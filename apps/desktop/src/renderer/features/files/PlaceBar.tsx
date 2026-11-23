@@ -31,7 +31,8 @@ export function placeLabel(place: Place, folderName: string, git: FolderGit | un
 
 /**
  * The thin bar on top of the Files and Docs tabs: where the panel is. An icon, the branch of the worktree the open chat works in (or the folder and its branch, for the
- * folder's own checkout), and a Manage button; the name and the button both open the dialog of the project's worktrees on the place's folder. The place is the window's, so
+ * folder's own checkout), and a Manage button; the name and the button both open the dialog of the project's worktrees on the place's folder. The name is a click for the
+ * pointer only: the keyboard has the Manage button, so there is one stop before the file manager and not two that do the same. The place is the window's, so
  * to look at another folder or worktree the person starts or opens a chat there. It is above the file manager and not in it (`packages/file-manager` is Reforma's fork).
  */
 export function PlaceBar({ place, git }: { place: Place; git: FolderGit | undefined }) {
@@ -51,6 +52,7 @@ export function PlaceBar({ place, git }: { place: Place; git: FolderGit | undefi
                 color="secondary"
                 size="xs"
                 truncate
+                tabIndex={ -1 }
                 className={ styles.place }
                 tooltip={ git?.gone ? 'This worktree no longer exists' : tildePath(placePath(place), homeFolder.path) }
                 onPress={ manage }

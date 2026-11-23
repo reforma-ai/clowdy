@@ -109,6 +109,13 @@ describe('the place bar', () => {
         expect(openManageWorktrees).toHaveBeenLastCalledWith({ root: store, projectId: FIXTURE_PROJECT_ID, folderId: CAR_RENTAL.id });
     });
 
+    it('leaves the name out of the tab order, so the keyboard stops once at Manage before the file manager', async () => {
+        await draw({ folder: CAR_RENTAL }, { branch: 'main' });
+
+        expect(place()?.tabIndex).toBe(-1);
+        expect(manage()?.tabIndex).toBe(0);
+    });
+
     it('names the worktree\'s branch alone, and opens the dialog on the worktree\'s folder', async () => {
         await draw({ folder: CAR_RENTAL, workspace: WORKSPACE }, { branch: 'clowdy/ab12cd34' });
 
