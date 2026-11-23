@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { GITHUB_URL, LICENSES_URL, RELEASES_URL } from '@clowdy/constants';
+import { GITHUB_URL, LICENSE_URL, LICENSES_URL, RELEASES_URL } from '@clowdy/constants';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -45,13 +45,14 @@ describe('AboutPage', () => {
         expect(sections()).toEqual(['Clowdy', 'Updates', 'Local', 'Credits']);
     });
 
-    it('opens the repository, the releases and the licenses in the browser', async () => {
+    it('opens the repository, the releases, the license and the licenses file in the browser', async () => {
         await draw();
 
         expect(link('Open in GitHub').href).toBe(GITHUB_URL);
         expect(link('Open releases').href).toBe(RELEASES_URL);
+        expect(link('Apache-2.0').href).toBe(LICENSE_URL);
         expect(link('Open licenses').href).toBe(LICENSES_URL);
-        expect([link('Open in GitHub'), link('Open releases'), link('Open licenses')].map(anchor => anchor.target)).toEqual(['_blank', '_blank', '_blank']);
+        expect([link('Open in GitHub'), link('Open releases'), link('Apache-2.0'), link('Open licenses')].map(anchor => anchor.target)).toEqual(['_blank', '_blank', '_blank', '_blank']);
     });
 
     it('shows the Local host with the version its daemon reports', async () => {
