@@ -22,8 +22,8 @@ export interface WorktreeRowActions {
     /** A new-chat draft in the worktree, or in the folder's own checkout for the first row of a group. */
     onNewChat: (folder: ProjectFolder, worktree: WorktreeInfo) => void;
     onOpenChat: (chat: WorktreeChat) => void;
-    /** Absent: Remove is drawn and cannot be pressed. */
-    onRemove?: (group: FolderWorktrees, worktree: WorktreeInfo) => void;
+    /** Remove: asks first, and what it asks follows the worktree. Never called for the folder's own checkout, or while the daemon gives a reason against it (`blocked`). */
+    onRemove: (group: FolderWorktrees, worktree: WorktreeInfo) => void;
 }
 
 /**
@@ -55,6 +55,8 @@ export function WorktreeRow({ projectId, group, folder, worktree, onNewChat, onO
     const merged = mergedMark(worktree);
     const newChat = worktree.main ? 'New chat in this folder' : 'New chat in this worktree';
     const hint = removeHint(worktree);
+    const removeTip = worktree.missing ? 'Remove record' : 'Remove';
+    const removeLabel = worktree.missing ? `Remove record of ${ label }` : `Remove ${ label }`;
 
     return (
         <li className={ styles.row } data-worktree-path={ worktree.path } data-main={ worktree.main || undefined } data-missing={ worktree.missing || undefined }>
@@ -100,10 +102,10 @@ export function WorktreeRow({ projectId, group, folder, worktree, onNewChat, onO
                         <NewChat />
                     </Button>
                 </Unavailable>
-                {/* Remove is wired by Stage 5 of `.briefback/worktree-followups/plan.md`: until `onRemove` is given it cannot be pressed, and a reason from the daemon keeps it off after. */}
+                {/* A reason from the daemon (a lock, a chat) keeps Remove off and says so on hover; a worktree whose folder is gone has only its record to remove. */}
                 { !worktree.main && (
-                    <Unavailable label={ `Remove ${ label }` } hint={ hint } placement="top">
-                        <Button variant="filling" color="secondary" size="sm" iconOnly aria-label={ `Remove ${ label }` } tooltip={ hint === undefined ? 'Remove' : undefined } isDisabled={ onRemove === undefined || hint !== undefined } onPress={ () => onRemove?.(group, worktree) }>
+                    <Unavailable label={ removeLabel } hint={ hint } placement="top">
+                        <Button variant="filling" color="secondary" size="sm" iconOnly aria-label={ removeLabel } tooltip={ hint === undefined ? removeTip : undefined } isDisabled={ hint !== undefined } onPress={ () => onRemove(group, worktree) }>
                             <Trash />
                         </Button>
                     </Unavailable>
