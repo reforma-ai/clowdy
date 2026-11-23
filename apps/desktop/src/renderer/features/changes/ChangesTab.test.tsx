@@ -155,7 +155,10 @@ const press = (target: Element) =>
 const cards = () => [...container.querySelectorAll<HTMLElement>('[data-card]')];
 const cardPaths = () => cards().map(card => card.dataset.card);
 const card = (path: string) => cards().find(element => element.dataset.card === path)!;
-const sidebarFiles = () => [...container.querySelectorAll<HTMLButtonElement>('[aria-label="Changed files"] button')];
+// The rows, and not the `Discard changes…` button some of them have beside them.
+const sidebarFiles = () => [
+    ...container.querySelectorAll<HTMLButtonElement>('[aria-label="Changed files"] button:not([data-discard])'),
+];
 const sidebarPaths = () => sidebarFiles().map(row => row.querySelector('[class*="name"]')?.textContent);
 const commitRows = () => [
     ...container.querySelectorAll<HTMLButtonElement>('[aria-label="Committed on branch"] button'),

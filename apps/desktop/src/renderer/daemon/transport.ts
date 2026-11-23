@@ -15,6 +15,7 @@ import type {
     GitBranches,
     GitChanges,
     GitCommitResult,
+    GitDiscardResult,
     GitFileSides,
     GitMessage,
     GitPullRequestInfo,
@@ -149,6 +150,14 @@ export interface Transport {
      * is signed out, its run failed or did not end in time.
      */
     generateGitMessage: (projectId: ProjectId, place: PlaceRef, paths: string[]) => Promise<GitMessage>;
+    /**
+     * Discards the changes of the files of a place (`POST git/discard`): the daemon keeps a copy of what each holds now (for a few days, in its own data folder, never in the repository), and
+     * then a file the last commit has goes back to it (staged and edited versions alike) while one it has not (a new file) is deleted, that file alone. `paths` are `GitChangedFile.path`s of the
+     * place's uncommitted changes, at most `MAX_GIT_DISCARD_PATHS`, and the UI sends one file at a time. Answers what was discarded and where the copy is. Rejects with a `TransportError` carrying
+     * the daemon's reason: 400 for a path that is not a changed file, a submodule, a file over the copy's limit, 409 for a file with merge conflicts or a git that refused (its own line), 503 when
+     * the copy could not be made (nothing was discarded) or git did not end in time. Not retried: a discard is not asked for twice.
+     */
+    discardGit: (projectId: ProjectId, place: PlaceRef, paths: string[]) => Promise<GitDiscardResult>;
     /**
      * `git fetch origin` in a place (`POST git/fetch`, without the submodules' remotes): brings in what origin has, moves no branch and prunes nothing. Answers the branch's upstream as it stands, with how far apart the two are.
      * Rejects with a `TransportError` carrying git's own line (`conflict`, 409: no network, no permission, a hook) and `hint` when the line names the signing agent, 400 for a place that is no repository or

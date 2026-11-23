@@ -15,6 +15,7 @@ import styles from './ChangesSidebar.module.css';
 import { CommitBox } from './CommitBox';
 import { CreatePullRequest } from './CreatePullRequest';
 import { isCommitScope } from './changeScopes';
+import { DiscardButton } from './DiscardButton';
 import { accessHint, accessHintTitle, aheadBehindCounts, CHANGE_KIND_VIEW, splitPath } from './gitSummary';
 import { LIST_TEXT } from './listState';
 import { PullRequestChip } from './PullRequestChip';
@@ -59,50 +60,69 @@ function SectionHeader({ title, count }: { title: string; count?: number }) {
     );
 }
 
-/** One changed file of the scope: what happened to it, its name with its folder dimmed after it, its lines, and a tick when it is viewed. A press brings its card to the top and opens it. */
-function FileRow({ file, viewed, onOpen }: { file: GitChangedFile; viewed: boolean; onOpen: (path: string) => void }) {
+/**
+ * One changed file of the scope: what happened to it, its name with its folder dimmed after it, its lines, and a tick when it is viewed. A press brings its card to the top and opens it.
+ * A file whose changes can be discarded (`discard`, its uncommitted entry) has `Discard changes…` at the end of its row, in the place of the tick, while the pointer is over the row or the
+ * focus is in it.
+ */
+function FileRow({
+    file,
+    viewed,
+    model,
+    discard,
+    onOpen,
+}: {
+    file: GitChangedFile;
+    viewed: boolean;
+    model: PlaceChanges;
+    discard: GitChangedFile | undefined;
+    onOpen: (path: string) => void;
+}) {
     const kind = CHANGE_KIND_VIEW[file.kind];
     const { folder, name } = splitPath(file.path);
 
     return (
-        <Button
-            variant="filling"
-            color="secondary"
-            size="xs"
-            className={styles.row}
-            contentClassName={styles.rowContent}
-            tooltip={file.path}
-            tooltipPlacement="left"
-            onPress={() => onOpen(file.path)}
-        >
-            <Text
-                variant="xs"
-                weight="medium"
-                color={kind.color}
-                className={styles.glyph}
-                title={kind.label}
-                aria-label={kind.label}
+        <div className={styles.rowHost}>
+            <Button
+                variant="filling"
+                color="secondary"
+                size="xs"
+                className={styles.row}
+                contentClassName={styles.rowContent}
+                tooltip={file.path}
+                tooltipPlacement="left"
+                onPress={() => onOpen(file.path)}
             >
-                {kind.glyph}
-            </Text>
-            <span className={styles.fileName}>
-                <Text variant="xs" weight="medium" truncate className={styles.name}>
-                    {name}
+                <Text
+                    variant="xs"
+                    weight="medium"
+                    color={kind.color}
+                    className={styles.glyph}
+                    title={kind.label}
+                    aria-label={kind.label}
+                >
+                    {kind.glyph}
                 </Text>
-                {folder && (
-                    <Text variant="xs" color="secondary" truncate className={styles.folderHint}>
-                        {folder.slice(0, -1)}
+                <span className={styles.fileName}>
+                    <Text variant="xs" weight="medium" truncate className={styles.name}>
+                        {name}
                     </Text>
-                )}
-            </span>
-            {file.additions !== undefined && file.deletions !== undefined && (
-                <span className={styles.counts}>
-                    <Text variant="xs" color="success">{`+${file.additions}`}</Text>
-                    <Text variant="xs" color="danger">{`−${file.deletions}`}</Text>
+                    {folder && (
+                        <Text variant="xs" color="secondary" truncate className={styles.folderHint}>
+                            {folder.slice(0, -1)}
+                        </Text>
+                    )}
                 </span>
-            )}
-            <span className={styles.tick}>{viewed && <Check role="img" title="Viewed" aria-label="Viewed" />}</span>
-        </Button>
+                {file.additions !== undefined && file.deletions !== undefined && (
+                    <span className={styles.counts}>
+                        <Text variant="xs" color="success">{`+${file.additions}`}</Text>
+                        <Text variant="xs" color="danger">{`−${file.deletions}`}</Text>
+                    </span>
+                )}
+                <span className={styles.tick}>{viewed && <Check role="img" title="Viewed" aria-label="Viewed" />}</span>
+            </Button>
+            {discard && <DiscardButton model={model} file={discard} className={styles.discard} />}
+        </div>
     );
 }
 
@@ -169,6 +189,8 @@ export function ChangesSidebar({
     const files = model.files;
     // Read here, with the list: the rows are drawn by a callback of `For`, which does not follow the model, so a tick that changes reaches them through this component.
     const viewed = model.viewedPaths;
+    // Read here for the same reason: the rows are drawn by a callback, and the files that can be discarded change with the scope and with the uncommitted list.
+    const discardable = model.discardable;
     const commits = base?.commits ?? [];
     const onCommit = isCommitScope(model.effectiveScope);
 
@@ -238,6 +260,8 @@ export function ChangesSidebar({
                                         key={file.path}
                                         file={file}
                                         viewed={viewed.has(file.path)}
+                                        model={model}
+                                        discard={discardable.get(file.path)}
                                         onOpen={onOpenFile}
                                     />
                                 )}

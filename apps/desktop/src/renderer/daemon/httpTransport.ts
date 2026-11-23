@@ -29,6 +29,8 @@ import type {
     GitBranches,
     GitChanges,
     GitCommitResult,
+    GitDiscardRequest,
+    GitDiscardResult,
     GitErrorDetails,
     GitFileSides,
     GitMessage,
@@ -220,6 +222,10 @@ export class HttpTransport implements Transport {
 
     generateGitMessage(projectId: ProjectId, place: PlaceRef, paths: string[]): Promise<GitMessage> {
         return this.#write(ROUTES.projectGitMessage(projectId), { ...place, paths });
+    }
+
+    discardGit(projectId: ProjectId, place: PlaceRef, paths: string[]): Promise<GitDiscardResult> {
+        return this.#write(ROUTES.projectGitDiscard(projectId), { ...place, paths } satisfies GitDiscardRequest);
     }
 
     fetchGit(projectId: ProjectId, place: PlaceRef): Promise<GitRemoteResult> {

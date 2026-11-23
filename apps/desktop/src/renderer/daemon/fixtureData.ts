@@ -1204,7 +1204,8 @@ export function fixtureGitChanges(
     head: { branch?: string } | undefined,
     inWorktree: boolean,
     scope: GitScope,
-    committed: ReadonlySet<string> = new Set()
+    committed: ReadonlySet<string> = new Set(),
+    discarded: ReadonlySet<string> = new Set()
 ): GitChanges | undefined {
     if (!head?.branch) return { isRepository: false };
 
@@ -1213,11 +1214,21 @@ export function fixtureGitChanges(
         : scope.startsWith('commit:') || turnScopeTrees(scope)
           ? undefined
           : { files: [], from: FIXTURE_BASE_COMMIT };
-    // What a commit made here took out of the uncommitted files (the fixture keeps no repository, so the other scopes stay as they were).
+    // What a commit made here took out of the uncommitted files (the fixture keeps no repository, so the other scopes stay as they were), and what a discard put back at the last commit
+    // is in none of the working-tree scopes any more, but for a file the branch had changed already, which `all` still lists as the branch left it.
     const found =
         scoped && scope === 'uncommitted'
-            ? { ...scoped, files: scoped.files.filter(file => !committed.has(file.path)) }
-            : scoped;
+            ? { ...scoped, files: scoped.files.filter(file => !committed.has(file.path) && !discarded.has(file.path)) }
+            : scoped && scope === 'all'
+              ? {
+                    ...scoped,
+                    files: scoped.files.flatMap(file =>
+                        discarded.has(file.path)
+                            ? FIXTURE_BRANCH_FILES.filter(branchFile => branchFile.path === file.path)
+                            : [file]
+                    ),
+                }
+              : scoped;
 
     if (!found) return undefined;
 

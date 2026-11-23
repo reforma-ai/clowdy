@@ -70,8 +70,10 @@ import type {
     FolderId,
     FolderWorktrees,
     GitBranches,
+    GitChangedFile,
     GitChanges,
     GitCommitResult,
+    GitDiscardResult,
     GitFileSides,
     GitMessage,
     GitPullRequestInfo,
@@ -363,7 +365,7 @@ export class FixtureTransport implements Transport {
         const upstream = this.#gitRemote.upstreamOf(this.#remotePlace(head, workspace, place));
         const { lastFetchedAt, hasOrigin, head: script } = this.#gitRemote;
 
-        const status = fixtureGitStatus(head, workspace, this.#gitWrites.committedOf(place.workspaceId ?? ''), {
+        const status = fixtureGitStatus(head, workspace, this.#gitWrites.settledOf(place.workspaceId ?? ''), {
             ...(upstream && { upstream }),
             ...(lastFetchedAt !== undefined && { lastFetchedAt }),
             ...(!hasOrigin && { origin: false }),
@@ -469,7 +471,8 @@ export class FixtureTransport implements Transport {
             head,
             workspace !== undefined || dirtyCheckout,
             dirtyCheckout ? 'uncommitted' : scope,
-            committed
+            committed,
+            this.#gitWrites.discardedOf(place.workspaceId ?? '')
         );
         const changes =
             dirtyCheckout && found?.isRepository
@@ -575,6 +578,21 @@ export class FixtureTransport implements Transport {
         return committed;
     }
 
+    async discardGit(projectId: ProjectId, place: PlaceRef, paths: string[]): Promise<GitDiscardResult> {
+        const { head } = this.#gitPlace(projectId, place);
+
+        if (!head?.branch) throw new TransportError('The folder is not the root of a git repository', 400);
+
+        return structuredClone(
+            await this.#gitWrites.discard(
+                place.workspaceId ?? '',
+                projectId,
+                this.#uncommittedFiles(projectId, place),
+                paths
+            )
+        );
+    }
+
     async generateGitMessage(projectId: ProjectId, place: PlaceRef, paths: string[]): Promise<GitMessage> {
         // The daemon asks the agents' settings; so does the fixture, of the agents it lists.
         if (!this.#data.agents.some(writesCommitMessages)) throw new TransportError("Couldn't write the message", 400);
@@ -584,17 +602,23 @@ export class FixtureTransport implements Transport {
         );
     }
 
-    /** The paths the place's uncommitted changes list now (the fixture's checkout is clean; the worktree has files, less what was committed). */
+    /** The paths the place's uncommitted changes list now (the fixture's checkout is clean; the worktree has files, less what was committed or discarded). */
     #uncommitted(projectId: ProjectId, place: PlaceRef): string[] {
+        return this.#uncommittedFiles(projectId, place).map(file => file.path);
+    }
+
+    /** The files the place's uncommitted changes list now. */
+    #uncommittedFiles(projectId: ProjectId, place: PlaceRef): GitChangedFile[] {
         const { head, workspace } = this.#gitPlace(projectId, place);
         const changes = fixtureGitChanges(
             head,
             workspace !== undefined,
             'uncommitted',
-            this.#gitWrites.committedOf(place.workspaceId ?? '')
+            this.#gitWrites.committedOf(place.workspaceId ?? ''),
+            this.#gitWrites.discardedOf(place.workspaceId ?? '')
         );
 
-        return changes?.isRepository ? changes.files.map(file => file.path) : [];
+        return changes?.isRepository ? changes.files : [];
     }
 
     async getGitPullRequest(projectId: ProjectId, place: PlaceRef): Promise<GitPullRequestInfo> {
