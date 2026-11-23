@@ -39,12 +39,12 @@ Research: `research/index.md` (read it for file maps and constraints).
 
 **This stage:** Adds the `About` page to Settings and the three repository links it needs. Updates draws a card for the host `Local` and reads the running daemon's version through a new `Transport.getHealth`, so the page shows something real today and has the shape remote hosts will fill in later. Credits links to the file Stage 3 produces; until Stage 3 lands, the link points at the file as it is.
 
-- [ ] Complete
-  - [ ] `GITHUB_URL`, `RELEASES_URL` and `LICENSES_URL` constants exist in `packages/constants`
-  - [ ] `Transport.getHealth()` answers `Health` over HTTP, from the fixtures, and fails like the others when no daemon is configured
-  - [ ] `about` is a Settings page: last in the sidebar, group `Clowdy`, icon `Info`, with Clowdy, Updates and Credits sections
-  - [ ] Updates shows one host card, `Local`, with a `Daemon` row that says `Checking…` while it reads, the version when it has it, and `Unavailable` when the read fails
-  - [ ] The two tests that list the sidebar pages and the docs name the new page
+- [x] Complete
+  - [x] `GITHUB_URL`, `RELEASES_URL` and `LICENSES_URL` constants exist in `packages/constants`
+  - [x] `Transport.getHealth()` answers `Health` over HTTP, from the fixtures, and fails like the others when no daemon is configured
+  - [x] `about` is a Settings page: last in the sidebar, group `Clowdy`, icon `Info`, with Clowdy, Updates and Credits sections
+  - [x] Updates shows one host card, `Local`, with a `Daemon` row that says `Checking…` while it reads, the version when it has it, and `Unavailable` when the read fails
+  - [x] The two tests that list the sidebar pages and the docs name the new page
 
 **Files**
 
@@ -63,7 +63,7 @@ Research: `research/index.md` (read it for file maps and constraints).
 
 **Done when:** `Cmd+,` opens Settings, the last sidebar entry `About` shows the repository and releases links, a `Local` host with the daemon's version, and the credits link, in light and dark.
 **Verify:** `bunx vitest run src/renderer/features/settings src/renderer/daemon` and `bun run typecheck` in `apps/desktop`, eslint on the changed files, and a screenshot of the page with `scripts/screenshot.ts` (`?fixtures=static`, `--eval` to open Settings on `about`).
-**Commits:** None yet.
+**Commits:** `f5b0a33` the About page, `Transport.getHealth` and the link constants; `d8a1194` review fix: the health read sends no token and no protocol header, so a daemon of another major still answers.
 
 ## Stage 2 — The Star card in the chat list
 
@@ -71,26 +71,26 @@ Research: `research/index.md` (read it for file maps and constraints).
 
 **This stage:** Adds the one-time card at the bottom of the chat list. A small preferences class keeps the closed flag the way `ChatListPreferences` keeps its flags, a pure rule decides when the card is due, and the card closes itself for good on either button. Nothing in the list's keyboard flow changes: the card sits outside the list's element.
 
-- [ ] Complete
-  - [ ] A `StarCardPreferences` singleton stores `dismissed` under `clowdy:star-card-dismissed` and is tested against a memory storage
-  - [ ] A pure rule says the card is due when the personal project is at least 3 days old and the project on show has at least 3 chats that are not threads
-  - [ ] `StarCard` draws the title, the line, the `Star on GitHub` link button and the close button, and both close it for good
-  - [ ] `AgentList` draws it under the scrolling list while it is due and not dismissed, in the beside and covered layouts
-  - [ ] The existing screen tests still pass and a new test covers due, not due and dismissed
+- [x] Complete
+  - [x] A `StarCardPreferences` singleton stores `dismissed` under `clowdy:star-card-dismissed` and is tested against a memory storage
+  - [x] A pure rule says the card is due when the personal project is at least 3 days old and the project on show has at least 3 chats that are not threads
+  - [x] `StarCard` draws the title, the line, the `Star on GitHub` link button and the close button, and both close it for good
+  - [x] `AgentList` draws it under the scrolling list while it is due and not dismissed, in the beside and covered layouts
+  - [x] The existing screen tests still pass and a new test covers due, not due and dismissed
 
 **Files**
 
-- `apps/desktop/src/renderer/features/agents/starCard.ts` — create: the preferences class and the due rule; cannot join `chatListPreferences.ts`, which is the list's own sort and filter flags
-- `apps/desktop/src/renderer/features/agents/starCard.test.ts` — create: the rule at its limits and the preferences
+- `apps/desktop/src/renderer/features/agents/starCardState.ts` — create: the preferences class and the due rule; cannot join `chatListPreferences.ts`, which is the list's own sort and filter flags. Not `starCard.ts`: it collides with `StarCard.tsx` on a case-insensitive file system
+- `apps/desktop/src/renderer/features/agents/starCardState.test.ts` — create: the rule at its limits and the preferences
 - `apps/desktop/src/renderer/features/agents/StarCard.tsx`, `StarCard.module.css` — create: the plate; `AgentList.module.css` styles the list, not a separate component
 - `apps/desktop/src/renderer/features/agents/StarCard.test.tsx` — create: renders, links, dismisses and stays dismissed
 - `apps/desktop/src/renderer/features/agents/AgentList.tsx` — `AgentList`: mount `StarCard` after `PanelContent`
-- `apps/desktop/src/renderer/features/agents/Screen.test.tsx` — adjust only if the fixture makes the card due and a query now matches it
+- `apps/desktop/src/renderer/features/agents/Screen.test.tsx` — a test that the card stands under the list and goes once closed
 - `apps/desktop/AGENTS.md` — the Agents list bullet: name the card, its rule and its key
 
 **Done when:** in a window whose personal project is three days old and whose project has three chats, the card shows under the list, and pressing either button removes it and keeps it removed after a reload.
 **Verify:** `bunx vitest run src/renderer/features/agents` and `bun run typecheck` in `apps/desktop`, eslint on the changed files, screenshots of the list with the card (beside the chat and covered, light and dark; `--eval` to set the key and age).
-**Commits:** None yet.
+**Commits:** `943e474` the Star card and its rule; `bf4b3d5` review fix: a `section` landmark and no subscription to the chats while the card is closed; `4a0fda6` a `Screen` test for the card's place, and the Agents bullet of `apps/desktop/AGENTS.md`.
 
 ## Stage 3 — The credits file
 
@@ -98,11 +98,11 @@ Research: `research/index.md` (read it for file maps and constraints).
 
 **This stage:** Replaces the hand-written one-entry `THIRD-PARTY-LICENSES.md` with a generated file the About page links to. A root script walks the production dependency closure of `apps/desktop` and `apps/daemon`, lists every package with its version, license and copyright line, and prints each distinct license text once. The entries that are not npm packages come from one committed file that the script copies in front. The file stays in the repository.
 
-- [ ] Complete
-  - [ ] `./clowdy licenses` writes `THIRD-PARTY-LICENSES.md` and is deterministic: a second run changes nothing
-  - [ ] The packages come from the production `dependencies` closure, each with version, declared license and copyright line, and a fallback for the four packages without a license file
-  - [ ] The hand-written entries (Electron and Chromium, Bun, ripgrep, Onest with its OFL text, Material Icon Theme, brand marks with the trademark note) live in one committed source file
-  - [ ] The generated file is committed, and the root `AGENTS.md` names the command
+- [x] Complete
+  - [x] `./clowdy licenses` writes `THIRD-PARTY-LICENSES.md` and is deterministic: a second run changes nothing
+  - [x] The packages come from the production `dependencies` closure, each with version, declared license and copyright line, and a fallback for the four packages without a license file
+  - [x] The hand-written entries (Electron and Chromium, Bun, ripgrep, Onest with its OFL text, Material Icon Theme, brand marks with the trademark note) live in one committed source file
+  - [x] The generated file is committed, and the root `AGENTS.md` names the command
 
 **Files**
 
@@ -114,7 +114,7 @@ Research: `research/index.md` (read it for file maps and constraints).
 
 **Done when:** `./clowdy licenses` produces a file that lists the 251 shipped npm packages or their closure (a few more is fine) with no package missing a license line, and every hand-written entry is present.
 **Verify:** `./clowdy licenses` twice with no diff on the second run, a spot check of ten entries against their `package.json`, `bun run lint` and `bun run typecheck` at the root.
-**Commits:** None yet.
+**Commits:** `a80f8a9` the `./clowdy licenses` command and the generated file (305 packages, a superset of the 251 shipped: it also lists declared dependencies no bundle pulls in, and optional peers); `a11fe9d` review fix: every line of a copyright notice is kept in the file.
 
 ## Stage 4 — Menu item, version fields and the app row (waits for a shell bump)
 
