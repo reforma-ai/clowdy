@@ -10,7 +10,6 @@ import { Breadcrumb } from '../Breadcrumb';
 import { Button } from '../Button';
 import { For } from '../For';
 import { tooltipWithHotkey } from '../Hotkey';
-import { layerRest, paneTransition, SECTION_RISE, SECTION_START_OPACITY, sectionTransition, SLIDE_IN } from '../LayerStack/motion';
 import { ListBox, ListBoxHeader, ListBoxItem, ListBoxSection } from '../List';
 import { ModalContext } from '../Modal/hooks/useModalProvider';
 import { confirmDiscardChanges } from '../modals/ConfirmModal';
@@ -18,6 +17,7 @@ import { Scrollable } from '../Scrollable';
 import { Show } from '../Show';
 import { Text } from '../Text';
 import { toast } from '../Toast';
+import { layerRest, paneTransition, SLIDE_IN } from './motion';
 import styles from './SettingsLayout.module.css';
 
 import type { ReactNode, RefObject } from 'react';
@@ -438,11 +438,8 @@ function Shell({
                             key={ selectedId }
                             className={ styles.scroll }
                             contentClass={ styles.scrollContent }
-                            initial={ reducedMotion ? false : { opacity: SECTION_START_OPACITY, y: SECTION_RISE } }
                             animate={ animate }
-                            transition={ covered
-                                ? paneTransition(reducedMotion)
-                                : sectionTransition(reducedMotion) }
+                            transition={ paneTransition(reducedMotion) }
                             inert={ covered }
                         >
                             { children }

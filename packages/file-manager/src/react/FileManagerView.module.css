@@ -16,12 +16,11 @@
     min-height: 0;
 }
 
-/* The panel's own width and its slide-in are the host's to give up: the edge to drag sets the width. */
+/* The panel's own width is the host's to give up: the edge to drag sets the width. */
 .sidebar {
     flex: 1;
     width: 100%;
     min-width: 0;
-    animation: none;
 }
 
 /* The same distance from the right edge in both places (the sidebar header's last control sits 6px off the edge), so the button does not move when the sidebar opens. */
