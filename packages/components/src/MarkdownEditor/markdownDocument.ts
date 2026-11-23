@@ -225,7 +225,7 @@ type MarkdownSupport = { supported: true } | { supported: false; reason: string;
 
 const SOURCE_ONLY: MarkdownSupport = {
     supported: false,
-    reason: 'Some markdown in this file can only be edited in source mode',
+    reason: 'This markdown file can only be edited in source mode',
 };
 
 /**
