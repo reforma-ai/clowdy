@@ -9,7 +9,7 @@ import { getWorkspace } from '../db/workspaces';
 import { git } from '../domain/git';
 import { appendItem, markRewindPoint } from '../domain/items';
 import { isBeingRemoved } from '../domain/workspaceRemoval';
-import { needsPreparing, ownsWorktree, prepareWorkspace } from '../domain/workspaces';
+import { canNameBranch, needsPreparing, ownsWorktree, prepareWorkspace } from '../domain/workspaces';
 import { EngineFailure, errorMessage } from '../errors';
 import { conversationRecord } from './history';
 import { backoffDelay, engineName, formatMoment, parseLimit, sleep } from './limits';
@@ -183,7 +183,7 @@ function promptWorkspace(project: Project, chat: Chat | undefined, cwd: string):
     const workspace = chat?.workspace;
     const folder = workspace && project.folders.find(candidate => candidate.id === workspace.folderId);
 
-    return workspace && folder && workspace.path === cwd ? { path: workspace.path, ...(workspace.branch !== undefined && { branch: workspace.branch }), folder: folder.path } : undefined;
+    return workspace && folder && workspace.path === cwd ? { path: workspace.path, ...(workspace.branch !== undefined && { branch: workspace.branch }), folder: folder.path, ...(chat && canNameBranch(chat) && { nameable: true as const }) } : undefined;
 }
 
 const firstLine = (text: string) => text.split('\n')[0].trim().slice(0, 300);

@@ -144,6 +144,14 @@ export function updateWorkspace(db: Database, id: string, change: WorkspaceChang
     return next;
 }
 
+/**
+ * Rewrites the base of the project's rows in a folder that start from `from` to `to`: a branch that was renamed is the base of the worktrees made from it (a thread's own
+ * worktree starts from its parent's branch, and the row keeps that name). Returns how many rows changed.
+ */
+export function renameWorkspaceBase(db: Database, projectId: string, folderId: string, from: string, to: string): number {
+    return db.query('UPDATE workspaces SET base = ? WHERE project_id = ? AND folder_id = ? AND base = ?').run(to, projectId, folderId, from).changes;
+}
+
 /** Drops the row, and the marks of viewed files that were made in the worktree (`viewed_files`: they are the worktree's, and no row is left to read them by). The worktree on disk and the chats that point at it are not touched: the caller sees to both. */
 export function deleteWorkspace(db: Database, id: string): void {
     db.query('DELETE FROM workspaces WHERE id = ?').run(id);

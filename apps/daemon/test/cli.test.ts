@@ -10,6 +10,7 @@ import { listItems } from '../src/db/items';
 import { taskCommentsPage } from '../src/domain/taskComments';
 import { ToolBridge } from '../src/engine/acp/bridge';
 import { toolsFor } from '../src/runs/tools';
+import { worktreeNameTool } from '../src/runs/worktree-tools';
 import { collect, FAKE_AGENT, PROTOCOLS, rig, textOf, tool } from './acp-helpers';
 import { cleanTempDirs, git, latch, ScriptEngine, scriptEngines, startHarness, tempDir, waitFor } from './helpers';
 
@@ -637,11 +638,14 @@ describe('clowdy in an agent\'s shell, against a daemon', () => {
         expect(JSON.parse(ended.stdout)).toMatchObject({ ok: false, error: { code: 'unreachable' } });
     });
 
-    test('the help\'s examples use only commands and options the task and thread tools have', async () => {
-        const { tools } = await setup();
-        const commands = new Map(tools.filter(candidate => candidate.cli).map(candidate => [candidate.name, candidate as unknown as CliTool]));
+    test('the help\'s examples use only commands and options the task, thread and worktree tools have', async () => {
+        const { h, store, chat, tools } = await setup();
+        const { runs, threads } = h.daemon.services;
+        // `worktree_name` is there only for a chat whose worktree is its own and has no name yet; its definition is the same whichever chat asks.
+        const all = [...tools, worktreeNameTool({ store, runs, threads }, h.run(chat.orchestratorRunId as string), chat.id)];
+        const commands = new Map(all.filter(candidate => candidate.cli).map(candidate => [candidate.name, candidate as unknown as CliTool]));
 
-        expect([...commands.keys()].sort()).toEqual(['task_archive', 'task_comment', 'task_comments', 'task_create', 'task_get', 'task_list', 'task_unarchive', 'task_update', 'thread_list', 'thread_log', 'thread_output', 'thread_spawn', 'thread_stop', 'thread_tell', 'thread_wait']);
+        expect([...commands.keys()].sort()).toEqual(['task_archive', 'task_comment', 'task_comments', 'task_create', 'task_get', 'task_list', 'task_unarchive', 'task_update', 'thread_list', 'thread_log', 'thread_output', 'thread_spawn', 'thread_stop', 'thread_tell', 'thread_wait', 'worktree_name']);
 
         for (const [name, lines] of Object.entries(EXAMPLES)) {
             const known = commands.get(name);
