@@ -599,6 +599,8 @@ describe('the viewed files', () => {
 
         expect(cards().map(element => tickOf(element.dataset.card!).checked)).toEqual([false, false, false, false, false, false]);
         expect(cards().every(element => element.textContent?.includes('Viewed'))).toBe(true);
+        // Each checkbox is named by its file as well as by `Viewed`, so a list of them is not fifty of the same name.
+        expect(cards().map(element => tickOf(element.dataset.card!).getAttribute('aria-label'))).toEqual(cards().map(element => `Viewed ${ element.dataset.card }`));
         expect(summary()).toBe('6 files,+112−8');
 
         const write = vi.spyOn(transport, 'setGitViewed');

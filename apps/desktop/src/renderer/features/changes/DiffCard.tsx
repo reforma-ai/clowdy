@@ -126,7 +126,7 @@ export function DiffCard({ model, file }: { model: PlaceChanges; file: GitChange
                     </span>
                     <LineCounts file={ file } />
                 </Button>
-                <Checkbox size="sm" className={ styles.viewed } isSelected={ viewed } onChange={ selected => void model.setViewed(file, selected) }>
+                <Checkbox size="sm" className={ styles.viewed } isSelected={ viewed } aria-label={ `Viewed ${ file.path }` } onChange={ selected => void model.setViewed(file, selected) }>
                     <Text variant="xs" color="secondary">Viewed</Text>
                 </Checkbox>
                 <CopyButton value={ file.path } size="sm" variant="filling" color="secondary" tooltip="Copy path" aria-label={ `Copy the path of ${ file.path }` } />
