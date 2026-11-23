@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { openConfirmModal } from '@clowdy/components/modals';
+import { runInAction } from 'mobx';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -10,6 +11,7 @@ import { hotkeys, installDispatcher } from '../../hotkeys';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { chatListPreferences } from './chatListPreferences';
 import { Screen } from './Screen';
+import { starCardPreferences } from './starCardState';
 
 import type { ProjectInfo } from '@clowdy/protocol';
 import type { Editor } from '@tiptap/core';
@@ -1390,5 +1392,27 @@ describe('a chat that works in a worktree', () => {
         await draw(() => ui().openChat('c-1'));
 
         await vi.waitFor(() => expect(container.querySelector('[aria-label="Where it runs: Main worktree, branch main"]')?.textContent).toBe('main'));
+    });
+});
+
+describe('the Star on GitHub card', () => {
+    const card = () => container.querySelector('section[aria-label="Star on GitHub"]');
+
+    afterEach(() => {
+        runInAction(() => {
+            starCardPreferences.dismissed = false;
+        });
+        localStorage.clear();
+    });
+
+    it('stands under the list, outside its rows, while it is due, and is gone once it is closed', async () => {
+        // The fixture's personal space is twelve days old and its project has six chats.
+        expect(card()).not.toBeNull();
+        expect(card()!.closest('[role="row"]')).toBeNull();
+        expect(container.querySelector('[aria-label="Agents"]')!.compareDocumentPosition(card()!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+        await draw(() => starCardPreferences.dismiss());
+
+        expect(card()).toBeNull();
     });
 });
