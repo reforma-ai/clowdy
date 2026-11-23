@@ -27,10 +27,14 @@ function Owner({
     selectedIds = [],
     anchor = true,
     options = OPTIONS,
+    empty,
+    footer,
 }: {
     selectedIds?: string[];
     anchor?: boolean;
     options?: PickerOption[];
+    empty?: string;
+    footer?: string;
 }) {
     const [isOpen, setIsOpen] = useState(true);
 
@@ -42,6 +46,8 @@ function Owner({
                 selectedIds={selectedIds}
                 aria-label="Change status"
                 placeholder="Change status…"
+                empty={empty}
+                footer={footer && <p role="status">{footer}</p>}
                 onPick={id => picks.push(id)}
                 onClose={() => {
                     closes++;
@@ -120,6 +126,23 @@ describe('PickerPopover', () => {
 
         expect(rows()).toHaveLength(0);
         expect(document.body.textContent).toContain('Nothing found');
+    });
+
+    it('says what the owner says when nothing is left, and what it says when there is nothing to list yet', async () => {
+        await open({ options: [], empty: 'Loading branches' });
+
+        expect(rows()).toHaveLength(0);
+        expect(document.body.textContent).toContain('Loading branches');
+        expect(document.body.textContent).not.toContain('Nothing found');
+    });
+
+    it('draws what the owner gives as a footer under the list, inside the popover', async () => {
+        await open({ footer: 'Commit or discard the changes first' });
+
+        const note = document.body.querySelector('[data-picker-popover] [role="status"]');
+
+        expect(note?.textContent).toBe('Commit or discard the changes first');
+        expect(note?.previousElementSibling?.contains(search())).toBe(true);
     });
 
     it('marks the current options', async () => {

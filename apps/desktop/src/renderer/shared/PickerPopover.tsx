@@ -34,11 +34,15 @@ export interface PickerListProps {
     'aria-label': string;
     /** The hint in the search field. */
     placeholder?: string;
+    /** What the list says when no option is left (`Nothing found` when absent): a list that has none yet says why, as `Loading branches`. */
+    empty?: string;
     /** The person chose an option that is not disabled. The list does not close anything: its owner does. */
     onPick: (id: string) => void;
 }
 
 export interface PickerPopoverProps extends Omit<PickerListProps, 'onPick'> {
+    /** Drawn under the list inside the popover: a reason the options are off, a way out. */
+    footer?: ReactNode;
     /** The element the popover opens beside. Without one it opens near the top of the window. */
     anchor: Element | null;
     /** Where the popover opens against its anchor; below it, at its start, when the caller does not say (below the window's top when there is no anchor). */
@@ -93,6 +97,7 @@ export function PickerList({
     selectedIds = [],
     'aria-label': ariaLabel,
     placeholder,
+    empty = 'Nothing found',
     onPick,
 }: PickerListProps) {
     const [query, setQuery] = useState('');
@@ -144,7 +149,7 @@ export function PickerList({
                 items={groups}
                 dependencies={dependencies}
                 onAction={key => pick(String(key))}
-                renderEmptyState={() => <div className={styles.empty}>Nothing found</div>}
+                renderEmptyState={() => <div className={styles.empty}>{empty}</div>}
             >
                 {group => (
                     <ListBoxSection id={group.id} aria-label={group.title ?? ariaLabel}>
@@ -191,6 +196,8 @@ export function PickerPopover({
     selectedIds = [],
     'aria-label': ariaLabel,
     placeholder,
+    empty,
+    footer,
     placement,
     onPick,
     onClose,
@@ -226,8 +233,10 @@ export function PickerPopover({
                     selectedIds={selectedIds}
                     aria-label={ariaLabel}
                     placeholder={placeholder}
+                    empty={empty}
                     onPick={pick}
                 />
+                {footer}
             </Popover>
         </>
     );
