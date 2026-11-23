@@ -1318,6 +1318,9 @@ export class FixtureTransport implements Transport {
             ...(source.engine && { engine: source.engine }),
             ...(source.model && { model: source.model }),
             ...(source.effort && { effort: source.effort }),
+            // The copy works where its source does: the same folder and the same worktree.
+            ...(chat.folderId && { folderId: chat.folderId }),
+            ...(chat.workspace && { workspace: structuredClone(chat.workspace) }),
             orchestratorRunId: runId,
             forkedFrom: { chatId: chat.id, atSeq: answer.seq },
             createdAt: now,

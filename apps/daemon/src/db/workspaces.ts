@@ -97,6 +97,16 @@ export function listWorkspacesOfProject(db: Database, projectId: string): Worksp
     return (db.query('SELECT * FROM workspaces WHERE project_id = ? ORDER BY created_at, id').all(projectId) as WorkspaceRow[]).map(toRecord);
 }
 
+/**
+ * The worktrees of the project that a chat still points at (an archived chat counts), oldest first: the ones a client can ask about. A row nobody points at, as one left
+ * by a chat that was deleted or lost its folder, is not read.
+ */
+export function listWorkspacesInUse(db: Database, projectId: string): WorkspaceRecord[] {
+    return (db.query(`
+        SELECT * FROM workspaces WHERE project_id = ? AND EXISTS (SELECT 1 FROM chats WHERE chats.workspace_id = workspaces.id) ORDER BY created_at, id
+    `).all(projectId) as WorkspaceRow[]).map(toRecord);
+}
+
 /** The ids of the chats that point at the worktree (archived ones too, a thread or a fork among them), oldest first. */
 export function chatsOfWorkspace(db: Database, workspaceId: string): string[] {
     return (db.query('SELECT id FROM chats WHERE workspace_id = ? ORDER BY created_at, id').all(workspaceId) as { id: string }[]).map(row => row.id);

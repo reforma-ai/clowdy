@@ -6,6 +6,7 @@ import { getRun } from '../db/runs';
 import { docsTree } from '../docs/tree';
 import { requireChat } from '../domain/chats';
 import { streamItems } from '../domain/items';
+import { resolveWorkspacePlace } from '../domain/places';
 import { findProjectIcon } from '../domain/projectIcon';
 import { projectsInfo, requireProject } from '../domain/projects';
 import { projectSnapshot, rootSnapshot, taskDetail, taskDetailByKey } from '../domain/snapshots';
@@ -19,7 +20,7 @@ import { BodyTooLarge, declaredLength, JSON_BODY_LIMIT, readText } from './body'
 import { commandResponse, failure, json } from './responses';
 import { eventStream } from './sse';
 
-import type { Health, TaskArchivePage, TaskCommentsPage } from '@clowdy/protocol';
+import type { Health, Project, TaskArchivePage, TaskCommentsPage } from '@clowdy/protocol';
 import type { Services } from '../commands';
 
 export interface RouteContext {
@@ -68,6 +69,12 @@ function integerParam(raw: string | null, name: string, fallback: number): numbe
 export function createRoutes(context: RouteContext): Route[] {
     const { services } = context;
     const { store, files, skills, attachments } = services;
+    /** The worktree a request of the documents or the file names asks for (`workspaceId`), in place of its folder's own checkout; none when it names no workspace. */
+    const workspacePlaceOf = (project: Project, url: URL) => {
+        const workspaceId = url.searchParams.get('workspaceId');
+
+        return workspaceId ? resolveWorkspacePlace(store, project, workspaceId) : undefined;
+    };
 
     return [
         {
@@ -188,14 +195,24 @@ export function createRoutes(context: RouteContext): Route[] {
             },
         },
         { method: 'GET', pattern: /^\/v1\/projects\/([^/]+)\/git$/, handle: async (_request, url, [id]) => json(await projectFolderGit(requireProject(store, id), url.searchParams.get('folderId') ?? '')) },
-        { method: 'GET', pattern: /^\/v1\/projects\/([^/]+)\/docs$/, handle: (_request, _url, [id]) => json(docsTree(requireProject(store, id))) },
+        {
+            method: 'GET',
+            pattern: /^\/v1\/projects\/([^/]+)\/docs$/,
+            handle: (_request, url, [id]) => {
+                const project = requireProject(store, id);
+
+                return json(docsTree(project, workspacePlaceOf(project, url)));
+            },
+        },
         {
             method: 'GET',
             pattern: /^\/v1\/projects\/([^/]+)\/files$/,
             handle: async (_request, url, [id]) => {
                 const limit = Math.min(Math.max(integerParam(url.searchParams.get('limit'), 'limit', DEFAULT_FILE_LIMIT), 1), MAX_FILE_LIMIT);
 
-                return json(await files.search(requireProject(store, id), url.searchParams.get('query') ?? '', limit));
+                const project = requireProject(store, id);
+
+                return json(await files.search(project, url.searchParams.get('query') ?? '', limit, workspacePlaceOf(project, url)));
             },
         },
         {

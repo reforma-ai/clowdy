@@ -248,14 +248,15 @@ export class ProjectUi {
     /**
      * Shows the new-chat row: a chat that is only made when its first message is sent. `attach` are files for
      * its message box (a hand-off brings the old conversation this way): the page picks them up with `takePendingFiles`. `folderId` is the folder
-     * of the project the chat is made for, `null` for the main folder.
+     * of the project the chat is made for, `null` for the main folder, and `workspace` where it works in that folder (a hand-off from a chat in a worktree keeps working in it),
+     * `null` for the folder's own checkout.
      */
-    openDraft(attach: readonly File[] = [], folderId: FolderId | null = null): void {
+    openDraft(attach: readonly File[] = [], folderId: FolderId | null = null, workspace: ChatWorkspaceChoice | null = null): void {
         this.showChat();
         this.runId = null;
         this.draft = true;
         this.draftFolderId = folderId;
-        this.draftWorkspace = null;
+        this.draftWorkspace = workspace;
 
         if (attach.length > 0) this.pendingFiles = [...this.pendingFiles, ...attach];
     }

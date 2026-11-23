@@ -5,8 +5,9 @@ import { join } from 'node:path';
 import { CommandError, unavailable } from '../errors';
 import { isDocFile, realPathBelow } from './paths';
 
-import type { DocNode, DocsSource, DocsTree, Project, ProjectFolder } from '@clowdy/protocol';
+import type { DocNode, DocsSource, DocsTree, Project } from '@clowdy/protocol';
 import type { Dirent } from 'node:fs';
+import type { Place } from '../domain/places';
 
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
@@ -64,13 +65,13 @@ function isFolder(path: string): boolean {
 const hasDocument = (nodes: readonly DocNode[]): boolean => nodes.some(node => (node.kind === 'file' ? true : hasDocument(node.children ?? [])));
 
 /**
- * The document sources a folder has, each with its Markdown tree: the roots of the registry (`DOC_SOURCES`) that are folders on the disk, in its order. A root that is a link
- * out of the folder is left out (nothing is read through it, and it does not take the others down: a `specs` that is a link to a shared folder is no reason to list no
+ * The document sources a checkout has, each with its Markdown tree: the roots of the registry (`DOC_SOURCES`) that are folders on the disk, in its order. A root that is a link
+ * out of the checkout is left out (nothing is read through it, and it does not take the others down: a `specs` that is a link to a shared folder is no reason to list no
  * documents), and so is one with no Markdown file in it. Nothing here makes a folder.
  */
-function sourcesOf(folder: ProjectFolder): DocsSource[] {
-    return docSourcesOf(path => isFolder(join(folder.path, path))).flatMap((source) => {
-        const root = realPathBelow(folder.path, join(folder.path, source.root));
+function sourcesOf(checkout: string): DocsSource[] {
+    return docSourcesOf(path => isFolder(join(checkout, path))).flatMap((source) => {
+        const root = realPathBelow(checkout, join(checkout, source.root));
 
         if (!root) {
             return [];
@@ -86,15 +87,20 @@ function sourcesOf(folder: ProjectFolder): DocsSource[] {
  * The documents of a project, one entry per folder in the project's order, each with the sources it has. The main folder must be there, since the project cannot work
  * without it: a missing main folder is `unavailable`. Another folder that is missing is left out. A folder with no sources has an entry with none. Nothing here writes or
  * watches: the files are the file system's, which the app opens and edits through `fs`.
+ *
+ * With a `place` that is a worktree, the entry of its folder is the worktree's documents (a plan an agent wrote there is not in the main checkout), under the folder's own
+ * id; the other folders are read as before.
  */
-export function docsTree(project: Project): DocsTree {
+export function docsTree(project: Project, place?: Place): DocsTree {
     return project.folders.flatMap((folder, index) => {
+        const checkout = place?.folder.id === folder.id ? place.path : folder.path;
+
         try {
-            if (!existsSync(folder.path)) {
-                throw unavailable(`The folder ${ folder.path } is missing`);
+            if (!existsSync(checkout)) {
+                throw unavailable(`The ${ checkout === folder.path ? 'folder' : 'worktree' } ${ checkout } is missing`);
             }
 
-            return [{ folderId: folder.id, sources: sourcesOf(folder) }];
+            return [{ folderId: folder.id, sources: sourcesOf(checkout) }];
         }
         catch (error) {
             if (index === 0 || !(error instanceof CommandError)) {

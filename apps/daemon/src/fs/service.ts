@@ -1,6 +1,7 @@
 import { MAX_FS_FILE_BYTES, MAX_FS_FIND } from '@clowdy/protocol';
 import { realpath } from 'node:fs/promises';
 
+import { ownsPlace } from '../domain/places';
 import { invalid, notFound, unavailable } from '../errors';
 import { makeFolder, remove, transfer } from './batch';
 import { checkPreconditions, makeFolders, readBody, readFileBytes, removeFolders, writeFileAtomically } from './content';
@@ -11,7 +12,8 @@ import { watchStream } from './stream';
 import { MAX_LIST_ENTRIES, walkTree } from './walk';
 import { FolderWatch } from './watcher';
 
-import type { FolderId, FsEntry, FsMove, FsSearchRequest, FsSearchResult, Project, ProjectFolder } from '@clowdy/protocol';
+import type { FolderId, FsEntry, FsMove, FsSearchRequest, FsSearchResult, Project } from '@clowdy/protocol';
+import type { Place } from '../domain/places';
 import type { FilesService } from '../files/service';
 import type { Preconditions } from './content';
 import type { SearchOptions } from './search';
@@ -33,6 +35,12 @@ async function isFile(root: string, path: string): Promise<boolean> {
     }
 }
 
+/**
+ * What a request of the file system reads: a folder of the project by its id (its own checkout), or a `Place` that `resolvePlace` made, which may be a worktree of the
+ * folder. Everything below the root is judged the same way for both.
+ */
+export type FsTarget = FolderId | Place;
+
 export interface FsWriteOptions extends Preconditions {
     /** The `Content-Length` the client declared; 0 when it sent none. */
     declaredLength: number;
@@ -41,7 +49,8 @@ export interface FsWriteOptions extends Preconditions {
 /**
  * The files of a project's folders for the app's file manager, read and changed on behalf of a client that is not trusted: every path is
  * checked against the folder here (`paths.ts`), and nothing outside it is ever read, written, moved, copied, deleted or watched. A folder is
- * named by its id in the project; `.git` and `node_modules` are listed only as cutoff folders and never watched.
+ * named by its id in the project, or by a `Place` (a worktree of it, whose own real path is then the root); `.git` and `node_modules` are listed only as cutoff
+ * folders and never watched.
  *
  * Changes to one folder run one at a time (`exclusive`), so the daemon's own writes never interleave; reads and listings do not wait for them.
  */
@@ -61,8 +70,8 @@ export class FsService {
         this.contentSearch = new ContentSearch(searchOptions);
     }
 
-    async list(project: Project, folderId: FolderId, path: string, depth?: number): Promise<FsEntry[]> {
-        const { root } = await this.open(project, folderId);
+    async list(project: Project, at: FsTarget, path: string, depth?: number): Promise<FsEntry[]> {
+        const { root } = await this.open(project, at);
         const rel = normalizeFsPath(path);
 
         try {
@@ -86,9 +95,9 @@ export class FsService {
     }
 
     /** Files whose name matches `query`, from the folder's cached listing (git's, where there is one), best first. */
-    async find(project: Project, folderId: FolderId, query: string): Promise<string[]> {
-        const { folder, root } = await this.open(project, folderId);
-        const matches = matchPaths(await this.files.list(folder.path), query);
+    async find(project: Project, at: FsTarget, query: string): Promise<string[]> {
+        const { path, root } = await this.open(project, at);
+        const matches = matchPaths(await this.files.list(path), query);
         const found: string[] = [];
 
         // A listing can name what is not a file now (a folder of another repository, a file deleted since): look at each before it counts.
@@ -103,17 +112,22 @@ export class FsService {
     }
 
     /**
-     * The lines of the folder's files that hold `request.query` (see `ContentSearch`). It needs the folder on the disk (`unavailable`) and a
-     * valid request (`invalid`); `signal` is the client's, and a client that went away ends the search.
+     * The lines of the folder's files that hold `request.query` (see `ContentSearch`), of the folder's own checkout or, given a `Place`, of its worktree. It needs
+     * the folder on the disk (`unavailable`) and a valid request (`invalid`); `signal` is the client's, and a client that went away ends the search.
      */
-    async search(project: Project, request: FsSearchRequest, signal?: AbortSignal): Promise<FsSearchResult> {
-        const { root } = await this.open(project, request.folderId);
+    async search(project: Project, request: FsSearchRequest, signal?: AbortSignal, at: FsTarget = request.folderId): Promise<FsSearchResult> {
+        // A worktree asked for and not judged would be searched in the folder's own checkout under the worktree's name.
+        if (request.workspaceId && (typeof at === 'string' || at.workspace?.id !== request.workspaceId)) {
+            throw invalid('The worktree of the search was not resolved');
+        }
+
+        const { root } = await this.open(project, at);
 
         return this.contentSearch.search(root, request, signal);
     }
 
-    async read(project: Project, folderId: FolderId, path: string): Promise<{ bytes: Uint8Array; version: string }> {
-        const { root } = await this.open(project, folderId);
+    async read(project: Project, at: FsTarget, path: string): Promise<{ bytes: Uint8Array; version: string }> {
+        const { root } = await this.open(project, at);
         const rel = normalizeFsPath(path);
 
         try {
@@ -139,8 +153,8 @@ export class FsService {
      * taken, so a slow client holds nothing up; the version check and the write then follow each other as closely as the file system lets
      * them (the check is repeated right before the rename). A write over a folder, or below a file, is `conflict` (`exists`).
      */
-    async write(project: Project, folderId: FolderId, path: string, body: AsyncIterable<Uint8Array> | null, options: FsWriteOptions): Promise<{ version: string }> {
-        const { root } = await this.open(project, folderId);
+    async write(project: Project, at: FsTarget, path: string, body: AsyncIterable<Uint8Array> | null, options: FsWriteOptions): Promise<{ version: string }> {
+        const { root } = await this.open(project, at);
         const rel = normalizeFsPath(path);
         const bytes = await readBody(body, options.declaredLength, rel, this.maxFileBytes);
 
@@ -174,23 +188,23 @@ export class FsService {
         });
     }
 
-    async makeFolder(project: Project, folderId: FolderId, path: string): Promise<void> {
-        const { root } = await this.open(project, folderId);
+    async makeFolder(project: Project, at: FsTarget, path: string): Promise<void> {
+        const { root } = await this.open(project, at);
         const rel = normalizeFsPath(path);
 
         await this.exclusive(root, () => makeFolder(root, rel));
     }
 
-    async move(project: Project, folderId: FolderId, moves: readonly FsMove[], overwrite = false): Promise<void> {
-        await this.transfer(project, folderId, 'move', moves, overwrite);
+    async move(project: Project, at: FsTarget, moves: readonly FsMove[], overwrite = false): Promise<void> {
+        await this.transfer(project, at, 'move', moves, overwrite);
     }
 
-    async copy(project: Project, folderId: FolderId, copies: readonly FsMove[], overwrite = false): Promise<void> {
-        await this.transfer(project, folderId, 'copy', copies, overwrite);
+    async copy(project: Project, at: FsTarget, copies: readonly FsMove[], overwrite = false): Promise<void> {
+        await this.transfer(project, at, 'copy', copies, overwrite);
     }
 
-    async remove(project: Project, folderId: FolderId, paths: readonly string[]): Promise<void> {
-        const { root } = await this.open(project, folderId);
+    async remove(project: Project, at: FsTarget, paths: readonly string[]): Promise<void> {
+        const { root } = await this.open(project, at);
 
         this.limit(paths);
 
@@ -203,8 +217,8 @@ export class FsService {
      * The changes of a folder as an event stream. Every client of the folder shares one watcher, which is closed when the last of them leaves.
      * A platform that cannot watch is `unavailable`.
      */
-    async watch(project: Project, folderId: FolderId, heartbeatMs?: number): Promise<ReadableStream<Uint8Array>> {
-        const { root } = await this.open(project, folderId);
+    async watch(project: Project, at: FsTarget, heartbeatMs?: number): Promise<ReadableStream<Uint8Array>> {
+        const { root } = await this.open(project, at);
         let watcher = this.watches.get(root);
 
         if (!watcher) {
@@ -249,8 +263,8 @@ export class FsService {
         this.watches.clear();
     }
 
-    private async transfer(project: Project, folderId: FolderId, mode: 'move' | 'copy', items: readonly FsMove[], overwrite: boolean): Promise<void> {
-        const { root } = await this.open(project, folderId);
+    private async transfer(project: Project, at: FsTarget, mode: 'move' | 'copy', items: readonly FsMove[], overwrite: boolean): Promise<void> {
+        const { root } = await this.open(project, at);
 
         this.limit(items);
 
@@ -265,29 +279,38 @@ export class FsService {
         }
     }
 
-    private folderOf(project: Project, folderId: FolderId): ProjectFolder {
-        if (!folderId) {
+    /** The place a request names: the folder's own checkout for a folder's id, the place itself for one `resolvePlace` made. */
+    private placeFor(project: Project, at: FsTarget): Place {
+        if (typeof at !== 'string') {
+            if (!ownsPlace(project, at)) {
+                throw notFound('Folder', at.folder.id);
+            }
+
+            return at;
+        }
+
+        if (!at) {
             throw invalid('The folder is not given');
         }
 
-        const folder = project.folders.find(candidate => candidate.id === folderId);
+        const folder = project.folders.find(candidate => candidate.id === at);
 
         if (!folder) {
-            throw notFound('Folder', folderId);
+            throw notFound('Folder', at);
         }
 
-        return folder;
+        return { folder, path: folder.path };
     }
 
-    /** The folder and its real path, which every link is judged against. A folder that is gone from the disk is `unavailable`. */
-    private async open(project: Project, folderId: FolderId): Promise<{ folder: ProjectFolder; root: string }> {
-        const folder = this.folderOf(project, folderId);
+    /** The place and its real path, which every link is judged against: a worktree's own for a worktree, never the folder's. A place that is gone from the disk is `unavailable`. */
+    private async open(project: Project, at: FsTarget): Promise<{ path: string; root: string }> {
+        const { path, workspace } = this.placeFor(project, at);
 
         try {
-            return { folder, root: await realpath(folder.path) };
+            return { path, root: await realpath(path) };
         }
         catch {
-            throw unavailable(`The folder ${ folder.path } is missing`);
+            throw unavailable(`The ${ workspace ? 'worktree' : 'folder' } ${ path } is missing`);
         }
     }
 
