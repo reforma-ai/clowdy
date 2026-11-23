@@ -62,6 +62,42 @@ const buttonIn = (parent: HTMLElement, label: string) => parent.querySelector<HT
 const textButton = (parent: HTMLElement, text: string) => [...parent.querySelectorAll<HTMLButtonElement>('button')].find(candidate => candidate.textContent?.trim() === text);
 const click = (element: HTMLElement) => act(async () => element.click());
 const isOpen = () => Modal.opened.length > 0;
+const items = () => [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+const item = (text: string) => items().find(candidate => candidate.textContent?.startsWith(text));
+const pressEscape = () => act(async () => void document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true })));
+
+/** Opens the More menu of a row. */
+async function openMore(path: string) {
+    await click(row(path).querySelector<HTMLElement>('button[aria-label^="More for"]')!);
+    await settle();
+}
+
+/** Opens the More menu of a row, reads its items (their text and whether each is off), and shuts it again, so the next row's menu is the only one on the page. */
+async function moreMenu(path: string) {
+    await openMore(path);
+
+    const read = items().map(candidate => ({ text: candidate.textContent!, off: candidate.getAttribute('aria-disabled') === 'true' }));
+
+    await pressEscape();
+    await settle();
+
+    return read;
+}
+
+const removeOf = (read: Array<{ text: string; off: boolean }>) => read.find(entry => entry.text.startsWith('Remove'));
+
+/** Flies out the submenu `Open in…` of the menu on show: React Aria opens a submenu on the key. */
+async function openIn() {
+    await act(async () => {
+        const target = item('Open in…')!;
+
+        target.focus();
+        target.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', code: 'ArrowRight', bubbles: true, cancelable: true }));
+    });
+    await settle();
+
+    return [...document.body.querySelectorAll<HTMLElement>('[role="menu"][aria-label="Open in"] [role="menuitem"]')].map(candidate => candidate.textContent);
+}
 
 beforeEach(() => {
     // The modal animates by itself, whatever the motion setting; a test that ends while it moves leaves a cancelled animation behind.
@@ -101,7 +137,7 @@ describe('Manage worktrees', () => {
         expect(main.textContent).toContain('Clean');
         // The base is no place to compare the folder's own checkout with.
         expect(main.textContent).not.toContain('merged');
-        expect(buttonIn(main, 'Remove main')).toBeNull();
+        expect(removeOf(await moreMenu('/Users/dev/car-rental'))).toBeUndefined();
         expect(buttonIn(main, 'New chat in this folder: main')).not.toBeNull();
     });
 
@@ -274,24 +310,27 @@ describe('Manage worktrees', () => {
         expect(scrolled).toEqual(['fld_api']);
     });
 
-    it('draws Remove for every worktree but the folder\'s own checkout, and holds it off for a lock and for a chat that works in the worktree', async () => {
+    it('draws Remove in the More menu of every worktree but the folder\'s own checkout, and holds it off for a lock and for a chat that works in the worktree', async () => {
         await open();
 
-        const remove = (path: string) => row(path).querySelector<HTMLButtonElement>('button[aria-label^="Remove "]');
+        for (const path of [FOUND_WORKTREE, MISSING_WORKTREE]) expect(removeOf(await moreMenu(path))?.off, path).toBe(false);
 
-        for (const path of [CLOWDY_WORKTREE, FOUND_WORKTREE, LOCKED_WORKTREE, MISSING_WORKTREE]) expect(remove(path), path).not.toBeNull();
+        for (const path of [CLOWDY_WORKTREE, LOCKED_WORKTREE]) expect(removeOf(await moreMenu(path))?.off, path).toBe(true);
 
-        expect(remove(CLOWDY_WORKTREE)!.disabled).toBe(true);
-        expect(remove(LOCKED_WORKTREE)!.disabled).toBe(true);
-        expect(remove(FOUND_WORKTREE)!.disabled).toBe(false);
-        expect(remove(MISSING_WORKTREE)!.disabled).toBe(false);
-        expect(row('/Users/dev/car-rental').querySelector('button[aria-label^="Remove "]')).toBeNull();
+        expect(removeOf(await moreMenu('/Users/dev/car-rental'))).toBeUndefined();
+        // Remove is not a button of the row any more.
+        expect(row(FOUND_WORKTREE).querySelector('button[aria-label^="Remove"]')).toBeNull();
     });
 
     it('opens no confirmation from a Remove that is off, for a chat or for a lock', async () => {
         await open();
-        await click(buttonIn(row(CLOWDY_WORKTREE), 'Remove clowdy/ab12cd34')!);
-        await click(buttonIn(row(LOCKED_WORKTREE), 'Remove hotfix/invoice')!);
+
+        for (const path of [CLOWDY_WORKTREE, LOCKED_WORKTREE]) {
+            await openMore(path);
+            await click(item('Remove')!);
+            await pressEscape();
+            await settle();
+        }
 
         expect(Modal.opened).toHaveLength(1);
     });
@@ -299,25 +338,23 @@ describe('Manage worktrees', () => {
     it('says a worktree whose folder is gone has only its record to remove', async () => {
         await open();
 
-        expect(buttonIn(row(MISSING_WORKTREE), 'Remove record of old-pricing')).not.toBeNull();
-        expect(buttonIn(row(MISSING_WORKTREE), 'Remove old-pricing')).toBeNull();
+        expect(removeOf(await moreMenu(MISSING_WORKTREE))?.text).toBe('Remove record…');
+        expect(removeOf(await moreMenu(FOUND_WORKTREE))?.text).toBe('Remove…');
     });
 
-    it('names, beside a Remove that is off, the reason the daemon gave', async () => {
+    it('names, under a Remove that is off, the reason the daemon gave, and under no other', async () => {
         await open();
 
-        const stand = (path: string) => row(path).querySelector<HTMLElement>('[role="button"][aria-disabled]');
-
-        expect(stand(LOCKED_WORKTREE)?.getAttribute('aria-label')).toBe('Remove hotfix/invoice');
-        expect(stand(CLOWDY_WORKTREE)?.getAttribute('aria-label')).toBe('Remove clowdy/ab12cd34');
+        expect(removeOf(await moreMenu(LOCKED_WORKTREE))?.text).toContain('Git has it locked: on an external drive');
+        expect(removeOf(await moreMenu(CLOWDY_WORKTREE))?.text).toContain('A chat works in it');
         // Nothing stops a worktree that nobody works in and nobody locked: its Remove waits for the confirmation, not for a reason.
-        expect(stand(FOUND_WORKTREE)).toBeNull();
+        expect(removeOf(await moreMenu(FOUND_WORKTREE))?.text).toBe('Remove…');
     });
 
-    it('has no line in the row for why a Remove is off: the reason is on hover of the button only', async () => {
+    it('has no line in the row for why a Remove is off: the reason is under Remove in the More menu', async () => {
         await open();
 
-        // Locked, and a chat works in it: the row has the facts and the chats, and the button has the reason.
+        // Locked, and a chat works in it: the row has the facts and the chats, and the menu has the reason.
         for (const path of [CLOWDY_WORKTREE, LOCKED_WORKTREE]) expect(row(path).textContent, path).not.toContain('Can\'t remove');
     });
 
@@ -335,29 +372,66 @@ describe('Manage worktrees', () => {
 
         await open({ overrides: { getProjectWorktrees } });
 
-        expect(buttonIn(row('/Users/dev/car-rental-primary'), 'Remove main')!.disabled).toBe(true);
+        const remove = removeOf(await moreMenu('/Users/dev/car-rental-primary'));
+
+        expect(remove?.off).toBe(true);
+        expect(remove?.text).toContain('The repository\'s own working tree');
     });
 
-    it('offers the programs of the computer for a worktree in the desktop app, and nothing to open it in a page that is not', async () => {
+    it('has only two buttons at the end of a row, New chat and More, and the rest in the More menu', async () => {
         await open();
 
-        expect(buttonIn(row(FOUND_WORKTREE), 'Open search-filters')).toBeNull();
+        const buttons = (path: string) => [...row(path).querySelectorAll<HTMLElement>('[class*="actions"] button')].map(button => button.getAttribute('aria-label'));
 
-        await act(async () => Modal.opened[0]!.close(false));
-        (window as { desktop?: unknown }).desktop = { openPath: vi.fn(), getOpenApps: async () => ({ editors: [], terminals: [], fileManagers: [{ id: 'finder', name: 'Finder' }] }) };
-        await open();
-
-        expect(buttonIn(row(FOUND_WORKTREE), 'Open search-filters')).not.toBeNull();
+        expect(buttons(FOUND_WORKTREE)).toEqual(['New chat in this worktree: search-filters', 'More for search-filters']);
+        expect(buttons('/Users/dev/car-rental')).toEqual(['New chat in this folder: main', 'More for main']);
     });
 
-    it('opens the menu of a worktree as the list of the programs of the computer itself, with no copy of its path, no Open in… and no Open in Files, which would act behind the dialog', async () => {
+    it('opens the More menu of a worktree with New chat, the copy of its path and Open in…, then Remove under a separator, and without Open in Files, which would act behind the dialog', async () => {
         (window as { desktop?: unknown }).desktop = { openPath: vi.fn(), getOpenApps: async () => ({ editors: [], terminals: [], fileManagers: [{ id: 'finder', name: 'Finder' }] }) };
         await open();
-        // The window works in the folder's own checkout, which is the place of the first row: its menu would offer Open in Files if the dialog were a place.
-        await click(buttonIn(row('/Users/dev/car-rental'), 'Open main')!);
-        await settle();
+        await openMore(FOUND_WORKTREE);
 
-        expect([...document.body.querySelectorAll('[role="menuitem"]')].map(item => item.textContent)).toEqual(['Open in Finder', 'Open in GitHub']);
+        expect(items().map(candidate => candidate.textContent)).toEqual(['New chat', 'Copy path', 'Open in…', 'Remove…']);
+        expect(document.body.querySelectorAll('[role="menu"] [role="separator"]')).toHaveLength(1);
+        expect(item('Remove')!.previousElementSibling?.getAttribute('role')).toBe('separator');
+        // The programs of the computer are in the submenu.
+        expect(await openIn()).toEqual(['Open in Finder', 'Open in GitHub']);
+    });
+
+    it('gives the folder\'s own checkout the same menu without Remove, and its place is no place of the dialog: no Open in Files', async () => {
+        (window as { desktop?: unknown }).desktop = { openPath: vi.fn(), getOpenApps: async () => ({ editors: [], terminals: [], fileManagers: [{ id: 'finder', name: 'Finder' }] }) };
+        await open();
+        // The window works in the folder's own checkout, which is the place of the first row: an `OpenWithMenu` would offer Open in Files there.
+        await openMore('/Users/dev/car-rental');
+
+        expect(items().map(candidate => candidate.textContent)).toEqual(['New chat', 'Copy path', 'Open in…']);
+        expect(document.body.querySelector('[role="menu"] [role="separator"]')).toBeNull();
+    });
+
+    it('offers only GitHub to open a worktree in, in a page that is not the desktop app, which has no programs', async () => {
+        await open();
+        await openMore(FOUND_WORKTREE);
+
+        expect(await openIn()).toEqual(['Open in GitHub']);
+    });
+
+    it('starts a new chat in the worktree from the More menu as the button does, and closes the dialog', async () => {
+        await open();
+        await openMore(FOUND_WORKTREE);
+        await click(item('New chat')!);
+
+        const ui = store.ui.forProject(FIXTURE_PROJECT_ID);
+
+        expect(ui.draft).toBe(true);
+        expect(ui.draftWorkspace).toEqual({ mode: 'existing', path: FOUND_WORKTREE });
+        expect(isOpen()).toBe(false);
+    });
+
+    it('turns New chat off in the More menu for a worktree whose folder is gone', async () => {
+        await open();
+
+        expect((await moreMenu(MISSING_WORKTREE)).find(entry => entry.text === 'New chat')?.off).toBe(true);
     });
 
     it('reads the worktrees when it opens and again each time the window gets focus', async () => {

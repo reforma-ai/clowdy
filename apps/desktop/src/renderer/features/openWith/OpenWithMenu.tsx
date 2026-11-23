@@ -24,11 +24,6 @@ export interface OpenWithMenuProps {
     /** For a folder that is gone: Locate… and Remove from project, under the note (`useFolderRepair`). */
     repair?: FolderRepair;
     git: FolderGit | undefined;
-    /**
-     * Only what leaves the app, as the menu's own items: the programs of the computer and GitHub, with no `Open in…` submenu, and no Open in Files, Open in Terminal or copy of
-     * the path. For a menu in a dialog that covers the window (Manage worktrees), where what acts on the window's places would act behind the dialog and the person came for a program.
-     */
-    programsOnly?: boolean;
     /** For a folder that is a git repository: a first item, `Manage worktrees`, runs this (it opens the dialog of the project's worktrees). Without it there is no such item. */
     onManageWorktrees?: () => void;
     /** Called when an item is pressed, before it runs: a menu that is not in a `MenuTrigger` shuts itself here. */
@@ -58,7 +53,7 @@ export const actionIcon = (action: OpenAction): ReactNode => {
  * the terminal program, GitHub. One list of items for every place the menu comes from (`openActions`). A folder that is a repository has `Manage worktrees` above them all
  * (`onManageWorktrees`), which is not an action on a path and so is not in `openActions`.
  */
-export function OpenWithMenu({ target, missing = false, repair, git, programsOnly = false, onManageWorktrees, onClose, 'aria-label': label }: OpenWithMenuProps) {
+export function OpenWithMenu({ target, missing = false, repair, git, onManageWorktrees, onClose, 'aria-label': label }: OpenWithMenuProps) {
     const root = useRootStore();
     const project = useProjectState();
     const ui = useProjectUi();
@@ -66,7 +61,7 @@ export function OpenWithMenu({ target, missing = false, repair, git, programsOnl
     // The Files tab shows the place the window works in (the folder, or the open chat's worktree), so a path in another folder of the project cannot be shown there, nor
     // can one in another worktree of it, nor one in a worktree that is not made yet.
     const place = placeOf(target);
-    const isHere = !programsOnly && isSamePlace(currentPlace(project, ui), place) && isPlaceReady(place);
+    const isHere = isSamePlace(currentPlace(project, ui), place) && isPlaceReady(place);
     const actions = openActions({
         target,
         programs: chosenPrograms(apps),
@@ -78,9 +73,8 @@ export function OpenWithMenu({ target, missing = false, repair, git, programsOnl
             : undefined,
         inTerminal: isHere ? () => void openInTerminal(root, target.projectId, place, target.relative) : undefined,
     });
+    const here = actions.filter(action => action.group !== 'outside');
     const outside = actions.filter(action => action.group === 'outside');
-    // The items of the menu's own list: what the app does and the copies of the path, or, with `programsOnly`, the programs themselves, with no submenu after them.
-    const listed = programsOnly ? outside : actions.filter(action => action.group !== 'outside');
     const run = (key: string) => {
         onClose?.();
 
@@ -108,9 +102,9 @@ export function OpenWithMenu({ target, missing = false, repair, git, programsOnl
                     { missing && <MenuHeader>This folder no longer exists</MenuHeader> }
                     { repair && <MenuItem id="locate" icon={ <Search aria-hidden="true" /> } textValue="Locate…">Locate…</MenuItem> }
                     { repair?.remove && <MenuItem id="remove" icon={ <Close aria-hidden="true" /> } textValue="Remove from project">Remove from project</MenuItem> }
-                    <For each={ listed }>{ item }</For>
+                    <For each={ here }>{ item }</For>
                 </MenuSection>
-                { outside.length > 0 && !programsOnly && (
+                { outside.length > 0 && (
                     <>
                         <MenuSeparator />
                         <MenuSection aria-label="Other programs">

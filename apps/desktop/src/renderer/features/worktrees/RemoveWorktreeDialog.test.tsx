@@ -79,7 +79,7 @@ async function open({ data = dataWithKinds(), overrides = {} }: OpenOptions = {}
 }
 
 const row = (path: string) => document.body.querySelector<HTMLElement>(`li[data-worktree-path="${ path }"]`);
-const removeButton = (path: string) => row(path)!.querySelector<HTMLButtonElement>('button[aria-label^="Remove "]')!;
+const menuItems = () => [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')];
 /** The confirmation is the window on top of the Manage dialog. */
 const confirmation = () => [...document.body.querySelectorAll<HTMLElement>('[data-modal-window]')].at(-1)!;
 const isConfirming = () => Modal.opened.length === 2;
@@ -88,9 +88,17 @@ const checkbox = () => confirmation().querySelector<HTMLInputElement>('input[typ
 const click = (element: HTMLElement) => act(async () => element.click());
 const removals = () => command.mock.calls.map(([input]) => input).filter(input => input.type === 'workspace.remove');
 
+/** Opens the More menu of a row, and gives its Remove item. */
+async function removeItem(path: string) {
+    await click(row(path)!.querySelector<HTMLElement>('button[aria-label^="More for"]')!);
+    await settle();
+
+    return menuItems().find(candidate => candidate.textContent?.startsWith('Remove'))!;
+}
+
 /** Presses Remove on a row, and waits for the confirmation it opens. */
 async function askToRemove(path: string) {
-    await click(removeButton(path));
+    await click(await removeItem(path));
     await settle();
     expect(isConfirming()).toBe(true);
 }
@@ -357,14 +365,16 @@ describe('Remove in Manage worktrees', () => {
     });
 
     describe('a worktree that cannot be removed', () => {
-        it('has no Remove to press while a chat works in it, archived ones included, and the row lists the chats', async () => {
+        it('has no Remove to choose while a chat works in it, archived ones included, and the row lists the chats', async () => {
             await open();
 
-            expect(removeButton(CLOWDY_WORKTREE).disabled).toBe(true);
-            expect(row(CLOWDY_WORKTREE)!.querySelector('[role="button"][aria-disabled]')?.getAttribute('aria-label')).toBe('Remove clowdy/ab12cd34');
+            const remove = await removeItem(CLOWDY_WORKTREE);
+
+            expect(remove.getAttribute('aria-disabled')).toBe('true');
+            expect(remove.textContent).toContain('A chat works in it');
             expect(row(CLOWDY_WORKTREE)!.querySelector('[aria-label="Chats"]')!.textContent).toContain('Weekend surcharge in a worktree');
 
-            await click(removeButton(CLOWDY_WORKTREE));
+            await click(remove);
             await settle();
 
             expect(isConfirming()).toBe(false);
