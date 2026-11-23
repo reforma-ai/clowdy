@@ -1,6 +1,5 @@
-import { Button } from '@clowdy/components/Button';
 import { For } from '@clowdy/components/For';
-import { GridList, GridListItem } from '@clowdy/components/List';
+import { GridList, GridListItem, ListBox, ListBoxItem } from '@clowdy/components/List';
 import { Panel, PanelEmptyRow, PanelHeader } from '@clowdy/components/Panel';
 import { Scrollable } from '@clowdy/components/Scrollable';
 import { Text } from '@clowdy/components/Text';
@@ -112,34 +111,35 @@ function FileRow({ file, viewed }: { file: GitChangedFile; viewed: boolean }) {
     );
 }
 
-/** One commit of the branch: its message, and under it its short hash and when it was made. A press shows that commit alone; the one that is shown is marked. */
-function CommitRow({ commit, current, onPick }: { commit: GitCommit; current: boolean; onPick: () => void }) {
+/** The key of the row above the commits that goes back to all changes: no commit's hash. */
+const ALL_CHANGES_ROW = 'all-changes';
+
+/**
+ * One commit of the branch, an option of the design system's list: its message, and under it its short hash and when it was made (the author on hover). Choosing it shows that
+ * commit alone; the one that is shown is the selected option, and choosing it again goes back to all changes.
+ */
+function CommitRow({ commit }: { commit: GitCommit }) {
     return (
-        <Button
-            variant="filling"
-            color="secondary"
-            size="xs"
-            className={styles.commit}
-            contentClassName={styles.commitContent}
-            isPressed={current}
-            tooltip={`${commit.shortSha} by ${commit.author}`}
-            tooltipPlacement="left"
-            onPress={onPick}
+        <ListBoxItem
+            id={commit.sha}
+            textValue={commit.subject}
+            stacked
+            description={
+                <span className={styles.commitMeta}>
+                    <span className={styles.sha}>{commit.shortSha}</span>
+                    <time
+                        dateTime={new Date(commit.committedAt).toISOString()}
+                        title={formatFullTime(commit.committedAt)}
+                    >
+                        {formatMessageTime(commit.committedAt)}
+                    </time>
+                </span>
+            }
         >
-            <Text variant="xs" weight="medium" truncate className={styles.subject}>
+            <Text slot="label" weight="medium" title={`${commit.shortSha} by ${commit.author}`}>
                 {commit.subject}
             </Text>
-            <span className={styles.commitMeta}>
-                <Text variant="xs" color="secondary" className={styles.sha}>
-                    {commit.shortSha}
-                </Text>
-                <time dateTime={new Date(commit.committedAt).toISOString()} title={formatFullTime(commit.committedAt)}>
-                    <Text variant="xs" color="secondary">
-                        {formatMessageTime(commit.committedAt)}
-                    </Text>
-                </time>
-            </span>
-        </Button>
+        </ListBoxItem>
     );
 }
 
@@ -177,6 +177,8 @@ export function ChangesSidebar({
     const viewed = model.viewedPaths;
     const commits = base?.commits ?? [];
     const onCommit = isCommitScope(model.effectiveScope);
+    // The commit that is shown, as the list's selection.
+    const shown = commits.find(commit => model.effectiveScope === commitScope(commit.sha))?.sha;
 
     return (
         <Panel side="right" className={styles.sidebar} aria-label="Changes sidebar">
@@ -254,33 +256,33 @@ export function ChangesSidebar({
                 {base && (
                     <section className={styles.commits} aria-label="Committed on branch">
                         <SectionHeader title="Committed on branch" count={base.ahead} />
-                        {onCommit && (
-                            <Button
-                                variant="filling"
-                                color="secondary"
-                                size="xs"
-                                className={styles.back}
-                                onPress={() => model.setScope('all')}
-                            >
-                                <ArrowLeft aria-hidden="true" />
-                                Back to all changes
-                            </Button>
-                        )}
                         {commits.length > 0 ? (
                             <Scrollable className={styles.list} contentClass={styles.rows}>
-                                <For each={commits}>
-                                    {commit => (
-                                        <CommitRow
-                                            key={commit.sha}
-                                            commit={commit}
-                                            current={model.effectiveScope === commitScope(commit.sha)}
-                                            onPick={() => model.pickCommit(commit.sha)}
+                                <ListBox
+                                    aria-label="Commits on branch"
+                                    size="sm"
+                                    selectionMode="single"
+                                    selectedKeys={shown}
+                                    onSelectionChange={keys => {
+                                        const [key] = keys === 'all' ? [] : [...keys];
+
+                                        // Choosing the commit that is shown again, or the row above the commits, goes back to all changes.
+                                        if (key === undefined || key === ALL_CHANGES_ROW) model.setScope('all');
+                                        else model.pickCommit(String(key));
+                                    }}
+                                >
+                                    {onCommit && (
+                                        <ListBoxItem
+                                            id={ALL_CHANGES_ROW}
+                                            text="Back to all changes"
+                                            icon={<ArrowLeft aria-hidden="true" />}
                                         />
                                     )}
-                                </For>
+                                    <For each={commits}>{commit => <CommitRow key={commit.sha} commit={commit} />}</For>
+                                </ListBox>
                                 {base.ahead > commits.length && (
                                     <Text
-                                        variant="xs"
+                                        variant="sm"
                                         color="secondary"
                                         className={styles.more}
                                     >{`Showing the newest ${commits.length}`}</Text>

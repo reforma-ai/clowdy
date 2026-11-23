@@ -158,10 +158,14 @@ const card = (path: string) => cards().find(element => element.dataset.card === 
 const sidebarFiles = () => [...container.querySelectorAll<HTMLElement>('[aria-label="Changed files"] [role="row"]')];
 const sidebarPaths = () => sidebarFiles().map(row => row.querySelector('[class*="name"]')?.textContent);
 const commitRows = () => [
-    ...container.querySelectorAll<HTMLButtonElement>('[aria-label="Committed on branch"] button'),
+    ...container.querySelectorAll<HTMLElement>('[aria-label="Commits on branch"] [role="option"]'),
 ];
 const scopeTrigger = () => container.querySelector<HTMLButtonElement>('button[aria-haspopup="listbox"]')!;
-const options = () => [...document.querySelectorAll('[role="option"]')];
+// The options of the scope menu: the sidebar's commits are options of a list too.
+const options = () =>
+    [...document.querySelectorAll('[role="option"]')].filter(
+        option => option.closest('[aria-label="Changes sidebar"]') === null
+    );
 const filter = () => container.querySelector<HTMLInputElement>('input[aria-label="Filter files"]')!;
 const summary = () => container.querySelector('[aria-label="Summary of the changes"]')?.textContent;
 const button = (label: string) => container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!;
@@ -543,7 +547,7 @@ describe('the scope', () => {
         expect(scopeTrigger().textContent).toContain(`${second.shortSha} ${second.subject}`);
         expect(cardPaths()).toEqual(['assets/logo.png', 'src/booking/price.test.ts', 'src/booking/price.ts']);
         expect(commitRows()[0]!.textContent).toContain('Back to all changes');
-        expect(commitRows()[2]!.getAttribute('aria-pressed')).toBe('true');
+        expect(commitRows()[2]!.getAttribute('aria-selected')).toBe('true');
 
         // A second press on the same commit clears it.
         await press(commitRows()[2]!);
