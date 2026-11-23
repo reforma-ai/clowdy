@@ -512,9 +512,12 @@ const WORKSPACE_READS = 4;
 
 /**
  * Whether a worktree is there and what it has checked out, read like a folder's head (`folderHead`): not there while it is not made (`ready` false) or gone from the disk.
- * A row no chat points at (one a new-chat page opened) is reported only while its worktree is there: with no chat to call it gone, a missing one has nothing to tell.
+ * A row no chat points at (one a new-chat page opened) is reported only while its worktree is there: with no chat to call it gone, a missing one has nothing to tell. And only
+ * while its folder is one the project has: the row a chat left when its folder was dropped (`clearChatFolders`) stays for good, and no page can choose a worktree of that folder.
  */
-async function workspaceInfo({ record, inUse }: WorkspaceUse): Promise<ProjectWorkspaceInfo | undefined> {
+async function workspaceInfo({ record, inUse }: WorkspaceUse, folderIds: ReadonlySet<string>): Promise<ProjectWorkspaceInfo | undefined> {
+    if (!inUse && !folderIds.has(record.folderId)) return undefined;
+
     const exists = record.ready && await isFolder(record.path);
 
     if (!exists && !inUse) return undefined;
@@ -558,9 +561,10 @@ export async function projectsInfo(store: Store, projectId?: string): Promise<Pr
 
         const workspaces: ProjectWorkspaceInfo[] = [];
         const records = workspacesOf.get(project.id) ?? [];
+        const folderIds = new Set(project.folders.map(folder => folder.id));
 
         for (let start = 0; start < records.length; start += WORKSPACE_READS) {
-            workspaces.push(...(await Promise.all(records.slice(start, start + WORKSPACE_READS).map(workspaceInfo))).flatMap(entry => entry ?? []));
+            workspaces.push(...(await Promise.all(records.slice(start, start + WORKSPACE_READS).map(use => workspaceInfo(use, folderIds)))).flatMap(entry => entry ?? []));
         }
 
         info.push({ projectId: project.id, folders, ...(counts.get(project.id) ?? { chats: 0, tasks: 0, activeRuns: 0 }), ...(workspaces.length > 0 && { workspaces }) });

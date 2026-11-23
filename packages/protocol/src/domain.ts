@@ -101,7 +101,7 @@ export interface ProjectInfo {
     activeRuns: number;
     /**
      * The worktrees the project has a row of, read as the folders are: the ones its chats work in (one gone from the disk is there with `exists: false`, so the chat can say it is
-     * gone) and the ones a new-chat page opened (`workspace.open`) that no chat works in yet, which are there only while they are on the disk. Absent when there are none. Not
+     * gone) and the ones a new-chat page opened (`workspace.open`) that no chat works in yet, which are there only while they are on the disk and in a folder the project has. Absent when there are none. Not
      * every worktree git lists for a folder: that is `FolderGit.worktrees`.
      */
     workspaces?: ProjectWorkspaceInfo[];

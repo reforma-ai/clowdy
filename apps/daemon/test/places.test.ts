@@ -510,6 +510,18 @@ describe('the workspaces in the info of the projects', () => {
         expect(await idsOf()).not.toContain(workspace.id);
     });
 
+    test('leaves out the row of a worktree whose folder the project dropped: its chat lost it, no page can choose it, and reading it would cost a git call for nothing', async () => {
+        const { h, project, folder, feature, tuning } = await setup();
+        const idsOf = async () => ((await (await h.fetch(`/v1/projects/info?project=${ project.id }`)).json()) as ProjectInfo[])[0].workspaces?.map(entry => entry.workspaceId);
+
+        expect(await idsOf()).toEqual([feature.id, tuning.id]);
+
+        // The chat of `tuning` loses its folder and its worktree with it; the row and the worktree on the disk stay.
+        h.ok('project.update', { projectId: project.id, folders: [{ id: folder.id }] });
+        expect(h.store.db.query('SELECT 1 FROM workspaces WHERE id = ?').get(tuning.id)).not.toBeNull();
+        expect(await idsOf()).toEqual([feature.id]);
+    });
+
     test('is one entry for a worktree that several chats work in', async () => {
         const { h, project, tree, feature } = await setup();
         const again = h.ok('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: tree } }).chat.workspace as { id: string };
