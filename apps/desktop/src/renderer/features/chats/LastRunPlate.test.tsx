@@ -85,7 +85,7 @@ async function draw({ chat = FIXTURE_LAST_RUN_CHAT_ID, run, items, chatFields }:
 }
 
 const plate = () => container.querySelector<HTMLElement>('[aria-label="Last run"]');
-const rows = () => [...(plate()?.querySelectorAll<HTMLButtonElement>('button:not([aria-expanded])') ?? [])];
+const rows = () => [...(plate()?.querySelectorAll<HTMLElement>('[role="row"]') ?? [])];
 const chevron = () => plate()?.querySelector<HTMLButtonElement>('button[aria-expanded]') ?? null;
 const header = () => plate()?.firstElementChild?.textContent;
 
@@ -136,7 +136,7 @@ describe('the Last run plate', () => {
         expect(
             plate()
                 ?.querySelector(`[id="${chevron()!.getAttribute('aria-controls')}"]`)
-                ?.querySelectorAll('button')
+                ?.querySelectorAll('[role="row"]')
         ).toHaveLength(7);
 
         await act(async () => chevron()!.click());

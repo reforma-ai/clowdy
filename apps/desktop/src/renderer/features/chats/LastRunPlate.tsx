@@ -1,3 +1,6 @@
+import { Button } from '@clowdy/components/Button';
+import { GridList, GridListItem } from '@clowdy/components/List';
+import { Scrollable } from '@clowdy/components/Scrollable';
 import { Text } from '@clowdy/components/Text';
 import { ChatChanged, ChevronDown, ChevronUp } from '@clowdy/icons/14';
 import { useId, useState } from 'react';
@@ -26,12 +29,12 @@ import { useLastRunChanges } from './useLastRunChanges';
 import type { Chat, GitChangedFile, GitScope, Run, StreamItem } from '@clowdy/protocol';
 import type { RepositoryChanges } from '../changes/PlaceChanges';
 
-/** The path of a file as the Changes tab's cards write it: the folder dimmed and the name after it. A path too long for its room is cut at its start, so the name stays. */
+/** The path of a file as the Changes tab's cards write it, as the row's label: the folder dimmed and the name after it. A path too long for its room is cut at its start, so the name stays. */
 function PathLabel({ path }: { path: string }) {
     const { folder, name } = splitPath(path);
 
     return (
-        <span className={styles.path} dir="rtl" title={path}>
+        <Text slot="label" className={styles.path} dir="rtl" title={path}>
             <bdi dir="ltr">
                 {folder && (
                     <Text variant="xs" color="secondary">
@@ -40,36 +43,49 @@ function PathLabel({ path }: { path: string }) {
                 )}
                 <Text variant="xs">{name}</Text>
             </bdi>
-        </span>
+        </Text>
     );
 }
 
-/** One changed file of the run: the letter of what happened to it, its path, and its lines at the end. A press opens the Changes tab on the run with the file's card up. */
-function Row({ file, onOpen }: { file: GitChangedFile; onOpen: (path: string) => void }) {
+/**
+ * One changed file of the run, a row of the design system's list: the letter of what happened to it, its path, and its lines at the end. A screen reader hears the row as what
+ * happened, the path and the lines (`rowLabel`), so the letter and the lines are hidden from it. Its action opens the Changes tab on the run with the file's card up.
+ */
+function Row({ file }: { file: GitChangedFile }) {
     const kind = CHANGE_KIND_VIEW[file.kind];
     const counts = rowCounts(file);
 
     return (
-        <button type="button" className={styles.row} aria-label={rowLabel(file)} onClick={() => onOpen(file.path)}>
-            <Text variant="xs" weight="medium" color={kind.color} className={styles.glyph} aria-hidden>
-                {kind.glyph}
-            </Text>
+        <GridListItem
+            id={file.path}
+            textValue={rowLabel(file)}
+            icon={
+                <Text variant="xs" weight="medium" color={kind.color} className={styles.glyph} aria-hidden>
+                    {kind.glyph}
+                </Text>
+            }
+            endAffix={
+                counts ? (
+                    <span className={styles.counts} aria-hidden>
+                        <Text variant="xs" color="success">
+                            {counts.additions}
+                        </Text>
+                        <Text variant="xs" color="danger">
+                            {counts.deletions}
+                        </Text>
+                    </span>
+                ) : undefined
+            }
+        >
             <PathLabel path={file.path} />
-            {counts && (
-                <span className={styles.counts} aria-hidden>
-                    <Text variant="xs" color="success">
-                        {counts.additions}
-                    </Text>
-                    <Text variant="xs" color="danger">
-                        {counts.deletions}
-                    </Text>
-                </span>
-            )}
-        </button>
+        </GridListItem>
     );
 }
 
-/** The plate for one run: the header with the totals, the first files, and the chevron that unfolds the rest (folded again for the next run, which is a new plate). */
+/**
+ * The plate for one run: the header with the totals, the first files as a list, and the button that unfolds the rest (folded again for the next run, which is a new plate). The
+ * rows are the design system's list, its words where the plate's other rows have theirs; unfolded, the list scrolls in a box of its own.
+ */
 function RunPlate({ changes, onOpen }: { changes: RepositoryChanges; onOpen: (path: string) => void }) {
     const [unfolded, setUnfolded] = useState(false);
     const rows = useId();
@@ -82,7 +98,7 @@ function RunPlate({ changes, onOpen }: { changes: RepositoryChanges; onOpen: (pa
                 <span className={styles.icon} aria-hidden>
                     <ChatChanged />
                 </span>
-                <Text variant="xs" color="secondary" className={styles.title}>
+                <Text variant="xs" color="secondary" truncate className={styles.title}>
                     {plateTitle(changes)}
                 </Text>
                 <span className={styles.counts}>
@@ -94,26 +110,39 @@ function RunPlate({ changes, onOpen }: { changes: RepositoryChanges; onOpen: (pa
                     </Text>
                 </span>
             </div>
-            <div id={rows} className={unfolded ? styles.unfolded : styles.rows}>
-                {visibleRows(changes.files, unfolded).map(file => (
-                    <Row key={file.path} file={file} onOpen={onOpen} />
-                ))}
-            </div>
-            {hidden > 0 && (
-                <button
-                    type="button"
-                    className={styles.more}
-                    aria-expanded={unfolded}
-                    aria-controls={rows}
-                    onClick={() => setUnfolded(value => !value)}
+            <Scrollable className={unfolded ? styles.unfolded : undefined} contentClass={styles.rows}>
+                <GridList
+                    id={rows}
+                    aria-label="Files the run changed"
+                    size="sm"
+                    className={styles.list}
+                    onAction={key => onOpen(String(key))}
                 >
-                    <span className={styles.icon} aria-hidden>
-                        {unfolded ? <ChevronUp /> : <ChevronDown />}
-                    </span>
-                    <Text variant="xs" color="secondary">
-                        {chevronWords(changes, unfolded)}
-                    </Text>
-                </button>
+                    {visibleRows(changes.files, unfolded).map(file => (
+                        <Row key={file.path} file={file} />
+                    ))}
+                </GridList>
+            </Scrollable>
+            {hidden > 0 && (
+                <div className={styles.footer}>
+                    <Button
+                        variant="filling"
+                        color="secondary"
+                        size="sm"
+                        className={styles.more}
+                        contentClassName={styles.moreContent}
+                        aria-expanded={unfolded}
+                        aria-controls={rows}
+                        onPress={() => setUnfolded(value => !value)}
+                    >
+                        <span className={styles.icon} aria-hidden>
+                            {unfolded ? <ChevronUp /> : <ChevronDown />}
+                        </span>
+                        <Text variant="xs" color="secondary">
+                            {chevronWords(changes, unfolded)}
+                        </Text>
+                    </Button>
+                </div>
             )}
         </ComposerBanner>
     );
