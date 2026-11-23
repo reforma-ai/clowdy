@@ -1,9 +1,13 @@
+import { mainFolder } from '@clowdy/protocol';
 import { statSync } from 'node:fs';
 
+import { getChat } from '../db/chats';
+import { getRunWork, listActiveRuns } from '../db/runs';
 import { getWorkspace } from '../db/workspaces';
 import { invalid, notFound, unavailable } from '../errors';
+import { samePlace } from './workspaces';
 
-import type { FolderId, Project, ProjectFolder, WorkspaceId } from '@clowdy/protocol';
+import type { Chat, FolderId, Project, ProjectFolder, WorkspaceId } from '@clowdy/protocol';
 import type { WorkspaceRecord } from '../db/workspaces';
 import type { Store } from '../store';
 
@@ -98,4 +102,42 @@ export function ownsPlace(project: Project, place: Place): boolean {
     }
 
     return place.workspace.projectId === project.id && place.workspace.folderId === folder.id && place.path === place.workspace.path;
+}
+
+/**
+ * The folder a turn works in: the one the run names (a thread's own `cwd`), else the worktree of its chat (`Chat.workspace`), else the folder of the project
+ * its chat works in (`Chat.folderId`), else the main folder. A chat whose folder the project no longer has was handed back to the main folder when the folder
+ * left (its worktree with it), so a stale id reads as none.
+ */
+export function workingFolder(project: Project, chat: Chat | undefined, own: string | undefined): string {
+    if (own) {
+        return own;
+    }
+
+    if (chat?.workspace) {
+        return chat.workspace.path;
+    }
+
+    const folder = chat?.folderId === undefined ? undefined : project.folders.find(candidate => candidate.id === chat.folderId);
+
+    return (folder ?? mainFolder(project)).path;
+}
+
+/**
+ * How many chats of the project have a run that is not over (one waiting for an answer, for a slot or for its background work counts: its session is open and may write
+ * at once) working in `path`, which is a folder's own checkout or a worktree: where each orchestrator's turn starts is `workingFolder`, the same rule the run uses, compared by
+ * the real path so a link to the folder is the folder. Sub-agents live in their parent's session and are not counted twice; a thread is a chat of its own.
+ */
+export function chatsWorkingIn(store: Store, project: Project, path: string): number {
+    const working = new Set<string>();
+
+    for (const run of listActiveRuns(store.db)) {
+        if (run.projectId !== project.id || run.role !== 'orchestrator') continue;
+
+        const chat = run.chatId === undefined ? undefined : getChat(store.db, run.chatId);
+
+        if (samePlace(workingFolder(project, chat, getRunWork(store.db, run.id).cwd), path)) working.add(chat?.id ?? run.id);
+    }
+
+    return working.size;
 }

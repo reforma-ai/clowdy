@@ -73,6 +73,9 @@ const gitMessageBody = z.object({ folderId: z.string(), workspaceId: z.string().
 /** The body of `POST .../git/fetch`, `.../pull` and `.../push` (`GitRemoteRequest`): the place and nothing else, so nothing a client sends changes what is run. */
 const gitRemoteBody = z.object({ folderId: z.string(), workspaceId: z.string().optional() });
 
+/** The body of `POST .../git/switch` (`GitSwitchRequest`): the place, the branch and, for a new one, where it starts; what is wrong with the name or the start is the switch's to say. */
+const gitSwitchBody = z.object({ folderId: z.string(), workspaceId: z.string().optional(), branch: z.string(), create: z.object({ start: z.string() }).optional() });
+
 function integerParam(raw: string | null, name: string, fallback: number): number {
     if (raw === null) {
         return fallback;
@@ -355,6 +358,20 @@ export function createRoutes(context: RouteContext): Route[] {
                     // What GitHub says of the branch moves with what was sent (a pull request opened, its checks started): the next read of it asks again, not after the short while it is kept.
                     await services.pullRequests.forget(place).catch(() => undefined);
                 }
+            },
+        },
+        {
+            method: 'POST',
+            pattern: /^\/v1\/projects\/([^/]+)\/git\/switch$/,
+            handle: async (request, _url, [id]) => {
+                const body = await readJson(request, gitSwitchBody);
+                const project = requireProject(store, id);
+                const place = resolvePlace(store, project, body.folderId, body.workspaceId);
+
+                // A `post-checkout` hook of the person's may take a while, longer than the connection's idle timeout.
+                context.keepOpen(request);
+
+                return json(await services.gitSwitch.switch(project, place, body));
             },
         },
         {

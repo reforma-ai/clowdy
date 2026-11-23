@@ -8,6 +8,7 @@ import type { GitWrites } from '../git/commit';
 import type { CommitMessages } from '../git/message';
 import type { PullRequests } from '../git/pullRequest';
 import type { GitRemote } from '../git/remote';
+import type { GitSwitch } from '../git/switch';
 import type { ModelCatalog } from '../providers/models';
 import type { ProvidersService } from '../providers/service';
 import type { RunDriver } from '../runs/driver';
@@ -44,6 +45,8 @@ export interface Services {
     gitWrites: GitWrites;
     /** What the daemon does between a person's branch and their `origin`: fetch, pull and push. */
     gitRemote: GitRemote;
+    /** What the daemon does to the branch of a folder's own checkout: the switch. */
+    gitSwitch: GitSwitch;
     /** The commit message an agent the person chose writes for the files they ticked. */
     commitMessages: CommitMessages;
 }

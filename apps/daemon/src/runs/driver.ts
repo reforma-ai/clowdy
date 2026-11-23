@@ -1,4 +1,4 @@
-import { isTerminalRunStatus, mainFolder, STOPPED_TOOL } from '@clowdy/protocol';
+import { isTerminalRunStatus, STOPPED_TOOL } from '@clowdy/protocol';
 import { statSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -8,6 +8,7 @@ import { getRun, getRunWork, listActiveRuns, listRunsWithProcess, setRunWork } f
 import { getWorkspace } from '../db/workspaces';
 import { git } from '../domain/git';
 import { appendItem, markRewindPoint } from '../domain/items';
+import { workingFolder } from '../domain/places';
 import { isBeingRemoved } from '../domain/workspaceRemoval';
 import { needsPreparing, ownsWorktree, prepareWorkspace } from '../domain/workspaces';
 import { EngineFailure, errorMessage } from '../errors';
@@ -142,25 +143,6 @@ function additionalFolders(project: Project, cwd: string, workspace: ChatWorkspa
     const gitDir = checkout && isFolder(checkout.path) ? commonGitDir(checkout.path) : undefined;
 
     return gitDir ? [...folders, gitDir] : folders;
-}
-
-/**
- * The folder a turn works in: the one the run names (a thread's own `cwd`), else the worktree of its chat (`Chat.workspace`), else the folder of the project
- * its chat works in (`Chat.folderId`), else the main folder. A chat whose folder the project no longer has was handed back to the main folder when the folder
- * left (its worktree with it), so a stale id reads as none.
- */
-function workingFolder(project: Project, chat: Chat | undefined, own: string | undefined): string {
-    if (own) {
-        return own;
-    }
-
-    if (chat?.workspace) {
-        return chat.workspace.path;
-    }
-
-    const folder = chat?.folderId === undefined ? undefined : project.folders.find(candidate => candidate.id === chat.folderId);
-
-    return (folder ?? mainFolder(project)).path;
 }
 
 /** What the system prompt says about a run's chat: none for a run without one, the parent's id and title for a thread (`Chat.parentChatId`). */
