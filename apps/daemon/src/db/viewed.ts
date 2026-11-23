@@ -49,7 +49,7 @@ export function countViewed(db: Database, place: ViewedPlace): number {
  * parameter alone is not known to be non-empty, so it would scan the table), and it keeps the folders' own checkouts' marks, which have an empty `workspace_id`, out of reach.
  */
 export function deleteViewedOfWorkspace(db: Database, workspaceId: string): void {
-    db.query(`DELETE FROM viewed_files WHERE workspace_id = ? AND workspace_id <> ''`).run(workspaceId);
+    db.query('DELETE FROM viewed_files WHERE workspace_id = ? AND workspace_id <> \'\'').run(workspaceId);
 }
 
 /** Drops every mark of a project, for the project's removal (no foreign key does it). */
