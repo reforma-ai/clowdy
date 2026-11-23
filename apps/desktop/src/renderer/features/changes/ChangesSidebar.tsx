@@ -10,6 +10,7 @@ import { commitScope } from '@clowdy/protocol';
 import { formatFullTime, formatMessageTime } from '../../shared/time';
 import { openEffects, useFolderGit } from '../openWith';
 import { githubLink } from '../openWith/openTarget';
+import { BranchPicker } from './BranchPicker';
 import { isCommitScope } from './changeScopes';
 import styles from './ChangesSidebar.module.css';
 import { CommitBox } from './CommitBox';
@@ -124,10 +125,14 @@ export function ChangesSidebar({ model, place, projectId, onOpenFile, toggle }: 
     return (
         <Panel side="right" className={ styles.sidebar } aria-label="Changes sidebar">
             <PanelHeader>
-                <span className={ styles.branch }>
-                    <Version aria-hidden="true" className={ styles.branchIcon } />
-                    <Text weight="medium" truncate title={ branch }>{ branch ?? 'Changes' }</Text>
-                </span>
+                { branch !== undefined && status?.isRepository === true && status.head.kind !== 'unborn'
+                    ? <BranchPicker facts={ facts } place={ place } label={ branch } />
+                    : (
+                        <span className={ styles.branch }>
+                            <Version aria-hidden="true" className={ styles.branchIcon } />
+                            <Text weight="medium" truncate title={ branch }>{ branch ?? 'Changes' }</Text>
+                        </span>
+                    ) }
                 <PanelHeader.Actions>
                     { repositoryLink && (
                         <PanelHeader.Button aria-label="Open the repository on GitHub" tooltip="Open on GitHub" tooltipPlacement="bottom" onPress={ () => openEffects.openUrl(repositoryLink) }>
