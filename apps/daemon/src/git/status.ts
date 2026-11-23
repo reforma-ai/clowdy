@@ -2,6 +2,7 @@ import { MAX_GIT_COMMITS, MAX_GIT_STATUS_ENTRIES } from '@clowdy/protocol';
 
 import { gitLine, gitRead, gitRecords } from '../domain/git';
 import { unavailable } from '../errors';
+import { lastFetchedAt } from './lastFetch';
 import { baseOf, workingTreeRoot } from './state';
 
 import type { GitBase, GitChangeKind, GitCommit, GitHead, GitStatus, GitStatusEntry, GitUpstream } from '@clowdy/protocol';
@@ -266,18 +267,19 @@ async function hasOrigin(cwd: string): Promise<boolean> {
 
 /**
  * What git says of a place (`GET /v1/projects/:id/git/status`): its branch and upstream, its uncommitted files (one `status --porcelain=v2 --branch -z
- * --untracked-files=all`, read as it comes and stopped at `MAX_GIT_STATUS_ENTRIES` entries) and how far it is from its base (`readBase`). Nothing is fetched, and the
- * index is not locked. A place that is not the root of a working tree is `isRepository: false`; a git that does not answer is `unavailable`.
+ * --untracked-files=all`, read as it comes and stopped at `MAX_GIT_STATUS_ENTRIES` entries), how far it is from its base (`readBase`) and when the repository last fetched
+ * (`lastFetchedAt`, the time of a file). Nothing is fetched, and the index is not locked. A place that is not the root of a working tree is `isRepository: false`; a git that does not answer is `unavailable`.
  */
 export async function placeStatus(place: Place, options: BaseOptions = {}): Promise<GitStatus> {
     const cwd = place.path;
 
     if (!await workingTreeRoot(cwd)) return { isRepository: false };
 
-    const [status, origin, base] = await Promise.all([
+    const [status, origin, base, fetched] = await Promise.all([
         gitRecords(cwd, ['status', '--porcelain=v2', '--branch', '-z', '--untracked-files=all', '--ahead-behind'], { maxRecords: STATUS_RECORDS, timeoutMs: STATUS_TIMEOUT_MS, parsed: true }),
         hasOrigin(cwd),
         readBase(place, options),
+        lastFetchedAt(cwd),
     ]);
 
     if (!status.ok) throw unavailable('git did not answer');
@@ -293,6 +295,8 @@ export async function placeStatus(place: Place, options: BaseOptions = {}): Prom
         head,
         ...(upstream && { upstream }),
         origin,
+        // A repository with no `origin` has nothing to fetch it from: what another remote wrote to `FETCH_HEAD` is not said.
+        ...(origin && fetched !== undefined && { lastFetchedAt: fetched }),
         entries: entries.slice(0, MAX_GIT_STATUS_ENTRIES),
         ...(truncated && { truncated: true as const }),
         base,

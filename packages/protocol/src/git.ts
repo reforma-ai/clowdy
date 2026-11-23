@@ -6,7 +6,8 @@
  * person's own `git` with their configuration, signing included, one at a time for a place; the last three are the only routes that reach `origin`.
  *
  * GET  /v1/projects/:id/git/status?folderId=&workspaceId=
- *                                      -> GitStatus. The branch (or the detached or unborn HEAD), its upstream with ahead and behind, the files that are not
+ *                                      -> GitStatus. The branch (or the detached or unborn HEAD), its upstream with ahead and behind and when the repository last
+ *                                         fetched (`lastFetchedAt`, the time of the newest non-empty `FETCH_HEAD`), the files that are not
  *                                         committed (one entry per path, at most `MAX_GIT_STATUS_ENTRIES`, a new file listed one by one) and `base`, the
  *                                         comparison with the branch the work is meant for (see `GitBase`). A folder that is not the root of a working tree
  *                                         answers `isRepository: false` and nothing else, as `FolderGit` does.
@@ -202,6 +203,13 @@ export type GitStatus = { isRepository: false } | {
     upstream?: GitUpstream;
     /** The repository has a remote called `origin`, the only remote the app pushes to. */
     origin: boolean;
+    /**
+     * When the repository last fetched, in milliseconds: the newest `FETCH_HEAD` of the repository that has something in it, so a fetch made in any worktree of it, by the app
+     * or by the person in a terminal or another program, counts (the remote-tracking refs, and with them `GitUpstream`'s counts, are shared by every worktree). Absent when nothing
+     * has fetched yet, when the repository has no `origin`, and after a fetch that failed (git empties the file before it connects, so the time of the fetch before it is gone). It is
+     * the file's time and not a record of the app's own, so a fetch of another remote counts too.
+     */
+    lastFetchedAt?: number;
     /** The uncommitted paths, sorted as git lists them, at most `MAX_GIT_STATUS_ENTRIES`. Empty for a clean tree. */
     entries: GitStatusEntry[];
     /** `entries` was cut: the tree has more uncommitted paths than are listed. */

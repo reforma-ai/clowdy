@@ -183,6 +183,22 @@ withScripts('POST /v1/projects/:id/git/fetch, pull and push', () => {
             expect(left(path)).toEqual(['?? wip.txt']);
         });
 
+        test('is what the status says was the last fetch the moment it ends, and nothing before it: a repository that never fetched has none', async () => {
+            const h = await start();
+            const { path } = repository();
+            const { project, folderId, result } = await open(path, h);
+            const lastFetchedAt = async () => (await json<{ lastFetchedAt?: number }>(await h.fetch(`/v1/projects/${ project.id }/git/status?folderId=${ folderId }`))).lastFetchedAt;
+
+            // `git push -u` in the setup is no fetch.
+            expect(await lastFetchedAt()).toBeUndefined();
+
+            const before = Date.now();
+
+            await result('fetch');
+            expect(await lastFetchedAt()).toBeGreaterThanOrEqual(before - 1000);
+            expect(await lastFetchedAt()).toBeLessThanOrEqual(Date.now() + 1000);
+        });
+
         test('does not prune: a branch that is gone from origin is still known afterwards', async () => {
             const h = await start();
             const { path, origin } = repository();
