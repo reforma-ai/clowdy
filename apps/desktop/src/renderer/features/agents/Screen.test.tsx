@@ -1353,11 +1353,10 @@ describe('a chat that works in a worktree', () => {
         await draw(() => ui().openChat(FIXTURE_WORKSPACE_CHAT_ID));
 
         expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe(FIXTURE_WORKSPACE_CHAT_ID);
-        expect(container.querySelector('[aria-label="Where it runs: Worktree"]')?.textContent).toBe('Worktree');
-        await vi.waitFor(() => expect(container.querySelector('[aria-label="Branch: clowdy/ab12cd34"]')).not.toBeNull());
+        await vi.waitFor(() => expect(container.querySelector('[aria-label="Where it runs: Worktree, branch clowdy/ab12cd34"]')?.textContent).toBe('Worktreeclowdy/ab12cd34'));
 
         await draw(() => ui().openChat('c-1'));
 
-        expect(container.querySelector('[aria-label="Where it runs: Project checkout"]')?.textContent).toBe('Project checkout');
+        await vi.waitFor(() => expect(container.querySelector('[aria-label="Where it runs: Project checkout, branch main"]')?.textContent).toBe('main'));
     });
 });
