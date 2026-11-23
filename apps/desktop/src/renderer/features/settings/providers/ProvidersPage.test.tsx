@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { writesCommitMessages } from '@clowdy/protocol';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -107,7 +108,12 @@ describe('the cards', () => {
 
         expect(switchOf(card('Claude Code'), 'Memory').checked).toBe(false);
         expect(switchOf(card('Claude Code'), '1M context window').checked).toBe(true);
-        expect(card('Codex').querySelectorAll('input[type="checkbox"]')).toHaveLength(1);
+        // Codex and Claude Code have the Commit messages switch of the Changes tab's Generate button, drawn like any other (Codex's is on in the fixtures); Cursor has none.
+        expect(switchOf(card('Claude Code'), 'Commit messages').checked).toBe(false);
+        expect(card('Claude Code').textContent).toContain('Let Claude Code write commit messages');
+        expect(switchOf(card('Codex'), 'Commit messages').checked).toBe(true);
+        expect(card('Codex').textContent).toContain('Let Codex write commit messages');
+        expect(card('Cursor').querySelectorAll('input[type="checkbox"]')).toHaveLength(1);
     });
 
     it('shows a note, and no usage or sign-in, for a program that is not installed', async () => {
@@ -169,6 +175,36 @@ describe('the switch of a provider', () => {
 
         expect(command).toHaveBeenCalledWith({ type: 'agent.update', id: 'claude', settings: { memory: true } });
         expect(switchOf(card('Claude Code'), 'Memory').checked).toBe(true);
+    });
+
+    it('turns Commit messages of Claude Code on by its id, which is enough for Generate to be offered when Codex is off', async () => {
+        await start();
+        await press(switchOf(card('Codex'), 'Commit messages'));
+        await vi.waitFor(() => expect(store.agents.some(writesCommitMessages)).toBe(false));
+
+        const command = vi.spyOn(store, 'command');
+
+        await press(switchOf(card('Claude Code'), 'Commit messages'));
+        await vi.waitFor(() => expect(store.agents.find(agent => agent.id === 'claude')?.settings?.find(setting => setting.id === 'commitMessage')?.value).toBe(true));
+        await draw();
+
+        expect(command).toHaveBeenCalledWith({ type: 'agent.update', id: 'claude', settings: { commitMessage: true } });
+        expect(switchOf(card('Claude Code'), 'Commit messages').checked).toBe(true);
+        expect(store.agents.filter(writesCommitMessages).map(agent => agent.id)).toEqual(['claude']);
+    });
+
+    it('turns Commit messages of Codex off by its id, which is what takes Generate away from the Changes tab when Claude Code is off too', async () => {
+        await start();
+
+        const command = vi.spyOn(store, 'command');
+
+        await press(switchOf(card('Codex'), 'Commit messages'));
+        await vi.waitFor(() => expect(store.agents.find(agent => agent.id === 'codex')?.settings?.find(setting => setting.id === 'commitMessage')?.value).toBe(false));
+        await draw();
+
+        expect(command).toHaveBeenCalledWith({ type: 'agent.update', id: 'codex', settings: { commitMessage: false } });
+        expect(switchOf(card('Codex'), 'Commit messages').checked).toBe(false);
+        expect(store.agents.some(writesCommitMessages)).toBe(false);
     });
 });
 

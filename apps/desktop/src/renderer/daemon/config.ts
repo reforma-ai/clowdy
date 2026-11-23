@@ -5,18 +5,24 @@ import { FixtureTransport } from './fixtureTransport';
 import { HttpTransport } from './httpTransport';
 import { TransportError, type ProjectFileSystem, type Transport } from './transport';
 
+import type { FixtureCommitScript, FixtureMessageScript } from './fixtureGitWrites';
+
 
 export type DaemonConfig =
     | { kind: 'daemon'; url: string; token: string }
-    | { kind: 'fixtures'; timeline: boolean; worktree?: true }
+    | { kind: 'fixtures'; timeline: boolean; worktree?: true; commit?: FixtureCommitScript; message?: FixtureMessageScript }
     | { kind: 'none' };
+
+/** The value of a switch of the page's address when it is one of the words the switch knows. */
+const oneOf = <T extends string>(value: string | null, words: readonly T[]): T | undefined => words.find(word => word === value);
 
 /**
  * Where the UI gets its data, in order of precedence:
  * 1. `window.desktop.daemon`, which the desktop shell fills in;
  * 2. `?daemon=<url>&token=<token>` in the page URL;
  * 3. `?fixtures`, scripted data in memory (`?fixtures=static` leaves out the timed events, `&worktree` adds the chat that works in a dirty worktree, `?chat=c-9`, whose changes
- *    the side panel's Changes tab shows);
+ *    the side panel's Changes tab shows; `&commit=signing|hook|slow` and `&message=failed|slow` say how a commit and a request for its message end there, which the screenshots of the commit
+ *    box use);
  * 4. nothing: the UI shows that it cannot reach a daemon.
  */
 export function resolveDaemonConfig(search: string, bridge?: { url: string; token: string }): DaemonConfig {
@@ -27,7 +33,12 @@ export function resolveDaemonConfig(search: string, bridge?: { url: string; toke
 
     if (url) return { kind: 'daemon', url, token: params.get('token') ?? '' };
 
-    if (params.has('fixtures')) return { kind: 'fixtures', timeline: params.get('fixtures') !== 'static', ...(params.has('worktree') && { worktree: true as const }) };
+    if (params.has('fixtures')) {
+        const commit = oneOf(params.get('commit'), ['signing', 'hook', 'slow'] as const);
+        const message = oneOf(params.get('message'), ['failed', 'slow'] as const);
+
+        return { kind: 'fixtures', timeline: params.get('fixtures') !== 'static', ...(params.has('worktree') && { worktree: true as const }), ...(commit && { commit }), ...(message && { message }) };
+    }
 
     return { kind: 'none' };
 }
@@ -50,6 +61,8 @@ const unconfigured: Transport = {
     getGitStatus: noDaemon,
     getGitChanges: noDaemon,
     getGitFile: noDaemon,
+    commitGit: noDaemon,
+    generateGitMessage: noDaemon,
     getProjectWorktrees: noDaemon,
     getGitPullRequest: noDaemon,
     getChatWorkspaceRemoval: noDaemon,
@@ -83,5 +96,7 @@ const unconfigured: Transport = {
 export function createTransport(config: DaemonConfig): Transport {
     if (config.kind === 'daemon') return new HttpTransport(config);
 
-    return config.kind === 'fixtures' ? new FixtureTransport({ timeline: config.timeline, ...(config.worktree && { data: withFixtureWorkspace(createFixtureData()) }) }) : unconfigured;
+    return config.kind === 'fixtures'
+        ? new FixtureTransport({ timeline: config.timeline, gitWrites: { commit: config.commit, message: config.message }, ...(config.worktree && { data: withFixtureWorkspace(createFixtureData()) }) })
+        : unconfigured;
 }

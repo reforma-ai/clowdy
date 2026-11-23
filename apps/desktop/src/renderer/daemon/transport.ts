@@ -13,7 +13,9 @@ import type {
     FolderId,
     FolderWorktrees,
     GitChanges,
+    GitCommitResult,
     GitFileSides,
+    GitMessage,
     GitPullRequestInfo,
     GitScope,
     GitStatus,
@@ -106,6 +108,19 @@ export interface Transport {
      */
     getGitFile: (projectId: ProjectId, place: PlaceRef, scope: GitScope, path: string, oldPath?: string, from?: string) => Promise<GitFileSides>;
     /**
+     * Commits the files of a place that the person ticked (`POST git/commit`): `git add` and `git commit -m <message>` of those paths alone, with the person's own git configuration, signing
+     * and hooks included, so every other change of the place is left as it is. `paths` are `GitChangedFile.path`s of the place's uncommitted changes. Rejects with a `TransportError` carrying
+     * the daemon's reason (git's own `fatal:`, `error:` or hook line, and `hint` when the line names the signing key): 400 for no paths, no message or a path that is not a changed file,
+     * 409 for a merge in progress or a commit git refused, 503 for one that did not end in time. Not retried: a commit is not asked for twice.
+     */
+    commitGit: (projectId: ProjectId, place: PlaceRef, paths: string[], message: string) => Promise<GitCommitResult>;
+    /**
+     * A commit message for the files of a place that the person ticked (`POST git/message`), written by the agent they turned `Commit messages` on for: one Conventional Commits subject.
+     * Runs only when asked. Rejects with a `TransportError`: 400 for paths that are not changed files or when no agent has the switch on, 503 with `Couldn't write the message` when the agent
+     * is signed out, its run failed or did not end in time.
+     */
+    generateGitMessage: (projectId: ProjectId, place: PlaceRef, paths: string[]) => Promise<GitMessage>;
+    /**
      * Every worktree of every folder of a project, with the chats that work in each, how many files are changed and whether its work is in the base: what the Manage worktrees
      * dialog lists. One entry per folder in the project's order, a folder that is no repository (or is gone) with no worktrees. Read when asked, never pushed: worktrees change
      * in a terminal or by an agent. Rejects with a `TransportError` of status 404 for a project the daemon does not have.
@@ -183,7 +198,8 @@ export interface Transport {
 
 /** The daemon could not be reached, or answered something other than the contract. */
 export class TransportError extends Error {
-    constructor(message: string, readonly status?: number) {
+    /** `hint` is a short sentence beside the daemon's own `message`, for a failure it can explain (a git line that names the signing key). */
+    constructor(message: string, readonly status?: number, readonly hint?: string) {
         super(message);
         this.name = 'TransportError';
     }

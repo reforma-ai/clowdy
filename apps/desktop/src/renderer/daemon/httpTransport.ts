@@ -18,7 +18,10 @@ import type {
     FolderId,
     FolderWorktrees,
     GitChanges,
+    GitCommitResult,
+    GitErrorDetails,
     GitFileSides,
+    GitMessage,
     GitPullRequestInfo,
     GitScope,
     GitStatus,
@@ -81,10 +84,11 @@ function placeQuery({ folderId, workspaceId }: PlaceRef, more: Record<string, st
 
 /** A refused request as an error: the daemon's own reason when it gave one, else its status. */
 async function refusal(response: Response, route: string): Promise<TransportError> {
-    const body = await response.json().catch(() => undefined) as { error?: { message?: unknown } } | undefined;
+    const body = await response.json().catch(() => undefined) as { error?: { message?: unknown; details?: GitErrorDetails } } | undefined;
     const reason = typeof body?.error?.message === 'string' ? body.error.message : undefined;
+    const hint = typeof body?.error?.details?.hint === 'string' ? body.error.details.hint : undefined;
 
-    return new TransportError(reason ?? `The daemon answered ${ response.status } for ${ route }`, response.status);
+    return new TransportError(reason ?? `The daemon answered ${ response.status } for ${ route }`, response.status, hint);
 }
 
 /** The daemon's HTTP + SSE API, as described by `@clowdy/protocol`. */
@@ -136,6 +140,14 @@ export class HttpTransport implements Transport {
 
     getGitFile(projectId: ProjectId, place: PlaceRef, scope: GitScope, path: string, oldPath?: string, from?: string): Promise<GitFileSides> {
         return this.#read(`${ ROUTES.projectGitFile(projectId) }?${ placeQuery(place, { scope, path, oldPath, from }) }`);
+    }
+
+    commitGit(projectId: ProjectId, place: PlaceRef, paths: string[], message: string): Promise<GitCommitResult> {
+        return this.#write(ROUTES.projectGitCommit(projectId), { ...place, paths, message });
+    }
+
+    generateGitMessage(projectId: ProjectId, place: PlaceRef, paths: string[]): Promise<GitMessage> {
+        return this.#write(ROUTES.projectGitMessage(projectId), { ...place, paths });
     }
 
     getProjectWorktrees(projectId: ProjectId): Promise<FolderWorktrees[]> {
@@ -320,6 +332,15 @@ export class HttpTransport implements Transport {
     /** `#get` for a read whose refusal the app tells the person (git is not there, the folder is gone): the error carries the daemon's own reason. */
     async #read<T>(route: string): Promise<T> {
         const response = await this.#fetch(this.#base + route, { headers: this.#headers });
+
+        if (!response.ok) throw await refusal(response, route);
+
+        return await response.json() as T;
+    }
+
+    /** A write the daemon makes for a person (a commit) or a run it makes for one (a message), as JSON. Sent once, never retried: the daemon's reason is the error. */
+    async #write<T>(route: string, body: unknown): Promise<T> {
+        const response = await this.#fetch(this.#base + route, { method: 'POST', headers: { ...this.#headers, 'content-type': 'application/json' }, body: JSON.stringify(body) });
 
         if (!response.ok) throw await refusal(response, route);
 
