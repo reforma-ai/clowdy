@@ -11,10 +11,11 @@ import { docsScopeOf } from './docsScope';
 import { FILES_SCOPE, filesCommands } from './filesCommands';
 import styles from './FilesTab.module.css';
 import { openInMenuItems } from './openInMenuItems';
+import { PlaceBar } from './PlaceBar';
 import { treeLayout } from './treeLayout';
 import { useFilesStore } from './useFilesStore';
 
-/** The tab's view over one place that is ready: its file manager, its tree and its tabs. */
+/** The tab's view over one place that is ready: the bar that names the place, then its file manager, its tree and its tabs. */
 function PlaceFiles({ place, variant }: { place: Place; variant: 'files' | 'docs' }) {
     const root = useRootStore();
     const project = useProjectState();
@@ -30,26 +31,29 @@ function PlaceFiles({ place, variant }: { place: Place; variant: 'files' | 'docs
     useCommands(FILES_SCOPE, filesCommands({ toggleHidden: () => treeLayout.setShowHidden(!treeLayout.showHidden) }));
 
     return (
-        <FileManagerView
-            className={ styles.view }
-            key={ `${ project.project.id }/${ placeKey(place) }/${ variant }` }
-            manager={ manager }
-            scope={ variant === 'docs' ? docsScopeOf(manager) : undefined }
-            filterPlaceholder={ variant === 'docs' ? 'Filter documents' : undefined }
-            emptyText={ variant === 'docs' ? 'No documents found' : 'No files found' }
-            menuItems={ openInMenuItems({ projectId: project.id, place, programs: chosenPrograms(apps), git, inTerminal: relative => void openInTerminal(root, project.id, place, relative) }) }
-            sidebarOpen={ treeLayout.open }
-            sidebarWidth={ treeLayout.width }
-            onSidebarToggle={ () => treeLayout.toggle() }
-            onSidebarWidthChange={ width => treeLayout.setWidth(width) }
-        />
+        <>
+            <PlaceBar place={ place } git={ git } />
+            <FileManagerView
+                className={ styles.view }
+                key={ `${ project.project.id }/${ placeKey(place) }/${ variant }` }
+                manager={ manager }
+                scope={ variant === 'docs' ? docsScopeOf(manager) : undefined }
+                filterPlaceholder={ variant === 'docs' ? 'Filter documents' : undefined }
+                emptyText={ variant === 'docs' ? 'No documents found' : 'No files found' }
+                menuItems={ openInMenuItems({ projectId: project.id, place, programs: chosenPrograms(apps), git, inTerminal: relative => void openInTerminal(root, project.id, place, relative) }) }
+                sidebarOpen={ treeLayout.open }
+                sidebarWidth={ treeLayout.width }
+                onSidebarToggle={ () => treeLayout.toggle() }
+                onSidebarWidthChange={ width => treeLayout.setWidth(width) }
+            />
+        </>
     );
 }
 
 /**
  * The side panel's Files tab: the editor with the files that are open in tabs, and at its right the tree of the place the window is working in: the folder, or the worktree
  * of the open chat when it works in one (the same place the Info and Terminal tabs name). Each place keeps its own tabs, so the tree and the tabs change with the place, and come
- * back with it; two chats in one worktree share them. A chat whose worktree is not made yet gets a note in place of the view. A row's menu has, after its own items,
+ * back with it; two chats in one worktree share them. A thin bar on top (`PlaceBar`) names the place and opens the Manage worktrees dialog on its folder. A chat whose worktree is not made yet gets a note in place of the view. A row's menu has, after its own items,
  * Open in Terminal (a folder), Copy path (absolute or relative) and Open in… (the editor, the file manager, the terminal program, GitHub).
  *
  * The Docs tab is this same view over a file manager of its own for the place: the tabs, the editor and the buffers are the Docs tab's, so the documents open there

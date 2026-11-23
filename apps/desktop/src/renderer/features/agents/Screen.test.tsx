@@ -424,14 +424,15 @@ describe('grouped by folder', () => {
             // The press shows the new chat of the folder, which is then the folder the window works in: the menu can open it in the Files tab and the terminal.
             await press(name(API.id)!);
             expect([ui().draft, ui().draftFolderId]).toEqual([true, API.id]);
-            expect(menuItems()).toEqual(['Open in Files', 'Open in Terminal', 'Copy path', 'Open in…']);
+            // A folder that is a repository has Manage worktrees above them.
+            expect(menuItems()).toEqual(['Manage worktrees', 'Open in Files', 'Open in Terminal', 'Copy path', 'Open in…']);
 
             // The main folder's new chat has no folder of its own. The menu holds the page while it is open: this one is a fresh start.
             await restart();
             await draw(() => ui().openChat('c-2'));
             await press(name(MAIN)!);
             expect([ui().draft, ui().draftFolderId]).toEqual([true, null]);
-            expect(menuItems()).toEqual(['Open in Files', 'Open in Terminal', 'Copy path', 'Open in…']);
+            expect(menuItems()).toEqual(['Manage worktrees', 'Open in Files', 'Open in Terminal', 'Copy path', 'Open in…']);
             // It folds nothing.
             expect(ui().collapsedFolders).toEqual([]);
         }
