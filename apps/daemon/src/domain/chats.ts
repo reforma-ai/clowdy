@@ -2,7 +2,7 @@ import { isTerminalRunStatus } from '@clowdy/protocol';
 
 import { deleteChatAndRuns, getChat, listChatDescendants, runsOfChat, upsertChat } from '../db/chats';
 import { getRun } from '../db/runs';
-import { getWorkspace, toChatWorkspace } from '../db/workspaces';
+import { chatsOfWorkspace, deleteWorkspace, getWorkspace, toChatWorkspace } from '../db/workspaces';
 import { conflict, invalid, notFound } from '../errors';
 import { newId } from '../ids';
 import { requireProject } from './projects';
@@ -186,7 +186,7 @@ export function inSameTree(store: Store, a: Chat, b: Chat): boolean {
  * The chat and every chat below it, a parent before its threads, once every run of them is over (one in `waiting_background` is not): refuses otherwise,
  * naming the thread at work when it is not `chat` itself, the one the person acts on.
  */
-function stoppedSubtree(store: Store, chat: Chat): Chat[] {
+export function stoppedSubtree(store: Store, chat: Chat): Chat[] {
     const chats = [chat, ...listChatDescendants(store.db, chat.id).map(entry => entry.chat)];
     const busy = chats.find(candidate => runsOfChat(store.db, candidate.id).some(run => !isTerminalRunStatus(run.status)));
 
@@ -205,20 +205,31 @@ function stoppedSubtree(store: Store, chat: Chat): Chat[] {
  * Removes the chat with every thread below it, their runs, and the files sent in them. Their agents must have stopped: a live run would be left without
  * its row, so one at work anywhere in the tree refuses the whole delete. Each chat is announced on its own (`chat.deleted`, the deepest first), so a client
  * drops them all. The files' folders go once the transaction commits. Returns the ids of every run removed.
+ *
+ * A worktree's row goes with the last chat that points at it; the worktree on the disk and its branch are not touched here
+ * (a delete that removes them does it first: `removeChatWorkspace`), and a worktree that stays is listed by git as any other.
  */
 export function deleteChat(store: Store, chatId: string, attachments: AttachmentsService): string[] {
     return store.tx(() => {
         const chats = stoppedSubtree(store, requireChat(store, chatId));
-
-        return chats.reverse().flatMap((each) => {
-            const runIds = runsOfChat(store.db, each.id).map(run => run.id);
+        const workspaceIds = new Set(chats.flatMap(each => (each.workspace ? [each.workspace.id] : [])));
+        const runIds = chats.reverse().flatMap((each) => {
+            const runIdsOfChat = runsOfChat(store.db, each.id).map(run => run.id);
 
             attachments.removeOfChat(each.id);
             deleteChatAndRuns(store.db, each.id);
-            store.emit(each.projectId, { type: 'chat.deleted', chatId: each.id, runIds });
+            store.emit(each.projectId, { type: 'chat.deleted', chatId: each.id, runIds: runIdsOfChat });
 
-            return runIds;
+            return runIdsOfChat;
         });
+
+        for (const workspaceId of workspaceIds) {
+            if (chatsOfWorkspace(store.db, workspaceId).length === 0) {
+                deleteWorkspace(store.db, workspaceId);
+            }
+        }
+
+        return runIds;
     });
 }
 

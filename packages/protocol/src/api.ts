@@ -14,7 +14,9 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  * GET  /v1/projects/info                  -> ProjectInfo[] (one per project, in the order of the snapshot: whether each of its folders exists, its
  *                                            git remote and branch and how many chats chose it, and how many chats, tasks and unfinished runs the
  *                                            project has; read when asked, never announced); `?project=ID` answers that project alone (404 when
- *                                            there is none)
+ *                                            there is none). `workspaces` has one entry for each worktree of the project's chats (`ChatWorkspace`): whether
+ *                                            it is there (not made yet, or gone from the disk, is not) and the branch it has checked out now, or on a
+ *                                            detached HEAD the short hash with `detached`, read as a folder's is; absent when the project has none)
  * GET  /v1/events?cursor=N                -> text/event-stream of ClowdyEvent (frame name `clowdy`, id = cursor); without a
  *                                            cursor the stream is live only; `Last-Event-ID` also resumes; `&projectId=ID`
  *                                            limits it to one project. 410 when the cursor is ahead of the log (the log is not pruned
@@ -40,7 +42,10 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  *                                            `DOC_SOURCES` that are folders (`.briefback`, `.clowdy/docs`, Spec Kit's, OpenSpec's, Kiro's), each with its
  *                                            Markdown tree; a source with no Markdown file, or that is a link out of the folder, is left out, so a folder
  *                                            with none has an entry with `sources: []`. A missing main folder is `unavailable`; another folder that is
- *                                            missing is left out)
+ *                                            missing is left out). `?workspaceId=` lists the documents of that worktree in place of those of its folder's
+ *                                            own checkout (a plan an agent wrote there is not in the main checkout), under the folder's id; the other
+ *                                            folders are listed as before. A workspace that is not the project's is `not_found`; one not made yet, or
+ *                                            gone from the disk, is `unavailable`
  * GET  /v1/projects/:id/git?folderId=    -> FolderGit (what git says about one folder of the project: whether it is the root of a repository, the branch it has
  *                                            checked out, the folder's default branch (`origin/HEAD`, else `origin/main` or `origin/master`, else a local `main` or
  *                                            `master`, else the current HEAD; no network), its branches (local, then those of the remotes, at most `MAX_GIT_BRANCHES`)
@@ -48,10 +53,13 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  *                                            changes). A folder that is not the root of a repository answers `isRepository: false` and nothing else; `folderId` of no
  *                                            folder of the project is `not_found`, none is `invalid`, and a folder gone from the disk, or a git that does not answer
  *                                            in time, is `unavailable`)
- * GET  /v1/projects/:id/files?query=&limit= -> ProjectFileMatch[] (files of the project's folders whose path contains every word of `query`,
+ * GET  /v1/projects/:id/files?query=&limit=&workspaceId= -> ProjectFileMatch[] (files of the project's folders whose path contains every word of `query`,
  *                                            the folder's name counting as part of the path when there are several; best match first,
  *                                            at most `limit` (default 40, most 100); git's tracked and unignored files, or a walk outside
- *                                            a repository; never a `.clowdy` folder). A missing main folder is `unavailable`; another is skipped
+ *                                            a repository; never a `.clowdy` folder). A missing main folder is `unavailable`; another is skipped.
+ *                                            `workspaceId` (optional) lists the files of that worktree in place of its folder's own checkout (a file only
+ *                                            the worktree has is included, one only the checkout has is not), under the folder's id and name; the other
+ *                                            folders are listed as before. The errors are those of `docs`
  * POST /v1/projects/:id/attachments?name= -> Attachment (the raw request body is the file, `Content-Type` its media type; the daemon keeps
  *                                            it until the message it is sent with is deleted. Refused above `MAX_ATTACHMENT_BYTES`.
  *                                            A file that is never sent is removed after a day)
@@ -60,8 +68,8 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  *                                            512 KB), with its media type; `not_found` when there is none, and for the personal space. The
  *                                            icon the person uploaded is `ProjectSettings.icon`, which the app shows first
  * DELETE /v1/projects/:id/attachments/:attachmentId -> { ok: true }; only for a file that was not sent yet (`conflict` otherwise)
- * /v1/projects/:id/fs/*                  -> the files of one of the project's folders: list, find, read, write, make a folder, move, copy,
- *                                            delete, watch. The routes are described in `fs.ts`
+ * /v1/projects/:id/fs/*                  -> the files of one of the project's folders, or of a worktree of it (`workspaceId` beside `folderId`): list, find,
+ *                                            read, write, make a folder, move, copy, delete, watch, search. The routes are described in `fs.ts`
  * /v1/terminals/*                         -> the shells the daemon runs for the app's terminal: list, create, close, and a WebSocket stream of one. The
  *                                            routes are described in `terminals.ts`
  * POST /v1/shutdown                       -> { ok: true }; stops the daemon gracefully (live engines are aborted, their runs

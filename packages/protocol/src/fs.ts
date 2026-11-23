@@ -1,4 +1,4 @@
-import type { FolderId } from './domain';
+import type { FolderId, WorkspaceId } from './domain';
 
 /**
  * The files of one folder of a project, as the app's file manager reads and edits them. Every route is under
@@ -6,35 +6,40 @@ import type { FolderId } from './domain';
  * `path`: relative to that folder, `/` separators, no leading slash, `''` for the folder itself. A path with `..`, or one that resolves
  * (symbolic links followed) to a place outside the folder, is refused with `invalid` and `details.reason: 'outside'`.
  *
- * GET    fs/list?folderId=&path=&depth=   -> FsEntry[]. The entries below `path` at most `depth` path segments down (`src/app/foo` is depth
+ * Every route also takes an optional `workspaceId` beside `folderId` (a query parameter of the GETs and the PUT, a field of the body of the POSTs): the worktree of
+ * that folder a chat works in (`ChatWorkspace`), read and changed in place of the folder's own checkout. The paths, the links and the limits are then judged against
+ * the worktree's real path, and the watch of a worktree is its own. A workspace that is not the folder's, or not the project's, is `not_found`; one whose worktree is
+ * not made yet (`ready` is false) or is gone from the disk is `unavailable`. Left out, the folder's own checkout is read, as before.
+ *
+ * GET    fs/list?folderId=&workspaceId=&path=&depth= -> FsEntry[]. The entries below `path` at most `depth` path segments down (`src/app/foo` is depth
  *                                            3 from the folder), all of them without `depth`. Each `path` is relative to the folder, not to
  *                                            the requested one. A folder at the cutoff is listed without its content, with `hasChildren`.
  *                                            `.git` and `node_modules` are always such a folder, however deep the listing: they are listed
  *                                            only when asked for by their own path. A link to a folder is a folder that is never entered by
  *                                            a deeper listing, and a link to a file is a file. A missing `path` is `not_found`, a file
  *                                            `invalid`.
- * GET    fs/find?folderId=&query=         -> string[]. At most `MAX_FS_FIND` paths of files whose name matches `query`: a word matches
+ * GET    fs/find?folderId=&workspaceId=&query= -> string[]. At most `MAX_FS_FIND` paths of files whose name matches `query`: a word matches
  *                                            anywhere in the path, a query with `*` or `?` is a glob. Not `.git` or `node_modules`.
- * GET    fs/file?folderId=&path=          -> the file's bytes (`application/octet-stream`, `nosniff`, `Content-Security-Policy: sandbox`)
+ * GET    fs/file?folderId=&workspaceId=&path= -> the file's bytes (`application/octet-stream`, `nosniff`, `Content-Security-Policy: sandbox`)
  *                                            with its version in the `x-clowdy-version` header. A file over `MAX_FS_FILE_BYTES` is `invalid`
  *                                            with `details.reason: 'too_large'`; a missing one `not_found`; a folder `invalid`.
- * PUT    fs/file?folderId=&path=          -> { version }. The raw body is the content. Parent folders are made. `If-None-Match: *` writes only
+ * PUT    fs/file?folderId=&workspaceId=&path= -> { version }. The raw body is the content. Parent folders are made. `If-None-Match: *` writes only
  *                                            a new file (`conflict`, `details.reason: 'exists'` otherwise), `If-Match: <version>` only over
  *                                            that version (`conflict`, `details.reason: 'version'` and `details.currentVersion`, the version
  *                                            there now or `null` when the file is gone); neither writes over whatever is there.
- * POST   fs/folder                        -> { ok: true }. Body `{ folderId, path }`. Parent folders are made; one that is there is fine.
- * POST   fs/move                          -> { ok: true }. Body `{ folderId, moves: FsMove[], overwrite?: boolean }`: the whole batch or nothing
+ * POST   fs/folder                        -> { ok: true }. Body `{ folderId, workspaceId?, path }`. Parent folders are made; one that is there is fine.
+ * POST   fs/move                          -> { ok: true }. Body `{ folderId, workspaceId?, moves: FsMove[], overwrite?: boolean }`: the whole batch or nothing
  *                                            (a failed one leaves what it moved moved back). A target that is there is `conflict` with
  *                                            `details.reason: 'exists'` and `details.path`, unless `overwrite` replaces it.
- * POST   fs/copy                          -> { ok: true }. Body `{ folderId, copies: FsMove[], overwrite?: boolean }`, as move; a folder is
+ * POST   fs/copy                          -> { ok: true }. Body `{ folderId, workspaceId?, copies: FsMove[], overwrite?: boolean }`, as move; a folder is
  *                                            copied with everything in it.
- * POST   fs/delete                        -> { ok: true }. Body `{ folderId, paths: string[] }`. Deleting is final (no trash); a folder goes
+ * POST   fs/delete                        -> { ok: true }. Body `{ folderId, workspaceId?, paths: string[] }`. Deleting is final (no trash); a folder goes
  *                                            with everything in it; a path that is not there is fine.
- * GET    fs/watch?folderId=               -> a Server-Sent Events stream of `FsWatchEvent`s (the `data:` line is JSON, no event name), for as
+ * GET    fs/watch?folderId=&workspaceId= -> a Server-Sent Events stream of `FsWatchEvent`s (the `data:` line is JSON, no event name), for as
  *                                            long as the client reads it. Changes of one burst come as one batch (about 100 ms). Nothing under
  *                                            `.git` or `node_modules` is reported. `{ type: 'resync' }` when changes may have been missed.
  *
- * POST   fs/search                       -> FsSearchResult. Body `{ folderId, query, matchCase?, wholeWord?, exclude? }`: a search of the folder's file
+ * POST   fs/search                       -> FsSearchResult. Body `{ folderId, workspaceId?, query, matchCase?, wholeWord?, exclude? }`: a search of the folder's file
  *                                            contents for the literal text `query` (never a pattern; at most `MAX_FS_QUERY_LENGTH`
  *                                            characters), case-insensitive unless `matchCase`, `wholeWord` as ripgrep's `-w`. `exclude` are
  *                                            globs of paths the person's file tree does not show, left out too. Dotfiles are searched;
@@ -99,6 +104,8 @@ export interface FsSearchResult {
 
 export interface FsSearchRequest {
     folderId: FolderId;
+    /** The worktree of the folder to search in place of its own checkout (see the routes above). */
+    workspaceId?: WorkspaceId;
     query: string;
     matchCase?: boolean;
     wholeWord?: boolean;
@@ -111,5 +118,7 @@ export const MAX_FS_QUERY_LENGTH = 1000;
 
 export interface FsLocation {
     folderId: FolderId;
+    /** The worktree of the folder the path is in, in place of the folder's own checkout. */
+    workspaceId?: WorkspaceId;
     path: string;
 }

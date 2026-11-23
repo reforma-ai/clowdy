@@ -1,5 +1,6 @@
 import { messageWithFiles } from '../attachments/message';
 import { toAttachment } from '../attachments/service';
+import { getRunWork } from '../db/runs';
 import { choiceOf, DEFAULT_CHAT_TITLE, firstWords, requireChat, saveChat } from '../domain/chats';
 import { appendItem } from '../domain/items';
 import { requireProject } from '../domain/projects';
@@ -124,7 +125,11 @@ export function sendMessage(deps: MessageDeps, chatId: string, input: MessageInp
     attachments.markSent(files, chatId, run.id);
     appendItem(store, run.id, body);
     saveChat(store, { ...chat, updatedAt: now });
-    runs.resume(run.id, input.fresh ? firstMessage(chat.mode, content) : content);
+    // A turn that never reached an agent (its worktree could not be made, say) leaves what it was going to say unsent, and no session has it: it goes first, so a
+    // thread told to try again still has its brief.
+    const unsent = run.sessionId === undefined ? getRunWork(store.db, run.id).nextPrompt : undefined;
+
+    runs.resume(run.id, unsent ? `${ unsent }\n\n${ content }` : input.fresh ? firstMessage(chat.mode, content) : content);
     driver.launch(run.id);
 
     return { chatId, runId: run.id, delivery: 'started' };

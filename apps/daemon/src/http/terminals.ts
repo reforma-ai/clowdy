@@ -1,6 +1,7 @@
 import { isTerminalSize, MAX_TERMINAL_INPUT_BYTES, TERMINAL_SUBPROTOCOL, tokenFromTerminalProtocols } from '@clowdy/protocol';
 import { z } from 'zod';
 
+import { resolvePlace } from '../domain/places';
 import { requireProject } from '../domain/projects';
 import { readJson } from './body';
 import { tokenMatches } from './guard';
@@ -26,6 +27,7 @@ const STREAM_ROUTE = /^\/v1\/terminals\/([^/]+)\/stream$/;
 const createBody = z.object({
     projectId: z.string(),
     folderId: z.string(),
+    workspaceId: z.string().optional(),
     path: z.string().optional(),
     cols: z.number(),
     rows: z.number(),
@@ -42,8 +44,10 @@ export function terminalRoutes(context: RouteContext): Route[] {
             pattern: /^\/v1\/terminals$/,
             handle: async (request) => {
                 const body = await readJson(request, createBody);
+                const project = requireProject(store, body.projectId);
 
-                return json(terminals.create(requireProject(store, body.projectId), body));
+                // A worktree that is not this folder's, or not this project's, is refused here, before a shell is started in it.
+                return json(terminals.create(project, body, resolvePlace(store, project, body.folderId, body.workspaceId)));
             },
         },
         {

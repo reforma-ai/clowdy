@@ -141,9 +141,10 @@ export async function defaultBranchOf(folder: string): Promise<string | undefine
 /**
  * `configured` (a folder's own `baseBranch`) when the repository has it as a branch, written as `readBranches` writes it: `main` for a local one, `origin/next` for a remote's.
  * A configured branch the repository does not have is skipped, so the default is the answer: a setting that went stale (the branch was deleted, the folder is another
- * repository now) must not stop a worktree from being made.
+ * repository now) must not stop a worktree from being made. The rule is one function over the branch list, so the async read (`baseOf`) and the synchronous one
+ * `chat.create` makes (`createWorkspace`) cannot drift apart.
  */
-function pickBase(configured: string | undefined, branches: readonly GitBranch[], pickDefault: () => string | undefined): string | undefined {
+export function pickBase(configured: string | undefined, branches: readonly GitBranch[], pickDefault: () => string | undefined): string | undefined {
     return configured !== undefined && branches.some(branch => branch.name === configured) ? configured : pickDefault();
 }
 

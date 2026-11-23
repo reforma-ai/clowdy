@@ -11,7 +11,7 @@ import { taskCommentsPage } from '../src/domain/taskComments';
 import { ToolBridge } from '../src/engine/acp/bridge';
 import { toolsFor } from '../src/runs/tools';
 import { collect, FAKE_AGENT, PROTOCOLS, rig, textOf, tool } from './acp-helpers';
-import { cleanTempDirs, latch, ScriptEngine, scriptEngines, startHarness, tempDir, waitFor } from './helpers';
+import { cleanTempDirs, git, latch, ScriptEngine, scriptEngines, startHarness, tempDir, waitFor } from './helpers';
 
 import type { Chat } from '@clowdy/protocol';
 import type { CliTool } from '../src/cli/args';
@@ -291,6 +291,44 @@ describe('clowdy in an agent\'s shell, against a daemon', () => {
 
         expect(ran.code).toBe(0);
         expect(JSON.parse(ran.stdout)).toMatchObject({ ok: true, result: { threadId, state: 'idle', text: 'There are 41 tests', timedOut: false } });
+    });
+
+    test('--worktree has the daemon make a git worktree for the thread, which its agent works in, and is refused together with --cwd', async () => {
+        const { h, engine, chat, chatOf, on, shell, json } = await setup();
+
+        on('Rework the importer', held(latch()));
+
+        const spawned = await json('clowdy thread spawn --worktree --prompt "Rework the importer"');
+        const key = (spawned.threadId as string).slice(-8);
+        const path = join(h.config.workspacesDir, 'repo', key, 'repo');
+
+        expect(spawned.worktree).toEqual({ path, branch: `clowdy/${ key }`, base: 'main' });
+        expect(spawned.note).toContain('Bringing the work back is yours');
+
+        // Its first turn makes the worktree, and its agent starts in it.
+        const turn = await waitFor(() => engine.turns.find(candidate => candidate.prompt.endsWith('Rework the importer')), 'the thread\'s agent to start');
+
+        expect(turn.cwd).toBe(path);
+        expect(chatOf(spawned.threadId).workspace).toMatchObject({ path, branch: `clowdy/${ key }`, managed: true, ready: true });
+        expect(git(path, 'branch', '--show-current')).toBe(`clowdy/${ key }`);
+
+        // Without the option the thread is where its parent is.
+        const plain = await json('clowdy thread spawn --no-worktree --prompt "Read the importer"');
+
+        expect(plain).not.toHaveProperty('worktree');
+        expect(chatOf(plain.threadId)).not.toHaveProperty('workspace');
+
+        // Both ways of saying where the thread works are refused, and no thread is made.
+        const refused = await shell(`clowdy thread spawn --worktree --cwd ${ JSON.stringify(tempDir()) } --prompt "Nope"`);
+
+        expect(refused.code).toBe(1);
+        expect(refused.stderr).toContain('worktree and cwd both say where the thread works');
+        expect((await json('clowdy thread list')).threads.map((entry: { threadId: string }) => entry.threadId).sort()).toEqual([spawned.threadId, plain.threadId].sort());
+        expect(chatOf(chat.id).workspace).toBeUndefined();
+
+        const help = await shell('clowdy thread spawn --help');
+
+        expect(help.stdout).toMatch(/--worktree\s+Gives the thread a git worktree of its own/);
     });
 
     test('creates tasks from a heredoc, lists the work in flight, and changes a task with options', async () => {

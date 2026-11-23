@@ -28,7 +28,9 @@ import type {
     ApprovalDecision,
     Attachment,
     Chat,
+    ChatId,
     ChatWorkspace,
+    ChatWorkspaceRemoval,
     ClowdyEvent,
     CommandResult,
     DocsTree,
@@ -228,6 +230,29 @@ export class FixtureTransport implements Transport {
         if (!folder) throw new TransportError(`No such folder: ${ folderId }`, 404);
 
         return structuredClone(fixtureFolderGit(folder.path, this.#data.git[folder.path], folder.settings?.baseBranch));
+    }
+
+    async getChatWorkspaceRemoval(chatId: ChatId): Promise<ChatWorkspaceRemoval> {
+        const chat = this.#data.chats.find(candidate => candidate.id === chatId);
+
+        if (!chat) throw new TransportError(`No such chat: ${ chatId }`, 404);
+
+        return this.#removal(chat);
+    }
+
+    /**
+     * What the daemon says of a chat's worktree: removable when Clowdy made it and it is on the disk (`ready`), and no chat outside this one and the threads below it (archived ones
+     * count) works in it. The fixtures keep no files, so what the daemon reads from the tree (changes, merged work) is taken as fine.
+     */
+    #removal(chat: Chat): ChatWorkspaceRemoval {
+        const { workspace } = chat;
+
+        if (!workspace) return { removable: false };
+
+        const below = new Set([chat.id, ...this.#threadsBelow(chat).map(thread => thread.id)]);
+        const shared = this.#data.chats.some(other => other.workspace?.id === workspace.id && !below.has(other.id));
+
+        return { removable: workspace.managed && workspace.ready && !shared, path: workspace.path, ...(workspace.branch !== undefined && { branch: workspace.branch }) };
     }
 
     async getProjectSnapshot(projectId: ProjectId): Promise<ProjectSnapshot> {
@@ -998,6 +1023,8 @@ export class FixtureTransport implements Transport {
 
                 if (!chat) return fail('not_found', 'No such chat');
 
+                if (command.removeWorkspace === true && !this.#removal(chat).removable) return fail('conflict', 'The worktree cannot be removed');
+
                 // Like the daemon: the threads below go with it, archived ones too, once no agent of any of them works.
                 const gone = [...this.#threadsBelow(chat).reverse(), chat];
 
@@ -1331,6 +1358,9 @@ export class FixtureTransport implements Transport {
             ...(source.engine && { engine: source.engine }),
             ...(source.model && { model: source.model }),
             ...(source.effort && { effort: source.effort }),
+            // The copy works where its source does: the same folder and the same worktree.
+            ...(chat.folderId && { folderId: chat.folderId }),
+            ...(chat.workspace && { workspace: structuredClone(chat.workspace) }),
             orchestratorRunId: runId,
             forkedFrom: { chatId: chat.id, atSeq: answer.seq },
             createdAt: now,

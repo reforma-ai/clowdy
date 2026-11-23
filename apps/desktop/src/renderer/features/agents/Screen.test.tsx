@@ -1242,7 +1242,8 @@ describe('threads', () => {
         await press(rowOf('c-6').querySelector<HTMLElement>('button[aria-label="Chat actions"]')!);
         await press(menuItem('Delete'));
 
-        expect(openConfirmModal).toHaveBeenCalledWith(expect.objectContaining({ message: '"Ship the checkout", its 5 threads and the runs of their agents are deleted for good. The tasks they made stay.' }));
+        // The message is an element (the dialog may add a checkbox for the chat's worktree) that carries the words the confirmation says.
+        expect(openConfirmModal).toHaveBeenCalledWith(expect.objectContaining({ message: expect.objectContaining({ props: expect.objectContaining({ text: '"Ship the checkout", its 5 threads and the runs of their agents are deleted for good. The tasks they made stay.' }) }) }));
     });
 });
 

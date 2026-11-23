@@ -9,6 +9,8 @@ import type {
     AgentInfo,
     AgentModels,
     Attachment,
+    ChatId,
+    ChatWorkspaceRemoval,
     ClowdyEvent,
     CommandResult,
     DocsTree,
@@ -116,6 +118,10 @@ export class HttpTransport implements Transport {
         if (!response.ok) throw await refusal(response, route);
 
         return await response.json() as FolderGit;
+    }
+
+    getChatWorkspaceRemoval(chatId: ChatId): Promise<ChatWorkspaceRemoval> {
+        return this.#get(ROUTES.chatWorkspace(chatId));
     }
 
     getProjectSnapshot(projectId: ProjectId): Promise<ProjectSnapshot> {
