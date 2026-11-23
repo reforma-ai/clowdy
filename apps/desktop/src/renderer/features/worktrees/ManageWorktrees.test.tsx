@@ -147,13 +147,13 @@ describe('Manage worktrees', () => {
         const clowdy = row(CLOWDY_WORKTREE);
 
         expect(clowdy.textContent).toContain('clowdy/ab12cd34');
-        expect(clowdy.textContent).toContain('3 changed');
+        expect(clowdy.textContent).toContain('3 changes');
         expect(clowdy.textContent).toContain('Not merged');
 
         const found = row(FOUND_WORKTREE);
 
         expect(found.textContent).toContain('search-filters');
-        expect(found.textContent).toContain('2 changed');
+        expect(found.textContent).toContain('2 changes');
         expect(found.textContent).toContain('Not merged');
 
         const locked = row(LOCKED_WORKTREE);
@@ -526,13 +526,13 @@ describe('Manage worktrees', () => {
 
         await open({ data });
 
-        expect(row(FOUND_WORKTREE).textContent).toContain('2 changed');
+        expect(row(FOUND_WORKTREE).textContent).toContain('2 changes');
 
         data.worktrees!['/Users/dev/car-rental']![0]!.changes = 7;
         await act(async () => void window.dispatchEvent(new Event('focus')));
         await settle();
 
-        expect(row(FOUND_WORKTREE).textContent).toContain('7 changed');
+        expect(row(FOUND_WORKTREE).textContent).toContain('7 changes');
     });
 
     it('drops an answer that comes after a newer read, so the list is never put back to what an older read saw', async () => {
@@ -558,12 +558,12 @@ describe('Manage worktrees', () => {
         await act(async () => void window.dispatchEvent(new Event('focus')));
         await act(async () => answers[1]!(await withChanges(7)));
 
-        expect(row(FOUND_WORKTREE).textContent).toContain('7 changed');
+        expect(row(FOUND_WORKTREE).textContent).toContain('7 changes');
 
         await act(async () => answers[0]!(await withChanges(5)));
 
-        expect(row(FOUND_WORKTREE).textContent).toContain('7 changed');
-        expect(row(FOUND_WORKTREE).textContent).not.toContain('5 changed');
+        expect(row(FOUND_WORKTREE).textContent).toContain('7 changes');
+        expect(row(FOUND_WORKTREE).textContent).not.toContain('5 changes');
     });
 
     it('waits with a loading state, and then shows the list', async () => {
@@ -598,13 +598,13 @@ describe('Manage worktrees', () => {
 
         await open({ overrides: { getProjectWorktrees } });
 
-        expect(dialog()!.textContent).toContain('Couldn\'t read the worktrees');
+        expect(dialog()!.textContent).toContain('Couldn\'t load the worktrees');
         expect(groups()).toEqual([]);
 
         await click(textButton(dialog()!, 'Try again')!);
         await settle();
 
-        expect(dialog()!.textContent).not.toContain('Couldn\'t read the worktrees');
+        expect(dialog()!.textContent).not.toContain('Couldn\'t load the worktrees');
         expect(groups()).toHaveLength(2);
     });
 
@@ -622,7 +622,7 @@ describe('Manage worktrees', () => {
 
         expect(groups()).toHaveLength(2);
         expect(dialog()!.textContent).toContain('Couldn\'t refresh the list');
-        expect(dialog()!.textContent).not.toContain('Couldn\'t read the worktrees');
+        expect(dialog()!.textContent).not.toContain('Couldn\'t load the worktrees');
     });
 
     it('puts a Try again beside the note that the list could not be refreshed, which reads it again and clears the note', async () => {
@@ -654,7 +654,7 @@ describe('Manage worktrees', () => {
         await open({ overrides: { getProjectWorktrees } });
 
         expect(groups()).toEqual([]);
-        expect(dialog()!.textContent).toContain('None of the project\'s folders is a git repository');
+        expect(dialog()!.textContent).toContain('No folder of this project is a git repository');
     });
 
     it('closes when the project it is for is not the one the window shows', async () => {

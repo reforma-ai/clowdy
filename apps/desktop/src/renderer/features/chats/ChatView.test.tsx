@@ -1041,7 +1041,7 @@ describe('Fork in a chat', () => {
 
             await press(forkButtons()[0]);
 
-            expect(menuItem('Fork').textContent).toContain('Carries the conversation over as a file');
+            expect(menuItem('Fork').textContent).toContain('Attaches the conversation as a file');
 
             await press(menuItem('Fork'));
             await vi.waitFor(() => expect(ui().draft).toBe(true));

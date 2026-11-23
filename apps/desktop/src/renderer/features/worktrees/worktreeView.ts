@@ -1,8 +1,10 @@
 import type { FolderWorktrees, ProjectFolder, WorktreeInfo } from '@clowdy/protocol';
 
-/** How many files a worktree has changed, in a word: `No local changes`, or `3 changed`. */
+const countOf = (changes: number) => `${ changes } ${ changes === 1 ? 'change' : 'changes' }`;
+
+/** How much a worktree has changed, in a word: `No local changes`, or `3 changes` (git's status entries, an untracked folder as one). */
 export function changesLabel(changes: number): string {
-    return changes === 0 ? 'No local changes' : `${ changes } changed`;
+    return changes === 0 ? 'No local changes' : countOf(changes);
 }
 
 /** The mark a worktree's work has in the base: what it says, why, and the colour of its badge. */
@@ -21,9 +23,9 @@ export function mergedMark({ main, merged, base }: Pick<WorktreeInfo, 'main' | '
 
     const into = base ?? 'its base';
 
-    if (merged) return { label: 'Merged', tip: `Its work is in ${ into }`, color: 'success' };
+    if (merged) return { label: 'Merged', tip: `Its commits are in ${ into }`, color: 'success' };
 
-    return { label: 'Not merged', tip: `Its work is not in ${ into } as last fetched. A squash merge shows as not merged.`, color: 'warning' };
+    return { label: 'Not merged', tip: `Its commits are not in ${ into } as last fetched. A squash merge shows as not merged.`, color: 'warning' };
 }
 
 /** What a lock says on hover: git's reason when it gave one. */
@@ -106,8 +108,6 @@ export interface RemovalPlan {
     stranded: boolean;
 }
 
-const countOf = (changes: number) => `${ changes } ${ changes === 1 ? 'change' : 'changes' }`;
-
 /** The red button of a changed tree: how many entries git's status counts go with it. */
 export function discardLabel(changes: number): string {
     return `Discard ${ countOf(changes) } and remove`;
@@ -123,15 +123,15 @@ export function removalPlan({ branch, base, merged, missing, changes, submodules
     }
 
     if (changes > 0) {
-        const notes = [`${ countOf(changes) } that ${ changes === 1 ? 'is' : 'are' } not committed ${ changes === 1 ? 'is' : 'are' } deleted for good with it`];
+        const notes = [`${ changes } uncommitted ${ changes === 1 ? 'change' : 'changes' } will be deleted for good`];
 
-        if (submodules) notes.push('Its submodules are checked out and go with it');
+        if (submodules) notes.push('Its checked-out submodules are removed with it');
 
         return { ...common, kind: 'discard', title: 'Discard changes and remove?', confirmLabel: discardLabel(changes), notes };
     }
 
     if (submodules) {
-        return { ...common, kind: 'discard', title: 'Remove with its submodules?', confirmLabel: 'Remove with submodules', notes: ['Its submodules are checked out and go with it, and so does anything in them that is not committed'] };
+        return { ...common, kind: 'discard', title: 'Remove with its submodules?', confirmLabel: 'Remove with submodules', notes: ['Its checked-out submodules are removed with it, along with anything uncommitted in them'] };
     }
 
     return { ...common, kind: 'plain', title: 'Remove the worktree?', confirmLabel: 'Remove', notes: ['Its folder is removed from the disk'] };
@@ -139,8 +139,8 @@ export function removalPlan({ branch, base, merged, missing, changes, submodules
 
 const BRANCH_WARNINGS: Record<BranchChoice['standing'], string | undefined> = {
     merged: undefined,
-    unmerged: 'Its changes are lost when the branch goes',
-    unknown: 'Not compared with a base, so its changes may be in no other branch',
+    unmerged: 'Its unmerged commits are lost with the branch',
+    unknown: 'Can\'t tell whether its commits are merged, so they may be lost',
     base: 'It is the base branch itself',
 };
 

@@ -5,10 +5,10 @@ import { branchWarning, changesLabel, discardLabel, lockTip, mergedMark, removal
 import type { FolderWorktrees, ProjectFolder, WorktreeInfo } from '@clowdy/protocol';
 
 describe('changesLabel', () => {
-    it('says a tree with nothing changed has no local changes, and else how many files are changed', () => {
+    it('says a tree with nothing changed has no local changes, and else how many changes', () => {
         expect(changesLabel(0)).toBe('No local changes');
-        expect(changesLabel(1)).toBe('1 changed');
-        expect(changesLabel(12)).toBe('12 changed');
+        expect(changesLabel(1)).toBe('1 change');
+        expect(changesLabel(12)).toBe('12 changes');
     });
 });
 
@@ -52,7 +52,7 @@ describe('worktreeMark', () => {
 
 describe('mergedMark', () => {
     it('says a worktree whose work is in the base is merged, and names the base', () => {
-        expect(mergedMark({ main: false, merged: true, base: 'origin/main' })).toEqual({ label: 'Merged', tip: 'Its work is in origin/main', color: 'success' });
+        expect(mergedMark({ main: false, merged: true, base: 'origin/main' })).toEqual({ label: 'Merged', tip: 'Its commits are in origin/main', color: 'success' });
     });
 
     it('says one whose work is not is not merged, and that a squash merge reads like that', () => {
@@ -60,7 +60,7 @@ describe('mergedMark', () => {
 
         expect(mark.label).toBe('Not merged');
         expect(mark.color).toBe('warning');
-        expect(mark.tip).toBe('Its work is not in origin/main as last fetched. A squash merge shows as not merged.');
+        expect(mark.tip).toBe('Its commits are not in origin/main as last fetched. A squash merge shows as not merged.');
     });
 
     it('has no mark for the folder\'s own checkout, or when no base resolves', () => {
@@ -103,14 +103,14 @@ describe('removalPlan', () => {
 
     it('leaves the branch unticked when its work is not in the base, and says so', () => {
         expect(removalPlan({ ...clean, merged: false }).branch).toEqual({ name: 'feature/done', selected: false, standing: 'unmerged' });
-        expect(branchWarning({ name: 'x', selected: false, standing: 'unmerged' })).toBe('Its changes are lost when the branch goes');
+        expect(branchWarning({ name: 'x', selected: false, standing: 'unmerged' })).toBe('Its unmerged commits are lost with the branch');
     });
 
     it('leaves it unticked when no base says whether it is merged, and says so too', () => {
         const { merged: _merged, ...unknown } = clean;
 
         expect(removalPlan(unknown).branch).toEqual({ name: 'feature/done', selected: false, standing: 'unknown' });
-        expect(branchWarning({ name: 'x', selected: false, standing: 'unknown' })).toContain('Not compared with a base');
+        expect(branchWarning({ name: 'x', selected: false, standing: 'unknown' })).toContain('Can\'t tell whether its commits are merged');
         expect(branchWarning({ name: 'x', selected: true, standing: 'merged' })).toBeUndefined();
     });
 
@@ -128,13 +128,13 @@ describe('removalPlan', () => {
     });
 
     it('asks for the red confirmation, with the number of changes, when something is not committed', () => {
-        expect(removalPlan({ ...clean, changes: 1 })).toMatchObject({ kind: 'discard', confirmLabel: 'Discard 1 change and remove', notes: ['1 change that is not committed is deleted for good with it'] });
-        expect(removalPlan({ ...clean, changes: 4 })).toMatchObject({ kind: 'discard', confirmLabel: 'Discard 4 changes and remove', notes: ['4 changes that are not committed are deleted for good with it'] });
+        expect(removalPlan({ ...clean, changes: 1 })).toMatchObject({ kind: 'discard', confirmLabel: 'Discard 1 change and remove', notes: ['1 uncommitted change will be deleted for good'] });
+        expect(removalPlan({ ...clean, changes: 4 })).toMatchObject({ kind: 'discard', confirmLabel: 'Discard 4 changes and remove', notes: ['4 uncommitted changes will be deleted for good'] });
     });
 
     it('asks for it for an initialised submodule too, naming it, and counts no change when there is none', () => {
         expect(removalPlan({ ...clean, submodules: true })).toMatchObject({ kind: 'discard', confirmLabel: 'Remove with submodules' });
-        expect(removalPlan({ ...clean, changes: 2, submodules: true }).notes).toContain('Its submodules are checked out and go with it');
+        expect(removalPlan({ ...clean, changes: 2, submodules: true }).notes).toContain('Its checked-out submodules are removed with it');
         expect(removalPlan({ ...clean, changes: 2, submodules: true }).confirmLabel).toBe('Discard 2 changes and remove');
     });
 

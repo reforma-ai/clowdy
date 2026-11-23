@@ -65,7 +65,7 @@ export function ForkMenu({ onFork, mode = 'session', state, onHandoff, agents = 
                         icon={ <ForkIcon /> }
                         text="Fork"
                         // A session cannot be cut here, so the new chat starts from the words of this one: say so.
-                        description={ mode === 'conversation' ? 'Carries the conversation over as a file' : undefined }
+                        description={ mode === 'conversation' ? 'Attaches the conversation as a file' : undefined }
                         stacked={ mode === 'conversation' }
                     />
                     <Show when={ onHandoff }>

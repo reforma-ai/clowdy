@@ -93,7 +93,7 @@ export function OpenWithMenu({ target, missing = false, repair, git, onManageWor
                 { onManageWorktrees && (
                     <>
                         <MenuSection aria-label="Worktrees">
-                            <MenuItem id="manage" icon={ <Version aria-hidden="true" /> } textValue="Manage worktrees">Manage worktrees</MenuItem>
+                            <MenuItem id="manage" icon={ <Version aria-hidden="true" /> } textValue="Manage worktrees…">Manage worktrees…</MenuItem>
                         </MenuSection>
                         <MenuSeparator />
                     </>

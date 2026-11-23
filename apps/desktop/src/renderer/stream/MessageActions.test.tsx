@@ -232,7 +232,7 @@ describe('MessageActions', () => {
             await act(async () => root.render(<MessageActions text="Done." at={ at } align="start" actions={ { show: 'hover', onFork, forkMode: 'conversation' } } />));
             await press(forkButton()!);
 
-            expect(itemNamed('Fork').textContent).toBe('ForkCarries the conversation over as a file');
+            expect(itemNamed('Fork').textContent).toBe('ForkAttaches the conversation as a file');
 
             await press(itemNamed('Fork'));
 

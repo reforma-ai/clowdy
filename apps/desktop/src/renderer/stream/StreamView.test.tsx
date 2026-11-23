@@ -796,7 +796,7 @@ describe('StreamView', () => {
 
                     await press(forkButtons()[0]);
 
-                    expect(itemNamed('Fork').textContent).toContain('Carries the conversation over as a file');
+                    expect(itemNamed('Fork').textContent).toContain('Attaches the conversation as a file');
 
                     await press(itemNamed('Fork'));
 
