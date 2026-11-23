@@ -34,10 +34,10 @@ export function WorkspaceLabel({ worktree, git }: { worktree: string | undefined
     const detached = git?.detached === true;
     // A detached HEAD has no branch, only a commit: the hash is shown in a branch's place, so the title and the screen reader say so.
     const path = worktree && tildePath(worktree, homeFolder.path);
-    const title = path ? (detached ? `${ path }\nDetached HEAD` : path) : detached ? 'Detached HEAD' : 'Project checkout';
+    const title = path ? (detached ? `${ path }\nDetached HEAD` : path) : detached ? 'Detached HEAD' : 'Main worktree';
 
     return (
-        <div role="group" className={ styles.label } title={ title } aria-label={ `Where it runs: ${ worktree ? 'Worktree' : 'Project checkout' }${ branch ? `, ${ branchWords(branch, detached) }` : '' }` }>
+        <div role="group" className={ styles.label } title={ title } aria-label={ `Where it runs: ${ worktree ? 'Worktree' : 'Main worktree' }${ branch ? `, ${ branchWords(branch, detached) }` : '' }` }>
             <Version aria-hidden="true" />
             { worktree && <Text className={ styles.lead } color="secondary">Worktree</Text> }
             { branch && <Text truncate color={ worktree ? 'default' : 'secondary' }>{ branch }</Text> }
@@ -95,7 +95,7 @@ interface WorkspaceChipProps {
 
 /**
  * The one control of the new chat's place: a pill that says where the chat will work and opens a menu to change it. Closed it says the branch alone for the folder's own
- * checkout, `New worktree` and `from <base>` for a worktree to be made, and `Worktree` and the branch for one that exists. The menu has `Current checkout` (with its branch),
+ * checkout, `New worktree` and `from <base>` for a worktree to be made, and `Worktree` and the branch for one that exists. The menu has `Main worktree` (the folder itself, with its branch),
  * `New worktree` (pressing the row chooses it, pressing the base at its end opens the searchable list of the folder's branches to start from, as does the right arrow on the
  * row), and, after a separator, one row for each of the folder's other worktrees with the chats that use it by name and a mark when something in it is not committed. A row's
  * check is at its start. `Manage worktrees…` ends the menu behind a separator: it shuts the menu and opens the dialog of the project's worktrees (`onManage`), and chooses nothing. The list of branches is the only popover that follows the menu, and it opens as the menu closes: two at once fight for the focus.
@@ -129,7 +129,7 @@ function WorkspaceChip({ git, choice, chats, onChoose, onManage }: WorkspaceChip
         ? { label: 'New worktree', trail: base === undefined ? undefined : `from ${ base }`, ariaLabel: `Where it runs: New worktree${ base === undefined ? '' : ` from ${ base }` }` }
         : chosen
             ? { lead: 'Worktree', label: worktreeLabel(chosen), ariaLabel: `Where it runs: Worktree, ${ chosen.branch ? `branch ${ chosen.branch }` : worktreeLabel(chosen).toLowerCase() }` }
-            : { label: branch ?? 'Project checkout', ariaLabel: `Where it runs: Project checkout${ branch ? `, ${ branchWords(branch, git.detached === true) }` : '' }`, tooltip: git.detached ? 'Detached HEAD' : undefined };
+            : { label: branch ?? 'Main worktree', ariaLabel: `Where it runs: Main worktree${ branch ? `, ${ branchWords(branch, git.detached === true) }` : '' }`, tooltip: git.detached ? 'Detached HEAD' : undefined };
 
     return (
         <>
@@ -172,8 +172,10 @@ function WorkspaceChip({ git, choice, chats, onChoose, onManage }: WorkspaceChip
                                     id="checkout"
                                     // Every item shuts the menu, from the keyboard's Space too, which a single choice list leaves open.
                                     shouldCloseOnSelect
+                                    stacked
                                     icon={ <Mark checked={ selected === 'checkout' } /> }
-                                    text="Current checkout"
+                                    text="Main worktree"
+                                    description="Work in the folder as it is"
                                     endAffix={ branch ? <Text truncate color="secondary" className={ styles.suffix }>{ branch }</Text> : undefined }
                                 />
                                 <MenuItem
@@ -182,8 +184,8 @@ function WorkspaceChip({ git, choice, chats, onChoose, onManage }: WorkspaceChip
                                     shouldCloseOnSelect
                                     icon={ <Mark checked={ selected === 'new' } /> }
                                     text="New worktree"
-                                    stacked={ !canMakeOne }
-                                    description={ canMakeOne ? undefined : 'The repository has no commit yet' }
+                                    stacked
+                                    description={ canMakeOne ? 'A separate checkout on a branch of its own' : 'The repository has no commit yet' }
                                     isDisabled={ !canMakeOne }
                                     endAffix={ canMakeOne && base !== undefined ? <BaseButton base={ base } held={ baseHeld } onPress={ openList } /> : undefined }
                                 />
@@ -261,7 +263,7 @@ export interface WorkspaceChipsProps {
 /**
  * Where the new chat works, after the folder, in the line under the message box: one pill (`WorkspaceChip`) that says the branch of the folder's own checkout (the default),
  * a new worktree and the ref it starts from, or an existing worktree and its branch, and opens the menu to change it. Only a folder that is a repository offers a worktree; a
- * folder that is no repository, or whose read is still on its way, has nothing here, and one that git could not be asked about has a dim `Project checkout` that says why on
+ * folder that is no repository, or whose read is still on its way, has nothing here, and one that git could not be asked about has a dim `Main worktree` that says why on
  * hover. The lists come from `useFolderRepository`.
  */
 export function WorkspaceChips({ repository, choice, chats, onChoose, onManage }: WorkspaceChipsProps) {
@@ -274,9 +276,9 @@ export function WorkspaceChips({ repository, choice, chats, onChoose, onManage }
     if (!why) return null;
 
     return (
-        <Unavailable label="Where it runs: Project checkout" hint={ why } placement="bottom">
+        <Unavailable label="Where it runs: Main worktree" hint={ why } placement="bottom">
             <div role="group" className={ styles.label }>
-                <Text truncate color="secondary">Project checkout</Text>
+                <Text truncate color="secondary">Main worktree</Text>
             </div>
         </Unavailable>
     );
