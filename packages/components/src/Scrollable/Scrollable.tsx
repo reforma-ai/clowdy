@@ -100,13 +100,11 @@ export function Scrollable({
 
     const verticalSource = useMemo(
         // The getter is stored and called from effects, not during render.
-        // eslint-disable-next-line react-hooks/refs -- elementScrollAxisSource does not read `.current` now
         () => (isVerticalEnabled ? elementScrollAxisSource(getScrollElement, 'vertical') : null),
         [getScrollElement, isVerticalEnabled]
     );
 
     const horizontalSource = useMemo(
-        // eslint-disable-next-line react-hooks/refs -- elementScrollAxisSource does not read `.current` now
         () => (isHorizontalEnabled ? elementScrollAxisSource(getScrollElement, 'horizontal') : null),
         [getScrollElement, isHorizontalEnabled]
     );

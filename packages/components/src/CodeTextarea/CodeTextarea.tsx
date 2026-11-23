@@ -226,7 +226,6 @@ export function CodeTextarea({
 }: CodeTextareaProps) {
     const editorRef = useRef<ReactCodeMirrorRef>(null);
     const uncontrolledRef = useRef(defaultValue ?? '');
-    // eslint-disable-next-line react-hooks/refs -- uncontrolled fallback; `.current` is the last typed value
     const doc = value ?? uncontrolledRef.current;
     const minRows = Math.max(1, rows);
     const [scrollEl, setScrollEl] = useState<HTMLElement | null>(null);
@@ -272,7 +271,6 @@ export function CodeTextarea({
     const editor = (
         <Suspense fallback={<div className={cn(styles.editor, editorClassName)} />}>
             <CodeTextareaMirror
-                // eslint-disable-next-line react-hooks/refs -- mergeRefs composes; it does not read `.current`
                 editorRef={mergeRefs(editorRef, ref)}
                 className={cn(styles.editor, editorClassName)}
                 doc={doc}

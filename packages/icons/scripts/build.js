@@ -385,7 +385,6 @@ ${allExports.map(({ pack }) => `export * from './${pack}/index.js';`).join('\n')
 
     const totalIcons = allExports.reduce((sum, { icons }) => sum + icons.length, 0);
 
-    // eslint-disable-next-line no-console
     console.log(`✅ Built ${packs.length} packs with ${totalIcons} icons`);
 }
 

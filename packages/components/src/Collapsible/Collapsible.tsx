@@ -124,7 +124,6 @@ export function CollapsibleTrigger({
     // Omit `slot` here: merged props land on native nodes (`<button asChild>`); React 19 rejects invalid `slot` on DOM. RAC `slot` is not for raw HTML.
     const hostProps = mergeProps(triggerProps, rest, {
         className,
-        // eslint-disable-next-line react-hooks/refs -- mergeRefs composes; it does not read `.current`
         ref: mergeRefs(triggerRef, ref),
     });
 

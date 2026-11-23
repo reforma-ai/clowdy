@@ -341,7 +341,6 @@ export function Input(props: InputProps) {
 
     // <input> ref
     const _inputRef = useRef<HTMLInputElement>(null);
-    // eslint-disable-next-line react-hooks/refs -- mergeRefs composes; it does not read `.current`
     const inputRef = mergeRefs(_inputRef, mergedInputRef);
 
     // <Group> ref — exposed so useRunner can attach pointer listeners to the whole field

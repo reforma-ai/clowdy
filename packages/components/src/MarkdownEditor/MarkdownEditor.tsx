@@ -73,7 +73,6 @@ export function MarkdownEditor({
         latest.current = { value, onChange, onUnsupported, resolveImageSrc };
     });
 
-    // eslint-disable-next-line react-hooks/refs -- image node views call the resolver, after render
     const [extensions] = useState(() => {
         const schema = markdownExtensions(src => latest.current.resolveImageSrc?.(src) ?? Promise.resolve(src));
 
