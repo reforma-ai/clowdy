@@ -21,7 +21,7 @@ export const FIXTURE_REMOTE_SCRIPTS: readonly FixtureRemoteScript[] = ['slow', '
 const SLOW_MS = 2500;
 
 /** What git says with no network, as the daemon would send it (the credential of an address is already gone). */
-export const FIXTURE_OFFLINE_LINE = 'fatal: unable to access \'https://github.com/acme/car-rental.git/\': Could not resolve host: github.com';
+const FIXTURE_OFFLINE_LINE = 'fatal: unable to access \'https://github.com/acme/car-rental.git/\': Could not resolve host: github.com';
 
 const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 

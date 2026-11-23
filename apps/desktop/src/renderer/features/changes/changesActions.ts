@@ -162,7 +162,7 @@ export const pushOrPublish = (status: GitStatus | undefined): 'push' | 'publish'
 export const RUNNING_WORDS: Record<RemoteActionId, string> = { fetch: 'Fetching origin', pull: 'Pulling', push: 'Pushing', publish: 'Publishing' };
 
 /** The branch a status is on, nothing for a HEAD that is on none. */
-export const branchOf = (status: RepositoryStatus): string | undefined => (status.head.kind === 'detached' ? undefined : status.head.name);
+const branchOf = (status: RepositoryStatus): string | undefined => (status.head.kind === 'detached' ? undefined : status.head.name);
 
 /**
  * The name the branch has on `origin`, which is the name GitHub knows it by: the branch it tracks there (a branch made with `git switch -c mine origin/feature` tracks `feature`, and that is
