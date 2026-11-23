@@ -460,6 +460,31 @@ withScripts('POST /v1/projects/:id/git/fetch, pull and push', () => {
             expect(refsOf(origin)).not.toContain('refs/heads/side');
         });
 
+        test('works in a folder and against an origin whose paths have spaces and odd characters, with a branch named with non-ASCII letters and a hash', async () => {
+            const h = await start();
+            const origin = join(tempDir('git remote'), 'my origin (bare).git');
+
+            mkdirSync(origin, { recursive: true });
+            git(origin, 'init', '-q', '--bare', '-b', 'main');
+
+            const path = makeRepo(tempDir('git remote'), 'my repo #1');
+
+            identify(path);
+            git(path, 'remote', 'add', 'origin', origin);
+            git(path, 'push', '-q', '-u', 'origin', 'main');
+
+            const { result } = await open(path, h);
+
+            git(path, 'switch', '-q', '-c', 'feat/ünï-#7');
+
+            const mine = commitFile(path, 'mine.txt');
+
+            expect(await result('push')).toEqual({ state: 'done', action: 'push', published: true, upstream: { name: 'origin/feat/ünï-#7', ahead: 0, behind: 0 } });
+            expect(git(origin, 'rev-parse', 'refs/heads/feat/ünï-#7')).toBe(mine);
+            expect(await result('fetch')).toMatchObject({ state: 'done', action: 'fetch' });
+            expect(await result('pull')).toMatchObject({ state: 'done', action: 'pull', pulled: 0 });
+        });
+
         test('is never forced, and goes to origin, whatever the person\'s configuration says: a `+` refspec, `pushRemote` and `remote.pushDefault` of another remote', async () => {
             const h = await start();
             const { path, origin } = repository();

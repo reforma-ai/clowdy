@@ -219,6 +219,7 @@ describe('the commit box', () => {
         await start();
 
         const commit = vi.spyOn(transport, 'commitGit');
+        const push = vi.spyOn(transport, 'pushGit');
 
         await type('chore: notes');
         await act(async () => {
@@ -227,6 +228,8 @@ describe('the commit box', () => {
         await settle();
 
         expect(commit).toHaveBeenCalledWith(FIXTURE_PROJECT_ID, PLACE, ['notes.md', 'src/booking/price.ts', 'src/limits.ts'], 'chore: notes');
+        // The shortcut is Commit and no more: the branch is sent only from the menu's entry.
+        expect(push).not.toHaveBeenCalled();
     });
 
     it('shows git\'s own line with the hint when the signing agent could not be reached, keeps the box and the ticks, and commits when it is tried again', async () => {
