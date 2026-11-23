@@ -792,11 +792,20 @@ export class RunDriver {
     private async measureStart(runId: string, live: LiveRun): Promise<void> {
         const { store, runs } = this.deps;
         const run = runs.require(runId);
-        const cwd = workingFolder(runs.projectOf(run), run.chatId ? getChat(store.db, run.chatId) : undefined, getRunWork(store.db, runId).cwd);
 
-        live.cwd = cwd;
-        live.trees = this.snapshots.begin(runId, cwd);
-        await live.trees?.started();
+        live.trees = undefined;
+
+        try {
+            const cwd = workingFolder(runs.projectOf(run), run.chatId ? getChat(store.db, run.chatId) : undefined, getRunWork(store.db, runId).cwd);
+
+            live.cwd = cwd;
+            live.trees = this.snapshots.begin(runId, cwd);
+            await live.trees?.started();
+        }
+        catch {
+            // A turn is never held up or failed by what it changed in the place: without a snapshot it has no last run, and the turn goes on.
+            live.trees = undefined;
+        }
     }
 
     /**

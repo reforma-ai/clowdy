@@ -1,6 +1,6 @@
 import { isTerminalRunStatus } from '@clowdy/protocol';
 
-import { setForkPoint } from '../db/chats';
+import { getChatLastRun, setChatLastRun, setForkPoint } from '../db/chats';
 import { firstUserItem, itemBefore, listItems, nextSeq } from '../db/items';
 import { firstWords, requireChat, saveChat } from '../domain/chats';
 import { cutStream, streamItem } from '../domain/items';
@@ -168,6 +168,11 @@ export async function prepareEdit(services: Services, chatId: string, itemId: st
             // A fork's divider follows the last item it inherited: a cut into that history ends it where the cut begins, so the divider does not land after new messages.
             if (source.forkedFrom && source.forkedFrom.atSeq >= item.seq) {
                 setForkPoint(store.db, source.id, item.seq - 1);
+            }
+
+            // What the chat's latest turn changed (`Chat.lastRun`) is gone with the turn when the cut reaches it: the message that follows replaces it when its own turn ends.
+            if ((getChatLastRun(store.db, source.id)?.seq ?? 0) >= item.seq) {
+                setChatLastRun(store.db, source.id, undefined);
             }
 
             const sent = sendMessage(services, source.id, { text: input.text, attachmentIds: input.attachmentIds, fresh: sessionId === undefined });

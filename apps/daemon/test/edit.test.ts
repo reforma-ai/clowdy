@@ -1,8 +1,9 @@
 import { afterAll, afterEach, describe, expect, spyOn, test } from 'bun:test';
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { executeCommandAsync } from '../src/commands';
+import { getChatLastRun } from '../src/db/chats';
 import { getRunWork } from '../src/db/runs';
 import { appendItem } from '../src/domain/items';
 import { EngineFailure } from '../src/errors';
@@ -141,6 +142,36 @@ describe('chat.edit', () => {
         expect(rowsOf(h, runId).flatMap(row => row.provider_ref !== null ? [[row.seq, row.provider_ref]] : [])).toEqual([[3, 'm1'], [6, 'm4']]);
         // The sub-agent of the first turn is still there; those of the dropped turns are gone, and the new turn has its own.
         expect(callsOf(h, runId)).toEqual(['call-1', 'call-4']);
+    });
+
+    test('takes away the last run of the chat when the cut reaches the turn it describes, and the turn that follows measures its own', async () => {
+        const writing: Script = async function* (turn) {
+            writeFileSync(join(turn.options.cwd, `by-turn-${ turn.number }.txt`), `turn ${ turn.number }\n`);
+            yield* scripted()(turn);
+        };
+        const { h, chat, turn, read } = await setup(writing);
+
+        await turn('one');
+        await turn('two');
+
+        const items = await read();
+        const lastRun = () => getChatLastRun(h.store.db, chat.id);
+        const before = lastRun();
+
+        expect(before).toMatchObject({ seq: 6 });
+
+        // A cut at the second message takes the second turn away: its record goes with it, and the chat is published without it.
+        const cursor = h.events().at(-1)?.cursor ?? 0;
+
+        expect(await edit(h, chat.id, items[3].id, 'two, again')).toMatchObject({ ok: true });
+
+        const published = h.events(cursor).flatMap(event => (event.data.type === 'chat.upserted' && event.data.chat.id === chat.id ? [event.data.chat.lastRun] : []));
+
+        expect(published[0]).toBeUndefined();
+        // The edited turn writes a file of its own, and its record replaces the one that went.
+        await waitFor(() => lastRun() !== undefined && lastRun()?.at !== before?.at, 'the edited turn to be measured');
+        expect(lastRun()?.endTree).not.toBe(before?.endTree);
+        expect(lastRun()?.startTree).not.toBe(before?.startTree);
     });
 
     test('is announced in one transaction: the cut with the runs it removed, the run, the new message, the chat and the queued turn, in that order', async () => {
