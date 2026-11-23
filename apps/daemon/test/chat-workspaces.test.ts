@@ -714,7 +714,8 @@ describe('what a turn works in', () => {
         await send(chat, 'Fix the page');
         await send(plain, 'Fix the page too');
 
-        expect(engine.turns[0]).toMatchObject({ cwd: path, additionalDirectories: [folders[1].path] });
+        // The main checkout is left out; its git directory, which a commit in the worktree is written to, is handed over in its place.
+        expect(engine.turns[0]).toMatchObject({ cwd: path, additionalDirectories: [folders[1].path, join(repo, '.git')] });
         expect(engine.turns[0].additionalDirectories).not.toContain(repo);
         expect(engine.turns[0].systemPrompt).toContain(`Worktree: you work in a git worktree of ${ repo }, at ${ path }, on the branch ${ branch }.`);
         expect(engine.turns[0].systemPrompt).toContain(`The main checkout at ${ repo } is the person's and other agents' place`);
@@ -734,7 +735,8 @@ describe('what a turn works in', () => {
 
         await send(chat, 'Fix the endpoint');
 
-        expect(engine.turns[0]).toMatchObject({ cwd: chat.workspace!.path, additionalDirectories: [repo] });
+        // The other folder's checkout, and the git directory of the one the worktree belongs to.
+        expect(engine.turns[0]).toMatchObject({ cwd: chat.workspace!.path, additionalDirectories: [repo, join(realpathSync(api), '.git')] });
         expect(chat.workspace!.path.endsWith(`${ sep }shop-api`)).toBe(true);
         expect(git(chat.workspace!.path, 'rev-parse', '--show-toplevel')).toBe(realpathSync(chat.workspace!.path));
         expect(git(api, 'worktree', 'list', '--porcelain')).toContain(`branch refs/heads/${ chat.workspace!.branch }`);
@@ -763,7 +765,7 @@ describe('what a turn works in', () => {
         expect(chatOf(thread.threadId).workspace).toEqual(chatOf(chat.id).workspace);
         expect(chatOf(thread.threadId).folderId).toBe(chat.folderId);
         expect(turnOf('Look around')).toMatchObject({ cwd: path });
-        expect(turnOf('Look around')?.additionalDirectories).toEqual([]);
+        expect(turnOf('Look around')?.additionalDirectories).toEqual([join(repo, '.git')]);
         expect(stepOf(chatOf(thread.threadId))).toEqual([]);
         expect(turnOf('Look elsewhere')).toMatchObject({ cwd: elsewhere });
         expect(chatOf(own.threadId).workspace?.id).toBe(chat.workspace!.id);
@@ -778,7 +780,7 @@ describe('what a turn works in', () => {
     });
 
     test('of a fork is the source\'s worktree, the same row, and its session is opened there', async () => {
-        const { h, engine, make, send, stepOf, chatOf } = await setup({ canFork: true });
+        const { h, engine, repo, make, send, stepOf, chatOf } = await setup({ canFork: true });
         const chat = make({ mode: 'new' });
         const { path } = chat.workspace!;
 
@@ -788,7 +790,7 @@ describe('what a turn works in', () => {
         const answer = (await read(chat.id)).find(item => item.body.kind === 'assistant')!;
         const { chat: fork } = await h.okAsync('chat.fork', { chatId: chat.id, itemId: answer.id }) as { chat: Chat };
 
-        expect(engine.forked[0]).toMatchObject({ cwd: path, additionalDirectories: [] });
+        expect(engine.forked[0]).toMatchObject({ cwd: path, additionalDirectories: [join(repo, '.git')] });
         expect(engine.forked[0].systemPrompt).toContain('Worktree: you work in a git worktree of');
         expect(fork.workspace).toEqual(chatOf(chat.id).workspace);
         expect(fork.folderId).toBe(chat.folderId);

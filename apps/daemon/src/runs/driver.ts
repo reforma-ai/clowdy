@@ -1,9 +1,11 @@
 import { isTerminalRunStatus, mainFolder, STOPPED_TOOL } from '@clowdy/protocol';
 import { statSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 import { getChat } from '../db/chats';
 import { listItems, nextSeq } from '../db/items';
 import { getRun, getRunWork, listActiveRuns, listRunsWithProcess, setRunWork } from '../db/runs';
+import { git } from '../domain/git';
 import { appendItem, markRewindPoint } from '../domain/items';
 import { needsPreparing, prepareWorkspace } from '../domain/workspaces';
 import { EngineFailure, errorMessage } from '../errors';
@@ -109,14 +111,35 @@ export function isFolder(path: string): boolean {
 }
 
 /**
+ * The git directory the worktrees of a repository share: the `.git` of its main checkout, or wherever a repository that keeps its git directory apart has it.
+ * A worktree has only a pointer to it, and commits, branches and objects are written there, so an agent whose writes are confined to its working directory and
+ * its additional folders (Codex's sandbox, say) cannot commit in a worktree unless it is handed this directory too. Nothing when there is none to find.
+ */
+function commonGitDir(folder: string): string | undefined {
+    try {
+        const read = git(folder, ['rev-parse', '--git-common-dir']);
+        const dir = read.ok ? resolve(folder, read.stdout) : undefined;
+
+        return dir && isFolder(dir) ? dir : undefined;
+    }
+    catch {
+        return undefined;
+    }
+}
+
+/**
  * The project's folders a turn hands the agent besides the one it works in, in the project's order. A folder that is gone is left out rather than
  * risk an agent that refuses to start on a path that does not exist; `ProjectInfo` reports it missing to the app. A turn that works in its chat's worktree
- * leaves out the folder the worktree is a checkout of too: that main checkout is the person's, and an agent that is handed it wanders back into it.
+ * leaves out the folder the worktree is a checkout of too: that main checkout is the person's, and an agent that is handed it wanders back into it. It is
+ * handed the repository's git directory instead (`commonGitDir`), which is what committing in a worktree needs and holds none of the person's files.
  */
 function additionalFolders(project: Project, cwd: string, workspace: ChatWorkspace | undefined): string[] {
     const left = workspace?.path === cwd ? workspace.folderId : undefined;
+    const folders = project.folders.flatMap(folder => folder.path !== cwd && folder.id !== left && isFolder(folder.path) ? [folder.path] : []);
+    const checkout = left === undefined ? undefined : project.folders.find(folder => folder.id === left);
+    const gitDir = checkout && isFolder(checkout.path) ? commonGitDir(checkout.path) : undefined;
 
-    return project.folders.flatMap(folder => folder.path !== cwd && folder.id !== left && isFolder(folder.path) ? [folder.path] : []);
+    return gitDir ? [...folders, gitDir] : folders;
 }
 
 /**
