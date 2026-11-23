@@ -269,6 +269,16 @@ describe('the control', () => {
         await start({ transport });
 
         expect(chip()?.textContent).toBe('5c4d3e2');
+        expect(chip()?.getAttribute('aria-label')).toBe('Where it runs: Project checkout, detached at 5c4d3e2');
+
+        // The hash is no branch: the pill says so in its tooltip, which the keyboard's focus shows.
+        await act(async () => {
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+            chip()!.focus();
+        });
+        await act(async () => new Promise(resolve => setTimeout(resolve, 0)));
+
+        expect(document.querySelector('[role="tooltip"]')?.textContent).toBe('Detached HEAD');
 
         await press(chip()!);
 

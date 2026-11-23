@@ -106,7 +106,7 @@ describe('the folder of a chat', () => {
         await draw({});
 
         expect(container.textContent).toBe('web5c4d3e2');
-        expect(container.querySelector<HTMLElement>('[aria-label="Where it runs: Project checkout, branch 5c4d3e2"]')?.title).toBe('Detached HEAD');
+        expect(container.querySelector<HTMLElement>('[aria-label="Where it runs: Project checkout, detached at 5c4d3e2"]')?.title).toBe('Detached HEAD');
     });
 
     it('is read only outside the desktop app: its name, the path on hover, and nothing to press', async () => {
@@ -372,7 +372,8 @@ describe('the folder of a chat that works in a worktree', () => {
         await settle();
 
         expect(container.textContent).toBe('webWorktree5c4d3e2');
-        expect(container.querySelector('[aria-label="Where it runs: Worktree, branch 5c4d3e2"]')).not.toBeNull();
+        // The hash stands in a branch's place, and the label says it is a commit: on hover with the worktree's path, and to a screen reader.
+        expect(container.querySelector<HTMLElement>('[aria-label="Where it runs: Worktree, detached at 5c4d3e2"]')?.title).toMatch(/\nDetached HEAD$/);
     });
 
     it('names no branch until the read has answered, and none that the read does not know once the worktree is made', async () => {

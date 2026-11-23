@@ -52,6 +52,10 @@
     flex-shrink: 1;
     min-width: 0;
     max-width: 7rem;
+    /* Shorter than the xs button is, and drawn out of the row's padding by what is left over, so the row of a new worktree is no taller than the row of the current checkout. */
+    height: var(--spacing-20);
+    min-height: 0;
+    margin-block: calc((var(--spacing-18) - var(--spacing-20)) / 2);
 }
 
 /* The branch at the end of the row of the current checkout, in the same length the base has, so the row's own words are read whole. */

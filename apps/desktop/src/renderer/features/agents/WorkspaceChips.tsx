@@ -31,16 +31,22 @@ export function WorkspaceLabel({ worktree, git }: { worktree: string | undefined
 
     if (!worktree && !branch) return null;
 
-    const title = worktree ? tildePath(worktree, homeFolder.path) : git?.detached ? 'Detached HEAD' : 'Project checkout';
+    const detached = git?.detached === true;
+    // A detached HEAD has no branch, only a commit: the hash is shown in a branch's place, so the title and the screen reader say so.
+    const path = worktree && tildePath(worktree, homeFolder.path);
+    const title = path ? (detached ? `${ path }\nDetached HEAD` : path) : detached ? 'Detached HEAD' : 'Project checkout';
 
     return (
-        <div role="group" className={ styles.label } title={ title } aria-label={ `Where it runs: ${ worktree ? 'Worktree' : 'Project checkout' }${ branch ? `, branch ${ branch }` : '' }` }>
+        <div role="group" className={ styles.label } title={ title } aria-label={ `Where it runs: ${ worktree ? 'Worktree' : 'Project checkout' }${ branch ? `, ${ branchWords(branch, detached) }` : '' }` }>
             <Version aria-hidden="true" />
             { worktree && <Text className={ styles.lead } color="secondary">Worktree</Text> }
             { branch && <Text truncate color={ worktree ? 'default' : 'secondary' }>{ branch }</Text> }
         </div>
     );
 }
+
+/** What a screen reader says of what is checked out: a branch, or on a detached HEAD the commit it is at. */
+const branchWords = (name: string, detached: boolean) => (detached ? `detached at ${ name }` : `branch ${ name }`);
 
 /** Why a folder offers no worktrees when git could not be asked: the daemon's reason when it gave one. Nothing for an answer that is on its way or a folder that is no repository. */
 function whyUnread(repository: FolderRepository): string | undefined {
@@ -114,11 +120,12 @@ function WorkspaceChip({ git, choice, chats, onChoose }: WorkspaceChipProps) {
         event.preventDefault();
         openList();
     };
+    // What `effectiveChoice` hands over is a worktree the folder lists, so an existing choice always has its row; anything else is the folder's own checkout.
     const trigger = choice?.mode === 'new'
         ? { label: 'New worktree', trail: base === undefined ? undefined : `from ${ base }`, ariaLabel: `Where it runs: New worktree${ base === undefined ? '' : ` from ${ base }` }` }
-        : choice?.mode === 'existing'
-            ? { lead: 'Worktree', label: chosen ? worktreeLabel(chosen) : 'Existing worktree', ariaLabel: `Where it runs: Worktree, branch ${ chosen ? worktreeLabel(chosen) : 'unknown' }` }
-            : { label: branch ?? 'Project checkout', ariaLabel: `Where it runs: Project checkout${ branch ? `, branch ${ branch }` : '' }` };
+        : chosen
+            ? { lead: 'Worktree', label: worktreeLabel(chosen), ariaLabel: `Where it runs: Worktree, ${ chosen.branch ? `branch ${ chosen.branch }` : worktreeLabel(chosen).toLowerCase() }` }
+            : { label: branch ?? 'Project checkout', ariaLabel: `Where it runs: Project checkout${ branch ? `, ${ branchWords(branch, git.detached === true) }` : '' }`, tooltip: git.detached ? 'Detached HEAD' : undefined };
 
     return (
         <>
@@ -130,6 +137,7 @@ function WorkspaceChip({ git, choice, chats, onChoose }: WorkspaceChipProps) {
                     label={ trigger.label }
                     trail={ 'trail' in trigger ? trigger.trail : undefined }
                     aria-label={ trigger.ariaLabel }
+                    tooltip={ 'tooltip' in trigger ? trigger.tooltip : undefined }
                     isOpen={ isListOpen || undefined }
                 />
                 <Popover placement="bottom start" spacing="xs" width={ 320 }>
