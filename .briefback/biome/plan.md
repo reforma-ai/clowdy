@@ -142,8 +142,8 @@
 **This stage:** Brings the branch back to `next` without losing what the other agents wrote meanwhile. In the worktree: merge `origin/next`, run `bunx biome check --write`, commit that as `style: reformat after merging next` (and add its hash to `.git-blame-ignore-revs`), rerun the checks. Then, when the main checkout has no uncommitted work, from it: `git merge maksim-kachurin/biome`, push `next`, `./clowdy worktree remove biome`, `git branch -d maksim-kachurin/biome`.
 
 - [ ] Complete
-  - [ ] `origin/next` is merged into the branch and the repository is reformatted again with one commit
-  - [ ] The checks pass in the worktree
+  - [x] `origin/next` is merged into the branch and the repository is reformatted again with one commit
+  - [x] The checks pass in the worktree
   - [ ] The main checkout is clean, the branch is merged into `next` and pushed, the worktree and the branch are removed
 
 **Files**
@@ -153,4 +153,15 @@
 
 **Done when:** `next` holds the Biome tooling, no agent has uncommitted work lost, and `bun run lint` passes on `next`.
 **Verify:** `bun run lint && bun run typecheck && bun run test` on `next` after the merge; `git status` clean.
-**Commits:** None yet.
+**Scope notes (recorded while merging):**
+
+- `origin/next` was 15 commits ahead (`3ea4f60`). Twenty files conflicted. On this branch every one of them had changed only in the reformat commit, except `apps/daemon/src/git/status.ts`, which also carries the `biome-ignore` for `NOT_A_REF_NAME` (`next` still had the `eslint-disable` on that line). Resolution took `next`'s content and put the `biome-ignore` back. No conflict markers left, and the only `eslint` mentions outside `.briefback/` are the three Stage 3 kept on purpose.
+- `biome check --write --linter-enabled=false` then fixed 24 files (formatting and import order; a second pass changed nothing) and `biome check` reported no diagnostics.
+- In the worktree: `bun run lint` passed (11 packages plus the root files). `bun run typecheck` fails only in the daemon, with the same 7 errors in 6 files as the Stage 1 baseline (`ReadableStream`/`BodyInit`, TS2352 and TS2345). `bun run test`: protocol 73, lib 75, icons 23, components 257, file-manager 171, desktop 4572 passed in 245 files with the known unhandled `AbortError` (the desktop `test` exits 1), system-skills `validate` passes, daemon 2258 pass / 8 skip / 0 fail (2266 tests, 84 files; the baseline before `next`'s commits was 2244 pass / 8 skip).
+- The merge back into `next` is waiting. The main checkout (`/Users/bionic/WORK/My/@kachurun/clowdy`, on `next`) has uncommitted work, and the merge would rewrite `packages/components/src/MarkdownEditor/markdownDocument.ts`, which is modified there. Also untracked: `.briefback/terminal-add-to-chat/`. Not stashed, per GITFLOW. When that tree is clean: from the main checkout `git merge maksim-kachurin/biome`, push `next`, `./clowdy worktree remove biome`, `git branch -d maksim-kachurin/biome`.
+
+**Commits:**
+
+- `f537978` merge: next into the biome branch
+- `31610ea` style: reformat after merging next
+- `4a33ae2` chore: make git blame skip the merge reformat
