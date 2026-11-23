@@ -1,4 +1,4 @@
-import { branchPrefixOf, branchPrefixProblem, COMMIT_MESSAGE_SETTING_ID, DOC_SOURCES, folderNames, PERMISSION_PRESET_NAMES, PERMISSION_PRESETS } from '@clowdy/protocol';
+import { branchPrefixOf, branchPrefixProblem, COMMIT_MESSAGE_SETTING_ID, DOC_SOURCES, folderNames, MAX_GIT_REVISION_LENGTH, MAX_GIT_VIEWED_PATH_LENGTH, PERMISSION_PRESET_NAMES, PERMISSION_PRESETS } from '@clowdy/protocol';
 
 import type {
     AgentInfo,
@@ -720,6 +720,21 @@ export function fixtureGitFile(scope: GitScope, path: string): GitFileSides | un
     const text = FIXTURE_FILE_TEXT[path];
 
     return text ? { state: 'text', original: text[0], modified: text[1], revision: file.revision } : { state: 'text', original: null, modified: '', revision: file.revision };
+}
+
+/**
+ * Why the daemon would refuse a viewed mark for this path and revision (`400`), in its own words, or nothing for a pair it takes: a path the file route takes and at most
+ * `MAX_GIT_VIEWED_PATH_LENGTH` characters long, and a revision of at most `MAX_GIT_REVISION_LENGTH` of the characters a revision is written with. The fixture keeps the marks
+ * itself (`FixtureTransport`), and judges what it is given as the daemon does.
+ */
+export function fixtureViewedProblem(path: string, revision: string): string | undefined {
+    if (path === '' || path.includes('\0') || path.startsWith('/') || path.endsWith('/') || path.split('/').some(part => part === '' || part === '.' || part === '..')) return 'The path is not a path inside the repository';
+
+    if (path.length > MAX_GIT_VIEWED_PATH_LENGTH) return 'The path is too long';
+
+    if (revision.length === 0 || revision.length > MAX_GIT_REVISION_LENGTH || !/^[0-9a-z:-]+$/.test(revision)) return 'The revision is not one of a changed file';
+
+    return undefined;
 }
 
 const kebab = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');

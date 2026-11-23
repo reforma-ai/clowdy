@@ -1,10 +1,9 @@
 import { Button } from '@clowdy/components/Button';
 import { For } from '@clowdy/components/For';
-import { Loader } from '@clowdy/components/Loader';
 import { Modal, useModalContext } from '@clowdy/components/Modal';
 import { Text } from '@clowdy/components/Text';
 import { mainFolder } from '@clowdy/protocol';
-import { reaction } from 'mobx';
+import { reaction, runInAction } from 'mobx';
 import { useEffect, useMemo, useRef } from 'react';
 
 import { RootStoreProvider, useRootStore } from '../../stores';
@@ -13,6 +12,7 @@ import styles from './ManageWorktrees.module.css';
 import { openRemoveWorktree } from './RemoveWorktreeDialog';
 import { useProjectWorktrees } from './useProjectWorktrees';
 import { WorktreeGroup, type WorktreeRowActions } from './WorktreeRow';
+import { WorktreesSkeleton } from './WorktreesSkeleton';
 import { repositoryGroups } from './worktreeView';
 
 import type { FolderId, FolderWorktrees, ProjectId, WorktreeChat, WorktreeInfo } from '@clowdy/protocol';
@@ -30,7 +30,8 @@ export interface ManageWorktreesProps {
  * page). One group per folder with the folder's own checkout first, then a row for every worktree git lists (`WorktreeRow`), found ones included; a folder that is no
  * repository has no group. A row opens in the programs of the computer, starts a new chat in the worktree (the dialog closes and the new-chat page is shown there), lists the
  * chats that work in it (a click opens one), and removes it through a confirmation (`openRemoveWorktree`), after which the list is read again. No `title` option: the heading
- * is drawn in the dialog, and the window's own close button floats at the corner. The dialog hosts its own React root, so it brings the store to its tree.
+ * is drawn in the dialog, and the window's own close button floats at the corner. While the first read is on its way it shows the table the list will be, in shimmering blocks
+ * (`WorktreesSkeleton`), not a line of text. The dialog hosts its own React root, so it brings the store to its tree.
  */
 export function openManageWorktrees({ root, ...props }: ManageWorktreesProps): void {
     Modal.create({
@@ -54,10 +55,10 @@ function ManageWorktrees({ projectId, folderId }: Omit<ManageWorktreesProps, 'ro
     const list = useRef<HTMLDivElement>(null);
     const scrolled = useRef(false);
 
-    // The window belongs to one project: when the person is elsewhere (another project is shown, or this one was removed) there is nothing here to manage, and the menus
-    // of the rows read the selected project.
+    // The window belongs to one project, which it can be opened for from Settings without the window showing it: it only closes when that project is removed, and there is
+    // nothing here to manage then. Its rows read the project by its id, not the window's selected one.
     useEffect(() => reaction(
-        () => root.selectedProjectId === projectId && root.projects.some(candidate => candidate.id === projectId),
+        () => root.projects.some(candidate => candidate.id === projectId),
         (isHere) => {
             if (!isHere) modal.cancel();
         },
@@ -77,14 +78,22 @@ function ManageWorktrees({ projectId, folderId }: Omit<ManageWorktreesProps, 'ro
     // The two actions that close the window take the person to a chat or to the new-chat page, whose message box takes the focus: the window must not hand it back, after its
     // closing animation, to the button that opened it.
     const leave = () => void modal.cancel({ restoreFocus: false });
+    // Opened from Settings, the window may be for a project the app does not show: the person is taken to it first, with Settings shut, in one step of the history.
+    const show = () => runInAction(() => {
+        root.selectProject(projectId);
+        root.ui.closeSettings();
+    });
 
     const actions: WorktreeRowActions = {
         onNewChat: (folder, worktree) => {
+            show();
             // The main folder's chat has no folder of its own: it follows the main folder, as the sidebar's New chat does. The folder's own checkout is no worktree to choose.
             root.ui.forProject(projectId).openDraft([], folder.id === mainFolder(project).id ? null : folder.id, worktree.main ? null : { mode: 'existing', path: worktree.path });
             leave();
         },
         onOpenChat: (chat: WorktreeChat) => {
+            show();
+
             const state = root.projectState(projectId);
 
             if (state) void openChat(root, state, root.ui.forProject(projectId), chat.id);
@@ -98,7 +107,7 @@ function ManageWorktrees({ projectId, folderId }: Omit<ManageWorktreesProps, 'ro
         <div className={ styles.dialog }>
             <div className={ styles.heading }>
                 <Text variant="heading-3" truncate>Manage worktrees</Text>
-                <Text variant="md" color="secondary">Every worktree of the project's folders, and the chats that work in each</Text>
+                <Text variant="md" color="secondary">Each folder's worktrees and the chats working in them</Text>
             </div>
 
             { failed && groups && (
@@ -109,19 +118,14 @@ function ManageWorktrees({ projectId, folderId }: Omit<ManageWorktreesProps, 'ro
             ) }
 
             <div ref={ list } className={ styles.groups }>
-                { groups === undefined && !failed && (
-                    <div className={ styles.loading }>
-                        <Loader size="xs" />
-                        <Text color="secondary">Loading worktrees…</Text>
-                    </div>
-                ) }
+                { groups === undefined && !failed && <WorktreesSkeleton /> }
                 { groups === undefined && failed && (
                     <div className={ styles.message }>
-                        <Text color="danger" role="alert">Couldn't read the worktrees</Text>
+                        <Text color="danger" role="alert">Couldn't load the worktrees</Text>
                         <Button size="sm" onPress={ () => void reload() }>Try again</Button>
                     </div>
                 ) }
-                { groups?.length === 0 && <Text color="secondary" className={ styles.message }>None of the project's folders is a git repository</Text> }
+                { groups?.length === 0 && <Text color="secondary" className={ styles.message }>No folder of this project is a git repository</Text> }
                 <For each={ groups ?? [] }>
                     {({ group, folder }) => <WorktreeGroup key={ group.folderId } projectId={ projectId } group={ group } folder={ folder } { ...actions } />}
                 </For>

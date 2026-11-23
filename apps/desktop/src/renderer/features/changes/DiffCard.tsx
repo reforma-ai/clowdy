@@ -1,4 +1,5 @@
 import { Button } from '@clowdy/components/Button';
+import { Checkbox } from '@clowdy/components/Checkbox';
 import { CopyButton } from '@clowdy/components/CopyButton';
 import { Spinner } from '@clowdy/components/Spinner';
 import { Text } from '@clowdy/components/Text';
@@ -6,6 +7,7 @@ import { DiffView } from '@clowdy/file-manager/react';
 import { ChevronDown, ChevronRight } from '@clowdy/icons/14';
 import { useEffect, useState, type CSSProperties } from 'react';
 
+import { useAddToChat } from '../chats/useAddToChat';
 import { CARD_TEXT, cardBody, estimatedLines, needsSides, type CardBody } from './cardView';
 import styles from './DiffCard.module.css';
 import { sidesKey } from './fileSides';
@@ -48,6 +50,9 @@ function Note({ children }: { children: string }) {
 
 /** The body of an open card for what is known of its file. */
 function Body({ body, file, onRetry }: { body: CardBody; file: GitChangedFile; onRetry: () => void }) {
+    // Words selected in the diff go to the chat with the file's path and their lines of the new text.
+    const addToChat = useAddToChat(() => file.path);
+
     switch (body.kind) {
         case 'binary':
             return <Note>{ CARD_TEXT.binary }</Note>;
@@ -70,18 +75,19 @@ function Body({ body, file, onRetry }: { body: CardBody; file: GitChangedFile; o
                 </div>
             );
         case 'diff':
-            return <DiffView lazy className={ styles.diff } path={ file.path } original={ body.original } modified={ body.modified } estimatedLines={ estimatedLines(file) } />;
+            return <DiffView lazy className={ styles.diff } path={ file.path } original={ body.original } modified={ body.modified } extensions={ addToChat } estimatedLines={ estimatedLines(file) } />;
     }
 }
 
 /**
  * One changed file of the list: a header with a chevron, the file's path (the folder dimmed, the name strong, cut at the start when it does not fit), what happened to it
- * (added, modified, deleted, renamed, with the old path of a rename under it), its added and removed lines and a button that copies the path; and, when it is open, the diff of its
- * two texts. A card is open until it is shut. Its texts are asked of the cache while the card is near the scroller's edge and open, and not before, and a read that has not begun is
+ * (added, modified, deleted, renamed, with the old path of a rename under it), its added and removed lines, a `Viewed` checkbox and a button that copies the path; and, when it is
+ * open, the diff of its two texts. Ticking `Viewed` shuts the card and unticking opens it (the model decides, and the tick shows before the daemon has answered). A card is open until it is shut. Its texts are asked of the cache while the card is near the scroller's edge and open, and not before, and a read that has not begun is
  * let go of when it stops being near, so a list of hundreds costs what is on screen; the header sticks to the top of the list while its diff scrolls.
  */
 export function DiffCard({ model, file }: { model: PlaceChanges; file: GitChangedFile }) {
     const open = !model.isFolded(file.path);
+    const viewed = model.isViewed(file.path);
     const [element, setElement] = useState<HTMLElement | null>(null);
     const near = useNearViewport(element);
     const request = model.requestOf(file);
@@ -124,6 +130,9 @@ export function DiffCard({ model, file }: { model: PlaceChanges; file: GitChange
                     </span>
                     <LineCounts file={ file } />
                 </Button>
+                <Checkbox size="sm" className={ styles.viewed } isSelected={ viewed } aria-label={ `Viewed ${ file.path }` } onChange={ selected => void model.setViewed(file, selected) }>
+                    <Text variant="xs" color="secondary">Viewed</Text>
+                </Checkbox>
                 <CopyButton value={ file.path } size="sm" variant="filling" color="secondary" tooltip="Copy path" aria-label={ `Copy the path of ${ file.path }` } />
             </div>
             { open && (

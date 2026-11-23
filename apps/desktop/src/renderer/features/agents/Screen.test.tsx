@@ -57,6 +57,8 @@ const draw = (before?: () => void) => act(async () => {
     reactRoot.render(<RootStoreProvider value={ store }><Screen /></RootStoreProvider>);
 });
 
+/** The heading of the one folder of the fixture project's group: a list is grouped by folder even for a project of one folder. */
+const MAIN_GROUP = '@folder:fld_car_rental';
 const rowKeys = () => [...container.querySelectorAll('[role="row"]')].map(row => row.getAttribute('data-key'));
 const rowOf = (key: string) => container.querySelector<HTMLElement>(`[role="row"][data-key="${ key }"]`)!;
 const isSelected = (key: string) => rowOf(key).hasAttribute('data-selected');
@@ -94,7 +96,7 @@ afterEach(() => {
 describe('the list', () => {
     it('starts with the new-chat row, then the chats, and has no row for a run', () => {
         // The orchestrator is the chat, and a native sub-agent is a card on the call that started it: neither is a row.
-        expect(rowKeys()).toEqual(['@new-chat', 'c-1', 'c-4', 'c-6', 'c-5', 'c-3', 'c-2']);
+        expect(rowKeys()).toEqual(['@new-chat', MAIN_GROUP, 'c-1', 'c-4', 'c-6', 'c-5', 'c-3', 'c-2']);
     });
 
     it('marks a chat that started with the provider it runs on, and one that has not with the speech bubble', async () => {
@@ -318,7 +320,8 @@ describe('the new-chat row', () => {
         await vi.waitFor(() => expect(store.selectedProject?.status).toBe('ready'));
         await draw();
 
-        expect(rowKeys()).toEqual(['@new-chat']);
+        // The new-chat row, and the folder's group with its note that it has no chat.
+        expect(rowKeys()).toEqual(['@new-chat', expect.stringMatching(/^@folder:/), expect.stringMatching(/^@empty:/)]);
         expect(isSelected('@new-chat')).toBe(true);
         expect(field()).not.toBeNull();
     });
@@ -365,11 +368,12 @@ describe('grouped by folder', () => {
         return data;
     }
 
-    it('offers the switch only to a project of several folders, on until it is turned off', async () => {
-        // The fixture project has one folder.
-        expect(await filtersMenu()).toEqual(['Show finished sub-threads', 'Last activity', 'Created']);
+    it('offers the switch to a project of one folder as well, on until it is turned off', async () => {
+        // A project that kept no choice groups, whatever number of folders it has.
+        expect(await filtersMenu()).toEqual(['Show finished sub-threads', 'Group chats by folder', 'Last activity', 'Created']);
+        expect(menuItem('Group chats by folder').getAttribute('aria-checked')).toBe('true');
+        expect(rowKeys()).toContain(MAIN_GROUP);
 
-        // A project that kept no choice groups.
         await restart({ grouping: null });
 
         expect(await filtersMenu()).toEqual(['Show finished sub-threads', 'Group chats by folder', 'Last activity', 'Created']);
@@ -383,8 +387,12 @@ describe('grouped by folder', () => {
         expect(rowKeys()).not.toContain(head(MAIN));
     });
 
-    it('keeps the list flat in a project of one folder, whatever was kept for it', async () => {
+    it('groups a project of one folder too, and keeps the list flat once the switch is off', async () => {
         await draw(() => ui().setGroupByFolder(true));
+
+        expect(rowKeys()).toEqual(['@new-chat', MAIN_GROUP, 'c-1', 'c-4', 'c-6', 'c-5', 'c-3', 'c-2']);
+
+        await draw(() => ui().setGroupByFolder(false));
 
         expect(rowKeys()).toEqual(['@new-chat', 'c-1', 'c-4', 'c-6', 'c-5', 'c-3', 'c-2']);
     });
@@ -424,15 +432,15 @@ describe('grouped by folder', () => {
             // The press shows the new chat of the folder, which is then the folder the window works in: the menu can open it in the Files tab and the terminal.
             await press(name(API.id)!);
             expect([ui().draft, ui().draftFolderId]).toEqual([true, API.id]);
-            // A folder that is a repository has Manage worktrees above them.
-            expect(menuItems()).toEqual(['Manage worktrees', 'Open in Files', 'Open in Terminal', 'Copy path', 'Open in…']);
+            // Manage worktrees… is the last item, there from the first frame.
+            expect(menuItems()).toEqual(['Open in Files', 'Open in Terminal', 'Copy path', 'Open in…', 'Manage worktrees…']);
 
             // The main folder's new chat has no folder of its own. The menu holds the page while it is open: this one is a fresh start.
             await restart();
             await draw(() => ui().openChat('c-2'));
             await press(name(MAIN)!);
             expect([ui().draft, ui().draftFolderId]).toEqual([true, null]);
-            expect(menuItems()).toEqual(['Manage worktrees', 'Open in Files', 'Open in Terminal', 'Copy path', 'Open in…']);
+            expect(menuItems()).toEqual(['Open in Files', 'Open in Terminal', 'Copy path', 'Open in…', 'Manage worktrees…']);
             // It folds nothing.
             expect(ui().collapsedFolders).toEqual([]);
         }
@@ -459,7 +467,7 @@ describe('grouped by folder', () => {
 
             // The folder is there, and the page is not taken from the chat: nothing to start in a folder that is gone.
             expect(ui().draft).toBe(false);
-            expect(menuItems()).toEqual(['Locate…', 'Remove from project', 'Copy path', 'Open in…']);
+            expect(menuItems()).toEqual(['Locate…', 'Remove from project', 'Copy path', 'Open in…', 'Manage worktrees…']);
 
             await press(item('Locate…'));
             await vi.waitFor(() => expect(store.projects.find(project => project.id === FIXTURE_PROJECT_ID)?.folders[1]).toEqual({ id: API.id, path: '/Users/dev/api-moved' }));
@@ -1110,14 +1118,14 @@ describe('threads', () => {
         expect(ui().expandedChats).toEqual(['c-6']);
         await draw();
 
-        expect(rowKeys()).toEqual(['@new-chat', 'c-1', 'c-4', 'c-6', 'c-6a', 'c-6b', 'c-6c', 'c-6e', 'c-5', 'c-3', 'c-2']);
+        expect(rowKeys()).toEqual(['@new-chat', MAIN_GROUP, 'c-1', 'c-4', 'c-6', 'c-6a', 'c-6b', 'c-6c', 'c-6e', 'c-5', 'c-3', 'c-2']);
         expect(['c-6', 'c-6a', 'c-6e'].map(depthOf)).toEqual(['0', '1', '1']);
         expect(foldOf('c-6')?.getAttribute('aria-expanded')).toBe('true');
 
         await act(async () => foldOf('c-6a')!.click());
         await draw();
 
-        expect(rowKeys().slice(3, 6)).toEqual(['c-6', 'c-6a', 'c-6a1']);
+        expect(rowKeys().slice(4, 7)).toEqual(['c-6', 'c-6a', 'c-6a1']);
         expect(depthOf('c-6a1')).toBe('2');
 
         // Folding the chat hides every thread below it, the thread's own threads too.
@@ -1154,7 +1162,7 @@ describe('threads', () => {
         await press(container.querySelector<HTMLElement>('button[aria-label="Filters"]')!);
 
         expect(menuItem('Show finished sub-threads').getAttribute('aria-checked')).toBe('true');
-        expect([...document.body.querySelectorAll('[role^="menuitem"]')].map(row => row.textContent)).toEqual(['Show finished sub-threads', 'Last activity', 'Created']);
+        expect([...document.body.querySelectorAll('[role^="menuitem"]')].map(row => row.textContent)).toEqual(['Show finished sub-threads', 'Group chats by folder', 'Last activity', 'Created']);
         // A section that holds one check has no header; only the order does.
         expect([...document.body.querySelectorAll('[role="menu"] header')].map(header => header.textContent)).toEqual(['Sort by']);
 
@@ -1208,7 +1216,7 @@ describe('threads', () => {
         // The thread rests for its background work while its agent asks: its card is the only sign (`Run.awaitingUser`).
         await draw(() => project().runs.set('r-orch-6e', { ...project().runs.get('r-orch-6e')!, awaitingUser: true }));
 
-        expect(rowKeys()).toEqual(['@new-chat', 'c-1', 'c-4', 'c-6', 'c-6e', 'c-5', 'c-3', 'c-2']);
+        expect(rowKeys()).toEqual(['@new-chat', MAIN_GROUP, 'c-1', 'c-4', 'c-6', 'c-6e', 'c-5', 'c-3', 'c-2']);
         expect(['c-6', 'c-6e'].map(depthOf)).toEqual(['0', '1']);
         expect(foldOf('c-6')?.getAttribute('aria-expanded')).toBe('false');
         expect(dotOf('c-6')).toBe('A thread is waiting for you');
@@ -1217,7 +1225,7 @@ describe('threads', () => {
         // Opening the fold lists every thread, the asking one in its place.
         await act(async () => foldOf('c-6')!.click());
         await draw();
-        expect(rowKeys()).toEqual(['@new-chat', 'c-1', 'c-4', 'c-6', 'c-6a', 'c-6b', 'c-6c', 'c-6e', 'c-5', 'c-3', 'c-2']);
+        expect(rowKeys()).toEqual(['@new-chat', MAIN_GROUP, 'c-1', 'c-4', 'c-6', 'c-6a', 'c-6b', 'c-6c', 'c-6e', 'c-5', 'c-3', 'c-2']);
 
         // Decided: the thread goes back behind the fold, and the chat's dot to its threads working.
         await act(async () => foldOf('c-6')!.click());

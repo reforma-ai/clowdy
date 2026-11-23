@@ -1,20 +1,37 @@
 import { describe, expect, it } from 'vitest';
 
-import { branchWarning, changesLabel, discardLabel, lockTip, mergedMark, removalPlan, removeHint, removeNote, repositoryGroups } from './worktreeView';
+import { branchWarning, changesLabel, discardLabel, lockTip, mergedMark, removalPlan, removeHint, repositoryGroups, worktreeMark } from './worktreeView';
 
 import type { FolderWorktrees, ProjectFolder } from '@clowdy/protocol';
 
 describe('changesLabel', () => {
-    it('says a clean tree is clean, and else how many files are changed', () => {
-        expect(changesLabel(0)).toBe('Clean');
-        expect(changesLabel(1)).toBe('1 changed');
-        expect(changesLabel(12)).toBe('12 changed');
+    it('says a tree with nothing changed has no local changes, and else how many changes', () => {
+        expect(changesLabel(0)).toBe('No local changes');
+        expect(changesLabel(1)).toBe('1 change');
+        expect(changesLabel(12)).toBe('12 changes');
+    });
+});
+
+describe('worktreeMark', () => {
+    const plain = { main: false, missing: false, merged: false, base: 'origin/main' };
+
+    it('gives the one badge that matters most: the folder\'s own checkout, then gone from the disk, then locked, then the work in the base', () => {
+        expect(worktreeMark({ ...plain, main: true, locked: '', missing: true })).toMatchObject({ label: 'Project checkout' });
+        expect(worktreeMark({ ...plain, missing: true, locked: 'on a drive' })).toEqual({ label: 'Missing on disk', tip: 'Git lists it, but its folder is gone', color: 'warning' });
+        expect(worktreeMark({ ...plain, locked: 'claude agent agent-a58e (pid 42120)', merged: false })).toEqual({ label: 'Locked', tip: 'Git has it locked: claude agent agent-a58e (pid 42120)' });
+        expect(worktreeMark({ ...plain })).toMatchObject({ label: 'Not merged', color: 'warning' });
+        expect(worktreeMark({ ...plain, merged: true })).toMatchObject({ label: 'Merged', color: 'success' });
+    });
+
+    it('counts a lock with no reason as a lock, and says nothing for a worktree with no base to compare with', () => {
+        expect(worktreeMark({ ...plain, locked: '' })).toEqual({ label: 'Locked', tip: 'Git has it locked' });
+        expect(worktreeMark({ main: false, missing: false })).toBeUndefined();
     });
 });
 
 describe('mergedMark', () => {
     it('says a worktree whose work is in the base is merged, and names the base', () => {
-        expect(mergedMark({ main: false, merged: true, base: 'origin/main' })).toEqual({ label: 'Merged', tip: 'Its work is in origin/main', color: 'success' });
+        expect(mergedMark({ main: false, merged: true, base: 'origin/main' })).toEqual({ label: 'Merged', tip: 'Its commits are in origin/main', color: 'success' });
     });
 
     it('says one whose work is not is not merged, and that a squash merge reads like that', () => {
@@ -22,7 +39,7 @@ describe('mergedMark', () => {
 
         expect(mark.label).toBe('Not merged');
         expect(mark.color).toBe('warning');
-        expect(mark.tip).toBe('Its work is not in origin/main as last fetched. A squash merge shows as not merged.');
+        expect(mark.tip).toBe('Its commits are not in origin/main as last fetched. A squash merge shows as not merged.');
     });
 
     it('has no mark for the folder\'s own checkout, or when no base resolves', () => {
@@ -47,30 +64,6 @@ describe('removeHint', () => {
     });
 });
 
-describe('removeNote', () => {
-    const chat = (id: string) => ({ id, title: id, archived: false });
-
-    it('says in a line why Remove is off, the lock with git\'s own words in brackets', () => {
-        expect(removeNote({ main: false, blocked: 'locked', locked: 'on an external drive', chats: [] })).toBe('Can\'t remove: git has it locked (on an external drive)');
-        expect(removeNote({ main: false, blocked: 'locked', locked: '', chats: [] })).toBe('Can\'t remove: git has it locked');
-        expect(removeNote({ main: false, blocked: 'main', chats: [] })).toBe('Can\'t remove: it is the repository\'s own working tree');
-    });
-
-    it('names the chats as the reason, in the singular for one and the plural for more', () => {
-        expect(removeNote({ main: false, blocked: 'chats', chats: [chat('c-1')] })).toBe('Can\'t remove while this chat works in it');
-        expect(removeNote({ main: false, blocked: 'chats', chats: [chat('c-1'), chat('c-2')] })).toBe('Can\'t remove while these chats work in it');
-    });
-
-    it('has none for a worktree nothing stops, and for the folder\'s own checkout, which has no Remove', () => {
-        expect(removeNote({ main: false, chats: [] })).toBeUndefined();
-        expect(removeNote({ main: true, blocked: 'main', chats: [] })).toBeUndefined();
-    });
-
-    it('ends no line with a period', () => {
-        for (const blocked of ['locked', 'main', 'chats'] as const) expect(removeNote({ main: false, blocked, locked: 'on a drive', chats: [chat('c-1')] })).not.toMatch(/\.$/);
-    });
-});
-
 describe('discardLabel', () => {
     it('counts the changes, git\'s status entries, and does not call them files', () => {
         expect(discardLabel(1)).toBe('Discard 1 change and remove');
@@ -89,14 +82,14 @@ describe('removalPlan', () => {
 
     it('leaves the branch unticked when its work is not in the base, and says so', () => {
         expect(removalPlan({ ...clean, merged: false }).branch).toEqual({ name: 'feature/done', selected: false, standing: 'unmerged' });
-        expect(branchWarning({ name: 'x', selected: false, standing: 'unmerged' })).toBe('Its changes are lost when the branch goes');
+        expect(branchWarning({ name: 'x', selected: false, standing: 'unmerged' })).toBe('Its unmerged commits are lost with the branch');
     });
 
     it('leaves it unticked when no base says whether it is merged, and says so too', () => {
         const { merged: _merged, ...unknown } = clean;
 
         expect(removalPlan(unknown).branch).toEqual({ name: 'feature/done', selected: false, standing: 'unknown' });
-        expect(branchWarning({ name: 'x', selected: false, standing: 'unknown' })).toContain('Not compared with a base');
+        expect(branchWarning({ name: 'x', selected: false, standing: 'unknown' })).toContain('Can\'t tell whether its commits are merged');
         expect(branchWarning({ name: 'x', selected: true, standing: 'merged' })).toBeUndefined();
     });
 
@@ -114,13 +107,13 @@ describe('removalPlan', () => {
     });
 
     it('asks for the red confirmation, with the number of changes, when something is not committed', () => {
-        expect(removalPlan({ ...clean, changes: 1 })).toMatchObject({ kind: 'discard', confirmLabel: 'Discard 1 change and remove', notes: ['1 change that is not committed is deleted for good with it'] });
-        expect(removalPlan({ ...clean, changes: 4 })).toMatchObject({ kind: 'discard', confirmLabel: 'Discard 4 changes and remove', notes: ['4 changes that are not committed are deleted for good with it'] });
+        expect(removalPlan({ ...clean, changes: 1 })).toMatchObject({ kind: 'discard', confirmLabel: 'Discard 1 change and remove', notes: ['1 uncommitted change will be deleted for good'] });
+        expect(removalPlan({ ...clean, changes: 4 })).toMatchObject({ kind: 'discard', confirmLabel: 'Discard 4 changes and remove', notes: ['4 uncommitted changes will be deleted for good'] });
     });
 
     it('asks for it for an initialised submodule too, naming it, and counts no change when there is none', () => {
         expect(removalPlan({ ...clean, submodules: true })).toMatchObject({ kind: 'discard', confirmLabel: 'Remove with submodules' });
-        expect(removalPlan({ ...clean, changes: 2, submodules: true }).notes).toContain('Its submodules are checked out and go with it');
+        expect(removalPlan({ ...clean, changes: 2, submodules: true }).notes).toContain('Its checked-out submodules are removed with it');
         expect(removalPlan({ ...clean, changes: 2, submodules: true }).confirmLabel).toBe('Discard 2 changes and remove');
     });
 

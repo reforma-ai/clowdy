@@ -1,27 +1,39 @@
+/*
+ * Three columns: the history, the middle, the usage badges. The middle is as wide as the search button is (up to a field's width) and the sides share what is left, each at least as
+ * wide as what it holds, so the middle is in the middle of the band, under the middle of the plate below, and gives way only when a side needs the room. The insets that keep the
+ * window's controls clear are the sides' own padding and not the band's, or they would move the middle off the band's center.
+ */
 .band {
-    display: flex;
+    display: grid;
     flex-shrink: 0;
+    grid-template-columns: minmax(max-content, 1fr) minmax(0, 28rem) minmax(max-content, 1fr);
     align-items: center;
-    gap: var(--spacing-md);
+    column-gap: var(--spacing-md);
     height: var(--title-band-height);
-    padding-left: calc(var(--titlebar-inset) + var(--spacing-lg));
-    /*
-     * The band stops where the rail begins, so on macOS the usage status ends in line with the right edge of the plate below. The Windows caption buttons are wider than the
-     * rail and cover a part of the band as well: it keeps clear of that part, with a gap (`sign` is 1 where the buttons are and 0 where they are not).
-     */
-    padding-right: max(0px, calc(var(--titlebar-inset-end) - var(--side-rail-width) + var(--spacing-lg) * sign(var(--titlebar-inset-end))));
 }
 
 .history {
     display: flex;
-    flex-shrink: 0;
+    grid-column: 1;
     align-items: center;
+    padding-left: calc(var(--titlebar-inset) + var(--spacing-lg));
 }
 
-/* What sits at the right edge: the usage badges. */
+/* What sits in the middle: the search button, which fills it. The cell is there while a project's screen is not in use, so the badges stay where they are. */
+.center {
+    display: flex;
+    grid-column: 2;
+    min-width: 0;
+}
+
+/*
+ * What sits at the right edge: the usage badges. The band stops where the rail begins, so on macOS the usage status ends in line with the right edge of the plate below. The Windows
+ * caption buttons are wider than the rail and cover a part of the band as well: it keeps clear of that part, with a gap (`sign` is 1 where the buttons are and 0 where they are not).
+ */
 .end {
     display: flex;
-    flex-shrink: 0;
+    grid-column: 3;
     align-items: center;
-    margin-left: auto;
+    justify-self: end;
+    padding-right: max(0px, calc(var(--titlebar-inset-end) - var(--side-rail-width) + var(--spacing-lg) * sign(var(--titlebar-inset-end))));
 }

@@ -125,7 +125,7 @@ export function openRemoveWorktree({ root, projectId, group, worktree, reload }:
 
             // A refusal means the row is not what the confirmation showed. The reason is toasted and the confirmation closes, so the next Remove asks about the row as the list
             // now has it (a thrown message would keep this stale one open).
-            if (!result.ok) toast.error({ message: result.error.message });
+            if (!result.ok) toast.error({ title: 'Couldn\'t remove the worktree', message: result.error.message });
         },
     }, { width: 440 });
 }

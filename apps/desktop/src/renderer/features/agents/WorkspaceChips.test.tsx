@@ -677,12 +677,12 @@ describe('Manage worktrees…', () => {
             await new Promise(resolve => setTimeout(resolve, 400));
         });
 
-        expect(document.body.textContent).toContain('Every worktree of the project');
+        expect(document.body.textContent).toContain('Each folder\'s worktrees');
         expect(document.activeElement).not.toBe(chip());
 
         await key(document.activeElement as HTMLElement, 'Escape', 'Escape');
         await vi.waitFor(() => expect(document.activeElement).toBe(chip()));
-        expect(document.body.textContent).not.toContain('Every worktree of the project');
+        expect(document.body.textContent).not.toContain('Each folder\'s worktrees');
     });
 
     it('is in the menu of a repository with no commit too, where a new worktree is off', async () => {

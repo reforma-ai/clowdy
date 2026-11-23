@@ -68,40 +68,48 @@ afterEach(() => {
 });
 
 describe('the menu of a folder group\'s title', () => {
-    it('has Manage worktrees first when the folder is a repository, and opens the dialog on that folder', async () => {
+    it('has Manage worktrees last, under a separator, and opens the dialog on that folder', async () => {
         await draw(API);
 
-        // Above the folder's own items, whatever those are (Open in Files and Terminal come with the window's place being the folder, which the list sets as the menu opens).
-        expect(items().map(row => row.textContent)).toEqual(['Manage worktrees', 'Copy path', 'Open in…']);
+        // After the folder's own items, whatever those are (Open in Files and Terminal come with the window's place being the folder, which the list sets as the menu opens).
+        expect(items().map(row => row.textContent)).toEqual(['Copy path', 'Open in…', 'Manage worktrees…']);
+        // A separator stands right before it: the last one in the menu comes before the item.
+        const separators = [...document.body.querySelectorAll('[role="menu"][aria-label="Open folder"] [role="separator"]')];
 
-        await press(items()[0]!);
+        expect(separators.at(-1)!.compareDocumentPosition(items().at(-1)!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+        await press(items().at(-1)!);
 
         expect(openManageWorktrees).toHaveBeenCalledExactlyOnceWith({ root: store, projectId: FIXTURE_PROJECT_ID, folderId: API.id });
     });
 
     it('names the main folder the same way, by its own id', async () => {
         await draw(CAR_RENTAL);
-        await press(items().find(row => row.textContent === 'Manage worktrees')!);
+        await press(items().find(row => row.textContent === 'Manage worktrees…')!);
 
         expect(openManageWorktrees).toHaveBeenCalledExactlyOnceWith({ root: store, projectId: FIXTURE_PROJECT_ID, folderId: CAR_RENTAL.id });
     });
 
-    it('has no such item for a folder that is no repository', async () => {
+    it('has the item in the menu\'s first frame, before the folder\'s git has answered, so the menu does not change as it opens', async () => {
+        window.desktop = { getOpenApps: async () => APPS, openPath: vi.fn(async () => undefined) } as never;
+        store.selectProject(FIXTURE_PROJECT_ID);
+        act(() => root.render(<RootStoreProvider value={ store }><GroupFolderName name="car-rental-api" folder={ API } missing={ false } /></RootStoreProvider>));
+        // No wait for anything: the press opens the menu, and the item is in it at once.
+        act(() => void name().click());
+
+        expect(items().map(row => row.textContent)).toContain('Manage worktrees…');
+    });
+
+    it('has it for a folder that is no repository too, since the dialog is the project\'s and says when none of its folders is one', async () => {
         await draw({ ...FIXTURE_NOTES_FOLDER });
 
-        expect(items().map(row => row.textContent)).toEqual(['Copy path', 'Open in…']);
+        expect(items().map(row => row.textContent)).toEqual(['Copy path', 'Open in…', 'Manage worktrees…']);
     });
 
-    it('has none for a folder that is gone from the disk, whatever the last read of its git said', async () => {
+    it('has it for a folder that is gone from the disk, under the note and the repair, and for the personal space', async () => {
         await draw(API, FIXTURE_PROJECT_ID, true);
 
-        expect(items().map(row => row.textContent)).not.toContain('Manage worktrees');
+        expect(items().at(-1)!.textContent).toBe('Manage worktrees…');
         expect(document.body.textContent).toContain('This folder no longer exists');
-    });
-
-    it('has none for the personal space, whose folder git does not know', async () => {
-        await draw({ id: 'fld_personal', path: '/Users/dev/Clowdy/Personal' }, FIXTURE_PERSONAL_PROJECT_ID);
-
-        expect(items().map(row => row.textContent)).not.toContain('Manage worktrees');
     });
 });

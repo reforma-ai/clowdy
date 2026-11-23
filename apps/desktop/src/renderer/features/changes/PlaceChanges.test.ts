@@ -8,7 +8,7 @@ import { PlaceFacts } from './gitFacts';
 import { listStateOf } from './listState';
 import { PlaceChanges, placeChangesOf, type RepositoryChanges } from './PlaceChanges';
 
-import type { GitBase, GitChangedFile, GitChanges, GitFileSides, GitScope, GitStatus } from '@clowdy/protocol';
+import type { GitBase, GitChangedFile, GitChanges, GitFileSides, GitScope, GitStatus, GitViewedMark } from '@clowdy/protocol';
 
 const KEY = { projectId: 'p1', folderId: 'f1', workspaceId: 'w1' };
 const NEWEST = FIXTURE_GIT_COMMITS[0]!;
@@ -43,11 +43,17 @@ function transportOf(answers: Partial<Record<GitScope, GitChanges | (() => GitCh
         return typeof answer === 'function' ? answer() : answer;
     });
     const fileRead = vi.fn(async (_project: string, _place: unknown, _scope: GitScope, _path: string, _oldPath?: string, _from?: string): Promise<GitFileSides> => ({ state: 'text', original: 'a\n', modified: 'b\n', revision: 'r' }));
+    const viewedRead = vi.fn(async (_project: string, _place: unknown, _scope: GitScope): Promise<GitViewedMark[]> => []);
+    const viewedSet = vi.fn(async (_project: string, _place: unknown, _scope: GitScope, path: string, revision: string): Promise<GitViewedMark> => ({ path, revision }));
+    const viewedClear = vi.fn(async (_project: string, _place: unknown, _scope: GitScope, _path: string): Promise<void> => undefined);
 
     return {
         getGitStatus: vi.fn(async () => status),
         getGitChanges: changes,
         getGitFile: fileRead,
+        getGitViewed: viewedRead,
+        setGitViewed: viewedSet,
+        clearGitViewed: viewedClear,
         getGitPullRequest: vi.fn(async () => ({ isRepository: true as const, access: 'ready' as const })),
     };
 }
@@ -374,6 +380,234 @@ describe('the model of a place', () => {
         placeChangesOf(transport, facts).setFilter('*.md');
 
         expect(placeChangesOf(transport, facts)).toMatchObject({ scope: 'uncommitted', filter: '*.md' });
+    });
+});
+
+describe('the viewed files', () => {
+    const files = [file('docs/guide.md'), file('src/a.ts'), file('src/b.ts'), file('README.md')];
+    const PLACE = { folderId: 'f1', workspaceId: 'w1' };
+
+    /** A model whose list is `files` and whose daemon already holds `marks` for the scope `all`, read once. */
+    async function viewedModel(marks: GitViewedMark[] = [], answers: Partial<Record<GitScope, GitViewedMark[]>> = {}) {
+        const transport = transportOf({ all: list('all', files), uncommitted: list('uncommitted', files.slice(0, 2)) });
+
+        transport.getGitViewed.mockImplementation(async (_project, _place, scope) => (scope === 'all' ? marks : answers[scope] ?? []));
+
+        const { model } = await modelOf(transport);
+
+        model.sync(1);
+        await tick();
+
+        return { model, transport };
+    }
+
+    it('are read with the list of the scope that is read, again with each round of the facts and with a retry, and not for a folder that is no repository', async () => {
+        const { model, transport } = await viewedModel([{ path: 'src/a.ts', revision: 'r1' }]);
+
+        expect(transport.getGitViewed).toHaveBeenCalledTimes(1);
+        expect(transport.getGitViewed).toHaveBeenCalledWith('p1', PLACE, 'all');
+        expect(model.isViewed('src/a.ts')).toBe(true);
+
+        // The same round again reads nothing; a new round reads the marks with the list.
+        model.sync(1);
+        await tick();
+        expect(transport.getGitViewed).toHaveBeenCalledTimes(1);
+        model.sync(2);
+        await tick();
+        expect(transport.getGitViewed).toHaveBeenCalledTimes(2);
+        model.reload();
+        await tick();
+        expect(transport.getGitViewed).toHaveBeenCalledTimes(3);
+
+        model.setScope('uncommitted');
+        model.sync(2);
+        await tick();
+        expect(transport.getGitViewed).toHaveBeenLastCalledWith('p1', PLACE, 'uncommitted');
+        // Another scope has its own marks, and none here.
+        expect(model.viewedCount).toBe(0);
+
+        const none = transportOf({ all: list('all', []) }, { isRepository: false });
+        const { model: plain } = await modelOf(none);
+
+        plain.sync(1);
+        await tick();
+        expect(none.getGitViewed).not.toHaveBeenCalled();
+    });
+
+    it('count a file as viewed only while its revision is the one it was marked at', async () => {
+        const { model } = await viewedModel([{ path: 'src/a.ts', revision: 'r1' }, { path: 'src/b.ts', revision: 'old' }]);
+
+        expect([...model.viewedPaths]).toEqual(['src/a.ts']);
+        expect(model.viewedCount).toBe(1);
+        expect(model.isViewed('src/b.ts')).toBe(false);
+        expect(model.isViewed('nothing.ts')).toBe(false);
+    });
+
+    it('make the card of a viewed file shut until the person opens it, and open again once the list says the file was edited', async () => {
+        let current = list('all', files);
+        const transport = transportOf({ all: () => current });
+
+        transport.getGitViewed.mockImplementation(async () => [{ path: 'src/a.ts', revision: 'r1' }]);
+
+        const { model } = await modelOf(transport);
+
+        model.sync(1);
+        await tick();
+
+        expect(model.isFolded('src/a.ts')).toBe(true);
+        expect(model.isFolded('src/b.ts')).toBe(false);
+        expect(model.folded.has('src/a.ts')).toBe(false);
+
+        model.toggleFolded('src/a.ts');
+        expect(model.isFolded('src/a.ts')).toBe(false);
+        model.toggleFolded('src/a.ts');
+        expect(model.isFolded('src/a.ts')).toBe(true);
+
+        // The file is edited, and its list is read again: the mark is stale, so the card is as any card is: open.
+        current = list('all', files.map(entry => (entry.path === 'src/a.ts' ? { ...entry, revision: 'r2' } : entry)));
+        model.sync(2);
+        await tick();
+        expect(model.isViewed('src/a.ts')).toBe(false);
+        expect(model.isFolded('src/a.ts')).toBe(false);
+    });
+
+    it('shut a card when its file is ticked and open it when it is unticked, before the daemon has answered, and a card the person shut stays shut on a tick', async () => {
+        const { model, transport } = await viewedModel([]);
+        const answer: Array<() => void> = [];
+
+        transport.setGitViewed.mockImplementationOnce(() => new Promise<GitViewedMark>((resolve) => {
+            answer.push(() => resolve({ path: 'src/a.ts', revision: 'r1' }));
+        }));
+
+        const ticking = model.setViewed(files[1]!, true);
+
+        expect(model.isViewed('src/a.ts')).toBe(true);
+        expect(model.isFolded('src/a.ts')).toBe(true);
+        expect(transport.getGitViewed).toHaveBeenCalledTimes(1);
+
+        answer[0]!();
+        await ticking;
+        expect(model.isViewed('src/a.ts')).toBe(true);
+        expect(model.isFolded('src/a.ts')).toBe(true);
+
+        await model.setViewed(files[1]!, false);
+        expect(model.isViewed('src/a.ts')).toBe(false);
+        expect(model.isFolded('src/a.ts')).toBe(false);
+        expect(transport.clearGitViewed).toHaveBeenCalledWith('p1', PLACE, 'all', 'src/a.ts');
+
+        // A card the person had shut is still shut when its file is ticked, and open when it is unticked.
+        model.toggleFolded('src/b.ts');
+        await model.setViewed(files[2]!, true);
+        expect(model.isFolded('src/b.ts')).toBe(true);
+        await model.setViewed(files[2]!, false);
+        expect(model.isFolded('src/b.ts')).toBe(false);
+    });
+
+    it('put the tick and the card back as they were when the daemon refuses, and say so', async () => {
+        const { model, transport } = await viewedModel([{ path: 'src/b.ts', revision: 'r1' }]);
+
+        transport.setGitViewed.mockRejectedValueOnce(new TransportError('The worktree is missing', 503));
+        await model.setViewed(files[1]!, true);
+
+        expect(model.isViewed('src/a.ts')).toBe(false);
+        expect(model.isFolded('src/a.ts')).toBe(false);
+        expect(model.viewed.error).toBe('The worktree is missing');
+
+        // The same for a mark that is cleared: it stays, and its card is as the person had left it (opened).
+        model.reveal('src/b.ts');
+        expect(model.isFolded('src/b.ts')).toBe(false);
+        transport.clearGitViewed.mockRejectedValueOnce(new TransportError('no', 503));
+        await model.setViewed(files[2]!, false);
+        expect(model.isViewed('src/b.ts')).toBe(true);
+        expect(model.isFolded('src/b.ts')).toBe(false);
+    });
+
+    it('send the mark of the scope that is read, with the revision of the file in that scope\'s list', async () => {
+        const { model, transport } = await viewedModel();
+
+        model.setScope('uncommitted');
+        model.sync(1);
+        await tick();
+        await model.setViewed(file('src/a.ts', 'rev-u'), true);
+
+        expect(transport.setGitViewed).toHaveBeenCalledWith('p1', PLACE, 'uncommitted', 'src/a.ts', 'rev-u');
+    });
+
+    it('leave the files out of the list and the sidebar while they are hidden, and bring them back, the filter counting as before', async () => {
+        const { model } = await viewedModel([{ path: 'src/a.ts', revision: 'r1' }, { path: 'README.md', revision: 'r1' }]);
+
+        expect(model.files.map(entry => entry.path)).toEqual(['docs/guide.md', 'src/a.ts', 'src/b.ts', 'README.md']);
+
+        model.setHideViewed(true);
+        expect(model.files.map(entry => entry.path)).toEqual(['docs/guide.md', 'src/b.ts']);
+        expect(model.matchingFiles).toHaveLength(4);
+        // The count is of the list, hidden or not.
+        expect(model.viewedCount).toBe(2);
+
+        model.setFilter('src/**');
+        expect(model.files.map(entry => entry.path)).toEqual(['src/b.ts']);
+
+        model.setHideViewed(false);
+        expect(model.files.map(entry => entry.path)).toEqual(['src/a.ts', 'src/b.ts']);
+    });
+
+    it('drop a card from the list as soon as its file is ticked while they are hidden, and show it again when the tick is taken back', async () => {
+        const { model } = await viewedModel();
+
+        model.setHideViewed(true);
+        expect(model.files).toHaveLength(4);
+
+        const ticking = model.setViewed(files[3]!, true);
+
+        expect(model.files.map(entry => entry.path)).toEqual(['docs/guide.md', 'src/a.ts', 'src/b.ts']);
+        await ticking;
+        await model.setViewed(files[3]!, false);
+        expect(model.files).toHaveLength(4);
+    });
+
+    it('say every file is viewed, and not that the filter lets nothing through, when the hidden files are all there is', async () => {
+        const { model } = await viewedModel(files.map(entry => ({ path: entry.path, revision: entry.revision })));
+
+        expect(listStateOf(model)).toEqual({ kind: 'files' });
+
+        model.setHideViewed(true);
+        expect(model.files).toEqual([]);
+        expect(listStateOf(model)).toEqual({ kind: 'allViewed' });
+
+        // A filter that matches nothing is that, whatever is hidden.
+        model.setFilter('*.rs');
+        expect(listStateOf(model)).toEqual({ kind: 'filtered' });
+
+        model.setFilter('');
+        model.setHideViewed(false);
+        expect(listStateOf(model)).toEqual({ kind: 'files' });
+    });
+
+    it('shut and open the viewed cards with the others when asked to, and start a tab with the viewed ones shut and the rest open', async () => {
+        const { model } = await viewedModel([{ path: 'src/a.ts', revision: 'r1' }]);
+
+        expect([model.allFolded, model.noneFolded]).toEqual([false, false]);
+
+        model.unfoldAll();
+        expect([model.isFolded('src/a.ts'), model.noneFolded]).toEqual([false, true]);
+
+        model.foldAll();
+        expect([model.isFolded('src/b.ts'), model.allFolded]).toEqual([true, true]);
+
+        model.toggleFolded('docs/guide.md');
+        model.resetFolds();
+        expect([model.isFolded('docs/guide.md'), model.isFolded('src/a.ts'), model.isFolded('src/b.ts')]).toEqual([false, true, false]);
+    });
+
+    it('stay out of the files\' texts: ticking a file reads no file and changes no request of the cache', async () => {
+        const { model, transport } = await viewedModel();
+        const before = model.requestOf(files[1]!);
+
+        await model.setViewed(files[1]!, true);
+
+        expect(transport.getGitFile).not.toHaveBeenCalled();
+        expect(model.requestOf(files[1]!)).toEqual(before);
+        expect(model.sides.entryOf(before)).toBeUndefined();
     });
 });
 

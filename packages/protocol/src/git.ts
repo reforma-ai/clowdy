@@ -28,6 +28,20 @@
  *                                         seconds, so several windows asking at once cost one. A branch with no pull request is `access: 'ready'` and no
  *                                         `pullRequest`; a `gh` call that fails (it timed out, GitHub is out of reach or answers an error, the rate limit)
  *                                         is `unavailable` with a short reason, never an empty answer.
+ * GET  /v1/projects/:id/git/viewed?folderId=&workspaceId=&scope=
+ *                                      -> GitViewedMark[]. The files the person marked as viewed in `scope` of the place (`all` when it is left out), each with the
+ *                                         revision it had when it was marked, in path order. The daemon only keeps them, in its own database (not in the repository, and
+ *                                         never sent to GitHub): whether a file still counts as viewed is for the client to say, by comparing the mark's revision with
+ *                                         the file's own in the list (`GitChangedFile.revision`), so an edit clears the mark with no read.
+ * POST /v1/projects/:id/git/viewed     -> GitViewedMark. Body `GitViewedSet` (`folderId`, `workspaceId?`, `scope`, `path`, `revision`): marks one file, replacing the
+ *                                         mark it had.
+ * DELETE /v1/projects/:id/git/viewed?folderId=&workspaceId=&scope=&path=
+ *                                      -> { ok: true }. Clears the mark of one file; a file with none is cleared all the same.
+ *                                         The key a mark is kept under is never taken from the client: the daemon builds it from `scope` and, for `all` and `branch`,
+ *                                         the base the place is compared with (`GitViewedMark`). `path` is checked as the file route checks it (and is at most
+ *                                         `MAX_GIT_VIEWED_PATH_LENGTH` characters), `revision` is at most `MAX_GIT_REVISION_LENGTH` characters of a revision's alphabet, and a
+ *                                         place keeps at most `MAX_GIT_VIEWED_MARKS` marks over all its scopes, the newest. A folder that is not the root of a working tree is
+ *                                         `invalid`, as for the file route, and a commit scope the repository does not have is `not_found`.
  *
  * POST /v1/projects/:id/git/commit    -> GitCommitResult. Body `GitCommitRequest`: the ticked `paths` and the `message`. The daemon runs `git add -- <paths>` and then
  *                                         `git commit -m <message> -- <paths>` for the files that `GET .../git/changes?scope=uncommitted` lists as changed right now
@@ -45,7 +59,7 @@
  *                                         the commit judges them.
  *
  * The first three reads answer `invalid` for no `folderId`, `not_found` for a folder or a workspace that is not the project's, and `unavailable` for a folder or a worktree
- * that is gone from the disk or not made yet and for a git that does not answer in time; the fourth answers the same.
+ * that is gone from the disk or not made yet and for a git that does not answer in time; the fourth and the viewed routes answer the same.
  */
 
 /**
@@ -242,6 +256,38 @@ export type GitFileSides =
     | { state: 'binary'; revision: string }
     /** A side is over `MAX_GIT_SIDE_BYTES`, or the file changes more than `MAX_GIT_DIFF_LINES` lines: no text. */
     | { state: 'too_large'; revision: string };
+
+/**
+ * The most marks of viewed files the daemon keeps for a place, over all its scopes: when a mark is set past it, the oldest are dropped, so the table of a person who marks for
+ * months stays small. A scope lists at most a list's worth of files (`MAX_GIT_CHANGED_FILES`), so nobody reaches it by reading.
+ */
+export const MAX_GIT_VIEWED_MARKS = 5000;
+
+/** The most characters of a revision a mark takes: `<mode>:<id>:<mode>:<id>` is 143 characters of a SHA-256 repository's, and the working-tree stand-in `stat-<size>-<mtime>` less. */
+export const MAX_GIT_REVISION_LENGTH = 256;
+
+/** The most characters of a path a mark takes. */
+export const MAX_GIT_VIEWED_PATH_LENGTH = 4096;
+
+/**
+ * One file the person marked as viewed, with the revision it had then (`GitChangedFile.revision`). A file counts as viewed only while its revision in the list is the one stored,
+ * so any later edit clears the mark by itself. The daemon keeps the marks under the place, the file's path and a key it makes of the scope: `uncommitted`, `branch:<base>`,
+ * `all:<base>` (`<base>` is the ref the place is compared with, `GitBase.name`, such as `origin/main`; empty when the place has none) or `commit:<full hash>`. A mark is therefore
+ * the person's own for that comparison: another scope, another base, another worktree and another folder have their own, and a worktree that is removed takes its marks along.
+ */
+export interface GitViewedMark {
+    path: string;
+    revision: string;
+}
+
+/** The body of `POST /v1/projects/:id/git/viewed`: the place, the scope and the file with the revision to keep. */
+export interface GitViewedSet {
+    folderId: string;
+    workspaceId?: string;
+    scope: GitScope;
+    path: string;
+    revision: string;
+}
 
 /** Whether GitHub can be asked about a place: `gh` is found and signed in for the host of the place's `origin` (`ready`), is not installed (`no_gh`), has no login for the host (`not_signed_in`), or the place has no `origin` that names a repository as `host/owner/repo` (`no_remote`). */
 export type GitHubAccess = 'ready' | 'no_gh' | 'not_signed_in' | 'no_remote';

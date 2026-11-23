@@ -62,6 +62,42 @@ const buttonIn = (parent: HTMLElement, label: string) => parent.querySelector<HT
 const textButton = (parent: HTMLElement, text: string) => [...parent.querySelectorAll<HTMLButtonElement>('button')].find(candidate => candidate.textContent?.trim() === text);
 const click = (element: HTMLElement) => act(async () => element.click());
 const isOpen = () => Modal.opened.length > 0;
+const items = () => [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+const item = (text: string) => items().find(candidate => candidate.textContent?.startsWith(text));
+const pressEscape = () => act(async () => void document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true })));
+
+/** Opens the More menu of a row. */
+async function openMore(path: string) {
+    await click(row(path).querySelector<HTMLElement>('button[aria-label^="More for"]')!);
+    await settle();
+}
+
+/** Opens the More menu of a row, reads its items (their text and whether each is off), and shuts it again, so the next row's menu is the only one on the page. */
+async function moreMenu(path: string) {
+    await openMore(path);
+
+    const read = items().map(candidate => ({ text: candidate.textContent!, off: candidate.getAttribute('aria-disabled') === 'true' }));
+
+    await pressEscape();
+    await settle();
+
+    return read;
+}
+
+const removeOf = (read: Array<{ text: string; off: boolean }>) => read.find(entry => entry.text.startsWith('Remove'));
+
+/** Flies out the submenu `Open in…` of the menu on show: React Aria opens a submenu on the key. */
+async function openIn() {
+    await act(async () => {
+        const target = item('Open in…')!;
+
+        target.focus();
+        target.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', code: 'ArrowRight', bubbles: true, cancelable: true }));
+    });
+    await settle();
+
+    return [...document.body.querySelectorAll<HTMLElement>('[role="menu"][aria-label="Open in"] [role="menuitem"]')].map(candidate => candidate.textContent);
+}
 
 beforeEach(() => {
     // The modal animates by itself, whatever the motion setting; a test that ends while it moves leaves a cancelled animation behind.
@@ -90,7 +126,7 @@ describe('Manage worktrees', () => {
         expect(document.body.textContent).not.toContain('notes');
     });
 
-    it('marks the folder\'s own checkout with its branch and whether it is clean, and gives it no Remove', async () => {
+    it('marks the folder\'s own checkout with its branch and whether it has local changes, and gives it no Remove', async () => {
         await open();
 
         const main = row('/Users/dev/car-rental');
@@ -98,10 +134,10 @@ describe('Manage worktrees', () => {
         expect(main.dataset.main).toBe('true');
         expect(main.textContent).toContain('main');
         expect(main.textContent).toContain('Project checkout');
-        expect(main.textContent).toContain('Clean');
+        expect(main.textContent).toContain('No local changes');
         // The base is no place to compare the folder's own checkout with.
         expect(main.textContent).not.toContain('merged');
-        expect(buttonIn(main, 'Remove main')).toBeNull();
+        expect(removeOf(await moreMenu('/Users/dev/car-rental'))).toBeUndefined();
         expect(buttonIn(main, 'New chat in this folder: main')).not.toBeNull();
     });
 
@@ -111,24 +147,54 @@ describe('Manage worktrees', () => {
         const clowdy = row(CLOWDY_WORKTREE);
 
         expect(clowdy.textContent).toContain('clowdy/ab12cd34');
-        expect(clowdy.textContent).toContain('3 changed');
+        expect(clowdy.textContent).toContain('3 changes');
         expect(clowdy.textContent).toContain('Not merged');
 
         const found = row(FOUND_WORKTREE);
 
         expect(found.textContent).toContain('search-filters');
-        expect(found.textContent).toContain('2 changed');
+        expect(found.textContent).toContain('2 changes');
         expect(found.textContent).toContain('Not merged');
 
         const locked = row(LOCKED_WORKTREE);
 
         expect(locked.textContent).toContain('hotfix/invoice');
-        expect(locked.textContent).toContain('Clean');
-        expect(locked.textContent).toContain('Merged');
-        expect(locked.textContent).not.toContain('Not merged');
+        expect(locked.textContent).toContain('No local changes');
 
         // A worktree on a detached HEAD is named by its commit.
         expect(row(DETACHED_WORKTREE).textContent).toContain('Detached at 3a2b1c0');
+    });
+
+    it('has the path of a worktree in the tooltip of its name, and in no line of the row', async () => {
+        await open();
+
+        const found = row(FOUND_WORKTREE);
+
+        expect(found.textContent).not.toContain('/Users/dev/orca');
+
+        // The name takes the focus, which a keyboard reaches, and the tooltip opens on it.
+        const name = [...found.querySelectorAll<HTMLElement>('[tabindex="0"]')].find(element => element.textContent === 'search-filters')!;
+
+        await act(async () => {
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+            name.focus();
+        });
+        await settle();
+
+        expect(document.querySelector('[role="tooltip"]')?.textContent).toBe('~/orca/car-rental/search-filters');
+    });
+
+    it('gives each row one badge at most, the one that matters most: Locked over Merged, Missing on disk over the rest', async () => {
+        await open();
+
+        const badges = (path: string) => [...row(path).querySelectorAll<HTMLElement>('[aria-label="Tags"] [role="row"]')].map(badge => badge.textContent);
+
+        expect(badges('/Users/dev/car-rental')).toEqual(['Project checkout']);
+        // Merged into the base, and locked: the lock is what to know.
+        expect(badges(LOCKED_WORKTREE)).toEqual(['Locked']);
+        expect(badges(MISSING_WORKTREE)).toEqual(['Missing on disk']);
+        expect(badges(FOUND_WORKTREE)).toEqual(['Not merged']);
+        expect(badges(CLOWDY_WORKTREE)).toEqual(['Not merged']);
     });
 
     it('marks a locked worktree and one whose folder is gone, which has no state of its own to show and no chat to start', async () => {
@@ -141,7 +207,7 @@ describe('Manage worktrees', () => {
 
         expect(missing.dataset.missing).toBe('true');
         expect(missing.textContent).toContain('Missing on disk');
-        expect(missing.textContent).not.toContain('Clean');
+        expect(missing.textContent).not.toContain('No local changes');
         expect(buttonIn(missing, 'New chat in this worktree: old-pricing')!.disabled).toBe(true);
         // A disabled button takes no hover and no focus, so the reason is on the focusable stand-in beside it.
         expect(missing.querySelector('[role="button"][aria-disabled]')?.getAttribute('aria-label')).toBe('New chat in this worktree: old-pricing');
@@ -255,24 +321,27 @@ describe('Manage worktrees', () => {
         expect(scrolled).toEqual(['fld_api']);
     });
 
-    it('draws Remove for every worktree but the folder\'s own checkout, and holds it off for a lock and for a chat that works in the worktree', async () => {
+    it('draws Remove in the More menu of every worktree but the folder\'s own checkout, and holds it off for a lock and for a chat that works in the worktree', async () => {
         await open();
 
-        const remove = (path: string) => row(path).querySelector<HTMLButtonElement>('button[aria-label^="Remove "]');
+        for (const path of [FOUND_WORKTREE, MISSING_WORKTREE]) expect(removeOf(await moreMenu(path))?.off, path).toBe(false);
 
-        for (const path of [CLOWDY_WORKTREE, FOUND_WORKTREE, LOCKED_WORKTREE, MISSING_WORKTREE]) expect(remove(path), path).not.toBeNull();
+        for (const path of [CLOWDY_WORKTREE, LOCKED_WORKTREE]) expect(removeOf(await moreMenu(path))?.off, path).toBe(true);
 
-        expect(remove(CLOWDY_WORKTREE)!.disabled).toBe(true);
-        expect(remove(LOCKED_WORKTREE)!.disabled).toBe(true);
-        expect(remove(FOUND_WORKTREE)!.disabled).toBe(false);
-        expect(remove(MISSING_WORKTREE)!.disabled).toBe(false);
-        expect(row('/Users/dev/car-rental').querySelector('button[aria-label^="Remove "]')).toBeNull();
+        expect(removeOf(await moreMenu('/Users/dev/car-rental'))).toBeUndefined();
+        // Remove is not a button of the row any more.
+        expect(row(FOUND_WORKTREE).querySelector('button[aria-label^="Remove"]')).toBeNull();
     });
 
     it('opens no confirmation from a Remove that is off, for a chat or for a lock', async () => {
         await open();
-        await click(buttonIn(row(CLOWDY_WORKTREE), 'Remove clowdy/ab12cd34')!);
-        await click(buttonIn(row(LOCKED_WORKTREE), 'Remove hotfix/invoice')!);
+
+        for (const path of [CLOWDY_WORKTREE, LOCKED_WORKTREE]) {
+            await openMore(path);
+            await click(item('Remove')!);
+            await pressEscape();
+            await settle();
+        }
 
         expect(Modal.opened).toHaveLength(1);
     });
@@ -280,43 +349,27 @@ describe('Manage worktrees', () => {
     it('says a worktree whose folder is gone has only its record to remove', async () => {
         await open();
 
-        expect(buttonIn(row(MISSING_WORKTREE), 'Remove record of old-pricing')).not.toBeNull();
-        expect(buttonIn(row(MISSING_WORKTREE), 'Remove old-pricing')).toBeNull();
+        expect(removeOf(await moreMenu(MISSING_WORKTREE))?.text).toBe('Remove record…');
+        expect(removeOf(await moreMenu(FOUND_WORKTREE))?.text).toBe('Remove…');
     });
 
-    it('names, beside a Remove that is off, the reason the daemon gave', async () => {
+    it('names, under a Remove that is off, the reason the daemon gave, and under no other', async () => {
         await open();
 
-        const stand = (path: string) => row(path).querySelector<HTMLElement>('[role="button"][aria-disabled]');
-
-        expect(stand(LOCKED_WORKTREE)?.getAttribute('aria-label')).toBe('Remove hotfix/invoice');
-        expect(stand(CLOWDY_WORKTREE)?.getAttribute('aria-label')).toBe('Remove clowdy/ab12cd34');
+        expect(removeOf(await moreMenu(LOCKED_WORKTREE))?.text).toContain('Git has it locked: on an external drive');
+        expect(removeOf(await moreMenu(CLOWDY_WORKTREE))?.text).toContain('A chat works in it');
         // Nothing stops a worktree that nobody works in and nobody locked: its Remove waits for the confirmation, not for a reason.
-        expect(stand(FOUND_WORKTREE)).toBeNull();
+        expect(removeOf(await moreMenu(FOUND_WORKTREE))?.text).toBe('Remove…');
     });
 
-    it('says in the row, not only on hover, why a Remove is off, and says it once', async () => {
+    it('has no line in the row for why a Remove is off: the reason is under Remove in the More menu', async () => {
         await open();
 
-        const note = 'Can\'t remove';
-        const occurrences = (text: string) => text.split(note).length - 1;
-
-        // A chat works in it: the reason leads the chats it is about, and the chats do not repeat it.
-        const clowdy = row(CLOWDY_WORKTREE);
-
-        expect(clowdy.textContent).toContain('Can\'t remove while these chats work in it');
-        expect(occurrences(clowdy.textContent!)).toBe(1);
-        expect(clowdy.querySelector('[aria-label="Chats"]')!.textContent).not.toContain(note);
-
-        // Locked: git's reason when it gave one.
-        expect(row(LOCKED_WORKTREE).textContent).toContain('Can\'t remove: git has it locked (on an external drive)');
-        expect(occurrences(row(LOCKED_WORKTREE).textContent!)).toBe(1);
-
-        // Nothing stops it, a missing folder is no reason (it has Remove record), and the folder's own checkout has no Remove to explain.
-        for (const path of [FOUND_WORKTREE, MISSING_WORKTREE, DETACHED_WORKTREE, '/Users/dev/car-rental']) expect(row(path).textContent, path).not.toContain(note);
+        // Locked, and a chat works in it: the row has the facts and the chats, and the menu has the reason.
+        for (const path of [CLOWDY_WORKTREE, LOCKED_WORKTREE]) expect(row(path).textContent, path).not.toContain('Can\'t remove');
     });
 
-    it('says the repository\'s own working tree, when a row that is not the folder\'s checkout is one, cannot be removed', async () => {
+    it('keeps Remove off for the repository\'s own working tree, when a row that is not the folder\'s checkout is one', async () => {
         const worktree = { branch: 'main', head: 'a1b2c3d', missing: false, changes: 0, submodules: false, managed: false, chats: [] };
         const getProjectWorktrees = async (): Promise<FolderWorktrees[]> => [{
             folderId: 'fld_car_rental',
@@ -330,31 +383,100 @@ describe('Manage worktrees', () => {
 
         await open({ overrides: { getProjectWorktrees } });
 
-        expect(row('/Users/dev/car-rental-primary').textContent).toContain('Can\'t remove: it is the repository\'s own working tree');
-        expect(buttonIn(row('/Users/dev/car-rental-primary'), 'Remove main')!.disabled).toBe(true);
-        expect(row('/Users/dev/car-rental').textContent).not.toContain('Can\'t remove');
+        const remove = removeOf(await moreMenu('/Users/dev/car-rental-primary'));
+
+        expect(remove?.off).toBe(true);
+        expect(remove?.text).toContain('The repository\'s own working tree');
     });
 
-    it('offers the programs of the computer for a worktree in the desktop app, and nothing to open it in a page that is not', async () => {
+    it('has only two buttons at the end of a row, New chat and More, and the rest in the More menu', async () => {
         await open();
 
-        expect(buttonIn(row(FOUND_WORKTREE), 'Open search-filters')).toBeNull();
+        const buttons = (path: string) => [...row(path).querySelectorAll<HTMLElement>('[class*="actions"] button')].map(button => button.getAttribute('aria-label'));
 
-        await act(async () => Modal.opened[0]!.close(false));
-        (window as { desktop?: unknown }).desktop = { openPath: vi.fn(), getOpenApps: async () => ({ editors: [], terminals: [], fileManagers: [{ id: 'finder', name: 'Finder' }] }) };
-        await open();
-
-        expect(buttonIn(row(FOUND_WORKTREE), 'Open search-filters')).not.toBeNull();
+        expect(buttons(FOUND_WORKTREE)).toEqual(['New chat in this worktree: search-filters', 'More for search-filters']);
+        expect(buttons('/Users/dev/car-rental')).toEqual(['New chat in this folder: main', 'More for main']);
     });
 
-    it('opens the menu of a worktree with the programs of the computer and the copy of its path, and without Open in Files, which would act behind the dialog', async () => {
+    it('opens the More menu of a worktree with New chat, the copy of its path and Open in…, then Remove under a separator, and without Open in Files, which would act behind the dialog', async () => {
         (window as { desktop?: unknown }).desktop = { openPath: vi.fn(), getOpenApps: async () => ({ editors: [], terminals: [], fileManagers: [{ id: 'finder', name: 'Finder' }] }) };
         await open();
-        // The window works in the folder's own checkout, which is the place of the first row: its menu would offer Open in Files if the dialog were a place.
-        await click(buttonIn(row('/Users/dev/car-rental'), 'Open main')!);
+        await openMore(FOUND_WORKTREE);
+
+        expect(items().map(candidate => candidate.textContent)).toEqual(['New chat', 'Copy path', 'Open in…', 'Remove…']);
+        expect(document.body.querySelectorAll('[role="menu"] [role="separator"]')).toHaveLength(1);
+        expect(item('Remove')!.previousElementSibling?.getAttribute('role')).toBe('separator');
+        // The programs of the computer are in the submenu.
+        expect(await openIn()).toEqual(['Open in Finder', 'Open in GitHub']);
+    });
+
+    it('gives the folder\'s own checkout the same menu without Remove, and its place is no place of the dialog: no Open in Files', async () => {
+        (window as { desktop?: unknown }).desktop = { openPath: vi.fn(), getOpenApps: async () => ({ editors: [], terminals: [], fileManagers: [{ id: 'finder', name: 'Finder' }] }) };
+        await open();
+        // The window works in the folder's own checkout, which is the place of the first row: an `OpenWithMenu` would offer Open in Files there.
+        await openMore('/Users/dev/car-rental');
+
+        expect(items().map(candidate => candidate.textContent)).toEqual(['New chat', 'Copy path', 'Open in…']);
+        expect(document.body.querySelector('[role="menu"] [role="separator"]')).toBeNull();
+    });
+
+    it('offers only GitHub to open a worktree in, in a page that is not the desktop app, which has no programs', async () => {
+        await open();
+        await openMore(FOUND_WORKTREE);
+
+        expect(await openIn()).toEqual(['Open in GitHub']);
+    });
+
+    it('marks a row open while its More menu or its right-click menu is, so its buttons stay shown after the pointer has left', async () => {
+        await open();
+
+        expect(row(FOUND_WORKTREE).dataset.open).toBeUndefined();
+
+        await openMore(FOUND_WORKTREE);
+
+        expect(row(FOUND_WORKTREE).dataset.open).toBe('true');
+
+        await pressEscape();
         await settle();
 
-        expect([...document.body.querySelectorAll('[role="menuitem"]')].map(item => item.textContent)).toEqual(['Copy path', 'Open in…']);
+        expect(row(FOUND_WORKTREE).dataset.open).toBeUndefined();
+
+        await act(async () => void row(FOUND_WORKTREE).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 40, clientY: 60 })));
+        await settle();
+
+        expect(row(FOUND_WORKTREE).dataset.open).toBe('true');
+    });
+
+    it('opens the same menu on a right-click anywhere on the row, and shuts it when an item is chosen', async () => {
+        await open();
+        await act(async () => void row(FOUND_WORKTREE).querySelector('[class*="title"]')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 40, clientY: 60 })));
+        await settle();
+
+        expect(items().map(candidate => candidate.textContent)).toEqual(['New chat', 'Copy path', 'Open in…', 'Remove…']);
+
+        await click(item('New chat')!);
+        await settle();
+
+        expect(store.ui.forProject(FIXTURE_PROJECT_ID).draftWorkspace).toEqual({ mode: 'existing', path: FOUND_WORKTREE });
+        expect(isOpen()).toBe(false);
+    });
+
+    it('starts a new chat in the worktree from the More menu as the button does, and closes the dialog', async () => {
+        await open();
+        await openMore(FOUND_WORKTREE);
+        await click(item('New chat')!);
+
+        const ui = store.ui.forProject(FIXTURE_PROJECT_ID);
+
+        expect(ui.draft).toBe(true);
+        expect(ui.draftWorkspace).toEqual({ mode: 'existing', path: FOUND_WORKTREE });
+        expect(isOpen()).toBe(false);
+    });
+
+    it('turns New chat off in the More menu for a worktree whose folder is gone', async () => {
+        await open();
+
+        expect((await moreMenu(MISSING_WORKTREE)).find(entry => entry.text === 'New chat')?.off).toBe(true);
     });
 
     it('reads the worktrees when it opens and again each time the window gets focus', async () => {
@@ -378,13 +500,13 @@ describe('Manage worktrees', () => {
 
         await open({ data });
 
-        expect(row(FOUND_WORKTREE).textContent).toContain('2 changed');
+        expect(row(FOUND_WORKTREE).textContent).toContain('2 changes');
 
         data.worktrees!['/Users/dev/car-rental']![0]!.changes = 7;
         await act(async () => void window.dispatchEvent(new Event('focus')));
         await settle();
 
-        expect(row(FOUND_WORKTREE).textContent).toContain('7 changed');
+        expect(row(FOUND_WORKTREE).textContent).toContain('7 changes');
     });
 
     it('drops an answer that comes after a newer read, so the list is never put back to what an older read saw', async () => {
@@ -410,12 +532,12 @@ describe('Manage worktrees', () => {
         await act(async () => void window.dispatchEvent(new Event('focus')));
         await act(async () => answers[1]!(await withChanges(7)));
 
-        expect(row(FOUND_WORKTREE).textContent).toContain('7 changed');
+        expect(row(FOUND_WORKTREE).textContent).toContain('7 changes');
 
         await act(async () => answers[0]!(await withChanges(5)));
 
-        expect(row(FOUND_WORKTREE).textContent).toContain('7 changed');
-        expect(row(FOUND_WORKTREE).textContent).not.toContain('5 changed');
+        expect(row(FOUND_WORKTREE).textContent).toContain('7 changes');
+        expect(row(FOUND_WORKTREE).textContent).not.toContain('5 changes');
     });
 
     it('waits with a loading state, and then shows the list', async () => {
@@ -428,10 +550,15 @@ describe('Manage worktrees', () => {
 
         expect(dialog()!.textContent).toContain('Loading worktrees…');
         expect(groups()).toEqual([]);
+        // The table the list will be, in two rows of blocks, with no spinner: the same card and the same rows, so the list takes the place without a jump.
+        expect(dialog()!.querySelectorAll('ul[data-skeleton] > li')).toHaveLength(2);
+        expect(dialog()!.querySelector('[role="status"]')?.textContent).toBe('Loading worktrees…');
+        expect(dialog()!.querySelector('[aria-busy="true"]')).not.toBeNull();
 
         await act(async () => answer([{ folderId: 'fld_car_rental', name: 'car-rental', isRepository: true, worktrees: [{ path: '/Users/dev/car-rental', branch: 'main', head: 'a1b2c3d', main: true, missing: false, changes: 0, submodules: false, managed: false, chats: [], blocked: 'main' }] }]));
 
         expect(dialog()!.textContent).not.toContain('Loading worktrees…');
+        expect(dialog()!.querySelector('[data-skeleton]')).toBeNull();
         expect(rowsOf(group('car-rental'))).toHaveLength(1);
     });
 
@@ -445,13 +572,13 @@ describe('Manage worktrees', () => {
 
         await open({ overrides: { getProjectWorktrees } });
 
-        expect(dialog()!.textContent).toContain('Couldn\'t read the worktrees');
+        expect(dialog()!.textContent).toContain('Couldn\'t load the worktrees');
         expect(groups()).toEqual([]);
 
         await click(textButton(dialog()!, 'Try again')!);
         await settle();
 
-        expect(dialog()!.textContent).not.toContain('Couldn\'t read the worktrees');
+        expect(dialog()!.textContent).not.toContain('Couldn\'t load the worktrees');
         expect(groups()).toHaveLength(2);
     });
 
@@ -469,7 +596,7 @@ describe('Manage worktrees', () => {
 
         expect(groups()).toHaveLength(2);
         expect(dialog()!.textContent).toContain('Couldn\'t refresh the list');
-        expect(dialog()!.textContent).not.toContain('Couldn\'t read the worktrees');
+        expect(dialog()!.textContent).not.toContain('Couldn\'t load the worktrees');
     });
 
     it('puts a Try again beside the note that the list could not be refreshed, which reads it again and clears the note', async () => {
@@ -501,16 +628,27 @@ describe('Manage worktrees', () => {
         await open({ overrides: { getProjectWorktrees } });
 
         expect(groups()).toEqual([]);
-        expect(dialog()!.textContent).toContain('None of the project\'s folders is a git repository');
+        expect(dialog()!.textContent).toContain('No folder of this project is a git repository');
     });
 
-    it('closes when the project it is for is not the one the window shows', async () => {
+    it('stays open when the window shows another project, as it does when it is opened from Settings for a project the window does not show', async () => {
         await open();
-        expect(isOpen()).toBe(true);
-
         await act(async () => store.selectProject(FIXTURE_EMPTY_PROJECT_ID));
         await settle();
 
+        expect(isOpen()).toBe(true);
+        expect(groups()).toHaveLength(2);
+    });
+
+    it('takes the person to the project with Settings shut when a new chat or a chat is chosen, though the window showed another project with Settings open', async () => {
+        await open();
+        await act(async () => store.selectProject(FIXTURE_EMPTY_PROJECT_ID));
+        act(() => store.ui.openProjectSettings(FIXTURE_PROJECT_ID));
+        await click(buttonIn(row(FOUND_WORKTREE), 'New chat in this worktree: search-filters')!);
+
+        expect(store.selectedProjectId).toBe(FIXTURE_PROJECT_ID);
+        expect(store.ui.settingsOpen).toBe(false);
+        expect(store.ui.forProject(FIXTURE_PROJECT_ID).draft).toBe(true);
         expect(isOpen()).toBe(false);
     });
 });

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { contentDisposition, servedMediaType } from '../attachments/names';
 import { executeCommandAsync, waitsForAgent } from '../commands';
 import { getRun } from '../db/runs';
+import { clearViewed, listViewed, setViewed } from '../db/viewed';
 import { docsTree } from '../docs/tree';
 import { requireChat } from '../domain/chats';
 import { streamItems } from '../domain/items';
@@ -20,12 +21,14 @@ import { CommandError, invalid, notFound } from '../errors';
 import { placeChanges, placeFile } from '../git/changes';
 import { projectFolderGit } from '../git/state';
 import { placeStatus } from '../git/status';
+import { checkRevision, checkViewedPath, viewedScopeKey } from '../git/viewed';
 import { BodyTooLarge, declaredLength, JSON_BODY_LIMIT, readJson, readText } from './body';
 import { commandResponse, failure, json } from './responses';
 import { eventStream } from './sse';
 
-import type { Health, Project, TaskArchivePage, TaskCommentsPage } from '@clowdy/protocol';
+import type { GitViewedMark, Health, Project, TaskArchivePage, TaskCommentsPage } from '@clowdy/protocol';
 import type { Services } from '../commands';
+import type { ViewedPlace } from '../db/viewed';
 import type { Place } from '../domain/places';
 import type { BaseOptions } from '../git/status';
 
@@ -54,6 +57,9 @@ export interface Route {
  * own bare 413, up to it the route answers with a JSON error that says what the limit is.
  */
 const UPLOAD_BODY_SLACK = 1024 * 1024;
+
+/** The body of `POST .../git/viewed` (`GitViewedSet`): the place, the scope, the file and its revision, each judged by the route. */
+const viewedBody = z.object({ folderId: z.string(), workspaceId: z.string().optional(), scope: z.string(), path: z.string(), revision: z.string() });
 
 /** How many paths a file search answers with when it is not told, and the most it ever does. */
 const DEFAULT_FILE_LIMIT = 40;
@@ -94,6 +100,8 @@ export function createRoutes(context: RouteContext): Route[] {
 
         return base === undefined ? {} : { base };
     };
+    /** The place the marks of viewed files are kept under: the project's folder, and the worktree of it when the place is one (empty for the folder's own checkout). */
+    const viewedPlaceOf = (projectId: string, place: Place): ViewedPlace => ({ projectId, folderId: place.folder.id, workspaceId: place.workspace?.id ?? '' });
     /** The scope a request of the changes asks for: `all` when it names none. */
     const gitScopeOf = (url: URL) => {
         const scope = parseGitScope(url.searchParams.get('scope') ?? 'all');
@@ -251,6 +259,55 @@ export function createRoutes(context: RouteContext): Route[] {
                 const from = url.searchParams.get('from') ?? undefined;
 
                 return json(await placeFile(place, gitScopeOf(url), url.searchParams.get('path') ?? '', url.searchParams.get('oldPath') ?? undefined, from === undefined ? await gitBaseOf(place) : { from }));
+            },
+        },
+        {
+            method: 'GET',
+            pattern: /^\/v1\/projects\/([^/]+)\/git\/viewed$/,
+            handle: async (_request, url, [id]) => {
+                const place = gitPlaceOf(id, url);
+                const key = await viewedScopeKey(place, gitScopeOf(url), await gitBaseOf(place));
+
+                return json(listViewed(store.db, viewedPlaceOf(id, place), key) satisfies GitViewedMark[]);
+            },
+        },
+        {
+            method: 'POST',
+            pattern: /^\/v1\/projects\/([^/]+)\/git\/viewed$/,
+            handle: async (request, _url, [id]) => {
+                const body = await readJson(request, viewedBody);
+                const scope = parseGitScope(body.scope);
+
+                if (!scope) {
+                    throw invalid('The scope is none of all, branch, uncommitted and commit:<hash>');
+                }
+
+                checkViewedPath(body.path);
+                checkRevision(body.revision);
+
+                const place = resolvePlace(store, requireProject(store, id), body.folderId, body.workspaceId);
+                const key = await viewedScopeKey(place, scope, await gitBaseOf(place));
+                const mark = { path: body.path, revision: body.revision } satisfies GitViewedMark;
+
+                store.tx(() => setViewed(store.db, viewedPlaceOf(id, place), key, mark, Date.now()));
+
+                return json(mark);
+            },
+        },
+        {
+            method: 'DELETE',
+            pattern: /^\/v1\/projects\/([^/]+)\/git\/viewed$/,
+            handle: async (_request, url, [id]) => {
+                const path = url.searchParams.get('path') ?? '';
+
+                checkViewedPath(path);
+
+                const place = gitPlaceOf(id, url);
+                const key = await viewedScopeKey(place, gitScopeOf(url), await gitBaseOf(place));
+
+                store.tx(() => clearViewed(store.db, viewedPlaceOf(id, place), key, path));
+
+                return json({ ok: true });
             },
         },
         { method: 'GET', pattern: /^\/v1\/projects\/([^/]+)\/worktrees$/, handle: async (_request, _url, [id]) => json(await projectWorktrees(store, requireProject(store, id))) },

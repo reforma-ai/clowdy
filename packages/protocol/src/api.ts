@@ -61,11 +61,16 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  * GET  /v1/projects/:id/git/file?folderId=&workspaceId=&scope=&path=&oldPath=&from= -> GitFileSides (the text of one changed file before and after; `from` is the list's own start)
  * GET  /v1/projects/:id/git/pull-request?folderId=&workspaceId= -> GitPullRequestInfo (whether the person's `gh` can be asked about the place's `origin`, and the pull
  *                                            request of its branch with its checks, or none). The four are described in `git.ts`
+ * GET  /v1/projects/:id/git/viewed?folderId=&workspaceId=&scope= -> GitViewedMark[] (the files the person marked as viewed in a scope of the place, each with the revision it had
+ *                                            when it was marked; the daemon keeps them, and the client decides a file is still viewed while its own revision is the stored one)
+ * POST /v1/projects/:id/git/viewed       -> GitViewedMark (body GitViewedSet: marks one file as viewed in a scope)
+ * DELETE /v1/projects/:id/git/viewed?folderId=&workspaceId=&scope=&path= -> { ok: true } (clears one file's mark). The three are described in `git.ts`
  * POST /v1/projects/:id/git/commit        -> GitCommitResult (commits the files the person ticked, `paths`, with `message`: the first route that changes a repository)
  * POST /v1/projects/:id/git/message       -> GitMessage (a commit message for the ticked files, written by the provider the person turned `Commit messages` on for). Both are described in `git.ts`
  * GET  /v1/projects/:id/worktrees        -> FolderWorktrees[] (one entry per folder of the project, in the project's order: whether it is the root of a repository and, if
  *                                            it is, its own checkout first and then every worktree git lists for it (one Clowdy made, one an agent or a person made, a locked one,
- *                                            one whose folder is gone), each with the chats that work in it (archived ones too), the number of changed files, whether its work is
+ *                                            one whose folder is gone): ours above the others (made by Clowdy or with a chat, or the repository's own working tree), one whose
+ *                                            folder is gone last, git's order within each kind; each with the chats that work in it (archived ones too), the number of changed files, whether its work is
  *                                            in the base as last fetched, and why it cannot be removed. A folder that is not a repository, or is gone from the disk, has an entry
  *                                            with `isRepository: false` and no worktrees; `not_found` for no such project, `unavailable` for a git that does not answer)
  * GET  /v1/projects/:id/files?query=&limit=&workspaceId= -> ProjectFileMatch[] (files of the project's folders whose path contains every word of `query`,
@@ -114,6 +119,7 @@ export const ROUTES = {
     projectGitStatus: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/git/status`,
     projectGitChanges: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/git/changes`,
     projectGitFile: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/git/file`,
+    projectGitViewed: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/git/viewed`,
     projectWorktrees: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/worktrees`,
     projectGitPullRequest: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/git/pull-request`,
     projectGitCommit: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/git/commit`,
@@ -240,7 +246,7 @@ export interface WorktreeInfo {
     blocked?: WorktreeBlock;
 }
 
-/** What `GET /v1/projects/:id/worktrees` says about one folder of the project: no worktrees for a folder that is no repository, else its own checkout first and every worktree git lists. */
+/** What `GET /v1/projects/:id/worktrees` says about one folder of the project: no worktrees for a folder that is no repository, else its own checkout first and every worktree git lists: ours above the others, one gone from the disk last, git's order within each kind. */
 export interface FolderWorktrees {
     folderId: FolderId;
     /** The folder's name, as `folderNames` writes it. */

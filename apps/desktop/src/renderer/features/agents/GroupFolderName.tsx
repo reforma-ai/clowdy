@@ -13,10 +13,9 @@ import styles from './AgentList.module.css';
 import type { ProjectFolder } from '@clowdy/protocol';
 
 /**
- * The menu of a group's folder: what is under the message box when a chat works in it (`ChatFolder`), and, when the folder is a git repository, `Manage worktrees` above it. It
- * reads the folder's git once it is open, and not for each heading on the list: the item comes in with that read, for a folder that has a branch (an empty repository and a detached
- * HEAD have one; a plain folder has none) and not for a folder that is gone. A folder inside a larger repository has a branch too, though the dialog has no group for it (it lists
- * the roots of working trees only): the read says nothing about the root.
+ * The menu of a group's folder: what is under the message box when a chat works in it (`ChatFolder`), and `Manage worktrees…` last, under a separator. That item is always there, from
+ * the first frame: it opens the dialog of the whole project, which has a group for each of its repositories and says so when none of its folders is one, so it needs no word from
+ * the folder's git (which the menu reads as it opens, for the GitHub link, and which would have the item come in late and shift the menu). It is for a folder that is gone too.
  */
 function GroupFolderMenu({ folder, missing }: { folder: ProjectFolder; missing: boolean }) {
     const root = useRootStore();
@@ -31,7 +30,7 @@ function GroupFolderMenu({ folder, missing }: { folder: ProjectFolder; missing: 
             missing={ missing }
             repair={ repair }
             git={ git }
-            onManageWorktrees={ missing || git?.branch === undefined ? undefined : () => openManageWorktrees({ root, projectId: project.id, folderId: folder.id }) }
+            onManageWorktrees={ () => openManageWorktrees({ root, projectId: project.id, folderId: folder.id }) }
             aria-label="Open folder"
         />
     );

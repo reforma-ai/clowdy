@@ -69,6 +69,18 @@
         min-width: 0;
     }
 
+    /*
+     * A label with a description above its control: the two lines are one caption, so the description hugs the label, and the control stands a little apart from both.
+     * Equal gaps all the way down would make three separate rows of them. The horizontal layout keeps its gap: there the caption is beside the control.
+     */
+    .field[data-label-placement='top'][data-has-description] {
+        row-gap: var(--spacing-sm);
+    }
+
+    .field[data-label-placement='top'][data-has-description] .copy {
+        row-gap: var(--spacing-xxs);
+    }
+
     .field > [data-slot='label'] {
         grid-area: label;
         min-width: 0;

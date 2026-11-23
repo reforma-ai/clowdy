@@ -25,6 +25,8 @@ import type {
     GitPullRequestInfo,
     GitScope,
     GitStatus,
+    GitViewedMark,
+    GitViewedSet,
     ProjectFileMatch,
     ProjectId,
     ProjectInfo,
@@ -140,6 +142,30 @@ export class HttpTransport implements Transport {
 
     getGitFile(projectId: ProjectId, place: PlaceRef, scope: GitScope, path: string, oldPath?: string, from?: string): Promise<GitFileSides> {
         return this.#read(`${ ROUTES.projectGitFile(projectId) }?${ placeQuery(place, { scope, path, oldPath, from }) }`);
+    }
+
+    getGitViewed(projectId: ProjectId, place: PlaceRef, scope: GitScope): Promise<GitViewedMark[]> {
+        return this.#read(`${ ROUTES.projectGitViewed(projectId) }?${ placeQuery(place, { scope }) }`);
+    }
+
+    async setGitViewed(projectId: ProjectId, place: PlaceRef, scope: GitScope, path: string, revision: string): Promise<GitViewedMark> {
+        const route = ROUTES.projectGitViewed(projectId);
+        const response = await this.#fetch(this.#base + route, {
+            method: 'POST',
+            headers: { ...this.#headers, 'content-type': 'application/json' },
+            body: JSON.stringify({ ...place, scope, path, revision } satisfies GitViewedSet),
+        });
+
+        if (!response.ok) throw await refusal(response, route);
+
+        return await response.json() as GitViewedMark;
+    }
+
+    async clearGitViewed(projectId: ProjectId, place: PlaceRef, scope: GitScope, path: string): Promise<void> {
+        const route = `${ ROUTES.projectGitViewed(projectId) }?${ placeQuery(place, { scope, path }) }`;
+        const response = await this.#fetch(this.#base + route, { method: 'DELETE', headers: this.#headers });
+
+        if (!response.ok) throw await refusal(response, route);
     }
 
     commitGit(projectId: ProjectId, place: PlaceRef, paths: string[], message: string): Promise<GitCommitResult> {

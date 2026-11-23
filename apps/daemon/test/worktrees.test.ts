@@ -495,6 +495,24 @@ describe('GET /v1/projects/:id/worktrees', () => {
         expect(group.worktrees.find(row => row.path === real(third))?.main).toBe(false);
     });
 
+    test('lists the worktrees that are ours above the others: Clowdy-made, with a chat, the repository\'s own tree; and one gone from the disk last', async () => {
+        const { rows, start, found, repo } = await setup();
+        const first = found('agent-first');
+        const made = (await start()).workspace!;
+        const withChat = found('worked-in');
+        const gone = (await start()).workspace!;
+        const last = found('agent-last');
+
+        await start({ mode: 'existing', path: withChat });
+        rmSync(gone.path, { recursive: true, force: true });
+
+        const listed = git(repo, 'worktree', 'list', '--porcelain').split('\n').filter(line => line.startsWith('worktree ')).map(line => real(line.slice('worktree '.length)));
+        const kind = (paths: string[]) => listed.filter(path => paths.map(real).includes(path));
+
+        // The checkout of the folder, then ours (one Clowdy made, one a chat works in), then the ones nobody here made, and the one that is gone last; git's order within a kind.
+        expect((await rows()).map(row => row.path)).toEqual([listed[0], ...kind([made.path, withChat]), ...kind([first, last]), real(gone.path)]);
+    });
+
     test('lists every worktree of a repository with many, in the order git lists them, though they are read a few at a time', async () => {
         const { rows, found, repo } = await setup();
         const names = Array.from({ length: 9 }, (_, index) => `many-${ index }`);

@@ -25,7 +25,8 @@ export interface FolderRowProps {
 
 /**
  * One folder inside the project's folder card (`FolderList`): its name with the Main mark, its path, and a quiet Remove at the end of the
- * row. `data-folder-path` lets a list find the row of a folder, to move the focus there.
+ * row. The sizes are the list row's, as `ProjectRow` and the worktrees' rows have them: the name body (`md`) medium, the path `sm` and dim, the mark `xs`; a bare `Text` would
+ * take the page's 16px, which the row's height (`--folder-row-min`, from `--leading-md`) does not count on. `data-folder-path` lets a list find the row of a folder, to move the focus there.
  */
 export function FolderRow({ name, path, isMain = false, children, actions, onRemove, isRemoveDisabled = false }: FolderRowProps) {
     return (
@@ -33,7 +34,7 @@ export function FolderRow({ name, path, isMain = false, children, actions, onRem
             <span className={ styles.icon }><Folder /></span>
             <span className={ styles.text }>
                 <span className={ styles.title }>
-                    <Text weight="medium" truncate>{ name }</Text>
+                    <Text variant="md" weight="medium" truncate>{ name }</Text>
                     { isMain && <Badge size="xs" textValue="Main">Main</Badge> }
                 </span>
                 <PathText path={ path } variant="sm" color="secondary" />

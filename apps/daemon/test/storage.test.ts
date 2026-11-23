@@ -11,6 +11,7 @@ import { getProject, upsertProject } from '../src/db/projects';
 import { getRun, getRunWork, upsertRun } from '../src/db/runs';
 import { countTaskComments, getTaskComment, insertTaskComment, latestTaskComments, listTaskComments, updateTaskCommentBody } from '../src/db/taskComments';
 import { childIdsOf, countArchivedTasks, deleteTask, getTask, latestArchiveTime, listAllTasks, listArchivedTasks, listTasks, upsertTask } from '../src/db/tasks';
+import { listViewed, setViewed } from '../src/db/viewed';
 import { newId } from '../src/ids';
 import { Store } from '../src/store';
 import { cleanTempDirs, tempDir } from './helpers';
@@ -156,6 +157,49 @@ describe('migrations', () => {
         upsertProject(db, { ...project, folders: [{ id: 'fld_1', path: '/work/old' }] });
         expect(getProject(db, 'prj_1')?.folders[0]).not.toHaveProperty('settings');
         db.close();
+    });
+
+    test('version 26 adds the table of viewed files to a database at version 25 and keeps its rows, and a new database has the table at once', () => {
+        const path = join(tempDir(), 'clowdy.db');
+        const before = openDatabase(path, MIGRATIONS.filter(migration => migration.version < 26));
+
+        expect(version(before)).toBe(25);
+        expect(tables(before)).not.toContain('viewed_files');
+        before.query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)').run('prj_1', 'Old', 'OLD', 1);
+        before.query('INSERT INTO workspaces (id, project_id, folder_id, path, managed, ready, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run('wks_1', 'prj_1', 'fld_1', '/work/tree', 0, 1, 1);
+        before.close();
+
+        const db = openDatabase(path);
+
+        expect(version(db)).toBe(MIGRATIONS.length);
+        expect(MIGRATIONS.length).toBeGreaterThanOrEqual(26);
+        expect(MIGRATIONS.find(migration => migration.version === 26)).toBeDefined();
+        expect(tables(db)).toContain('viewed_files');
+        expect(db.query('SELECT id, path FROM workspaces').all()).toEqual([{ id: 'wks_1', path: '/work/tree' }]);
+        expect(existsSync(`${ path }.bak-v25`)).toBe(true);
+
+        // The five columns of a mark's key, in order, are the primary key; the workspace is a string, so the folder's own checkout has a place in it.
+        const columns = db.query('PRAGMA table_info(viewed_files)').all() as { name: string; type: string; notnull: number; pk: number }[];
+
+        expect(columns.map(column => column.name)).toEqual(['project_id', 'folder_id', 'workspace_id', 'scope_key', 'path', 'revision', 'updated_at']);
+        expect(columns.map(column => column.pk)).toEqual([1, 2, 3, 4, 5, 0, 0]);
+        expect(columns.every(column => column.notnull === 1)).toBe(true);
+
+        const place = { projectId: 'prj_1', folderId: 'fld_1', workspaceId: '' };
+
+        setViewed(db, place, 'uncommitted', { path: 'a.ts', revision: 'r1' }, 1);
+        setViewed(db, place, 'uncommitted', { path: 'a.ts', revision: 'r2' }, 2);
+        setViewed(db, { ...place, workspaceId: 'wks_1' }, 'uncommitted', { path: 'a.ts', revision: 'r3' }, 3);
+        expect(listViewed(db, place, 'uncommitted')).toEqual([{ path: 'a.ts', revision: 'r2' }]);
+        expect(listViewed(db, { ...place, workspaceId: 'wks_1' }, 'uncommitted')).toEqual([{ path: 'a.ts', revision: 'r3' }]);
+        db.close();
+
+        const fresh = openDatabase(join(tempDir(), 'fresh.db'));
+
+        expect(version(fresh)).toBe(MIGRATIONS.length);
+        expect(tables(fresh)).toContain('viewed_files');
+        expect(fresh.query('SELECT COUNT(*) AS count FROM viewed_files').get()).toEqual({ count: 0 });
+        fresh.close();
     });
 
     test('version 15 keeps what child runs left as history in the smaller model and drops the mailbox, the idempotency key and the outcome', () => {

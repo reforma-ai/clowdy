@@ -17,6 +17,7 @@ import {
     projectCounts,
     upsertProject,
 } from '../db/projects';
+import { deleteViewedOutsideFolders } from '../db/viewed';
 import { listWorkspaceUses } from '../db/workspaces';
 import { conflict, invalid, notFound, unavailable } from '../errors';
 import { folderHead } from '../git/state';
@@ -401,6 +402,9 @@ export function updateProject(store: Store, projectId: string, patch: ProjectPat
             for (const chat of clearChatFolders(store.db, projectId, folders.map(folder => folder.id))) {
                 store.emit(projectId, { type: 'chat.upserted', chat });
             }
+
+            // The marks of viewed files that were made in a folder that left, and in its worktrees, are of a place nobody reads any more.
+            deleteViewedOutsideFolders(store.db, projectId, folders.map(folder => folder.id));
 
             // The project's skills come from its folders, so a catalog read before is out of date.
             store.emit(projectId, { type: 'skills.changed' });

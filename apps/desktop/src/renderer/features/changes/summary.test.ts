@@ -28,6 +28,15 @@ describe('the summary of a list', () => {
         expect(cut.notes).toEqual(['Showing the first 3 files']);
     });
 
+    it('says how many of the listed files are viewed when some are, whatever the filter shows', () => {
+        expect(summaryOf(changes(), files)).not.toHaveProperty('viewed');
+        expect(summaryOf(changes(), files, 0)).not.toHaveProperty('viewed');
+        expect(summaryOf(changes(), files, 2).viewed).toBe('2 of 3 viewed');
+        expect(summaryOf(changes(), [files[0]!], 1)).toMatchObject({ files: '1 of 3 files', viewed: '1 of 3 viewed' });
+        // The daemon cut the list: the files that can be viewed are the ones it lists.
+        expect(summaryOf(changes({ fileCount: 731, truncated: true }), files, 3).viewed).toBe('3 of 3 viewed');
+    });
+
     it('says the lines are a lower bound when some were not counted', () => {
         expect(summaryOf(changes({ statsComplete: false }), files).incomplete).toBe(true);
     });

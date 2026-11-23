@@ -15,6 +15,8 @@ export type ListState =
     | { kind: 'empty'; title: string; description?: string }
     /** The scope has files and the filter lets none of them through. */
     | { kind: 'filtered' }
+    /** The files the filter lets through are all viewed, and the toggle that hides the viewed ones is on. */
+    | { kind: 'allViewed' }
     /** The cards. */
     | { kind: 'files' };
 
@@ -27,6 +29,8 @@ export const LIST_TEXT = {
     noChanges: 'No changes',
     filtered: 'No files match the filter',
     filteredHint: 'Try another pattern, or clear the filter',
+    allViewed: 'Every file is viewed',
+    allViewedHint: 'Show the viewed files to read a diff again',
 } as const;
 
 /** Why the changes of the branch could not be counted against a base, when the base is not there. */
@@ -46,7 +50,7 @@ export function baseStateWords(state: GitBaseState | undefined): string | undefi
 /**
  * What the reading area shows for the place's list. A place that the status says is no repository has its own state before anything is read of its changes. A list that failed to
  * be read leaves the last one on show, and the failure is the state only while there is none. A scope with no file says why: a clean tree against a base, nothing committed,
- * no base to count from.
+ * no base to count from. With the viewed files hidden, a list whose files are all viewed says so in place of saying that the filter lets nothing through.
  */
 export function listStateOf(model: PlaceChanges): ListState {
     if (model.isRepository === false) return { kind: 'notRepository' };
@@ -69,5 +73,7 @@ export function listStateOf(model: PlaceChanges): ListState {
         return { kind: 'empty', title: LIST_TEXT.noChanges, ...(missing ? { description: missing } : base ? { description: `Nothing differs from ${ base.name }` } : {}) };
     }
 
-    return model.files.length === 0 ? { kind: 'filtered' } : { kind: 'files' };
+    if (model.files.length > 0) return { kind: 'files' };
+
+    return model.hideViewed && model.matchingFiles.length > 0 ? { kind: 'allViewed' } : { kind: 'filtered' };
 }

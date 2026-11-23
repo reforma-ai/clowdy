@@ -92,7 +92,7 @@ async function unsaved(path: string): Promise<string | undefined> {
     const changes = await countChanges(path);
 
     if (changes === undefined) {
-        return 'Git did not say what is changed in the worktree';
+        return 'Couldn\'t tell what is changed in the worktree';
     }
 
     if (changes > 0) {
@@ -102,7 +102,7 @@ async function unsaved(path: string): Promise<string | undefined> {
     const submodules = await hasCheckedOutSubmodules(path);
 
     if (submodules === undefined) {
-        return 'Git did not say whether the worktree has submodules';
+        return 'Couldn\'t tell whether the worktree has submodules';
     }
 
     return submodules ? 'The worktree has submodules checked out' : undefined;
@@ -141,7 +141,7 @@ async function checkWorkspaceRemoval(store: Store, target: Target, choices: Choi
     const listed = await gitRead(folder, ['worktree', 'list', '--porcelain']);
 
     if (!listed.ok) {
-        return no('Git did not say which worktrees there are');
+        return no('Couldn\'t read the list of worktrees from git');
     }
 
     const all = parseWorktrees(listed.stdout);
@@ -194,7 +194,7 @@ async function checkWorkspaceRemoval(store: Store, target: Target, choices: Choi
     const commit = name === undefined ? null : await commitOf(folder, `refs/heads/${ name }`);
 
     if (commit === undefined) {
-        return no('Git did not say where the branch is');
+        return no('Couldn\'t read the branch from git');
     }
 
     return {
@@ -359,7 +359,7 @@ async function failedRemoval(store: Store, verdict: Removable, reason: string): 
             });
         }
 
-        throw conflict(`${ reason }. Git no longer lists ${ path }, so what is left of the folder has to be deleted by hand`);
+        throw conflict(`${ reason }. Git no longer lists ${ path }, so what is left of the folder has to be deleted by hand.`);
     }
 
     throw conflict(reason);

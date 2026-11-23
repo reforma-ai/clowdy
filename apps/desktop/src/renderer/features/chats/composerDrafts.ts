@@ -76,13 +76,37 @@ export function withTextFirst(draft: ComposerDoc, text: string): ComposerDoc {
     return { ...draft, content: [...(plainTextToDoc(text).content ?? []), ...(draft.content ?? [])] };
 }
 
+/** For each line, whether it is a part of a fenced code block, its fences included: what a block holds is code, and a blank line in it is a line of the code. */
+function fencedLines(lines: readonly string[]): boolean[] {
+    let open = '';
+
+    return lines.map((line) => {
+        const [, fence = '', rest = ''] = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line) ?? [];
+
+        if (!open) {
+            // An info string of a backtick fence holds no backtick: ```a``` is a span of code.
+            if (!fence || (fence.startsWith('`') && rest.includes('`'))) return false;
+
+            open = fence;
+
+            return true;
+        }
+
+        // A fence of the same mark, at least as long, with nothing after it, closes the block.
+        if (fence.startsWith(open[0]!) && fence.length >= open.length && rest.trim() === '') open = '';
+
+        return true;
+    });
+}
+
 /**
  * The quote a piece of text makes: `> ` before every line and a bare `>` for a blank one, with the blank lines between two lines that are quotes
- * already left out, trimmed. Empty when there is nothing to quote.
+ * already left out (not inside a fenced block of code, where they are the code's own), trimmed. Empty when there is nothing to quote.
  */
 function quoteOf(text: string): string {
     const lines = text.replaceAll(/\r\n?/g, '\n').split('\n');
-    const kept = lines.filter((line, index) => !(line.trim() === '' && lines[index - 1]?.startsWith('>') && lines[index + 1]?.startsWith('>')));
+    const fenced = fencedLines(lines);
+    const kept = lines.filter((line, index) => fenced[index] || !(line.trim() === '' && lines[index - 1]?.startsWith('>') && lines[index + 1]?.startsWith('>')));
     const trimmed = kept.join('\n').trim();
 
     if (trimmed === '') return '';

@@ -3,11 +3,12 @@ import { ListBoxItem } from '@clowdy/components/List';
 import { PanelHeader } from '@clowdy/components/Panel';
 import { Select } from '@clowdy/components/Select';
 import { Text } from '@clowdy/components/Text';
-import { Collapse } from '@clowdy/icons/14';
+import { Collapse, EyeOff } from '@clowdy/icons/14';
 
 import { scopeOptions } from './changeScopes';
 import styles from './ChangesToolbar.module.css';
 import { summaryOf } from './summary';
+import { VIEWED_TEXT } from './viewedMarks';
 
 import type { GitScope } from '@clowdy/protocol';
 import type { ReactNode } from 'react';
@@ -23,7 +24,8 @@ function Summary({ model }: { model: PlaceChanges }) {
     // A list with no file has the empty state to say so, which says why; totals of nothing would only repeat it.
     if (!changes || changes.fileCount === 0) return null;
 
-    const summary = summaryOf(changes, model.files);
+    const summary = summaryOf(changes, model.files, model.viewedCount);
+    const refused = model.viewed.error;
 
     return (
         <div className={ styles.summary } role="status" aria-label="Summary of the changes">
@@ -32,13 +34,15 @@ function Summary({ model }: { model: PlaceChanges }) {
                 <Text variant="xs" color="success">{ summary.additions }</Text>
                 <Text variant="xs" color="danger">{ summary.deletions }</Text>
             </span>
+            { summary.viewed && <Text variant="xs" color="secondary" className={ styles.viewedCount }>{ summary.viewed }</Text> }
             { summary.notes.map(note => <Text key={ note } variant="xs" color="secondary" truncate className={ styles.note }>{ note }</Text>) }
+            { refused !== undefined && <Text variant="xs" color="secondary" truncate className={ styles.note } title={ refused }>{ VIEWED_TEXT.notSaved }</Text> }
         </div>
     );
 }
 
 /**
- * The bars over the cards: the scope menu with the buttons that fold every card and open every card, and, where the sidebar's button goes when the sidebar is hidden (`end`, the
+ * The bars over the cards: the scope menu with the buttons that fold every card, open every card and hide the viewed files (a toggle, there to press once some are viewed), and, where the sidebar's button goes when the sidebar is hidden (`end`, the
  * same place as the one in the sidebar's own header, so it does not move), then the filter and the summary of the list. The scope menu has all changes, the branch against its base
  * while there is a base, what is not committed, and one entry for each commit of the branch, newest first.
  */
@@ -69,6 +73,16 @@ export function ChangesToolbar({ model, end }: { model: PlaceChanges; end?: Reac
                     </PanelHeader.Button>
                     <PanelHeader.Button aria-label="Expand all files" tooltip="Expand all" tooltipPlacement="bottom" isDisabled={ !hasFiles || model.noneFolded } onPress={ () => model.unfoldAll() }>
                         <Collapse className={ styles.flipped } />
+                    </PanelHeader.Button>
+                    <PanelHeader.Button
+                        aria-label="Hide viewed"
+                        tooltip="Hide viewed"
+                        tooltipPlacement="bottom"
+                        isPressed={ model.hideViewed }
+                        isDisabled={ !model.hideViewed && model.viewedCount === 0 }
+                        onPress={ () => model.setHideViewed(!model.hideViewed) }
+                    >
+                        <EyeOff />
                     </PanelHeader.Button>
                     { end }
                 </PanelHeader.Actions>

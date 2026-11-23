@@ -28,11 +28,14 @@ export interface MessageActionsConfig {
     swipeToReply?: boolean;
     /** Edit the message in place: drawn only where it is given (`StreamView` gives it to a message of the person's that the agent can rewrite the chat from, and to none while one is being edited). */
     onEdit?: () => void;
-    /** Fork into a new chat, at this message: the Fork menu is drawn only where it is given (`StreamView` gives it to an answer the agent can fork at). */
+    /**
+     * Fork into a new chat, at this message: the Fork menu is drawn only where it is given. `StreamView` gives it to every final answer: a copy of the session where the agent can cut it
+     * there, and where it cannot, a hand-off of the conversation to the chat's own agent.
+     */
     onFork?: () => void;
     /** A fork is being made: `pending` on the button that started it, `blocked` on the others, so there is one at a time. */
     forkState?: 'pending' | 'blocked';
-    /** Hand the conversation up to this message to another agent (the id of the one picked): the Fork menu's `Fork to another agent…`, drawn only where it is given, beside `onFork`. */
+    /** Hand the conversation up to this message to another agent (the id of the one picked): the Fork menu's `Hand off to…`, drawn only where it is given, beside `onFork`. */
     onHandoff?: (agentId: string) => void;
     /** The agents `onHandoff` can take, in the order the list shows them: none disables the item, with the reason. */
     handoffAgents?: readonly ForkAgent[];
