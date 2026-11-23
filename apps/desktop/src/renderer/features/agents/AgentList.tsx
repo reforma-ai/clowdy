@@ -26,6 +26,7 @@ import { ArchiveButton } from './ArchiveButton';
 import { ChatIcon } from './ChatIcon';
 import { chatListPreferences } from './chatListPreferences';
 import { GroupFolderName } from './GroupFolderName';
+import { StarCard } from './StarCard';
 
 import type { Chat, ChatId, ChatWorkspace, FolderId, ProjectWorkspaceInfo } from '@clowdy/protocol';
 
@@ -357,6 +358,8 @@ export function AgentList({ selection, chats, missing, workspaces, isCovered }: 
                     </GridList>
                 </div>
             </PanelContent>
+
+            <StarCard />
 
             <Show when={ contextMenu.isOpen ? menuChat : null }>
                 { chat => (

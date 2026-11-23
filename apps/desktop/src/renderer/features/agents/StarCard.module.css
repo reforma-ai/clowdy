@@ -1,0 +1,32 @@
+/* A calm plate at the foot of the list, as wide as the rows' plates: the list's own inset on every side. */
+.card {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-sm);
+    margin: var(--spacing-md);
+    padding: var(--spacing-lg);
+    border: 1px solid var(--color-secondary-muted-border);
+    border-radius: calc(var(--radius-lg) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    background-color: var(--color-secondary-muted-light);
+}
+
+/* The cross sits at the end of the title's line, level with the first line of it, and reaches out of the plate's padding so it stands near the corner. */
+.header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--spacing-md);
+    width: 100%;
+}
+
+.header > button {
+    flex: none;
+    margin: calc(-1 * var(--spacing-xs)) calc(-1 * var(--spacing-xs)) 0 0;
+}
+
+.star {
+    margin-block-start: var(--spacing-xs);
+}
