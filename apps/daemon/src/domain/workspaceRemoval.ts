@@ -527,7 +527,8 @@ export async function removeWorktree(store: Store, config: Pick<Config, 'workspa
                 }
             });
 
-            return { path: verdict.listedPath, branchDeleted: verdict.branch !== undefined };
+            // Git prints `C:/work/app` on Windows; the app's paths are written as the machine writes them.
+            return { path: resolve(verdict.listedPath), branchDeleted: verdict.branch !== undefined };
         });
     }
     finally {
