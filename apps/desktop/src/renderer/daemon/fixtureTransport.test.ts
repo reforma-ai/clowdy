@@ -987,6 +987,24 @@ describe('FixtureTransport forks', () => {
         expect(await transport.command({ type: 'chat.fork', chatId: FIXTURE_FORK_CHAT_ID, itemId: copied[7].id })).toMatchObject({ ok: true, data: { chat: { title: '(2) First version', forkedFrom: { chatId: FIXTURE_FORK_CHAT_ID, atSeq: 8 } } } });
     });
 
+    it('forks a chat that works in a worktree into a copy that works in the same one: the same folder, the same worktree', async () => {
+        const data = withFixtureWorkspace(createFixtureData());
+        const transport = new FixtureTransport({ data });
+        const source = data.chats.find(chat => chat.id === FIXTURE_WORKSPACE_CHAT_ID) as Chat;
+        const answer = (await transport.getItems({ chatId: FIXTURE_WORKSPACE_CHAT_ID })).find(item => item.body.kind === 'assistant');
+
+        // The fixture's answer is final but not marked as a fork point; the daemon marks the ones its agent kept a rewind point for.
+        (data.items[source.orchestratorRunId as string].find(item => item.id === answer?.id) as { canFork?: boolean }).canFork = true;
+
+        const result = await transport.command({ type: 'chat.fork', chatId: FIXTURE_WORKSPACE_CHAT_ID, itemId: answer?.id ?? '' });
+        const made = (result as { ok: true; data: { chat: Chat } }).data.chat;
+
+        expect(result).toMatchObject({ ok: true });
+        expect(made.workspace).toEqual(source.workspace);
+        expect(made.workspace).not.toBe(source.workspace);
+        expect(made.folderId).toBe(source.folderId);
+    });
+
     it('forks a chat at a final answer: a chat with the history through it, the source untouched, and the new chat and its run announced', async () => {
         const { transport, events } = await connected();
         const before = await transport.getItems({ chatId: 'c-2' });
