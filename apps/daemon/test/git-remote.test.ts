@@ -1,5 +1,5 @@
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
-import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 import { CommandError } from '../src/errors';
@@ -183,6 +183,50 @@ withScripts('POST /v1/projects/:id/git/fetch, pull and push', () => {
             expect(left(path)).toEqual(['?? wip.txt']);
         });
 
+        test('is what the status says was the last fetch the moment it ends, and nothing before it: a repository that never fetched has none', async () => {
+            const h = await start();
+            const { path } = repository();
+            const { project, folderId, result } = await open(path, h);
+            const lastFetchedAt = async () => (await json<{ lastFetchedAt?: number }>(await h.fetch(`/v1/projects/${ project.id }/git/status?folderId=${ folderId }`))).lastFetchedAt;
+
+            // `git push -u` in the setup is no fetch.
+            expect(await lastFetchedAt()).toBeUndefined();
+
+            const before = Date.now();
+
+            await result('fetch');
+            expect(await lastFetchedAt()).toBeGreaterThanOrEqual(before - 1000);
+            expect(await lastFetchedAt()).toBeLessThanOrEqual(Date.now() + 1000);
+        });
+
+        test('keeps saying when the last fetch went through after a later one failed, which empties FETCH_HEAD, and a pull is a fetch too', async () => {
+            const h = await start();
+            const { path, origin } = repository();
+            const { project, folderId, result, failure } = await open(path, h);
+            const lastFetchedAt = async () => (await json<{ lastFetchedAt?: number }>(await h.fetch(`/v1/projects/${ project.id }/git/status?folderId=${ folderId }`))).lastFetchedAt;
+
+            await result('fetch');
+
+            const fetched = await lastFetchedAt();
+
+            expect(fetched).toBeDefined();
+
+            // Origin is gone: git empties FETCH_HEAD before it asks, so the file no longer says when the refs were brought up to date, and the daemon's own record does.
+            renameSync(origin, `${ origin }.away`);
+            await failure('fetch', 409);
+            expect(statSync(join(path, '.git', 'FETCH_HEAD')).size).toBe(0);
+            expect(await lastFetchedAt()).toBe(fetched);
+
+            await failure('pull', 409);
+            expect(await lastFetchedAt()).toBe(fetched);
+
+            // Back, a pull fetches and the time moves on.
+            renameSync(`${ origin }.away`, origin);
+            await new Promise(done => setTimeout(done, 20));
+            await result('pull');
+            expect(await lastFetchedAt()).toBeGreaterThan(fetched!);
+        });
+
         test('does not prune: a branch that is gone from origin is still known afterwards', async () => {
             const h = await start();
             const { path, origin } = repository();
@@ -346,6 +390,25 @@ withScripts('POST /v1/projects/:id/git/fetch, pull and push', () => {
             git(path, 'switch', '-q', '--detach');
             expect((await failure('pull', 400)).message).toMatch(/HEAD is detached/);
         });
+
+        test('refuses a branch that tracks a branch of another name, as one that is not published, and moves nothing: `feat` made from origin/main is not fast-forwarded to main', async () => {
+            const h = await start();
+            const { path, origin } = repository();
+            const { failure } = await open(path, h);
+            const other = neighbour(origin);
+
+            git(path, 'switch', '-q', '-c', 'feat', 'origin/main');
+
+            const before = git(path, 'rev-parse', 'HEAD');
+
+            commitFile(other, 'theirs.txt');
+            git(other, 'push', '-q');
+            git(path, 'fetch', '-q', 'origin');
+            expect(git(path, 'rev-list', '--count', 'HEAD..@{upstream}')).toBe('1');
+
+            expect((await failure('pull', 400)).message).toBe('feat tracks origin/main, not a branch of its own, publish it first');
+            expect(git(path, 'rev-parse', 'HEAD')).toBe(before);
+        });
     });
 
     describe('push', () => {
@@ -506,20 +569,54 @@ withScripts('POST /v1/projects/:id/git/fetch, pull and push', () => {
             expect(refsOf(elsewhere)).toBe('');
         });
 
-        test('sends a branch that tracks a branch of another name to that branch, and publishes one that tracks nothing under its own name', async () => {
+        test('never sends a branch to the branch it tracks under another name: `git switch -c feat origin/main` is published as feat, and main on origin is left where it was', async () => {
+            const h = await start();
+            const { path, origin } = repository();
+            const { result } = await open(path, h);
+            const main = git(origin, 'rev-parse', 'refs/heads/main');
+
+            // git's own default: a branch started from a remote-tracking branch tracks it.
+            git(path, 'switch', '-q', '-c', 'feat', 'origin/main');
+            expect(git(path, 'config', 'branch.feat.merge')).toBe('refs/heads/main');
+
+            const mine = commitFile(path, 'mine.txt');
+
+            // The upstream is `origin/main`, so the commit is 1 ahead of it: what a plain push to the upstream's ref would have sent to main (a fast-forward, with no pull request).
+            expect(await result('push')).toEqual({ state: 'done', action: 'push', published: true, upstream: { name: 'origin/feat', ahead: 0, behind: 0 } });
+            expect(git(origin, 'rev-parse', 'refs/heads/main')).toBe(main);
+            expect(git(origin, 'rev-parse', 'refs/heads/feat')).toBe(mine);
+            // Published under its own name, it tracks that, and the next push is a plain one.
+            expect(git(path, 'config', 'branch.feat.merge')).toBe('refs/heads/feat');
+            commitFile(path, 'more.txt');
+            expect(await result('push')).toEqual({ state: 'done', action: 'push', upstream: { name: 'origin/feat', ahead: 0, behind: 0 } });
+            expect(git(origin, 'rev-parse', 'refs/heads/main')).toBe(main);
+        });
+
+        test('publishes a branch that tracks another one under its own name whether that one is there or gone from origin, and a name that only begins like its own is another branch', async () => {
             const h = await start();
             const { path, origin } = repository();
             const { result } = await open(path, h);
 
             git(path, 'push', '-q', 'origin', 'main:refs/heads/shared');
             git(path, 'fetch', '-q', 'origin');
-            git(path, 'switch', '-q', '-c', 'mine', '--track', 'origin/shared');
+            git(path, 'switch', '-q', '-c', 'shared-2', '--track', 'origin/shared');
 
             const mine = commitFile(path, 'mine.txt');
 
-            expect(await result('push')).toEqual({ state: 'done', action: 'push', upstream: { name: 'origin/shared', ahead: 0, behind: 0 } });
-            expect(git(origin, 'rev-parse', 'refs/heads/shared')).toBe(mine);
-            expect(refsOf(origin)).not.toContain('refs/heads/mine');
+            expect(await result('push')).toMatchObject({ state: 'done', action: 'push', published: true, upstream: { name: 'origin/shared-2' } });
+            expect(git(origin, 'rev-parse', 'refs/heads/shared-2')).toBe(mine);
+            expect(git(origin, 'rev-parse', 'refs/heads/shared')).not.toBe(mine);
+
+            // The branch it tracked is deleted from origin and pruned: it is another name that is gone, and the branch is still sent under its own.
+            git(path, 'switch', '-q', '-c', 'orphan', 'origin/shared');
+            git(path, 'push', '-q', 'origin', '--delete', 'shared');
+            git(path, 'fetch', '-q', '--prune', 'origin');
+
+            const orphan = commitFile(path, 'orphan.txt');
+
+            expect(await result('push')).toMatchObject({ state: 'done', action: 'push', published: true, upstream: { name: 'origin/orphan' } });
+            expect(git(origin, 'rev-parse', 'refs/heads/orphan')).toBe(orphan);
+            expect(refsOf(origin)).not.toContain('refs/heads/shared ');
         });
 
         test('refuses a detached HEAD, a branch with no commit, a repository with no origin and a folder that is no repository, and sends nothing', async () => {
@@ -762,6 +859,10 @@ withScripts('GitRemote', () => {
         await recorded.push(place);
         git(path, 'switch', '-q', '-c', 'feature');
         await recorded.push(place);
+        // A branch made from another one tracks it, and is still sent under its own name, never to the one it tracks.
+        git(path, 'switch', '-q', '-c', 'side', 'origin/main');
+        commitFile(path, 'side.txt');
+        await recorded.push(place);
 
         const runs = readFileSync(log, 'utf8').trim().split('\n');
 
@@ -770,6 +871,8 @@ withScripts('GitRemote', () => {
         expect(runs).toContain('push --no-follow-tags --no-recurse-submodules origin refs/heads/main:refs/heads/main');
         // A branch that was never published is sent as a full ref too, never as `HEAD`, which is whatever is checked out when git runs.
         expect(runs).toContain('push --no-follow-tags --no-recurse-submodules -u origin refs/heads/feature:refs/heads/feature');
+        expect(runs).toContain('push --no-follow-tags --no-recurse-submodules -u origin refs/heads/side:refs/heads/side');
+        expect(runs.filter(run => run.startsWith('push ') && run.includes('refs/heads/side')).join('\n')).not.toContain(':refs/heads/main');
         expect(runs.join('\n')).not.toMatch(/--force|\s-f\s|--no-verify|--tags|--mirror|--all|--prune|\+refs|--delete|--rebase|reset|pull\b|\bHEAD\b/);
     });
 

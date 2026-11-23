@@ -5,7 +5,7 @@ import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 
 import { getChat } from '../db/chats';
 import { getProject } from '../db/projects';
-import { chatsOfWorkspace, deleteWorkspace, getWorkspace, insertWorkspace, listWorkspacesOfProject, toChatWorkspace, updateWorkspace } from '../db/workspaces';
+import { chatsOfWorkspace, deleteWorkspace, getWorkspace, insertWorkspace, listWorkspacesOfProject, renameWorkspaceBase, toChatWorkspace, updateWorkspace } from '../db/workspaces';
 import { invalid, notFound } from '../errors';
 import { parseBranches, parseWorktrees, pickBase, pickDefaultBranch } from '../git/state';
 import { newId } from '../ids';
@@ -14,7 +14,7 @@ import { appendItem, updateItem } from './items';
 import { runLines } from './lines';
 import { runSetup } from './workspaceSetup';
 
-import type { ChatWorkspace, ChatWorkspaceChoice, Project, ProjectFolder, StreamItemBody } from '@clowdy/protocol';
+import type { Chat, ChatWorkspace, ChatWorkspaceChoice, Project, ProjectFolder, StreamItemBody } from '@clowdy/protocol';
 import type { Config } from '../config';
 import type { ListedWorktree } from '../git/state';
 import type { Store } from '../store';
@@ -378,14 +378,9 @@ function branchTaken(store: Store, project: Project, folder: ProjectFolder, bran
         || listWorkspacesOfProject(store.db, project.id).some(record => record.folderId === folder.id && record.branch !== undefined && (record.branch === branch || record.branch.startsWith(`${ branch }/`) || branch.startsWith(`${ record.branch }/`)));
 }
 
-/**
- * What a worktree's branch may be called when it is made for a piece of work with a title: the title's words in ASCII, lower case, joined with dashes and cut at a word
- * (`MAX_BRANCH_NAME_LENGTH`), with the end of the chat's id8 added when a branch of that name is there already. `undefined` for a title that has no letter or digit in it (a name in
- * another script), so the branch keeps the id8 for a name. Call it inside a transaction: the rows it reads are the ones the chat's own is written with.
- */
-export function branchNameFor(store: Store, config: Pick<Config, 'workspacesDir'>, project: Project, folderId: string | undefined, chatId: string, branchPrefix: string | undefined, title: string): string | undefined {
-    const folder = repositoryFolder(project, folderId);
-    const words = title.normalize('NFKD').replace(/\p{M}+/gu, '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+/** The words of a text as a branch name: ASCII, lower case, joined with dashes, cut at a word to leave room for `-xxxx`; empty for a text with no letter or digit in ASCII. */
+function branchSlug(text: string): string {
+    const words = text.normalize('NFKD').replace(/\p{M}+/gu, '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
     const kept: string[] = [];
 
     for (const word of words) {
@@ -394,17 +389,127 @@ export function branchNameFor(store: Store, config: Pick<Config, 'workspacesDir'
         kept.push(word);
     }
 
-    const slug = kept.join('-');
+    return kept.join('-');
+}
 
-    if (!slug) {
-        return undefined;
-    }
-
-    const prefix = branchPrefixOf(branchPrefix);
-    // A name Windows keeps for a device (`con`) cannot be a file there, and git keeps a branch as one: it goes with the end of the id, which makes it another name.
+/** The slug, or the slug with the end of the chat's id when the slug is taken (or is a name Windows keeps for a device); `undefined` when neither can be a new branch. */
+function freeBranchName(store: Store, project: Project, folder: ProjectFolder, prefix: string, slug: string, chatId: string): string | undefined {
     const candidates = [...RESERVED_NAMES.test(slug) ? [] : [slug], `${ slug }-${ chatKey(chatId).slice(-4).toLowerCase() }`];
 
     return candidates.find(name => !branchTaken(store, project, folder, `${ prefix }/${ name }`) && branchInTheWay(folder.path, `${ prefix }/${ name }`) === undefined);
+}
+
+/**
+ * What a worktree's branch may be called when it is made for a piece of work with a title: the title's words (`branchSlug`), with the end of the chat's id8 added when a
+ * branch of that name is there already. `undefined` for a title that has no letter or digit in ASCII (a name in another script), so the branch keeps the id8 for a name.
+ * Call it inside a transaction: the rows it reads are the ones the chat's own is written with.
+ */
+export function branchNameFor(store: Store, config: Pick<Config, 'workspacesDir'>, project: Project, folderId: string | undefined, chatId: string, branchPrefix: string | undefined, title: string): string | undefined {
+    const slug = branchSlug(title);
+
+    return slug ? freeBranchName(store, project, repositoryFolder(project, folderId), branchPrefixOf(branchPrefix), slug, chatId) : undefined;
+}
+
+/**
+ * Whether a chat can still give its worktree a name of its own: it is a chat the person started (a thread's branch is told to its parent when it is spawned), Clowdy made
+ * the worktree for it (`ownsWorktree`), and the branch still has the id8 for a name, as a new worktree has it. A chat whose branch was named is done with it.
+ */
+export function canNameBranch(chat: Pick<Chat, 'id' | 'parentChatId' | 'workspace'>): boolean {
+    const { workspace } = chat;
+
+    return chat.parentChatId === undefined && workspace !== undefined && workspace.ready && ownsWorktree(chat, workspace) && workspace.branch?.endsWith(`/${ chatKey(chat.id) }`) === true;
+}
+
+/**
+ * Gives a chat's worktree a branch name of its words (`clowdy worktree name fix login redirect`): the branch it was made with is renamed in place (`git branch -m`, which
+ * moves no folder: the agent's `cwd`, its session and its rights are the same, and the worktree's HEAD follows), the row is written and every chat that points at it is
+ * published. The prefix stays. The name is the words as `branchSlug` reads them, with the end of the chat's id added when it is taken. `invalid` (with a reason the agent can
+ * act on) for a chat that cannot (`canNameBranch`), words with no ASCII letter in them, a worktree that is on another branch than the one it was made with, and a branch
+ * that has an upstream (it was pushed: a new name would leave the remote's behind).
+ */
+export function nameWorkspaceBranch(store: Store, project: Project, chat: Chat, words: string): { branch: string; previous: string } {
+    const { workspace } = chat;
+
+    if (!workspace) {
+        throw invalid('You work in the folder itself, so there is no worktree of yours to name');
+    }
+
+    if (!canNameBranch(chat) || workspace.branch === undefined) {
+        throw invalid(chat.parentChatId === undefined && ownsWorktree(chat, workspace) && workspace.branch !== undefined ? `Your branch ${ workspace.branch } has a name already` : 'This worktree is not made for this chat alone, or its branch is not one of the daemon\'s to rename');
+    }
+
+    const folder = project.folders.find(candidate => candidate.id === workspace.folderId);
+
+    if (!folder) {
+        throw invalid('The folder of your worktree is no longer part of the project');
+    }
+
+    const slug = branchSlug(words);
+
+    if (!slug) {
+        throw invalid(`Give the name as words in English: letters a-z and digits, short words, such as fix login redirect (the name is ${ MAX_BRANCH_NAME_LENGTH - 5 } characters at most)`);
+    }
+
+    if (!existsSync(workspace.path)) {
+        throw invalid(`Your worktree folder ${ workspace.path } is gone from the disk`);
+    }
+
+    const previous = workspace.branch;
+    const live = readGit(workspace.path, ['branch', '--show-current']);
+
+    if (!live.ok || live.stdout !== previous) {
+        throw invalid(`Your worktree is on ${ live.ok && live.stdout ? live.stdout : 'a detached HEAD' }, not on ${ previous }, the branch it was made with: rename a branch you made yourself with git`);
+    }
+
+    const upstream = readGit(folder.path, ['config', '--get', `branch.${ previous }.remote`]);
+
+    if (upstream.ok && upstream.stdout !== '') {
+        throw invalid(`Your branch ${ previous } has an upstream (${ upstream.stdout }), so a new name would leave the remote's branch behind: keep it`);
+    }
+
+    // Pushed without `-u` there is no upstream, but a branch of that name is on the remote as last fetched, or was pushed and its remote-tracking ref is made by the push.
+    const remotes = readGit(folder.path, ['for-each-ref', '--format=%(refname:lstrip=3)', 'refs/remotes']);
+
+    if (remotes.ok && remotes.stdout.split('\n').includes(previous)) {
+        throw invalid(`A remote has a branch called ${ previous }, so a new name would leave it behind: keep it`);
+    }
+
+    const prefix = previous.slice(0, previous.lastIndexOf('/'));
+    const name = freeBranchName(store, project, folder, prefix, slug, chat.id);
+
+    if (name === undefined) {
+        throw invalid(`The name ${ prefix }/${ slug } is taken, and so is the same with the end of your id: give other words`);
+    }
+
+    const branch = `${ prefix }/${ name }`;
+    const renamed = git(workspace.path, ['branch', '-m', previous, branch], SYNC_READ_TIMEOUT_MS);
+
+    if (!renamed.ok) {
+        // Git renames the ref first and its settings after: a `config.lock` held by another git leaves the branch renamed and the command failed. The branch is what counts.
+        const now = readGit(workspace.path, ['branch', '--show-current']);
+
+        if (!now.ok || now.stdout !== branch) {
+            throw invalid(`git could not rename the branch: ${ renamed.stderr || renamed.stdout }`);
+        }
+
+        readGit(folder.path, ['config', '--rename-section', `branch.${ previous }`, `branch.${ branch }`]);
+    }
+
+    store.tx(() => {
+        updateWorkspace(store.db, workspace.id, { branch });
+        // A worktree made from this branch (a thread's own) has it for its base, and a base that is gone is a worktree that cannot be made, merged into or removed.
+        renameWorkspaceBase(store.db, project.id, workspace.folderId, previous, branch);
+
+        for (const chatId of chatsOfWorkspace(store.db, workspace.id)) {
+            const sharing = getChat(store.db, chatId);
+
+            if (sharing) {
+                store.emit(sharing.projectId, { type: 'chat.upserted', chat: sharing });
+            }
+        }
+    });
+
+    return { branch, previous };
 }
 
 /** The branch of the repository that stands in the way of `branch`, if any: `max` for `max/ab12cd34`, since git keeps a branch as a file and cannot make a folder of it. */

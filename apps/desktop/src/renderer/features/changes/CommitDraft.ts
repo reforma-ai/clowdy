@@ -2,7 +2,7 @@ import { errorMessage } from '@clowdy/lib';
 import { makeAutoObservable, observable, runInAction } from 'mobx';
 
 import { TransportError, type Transport } from '../../daemon/transport';
-import { commitAndPushBlock, pushOrPublish } from './changesActions';
+import { commitAndPushBlock, commitBlock, pushOrPublish } from './changesActions';
 import { placeRef } from './gitFacts';
 
 import type { GitChangedFile, GitCommitResult } from '@clowdy/protocol';
@@ -140,6 +140,14 @@ export class CommitDraft {
         return this.busy === undefined && !this.noneTicked && this.message.trim() !== '';
     }
 
+    /**
+     * Why Commit cannot be pressed, as GitHub Desktop's tooltips say it (`A commit summary is required to commit`, `Select one or more files to commit`); nothing when it can, and nothing
+     * while the box is busy, since the button then says it is working and not that it is missing something.
+     */
+    get commitReason(): string | undefined {
+        return this.busy === undefined ? commitBlock(this.message, this.ticked.length) : undefined;
+    }
+
     /** Why Commit & Push is not offered right now, for its menu entry; nothing when it is. Another action running holds it, and so does a branch the push after the commit would not take. */
     get pushBlock(): string | undefined {
         return this.remote.busy ? 'An action is running' : commitAndPushBlock(this.model.facts.status.value);
@@ -147,6 +155,20 @@ export class CommitDraft {
 
     get canCommitAndPush(): boolean {
         return this.canCommit && this.pushBlock === undefined;
+    }
+
+    /**
+     * Fetches `origin` after a push that it turned down for commits the branch lacks (`! [rejected] ... (fetch first)`), as GitHub Desktop's `Newer Commits on Remote` offers. When the fetch
+     * goes through, the line about that push goes: it was about a branch that stands otherwise now, and the sidebar's button says how (`Pull origin`, `Diverged`). The commit stands either way.
+     */
+    async fetchAfterRejection(): Promise<void> {
+        const outcome = await this.remote.run('fetch');
+
+        if (!outcome.ok) return;
+
+        runInAction(() => {
+            if (this.failure?.what === 'push') this.failure = undefined;
+        });
     }
 
     /** What the person did to the box: the line about the last request is no longer about what they see. */

@@ -459,12 +459,12 @@ describe('the scope', () => {
             Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(text, 'feat: from the branch scope');
             text.dispatchEvent(new Event('input', { bubbles: true }));
         });
-        await press([...commitBox()!.querySelectorAll('button')].find(candidate => candidate.textContent === 'Commit')!);
+        await press([...commitBox()!.querySelectorAll('button')].find(candidate => candidate.textContent?.startsWith('Commit'))!);
         await settle();
         await settle();
 
         expect(commit).toHaveBeenCalledWith(FIXTURE_PROJECT_ID, { folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' }, ['notes.md', 'src/booking/price.ts', 'src/limits.ts'], 'feat: from the branch scope');
-        expect(commitBox()?.textContent).toBe('Committed c0ffee0');
+        expect(commitBox()?.textContent).toContain('Committed c0ffee0');
     });
 
     it('reads again only when the facts start a round of reads: a refresh of the store and the window\'s focus reach it, and nothing else does', async () => {

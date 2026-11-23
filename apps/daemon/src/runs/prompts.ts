@@ -46,6 +46,8 @@ export interface PromptWorkspace {
     branch?: string;
     /** The folder of the project it is a checkout of: the main checkout, which the person and the other agents work in. */
     folder: string;
+    /** The chat has `worktree_name` (`clowdy worktree name`): its branch is still the placeholder it was made with, and the agent is to give it a name. */
+    nameable?: boolean;
 }
 
 /** What the system prompt says about the run's chat: present for every run of a chat, with the parent when the chat is a thread and the worktree when it works in one. */
@@ -55,11 +57,12 @@ export interface PromptChat {
 }
 
 /** What an orchestrator is told of the worktree it works in: where it is, its branch, and that the checkout it was made from is not its place. */
-function workspaceFacts({ path, branch, folder }: PromptWorkspace): string {
+function workspaceFacts({ path, branch, folder, nameable }: PromptWorkspace): string {
     return [
         `Worktree: you work in a git worktree of ${ folder }, at ${ path }, ${ branch ? `on the branch ${ branch }` : 'on a detached HEAD' }. Read and change files there, run commands there and commit your work there.`,
         `The main checkout at ${ folder } is the person's and other agents' place: leave its files alone, and use it only to read what the worktree does not have.`,
-    ].join(' ');
+        nameable && 'The name of your branch is a placeholder made from the id of this chat. As soon as you know what the work is, and before your first commit, name it once: `clowdy worktree name <two to four English words, lower case, joined with dashes>`, such as `clowdy worktree name fix-login-redirect`. It renames the branch where it stands and nothing else moves, so keep working in the same folder; do not rename it with git yourself.',
+    ].filter(Boolean).join(' ');
 }
 
 /** What the orchestrator of a thread is told about its place: who started it, what its report is, and whom it may write to. */

@@ -32,7 +32,7 @@ describe('resolveDaemonConfig', () => {
     it('says how a fetch, a pull and a push end in the fixtures, and what GitHub says of the worktree\'s branch, for the words it knows', () => {
         expect(resolveDaemonConfig('?fixtures=static&worktree&remote=rejected&pr=none')).toEqual({ kind: 'fixtures', timeline: false, worktree: true, remote: 'rejected', pr: 'none' });
 
-        for (const remote of ['slow', 'behind', 'diverged', 'rejected', 'signing', 'offline']) {
+        for (const remote of ['slow', 'behind', 'ahead', 'level', 'never', 'diverged', 'rejected', 'signing', 'offline', 'no_origin', 'detached', 'unborn']) {
             expect(resolveDaemonConfig(`?fixtures=static&remote=${ remote }`)).toEqual({ kind: 'fixtures', timeline: false, remote });
         }
 
@@ -41,6 +41,12 @@ describe('resolveDaemonConfig', () => {
         }
 
         expect(resolveDaemonConfig('?fixtures=static&remote=failed&pr=maybe')).toEqual({ kind: 'fixtures', timeline: false });
+    });
+
+    it('leaves the worktree clean, or on the base branch, when the page says &clean or &base', () => {
+        expect(resolveDaemonConfig('?fixtures=static&worktree&clean')).toEqual({ kind: 'fixtures', timeline: false, worktree: true, clean: true });
+        expect(resolveDaemonConfig('?fixtures=static&worktree&base&remote=level')).toEqual({ kind: 'fixtures', timeline: false, worktree: true, base: true, remote: 'level' });
+        expect(resolveDaemonConfig('?fixtures=static&worktree')).not.toHaveProperty('clean');
     });
 
     it('has nothing otherwise', () => {
@@ -73,6 +79,17 @@ describe('createTransport', () => {
         expect(await open.getGitPullRequest(project.id, place)).toMatchObject({ pullRequest: { number: 128 } });
         expect((await none.getGitPullRequest(project.id, place) as { pullRequest?: unknown }).pullRequest).toBeUndefined();
         await expect(none.fetchGit(project.id, place)).rejects.toMatchObject({ status: 409 });
+    });
+
+    it('has the chat\'s worktree with nothing uncommitted for `clean`, and on the base branch for `base`', async () => {
+        const place = { folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' };
+        const project = (await createTransport({ kind: 'fixtures', timeline: false }).getRootSnapshot()).projects.find(candidate => candidate.folders.some(folder => folder.id === 'fld_car_rental'))!;
+        const clean = await createTransport({ kind: 'fixtures', timeline: false, worktree: true, clean: true }).getGitStatus(project.id, place);
+        const onBase = await createTransport({ kind: 'fixtures', timeline: false, worktree: true, base: true }).getGitStatus(project.id, place);
+
+        expect(clean).toMatchObject({ isRepository: true, entries: [], head: { name: 'clowdy/ab12cd34' } });
+        expect(onBase).toMatchObject({ isRepository: true, head: { kind: 'branch', name: 'main' }, base: { name: 'origin/main' } });
+        expect((onBase as { entries: unknown[] }).entries).toHaveLength(3);
     });
 
     it('makes a transport that cannot reach anything when there is no config', async () => {

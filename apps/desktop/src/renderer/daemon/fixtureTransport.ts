@@ -288,15 +288,21 @@ export class FixtureTransport implements Transport {
         const { head, workspace } = this.#gitPlace(projectId, place);
 
         const upstream = this.#gitRemote.upstreamOf(this.#remotePlace(head, workspace, place));
+        const { lastFetchedAt, hasOrigin, head: script } = this.#gitRemote;
 
-        const status = fixtureGitStatus(head, workspace, this.#gitWrites.committedOf(place.workspaceId ?? ''), { ...(upstream && { upstream }) });
+        const status = fixtureGitStatus(head, workspace, this.#gitWrites.committedOf(place.workspaceId ?? ''), {
+            ...(upstream && { upstream }),
+            ...(lastFetchedAt !== undefined && { lastFetchedAt }),
+            ...(!hasOrigin && { origin: false }),
+            ...(script && { head: script }),
+        });
 
         return structuredClone(workspace ? status : this.#branches.dirtied(status));
     }
 
     /** The place as the fixture's remote keeps it: a checkout is level with its upstream, a worktree's branch is not published until a push says so. */
     #remotePlace(head: { branch?: string; detached?: true } | undefined, workspace: Pick<ChatWorkspace, 'branch'> | undefined, place: PlaceRef): FixtureRemotePlace {
-        const branch = head?.detached ? undefined : workspace ? workspace.branch ?? 'clowdy/ab12cd34' : head?.branch;
+        const branch = head?.detached || this.#gitRemote.head === 'detached' ? undefined : workspace ? workspace.branch ?? 'clowdy/ab12cd34' : head?.branch;
 
         return { key: `${ place.folderId }/${ place.workspaceId ?? '' }`, branch, worktree: workspace !== undefined };
     }

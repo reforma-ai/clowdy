@@ -171,7 +171,7 @@ export function ChangesSidebar({ model, place, projectId, onOpenFile, toggle }: 
                         : <PanelEmptyRow>{ emptyFilesWords(model) }</PanelEmptyRow> }
                 </section>
 
-                <CommitBox model={ model } />
+                <CommitBox model={ model } place={ place } projectId={ projectId } git={ git } />
 
                 { base && (
                     <section className={ styles.commits } aria-label="Committed on branch">
