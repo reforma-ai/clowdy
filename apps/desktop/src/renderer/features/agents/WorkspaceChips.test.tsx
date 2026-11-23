@@ -336,6 +336,7 @@ describe('the branch a new worktree starts from', () => {
         await press(chip()!);
         await key(menuItem('clowdy/ab12cd34'));
         await key(menuItem('Current checkout'));
+        await key(menuItem('Manage worktrees'));
         await settle();
 
         expect(options()).toEqual([]);
@@ -540,6 +541,41 @@ describe('Manage worktrees…', () => {
 
         expect(opener).toHaveBeenCalledTimes(2);
         expect(menuItems()).toEqual([]);
+    });
+
+    it('is reached by the arrow keys: down from the last worktree, and round from the first row, which wraps to it', async () => {
+        await press(chip()!);
+        await key(menuItem('clowdy/ab12cd34'), 'ArrowDown', 'ArrowDown');
+
+        expect(document.activeElement).toBe(menuItem('Manage worktrees'));
+
+        await key(menuItem('Manage worktrees'), 'ArrowDown', 'ArrowDown');
+
+        expect(document.activeElement).toBe(menuItem('Current checkout'));
+
+        await key(menuItem('Current checkout'), 'ArrowUp', 'ArrowUp');
+
+        expect(document.activeElement).toBe(menuItem('Manage worktrees'));
+    });
+
+    it('gives focus back to the pill when the dialog is dismissed with Escape, though the row that opened it went with the menu', async () => {
+        // The one test that draws the dialog itself: where focus returns is what the dialog noted when it opened, and that row is gone.
+        const { openManageWorktrees: openDialog } = await vi.importActual<typeof import('../worktrees')>('../worktrees');
+
+        opener.mockImplementationOnce(openDialog);
+        await press(chip()!);
+        await key(menuItem('Manage worktrees'), 'Enter', 'Enter');
+        // The dialog notes the element to go back to once it has opened.
+        await act(async () => {
+            await new Promise(resolve => setTimeout(resolve, 400));
+        });
+
+        expect(document.body.textContent).toContain('Every worktree of the project');
+        expect(document.activeElement).not.toBe(chip());
+
+        await key(document.activeElement as HTMLElement, 'Escape', 'Escape');
+        await vi.waitFor(() => expect(document.activeElement).toBe(chip()));
+        expect(document.body.textContent).not.toContain('Every worktree of the project');
     });
 
     it('is in the menu of a repository with no commit too, where a new worktree is off', async () => {
