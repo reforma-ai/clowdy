@@ -127,14 +127,14 @@
 
 **This stage:** every request that names a folder to read or run something in may also name a workspace of that folder, and the daemon uses the worktree in place of the main checkout. One resolver judges it (the workspace has to belong to the folder and the project), so no request can reach a path the project does not own.
 
-- [ ] Complete
-  - [ ] `placeOf(store, project, folderId, workspaceId?)` gives the folder and the root to read, `unavailable` while the workspace is not made (`ready` false) or gone from the disk
-  - [ ] The file system routes (list, find, read, write, make folder, move, copy, delete, watch, search) take `workspaceId` (query, or body for the posts) and use `placeOf`; the watch of a worktree is its own
-  - [ ] A terminal made with a `workspaceId` starts in the worktree; `TerminalInfo` carries it, and a project's list of terminals tells them apart by place
-  - [ ] `GET /v1/projects/:id/docs?workspaceId=` lists the document sources of that worktree for its folder, the other folders as before
-  - [ ] `GET /v1/projects/:id/files?workspaceId=` (the `@` mentions' and Cmd+K's list of names) lists the worktree's files in place of its folder's main checkout, the other folders as before; the worktree's own tracked and unignored files, a file only the worktree has included
-  - [ ] `projectsInfo` reports each workspace of the project (`ProjectInfo.workspaces`: `workspaceId`, `exists`, and the checked out branch or short hash with `detached`, read as a folder's head is), which the app's live read of a chat's branch uses
-  - [ ] Tests: a worktree's file read and written, a workspace of another folder or project refused, a terminal's cwd, the docs of a worktree having a plan the main checkout lacks
+- [x] Complete
+  - [x] `placeOf(store, project, folderId, workspaceId?)` gives the folder and the root to read, `unavailable` while the workspace is not made (`ready` false) or gone from the disk
+  - [x] The file system routes (list, find, read, write, make folder, move, copy, delete, watch, search) take `workspaceId` (query, or body for the posts) and use `placeOf`; the watch of a worktree is its own
+  - [x] A terminal made with a `workspaceId` starts in the worktree; `TerminalInfo` carries it, and a project's list of terminals tells them apart by place
+  - [x] `GET /v1/projects/:id/docs?workspaceId=` lists the document sources of that worktree for its folder, the other folders as before
+  - [x] `GET /v1/projects/:id/files?workspaceId=` (the `@` mentions' and Cmd+K's list of names) lists the worktree's files in place of its folder's main checkout, the other folders as before; the worktree's own tracked and unignored files, a file only the worktree has included
+  - [x] `projectsInfo` reports each workspace of the project (`ProjectInfo.workspaces`: `workspaceId`, `exists`, and the checked out branch or short hash with `detached`, read as a folder's head is), which the app's live read of a chat's branch uses
+  - [x] Tests: a worktree's file read and written, a workspace of another folder or project refused, a terminal's cwd, the docs of a worktree having a plan the main checkout lacks
 
 **Files**
 
@@ -153,7 +153,10 @@
 
 **Done when:** over HTTP, the same `folderId` with a `workspaceId` lists, reads and writes the worktree's files, opens a terminal in it lists its documents and its file names, and with another folder's workspace answers `not_found`.
 **Verify:** `cd apps/daemon && bun test test/fs-service.test.ts test/fs-http.test.ts test/terminals.test.ts test/docs.test.ts test/files.test.ts test/projects.test.ts`, `cd packages/protocol && bun run test && bun run typecheck`, `bun run --cwd apps/desktop typecheck`
-**Commits:** None yet.
+**Scope changes:** the resolver is `resolvePlace` in `domain/places.ts` (not `placeOf`, which is Stage 2's path normaliser); `FsService` methods take `FolderId | Place`; the worktree cases are in `test/places.test.ts`; `FsLocation` and `FsSearchRequest` carry `workspaceId`; `projectsInfo` reads only the workspaces some chat points at. Answers carry the folder's id and name, never the workspace's. A worktree's `.git` is a file and shows in `list`.
+**Review findings, fixed:** `projectsInfo` ran git on every workspace row ever made; `FsService.search` ignored a `workspaceId` given directly; a `Place` handed to a service was trusted (`ownsPlace` now refuses a foreign one). Left: a worktree directory replaced by a symlink after creation becomes the root, as for a folder; the watcher of a removed worktree restarts with back-off until its clients leave.
+**Commits:** `2b21049` feat(daemon): read and run in a chat's worktree through a workspaceId on the file system, terminals, documents and file names; `756d467` fix(daemon): refuse a place that is not the project's, read only the worktrees a chat points at, and pin the worktree cases the review named. Merged as `ffa3db7`.
+
 
 ## Stage 4 — Removing a worktree with its chat
 
@@ -161,11 +164,11 @@
 
 **This stage:** a worktree Clowdy made does not have to pile up, and nothing is removed without the person saying so. The delete dialog of a chat asks whether the worktree and its branch go too, when that is safe: the daemon answers per chat whether it can be removed and `chat.delete` takes the choice. Archiving never touches a worktree.
 
-- [ ] Complete
-  - [ ] `GET /v1/chats/:id/workspace` answers `ChatWorkspaceRemoval { removable: boolean; path; branch? }`, `removable` only for a workspace that Clowdy made, that exists on disk, that no chat outside the chat and the threads below it points at (archived chats count), whose tree has nothing uncommitted (`git status --porcelain`, untracked included) and whose branch is an ancestor of the workspace's base ref (`merge-base --is-ancestor`, no fetch); a chat with no workspace is `removable: false`
-  - [ ] `chat.delete` takes `removeWorkspace?: boolean`: with it the daemon checks the same conditions again inside the delete (a refusal is `conflict` with the reason, and the chat stays), removes the worktree (`git worktree remove`, its empty parent folders pruned) and deletes the branch (`branch -D`, which is safe once it is an ancestor of the base); without it the worktree and the branch stay, and the workspace row is dropped only when no chat points at it any more (the worktree itself stays on disk, listed by git as any other)
-  - [ ] The delete dialog (`deleteChat`) reads the answer and, when `removable`, shows the checkbox in its message and sends the choice; a chat that never ran still deletes at once, since no worktree was made for it
-  - [ ] Tests: removable for a clean merged Clowdy-made worktree, not removable when dirty, unmerged, shared with another chat, made by someone else (an existing worktree), or already gone; the threads below the chat do not count as sharing; `removeWorkspace` removes the directory and the branch with the chat, and is refused when a condition fails in between; without it both stay; archiving changes nothing
+- [x] Complete
+  - [x] `GET /v1/chats/:id/workspace` answers `ChatWorkspaceRemoval { removable: boolean; path; branch? }`, `removable` only for a workspace that Clowdy made, that exists on disk, that no chat outside the chat and the threads below it points at (archived chats count), whose tree has nothing uncommitted (`git status --porcelain`, untracked included) and whose branch is an ancestor of the workspace's base ref (`merge-base --is-ancestor`, no fetch); a chat with no workspace is `removable: false`
+  - [x] `chat.delete` takes `removeWorkspace?: boolean`: with it the daemon checks the same conditions again inside the delete (a refusal is `conflict` with the reason, and the chat stays), removes the worktree (`git worktree remove`, its empty parent folders pruned) and deletes the branch (`branch -D`, which is safe once it is an ancestor of the base); without it the worktree and the branch stay, and the workspace row is dropped only when no chat points at it any more (the worktree itself stays on disk, listed by git as any other)
+  - [x] The delete dialog (`deleteChat`) reads the answer and, when `removable`, shows the checkbox in its message and sends the choice; a chat that never ran still deletes at once, since no worktree was made for it
+  - [x] Tests: removable for a clean merged Clowdy-made worktree, not removable when dirty, unmerged, shared with another chat, made by someone else (an existing worktree), or already gone; the threads below the chat do not count as sharing; `removeWorkspace` removes the directory and the branch with the chat, and is refused when a condition fails in between; without it both stay; archiving changes nothing
 
 **Files**
 
@@ -183,7 +186,10 @@
 
 **Done when:** deleting a chat whose clean, merged, Clowdy-made worktree nobody else uses offers `Also remove the worktree and its branch`, and with it ticked the directory and the branch are gone with the chat; a dirty, unmerged or shared one gets no checkbox and stays.
 **Verify:** `cd apps/daemon && bun test test/chat-workspaces.test.ts test/chat-delete.test.ts`, `cd packages/protocol && bun run test && bun run typecheck`, `cd apps/desktop && bunx vitest run src/renderer/features/chats src/renderer/daemon && bun run typecheck`
-**Commits:** None yet.
+**Scope changes:** `chat.delete` has an async path only when `removeWorkspace` is set (`SometimesAsyncCommandType`, `waitsWhen`); the dialog is `deleteChat.tsx`; the tests are in `test/chat-workspace-removal.test.ts`; a worktree with an initialised submodule is not offered (git refuses it), `core.longpaths` is set on the removal and the status read, both the checked out HEAD and the row's branch must be contained in the base, and a base stored as a bare hash is never removable. A failed `git worktree remove` marks the row not ready and says to delete the folder by hand; the next turn refuses a dead folder. The Screen test of the delete confirmation now reads the message element's `text`.
+**Review findings, fixed:** a failed removal left a dangling `.git` file and the next turn started inside it; a turn could start while the removal ran (the workspace is marked as being removed and the turn waits on the same lock). Left: ignored files (`.env`, build output) go with the tree and the dialog does not say so; the row of a worktree whose folder left the project is still leaked (Stage 2 behaviour).
+**Commits:** `a049bb8` feat(daemon): remove a chat's worktree and its branch when the chat is deleted, if it is safe; `291a870` feat(desktop): offer to remove a chat's worktree and its branch in the delete confirmation; `b603d0a` fix(daemon): keep a turn out of a worktree that is being removed, and say what a failed removal left. Merged as `1c8de87`.
+
 
 ## Stage 5 — Settings of a folder's workspaces: base branch and setup
 
@@ -191,13 +197,13 @@
 
 **This stage:** each folder of a project gets settings of its own for the worktrees made from it: the branch they start from and a setup that makes a new one ready to run. They belong to the project's row of the folder, since the folders of a project are different repositories. `Prepare workspace` copies the listed files and runs the command after the checkout, with the output in the same log, and the base branch settles the default of the draft's branch chip. The Folders block of Settings > Projects gets the dialog that edits them.
 
-- [ ] Complete
+- [x] Complete
   - [x] Protocol: `FolderSettings { baseBranch?: string; setup?: WorkspaceSetup }`, `WorkspaceSetup { files: string[]; command?: string }`, `ProjectFolder.settings?`, and a command `project.updateFolder { projectId, folderId, settings }` (a field set to `null` is cleared) that answers `{ project }`; `files` are relative paths or a `*` in the last segment, none absolute or with `..`, at most 50; `command` at most 4000 characters; `invalid` otherwise, `not_found` for a folder the project does not have, `conflict` for the personal space
   - [x] Migration 24 (25 is the workspaces now): `project_folders.settings` (JSON); `toFolder` and `upsertProject` carry it, so a reorder, a rename of the project or an update of another folder keeps it
   - [x] `baseOf(folder)` (the sync twin `createWorkspace` needs is part of the rest below): the folder's `baseBranch` when the repository has it, else `defaultBranchOf`; the git endpoint's `defaultBranch` and the new worktree's base both use it
-  - [ ] `Prepare workspace` after the checkout copies each listed file that exists in the main checkout into the same relative place (an existing file in the worktree is left alone), then runs the command in the worktree with `CLOWDY_ROOT_PATH`, `CLOWDY_WORKSPACE_PATH` and `CLOWDY_BRANCH` set, its output in the log; a command that fails or runs over ten minutes (its process group is stopped) makes the step an error, `ready` stays false and the next message runs the step again
+  - [x] `Prepare workspace` after the checkout copies each listed file that exists in the main checkout into the same relative place (an existing file in the worktree is left alone), then runs the command in the worktree with `CLOWDY_ROOT_PATH`, `CLOWDY_WORKSPACE_PATH` and `CLOWDY_BRANCH` set, its output in the log; a command that fails or runs over ten minutes (its process group is stopped) makes the step an error, `ready` stays false and the next message runs the step again
   - [x] Settings > Projects: each folder's row has a `Workspace` button (not in the personal space) that opens a dialog with `Base branch` (the detected default as its placeholder), `Files to copy` (one per line) and `Command`; Save sends `project.updateFolder`
-  - [ ] Tests: a copied `.env` and a `.env*` pattern, a command that writes a file and sees the three variables, a failing command and a timeout, settings kept through `project.update` (reorder, another folder), a configured base branch used and a missing one skipped, a project with no settings unchanged
+  - [x] Tests: a copied `.env` and a `.env*` pattern, a command that writes a file and sees the three variables, a failing command and a timeout, settings kept through `project.update` (reorder, another folder), a configured base branch used and a missing one skipped, a project with no settings unchanged
 
 **Files**
 
@@ -218,8 +224,9 @@
 
 **Done when:** a folder whose settings list `.env` and the command `touch ready` gives a chat whose new worktree has the `.env` copied and `ready` made, both in the `Prepare workspace` log, a folder with a base branch of its own starts its worktrees there, and the Workspace dialog of a folder edits the three fields.
 **Verify:** `cd apps/daemon && bun test test/chat-workspaces.test.ts test/projects.test.ts test/git-state.test.ts`, `cd packages/protocol && bun run test && bun run typecheck`, `cd apps/desktop && bunx vitest run src/renderer/features/settings src/renderer/daemon && bun run typecheck`
-**Done so far (the settings half):** `5e7c4ba`, `a5585f9`, `46a75c6`, merged as `d577302`. The schema holds shapes only; the daemon enforces the limits (`.git`, `..`, control marks, a leading dash are refused). Left: `Prepare workspace`'s setup and `createWorkspace`'s base through the folder's setting (needs a sync twin of `baseOf`), with their tests.
-**Commits:** the settings half as above; the rest None yet.
+**Scope changes:** the schema holds shapes only and the daemon enforces the limits (`.git`, `..`, control marks and a leading dash are refused); the setup runs through `domain/workspaceSetup.ts` and `runLines`; `Timings.setupMs` and `PrepareOptions.setupTimeoutMs` carry the injectable ten-minute limit; the sync twin of `baseOf` for `chat.create` shares `pickBase` (`baseOfSync`); the setup runs again for a Clowdy-made worktree that is made again after it went from the disk (`ready` goes false first, so a failure is retried).
+**Review findings, fixed:** a destination conflict or a source read error aborted the whole copy (now a log line); the log was written ten times a second (now once a second after five seconds, lines cut at 400 characters); a backtracking glob (now a linear matcher); two defaults for the timeout.
+**Commits:** the settings half `5e7c4ba`, `a5585f9`, `46a75c6` (merged as `d577302`); the setup half `6b2d4b0` feat(daemon): set a new worktree up from its folder's settings, and start it from the folder's base branch, `0cf208e` fix(daemon): keep a setup's copy going past what the worktree already holds, and bound its log (merged as `b8b24e1`).
 
 ## Stage 6 — The chips and the Prepare workspace row
 
@@ -253,7 +260,7 @@
 
 **Done when:** in the fixtures page the draft's mode chip offers the three modes, `New worktree` shows `Branch from: origin/main` with a searchable list, the first message makes a chat whose chips are read only with the branch, and its stream starts with a `Prepare workspace` row that unfolds to its log.
 **Verify:** `cd apps/desktop && bunx vitest run src/renderer/features/agents src/renderer/stream src/renderer/stores && bun run typecheck && bun run lint`, and a screenshot
-**Scope changes:** the live branch needs Stage 3's `ProjectInfo.workspaces` from the daemon; until then a ready worktree chat shows no branch (the fixtures show it). Left: a hand-off from a worktree chat opens in Project checkout (a product decision); the draft keeps its choice when its folder goes, checked against what it finds when it is sent.
+**Scope changes:** the live branch needs Stage 3's `ProjectInfo.workspaces` from the daemon; until then a ready worktree chat shows no branch (the fixtures show it). The hand-off from a worktree chat now opens its draft in the same worktree (`openDraft`'s third argument; `503a1bd`) and a fork works in its source's worktree (the daemon since Stage 2, the fixtures since `503a1bd`). Left: the draft keeps its choice when its folder goes, checked against what it finds when it is sent.
 **Commits:** `c27b60f`, `76b4933`, `b3127c8`, `6a72c04` (the last: shut the mode menu on Space, read the worktrees again once one is made, hold the first message while a choice waits for its read).
 
 
@@ -263,13 +270,13 @@
 
 **This stage:** Files, Docs, Terminal and Cmd+K work in the place of the open chat. The place is the folder, or the folder with the chat's workspace, and every store that is keyed by a folder is keyed by the place, so a worktree has its own tabs, tree, documents and terminals, shared by the chats that share it.
 
-- [ ] Complete
-  - [ ] `currentFolder` becomes `currentPlace` (the folder, the workspace when the chat has a ready one); a chat whose workspace is not ready shows the tabs' empty state, not an error
-  - [ ] `FilesStore.managerOf` and the stored tabs' keys use the place (`clowdy:files:<project>:<folder or workspace id>`); `httpFileSystem` sends `workspaceId`; the Files and Docs tabs, the clipboard bridge's `folderPath`, `openInFiles` and `openDocument` follow
-  - [ ] The terminals are the place's (`TerminalsStore`, the tab, `openInTerminal` with the place)
-  - [ ] Cmd+K and the `@` mentions: the names come from `getProjectFiles(projectId, query, limit, workspaceId?)` and the tree of the worktree's file manager, the documents from `getDocsTree(projectId, workspaceId?)`, the text from the file manager, so all three list what the Files and Docs tabs show; the mention's path is the one the agent reads from its cwd
-  - [ ] The folder menu (`OpenWithMenu`) and Open in Terminal act on the worktree's path
-  - [ ] Tests for the keys and the place, and a screenshot of the Files tab over a worktree chat in the fixtures
+- [x] Complete
+  - [x] `currentFolder` becomes `currentPlace` (the folder, the workspace when the chat has a ready one); a chat whose workspace is not ready shows the tabs' empty state, not an error
+  - [x] `FilesStore.managerOf` and the stored tabs' keys use the place (`clowdy:files:<project>:<folder or workspace id>`); `httpFileSystem` sends `workspaceId`; the Files and Docs tabs, the clipboard bridge's `folderPath`, `openInFiles` and `openDocument` follow
+  - [x] The terminals are the place's (`TerminalsStore`, the tab, `openInTerminal` with the place)
+  - [x] Cmd+K and the `@` mentions: the names come from `getProjectFiles(projectId, query, limit, workspaceId?)` and the tree of the worktree's file manager, the documents from `getDocsTree(projectId, workspaceId?)`, the text from the file manager, so all three list what the Files and Docs tabs show; the mention's path is the one the agent reads from its cwd
+  - [x] The folder menu (`OpenWithMenu`) and Open in Terminal act on the worktree's path
+  - [x] Tests for the keys and the place, and a screenshot of the Files tab over a worktree chat in the fixtures
 
 **Files**
 
@@ -284,7 +291,10 @@
 
 **Done when:** in the fixtures page a chat in a worktree shows that worktree's files in the Files tab, its plan in the Docs tab and a terminal in its path, and Cmd+K finds a file and a document that only the worktree has.
 **Verify:** `cd apps/desktop && bunx vitest run src/renderer/features && bun run typecheck && bun run lint`, and a screenshot
-**Commits:** None yet.
+**Scope changes:** `currentFolder` became `currentPlace` (`Place = { folder, workspace? }`, `placeKey`, `isPlaceReady`) with `PlaceWaiting` for a worktree that is not made yet; terminal APIs keep `folderId` and take `workspaceId` as a trailing optional argument; `mentionItems` paths are relative to the chat's own folder (the daemon's `workingFolder`), absolute for other folders; the Info tab shows a Worktree row. The route docs in `packages/protocol` were written by Stage 3.
+**Left, for a decision:** every place and kind the person looks at keeps a `FileManager` and its watch stream for the whole session (many worktree chats mean many streams, and Chromium allows six connections to one host: not checked against a real daemon; a clean manager could be disposed when its place is off screen); `openDocument` does not fall back to the folder's own checkout for a worktree chat, so a task's document that exists only in the main checkout cannot be opened from one; the new-chat page with a worktree chosen lists the folder's own checkout in the Files tab and the `@` menu because no workspace row exists before the first message; the palette captures its place when it opens.
+**Commits:** `198a6fd` feat(desktop): make the side panel, the palette and the @ menu follow the open chat's worktree; `3c570f1` docs(desktop): describe the place the side panel, the palette and the mentions work in; `1405a14` refactor(desktop): tidy the place helpers and tell a worktree's missing document from a missing file. Merged as `d629a57`.
+
 
 ## Stage 8 — A thread with a worktree of its own
 
@@ -292,10 +302,10 @@
 
 **This stage:** the way an orchestrator runs work in parallel without sharing a branch. `thread_spawn` and `clowdy thread spawn` take `worktree`, the daemon makes a workspace for the new thread from the parent's branch (the default branch when the parent has no worktree), and the thread's first turn prepares it as any chat does. A thread without it inherits as in Stage 2.
 
-- [ ] Complete
-  - [ ] `thread_spawn`: `worktree: boolean`, refused together with `cwd`; the thread's workspace is a new one on `clowdy/<thread-id8>` from the parent's branch
-  - [ ] The CLI flag `--worktree` and the thread skill's text say what it does and that merging the branch back is the parent's job, with git
-  - [ ] Tests: a thread with `worktree` runs in its own path on its own branch, one without runs in the parent's, `worktree` with `cwd` is refused
+- [x] Complete
+  - [x] `thread_spawn`: `worktree: boolean`, refused together with `cwd`; the thread's workspace is a new one on `clowdy/<thread-id8>` from the parent's branch
+  - [x] The CLI flag `--worktree` and the thread skill's text say what it does and that merging the branch back is the parent's job, with git
+  - [x] Tests: a thread with `worktree` runs in its own path on its own branch, one without runs in the parent's, `worktree` with `cwd` is refused
 
 **Files**
 
@@ -308,4 +318,6 @@
 
 **Done when:** a thread spawned with `worktree` has its own worktree on its own branch based on the parent's, and its agent's `cwd` is that path.
 **Verify:** `cd apps/daemon && bun test test/threads.test.ts test/cli.test.ts test/cli-args.test.ts`
-**Commits:** None yet.
+**Scope changes:** the base is the branch the parent's worktree has checked out now, read live (the recorded branch only when its path is gone); a parent whose worktree is not made yet gives its recorded base, and a detached HEAD or a branch the repository no longer has is refused; worktrees of one repository are added one at a time (`ensureWorktree`'s `serialize`: six parallel adds failed about 2% of the time with `commondir`); `sendMessage` puts the unsent first prompt in front of a message to a run that has no session yet (a failed Prepare no longer loses a thread's brief). The thread starts at the parent branch's tip when its first turn makes the worktree, not at spawn.
+**Commits:** `ec72b6f` feat(daemon): let a thread have a git worktree of its own, started from its parent's branch; `336f3f1` docs(system-skills): teach threads and their parents the worktree option of thread spawn; `782a6b5` fix(daemon): base a thread's worktree on the parent's live branch, add worktrees one at a time and keep an unsent brief; `411b8f8` docs(system-skills): say where a worktree thread starts and that a shared worktree is not its own. Merged as `ac7a067`.
+
