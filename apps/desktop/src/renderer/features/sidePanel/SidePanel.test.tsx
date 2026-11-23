@@ -36,6 +36,8 @@ vi.mock('../files/FilesTab', async () => {
 vi.mock('../terminal/TerminalTab', () => ({ default: () => <p>The terminal</p> }));
 // And the tasks.
 vi.mock('../tasks', () => ({ Screen: () => <p>The tasks</p> }));
+// And the changes.
+vi.mock('../changes/ChangesTab', () => ({ default: () => <p>The changes</p> }));
 // The babel plugin that makes the app's components observers does not run under Vitest: the panel is one, to follow the tab that is chosen.
 vi.mock('./SidePanel', async (importOriginal) => ({ SidePanel: observer((await importOriginal<typeof import('./SidePanel')>()).SidePanel) }));
 
@@ -439,7 +441,7 @@ describe('the side panel of the window', () => {
 
         const names = [...(rail()?.querySelectorAll<HTMLButtonElement>('button') ?? [])].map(button => button.textContent);
 
-        expect(names).toEqual(['Files', 'Docs', 'Terminal', 'Tasks', 'Info']);
+        expect(names).toEqual(['Files', 'Changes', 'Docs', 'Terminal', 'Tasks', 'Info']);
 
         await press(tab('Terminal')!);
         await settle();
@@ -448,6 +450,25 @@ describe('the side panel of the window', () => {
         expect(tab('Terminal')?.getAttribute('aria-current')).toBe('page');
         expect(panel()?.querySelector('[aria-label="Terminal"][class*="plate"]')?.textContent).toBe('The terminal');
         expect(panel()?.textContent).not.toContain('The files');
+    });
+
+    it('has a Changes tab after Files, which shows the changes beside the chat', async () => {
+        await draw(<Frame />);
+
+        await press(tab('Changes')!);
+        await settle();
+
+        expect(ui().sidePanelTab).toBe('changes');
+        expect(tab('Changes')?.getAttribute('aria-current')).toBe('page');
+        expect(panel()?.querySelector('[aria-label="Changes"][class*="plate"]')?.textContent).toBe('The changes');
+        // It is a list beside a view: the window fits it beside the chat, and the panel's least width is the one such a view needs.
+        expect(panel()?.hasAttribute('data-expanded')).toBe(false);
+        expect(ui().sidePanelNoHalf).toBeNull();
+
+        await press(tab('Changes')!);
+        await settle();
+
+        expect(ui().sidePanelOpen).toBe(false);
     });
 
     it('has a Tasks tab after Terminal, which shows the tasks over the chat and leaves the expanded choice as it was', async () => {
@@ -491,7 +512,7 @@ describe('the rail of the side panel', () => {
         await draw(<Frame />);
 
         expect(panel()).toBeNull();
-        expect([...rail()!.querySelectorAll('button')].map(button => button.textContent)).toEqual(['Files', 'Docs', 'Terminal', 'Tasks', 'Info']);
+        expect([...rail()!.querySelectorAll('button')].map(button => button.textContent)).toEqual(['Files', 'Changes', 'Docs', 'Terminal', 'Tasks', 'Info']);
         expect(rail()!.querySelector('[aria-current]')).toBeNull();
 
         act(() => ui().toggleSidePanel());
@@ -551,7 +572,7 @@ describe('the rail of the side panel', () => {
         const items = [...container.querySelectorAll<HTMLButtonElement>('button')];
 
         expect(items[0]).toBe(expandButton());
-        expect(items.slice(1).map(button => button.textContent)).toEqual(['Files', 'Docs', 'Terminal', 'Tasks', 'Info', 'Settings']);
+        expect(items.slice(1).map(button => button.textContent)).toEqual(['Files', 'Changes', 'Docs', 'Terminal', 'Tasks', 'Info', 'Settings']);
         // Info is the one tab that is pushed to the bottom of the column, so that it sits above Settings.
         expect(tab('Info')!.className).toMatch(/bottom/);
         expect(tab('Files')!.className).not.toMatch(/bottom/);

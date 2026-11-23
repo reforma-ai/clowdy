@@ -1,0 +1,130 @@
+@reference '@clowdy/styles/rulesets';
+
+/* One changed file: a bordered plate, squircled as the other cards are, flat. */
+.card {
+    --card-radius: calc(var(--radius-lg) * var(--squircle-radius-factor));
+
+    min-width: 0;
+    border: 1px solid var(--color-surface-border);
+    border-radius: var(--card-radius);
+    corner-shape: superellipse(var(--squircle-value));
+    background-color: var(--color-surface);
+    /* A card brought to the top of the list (`scrollIntoView`) leaves the list's own padding above it. */
+    scroll-margin-top: var(--spacing-8);
+}
+
+/* The header sticks to the top of the list while the diff under it scrolls, so the file's name is always in view; its corners follow the card's, since the card does not clip. */
+.header {
+    position: sticky;
+    top: 0;
+    z-index: var(--z-raised);
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+    min-height: var(--spacing-36);
+    padding-inline: var(--spacing-4);
+    border-radius: calc(var(--card-radius) - 1px);
+    background-color: var(--color-surface);
+}
+
+.card[data-open] .header {
+    border-bottom: 1px solid var(--color-surface-border);
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+/* The whole row is the button that folds the card. It gives way to the copy button, and its content is laid out here: the chevron, the status, the path, the counts. */
+.toggle[data-size][data-variant] {
+    flex: 1;
+    justify-content: flex-start;
+    min-width: 0;
+    padding-inline: var(--spacing-8);
+    text-align: start;
+}
+
+.toggleContent {
+    flex: 1;
+    justify-content: flex-start;
+    min-width: 0;
+    gap: var(--spacing-6);
+}
+
+.chevron {
+    flex-shrink: 0;
+    color: var(--color-secondary-muted-text);
+}
+
+/* The letter that says what happened to the file: a box of its own, so the paths start at one place whichever letter it is. */
+.kind {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: var(--spacing-14);
+}
+
+/* The path, and under it the old path of a renamed file; both give way to the counts. */
+.title {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    align-items: flex-start;
+    min-width: 0;
+}
+
+/*
+ * The path is cut at its start, which is why it is set right to left: the ellipsis goes where the text is cut, and the name at the end stays. The `bdi` inside is its own left to
+ * right run, so a path that starts or ends with a dot, a bracket or a slash keeps them where they are, and a name in a right to left script still reads right (a `bdo`, which
+ * forces every character left to right, would turn it round).
+ */
+.path {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.from {
+    max-width: 100%;
+}
+
+.counts {
+    display: inline-flex;
+    flex-shrink: 0;
+    gap: var(--spacing-4);
+    margin-inline-start: auto;
+    padding-inline-start: var(--spacing-8);
+    white-space: nowrap;
+}
+
+.body {
+    min-width: 0;
+}
+
+.diff {
+    min-width: 0;
+}
+
+/* Standing in for the diff while the texts come: the box it will take, from the lines the list counted, so nothing below it moves when it is built. */
+.loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: calc(var(--leading-md) * var(--diff-lines) + var(--spacing-16));
+    color: var(--color-secondary-muted-text);
+}
+
+/* A word in place of a diff: binary, too large, unreadable, nothing to show. */
+.note {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-8);
+    margin: 0;
+    padding: var(--spacing-16) var(--spacing-12);
+    color: var(--color-secondary-muted-text);
+    font-size: var(--text-sm);
+    text-align: center;
+}

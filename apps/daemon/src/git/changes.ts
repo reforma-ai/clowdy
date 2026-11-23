@@ -138,12 +138,59 @@ async function emptyTree(cwd: string): Promise<string> {
     return read.stdout.trim();
 }
 
+/** What a read of one file may be told besides the base: the commit its list counted from. */
+export interface FileOptions extends BaseOptions {
+    /**
+     * The commit the list the file comes from was counted from (`GitChanges.from`: a hash, short or whole). With it a scope starts there and nothing is looked up to find where it
+     * starts: no base, no merge base, no parent, no HEAD for `uncommitted`, so the file cannot be diffed against any other commit than its list was.
+     */
+    from?: string;
+}
+
+/**
+ * What a scope is counted between when the list's own start is known (`FileOptions.from`): the same plans as `planOf` makes, with `from` in place of the merge base, the parent
+ * or HEAD. A `from` that is not a hash is `invalid` and a commit the repository does not have is `not_found`. The start of a commit's scope is its parent, which a root commit
+ * has none of, so a list sends no `from` for it and the commit's own plan is made.
+ */
+async function pinnedPlanOf(place: Place, scope: GitScope, from: string): Promise<Plan> {
+    const cwd = place.path;
+
+    if (!/^[0-9a-f]{7,64}$/i.test(from)) throw invalid('The start of the comparison is not a hash');
+
+    const start = await commitAt(cwd, from);
+
+    if (!start) throw notFound('Commit', from);
+
+    if (scope.startsWith(GIT_COMMIT_SCOPE_PREFIX)) {
+        const sha = scope.slice(GIT_COMMIT_SCOPE_PREFIX.length);
+
+        if (!/^[0-9a-f]{7,64}$/i.test(sha)) throw invalid('The commit is not a hash');
+
+        const commit = await commitAt(cwd, sha);
+
+        if (!commit) throw notFound('Commit', sha);
+
+        return { from: start, to: commit, untracked: false };
+    }
+
+    if (scope === 'branch') {
+        const head = await headCommit(cwd);
+
+        return head ? { from: start, to: head, untracked: false } : { untracked: false, empty: true };
+    }
+
+    return { from: start, untracked: true };
+}
+
 /**
  * What a scope is counted between (`GitScope`). A commit's scope is its first parent to it (the empty tree for a root commit); a commit the repository does not have is
- * `not_found`. `all` and `branch` start at the merge base with the place's base (`mergeBaseOf`); with none, `all` starts at HEAD and `branch` is empty.
+ * `not_found`. `all` and `branch` start at the merge base with the place's base (`mergeBaseOf`); with none, `all` starts at HEAD and `branch` is empty. A read that is told where
+ * the scope starts (`FileOptions.from`) uses that and looks nothing up.
  */
-async function planOf(place: Place, scope: GitScope, options: BaseOptions): Promise<Plan> {
+async function planOf(place: Place, scope: GitScope, options: FileOptions): Promise<Plan> {
     const cwd = place.path;
+
+    if (options.from !== undefined) return pinnedPlanOf(place, scope, options.from);
 
     if (scope.startsWith(GIT_COMMIT_SCOPE_PREFIX)) {
         const sha = scope.slice(GIT_COMMIT_SCOPE_PREFIX.length);
@@ -517,9 +564,10 @@ async function workingText(cwd: string, path: string, fact: WorkingFact): Promis
  * The text of one changed file before and after, for a diff to be drawn from (`GET /v1/projects/:id/git/file`). The file is found as the scope's own list finds it (the diff of
  * that path alone, and the new files for the scopes that include them), so a path that did not change in the scope is `not_found`. The old side is a stored blob; the new side is
  * a blob for a commit's scope and the file on disk for a working-tree scope, a link as its target. A binary file, a submodule, a side over `MAX_GIT_SIDE_BYTES` or a file that
- * changes more than `MAX_GIT_DIFF_LINES` lines carries no text. `oldPath` is the path before a rename: without it the file is read as a new one.
+ * changes more than `MAX_GIT_DIFF_LINES` lines carries no text. `oldPath` is the path before a rename: without it the file is read as a new one. `options.from` is the commit the
+ * list was counted from (`GitChanges.from`): a card passes it, so the file is read against the list's own start and costs no base lookup.
  */
-export async function placeFile(place: Place, scope: GitScope, path: string, oldPath: string | undefined, options: BaseOptions = {}): Promise<GitFileSides> {
+export async function placeFile(place: Place, scope: GitScope, path: string, oldPath: string | undefined, options: FileOptions = {}): Promise<GitFileSides> {
     checkPath(path);
 
     if (oldPath !== undefined) checkPath(oldPath);

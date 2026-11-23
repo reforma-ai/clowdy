@@ -5,5 +5,5 @@ import { PanelEmptyState } from '@clowdy/components/Panel';
  * folder's own checkout what the chat works in.
  */
 export function PlaceWaiting() {
-    return <PanelEmptyState title="The worktree is not made yet" description="Its files, documents and terminals show here once the chat's first message has made it" />;
+    return <PanelEmptyState title="The worktree is not made yet" description="Its files, changes, documents and terminals show here once the chat's first message has made it" />;
 }

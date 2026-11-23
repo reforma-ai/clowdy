@@ -12,6 +12,8 @@ const FilesTab = lazy(() => import('../files/FilesTab'));
 const TerminalTab = lazy(() => import('../terminal/TerminalTab'));
 // And for the tasks, whose screen is the heaviest after the editor.
 const TasksTab = lazy(() => import('../tasks').then(({ Screen }) => ({ default: Screen })));
+// And for the changes: the diff view and the editor's languages come with it.
+const ChangesTab = lazy(() => import('../changes/ChangesTab'));
 
 /**
  * The column at the right of the window, beside the page, as a second sidebar: a paper plate on the window's chrome that shows the tab that is chosen, which the
@@ -29,6 +31,7 @@ export function SidePanel() {
                 { (chosen === 'files' || chosen === 'docs') && <Suspense fallback={ <PanelLoadingState /> }><FilesTab variant={ chosen } /></Suspense> }
                 { chosen === 'terminal' && <Suspense fallback={ <PanelLoadingState /> }><TerminalTab /></Suspense> }
                 { chosen === 'tasks' && <Suspense fallback={ <PanelLoadingState /> }><TasksTab /></Suspense> }
+                { chosen === 'changes' && <Suspense fallback={ <PanelLoadingState /> }><ChangesTab /></Suspense> }
                 { chosen === 'info' && <InfoTab /> }
             </section>
         </aside>

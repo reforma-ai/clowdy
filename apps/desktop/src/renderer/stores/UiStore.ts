@@ -12,21 +12,21 @@ export type SettingsPage = typeof SETTINGS_PAGES[number];
 export type TasksView = 'board' | 'list';
 
 /** The tabs of the side panel's header, in the order they appear there. */
-export const SIDE_PANEL_TABS = ['info', 'files', 'docs', 'terminal', 'tasks'] as const;
+export const SIDE_PANEL_TABS = ['info', 'files', 'docs', 'terminal', 'tasks', 'changes'] as const;
 
 export type SidePanelTab = typeof SIDE_PANEL_TABS[number];
 
 /** The sizes of the side panel the corner button offers: not shown, beside the chat, and in the chat's place. */
 export type SidePanelSize = 'hide' | 'half' | 'wide';
 
-/** Why the panel cannot be beside the chat: the tab is always in the chat's place (Tasks), or the window is too narrow for the tab beside it (Files, Docs). */
+/** Why the panel cannot be beside the chat: the tab is always in the chat's place (Tasks), or the window is too narrow for the tab beside it (Files, Docs, Changes). */
 export type NoHalfReason = 'tab' | 'window';
 
 /** The tabs whose view is always the size of the chat's place, whatever the project chose for the others (`ProjectUi.sidePanelIsFull`). */
 const FULL_TABS: readonly SidePanelTab[] = ['tasks'];
 
-/** The tabs that are a tree beside a view (Files and Docs): they need more room beside the chat than the others, and where the window has none they are in the chat's place (`ProjectUi.sidePanelTabIsFull`). */
-const TREE_TABS: readonly SidePanelTab[] = ['files', 'docs'];
+/** The tabs that are a list beside a view (Files and Docs: the tree and the editor; Changes: the sidebar and the diffs): they need more room beside the chat than the others, and where the window has none they are in the chat's place (`ProjectUi.sidePanelTabIsFull`). */
+const TREE_TABS: readonly SidePanelTab[] = ['files', 'docs', 'changes'];
 
 /** Where a project's window is: the chat or run open in it. History walks these; the view options of the Tasks tab, the side panel and what it shows are not places. */
 export interface ProjectView {
@@ -423,7 +423,7 @@ export class ProjectUi {
     }
 
     /**
-     * The tab the panel shows is the size of the chat's place, so it has no expanded size to choose: the Tasks tab always is, and a tab with a tree beside a view (Files, Docs) is
+     * The tab the panel shows is the size of the chat's place, so it has no expanded size to choose: the Tasks tab always is, and a tab with a tree beside a view (Files, Docs, Changes) is
      * where the window is too narrow for it beside the chat (`UiStore.windowFitsHalf`). Nothing is kept for it: in a wider window the project's own choice is back.
      */
     get sidePanelTabIsFull(): boolean {
@@ -437,7 +437,7 @@ export class ProjectUi {
         return TREE_TABS.includes(this.sidePanelTab) && !this.#windowFitsHalf() ? 'window' : null;
     }
 
-    /** The tab the panel shows is a tree beside a view, which needs more room than the other tabs do while it is beside the chat. */
+    /** The tab the panel shows is a list beside a view (Files, Docs, Changes), which needs more room than the other tabs do while it is beside the chat. */
     get sidePanelTabHasTree(): boolean {
         return TREE_TABS.includes(this.sidePanelTab);
     }
@@ -571,7 +571,7 @@ export class UiStore {
     /** The project whose own page is open inside Settings > Projects; `null` shows the list of projects. */
     settingsProjectId: ProjectId | null = null;
     readonly #projects = new Map<ProjectId, ProjectUi>();
-    /** The window is wide enough for the side panel with a tree (Files, Docs) beside the chat, which the shell reads from the window's width. Wide enough until it says it is not. */
+    /** The window is wide enough for the side panel with a tree (Files, Docs, Changes) beside the chat, which the shell reads from the window's width. Wide enough until it says it is not. */
     windowFitsHalf = true;
 
     /** `tasksOf` gives the tasks a project holds, which `ProjectUi.openTask` needs to reveal a task: the root store hands them over, a test of the window state alone has none. */
@@ -596,7 +596,7 @@ export class UiStore {
         this.settingsOpen = false;
     }
 
-    /** Tells whether the window is wide enough for the side panel with a tree beside the chat; the panels of Files and Docs are in the chat's place while it is not. */
+    /** Tells whether the window is wide enough for the side panel with a tree beside the chat; the panels of Files, Docs and Changes are in the chat's place while it is not. */
     setWindowFitsHalf(fits: boolean): void {
         this.windowFitsHalf = fits;
     }

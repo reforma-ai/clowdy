@@ -19,7 +19,7 @@ export interface ShellCommandsRoot extends Pick<RootStore, 'phase' | 'selectedPr
 
 /**
  * The commands that work in the whole window, for `useCommands('app', …)`: the shortcuts page of Settings, `Cmd+,` for the Settings window, `Cmd+N` for a new chat, `Cmd+Esc` (`Ctrl+Shift+B` off a Mac) for
- * the side panel, `Cmd+Shift+Enter` (`Ctrl+Shift+Enter`) for its expanded view, `Ctrl+`` for its terminal, `Cmd+0` to `Cmd+4` for its tabs, and back and forward.
+ * the side panel, `Cmd+Shift+Enter` (`Ctrl+Shift+Enter`) for its expanded view, `Ctrl+`` for its terminal, `Cmd+0` to `Cmd+5` for its tabs, and back and forward.
  * `?` opens Settings on its Shortcuts page, once the window shows anything to open it over: while the app loads or cannot reach its daemon, the key reaches the page.
  * A new chat needs a selected project, and also leaves Settings.
  * `Cmd+N` shows the new-chat page, and works from a text field too: the message box is the place it is most wanted.

@@ -58,7 +58,7 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  *                                            uncommitted paths and how far the branch is from its base)
  * GET  /v1/projects/:id/git/changes?folderId=&workspaceId=&scope= -> GitChanges (the files that changed in a scope, `all`, `branch`, `uncommitted` or `commit:<sha>`, with
  *                                            their line counts and revisions)
- * GET  /v1/projects/:id/git/file?folderId=&workspaceId=&scope=&path=&oldPath= -> GitFileSides (the text of one changed file before and after)
+ * GET  /v1/projects/:id/git/file?folderId=&workspaceId=&scope=&path=&oldPath=&from= -> GitFileSides (the text of one changed file before and after; `from` is the list's own start)
  * GET  /v1/projects/:id/git/pull-request?folderId=&workspaceId= -> GitPullRequestInfo (whether the person's `gh` can be asked about the place's `origin`, and the pull
  *                                            request of its branch with its checks, or none). The four are described in `git.ts`
  * GET  /v1/projects/:id/worktrees        -> FolderWorktrees[] (one entry per folder of the project, in the project's order: whether it is the root of a repository and, if

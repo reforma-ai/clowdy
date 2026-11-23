@@ -1,8 +1,9 @@
 import { errorMessage } from '@clowdy/lib';
 import { makeAutoObservable, observableRef, runInAction } from 'mobx';
 
+import { TransportError, type PlaceRef, type Transport } from '../../daemon/transport';
+
 import type { FolderId, GitBase, GitBaseState, GitChanges, GitHubAccess, GitHubRepo, GitPullRequest, GitPullRequestInfo, GitStatus, ProjectId, WorkspaceId } from '@clowdy/protocol';
-import type { PlaceRef, Transport } from '../../daemon/transport';
 
 /** How often the pull request is read again while one of its checks is not finished and the window is visible. */
 export const GIT_POLL_MS = 60_000;
@@ -26,7 +27,7 @@ export interface GitPlaceKey {
 const keyText = ({ projectId, folderId, workspaceId }: GitPlaceKey) => `${ projectId }/${ folderId }/${ workspaceId ?? '' }`;
 
 /** What the daemon takes of a place in a git read. */
-const placeRef = ({ folderId, workspaceId }: GitPlaceKey): PlaceRef => (workspaceId === undefined ? { folderId } : { folderId, workspaceId });
+export const placeRef = ({ folderId, workspaceId }: GitPlaceKey): PlaceRef => (workspaceId === undefined ? { folderId } : { folderId, workspaceId });
 
 /** What the app keeps of the changes of the branch (the `branch` scope: what is committed on it, against its base): the counts, never the files. */
 export interface BranchSummary {
@@ -49,13 +50,14 @@ export function summarize(changes: GitChanges): BranchSummary | null {
 
 /**
  * One kind of fact of a place, as the last good answer and what became of the reads since: `value` is the newest answer there was, kept when a later read fails (`stale`,
- * with the reason in `error`), `loading` while a read is on its way and `settled` once the first read has ended, one way or the other. A read that starts makes the answers of
- * the reads before it, that did not end yet, out of date: they are dropped when they come.
+ * with the reason in `error`, and the daemon's status in `errorStatus` when it gave one), `loading` while a read is on its way and `settled` once the first read has ended, one
+ * way or the other. A read that starts makes the answers of the reads before it, that did not end yet, out of date: they are dropped when they come.
  */
 export class Fact<T> {
     value: T | undefined;
     stale = false;
     error: string | undefined;
+    errorStatus: number | undefined;
     loading = false;
     settled = false;
     #request = 0;
@@ -79,6 +81,7 @@ export class Fact<T> {
                 this.value = value;
                 this.stale = false;
                 this.error = undefined;
+                this.errorStatus = undefined;
                 this.loading = false;
                 this.settled = true;
             });
@@ -89,6 +92,7 @@ export class Fact<T> {
             runInAction(() => {
                 this.stale = true;
                 this.error = errorMessage(error);
+                this.errorStatus = error instanceof TransportError ? error.status : undefined;
                 this.loading = false;
                 this.settled = true;
             });
@@ -104,6 +108,11 @@ export class PlaceFacts {
     readonly status: Fact<GitStatus>;
     readonly changes: Fact<BranchSummary | null>;
     readonly pullRequest: Fact<GitPullRequestInfo>;
+    /**
+     * How many rounds of reads of the whole place the store has started (the first observer, the window's focus, a `refresh`): a view that draws more than the store keeps, such as
+     * the Changes tab's files, reads again when this changes, so it has no triggers of its own. Not counted while the window is hidden, since nothing is read then.
+     */
+    generation = 0;
 
     constructor(readonly key: GitPlaceKey, transport: Pick<Transport, 'getGitStatus' | 'getGitChanges' | 'getGitPullRequest'>) {
         const place = placeRef(key);
@@ -112,6 +121,11 @@ export class PlaceFacts {
         this.changes = new Fact(async () => summarize(await transport.getGitChanges(key.projectId, place, 'branch')));
         this.pullRequest = new Fact(() => transport.getGitPullRequest(key.projectId, place));
         makeAutoObservable(this, { key: false, status: false, changes: false, pullRequest: false });
+    }
+
+    /** Notes that a round of reads has started. */
+    startRound(): void {
+        this.generation++;
     }
 
     /** Whether the place is a repository: `undefined` until the status has answered. */
@@ -325,6 +339,9 @@ export class GitFacts {
 
         const { facts } = slot;
         const wasNoRepository = facts.isRepository === false;
+
+        facts.startRound();
+
         const status = facts.status.refresh();
 
         slot.startedAt = Date.now();

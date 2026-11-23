@@ -648,6 +648,9 @@ export function fixtureGitStatus(head: { branch?: string; detached?: true } | un
     };
 }
 
+/** Whether the fixture's repository has a commit by this hash (short or whole): the base, the tip of `origin/main` and the branch's own commits. */
+export const fixtureHasCommit = (hash: string): boolean => [FIXTURE_BASE_COMMIT, '2'.repeat(40), ...FIXTURE_GIT_COMMITS.map(commit => commit.sha)].some(sha => sha.startsWith(hash.toLowerCase()));
+
 /** The commit of the fixture worktree that a `commit:<sha>` scope names (the hash may be short), nothing for one it does not have. */
 const fixtureCommitOf = (scope: GitScope) => (scope.startsWith('commit:') ? FIXTURE_GIT_COMMITS.find(commit => commit.sha.startsWith(scope.slice('commit:'.length))) : undefined);
 

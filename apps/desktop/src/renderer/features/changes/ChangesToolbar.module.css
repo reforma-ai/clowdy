@@ -1,0 +1,61 @@
+@reference '@clowdy/styles/rulesets';
+
+/* The scope menu takes the header's room that the buttons leave, and gives way to them. */
+.scope {
+    flex: 0 1 auto;
+    width: auto;
+    min-width: 0;
+    max-width: 100%;
+}
+
+/* The button is as wide as the choice it shows, and the chevron stays beside it. */
+.scopeTrigger {
+    width: auto;
+    max-width: 100%;
+}
+
+/* A commit is a short hash and a line of its message: the list opens wider than its button, as far as the view allows. */
+.scopeList {
+    min-width: min(24rem, 90vw);
+}
+
+/* "Expand all" is the collapse icon turned over: its chevrons point away from the middle. */
+.flipped {
+    scale: 1 -1;
+}
+
+.filter {
+    flex-shrink: 0;
+    padding: var(--spacing-6) var(--spacing-12);
+}
+
+/* The field takes the width of the view, the placeholder is long and is cut by the field's own edge. */
+.input[data-size][data-variant] {
+    --clowdy-input-radius: var(--radius-md);
+    --clowdy-input-height: var(--spacing-30);
+
+    width: 100%;
+    min-width: 0;
+}
+
+/* One line of small text: the totals of the list, and a phrase or two about it. A phrase is cut before the totals are. */
+.summary {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: var(--spacing-8);
+    min-height: var(--spacing-24);
+    padding: 0 var(--spacing-12) var(--spacing-6);
+    border-bottom: 1px solid var(--color-surface-border);
+}
+
+.totals {
+    display: inline-flex;
+    flex-shrink: 0;
+    gap: var(--spacing-4);
+    white-space: nowrap;
+}
+
+.note {
+    min-width: 0;
+}

@@ -110,6 +110,17 @@ describe('HttpTransport git reads', () => {
         ]);
     });
 
+    it('sends the start of the list a file belongs to, with or without an old path', async () => {
+        const { urls, transport } = transportFor({ state: 'binary', revision: 'r' });
+
+        await transport.getGitFile('prj_a', { folderId: 'fld_b' }, 'all', 'a.ts', undefined, 'abc1234');
+        await transport.getGitFile('prj_a', { folderId: 'fld_b', workspaceId: 'wks_c' }, 'branch', 'new.ts', 'old.ts', 'abc1234');
+        expect(urls).toEqual([
+            'http://127.0.0.1:4310/v1/projects/prj_a/git/file?folderId=fld_b&scope=all&path=a.ts&from=abc1234',
+            'http://127.0.0.1:4310/v1/projects/prj_a/git/file?folderId=fld_b&workspaceId=wks_c&scope=branch&path=new.ts&oldPath=old.ts&from=abc1234',
+        ]);
+    });
+
     it('asks for the pull request of a place, a worktree of its folder included, and gives the daemon\'s answer', async () => {
         const answer = { isRepository: true, access: 'ready', repo: { host: 'github.com', owner: 'acme', name: 'app' } };
         const { urls, transport } = transportFor(answer);
@@ -380,6 +391,16 @@ describe('FixtureTransport git reads', () => {
         expect(await transport.getGitFile(FIXTURE_PROJECT_ID, inWorktree, 'all', 'src/booking/price.ts')).toMatchObject({ state: 'text', original: expect.stringContaining('days * rate'), modified: expect.stringContaining('weekend') });
         expect(await transport.getGitFile(FIXTURE_PROJECT_ID, inWorktree, 'uncommitted', 'notes.md')).toMatchObject({ state: 'text', original: null });
         expect(await transport.getGitFile(FIXTURE_PROJECT_ID, inWorktree, 'branch', 'assets/logo.png')).toEqual({ state: 'binary', revision: expect.any(String) });
+    });
+
+    it('reads a file with the list\'s own start as it does without one, and judges the start as the daemon does', async () => {
+        const transport = worktree();
+        const { from } = await transport.getGitChanges(FIXTURE_PROJECT_ID, inWorktree, 'all') as { from: string };
+
+        expect(await transport.getGitFile(FIXTURE_PROJECT_ID, inWorktree, 'all', 'src/booking/price.ts', undefined, from)).toEqual(await transport.getGitFile(FIXTURE_PROJECT_ID, inWorktree, 'all', 'src/booking/price.ts'));
+        expect(await transport.getGitFile(FIXTURE_PROJECT_ID, inWorktree, 'all', 'src/booking/price.ts', undefined, from.slice(0, 9))).toMatchObject({ state: 'text' });
+        await expect(transport.getGitFile(FIXTURE_PROJECT_ID, inWorktree, 'all', 'src/booking/price.ts', undefined, 'main')).rejects.toMatchObject({ status: 400 });
+        await expect(transport.getGitFile(FIXTURE_PROJECT_ID, inWorktree, 'all', 'src/booking/price.ts', undefined, '0123456789abcdef')).rejects.toMatchObject({ status: 404 });
     });
 
     it('does not give the same object twice, so a caller that edits an answer does not change the next', async () => {

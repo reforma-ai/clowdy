@@ -134,8 +134,8 @@ export class HttpTransport implements Transport {
         return this.#read(`${ ROUTES.projectGitChanges(projectId) }?${ placeQuery(place, { scope }) }`);
     }
 
-    getGitFile(projectId: ProjectId, place: PlaceRef, scope: GitScope, path: string, oldPath?: string): Promise<GitFileSides> {
-        return this.#read(`${ ROUTES.projectGitFile(projectId) }?${ placeQuery(place, { scope, path, oldPath }) }`);
+    getGitFile(projectId: ProjectId, place: PlaceRef, scope: GitScope, path: string, oldPath?: string, from?: string): Promise<GitFileSides> {
+        return this.#read(`${ ROUTES.projectGitFile(projectId) }?${ placeQuery(place, { scope, path, oldPath, from }) }`);
     }
 
     getProjectWorktrees(projectId: ProjectId): Promise<FolderWorktrees[]> {
