@@ -143,6 +143,9 @@ describe('Manage worktrees', () => {
         expect(missing.textContent).toContain('Missing on disk');
         expect(missing.textContent).not.toContain('Clean');
         expect(buttonIn(missing, 'New chat in this worktree: old-pricing')!.disabled).toBe(true);
+        // A disabled button takes no hover and no focus, so the reason is on the focusable stand-in beside it.
+        expect(missing.querySelector('[role="button"][aria-disabled]')?.getAttribute('aria-label')).toBe('New chat in this worktree: old-pricing');
+        expect(row(FOUND_WORKTREE).querySelector('[role="button"][aria-disabled]')).toBeNull();
         expect(row(FOUND_WORKTREE).textContent).not.toContain('Missing on disk');
         expect(buttonIn(row(FOUND_WORKTREE), 'New chat in this worktree: search-filters')!.disabled).toBe(false);
     });

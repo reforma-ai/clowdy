@@ -95,9 +95,11 @@ export function WorktreeRow({ projectId, group, folder, worktree, onNewChat, onO
                         </Popover>
                     </MenuTrigger>
                 ) }
-                <Button variant="filling" color="secondary" size="sm" iconOnly aria-label={ `${ newChat }: ${ label }` } tooltip={ worktree.missing ? 'Its folder is gone from the disk' : newChat } isDisabled={ worktree.missing } onPress={ () => onNewChat(folder, worktree) }>
-                    <NewChat />
-                </Button>
+                <Unavailable label={ `${ newChat }: ${ label }` } hint={ worktree.missing ? 'Its folder is gone from the disk' : undefined } placement="top">
+                    <Button variant="filling" color="secondary" size="sm" iconOnly aria-label={ `${ newChat }: ${ label }` } tooltip={ worktree.missing ? undefined : newChat } isDisabled={ worktree.missing } onPress={ () => onNewChat(folder, worktree) }>
+                        <NewChat />
+                    </Button>
+                </Unavailable>
                 {/* Remove is wired by Stage 5 of `.briefback/worktree-followups/plan.md`: until `onRemove` is given it cannot be pressed, and a reason from the daemon keeps it off after. */}
                 { !worktree.main && (
                     <Unavailable label={ `Remove ${ label }` } hint={ hint } placement="top">
