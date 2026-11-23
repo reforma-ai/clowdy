@@ -1,5 +1,5 @@
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 
 import { getChat } from '../src/db/chats';
@@ -9,6 +9,7 @@ import { exclusive, pathKey } from '../src/domain/workspaces';
 import { cleanTempDirs, git, latch, makeRepo, ScriptEngine, scriptEngines, startHarness, tempDir, waitFor } from './helpers';
 
 import type { Chat, ChatWorkspace, CommandResult, FolderWorktrees, Project, Run } from '@clowdy/protocol';
+import type { Config } from '../src/config';
 import type { Harness, Script } from './helpers';
 
 afterAll(cleanTempDirs);
@@ -53,9 +54,9 @@ function commit(path: string, file = 'work.txt', message = 'Work'): string {
  * A daemon with a project of one repository, `shop-web`, or of the folders `folders` builds (it is given the root and the repository to build them from). Chats are made with a
  * script engine that finishes at once, so a chat on a new worktree has made it once `start` has run. `remove` is `workspace.remove` as the app sends it.
  */
-async function setup(options: { folders?: (root: string, repo: string) => string[]; script?: Script } = {}) {
+async function setup(options: { folders?: (root: string, repo: string) => string[]; script?: Script; config?: Partial<Config> } = {}) {
     const engine = new ScriptEngine(options.script ?? finishing);
-    const h = await startHarness({}, { engines: scriptEngines(engine) });
+    const h = await startHarness(options.config, { engines: scriptEngines(engine) });
 
     harnesses.push(h);
 
@@ -275,6 +276,18 @@ describe('workspace.remove', () => {
         });
     });
 
+    test('does not take a status git cannot read for a clean tree: it is a change that only discard throws away', async () => {
+        const { repo, found, remove, refusal } = await setup();
+        const path = found('unreadable');
+
+        // The worktree's own index is damaged: `git status` and `git worktree remove` both fail, `--force` does not read it.
+        writeFileSync(join(repo, '.git', 'worktrees', 'unreadable', 'index'), 'garbage');
+        expect(refusal(await remove(path))).toEqual({ code: 'conflict', message: 'Git did not say what is changed in the worktree' });
+        expect(existsSync(path)).toBe(true);
+        expect(await remove(path, { discard: true })).toMatchObject({ ok: true });
+        expect(existsSync(path)).toBe(false);
+    });
+
     describe('what is never removed', () => {
         test('the folder\'s own checkout, whatever discard and deleteBranch say, and what is in it', async () => {
             const { repo, folder, remove, refusal, hasBranch } = await setup();
@@ -327,6 +340,51 @@ describe('workspace.remove', () => {
             expect(refusal(await remove(second, { discard: true, deleteBranch: true }))).toEqual({ code: 'conflict', message: 'That is another folder of the project' });
             expect(existsSync(second)).toBe(true);
             expect(hasBranch('second-folder')).toBe(true);
+        });
+
+        test('a worktree that holds another worktree, which .gitignore keeps out of its status and git would delete with it, until the inner one is gone', async () => {
+            const { found, remove, refusal, hasBranch } = await setup();
+            const outer = found('outer');
+            const inner = join(outer, 'inner');
+            const nested = { code: 'conflict', message: 'Another worktree or a folder of the project is inside this one' };
+
+            writeFileSync(join(outer, '.gitignore'), 'inner/\n');
+            git(outer, 'add', '.gitignore');
+            git(outer, 'commit', '-q', '-m', 'Ignore the inner worktree');
+            git(outer, 'worktree', 'add', '-q', '-b', 'inner', inner);
+            writeFileSync(join(inner, 'wip.txt'), 'not committed\n');
+            // The outer tree looks clean, so nothing but this check stands between the removal and the inner one's work.
+            expect(git(outer, 'status', '--porcelain')).toBe('');
+
+            expect(refusal(await remove(outer))).toEqual(nested);
+            expect(refusal(await remove(outer, { discard: true, deleteBranch: true }))).toEqual(nested);
+            expect(readFileSync(join(inner, 'wip.txt'), 'utf8')).toBe('not committed\n');
+            expect(hasBranch('outer')).toBe(true);
+
+            expect((await remove(inner, { discard: true })).ok).toBe(true);
+            expect((await remove(outer, { deleteBranch: true })).ok).toBe(true);
+            expect(existsSync(outer)).toBe(false);
+            expect(hasBranch('outer')).toBe(false);
+        });
+
+        test('a worktree that holds another folder of the project', async () => {
+            const { root, remove, refusal } = await setup({
+                folders: (base, primary) => {
+                    const outer = join(base, 'outer');
+
+                    git(primary, 'worktree', 'add', '-q', '-b', 'outer', outer);
+                    writeFileSync(join(outer, '.gitignore'), 'vendor/\n');
+                    git(outer, 'add', '.gitignore');
+                    git(outer, 'commit', '-q', '-m', 'Ignore the vendored repository');
+
+                    return [primary, makeRepo(join(outer, 'vendor'), 'library')];
+                },
+            });
+            const outer = join(root, 'outer');
+
+            expect(git(outer, 'status', '--porcelain')).toBe('');
+            expect(refusal(await remove(outer, { discard: true }))).toEqual({ code: 'conflict', message: 'Another worktree or a folder of the project is inside this one' });
+            expect(existsSync(join(outer, 'vendor', 'library', 'README.md'))).toBe(true);
         });
 
         test('a locked worktree, discard or not, until it is unlocked', async () => {
@@ -565,6 +623,28 @@ describe('workspace.remove', () => {
             expect(existsSync(slug)).toBe(false);
             expect(existsSync(h.config.workspacesDir)).toBe(true);
             expect(mainState(repo)).toEqual({ ...before, branches: git(repo, 'branch', '--format=%(refname:short)') });
+        });
+
+        test('is removed by the real path the list shows when the workspaces folder is written through a link, and the folders it leaves empty go all the same', async () => {
+            const target = tempDir('workspaces-target');
+            const link = join(tempDir('workspaces-link'), 'workspaces');
+
+            symlinkSync(target, link);
+
+            const { h, start, remove, hasBranch } = await setup({ config: { workspacesDir: link } });
+            const chat = await start();
+            const { path, branch } = chat.workspace!;
+
+            // The list writes the place git does, not the link the row was made through.
+            const place = realpathSync(path);
+
+            h.ok('chat.delete', { chatId: chat.id });
+            expect(path.startsWith(link)).toBe(true);
+            expect(place.startsWith(realpathSync(target))).toBe(true);
+            expect(await remove(place, { deleteBranch: true })).toMatchObject({ ok: true, data: { path: place, branchDeleted: true } });
+            expect(existsSync(path)).toBe(false);
+            expect(hasBranch(branch!)).toBe(false);
+            expect(readdirSync(target)).toEqual([]);
         });
 
         test('keeps what is committed and not merged when only the tree goes: the branch names it', async () => {

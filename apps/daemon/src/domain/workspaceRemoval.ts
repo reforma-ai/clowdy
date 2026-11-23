@@ -8,7 +8,7 @@ import { conflict, invalid } from '../errors';
 import { commitOf, countChanges, hasCheckedOutSubmodules, isMerged, isOnDisk, parseWorktrees, repositoryRoot } from '../git/state';
 import { requireChat, stoppedSubtree } from './chats';
 import { gitRead } from './git';
-import { exclusive, mustGit, openWorkspace, pathKey, samePlace, WorkspaceError } from './workspaces';
+import { exclusive, mustGit, openWorkspace, pathKey, placeOf, samePlace, WorkspaceError } from './workspaces';
 
 import type { Chat, ChatWorkspaceRemoval, Project } from '@clowdy/protocol';
 import type { Config } from '../config';
@@ -111,10 +111,11 @@ async function unsaved(path: string): Promise<string | undefined> {
 /**
  * Whether a worktree may be removed, and what in it says no. The rules both removals share, each checked against what is on the disk and in git now, never against what a row
  * remembers: no chat outside `target.allowed` works in it (an archived one included); the folder is on the disk, and git lists the worktree (with `allowMissing`, a prunable one
- * too, whose folder is gone) and it is not the folder's own checkout, another folder of the project, the repository's primary working tree (git never removes it) or locked; the
- * branch that goes with it is not checked out in another worktree (`branch -D` would fail after the tree was gone); and nothing in the tree is changed, a new file and an
- * initialised submodule included, unless `discard` says it may be thrown away (`force` in the answer). The branch that goes with it is the one `choices.branch` names when the
- * repository still has it. The chat delete's own rules (Clowdy made it, its work is in the base) are `checkRemoval`'s, on top of this.
+ * too, whose folder is gone) and it is not the folder's own checkout, another folder of the project, the repository's primary working tree (git never removes it) or locked, and no
+ * other worktree or folder of the project is inside it (it would go with it, unasked); the branch that goes with it is not checked out in another worktree (`branch -D` would fail
+ * after the tree was gone); and nothing in the tree is changed, a new file and an initialised submodule included, unless `discard` says it may be thrown away (`force` in the
+ * answer). The branch that goes with it is the one `choices.branch` names when the repository still has it. The chat delete's own rules (Clowdy made it, its work is in the base)
+ * are `checkRemoval`'s, on top of this.
  *
  * The reads are asynchronous and bounded, so a slow disk does not hold the daemon up; nothing is changed.
  */
@@ -168,13 +169,22 @@ async function checkWorkspaceRemoval(store: Store, target: Target, choices: Choi
         return no('The worktree is locked');
     }
 
+    const missing = entry.prunable || !there;
+
+    // Another worktree inside this one (Claude Code makes them under `.claude/worktrees`) is deleted with it when `.gitignore` hides it from the status, with its uncommitted work and
+    // past its chats and its lock: the checks here are of this worktree alone, so the inner one has to go first.
+    const inside = [...entries.filter(candidate => candidate !== entry).map(candidate => candidate.path), ...target.siblings];
+
+    if (!missing && inside.some(inner => isBelow(placeOf(entry.path), placeOf(inner)))) {
+        return no('Another worktree or a folder of the project is inside this one');
+    }
+
     const name = choices.branch?.(entry);
 
     if (name !== undefined && entries.some(candidate => candidate !== entry && candidate.branch === name)) {
         return no(`The branch ${ name } is checked out in another worktree`);
     }
 
-    const missing = entry.prunable || !there;
     const changed = missing ? undefined : await unsaved(path);
 
     if (changed !== undefined && !choices.discard) {
@@ -265,16 +275,21 @@ export async function workspaceRemoval(store: Store, chatId: string): Promise<Ch
     return { removable: verdict.removable, ...(record && { path: record.path, ...(record.branch !== undefined && { branch: record.branch }) }) };
 }
 
-/** Whether `path` is below `root`, by their names (a worktree's path is stored as it was made, under the folder the config named then). */
+/** Whether `path` is below `root`, by their names. */
 function isBelow(root: string, path: string): boolean {
     const way = relative(resolve(root), resolve(path));
 
     return way !== '' && !way.startsWith('..') && !isAbsolute(way);
 }
 
-/** Removes the folders a worktree leaves empty (`<project>/<chat>`), up to but not including the workspaces folder, and no folder that holds anything: `rmdir` refuses those. */
+/**
+ * Removes the folders a worktree leaves empty (`<project>/<chat>`), up to but not including the workspaces folder, and no folder that holds anything: `rmdir` refuses those. The
+ * path is the one git listed, the real place, so the workspaces folder is compared by its real place too: one written through a link (`/var` for `/private/var`) is the same folder.
+ */
 async function pruneEmptyParents(root: string, path: string): Promise<void> {
-    for (let dir = dirname(path); isBelow(root, dir); dir = dirname(dir)) {
+    const place = placeOf(root);
+
+    for (let dir = dirname(path); isBelow(place, dir); dir = dirname(dir)) {
         try {
             await rmdir(dir);
         }
@@ -372,7 +387,7 @@ async function removeWorktreeAndBranch(store: Store, config: Pick<Config, 'works
     }
 
     afterTree?.();
-    await pruneEmptyParents(config.workspacesDir, verdict.path);
+    await pruneEmptyParents(config.workspacesDir, verdict.listedPath);
 
     // The tree is gone and the branch is still named by the repository: a chat that stays after this has the branch it can make the worktree from again.
     if (verdict.branch) {
