@@ -12,6 +12,7 @@ import { CHAT_TITLE_SETTING } from './engine/acp/catalog';
 import { AgentRegistry } from './engine/acp/registry';
 import { FilesService } from './files/service';
 import { FsService } from './fs/service';
+import { PullRequests } from './git/pullRequest';
 import { startServer } from './http/server';
 import { acquireLock, writeDaemonInfo } from './instance';
 import { announceAgentsChanged } from './providers/announce';
@@ -56,6 +57,8 @@ export interface DaemonOptions {
     models?: ModelCatalog;
     /** Replaces the terminal service; tests use it to run a shell of their own on a PTY of their own. */
     terminals?: TerminalService;
+    /** Replaces the reader of pull requests; tests use it to put a `gh` of their own in the place of the person's. */
+    pullRequests?: PullRequests;
     heartbeatMs?: number;
     /** Called once the daemon has stopped because a client asked (`POST /v1/shutdown`); the entry point exits the process here. */
     onShutdown?: () => void;
@@ -97,7 +100,7 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
             announce: () => announceAgentsChanged(store),
         });
         const files = new FilesService();
-        const services: Services = { config, store, runs, driver, queue, threads, files, fs: new FsService(files, {}, { ripgrep: config.ripgrep }), attachments, skills, agents, providers, models: options.models ?? new ModelCatalog({ registry: agents }), terminals: options.terminals ?? new TerminalService() };
+        const services: Services = { config, store, runs, driver, queue, threads, files, fs: new FsService(files, {}, { ripgrep: config.ripgrep }), attachments, skills, agents, providers, models: options.models ?? new ModelCatalog({ registry: agents }), terminals: options.terminals ?? new TerminalService(), pullRequests: options.pullRequests ?? new PullRequests() };
 
         await runs.recover();
         attachments.sweep();
@@ -114,6 +117,7 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
             notices.stop();
             await server.stop(true);
             services.terminals.stop();
+            services.pullRequests.stop();
             await driver.stop();
             created?.stop();
             providers.stop();

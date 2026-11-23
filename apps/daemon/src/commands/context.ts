@@ -4,6 +4,7 @@ import type { Config } from '../config';
 import type { AgentRegistry } from '../engine/acp/registry';
 import type { FilesService } from '../files/service';
 import type { FsService } from '../fs/service';
+import type { PullRequests } from '../git/pullRequest';
 import type { ModelCatalog } from '../providers/models';
 import type { ProvidersService } from '../providers/service';
 import type { RunDriver } from '../runs/driver';
@@ -34,6 +35,8 @@ export interface Services {
     models: ModelCatalog;
     /** The shells the app's terminal runs. */
     terminals: TerminalService;
+    /** The pull request of a place's branch, read through the person's `gh`. */
+    pullRequests: PullRequests;
 }
 
 export type CommandOf<T extends CommandType> = Extract<Command, { type: T }>;

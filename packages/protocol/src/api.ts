@@ -57,8 +57,9 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  *                                            uncommitted paths and how far the branch is from its base)
  * GET  /v1/projects/:id/git/changes?folderId=&workspaceId=&scope= -> GitChanges (the files that changed in a scope, `all`, `branch`, `uncommitted` or `commit:<sha>`, with
  *                                            their line counts and revisions)
- * GET  /v1/projects/:id/git/file?folderId=&workspaceId=&scope=&path=&oldPath= -> GitFileSides (the text of one changed file before and after). The three are described
- *                                            in `git.ts`
+ * GET  /v1/projects/:id/git/file?folderId=&workspaceId=&scope=&path=&oldPath= -> GitFileSides (the text of one changed file before and after)
+ * GET  /v1/projects/:id/git/pull-request?folderId=&workspaceId= -> GitPullRequestInfo (whether the person's `gh` can be asked about the place's `origin`, and the pull
+ *                                            request of its branch with its checks, or none). The four are described in `git.ts`
  * GET  /v1/projects/:id/files?query=&limit=&workspaceId= -> ProjectFileMatch[] (files of the project's folders whose path contains every word of `query`,
  *                                            the folder's name counting as part of the path when there are several; best match first,
  *                                            at most `limit` (default 40, most 100); git's tracked and unignored files, or a walk outside
@@ -105,6 +106,7 @@ export const ROUTES = {
     projectGitStatus: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/git/status`,
     projectGitChanges: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/git/changes`,
     projectGitFile: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/git/file`,
+    projectGitPullRequest: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/git/pull-request`,
     projectFiles: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/files`,
     projectAttachments: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/attachments`,
     projectAttachment: (projectId: string, attachmentId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/attachments/${ encodeURIComponent(attachmentId) }`,
