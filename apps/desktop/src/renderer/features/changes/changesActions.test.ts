@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { commitAndPushBlock, createPullRequest, githubBaseName, isDiverged, pushOrPublish, remoteActions, remoteBranchOf, remoteCall, remoteNotice, upstreamView } from './changesActions';
+import { commitAndPushBlock, commitBlock, commitLabel, commitTarget, createPullRequest, githubBaseName, isDiverged, isFetchFirst, lastFetchedWords, middleCut, nextStep, pushOrPublish, remoteActions, remoteBranchOf, remoteCall, remoteNotice, syncButton } from './changesActions';
 
 import type { GitBase, GitStatus, GitUpstream } from '@clowdy/protocol';
 
@@ -71,22 +71,216 @@ describe('remoteActions', () => {
     });
 });
 
-describe('upstreamView', () => {
-    it('says the upstream and how far apart, and that a branch is not published', () => {
-        expect(upstreamView(status({}, { ahead: 1 }))).toMatchObject({ label: 'origin/feature', detail: '1 ahead' });
-        expect(upstreamView(status({}, { behind: 4 }))).toMatchObject({ label: 'origin/feature', detail: '4 behind' });
-        expect(upstreamView(status())).toMatchObject({ label: 'origin/feature', detail: 'up to date' });
-        expect(upstreamView(status({}, null))).toMatchObject({ label: 'Not published' });
-        expect(upstreamView(status({}, null))?.detail).toBeUndefined();
+describe('the labels of the menu', () => {
+    it('are GitHub Desktop\'s words: Fetch origin, Pull origin, Push origin and Publish branch', () => {
+        expect(remoteActions(status({}, { ahead: 1 }), false).map(action => action.label)).toEqual(['Fetch origin', 'Pull origin', 'Push origin']);
+        expect(remoteActions(status({}, null), false).map(action => action.label)).toEqual(['Fetch origin', 'Pull origin', 'Publish branch']);
+    });
+});
+
+describe('lastFetchedWords', () => {
+    const NOW = Date.UTC(2026, 10, 23, 12, 0, 0);
+    const MINUTE = 60_000;
+    const words = (ago: number) => lastFetchedWords(NOW - ago, NOW);
+
+    it('says that a repository that has not fetched never has', () => {
+        expect(lastFetchedWords(undefined, NOW)).toBe('Never fetched');
     });
 
-    it('warns for a branch that diverged and for an upstream that is gone, and names the rest of the cases', () => {
-        expect(upstreamView(status({}, { ahead: 1, behind: 2 }))).toMatchObject({ label: 'origin/feature', detail: 'diverged', tone: 'warning', title: 'origin/feature, diverged: 1 ahead, 2 behind' });
-        expect(upstreamView(status({}, { gone: true }))).toMatchObject({ detail: 'gone', tone: 'warning' });
-        expect(upstreamView(status({ head: { kind: 'detached', commit: 'a'.repeat(40) } }, null))).toMatchObject({ label: 'Not on a branch' });
-        expect(upstreamView(status({ head: { kind: 'unborn', name: 'main' } }, null))).toMatchObject({ label: 'No commits yet' });
-        expect(upstreamView({ isRepository: false })).toBeUndefined();
-        expect(upstreamView(undefined)).toBeUndefined();
+    it('says just now under a minute, and a time in the future (a clock that moved) is just now too', () => {
+        expect(words(0)).toBe('Last fetched just now');
+        expect(words(59_000)).toBe('Last fetched just now');
+        expect(words(-5 * MINUTE)).toBe('Last fetched just now');
+    });
+
+    it('counts in the largest unit that fits, rounded down, with the singular for one', () => {
+        expect(words(MINUTE)).toBe('Last fetched 1 minute ago');
+        expect(words(3 * MINUTE)).toBe('Last fetched 3 minutes ago');
+        expect(words(59 * MINUTE)).toBe('Last fetched 59 minutes ago');
+        expect(words(60 * MINUTE)).toBe('Last fetched 1 hour ago');
+        expect(words(23 * 60 * MINUTE + 59 * MINUTE)).toBe('Last fetched 23 hours ago');
+        expect(words(24 * 60 * MINUTE)).toBe('Last fetched 1 day ago');
+        expect(words(6 * 24 * 60 * MINUTE)).toBe('Last fetched 6 days ago');
+        expect(words(7 * 24 * 60 * MINUTE)).toBe('Last fetched 1 week ago');
+        expect(words(29 * 24 * 60 * MINUTE)).toBe('Last fetched 4 weeks ago');
+        expect(words(30 * 24 * 60 * MINUTE)).toBe('Last fetched 1 month ago');
+        expect(words(364 * 24 * 60 * MINUTE)).toBe('Last fetched 12 months ago');
+        expect(words(365 * 24 * 60 * MINUTE)).toBe('Last fetched 1 year ago');
+        expect(words(800 * 24 * 60 * MINUTE)).toBe('Last fetched 2 years ago');
+    });
+});
+
+describe('syncButton', () => {
+    const NOW = Date.UTC(2026, 10, 23, 12, 0, 0);
+    const FETCHED = NOW - 3 * 60_000;
+    const sync = (value: GitStatus | undefined, running: Parameters<typeof syncButton>[1] = undefined) => syncButton(value, running, NOW);
+
+    it('is nothing for a place that is not a repository and for one that has not been read', () => {
+        expect(sync({ isRepository: false })).toBeUndefined();
+        expect(sync(undefined)).toBeUndefined();
+    });
+
+    it('says what is running, with the progress as its label, and cannot be pressed', () => {
+        expect(sync(status(), 'fetch')).toMatchObject({ kind: 'running', label: 'Fetching origin', reason: 'An action is running' });
+        expect(sync(status(), 'pull')).toMatchObject({ kind: 'running', label: 'Pulling origin' });
+        expect(sync(status(), 'push')).toMatchObject({ kind: 'running', label: 'Pushing origin' });
+        expect(sync(status({}, null), 'publish')).toMatchObject({ kind: 'running', label: 'Publishing branch' });
+        expect(sync(status(), 'fetch')?.action).toBeUndefined();
+    });
+
+    it('says there is nothing to sync with when the repository has no origin, whatever the branch is', () => {
+        expect(sync(status({ origin: false }))).toMatchObject({ kind: 'no_origin', label: 'No origin', line: 'Nothing to sync with', reason: 'No origin' });
+        expect(sync(status({ origin: false }, null))?.action).toBeUndefined();
+        expect(sync(status({ origin: false }), 'fetch')).toMatchObject({ kind: 'running' });
+    });
+
+    it('is Publish branch, off with the reason, for a HEAD on no branch and for a branch with no commit yet', () => {
+        expect(sync(status({ head: { kind: 'detached', commit: 'a'.repeat(40) } }, null))).toMatchObject({ kind: 'blocked', label: 'Publish branch', line: 'HEAD is detached', reason: 'HEAD is detached' });
+        expect(sync(status({ head: { kind: 'unborn', name: 'main' } }, null))).toMatchObject({ kind: 'blocked', label: 'Publish branch', line: 'No commits yet', reason: 'No commits yet' });
+        expect(sync(status({ head: { kind: 'unborn', name: 'main' } }, null))?.action).toBeUndefined();
+    });
+
+    it('is Publish branch for a branch that is not on origin, and again for one whose upstream is gone, which it says as a warning', () => {
+        expect(sync(status({}, null))).toMatchObject({ kind: 'publish', label: 'Publish branch', action: 'publish', line: 'Publish this branch to origin' });
+        expect(sync(status({}, null))?.reason).toBeUndefined();
+        expect(sync(status({}, { gone: true }))).toMatchObject({ kind: 'publish', label: 'Publish branch', action: 'publish', line: 'Upstream gone from origin', tone: 'warning' });
+    });
+
+    it('is Pull origin with the count for a branch that is behind, and says when the counts are from', () => {
+        expect(sync(status({ lastFetchedAt: FETCHED }, { behind: 2 }))).toMatchObject({ kind: 'pull', label: 'Pull origin', behind: 2, action: 'pull', line: 'Last fetched 3 minutes ago' });
+        expect(sync(status({}, { behind: 1 }))).toMatchObject({ kind: 'pull', behind: 1, line: 'Never fetched' });
+        expect(sync(status({}, { behind: 1 }))?.ahead).toBeUndefined();
+    });
+
+    it('is Push origin with the count for a branch that is ahead', () => {
+        expect(sync(status({ lastFetchedAt: FETCHED }, { ahead: 1 }))).toMatchObject({ kind: 'push', label: 'Push origin', ahead: 1, action: 'push', line: 'Last fetched 3 minutes ago' });
+        expect(sync(status({}, { ahead: 4 }))?.behind).toBeUndefined();
+    });
+
+    it('is a Diverged button that cannot be pressed for a branch with commits on both sides, and says what to do about it, and with how far', () => {
+        const view = sync(status({ lastFetchedAt: FETCHED }, { ahead: 1, behind: 2 }));
+
+        expect(view).toMatchObject({ kind: 'diverged', label: 'Diverged', ahead: 1, behind: 2, reason: 'Diverged: 1 ahead, 2 behind', line: 'Merge or rebase in a terminal', tone: 'warning' });
+        expect(view?.action).toBeUndefined();
+        expect(view?.title).toContain('merge or rebase it in a terminal');
+        // Neither Pull origin nor Force push origin is offered here: the app has no merge and no force.
+        expect(JSON.stringify(view)).not.toMatch(/Force push/);
+    });
+
+    it('is Fetch origin with when the last fetch was for a branch that is level, or Never fetched', () => {
+        expect(sync(status({ lastFetchedAt: FETCHED }))).toMatchObject({ kind: 'fetch', label: 'Fetch origin', action: 'fetch', line: 'Last fetched 3 minutes ago' });
+        expect(sync(status())).toMatchObject({ kind: 'fetch', label: 'Fetch origin', action: 'fetch', line: 'Never fetched' });
+        expect(sync(status())?.reason).toBeUndefined();
+        expect(sync(status({ lastFetchedAt: FETCHED }))?.title).toBe('Fetch origin to look for new commits: origin/feature is up to date, last fetched 3 minutes ago');
+    });
+
+    it('is Fetch origin, with what is in the way as its line, for a branch that tracks something that is not on origin', () => {
+        expect(sync(status({}, { name: 'upstream/main', ahead: 1 }))).toMatchObject({ kind: 'fetch', label: 'Fetch origin', action: 'fetch', line: 'Tracks upstream/main, not origin' });
+    });
+
+    it('goes down GitHub Desktop\'s order: running, no origin, no branch, not published, not on origin, diverged, behind, ahead, level', () => {
+        const order = (value: GitStatus, running?: Parameters<typeof syncButton>[1]) => sync(value, running)?.kind;
+
+        expect(order(status({ origin: false }, null), 'fetch')).toBe('running');
+        expect(order(status({ origin: false, head: { kind: 'detached', commit: 'a'.repeat(40) } }, null))).toBe('no_origin');
+        expect(order(status({ head: { kind: 'detached', commit: 'a'.repeat(40) } }, { ahead: 1 }))).toBe('blocked');
+        expect(order(status({}, { name: 'upstream/x', ahead: 1, behind: 1 }))).toBe('fetch');
+        expect(order(status({}, { ahead: 1, behind: 1 }))).toBe('diverged');
+        expect(order(status({}, { ahead: 1, behind: 1, gone: true }))).toBe('publish');
+        expect(order(status({}, { ahead: 3 }))).toBe('push');
+        expect(order(status({}, { behind: 3 }))).toBe('pull');
+        expect(order(status())).toBe('fetch');
+    });
+});
+
+describe('nextStep', () => {
+    const ready = { kind: 'ready', label: 'Create PR' } as const;
+
+    it('is Publish your branch for a branch that is not on origin, and for one whose upstream is gone, whatever Create PR says', () => {
+        expect(nextStep(status({}, null), undefined)).toMatchObject({ kind: 'publish', title: 'Publish your branch' });
+        expect(nextStep(status({}, { gone: true }), ready)).toMatchObject({ kind: 'publish', title: 'Publish your branch' });
+    });
+
+    it('is Pull for the commits origin has, with the number and the singular for one', () => {
+        expect(nextStep(status({}, { behind: 2 }), ready)).toMatchObject({ kind: 'pull', title: 'Pull 2 commits from the origin remote' });
+        expect(nextStep(status({}, { behind: 1 }), ready)).toMatchObject({ kind: 'pull', title: 'Pull 1 commit from the origin remote' });
+    });
+
+    it('is Push for the commits the branch has, with the number and the singular for one', () => {
+        expect(nextStep(status({}, { ahead: 3 }), ready)).toMatchObject({ kind: 'push', title: 'Push 3 commits to the origin remote' });
+        expect(nextStep(status({}, { ahead: 1 }), ready)).toMatchObject({ kind: 'push', title: 'Push 1 commit to the origin remote' });
+    });
+
+    it('is Create a Pull Request for a branch that is published and level, where Create PR is ready, and nothing where it is not', () => {
+        expect(nextStep(status(), ready)).toMatchObject({ kind: 'pullRequest', title: 'Create a Pull Request from your current branch' });
+        // The base branch, a branch with a pull request, a branch with no commit ahead of its base, and a pull request not read yet are none.
+        expect(nextStep(status(), { kind: 'blocked', label: 'Create PR', reason: 'Switch to a feature branch' })).toBeUndefined();
+        expect(nextStep(status(), undefined)).toBeUndefined();
+    });
+
+    it('is nothing for a branch that diverged, one that tracks another remote, no origin, a HEAD on no branch, a branch with no commit and a place that is no repository', () => {
+        expect(nextStep(status({}, { ahead: 1, behind: 1 }), ready)).toBeUndefined();
+        expect(nextStep(status({}, { name: 'upstream/main', behind: 1 }), ready)).toBeUndefined();
+        expect(nextStep(status({ origin: false }, null), ready)).toBeUndefined();
+        expect(nextStep(status({ head: { kind: 'detached', commit: 'a'.repeat(40) } }, null), ready)).toBeUndefined();
+        expect(nextStep(status({ head: { kind: 'unborn', name: 'main' } }, null), ready)).toBeUndefined();
+        expect(nextStep({ isRepository: false }, ready)).toBeUndefined();
+        expect(nextStep(undefined, ready)).toBeUndefined();
+    });
+
+    it('agrees with the Create PR button: where it is ready the step is the pull request, unless the branch is behind, which comes first', () => {
+        for (const upstream of [null, {}, { ahead: 1 }, { behind: 1 }, { ahead: 1, behind: 1 }, { gone: true }, { name: 'upstream/feature' }] as Array<Partial<GitUpstream> | null>) {
+            const value = status({}, upstream);
+            const pr = createPullRequest({ status: value, hasPullRequest: false, onGitHub: true });
+
+            if (pr?.kind === 'ready') expect(nextStep(value, pr)?.kind).toBe(upstream?.behind ? 'pull' : 'pullRequest');
+            else expect(nextStep(value, pr)?.kind).not.toBe('pullRequest');
+        }
+    });
+});
+
+describe('the commit button', () => {
+    it('counts the ticked files and names the branch: Commit 3 files to main, Commit 1 file to main', () => {
+        expect(commitLabel(3, 'main')).toBe('Commit 3 files to main');
+        expect(commitLabel(1, 'main')).toBe('Commit 1 file to main');
+        expect(commitLabel(0, 'main')).toBe('Commit to main');
+        expect(commitLabel(2, undefined)).toBe('Commit 2 files');
+    });
+
+    it('cuts a long branch name in its middle and keeps its start and its end', () => {
+        expect(middleCut('main', 24)).toBe('main');
+        expect(middleCut('a'.repeat(24), 24)).toBe('a'.repeat(24));
+        expect(middleCut('clowdy/ab12cd34-weekend-surcharge', 24)).toBe('clowdy/ab12c…d-surcharge');
+        expect(middleCut('clowdy/ab12cd34-weekend-surcharge', 24)).toHaveLength(24);
+        expect(commitLabel(12, 'maksim-kachurin/feat/long-branch-name')).toBe('Commit 12 files to maksim-kachu…branch-name');
+        expect(middleCut('abcdefghij', 6)).toBe('abc…ij');
+    });
+
+    it('says why it cannot be pressed in GitHub Desktop\'s tooltips: the summary first, then the files', () => {
+        expect(commitBlock('', 3)).toBe('A commit summary is required to commit');
+        expect(commitBlock('  \n ', 0)).toBe('A commit summary is required to commit');
+        expect(commitBlock('Fix it', 0)).toBe('Select one or more files to commit');
+        expect(commitBlock('Fix it', 2)).toBeUndefined();
+    });
+
+    it('goes to the branch the work is compared with when the branch is its base, origin\'s or the local one', () => {
+        expect(commitTarget(status({ head: { kind: 'branch', name: 'main', commit: 'a'.repeat(40) } }))).toEqual({ name: 'main', onBase: true });
+        expect(commitTarget(status({ head: { kind: 'branch', name: 'main', commit: 'a'.repeat(40) }, base: { ...READY, name: 'main' } }))).toEqual({ name: 'main', onBase: true });
+        expect(commitTarget(status())).toEqual({ name: 'feature', onBase: false });
+        expect(commitTarget(status({ base: { state: 'no_base' }, head: { kind: 'branch', name: 'main', commit: 'a'.repeat(40) } }))).toEqual({ name: 'main', onBase: false });
+        expect(commitTarget(status({ head: { kind: 'detached', commit: 'a'.repeat(40) } }, null))).toEqual({ name: 'detached HEAD', onBase: false });
+        expect(commitTarget({ isRepository: false })).toBeUndefined();
+        expect(commitTarget(undefined)).toBeUndefined();
+    });
+});
+
+describe('isFetchFirst', () => {
+    it('is true for the line git prints when origin has commits the branch lacks, and for nothing else', () => {
+        expect(isFetchFirst('! [rejected] clowdy/ab12cd34 -> clowdy/ab12cd34 (fetch first)')).toBe(true);
+        expect(isFetchFirst('Committed 1a2b3c4, push failed: ! [rejected] main -> main (fetch first)')).toBe(true);
+        expect(isFetchFirst('! [rejected] main -> main (non-fast-forward)')).toBe(false);
+        expect(isFetchFirst('! [remote rejected] main -> main (protected branch hook declined)')).toBe(false);
+        expect(isFetchFirst('fatal: unable to access the remote')).toBe(false);
     });
 });
 

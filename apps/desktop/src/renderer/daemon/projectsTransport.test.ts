@@ -1072,7 +1072,7 @@ describe('the time of the last fetch in the transports', () => {
     const inWorktree = { ...place, workspaceId: 'wks_ab12cd34' };
     const MINUTE = 60_000;
     const worktree = (remote?: FixtureGitWritesOptions['remote'], extra: Partial<FixtureGitWritesOptions> = {}) => new FixtureTransport({ data: withFixtureWorkspace(createFixtureData()), gitWrites: { remote, ...extra } });
-    const statusOf = async (transport: FixtureTransport, at = inWorktree) => await transport.getGitStatus(FIXTURE_PROJECT_ID, at) as Extract<GitStatus, { isRepository: true }>;
+    const statusOf = async (transport: FixtureTransport, at: { folderId: string; workspaceId?: string } = inWorktree) => await transport.getGitStatus(FIXTURE_PROJECT_ID, at) as Extract<GitStatus, { isRepository: true }>;
 
     it('is passed on by the HTTP transport as the daemon sent it, and left out when the daemon says nothing', async () => {
         const answers = [{ isRepository: true, origin: true, lastFetchedAt: 1_700_000_000_000 }, { isRepository: true, origin: true }];
@@ -1139,7 +1139,7 @@ describe('the states of the sync button in the fixtures', () => {
     const place = { folderId: 'fld_car_rental' };
     const inWorktree = { ...place, workspaceId: 'wks_ab12cd34' };
     const worktree = (remote?: FixtureGitWritesOptions['remote'], extra: Partial<FixtureGitWritesOptions> = {}) => new FixtureTransport({ data: withFixtureWorkspace(createFixtureData()), gitWrites: { remote, ...extra } });
-    const statusOf = async (transport: FixtureTransport, at = inWorktree) => await transport.getGitStatus(FIXTURE_PROJECT_ID, at) as Extract<GitStatus, { isRepository: true }>;
+    const statusOf = async (transport: FixtureTransport, at: { folderId: string; workspaceId?: string } = inWorktree) => await transport.getGitStatus(FIXTURE_PROJECT_ID, at) as Extract<GitStatus, { isRepository: true }>;
 
     it('has the branch ahead by 2 for `ahead`, level and published for `level` and `never`', async () => {
         expect((await statusOf(worktree('ahead'))).upstream).toEqual({ name: 'origin/clowdy/ab12cd34', ahead: 2, behind: 0 });

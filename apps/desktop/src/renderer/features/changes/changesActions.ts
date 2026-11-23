@@ -64,13 +64,13 @@ export function remoteActions(status: GitStatus | undefined, busy: boolean): Rem
     const block = blockOf(status, busy);
     const moves = block ?? branchBlock(status);
     const published = publishedUpstream(status.upstream);
-    const fetch: RemoteActionView = { id: 'fetch', label: 'Fetch', ...(block && { reason: block }) };
+    const fetch: RemoteActionView = { id: 'fetch', label: 'Fetch origin', ...(block && { reason: block }) };
 
     // A branch that is not on origin has nothing to pull from, and is published in place of being pushed.
     if (!published) {
-        const pull: RemoteActionView = { id: 'pull', label: 'Pull', reason: moves ?? (status.upstream ? `Upstream gone from ${ ORIGIN }` : 'Not published yet') };
+        const pull: RemoteActionView = { id: 'pull', label: 'Pull origin', reason: moves ?? (status.upstream ? `Upstream gone from ${ ORIGIN }` : 'Not published yet') };
 
-        return [fetch, pull, { id: 'publish', label: 'Publish', ...(moves && { reason: moves }) }];
+        return [fetch, pull, { id: 'publish', label: 'Publish branch', ...(moves && { reason: moves }) }];
     }
 
     const pullReason = moves ?? (isDiverged(published) ? divergedWords(published) : published.behind === 0 ? 'Nothing to pull' : undefined);
@@ -78,46 +78,136 @@ export function remoteActions(status: GitStatus | undefined, busy: boolean): Rem
 
     return [
         fetch,
-        { id: 'pull', label: 'Pull', ...(published.behind > 0 && { count: published.behind }), ...(pullReason && { reason: pullReason }) },
-        { id: 'push', label: 'Push', ...(published.ahead > 0 && { count: published.ahead }), ...(pushReason && { reason: pushReason }) },
+        { id: 'pull', label: 'Pull origin', ...(published.behind > 0 && { count: published.behind }), ...(pullReason && { reason: pullReason }) },
+        { id: 'push', label: 'Push origin', ...(published.ahead > 0 && { count: published.ahead }), ...(pushReason && { reason: pushReason }) },
     ];
-}
-
-/** What the menu's button says of where the branch stands against its upstream: the name (or that it is not published) and how far apart they are. */
-export interface UpstreamView {
-    /** The upstream's name (`origin/feature`), `Not published` for a branch with none, or what a HEAD with no branch has. */
-    label: string;
-    /** How far apart, as a few words; absent for a branch that is not published. */
-    detail?: string;
-    /** `warning` for what needs the person (a branch that diverged, an upstream that is gone). */
-    tone?: 'warning';
-    /** The whole of it, for a title. */
-    title: string;
-}
-
-/** How the branch stands against its upstream, in words: `origin/feature · 1 ahead`, `Not published`, `origin/main · diverged`. Nothing for a place that is not a repository. */
-export function upstreamView(status: GitStatus | undefined): UpstreamView | undefined {
-    if (status?.isRepository !== true) return undefined;
-
-    const { head, upstream } = status;
-
-    if (head.kind === 'detached') return { label: 'Not on a branch', title: 'HEAD is detached' };
-
-    if (head.kind === 'unborn') return { label: 'No commits yet', title: 'The branch has no commits yet' };
-
-    if (!upstream) return { label: 'Not published', title: 'The branch is not on origin yet' };
-
-    if (upstream.gone) return { label: upstream.name, detail: 'gone', tone: 'warning', title: `${ upstream.name } is gone from ${ ORIGIN }` };
-
-    if (isDiverged(upstream)) return { label: upstream.name, detail: 'diverged', tone: 'warning', title: `${ upstream.name }, ${ divergedWords(upstream).toLowerCase() }` };
-
-    const detail = upstream.ahead > 0 ? `${ upstream.ahead } ahead` : upstream.behind > 0 ? `${ upstream.behind } behind` : 'up to date';
-
-    return { label: upstream.name, detail, title: `${ upstream.name }, ${ detail }` };
 }
 
 /** `1 commit`, `2 commits`. */
 const commitsWords = (count: number): string => `${ count } ${ count === 1 ? 'commit' : 'commits' }`;
+
+/**
+ * When the last fetch was, in GitHub Desktop's words: `Last fetched 3 minutes ago`, `Last fetched just now` under a minute, and `Never fetched` for a repository that has not fetched
+ * (`GitStatus.lastFetchedAt` is absent). The unit is the largest that fits, rounded down: minutes, hours, days, weeks, months, years.
+ */
+export function lastFetchedWords(at: number | undefined, now: number): string {
+    if (at === undefined) return 'Never fetched';
+
+    const minutes = Math.floor(Math.max(0, now - at) / 60_000);
+    const ago = (count: number, unit: string) => `Last fetched ${ count } ${ unit }${ count === 1 ? '' : 's' } ago`;
+
+    if (minutes < 1) return 'Last fetched just now';
+
+    if (minutes < 60) return ago(minutes, 'minute');
+
+    const hours = Math.floor(minutes / 60);
+
+    if (hours < 24) return ago(hours, 'hour');
+
+    const days = Math.floor(hours / 24);
+
+    if (days < 7) return ago(days, 'day');
+
+    if (days < 30) return ago(Math.floor(days / 7), 'week');
+
+    return days < 365 ? ago(Math.floor(days / 30), 'month') : ago(Math.floor(days / 365), 'year');
+}
+
+/** The state of the sync button, which is the next thing to do with the branch. */
+export type SyncKind =
+    /** An action is running: its progress is the label. */
+    | 'running'
+    /** The repository has no `origin`: nothing to sync with. */
+    | 'no_origin'
+    /** HEAD is on no branch, or the branch has no commit yet: there is nothing to publish. */
+    | 'blocked'
+    /** The branch is not on origin (or its upstream is gone): publish it. */
+    | 'publish'
+    /** Origin has commits the branch lacks. */
+    | 'pull'
+    /** The branch has commits origin lacks. */
+    | 'push'
+    /** Each side has commits the other lacks: the app leaves it alone, so nothing can be pressed. */
+    | 'diverged'
+    /** Nothing to move: look for what is new. */
+    | 'fetch';
+
+/** What the sync button says and does for a place. */
+export interface SyncView {
+    kind: SyncKind;
+    /** The next action in GitHub Desktop's words (`Publish branch`, `Pull origin`, `Push origin`, `Fetch origin`), `Diverged`, or what is running (`Pulling origin`). */
+    label: string;
+    /** The line under the label: when the last fetch was, or the one thing to know about the state. */
+    line?: string;
+    /** Commits the branch has that its upstream lacks, drawn as an up arrow with the count; for Push and for a branch that diverged. */
+    ahead?: number;
+    /** Commits the upstream has that the branch lacks, drawn as a down arrow with the count; for Pull and for a branch that diverged. */
+    behind?: number;
+    /** The action a press runs; absent for a button that cannot be pressed. */
+    action?: RemoteActionId;
+    /** Why it cannot be pressed, shown as a tooltip on it; absent when it can. */
+    reason?: string;
+    /** `warning` for what needs the person (a branch that diverged, an upstream that is gone). */
+    tone?: 'warning';
+    /** The whole of it, for a tooltip, with the upstream's name. */
+    title: string;
+}
+
+/** The first letter in lower case, to carry a line on in a sentence: `Last fetched 3 minutes ago` is `last fetched 3 minutes ago` after a comma. */
+const lowered = (text: string): string => text.charAt(0).toLowerCase() + text.slice(1);
+
+/**
+ * The one button of the sidebar that moves the branch, in GitHub Desktop's order: **running** (the action's progress, and it cannot be pressed), **no origin** (nothing to sync with),
+ * **detached HEAD** or a **branch with no commit** (`Publish branch`, off with the reason), **no upstream** or one that is gone (`Publish branch`), **an upstream that is not on origin**
+ * (`Fetch origin` is all that works), **diverged** (`Diverged`, off: the app does not merge, so neither Pull nor Push is taken, and the line says to merge or rebase elsewhere), **behind**
+ * (`Pull origin` with the count), **ahead** (`Push origin` with the count) and last, level, **`Fetch origin`**. The line under the label says when the last fetch was where the counts
+ * are as old as it, and what else there is to know where they are not. The dropdown beside it keeps every action with its reason (`remoteActions`). Nothing for a place that is not a
+ * repository.
+ */
+export function syncButton(status: GitStatus | undefined, running: RemoteActionId | undefined, now: number): SyncView | undefined {
+    if (status?.isRepository !== true) return undefined;
+
+    if (running !== undefined) return { kind: 'running', label: RUNNING_WORDS[running], reason: 'An action is running', title: RUNNING_WORDS[running] };
+
+    if (!status.origin) return { kind: 'no_origin', label: 'No origin', line: 'Nothing to sync with', reason: 'No origin', title: `The repository has no remote called ${ ORIGIN }, so there is nothing to sync with` };
+
+    const { head, upstream } = status;
+
+    if (head.kind === 'detached') return { kind: 'blocked', label: 'Publish branch', line: 'HEAD is detached', reason: 'HEAD is detached', title: 'HEAD is detached, so there is no branch to publish' };
+
+    if (head.kind === 'unborn') return { kind: 'blocked', label: 'Publish branch', line: 'No commits yet', reason: 'No commits yet', title: 'The branch has no commits yet, so there is nothing to publish' };
+
+    const published = publishedUpstream(upstream);
+
+    if (!published) {
+        return upstream
+            ? { kind: 'publish', label: 'Publish branch', line: `Upstream gone from ${ ORIGIN }`, action: 'publish', tone: 'warning', title: `${ upstream.name } is gone from ${ ORIGIN }: publish the branch again` }
+            : { kind: 'publish', label: 'Publish branch', line: `Publish this branch to ${ ORIGIN }`, action: 'publish', title: `The branch is not on ${ ORIGIN } yet: publish it` };
+    }
+
+    const fetched = lastFetchedWords(status.lastFetchedAt, now);
+
+    if (!onOrigin(published)) return { kind: 'fetch', label: 'Fetch origin', line: `Tracks ${ published.name }, not ${ ORIGIN }`, action: 'fetch', title: `The branch tracks ${ published.name }, not ${ ORIGIN }: pull and push are off, ${ lowered(fetched) }` };
+
+    if (isDiverged(published)) {
+        return {
+            kind: 'diverged',
+            label: 'Diverged',
+            line: 'Merge or rebase in a terminal',
+            ahead: published.ahead,
+            behind: published.behind,
+            reason: divergedWords(published),
+            tone: 'warning',
+            title: `Diverged from ${ published.name }: ${ published.ahead } ahead, ${ published.behind } behind. The app does not merge, so Pull and Push are off: merge or rebase it in a terminal, or ask the agent to`,
+        };
+    }
+
+    if (published.behind > 0) return { kind: 'pull', label: 'Pull origin', line: fetched, behind: published.behind, action: 'pull', title: `Pull origin: ${ commitsWords(published.behind) } to take from ${ published.name }, ${ lowered(fetched) }` };
+
+    if (published.ahead > 0) return { kind: 'push', label: 'Push origin', line: fetched, ahead: published.ahead, action: 'push', title: `Push origin: ${ commitsWords(published.ahead) } to send to ${ published.name }, ${ lowered(fetched) }` };
+
+    return { kind: 'fetch', label: 'Fetch origin', line: fetched, action: 'fetch', title: `Fetch origin to look for new commits: ${ published.name } is up to date, ${ lowered(fetched) }` };
+}
 
 /** What an action that ended says, as a quiet line: what came in or went out, or that the branch was left as it was. */
 export function remoteNotice(result: GitRemoteResult): { words: string; tone?: 'warning' } {
@@ -158,8 +248,8 @@ export function commitAndPushBlock(status: GitStatus | undefined): string | unde
 /** The action that sends the branch of a status after a commit: a push when it is on origin, else its publishing. */
 export const pushOrPublish = (status: GitStatus | undefined): 'push' | 'publish' => (status?.isRepository === true && publishedUpstream(status.upstream) ? 'push' : 'publish');
 
-/** What a running action says: the word of the menu's entry in the present, so the button that was pressed names what it is doing. */
-export const RUNNING_WORDS: Record<RemoteActionId, string> = { fetch: 'Fetching origin', pull: 'Pulling', push: 'Pushing', publish: 'Publishing' };
+/** What a running action says, in GitHub Desktop's words: the label of the sync button that is doing it, and what the menu's entry of it becomes. */
+export const RUNNING_WORDS: Record<RemoteActionId, string> = { fetch: 'Fetching origin', pull: 'Pulling origin', push: 'Pushing origin', publish: 'Publishing branch' };
 
 /** The branch a status is on, nothing for a HEAD that is on none. */
 const branchOf = (status: RepositoryStatus): string | undefined => (status.head.kind === 'detached' ? undefined : status.head.name);
@@ -234,3 +324,89 @@ export function createPullRequest({ status, hasPullRequest, onGitHub }: CreatePu
 
     return published.ahead > 0 ? { kind: 'push', label: 'Push first' } : { kind: 'ready', label: 'Create PR' };
 }
+
+/** What the empty state of the commit box suggests: the next thing to do with a branch that has nothing uncommitted. */
+export type NextStepKind = 'publish' | 'pull' | 'push' | 'pullRequest';
+
+export interface NextStep {
+    kind: NextStepKind;
+    /** GitHub Desktop's words for the action: `Publish your branch`, `Pull 2 commits from the origin remote`, `Push 1 commit to the origin remote`, `Create a Pull Request from your current branch`. */
+    title: string;
+    /** One phrase on why, under the action. */
+    description: string;
+}
+
+/**
+ * The one step the empty state of the commit box suggests, as GitHub Desktop's `No local changes` does and in its order: **publish** a branch that is not on origin (or whose upstream is
+ * gone), **pull** the commits origin has, **push** the commits the branch has, and **create a pull request** from a branch that is published and level and has none. Nothing when none
+ * applies: no `origin`, a HEAD on no branch or a branch with no commit, an upstream that is not on origin, a branch that diverged (the sync button says so), and a branch that is level and
+ * is the base or has a pull request. `pullRequest` is the state of Create PR for the place (`createPullRequest`): the last step is its `ready` state and no other, so it is offered
+ * exactly where that button would open the compare page.
+ */
+export function nextStep(status: GitStatus | undefined, pullRequest: CreatePullRequestState | undefined): NextStep | undefined {
+    if (status?.isRepository !== true || !status.origin) return undefined;
+
+    const branch = branchOf(status);
+
+    if (branch === undefined || status.head.kind === 'unborn') return undefined;
+
+    const published = publishedUpstream(status.upstream);
+
+    if (!published) return { kind: 'publish', title: 'Publish your branch', description: `${ branch } is not on ${ ORIGIN } yet` };
+
+    if (!onOrigin(published) || isDiverged(published)) return undefined;
+
+    if (published.behind > 0) return { kind: 'pull', title: `Pull ${ commitsWords(published.behind) } from the ${ ORIGIN } remote`, description: `${ ORIGIN } has ${ published.behind === 1 ? 'a commit' : 'commits' } that ${ branch } lacks` };
+
+    if (published.ahead > 0) return { kind: 'push', title: `Push ${ commitsWords(published.ahead) } to the ${ ORIGIN } remote`, description: `${ published.ahead === 1 ? 'A commit is' : 'Commits are' } waiting to be sent to ${ ORIGIN }` };
+
+    return pullRequest?.kind === 'ready' ? { kind: 'pullRequest', title: 'Create a Pull Request from your current branch', description: `${ branch } is on ${ ORIGIN }, ready to be proposed` } : undefined;
+}
+
+/** The most characters of a branch name the commit button shows: a longer one is cut in its middle, since its end is what tells branches of one family apart. */
+export const COMMIT_BRANCH_MAX = 24;
+
+/** A text of at most `max` characters: a longer one keeps its start and its end and has an ellipsis between. `clowdy/ab12cd34-weekend-surcharge` is `clowdy/ab12c…d-surcharge`. */
+export function middleCut(text: string, max: number): string {
+    if (text.length <= max) return text;
+
+    const tail = Math.floor((max - 1) / 2);
+    const head = max - 1 - tail;
+
+    return `${ text.slice(0, head) }…${ text.slice(text.length - tail) }`;
+}
+
+/** What a commit goes to: the branch checked out (`detached HEAD` for none), and whether it is the branch the work is compared with, which is where a commit goes straight to the base. */
+export interface CommitTarget {
+    name: string;
+    onBase: boolean;
+}
+
+/**
+ * Where a commit made now would land. `onBase` is the rule of Create PR's `Switch to a feature branch`: the branch is the base the Changes tab compares with (`githubBaseName`, so `main`
+ * is the base whether the compared ref is `origin/main` or `main`). Nothing for a place that is not a repository.
+ */
+export function commitTarget(status: GitStatus | undefined): CommitTarget | undefined {
+    if (status?.isRepository !== true) return undefined;
+
+    const branch = branchOf(status);
+
+    return branch === undefined ? { name: 'detached HEAD', onBase: false } : { name: branch, onBase: githubBaseName(status.base) === branch };
+}
+
+/** The commit button's label in GitHub Desktop's words: `Commit 3 files to main`, `Commit 1 file to main`, and `Commit to main` while no file is ticked. The branch is cut in its middle when long. */
+export function commitLabel(files: number, branch: string | undefined): string {
+    const to = branch === undefined ? '' : ` to ${ middleCut(branch, COMMIT_BRANCH_MAX) }`;
+
+    return files > 0 ? `Commit ${ files } ${ files === 1 ? 'file' : 'files' }${ to }` : `Commit${ to }`;
+}
+
+/** Why a commit is not taken, as GitHub Desktop's tooltips say it: no summary first, then no file ticked. Nothing when it can be made. */
+export function commitBlock(message: string, ticked: number): string | undefined {
+    if (message.trim() === '') return 'A commit summary is required to commit';
+
+    return ticked === 0 ? 'Select one or more files to commit' : undefined;
+}
+
+/** Whether git's line is a push that origin refused because it has commits the branch lacks (`! [rejected] main -> main (fetch first)`): a fetch is what comes next, as GitHub Desktop's `Newer Commits on Remote` offers. */
+export const isFetchFirst = (line: string): boolean => /\[rejected\].*\(fetch first\)/.test(line);

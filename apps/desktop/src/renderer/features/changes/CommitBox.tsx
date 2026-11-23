@@ -11,15 +11,23 @@ import { writesCommitMessages } from '@clowdy/protocol';
 import { useEffect } from 'react';
 
 import { useAgents, useRootStore } from '../../stores';
+import { actionIcon, chosenPrograms, openActions, openEffects, useOpenApps } from '../openWith';
+import { placePath } from '../sidePanel/currentPlace';
+import { commitLabel, commitTarget, isFetchFirst, nextStep, type NextStep, type RemoteActionId } from './changesActions';
 import styles from './CommitBox.module.css';
 import { commitDraftOf } from './CommitDraft';
+import { createPullRequestOf } from './CreatePullRequest';
+import { DisabledTooltip } from './DisabledTooltip';
 import { gitFactsOf } from './gitFacts';
 import { CHANGE_KIND_VIEW, splitPath } from './gitSummary';
 import { useRemoteActions } from './useRemoteActions';
 
-import type { GitChangedFile } from '@clowdy/protocol';
+import type { GitChangedFile, ProjectId } from '@clowdy/protocol';
+import type { FolderGit, OpenAction, OpenTarget } from '../openWith';
+import type { Place } from '../sidePanel/currentPlace';
 import type { CommitDraft } from './CommitDraft';
 import type { PlaceChanges } from './PlaceChanges';
+import type { RemoteActions } from './RemoteActions';
 
 /** What the line under the buttons says of a commit that was made: `Committed 1a2b3c4`, and, after Commit & Push, that its branch was sent too. */
 function committedWords(draft: CommitDraft): string | undefined {
@@ -30,13 +38,90 @@ function committedWords(draft: CommitDraft): string | undefined {
     return `Committed ${ committed.shortSha }${ sent ? ` and ${ sent === 'publish' ? 'published' : 'pushed' }` : '' }`;
 }
 
-/** What git or the daemon said when the box could not do what it was asked: git's own line, selectable, and the hint of the daemon under it when it has one. */
-function FailureLines({ failure }: { failure: NonNullable<CommitDraft['failure']> }) {
+/**
+ * What git or the daemon said when the box could not do what it was asked: git's own line, selectable, and the hint of the daemon under it when it has one. A push that origin turned
+ * down for commits the branch lacks (`Committed 1a2b3c4, push failed: ! [rejected] main -> main (fetch first)`) has a Fetch origin button beside the line, as GitHub Desktop's
+ * `Newer Commits on Remote` has Fetch.
+ */
+function FailureLines({ failure, draft, remote }: { failure: NonNullable<CommitDraft['failure']>; draft: CommitDraft; remote: RemoteActions }) {
     return (
         <div className={ styles.failure } role="alert">
             <Text variant="xs" color="danger" select="text">{ failure.message }</Text>
             { failure.hint && <Text variant="xs" color="secondary" select="text">{ failure.hint }</Text> }
+            { failure.what === 'push' && isFetchFirst(failure.message) && (
+                <Button variant="bordered" color="secondary" size="xs" className={ styles.fetch } isDisabled={ remote.busy && remote.running !== 'fetch' } isPending={ remote.running === 'fetch' } spinnerPlacement="start" onPress={ () => void draft.fetchAfterRejection() }>Fetch origin</Button>
+            ) }
         </div>
+    );
+}
+
+/** The three quiet ways out of an empty box, in GitHub Desktop's order: the editor, the file manager, GitHub. */
+const QUIET_ACTIONS: readonly string[] = ['editor', 'fileManager', 'github'];
+
+/** What a quiet action says: the file manager `Show in Finder`, as GitHub Desktop has it, and the label the app uses elsewhere for the rest. */
+const quietLabel = (action: OpenAction): string => (action.id === 'fileManager' && action.program ? `Show in ${ action.program.app.name }` : action.label);
+
+export interface CommitBoxProps {
+    model: PlaceChanges;
+    /** Where the window works: the folder's checkout or the chat's worktree, which the quiet actions of the empty box open. */
+    place: Place;
+    projectId: ProjectId;
+    /** What git says of the place's folder (its `origin`), which the repository's page on GitHub and the compare page are built from. */
+    git: FolderGit | undefined;
+}
+
+/**
+ * The box when nothing is uncommitted, GitHub Desktop's `No local changes`: what the last commit came to (or why its push failed), then one suggested next step as the box's primary action
+ * and three quiet ways out. The step is the first that applies (`nextStep`): `Publish your branch`, `Pull N commits from the origin remote`, `Push N commits to the origin remote`,
+ * `Create a Pull Request from your current branch`, and none on the base branch or for a branch that has a pull request; a press does what the sync button does for the first three and
+ * what Create PR does for the last (it opens GitHub's compare page). The quiet ways are the editor, the file manager and the repository on GitHub, which the open menu already runs
+ * (`openActions`), for the place the window works in.
+ */
+function NoLocalChanges({ model, place, projectId, git, draft, remote, running: runningAction }: CommitBoxProps & { draft: CommitDraft; remote: RemoteActions; running: RemoteActionId | undefined }) {
+    const apps = useOpenApps();
+    const { facts } = model;
+    const { state, link } = createPullRequestOf(facts, git);
+    const step: NextStep | undefined = nextStep(facts.status.value, state);
+    const target: OpenTarget = { projectId, folder: place.folder, path: placePath(place), relative: '', kind: 'directory', ...(place.workspace && { workspace: place.workspace }) };
+    const quiet = openActions({ target, programs: chosenPrograms(apps), git, effects: openEffects }).filter(action => QUIET_ACTIONS.includes(action.id));
+    // What is running is read by the box and given here, so the step follows it where the parts of the sidebar are not observers of their own.
+    const running = step !== undefined && step.kind !== 'pullRequest' && runningAction === step.kind;
+    const { failure, committed } = draft;
+
+    return (
+        <section className={ styles.root } aria-label="Commit">
+            <Text variant="sm" weight="medium">No local changes</Text>
+            { failure
+                ? <FailureLines failure={ failure } draft={ draft } remote={ remote } />
+                : committed && <Text variant="xs" color="secondary" role="status">{ committedWords(draft) }</Text> }
+            { step && (
+                <div className={ styles.step }>
+                    <Button
+                        color="primary"
+                        size="sm"
+                        className={ styles.stepButton }
+                        contentClassName={ styles.stepText }
+                        isDisabled={ runningAction !== undefined && !running }
+                        isPending={ running }
+                        spinnerPlacement="start"
+                        onPress={ () => (step.kind === 'pullRequest' ? link && openEffects.openUrl(link) : void remote.run(step.kind)) }
+                    >
+                        { step.title }
+                    </Button>
+                    <Text variant="xs" color="secondary">{ step.description }</Text>
+                </div>
+            ) }
+            { quiet.length > 0 && (
+                <div className={ styles.quiet }>
+                    { quiet.map(action => (
+                        <Button key={ action.id } variant="filling" color="secondary" size="xs" className={ styles.quietButton } contentClassName={ styles.quietContent } isDisabled={ action.isDisabled } onPress={ action.run }>
+                            { actionIcon(action) }
+                            <Text variant="xs" weight="medium" truncate>{ quietLabel(action) }</Text>
+                        </Button>
+                    )) }
+                </div>
+            ) }
+        </section>
     );
 }
 
@@ -72,7 +157,7 @@ function CommitFileRow({ file, draft }: { file: GitChangedFile; draft: CommitDra
  * <git's line>`), the sidebar's menu offering Push again. The entry is off, with the reason under it, where the push after the commit would not be taken (no origin, a detached HEAD, a branch
  * that is behind or has diverged).
  */
-export function CommitBox({ model }: { model: PlaceChanges }) {
+export function CommitBox({ model, place, projectId, git }: CommitBoxProps) {
     const root = useRootStore();
     const { agents } = useAgents();
     const remote = useRemoteActions(model.facts);
@@ -93,16 +178,11 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
     const ticked = draft.ticked.length;
     const busy = draft.busy !== undefined;
 
-    if (files.length === 0) {
-        // Everything was committed: what is left to say is the commit, or why the push after it failed.
-        return (
-            <section className={ styles.root } aria-label="Commit">
-                { failure
-                    ? <FailureLines failure={ failure } />
-                    : <Text variant="xs" color="secondary" role="status">{ committed ? committedWords(draft) : 'Nothing to commit' }</Text> }
-            </section>
-        );
-    }
+    // Nothing is uncommitted: the commit that was made, or why the push after it failed, and the next step of the branch.
+    if (files.length === 0) return <NoLocalChanges model={ model } place={ place } projectId={ projectId } git={ git } draft={ draft } remote={ remote } running={ remote.running } />;
+
+    const target = commitTarget(model.facts.status.value);
+    const reason = draft.commitReason;
 
     return (
         <section className={ styles.root } aria-label="Commit">
@@ -157,7 +237,21 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
                 ) }
                 { /* Commit and its menu wrap together, so the menu's button is never left alone on a line. */ }
                 <div className={ styles.commitGroup }>
-                    <Button color="primary" size="sm" className={ styles.commit } isDisabled={ !draft.canCommit } isPending={ draft.writing } onPress={ () => void draft.commit() }>Commit</Button>
+                    <DisabledTooltip reason={ reason } className={ styles.commitHost }>
+                        <Button
+                            color="primary"
+                            size="sm"
+                            className={ styles.commit }
+                            contentClassName={ styles.commitContent }
+                            isDisabled={ !draft.canCommit }
+                            isPending={ draft.writing }
+                            tooltip={ reason === undefined && target ? `Commit to ${ target.name }` : undefined }
+                            tooltipPlacement="top"
+                            onPress={ () => void draft.commit() }
+                        >
+                            <span className={ styles.commitText }>{ commitLabel(ticked, target?.name) }</span>
+                        </Button>
+                    </DisabledTooltip>
                     <MenuTrigger>
                         <Button variant="bordered" size="sm" iconOnly className={ styles.more } isDisabled={ !draft.canCommit } aria-label="More ways to commit" tooltip="More ways to commit" tooltipPlacement="top">
                             <ChevronDown aria-hidden="true" />
@@ -178,7 +272,9 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
                 </div>
             </div>
 
-            { failure && <FailureLines failure={ failure } /> }
+            { /* Several chats share a place, so a commit that goes straight to the branch the work is compared with is said before it is made. */ }
+            { target?.onBase && <Text variant="xs" color="secondary" role="note">{ `Committing to ${ target.name }, the base branch` }</Text> }
+            { failure && <FailureLines failure={ failure } draft={ draft } remote={ remote } /> }
             { !failure && !busy && committed && <Text variant="xs" color="secondary" role="status">{ committedWords(draft) }</Text> }
         </section>
     );
