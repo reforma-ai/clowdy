@@ -33,11 +33,11 @@
 
 **This stage:** Adds Biome 2.6.6 and a `biome.json` ported from Reforma's, adapted to Clowdy's folders (no `apps/api` plugins, the file-manager boundary with `@clowdy/*` names, ignores for generated and vendored files such as `dist`, `release`, `app`, `bundle`, `runtime`, icon assets, fixtures, `THIRD-PARTY-LICENSES.md`), and switches every package's `lint` and `lint:fix` script to Biome. Nothing is reformatted yet, so the stage ends with `biome check` running and reporting formatting and import-order differences plus a short list of real lint findings.
 
-- [ ] Complete
-  - [ ] `@biomejs/biome` 2.6.6 is a root dev dependency and `bun install --frozen-lockfile` is clean
-  - [ ] `biome.json` exists, loads without errors and ignores what is generated or vendored
-  - [ ] The file-manager import and global restrictions of the old ESLint config are in `biome.json` as overrides
-  - [ ] Every package's `lint` is `biome check` and `lint:fix` is `biome check --write`; the root `lint` runs turbo and `biome check scripts`
+- [x] Complete
+  - [x] `@biomejs/biome` 2.6.6 is a root dev dependency and `bun install --frozen-lockfile` is clean
+  - [x] `biome.json` exists, loads without errors and ignores what is generated or vendored
+  - [x] The file-manager import and global restrictions of the old ESLint config are in `biome.json` as overrides
+  - [x] Every package's `lint` is `biome check` and `lint:fix` is `biome check --write`; the root `lint` runs turbo and `biome check scripts`
 
 **Files**
 
@@ -48,7 +48,15 @@
 
 **Done when:** `bunx biome check` runs over the whole repository and finishes with diagnostics, not with a configuration error.
 **Verify:** `bun install --frozen-lockfile`, `bunx biome check 2>&1 | tail`, `bun run lint` runs through turbo.
-**Commits:** None yet.
+**Scope notes (recorded while building):**
+
+- Clowdy's `packages/file-manager/eslint.config.mjs` was only `export default await config`: it never held the boundary (the fork dropped the overrides that Reforma's file has). Biome's overrides are Reforma's, ported with `@clowdy/*` names, so the boundary is now enforced for the first time; the existing code has no violation of it (checked: `biome lint` on `packages/file-manager` reports only the old `eslint.config.mjs` importing `@clowdy/eslint-config`, which Stage 3 deletes). A throwaway file caught every rule (a forbidden `@clowdy/protocol` import anywhere in the package; `react`, `@codemirror/view`, `@clowdy/components` and `./react/*` imports and `window`/`document` in the core; none of those flagged under `src/react`).
+- `lint` and `lint:fix` also go to `packages/constants`, `packages/icons` and `packages/config-typescript`, which had no `lint` script, so `turbo run lint` covers every package. The root `lint` is `turbo run lint && bun run lint:root`, and `lint:root` runs Biome on `scripts`, `.github`, and the root config files (the old root ESLint covered `scripts` and `postcss.config.mjs`).
+- `turbo.json`: `lint` no longer waits for `^build` (Biome reads sources only) and hashes `biome.json`, as Reforma's does. `gate.yml` calls `bun run lint:root` instead of `bunx eslint scripts`, and `ci.yml` watches `biome.json` instead of `eslint.config.mjs`.
+- `biome.json` ignores, besides Reforma's `dist`: `node_modules`, `.turbo`, the desktop's `app`, `bundle`, `runtime`, `release`, `.ota-local`, `.briefback`, `.claude`, `.codegraph` (fully, so they are not even indexed) and every SVG; the formatter also skips `fixtures`, `*.generated.*`, Markdown, `THIRD-PARTY-LICENSES.md`, the Lottie `reforma-loader.json` and the icon sync's own `figma-icons-manifest.json` (the sync script writes it with `JSON.stringify`, so formatting it would only be undone by the next sync). Reforma's `apps/api` plugins and its `apps/api`/`sandbox`/`storybook` paths are gone.
+- Baseline on `next` before the reformat, in this worktree (`bun run typecheck`, `bun run test`): typecheck fails only in `apps/daemon` with 7 errors in 6 files (`ReadableStream`/`BodyInit`, TS2352 and TS2345); all other packages and `tsc -p scripts` pass. Tests: protocol 71, lib 75, icons 23, daemon 2244 pass / 0 fail (2252 tests, 83 files), components 257, file-manager 171, desktop 4508 in 245 files with the known unhandled `AbortError` (which makes the desktop's `test` exit 1), system-skills `validate` passes. The first Biome run reported 1180 files to format, 410 import orders and 36 lint findings plus the old ESLint config tripping the boundary (22 `noControlCharactersInRegex`, 4 `noCommaOperator`, 4 `noAutofocus`, 2 `useLiteralKeys`, 1 each of `noUselessEmptyExport`, `noUselessTernary`, `noUnusedPrivateClassMembers`, `useExportType`) and no parse error.
+
+**Commits:** see the Stage 1 commit below.
 
 ## Stage 2 — Reformat the repository and fix what Biome finds
 

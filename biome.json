@@ -1,0 +1,284 @@
+{
+    "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+    "vcs": {
+        "enabled": true,
+        "clientKind": "git",
+        "useIgnoreFile": true
+    },
+    "files": {
+        "includes": [
+            "**",
+            "!**/*.svg",
+            "!!**/dist",
+            "!!**/node_modules",
+            "!!**/.turbo",
+            "!!apps/desktop/app",
+            "!!apps/desktop/bundle",
+            "!!apps/desktop/runtime",
+            "!!apps/desktop/release",
+            "!!apps/desktop/.ota-local",
+            "!!.briefback",
+            "!!.claude",
+            "!!.codegraph"
+        ]
+    },
+    "formatter": {
+        "enabled": true,
+        "indentStyle": "space",
+        "indentWidth": 4,
+        "lineWidth": 120,
+        "includes": [
+            "**",
+            "!**/*.md",
+            "!**/fixtures/**",
+            "!**/*.generated.*",
+            "!packages/components/src/Loader/reforma-loader.json",
+            "!packages/icons/src/figma-icons-manifest.json",
+            "!THIRD-PARTY-LICENSES.md",
+            "!.briefback/**"
+        ]
+    },
+    "javascript": {
+        "parser": {
+            "unsafeParameterDecoratorsEnabled": true
+        },
+        "formatter": {
+            "quoteStyle": "single",
+            "jsxQuoteStyle": "double",
+            "semicolons": "always",
+            "trailingCommas": "es5",
+            "arrowParentheses": "asNeeded"
+        }
+    },
+    "css": {
+        "parser": {
+            "cssModules": true,
+            "tailwindDirectives": true
+        },
+        "formatter": {
+            "quoteStyle": "single"
+        }
+    },
+    "yaml": {
+        "formatter": {
+            "quoteStyle": "single"
+        }
+    },
+    "linter": {
+        "rules": {
+            "preset": "recommended",
+            "a11y": {
+                "noInteractiveElementToNoninteractiveRole": "off",
+                "noLabelWithoutControl": "off",
+                "noStaticElementInteractions": "off",
+                "noSvgWithoutTitle": "off",
+                "useAltText": "off",
+                "useAriaPropsSupportedByRole": "off",
+                "useButtonType": "off",
+                "useFocusableInteractive": "off",
+                "useIframeTitle": "off",
+                "useKeyWithClickEvents": "off",
+                "useMediaCaption": "off",
+                "useSemanticElements": "off",
+                "useValidAnchor": "off"
+            },
+            "complexity": {
+                "noBannedTypes": "off",
+                "noExtraBooleanCast": "off",
+                "noImportantStyles": "off",
+                "noStaticOnlyClass": "off",
+                "noThisInStatic": "off",
+                "noUselessConstructor": "off",
+                "noUselessContinue": "off",
+                "noUselessFragments": "off",
+                "useArrowFunction": "off",
+                "useIndexOf": "off",
+                "useMathMinMax": "off",
+                "useOptionalChain": "off"
+            },
+            "correctness": {
+                "noChildrenProp": "off",
+                "noComponentHookFactories": "off",
+                "noInvalidUseBeforeDeclaration": "off",
+                "noUnknownProperty": "off",
+                "noUnsafeOptionalChaining": "off",
+                "noUnusedFunctionParameters": "off",
+                "noUnusedImports": "off",
+                "noUnusedVariables": "off",
+                "noVoidTypeReturn": "off",
+                "useExhaustiveDependencies": "off",
+                "useHookAtTopLevel": "off",
+                "useParseIntRadix": "off"
+            },
+            "performance": {
+                "noAccumulatingSpread": "off",
+                "useDomNodeTextContent": "off"
+            },
+            "security": {
+                "noDangerouslySetInnerHtml": "off"
+            },
+            "style": {
+                "noDescendingSpecificity": "off",
+                "noNonNullAssertion": "off",
+                "useConst": "off",
+                "useImportType": "off",
+                "useNodejsImportProtocol": "off",
+                "useTemplate": "off"
+            },
+            "suspicious": {
+                "noApproximativeNumericConstant": "off",
+                "noArrayIndexKey": "off",
+                "noAssignInExpressions": "off",
+                "noConfusingVoidType": "off",
+                "noDocumentCookie": "off",
+                "noDoubleEquals": "off",
+                "noEmptyBlock": "off",
+                "noExplicitAny": "off",
+                "noGlobalIsFinite": "off",
+                "noGlobalIsNan": "off",
+                "noImplicitAnyLet": "off",
+                "noPrototypeBuiltins": "off",
+                "noRedeclare": "off",
+                "noShadowRestrictedNames": "off",
+                "noTemplateCurlyInString": "off",
+                "noThenProperty": "off",
+                "noTsIgnore": "off",
+                "noUnsafeDeclarationMerging": "off",
+                "noUselessEscapeInString": "off",
+                "useIterableCallbackReturn": "off",
+                "noUnknownAtRules": {
+                    "level": "error",
+                    "options": {
+                        "ignore": ["ruleset"]
+                    }
+                }
+            }
+        },
+        "domains": {
+            "react": "recommended"
+        }
+    },
+    "assist": {
+        "actions": {
+            "source": {
+                "organizeImports": {
+                    "level": "on",
+                    "options": {
+                        "groups": [
+                            {
+                                "type": false,
+                                "source": [":NODE:", ":BUN:", ":PACKAGE:", ":PACKAGE_WITH_PROTOCOL:"]
+                            },
+                            ":BLANK_LINE:",
+                            {
+                                "type": false,
+                                "source": [":ALIAS:", ":PATH:"]
+                            },
+                            ":BLANK_LINE:",
+                            {
+                                "type": true
+                            }
+                        ]
+                    }
+                }
+            }
+        }
+    },
+    "overrides": [
+        {
+            "includes": ["packages/file-manager/**"],
+            "linter": {
+                "rules": {
+                    "style": {
+                        "noRestrictedImports": {
+                            "level": "error",
+                            "options": {
+                                "patterns": [
+                                    {
+                                        "group": [
+                                            "@clowdy/**",
+                                            "!@clowdy/components",
+                                            "!@clowdy/components/**",
+                                            "!@clowdy/icons",
+                                            "!@clowdy/icons/**",
+                                            "!@clowdy/lib",
+                                            "!@clowdy/lib/**"
+                                        ],
+                                        "message": "@clowdy/file-manager may import only @clowdy/components, @clowdy/icons and @clowdy/lib."
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "includes": ["packages/file-manager/src/**", "!packages/file-manager/src/react/**"],
+            "linter": {
+                "rules": {
+                    "style": {
+                        "noRestrictedImports": {
+                            "level": "error",
+                            "options": {
+                                "patterns": [
+                                    {
+                                        "group": [
+                                            "@clowdy/**",
+                                            "!@clowdy/components",
+                                            "!@clowdy/components/**",
+                                            "!@clowdy/icons",
+                                            "!@clowdy/icons/**",
+                                            "!@clowdy/lib",
+                                            "!@clowdy/lib/**"
+                                        ],
+                                        "message": "@clowdy/file-manager may import only @clowdy/components, @clowdy/icons and @clowdy/lib."
+                                    },
+                                    {
+                                        "group": [
+                                            "react",
+                                            "react/**",
+                                            "react-dom",
+                                            "react-dom/**",
+                                            "mobx-react-lite",
+                                            "@codemirror/**",
+                                            "!@codemirror/state",
+                                            "@clowdy/components",
+                                            "@clowdy/components/**",
+                                            "@clowdy/icons",
+                                            "@clowdy/icons/**",
+                                            "**/react",
+                                            "**/react/**"
+                                        ],
+                                        "message": "The core stays free of React, the DOM and the CodeMirror view; put view code in src/react."
+                                    }
+                                ]
+                            }
+                        },
+                        "noRestrictedGlobals": {
+                            "level": "error",
+                            "options": {
+                                "deniedGlobals": {
+                                    "window": "The core runs without the DOM; put view code in src/react.",
+                                    "document": "The core runs without the DOM; put view code in src/react.",
+                                    "navigator": "The core runs without the DOM; put view code in src/react.",
+                                    "location": "The core runs without the DOM; put view code in src/react.",
+                                    "localStorage": "The core runs without the DOM; put view code in src/react.",
+                                    "sessionStorage": "The core runs without the DOM; put view code in src/react.",
+                                    "HTMLElement": "The core runs without the DOM; put view code in src/react.",
+                                    "Element": "The core runs without the DOM; put view code in src/react.",
+                                    "requestAnimationFrame": "The core runs without the DOM; put view code in src/react.",
+                                    "cancelAnimationFrame": "The core runs without the DOM; put view code in src/react.",
+                                    "getComputedStyle": "The core runs without the DOM; put view code in src/react.",
+                                    "ResizeObserver": "The core runs without the DOM; put view code in src/react.",
+                                    "MutationObserver": "The core runs without the DOM; put view code in src/react.",
+                                    "IntersectionObserver": "The core runs without the DOM; put view code in src/react."
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    ]
+}
