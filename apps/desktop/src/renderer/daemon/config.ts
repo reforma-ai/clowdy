@@ -1,5 +1,6 @@
 import { FileSystemError } from '@clowdy/file-manager/provider';
 
+import { createFixtureData, withFixtureWorkspace } from './fixtureData';
 import { FixtureTransport } from './fixtureTransport';
 import { HttpTransport } from './httpTransport';
 import { TransportError, type ProjectFileSystem, type Transport } from './transport';
@@ -7,14 +8,15 @@ import { TransportError, type ProjectFileSystem, type Transport } from './transp
 
 export type DaemonConfig =
     | { kind: 'daemon'; url: string; token: string }
-    | { kind: 'fixtures'; timeline: boolean }
+    | { kind: 'fixtures'; timeline: boolean; worktree?: true }
     | { kind: 'none' };
 
 /**
  * Where the UI gets its data, in order of precedence:
  * 1. `window.desktop.daemon`, which the desktop shell fills in;
  * 2. `?daemon=<url>&token=<token>` in the page URL;
- * 3. `?fixtures`, scripted data in memory (`?fixtures=static` leaves out the timed events);
+ * 3. `?fixtures`, scripted data in memory (`?fixtures=static` leaves out the timed events, `&worktree` adds the chat that works in a dirty worktree, `?chat=c-9`, whose changes
+ *    the side panel's Changes tab shows);
  * 4. nothing: the UI shows that it cannot reach a daemon.
  */
 export function resolveDaemonConfig(search: string, bridge?: { url: string; token: string }): DaemonConfig {
@@ -25,7 +27,7 @@ export function resolveDaemonConfig(search: string, bridge?: { url: string; toke
 
     if (url) return { kind: 'daemon', url, token: params.get('token') ?? '' };
 
-    if (params.has('fixtures')) return { kind: 'fixtures', timeline: params.get('fixtures') !== 'static' };
+    if (params.has('fixtures')) return { kind: 'fixtures', timeline: params.get('fixtures') !== 'static', ...(params.has('worktree') && { worktree: true as const }) };
 
     return { kind: 'none' };
 }
@@ -81,5 +83,5 @@ const unconfigured: Transport = {
 export function createTransport(config: DaemonConfig): Transport {
     if (config.kind === 'daemon') return new HttpTransport(config);
 
-    return config.kind === 'fixtures' ? new FixtureTransport({ timeline: config.timeline }) : unconfigured;
+    return config.kind === 'fixtures' ? new FixtureTransport({ timeline: config.timeline, ...(config.worktree && { data: withFixtureWorkspace(createFixtureData()) }) }) : unconfigured;
 }

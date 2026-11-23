@@ -19,6 +19,7 @@ describe('resolveDaemonConfig', () => {
         expect(resolveDaemonConfig('?fixtures=1')).toEqual({ kind: 'fixtures', timeline: true });
         expect(resolveDaemonConfig('?fixtures')).toEqual({ kind: 'fixtures', timeline: true });
         expect(resolveDaemonConfig('?fixtures=static')).toEqual({ kind: 'fixtures', timeline: false });
+        expect(resolveDaemonConfig('?fixtures=static&worktree')).toEqual({ kind: 'fixtures', timeline: false, worktree: true });
     });
 
     it('has nothing otherwise', () => {
@@ -31,6 +32,15 @@ describe('createTransport', () => {
     it('makes the transport the config names', () => {
         expect(createTransport({ kind: 'daemon', url: 'http://d', token: 't' })).toBeInstanceOf(HttpTransport);
         expect(createTransport({ kind: 'fixtures', timeline: false })).toBeInstanceOf(FixtureTransport);
+    });
+
+    it('adds the chat in a dirty worktree to the fixtures when asked, for the Changes tab to show', async () => {
+        const plain = await createTransport({ kind: 'fixtures', timeline: false }).getRootSnapshot();
+        const withTree = createTransport({ kind: 'fixtures', timeline: false, worktree: true });
+        const project = plain.projects.find(candidate => candidate.folders.some(folder => folder.id === 'fld_car_rental'))!;
+
+        expect((await withTree.getProjectSnapshot(project.id)).chats.map(chat => chat.id)).toContain('c-9');
+        expect((await createTransport({ kind: 'fixtures', timeline: false }).getProjectSnapshot(project.id)).chats.map(chat => chat.id)).not.toContain('c-9');
     });
 
     it('makes a transport that cannot reach anything when there is no config', async () => {
