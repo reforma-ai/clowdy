@@ -13,13 +13,15 @@ import { starCardDue, starCardPreferences } from './starCardState';
  * and the cross only shuts the card; both close it for good (`starCardPreferences`).
  */
 export function StarCard() {
-    const { projects } = useRootStore();
-    const { chatList } = useProjectState();
+    const root = useRootStore();
+    const project = useProjectState();
 
-    if (starCardPreferences.dismissed || !starCardDue({ projects, chats: chatList, now: Date.now() })) return null;
+    // The projects and the chats are read only while the card is open: a closed card follows nothing but its flag, so a chat changing does not draw it again.
+    if (starCardPreferences.dismissed || !starCardDue({ projects: root.projects, chats: project.chatList, now: Date.now() })) return null;
 
     return (
-        <aside className={ styles.card } aria-label="Star on GitHub">
+        // Not an `aside`: the list is one, and a complementary landmark inside another is flagged by accessibility checkers.
+        <section className={ styles.card } aria-label="Star on GitHub">
             <div className={ styles.header }>
                 <Text variant="sm" weight="medium">Having a good time with Clowdy?</Text>
                 <Button variant="filling" size="xs" iconOnly aria-label="Close" onPress={ () => starCardPreferences.dismiss() }>
@@ -41,6 +43,6 @@ export function StarCard() {
                 <Github size={ 14 } />
                 Star on GitHub
             </Button>
-        </aside>
+        </section>
     );
 }

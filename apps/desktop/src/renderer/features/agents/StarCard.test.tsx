@@ -28,7 +28,7 @@ const draw = () => act(async () => {
     reactRoot.render(<RootStoreProvider value={ store }><Observed /></RootStoreProvider>);
 });
 
-const card = () => container.querySelector('aside[aria-label="Star on GitHub"]');
+const card = () => container.querySelector('section[aria-label="Star on GitHub"]');
 const button = (name: string) => [...container.querySelectorAll('button')].find(element => element.textContent?.trim() === name || element.getAttribute('aria-label') === name)!;
 const press = (element: HTMLElement) => act(async () => element.click());
 
