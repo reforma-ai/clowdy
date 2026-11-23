@@ -146,6 +146,8 @@ describe('chat.edit', () => {
 
     test('takes away the last run of the chat when the cut reaches the turn it describes, and the turn that follows measures its own', async () => {
         const writing: Script = async function* (turn) {
+            // The daemon takes the tree of the place while the agent starts, which a real agent takes seconds over.
+            await Bun.sleep(400);
             writeFileSync(join(turn.options.cwd, `by-turn-${ turn.number }.txt`), `turn ${ turn.number }\n`);
             yield* scripted()(turn);
         };

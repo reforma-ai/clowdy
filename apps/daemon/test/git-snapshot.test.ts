@@ -319,9 +319,16 @@ describe('the scope of a run over two snapshots', () => {
     });
 });
 
+/**
+ * What an agent takes to start and answer before it first touches a file: the daemon takes the tree of the place while the agent starts (it does not hold the session back), so a
+ * scripted agent that edits at once would race it. A real one needs seconds; the snapshots here take tens of milliseconds.
+ */
+const boot = () => Bun.sleep(400);
+
 /** A script whose turn does what `act` does in the folder it works in, then finishes. */
 const doing = (act: (cwd: string, turn: number) => void | Promise<void>): Script => async function* ({ options, number }) {
     yield { type: 'session', sessionId: `s${ number }` };
+    await boot();
     await act(options.cwd, number);
     yield { type: 'text', delta: 'Done', done: false };
     yield { type: 'text', delta: '', done: true, messageId: `m${ number }` };
@@ -440,6 +447,7 @@ describe('a chat\'s turn', () => {
     test('keeps what a stopped turn changed, since the files changed all the same', async () => {
         const hold: Script = async function* ({ options, number, signal }) {
             yield { type: 'session', sessionId: `s${ number }` };
+            await boot();
             put(options.cwd, { 'half-done.ts': lines('written before the stop') });
             yield { type: 'text', delta: 'working', done: false };
 
@@ -468,6 +476,7 @@ describe('a chat\'s turn', () => {
         const background = { id: 'bg-1', kind: 'command' as const, title: 'sleep 60' };
         const script: Script = async function* (turn) {
             yield { type: 'session', sessionId: 's-1' };
+            await boot();
             put(turn.options.cwd, { 'first-turn.ts': lines('first') });
             yield { type: 'text', delta: 'Started it', done: true };
             yield { type: 'background', items: [background] };
@@ -556,6 +565,7 @@ describe('a chat\'s turn', () => {
                 put(options.cwd, { 'slow-edit.ts': lines('slow') });
             }
             else {
+                await boot();
                 put(options.cwd, { 'quick-edit.ts': lines('quick') });
             }
 

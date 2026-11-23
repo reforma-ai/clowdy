@@ -701,9 +701,6 @@ export class RunDriver {
         this.onTurnStarted(runId);
 
         try {
-            // The tree before the agent acts: the session is read only now, and an agent that has been started already needs seconds to answer.
-            await live.trees?.started();
-
             const result = await this.consume(run, session, writer, live);
 
             // A message was on its way to the session when it ended; its refusal (the session is over) makes it the next turn of a new one.
@@ -790,8 +787,8 @@ export class RunDriver {
 
     /**
      * Starts taking the tree of the folder the turn works in, which the tree at the turn's end is compared with (`Chat.lastRun`). Only the orchestrator of a chat is measured
-     * (`TurnSnapshots.begin`). Nothing is awaited here, so the order in which runs count their sessions and start is as it was; `turn` waits for the tree (a second at most) just
-     * before it reads the session, which is when the agent can first act.
+     * (`TurnSnapshots.begin`). Nothing is awaited, here or before the session is read: the order in which runs count their sessions and start, and the moment the session is first
+     * read, are as they were. The tree is taken while the agent starts, which takes it seconds; only a message sent into a session that is already running waits for its tree (`hand`).
      */
     private measureStart(runId: string, live: LiveRun): void {
         const { store, runs } = this.deps;

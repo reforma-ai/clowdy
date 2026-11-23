@@ -16,10 +16,9 @@ import type { Store } from '../store';
 export const SNAPSHOT_TIMEOUT_MS = 10_000;
 
 /**
- * How long the driver waits for a turn's start snapshot before it reads the session, which is when the agent can first act (and, with a message sent into a session that is
- * waiting, before the message goes). The snapshot is started before the session is, so an agent that needs seconds to start and answer finds it done; a snapshot slower than this
- * (a very large tree) goes on while the agent works, and an edit made in the agent's first moments may then be in the start tree and be missed by the scope, which is the price of
- * not holding the turn back.
+ * How long a message that goes into a session that is already running (`RunDriver.hand`) waits for the start snapshot of its turn before it is sent: the agent is warm and may
+ * answer within a second. The first turn of a session does not wait at all: its snapshot is started before the session is, and an agent needs seconds to start and answer. A
+ * snapshot slower than the agent (a very large tree) may then contain an edit of the agent's first moments and the scope misses it, which is the price of not holding a turn back.
  */
 export const START_WAIT_MS = 1000;
 
