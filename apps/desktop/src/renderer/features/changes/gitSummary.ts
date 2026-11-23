@@ -100,7 +100,7 @@ export const deletionsWords = (summary: BranchSummary) => `−${ summary.deletio
 export const filesWords = (count: number) => `${ count } ${ count === 1 ? 'file' : 'files' }`;
 
 /**
- * What the strip says when GitHub cannot be asked. `gh` is the person's own program, so the words name it: it is not signed in (for GitHub, the one thing to do; for another host,
+ * What the sidebar says when GitHub cannot be asked. `gh` is the person's own program, so the words name it: it is not signed in (for GitHub, the one thing to do; for another host,
  * which one), or it is not installed. Offline reads the same as not signed in for a few seconds, which is why it is a hint and not a button. A folder whose `origin` names no repository
  * has none.
  */

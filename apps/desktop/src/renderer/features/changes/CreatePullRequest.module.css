@@ -5,8 +5,3 @@
     width: 100%;
     min-width: 0;
 }
-
-/* In the strip it is a quiet word at the start of the plate, as small as the pull request chip's buttons. */
-.quiet[data-size][data-variant] {
-    flex-shrink: 0;
-}

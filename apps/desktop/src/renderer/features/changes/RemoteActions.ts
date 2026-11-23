@@ -24,9 +24,9 @@ export interface RemoteFailure {
 export type RemoteOutcome = { ok: true; result: GitRemoteResult } | { ok: false; failure: RemoteFailure };
 
 /**
- * What the sidebar and the strip hold of one place's moves to and from `origin`: which action is running (one at a time for the place, as the daemon runs them), what the last one did
+ * What the sidebar and the commit box hold of one place's moves to and from `origin`: which action is running (one at a time for the place, as the daemon runs them), what the last one did
  * (a quiet line that goes after `NOTICE_MS`) and why the last one failed (git's own line, kept until the person acts again). It is kept for the place as the facts are (`remoteActionsOf`),
- * so the sidebar's menu and the strip's Create PR are one: a push started in one shows as running in the other. The place's facts are read again when an action ends, either way: a push
+ * so the sidebar's menu and its Create PR are one: a push started in one shows as running in the other. The place's facts are read again when an action ends, either way: a push
  * that was rejected may still have moved something, and a fetch moves the counts the buttons are drawn from. The daemon forgets what it kept of the branch's pull request after an action,
  * so that read is the new one.
  */

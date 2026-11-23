@@ -209,7 +209,7 @@ export interface CreatePullRequestInput {
  * Whether Create PR is offered for a place, and in what state. Nothing (no button) for a place that is not a repository, one with no `origin` or a remote that is not on GitHub, a HEAD on no
  * branch, and a branch that has a pull request already. Otherwise: **blocked** on the branch the work is compared with (`Switch to a feature branch`), on one with no commits ahead of it, on
  * one that diverged from its upstream and on one that tracks another remote; **publish first** for a branch that is not on origin; **push first** for one with commits that are not; else **ready**.
- * The compare page is never offered for a branch GitHub does not have. The strip above the message box shows the button for every state but blocked, so it is a quiet offer there.
+ * The compare page is never offered for a branch GitHub does not have.
  */
 export function createPullRequest({ status, hasPullRequest, onGitHub }: CreatePullRequestInput): CreatePullRequestState | undefined {
     if (status?.isRepository !== true || !status.origin || hasPullRequest || !onGitHub) return undefined;
@@ -234,6 +234,3 @@ export function createPullRequest({ status, hasPullRequest, onGitHub }: CreatePu
 
     return published.ahead > 0 ? { kind: 'push', label: 'Push first' } : { kind: 'ready', label: 'Create PR' };
 }
-
-/** Whether the strip above the message box offers Create PR for this state: every state that has something to do, and not a blocked one. */
-export const isOffered = (state: CreatePullRequestState | undefined): state is Exclude<CreatePullRequestState, { kind: 'blocked' }> => state !== undefined && state.kind !== 'blocked';

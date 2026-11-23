@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { commitAndPushBlock, createPullRequest, githubBaseName, isDiverged, isOffered, pushOrPublish, remoteActions, remoteBranchOf, remoteCall, remoteNotice, upstreamView } from './changesActions';
+import { commitAndPushBlock, createPullRequest, githubBaseName, isDiverged, pushOrPublish, remoteActions, remoteBranchOf, remoteCall, remoteNotice, upstreamView } from './changesActions';
 
 import type { GitBase, GitStatus, GitUpstream } from '@clowdy/protocol';
 
@@ -185,15 +185,6 @@ describe('createPullRequest', () => {
         expect(state(status({ head: { kind: 'detached', commit: 'a'.repeat(40) } }, null))).toBeUndefined();
         expect(state(status({ head: { kind: 'unborn', name: 'feature' } }, null))).toBeUndefined();
         expect(state(status(), { hasPullRequest: true })).toBeUndefined();
-    });
-
-    it('is offered in the strip for every state but a blocked one', () => {
-        expect(isOffered(state(status()))).toBe(true);
-        expect(isOffered(state(status({}, null)))).toBe(true);
-        expect(isOffered(state(status({}, { ahead: 1 })))).toBe(true);
-        expect(isOffered(state(status({ head: { kind: 'branch', name: 'main', commit: 'a'.repeat(40) } })))).toBe(false);
-        expect(isOffered(state(status({}, { ahead: 1, behind: 1 })))).toBe(false);
-        expect(isOffered(undefined)).toBe(false);
     });
 });
 

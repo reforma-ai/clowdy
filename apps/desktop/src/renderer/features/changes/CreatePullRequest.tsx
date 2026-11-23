@@ -35,8 +35,6 @@ export interface CreatePullRequestProps {
     facts: PlaceFacts;
     /** What git says of the place's folder (its `origin`), which the compare page is built from. */
     git: FolderGit | undefined;
-    /** The strip's quiet form: a small button with no frame, and nothing at all for a state that cannot be pressed. The sidebar's is a button of the sidebar's width that shows the reason it is off. */
-    quiet?: boolean;
 }
 
 /**
@@ -45,11 +43,11 @@ export interface CreatePullRequestProps {
  * becomes `Create PR`, so the page is never opened for a branch GitHub does not have. On the branch the work is compared with it is off, with `Switch to a feature branch`. Once the branch has
  * a pull request this is not drawn: the chip is its link.
  */
-export function CreatePullRequest({ facts, git, quiet = false }: CreatePullRequestProps) {
+export function CreatePullRequest({ facts, git }: CreatePullRequestProps) {
     const remote = useRemoteActions(facts);
     const { state, link } = createPullRequestOf(facts, git);
 
-    if (!state || (quiet && state.kind === 'blocked')) return null;
+    if (!state) return null;
 
     const press = () => {
         if (state.kind === 'ready' && link) openEffects.openUrl(link);
@@ -60,15 +58,15 @@ export function CreatePullRequest({ facts, git, quiet = false }: CreatePullReque
 
     return (
         <Button
-            variant={ quiet ? 'ghost' : 'bordered' }
+            variant="bordered"
             color="secondary"
-            size={ quiet ? 'xs' : 'sm' }
-            className={ quiet ? styles.quiet : styles.button }
+            size="sm"
+            className={ styles.button }
             isDisabled={ state.kind === 'blocked' || (remote.busy && !working) }
             isPending={ working }
             spinnerPlacement="start"
             tooltip={ state.kind === 'blocked' ? state.reason : TOOLTIPS[state.kind] }
-            tooltipPlacement={ quiet ? 'top' : 'bottom' }
+            tooltipPlacement="bottom"
             onPress={ press }
         >
             { /* The spinner stands where the mark does while the press is at work. */ }

@@ -203,8 +203,8 @@ interface Slot {
 const isHidden = () => typeof document !== 'undefined' && document.hidden;
 
 /**
- * The git facts of the places the window shows, shared by everything that draws them (the strip above the message box, the Info tab, the Changes tab to come): one answer per
- * place instead of one per component. A place is read only while something observes it (`observe`, counted, so the strip and the Info tab together are one reader), and then:
+ * The git facts of the places the window shows, shared by everything that draws them (the Info tab and the Changes tab): one answer per
+ * place instead of one per component. A place is read only while something observes it (`observe`, counted, so the Info tab and the Changes tab together are one reader), and then:
  *
  * - once when the first observer comes (not when another place's observer is added, and not again within a second of a read that just started);
  * - when the window gets focus or becomes visible again (the branch changes in a terminal or by an agent while the app is in the background), one read for both events;
@@ -382,7 +382,7 @@ export class GitFacts {
 
 const stores = new WeakMap<object, GitFacts>();
 
-/** The git facts of a transport: made on first use and kept while the app runs, so the strip and the Info tab read the same ones. */
+/** The git facts of a transport: made on first use and kept while the app runs, so the Info tab and the Changes tab read the same ones. */
 export function gitFactsOf(transport: Pick<Transport, 'getGitStatus' | 'getGitChanges' | 'getGitPullRequest'>): GitFacts {
     let store = stores.get(transport);
 

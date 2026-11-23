@@ -31,7 +31,7 @@ function InfoRow({ icon, label, children }: { icon: ReactNode; label: string; ch
  * The panel's Info tab: what the window is working on, as a short list: the project, its folder, the worktree of the open chat when it works in one, and the branch that is
  * checked out in the place (the worktree's own, which an agent may have switched). The Worktree row has a Manage button, which opens the dialog of the project's worktrees on
  * the folder; a chat in the folder's own checkout has no such row, and the Files tab's bar is its way in. After the branch come the rows of the place's git facts (`useGitFacts`,
- * the strip above the message box reads the same ones): the base the branch is compared with, how far it is from it, its pull request (a press opens it on GitHub) and the size
+ * the Changes tab reads the same ones): the base the branch is compared with, how far it is from it, its pull request (a press opens it on GitHub) and the size
  * of its work. A row shows only what is known: none of them while the place is no repository, a worktree that is not made yet, or before the first answer.
  */
 export function InfoTab() {
