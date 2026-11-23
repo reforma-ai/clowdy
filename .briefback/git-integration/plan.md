@@ -110,14 +110,14 @@
 
 **This stage:** the PR chip needs to know whether `gh` is there and signed in, which PR belongs to the branch, and how its checks stand. The daemon asks `gh` once per read and rolls the answer up. It carries the rule that makes a merged PR let go of a branch that has moved on, which is what the owner is tired of in other apps.
 
-- [ ] Complete
-  - [ ] `gh` is found (the login shell's `PATH`, then the usual install paths on macOS and Windows) and its login for the remote's host is read; the answer says `ready`, `no_gh`, `not_signed_in` or `no_remote`
-  - [ ] One `gh api graphql` read per branch: the base repository chosen as `gh pr view` does (the remote `gh` resolved, else `upstream`, `github`, `origin`), the PRs of the head branch, the last commit's check rollup with the name, state and link of each check
-  - [ ] The choice among PRs: open first, else the newest; a merged or closed one that HEAD has moved past is dropped; a fork head is matched by its owner
-  - [ ] The rollup: PR state (open, draft, merged, closed), checks passing, failing and pending with the list, the review decision, its base branch and head commit
-  - [ ] `GET /v1/projects/:id/git/pull-request` with `folderId` and `workspaceId`, a short cache against several windows asking at once, the protocol type and the four transport places
-  - [ ] A remote URL with a credential is never logged or sent back; the host is the only part that leaves the daemon's own use
-  - [ ] Tests with a stand-in `gh` on `PATH`: no `gh`, not signed in, no remote, an open PR, a draft, a merged PR with the branch ahead of it, a merged PR with nothing new, a failed check
+- [x] Complete
+  - [x] `gh` is found (the login shell's `PATH`, then the usual install paths on macOS and Windows) and its login for the remote's host is read; the answer says `ready`, `no_gh`, `not_signed_in` or `no_remote`
+  - [x] One `gh api graphql` read per branch: the base repository chosen as `gh pr view` does (the remote `gh` resolved, else `upstream`, `github`, `origin`), the PRs of the head branch, the last commit's check rollup with the name, state and link of each check
+  - [x] The choice among PRs: open first, else the newest; a merged or closed one that HEAD has moved past is dropped; a fork head is matched by its owner
+  - [x] The rollup: PR state (open, draft, merged, closed), checks passing, failing and pending with the list, the review decision, its base branch and head commit
+  - [x] `GET /v1/projects/:id/git/pull-request` with `folderId` and `workspaceId`, a short cache against several windows asking at once, the protocol type and the four transport places
+  - [x] A remote URL with a credential is never logged or sent back; the host is the only part that leaves the daemon's own use
+  - [x] Tests with a stand-in `gh` on `PATH`: no `gh`, not signed in, no remote, an open PR, a draft, a merged PR with the branch ahead of it, a merged PR with nothing new, a failed check
 
 **Files**
 
@@ -133,7 +133,9 @@
 
 **Done when:** over HTTP, a branch with an open PR returns its number, state and checks, a branch whose PR merged and has new commits returns no PR, and a machine without `gh` returns `no_gh` while Stage 1's routes still answer.
 **Verify:** `cd apps/daemon && bun test test/git-pull-request.test.ts`, `cd packages/protocol && bun run test && bun run typecheck`, `bun run --cwd apps/desktop typecheck`
-**Commits:** None yet.
+**Scope changes:** the answer is `{ isRepository: false }` or `{ isRepository: true, access, repo?: { host, owner, name }, pullRequest? }`; a detached HEAD or an unborn branch answers `ready` with no PR and runs no `gh`; presence and login are cached 60 s when positive and 5 s when negative; the base hint is wired into the `file` route too and is kept with the branch and head it was read for; `gh auth status` is asked with `--active` (a stale second account of the host made it exit 1) and again without it for an older `gh`; only `http(s)` links are kept for the PR and its checks; `gh`'s own error text is never passed on. `PullRequestsOptions.keep` bounds the cache (default 200).
+**Review findings, fixed:** the base hint followed the place and not the branch, so after a `git switch` the compare used the previous branch's PR base for up to 10 minutes; `gh auth status` without `--active` read as not signed in when any account of the host had a bad token; a check's `javascript:`, `file:` or custom-scheme link could reach the app. The query was run once through the real `gh` against this repository and a public one: GitHub accepted every field. Left: a GitLab, Bitbucket or SSH-alias remote answers `not_signed_in` with `repo.host` set (Stage 3 words the hint from the host: `Sign in with gh` for github.com, `gh isn't signed in to <host>` for another, and softly, since offline reads the same for 5 s); a renamed owner or org with a stale `origin` hides its PR as a fork; `https://github.com:443/...` keeps its port; no paging past 100 checks (`truncated`), no global limit on `gh` calls, no rate-limit pause. Not checked: Windows, Git LFS, SHA-256 repositories, an old server's error for a field it lacks.
+**Commits:** `0126f57` feat(daemon): read the pull request of a place's branch through gh; `0e3b09e` feat(desktop): add the pull request read to the transport.
 
 ## Stage 3 — The strip above the composer and the Info rows
 
@@ -143,7 +145,7 @@
 
 - [ ] Complete
   - [ ] A store of git facts per place (status, the branch's changes summary, the PR), shared across components by the transport, refreshed on window focus, on the end of a turn, and every 60 s while a check is pending, and not read while the window is hidden
-  - [ ] The strip: the PR chip (number, state, check dot, a click opens `githubLink`'s repository page of the PR), its popover with the checks, and `Files changed N +a −d`, with a dirty dot; nothing for a folder that is not a repository, and no PR chip without `gh`
+  - [ ] The strip: the PR chip (number, state, check dot, a click opens the PR's own link), its popover with the checks, and `Files changed N +a −d`, with a dirty dot; nothing for a folder that is not a repository; without `gh` or a login a soft hint worded from the host (`Sign in with gh` for github.com, `gh isn't signed in to <host>` for another host, since offline reads the same for a few seconds and GitLab or an SSH alias reads as not signed in)
   - [ ] The Info tab rows: base, ahead and behind, PR, Files changed
   - [ ] The branch the chips under the composer show and the strip agree on one read
   - [ ] UI text ends without a period; tests for the strip's states (no repo, no `gh`, no PR, open, draft, merged, checks failing, dirty)
@@ -170,11 +172,12 @@
 **This stage:** the person reads what changed. A diff view for two texts goes into `packages/file-manager` on `@codemirror/merge`, sharing the editor's theme and language support, and a new tab composes it: the reading area with the scope menu, totals, filter and cards on the left, and the sidebar with the file list and the commits on the right. Nothing in this stage changes the repository or stores anything.
 
 - [ ] Complete
-  - [ ] `@codemirror/merge` 6.12.3 is added to `packages/file-manager` (the lockfile checked against `minimumReleaseAge`)
-  - [ ] A read-only unified diff view of two texts for a path, with the editor's theme and the language of the path, unchanged lines collapsed, mounted lazily, and a card for binary and too-large files with no text
+  - [x] `@codemirror/merge` 6.12.3 is added to `packages/file-manager` (the lockfile checked against `minimumReleaseAge`) (`669d0a6`)
+  - [x] A read-only unified diff view of two texts for a path, with the editor's theme and the language of the path, unchanged lines collapsed and mounted lazily (`669d0a6`: `DiffView`, observer rooted at the nearest scroll container, diff timeout 200 ms); the card for binary and too-large files with no text is the tab's, not the view's
   - [ ] The tab is registered (`changes`, a `TREE_TABS` member, `Cmd+5`, rail button, label) and keeps its choice per project; the fixtures page can open it with `?panelTab=changes`
   - [ ] The reading area: scope menu (All, Branch, Uncommitted, a commit), totals, the filter input above the cards (substring, glob, `!`), hide viewed (inert until Stage 5), expand and collapse all, cards expanded when the tab opens, a card per file with path, counts and copy path
   - [ ] The sidebar, hideable and resizable like Files': the PR row, the branch to its base with ahead and behind, an open-on-GitHub button, the changed-file list (a click scrolls to the card), and the list of commits whose click sets the scope
+  - [ ] A card passes `estimatedLines` from the file's added and removed counts to `DiffView` (its own guess is 16 lines for two-sided diffs, real cards measured 526 to 5752 px), and the list does not set `overflow-anchor: none`
   - [ ] A card reads its file with the list's own base (`GET .../git/file` takes the list's `from` and base state, as a hex commit checked on the daemon), so thirty cards do not repeat the base lookup and a card cannot be diffed against another base than the list was
   - [ ] An empty state for a clean tree and for a folder that is not a repository; the tab follows `currentPlace`
   - [ ] Tests for the filter's patterns, the scope switch, the empty states, and the diff view in the file-manager's specs
@@ -236,7 +239,7 @@
 **This stage:** words selected in code go to the chat as a reference. One CodeMirror extension shows the button and answers `⌘I`, and both the Files editor and the diff cards take it, so the work is done once. The composer has no door from the side panel today (`ComposerHandle.quote` is reached only from the chat's own view), so a small bridge gives it one.
 
 - [ ] Complete
-  - [ ] A CodeMirror extension that shows "Add to chat" with `⌘I` over a non-empty selection and calls a host callback with the path, the line range and the text
+  - [ ] A CodeMirror extension that shows "Add to chat" with `⌘I` (bound with `Prec.high`, since `defaultKeymap` binds `Mod-i` to select the parent syntax and host extensions come after it) over a non-empty selection and calls a host callback with the path, the line range and the text; in a diff card it covers the lines of the new text only, because `unifiedMergeView` draws removed lines as widgets that are not part of the document (the owner's call on this is open: the alternative is a renderer of our own over an interleaved document)
   - [ ] The Files editor gets it through `editorExtensions`; the diff cards get it from the diff view
   - [ ] A bridge in the renderer: the open chat's composer registers its `quote` while mounted, and the side panel calls it; a quote carries `path:from–to` and the selected text; with no chat open the button is not shown
   - [ ] The Docs editor (tiptap) takes the same button, or the stage records that it was cut
