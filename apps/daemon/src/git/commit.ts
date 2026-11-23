@@ -41,9 +41,9 @@ export function printedLines(text: string): string[] {
     return text.replace(/\u001B\[[0-9;]*[A-Za-z]/g, '').split(/\r?\n/).map(line => line.trim()).filter(line => line !== '');
 }
 
-/** A line of git's as the person is shown it: without the credential of an address in it, and cut. */
+/** A line of git's as the person is shown it: without the credential of an address in it (everything before the last `@` of its authority, so a password with an `@` in it goes whole), and cut. */
 export function shownLine(line: string): string {
-    const plain = line.replace(/\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi, '$1');
+    const plain = line.replace(/\b([a-z][a-z0-9+.-]*:\/\/)[^\s/]*@/gi, '$1');
 
     return plain.length > MAX_LINE_CHARS ? `${ plain.slice(0, MAX_LINE_CHARS - 1) }…` : plain;
 }

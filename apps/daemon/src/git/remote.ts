@@ -194,7 +194,7 @@ export class GitRemote {
 
         const { tracking } = head;
 
-        if (tracking && tracking.remote !== ORIGIN) throw invalid(`${ head.branch } tracks ${ tracking.remote === '.' ? 'a local branch' : tracking.remote }, and only ${ ORIGIN } is used`);
+        if (tracking && tracking.remote !== ORIGIN) throw invalid(`${ head.branch } tracks ${ tracking.remote === '.' ? 'a local branch' : shownLine(tracking.remote) }, and only ${ ORIGIN } is used`);
 
         if (tracking && !tracking.merge.startsWith('refs/heads/')) throw invalid(`${ head.branch } tracks ${ tracking.merge }, which is not a branch of ${ ORIGIN }`);
 

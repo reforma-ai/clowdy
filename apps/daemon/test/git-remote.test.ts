@@ -133,6 +133,9 @@ withScripts('remoteFailureLine', () => {
 
     test('is one line, with no colour and no credential of an address', () => {
         expect(remoteFailureLine('\u001B[31mfatal:\u001B[0m unable to access https://user:s3cret@github.com/acme/app.git/', '', 'x')).toBe('fatal: unable to access https://github.com/acme/app.git/');
+        // A password that has an `@` in it goes whole, whatever the form of the address.
+        expect(remoteFailureLine('fatal: unable to access \'https://user:p@ss@github.com/acme/app.git/\': Could not resolve host', '', 'x')).toBe('fatal: unable to access \'https://github.com/acme/app.git/\': Could not resolve host');
+        expect(remoteFailureLine('fatal: unable to connect to ssh://git:t0k@n@github.com:22/acme/app.git', '', 'x')).toBe('fatal: unable to connect to ssh://github.com:22/acme/app.git');
         expect(remoteFailureLine(`remote: ${ 'x'.repeat(1000) }`, '', 'x')).toHaveLength(300);
     });
 });
@@ -530,6 +533,10 @@ withScripts('POST /v1/projects/:id/git/fetch, pull and push', () => {
             git(path, 'config', 'branch.main.remote', 'elsewhere');
             expect((await failure('push', 400)).message).toBe('main tracks elsewhere, and only origin is used');
             expect((await failure('pull', 400)).message).toBe('main tracks elsewhere, and only origin is used');
+
+            // A remote that is an address names no credential in what is said.
+            git(path, 'config', 'branch.main.remote', 'https://user:s3cret@example.invalid/acme/app.git');
+            expect((await failure('push', 400)).message).toBe('main tracks https://example.invalid/acme/app.git, and only origin is used');
 
             git(path, 'config', 'branch.main.remote', '.');
             expect((await failure('push', 400)).message).toBe('main tracks a local branch, and only origin is used');
