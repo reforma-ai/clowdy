@@ -3,7 +3,7 @@ import { dirname, isAbsolute, relative, resolve } from 'node:path';
 
 import { getChat, listChatDescendants } from '../db/chats';
 import { getProject } from '../db/projects';
-import { chatsOfWorkspace, getWorkspace } from '../db/workspaces';
+import { chatsOfWorkspace, getWorkspace, updateWorkspace } from '../db/workspaces';
 import { conflict } from '../errors';
 import { parseWorktrees } from '../git/state';
 import { requireChat, stoppedSubtree } from './chats';
@@ -45,7 +45,7 @@ type Verdict = Removable | Refused;
 const refused = (reason: string, record?: WorkspaceRecord): Refused => ({ removable: false, reason, ...(record && { record }) });
 
 /** Whether something is there at the path. A path that cannot be looked at is not known to be there, and a worktree is not removed on a guess. */
-const isThere = (path: string): Promise<boolean> => stat(path).then(() => true, () => false);
+const isOnDisk = (path: string): Promise<boolean> => stat(path).then(() => true, () => false);
 
 /** The commit a ref names: `null` when the repository has no such ref, `undefined` when git could not be asked (the caller refuses on it where a guess would remove too much). */
 async function commitOf(folder: string, ref: string): Promise<string | undefined | null> {
@@ -72,6 +72,7 @@ async function isMerged(cwd: string, commit: string, base: string): Promise<bool
  * - it is on the disk and git lists it as a worktree of the folder, not locked, and not the folder's own checkout; its branch is not checked out in another one;
  * - nothing is uncommitted in it, a new file included (`git status --porcelain --untracked-files=normal --ignore-submodules=none`, which does not report what
  *   `.gitignore` hides: build output and `.env` files go with the tree, as `git worktree remove` takes them); a status that fails or does not answer in time says no;
+ * - no submodule is checked out in it (`git worktree remove` refuses such a tree without `--force`, so the box would never work);
  * - what it has checked out and its branch are ancestors of the base it was made from, as that base was last fetched (`refs/heads/<base>`, then `refs/remotes/<base>`, no
  *   network): the work is merged, or there is none. A base that was merged on the remote and not fetched yet, or a squash merge, is not recognised.
  *
@@ -97,11 +98,11 @@ async function checkRemoval(store: Store, chat: Chat): Promise<Verdict> {
 
     const folder = getProject(store.db, record.projectId)?.folders.find(candidate => candidate.id === record.folderId)?.path;
 
-    if (folder === undefined || !await isThere(folder)) {
+    if (folder === undefined || !await isOnDisk(folder)) {
         return refused('The folder of this worktree is gone', record);
     }
 
-    if (!await isThere(record.path)) {
+    if (!await isOnDisk(record.path)) {
         return refused('The worktree is gone from the disk', record);
     }
 
@@ -130,7 +131,7 @@ async function checkRemoval(store: Store, chat: Chat): Promise<Verdict> {
         return refused(`The branch ${ record.branch } is checked out in another worktree`, record);
     }
 
-    const status = await gitRead(record.path, ['status', '--porcelain', '--untracked-files=normal', '--ignore-submodules=none']);
+    const status = await gitRead(record.path, ['-c', 'core.longpaths=true', 'status', '--porcelain', '--untracked-files=normal', '--ignore-submodules=none']);
 
     if (!status.ok) {
         return refused('Git did not say what is changed in the worktree', record);
@@ -138,6 +139,17 @@ async function checkRemoval(store: Store, chat: Chat): Promise<Verdict> {
 
     if (status.stdout !== '') {
         return refused('The worktree has changes that are not committed', record);
+    }
+
+    // An initialised submodule is `git worktree remove`'s own no (uninitialised ones are listed with a `-`): offering the box would end in a refusal.
+    const modules = await gitRead(record.path, ['submodule', 'status']);
+
+    if (!modules.ok) {
+        return refused('Git did not say whether the worktree has submodules', record);
+    }
+
+    if (modules.stdout.split('\n').some(line => line !== '' && !line.startsWith('-'))) {
+        return refused('The worktree has submodules checked out', record);
     }
 
     if (record.base === undefined) {
@@ -196,13 +208,72 @@ async function pruneEmptyParents(root: string, path: string): Promise<void> {
     }
 }
 
+/** The workspaces whose removal is running or waiting, with how many (two deletes of one chat may overlap): the driver's `Prepare workspace` step waits for them. */
+const removing = new WeakMap<Store, Map<string, number>>();
+
+/**
+ * Whether the worktree is being removed with a chat (`removeChatWorkspace`). A turn that starts meanwhile goes through the same `exclusive` line as the removal before it
+ * opens its session (`RunDriver.prepareWorkspace`), so it does not start inside a tree that is being deleted: it waits, finds the tree gone and makes it again.
+ */
+export function isBeingRemoved(store: Store, workspaceId: string): boolean {
+    return (removing.get(store)?.get(workspaceId) ?? 0) > 0;
+}
+
+function markRemoving(store: Store, workspaceId: string, on: boolean): void {
+    const counts = removing.get(store) ?? new Map<string, number>();
+    const next = (counts.get(workspaceId) ?? 0) + (on ? 1 : -1);
+
+    removing.set(store, counts);
+
+    if (next > 0) {
+        counts.set(workspaceId, next);
+    }
+    else {
+        counts.delete(workspaceId);
+    }
+}
+
+/**
+ * Says what `git worktree remove` failed with and what it left. Git deletes its own record of the worktree before it deletes the files, so a failure part way (a file an
+ * editor or a virus scanner holds open, say) leaves the folder with a `.git` file that points nowhere and no worktree in `git worktree list`. The row is then marked not
+ * `ready`, so the chat's next turn runs `Prepare workspace`, which refuses a folder that is no worktree and says so, instead of the agent starting in a dead tree; once the
+ * folder is deleted by hand the turn makes the worktree again from the branch. The chat stays.
+ */
+async function failedRemoval(store: Store, verdict: Removable, reason: string): Promise<never> {
+    const { record, folder } = verdict;
+    const listed = await gitRead(folder, ['worktree', 'list', '--porcelain']);
+    const forgotten = listed.ok && !parseWorktrees(listed.stdout).some(entry => !entry.bare && samePlace(entry.path, record.path));
+
+    if (forgotten && await isOnDisk(record.path)) {
+        store.tx(() => {
+            updateWorkspace(store.db, record.id, { ready: false });
+
+            for (const chatId of chatsOfWorkspace(store.db, record.id)) {
+                const chat = getChat(store.db, chatId);
+
+                if (chat) {
+                    store.emit(chat.projectId, { type: 'chat.upserted', chat });
+                }
+            }
+        });
+
+        throw conflict(`${ reason }. Git no longer lists ${ record.path }, so what is left of the folder has to be deleted by hand`);
+    }
+
+    throw conflict(reason);
+}
+
 /**
  * Removes the chat's worktree and its branch, the first half of a delete that asks for it (`chat.delete` with `removeWorkspace`): the caller deletes the chat only when this
  * has returned. Refuses with a `conflict` that says why when any condition of `checkRemoval` fails now, and when the chat or a thread below it still works (the worktree
  * would be gone from under a delete that then fails). Nothing is forced: `git worktree remove` is run without `--force`, so git itself still says no to a tree that
  * changed since the check, and the branch is deleted with `branch -D` only after the check that it is contained in the base. The worktree goes first, the branch after it,
- * and a failure of the first leaves the second alone. Runs one at a time with the turn's own `Prepare workspace` for the same path (`exclusive`), so a turn that comes
- * meanwhile waits for the removal and then makes the worktree again, as it does for any Clowdy-made worktree that is gone.
+ * and a failure of the first leaves the second alone.
+ *
+ * It runs on the same `exclusive` line as the turn's own `Prepare workspace` for the path, and a turn that starts while it runs waits there (`isBeingRemoved`): the stopped
+ * check is made once more on the line, right before git is run, so a turn that came while the removal waited its turn refuses it. A turn that comes after that finds the
+ * tree gone when it gets its turn and makes the worktree again, as it does for any Clowdy-made worktree that is gone (its work was merged, so nothing is lost); the delete
+ * itself is then refused, as the chat is busy.
  */
 export async function removeChatWorkspace(store: Store, config: Pick<Config, 'workspacesDir'>, chatId: string): Promise<void> {
     const chat = requireChat(store, chatId);
@@ -215,34 +286,46 @@ export async function removeChatWorkspace(store: Store, config: Pick<Config, 'wo
         throw conflict('This chat has no worktree to remove');
     }
 
-    await exclusive(store, pathKey(record.path), undefined, async () => {
-        const verdict = await checkRemoval(store, requireChat(store, chatId));
+    markRemoving(store, record.id, true);
 
-        if (!verdict.removable) {
-            throw conflict(verdict.reason);
-        }
+    try {
+        await exclusive(store, pathKey(record.path), undefined, async () => {
+            const verdict = await checkRemoval(store, requireChat(store, chatId));
 
-        const step = { log: () => undefined };
+            if (!verdict.removable) {
+                throw conflict(verdict.reason);
+            }
 
-        try {
-            await mustGit(verdict.folder, ['worktree', 'remove', verdict.listedPath], step, REMOVE_TIMEOUT_MS, 'remove the worktree');
-        }
-        catch (error) {
-            throw error instanceof WorkspaceError ? conflict(error.message) : error;
-        }
+            stoppedSubtree(store, requireChat(store, chatId));
 
-        // The tree is gone and the branch is still named by the repository: a chat that stays after this has the branch it can make the worktree from again.
-        if (verdict.hasBranch && verdict.record.branch !== undefined) {
+            const step = { log: () => undefined };
+
             try {
-                await mustGit(verdict.folder, ['branch', '-D', '--', verdict.record.branch], step, BRANCH_TIMEOUT_MS, 'delete the branch');
+                // `core.longpaths` as the checkout has it: a deep `node_modules` made by the setup is still removable on Windows.
+                await mustGit(verdict.folder, ['-c', 'core.longpaths=true', 'worktree', 'remove', verdict.listedPath], step, REMOVE_TIMEOUT_MS, 'remove the worktree');
             }
             catch (error) {
-                throw error instanceof WorkspaceError ? conflict(`The worktree was removed. ${ error.message }`) : error;
-            }
-        }
+                if (error instanceof WorkspaceError) {
+                    await failedRemoval(store, verdict, error.message);
+                }
 
-        if (isBelow(config.workspacesDir, verdict.record.path)) {
+                throw error;
+            }
+
+            // The tree is gone and the branch is still named by the repository: a chat that stays after this has the branch it can make the worktree from again.
+            if (verdict.hasBranch && verdict.record.branch !== undefined) {
+                try {
+                    await mustGit(verdict.folder, ['branch', '-D', '--', verdict.record.branch], step, BRANCH_TIMEOUT_MS, 'delete the branch');
+                }
+                catch (error) {
+                    throw error instanceof WorkspaceError ? conflict(`The worktree was removed. ${ error.message }`) : error;
+                }
+            }
+
             await pruneEmptyParents(config.workspacesDir, verdict.record.path);
-        }
-    });
+        });
+    }
+    finally {
+        markRemoving(store, record.id, false);
+    }
 }

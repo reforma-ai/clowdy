@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { getChat } from '../src/db/chats';
 import { chatsOfWorkspace, listWorkspacesOfProject } from '../src/db/workspaces';
 import { createChat } from '../src/domain/chats';
+import { isBeingRemoved } from '../src/domain/workspaceRemoval';
 import { cleanTempDirs, git, latch, makeRepo, ScriptEngine, scriptEngines, startHarness, tempDir, waitFor } from './helpers';
 
 import type { Chat, ChatWorkspaceRemoval, CommandResult, Project, Run } from '@clowdy/protocol';
@@ -76,6 +77,8 @@ async function setup(options: { origin?: boolean; script?: Script } = {}) {
 
             return run?.status === until && run.finishedAt !== before;
         }, `the turn on "${ text }" to end as ${ until }`);
+
+        return runOf(chat.id);
     };
     /** A chat on a new worktree whose first turn has made it. */
     const start = async (): Promise<Chat> => {
@@ -440,12 +443,12 @@ describe('chat.delete with removeWorkspace', () => {
         expect(existsSync(path)).toBe(false);
     });
 
-    test('keeps the chat, and the branch, when git cannot remove the tree', async () => {
+    test('keeps the chat and the branch when git cannot remove the tree, and the chat\'s next turn says the folder is no worktree instead of starting in it', async () => {
         if (process.platform === 'win32' || process.getuid?.() === 0) {
             return;
         }
 
-        const { repo, start, removal, remove, refusal, exists } = await setup();
+        const { engine, repo, start, send, removal, remove, refusal, exists, chatOf, runOf } = await setup();
         const chat = await start();
         const { path, branch } = chat.workspace!;
         const folder = join(path, 'locked');
@@ -457,7 +460,7 @@ describe('chat.delete with removeWorkspace', () => {
         git(repo, 'merge', '-q', '--no-ff', '-m', 'Merge the work', branch!);
         expect((await removal(chat)).removable).toBe(true);
 
-        // The files of a folder that cannot be written to cannot be deleted: git stops half way and says so.
+        // The files of a folder that cannot be written to cannot be deleted: git has forgotten the worktree by then and stops half way.
         chmodSync(folder, 0o555);
 
         try {
@@ -465,12 +468,113 @@ describe('chat.delete with removeWorkspace', () => {
 
             expect(refusal(result)?.code).toBe('conflict');
             expect(refusal(result)?.message).toStartWith('Couldn\'t remove the worktree:');
+            expect(refusal(result)?.message).toContain(`Git no longer lists ${ path }, so what is left of the folder has to be deleted by hand`);
             expect(exists(chat.id)).toBe(true);
             expect(git(repo, 'branch', '--list', branch!)).toContain(branch!);
+            expect(git(repo, 'worktree', 'list', '--porcelain')).not.toContain(path);
+            expect(existsSync(path)).toBe(true);
+            expect(chatOf(chat.id).workspace?.ready).toBe(false);
+            expect(await removal(chat)).toMatchObject({ removable: false });
+
+            // The agent is not started in the dead tree: the step refuses a folder that is no worktree, and leaves it alone.
+            const turns = engine.turns.length;
+            const failed = await send(chat, 'Go on', 'failed');
+
+            expect(failed.error).toStartWith(`${ path } exists and is not a worktree of `);
+            expect(engine.turns).toHaveLength(turns);
+            expect(runOf(chat.id).status).toBe('failed');
         }
         finally {
             chmodSync(folder, 0o755);
         }
+
+        // Once the folder is gone, the turn makes the worktree again from the branch the chat kept.
+        rmSync(path, { recursive: true, force: true });
+        await send(chat, 'Again');
+        expect(engine.turns.at(-1)?.cwd).toBe(path);
+        expect(git(path, 'branch', '--show-current')).toBe(branch!);
+        expect(existsSync(join(path, 'locked', 'file.txt'))).toBe(true);
+    });
+
+    test('is refused while a turn starts meanwhile, the worktree and the branch stay, and the turn goes on in it', async () => {
+        const { engine, repo, store, start, send, remove, refusal, exists, runOf } = await setup();
+        const chat = await start();
+        const { id, path, branch } = chat.workspace!;
+        const turns = engine.turns.length;
+        const removing = remove(chat);
+
+        // The removal has taken its place on the line the turn's own `Prepare workspace` waits on.
+        expect(isBeingRemoved(store, id)).toBe(true);
+
+        const turn = send(chat, 'Go on');
+        const result = await removing;
+
+        await turn;
+        expect(refusal(result)?.code).toBe('conflict');
+        expect(refusal(result)?.message).toContain('still working');
+        expect(isBeingRemoved(store, id)).toBe(false);
+        expect(exists(chat.id)).toBe(true);
+        expect(existsSync(path)).toBe(true);
+        expect(git(repo, 'branch', '--list', branch!)).toContain(branch!);
+        expect(engine.turns).toHaveLength(turns + 1);
+        expect(engine.turns.at(-1)?.cwd).toBe(path);
+        expect(runOf(chat.id).status).toBe('succeeded');
+    });
+
+    test('is not offered for a worktree with a submodule checked out, which git would refuse to remove, and is for one whose submodule is not', async () => {
+        const { repo, root, start, removal, remove } = await setup();
+        const library = makeRepo(root, 'library');
+        const chat = await start();
+        const { path, branch } = chat.workspace!;
+
+        git(path, '-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', library, 'vendor/library');
+        git(path, 'commit', '-q', '-m', 'Add the library');
+        git(repo, 'merge', '-q', '--no-ff', '-m', 'Merge the work', branch!);
+        expect(git(path, 'status', '--porcelain')).toBe('');
+        expect(await removal(chat)).toMatchObject({ removable: false });
+        expect((await remove(chat)).ok).toBe(false);
+        expect(existsSync(path)).toBe(true);
+
+        // Another chat's worktree is made from the merged base: the submodule is in it, not checked out.
+        const second = await start();
+
+        expect(existsSync(join(second.workspace!.path, 'vendor', 'library', 'README.md'))).toBe(false);
+        expect(await removal(second)).toMatchObject({ removable: true });
+        expect((await remove(second)).ok).toBe(true);
+        expect(existsSync(second.workspace!.path)).toBe(false);
+    });
+
+    test('removes a worktree whose branch was deleted by hand and has nothing left to delete there', async () => {
+        const { repo, start, removal, remove, exists } = await setup();
+        const chat = await start();
+        const { path, branch } = chat.workspace!;
+
+        git(path, 'checkout', '-q', '--detach');
+        git(repo, 'branch', '-D', branch!);
+        expect(await removal(chat)).toMatchObject({ removable: true });
+        expect((await remove(chat)).ok).toBe(true);
+        expect(existsSync(path)).toBe(false);
+        expect(exists(chat.id)).toBe(false);
+    });
+
+    test('says so when the worktree is gone and the branch cannot be deleted, keeps the chat, and a retry says the worktree is gone', async () => {
+        const { repo, start, remove, refusal, exists } = await setup();
+        const chat = await start();
+        const { path, branch } = chat.workspace!;
+
+        // A leftover lock of the branch's ref: git cannot take it to delete it.
+        writeFileSync(join(repo, '.git', 'refs', 'heads', `${ branch! }.lock`), '');
+
+        const result = await remove(chat);
+
+        expect(refusal(result)?.code).toBe('conflict');
+        expect(refusal(result)?.message).toStartWith('The worktree was removed. Couldn\'t delete the branch:');
+        expect(existsSync(path)).toBe(false);
+        expect(git(repo, 'branch', '--list', branch!)).toContain(branch!);
+        expect(exists(chat.id)).toBe(true);
+        expect(refusal(await remove(chat))).toEqual({ code: 'conflict', message: 'The worktree is gone from the disk' });
+        expect((await remove(chat, false)).ok).toBe(true);
+        expect(exists(chat.id)).toBe(false);
     });
 
     test('is not run by a plain delete, which leaves the worktree and the branch, and drops the row only with the last chat that points at it', async () => {

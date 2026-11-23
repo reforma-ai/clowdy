@@ -358,7 +358,7 @@ interface GitRun {
     timedOut: boolean;
 }
 
-export interface Step {
+interface Step {
     log(line: string): void;
     signal?: AbortSignal;
 }

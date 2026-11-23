@@ -7,6 +7,7 @@ import { listItems, nextSeq } from '../db/items';
 import { getRun, getRunWork, listActiveRuns, listRunsWithProcess, setRunWork } from '../db/runs';
 import { git } from '../domain/git';
 import { appendItem, markRewindPoint } from '../domain/items';
+import { isBeingRemoved } from '../domain/workspaceRemoval';
 import { needsPreparing, prepareWorkspace } from '../domain/workspaces';
 import { EngineFailure, errorMessage } from '../errors';
 import { conversationRecord } from './history';
@@ -761,7 +762,8 @@ export class RunDriver {
         const chatId = runs.require(runId).chatId;
         const workspace = chatId && !getRunWork(store.db, runId).cwd ? getChat(store.db, chatId)?.workspace : undefined;
 
-        if (workspace && needsPreparing(workspace)) {
+        // A worktree that is being removed with its chat is waited for too: the step then finds it gone and makes it again, rather than the session starting in a tree that is being deleted.
+        if (workspace && (needsPreparing(workspace) || isBeingRemoved(store, workspace.id))) {
             const stopped = AbortSignal.any([signal, this.stopping.signal]);
 
             await prepareWorkspace(store, workspace.id, { runId, signal: stopped });

@@ -62,7 +62,7 @@ interface DeleteChatMessageProps {
 /** The confirmation's message, and the checkbox that also removes the worktree and its branch once the daemon says it may (off until the person ticks it). */
 function DeleteChatMessage({ root, chat, text, choice }: DeleteChatMessageProps) {
     const removable = useWorktreeRemovable(root, chat);
-    const [checked, setChecked] = useState(false);
+    const [checked, setChecked] = useState(choice.removeWorkspace);
 
     return (
         <Box gap="lg">
