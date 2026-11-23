@@ -4,7 +4,7 @@ import { useRootStore } from '../../stores';
 import { HALF_MIN_WINDOW_WIDTH } from './panelWidth';
 
 /**
- * Tells the window state whether the window is wide enough for the side panel with a tree (Files, Docs) beside the chat, and follows the window as it is resized
+ * Tells the window state whether the window is wide enough for the side panel with a list beside a view (Files, Docs, Changes) beside the chat, and follows the window as it is resized
  * (`UiStore.windowFitsHalf`; `HALF_MIN_WINDOW_WIDTH`). It runs before the first paint, so a narrow window never shows the panel beside the chat for a frame.
  * The shell calls it once.
  */

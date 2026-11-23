@@ -11,9 +11,9 @@ export interface SidePanelControl {
     tab: SidePanelTab;
     /** The panel is drawn in the place of the chat: it is open, and the project has it expanded or it shows the Tasks tab, which is always so. A shut panel is never expanded, and comes back expanded when the project has it so. */
     expanded: boolean;
-    /** Why the tab the panel shows, or showed last, cannot be beside the chat, if it cannot: it is in the place of the chat whatever the project chose (Tasks always, Files and Docs in a window too narrow for them beside it). */
+    /** Why the tab the panel shows, or showed last, cannot be beside the chat, if it cannot: it is in the place of the chat whatever the project chose (Tasks always, Files, Docs and Changes in a window too narrow for them beside it). */
     noHalf: NoHalfReason | null;
-    /** The tab is a tree beside a view (Files, Docs), which needs more room than the other tabs while it is beside the chat. */
+    /** The tab is a list beside a view (Files, Docs, Changes), which needs more room than the other tabs while it is beside the chat. */
     tabHasTree: boolean;
     toggle: () => void;
     /** Sets the panel to one of the sizes the corner button's menu offers. */
