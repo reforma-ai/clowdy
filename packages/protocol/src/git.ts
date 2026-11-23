@@ -12,11 +12,15 @@
  * GET  /v1/projects/:id/git/changes?folderId=&workspaceId=&scope=
  *                                      -> GitChanges. The files that changed in `scope` (`all` when it is left out), each with its line counts and revision.
  *                                         `scope` is a `GitScope`; a commit the repository does not have is `not_found`, a scope that is none is `invalid`.
- * GET  /v1/projects/:id/git/file?folderId=&workspaceId=&scope=&path=&oldPath=
+ * GET  /v1/projects/:id/git/file?folderId=&workspaceId=&scope=&path=&oldPath=&from=
  *                                      -> GitFileSides. The text of one changed file before and after, for a diff to be drawn from. `path` is the file as it is
  *                                         after the change and `oldPath` the one it had before when the change renamed it (`GitChangedFile.oldPath`). A path
  *                                         that did not change in the scope is `not_found`; a path that is none (empty, absolute, with `.`, `..` or an empty part,
- *                                         or ending in `/`) and a folder that is not the root of a working tree are `invalid`.
+ *                                         or ending in `/`) and a folder that is not the root of a working tree are `invalid`. `from` is the `GitChanges.from` of
+ *                                         the list the file comes from (a hash, 7 to 64 hexadecimal digits): the scope then starts at that commit and the daemon
+ *                                         looks up no base, merge base or parent, so a file is never drawn against another start than its list was counted from
+ *                                         (the list sends none for a root commit or an unborn branch, and the read computes it as before). A `from` that is not a
+ *                                         hash is `invalid`, and one that is no commit of the repository is `not_found`.
  * GET  /v1/projects/:id/git/pull-request?folderId=&workspaceId=
  *                                      -> GitPullRequestInfo. Whether GitHub can be asked about the place (`gh` found and signed in for the host of `origin`) and
  *                                         the pull request of the branch checked out, with its checks. Read by one `gh` call per branch and kept for a few

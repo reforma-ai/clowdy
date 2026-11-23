@@ -100,9 +100,11 @@ export interface Transport {
     getGitChanges: (projectId: ProjectId, place: PlaceRef, scope: GitScope) => Promise<GitChanges>;
     /**
      * The text of one changed file before and after, for a diff to be drawn from. `oldPath` is the path before a rename (`GitChangedFile.oldPath`). A binary file or one too big to
-     * draw answers its state and no text. Rejects as `getGitChanges` does, and with 404 for a path that did not change in the scope.
+     * draw answers its state and no text. `from` is the list's own start (`GitChanges.from`): with it the file is read against that commit and the daemon looks up no base, so a
+     * card cannot be drawn against another start than its list. Rejects as `getGitChanges` does, and with 404 for a path that did not change in the scope or a `from` that is no
+     * commit, and 400 for a `from` that is no hash.
      */
-    getGitFile: (projectId: ProjectId, place: PlaceRef, scope: GitScope, path: string, oldPath?: string) => Promise<GitFileSides>;
+    getGitFile: (projectId: ProjectId, place: PlaceRef, scope: GitScope, path: string, oldPath?: string, from?: string) => Promise<GitFileSides>;
     /**
      * Every worktree of every folder of a project, with the chats that work in each, how many files are changed and whether its work is in the base: what the Manage worktrees
      * dialog lists. One entry per folder in the project's order, a folder that is no repository (or is gone) with no worktrees. Read when asked, never pushed: worktrees change

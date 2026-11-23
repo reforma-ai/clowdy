@@ -242,8 +242,10 @@ export function createRoutes(context: RouteContext): Route[] {
             pattern: /^\/v1\/projects\/([^/]+)\/git\/file$/,
             handle: async (_request, url, [id]) => {
                 const place = gitPlaceOf(id, url);
+                // A card sends the start of the list it belongs to: with it nothing is looked up to find the base (and the pull request's hint is not asked).
+                const from = url.searchParams.get('from') ?? undefined;
 
-                return json(await placeFile(place, gitScopeOf(url), url.searchParams.get('path') ?? '', url.searchParams.get('oldPath') ?? undefined, await gitBaseOf(place)));
+                return json(await placeFile(place, gitScopeOf(url), url.searchParams.get('path') ?? '', url.searchParams.get('oldPath') ?? undefined, from === undefined ? await gitBaseOf(place) : { from }));
             },
         },
         { method: 'GET', pattern: /^\/v1\/projects\/([^/]+)\/worktrees$/, handle: async (_request, _url, [id]) => json(await projectWorktrees(store, requireProject(store, id))) },

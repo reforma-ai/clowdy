@@ -92,6 +92,34 @@ async function failure(promise: Promise<unknown>): Promise<CommandError> {
 }
 
 /**
+ * Runs `action` with a `git` in front of the real one on the PATH that writes down the arguments of every process it is asked to start, and gives back what it wrote (one entry for
+ * each process, its arguments joined by spaces). The PATH is the real one again when `action` ends.
+ */
+async function gitProcessesOf(action: () => Promise<unknown>): Promise<string[]> {
+    const shim = tempDir('git-changes-shim');
+    const log = join(shim, 'processes.log');
+    const real = Bun.which('git');
+
+    if (!real) throw new Error('git is not on the PATH');
+
+    writeFileSync(join(shim, 'git'), `#!/bin/sh\nprintf '%s\\n' "$*" >> '${ log }'\nexec '${ real }' "$@"\n`);
+    chmodSync(join(shim, 'git'), 0o755);
+
+    const path = process.env.PATH;
+
+    process.env.PATH = `${ shim }:${ path }`;
+
+    try {
+        await action();
+    }
+    finally {
+        process.env.PATH = path;
+    }
+
+    return (await Bun.file(log).text().catch(() => '')).split('\n').filter(line => line !== '');
+}
+
+/**
  * `main` of the clone has the base files (`lib.ts`, `old-name.ts`, `gone.txt`, `README.md`). On the branch `feature`, from `origin/main`, two commits: the first adds
  * `src/new.ts`, adds a line to `lib.ts` and changes another, renames `old-name.ts` to `renamed.ts` with an edit; the second deletes `gone.txt` and adds a binary `logo.bin`.
  * Then, not committed: `lib.ts` gets a line (unstaged), `src/staged.ts` is added to the index, and `scratch.txt` is new.
@@ -931,6 +959,76 @@ describe('placeFile', () => {
         expect(await placeFile(placeAt(path), 'branch', 'logo.bin', undefined)).toMatchObject({ state: 'binary' });
     });
 
+    test('reads a file against the start its list was counted from, and the same as it does without one when nothing moved', async () => {
+        const { path, first, second } = work();
+        const place = placeAt(path);
+
+        for (const scope of ['all', 'branch', 'uncommitted', commitScope(first), commitScope(second)] as const) {
+            const list = await changes(place, scope);
+
+            expect(list.from).toBeDefined();
+
+            for (const file of list.files.filter(candidate => !candidate.binary)) {
+                const without = await placeFile(place, scope, file.path, file.oldPath);
+                const pinned = await placeFile(place, scope, file.path, file.oldPath, { from: list.from });
+
+                expect(pinned).toEqual(without);
+                expect(pinned).toMatchObject({ revision: file.revision });
+            }
+        }
+
+        // A short hash is a hash, as it is in a scope.
+        expect(await placeFile(place, 'branch', 'lib.ts', undefined, { from: (await changes(place, 'branch')).from!.slice(0, 10) })).toEqual(await placeFile(place, 'branch', 'lib.ts', undefined));
+    });
+
+    test('starts a scope at the commit it is given, whatever the base or HEAD is', async () => {
+        const { path, first, base } = work();
+        const place = placeAt(path);
+
+        // `all` and `branch` start at `from` and not at the merge base: here the branch's first commit, so lib.ts has the text it had after it.
+        expect(await text(place, 'all', 'lib.ts')).toMatchObject({ original: lines('a', 'b', 'c') });
+        expect(await placeFile(place, 'all', 'lib.ts', undefined, { from: first })).toMatchObject({ state: 'text', original: lines('a', 'B', 'c', 'd'), modified: lines('a', 'B', 'c', 'd', 'e') });
+        // The branch from its first commit to HEAD is the second commit's work: gone.txt is deleted in it, and lib.ts is not touched by it.
+        expect(await placeFile(place, 'branch', 'gone.txt', undefined, { from: first })).toMatchObject({ state: 'text', original: lines('bye'), modified: null });
+        expect((await failure(placeFile(place, 'branch', 'lib.ts', undefined, { from: first }))).code).toBe('not_found');
+        // `uncommitted` is HEAD to the disk: told another start it is that start to the disk.
+        expect(await text(place, 'uncommitted', 'lib.ts')).toMatchObject({ original: lines('a', 'B', 'c', 'd') });
+        expect(await placeFile(place, 'uncommitted', 'lib.ts', undefined, { from: base })).toMatchObject({ state: 'text', original: lines('a', 'b', 'c'), modified: lines('a', 'B', 'c', 'd', 'e') });
+        // A commit's scope starts at the parent the list gave, the commit itself still being the commit.
+        expect(await placeFile(place, commitScope(first), 'lib.ts', undefined, { from: base })).toMatchObject({ original: lines('a', 'b', 'c'), modified: lines('a', 'B', 'c', 'd') });
+        // A file that did not change since `from` is not in the scope, as it is not in a list.
+        expect((await failure(placeFile(place, 'branch', 'src/new.ts', undefined, { from: first }))).code).toBe('not_found');
+    });
+
+    test('refuses a start that is not a hash or not a commit of the repository, whatever the scope', async () => {
+        const { path, first } = work();
+        const place = placeAt(path);
+        const blob = git(path, 'rev-parse', 'HEAD:lib.ts');
+
+        for (const scope of ['all', 'branch', 'uncommitted', commitScope(first)] as const) {
+            for (const bad of ['', 'abc', 'HEAD', 'main', '--stat', 'zzzzzzz', `${ first }~1`, `${ first }^`, `${ first }\0`, 'a'.repeat(65)]) {
+                expect((await failure(placeFile(place, scope, 'lib.ts', undefined, { from: bad }))).code).toBe('invalid');
+            }
+
+            expect((await failure(placeFile(place, scope, 'lib.ts', undefined, { from: '0123456789abcdef0123456789abcdef01234567' }))).code).toBe('not_found');
+            // An object that is not a commit is no start.
+            expect((await failure(placeFile(place, scope, 'lib.ts', undefined, { from: blob }))).code).toBe('not_found');
+        }
+    });
+
+    onPosix('looks up no base when it is given the start, which saves the processes of finding it', async () => {
+        const { path } = work();
+        const place = placeAt(path);
+        const { from } = await changes(place, 'all');
+        const unpinned = await gitProcessesOf(() => placeFile(place, 'all', 'lib.ts', undefined));
+        const pinned = await gitProcessesOf(() => placeFile(place, 'all', 'lib.ts', undefined, { from }));
+
+        expect(unpinned.some(line => line.includes('merge-base'))).toBe(true);
+        expect(pinned.some(line => line.includes('merge-base'))).toBe(false);
+        expect(pinned.some(line => line.includes('for-each-ref') || line.includes('symbolic-ref') || line.includes('config'))).toBe(false);
+        expect(pinned.length).toBeLessThan(unpinned.length - 4);
+    });
+
     test('does not know a path that did not change in the scope, and refuses a path that is not one', async () => {
         const { path, first } = work();
 
@@ -1029,6 +1127,13 @@ describe('over HTTP', () => {
 
         expect(sides).toMatchObject({ state: 'text', original: lines('a', 'b', 'c'), modified: lines('a', 'B', 'c', 'd', 'e') });
         expect(await json<GitFileSides>(await h.fetch(`${ base }/file${ query(`&scope=branch&path=${ encodeURIComponent('renamed.ts') }&oldPath=old-name.ts`) }`))).toMatchObject({ state: 'text', original: expect.stringContaining('y = 2') });
+
+        // A card sends the start of its list.
+        expect(await json<GitFileSides>(await h.fetch(`${ base }/file${ query(`&scope=all&path=lib.ts&from=${ all.from }`) }`))).toEqual(sides);
+        expect(await json<GitFileSides>(await h.fetch(`${ base }/file${ query(`&scope=all&path=lib.ts&from=${ first }`) }`))).toMatchObject({ original: lines('a', 'B', 'c', 'd') });
+        expect((await h.fetch(`${ base }/file${ query('&scope=all&path=lib.ts&from=main') }`)).status).toBe(400);
+        expect((await h.fetch(`${ base }/file${ query('&scope=all&path=lib.ts&from=') }`)).status).toBe(400);
+        expect((await h.fetch(`${ base }/file${ query('&scope=all&path=lib.ts&from=0123456789abcdef') }`)).status).toBe(404);
 
         expect((await h.fetch(`${ base }/status`)).status).toBe(400);
         expect((await h.fetch(`${ base }/changes${ query('&scope=sideways') }`)).status).toBe(400);

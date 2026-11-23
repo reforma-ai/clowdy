@@ -16,6 +16,7 @@ import {
     fixtureGitFile,
     fixtureGitPullRequest,
     fixtureGitStatus,
+    fixtureHasCommit,
     fixtureProjectWorktrees,
     fixtureWorkspaceLog,
     type FixtureData,
@@ -267,10 +268,15 @@ export class FixtureTransport implements Transport {
         return structuredClone(changes);
     }
 
-    async getGitFile(projectId: ProjectId, place: PlaceRef, scope: GitScope, path: string): Promise<GitFileSides> {
+    async getGitFile(projectId: ProjectId, place: PlaceRef, scope: GitScope, path: string, _oldPath?: string, from?: string): Promise<GitFileSides> {
         const { head, workspace } = this.#gitPlace(projectId, place);
 
         if (!head?.branch) throw new TransportError('The folder is not the root of a git repository', 400);
+
+        // The fixture draws no diff of its own, so a start is only judged as the daemon judges it: a hash, of a commit the repository has.
+        if (from !== undefined && !/^[0-9a-f]{7,64}$/i.test(from)) throw new TransportError('The start of the comparison is not a hash', 400);
+
+        if (from !== undefined && !fixtureHasCommit(from)) throw new TransportError(`Commit ${ from } does not exist`, 404);
 
         const sides = workspace && fixtureGitFile(scope, path);
 
