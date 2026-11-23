@@ -5,6 +5,7 @@ import type { AgentRegistry } from '../engine/acp/registry';
 import type { FilesService } from '../files/service';
 import type { FsService } from '../fs/service';
 import type { GitWrites } from '../git/commit';
+import type { GitDiscard } from '../git/discard';
 import type { CommitMessages } from '../git/message';
 import type { PullRequests } from '../git/pullRequest';
 import type { GitRemote } from '../git/remote';
@@ -44,6 +45,8 @@ export interface Services {
     gitWrites: GitWrites;
     /** What the daemon does between a person's branch and their `origin`: fetch, pull and push. */
     gitRemote: GitRemote;
+    /** The discard of the changes of single files, with the copy it keeps of what it removes. */
+    gitDiscard: GitDiscard;
     /** The commit message an agent the person chose writes for the files they ticked. */
     commitMessages: CommitMessages;
 }

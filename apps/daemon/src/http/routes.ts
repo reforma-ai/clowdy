@@ -68,6 +68,8 @@ const MAX_FILE_LIMIT = 100;
 /** The bodies of the two git writes: the place (`folderId`, and the worktree when there is one) and the ticked files; what is wrong with them is the route's to say (`selectChanged`). */
 const gitCommitBody = z.object({ folderId: z.string(), workspaceId: z.string().optional(), paths: z.array(z.string()), message: z.string() });
 const gitMessageBody = z.object({ folderId: z.string(), workspaceId: z.string().optional(), paths: z.array(z.string()) });
+/** The body of `POST .../git/discard` (`GitDiscardRequest`): the place and the files, which the route judges (`selectChanged`, at most `MAX_GIT_DISCARD_PATHS`). */
+const gitDiscardBody = z.object({ folderId: z.string(), workspaceId: z.string().optional(), paths: z.array(z.string()) });
 
 /** The body of `POST .../git/fetch`, `.../pull` and `.../push` (`GitRemoteRequest`): the place and nothing else, so nothing a client sends changes what is run. */
 const gitRemoteBody = z.object({ folderId: z.string(), workspaceId: z.string().optional() });
@@ -326,6 +328,20 @@ export function createRoutes(context: RouteContext): Route[] {
                 context.keepOpen(request);
 
                 return json(await services.gitWrites.commit(place, body));
+            },
+        },
+        {
+            method: 'POST',
+            pattern: /^\/v1\/projects\/([^/]+)\/git\/discard$/,
+            handle: async (request, _url, [id]) => {
+                const body = await readJson(request, gitDiscardBody);
+                const project = requireProject(store, id);
+                const place = resolvePlace(store, project, body.folderId, body.workspaceId);
+
+                // The copy of a few files and a restore are quick, but a filter that has to fetch (Git LFS) may take longer than the connection's idle timeout.
+                context.keepOpen(request);
+
+                return json(await services.gitDiscard.discard(place, { projectId: project.id, paths: body.paths }));
             },
         },
         {
