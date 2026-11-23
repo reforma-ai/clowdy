@@ -28,6 +28,9 @@ export const END_WAIT_MS = 4000;
 /** The settings every git command of a snapshot is run with: the index is written whole, so no `sharedindex.*` file is made in the repository for it. */
 const SNAPSHOT_CONFIG = ['-c', 'core.splitIndex=false'];
 
+/** A folder as an entry of `GIT_ALTERNATE_OBJECT_DIRECTORIES`: the entries are told apart by the platform's path delimiter, and one that has it (or a quote) in its name is written in quotes. */
+const alternate = (folder: string) => (folder.includes(delimiter) || folder.includes('"') ? `"${ folder.replace(/["\\]/g, '\\$&') }"` : folder);
+
 /**
  * Moves the loose objects a snapshot wrote in its quarantine into the repository's own object folder, which is where a tree has to be for git to read it later. An object that is
  * there already (another git wrote the same content meanwhile) is the same object and stays. Packs are not moved: git writes one only for a file bigger than `core.bigFileThreshold`
@@ -95,7 +98,7 @@ export async function snapshotTree(cwd: string, timeoutMs = SNAPSHOT_TIMEOUT_MS)
             if (error.code !== 'ENOENT') throw error;
         });
 
-        const env = { GIT_INDEX_FILE: own, GIT_OBJECT_DIRECTORY: quarantine, GIT_ALTERNATE_OBJECT_DIRECTORIES: [objects, process.env.GIT_ALTERNATE_OBJECT_DIRECTORIES].filter(Boolean).join(delimiter) };
+        const env = { GIT_INDEX_FILE: own, GIT_OBJECT_DIRECTORY: quarantine, GIT_ALTERNATE_OBJECT_DIRECTORIES: [alternate(objects), process.env.GIT_ALTERNATE_OBJECT_DIRECTORIES].filter(Boolean).join(delimiter) };
         const added = await gitRead(cwd, [...SNAPSHOT_CONFIG, 'add', '-A'], { env, timeoutMs: Math.max(1, deadline - Date.now()) });
 
         if (!added.ok) return undefined;

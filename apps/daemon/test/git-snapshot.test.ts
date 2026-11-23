@@ -279,6 +279,16 @@ describe('snapshotTree', () => {
         expect(readdirSync(join(path, '.git', 'objects')).filter(name => name.startsWith('tmp_'))).toEqual([]);
     });
 
+    test.skipIf(process.platform === 'win32')('works in a folder whose name has the alternates\' delimiter and a quote in it', async () => {
+        const path = makeRepo(join(tempDir('git-snapshot'), 'a:b "c"'), 'work');
+
+        put(path, { 'a.ts': lines('one') });
+        git(path, 'add', '-A');
+        git(path, 'commit', '-q', '-m', 'Add a file');
+        put(path, { 'a.ts': lines('one', 'two') });
+        expect(git(path, 'show', `${ await treeOf(path) }:a.ts`)).toBe('one\ntwo');
+    });
+
     test('works in a repository that borrows its objects from another one, and stores nothing the lender has', async () => {
         const lender = work();
         const borrower = join(tempDir('git-snapshot'), 'borrower');
