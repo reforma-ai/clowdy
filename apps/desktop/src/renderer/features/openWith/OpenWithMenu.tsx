@@ -24,7 +24,7 @@ export interface OpenWithMenuProps {
     /** For a folder that is gone: Locate… and Remove from project, under the note (`useFolderRepair`). */
     repair?: FolderRepair;
     git: FolderGit | undefined;
-    /** For a folder that is a git repository: a first item, `Manage worktrees`, runs this (it opens the dialog of the project's worktrees). Without it there is no such item. */
+    /** A last item, under a separator, `Manage worktrees…`, runs this (it opens the dialog of the project's worktrees). Without it there is no such item. */
     onManageWorktrees?: () => void;
     /** Called when an item is pressed, before it runs: a menu that is not in a `MenuTrigger` shuts itself here. */
     onClose?: () => void;
@@ -50,7 +50,7 @@ export const actionIcon = (action: OpenAction): ReactNode => {
 /**
  * The menu of a file or a folder of the project, to go inside a `Popover`. At the top what the app does itself: Open in Files and Open in Terminal (a folder, when
  * the window shows the target's place: its folder, or the worktree of the open chat), and the copies of the path. After a separator, `Open in…`, a submenu of what leaves the app: the editor, the file manager,
- * the terminal program, GitHub. One list of items for every place the menu comes from (`openActions`). A folder that is a repository has `Manage worktrees` above them all
+ * the terminal program, GitHub. One list of items for every place the menu comes from (`openActions`). `Manage worktrees…` is the last item, under a separator
  * (`onManageWorktrees`), which is not an action on a path and so is not in `openActions`.
  */
 export function OpenWithMenu({ target, missing = false, repair, git, onManageWorktrees, onClose, 'aria-label': label }: OpenWithMenuProps) {
@@ -90,14 +90,6 @@ export function OpenWithMenu({ target, missing = false, repair, git, onManageWor
     return (
         <PopoverScroll>
             <Menu aria-label={ label } size="sm" onAction={ key => run(String(key)) }>
-                { onManageWorktrees && (
-                    <>
-                        <MenuSection aria-label="Worktrees">
-                            <MenuItem id="manage" icon={ <Version aria-hidden="true" /> } textValue="Manage worktrees…">Manage worktrees…</MenuItem>
-                        </MenuSection>
-                        <MenuSeparator />
-                    </>
-                ) }
                 <MenuSection aria-label="Open">
                     { missing && <MenuHeader>This folder no longer exists</MenuHeader> }
                     { repair && <MenuItem id="locate" icon={ <Search aria-hidden="true" /> } textValue="Locate…">Locate…</MenuItem> }
@@ -116,6 +108,14 @@ export function OpenWithMenu({ target, missing = false, repair, git, onManageWor
                                     </Menu>
                                 </Popover>
                             </SubmenuTrigger>
+                        </MenuSection>
+                    </>
+                ) }
+                { onManageWorktrees && (
+                    <>
+                        <MenuSeparator />
+                        <MenuSection aria-label="Worktrees">
+                            <MenuItem id="manage" icon={ <Version aria-hidden="true" /> } textValue="Manage worktrees…">Manage worktrees…</MenuItem>
                         </MenuSection>
                     </>
                 ) }

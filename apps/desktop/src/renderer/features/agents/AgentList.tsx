@@ -67,7 +67,7 @@ interface ChatActions {
 /**
  * The project's agents: the row that starts a chat, then the chats in use (in the order the menu of the heading's `⋯` asks for), each with the
  * threads its agents started below it, folded until the person opens them. Archived chats are not here, they are in the archive's list (the button
- * in the heading, beside the filters), and take their threads with them. `missing` are the folders gone from the disk (`Screen` reads them once for the list and the new-chat page): their group is marked and its button is off. With the menu's Group chats by folder on (it is, until the person turns it off), in a project of several folders, the
+ * in the heading, beside the filters), and take their threads with them. `missing` are the folders gone from the disk (`Screen` reads them once for the list and the new-chat page): their group is marked and its button is off. With the menu's Group chats by folder on (it is, until the person turns it off), the
  * chats stand in a group for the folder they work in, under a heading that folds the group, has a button for a chat in that folder, and opens the folder's menu (`GroupFolderName`) from a press on its name, which also shows the new-chat page for that folder.
  * A chat that works in a worktree has a branch mark after its title, with its branch in the mark's title: the one the tree has checked out, from `workspaces` (`ProjectInfo.workspaces`, which `Screen` reads).
  */
@@ -107,7 +107,7 @@ export function AgentList({ selection, chats, missing, workspaces, isCovered }: 
     // A native sub-agent has no row: its chat stays selected while its page is open. The new-chat page has none.
     const openChatId = selection.draft ? undefined : selection.chat?.id;
     const { folders } = project.project;
-    const grouped = ui.groupByFolder && folders.length > 1;
+    const grouped = ui.groupByFolder;
     // The new-chat row is the open one on every new-chat page, whatever folder it is for: the folder is told by the select under the message box.
     const selectedId = selection.draft ? NEW_CHAT_ROW : openChatId;
     const rowsOf = (roots: readonly Chat[]) => agentRows({
@@ -376,16 +376,15 @@ export function AgentList({ selection, chats, missing, workspaces, isCovered }: 
 }
 
 /**
- * The header's `⋯`: what the list shows (a checked entry is on), whether its chats stand in a group for each folder of the project (offered only
- * when the project has several folders), and the order the chats come in (the checked one). Settings > Chat has the order and the finished threads too.
+ * The header's `⋯`: what the list shows (a checked entry is on), whether its chats stand in a group for each folder of the project (offered for a project of one folder too: the
+ * group's heading has the folder's menu), and the order the chats come in (the checked one). Settings > Chat has the order and the finished threads too.
  */
 function FilterMenu() {
     const ui = useProjectUi();
     const project = useProjectState();
     const { sort, showFinishedThreads } = chatListPreferences;
     const [isOpen, setIsOpen] = useState(false);
-    const hasFolders = project.project.folders.length > 1;
-    const shown = [...(showFinishedThreads ? ['finished'] : []), ...(hasFolders && ui.groupByFolder ? ['folders'] : [])];
+    const shown = [...(showFinishedThreads ? ['finished'] : []), ...(ui.groupByFolder ? ['folders'] : [])];
 
     return (
         <PopoverTrigger isOpen={ isOpen } onOpenChange={ setIsOpen }>
@@ -403,13 +402,11 @@ function FilterMenu() {
                                 const on = (key: string) => keys === 'all' || keys.has(key);
 
                                 if (on('finished') !== showFinishedThreads) chatListPreferences.setShowFinishedThreads(!showFinishedThreads);
-                                if (hasFolders && on('folders') !== ui.groupByFolder) ui.setGroupByFolder(!ui.groupByFolder);
+                                if (on('folders') !== ui.groupByFolder) ui.setGroupByFolder(!ui.groupByFolder);
                             } }
                         >
                             <MenuItem id="finished" textValue="Show finished sub-threads" endAffix={ showFinishedThreads ? <Check /> : undefined }>Show finished sub-threads</MenuItem>
-                            { hasFolders && (
-                                <MenuItem id="folders" textValue="Group chats by folder" endAffix={ ui.groupByFolder ? <Check /> : undefined }>Group chats by folder</MenuItem>
-                            ) }
+                            <MenuItem id="folders" textValue="Group chats by folder" endAffix={ ui.groupByFolder ? <Check /> : undefined }>Group chats by folder</MenuItem>
                         </MenuSection>
                         <MenuSection
                             selectionMode="single"
