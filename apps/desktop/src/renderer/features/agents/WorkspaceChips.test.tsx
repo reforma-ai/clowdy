@@ -659,6 +659,53 @@ describe('the place of the page', () => {
         expect(asked.mock.calls.filter(([command]) => command.type === 'workspace.open')).toEqual([[{ type: 'workspace.open', projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental', path: WORKTREE }]]);
     });
 
+    it('asks again for a worktree whose row went with the last chat that worked in it, so the page and the chat of its first message share the row that is made', async () => {
+        const data = withFixtureWorkspace(createFixtureData());
+        const transport = new FixtureTransport({ data });
+        const asked = vi.spyOn(transport, 'command');
+
+        await start({ data, transport });
+        await pickWorktree();
+
+        const sharing = [...store.selectedProject!.chats.values()].find(chat => chat.workspace?.path === WORKTREE)!;
+        const opened = () => asked.mock.calls.filter(([command]) => command.type === 'workspace.open').length;
+
+        expect(ui().draftWorkspaceRow?.id).toBe(sharing.workspace!.id);
+        expect(opened()).toBe(1);
+
+        // The only chat that worked in the worktree is deleted while the page is open: its row goes with it, so the page asks for the worktree again.
+        await act(async () => {
+            await store.command({ type: 'chat.delete', chatId: sharing.id });
+        });
+        await settle();
+        await settle();
+        await settle();
+
+        expect(store.selectedProject!.chats.has(sharing.id)).toBe(false);
+        expect(opened()).toBe(2);
+        expect(ui().draftWorkspaceRow).toMatchObject({ path: WORKTREE });
+        expect(placeOfPage().workspace?.path).toBe(WORKTREE);
+
+        const row = ui().draftWorkspaceRow!;
+        const known = new Set(store.selectedProject!.chats.keys());
+
+        await send('Fix the price');
+
+        expect(made(known)[0]?.workspace?.id).toBe(row.id);
+    });
+
+    it('does not ask again for a row nobody has worked in when the chats change', async () => {
+        const transport = new FixtureTransport();
+        const asked = vi.spyOn(transport, 'command');
+
+        await start({ transport });
+        await pickWorktree();
+        await settle();
+        await settle();
+
+        expect(asked.mock.calls.filter(([command]) => command.type === 'workspace.open')).toHaveLength(1);
+    });
+
     it('drops an answer for a choice that changed while it was on its way', async () => {
         const transport = new FixtureTransport();
         const original = transport.command.bind(transport);

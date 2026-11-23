@@ -1066,6 +1066,13 @@ export class FixtureTransport implements Transport {
                     this.#emit(deleted.projectId, { type: 'chat.deleted', chatId: deleted.id, runIds: [...runIds] });
                 }
 
+                // Like the daemon: a worktree's row goes with the last chat that points at it, so a row `workspace.open` answered is made again when it is asked for.
+                for (const deleted of gone) {
+                    const workspaceId = deleted.workspace?.id;
+
+                    if (workspaceId && !data.chats.some(candidate => candidate.workspace?.id === workspaceId)) this.#opened.delete(workspaceId);
+                }
+
                 return ok({ chatId: chat.id });
             }
             case 'chat.send':

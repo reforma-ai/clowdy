@@ -419,6 +419,7 @@ describe('workspace.open', () => {
         const young = addTree(repo, root, 'young-tree');
         const used = addTree(repo, root, 'used-tree');
         const fresh = addTree(repo, root, 'fresh-tree');
+        const shelved = addTree(repo, root, 'shelved-tree');
         const rowOf = (path: string) => (h.ok('workspace.open', { projectId: project.id, path }) as { workspace: NonNullable<Chat['workspace']> }).workspace;
         const old = Date.now() - IDLE_WORKSPACE_MS - 60_000;
         const age = (id: string, createdAt: number) => h.store.db.query('UPDATE workspaces SET created_at = ? WHERE id = ?').run(createdAt, id);
@@ -429,6 +430,13 @@ describe('workspace.open', () => {
         const usedRow = rowOf(used);
 
         make({ mode: 'existing', path: used });
+
+        // A chat that was put away still works in its worktree: it keeps the row too.
+        const shelvedRow = rowOf(shelved);
+        const shelvedChat = make({ mode: 'existing', path: shelved });
+
+        h.ok('chat.setArchived', { chatId: shelvedChat.id, archived: true });
+        age(shelvedRow.id, old);
         // A worktree Clowdy made whose chat is gone: kept, whoever removes it knows it.
         const managedId = newId('wks');
 
@@ -448,7 +456,7 @@ describe('workspace.open', () => {
         rowOf(fresh);
 
         expect(ids()).not.toContain(idleRow.id);
-        expect(ids()).toEqual(expect.arrayContaining([youngRow.id, usedRow.id, managedId]));
+        expect(ids()).toEqual(expect.arrayContaining([youngRow.id, usedRow.id, shelvedRow.id, managedId]));
         expect(getWorkspace(h.store.db, otherRow.id)).toBeDefined();
         // The worktree on the disk is not touched.
         expect(existsSync(idle)).toBe(true);
