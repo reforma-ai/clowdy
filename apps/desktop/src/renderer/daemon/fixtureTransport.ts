@@ -11,10 +11,10 @@ import {
     FIXTURE_LIVE_TOOL_ID,
     fixtureChatWorkspace,
     fixtureFolderGit,
-    fixtureProjectWorktrees,
     fixtureGitChanges,
     fixtureGitFile,
     fixtureGitStatus,
+    fixtureProjectWorktrees,
     fixtureWorkspaceLog,
     type FixtureData,
 } from './fixtureData';
