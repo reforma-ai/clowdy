@@ -8,7 +8,7 @@ import { Github } from '@clowdy/icons/logo';
 
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { openInFiles } from '../files/openInFiles';
-import { currentPlace, isPlaceReady, isSamePlace } from '../sidePanel/currentPlace';
+import { currentPlace, isPlaceReady, isSamePlace, placeOf } from '../sidePanel/currentPlace';
 import { openInTerminal } from '../terminal/openInTerminal';
 import { AppIcon } from './AppIcon';
 import { chosenPrograms, openEffects, useOpenApps } from './openApps';
@@ -57,7 +57,7 @@ export function OpenWithMenu({ target, missing = false, repair, git, onClose, 'a
     const apps = useOpenApps();
     // The Files tab shows the place the window works in (the folder, or the open chat's worktree), so a path in another folder of the project cannot be shown there, nor
     // can one in another worktree of it, nor one in a worktree that is not made yet.
-    const place = { folder: target.folder, ...(target.workspace && { workspace: target.workspace }) };
+    const place = placeOf(target);
     const isHere = isSamePlace(currentPlace(project, ui), place) && isPlaceReady(place);
     const actions = openActions({
         target,

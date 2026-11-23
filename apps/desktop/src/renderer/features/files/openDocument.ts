@@ -1,6 +1,6 @@
 import { toast } from '@clowdy/components/Toast';
 
-import { currentPlace } from '../sidePanel/currentPlace';
+import { currentPlace, isPlaceReady } from '../sidePanel/currentPlace';
 import { DOCS_ROOT } from './docsScope';
 import { openInFiles } from './openInFiles';
 
@@ -23,9 +23,16 @@ export async function openDocument(root: RootStore, project: ProjectState, path:
         return false;
     }
 
+    // A worktree that is not made yet has no document; one that is made may lack a document the folder's own checkout has.
+    if (!isPlaceReady(current)) {
+        toast.error({ message: 'The worktree is not made yet' });
+
+        return false;
+    }
+
     const opened = await openInFiles(root, project.id, current, `${ DOCS_ROOT }/${ path }`);
 
-    if (!opened) toast.error({ message: 'That document is not on the disk' });
+    if (!opened) toast.error({ message: current.workspace ? 'That document is not in this worktree' : 'That document is not on the disk' });
 
     return opened;
 }

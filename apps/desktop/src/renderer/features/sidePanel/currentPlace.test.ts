@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { chatPlace, currentPlace, isPlaceReady, isSamePlace, placeKey, placePath, placeRef } from './currentPlace';
+import { chatPlace, currentPlace, isPlaceReady, isSamePlace, placeKey, placeOf, placePath } from './currentPlace';
 
 import type { Chat, ChatWorkspace, ProjectFolder } from '@clowdy/protocol';
 
@@ -75,18 +75,21 @@ describe('what a place is kept under', () => {
     const worktree = { folder: folders[1], workspace: workspace() };
 
     it('is the worktree\'s id for a worktree and the folder\'s for its own checkout, so the two never share tabs, trees or shells', () => {
-        expect(placeKey(placeRef(own))).toBe('f2');
-        expect(placeKey(placeRef(worktree))).toBe('wks_1');
-        expect(placeRef(worktree)).toEqual({ folderId: 'f2', workspaceId: 'wks_1' });
-        expect(placeRef(own)).toEqual({ folderId: 'f2' });
+        expect(placeKey(own)).toBe('f2');
+        expect(placeKey(worktree)).toBe('wks_1');
     });
 
     it('is the same for two chats that share a worktree, and different for two worktrees of one folder', () => {
-        expect(placeKey(placeRef({ folder: folders[1], workspace: workspace() }))).toBe(placeKey(placeRef(worktree)));
-        expect(placeKey(placeRef({ folder: folders[1], workspace: workspace({ id: 'wks_2' }) }))).not.toBe(placeKey(placeRef(worktree)));
+        expect(placeKey({ folder: folders[1], workspace: workspace() })).toBe(placeKey(worktree));
+        expect(placeKey({ folder: folders[1], workspace: workspace({ id: 'wks_2' }) })).not.toBe(placeKey(worktree));
         expect(isSamePlace(worktree, { folder: folders[1], workspace: workspace() })).toBe(true);
         expect(isSamePlace(worktree, own)).toBe(false);
         expect(isSamePlace(own, { folder: folders[0] })).toBe(false);
+    });
+
+    it('is cut out of something that has more, such as a menu\'s target, without a worktree key when there is none', () => {
+        expect(placeOf({ ...worktree, path: '/x', relative: '' } as typeof worktree)).toEqual(worktree);
+        expect(Object.keys(placeOf({ ...own, workspace: undefined }))).toEqual(['folder']);
     });
 
     it('is on the disk at the worktree\'s path, else at the folder\'s', () => {

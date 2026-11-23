@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { useRootStore } from '../../stores';
-import { placeKey, placeRef } from '../sidePanel/currentPlace';
+import { placeKey, placeOf } from '../sidePanel/currentPlace';
 import { kindOnDisk } from './openInFiles';
 
 import type { FileKind } from '@clowdy/file-manager';
@@ -17,13 +17,13 @@ export function useKindOnDisk(projectId: ProjectId, place: Place, relative: stri
     const root = useRootStore();
     // The parts of the place, not the place: a caller that builds the object again on every draw would otherwise read again on every draw.
     const { folder, workspace } = place;
-    const key = `${ projectId }/${ placeKey(placeRef(place)) }/${ relative }`;
+    const key = `${ projectId }/${ placeKey(place) }/${ relative }`;
     const [read, setRead] = useState<{ key: string; kind: FileKind | null }>();
 
     useEffect(() => {
         let isCurrent = true;
 
-        kindOnDisk(root, projectId, workspace ? { folder, workspace } : { folder }, relative).then(
+        kindOnDisk(root, projectId, placeOf({ folder, workspace }), relative).then(
             (kind) => {
                 if (isCurrent) setRead({ key, kind: kind ?? null });
             },

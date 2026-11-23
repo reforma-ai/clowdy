@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import { useCommands, useHotkeyScope } from '../../hotkeys';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { chosenPrograms, useFolderGit, useOpenApps } from '../openWith';
-import { currentPlace, isPlaceReady, placeKey, placeRef, type Place } from '../sidePanel/currentPlace';
+import { currentPlace, isPlaceReady, placeKey, type Place } from '../sidePanel/currentPlace';
 import { PlaceWaiting } from '../sidePanel/PlaceWaiting';
 import { openInTerminal } from '../terminal/openInTerminal';
 import { docsScopeOf } from './docsScope';
@@ -32,7 +32,7 @@ function PlaceFiles({ place, variant }: { place: Place; variant: 'files' | 'docs
     return (
         <FileManagerView
             className={ styles.view }
-            key={ `${ project.project.id }/${ placeKey(placeRef(place)) }/${ variant }` }
+            key={ `${ project.project.id }/${ placeKey(place) }/${ variant }` }
             manager={ manager }
             scope={ variant === 'docs' ? docsScopeOf(manager) : undefined }
             filterPlaceholder={ variant === 'docs' ? 'Filter documents' : undefined }

@@ -61,14 +61,19 @@ describe('opening a document on the Docs tab', () => {
         await vi.waitFor(() => expect(project().chats.get(ui().chatId!)?.workspace?.ready).toBe(false));
 
         expect(await openDocument(store, project(), 'decisions/pricing.md')).toBe(false);
-        expect(toasts.error).toHaveBeenCalledWith({ message: 'That document is not on the disk' });
+        expect(toasts.error).toHaveBeenCalledWith({ message: 'The worktree is not made yet' });
         expect(ui().sidePanelOpen).toBe(false);
     });
 
-    it('says it is not on the disk for a document the worktree does not have', async () => {
+    it('says it is not in this worktree for a document the worktree does not have, and not on the disk for one the folder\'s own checkout lacks', async () => {
         ui().openChat(FIXTURE_WORKSPACE_CHAT_ID);
 
         expect(await openDocument(store, project(), 'decisions/nobody.md')).toBe(false);
-        expect(toasts.error).toHaveBeenCalledWith({ message: 'That document is not on the disk' });
+        expect(toasts.error).toHaveBeenLastCalledWith({ message: 'That document is not in this worktree' });
+
+        ui().openChat(null);
+
+        expect(await openDocument(store, project(), 'decisions/nobody.md')).toBe(false);
+        expect(toasts.error).toHaveBeenLastCalledWith({ message: 'That document is not on the disk' });
     });
 });

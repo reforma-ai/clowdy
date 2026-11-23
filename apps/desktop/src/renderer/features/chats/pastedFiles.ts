@@ -13,19 +13,19 @@ import type { ClipboardFile } from '../../../shared/bridge';
  */
 export function mentionedFiles(clipboard: readonly ClipboardFile[], folders: readonly ProjectFolder[], place?: Place): ComposerMentionAttrs[] {
     const home = place?.folder ?? folders[0];
-    const root = place === undefined ? home?.path : placePath(place);
+    const root = place ? placePath(place) : home?.path;
+    const chip = (file: ClipboardFile, id: string, path: string): ComposerMentionAttrs[] => [{ id, label: file.name, kind: 'file', trigger: '@', data: { path, ...file.kind === 'directory' && { directory: true } } }];
 
     return clipboard.flatMap((file): ComposerMentionAttrs[] => {
-        const chip = (id: string, path: string): ComposerMentionAttrs[] => [{ id, label: file.name, kind: 'file', trigger: '@', data: { path, ...file.kind === 'directory' && { directory: true } } }];
         const here = home && root !== undefined ? pathInside(root, file.path) : undefined;
 
         // The worktree is not under any folder of the project, so it is asked first.
-        if (home && here !== undefined) return chip(`file:${ home.id }:${ here }`, here);
+        if (home && here !== undefined) return chip(file, `file:${ home.id }:${ here }`, here);
 
         for (const folder of folders) {
             const relative = pathInside(folder.path, file.path);
 
-            if (relative !== undefined) return chip(`file:${ folder.id }:${ relative }`, file.path);
+            if (relative !== undefined) return chip(file, `file:${ folder.id }:${ relative }`, file.path);
         }
 
         return [];

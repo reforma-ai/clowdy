@@ -18,20 +18,14 @@ export interface Place {
     workspace?: ChatWorkspace;
 }
 
-/** What the stores that keep things by place name a place by, and the daemon's requests: the folder, and the worktree of it when it is one (`TerminalInfo`). */
-export interface PlaceRef {
-    folderId: FolderId;
-    workspaceId?: WorkspaceId;
-}
-
-/** The ids of a place. */
-export const placeRef = ({ folder, workspace }: Place): PlaceRef => ({ folderId: folder.id, ...(workspace && { workspaceId: workspace.id }) });
-
 /**
- * What a place's tabs and shells are kept under: the worktree's id, else the folder's (ids of a folder and of a workspace never meet), so a worktree has its own tabs,
- * tree and shells, shared by the chats that share it, and none of the folder's.
+ * What a place's tabs and tree are kept under: the worktree's id, else the folder's (ids of a folder and of a workspace never meet), so a worktree has its own tabs and tree,
+ * shared by the chats that share it, and none of the folder's. The shells are kept the same way, by ids (`TerminalsStore`), since a shell knows no more than its ids.
  */
-export const placeKey = ({ folderId, workspaceId }: PlaceRef): FolderId | WorkspaceId => workspaceId ?? folderId;
+export const placeKey = ({ folder, workspace }: Place): FolderId | WorkspaceId => workspace?.id ?? folder.id;
+
+/** The place alone of something that has one and more (a menu's target): the folder, and the worktree when it is in one. */
+export const placeOf = ({ folder, workspace }: Place): Place => (workspace ? { folder, workspace } : { folder });
 
 /** Where a place is on the disk: the worktree's path, else the folder's own. */
 export const placePath = ({ folder, workspace }: Place): string => workspace?.path ?? folder.path;

@@ -4,7 +4,7 @@ import { errorMessage } from '@clowdy/lib';
 import { makeAutoObservable, reaction } from 'mobx';
 
 import { readStored, writeStored, type KeyValueStorage } from '../../stores/storage';
-import { placeKey, placePath, placeRef, type Place } from '../sidePanel/currentPlace';
+import { placeKey, placePath, type Place } from '../sidePanel/currentPlace';
 import { HIDDEN_GLOBS } from './hidden';
 import { clipboardOf } from './systemClipboard';
 
@@ -15,7 +15,7 @@ import type { Transport } from '../../daemon/transport';
 export type FilesKind = 'files' | 'docs';
 
 /** Where a place's tabs are kept: under the worktree's id for a chat's worktree, the folder's for its own checkout, so the one never shows the other's tabs. */
-const tabsKey = (projectId: ProjectId, place: Place, kind: FilesKind) => `clowdy:${ kind }:${ projectId }:${ placeKey(placeRef(place)) }`;
+const tabsKey = (projectId: ProjectId, place: Place, kind: FilesKind) => `clowdy:${ kind }:${ projectId }:${ placeKey(place) }`;
 
 function storedTabs(storage: KeyValueStorage | undefined, key: string): TabsSnapshot | undefined {
     const stored = readStored(storage, key) as Partial<TabsSnapshot> | undefined;

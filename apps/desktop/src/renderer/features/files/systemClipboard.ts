@@ -54,7 +54,7 @@ export function systemFileClipboard(bridge: ClipboardBridge, root: string): File
     };
 }
 
-/** The clipboard of a folder's file manager: the system's in the desktop app, none in a page that is not (a browser has no way to name a file of the disk). */
+/** The clipboard of a place's file manager (`root` is its path on the disk): the system's in the desktop app, none in a page that is not (a browser has no way to name a file of the disk). */
 export function clipboardOf(root: string | undefined): FileClipboard | undefined {
     const bridge = window.desktop;
 
