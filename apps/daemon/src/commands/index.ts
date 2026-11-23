@@ -5,6 +5,7 @@ import { projectHandlers } from './project';
 import { runHandlers } from './run';
 import { skillsHandlers } from './skills';
 import { taskHandlers } from './task';
+import { workspaceHandlers } from './workspace';
 
 import type { Command, CommandResult } from '@clowdy/protocol';
 import type { Store } from '../store';
@@ -12,7 +13,7 @@ import type { AsyncHandlers, CommandOf, Handlers, Services, SometimesAsyncComman
 
 export type { Services } from './context';
 
-const handlers: Handlers = { ...projectHandlers, ...chatHandlers, ...taskHandlers, ...runHandlers, ...skillsHandlers, ...agentsHandlers };
+const handlers: Handlers = { ...projectHandlers, ...chatHandlers, ...taskHandlers, ...runHandlers, ...skillsHandlers, ...agentsHandlers, ...workspaceHandlers };
 const asyncHandlers: AsyncHandlers = { ...chatAsyncHandlers };
 
 /** When a command that has both kinds of handler takes the async one: a delete that removes the chat's worktree waits for git, a plain delete does not. */

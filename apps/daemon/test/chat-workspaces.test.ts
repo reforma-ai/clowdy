@@ -6,11 +6,12 @@ import { join, sep } from 'node:path';
 import { getChat } from '../src/db/chats';
 import { listItems } from '../src/db/items';
 import { getProject } from '../src/db/projects';
-import { chatsOfWorkspace, getWorkspace, listWorkspacesOfProject, updateWorkspace } from '../src/db/workspaces';
+import { chatsOfWorkspace, getWorkspace, insertWorkspace, listWorkspacesOfProject, updateWorkspace } from '../src/db/workspaces';
 import { runLines } from '../src/domain/lines';
-import { chatKey, needsPreparing, placeOf, prepareWorkspace, projectSlug, samePlace, WORKSPACE_TOOL, workspaceLayout } from '../src/domain/workspaces';
+import { chatKey, IDLE_WORKSPACE_MS, needsPreparing, placeOf, prepareWorkspace, projectSlug, samePlace, WORKSPACE_TOOL, workspaceLayout } from '../src/domain/workspaces';
 import { copySetupFiles, setupShell } from '../src/domain/workspaceSetup';
 import { baseOf } from '../src/git/state';
+import { newId } from '../src/ids';
 import { toolsFor } from '../src/runs/tools';
 import { cleanTempDirs, command, git, latch, makeRepo, ScriptEngine, scriptEngines, SHORT_TIMINGS, startHarness, tempDir, waitFor } from './helpers';
 
@@ -314,6 +315,163 @@ describe('chat.create with a workspace', () => {
         expect(await post({ mode: 'existing' })).toBe(400);
         expect(await post({ mode: 'new', base: '' })).toBe(400);
         expect(await post({ mode: 'new' })).toBe(200);
+    });
+});
+
+describe('workspace.open', () => {
+    /** A repository's worktree made by hand, as a person or another tool makes one. */
+    const addTree = (repo: string, root: string, name: string) => {
+        const tree = join(root, name);
+
+        git(repo, 'worktree', 'add', '-q', '-b', name, tree);
+
+        return tree;
+    };
+    const open = (h: Harness, projectId: string, path: string, extra: Record<string, unknown> = {}) => h.send('workspace.open', { projectId, path, ...extra });
+
+    test('answers the row of a worktree git lists, found and ready, with no chat, and the places read the worktree through it', async () => {
+        const { h, project, folder, repo, root } = await setup();
+        const tree = addTree(repo, root, 'feature-tree');
+
+        writeFileSync(join(tree, 'only-here.txt'), 'x\n');
+
+        const { workspace } = h.ok('workspace.open', { projectId: project.id, path: tree }) as { workspace: Chat['workspace'] };
+
+        expect(workspace).toEqual({ id: expect.stringMatching(/^wks_/), folderId: folder.id, path: realpathSync(tree), branch: 'feature-tree', managed: false, ready: true });
+        expect(chatsOfWorkspace(h.store.db, workspace!.id)).toEqual([]);
+        // Asking again answers the same row, however the path is spelled.
+        expect((h.ok('workspace.open', { projectId: project.id, path: join(tree, '..', 'feature-tree'), folderId: folder.id }) as { workspace: Chat['workspace'] }).workspace).toEqual(workspace);
+        expect(listWorkspacesOfProject(h.store.db, project.id)).toHaveLength(1);
+
+        // The file system reads the worktree through the row before any chat works there.
+        const listed = await (await h.fetch(`/v1/projects/${ project.id }/fs/list?folderId=${ folder.id }&workspaceId=${ workspace!.id }&path=`)).json() as Array<{ path: string }>;
+
+        expect(listed.map(entry => entry.path)).toContain('only-here.txt');
+    });
+
+    test('is the row the chat made with the same path later shares, so the id is the same before and after the first message', async () => {
+        const { h, project, repo, root, make, send } = await setup();
+        const tree = addTree(repo, root, 'feature-tree');
+        const { workspace } = h.ok('workspace.open', { projectId: project.id, path: tree }) as { workspace: NonNullable<Chat['workspace']> };
+        const chat = make({ mode: 'existing', path: tree });
+
+        expect(chat.workspace).toEqual(workspace);
+        expect(chatsOfWorkspace(h.store.db, workspace.id)).toEqual([chat.id]);
+        expect(listWorkspacesOfProject(h.store.db, project.id)).toHaveLength(1);
+        // The other way round: the row a chat made is the one a page is given.
+        expect((h.ok('workspace.open', { projectId: project.id, path: tree }) as { workspace: Chat['workspace'] }).workspace).toEqual(workspace);
+        // A worktree Clowdy made for a chat is the chat's own row, whoever asks, once its first turn has made it; before that git does not list it.
+        const own = make({ mode: 'new' });
+
+        expect(open(h, project.id, own.workspace!.path)).toMatchObject({ ok: false, error: { code: 'invalid' } });
+
+        await send(own, 'Work on it');
+
+        expect((h.ok('workspace.open', { projectId: project.id, path: own.workspace!.path }) as { workspace: Chat['workspace'] }).workspace).toEqual({ ...own.workspace!, ready: true });
+        expect(listWorkspacesOfProject(h.store.db, project.id)).toHaveLength(2);
+    });
+
+    test('takes the folder of the project it is asked for, and the main one when none is named', async () => {
+        const { h, project, root } = await setup();
+        const api = makeRepo(root, 'shop-api');
+        const folders = (h.ok('project.update', { projectId: project.id, folders: [{ id: project.folders[0].id }, { path: api }] }) as { project: Project }).project.folders;
+        const tree = addTree(api, root, 'api-tree');
+
+        expect((h.ok('workspace.open', { projectId: project.id, path: tree, folderId: folders[1].id }) as { workspace: Chat['workspace'] }).workspace).toMatchObject({ folderId: folders[1].id, path: realpathSync(tree) });
+        expect(open(h, project.id, tree)).toMatchObject({ ok: false, error: { code: 'invalid', message: `${ tree } is not a worktree of this repository` } });
+    });
+
+    test('refuses what chat.create refuses of an existing worktree, and makes no row', async () => {
+        const { h, project, repo, root } = await setup();
+        const stray = join(root, 'stray');
+        const gone = addTree(repo, root, 'gone-tree');
+
+        mkdirSync(stray);
+        rmSync(gone, { recursive: true });
+
+        expect(open(h, project.id, stray)).toMatchObject({ ok: false, error: { code: 'invalid', message: `${ stray } is not a worktree of this repository` } });
+        expect(open(h, project.id, repo)).toMatchObject({ ok: false, error: { code: 'invalid', message: 'That is the folder itself, not a worktree of it' } });
+        expect(open(h, project.id, 'feature-tree')).toMatchObject({ ok: false, error: { code: 'invalid', message: 'The path of a worktree must be absolute' } });
+        expect(open(h, project.id, gone)).toMatchObject({ ok: false, error: { code: 'invalid', message: `The worktree ${ gone } is gone from the disk` } });
+        expect(open(h, project.id, stray, { folderId: 'fld_unknown' })).toMatchObject({ ok: false, error: { code: 'invalid' } });
+        expect(open(h, 'prj_unknown', stray)).toMatchObject({ ok: false, error: { code: 'not_found' } });
+        expect(h.store.db.query('SELECT COUNT(*) AS n FROM workspaces').get()).toEqual({ n: 0 });
+    });
+
+    test('refuses a folder of another project and a folder that is no repository', async () => {
+        const { h, project, root, repo } = await setup();
+        const tree = addTree(repo, root, 'feature-tree');
+        const plain = join(root, 'notes');
+
+        mkdirSync(plain);
+
+        const { project: other } = h.ok('project.add', { name: 'Notes', folders: [plain] }) as { project: Project };
+
+        // The folder of Notes is not one of Shop's, and Notes' own folder has no repository to list worktrees of.
+        expect(open(h, project.id, tree, { folderId: other.folders[0].id })).toMatchObject({ ok: false, error: { code: 'invalid' } });
+        expect(open(h, other.id, tree)).toMatchObject({ ok: false, error: { code: 'invalid', message: 'A worktree needs the root of a git repository, and this folder is not one' } });
+        expect(h.store.db.query('SELECT COUNT(*) AS n FROM workspaces').get()).toEqual({ n: 0 });
+    });
+
+    test('drops, when it is asked, the rows of the project that nobody uses and Clowdy did not make once a day has passed, and nothing else', async () => {
+        const { h, project, folder, repo, root, make } = await setup();
+        const idle = addTree(repo, root, 'idle-tree');
+        const young = addTree(repo, root, 'young-tree');
+        const used = addTree(repo, root, 'used-tree');
+        const fresh = addTree(repo, root, 'fresh-tree');
+        const rowOf = (path: string) => (h.ok('workspace.open', { projectId: project.id, path }) as { workspace: NonNullable<Chat['workspace']> }).workspace;
+        const old = Date.now() - IDLE_WORKSPACE_MS - 60_000;
+        const age = (id: string, createdAt: number) => h.store.db.query('UPDATE workspaces SET created_at = ? WHERE id = ?').run(createdAt, id);
+        const ids = () => listWorkspacesOfProject(h.store.db, project.id).map(record => record.id);
+
+        const idleRow = rowOf(idle);
+        const youngRow = rowOf(young);
+        const usedRow = rowOf(used);
+
+        make({ mode: 'existing', path: used });
+        // A worktree Clowdy made whose chat is gone: kept, whoever removes it knows it.
+        const managedId = newId('wks');
+
+        insertWorkspace(h.store.db, { id: managedId, projectId: project.id, folderId: folder.id, path: join(h.config.workspacesDir, 'shop', 'x', 'shop-web'), base: 'main', managed: true, ready: true, createdAt: old });
+        age(idleRow.id, old);
+        age(usedRow.id, old);
+        age(youngRow.id, Date.now() - IDLE_WORKSPACE_MS + 60_000);
+
+        // A project of its own has its own rows, which a call for Shop leaves alone.
+        const notes = makeRepo(root, 'notes-repo');
+        const { project: other } = h.ok('project.add', { name: 'Notes', folders: [notes] }) as { project: Project };
+        const otherTree = addTree(notes, root, 'notes-tree');
+        const otherRow = (h.ok('workspace.open', { projectId: other.id, path: otherTree }) as { workspace: NonNullable<Chat['workspace']> }).workspace;
+
+        age(otherRow.id, old);
+
+        rowOf(fresh);
+
+        expect(ids()).not.toContain(idleRow.id);
+        expect(ids()).toEqual(expect.arrayContaining([youngRow.id, usedRow.id, managedId]));
+        expect(getWorkspace(h.store.db, otherRow.id)).toBeDefined();
+        // The worktree on the disk is not touched.
+        expect(existsSync(idle)).toBe(true);
+        // Asking for the dropped worktree again makes a new row.
+        expect(rowOf(idle).id).not.toBe(idleRow.id);
+    });
+
+    test('answers a repeated request with the first answer, and refuses a request the schema does not know over HTTP', async () => {
+        const { h, project, repo, root } = await setup();
+        const tree = addTree(repo, root, 'feature-tree');
+        const same = command('workspace.open', { projectId: project.id, path: tree });
+        const post = async (body: unknown) => {
+            const response = await h.fetch('/v1/commands', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+
+            return { status: response.status, body: await response.json() as { data?: { workspace: { id: string } } } };
+        };
+        const first = await post(same);
+        const again = await post(same);
+
+        expect(first.status).toBe(200);
+        expect(again.body).toEqual(first.body);
+        expect((await post(command('workspace.open', { projectId: project.id }))).status).toBe(400);
+        expect((await post(command('workspace.open', { projectId: project.id, path: '' }))).status).toBe(400);
     });
 });
 

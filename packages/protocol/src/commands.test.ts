@@ -86,6 +86,26 @@ describe('task.archive and task.unarchive', () => {
     });
 });
 
+describe('workspace.open', () => {
+    const open = (fields: Record<string, unknown>) => ({ ...base, type: 'workspace.open', projectId: 'p1', ...fields });
+
+    test('takes the project and the path of a worktree, and a folder of the project when it is not the main one', () => {
+        expect(commandSchema.safeParse(open({ path: '/work/shop-tree' })).success).toBe(true);
+        expect(commandSchema.safeParse(open({ path: '/work/shop-tree', folderId: 'f2' })).success).toBe(true);
+    });
+
+    test('needs the project and a path, and a folder that is named is not empty', () => {
+        expect(commandSchema.safeParse({ ...base, type: 'workspace.open', path: '/work/shop-tree' }).success).toBe(false);
+        expect(commandSchema.safeParse(open({})).success).toBe(false);
+        expect(commandSchema.safeParse(open({ path: '' })).success).toBe(false);
+        expect(commandSchema.safeParse(open({ path: '/work/shop-tree', folderId: '' })).success).toBe(false);
+    });
+
+    test('has no say in anything else: a field that is not part of the command is dropped on parsing', () => {
+        expect(commandSchema.parse(open({ path: '/work/shop-tree', managed: true }))).not.toHaveProperty('managed');
+    });
+});
+
 describe('project.updateFolder', () => {
     const update = (settings: unknown) => ({ ...base, type: 'project.updateFolder', projectId: 'p1', folderId: 'f1', settings });
 

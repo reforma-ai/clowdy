@@ -77,6 +77,15 @@ export const commandSchema = z.discriminatedUnion('type', [
     /** Puts the projects in this order, after the personal space. A project that is not listed keeps its place below the listed ones; an unknown id is refused. */
     z.object({ ...base, type: z.literal('project.reorder'), projectIds: z.array(z.string()).max(1000) }),
 
+    /* Workspaces */
+    /**
+     * Answers `{ workspace }`, the row of a worktree that exists already, so a page can show its files and shells before the chat that works there is made: the one every
+     * chat of that worktree shares (made if there is none; one that no chat points at is dropped after a day), so `chat.create` with the same `{ mode: 'existing', path }`
+     * gets the same `workspace.id`. `folderId` is the folder of the project the worktree belongs to (the main folder when left out). The same refusals as `chat.create`
+     * with that choice: a folder that is not the root of a repository, a path that is not absolute, not a worktree of the folder or the folder itself.
+     */
+    z.object({ ...base, type: z.literal('workspace.open'), projectId: z.string(), folderId: z.string().min(1).optional(), path: z.string().min(1) }),
+
     /* Chats */
     /**
      * `engine`, `model` and `effort` bind the chat to an agent, a model and a reasoning level (see `Chat`); left out, the first message takes the project's or the daemon's.

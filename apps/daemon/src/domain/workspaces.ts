@@ -5,7 +5,7 @@ import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 
 import { getChat } from '../db/chats';
 import { getProject } from '../db/projects';
-import { chatsOfWorkspace, getWorkspace, insertWorkspace, listWorkspacesOfProject, toChatWorkspace, updateWorkspace } from '../db/workspaces';
+import { chatsOfWorkspace, deleteWorkspace, getWorkspace, insertWorkspace, listWorkspacesOfProject, toChatWorkspace, updateWorkspace } from '../db/workspaces';
 import { invalid, notFound } from '../errors';
 import { parseBranches, parseWorktrees, pickBase, pickDefaultBranch } from '../git/state';
 import { newId } from '../ids';
@@ -270,10 +270,17 @@ export interface WorkspaceRequest {
  */
 export function createWorkspace(store: Store, config: Pick<Config, 'workspacesDir'>, request: WorkspaceRequest): ChatWorkspace {
     const { project, chatId, choice } = request;
-    const folder = request.folderId === undefined ? mainFolder(project) : project.folders.find(candidate => candidate.id === request.folderId);
+    const folder = repositoryFolder(project, request.folderId);
+
+    return choice.mode === 'new' ? createNewWorkspace(store, config, project, folder, chatId, choice.base) : openExistingWorkspace(store, project, folder, choice.path);
+}
+
+/** The folder a worktree is made from: the given folder of the project, else its main one, and it has to be on the disk and the root of a repository (`invalid` otherwise). */
+function repositoryFolder(project: Project, folderId: string | undefined): ProjectFolder {
+    const folder = folderId === undefined ? mainFolder(project) : project.folders.find(candidate => candidate.id === folderId);
 
     if (!folder) {
-        throw invalid(`Folder ${ request.folderId } does not belong to project ${ project.id }`);
+        throw invalid(`Folder ${ folderId } does not belong to project ${ project.id }`);
     }
 
     if (!existsSync(folder.path)) {
@@ -284,7 +291,34 @@ export function createWorkspace(store: Store, config: Pick<Config, 'workspacesDi
         throw invalid('A worktree needs the root of a git repository, and this folder is not one');
     }
 
-    return choice.mode === 'new' ? createNewWorkspace(store, config, project, folder, chatId, choice.base) : createExistingWorkspace(store, project, folder, choice.path);
+    return folder;
+}
+
+/** How long a row that no chat points at is kept by `openWorkspace`: a draft that chose the worktree is open for minutes, a day is generous. */
+export const IDLE_WORKSPACE_MS = 24 * 60 * 60_000;
+
+/**
+ * The row of a worktree that exists already (one `git worktree list` of the folder names, not the folder itself), made if there is none and otherwise the one every
+ * chat that works there shares, so a chat made later with `{ mode: 'existing', path }` gets the same id (`workspace.open`: the new-chat page asks for the row before the chat
+ * exists, to show the worktree's files and shells in its places). The same refusals as `chat.create` with that choice. Rows that no chat points at (a page that asked and
+ * was left) would stay for good, since a row goes only with its last chat: the ones that Clowdy did not make and that are older than `IDLE_WORKSPACE_MS` are dropped first.
+ * Call it inside a transaction.
+ */
+export function openWorkspace(store: Store, project: Project, folderId: string | undefined, path: string, now = Date.now()): ChatWorkspace {
+    const folder = repositoryFolder(project, folderId);
+
+    dropIdleWorkspaces(store, project.id, now);
+
+    return openExistingWorkspace(store, project, folder, path);
+}
+
+/** Drops the project's rows that nobody uses and Clowdy did not make: the worktree on the disk is not touched, and a managed one is kept for whoever removes it. */
+function dropIdleWorkspaces(store: Store, projectId: string, now: number): void {
+    for (const record of listWorkspacesOfProject(store.db, projectId)) {
+        if (!record.managed && now - record.createdAt > IDLE_WORKSPACE_MS && chatsOfWorkspace(store.db, record.id).length === 0) {
+            deleteWorkspace(store.db, record.id);
+        }
+    }
 }
 
 function createNewWorkspace(store: Store, config: Pick<Config, 'workspacesDir'>, project: Project, folder: ProjectFolder, chatId: string, requested: string | undefined): ChatWorkspace {
@@ -305,7 +339,7 @@ function createNewWorkspace(store: Store, config: Pick<Config, 'workspacesDir'>,
     return toChatWorkspace(record);
 }
 
-function createExistingWorkspace(store: Store, project: Project, folder: ProjectFolder, path: string): ChatWorkspace {
+function openExistingWorkspace(store: Store, project: Project, folder: ProjectFolder, path: string): ChatWorkspace {
     if (!isAbsolute(path)) {
         throw invalid('The path of a worktree must be absolute');
     }
