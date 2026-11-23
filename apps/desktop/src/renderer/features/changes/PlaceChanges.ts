@@ -104,10 +104,11 @@ export class PlaceChanges {
 
     /**
      * The files whose changes can be discarded from the scope that is shown, by path: the place's uncommitted files in `all` and `uncommitted`, and none in the branch or a commit (`discardableFiles`).
-     * What each maps to is the file's uncommitted entry, which is what a discard acts on and the dialog speaks of.
+     * What each maps to is the file's uncommitted entry, which is what a discard acts on and the dialog speaks of. None while the branch is being changed.
      */
     get discardable(): ReadonlyMap<string, GitChangedFile> {
-        return discardableFiles(this.effectiveScope, this.uncommitted);
+        // While the branch is being changed what is uncommitted is in motion: nothing is offered until the list is read again.
+        return this.facts.switching ? new Map() : discardableFiles(this.effectiveScope, this.uncommitted);
     }
 
     /** Whether the place is a repository: the status says it, and so does a list that was read. `undefined` until one has answered. */
