@@ -1,3 +1,4 @@
+import { calendarDayDiff } from '@clowdy/lib/date';
 import { folderNames, isTerminalRunStatus, mainFolder, shownRunStatus, type Chat, type ChatId, type FolderId, type ProjectFolder, type Run, type RunId } from '@clowdy/protocol';
 
 import { isRunActive } from '../chats/chatRun';
@@ -184,6 +185,50 @@ export function archivedChats(chatList: readonly Chat[]): (Chat & { archivedAt: 
     return chatList
         .filter((chat): chat is Chat & { archivedAt: number } => chat.archivedAt !== undefined && (chat.parentChatId === undefined || !archived.has(chat.parentChatId)))
         .sort((a, b) => b.archivedAt - a.archivedAt);
+}
+
+export type ArchiveGroupId = 'today' | 'yesterday' | 'week' | 'older';
+
+/** The archive's chats put away in one stretch of days, under its title. */
+export interface ArchiveGroup {
+    id: ArchiveGroupId;
+    title: string;
+    chats: (Chat & { archivedAt: number })[];
+}
+
+const ARCHIVE_GROUP_TITLES: Record<ArchiveGroupId, string> = {
+    today: 'Today',
+    yesterday: 'Yesterday',
+    week: 'Last 7 days',
+    older: 'Older',
+};
+
+/** The group of a chat put away `days` calendar days ago: a moment ahead of the clock is today. */
+function archiveGroupOf(days: number): ArchiveGroupId {
+    if (days <= 0) return 'today';
+
+    if (days === 1) return 'yesterday';
+
+    return days <= 7 ? 'week' : 'older';
+}
+
+/**
+ * The archive's chats (`archivedChats`) in groups by the calendar day they were put away: today, yesterday, the 7 days before, and older. The order of the chats is
+ * kept, the last one first, and a group with no chat is left out. `now` is for tests.
+ */
+export function archiveGroups(chats: readonly (Chat & { archivedAt: number })[], now = Date.now()): ArchiveGroup[] {
+    const today = new Date(now);
+    const groups = new Map<ArchiveGroupId, ArchiveGroup>();
+
+    for (const chat of chats) {
+        const id = archiveGroupOf(calendarDayDiff(new Date(chat.archivedAt), today));
+        const group = groups.get(id) ?? { id, title: ARCHIVE_GROUP_TITLES[id], chats: [] };
+
+        group.chats.push(chat);
+        groups.set(id, group);
+    }
+
+    return (Object.keys(ARCHIVE_GROUP_TITLES) as ArchiveGroupId[]).flatMap(id => groups.get(id) ?? []);
 }
 
 /** The chats a thread sits below, nearest first: its parent, the parent's parent, up to the chat the person made. Empty for such a chat. */

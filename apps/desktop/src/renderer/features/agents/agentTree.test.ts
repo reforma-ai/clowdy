@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { agentGroups, agentRows, ancestorChats, archivedChats, chatDotTone, chatFolder, chatOfRun, draftTarget, folderById, groupFolderOf, isActiveThread, isFinishedThread, resolveSelection, visibleChats, type AgentRowsInput } from './agentTree';
+import { agentGroups, agentRows, ancestorChats, archivedChats, archiveGroups, chatDotTone, chatFolder, chatOfRun, draftTarget, folderById, groupFolderOf, isActiveThread, isFinishedThread, resolveSelection, visibleChats, type AgentRowsInput } from './agentTree';
 
 import type { Chat, ProjectFolder, Run, RunStatus } from '@clowdy/protocol';
 
@@ -120,6 +120,33 @@ describe('archivedChats', () => {
 
         expect(archivedChats(list).map(candidate => candidate.id)).toEqual(['chat-3', 'chat-1']);
         expect(archivedChats([chats[1]])).toEqual([]);
+    });
+});
+
+describe('archiveGroups', () => {
+    // 2026-11-22, early in the afternoon: yesterday begins 13 hours before, so a chat put away at 09:00 is today's and one at 23:00 the day before is yesterday's.
+    const now = new Date(2026, 10, 22, 13, 0).getTime();
+    const away = (id: string, days: number, hour = 12): Chat & { archivedAt: number } => ({ ...chat(id), archivedAt: new Date(2026, 10, 22 - days, hour).getTime() });
+    const shape = (list: readonly (Chat & { archivedAt: number })[]) => archiveGroups(list, now).map(group => [group.id, group.title, group.chats.map(candidate => candidate.id)]);
+
+    it('has today, yesterday, the 7 days before and older, by the calendar day, with the chats in the order they came in', () => {
+        const list = [away('a', 0, 9), away('b', 0, 2), away('c', 1, 23), away('d', 2), away('e', 7), away('f', 8), away('g', 90)];
+
+        expect(shape(list)).toEqual([
+            ['today', 'Today', ['a', 'b']],
+            ['yesterday', 'Yesterday', ['c']],
+            ['week', 'Last 7 days', ['d', 'e']],
+            ['older', 'Older', ['f', 'g']],
+        ]);
+    });
+
+    it('leaves out a group with no chat', () => {
+        expect(shape([away('a', 0), away('b', 30)])).toEqual([['today', 'Today', ['a']], ['older', 'Older', ['b']]]);
+        expect(shape([])).toEqual([]);
+    });
+
+    it('takes a moment ahead of the clock for today', () => {
+        expect(shape([{ ...chat('a'), archivedAt: now + 5 * 60_000 }])).toEqual([['today', 'Today', ['a']]]);
     });
 });
 
