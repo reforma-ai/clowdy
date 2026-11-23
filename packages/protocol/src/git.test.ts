@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 
-import { commitScope, parseGitScope, ROUTES, type GitStatus } from './index';
+import { commitScope, type GitStatus, parseGitScope, ROUTES } from './index';
 
 describe('parseGitScope', () => {
     test('takes the three words and a commit by its hash, short or whole, in any case', () => {
@@ -52,7 +52,12 @@ describe('ROUTES git writes', () => {
 });
 
 describe('GitStatus.lastFetchedAt', () => {
-    const repository = { isRepository: true, head: { kind: 'branch', name: 'main', commit: 'a'.repeat(40) }, origin: true, base: { state: 'unborn' } } as const;
+    const repository = {
+        isRepository: true,
+        head: { kind: 'branch', name: 'main', commit: 'a'.repeat(40) },
+        origin: true,
+        base: { state: 'unborn' },
+    } as const;
 
     test('is the time of the last fetch in milliseconds, and is left out of a repository that has never fetched', () => {
         const fetched: GitStatus = { ...repository, entries: [], lastFetchedAt: 1_700_000_000_000 };

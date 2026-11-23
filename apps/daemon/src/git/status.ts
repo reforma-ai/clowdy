@@ -5,7 +5,15 @@ import { unavailable } from '../errors';
 import { lastFetchedAt } from './lastFetch';
 import { baseOf, workingTreeRoot } from './state';
 
-import type { GitBase, GitChangeKind, GitCommit, GitHead, GitStatus, GitStatusEntry, GitUpstream } from '@clowdy/protocol';
+import type {
+    GitBase,
+    GitChangeKind,
+    GitCommit,
+    GitHead,
+    GitStatus,
+    GitStatusEntry,
+    GitUpstream,
+} from '@clowdy/protocol';
 import type { Place } from '../domain/places';
 
 /** A `status` of a large tree may take a while; past this it is given up (`unavailable`). */
@@ -22,7 +30,7 @@ export interface BaseOptions {
 
 /** The commit a ref or a hash is at, nothing when it is not there. `ref` is a full ref name or a hash: a revision expression (`main~1`, `@{u}`) is never passed. */
 export async function commitAt(cwd: string, ref: string): Promise<string | undefined> {
-    return gitLine(cwd, ['rev-parse', '--verify', '--quiet', `${ ref }^{commit}`]);
+    return gitLine(cwd, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]);
 }
 
 /** Whether `ancestor` is `descendant` or one of the commits it is built on. */
@@ -66,17 +74,22 @@ export async function resolveRef(cwd: string, name: string): Promise<ResolvedRef
         return commit ? { name: shortRef(name), commit } : undefined;
     }
 
-    const [local, remote, tracked] = await Promise.all([commitAt(cwd, `refs/heads/${ name }`), commitAt(cwd, `refs/remotes/${ name }`), commitAt(cwd, `refs/remotes/origin/${ name }`)]);
+    const [local, remote, tracked] = await Promise.all([
+        commitAt(cwd, `refs/heads/${name}`),
+        commitAt(cwd, `refs/remotes/${name}`),
+        commitAt(cwd, `refs/remotes/origin/${name}`),
+    ]);
 
     if (local) {
-        if (tracked && (tracked === local || await isAncestor(cwd, local, tracked))) return { name: `origin/${ name }`, commit: tracked };
+        if (tracked && (tracked === local || (await isAncestor(cwd, local, tracked))))
+            return { name: `origin/${name}`, commit: tracked };
 
         return { name, commit: local };
     }
 
     if (remote) return { name, commit: remote };
 
-    if (tracked) return { name: `origin/${ name }`, commit: tracked };
+    if (tracked) return { name: `origin/${name}`, commit: tracked };
 
     if (/^[0-9a-f]{7,40}$/i.test(name)) {
         const commit = await commitAt(cwd, name);
@@ -103,7 +116,9 @@ export async function mergeBaseOf(place: Place, options: BaseOptions = {}): Prom
 
     if (!head) return { state: 'unborn' };
 
-    const asked = [options.base, place.workspace?.base].filter((name): name is string => name !== undefined && name !== '');
+    const asked = [options.base, place.workspace?.base].filter(
+        (name): name is string => name !== undefined && name !== ''
+    );
     let base: ResolvedRef | undefined;
 
     for (const name of asked) {
@@ -127,7 +142,9 @@ export async function mergeBaseOf(place: Place, options: BaseOptions = {}): Prom
 
     const mergeBase = await gitLine(cwd, ['merge-base', base.commit, head]);
 
-    return mergeBase ? { state: 'ready', name: base.name, commit: base.commit, mergeBase, head } : { state: 'no_merge_base', name: base.name, commit: base.commit };
+    return mergeBase
+        ? { state: 'ready', name: base.name, commit: base.commit, mergeBase, head }
+        : { state: 'no_merge_base', name: base.name, commit: base.commit };
 }
 
 /** A read of git that must have an answer to go on: where git said nothing, it did not answer. */
@@ -139,11 +156,20 @@ function required<T>(value: T | undefined): T {
 
 /** The commits `git log -z --format=%H%x1f%an%x1f%ct%x1f%s` printed, newest first. */
 export function parseCommits(output: string): GitCommit[] {
-    return output.split('\0').filter(record => record !== '').map((record) => {
-        const [sha = '', author = '', time = '0', ...subject] = record.split('\x1f');
+    return output
+        .split('\0')
+        .filter(record => record !== '')
+        .map(record => {
+            const [sha = '', author = '', time = '0', ...subject] = record.split('\x1f');
 
-        return { sha, shortSha: sha.slice(0, 7), subject: subject.join('\x1f'), author, committedAt: Number(time) * 1000 };
-    });
+            return {
+                sha,
+                shortSha: sha.slice(0, 7),
+                subject: subject.join('\x1f'),
+                author,
+                committedAt: Number(time) * 1000,
+            };
+        });
 }
 
 /** How the branch stands against its base: `mergeBaseOf`, with the commits counted and listed when there is a base. */
@@ -155,8 +181,20 @@ export async function readBase(place: Place, options: BaseOptions = {}): Promise
     const { name, commit, mergeBase, head } = merged;
     const cwd = place.path;
     const [counts, log] = await Promise.all([
-        gitLine(cwd, ['rev-list', '--left-right', '--count', `${ commit }...${ head }`]),
-        gitRead(cwd, ['log', '-z', '--no-color', '--no-show-signature', `--max-count=${ MAX_GIT_COMMITS }`, '--format=%H%x1f%an%x1f%ct%x1f%s', `${ commit }..${ head }`], { parsed: true }),
+        gitLine(cwd, ['rev-list', '--left-right', '--count', `${commit}...${head}`]),
+        gitRead(
+            cwd,
+            [
+                'log',
+                '-z',
+                '--no-color',
+                '--no-show-signature',
+                `--max-count=${MAX_GIT_COMMITS}`,
+                '--format=%H%x1f%an%x1f%ct%x1f%s',
+                `${commit}..${head}`,
+            ],
+            { parsed: true }
+        ),
     ]);
     const [behind = 0, ahead = 0] = required(counts).split(/\s+/).map(Number);
 
@@ -175,7 +213,15 @@ export interface ParsedStatus {
     entries: GitStatusEntry[];
 }
 
-const KINDS: Record<string, GitChangeKind> = { A: 'added', M: 'modified', D: 'deleted', R: 'renamed', C: 'copied', T: 'typechange', U: 'conflicted' };
+const KINDS: Record<string, GitChangeKind> = {
+    A: 'added',
+    M: 'modified',
+    D: 'deleted',
+    R: 'renamed',
+    C: 'copied',
+    T: 'typechange',
+    U: 'conflicted',
+};
 
 /** A status letter of git (`M`, `A`, `D`, `R`, `C`, `T`, `U`) as a change; `.` (nothing) and a letter git may add one day are none. */
 export function kindOf(letter: string | undefined): GitChangeKind | undefined {
@@ -215,21 +261,17 @@ export function parseStatus(records: readonly string[]): ParsedStatus {
             const commit = record.slice('# branch.oid '.length);
 
             if (commit !== '(initial)') parsed.commit = commit;
-        }
-        else if (record.startsWith('# branch.head ')) {
+        } else if (record.startsWith('# branch.head ')) {
             const branch = record.slice('# branch.head '.length);
 
             if (branch !== '(detached)') parsed.branch = branch;
-        }
-        else if (record.startsWith('# branch.upstream ')) {
+        } else if (record.startsWith('# branch.upstream ')) {
             upstream = record.slice('# branch.upstream '.length);
-        }
-        else if (record.startsWith('# branch.ab ')) {
+        } else if (record.startsWith('# branch.ab ')) {
             const found = /^\+(\d+) -(\d+)$/.exec(record.slice('# branch.ab '.length));
 
             if (found) counts = { ahead: Number(found[1]), behind: Number(found[2]) };
-        }
-        else if (record.startsWith('1 ') || record.startsWith('2 ')) {
+        } else if (record.startsWith('1 ') || record.startsWith('2 ')) {
             const fields = fieldsOf(record, record.startsWith('1 ') ? 8 : 9);
             const xy = fields[1];
             const path = fields.at(-1);
@@ -240,20 +282,29 @@ export function parseStatus(records: readonly string[]): ParsedStatus {
             const unstaged = kindOf(xy[1]);
             const oldPath = record.startsWith('2 ') ? records[++index] : undefined;
 
-            parsed.entries.push({ path, ...(oldPath !== undefined && { oldPath }), ...(staged && { staged }), ...(unstaged && { unstaged }) });
-        }
-        else if (record.startsWith('u ')) {
+            parsed.entries.push({
+                path,
+                ...(oldPath !== undefined && { oldPath }),
+                ...(staged && { staged }),
+                ...(unstaged && { unstaged }),
+            });
+        } else if (record.startsWith('u ')) {
             const path = fieldsOf(record, 10).at(-1);
 
             if (path !== undefined) parsed.entries.push({ path, unstaged: 'conflicted' });
-        }
-        else if (record.startsWith('? ')) {
+        } else if (record.startsWith('? ')) {
             parsed.entries.push({ path: record.slice(2), untracked: true });
         }
     }
 
     // `# branch.ab` is left out for an upstream that is named but gone.
-    if (upstream !== undefined) parsed.upstream = { name: upstream, ahead: counts?.ahead ?? 0, behind: counts?.behind ?? 0, ...(counts === undefined && { gone: true as const }) };
+    if (upstream !== undefined)
+        parsed.upstream = {
+            name: upstream,
+            ahead: counts?.ahead ?? 0,
+            behind: counts?.behind ?? 0,
+            ...(counts === undefined && { gone: true as const }),
+        };
 
     return parsed;
 }
@@ -273,10 +324,14 @@ async function hasOrigin(cwd: string): Promise<boolean> {
 export async function placeStatus(place: Place, options: BaseOptions = {}): Promise<GitStatus> {
     const cwd = place.path;
 
-    if (!await workingTreeRoot(cwd)) return { isRepository: false };
+    if (!(await workingTreeRoot(cwd))) return { isRepository: false };
 
     const [status, origin, base, fetched] = await Promise.all([
-        gitRecords(cwd, ['status', '--porcelain=v2', '--branch', '-z', '--untracked-files=all', '--ahead-behind'], { maxRecords: STATUS_RECORDS, timeoutMs: STATUS_TIMEOUT_MS, parsed: true }),
+        gitRecords(cwd, ['status', '--porcelain=v2', '--branch', '-z', '--untracked-files=all', '--ahead-behind'], {
+            maxRecords: STATUS_RECORDS,
+            timeoutMs: STATUS_TIMEOUT_MS,
+            parsed: true,
+        }),
         hasOrigin(cwd),
         readBase(place, options),
         lastFetchedAt(cwd),
@@ -285,9 +340,12 @@ export async function placeStatus(place: Place, options: BaseOptions = {}): Prom
     if (!status.ok) throw unavailable('git did not answer');
 
     const { commit, branch, upstream, entries } = parseStatus(status.records);
-    const head: GitHead = branch === undefined
-        ? { kind: 'detached', commit: commit ?? '' }
-        : commit === undefined ? { kind: 'unborn', name: branch } : { kind: 'branch', name: branch, commit };
+    const head: GitHead =
+        branch === undefined
+            ? { kind: 'detached', commit: commit ?? '' }
+            : commit === undefined
+              ? { kind: 'unborn', name: branch }
+              : { kind: 'branch', name: branch, commit };
     const truncated = status.truncated || entries.length > MAX_GIT_STATUS_ENTRIES;
 
     return {

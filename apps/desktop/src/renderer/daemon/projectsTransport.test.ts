@@ -1894,19 +1894,26 @@ describe('the time of the last fetch in the transports', () => {
     const place = { folderId: 'fld_car_rental' };
     const inWorktree = { ...place, workspaceId: 'wks_ab12cd34' };
     const MINUTE = 60_000;
-    const worktree = (remote?: FixtureGitWritesOptions['remote'], extra: Partial<FixtureGitWritesOptions> = {}) => new FixtureTransport({ data: withFixtureWorkspace(createFixtureData()), gitWrites: { remote, ...extra } });
-    const statusOf = async (transport: FixtureTransport, at: { folderId: string; workspaceId?: string } = inWorktree) => await transport.getGitStatus(FIXTURE_PROJECT_ID, at) as Extract<GitStatus, { isRepository: true }>;
+    const worktree = (remote?: FixtureGitWritesOptions['remote'], extra: Partial<FixtureGitWritesOptions> = {}) =>
+        new FixtureTransport({ data: withFixtureWorkspace(createFixtureData()), gitWrites: { remote, ...extra } });
+    const statusOf = async (transport: FixtureTransport, at: { folderId: string; workspaceId?: string } = inWorktree) =>
+        (await transport.getGitStatus(FIXTURE_PROJECT_ID, at)) as Extract<GitStatus, { isRepository: true }>;
 
     it('is passed on by the HTTP transport as the daemon sent it, and left out when the daemon says nothing', async () => {
-        const answers = [{ isRepository: true, origin: true, lastFetchedAt: 1_700_000_000_000 }, { isRepository: true, origin: true }];
+        const answers = [
+            { isRepository: true, origin: true, lastFetchedAt: 1_700_000_000_000 },
+            { isRepository: true, origin: true },
+        ];
         const fetchImpl = (async () => new Response(JSON.stringify(answers.shift()), { status: 200 })) as typeof fetch;
         const transport = new HttpTransport({ url: 'http://127.0.0.1:4310', token: 't', fetch: fetchImpl });
 
-        expect(await transport.getGitStatus('prj_a', { folderId: 'fld_b' })).toMatchObject({ lastFetchedAt: 1_700_000_000_000 });
+        expect(await transport.getGitStatus('prj_a', { folderId: 'fld_b' })).toMatchObject({
+            lastFetchedAt: 1_700_000_000_000,
+        });
         expect(await transport.getGitStatus('prj_a', { folderId: 'fld_b' })).not.toHaveProperty('lastFetchedAt');
     });
 
-    it('is three minutes ago in the fixtures, for the folder\'s own checkout and for a worktree alike, and a script can say the repository never fetched', async () => {
+    it("is three minutes ago in the fixtures, for the folder's own checkout and for a worktree alike, and a script can say the repository never fetched", async () => {
         const transport = worktree();
         const before = Date.now();
         const inCheckout = (await statusOf(transport, place)).lastFetchedAt!;
@@ -1953,7 +1960,10 @@ describe('the time of the last fetch in the transports', () => {
         expect(await statusOf(none)).not.toHaveProperty('lastFetchedAt');
 
         for (const act of [none.fetchGit, none.pullGit, none.pushGit]) {
-            await expect(act.call(none, FIXTURE_PROJECT_ID, inWorktree)).rejects.toMatchObject({ status: 400, message: 'The repository has no origin' });
+            await expect(act.call(none, FIXTURE_PROJECT_ID, inWorktree)).rejects.toMatchObject({
+                status: 400,
+                message: 'The repository has no origin',
+            });
         }
     });
 });
@@ -1961,13 +1971,27 @@ describe('the time of the last fetch in the transports', () => {
 describe('the states of the sync button in the fixtures', () => {
     const place = { folderId: 'fld_car_rental' };
     const inWorktree = { ...place, workspaceId: 'wks_ab12cd34' };
-    const worktree = (remote?: FixtureGitWritesOptions['remote'], extra: Partial<FixtureGitWritesOptions> = {}) => new FixtureTransport({ data: withFixtureWorkspace(createFixtureData()), gitWrites: { remote, ...extra } });
-    const statusOf = async (transport: FixtureTransport, at: { folderId: string; workspaceId?: string } = inWorktree) => await transport.getGitStatus(FIXTURE_PROJECT_ID, at) as Extract<GitStatus, { isRepository: true }>;
+    const worktree = (remote?: FixtureGitWritesOptions['remote'], extra: Partial<FixtureGitWritesOptions> = {}) =>
+        new FixtureTransport({ data: withFixtureWorkspace(createFixtureData()), gitWrites: { remote, ...extra } });
+    const statusOf = async (transport: FixtureTransport, at: { folderId: string; workspaceId?: string } = inWorktree) =>
+        (await transport.getGitStatus(FIXTURE_PROJECT_ID, at)) as Extract<GitStatus, { isRepository: true }>;
 
     it('has the branch ahead by 2 for `ahead`, level and published for `level` and `never`', async () => {
-        expect((await statusOf(worktree('ahead'))).upstream).toEqual({ name: 'origin/clowdy/ab12cd34', ahead: 2, behind: 0 });
-        expect((await statusOf(worktree('level'))).upstream).toEqual({ name: 'origin/clowdy/ab12cd34', ahead: 0, behind: 0 });
-        expect((await statusOf(worktree('never'))).upstream).toEqual({ name: 'origin/clowdy/ab12cd34', ahead: 0, behind: 0 });
+        expect((await statusOf(worktree('ahead'))).upstream).toEqual({
+            name: 'origin/clowdy/ab12cd34',
+            ahead: 2,
+            behind: 0,
+        });
+        expect((await statusOf(worktree('level'))).upstream).toEqual({
+            name: 'origin/clowdy/ab12cd34',
+            ahead: 0,
+            behind: 0,
+        });
+        expect((await statusOf(worktree('never'))).upstream).toEqual({
+            name: 'origin/clowdy/ab12cd34',
+            ahead: 0,
+            behind: 0,
+        });
     });
 
     it('puts HEAD on no branch for `detached` and gives the branch no commit for `unborn`, neither with an upstream', async () => {
@@ -1978,16 +2002,28 @@ describe('the states of the sync button in the fixtures', () => {
         expect(detached.upstream).toBeUndefined();
         expect(unborn.head).toEqual({ kind: 'unborn', name: 'clowdy/ab12cd34' });
         expect(unborn.upstream).toBeUndefined();
-        await expect(worktree('detached').pushGit(FIXTURE_PROJECT_ID, inWorktree)).rejects.toMatchObject({ status: 400, message: expect.stringContaining('HEAD is detached') });
-        await expect(worktree('unborn').pullGit(FIXTURE_PROJECT_ID, inWorktree)).rejects.toMatchObject({ status: 400, message: 'The branch has no commits yet' });
-        expect(await worktree('unborn').fetchGit(FIXTURE_PROJECT_ID, inWorktree)).toMatchObject({ state: 'done', action: 'fetch' });
+        await expect(worktree('detached').pushGit(FIXTURE_PROJECT_ID, inWorktree)).rejects.toMatchObject({
+            status: 400,
+            message: expect.stringContaining('HEAD is detached'),
+        });
+        await expect(worktree('unborn').pullGit(FIXTURE_PROJECT_ID, inWorktree)).rejects.toMatchObject({
+            status: 400,
+            message: 'The branch has no commits yet',
+        });
+        expect(await worktree('unborn').fetchGit(FIXTURE_PROJECT_ID, inWorktree)).toMatchObject({
+            state: 'done',
+            action: 'fetch',
+        });
     });
 
-    it('leaves a worktree with nothing uncommitted when it is clean, and the folder\'s own checkout as it was', async () => {
+    it("leaves a worktree with nothing uncommitted when it is clean, and the folder's own checkout as it was", async () => {
         const clean = worktree(undefined, { clean: true });
 
         expect((await statusOf(clean)).entries).toEqual([]);
-        expect(await clean.getGitChanges(FIXTURE_PROJECT_ID, inWorktree, 'uncommitted')).toMatchObject({ files: [], fileCount: 0 });
+        expect(await clean.getGitChanges(FIXTURE_PROJECT_ID, inWorktree, 'uncommitted')).toMatchObject({
+            files: [],
+            fileCount: 0,
+        });
         // What is committed on the branch is still there.
         expect(await clean.getGitChanges(FIXTURE_PROJECT_ID, inWorktree, 'branch')).toMatchObject({ fileCount: 4 });
         expect((await statusOf(clean, place)).entries).toEqual([]);

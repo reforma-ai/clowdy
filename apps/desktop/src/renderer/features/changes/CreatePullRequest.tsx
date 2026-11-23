@@ -3,25 +3,40 @@ import { Github } from '@clowdy/icons/logo';
 
 import { openEffects } from '../openWith';
 import { compareLink } from '../openWith/openTarget';
-import { branchOf, createPullRequest, githubBaseName, type CreatePullRequestState } from './changesActions';
 import styles from './CreatePullRequest.module.css';
+import { branchOf, type CreatePullRequestState, createPullRequest, githubBaseName } from './changesActions';
 import { useRemoteActions } from './useRemoteActions';
 
 import type { FolderGit } from '../openWith/openTarget';
 import type { PlaceFacts } from './gitFacts';
 
 /** What Create PR is for a place, and the compare page it opens: both from the place's git facts and what git says of the folder. Nothing until the pull request has been read once. */
-export function createPullRequestOf(facts: PlaceFacts, git: FolderGit | undefined): { state: CreatePullRequestState | undefined; link: string | undefined } {
+export function createPullRequestOf(
+    facts: PlaceFacts,
+    git: FolderGit | undefined
+): { state: CreatePullRequestState | undefined; link: string | undefined } {
     const status = facts.status.value;
     const repository = status?.isRepository === true ? status : undefined;
     // The page is about the branch as GitHub has it, which is the branch's own name: it is offered once the branch is published under it.
     const branch = repository && branchOf(repository);
     // A host of GitHub Enterprise is GitHub's when the person's `gh` is signed in to it, which is all the app can tell of it.
     const enterprise = facts.access === 'ready' ? facts.repo?.host : undefined;
-    const link = repository && branch !== undefined ? compareLink(git, { head: branch, base: githubBaseName(repository.base) }, enterprise) : undefined;
+    const link =
+        repository && branch !== undefined
+            ? compareLink(git, { head: branch, base: githubBaseName(repository.base) }, enterprise)
+            : undefined;
 
     // A pull request that has not been read yet may be there: nothing is offered in its place until it has. A remote that the daemon found to name no repository has no page either.
-    return { link, state: facts.pullRequest.settled ? createPullRequest({ status, hasPullRequest: facts.pr !== undefined, onGitHub: link !== undefined && facts.access !== 'no_remote' }) : undefined };
+    return {
+        link,
+        state: facts.pullRequest.settled
+            ? createPullRequest({
+                  status,
+                  hasPullRequest: facts.pr !== undefined,
+                  onGitHub: link !== undefined && facts.access !== 'no_remote',
+              })
+            : undefined,
+    };
 }
 
 /** What a press on the button does and says, by the state. */
@@ -54,24 +69,27 @@ export function CreatePullRequest({ facts, git }: CreatePullRequestProps) {
         else if (state.kind === 'publish') void remote.run('publish');
         else if (state.kind === 'push') void remote.run('push');
     };
-    const working = state.kind !== 'ready' && state.kind !== 'blocked' && remote.running === (state.kind === 'publish' ? 'publish' : 'push');
+    const working =
+        state.kind !== 'ready' &&
+        state.kind !== 'blocked' &&
+        remote.running === (state.kind === 'publish' ? 'publish' : 'push');
 
     return (
         <Button
             variant="bordered"
             color="secondary"
             size="sm"
-            className={ styles.button }
-            isDisabled={ state.kind === 'blocked' || (remote.busy && !working) }
-            isPending={ working }
+            className={styles.button}
+            isDisabled={state.kind === 'blocked' || (remote.busy && !working)}
+            isPending={working}
             spinnerPlacement="start"
-            tooltip={ state.kind === 'blocked' ? state.reason : TOOLTIPS[state.kind] }
+            tooltip={state.kind === 'blocked' ? state.reason : TOOLTIPS[state.kind]}
             tooltipPlacement="bottom"
-            onPress={ press }
+            onPress={press}
         >
-            { /* The spinner stands where the mark does while the press is at work. */ }
-            { !working && <Github size={ 14 } aria-hidden="true" /> }
-            { state.label }
+            {/* The spinner stands where the mark does while the press is at work. */}
+            {!working && <Github size={14} aria-hidden="true" />}
+            {state.label}
         </Button>
     );
 }

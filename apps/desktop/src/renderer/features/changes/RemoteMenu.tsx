@@ -6,7 +6,7 @@ import { ArrowDown, ArrowUp, ChevronDown, Refresh } from '@clowdy/icons/14';
 
 import { Unavailable } from '../../shared/Unavailable';
 import { useNow } from '../../shared/useNow';
-import { isFetchFirst, remoteActions, syncButton, type RemoteActionId, type SyncView } from './changesActions';
+import { isFetchFirst, type RemoteActionId, remoteActions, type SyncView, syncButton } from './changesActions';
 import styles from './RemoteMenu.module.css';
 import { useRemoteActions } from './useRemoteActions';
 
@@ -26,9 +26,19 @@ function Counts({ ahead, behind }: Pick<SyncView, 'ahead' | 'behind'>) {
     if (!ahead && !behind) return null;
 
     return (
-        <span className={ styles.counts } aria-hidden="true">
-            { ahead ? <span className={ styles.count }><ArrowUp />{ ahead }</span> : null }
-            { behind ? <span className={ styles.count }><ArrowDown />{ behind }</span> : null }
+        <span className={styles.counts} aria-hidden="true">
+            {ahead ? (
+                <span className={styles.count}>
+                    <ArrowUp />
+                    {ahead}
+                </span>
+            ) : null}
+            {behind ? (
+                <span className={styles.count}>
+                    <ArrowDown />
+                    {behind}
+                </span>
+            ) : null}
         </span>
     );
 }
@@ -56,67 +66,123 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
     const off = view.action === undefined && running === undefined;
 
     return (
-        <div className={ styles.root }>
-            <div className={ styles.split }>
-                <Unavailable label={ view.label } hint={ off ? view.title : undefined } className={ styles.host }>
+        <div className={styles.root}>
+            <div className={styles.split}>
+                <Unavailable label={view.label} hint={off ? view.title : undefined} className={styles.host}>
                     <Button
                         variant="filled"
                         color="secondary"
                         size="sm"
-                        className={ styles.main }
-                        contentClassName={ styles.content }
-                        isDisabled={ off }
-                        isPending={ running !== undefined }
+                        className={styles.main}
+                        contentClassName={styles.content}
+                        isDisabled={off}
+                        isPending={running !== undefined}
                         spinnerPlacement="start"
-                        aria-label={ view.title }
-                        data-sync={ view.kind }
-                        tooltip={ off || running !== undefined ? undefined : view.title }
+                        aria-label={view.title}
+                        data-sync={view.kind}
+                        tooltip={off || running !== undefined ? undefined : view.title}
                         tooltipPlacement="bottom"
-                        onPress={ () => view.action && void remote.run(view.action) }
+                        onPress={() => view.action && void remote.run(view.action)}
                     >
-                        <span className={ styles.words }>
-                            <span className={ styles.head }>
-                                <Text variant="xs" weight="medium" color={ view.tone === 'warning' && view.kind === 'diverged' ? 'warning' : undefined } truncate className={ styles.label }>{ view.label }</Text>
-                                <Counts ahead={ view.ahead } behind={ view.behind } />
+                        <span className={styles.words}>
+                            <span className={styles.head}>
+                                <Text
+                                    variant="xs"
+                                    weight="medium"
+                                    color={view.tone === 'warning' && view.kind === 'diverged' ? 'warning' : undefined}
+                                    truncate
+                                    className={styles.label}
+                                >
+                                    {view.label}
+                                </Text>
+                                <Counts ahead={view.ahead} behind={view.behind} />
                             </span>
-                            { view.line && <Text variant="xs" color={ view.tone === 'warning' ? 'warning' : 'secondary' } truncate className={ styles.line }>{ view.line }</Text> }
+                            {view.line && (
+                                <Text
+                                    variant="xs"
+                                    color={view.tone === 'warning' ? 'warning' : 'secondary'}
+                                    truncate
+                                    className={styles.line}
+                                >
+                                    {view.line}
+                                </Text>
+                            )}
                         </span>
                     </Button>
                 </Unavailable>
 
                 <MenuTrigger>
-                    <Button variant="filled" color="secondary" size="sm" iconOnly className={ styles.more } aria-label="More ways to sync with origin" tooltip="Fetch, pull and push" tooltipPlacement="bottom">
+                    <Button
+                        variant="filled"
+                        color="secondary"
+                        size="sm"
+                        iconOnly
+                        className={styles.more}
+                        aria-label="More ways to sync with origin"
+                        tooltip="Fetch, pull and push"
+                        tooltipPlacement="bottom"
+                    >
                         <ChevronDown aria-hidden="true" />
                     </Button>
-                    <Popover placement="bottom end" spacing="xs" width={ 220 }>
-                        <Menu aria-label="Origin" size="sm" onAction={ key => void remote.run(key as RemoteActionId) }>
-                            { actions.map(action => (
+                    <Popover placement="bottom end" spacing="xs" width={220}>
+                        <Menu aria-label="Origin" size="sm" onAction={key => void remote.run(key as RemoteActionId)}>
+                            {actions.map(action => (
                                 <MenuItem
-                                    key={ action.id }
-                                    id={ action.id }
-                                    icon={ ICONS[action.id] }
-                                    text={ action.label }
-                                    endAffix={ action.count !== undefined && action.reason === undefined ? <Text variant="xs" color="secondary">{ action.count }</Text> : undefined }
-                                    description={ action.reason }
-                                    stacked={ action.reason !== undefined }
-                                    isDisabled={ action.reason !== undefined }
+                                    key={action.id}
+                                    id={action.id}
+                                    icon={ICONS[action.id]}
+                                    text={action.label}
+                                    endAffix={
+                                        action.count !== undefined && action.reason === undefined ? (
+                                            <Text variant="xs" color="secondary">
+                                                {action.count}
+                                            </Text>
+                                        ) : undefined
+                                    }
+                                    description={action.reason}
+                                    stacked={action.reason !== undefined}
+                                    isDisabled={action.reason !== undefined}
                                 />
-                            )) }
+                            ))}
                         </Menu>
                     </Popover>
                 </MenuTrigger>
             </div>
 
-            { failure && (
-                <div className={ styles.failure } role="alert">
-                    <Text variant="xs" color="danger" select="text">{ failure.message }</Text>
-                    { failure.hint && <Text variant="xs" color="secondary" select="text">{ failure.hint }</Text> }
-                    { isFetchFirst(failure.message) && (
-                        <Button variant="bordered" color="secondary" size="xs" className={ styles.fetch } isDisabled={ remote.busy } onPress={ () => void remote.run('fetch') }>Fetch origin</Button>
-                    ) }
+            {failure && (
+                <div className={styles.failure} role="alert">
+                    <Text variant="xs" color="danger" select="text">
+                        {failure.message}
+                    </Text>
+                    {failure.hint && (
+                        <Text variant="xs" color="secondary" select="text">
+                            {failure.hint}
+                        </Text>
+                    )}
+                    {isFetchFirst(failure.message) && (
+                        <Button
+                            variant="bordered"
+                            color="secondary"
+                            size="xs"
+                            className={styles.fetch}
+                            isDisabled={remote.busy}
+                            onPress={() => void remote.run('fetch')}
+                        >
+                            Fetch origin
+                        </Button>
+                    )}
                 </div>
-            ) }
-            { !failure && notice && <Text variant="xs" color={ notice.tone === 'warning' ? 'warning' : 'secondary' } role="status" select="text">{ notice.words }</Text> }
+            )}
+            {!failure && notice && (
+                <Text
+                    variant="xs"
+                    color={notice.tone === 'warning' ? 'warning' : 'secondary'}
+                    role="status"
+                    select="text"
+                >
+                    {notice.words}
+                </Text>
+            )}
         </div>
     );
 }
