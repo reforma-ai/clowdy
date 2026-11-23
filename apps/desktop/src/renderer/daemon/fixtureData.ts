@@ -19,6 +19,7 @@ import type {
     GitCheck,
     GitCommit,
     GitFileSides,
+    GitHead,
     GitHubRepo,
     GitPullRequest,
     GitPullRequestInfo,
@@ -613,6 +614,9 @@ const FIXTURE_UNCOMMITTED_FILES: GitChangedFile[] = [
     changedFile('src/limits.ts', 'modified', [1, 1], ['d', 'e']),
 ];
 
+/** The paths of the worktree's uncommitted files: what a page that asks for a clean worktree (`&clean`) has already committed. */
+export const FIXTURE_UNCOMMITTED_PATHS: readonly string[] = FIXTURE_UNCOMMITTED_FILES.map(file => file.path);
+
 /** The branch's files with what is not committed on top, as `all` counts them: a file edited again is one row, against the merge base. */
 const FIXTURE_ALL_FILES: GitChangedFile[] = [
     FIXTURE_BRANCH_FILES[0]!,
@@ -625,30 +629,50 @@ const FIXTURE_ALL_FILES: GitChangedFile[] = [
 
 const totalsOf = (files: readonly GitChangedFile[]) => ({ fileCount: files.length, additions: files.reduce((sum, file) => sum + (file.additions ?? 0), 0), deletions: files.reduce((sum, file) => sum + (file.deletions ?? 0), 0) });
 
+/** What the fixture's remote adds to a status (`FixtureGitRemote`): the upstream as it stands, when the repository last fetched, whether it has an `origin`, and a HEAD that a script takes off its branch. */
+export interface FixtureStatusRemote {
+    upstream?: GitUpstream;
+    lastFetchedAt?: number;
+    origin?: boolean;
+    head?: 'detached' | 'unborn';
+}
+
 /**
  * What `GET git/status` answers for a fixture folder: no repository when `git` says nothing of it. The folder's own checkout is clean and level with `origin/main`. A worktree
  * (`workspace`) is the dirty one `fixtureFolderGit` lists: two commits ahead of the base and one behind, an edited file, one that is not tracked, and no upstream.
- * `remote` says what the upstream is when the caller keeps it (`FixtureGitRemote`): `upstream` as it stands, or none; without it a checkout is level with `origin/<branch>`.
+ * `remote` says what the upstream is when the caller keeps it (`FixtureGitRemote`): `upstream` as it stands, or none; without it a checkout is level with `origin/<branch>`, and what a script of
+ * the page puts in the status besides (`FixtureStatusRemote`: when the repository last fetched, no `origin`, a HEAD on no branch or a branch with no commit).
  */
-export function fixtureGitStatus(head: { branch?: string; detached?: true } | undefined, workspace: Pick<ChatWorkspace, 'branch'> | undefined, committed: ReadonlySet<string> = new Set(), remote?: { upstream?: GitUpstream }): GitStatus {
+export function fixtureGitStatus(head: { branch?: string; detached?: true } | undefined, workspace: Pick<ChatWorkspace, 'branch'> | undefined, committed: ReadonlySet<string> = new Set(), remote?: FixtureStatusRemote): GitStatus {
     if (!head?.branch) return { isRepository: false };
+
+    const origin = remote?.origin !== false;
+    // The time of the last fetch is the repository's: a fixture that has none says so by leaving it out.
+    const fetched = origin && remote?.lastFetchedAt !== undefined ? { lastFetchedAt: remote.lastFetchedAt } : {};
+    const headOf = (name: string, commit: string): GitHead => (remote?.head === 'detached' ? { kind: 'detached', commit } : remote?.head === 'unborn' ? { kind: 'unborn', name } : { kind: 'branch', name, commit });
 
     if (workspace) {
         return {
             isRepository: true,
-            head: { kind: 'branch', name: workspace.branch ?? 'clowdy/ab12cd34', commit: FIXTURE_GIT_COMMITS[0]!.sha },
-            ...(remote?.upstream && { upstream: remote.upstream }),
-            origin: true,
+            head: headOf(workspace.branch ?? 'clowdy/ab12cd34', FIXTURE_GIT_COMMITS[0]!.sha),
+            // A HEAD on no branch and a branch with no commit have no upstream to speak of.
+            ...(remote?.upstream && !remote.head && { upstream: remote.upstream }),
+            origin,
+            ...fetched,
             entries: [{ path: 'notes.md', untracked: true as const }, { path: 'src/booking/price.ts', unstaged: 'modified' as const }, { path: 'src/limits.ts', unstaged: 'modified' as const }].filter(entry => !committed.has(entry.path)),
             base: { state: 'ready', name: 'origin/main', commit: '2'.repeat(40), mergeBase: FIXTURE_BASE_COMMIT, ahead: FIXTURE_GIT_COMMITS.length, behind: 1, commits: FIXTURE_GIT_COMMITS },
         };
     }
 
+    // The checkout is level with its upstream unless the caller keeps the upstream, and a HEAD on no branch and a branch with no commit have none.
+    const upstream = head.detached || remote?.head ? undefined : remote ? remote.upstream : { name: `origin/${ head.branch }`, ahead: 0, behind: 0 };
+
     return {
         isRepository: true,
-        head: head.detached ? { kind: 'detached', commit: FIXTURE_BASE_COMMIT } : { kind: 'branch', name: head.branch, commit: FIXTURE_BASE_COMMIT },
-        ...(!head.detached && (remote ? remote.upstream && { upstream: remote.upstream } : { upstream: { name: `origin/${ head.branch }`, ahead: 0, behind: 0 } })),
-        origin: true,
+        head: head.detached ? { kind: 'detached', commit: FIXTURE_BASE_COMMIT } : headOf(head.branch, FIXTURE_BASE_COMMIT),
+        ...(upstream && { upstream }),
+        origin,
+        ...fetched,
         entries: [],
         base: { state: 'ready', name: 'origin/main', commit: FIXTURE_BASE_COMMIT, mergeBase: FIXTURE_BASE_COMMIT, ahead: 0, behind: 0, commits: [] },
     };
