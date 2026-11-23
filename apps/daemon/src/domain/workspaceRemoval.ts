@@ -5,7 +5,7 @@ import { getChat, listChatDescendants } from '../db/chats';
 import { getProject } from '../db/projects';
 import { chatsOfWorkspace, getWorkspace, updateWorkspace } from '../db/workspaces';
 import { conflict } from '../errors';
-import { parseWorktrees } from '../git/state';
+import { commitOf, hasCheckedOutSubmodules, isMerged, parseWorktrees } from '../git/state';
 import { requireChat, stoppedSubtree } from './chats';
 import { gitRead } from './git';
 import { exclusive, mustGit, pathKey, samePlace, WorkspaceError } from './workspaces';
@@ -46,22 +46,6 @@ const refused = (reason: string, record?: WorkspaceRecord): Refused => ({ remova
 
 /** Whether something is there at the path. A path that cannot be looked at is not known to be there, and a worktree is not removed on a guess. */
 const isOnDisk = (path: string): Promise<boolean> => stat(path).then(() => true, () => false);
-
-/** The commit a ref names: `null` when the repository has no such ref, `undefined` when git could not be asked (the caller refuses on it where a guess would remove too much). */
-async function commitOf(folder: string, ref: string): Promise<string | undefined | null> {
-    const read = await gitRead(folder, ['show-ref', '--verify', '--hash', ref]);
-
-    if (read.ok) {
-        return read.stdout.trim() || null;
-    }
-
-    return read.reason === 'unavailable' ? undefined : null;
-}
-
-/** Whether `commit` is contained in `base`: the work of a branch is merged when its tip is an ancestor of the base's (`merge-base --is-ancestor`, which says no with exit code 1). */
-async function isMerged(cwd: string, commit: string, base: string): Promise<boolean> {
-    return (await gitRead(cwd, ['merge-base', '--is-ancestor', commit, base])).ok;
-}
 
 /**
  * Whether the chat's worktree may be removed together with the chat, and what in it says no. All of these hold, and each is checked against what is on the disk and in
@@ -142,13 +126,13 @@ async function checkRemoval(store: Store, chat: Chat): Promise<Verdict> {
     }
 
     // An initialised submodule is `git worktree remove`'s own no (uninitialised ones are listed with a `-`): offering the box would end in a refusal.
-    const modules = await gitRead(record.path, ['submodule', 'status']);
+    const submodules = await hasCheckedOutSubmodules(record.path);
 
-    if (!modules.ok) {
+    if (submodules === undefined) {
         return refused('Git did not say whether the worktree has submodules', record);
     }
 
-    if (modules.stdout.split('\n').some(line => line !== '' && !line.startsWith('-'))) {
+    if (submodules) {
         return refused('The worktree has submodules checked out', record);
     }
 
