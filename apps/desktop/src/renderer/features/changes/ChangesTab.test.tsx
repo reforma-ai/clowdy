@@ -34,7 +34,10 @@ import type { GitChanges, GitFileSides } from '@clowdy/protocol';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 // happy-dom has no layout: the view builds its resizable group once its box has a width, which it is told.
-vi.mock('./useBoxWidth', () => ({ useBoxWidth: () => [() => undefined, 900] }));
+vi.mock('./useBoxWidth', () => ({
+    useBoxWidth: () => [() => undefined, 900],
+    useBoxHeight: () => [() => undefined, 900],
+}));
 // The diff view has specs of its own (`packages/file-manager/specs`); here it only has to be given the right texts.
 vi.mock('@clowdy/file-manager/react', () => ({
     DiffView: ({
@@ -71,6 +74,9 @@ vi.mock('./ChangesToolbar', async importOriginal => ({
 vi.mock('./ChangesSidebar', async importOriginal => ({
     ...(await importOriginal<typeof import('./ChangesSidebar')>()),
     ChangesSidebar: observer((await importOriginal<typeof import('./ChangesSidebar')>()).ChangesSidebar),
+}));
+vi.mock('./BranchCommits', async importOriginal => ({
+    BranchCommits: observer((await importOriginal<typeof import('./BranchCommits')>()).BranchCommits),
 }));
 vi.mock('./CommitBox', async importOriginal => ({
     CommitBox: observer((await importOriginal<typeof import('./CommitBox')>()).CommitBox),
@@ -160,6 +166,8 @@ const sidebarPaths = () => sidebarFiles().map(row => row.querySelector('[class*=
 const commitRows = () => [
     ...container.querySelectorAll<HTMLElement>('[aria-label="Commits on branch"] [role="option"]'),
 ];
+const commitsBar = () => container.querySelector<HTMLButtonElement>('[data-commits-bar] button')!;
+const openCommits = () => press(commitsBar());
 const scopeTrigger = () => container.querySelector<HTMLButtonElement>('button[aria-haspopup="listbox"]')!;
 // The options of the scope menu: the sidebar's commits are options of a list too.
 const options = () =>
@@ -223,6 +231,9 @@ beforeEach(() => {
     };
 
     if (!changesSidebarLayout.open) changesSidebarLayout.toggle();
+    // The commits at the sidebar's foot are shut until they are opened, and open at their default height.
+    if (changesSidebarLayout.commitsOpen) changesSidebarLayout.toggleCommits();
+    changesSidebarLayout.resetCommitsHeight();
 
     container = document.createElement('div');
     document.body.append(container);
@@ -241,6 +252,7 @@ describe('the Changes tab of a chat in a worktree', () => {
     it('has a card for each file of all the changes, the totals of the list, and the files and commits in the sidebar', async () => {
         await start();
         await draw();
+        await openCommits();
 
         expect(cardPaths()).toEqual([
             'assets/logo.png',
@@ -538,6 +550,7 @@ describe('the scope', () => {
     it('shows one commit alone when it is pressed in the sidebar, goes back to all changes on a second press on it, and on the row that says so', async () => {
         await start();
         await draw();
+        await openCommits();
 
         const second = FIXTURE_GIT_COMMITS[1]!;
 
@@ -794,6 +807,67 @@ describe('the sidebar', () => {
         await settle();
 
         expect(container.querySelector('[aria-label="Changes sidebar"]')).not.toBeNull();
+    });
+});
+
+describe("the commits at the sidebar's foot", () => {
+    it('are a shut bar by default that says how many there are, and open above it on a press, which the window keeps', async () => {
+        await start();
+        await draw();
+
+        expect(commitsBar().textContent).toBe('Commits on branch · 2');
+        expect(commitsBar().getAttribute('aria-expanded')).toBe('false');
+        expect(commitRows()).toEqual([]);
+
+        await openCommits();
+
+        expect(commitsBar().getAttribute('aria-expanded')).toBe('true');
+        expect(commitRows()).toHaveLength(2);
+
+        // The list is the bar's: the bar names it, and it stands above the bar, under the edge that drags it.
+        const list = container.querySelector('[aria-label="Commits on branch"]')!;
+
+        expect(commitsBar().getAttribute('aria-controls')).toBe(list.closest('[role="group"]')?.id);
+        expect(list.compareDocumentPosition(commitsBar()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(container.querySelector('[aria-label="Resize the commits"]')).not.toBeNull();
+        expect(changesSidebarLayout.commitsOpen).toBe(true);
+        expect(JSON.parse(localStorage.getItem('clowdy:changes-commits-open') ?? 'null')).toBe(true);
+
+        // Drawn again, the tab has them open: the choice is the window's, not the tab's.
+        act(() => root.unmount());
+        root = createRoot(container);
+        await draw();
+
+        expect(commitRows()).toHaveLength(2);
+
+        await openCommits();
+
+        expect(commitRows()).toEqual([]);
+        expect(container.querySelector('[aria-label="Resize the commits"]')).toBeNull();
+        expect(JSON.parse(localStorage.getItem('clowdy:changes-commits-open') ?? 'null')).toBe(false);
+    });
+
+    it('are a bar that cannot be opened for a branch with no commit ahead of its base, and no bar without a base', async () => {
+        await start({
+            wrap: base =>
+                overrideTransport(base, {
+                    getGitStatus: async (project, place) => {
+                        const status = await base.getGitStatus(project, place);
+
+                        return status.isRepository && status.base.state === 'ready'
+                            ? { ...status, base: { ...status.base, ahead: 0, commits: [] } }
+                            : status;
+                    },
+                }),
+        });
+        changesSidebarLayout.toggleCommits();
+        await draw();
+
+        expect(commitsBar().textContent).toBe('No commits on the branch yet');
+        expect(commitsBar().disabled).toBe(true);
+        // Even though the window keeps the commits open: there is nothing to open.
+        expect(commitRows()).toEqual([]);
+        expect(container.querySelector('[aria-label="Resize the commits"]')).toBeNull();
     });
 });
 
@@ -1262,7 +1336,7 @@ describe('the states instead of the cards', () => {
 
         expect(container.textContent).toContain('No changes');
         expect(container.textContent).toContain('There is no base branch to compare with yet');
-        expect(container.querySelector('[aria-label="Committed on branch"]')).toBeNull();
+        expect(container.querySelector('[data-commits-bar]')).toBeNull();
     });
 
     it('says a worktree that is not made yet is not, and reads nothing of it', async () => {

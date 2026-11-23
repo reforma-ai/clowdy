@@ -25,7 +25,10 @@ import { changesSidebarLayout } from './sidebarLayout';
  */
 
 // happy-dom has no layout: the view builds its resizable group once its box has a width, which it is told.
-vi.mock('./useBoxWidth', () => ({ useBoxWidth: () => [() => undefined, 900] }));
+vi.mock('./useBoxWidth', () => ({
+    useBoxWidth: () => [() => undefined, 900],
+    useBoxHeight: () => [() => undefined, 900],
+}));
 // The babel plugin that makes the app's components observers does not run under Vitest: the parts of the tab are, to follow the model they read.
 vi.mock('./ChangesView', async importOriginal => ({
     ...(await importOriginal<typeof import('./ChangesView')>()),

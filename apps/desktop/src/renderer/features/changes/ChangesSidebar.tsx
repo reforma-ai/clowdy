@@ -1,26 +1,26 @@
 import { For } from '@clowdy/components/For';
-import { GridList, GridListItem, ListBox, ListBoxItem } from '@clowdy/components/List';
+import { GridList, GridListItem } from '@clowdy/components/List';
 import { Panel, PanelEmptyRow, PanelHeader } from '@clowdy/components/Panel';
 import { Scrollable } from '@clowdy/components/Scrollable';
 import { Text } from '@clowdy/components/Text';
-import { ArrowLeft, Check, Version } from '@clowdy/icons/14';
+import { Check, Version } from '@clowdy/icons/14';
 import { Github } from '@clowdy/icons/logo';
-import { commitScope } from '@clowdy/protocol';
 
-import { formatFullTime, formatMessageTime } from '../../shared/time';
 import { openEffects, useFolderGit } from '../openWith';
 import { githubLink } from '../openWith/openTarget';
+import { BranchCommits } from './BranchCommits';
 import { BranchPicker } from './BranchPicker';
 import styles from './ChangesSidebar.module.css';
 import { CommitBox } from './CommitBox';
 import { CreatePullRequest } from './CreatePullRequest';
-import { isCommitScope } from './changeScopes';
 import { accessHint, accessHintTitle, aheadBehindCounts, CHANGE_KIND_VIEW, splitPath } from './gitSummary';
+import { CHANGES_FILES_MIN_HEIGHT } from './layout';
 import { LIST_TEXT } from './listState';
 import { PullRequestChip } from './PullRequestChip';
 import { RemoteMenu } from './RemoteMenu';
+import { useBoxHeight } from './useBoxWidth';
 
-import type { GitChangedFile, GitCommit, GitStatus } from '@clowdy/protocol';
+import type { GitChangedFile, GitStatus } from '@clowdy/protocol';
 import type { ReactNode } from 'react';
 import type { Place } from '../sidePanel/currentPlace';
 import type { PlaceChanges } from './PlaceChanges';
@@ -111,42 +111,10 @@ function FileRow({ file, viewed }: { file: GitChangedFile; viewed: boolean }) {
     );
 }
 
-/** The key of the row above the commits that goes back to all changes: no commit's hash. */
-const ALL_CHANGES_ROW = 'all-changes';
-
-/**
- * One commit of the branch, an option of the design system's list: its message, and under it its short hash and when it was made (the author on hover). Choosing it shows that
- * commit alone; the one that is shown is the selected option, and choosing it again goes back to all changes.
- */
-function CommitRow({ commit }: { commit: GitCommit }) {
-    return (
-        <ListBoxItem
-            id={commit.sha}
-            textValue={commit.subject}
-            stacked
-            description={
-                <span className={styles.commitMeta}>
-                    <span className={styles.sha}>{commit.shortSha}</span>
-                    <time
-                        dateTime={new Date(commit.committedAt).toISOString()}
-                        title={formatFullTime(commit.committedAt)}
-                    >
-                        {formatMessageTime(commit.committedAt)}
-                    </time>
-                </span>
-            }
-        >
-            <Text slot="label" weight="medium" title={`${commit.shortSha} by ${commit.author}`}>
-                {commit.subject}
-            </Text>
-        </ListBoxItem>
-    );
-}
-
 /**
  * The sidebar of the tab, at the right of the diffs: the branch the place is on with its base and how far it is from it, the pull request, the files of the scope (a press brings
- * their card up, and the filter above the cards narrows this list too) and the commits of the branch (a press shows one commit alone, and a row above them goes back to all
- * changes). The facts at the top are where the person acts on the branch: the base and how far the branch is from it, the row that says how it stands against its upstream and opens the menu
+ * their card up, and the filter above the cards narrows this list too), the commit box, and at its foot the commits of the branch, a spoiler that is shut by default
+ * (`BranchCommits`: a press on one shows that commit alone, and a row above them goes back to all changes). The facts at the top are where the person acts on the branch: the base and how far the branch is from it, the row that says how it stands against its upstream and opens the menu
  * of Fetch, Pull and Push or Publish (`RemoteMenu`), and the pull request as the shared chip, or, while there is none, Create PR (`CreatePullRequest`), which opens GitHub's compare page
  * once the branch is on origin. `toggle` is the button that hides the sidebar, at the end of its header.
  */
@@ -175,10 +143,7 @@ export function ChangesSidebar({
     const files = model.files;
     // Read here, with the list: the rows are drawn by a callback of `For`, which does not follow the model, so a tick that changes reaches them through this component.
     const viewed = model.viewedPaths;
-    const commits = base?.commits ?? [];
-    const onCommit = isCommitScope(model.effectiveScope);
-    // The commit that is shown, as the list's selection.
-    const shown = commits.find(commit => model.effectiveScope === commitScope(commit.sha))?.sha;
+    const [commitBoxRef, commitBoxHeight] = useBoxHeight();
 
     return (
         <Panel side="right" className={styles.sidebar} aria-label="Changes sidebar">
@@ -236,63 +201,31 @@ export function ChangesSidebar({
                     </div>
                 )}
 
-                <section className={styles.files} aria-label="Changed files">
-                    <SectionHeader title="Changed files" count={model.changes ? files.length : undefined} />
-                    {files.length > 0 ? (
-                        <Scrollable className={styles.list} contentClass={styles.rows}>
-                            <GridList aria-label="Changed files" size="sm" onAction={key => onOpenFile(String(key))}>
-                                <For each={[...files]}>
-                                    {file => <FileRow key={file.path} file={file} viewed={viewed.has(file.path)} />}
-                                </For>
-                            </GridList>
-                        </Scrollable>
-                    ) : (
-                        <PanelEmptyRow>{emptyFilesWords(model)}</PanelEmptyRow>
-                    )}
-                </section>
-
-                <CommitBox model={model} place={place} projectId={projectId} git={git} />
-
-                {base && (
-                    <section className={styles.commits} aria-label="Committed on branch">
-                        <SectionHeader title="Committed on branch" count={base.ahead} />
-                        {commits.length > 0 ? (
+                <BranchCommits model={model} base={base} reserved={commitBoxHeight + CHANGES_FILES_MIN_HEIGHT}>
+                    <section className={styles.files} aria-label="Changed files">
+                        <SectionHeader title="Changed files" count={model.changes ? files.length : undefined} />
+                        {files.length > 0 ? (
                             <Scrollable className={styles.list} contentClass={styles.rows}>
-                                <ListBox
-                                    aria-label="Commits on branch"
+                                <GridList
+                                    aria-label="Changed files"
                                     size="sm"
-                                    selectionMode="single"
-                                    selectedKeys={shown}
-                                    onSelectionChange={keys => {
-                                        const [key] = keys === 'all' ? [] : [...keys];
-
-                                        // Choosing the commit that is shown again, or the row above the commits, goes back to all changes.
-                                        if (key === undefined || key === ALL_CHANGES_ROW) model.setScope('all');
-                                        else model.pickCommit(String(key));
-                                    }}
+                                    onAction={key => onOpenFile(String(key))}
                                 >
-                                    {onCommit && (
-                                        <ListBoxItem
-                                            id={ALL_CHANGES_ROW}
-                                            text="Back to all changes"
-                                            icon={<ArrowLeft aria-hidden="true" />}
-                                        />
-                                    )}
-                                    <For each={commits}>{commit => <CommitRow key={commit.sha} commit={commit} />}</For>
-                                </ListBox>
-                                {base.ahead > commits.length && (
-                                    <Text
-                                        variant="sm"
-                                        color="secondary"
-                                        className={styles.more}
-                                    >{`Showing the newest ${commits.length}`}</Text>
-                                )}
+                                    <For each={[...files]}>
+                                        {file => <FileRow key={file.path} file={file} viewed={viewed.has(file.path)} />}
+                                    </For>
+                                </GridList>
                             </Scrollable>
                         ) : (
-                            <PanelEmptyRow>No commits on the branch yet</PanelEmptyRow>
+                            <PanelEmptyRow>{emptyFilesWords(model)}</PanelEmptyRow>
                         )}
                     </section>
-                )}
+
+                    {/* Measured: the commits' box can be dragged up to it and no further. */}
+                    <div ref={commitBoxRef} className={styles.commitBox}>
+                        <CommitBox model={model} place={place} projectId={projectId} git={git} />
+                    </div>
+                </BranchCommits>
             </div>
         </Panel>
     );

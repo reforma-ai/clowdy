@@ -46,7 +46,7 @@
     max-width: 100%;
 }
 
-/* The files take what the commits leave: a long list scrolls in its own box and does not push the commits out. */
+/* The files take what the commit box and the commits leave: a long list scrolls in its own box and does not push them out. Never shorter than `CHANGES_FILES_MIN_HEIGHT`. */
 .files {
     display: flex;
     flex: 1 1 0;
@@ -54,14 +54,9 @@
     min-height: var(--spacing-96);
 }
 
-/* The commits are as tall as they are, up to a share of the sidebar, then they scroll. */
-.commits {
-    display: flex;
-    flex: 0 1 auto;
-    flex-direction: column;
-    max-height: 45%;
-    min-height: 0;
-    border-top: 1px solid var(--color-surface-border);
+/* The commit box as tall as it is, under the files. */
+.commitBox {
+    flex-shrink: 0;
 }
 
 /*
@@ -144,21 +139,4 @@
     .counts {
         display: none;
     }
-}
-
-/* Under a commit's message: its short hash and when it was made. */
-.commitMeta {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-md);
-    min-width: 0;
-}
-
-.sha {
-    @ruleset typography-text-code-xs;
-}
-
-/* The note under a list that was cut, in line with the rows' words. */
-.more {
-    padding: var(--spacing-xs) var(--spacing-lg);
 }
