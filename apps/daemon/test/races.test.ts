@@ -3,7 +3,16 @@ import { spawn } from 'node:child_process';
 
 import { getRunWork } from '../src/db/runs';
 import { isAlive } from '../src/runs/processes';
-import { cleanTempDirs, latch, ScriptEngine, scriptEngines, SHORT_TIMINGS, startHarness, untilAborted, waitFor } from './helpers';
+import {
+    cleanTempDirs,
+    latch,
+    ScriptEngine,
+    SHORT_TIMINGS,
+    scriptEngines,
+    startHarness,
+    untilAborted,
+    waitFor,
+} from './helpers';
 
 import type { Harness, Script } from './helpers';
 
@@ -18,8 +27,7 @@ afterEach(async () => {
     for (const pid of pids.splice(0)) {
         try {
             process.kill(-pid, 'SIGKILL');
-        }
-        catch {
+        } catch {
             // already gone
         }
     }
@@ -41,17 +49,18 @@ async function setup(script: Script, overrides: Parameters<typeof startHarness>[
     harnesses.push(h);
 
     const project = h.openRepo();
-    const start = (title: string) => h.ok('task.start', { taskId: h.ok('task.create', { projectId: project.id, title }).task.id }).runId as string;
+    const start = (title: string) =>
+        h.ok('task.start', { taskId: h.ok('task.create', { projectId: project.id, title }).task.id }).runId as string;
 
     return { h, engine, project, start };
 }
 
 describe('a subscription rejection', () => {
-    test('does not fail a run that waits for the user\'s answer; the run keeps waiting and can still be answered', async () => {
+    test("does not fail a run that waits for the user's answer; the run keeps waiting and can still be answered", async () => {
         // Set once the daemon is up: its start (it makes the personal space) takes a moment, and the reset must still be ahead.
         let resets = 0;
         const { h, engine, project, start } = await setup(async function* ({ options, signal, number, call }) {
-            yield { type: 'session', sessionId: options.resumeSessionId ?? `s${ number }` };
+            yield { type: 'session', sessionId: options.resumeSessionId ?? `s${number}` };
 
             if (number === 1) {
                 yield* call('ask_user', { question: 'Which one?', options: [{ id: 'a', label: 'A' }] });
@@ -78,7 +87,11 @@ describe('a subscription rejection', () => {
         expect(h.run(asking).status).toBe('waiting_user');
         expect(h.run(asking).error).toBeUndefined();
 
-        const question = h.store.db.query('SELECT body FROM stream_items WHERE run_id = ? ORDER BY seq').all(asking).map(row => JSON.parse((row as { body: string }).body)).find(body => body.kind === 'question');
+        const question = h.store.db
+            .query('SELECT body FROM stream_items WHERE run_id = ? ORDER BY seq')
+            .all(asking)
+            .map(row => JSON.parse((row as { body: string }).body))
+            .find(body => body.kind === 'question');
 
         h.ok('run.answer', { runId: asking, questionId: question.questionId, answer: 'a' });
         await waitFor(() => h.run(asking).status === 'succeeded', 'the answered run to finish');
@@ -87,7 +100,7 @@ describe('a subscription rejection', () => {
 
     test('with a reset time that already passed pauses for a while instead of retrying in a loop', async () => {
         const { h, engine, start } = await setup(async function* ({ options, signal, number }) {
-            yield { type: 'session', sessionId: options.resumeSessionId ?? `s${ number }` };
+            yield { type: 'session', sessionId: options.resumeSessionId ?? `s${number}` };
             yield { type: 'limit', status: 'rejected', resetsAt: Math.floor(Date.now() / 1000) - 3600 };
             await untilAborted(signal);
         });
@@ -102,10 +115,14 @@ describe('a subscription rejection', () => {
 
 describe('cancelling', () => {
     test('a run cancelled while its next turn waits behind the previous session leaves nothing registered behind', async () => {
-        const { h, project } = await setup(async function* () {
-            yield { type: 'session', sessionId: 's1' };
-            yield { type: 'done', result: 'ok' };
-        }, {}, 300);
+        const { h, project } = await setup(
+            async function* () {
+                yield { type: 'session', sessionId: 's1' };
+                yield { type: 'done', result: 'ok' };
+            },
+            {},
+            300
+        );
         const { chat } = h.ok('chat.create', { projectId: project.id });
         const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'first' });
 
@@ -115,7 +132,10 @@ describe('cancelling', () => {
         h.ok('chat.send', { chatId: chat.id, text: 'second' });
         h.ok('run.cancel', { runId });
 
-        const driver = h.daemon.services.driver as unknown as { live: Map<string, unknown>; flights: Map<string, unknown> };
+        const driver = h.daemon.services.driver as unknown as {
+            live: Map<string, unknown>;
+            flights: Map<string, unknown>;
+        };
 
         await waitFor(() => driver.flights.size === 0, 'the turns to be over');
         expect(h.run(runId).status).toBe('cancelled');
@@ -126,25 +146,30 @@ describe('cancelling', () => {
         const stale = startProcess('sleep 60');
         const next = startProcess('sleep 60');
         const hold = latch();
-        const { h, project } = await setup(async function* ({ options, signal, number }) {
-            yield { type: 'session', sessionId: `s${ number }` };
-            yield { type: 'process', pid: number === 1 ? stale : next, pgid: number === 1 ? stale : next };
+        const { h, project } = await setup(
+            async function* ({ options, signal, number }) {
+                yield { type: 'session', sessionId: `s${number}` };
+                yield { type: 'process', pid: number === 1 ? stale : next, pgid: number === 1 ? stale : next };
 
-            if (number === 1) {
-                await untilAborted(signal);
-            }
-            else {
-                await hold.wait(signal);
-            }
+                if (number === 1) {
+                    await untilAborted(signal);
+                } else {
+                    await hold.wait(signal);
+                }
 
-            yield { type: 'done', result: 'ok' };
-        }, { timings: { ...SHORT_TIMINGS, killGraceMs: 200 } });
+                yield { type: 'done', result: 'ok' };
+            },
+            { timings: { ...SHORT_TIMINGS, killGraceMs: 200 } }
+        );
         const { chat } = h.ok('chat.create', { projectId: project.id });
         const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'first' });
 
         await waitFor(() => getRunWork(h.store.db, runId).process?.pid === stale, 'the first process');
         h.ok('run.cancel', { runId });
-        await waitFor(() => h.run(runId).status === 'cancelled' && !getRunWork(h.store.db, runId).process, 'the first turn to end');
+        await waitFor(
+            () => h.run(runId).status === 'cancelled' && !getRunWork(h.store.db, runId).process,
+            'the first turn to end'
+        );
         h.ok('chat.send', { chatId: chat.id, text: 'second' });
         await waitFor(() => getRunWork(h.store.db, runId).process?.pid === next, 'the second process');
         await Bun.sleep(600);

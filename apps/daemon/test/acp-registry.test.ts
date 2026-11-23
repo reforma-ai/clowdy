@@ -13,7 +13,13 @@ import type { AgentPermissions } from '@clowdy/protocol';
 const SPECS = PROVIDERS.map(provider => provider.spec);
 
 /** What `AgentInfo.permissions` says for an agent whose provider declares none: the client's pair, `full` by default. */
-const GENERIC_PERMISSIONS: AgentPermissions = { presets: [{ id: 'ask', name: 'Ask for approval', description: expect.any(String) }, { id: 'full', name: 'Full access', description: expect.any(String) }], default: 'full' };
+const GENERIC_PERMISSIONS: AgentPermissions = {
+    presets: [
+        { id: 'ask', name: 'Ask for approval', description: expect.any(String) },
+        { id: 'full', name: 'Full access', description: expect.any(String) },
+    ],
+    default: 'full',
+};
 
 let root: string;
 let bin: string;
@@ -22,7 +28,7 @@ let bin: string;
 function pinned(id: string): string {
     const launch = SPECS.find(agent => agent.id === id)?.launch;
 
-    if (launch?.kind !== 'package') throw new Error(`${ id } is not run from a package`);
+    if (launch?.kind !== 'package') throw new Error(`${id} is not run from a package`);
 
     return launch.package;
 }
@@ -31,13 +37,14 @@ function pinned(id: string): string {
 function program(name: string, output: string): string {
     const path = join(bin, name);
 
-    writeFileSync(path, `#!/bin/sh\necho "${ output }"\n`);
+    writeFileSync(path, `#!/bin/sh\necho "${output}"\n`);
     chmodSync(path, 0o755);
 
     return path;
 }
 
-const discovery = () => new Discovery({ env: { PATH: bin }, home: join(root, 'home'), loginPath: async () => undefined, installDirs: [] });
+const discovery = () =>
+    new Discovery({ env: { PATH: bin }, home: join(root, 'home'), loginPath: async () => undefined, installDirs: [] });
 
 beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'clowdy-agents-'));
@@ -50,7 +57,7 @@ afterEach(() => rmSync(root, { recursive: true, force: true }));
 
 describe('the catalog', () => {
     test('fetches each adapter at one exact, stable version, never a range, a tag or a preview', () => {
-        const packages = SPECS.flatMap(agent => agent.launch.kind === 'package' ? [agent.launch.package] : []);
+        const packages = SPECS.flatMap(agent => (agent.launch.kind === 'package' ? [agent.launch.package] : []));
 
         expect(packages.length).toBeGreaterThan(0);
 
@@ -61,15 +68,32 @@ describe('the catalog', () => {
 });
 
 describe('buildAgentEnv', () => {
-    test('passes the user\'s environment, drops the daemon\'s secrets and the agent\'s provider keys, and sets the path', () => {
+    test("passes the user's environment, drops the daemon's secrets and the agent's provider keys, and sets the path", () => {
         const env = buildAgentEnv({
-            daemonEnv: { HOME: '/h', PATH: '/bare', CLOWDY_TOKEN: 't', CLOWDY_CLAUDE_API_KEY: 'k', ELECTRON_RUN_AS_NODE: '1', NODE_OPTIONS: '--x', CLAUDECODE: '1', ANTHROPIC_API_KEY: 'sk', HTTPS_PROXY: 'p', CODEX_HOME: '/c' },
+            daemonEnv: {
+                HOME: '/h',
+                PATH: '/bare',
+                CLOWDY_TOKEN: 't',
+                CLOWDY_CLAUDE_API_KEY: 'k',
+                ELECTRON_RUN_AS_NODE: '1',
+                NODE_OPTIONS: '--x',
+                CLAUDECODE: '1',
+                ANTHROPIC_API_KEY: 'sk',
+                HTTPS_PROXY: 'p',
+                CODEX_HOME: '/c',
+            },
             path: '/login:/bare',
             scrub: [/^ANTHROPIC_API_KEY$/],
             set: { CLAUDE_CODE_EXECUTABLE: '/usr/bin/claude' },
         });
 
-        expect(env).toEqual({ HOME: '/h', HTTPS_PROXY: 'p', CODEX_HOME: '/c', PATH: '/login:/bare', CLAUDE_CODE_EXECUTABLE: '/usr/bin/claude' });
+        expect(env).toEqual({
+            HOME: '/h',
+            HTTPS_PROXY: 'p',
+            CODEX_HOME: '/c',
+            PATH: '/login:/bare',
+            CLAUDE_CODE_EXECUTABLE: '/usr/bin/claude',
+        });
     });
 
     test('a path variable spelled another way does not survive next to the real one', () => {
@@ -85,7 +109,7 @@ describe('Discovery', () => {
         expect(await discovery().find(['nope'])).toBeUndefined();
     });
 
-    test('searches the login shell\'s path and the usual install folders too', async () => {
+    test("searches the login shell's path and the usual install folders too", async () => {
         const login = join(root, 'login');
         const local = join(root, 'home', '.local', 'bin');
 
@@ -94,7 +118,12 @@ describe('Discovery', () => {
         writeFileSync(join(login, 'viashell'), '#!/bin/sh\n', { mode: 0o755 });
         writeFileSync(join(local, 'inlocal'), '#!/bin/sh\n', { mode: 0o755 });
 
-        const found = new Discovery({ env: { PATH: '/nowhere' }, home: join(root, 'home'), loginPath: async () => login, installDirs: [local] });
+        const found = new Discovery({
+            env: { PATH: '/nowhere' },
+            home: join(root, 'home'),
+            loginPath: async () => login,
+            installDirs: [local],
+        });
 
         expect((await found.find(['viashell']))?.path).toBe(join(login, 'viashell'));
         expect((await found.find(['inlocal']))?.path).toBe(join(local, 'inlocal'));
@@ -105,7 +134,10 @@ describe('Discovery', () => {
         const shell = join(bin, 'shell');
 
         // Prints its PATH, then leaves a background process that keeps the output pipe open for a while.
-        writeFileSync(shell, '#!/bin/sh\necho "noise from a startup file"\nprintf \'__CLOWDY_PATH__/login/bin:/usr/bin__CLOWDY_PATH__\'\n(sleep 6 >&1 &)\n');
+        writeFileSync(
+            shell,
+            '#!/bin/sh\necho "noise from a startup file"\nprintf \'__CLOWDY_PATH__/login/bin:/usr/bin__CLOWDY_PATH__\'\n(sleep 6 >&1 &)\n'
+        );
         chmodSync(shell, 0o755);
 
         const started = Date.now();
@@ -124,40 +156,97 @@ describe('Discovery', () => {
         expect(await discovery().version(join(bin, 'missing'))).toBeUndefined();
     });
 
-    test('a program asked for its version does not see the daemon\'s secrets', async () => {
+    test("a program asked for its version does not see the daemon's secrets", async () => {
         const path = join(bin, 'tell');
 
         writeFileSync(path, '#!/bin/sh\necho "token=${CLOWDY_TOKEN:-none}"\n');
         chmodSync(path, 0o755);
 
-        const probing = new Discovery({ env: { PATH: bin, CLOWDY_TOKEN: 'secret' }, home: join(root, 'home'), loginPath: async () => undefined, installDirs: [] });
+        const probing = new Discovery({
+            env: { PATH: bin, CLOWDY_TOKEN: 'secret' },
+            home: join(root, 'home'),
+            loginPath: async () => undefined,
+            installDirs: [],
+        });
 
         expect(await probing.version(path)).toBe('token=none');
     });
 
-    test.each([['2.1.325 (Claude Code)', '2.1.325'], ['codex-cli 0.166.0', '0.166.0'], ['2026.09.01-abcdef', '2026.09.01-abcdef'], ['v1.2.3-beta.1', '1.2.3-beta.1'], ['hello', 'hello'], ['', undefined]])('parseVersion(%j) is %j', (output, version) => {
+    test.each([
+        ['2.1.325 (Claude Code)', '2.1.325'],
+        ['codex-cli 0.166.0', '0.166.0'],
+        ['2026.09.01-abcdef', '2026.09.01-abcdef'],
+        ['v1.2.3-beta.1', '1.2.3-beta.1'],
+        ['hello', 'hello'],
+        ['', undefined],
+    ])('parseVersion(%j) is %j', (output, version) => {
         expect(parseVersion(output)).toBe(version);
     });
 });
 
 describe('AgentRegistry', () => {
-    const registry = (dataDir?: string, platform?: NodeJS.Platform) => new AgentRegistry({ discovery: discovery(), dataDir, platform });
+    const registry = (dataDir?: string, platform?: NodeJS.Platform) =>
+        new AgentRegistry({ discovery: discovery(), dataDir, platform });
     const byId = async (reg: AgentRegistry, id: string) => (await reg.list()).find(info => info.id === id);
 
     test('an installed native agent is ready with its version and launch line; one that is not is missing and says so', async () => {
         const path = program('cursor-agent', 'cursor 2026.09.01');
         const reg = registry();
 
-        expect(await byId(reg, 'cursor')).toEqual({ id: 'cursor', name: 'Cursor', custom: false, enabled: true, status: 'ready', path, version: '2026.09.01', launch: 'cursor-agent acp', login: 'cursor-agent login', permissions: GENERIC_PERMISSIONS });
-        expect(await byId(reg, 'opencode')).toMatchObject({ status: 'missing', detail: expect.stringContaining('no `opencode` command was found'), launch: 'opencode acp' });
+        expect(await byId(reg, 'cursor')).toEqual({
+            id: 'cursor',
+            name: 'Cursor',
+            custom: false,
+            enabled: true,
+            status: 'ready',
+            path,
+            version: '2026.09.01',
+            launch: 'cursor-agent acp',
+            login: 'cursor-agent login',
+            permissions: GENERIC_PERMISSIONS,
+        });
+        expect(await byId(reg, 'opencode')).toMatchObject({
+            status: 'missing',
+            detail: expect.stringContaining('no `opencode` command was found'),
+            launch: 'opencode acp',
+        });
     });
 
     test('a provider that is only a spec is a working agent: found, started and kept apart from the others, with no change to the registry', async () => {
         const path = program('plain-agent', 'plain 1.0.0');
-        const reg = new AgentRegistry({ discovery: discovery(), providers: [{ spec: { id: 'plain', name: 'Plain', programs: ['plain-agent'], launch: { kind: 'binary', args: ['--acp'] }, login: 'plain-agent login' } }] });
+        const reg = new AgentRegistry({
+            discovery: discovery(),
+            providers: [
+                {
+                    spec: {
+                        id: 'plain',
+                        name: 'Plain',
+                        programs: ['plain-agent'],
+                        launch: { kind: 'binary', args: ['--acp'] },
+                        login: 'plain-agent login',
+                    },
+                },
+            ],
+        });
 
-        expect(await reg.list()).toEqual([{ id: 'plain', name: 'Plain', custom: false, enabled: true, status: 'ready', path, version: '1.0.0', launch: 'plain-agent --acp', login: 'plain-agent login', permissions: GENERIC_PERMISSIONS }]);
-        expect(await reg.resolve('plain')).toMatchObject({ ok: true, agent: { id: 'plain', command: path, args: ['--acp'], protocol: 'v1' } });
+        expect(await reg.list()).toEqual([
+            {
+                id: 'plain',
+                name: 'Plain',
+                custom: false,
+                enabled: true,
+                status: 'ready',
+                path,
+                version: '1.0.0',
+                launch: 'plain-agent --acp',
+                login: 'plain-agent login',
+                permissions: GENERIC_PERMISSIONS,
+            },
+        ]);
+        expect(await reg.resolve('plain')).toMatchObject({
+            ok: true,
+            agent: { id: 'plain', command: path, args: ['--acp'], protocol: 'v1' },
+        });
         expect(reg.has('plain')).toBe(true);
         expect(reg.has('cursor')).toBe(false);
         expect(() => reg.add({ id: 'plain', name: 'Again', command: 'x', args: [] })).toThrow(AgentRegistryError);
@@ -178,20 +267,30 @@ describe('AgentRegistry', () => {
         expect(reg.taskChannel('nobody')).toBe('cli');
     });
 
-    test('on macOS a run of Cursor keeps its state in a folder of Clowdy\'s own (owner only), and Cursor learns that the client can show a model\'s effort', async () => {
+    test("on macOS a run of Cursor keeps its state in a folder of Clowdy's own (owner only), and Cursor learns that the client can show a model's effort", async () => {
         const cursor = program('cursor-agent', 'cursor 2026.09.01');
         const dataDir = join(root, 'data');
         const resolved = await registry(dataDir, 'darwin').resolve('cursor');
         const folder = join(dataDir, 'agents', 'cursor');
 
-        expect(resolved).toMatchObject({ ok: true, agent: { command: cursor, args: ['acp'], env: { CURSOR_CONFIG_DIR: folder }, clientMeta: { parameterizedModelPicker: true } } });
+        expect(resolved).toMatchObject({
+            ok: true,
+            agent: {
+                command: cursor,
+                args: ['acp'],
+                env: { CURSOR_CONFIG_DIR: folder },
+                clientMeta: { parameterizedModelPicker: true },
+            },
+        });
         // The folder exists before the agent starts; it holds the session history, so only its owner reads it.
         expect(statSync(folder).isDirectory()).toBe(true);
         expect(statSync(folder).mode & 0o777).toBe(0o700);
         // The other agents are never moved, and have nothing to say to `initialize`.
         program('opencode', 'opencode 1.0.0');
 
-        const opencode = await registry(dataDir, 'darwin').resolve('opencode') as { agent: { env: Record<string, string>; clientMeta?: unknown } };
+        const opencode = (await registry(dataDir, 'darwin').resolve('opencode')) as {
+            agent: { env: Record<string, string>; clientMeta?: unknown };
+        };
 
         expect(opencode.agent.env).not.toHaveProperty('CURSOR_CONFIG_DIR');
         expect(opencode.agent).not.toHaveProperty('clientMeta');
@@ -201,13 +300,13 @@ describe('AgentRegistry', () => {
 
         reg.add({ id: 'mine', name: 'Mine', command: program('mine', 'x'), args: [], env: { A: '1' } });
 
-        const mine = await reg.resolve('mine') as { agent: { env: Record<string, string>; clientMeta?: unknown } };
+        const mine = (await reg.resolve('mine')) as { agent: { env: Record<string, string>; clientMeta?: unknown } };
 
         expect(mine.agent.env).toEqual({ A: '1' });
         expect(mine.agent).not.toHaveProperty('clientMeta');
     });
 
-    test('the person\'s own folder for Cursor wins, and no folder of Clowdy\'s is made then', async () => {
+    test("the person's own folder for Cursor wins, and no folder of Clowdy's is made then", async () => {
         program('cursor-agent', 'cursor 2026.09.01');
 
         const dataDir = join(root, 'data');
@@ -222,7 +321,8 @@ describe('AgentRegistry', () => {
         program('cursor-agent', 'cursor 2026.09.01');
 
         const dataDir = join(root, 'data');
-        const envOf = async (reg: AgentRegistry) => (await reg.resolve('cursor') as { agent: { env: Record<string, string> } }).agent.env;
+        const envOf = async (reg: AgentRegistry) =>
+            ((await reg.resolve('cursor')) as { agent: { env: Record<string, string> } }).agent.env;
 
         // Windows and Linux are not verified: the login may not survive, so a run keeps the person's own folder there.
         expect(await envOf(registry(dataDir, 'win32'))).not.toHaveProperty('CURSOR_CONFIG_DIR');
@@ -231,10 +331,13 @@ describe('AgentRegistry', () => {
         // A bare registry (no data folder) has nowhere to put it.
         expect(await envOf(registry(undefined, 'darwin'))).not.toHaveProperty('CURSOR_CONFIG_DIR');
         // The client capability is for every platform.
-        expect(await registry(dataDir, 'win32').resolve('cursor')).toMatchObject({ ok: true, agent: { clientMeta: { parameterizedModelPicker: true } } });
+        expect(await registry(dataDir, 'win32').resolve('cursor')).toMatchObject({
+            ok: true,
+            agent: { clientMeta: { parameterizedModelPicker: true } },
+        });
     });
 
-    test('only a run makes Cursor\'s folder: a listing, a read (the account, the models) and the sign-in touch no disk and do not name it', async () => {
+    test("only a run makes Cursor's folder: a listing, a read (the account, the models) and the sign-in touch no disk and do not name it", async () => {
         program('cursor-agent', 'cursor 2026.09.01');
 
         const dataDir = join(root, 'data');
@@ -265,30 +368,59 @@ describe('AgentRegistry', () => {
         const reg = registry(dataDir, 'darwin');
         const resolved = await reg.resolve('cursor');
 
-        expect(resolved).toEqual({ ok: false, message: expect.stringContaining(`could not make ${ join(dataDir, 'agents', 'cursor') }`) });
+        expect(resolved).toEqual({
+            ok: false,
+            message: expect.stringContaining(`could not make ${join(dataDir, 'agents', 'cursor')}`),
+        });
         // Starting on the person\'s own folder instead would change their default model, which is what the folder is for.
         expect(await byId(reg, 'cursor')).toMatchObject({ status: 'ready', path: cursor });
         expect((await reg.probeTarget('cursor'))?.program).toBe(cursor);
     });
 
-    test('Claude Code starts through its official adapter on the user\'s own claude, with the cautions of its profile', async () => {
+    test("Claude Code starts through its official adapter on the user's own claude, with the cautions of its profile", async () => {
         const claude = program('claude', '2.1.325 (Claude Code)');
         const reg = registry();
 
-        expect(await byId(reg, 'claude')).toEqual({ id: 'claude', name: 'Claude Code', custom: false, enabled: true, status: 'ready', path: claude, version: '2.1.325', launch: `bun x --bun ${ pinned('claude') }`, fetches: pinned('claude'), login: 'claude auth login', canCompact: true, settings: expect.any(Array), permissions: expect.any(Object) });
+        expect(await byId(reg, 'claude')).toEqual({
+            id: 'claude',
+            name: 'Claude Code',
+            custom: false,
+            enabled: true,
+            status: 'ready',
+            path: claude,
+            version: '2.1.325',
+            launch: `bun x --bun ${pinned('claude')}`,
+            fetches: pinned('claude'),
+            login: 'claude auth login',
+            canCompact: true,
+            settings: expect.any(Array),
+            permissions: expect.any(Object),
+        });
 
         const resolved = await reg.resolve('claude');
 
-        expect(resolved).toMatchObject({ ok: true, agent: { command: process.execPath, args: ['x', '--bun', pinned('claude')] } });
-        expect(resolved.ok && resolved.agent.env).toMatchObject({ CLAUDE_CODE_EXECUTABLE: claude, ENABLE_CLAUDEAI_MCP_SERVERS: 'false', CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1' });
+        expect(resolved).toMatchObject({
+            ok: true,
+            agent: { command: process.execPath, args: ['x', '--bun', pinned('claude')] },
+        });
+        expect(resolved.ok && resolved.agent.env).toMatchObject({
+            CLAUDE_CODE_EXECUTABLE: claude,
+            ENABLE_CLAUDEAI_MCP_SERVERS: 'false',
+            CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',
+        });
         expect(resolved.ok && resolved.agent.scrub.some(pattern => pattern.test('ANTHROPIC_API_KEY'))).toBe(true);
         // Its provider's default preset (Approve for me) asks, so Clowdy's own command is let through.
-        expect(resolved.ok && resolved.agent.sessionMeta).toEqual({ claudeCode: { options: { disallowedTools: ['AskUserQuestion', 'ExitPlanMode'], allowedTools: ['Bash(clowdy:*)'] } } });
+        expect(resolved.ok && resolved.agent.sessionMeta).toEqual({
+            claudeCode: {
+                options: { disallowedTools: ['AskUserQuestion', 'ExitPlanMode'], allowedTools: ['Bash(clowdy:*)'] },
+            },
+        });
         expect(resolved.ok && resolved.agent.permission).toEqual({ preset: 'auto', mode: 'auto', answer: 'ask' });
     });
 
     describe('settings', () => {
-        const settingsOf = async (reg: AgentRegistry, id = 'claude') => Object.fromEntries(((await byId(reg, id))?.settings ?? []).map(setting => [setting.id, setting.value]));
+        const settingsOf = async (reg: AgentRegistry, id = 'claude') =>
+            Object.fromEntries(((await byId(reg, id))?.settings ?? []).map(setting => [setting.id, setting.value]));
         const start = async (reg: AgentRegistry, id = 'claude') => {
             const resolved = await reg.resolve(id);
 
@@ -304,17 +436,39 @@ describe('AgentRegistry', () => {
 
             const reg = registry();
 
-            expect(await settingsOf(reg)).toEqual({ memory: false, connectors: false, subagents: true, workflows: true, longContext: true, artifacts: false, chatTitle: true });
-            expect((await byId(reg, 'claude'))?.settings?.[0]).toMatchObject({ id: 'memory', default: false, label: expect.any(String), description: expect.any(String) });
+            expect(await settingsOf(reg)).toEqual({
+                memory: false,
+                connectors: false,
+                subagents: true,
+                workflows: true,
+                longContext: true,
+                artifacts: false,
+                chatTitle: true,
+                commitMessage: false,
+            });
+            expect((await byId(reg, 'claude'))?.settings?.[0]).toMatchObject({
+                id: 'memory',
+                default: false,
+                label: expect.any(String),
+                description: expect.any(String),
+            });
 
             const agent = await start(reg);
 
             // The CLAUDE.md of the project's other folders is read in every run, whatever the settings.
-            expect(agent.env).toMatchObject({ ENABLE_CLAUDEAI_MCP_SERVERS: 'false', CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1', CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: '1' });
+            expect(agent.env).toMatchObject({
+                ENABLE_CLAUDEAI_MCP_SERVERS: 'false',
+                CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',
+                CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: '1',
+            });
             expect(agent.env).not.toHaveProperty('CLAUDE_CODE_DISABLE_1M_CONTEXT');
             expect(agent.env).toMatchObject({ CLAUDE_CODE_ARTIFACT: '0' });
             expect(agent.env).not.toHaveProperty('CODEX_CONFIG');
-            expect(agent.sessionMeta).toEqual({ claudeCode: { options: { disallowedTools: ['AskUserQuestion', 'ExitPlanMode'], allowedTools: ['Bash(clowdy:*)'] } } });
+            expect(agent.sessionMeta).toEqual({
+                claudeCode: {
+                    options: { disallowedTools: ['AskUserQuestion', 'ExitPlanMode'], allowedTools: ['Bash(clowdy:*)'] },
+                },
+            });
         });
 
         test('a setting turned on or off changes the environment and the tools the agent starts with', async () => {
@@ -322,44 +476,98 @@ describe('AgentRegistry', () => {
 
             const reg = registry();
 
-            reg.update('claude', { settings: { memory: true, connectors: true, subagents: false, workflows: false, longContext: false, artifacts: true } });
+            reg.update('claude', {
+                settings: {
+                    memory: true,
+                    connectors: true,
+                    subagents: false,
+                    workflows: false,
+                    longContext: false,
+                    artifacts: true,
+                },
+            });
 
-            expect(await settingsOf(reg)).toEqual({ memory: true, connectors: true, subagents: false, workflows: false, longContext: false, artifacts: true, chatTitle: true });
+            expect(await settingsOf(reg)).toEqual({
+                memory: true,
+                connectors: true,
+                subagents: false,
+                workflows: false,
+                longContext: false,
+                artifacts: true,
+                chatTitle: true,
+                commitMessage: false,
+            });
 
             const agent = await start(reg);
 
             expect(agent.env).not.toHaveProperty('CLAUDE_CODE_DISABLE_AUTO_MEMORY');
             expect(agent.env).not.toHaveProperty('ENABLE_CLAUDEAI_MCP_SERVERS');
-            expect(agent.env).toMatchObject({ CLAUDE_CODE_DISABLE_1M_CONTEXT: '1', CLAUDE_CODE_ARTIFACT: '1', CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH: '3' });
-            expect(agent.sessionMeta).toEqual({ claudeCode: { options: { disallowedTools: ['AskUserQuestion', 'ExitPlanMode', 'Agent', 'Task', 'ListAgents', 'Workflow'], allowedTools: ['Bash(clowdy:*)'] } } });
+            expect(agent.env).toMatchObject({
+                CLAUDE_CODE_DISABLE_1M_CONTEXT: '1',
+                CLAUDE_CODE_ARTIFACT: '1',
+                CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH: '3',
+            });
+            expect(agent.sessionMeta).toEqual({
+                claudeCode: {
+                    options: {
+                        disallowedTools: ['AskUserQuestion', 'ExitPlanMode', 'Agent', 'Task', 'ListAgents', 'Workflow'],
+                        allowedTools: ['Bash(clowdy:*)'],
+                    },
+                },
+            });
 
             // A change names only what it changes.
             reg.update('claude', { settings: { memory: false } });
 
-            expect(await settingsOf(reg)).toEqual({ memory: false, connectors: true, subagents: false, workflows: false, longContext: false, artifacts: true, chatTitle: true });
+            expect(await settingsOf(reg)).toEqual({
+                memory: false,
+                connectors: true,
+                subagents: false,
+                workflows: false,
+                longContext: false,
+                artifacts: true,
+                chatTitle: true,
+                commitMessage: false,
+            });
         });
 
-        test('Claude Artifacts is stated off, so a variable the person\'s own shell sets does not turn it on', async () => {
+        test("Claude Artifacts is stated off, so a variable the person's own shell sets does not turn it on", async () => {
             program('claude', '2.1.325 (Claude Code)');
 
             const { env } = await start(registry());
 
-            expect(buildAgentEnv({ daemonEnv: { CLAUDE_CODE_ARTIFACT: '1' }, path: bin, set: env })).toMatchObject({ CLAUDE_CODE_ARTIFACT: '0' });
+            expect(buildAgentEnv({ daemonEnv: { CLAUDE_CODE_ARTIFACT: '1' }, path: bin, set: env })).toMatchObject({
+                CLAUDE_CODE_ARTIFACT: '0',
+            });
         });
 
-        test('Codex lists memory and sub-agents next to its chat titles, and turns each into config keys in one CODEX_CONFIG', async () => {
+        test('Codex lists memory and sub-agents next to its chat titles and commit messages, and turns the first two into config keys in one CODEX_CONFIG', async () => {
             program('codex', 'codex-cli 0.166.0');
 
             const reg = registry();
 
-            expect(await settingsOf(reg, 'codex')).toEqual({ memory: false, subagents: true, chatTitle: true });
+            expect(await settingsOf(reg, 'codex')).toEqual({
+                memory: false,
+                subagents: true,
+                chatTitle: true,
+                commitMessage: false,
+            });
 
             // Memory is stated both ways, so a feature the person turned on in their own Codex does not reach a run that has it off.
-            expect(JSON.parse((await start(reg, 'codex')).env.CODEX_CONFIG ?? 'null')).toEqual({ 'features.memories': false, 'memories.use_memories': false, 'memories.generate_memories': false });
+            expect(JSON.parse((await start(reg, 'codex')).env.CODEX_CONFIG ?? 'null')).toEqual({
+                'features.memories': false,
+                'memories.use_memories': false,
+                'memories.generate_memories': false,
+            });
 
             reg.update('codex', { settings: { memory: true, subagents: false } });
 
-            expect(await settingsOf(reg, 'codex')).toEqual({ memory: true, subagents: false, chatTitle: true });
+            expect(await settingsOf(reg, 'codex')).toEqual({
+                memory: true,
+                subagents: false,
+                chatTitle: true,
+                commitMessage: false,
+            });
             expect(JSON.parse((await start(reg, 'codex')).env.CODEX_CONFIG ?? 'null')).toEqual({
                 'features.memories': true,
                 'memories.use_memories': true,
@@ -384,7 +592,13 @@ describe('AgentRegistry', () => {
             expect(reg.setting('codex', 'chatTitle')).toBe(true);
             expect(reg.setting('cursor', 'chatTitle')).toBeUndefined();
             expect(reg.setting('nobody', 'chatTitle')).toBeUndefined();
-            expect((await byId(reg, 'codex'))?.settings?.find(setting => setting.id === 'chatTitle')).toEqual({ id: 'chatTitle', label: 'Chat titles', description: 'Let Codex name a new chat from its first message', value: true, default: true });
+            expect((await byId(reg, 'codex'))?.settings?.find(setting => setting.id === 'chatTitle')).toEqual({
+                id: 'chatTitle',
+                label: 'Chat titles',
+                description: 'Let Codex name a new chat from its first message',
+                value: true,
+                default: true,
+            });
 
             const before = await start(reg);
 
@@ -393,6 +607,43 @@ describe('AgentRegistry', () => {
             expect(reg.setting('codex', 'chatTitle')).toBe(true);
             // Nothing about it reaches the agent: it starts as it did.
             expect(await start(reg)).toEqual(before);
+        });
+
+        test('the commit messages of Codex and of Claude Code are off, are read by the daemon alone, and no other agent has them', async () => {
+            program('claude', '2.1.325 (Claude Code)');
+            program('codex', 'codex-cli 0.166.0');
+
+            const reg = registry();
+
+            expect(reg.setting('codex', 'commitMessage')).toBe(false);
+            expect(reg.setting('claude', 'commitMessage')).toBe(false);
+            expect(reg.setting('cursor', 'commitMessage')).toBeUndefined();
+            expect(reg.setting('nobody', 'commitMessage')).toBeUndefined();
+            expect((await byId(reg, 'claude'))?.settings?.find(setting => setting.id === 'commitMessage')).toEqual({
+                id: 'commitMessage',
+                label: 'Commit messages',
+                description: 'Send the changed files to Claude Code to write commit messages',
+                value: false,
+                default: false,
+            });
+            expect((await byId(reg, 'codex'))?.settings?.find(setting => setting.id === 'commitMessage')).toEqual({
+                id: 'commitMessage',
+                label: 'Commit messages',
+                description: 'Send the changed files to Codex to write commit messages',
+                value: false,
+                default: false,
+            });
+
+            const before = await start(reg, 'codex');
+            const claudeBefore = await start(reg);
+
+            reg.update('codex', { settings: { commitMessage: true } });
+            reg.update('claude', { settings: { commitMessage: true } });
+            expect(reg.setting('codex', 'commitMessage')).toBe(true);
+            expect(reg.setting('claude', 'commitMessage')).toBe(true);
+            // Nothing about it reaches the agents' own runs: they start as they did.
+            expect(await start(reg, 'codex')).toEqual(before);
+            expect(await start(reg)).toEqual(claudeBefore);
         });
 
         test('are kept in agents.json, refuse a setting the agent does not have, and give way to the variables the person set', async () => {
@@ -407,7 +658,9 @@ describe('AgentRegistry', () => {
             expect(() => reg.update('cursor', { settings: { memory: true } })).toThrow('no setting called');
             expect(await settingsOf(registry(dir))).toMatchObject({ memory: true });
             expect((await start(registry(dir))).env).toMatchObject({ ENABLE_CLAUDEAI_MCP_SERVERS: 'true' });
-            expect((await byId(registry(dir), 'claude'))?.overrides).toEqual({ env: { ENABLE_CLAUDEAI_MCP_SERVERS: 'true' } });
+            expect((await byId(registry(dir), 'claude'))?.overrides).toEqual({
+                env: { ENABLE_CLAUDEAI_MCP_SERVERS: 'true' },
+            });
             expect((await byId(reg, 'cursor'))?.settings).toBeUndefined();
         });
     });
@@ -422,9 +675,10 @@ describe('AgentRegistry', () => {
 
             return resolved.agent;
         };
-        const names = (permissions: { presets: { id: string }[] } | undefined) => permissions?.presets.map(preset => preset.id);
+        const names = (permissions: { presets: { id: string }[] } | undefined) =>
+            permissions?.presets.map(preset => preset.id);
 
-        test('every agent lists the presets its provider declares, in the same names; an agent with no declaration, a custom one included, has the client\'s pair', async () => {
+        test("every agent lists the presets its provider declares, in the same names; an agent with no declaration, a custom one included, has the client's pair", async () => {
             program('claude', '2.1.325 (Claude Code)');
             program('codex', 'codex-cli 0.166.0');
 
@@ -435,7 +689,12 @@ describe('AgentRegistry', () => {
             const claude = (await byId(reg, 'claude'))?.permissions;
 
             expect(names(claude)).toEqual(['ask', 'accept-edits', 'auto', 'full']);
-            expect(claude?.presets.map(preset => preset.name)).toEqual(['Ask for approval', 'Accept edits', 'Approve for me', 'Full access']);
+            expect(claude?.presets.map(preset => preset.name)).toEqual([
+                'Ask for approval',
+                'Accept edits',
+                'Approve for me',
+                'Full access',
+            ]);
             expect(claude).toMatchObject({ default: 'auto' });
             expect(claude?.value).toBeUndefined();
             expect(names((await byId(reg, 'codex'))?.permissions)).toEqual(['ask', 'accept-edits', 'auto', 'full']);
@@ -444,7 +703,7 @@ describe('AgentRegistry', () => {
             expect((await byId(reg, 'mine'))?.permissions).toEqual(GENERIC_PERMISSIONS);
         });
 
-        test('with no choice an agent runs on its provider\'s default: Approve for me with its mode on Claude and Codex, the client\'s Full access on an agent with none of its own', async () => {
+        test("with no choice an agent runs on its provider's default: Approve for me with its mode on Claude and Codex, the client's Full access on an agent with none of its own", async () => {
             program('claude', '2.1.325 (Claude Code)');
             program('codex', 'codex-cli 0.166.0');
 
@@ -455,7 +714,11 @@ describe('AgentRegistry', () => {
             const claude = await start(reg, 'claude');
 
             expect(claude.permission).toEqual({ preset: 'auto', mode: 'auto', answer: 'ask' });
-            expect(claude.sessionMeta).toEqual({ claudeCode: { options: { disallowedTools: ['AskUserQuestion', 'ExitPlanMode'], allowedTools: ['Bash(clowdy:*)'] } } });
+            expect(claude.sessionMeta).toEqual({
+                claudeCode: {
+                    options: { disallowedTools: ['AskUserQuestion', 'ExitPlanMode'], allowedTools: ['Bash(clowdy:*)'] },
+                },
+            });
             expect((await start(reg, 'codex')).permission).toEqual({ preset: 'auto', mode: 'agent', answer: 'ask' });
             // No mode to send, and Clowdy allows what the agent asks: what such an agent has always done.
             expect((await start(reg, 'mine')).permission).toEqual({ preset: 'full', answer: 'allow' });
@@ -464,7 +727,7 @@ describe('AgentRegistry', () => {
             expect((await byId(reg, 'claude'))?.permissions?.value).toBeUndefined();
         });
 
-        test('a chosen preset gives the start the mode and the answer of the provider\'s plan; Claude\'s presets that ask let Clowdy\'s own command through', async () => {
+        test("a chosen preset gives the start the mode and the answer of the provider's plan; Claude's presets that ask let Clowdy's own command through", async () => {
             program('claude', '2.1.325 (Claude Code)');
             program('codex', 'codex-cli 0.166.0');
 
@@ -476,19 +739,29 @@ describe('AgentRegistry', () => {
             const claude = await start(reg, 'claude');
 
             expect(claude.permission).toEqual({ preset: 'auto', mode: 'auto', answer: 'ask' });
-            expect(claude.sessionMeta).toEqual({ claudeCode: { options: { disallowedTools: ['AskUserQuestion', 'ExitPlanMode'], allowedTools: ['Bash(clowdy:*)'] } } });
+            expect(claude.sessionMeta).toEqual({
+                claudeCode: {
+                    options: { disallowedTools: ['AskUserQuestion', 'ExitPlanMode'], allowedTools: ['Bash(clowdy:*)'] },
+                },
+            });
             expect((await byId(reg, 'claude'))?.permissions?.value).toBe('auto');
-            expect((await start(reg, 'codex')).permission).toEqual({ preset: 'full', mode: 'agent-full-access', answer: 'allow' });
+            expect((await start(reg, 'codex')).permission).toEqual({
+                preset: 'full',
+                mode: 'agent-full-access',
+                answer: 'allow',
+            });
 
             reg.update('claude', { permission: 'full' });
 
             const full = await start(reg, 'claude');
 
             expect(full.permission).toEqual({ preset: 'full', mode: 'bypassPermissions', answer: 'allow' });
-            expect(full.sessionMeta).toEqual({ claudeCode: { options: { disallowedTools: ['AskUserQuestion', 'ExitPlanMode'] } } });
+            expect(full.sessionMeta).toEqual({
+                claudeCode: { options: { disallowedTools: ['AskUserQuestion', 'ExitPlanMode'] } },
+            });
         });
 
-        test('a custom agent on the client\'s pair is answered by Clowdy and sent no mode', async () => {
+        test("a custom agent on the client's pair is answered by Clowdy and sent no mode", async () => {
             const reg = registry();
 
             reg.add({ id: 'mine', name: 'Mine', command: program('my-agent', 'mine 1.0'), args: [] });
@@ -527,14 +800,21 @@ describe('AgentRegistry', () => {
 
             program('cursor-agent', '2026.11.13');
 
-            writeFileSync(join(dir, 'agents.json'), JSON.stringify({ overrides: { claude: { permission: 'sandbox' }, cursor: { permission: 'auto' } } }));
+            writeFileSync(
+                join(dir, 'agents.json'),
+                JSON.stringify({ overrides: { claude: { permission: 'sandbox' }, cursor: { permission: 'auto' } } })
+            );
 
             const reloaded = registry(dir);
 
             expect((await byId(reloaded, 'claude'))?.permissions?.value).toBeUndefined();
             // Written by hand, or left from a provider that offered more: shown as unchosen and not applied.
             expect((await byId(reloaded, 'cursor'))?.permissions?.value).toBeUndefined();
-            expect((await start(reloaded, 'claude')).permission).toEqual({ preset: 'auto', mode: 'auto', answer: 'ask' });
+            expect((await start(reloaded, 'claude')).permission).toEqual({
+                preset: 'auto',
+                mode: 'auto',
+                answer: 'ask',
+            });
             expect((await start(reloaded, 'cursor')).permission).toEqual({ preset: 'full', answer: 'allow' });
         });
 
@@ -542,17 +822,37 @@ describe('AgentRegistry', () => {
             const path = program('stub-agent', 'stub 1.0.0');
             const reg = new AgentRegistry({
                 discovery: discovery(),
-                providers: [{
-                    spec: { id: 'stub', name: 'Stub', programs: ['stub-agent'], launch: { kind: 'binary', args: ['--acp'] } },
-                    permissions: {
-                        presets: [{ id: 'accept-edits', description: 'Stub edits files' }, { id: 'auto', description: 'Stub decides' }],
-                        default: 'accept-edits',
-                        apply: preset => ({ mode: preset === 'auto' ? 'smart' : 'files', effect: { env: { STUB_PERMISSIONS: preset } }, answer: 'ask' }),
+                providers: [
+                    {
+                        spec: {
+                            id: 'stub',
+                            name: 'Stub',
+                            programs: ['stub-agent'],
+                            launch: { kind: 'binary', args: ['--acp'] },
+                        },
+                        permissions: {
+                            presets: [
+                                { id: 'accept-edits', description: 'Stub edits files' },
+                                { id: 'auto', description: 'Stub decides' },
+                            ],
+                            default: 'accept-edits',
+                            apply: preset => ({
+                                mode: preset === 'auto' ? 'smart' : 'files',
+                                effect: { env: { STUB_PERMISSIONS: preset } },
+                                answer: 'ask',
+                            }),
+                        },
                     },
-                }],
+                ],
             });
 
-            expect((await reg.list())[0]?.permissions).toEqual({ presets: [{ id: 'accept-edits', name: 'Accept edits', description: 'Stub edits files' }, { id: 'auto', name: 'Approve for me', description: 'Stub decides' }], default: 'accept-edits' });
+            expect((await reg.list())[0]?.permissions).toEqual({
+                presets: [
+                    { id: 'accept-edits', name: 'Accept edits', description: 'Stub edits files' },
+                    { id: 'auto', name: 'Approve for me', description: 'Stub decides' },
+                ],
+                default: 'accept-edits',
+            });
             expect(() => reg.update('stub', { permission: 'full' })).toThrow('Stub has no preset called "full"');
 
             // No choice: the provider's own default, with its mode and environment, though the client's pair would have said `full`.
@@ -575,10 +875,16 @@ describe('AgentRegistry', () => {
 
             const reg = new AgentRegistry({
                 discovery: discovery(),
-                providers: [{
-                    spec: { id: 'stub', name: 'Stub', programs: ['codex'], launch: { kind: 'binary', args: [] } },
-                    permissions: { presets: [{ id: 'ask', description: 'x' }], default: 'ask', apply: () => ({ effect: { env: { STUB_MODE: 'preset' } }, answer: 'ask' }) },
-                }],
+                providers: [
+                    {
+                        spec: { id: 'stub', name: 'Stub', programs: ['codex'], launch: { kind: 'binary', args: [] } },
+                        permissions: {
+                            presets: [{ id: 'ask', description: 'x' }],
+                            default: 'ask',
+                            apply: () => ({ effect: { env: { STUB_MODE: 'preset' } }, answer: 'ask' }),
+                        },
+                    },
+                ],
             });
 
             reg.update('stub', { permission: 'ask', env: { STUB_MODE: 'person' } });
@@ -591,10 +897,30 @@ describe('AgentRegistry', () => {
 
             const reg = new AgentRegistry({
                 discovery: discovery(),
-                providers: [{
-                    spec: { id: 'stub', name: 'Stub', programs: ['codex'], launch: { kind: 'binary', args: [] }, settings: [{ id: 'on', label: 'On', description: 'x', default: true, effect: () => ({ env: { STUB_MODE: 'setting', STUB_SETTING: '1' } }) }] },
-                    permissions: { presets: [{ id: 'ask', description: 'x' }], default: 'ask', apply: () => ({ effect: { env: { STUB_MODE: 'preset' } }, answer: 'ask' }) },
-                }],
+                providers: [
+                    {
+                        spec: {
+                            id: 'stub',
+                            name: 'Stub',
+                            programs: ['codex'],
+                            launch: { kind: 'binary', args: [] },
+                            settings: [
+                                {
+                                    id: 'on',
+                                    label: 'On',
+                                    description: 'x',
+                                    default: true,
+                                    effect: () => ({ env: { STUB_MODE: 'setting', STUB_SETTING: '1' } }),
+                                },
+                            ],
+                        },
+                        permissions: {
+                            presets: [{ id: 'ask', description: 'x' }],
+                            default: 'ask',
+                            apply: () => ({ effect: { env: { STUB_MODE: 'preset' } }, answer: 'ask' }),
+                        },
+                    },
+                ],
             });
 
             // Nothing chosen: the default preset's effect comes after the setting's, and the setting's other variables stay.
@@ -607,7 +933,12 @@ describe('AgentRegistry', () => {
         let bun: string | undefined;
         const reg = new AgentRegistry({ discovery: discovery(), runtime: async () => bun });
 
-        expect(await byId(reg, 'codex')).toMatchObject({ status: 'needs-runtime', path: codex, detail: expect.stringContaining('bun x'), fetches: pinned('codex') });
+        expect(await byId(reg, 'codex')).toMatchObject({
+            status: 'needs-runtime',
+            path: codex,
+            detail: expect.stringContaining('bun x'),
+            fetches: pinned('codex'),
+        });
 
         bun = program('bun', '1.4.0');
         reg.refresh();
@@ -616,11 +947,14 @@ describe('AgentRegistry', () => {
         expect(await byId(reg, 'claude')).toMatchObject({ status: 'missing' });
     });
 
-    test('an adapter starts through the daemon\'s own Bun (`bun x --bun`) with the user\'s own program, and without optional dependencies', async () => {
+    test("an adapter starts through the daemon's own Bun (`bun x --bun`) with the user's own program, and without optional dependencies", async () => {
         const codex = program('codex', 'x');
         const resolved = await registry().resolve('codex');
 
-        expect(resolved).toMatchObject({ ok: true, agent: { command: process.execPath, args: ['x', '--bun', pinned('codex')] } });
+        expect(resolved).toMatchObject({
+            ok: true,
+            agent: { command: process.execPath, args: ['x', '--bun', pinned('codex')] },
+        });
         expect(resolved.ok && resolved.agent.env).toMatchObject({ CODEX_PATH: codex, npm_config_omit: 'optional' });
         expect(resolved.ok && resolved.agent.scrub.some(pattern => pattern.test('OPENAI_API_KEY'))).toBe(true);
     });
@@ -645,8 +979,17 @@ describe('AgentRegistry', () => {
         reg.add({ id: 'mine', name: 'Mine', command: 'my-agent', args: ['--acp'], env: { A: '1' } });
         reg.update('mine', { env: { B: '2' } });
 
-        expect(await byId(reg, 'mine')).toMatchObject({ custom: true, status: 'ready', path: tool, version: '3.0', launch: 'my-agent --acp' });
-        expect(await reg.resolve('mine')).toMatchObject({ ok: true, agent: { command: tool, args: ['--acp'], env: { A: '1', B: '2' } } });
+        expect(await byId(reg, 'mine')).toMatchObject({
+            custom: true,
+            status: 'ready',
+            path: tool,
+            version: '3.0',
+            launch: 'my-agent --acp',
+        });
+        expect(await reg.resolve('mine')).toMatchObject({
+            ok: true,
+            agent: { command: tool, args: ['--acp'], env: { A: '1', B: '2' } },
+        });
         expect(reg.has('mine')).toBe(true);
 
         const again = registry(dataDir);
@@ -690,15 +1033,14 @@ describe('AgentRegistry', () => {
 
         try {
             expect(registry(dataDir).has('claude')).toBe(true);
-        }
-        finally {
+        } finally {
             console.warn = warn;
         }
 
         expect(warnings[0]).toContain('could not be read');
     });
 
-    test('a change names what it changes: the rest of the agent\'s settings stay, even when the caller passes them as undefined', async () => {
+    test("a change names what it changes: the rest of the agent's settings stay, even when the caller passes them as undefined", async () => {
         const chosen = program('my-opencode', 'x');
         const reg = registry();
 
@@ -709,13 +1051,18 @@ describe('AgentRegistry', () => {
 
         reg.update('opencode', { enabled: true });
 
-        expect(await reg.resolve('opencode')).toMatchObject({ ok: true, agent: { command: chosen, env: { KEY: 'v' } } });
+        expect(await reg.resolve('opencode')).toMatchObject({
+            ok: true,
+            agent: { command: chosen, env: { KEY: 'v' } },
+        });
     });
 
     test('a program is a name or an absolute path: a relative one would be read against the wrong folder', () => {
         const reg = registry();
 
-        expect(() => reg.add({ id: 'rel', name: 'Rel', command: './agent', args: [] })).toThrow(/program name or an absolute path/);
+        expect(() => reg.add({ id: 'rel', name: 'Rel', command: './agent', args: [] })).toThrow(
+            /program name or an absolute path/
+        );
         expect(() => reg.update('opencode', { path: 'bin/opencode' })).toThrow(/must be absolute/);
 
         reg.add({ id: 'abs', name: 'Abs', command: '/usr/bin/agent', args: [] });
@@ -733,17 +1080,39 @@ describe('AgentRegistry', () => {
 
         const resolved = await reg.resolve('claude');
 
-        expect(resolved.ok && resolved.agent.env).toMatchObject({ ENABLE_CLAUDEAI_MCP_SERVERS: 'true', ANTHROPIC_API_KEY: 'k', CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1' });
+        expect(resolved.ok && resolved.agent.env).toMatchObject({
+            ENABLE_CLAUDEAI_MCP_SERVERS: 'true',
+            ANTHROPIC_API_KEY: 'k',
+            CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',
+        });
     });
 
     test('agents.json keeps what is usable of a damaged file, and what is written is private to the user', () => {
         const dataDir = join(root, 'data');
 
         mkdirSync(dataDir);
-        writeFileSync(join(dataDir, 'agents.json'), JSON.stringify({
-            agents: [null, 7, { id: 'good', command: ' tool ', args: ['a', 1], env: { A: '1' } }, { id: 'claude', command: 'x' }, { id: 'fake', command: 'x' }, { id: 'Bad Id', command: 'x' }, { id: 'nocommand' }, { id: 'twice', command: 'first' }, { id: 'twice', command: 'second' }, { id: 'badenv', command: 'x', env: { A: 1 } }],
-            overrides: { cursor: { enabled: 'no', path: 5, env: { A: 1 } }, opencode: { enabled: false, path: '/x/opencode', env: { K: 'v' } }, gemini: 7 },
-        }));
+        writeFileSync(
+            join(dataDir, 'agents.json'),
+            JSON.stringify({
+                agents: [
+                    null,
+                    7,
+                    { id: 'good', command: ' tool ', args: ['a', 1], env: { A: '1' } },
+                    { id: 'claude', command: 'x' },
+                    { id: 'fake', command: 'x' },
+                    { id: 'Bad Id', command: 'x' },
+                    { id: 'nocommand' },
+                    { id: 'twice', command: 'first' },
+                    { id: 'twice', command: 'second' },
+                    { id: 'badenv', command: 'x', env: { A: 1 } },
+                ],
+                overrides: {
+                    cursor: { enabled: 'no', path: 5, env: { A: 1 } },
+                    opencode: { enabled: false, path: '/x/opencode', env: { K: 'v' } },
+                    gemini: 7,
+                },
+            })
+        );
 
         const reg = registry(dataDir);
 
@@ -756,7 +1125,11 @@ describe('AgentRegistry', () => {
             { id: 'twice', name: 'twice', command: 'first', args: [] },
             { id: 'badenv', name: 'badenv', command: 'x', args: [] },
         ]);
-        expect(saved.overrides).toEqual({ cursor: {}, good: {}, opencode: { enabled: false, path: '/x/opencode', env: { K: 'v' } } });
+        expect(saved.overrides).toEqual({
+            cursor: {},
+            good: {},
+            opencode: { enabled: false, path: '/x/opencode', env: { K: 'v' } },
+        });
         expect(statSync(join(dataDir, 'agents.json')).mode & 0o777).toBe(0o600);
     });
 

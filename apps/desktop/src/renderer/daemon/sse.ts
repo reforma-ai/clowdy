@@ -50,7 +50,10 @@ export class SseParser {
     }
 
     #flush(): SseFrame | undefined {
-        const frame = this.#data.length > 0 ? { event: this.#event || 'message', data: this.#data.join('\n'), id: this.#id } : undefined;
+        const frame =
+            this.#data.length > 0
+                ? { event: this.#event || 'message', data: this.#data.join('\n'), id: this.#id }
+                : undefined;
 
         this.#event = '';
         this.#data = [];

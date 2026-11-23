@@ -4,7 +4,7 @@ import { delimiter } from 'node:path';
 const MARKER = '__CLOWDY_PATH__';
 
 /** Prints the PATH between markers, so whatever the user's shell startup files print does not end up in it. */
-const PRINT_PATH = `printf '%s%s%s' ${ MARKER } "$PATH" ${ MARKER }`;
+const PRINT_PATH = `printf '%s%s%s' ${MARKER} "$PATH" ${MARKER}`;
 
 /** What launchd gives an app started from Finder or the Dock. */
 const SYSTEM_DIRECTORIES = new Set(['/usr/bin', '/bin', '/usr/sbin', '/sbin']);
@@ -38,10 +38,18 @@ export function mergePaths(loginPath: string, currentPath: string | undefined, s
 }
 
 /** Runs `shell -ilc 'printf %s "$PATH"'`. Resolves `undefined` when the shell fails or takes longer than the timeout. */
-export function resolveLoginShellPath(shell: string, env: NodeJS.ProcessEnv, timeoutMs = LOGIN_SHELL_TIMEOUT_MS): Promise<string | undefined> {
+export function resolveLoginShellPath(
+    shell: string,
+    env: NodeJS.ProcessEnv,
+    timeoutMs = LOGIN_SHELL_TIMEOUT_MS
+): Promise<string | undefined> {
     return new Promise(resolve => {
         // No input for the interactive shell, and its complaints about the missing terminal go nowhere.
-        const child = spawn(shell, ['-ilc', PRINT_PATH], { env, stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true });
+        const child = spawn(shell, ['-ilc', PRINT_PATH], {
+            env,
+            stdio: ['ignore', 'pipe', 'ignore'],
+            windowsHide: true,
+        });
         const finish = (path: string | undefined) => {
             clearTimeout(timer);
             resolve(path);
@@ -54,7 +62,7 @@ export function resolveLoginShellPath(shell: string, env: NodeJS.ProcessEnv, tim
         let output = '';
 
         child.stdout.setEncoding('utf8');
-        child.stdout.on('data', (chunk: string) => output += chunk);
+        child.stdout.on('data', (chunk: string) => (output += chunk));
         child.once('error', () => finish(undefined));
         child.once('close', () => finish(parseLoginShellPath(output)));
     });
@@ -66,5 +74,5 @@ let cached: Promise<string | undefined> | undefined;
 export function loginShellPath(platform: NodeJS.Platform, env: NodeJS.ProcessEnv): Promise<string | undefined> {
     const shell = env.SHELL || (platform === 'darwin' ? '/bin/zsh' : '/bin/sh');
 
-    return cached ??= resolveLoginShellPath(shell, env);
+    return (cached ??= resolveLoginShellPath(shell, env));
 }

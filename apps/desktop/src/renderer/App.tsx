@@ -10,7 +10,7 @@ export function App() {
     useEffect(() => void window.desktop?.ready(), []);
 
     return (
-        <RootStoreProvider value={ root }>
+        <RootStoreProvider value={root}>
             <Shell />
             <ToastRegion />
         </RootStoreProvider>

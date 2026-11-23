@@ -23,7 +23,15 @@ export interface RunOptions {
     input?: string;
     /** Ends the program with its group when it fires (the daemon stops); the result then has `error: 'stopped'`. */
     signal?: AbortSignal;
+    /**
+     * The signal that ends the program at the deadline and when `signal` fires: `SIGKILL` unless it is told otherwise. A program that must clean up after itself (git removes its
+     * lock files on `SIGTERM`, and a `SIGKILL` leaves them for the person to find) is asked with `SIGTERM`, and killed after `STOP_GRACE_MS` if it is still there.
+     */
+    stopSignal?: NodeJS.Signals;
 }
+
+/** How long a program that was asked to stop (`RunOptions.stopSignal`) has before it is killed. */
+const STOP_GRACE_MS = 2000;
 
 const DEFAULT_MAX_CHARS = 4 * 1024 * 1024;
 
@@ -33,8 +41,12 @@ const DEFAULT_MAX_CHARS = 4 * 1024 * 1024;
  * its own process group so the deadline takes its children down too, and nothing is thrown: a program that cannot be
  * started is a result with `error`.
  */
-export function runProgram(command: string, args: string[], { env, cwd, timeoutMs, maxChars = DEFAULT_MAX_CHARS, input, signal }: RunOptions): Promise<RunResult> {
-    return new Promise((resolve) => {
+export function runProgram(
+    command: string,
+    args: string[],
+    { env, cwd, timeoutMs, maxChars = DEFAULT_MAX_CHARS, input, signal, stopSignal = 'SIGKILL' }: RunOptions
+): Promise<RunResult> {
+    return new Promise(resolve => {
         let child: ReturnType<typeof spawn>;
 
         if (signal?.aborted) {
@@ -44,16 +56,27 @@ export function runProgram(command: string, args: string[], { env, cwd, timeoutM
         }
 
         try {
-            child = spawn(command, args, { cwd, env, stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'], detached: process.platform !== 'win32', windowsHide: true });
+            child = spawn(command, args, {
+                cwd,
+                env,
+                stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
+                detached: process.platform !== 'win32',
+                windowsHide: true,
+            });
 
             if (input !== undefined) {
                 // A program that exits before it reads its input must not take the daemon down with an EPIPE.
                 child.stdin?.on('error', () => undefined);
                 child.stdin?.end(input);
             }
-        }
-        catch (error) {
-            resolve({ code: null, stdout: '', stderr: '', timedOut: false, error: error instanceof Error ? error.message : String(error) });
+        } catch (error) {
+            resolve({
+                code: null,
+                stdout: '',
+                stderr: '',
+                timedOut: false,
+                error: error instanceof Error ? error.message : String(error),
+            });
 
             return;
         }
@@ -72,22 +95,31 @@ export function runProgram(command: string, args: string[], { env, cwd, timeoutM
             signal?.removeEventListener('abort', onAbort);
             resolve({ stdout, stderr, timedOut, ...result });
         };
-        const killGroup = () => {
+        const killGroup = (name: NodeJS.Signals = 'SIGKILL') => {
             if (child.pid !== undefined) {
-                killProcessGroup(child.pid, 'SIGKILL');
+                killProcessGroup(child.pid, name);
+            } else {
+                child.kill(name);
             }
-            else {
-                child.kill('SIGKILL');
+        };
+        let grace: ReturnType<typeof setTimeout> | undefined;
+        /** Ends the program with the signal the caller chose; one that was only asked to stop is killed if it is still there after the grace. */
+        const stop = () => {
+            killGroup(stopSignal);
+
+            if (stopSignal !== 'SIGKILL') {
+                grace = setTimeout(() => killGroup(), STOP_GRACE_MS);
+                grace.unref();
             }
         };
         // A program that left a child holding its pipes open never closes them: do not wait for that.
         const timer = setTimeout(() => {
             timedOut = true;
-            killGroup();
+            stop();
             finish({ code: null });
         }, timeoutMs);
         const onAbort = () => {
-            killGroup();
+            stop();
             finish({ code: null, error: 'stopped' });
         };
 
@@ -105,8 +137,9 @@ export function runProgram(command: string, args: string[], { env, cwd, timeoutM
         });
         child.once('error', error => finish({ code: null, error: error.message }));
         // What the program left running goes with it, at once: a leftover that holds the pipes open would keep `close` from ever coming.
-        child.once('exit', killGroup);
-        child.once('close', (code) => {
+        child.once('exit', () => killGroup());
+        child.once('close', code => {
+            clearTimeout(grace);
             killGroup();
             finish({ code });
         });

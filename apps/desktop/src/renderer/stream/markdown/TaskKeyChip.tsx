@@ -12,9 +12,16 @@ export function TaskKeyChip({ task, className }: { task: Pick<Task, 'id' | 'key'
     const { onOpenTask } = use(StreamLinksContext);
 
     return (
-        <button type="button" className={ cn(chipStyles.chip, className) } title={ task.title } onClick={ () => onOpenTask?.(task.id) }>
-            <span className={ chipStyles.icon }><Box width={ 12 } height={ 12 } /></span>
-            <span className={ chipStyles.label }>{ task.key }</span>
+        <button
+            type="button"
+            className={cn(chipStyles.chip, className)}
+            title={task.title}
+            onClick={() => onOpenTask?.(task.id)}
+        >
+            <span className={chipStyles.icon}>
+                <Box width={12} height={12} />
+            </span>
+            <span className={chipStyles.label}>{task.key}</span>
         </button>
     );
 }

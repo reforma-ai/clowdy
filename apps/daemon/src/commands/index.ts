@@ -5,6 +5,7 @@ import { projectHandlers } from './project';
 import { runHandlers } from './run';
 import { skillsHandlers } from './skills';
 import { taskHandlers } from './task';
+import { workspaceAsyncHandlers, workspaceHandlers } from './workspace';
 
 import type { Command, CommandResult } from '@clowdy/protocol';
 import type { Store } from '../store';
@@ -12,14 +13,26 @@ import type { AsyncHandlers, CommandOf, Handlers, Services, SometimesAsyncComman
 
 export type { Services } from './context';
 
-const handlers: Handlers = { ...projectHandlers, ...chatHandlers, ...taskHandlers, ...runHandlers, ...skillsHandlers, ...agentsHandlers };
-const asyncHandlers: AsyncHandlers = { ...chatAsyncHandlers };
+const handlers: Handlers = {
+    ...projectHandlers,
+    ...chatHandlers,
+    ...taskHandlers,
+    ...runHandlers,
+    ...skillsHandlers,
+    ...agentsHandlers,
+    ...workspaceHandlers,
+};
+const asyncHandlers: AsyncHandlers = { ...chatAsyncHandlers, ...workspaceAsyncHandlers };
 
 /** When a command that has both kinds of handler takes the async one: a delete that removes the chat's worktree waits for git, a plain delete does not. */
-const waitsWhen: { [T in SometimesAsyncCommandType]: (command: CommandOf<T>) => boolean } = { 'chat.delete': command => command.removeWorkspace === true };
+const waitsWhen: { [T in SometimesAsyncCommandType]: (command: CommandOf<T>) => boolean } = {
+    'chat.delete': command => command.removeWorkspace === true,
+};
 
 /** Whether the command takes its `AsyncHandlers` entry: always for a command that has no other, and when `waitsWhen` says so for one that has. */
-const isAsync = (command: Command): boolean => command.type in asyncHandlers && ((waitsWhen as Record<string, ((command: Command) => boolean) | undefined>)[command.type]?.(command) ?? true);
+const isAsync = (command: Command): boolean =>
+    command.type in asyncHandlers &&
+    ((waitsWhen as Record<string, ((command: Command) => boolean) | undefined>)[command.type]?.(command) ?? true);
 
 /** Whether the command waits (`AsyncHandlers`) for an agent or for git: its answer may take longer than the server's idle timeout lets a silent connection live. */
 export const waitsForAgent = (command: Command): boolean => isAsync(command);
@@ -42,17 +55,24 @@ function settle(services: Services, command: Command, handler: () => unknown): C
 
             return result;
         });
-    }
-    catch (error) {
+    } catch (error) {
         if (error instanceof CommandError) {
-            const result: CommandResult = { ok: false, requestId: command.requestId, error: { code: error.code, message: error.message, ...(error.details !== undefined && { details: error.details }) } };
+            const result: CommandResult = {
+                ok: false,
+                requestId: command.requestId,
+                error: {
+                    code: error.code,
+                    message: error.message,
+                    ...(error.details !== undefined && { details: error.details }),
+                },
+            };
 
             store.tx(() => store.saveCommandResult(result));
 
             return result;
         }
 
-        console.error(`[clowdy] command ${ command.type } failed unexpectedly:`, error);
+        console.error(`[clowdy] command ${command.type} failed unexpectedly:`, error);
 
         return { ok: false, requestId: command.requestId, error: { code: 'internal', message: errorMessage(error) } };
     }
@@ -71,7 +91,14 @@ export function executeCommand(services: Services, command: Command): CommandRes
     }
 
     if (isAsync(command)) {
-        return { ok: false, requestId: command.requestId, error: { code: 'internal', message: `${ command.type } waits for an agent or for git: run it with executeCommandAsync` } };
+        return {
+            ok: false,
+            requestId: command.requestId,
+            error: {
+                code: 'internal',
+                message: `${command.type} waits for an agent or for git: run it with executeCommandAsync`,
+            },
+        };
     }
 
     const handler = (handlers as Record<string, (services: Services, command: Command) => unknown>)[command.type];
@@ -103,14 +130,15 @@ export async function executeCommandAsync(services: Services, command: Command):
         return waiting;
     }
 
-    const handler = (asyncHandlers as Record<string, (services: Services, command: Command) => Promise<() => unknown>>)[command.type];
+    const handler = (asyncHandlers as Record<string, (services: Services, command: Command) => Promise<() => unknown>>)[
+        command.type
+    ];
     const flight = (async () => {
         let commit: () => unknown;
 
         try {
             commit = await handler(services, command);
-        }
-        catch (error) {
+        } catch (error) {
             commit = () => {
                 throw error;
             };

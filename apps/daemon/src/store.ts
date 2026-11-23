@@ -1,5 +1,5 @@
-import type { ClowdyEvent, CommandResult, EngineId, EventData } from '@clowdy/protocol';
 import type { Database } from 'bun:sqlite';
+import type { ClowdyEvent, CommandResult, EngineId, EventData } from '@clowdy/protocol';
 
 export type EventListener = (events: ClowdyEvent[]) => void;
 
@@ -10,7 +10,12 @@ interface EventRow {
     data: string;
 }
 
-const toEvent = (row: EventRow): ClowdyEvent => ({ cursor: row.cursor, at: row.at, projectId: row.project_id, data: JSON.parse(row.data) as EventData });
+const toEvent = (row: EventRow): ClowdyEvent => ({
+    cursor: row.cursor,
+    at: row.at,
+    projectId: row.project_id,
+    data: JSON.parse(row.data) as EventData,
+});
 
 /**
  * The write path. Every mutation runs in `tx`, and every state change inserts its event row in that same
@@ -46,13 +51,11 @@ export class Store {
 
         try {
             result = this.db.transaction(fn).immediate();
-        }
-        catch (error) {
+        } catch (error) {
             this.pending = [];
             this.callbacks = [];
             throw error;
-        }
-        finally {
+        } finally {
             this.depth = 0;
         }
 
@@ -86,7 +89,8 @@ export class Store {
         }
 
         const at = Date.now();
-        const row = this.db.query('INSERT INTO events (at, project_id, type, data) VALUES (?, ?, ?, ?) RETURNING cursor')
+        const row = this.db
+            .query('INSERT INTO events (at, project_id, type, data) VALUES (?, ?, ?, ?) RETURNING cursor')
             .get(at, projectId, data.type, JSON.stringify(data)) as { cursor: number };
         const event: ClowdyEvent = { cursor: row.cursor, at, projectId, data };
 
@@ -99,8 +103,7 @@ export class Store {
     afterCommit(fn: () => void): void {
         if (this.depth === 0) {
             guarded(fn);
-        }
-        else {
+        } else {
             this.callbacks.push(fn);
         }
     }
@@ -114,33 +117,40 @@ export class Store {
 
     /** The cursor of the newest event; 0 for an empty log. */
     headCursor(): number {
-        return (this.db.query('SELECT COALESCE(MAX(cursor), 0) AS cursor FROM events').get() as { cursor: number }).cursor;
+        return (this.db.query('SELECT COALESCE(MAX(cursor), 0) AS cursor FROM events').get() as { cursor: number })
+            .cursor;
     }
 
     eventsAfter(cursor: number, projectId: string | undefined, limit: number): ClowdyEvent[] {
-        const rows = projectId === undefined
-            ? this.db.query('SELECT * FROM events WHERE cursor > ? ORDER BY cursor LIMIT ?').all(cursor, limit)
-            : this.db.query('SELECT * FROM events WHERE cursor > ? AND project_id = ? ORDER BY cursor LIMIT ?').all(cursor, projectId, limit);
+        const rows =
+            projectId === undefined
+                ? this.db.query('SELECT * FROM events WHERE cursor > ? ORDER BY cursor LIMIT ?').all(cursor, limit)
+                : this.db
+                      .query('SELECT * FROM events WHERE cursor > ? AND project_id = ? ORDER BY cursor LIMIT ?')
+                      .all(cursor, projectId, limit);
 
         return (rows as EventRow[]).map(toEvent);
     }
 
     commandResult(requestId: string): CommandResult | undefined {
-        const row = this.db.query('SELECT result FROM commands WHERE request_id = ?').get(requestId) as { result: string } | null;
+        const row = this.db.query('SELECT result FROM commands WHERE request_id = ?').get(requestId) as {
+            result: string;
+        } | null;
 
-        return row ? JSON.parse(row.result) as CommandResult : undefined;
+        return row ? (JSON.parse(row.result) as CommandResult) : undefined;
     }
 
     saveCommandResult(result: CommandResult): void {
-        this.db.query('INSERT INTO commands (request_id, result, at) VALUES (?, ?, ?)').run(result.requestId, JSON.stringify(result), Date.now());
+        this.db
+            .query('INSERT INTO commands (request_id, result, at) VALUES (?, ?, ?)')
+            .run(result.requestId, JSON.stringify(result), Date.now());
     }
 }
 
 function guarded(fn: () => void): void {
     try {
         fn();
-    }
-    catch (error) {
+    } catch (error) {
         console.error('[clowdy] a post-commit callback failed:', error);
     }
 }

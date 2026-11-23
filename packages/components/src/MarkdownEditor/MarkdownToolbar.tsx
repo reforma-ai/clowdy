@@ -1,3 +1,4 @@
+import { ChevronDown } from '@clowdy/icons/8';
 import {
     Bold,
     Checkbox,
@@ -16,9 +17,8 @@ import {
     Quote,
     Strikethrough2,
 } from '@clowdy/icons/14';
-import { ChevronDown } from '@clowdy/icons/8';
 import { useEditorState } from '@tiptap/react';
-import { Fragment, use, useState, type ComponentType, type FormEvent } from 'react';
+import { type ComponentType, type FormEvent, Fragment, use, useState } from 'react';
 import { Toolbar } from 'react-aria-components';
 
 import { Button } from '../Button';
@@ -55,7 +55,7 @@ const TEXT_STYLES: FormatAction[] = [
         const level = (index + 1) as 1 | 2 | 3 | 4 | 5 | 6;
 
         return {
-            label: `Heading ${ level }`,
+            label: `Heading ${level}`,
             hotkey: ['mod', 'alt', String(level)],
             icon,
             isActive: editor => editor.isActive('heading', { level }),
@@ -142,7 +142,7 @@ export function MarkdownToolbar({ editor }: { editor: Editor }) {
     const StyleIcon = state.style?.icon ?? Pilcrow;
 
     return (
-        <Toolbar aria-label="Formatting" className={ styles.toolbar }>
+        <Toolbar aria-label="Formatting" className={styles.toolbar}>
             <MenuTrigger>
                 <Button variant="filling" color="secondary" size="sm" aria-label="Text style" tooltip="Text style">
                     <StyleIcon />
@@ -154,48 +154,52 @@ export function MarkdownToolbar({ editor }: { editor: Editor }) {
                         aria-label="Text style"
                         size="sm"
                         selectionMode="single"
-                        selectedKeys={ state.style ? [state.style.label] : [] }
-                        onAction={ key => TEXT_STYLES.find(style => style.label === key)!.run(editor.chain().focus()).run() }
+                        selectedKeys={state.style ? [state.style.label] : []}
+                        onAction={key =>
+                            TEXT_STYLES.find(style => style.label === key)!
+                                .run(editor.chain().focus())
+                                .run()
+                        }
                     >
-                        <For each={ TEXT_STYLES }>
-                            { style => (
+                        <For each={TEXT_STYLES}>
+                            {style => (
                                 <MenuItem
-                                    key={ style.label }
-                                    id={ style.label }
-                                    text={ style.label }
-                                    icon={ <style.icon /> }
-                                    endAffix={ <Hotkey hotkey={ style.hotkey } /> }
+                                    key={style.label}
+                                    id={style.label}
+                                    text={style.label}
+                                    icon={<style.icon />}
+                                    endAffix={<Hotkey hotkey={style.hotkey} />}
                                 />
-                            ) }
+                            )}
                         </For>
                     </Menu>
                 </Popover>
             </MenuTrigger>
 
-            <For each={ GROUPS }>
-                { (group, groupIndex) => (
-                    <Fragment key={ group[0]!.label }>
+            <For each={GROUPS}>
+                {(group, groupIndex) => (
+                    <Fragment key={group[0]!.label}>
                         <Separator orientation="vertical" spacing="xxs" />
 
-                        <For each={ group }>
-                            { (action, index) => (
+                        <For each={group}>
+                            {(action, index) => (
                                 <Button
-                                    key={ action.label }
+                                    key={action.label}
                                     variant="filling"
                                     color="secondary"
                                     size="sm"
                                     iconOnly
-                                    aria-label={ action.label }
-                                    tooltip={ tooltipWithHotkey(action.label, action.hotkey) }
-                                    isPressed={ state.active[groupIndex]![index]! }
-                                    onPress={ () => action.run(editor.chain().focus()).run() }
+                                    aria-label={action.label}
+                                    tooltip={tooltipWithHotkey(action.label, action.hotkey)}
+                                    isPressed={state.active[groupIndex]![index]!}
+                                    onPress={() => action.run(editor.chain().focus()).run()}
                                 >
                                     <action.icon />
                                 </Button>
-                            ) }
+                            )}
                         </For>
                     </Fragment>
-                ) }
+                )}
             </For>
 
             <Separator orientation="vertical" spacing="xxs" />
@@ -208,13 +212,13 @@ export function MarkdownToolbar({ editor }: { editor: Editor }) {
                     iconOnly
                     aria-label="Link"
                     tooltip="Link"
-                    isPressed={ state.link }
+                    isPressed={state.link}
                 >
                     <Link />
                 </Button>
 
                 <Popover placement="bottom start">
-                    <LinkForm editor={ editor } isLink={ state.link } />
+                    <LinkForm editor={editor} isLink={state.link} />
                 </Popover>
             </PopoverTrigger>
         </Toolbar>
@@ -231,11 +235,9 @@ function LinkForm({ editor, isLink }: { editor: Editor; isLink: boolean }) {
 
         if (!next) {
             chain.unsetLink();
-        }
-        else if (editor.state.selection.empty && !isLink) {
+        } else if (editor.state.selection.empty && !isLink) {
             chain.insertContent({ type: 'text', text: next, marks: [{ type: 'link', attrs: { href: next } }] });
-        }
-        else {
+        } else {
             chain.setLink({ href: next });
         }
 
@@ -249,25 +251,27 @@ function LinkForm({ editor, isLink }: { editor: Editor; isLink: boolean }) {
     };
 
     return (
-        <form className={ styles.linkForm } onSubmit={ submit }>
+        <form className={styles.linkForm} onSubmit={submit}>
             <Input
-                className={ styles.linkInput }
+                className={styles.linkInput}
                 type="text"
                 size="sm"
                 aria-label="URL"
                 placeholder="https://"
-                value={ href }
+                value={href}
                 autoFocus
-                onChange={ setHref }
+                onChange={setHref}
             />
 
-            <Show when={ isLink }>
-                <Button variant="transparent" color="secondary" size="sm" onPress={ () => apply('') }>
+            <Show when={isLink}>
+                <Button variant="transparent" color="secondary" size="sm" onPress={() => apply('')}>
                     Remove
                 </Button>
             </Show>
 
-            <Button type="submit" size="sm">Apply</Button>
+            <Button type="submit" size="sm">
+                Apply
+            </Button>
         </form>
     );
 }

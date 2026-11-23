@@ -9,8 +9,7 @@ function readStoredTheme(): Theme {
         const stored = localStorage.getItem(THEME_KEY);
 
         return THEMES.find(candidate => candidate === stored) ?? 'system';
-    }
-    catch {
+    } catch {
         return 'system';
     }
 }
@@ -33,8 +32,7 @@ export function setTheme(next: Theme): void {
 
     try {
         localStorage.setItem(THEME_KEY, next);
-    }
-    catch {
+    } catch {
         // The choice still applies for this session.
     }
 

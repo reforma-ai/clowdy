@@ -1,4 +1,14 @@
-import { agent, McpServer, methods, ndJsonStream, PROTOCOL_VERSION, RequestError } from '@agentclientprotocol/sdk/experimental/v2/unstable';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { Readable, Writable } from 'node:stream';
+import {
+    agent,
+    McpServer,
+    methods,
+    ndJsonStream,
+    PROTOCOL_VERSION,
+    RequestError,
+} from '@agentclientprotocol/sdk/experimental/v2/unstable';
 /**
  * A scripted ACP v2 agent for tests: `bun test/fake-acp-agent-v2.ts`. It speaks the draft protocol: `session/prompt` only says the message was inserted
  * (`{ messageId }`), and the turn is `state_update` `running` until `idle` with a `stopReason` and the turn's `usage`. It takes the directives of
@@ -89,9 +99,6 @@ import { agent, McpServer, methods, ndJsonStream, PROTOCOL_VERSION, RequestError
  */
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { Readable, Writable } from 'node:stream';
 
 import type { AgentContext, SessionUpdate } from '@agentclientprotocol/sdk/experimental/v2/unstable';
 
@@ -191,8 +198,51 @@ function systemText(content: unknown): string | undefined {
     return Array.isArray(content) ? content.map(block => (block as { text?: string }).text ?? '').join('') : undefined;
 }
 
-function open(id: string, params: { cwd: string; additionalDirectories?: string[]; mcpServers?: McpServer[]; systemPrompt?: { content?: unknown } | null; replayFrom?: unknown; _meta?: unknown }, resumed: boolean): FakeSession {
-    const session: FakeSession = { cwd: params.cwd, directories: params.additionalDirectories, mcpServers: params.mcpServers ?? [], systemPrompt: systemText(params.systemPrompt?.content), meta: params._meta, replayFrom: params.replayFrom ?? undefined, resumed, model: 'fast', effort: 'high', sets: 0, cancel: new AbortController(), count: 0, cost: 0, prompting: false, steers: [], queue: [], id, work: [], reports: [], reportLines: [], gap: 40, reporting: false, landed: false, outcome: 'end_turn', flap: false, locked: false, events: [], draining: false, wakeLines: [], ending: 'completed', listing: false };
+function open(
+    id: string,
+    params: {
+        cwd: string;
+        additionalDirectories?: string[];
+        mcpServers?: McpServer[];
+        systemPrompt?: { content?: unknown } | null;
+        replayFrom?: unknown;
+        _meta?: unknown;
+    },
+    resumed: boolean
+): FakeSession {
+    const session: FakeSession = {
+        cwd: params.cwd,
+        directories: params.additionalDirectories,
+        mcpServers: params.mcpServers ?? [],
+        systemPrompt: systemText(params.systemPrompt?.content),
+        meta: params._meta,
+        replayFrom: params.replayFrom ?? undefined,
+        resumed,
+        model: 'fast',
+        effort: 'high',
+        sets: 0,
+        cancel: new AbortController(),
+        count: 0,
+        cost: 0,
+        prompting: false,
+        steers: [],
+        queue: [],
+        id,
+        work: [],
+        reports: [],
+        reportLines: [],
+        gap: 40,
+        reporting: false,
+        landed: false,
+        outcome: 'end_turn',
+        flap: false,
+        locked: false,
+        events: [],
+        draining: false,
+        wakeLines: [],
+        ending: 'completed',
+        listing: false,
+    };
 
     sessions.set(id, session);
 
@@ -213,44 +263,59 @@ const modelOptions = (model: string, effort = 'high', mode = 'default') => [
         category: 'model',
         type: 'select' as const,
         currentValue: model,
-        options: [{ value: 'fast', name: 'Fast' }, { value: 'smart', name: 'Smart' }],
+        options: [
+            { value: 'fast', name: 'Fast' },
+            { value: 'smart', name: 'Smart' },
+        ],
     },
     ...(process.env.FAKE_ACP_EFFORT === 'thinking'
-        ? [{
-            configId: 'thinking',
-            name: 'Thinking',
-            category: 'thought_level',
-            type: 'select' as const,
-            currentValue: 'on',
-            options: [{ value: 'on', name: 'On' }, { value: 'off', name: 'Off' }],
-        }]
+        ? [
+              {
+                  configId: 'thinking',
+                  name: 'Thinking',
+                  category: 'thought_level',
+                  type: 'select' as const,
+                  currentValue: 'on',
+                  options: [
+                      { value: 'on', name: 'On' },
+                      { value: 'off', name: 'Off' },
+                  ],
+              },
+          ]
         : []),
     ...(process.env.FAKE_ACP_EFFORT === '1' || process.env.FAKE_ACP_EFFORT === 'thinking'
-        ? [{
-            configId: 'effort',
-            name: 'Effort',
-            category: 'thought_level',
-            type: 'select' as const,
-            currentValue: effort,
-            options: (LEVELS[model] ?? LEVELS.fast).map(value => ({ value, name: LEVEL_NAMES[value] ?? value })),
-        }]
+        ? [
+              {
+                  configId: 'effort',
+                  name: 'Effort',
+                  category: 'thought_level',
+                  type: 'select' as const,
+                  currentValue: effort,
+                  options: (LEVELS[model] ?? LEVELS.fast).map(value => ({ value, name: LEVEL_NAMES[value] ?? value })),
+              },
+          ]
         : []),
     // `FAKE_ACP_MODES=1`: the permission modes Claude's adapter offers, as one option of category `mode`.
     ...(process.env.FAKE_ACP_MODES === '1'
-        ? [{
-            configId: 'mode',
-            name: 'Mode',
-            category: 'mode',
-            type: 'select' as const,
-            currentValue: mode,
-            options: ['default', 'acceptEdits', 'auto', 'bypassPermissions'].map(value => ({ value, name: value })),
-        }]
+        ? [
+              {
+                  configId: 'mode',
+                  name: 'Mode',
+                  category: 'mode',
+                  type: 'select' as const,
+                  currentValue: mode,
+                  options: ['default', 'acceptEdits', 'auto', 'bypassPermissions'].map(value => ({
+                      value,
+                      name: value,
+                  })),
+              },
+          ]
         : []),
 ];
 
 const log = (line: string) => {
     if (process.env.FAKE_ACP_LOG) {
-        appendFileSync(process.env.FAKE_ACP_LOG, `${ line }\n`);
+        appendFileSync(process.env.FAKE_ACP_LOG, `${line}\n`);
     }
 };
 
@@ -261,13 +326,14 @@ interface Said {
     text: string;
 }
 
-const storeFile = (sessionId: string) => (process.env.FAKE_ACP_STORE ? join(process.env.FAKE_ACP_STORE, `${ sessionId }.json`) : undefined);
+const storeFile = (sessionId: string) =>
+    process.env.FAKE_ACP_STORE ? join(process.env.FAKE_ACP_STORE, `${sessionId}.json`) : undefined;
 
 /** The conversation of a stored session, or `undefined` for one the store does not have. */
 function recall(sessionId: string): Said[] | undefined {
     const file = storeFile(sessionId);
 
-    return file && existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) as Said[] : undefined;
+    return file && existsSync(file) ? (JSON.parse(readFileSync(file, 'utf8')) as Said[]) : undefined;
 }
 
 function keep(sessionId: string, said: Said[]): void {
@@ -281,7 +347,7 @@ function keep(sessionId: string, said: Said[]): void {
 
 /** Adds one thing to the conversation of a session. */
 function remember(sessionId: string, said: Said): void {
-    keep(sessionId, [...recall(sessionId) ?? [], said]);
+    keep(sessionId, [...(recall(sessionId) ?? []), said]);
 }
 
 /** What the agent says of a resume: its history, as the updates it keeps. */
@@ -289,7 +355,11 @@ async function replay(client: AgentContext, sessionId: string): Promise<void> {
     const send = (update: SessionUpdate) => client.notify(methods.client.session.update, { sessionId, update });
 
     for (const text of ['replayed one', 'replayed two']) {
-        await send({ sessionUpdate: 'agent_message', messageId: `replayed-${ text }`, content: [{ type: 'text', text }] });
+        await send({
+            sessionUpdate: 'agent_message',
+            messageId: `replayed-${text}`,
+            content: [{ type: 'text', text }],
+        });
     }
 
     // A stale end of an earlier turn, among the history.
@@ -301,7 +371,8 @@ async function replay(client: AgentContext, sessionId: string): Promise<void> {
 const listed = (session: FakeSession) => session.work.filter(work => !work.done).map(work => work.item);
 
 /** A `state_update` that carries the session's background list, as an agent that reports background work puts it on every state. */
-const state = (session: FakeSession, fields: Record<string, unknown>) => ({ sessionUpdate: 'state_update', background: listed(session), ...fields }) as SessionUpdate;
+const state = (session: FakeSession, fields: Record<string, unknown>) =>
+    ({ sessionUpdate: 'state_update', background: listed(session), ...fields }) as SessionUpdate;
 
 /** What an `idle` reports for a turn that spent nothing: Claude's adapter says so when a turn ends without a result of its own. */
 const NOTHING_SPENT = { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedReadTokens: 0, cachedWriteTokens: 0 };
@@ -315,34 +386,83 @@ type Send = (update: SessionUpdate, sessionId?: string) => Promise<unknown>;
  * prompt as a `session_message`, once as the parent sends it and once as the child gets it. The parent is never shown an `Agent` call.
  */
 async function announceChild(session: FakeSession, send: Send, ref: string, title: string): Promise<void> {
-    const callId = `toolu-${ ref }`;
-    const content = [{ type: 'text' as const, text: `Do this: ${ title }` }];
+    const callId = `toolu-${ref}`;
+    const content = [{ type: 'text' as const, text: `Do this: ${title}` }];
 
     const capabilities = session.locked ? {} : { cancel: {} };
 
     session.locked = false;
-    await send({ sessionUpdate: 'subagent_update', sessionId: ref, title, description: 'general-purpose', capabilities, state: { state: 'running', background: [] } });
+    await send({
+        sessionUpdate: 'subagent_update',
+        sessionId: ref,
+        title,
+        description: 'general-purpose',
+        capabilities,
+        state: { state: 'running', background: [] },
+    });
     await send({ sessionUpdate: 'state_update', state: 'running', background: [] }, ref);
-    await send({ sessionUpdate: 'session_message', messageId: callId, senderSessionId: session.id, recipientSessionId: ref, content, recipientMessageId: callId });
-    await send({ sessionUpdate: 'session_message', messageId: callId, senderSessionId: session.id, recipientSessionId: ref, content, senderMessageId: callId }, ref);
-    await send({ sessionUpdate: 'agent_message_chunk', messageId: `m-${ ref }`, content: { type: 'text', text: `Looking into ${ title }` } }, ref);
+    await send({
+        sessionUpdate: 'session_message',
+        messageId: callId,
+        senderSessionId: session.id,
+        recipientSessionId: ref,
+        content,
+        recipientMessageId: callId,
+    });
+    await send(
+        {
+            sessionUpdate: 'session_message',
+            messageId: callId,
+            senderSessionId: session.id,
+            recipientSessionId: ref,
+            content,
+            senderMessageId: callId,
+        },
+        ref
+    );
+    await send(
+        {
+            sessionUpdate: 'agent_message_chunk',
+            messageId: `m-${ref}`,
+            content: { type: 'text', text: `Looking into ${title}` },
+        },
+        ref
+    );
 }
 
 /** The `Bash` call a child makes on its own session: it names the parent's call as its parent, the way Claude Code stamps a sub-agent's calls. */
 async function childCall(send: Send, ref: string, title: string, step: 'start' | 'end' | 'cancel'): Promise<void> {
-    const toolCallId = `${ ref }-bash`;
-    const terminalId = `${ ref }-term`;
+    const toolCallId = `${ref}-bash`;
+    const terminalId = `${ref}-term`;
 
     if (step === 'start') {
-        await send({ sessionUpdate: 'terminal_update', terminalId, command: `echo ${ title }` }, ref);
-        await send({ sessionUpdate: 'tool_call_update', toolCallId, name: 'Bash', title: `echo ${ title }`, kind: 'execute', status: 'pending', rawInput: JSON.stringify({ command: `echo ${ title }` }), content: [{ type: 'terminal', terminalId }], _meta: { claudeCode: { parentToolUseId: `toolu-${ ref }` } } }, ref);
-    }
-    else if (step === 'end') {
-        await send({ sessionUpdate: 'terminal_update', terminalId, output: { data: Buffer.from(`${ title }\n`).toString('base64') } }, ref);
+        await send({ sessionUpdate: 'terminal_update', terminalId, command: `echo ${title}` }, ref);
+        await send(
+            {
+                sessionUpdate: 'tool_call_update',
+                toolCallId,
+                name: 'Bash',
+                title: `echo ${title}`,
+                kind: 'execute',
+                status: 'pending',
+                rawInput: JSON.stringify({ command: `echo ${title}` }),
+                content: [{ type: 'terminal', terminalId }],
+                _meta: { claudeCode: { parentToolUseId: `toolu-${ref}` } },
+            },
+            ref
+        );
+    } else if (step === 'end') {
+        await send(
+            {
+                sessionUpdate: 'terminal_update',
+                terminalId,
+                output: { data: Buffer.from(`${title}\n`).toString('base64') },
+            },
+            ref
+        );
         await send({ sessionUpdate: 'terminal_update', terminalId, exitStatus: { exitCode: 0 } }, ref);
         await send({ sessionUpdate: 'tool_call_update', toolCallId, status: 'completed' }, ref);
-    }
-    else {
+    } else {
         await send({ sessionUpdate: 'terminal_update', terminalId, exitStatus: {} }, ref);
         await send({ sessionUpdate: 'tool_call_update', toolCallId, status: 'cancelled' }, ref);
     }
@@ -352,15 +472,47 @@ async function childCall(send: Send, ref: string, title: string, step: 'start' |
  * A child's run is over: its report goes to the parent (a cancelled or failed one sends none), the parent mirrors its state in `subagent_update`, and the
  * child says it on its own session. The parent's own state is the caller's.
  */
-async function stopChild(session: FakeSession, send: Send, ref: string, title: string, outcome: FakeSession['outcome'], tag = ''): Promise<void> {
-    const reportId = `report${ tag }-${ ref }`;
-    const idle = outcome === 'error' ? { state: 'idle', stopReason: 'error', error: { code: -32000, message: 'The sub-agent failed' }, background: [] } : { state: 'idle', stopReason: outcome, background: [] };
+async function stopChild(
+    session: FakeSession,
+    send: Send,
+    ref: string,
+    title: string,
+    outcome: FakeSession['outcome'],
+    tag = ''
+): Promise<void> {
+    const reportId = `report${tag}-${ref}`;
+    const idle =
+        outcome === 'error'
+            ? {
+                  state: 'idle',
+                  stopReason: 'error',
+                  error: { code: -32000, message: 'The sub-agent failed' },
+                  background: [],
+              }
+            : { state: 'idle', stopReason: outcome, background: [] };
 
     if (outcome === 'end_turn') {
-        const content = [{ type: 'text' as const, text: `${ title } finished` }];
+        const content = [{ type: 'text' as const, text: `${title} finished` }];
 
-        await send({ sessionUpdate: 'session_message', messageId: reportId, senderSessionId: ref, recipientSessionId: session.id, content, recipientMessageId: reportId }, ref);
-        await send({ sessionUpdate: 'session_message', messageId: reportId, senderSessionId: ref, recipientSessionId: session.id, content, senderMessageId: reportId });
+        await send(
+            {
+                sessionUpdate: 'session_message',
+                messageId: reportId,
+                senderSessionId: ref,
+                recipientSessionId: session.id,
+                content,
+                recipientMessageId: reportId,
+            },
+            ref
+        );
+        await send({
+            sessionUpdate: 'session_message',
+            messageId: reportId,
+            senderSessionId: ref,
+            recipientSessionId: session.id,
+            content,
+            senderMessageId: reportId,
+        });
     }
 
     await send({ sessionUpdate: 'subagent_update', sessionId: ref, state: idle } as SessionUpdate);
@@ -372,22 +524,24 @@ async function stopChild(session: FakeSession, send: Send, ref: string, title: s
  * ends the turn too; a cancel of the child's own session ends it alone and the turn goes on (`true`).
  */
 async function foreground(session: FakeSession, client: AgentContext, ms: number, title: string): Promise<boolean> {
-    const send: Send = (update, sessionId = session.id) => client.notify(methods.client.session.update, { sessionId, update }).catch(() => undefined);
-    const ref = `child-${ ++works }`;
+    const send: Send = (update, sessionId = session.id) =>
+        client.notify(methods.client.session.update, { sessionId, update }).catch(() => undefined);
+    const ref = `child-${++works}`;
     const { signal } = session.cancel;
     const own = new AbortController();
     const outcome = session.outcome;
     const cancelled = () => signal.aborted || own.signal.aborted;
-    const nap = (wait: number) => new Promise<void>((resolve) => {
-        const timer = setTimeout(resolve, wait);
-        const stop = () => {
-            clearTimeout(timer);
-            resolve();
-        };
+    const nap = (wait: number) =>
+        new Promise<void>(resolve => {
+            const timer = setTimeout(resolve, wait);
+            const stop = () => {
+                clearTimeout(timer);
+                resolve();
+            };
 
-        signal.addEventListener('abort', stop, { once: true });
-        own.signal.addEventListener('abort', stop, { once: true });
-    });
+            signal.addEventListener('abort', stop, { once: true });
+            own.signal.addEventListener('abort', stop, { once: true });
+        });
 
     session.outcome = 'end_turn';
     stoppable.set(ref, own);
@@ -416,39 +570,71 @@ async function foreground(session: FakeSession, client: AgentContext, ms: number
         await stopChild(session, send, ref, title, outcome);
 
         return true;
-    }
-    finally {
+    } finally {
         stoppable.delete(ref);
     }
 }
 
 /** Starts a piece of background work that ends `ms` from now. */
-async function startWork(session: FakeSession, client: AgentContext, kind: Exclude<Work['kind'], 'monitor'>, ms: number, title: string): Promise<void> {
+async function startWork(
+    session: FakeSession,
+    client: AgentContext,
+    kind: Exclude<Work['kind'], 'monitor'>,
+    ms: number,
+    title: string
+): Promise<void> {
     // A client that has gone is not an error of the work.
-    const send = (update: SessionUpdate, sessionId = session.id) => client.notify(methods.client.session.update, { sessionId, update }).catch(() => undefined);
+    const send = (update: SessionUpdate, sessionId = session.id) =>
+        client.notify(methods.client.session.update, { sessionId, update }).catch(() => undefined);
     const n = ++works;
     let ref: string;
     let item: Record<string, unknown>;
 
     if (kind === 'terminal') {
-        ref = `term-${ n }`;
+        ref = `term-${n}`;
         item = { type: 'terminal', terminalId: ref };
         // The command comes with the terminal, before any list that names it; the `Bash` call that started it completes at once.
-        await send({ sessionUpdate: 'terminal_update', terminalId: ref, command: title, ...(process.env.FAKE_ACP_TERMINAL_CANCEL && { capabilities: { cancel: {} } }) });
-        await send({ sessionUpdate: 'tool_call_update', toolCallId: `bash-${ n }`, title, kind: 'execute', status: 'completed', rawInput: { command: title, run_in_background: true }, content: [{ type: 'terminal', terminalId: ref }] });
-    }
-    else if (kind === 'subagent') {
-        ref = `child-${ n }`;
+        await send({
+            sessionUpdate: 'terminal_update',
+            terminalId: ref,
+            command: title,
+            ...(process.env.FAKE_ACP_TERMINAL_CANCEL && { capabilities: { cancel: {} } }),
+        });
+        await send({
+            sessionUpdate: 'tool_call_update',
+            toolCallId: `bash-${n}`,
+            title,
+            kind: 'execute',
+            status: 'completed',
+            rawInput: { command: title, run_in_background: true },
+            content: [{ type: 'terminal', terminalId: ref }],
+        });
+    } else if (kind === 'subagent') {
+        ref = `child-${n}`;
         item = { type: 'subagent', sessionId: ref };
         await announceChild(session, send, ref, title);
-    }
-    else {
-        ref = `wf-${ n }`;
+    } else {
+        ref = `wf-${n}`;
         item = { type: 'tool_call', toolCallId: ref };
-        await send({ sessionUpdate: 'tool_call_update', toolCallId: ref, title: `Workflow: ${ title }`, kind: 'other', status: 'in_progress', ...(process.env.FAKE_ACP_TERMINAL_CANCEL && { capabilities: { cancel: {} } }), _meta: { claudeCode: { toolName: 'Workflow' } } });
+        await send({
+            sessionUpdate: 'tool_call_update',
+            toolCallId: ref,
+            title: `Workflow: ${title}`,
+            kind: 'other',
+            status: 'in_progress',
+            ...(process.env.FAKE_ACP_TERMINAL_CANCEL && { capabilities: { cancel: {} } }),
+            _meta: { claudeCode: { toolName: 'Workflow' } },
+        });
     }
 
-    const work: Work = { title, item, done: false, kind, ref, ...(kind === 'subagent' && { callId: `toolu-${ ref }`, outcome: session.outcome, flap: session.flap }) };
+    const work: Work = {
+        title,
+        item,
+        done: false,
+        kind,
+        ref,
+        ...(kind === 'subagent' && { callId: `toolu-${ref}`, outcome: session.outcome, flap: session.flap }),
+    };
 
     if (kind === 'subagent') {
         session.outcome = 'end_turn';
@@ -456,12 +642,15 @@ async function startWork(session: FakeSession, client: AgentContext, kind: Exclu
 
         // The child's call starts soon after, and ends while it works: its traffic is on its own session, after the parent's turn is over. A child that was
         // stopped (or ended) before then makes no call.
-        setTimeout(() => {
-            if (!work.done) {
-                work.calling = true;
-                void childCall(send, ref, title, 'start');
-            }
-        }, Math.min(30, ms / 4));
+        setTimeout(
+            () => {
+                if (!work.done) {
+                    work.calling = true;
+                    void childCall(send, ref, title, 'start');
+                }
+            },
+            Math.min(30, ms / 4)
+        );
         setTimeout(() => {
             if (!work.done && work.calling) {
                 work.calling = false;
@@ -483,21 +672,25 @@ async function endWork(session: FakeSession, work: Work): Promise<void> {
         return;
     }
 
-    const send = (update: SessionUpdate, sessionId = session.id) => client.notify(methods.client.session.update, { sessionId, update }).catch(() => undefined);
+    const send = (update: SessionUpdate, sessionId = session.id) =>
+        client.notify(methods.client.session.update, { sessionId, update }).catch(() => undefined);
 
     work.done = true;
     work.calling = false;
 
     if (work.kind === 'terminal') {
         await send({ sessionUpdate: 'terminal_update', terminalId: work.ref, exitStatus: { exitCode: 0 } });
-    }
-    else if (work.kind === 'subagent') {
+    } else if (work.kind === 'subagent') {
         if (work.flap) {
             // The child stops and is out of the list; its own command wakes it before anything else is said, and it is listed again.
             await stopChild(session, send, work.ref, work.title, 'end_turn', '-first');
             await send(state(session, { state: session.prompting ? 'running' : 'idle' }));
             work.done = false;
-            await send({ sessionUpdate: 'subagent_update', sessionId: work.ref, state: { state: 'running', background: [] } });
+            await send({
+                sessionUpdate: 'subagent_update',
+                sessionId: work.ref,
+                state: { state: 'running', background: [] },
+            });
             await send({ sessionUpdate: 'state_update', state: 'running', background: [] }, work.ref);
             await send(state(session, { state: session.prompting ? 'running' : 'idle' }));
             await Bun.sleep(150);
@@ -505,8 +698,7 @@ async function endWork(session: FakeSession, work: Work): Promise<void> {
         }
 
         await stopChild(session, send, work.ref, work.title, work.outcome ?? 'end_turn');
-    }
-    else if (work.kind === 'workflow') {
+    } else if (work.kind === 'workflow') {
         await send({ sessionUpdate: 'tool_call_update', toolCallId: work.ref, status: 'completed' });
     }
 
@@ -530,7 +722,8 @@ async function stopWork(session: FakeSession, work: Work): Promise<void> {
         return;
     }
 
-    const send = (update: SessionUpdate, sessionId = session.id) => client.notify(methods.client.session.update, { sessionId, update }).catch(() => undefined);
+    const send = (update: SessionUpdate, sessionId = session.id) =>
+        client.notify(methods.client.session.update, { sessionId, update }).catch(() => undefined);
 
     work.done = true;
     work.stopped = true;
@@ -554,14 +747,15 @@ async function stopWork(session: FakeSession, work: Work): Promise<void> {
  * adapter gives the agent no report of it, so none is owed. Refused with `-32602` when the terminal is unknown, has ended, or cannot be cancelled.
  */
 async function cancelTerminal(terminalId: string): Promise<void> {
-    log(`terminal-cancel ${ terminalId }`);
+    log(`terminal-cancel ${terminalId}`);
 
     for (const session of sessions.values()) {
         const work = session.work.find(candidate => candidate.kind === 'terminal' && candidate.ref === terminalId);
 
         if (work && !work.done && process.env.FAKE_ACP_TERMINAL_CANCEL === '1' && session.client) {
             const { client } = session;
-            const send = (update: SessionUpdate) => client.notify(methods.client.session.update, { sessionId: session.id, update }).catch(() => undefined);
+            const send = (update: SessionUpdate) =>
+                client.notify(methods.client.session.update, { sessionId: session.id, update }).catch(() => undefined);
 
             work.done = true;
             work.stopped = true;
@@ -577,14 +771,15 @@ async function cancelTerminal(terminalId: string): Promise<void> {
 
 /** The client asked to cancel a background tool call (`tool_call/cancel`, a `Workflow`): as a terminal's cancel, the call ends `cancelled` and the list loses it; no report is owed. */
 async function cancelCall(toolCallId: string): Promise<void> {
-    log(`tool-call-cancel ${ toolCallId }`);
+    log(`tool-call-cancel ${toolCallId}`);
 
     for (const session of sessions.values()) {
         const work = session.work.find(candidate => candidate.kind === 'workflow' && candidate.ref === toolCallId);
 
         if (work && !work.done && process.env.FAKE_ACP_TERMINAL_CANCEL === '1' && session.client) {
             const { client } = session;
-            const send = (update: SessionUpdate) => client.notify(methods.client.session.update, { sessionId: session.id, update }).catch(() => undefined);
+            const send = (update: SessionUpdate) =>
+                client.notify(methods.client.session.update, { sessionId: session.id, update }).catch(() => undefined);
 
             work.done = true;
             work.stopped = true;
@@ -633,9 +828,14 @@ function drain(session: FakeSession): void {
  * (the input still empty), the input as it is completed, then `completed` with the tool's own words, before the turn's `idle`. The adapter lists none of them
  * in `background` (0.107.0), so the timers that follow are the agent's alone; `listed` makes a monitor the exception, as a newer adapter lists one.
  */
-async function scheduled(session: FakeSession, send: Send, tool: 'Monitor' | 'ScheduleWakeup', rest: string[]): Promise<void> {
+async function scheduled(
+    session: FakeSession,
+    send: Send,
+    tool: 'Monitor' | 'ScheduleWakeup',
+    rest: string[]
+): Promise<void> {
     const n = ++works;
-    const toolCallId = `toolu-${ tool === 'Monitor' ? 'monitor' : 'wakeup' }-${ n }`;
+    const toolCallId = `toolu-${tool === 'Monitor' ? 'monitor' : 'wakeup'}-${n}`;
     const { ending, listing } = session;
     const onwake = session.wakeLines.splice(0);
     let input: Record<string, unknown>;
@@ -655,47 +855,72 @@ async function scheduled(session: FakeSession, send: Send, tool: 'Monitor' | 'Sc
             ? { command: 'tail -f build.log', description, persistent: true }
             : { command: 'for i in 1 2 3; do echo "tick $i"; sleep 5; done', description, timeout_ms: ms };
         output = persistent
-            ? `Monitor started (task mon-${ n }, persistent until you stop it). You will be notified on each event.`
-            : `Monitor started (task mon-${ n }, expires in ${ Math.ceil(ms / 1000) }s unless the source ends first; you get one notice at expiry — re-arm if you still need the watch). You will be notified on each event. Keep working — do not poll or sleep.`;
+            ? `Monitor started (task mon-${n}, persistent until you stop it). You will be notified on each event.`
+            : `Monitor started (task mon-${n}, expires in ${Math.ceil(ms / 1000)}s unless the source ends first; you get one notice at expiry — re-arm if you still need the watch). You will be notified on each event. Keep working — do not poll or sleep.`;
         timers = () => {
             if (persistent) {
                 return;
             }
 
-            for (let tickAt = Number(tick), count = 1; Number(tick) > 0 && tickAt < ms; tickAt += Number(tick), count++) {
-                wake(session, tickAt, [`say tick ${ count }`]);
+            for (
+                let tickAt = Number(tick), count = 1;
+                Number(tick) > 0 && tickAt < ms;
+                tickAt += Number(tick), count++
+            ) {
+                wake(session, tickAt, [`say tick ${count}`]);
             }
 
             if (!listing) {
-                wake(session, ms, onwake.length > 0 ? onwake : [`say Monitor ${ description } ended`]);
+                wake(session, ms, onwake.length > 0 ? onwake : [`say Monitor ${description} ended`]);
 
                 return;
             }
 
             // A monitor the adapter lists is work like any: the list loses it when it ends, and the agent reports it.
-            const work: Work = { title: description, item: { type: 'tool_call', toolCallId }, done: false, kind: 'monitor', ref: toolCallId };
+            const work: Work = {
+                title: description,
+                item: { type: 'tool_call', toolCallId },
+                done: false,
+                kind: 'monitor',
+                ref: toolCallId,
+            };
 
             session.work.push(work);
             setTimeout(() => void endWork(session, work), ms);
         };
-    }
-    else {
+    } else {
         const [seconds, ...words] = rest;
         const reason = words.join(' ');
 
-        input = { delaySeconds: Number(seconds), prompt: `wake: ${ reason }`, reason, noop: false };
-        output = ending === 'plain'
-            ? 'Wakeup scheduled.'
-            : `Next wakeup scheduled for 11:15:00 (in ${ seconds }s). If you owe the user a status update this tick, write it now as ordinary response text; then end the turn — the harness re-invokes you when the wakeup fires or a task-notification arrives.`;
-        timers = () => wake(session, Number(seconds) * 1000, onwake.length > 0 ? onwake : [`say woke: ${ reason }`]);
+        input = { delaySeconds: Number(seconds), prompt: `wake: ${reason}`, reason, noop: false };
+        output =
+            ending === 'plain'
+                ? 'Wakeup scheduled.'
+                : `Next wakeup scheduled for 11:15:00 (in ${seconds}s). If you owe the user a status update this tick, write it now as ordinary response text; then end the turn — the harness re-invokes you when the wakeup fires or a task-notification arrives.`;
+        timers = () => wake(session, Number(seconds) * 1000, onwake.length > 0 ? onwake : [`say woke: ${reason}`]);
     }
 
     const result = ending === 'failed' ? 'The tool failed' : ending === 'cancelled' ? 'The tool was cancelled' : output;
     const status = ending === 'failed' ? 'failed' : ending === 'cancelled' ? 'cancelled' : 'completed';
 
-    await send({ sessionUpdate: 'tool_call_update', toolCallId, name: tool, rawInput: {}, status: 'pending', title: tool, kind: 'other', content: [] });
+    await send({
+        sessionUpdate: 'tool_call_update',
+        toolCallId,
+        name: tool,
+        rawInput: {},
+        status: 'pending',
+        title: tool,
+        kind: 'other',
+        content: [],
+    });
     await send({ sessionUpdate: 'tool_call_update', toolCallId, rawInput: input });
-    await send({ sessionUpdate: 'tool_call_update', toolCallId, status, rawOutput: result, content: [{ type: 'content', content: { type: 'text', text: result } }] });
+    await send({
+        sessionUpdate: 'tool_call_update',
+        toolCallId,
+        status,
+        rawOutput: result,
+        content: [{ type: 'content', content: { type: 'text', text: result } }],
+    });
 
     if (status === 'completed') {
         timers();
@@ -722,8 +947,10 @@ function report(session: FakeSession): void {
         }
 
         const finished = session.reports.splice(0);
-        const said = finished.some(work => work.stopped) ? finished.map(work => `${ work.title } ${ work.stopped ? 'stopped' : 'finished' }`).join(', ') : `${ finished.map(work => work.title).join(', ') } finished`;
-        const lines = session.reportLines.length > 0 ? session.reportLines : [`say ${ said }`];
+        const said = finished.some(work => work.stopped)
+            ? finished.map(work => `${work.title} ${work.stopped ? 'stopped' : 'finished'}`).join(', ')
+            : `${finished.map(work => work.title).join(', ')} finished`;
+        const lines = session.reportLines.length > 0 ? session.reportLines : [`say ${said}`];
 
         session.reportLines = [];
         session.prompting = true;
@@ -734,7 +961,8 @@ function report(session: FakeSession): void {
 /** Runs one turn of a prompt: the directives of its text, and those of every prompt inserted into it. Ends with the `idle` that says why. */
 async function turn(session: FakeSession, sessionId: string, text: string, client: AgentContext): Promise<void> {
     // A client that has gone (a cancelled turn closes the agent's input) is not an error of the turn.
-    const send = (update: SessionUpdate, on = sessionId) => client.notify(methods.client.session.update, { sessionId: on, update }).catch(() => undefined);
+    const send = (update: SessionUpdate, on = sessionId) =>
+        client.notify(methods.client.session.update, { sessionId: on, update }).catch(() => undefined);
     let said = '';
     let twice: false | 'chunk' | 'whole' = false;
     const say = async (what: string) => {
@@ -745,7 +973,11 @@ async function turn(session: FakeSession, sessionId: string, text: string, clien
         remember(session.id, { role: 'assistant', id: messageId, text: what });
 
         if (process.env.FAKE_ACP_WHOLE === '1') {
-            await send({ sessionUpdate: 'agent_message', messageId, content: [{ type: 'text', text: what.slice(0, middle) }] });
+            await send({
+                sessionUpdate: 'agent_message',
+                messageId,
+                content: [{ type: 'text', text: what.slice(0, middle) }],
+            });
             await send({ sessionUpdate: 'agent_message', messageId, content: [{ type: 'text', text: what }] });
 
             return;
@@ -771,13 +1003,25 @@ async function turn(session: FakeSession, sessionId: string, text: string, clien
     remember(session.id, { role: 'user', text });
 
     if (process.env.FAKE_ACP_SNAPSHOT) {
-        await send(state(session, { state: 'idle', ...(process.env.FAKE_ACP_SNAPSHOT === 'reason' && { stopReason: 'end_turn' }) }));
+        await send(
+            state(session, {
+                state: 'idle',
+                ...(process.env.FAKE_ACP_SNAPSHOT === 'reason' && { stopReason: 'end_turn' }),
+            })
+        );
     }
 
     await send(state(session, { state: process.env.FAKE_ACP_BLOCKED === '1' ? 'requires_action' : 'running' }));
 
     if (session.resumed && session.count === 1 && process.env.FAKE_ACP_RESUME_WARNING === '1') {
-        await send({ sessionUpdate: 'agent_message_chunk', messageId: crypto.randomUUID(), content: { type: 'text', text: 'Warning: This session was recorded with model `gpt-5.6-luna` but is resuming with `gpt-6-sol`.\n\n' } });
+        await send({
+            sessionUpdate: 'agent_message_chunk',
+            messageId: crypto.randomUUID(),
+            content: {
+                type: 'text',
+                text: 'Warning: This session was recorded with model `gpt-5.6-luna` but is resuming with `gpt-6-sol`.\n\n',
+            },
+        });
     }
 
     try {
@@ -802,12 +1046,24 @@ async function turn(session: FakeSession, sessionId: string, text: string, clien
                     break;
                 case 'tool': {
                     const [name, ...json] = rest;
-                    const toolCallId = `t${ session.count }-${ ++calls }`;
+                    const toolCallId = `t${session.count}-${++calls}`;
                     const input = json.length > 0 ? JSON.parse(json.join(' ')) : {};
 
                     // There is no `tool_call` in v2: the first update of an id creates the call.
-                    await send({ sessionUpdate: 'tool_call_update', toolCallId, title: name, kind: 'read', status: 'in_progress', rawInput: input });
-                    await send({ sessionUpdate: 'tool_call_update', toolCallId, status: 'completed', rawOutput: { output: `${ name } finished` } });
+                    await send({
+                        sessionUpdate: 'tool_call_update',
+                        toolCallId,
+                        title: name,
+                        kind: 'read',
+                        status: 'in_progress',
+                        rawInput: input,
+                    });
+                    await send({
+                        sessionUpdate: 'tool_call_update',
+                        toolCallId,
+                        status: 'completed',
+                        rawOutput: { output: `${name} finished` },
+                    });
                     break;
                 }
                 case 'call': {
@@ -819,19 +1075,37 @@ async function turn(session: FakeSession, sessionId: string, text: string, clien
                         break;
                     }
 
-                    const toolCallId = `c${ session.count }-${ ++calls }`;
+                    const toolCallId = `c${session.count}-${++calls}`;
                     const input = json.length > 0 ? JSON.parse(json.join(' ')) : {};
                     const mcp = new Client({ name: 'fake-agent', version: '1' });
 
-                    await send({ sessionUpdate: 'tool_call_update', toolCallId, title: `Tool: ${ server.name }/${ tool }`, kind: 'other', status: 'in_progress', rawInput: input });
-                    await mcp.connect(new StdioClientTransport({ command: server.command, args: server.args, env: Object.fromEntries((server.env ?? []).map(({ name, value }) => [name, value])) }));
+                    await send({
+                        sessionUpdate: 'tool_call_update',
+                        toolCallId,
+                        title: `Tool: ${server.name}/${tool}`,
+                        kind: 'other',
+                        status: 'in_progress',
+                        rawInput: input,
+                    });
+                    await mcp.connect(
+                        new StdioClientTransport({
+                            command: server.command,
+                            args: server.args,
+                            env: Object.fromEntries((server.env ?? []).map(({ name, value }) => [name, value])),
+                        })
+                    );
 
                     const result = await mcp.callTool({ name: tool, arguments: input });
                     const content = result.content as { type: string; text?: string }[];
 
                     await mcp.close();
-                    await send({ sessionUpdate: 'tool_call_update', toolCallId, status: result.isError ? 'failed' : 'completed', rawOutput: content.map(block => block.text).join('') });
-                    await say(`${ result.isError ? 'error' : 'result' }: ${ content.map(block => block.text).join('') }`);
+                    await send({
+                        sessionUpdate: 'tool_call_update',
+                        toolCallId,
+                        status: result.isError ? 'failed' : 'completed',
+                        rawOutput: content.map(block => block.text).join(''),
+                    });
+                    await say(`${result.isError ? 'error' : 'result'}: ${content.map(block => block.text).join('')}`);
                     break;
                 }
                 case 'perm': {
@@ -843,7 +1117,15 @@ async function turn(session: FakeSession, sessionId: string, text: string, clien
                     const answer = await client.request(methods.client.session.requestPermission, {
                         sessionId,
                         title: 'Run a command',
-                        subject: { type: 'tool_call', toolCall: { toolCallId: `p${ ++calls }`, title: 'Run a command', ...(kind && { kind: kind as 'execute' }), ...(extra.length > 0 ? JSON.parse(extra.join(' ')) as Record<string, unknown> : {}) } },
+                        subject: {
+                            type: 'tool_call',
+                            toolCall: {
+                                toolCallId: `p${++calls}`,
+                                title: 'Run a command',
+                                ...(kind && { kind: kind as 'execute' }),
+                                ...(extra.length > 0 ? (JSON.parse(extra.join(' ')) as Record<string, unknown>) : {}),
+                            },
+                        },
                         options: [
                             { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
                             { optionId: 'always', name: 'Always allow', kind: 'allow_always' },
@@ -852,7 +1134,9 @@ async function turn(session: FakeSession, sessionId: string, text: string, clien
                     });
 
                     await send(state(session, { state: 'running' }));
-                    await say(`permission: ${ answer.outcome.outcome === 'selected' ? answer.outcome.optionId : answer.outcome.outcome }`);
+                    await say(
+                        `permission: ${answer.outcome.outcome === 'selected' ? answer.outcome.optionId : answer.outcome.outcome}`
+                    );
                     break;
                 }
                 case 'permcancel': {
@@ -861,22 +1145,28 @@ async function turn(session: FakeSession, sessionId: string, text: string, clien
 
                     await send(state(session, { state: 'requires_action' }));
 
-                    const asked = client.request(methods.client.session.requestPermission, {
-                        sessionId,
-                        title: 'Run a command',
-                        subject: { type: 'command', command: 'ls', cwd: '/work' },
-                        options: [
-                            { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
-                            { optionId: 'once', name: 'Allow once', kind: 'allow_once' },
-                        ],
-                    }, { cancellationSignal: withdraw.signal });
+                    const asked = client.request(
+                        methods.client.session.requestPermission,
+                        {
+                            sessionId,
+                            title: 'Run a command',
+                            subject: { type: 'command', command: 'ls', cwd: '/work' },
+                            options: [
+                                { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
+                                { optionId: 'once', name: 'Allow once', kind: 'allow_once' },
+                            ],
+                        },
+                        { cancellationSignal: withdraw.signal }
+                    );
 
                     setTimeout(() => withdraw.abort(), 150);
 
                     const answer = await asked;
 
                     await send(state(session, { state: 'running' }));
-                    await say(`permission: ${ answer.outcome.outcome === 'selected' ? answer.outcome.optionId : answer.outcome.outcome }`);
+                    await say(
+                        `permission: ${answer.outcome.outcome === 'selected' ? answer.outcome.optionId : answer.outcome.outcome}`
+                    );
                     break;
                 }
                 case 'perm2': {
@@ -889,12 +1179,32 @@ async function turn(session: FakeSession, sessionId: string, text: string, clien
                     await send(state(session, { state: 'requires_action' }));
 
                     const answers = await Promise.all([
-                        client.request(methods.client.session.requestPermission, { sessionId, title: 'first', subject: { type: 'tool_call', toolCall: { toolCallId: `p${ ++calls }`, title: 'first', kind: 'execute', rawInput: { command: 'first' } } }, options }),
-                        client.request(methods.client.session.requestPermission, { sessionId, title: 'second', subject: { type: 'command', command: 'second', cwd: '/work' }, options }),
+                        client.request(methods.client.session.requestPermission, {
+                            sessionId,
+                            title: 'first',
+                            subject: {
+                                type: 'tool_call',
+                                toolCall: {
+                                    toolCallId: `p${++calls}`,
+                                    title: 'first',
+                                    kind: 'execute',
+                                    rawInput: { command: 'first' },
+                                },
+                            },
+                            options,
+                        }),
+                        client.request(methods.client.session.requestPermission, {
+                            sessionId,
+                            title: 'second',
+                            subject: { type: 'command', command: 'second', cwd: '/work' },
+                            options,
+                        }),
                     ]);
 
                     await send(state(session, { state: 'running' }));
-                    await say(`permissions: ${ answers.map(answer => (answer.outcome.outcome === 'selected' ? answer.outcome.optionId : answer.outcome.outcome)).join(',') }`);
+                    await say(
+                        `permissions: ${answers.map(answer => (answer.outcome.outcome === 'selected' ? answer.outcome.optionId : answer.outcome.outcome)).join(',')}`
+                    );
                     break;
                 }
                 case 'pause':
@@ -905,7 +1215,7 @@ async function turn(session: FakeSession, sessionId: string, text: string, clien
                 case 'subagent': {
                     const [ms, ...title] = rest;
 
-                    if (!await foreground(session, client, Number(ms), title.join(' '))) {
+                    if (!(await foreground(session, client, Number(ms), title.join(' ')))) {
                         stopReason = 'cancelled';
 
                         return;
@@ -914,7 +1224,14 @@ async function turn(session: FakeSession, sessionId: string, text: string, clien
                     break;
                 }
                 case 'stray':
-                    await send({ sessionUpdate: 'agent_message_chunk', messageId: 'stray', content: { type: 'text', text: argument } }, 'stranger');
+                    await send(
+                        {
+                            sessionUpdate: 'agent_message_chunk',
+                            messageId: 'stray',
+                            content: { type: 'text', text: argument },
+                        },
+                        'stranger'
+                    );
                     break;
                 case 'outcome':
                     session.outcome = argument as FakeSession['outcome'];
@@ -928,7 +1245,13 @@ async function turn(session: FakeSession, sessionId: string, text: string, clien
                 case 'background': {
                     const [kind, ms, ...title] = rest;
 
-                    await startWork(session, client, kind as Exclude<Work['kind'], 'monitor'>, Number(ms), title.join(' '));
+                    await startWork(
+                        session,
+                        client,
+                        kind as Exclude<Work['kind'], 'monitor'>,
+                        Number(ms),
+                        title.join(' ')
+                    );
                     break;
                 }
                 case 'monitor':
@@ -948,10 +1271,20 @@ async function turn(session: FakeSession, sessionId: string, text: string, clien
                     break;
                 case 'retitle': {
                     const [ms, ...title] = rest;
-                    const work = session.work.filter(candidate => candidate.kind === 'workflow' && !candidate.done).at(-1);
+                    const work = session.work
+                        .filter(candidate => candidate.kind === 'workflow' && !candidate.done)
+                        .at(-1);
 
                     if (work) {
-                        setTimeout(() => void send({ sessionUpdate: 'tool_call_update', toolCallId: work.ref, title: title.join(' ') }), Number(ms));
+                        setTimeout(
+                            () =>
+                                void send({
+                                    sessionUpdate: 'tool_call_update',
+                                    toolCallId: work.ref,
+                                    title: title.join(' '),
+                                }),
+                            Number(ms)
+                        );
                     }
 
                     break;
@@ -978,9 +1311,18 @@ async function turn(session: FakeSession, sessionId: string, text: string, clien
                 case 'usage': {
                     const [input, output, cost] = rest.map(Number);
 
-                    usage = { inputTokens: (usage?.inputTokens ?? 0) + input, outputTokens: (usage?.outputTokens ?? 0) + output, totalTokens: (usage?.totalTokens ?? 0) + input + output };
+                    usage = {
+                        inputTokens: (usage?.inputTokens ?? 0) + input,
+                        outputTokens: (usage?.outputTokens ?? 0) + output,
+                        totalTokens: (usage?.totalTokens ?? 0) + input + output,
+                    };
                     session.cost += cost;
-                    await send({ sessionUpdate: 'usage_update', used: input + output, size: 200_000, cost: { amount: session.cost, currency: 'USD' } });
+                    await send({
+                        sessionUpdate: 'usage_update',
+                        used: input + output,
+                        size: 200_000,
+                        cost: { amount: session.cost, currency: 'USD' },
+                    });
                     break;
                 }
                 case 'context': {
@@ -991,18 +1333,43 @@ async function turn(session: FakeSession, sessionId: string, text: string, clien
                 }
                 case '/compact': {
                     // What Claude's adapter reports for its own command: a tool call with the counts, a smaller window, and no words.
-                    const toolCallId = `k${ session.count }`;
+                    const toolCallId = `k${session.count}`;
                     const rawOutput = { trigger: 'manual', preTokens: 22_062, postTokens: 6111, durationMs: 4200 };
 
-                    await send({ sessionUpdate: 'tool_call_update', toolCallId, title: 'Compact conversation', kind: 'think', status: 'in_progress', _meta: { claudeCode: { toolName: 'compact' } } });
-                    await send({ sessionUpdate: 'tool_call_update', toolCallId, status: 'completed', rawOutput, _meta: { claudeCode: { toolName: 'compact' } } });
+                    await send({
+                        sessionUpdate: 'tool_call_update',
+                        toolCallId,
+                        title: 'Compact conversation',
+                        kind: 'think',
+                        status: 'in_progress',
+                        _meta: { claudeCode: { toolName: 'compact' } },
+                    });
+                    await send({
+                        sessionUpdate: 'tool_call_update',
+                        toolCallId,
+                        status: 'completed',
+                        rawOutput,
+                        _meta: { claudeCode: { toolName: 'compact' } },
+                    });
                     await send({ sessionUpdate: 'usage_update', used: 6111, size: 1_000_000 });
                     break;
                 }
                 case 'limit': {
                     const [status, resetsAt] = rest;
 
-                    await send({ sessionUpdate: 'usage_update', used: 1, size: 200_000, _meta: { '_claude/rateLimit': { status, rateLimitType: 'five_hour', utilization: 0.95, resetsAt: Number(resetsAt) } } });
+                    await send({
+                        sessionUpdate: 'usage_update',
+                        used: 1,
+                        size: 200_000,
+                        _meta: {
+                            '_claude/rateLimit': {
+                                status,
+                                rateLimitType: 'five_hour',
+                                utilization: 0.95,
+                                resetsAt: Number(resetsAt),
+                            },
+                        },
+                    });
                     break;
                 }
                 case 'title':
@@ -1019,22 +1386,43 @@ async function turn(session: FakeSession, sessionId: string, text: string, clien
                     later.push({ ms: Number(rest[0]), title: rest.slice(1).join(' ') });
                     break;
                 case 'info':
-                    await say(JSON.stringify({ title: session.title, cwd: session.cwd, directories: session.directories, servers: session.mcpServers.map(server => server.name), systemPrompt: session.systemPrompt, meta: session.meta, replayFrom: session.replayFrom, model: session.model, prompts: session.count }));
+                    await say(
+                        JSON.stringify({
+                            title: session.title,
+                            cwd: session.cwd,
+                            directories: session.directories,
+                            servers: session.mcpServers.map(server => server.name),
+                            systemPrompt: session.systemPrompt,
+                            meta: session.meta,
+                            replayFrom: session.replayFrom,
+                            model: session.model,
+                            prompts: session.count,
+                        })
+                    );
                     break;
                 case 'history':
-                    await say(`history: ${ (recall(session.id) ?? []).map(entry => `${ entry.role }: ${ entry.text }`).join(' | ') }`);
+                    await say(
+                        `history: ${(recall(session.id) ?? []).map(entry => `${entry.role}: ${entry.text}`).join(' | ')}`
+                    );
                     break;
                 case 'capabilities':
                     await say(JSON.stringify(clientCapabilities));
                     break;
                 case 'choice':
-                    await say(JSON.stringify({ model: session.model, effort: session.effort, sets: session.sets, ...(session.mode && { mode: session.mode }) }));
+                    await say(
+                        JSON.stringify({
+                            model: session.model,
+                            effort: session.effort,
+                            sets: session.sets,
+                            ...(session.mode && { mode: session.mode }),
+                        })
+                    );
                     break;
                 case 'prompt':
                     await say(JSON.stringify(text));
                     break;
                 case 'env':
-                    await say(`${ argument }=${ process.env[argument] ?? '' }`);
+                    await say(`${argument}=${process.env[argument] ?? ''}`);
                     break;
                 case 'fail': {
                     const [code, ...message] = rest;
@@ -1047,13 +1435,17 @@ async function turn(session: FakeSession, sessionId: string, text: string, clien
                 case 'sleep': {
                     const { signal } = session.cancel;
 
-                    await new Promise<void>((resolve) => {
+                    await new Promise<void>(resolve => {
                         const timer = setTimeout(resolve, Number(argument));
 
-                        signal.addEventListener('abort', () => {
-                            clearTimeout(timer);
-                            resolve();
-                        }, { once: true });
+                        signal.addEventListener(
+                            'abort',
+                            () => {
+                                clearTimeout(timer);
+                                resolve();
+                            },
+                            { once: true }
+                        );
                     });
 
                     if (signal.aborted) {
@@ -1074,8 +1466,7 @@ async function turn(session: FakeSession, sessionId: string, text: string, clien
                     }
             }
         }
-    }
-    finally {
+    } finally {
         if (twice && session.landed && stopReason === 'end_turn') {
             // A prompt that landed in the turn was queued by the agent behind it: the turn ends without a result of its own, and the prompt's turn
             // follows, which gives the answer again as a whole message under a new id, and the usage.
@@ -1086,15 +1477,16 @@ async function turn(session: FakeSession, sessionId: string, text: string, clien
             if (said) {
                 const messageId = crypto.randomUUID();
 
-                await send(twice === 'whole'
-                    ? { sessionUpdate: 'agent_message', messageId, content: [{ type: 'text', text: said }] }
-                    : { sessionUpdate: 'agent_message_chunk', messageId, content: { type: 'text', text: said } });
+                await send(
+                    twice === 'whole'
+                        ? { sessionUpdate: 'agent_message', messageId, content: [{ type: 'text', text: said }] }
+                        : { sessionUpdate: 'agent_message_chunk', messageId, content: { type: 'text', text: said } }
+                );
             }
 
             session.prompting = false;
             await send(state(session, { state: 'idle', stopReason, ...(usage && { usage }) }));
-        }
-        else {
+        } else {
             session.prompting = false;
             await send(state(session, { state: 'idle', stopReason, ...(error && { error }), ...(usage && { usage }) }));
         }
@@ -1107,7 +1499,10 @@ async function turn(session: FakeSession, sessionId: string, text: string, clien
         // What an agent gives once the turn is over: its first message as the title, then a name of its own a moment later.
         if (session.title === undefined) {
             if (echoed) {
-                setTimeout(() => void send({ sessionUpdate: 'session_info_update', title: text.replace(/\s+/g, ' ').trim() }), 5);
+                setTimeout(
+                    () => void send({ sessionUpdate: 'session_info_update', title: text.replace(/\s+/g, ' ').trim() }),
+                    5
+                );
             }
 
             for (const { ms, title } of later) {
@@ -1136,22 +1531,33 @@ const app = agent({ name: 'fake-acp-agent-v2' })
             ...(process.env.FAKE_ACP_STEERING === '1' && { _meta: { steering: { supported: true } } }),
         };
     })
-    .onRequest('_session/steering', params => params as { sessionId: string; prompt: { type: string; text?: string }[] }, async ({ params, client }) => {
-        const session = sessions.get(params.sessionId);
-        const text = params.prompt.map(block => block.text ?? '').join('\n');
+    .onRequest(
+        '_session/steering',
+        params => params as { sessionId: string; prompt: { type: string; text?: string }[] },
+        async ({ params, client }) => {
+            const session = sessions.get(params.sessionId);
+            const text = params.prompt.map(block => block.text ?? '').join('\n');
 
-        log(`steering ${ text.replaceAll('\n', ' | ') }`);
+            log(`steering ${text.replaceAll('\n', ' | ')}`);
 
-        if (!session?.prompting) {
-            return { outcome: 'promptRequired', reason: 'noRunningTurn' };
+            if (!session?.prompting) {
+                return { outcome: 'promptRequired', reason: 'noRunningTurn' };
+            }
+
+            // Taken into the running turn: echoed at once, and its lines run in that turn.
+            session.steers.push(text);
+            await client.notify(methods.client.session.update, {
+                sessionId: params.sessionId,
+                update: {
+                    sessionUpdate: 'user_message_chunk',
+                    messageId: crypto.randomUUID(),
+                    content: { type: 'text', text },
+                },
+            });
+
+            return { outcome: 'injected' };
         }
-
-        // Taken into the running turn: echoed at once, and its lines run in that turn.
-        session.steers.push(text);
-        await client.notify(methods.client.session.update, { sessionId: params.sessionId, update: { sessionUpdate: 'user_message_chunk', messageId: crypto.randomUUID(), content: { type: 'text', text } } });
-
-        return { outcome: 'injected' };
-    })
+    )
     .onRequest(methods.agent.terminal.cancel, async ({ params }) => {
         await cancelTerminal(params.terminalId);
 
@@ -1168,7 +1574,7 @@ const app = agent({ name: 'fake-acp-agent-v2' })
         }
 
         // Two processes of a stored agent would both name their first session `fake-1`.
-        const id = process.env.FAKE_ACP_STORE ? `fake-${ crypto.randomUUID().slice(0, 8) }` : `fake-${ ++counter }`;
+        const id = process.env.FAKE_ACP_STORE ? `fake-${crypto.randomUUID().slice(0, 8)}` : `fake-${++counter}`;
 
         open(id, params, false);
         keep(id, []);
@@ -1188,19 +1594,30 @@ const app = agent({ name: 'fake-acp-agent-v2' })
         }
 
         // The agent says what state the session is in before it answers, with or without a replay.
-        await client.notify(methods.client.session.update, { sessionId: params.sessionId, update: { sessionUpdate: 'state_update', state: 'idle', stopReason: 'end_turn' } });
+        await client.notify(methods.client.session.update, {
+            sessionId: params.sessionId,
+            update: { sessionUpdate: 'state_update', state: 'idle', stopReason: 'end_turn' },
+        });
 
         return { configOptions: modelOptions('fast') };
     })
     .onRequest(methods.agent.session.fork, async ({ params }) => {
-        log(`fork-request ${ JSON.stringify({ cwd: params.cwd, directories: params.additionalDirectories, servers: (params.mcpServers ?? []).map(server => server.name), systemPrompt: systemText(params.systemPrompt?.content), meta: params._meta }) }`);
-        log(`fork-process ${ process.pid }`);
+        log(
+            `fork-request ${JSON.stringify({ cwd: params.cwd, directories: params.additionalDirectories, servers: (params.mcpServers ?? []).map(server => server.name), systemPrompt: systemText(params.systemPrompt?.content), meta: params._meta })}`
+        );
+        log(`fork-process ${process.pid}`);
 
         // The tool bridge's credential of the request, tried while the fork runs, so a test can tell it worked then and not after.
-        const env = Object.fromEntries(((params.mcpServers ?? []) as { env?: { name: string; value: string }[] }[]).flatMap(server => (server.env ?? []).map(entry => [entry.name, entry.value])));
+        const env = Object.fromEntries(
+            ((params.mcpServers ?? []) as { env?: { name: string; value: string }[] }[]).flatMap(server =>
+                (server.env ?? []).map(entry => [entry.name, entry.value])
+            )
+        );
 
         if (env.CLOWDY_BRIDGE_URL) {
-            log(`fork-bridge ${ env.CLOWDY_BRIDGE_URL } ${ env.CLOWDY_BRIDGE_TOKEN } ${ (await fetch(`${ env.CLOWDY_BRIDGE_URL }/tools`, { headers: { authorization: `Bearer ${ env.CLOWDY_BRIDGE_TOKEN }` } })).status }`);
+            log(
+                `fork-bridge ${env.CLOWDY_BRIDGE_URL} ${env.CLOWDY_BRIDGE_TOKEN} ${(await fetch(`${env.CLOWDY_BRIDGE_URL}/tools`, { headers: { authorization: `Bearer ${env.CLOWDY_BRIDGE_TOKEN}` } })).status}`
+            );
         }
 
         // FAKE_ACP_FORK=hang: the adapter takes the request and never answers, as one that copies a huge transcript seems to.
@@ -1208,7 +1625,12 @@ const app = agent({ name: 'fake-acp-agent-v2' })
             await new Promise<never>(() => undefined);
         }
 
-        const point = (params._meta as { jetbrains?: { air?: { fork?: { version?: number; messageId?: string } } } } | null | undefined)?.jetbrains?.air?.fork;
+        const point = (
+            params._meta as
+                | { jetbrains?: { air?: { fork?: { version?: number; messageId?: string } } } }
+                | null
+                | undefined
+        )?.jetbrains?.air?.fork;
         const source = recall(params.sessionId);
 
         if (!source) {
@@ -1222,20 +1644,23 @@ const app = agent({ name: 'fake-acp-agent-v2' })
         const at = source.findIndex(entry => entry.role === 'assistant' && entry.id === point.messageId);
 
         if (at < 0) {
-            throw RequestError.invalidParams({ messageId: point.messageId }, `Fork point message ${ point.messageId } was not found in session ${ params.sessionId }`);
+            throw RequestError.invalidParams(
+                { messageId: point.messageId },
+                `Fork point message ${point.messageId} was not found in session ${params.sessionId}`
+            );
         }
 
-        const id = `fork-${ crypto.randomUUID().slice(0, 8) }`;
+        const id = `fork-${crypto.randomUUID().slice(0, 8)}`;
 
         // The copy ends with the message, inclusive; the session is open at once, so the client could prompt it.
         keep(id, source.slice(0, at + 1));
         open(id, params, true);
-        log(`fork ${ params.sessionId } ${ point.messageId } ${ id }`);
+        log(`fork ${params.sessionId} ${point.messageId} ${id}`);
 
         return { sessionId: id, configOptions: modelOptions('fast') };
     })
     .onRequest(methods.agent.session.close, ({ params }) => {
-        log(`close ${ params.sessionId }`);
+        log(`close ${params.sessionId}`);
 
         return {};
     })
@@ -1247,13 +1672,13 @@ const app = agent({ name: 'fake-acp-agent-v2' })
 
             if (params.configId === 'effort') {
                 session.effort = params.value;
-            }
-            else if (params.configId === 'model') {
+            } else if (params.configId === 'model') {
                 session.model = params.value;
                 // A model keeps the level when it has it, and goes back to its own default when it has not.
-                session.effort = (LEVELS[session.model] ?? LEVELS.fast).includes(session.effort) ? session.effort : 'high';
-            }
-            else if (params.configId === 'mode') {
+                session.effort = (LEVELS[session.model] ?? LEVELS.fast).includes(session.effort)
+                    ? session.effort
+                    : 'high';
+            } else if (params.configId === 'mode') {
                 session.mode = params.value;
             }
         }
@@ -1267,14 +1692,17 @@ const app = agent({ name: 'fake-acp-agent-v2' })
             throw RequestError.sessionNotFound(params.sessionId);
         }
 
-        log(`title ${ params.sessionId } ${ params.title }`);
+        log(`title ${params.sessionId} ${params.title}`);
         session.title = params.title;
-        await client.notify(methods.client.session.update, { sessionId: params.sessionId, update: { sessionUpdate: 'session_info_update', title: params.title } });
+        await client.notify(methods.client.session.update, {
+            sessionId: params.sessionId,
+            update: { sessionUpdate: 'session_info_update', title: params.title },
+        });
 
         return { title: params.title };
     })
     .onNotification(methods.agent.session.cancel, ({ params }) => {
-        log(`cancel ${ params.sessionId }`);
+        log(`cancel ${params.sessionId}`);
 
         const session = sessions.get(params.sessionId);
 
@@ -1288,7 +1716,9 @@ const app = agent({ name: 'fake-acp-agent-v2' })
         stoppable.get(params.sessionId)?.abort();
 
         for (const parent of sessions.values()) {
-            const work = parent.work.find(candidate => candidate.kind === 'subagent' && candidate.ref === params.sessionId);
+            const work = parent.work.find(
+                candidate => candidate.kind === 'subagent' && candidate.ref === params.sessionId
+            );
 
             if (work) {
                 void stopWork(parent, work);
@@ -1318,10 +1748,9 @@ const app = agent({ name: 'fake-acp-agent-v2' })
 
         if (starting) {
             session.prompting = true;
-        }
-        else if (process.env.FAKE_ACP_QUEUE === '1' || process.env.FAKE_ACP_QUEUE === 'refuse') {
+        } else if (process.env.FAKE_ACP_QUEUE === '1' || process.env.FAKE_ACP_QUEUE === 'refuse') {
             // Held, answered and echoed only when the turn before it is over, and run as a turn of its own (or refused then).
-            log(`queued ${ text.replaceAll('\n', ' | ') }`);
+            log(`queued ${text.replaceAll('\n', ' | ')}`);
             await new Promise<void>(resolve => session.queue.push(resolve));
 
             if (process.env.FAKE_ACP_QUEUE === 'refuse') {
@@ -1330,10 +1759,9 @@ const app = agent({ name: 'fake-acp-agent-v2' })
 
             session.prompting = true;
             starting = true;
-        }
-        else {
+        } else {
             // Inserted into the running turn: its lines run as directives of that same turn, after the line in progress.
-            log(`steer ${ text.replaceAll('\n', ' | ') }`);
+            log(`steer ${text.replaceAll('\n', ' | ')}`);
             session.steers.push(text);
             session.landed = true;
         }
@@ -1348,7 +1776,10 @@ const app = agent({ name: 'fake-acp-agent-v2' })
 
         // FAKE_ACP_NOECHO=1: the agent takes the prompt in and says nothing of it, as an agent that does not echo the messages it is given.
         if (process.env.FAKE_ACP_NOECHO !== '1') {
-            await client.notify(methods.client.session.update, { sessionId: params.sessionId, update: { sessionUpdate: 'user_message', messageId, content: [{ type: 'text', text }] } });
+            await client.notify(methods.client.session.update, {
+                sessionId: params.sessionId,
+                update: { sessionUpdate: 'user_message', messageId, content: [{ type: 'text', text }] },
+            });
         }
 
         if (starting && !late) {
@@ -1359,4 +1790,9 @@ const app = agent({ name: 'fake-acp-agent-v2' })
         return { messageId };
     });
 
-app.connect(ndJsonStream(Writable.toWeb(process.stdout) as WritableStream<Uint8Array>, Readable.toWeb(process.stdin) as ReadableStream<Uint8Array>));
+app.connect(
+    ndJsonStream(
+        Writable.toWeb(process.stdout) as WritableStream<Uint8Array>,
+        Readable.toWeb(process.stdin) as ReadableStream<Uint8Array>
+    )
+);

@@ -18,8 +18,7 @@ export class Channel<T> {
 
             this.waiting = undefined;
             resolve(item);
-        }
-        else {
+        } else {
             this.items.push(item);
         }
     }
@@ -27,9 +26,11 @@ export class Channel<T> {
     next(): Promise<T> {
         const item = this.items.shift();
 
-        return item !== undefined ? Promise.resolve(item) : new Promise<T>((resolve) => {
-            this.waiting = resolve;
-        });
+        return item !== undefined
+            ? Promise.resolve(item)
+            : new Promise<T>(resolve => {
+                  this.waiting = resolve;
+              });
     }
 }
 
@@ -41,16 +42,24 @@ export class ProcessEnded extends Error {}
  * calls `wake`, so the loop that waits for the agent's next word ends at once. Gives back the race: `request(call)` settles with `call`, or fails
  * with `ProcessEnded` or the abort's reason.
  */
-export function watchEnd(proc: AgentProcess, signal: AbortSignal, wake: (ending: 'exited' | 'aborted') => void): <T>(call: Promise<T>) => Promise<T> {
+export function watchEnd(
+    proc: AgentProcess,
+    signal: AbortSignal,
+    wake: (ending: 'exited' | 'aborted') => void
+): <T>(call: Promise<T>) => Promise<T> {
     const gone = new Promise<never>((_, reject) => {
         void proc.exited.then(() => {
             wake('exited');
             reject(new ProcessEnded());
         });
-        signal.addEventListener('abort', () => {
-            wake('aborted');
-            reject(signal.reason ?? new Error('aborted'));
-        }, { once: true });
+        signal.addEventListener(
+            'abort',
+            () => {
+                wake('aborted');
+                reject(signal.reason ?? new Error('aborted'));
+            },
+            { once: true }
+        );
     });
 
     gone.catch(() => undefined);
@@ -62,14 +71,21 @@ export function watchEnd(proc: AgentProcess, signal: AbortSignal, wake: (ending:
  * Waits for the agent's answer to `initialize`, at most `initializeTimeoutMs`; the program's own words (the end of its stderr) go into the failure. A program
  * that stays silent is no ACP agent or too slow to start, not one that refused a protocol, so the timeout is a plain error that no layer takes for a refusal.
  */
-export function answeredInTime<T>(call: Promise<T>, { agent, proc, deps }: Pick<LayerHost, 'agent' | 'proc' | 'deps'>): Promise<T> {
+export function answeredInTime<T>(
+    call: Promise<T>,
+    { agent, proc, deps }: Pick<LayerHost, 'agent' | 'proc' | 'deps'>
+): Promise<T> {
     const ms = deps.initializeTimeoutMs ?? INITIALIZE_TIMEOUT_MS;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const silent = new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
             const tail = proc.stderr().trim().slice(-500);
 
-            reject(new Error(`${ agent.name } did not answer the ACP handshake in ${ Math.max(1, Math.round(ms / 1000)) } s. Check that the command speaks ACP.${ tail ? ` Last output: ${ tail }` : '' }`));
+            reject(
+                new Error(
+                    `${agent.name} did not answer the ACP handshake in ${Math.max(1, Math.round(ms / 1000))} s. Check that the command speaks ACP.${tail ? ` Last output: ${tail}` : ''}`
+                )
+            );
         }, ms);
     });
 

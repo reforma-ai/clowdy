@@ -28,22 +28,56 @@ export function Screen() {
     // and the new-chat page share that one read: it costs a `git` call for each folder of each project, so each of them reading it would repeat it. The branches of the chats'
     // worktrees (`ProjectInfo.workspaces`) are in it too, which is why it follows the focus (an agent switches branches in a terminal or in the background) and the worktrees that get
     // made: a read taken while a worktree was being made says it is not there, and would make the list call it gone once it is.
-    const madeWorkspaces = [...project.chats.values()].flatMap(chat => (chat.workspace?.ready ? [chat.workspace.id] : [])).sort().join();
+    const madeWorkspaces = [...project.chats.values()]
+        .flatMap(chat => (chat.workspace?.ready ? [chat.workspace.id] : []))
+        .sort()
+        .join();
     const { info } = useProjectsInfo({ poll: false, refreshOnFocus: true, reloadKey: madeWorkspaces });
     const projectInfo = info.get(project.id);
     const missing = new Set(projectInfo?.folders.filter(folder => !folder.exists).map(folder => folder.folderId));
 
-    // The line under a chat's message box holds its folder, where it works in it and the branch, read only, where the new-chat page had the select and the chips; it is always there, whatever the project's folders.
+    // The line under a chat's message box holds its folder and where it works in it (the branch, with `Worktree` before it in a worktree), read only, where the new-chat page had the select and the one control of its place; it is always there, whatever the project's folders.
     const where = chat ? chatFolder(project.chats, project.project.folders, chat.id) : undefined;
 
     return (
-        <SidebarLayout screen="agents" defaultWidth={ 270 } sidebar={ <AgentList selection={ selection } chats={ chats } missing={ missing } workspaces={ projectInfo?.workspaces } isCovered={ expanded } /> }>
-            <section className={ styles.main } aria-label={ run ? 'Sub-agent' : 'Chat' } data-covered={ expanded || undefined }>
-                { run
-                    ? <RunDetail key={ run.id } run={ run } />
-                    : chat
-                        ? <ChatView key={ chat.id } chat={ chat } controls={ where && <ChatFolder name={ where.name } folder={ where.folder } missing={ missing.has(where.folder.id) } workspace={ chat.workspace } /> } />
-                        : <DraftChat missing={ missing } /> }
+        <SidebarLayout
+            screen="agents"
+            defaultWidth={270}
+            sidebar={
+                <AgentList
+                    selection={selection}
+                    chats={chats}
+                    missing={missing}
+                    workspaces={projectInfo?.workspaces}
+                    isCovered={expanded}
+                />
+            }
+        >
+            <section
+                className={styles.main}
+                aria-label={run ? 'Sub-agent' : 'Chat'}
+                data-covered={expanded || undefined}
+            >
+                {run ? (
+                    <RunDetail key={run.id} run={run} />
+                ) : chat ? (
+                    <ChatView
+                        key={chat.id}
+                        chat={chat}
+                        controls={
+                            where && (
+                                <ChatFolder
+                                    name={where.name}
+                                    folder={where.folder}
+                                    missing={missing.has(where.folder.id)}
+                                    workspace={chat.workspace}
+                                />
+                            )
+                        }
+                    />
+                ) : (
+                    <DraftChat missing={missing} />
+                )}
             </section>
         </SidebarLayout>
     );

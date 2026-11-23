@@ -36,7 +36,7 @@ export function checkQuery(query: string): void {
     }
 
     if (query.length > MAX_FS_QUERY_LENGTH) {
-        throw invalid(`The search text is over ${ MAX_FS_QUERY_LENGTH } characters`);
+        throw invalid(`The search text is over ${MAX_FS_QUERY_LENGTH} characters`);
     }
 
     if (/[\n\r\0]/.test(query)) {
@@ -50,7 +50,7 @@ export function checkQuery(query: string): void {
  */
 export function checkExcludes(exclude: readonly string[]): void {
     if (exclude.length > MAX_EXCLUDES) {
-        throw invalid(`At most ${ MAX_EXCLUDES } exclude globs`);
+        throw invalid(`At most ${MAX_EXCLUDES} exclude globs`);
     }
 
     let characters = 0;
@@ -61,7 +61,7 @@ export function checkExcludes(exclude: readonly string[]): void {
         }
 
         if (glob.length > MAX_EXCLUDE_LENGTH) {
-            throw invalid(`An exclude glob is over ${ MAX_EXCLUDE_LENGTH } characters`);
+            throw invalid(`An exclude glob is over ${MAX_EXCLUDE_LENGTH} characters`);
         }
 
         if (glob.includes('\0')) {
@@ -76,7 +76,7 @@ export function checkExcludes(exclude: readonly string[]): void {
     }
 
     if (characters > MAX_EXCLUDE_CHARACTERS) {
-        throw invalid(`The exclude globs are over ${ MAX_EXCLUDE_CHARACTERS } characters together`);
+        throw invalid(`The exclude globs are over ${MAX_EXCLUDE_CHARACTERS} characters together`);
     }
 }
 
@@ -111,7 +111,9 @@ export class PathFilter {
     excludes(path: string): boolean {
         const cut = path.lastIndexOf('/');
 
-        return (cut !== -1 && this.excludesFolder(path.slice(0, cut))) || this.matches(path, path.slice(cut + 1), false);
+        return (
+            (cut !== -1 && this.excludesFolder(path.slice(0, cut))) || this.matches(path, path.slice(cut + 1), false)
+        );
     }
 
     private excludesFolder(path: string): boolean {
@@ -120,7 +122,9 @@ export class PathFilter {
         if (known === undefined) {
             const cut = path.lastIndexOf('/');
 
-            known = (cut !== -1 && this.excludesFolder(path.slice(0, cut))) || this.matches(path, path.slice(cut + 1), true);
+            known =
+                (cut !== -1 && this.excludesFolder(path.slice(0, cut))) ||
+                this.matches(path, path.slice(cut + 1), true);
             this.folders.set(path, known);
         }
 
@@ -141,7 +145,7 @@ const WORD = String.raw`\p{Alphabetic}\p{M}\p{Nd}\p{Pc}‌‍`;
  */
 export function queryMatcher(query: string, matchCase: boolean, wholeWord: boolean): RegExp {
     const literal = query.replace(/[\\^$.*+?()[\]{}|/]/g, String.raw`\$&`);
-    const source = wholeWord ? `(?<![${ WORD }])(?:${ literal })(?![${ WORD }])` : literal;
+    const source = wholeWord ? `(?<![${WORD}])(?:${literal})(?![${WORD}])` : literal;
 
     return new RegExp(source, matchCase ? 'gu' : 'giu');
 }

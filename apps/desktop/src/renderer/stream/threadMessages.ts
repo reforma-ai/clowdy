@@ -9,5 +9,5 @@ export const OUTCOME_WORDS: Record<ThreadOutcome, string> = {
 
 /** One line for a thread that stopped: `Fix login finished`. */
 export function noticeLine(notice: Pick<ThreadNotice, 'title' | 'outcome'>): string {
-    return `${ notice.title } ${ OUTCOME_WORDS[notice.outcome] }`;
+    return `${notice.title} ${OUTCOME_WORDS[notice.outcome]}`;
 }

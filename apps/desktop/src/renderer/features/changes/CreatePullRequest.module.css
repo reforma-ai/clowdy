@@ -1,0 +1,7 @@
+@reference '@clowdy/styles/rulesets';
+
+/* In the sidebar the button is as wide as the sidebar's facts, so it is easy to find and to hit; its words are cut by the edge in a narrow one. */
+.button[data-size][data-variant] {
+    width: 100%;
+    min-width: 0;
+}

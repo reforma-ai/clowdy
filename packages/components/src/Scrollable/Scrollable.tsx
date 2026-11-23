@@ -3,12 +3,12 @@ import { useCallback, useMemo, useRef } from 'react';
 
 import { useStickToBottom } from '../hooks/useStickToBottom';
 import { filterSlots } from '../Slot';
-import { ScrollableContext } from './scrollable-context';
 import styles from './Scrollable.module.css';
-import { elementScrollAxisSource } from './scrollAxisSource';
 import { ScrollChromeBars } from './ScrollChromeBars';
 import { ScrollChromeRoot } from './ScrollChromeRoot';
 import { ScrollContainer } from './ScrollContainer';
+import { elementScrollAxisSource } from './scrollAxisSource';
+import { ScrollableContext } from './scrollable-context';
 import { useScrollChrome } from './useScrollChrome';
 
 import type { HTMLAttributes, ReactNode, Ref } from 'react';
@@ -82,17 +82,10 @@ export function Scrollable({
     edgeFade = false,
     ...attrs
 }: ScrollableProps) {
-    const overlayFromSlot = useMemo(
-        (): ReactNode => filterSlots(children, SCROLLABLE_OVERLAY_SLOT),
-        [children]
-    );
+    const overlayFromSlot = useMemo((): ReactNode => filterSlots(children, SCROLLABLE_OVERLAY_SLOT), [children]);
 
     const scrollChildren = useMemo(
-        (): ReactNode => filterSlots(
-            children,
-            slot => slot !== SCROLLABLE_OVERLAY_SLOT,
-            null
-        ),
+        (): ReactNode => filterSlots(children, slot => slot !== SCROLLABLE_OVERLAY_SLOT, null),
         [children]
     );
 
@@ -100,23 +93,18 @@ export function Scrollable({
 
     const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-    const getScrollElement = useCallback(
-        () => scrollContainerRef.current,
-        []
-    );
+    const getScrollElement = useCallback(() => scrollContainerRef.current, []);
 
     const isVerticalEnabled = vertical ?? true;
     const isHorizontalEnabled = horizontal ?? false;
 
     const verticalSource = useMemo(
         // The getter is stored and called from effects, not during render.
-        // eslint-disable-next-line react-hooks/refs -- elementScrollAxisSource does not read `.current` now
         () => (isVerticalEnabled ? elementScrollAxisSource(getScrollElement, 'vertical') : null),
         [getScrollElement, isVerticalEnabled]
     );
 
     const horizontalSource = useMemo(
-        // eslint-disable-next-line react-hooks/refs -- elementScrollAxisSource does not read `.current` now
         () => (isHorizontalEnabled ? elementScrollAxisSource(getScrollElement, 'horizontal') : null),
         [getScrollElement, isHorizontalEnabled]
     );
@@ -194,45 +182,44 @@ export function Scrollable({
     );
 
     return (
-        <ScrollableContext value={ scrollableContextValue }>
+        <ScrollableContext value={scrollableContextValue}>
             <ScrollChromeRoot
-                { ...attrs as HTMLAttributes<HTMLDivElement> }
-                ref={ userRef }
-                rootRef={ chrome.rootRef }
-                className={ className }
-                vertical={ isVerticalEnabled }
-                horizontal={ isHorizontalEnabled }
-                edgeFade={ edgeFade }
-                rootPointerHandlers={ chrome.rootPointerHandlers }
+                {...(attrs as HTMLAttributes<HTMLDivElement>)}
+                ref={userRef}
+                rootRef={chrome.rootRef}
+                className={className}
+                vertical={isVerticalEnabled}
+                horizontal={isHorizontalEnabled}
+                edgeFade={edgeFade}
+                rootPointerHandlers={chrome.rootPointerHandlers}
             >
                 <ScrollContainer
-                    ref={ containerMergedRef }
-                    contentRef={ contentMergedRef }
-                    containerClass={ cn(
-                        stickConfigured && styles.containerStickToBottom,
-                        containerClass
-                    ) }
-                    contentClass={ contentClass }
-                    onScroll={ onScroll
-                        ? (e) => {
-                            onScroll(e.nativeEvent);
-                        }
-                        : undefined }
+                    ref={containerMergedRef}
+                    contentRef={contentMergedRef}
+                    containerClass={cn(stickConfigured && styles.containerStickToBottom, containerClass)}
+                    contentClass={contentClass}
+                    onScroll={
+                        onScroll
+                            ? e => {
+                                  onScroll(e.nativeEvent);
+                              }
+                            : undefined
+                    }
                 >
-                    { scrollChildren }
+                    {scrollChildren}
                 </ScrollContainer>
 
-                { scrollbar && (
+                {scrollbar && (
                     <ScrollChromeBars
-                        vertical={ isVerticalEnabled }
-                        horizontal={ isHorizontalEnabled }
-                        setScrollbarV={ chrome.setScrollbarV }
-                        setScrollbarH={ chrome.setScrollbarH }
-                        onPointerDown={ chrome.handlePointerDown }
+                        vertical={isVerticalEnabled}
+                        horizontal={isHorizontalEnabled}
+                        setScrollbarV={chrome.setScrollbarV}
+                        setScrollbarH={chrome.setScrollbarH}
+                        onPointerDown={chrome.handlePointerDown}
                     />
-                ) }
+                )}
 
-                { overlayResolved }
+                {overlayResolved}
             </ScrollChromeRoot>
         </ScrollableContext>
     );

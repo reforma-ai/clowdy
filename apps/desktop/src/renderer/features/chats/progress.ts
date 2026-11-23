@@ -17,5 +17,9 @@ export function chatProgress(tasks: Task[], statuses: TaskStatus[]): ChatProgres
 
     if (counted.length === 0) return undefined;
 
-    return { done: counted.filter(task => categoryOf.get(task.statusId) === 'done').length, total: counted.length, tasks: counted };
+    return {
+        done: counted.filter(task => categoryOf.get(task.statusId) === 'done').length,
+        total: counted.length,
+        tasks: counted,
+    };
 }

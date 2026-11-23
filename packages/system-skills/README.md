@@ -50,7 +50,7 @@ The fields come from the daemon's tool definitions (`apps/daemon/src/runs/`): `a
 
 ```bash
 bun run test          # bun scripts/validate.ts
-bun run lint          # eslint on scripts
+bun run lint          # biome check
 bun run typecheck
 ```
 

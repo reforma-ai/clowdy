@@ -26,8 +26,7 @@ export function ensureHashDir(parent: string, hash: string, build: (dir: string)
     try {
         build(temp);
         renameSync(temp, target);
-    }
-    catch (error) {
+    } catch (error) {
         rmSync(temp, { recursive: true, force: true });
 
         if (!existsSync(target)) {

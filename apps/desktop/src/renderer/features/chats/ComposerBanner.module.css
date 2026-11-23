@@ -26,7 +26,8 @@
     gap: var(--spacing-sm);
     /* A row is a list item of the small size (30px) between two 2px insets. Its button (24px) sits 3px from the item's edges, as in a list. */
     min-height: calc(var(--spacing-30) + var(--spacing-2) * 2);
-    padding: var(--spacing-2) calc(var(--spacing-xs) + (var(--spacing-30) - var(--spacing-24)) / 2) var(--spacing-2) var(--spacing-lg);
+    padding: var(--spacing-2) calc(var(--spacing-xs) + (var(--spacing-30) - var(--spacing-24)) / 2) var(--spacing-2)
+        var(--spacing-lg);
     isolation: isolate;
 }
 
@@ -96,4 +97,10 @@
     .status[data-pressable]:focus-within .action {
         opacity: 1;
     }
+}
+
+/* A plate right under another one (the git row under the work in progress) goes on from it: square corners, so the two read as one plate. */
+.root + .root {
+    border-radius: 0;
+    corner-shape: square;
 }

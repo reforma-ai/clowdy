@@ -14,7 +14,15 @@ const chatMode = z.enum(['autopilot', 'semi']);
 const engine = z.string().min(1).max(64);
 const model = z.string().min(1).max(200);
 const chatWorkspaceChoice = z.union([
-    z.object({ mode: z.literal('new'), base: z.string().min(1).max(300).optional() }).strict(),
+    // The prefix's own limits and rules are the daemon's to check (`branchPrefixProblem`), so a refusal says which one it is; the schema only keeps the text short.
+    z
+        .object({
+            mode: z.literal('new'),
+            base: z.string().min(1).max(300).optional(),
+            branchPrefix: z.string().max(500).optional(),
+            branchName: z.string().max(200).optional(),
+        })
+        .strict(),
     z.object({ mode: z.literal('existing'), path: z.string().min(1) }).strict(),
 ]);
 const effort = z.string().min(1).max(64);
@@ -29,7 +37,12 @@ export const commandSchema = z.discriminatedUnion('type', [
      * The same set of folders as a project already has, in any order, answers that project with `existing: true` and adds nothing.
      * A folder cannot be listed twice or inside another listed folder. Answers `{ project, existing? }`.
      */
-    z.object({ ...base, type: z.literal('project.add'), name: z.string().min(1).optional(), folders: z.array(z.string().min(1)).max(MAX_PROJECT_FOLDERS).optional() }),
+    z.object({
+        ...base,
+        type: z.literal('project.add'),
+        name: z.string().min(1).optional(),
+        folders: z.array(z.string().min(1)).max(MAX_PROJECT_FOLDERS).optional(),
+    }),
     /**
      * `folders` is the project's whole new list, in order: `{ id }` keeps a folder it has, `{ path }` adds one (the checks of `project.add`), and
      * `{ id, path }` moves a folder it has to another place on the disk (the same checks), for a folder that was moved or renamed outside
@@ -43,15 +56,39 @@ export const commandSchema = z.discriminatedUnion('type', [
         type: z.literal('project.update'),
         projectId: z.string(),
         name: z.string().min(1).optional(),
-        folders: z.array(z.union([z.object({ id: z.string().min(1) }).strict(), z.object({ path: z.string().min(1) }).strict(), z.object({ id: z.string().min(1), path: z.string().min(1) }).strict()])).min(1).max(MAX_PROJECT_FOLDERS).optional(),
-        settings: z.object({
-            maxParallelRuns: z.number().int().min(1).max(1000).nullable().optional(),
-            engine: engine.nullable().optional(),
-            model: z.string().nullable().optional(),
-            chatMode: z.union([chatMode, z.literal(LAST_USED)]).nullable().optional(),
-            targetBranch: z.string().nullable().optional(),
-            icon: z.union([z.literal(NO_PROJECT_ICON), z.string().max(MAX_PROJECT_ICON_LENGTH).regex(/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/, 'The icon must be a PNG data URL')]).nullable().optional(),
-        }).optional(),
+        folders: z
+            .array(
+                z.union([
+                    z.object({ id: z.string().min(1) }).strict(),
+                    z.object({ path: z.string().min(1) }).strict(),
+                    z.object({ id: z.string().min(1), path: z.string().min(1) }).strict(),
+                ])
+            )
+            .min(1)
+            .max(MAX_PROJECT_FOLDERS)
+            .optional(),
+        settings: z
+            .object({
+                maxParallelRuns: z.number().int().min(1).max(1000).nullable().optional(),
+                engine: engine.nullable().optional(),
+                model: z.string().nullable().optional(),
+                chatMode: z
+                    .union([chatMode, z.literal(LAST_USED)])
+                    .nullable()
+                    .optional(),
+                targetBranch: z.string().nullable().optional(),
+                icon: z
+                    .union([
+                        z.literal(NO_PROJECT_ICON),
+                        z
+                            .string()
+                            .max(MAX_PROJECT_ICON_LENGTH)
+                            .regex(/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/, 'The icon must be a PNG data URL'),
+                    ])
+                    .nullable()
+                    .optional(),
+            })
+            .optional(),
     }),
     /**
      * Sets what the worktrees made from one folder of the project need (`FolderSettings`): the branch they start from and a setup. The settings belong to this folder of this
@@ -69,7 +106,10 @@ export const commandSchema = z.discriminatedUnion('type', [
         folderId: z.string().min(1),
         settings: z.object({
             baseBranch: z.string().nullable().optional(),
-            setup: z.object({ files: z.array(z.string()), command: z.string().optional() }).nullable().optional(),
+            setup: z
+                .object({ files: z.array(z.string()), command: z.string().optional() })
+                .nullable()
+                .optional(),
         }),
     }),
     /** Removes the project with its chats, tasks, runs, streams and attachments; its folder and the files in it stay. Refused for the personal space and while any run of the project is unfinished. */
@@ -77,21 +117,74 @@ export const commandSchema = z.discriminatedUnion('type', [
     /** Puts the projects in this order, after the personal space. A project that is not listed keeps its place below the listed ones; an unknown id is refused. */
     z.object({ ...base, type: z.literal('project.reorder'), projectIds: z.array(z.string()).max(1000) }),
 
+    /* Workspaces */
+    /**
+     * Answers `{ workspace }`, the row of a worktree that exists already, so a page can show its files and shells before the chat that works there is made: the one every
+     * chat of that worktree shares (made if there is none; one that no chat points at is dropped after a day), so `chat.create` with the same `{ mode: 'existing', path }`
+     * gets the same `workspace.id`. `folderId` is the folder of the project the worktree belongs to (the main folder when left out). The same refusals as `chat.create`
+     * with that choice: a folder that is not the root of a repository, a path that is not absolute, not a worktree of the folder or the folder itself.
+     */
+    z.object({
+        ...base,
+        type: z.literal('workspace.open'),
+        projectId: z.string(),
+        folderId: z.string().min(1).optional(),
+        path: z.string().min(1),
+    }),
+    /**
+     * Removes a worktree `git worktree list` names for a folder of the project, whoever made it, and answers `{ path, branchDeleted }`. Refused (`conflict`, nothing removed) for the
+     * folder's own checkout, another folder of the project and the repository's primary working tree; a locked worktree; one that a chat works in, an archived chat included; a path
+     * git does not list for the folder; a tree with anything uncommitted, a new file or an initialised submodule included, unless `discard` is true, which removes it with
+     * `git worktree remove --force`; and, with `deleteBranch`, a branch that is checked out in another worktree. `invalid` for a path that is not absolute and a folder the project
+     * does not have, that is gone from the disk or that is not the root of a repository. The branch the worktree has checked out is deleted (`git branch -D`, merged or not) only
+     * with `deleteBranch`: without it the branch stays and no commit is lost. A worktree whose folder is gone has its record removed alone, and no other stale record of the
+     * repository. The command waits for git.
+     */
+    z.object({
+        ...base,
+        type: z.literal('workspace.remove'),
+        projectId: z.string(),
+        folderId: z.string().min(1),
+        path: z.string().min(1),
+        discard: z.boolean().optional(),
+        deleteBranch: z.boolean().optional(),
+    }),
+
     /* Chats */
     /**
      * `engine`, `model` and `effort` bind the chat to an agent, a model and a reasoning level (see `Chat`); left out, the first message takes the project's or the daemon's.
      * `folderId` is a folder of the project the chat works in; left out, the chat works in the main folder. A folder the project does not have is refused.
      * `workspace` has the chat work in a worktree of that folder (`ChatWorkspaceChoice`): a new one, which the chat's first turn makes, or one `git worktree list` names for
      * the folder; left out, in the folder itself. Refused for a folder that is not the root of a repository, a base that is not a ref of it, or a path that is not one of its worktrees.
+     * A new worktree is on the branch `<branchPrefix>/<branchName>` (`branchName` is the chat's id8 when left out, and is refused when it is not a name `branchNameProblem` accepts or the repository has the branch); the prefix is the app's setting and the client sends it (`clowdy` when left out or empty), and it is refused when
+     * git would not take it as the start of a branch name (`branchPrefixProblem`) or the repository has a branch of that name (a branch `max` and a branch `max/x` cannot both be).
      */
-    z.object({ ...base, type: z.literal('chat.create'), projectId: z.string(), title: z.string().optional(), mode: chatMode.optional(), engine: engine.optional(), model: model.optional(), effort: effort.optional(), folderId: z.string().min(1).optional(), workspace: chatWorkspaceChoice.optional() }),
+    z.object({
+        ...base,
+        type: z.literal('chat.create'),
+        projectId: z.string(),
+        title: z.string().optional(),
+        mode: chatMode.optional(),
+        engine: engine.optional(),
+        model: model.optional(),
+        effort: effort.optional(),
+        folderId: z.string().min(1).optional(),
+        workspace: chatWorkspaceChoice.optional(),
+    }),
     z.object({ ...base, type: z.literal('chat.rename'), chatId: z.string(), title: z.string().min(1) }),
     z.object({ ...base, type: z.literal('chat.setMode'), chatId: z.string(), mode: chatMode }),
     /**
      * Changes what a chat runs on, from its next turn. `model` and `effort` change at any time (`null` clears one, leaving the agent's own
      * choice); `engine` only while the chat has no orchestrator yet, and a new `engine` without a `model` clears both.
      */
-    z.object({ ...base, type: z.literal('chat.setModel'), chatId: z.string(), engine: engine.optional(), model: model.nullable().optional(), effort: effort.nullable().optional() }),
+    z.object({
+        ...base,
+        type: z.literal('chat.setModel'),
+        chatId: z.string(),
+        engine: engine.optional(),
+        model: model.nullable().optional(),
+        effort: effort.nullable().optional(),
+    }),
     /**
      * Asks the chat's agent to compact its context (its own `/compact`) as a turn of the orchestrator, which the stream shows. An orchestrator that works
      * gets it later: it joins the chat's queue as a compact item (`QueuedMessage.command`), which runs once the orchestrator has finished, and
@@ -111,14 +204,33 @@ export const commandSchema = z.discriminatedUnion('type', [
      * a finished one, or one waiting for background work) gets the message at once, whatever `mode` says. A busy orchestrator gets it later: `mode` puts it in the
      * chat's queue as a steer of the running turn or as a next turn (`queue` when left out), and it shows in the stream once the agent has it.
      */
-    z.object({ ...base, type: z.literal('chat.send'), chatId: z.string(), text: z.string(), attachmentIds: z.array(z.string()).max(MAX_ATTACHMENTS_PER_MESSAGE).optional(), mode: queuedMode.optional() }),
+    z.object({
+        ...base,
+        type: z.literal('chat.send'),
+        chatId: z.string(),
+        text: z.string(),
+        attachmentIds: z.array(z.string()).max(MAX_ATTACHMENTS_PER_MESSAGE).optional(),
+        mode: queuedMode.optional(),
+    }),
     /**
      * Takes a message out of the chat's queue. Its files are deleted with it, or, with `keepFiles`, go back to being uploaded and not sent, so a message box
      * can take them again (the person edits the message).
      */
-    z.object({ ...base, type: z.literal('chat.removeQueued'), chatId: z.string(), itemId: z.string(), keepFiles: z.boolean().optional() }),
+    z.object({
+        ...base,
+        type: z.literal('chat.removeQueued'),
+        chatId: z.string(),
+        itemId: z.string(),
+        keepFiles: z.boolean().optional(),
+    }),
     /** Moves a queued message to `index` among the messages of its own kind (the steers, or the next turns); a larger index puts it last. */
-    z.object({ ...base, type: z.literal('chat.moveQueued'), chatId: z.string(), itemId: z.string(), index: z.number().int().min(0) }),
+    z.object({
+        ...base,
+        type: z.literal('chat.moveQueued'),
+        chatId: z.string(),
+        itemId: z.string(),
+        index: z.number().int().min(0),
+    }),
     /**
      * Sends a queued message now. While the orchestrator works it becomes a steer of the running turn (it stays a steer when the agent cannot take it, and goes
      * first when the turn ends); at rest it goes out at once as the next turn and lets a paused queue flow again. A compact item cannot steer: while the
@@ -143,7 +255,14 @@ export const commandSchema = z.discriminatedUnion('type', [
      * conversation and an empty message, `unavailable` while the agent is switched off or when the agent's fork failed (nothing changes then). Queued messages,
      * threads, tasks, usage and the files the agent changed stay as they are. Answers `{ chatId, runId }` like `chat.send`.
      */
-    z.object({ ...base, type: z.literal('chat.edit'), chatId: z.string(), itemId: z.string(), text: z.string(), attachmentIds: z.array(z.string()).max(MAX_ATTACHMENTS_PER_MESSAGE).optional() }),
+    z.object({
+        ...base,
+        type: z.literal('chat.edit'),
+        chatId: z.string(),
+        itemId: z.string(),
+        text: z.string(),
+        attachmentIds: z.array(z.string()).max(MAX_ATTACHMENTS_PER_MESSAGE).optional(),
+    }),
 
     /* Tasks */
     z.object({
@@ -194,14 +313,26 @@ export const commandSchema = z.discriminatedUnion('type', [
      */
     z.object({ ...base, type: z.literal('task.unarchive'), taskId: z.string() }),
     /** Opens a new chat bound to the task, with an orchestrator run that starts on it now; answers `{ runId, chatId }`. One active run per task unless `force`. Refused (`invalid`) for an archived task: restore it first. */
-    z.object({ ...base, type: z.literal('task.start'), taskId: z.string(), engine: engine.optional(), force: z.boolean().optional() }),
+    z.object({
+        ...base,
+        type: z.literal('task.start'),
+        taskId: z.string(),
+        engine: engine.optional(),
+        force: z.boolean().optional(),
+    }),
     /** Adds a Markdown comment from the person to the task; answers `{ comment }`. Refused (`invalid`) for a body with nothing in it but whitespace. */
     z.object({ ...base, type: z.literal('task.comment.add'), taskId: z.string(), body: z.string() }),
     /**
      * Replaces the body of one of the task's comments and sets its `editedAt`; a body that is the same changes nothing. Answers `{ comment }`. Refused
      * (`invalid`) for a body with nothing in it, `not_found` for a comment the task does not have. Any comment may be edited, an agent's included.
      */
-    z.object({ ...base, type: z.literal('task.comment.edit'), taskId: z.string(), commentId: z.string(), body: z.string() }),
+    z.object({
+        ...base,
+        type: z.literal('task.comment.edit'),
+        taskId: z.string(),
+        commentId: z.string(),
+        body: z.string(),
+    }),
     /** Deletes one of the task's comments (`not_found` when the task has no such one); answers `{ taskId, commentId }`. */
     z.object({ ...base, type: z.literal('task.comment.delete'), taskId: z.string(), commentId: z.string() }),
 
@@ -224,11 +355,25 @@ export const commandSchema = z.discriminatedUnion('type', [
     /** Answers a `question` stream item of a run in `waiting_user`. */
     z.object({ ...base, type: z.literal('run.answer'), runId: z.string(), questionId: z.string(), answer: z.string() }),
     /** Decides an `approval` stream item that is `open`: the run goes on when none is left. `allow_always` makes Clowdy answer the same request for the rest of the run without asking; the agent itself is told to allow it once. */
-    z.object({ ...base, type: z.literal('run.decide'), runId: z.string(), approvalId: z.string(), decision: z.enum(['allow_once', 'allow_always', 'reject']) }),
+    z.object({
+        ...base,
+        type: z.literal('run.decide'),
+        runId: z.string(),
+        approvalId: z.string(),
+        decision: z.enum(['allow_once', 'allow_always', 'reject']),
+    }),
 
     /* Agents */
     /** Adds an agent the daemon can run: any command that speaks the Agent Client Protocol on stdio. */
-    z.object({ ...base, type: z.literal('agent.add'), id: z.string().min(1).max(32), name: z.string().min(1).max(80), command: z.string().min(1), args: z.array(z.string()).optional(), env: z.record(z.string(), z.string()).optional() }),
+    z.object({
+        ...base,
+        type: z.literal('agent.add'),
+        id: z.string().min(1).max(32),
+        name: z.string().min(1).max(80),
+        command: z.string().min(1),
+        args: z.array(z.string()).optional(),
+        env: z.record(z.string(), z.string()).optional(),
+    }),
     /** Changes an agent, built in or added. `path: null` goes back to looking for the program; `name`, `command` and `args` apply to added agents only. */
     z.object({
         ...base,

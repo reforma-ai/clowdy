@@ -1,5 +1,5 @@
-import { ACTIVE_RUN_STATUSES, isBusyRunStatus, isTerminalRunStatus, shownRunStatus } from '@clowdy/protocol';
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
+import { ACTIVE_RUN_STATUSES, isBusyRunStatus, isTerminalRunStatus, shownRunStatus } from '@clowdy/protocol';
 
 import { listItems } from '../src/db/items';
 import { getProject } from '../src/db/projects';
@@ -8,7 +8,17 @@ import { appendItem } from '../src/domain/items';
 import { QUEUE_REASON } from '../src/runs/scheduler';
 import { describeItem, threadState } from '../src/runs/threads';
 import { BACKGROUND_REASON, canTransition, NEEDS_REASON, TRANSITIONS } from '../src/runs/transitions';
-import { cleanTempDirs, GateEngine, gateEngines, Harness, restartHarness, ScriptEngine, scriptEngines, startHarness, waitFor } from './helpers';
+import {
+    cleanTempDirs,
+    GateEngine,
+    gateEngines,
+    Harness,
+    restartHarness,
+    ScriptEngine,
+    scriptEngines,
+    startHarness,
+    waitFor,
+} from './helpers';
 
 import type { BackgroundItem, ClowdyEvent, RunStatus, StreamItemBody } from '@clowdy/protocol';
 import type { ApprovalRequest } from '../src/engine/types';
@@ -28,7 +38,8 @@ async function setup(overrides: Parameters<typeof startHarness>[0] = {}) {
     harnesses.push(h);
 
     const project = h.openRepo();
-    const task = (title: string, dependsOn: string[] = []) => h.ok('task.create', { projectId: project.id, title, dependsOn }).task;
+    const task = (title: string, dependsOn: string[] = []) =>
+        h.ok('task.create', { projectId: project.id, title, dependsOn }).task;
     const start = (taskId: string, force?: boolean): string => h.ok('task.start', { taskId, force }).runId;
 
     return { h, gate, project, task, start };
@@ -98,16 +109,29 @@ describe('status machine', () => {
         gate.release('REP-1');
         await waitFor(() => h.run(runId).status === 'succeeded', 'the run to finish');
 
-        const statuses = h.events().flatMap(event => (event.data.type === 'run.upserted' && event.data.run.id === runId ? [event.data.run.status] : []));
+        const statuses = h
+            .events()
+            .flatMap(event =>
+                event.data.type === 'run.upserted' && event.data.run.id === runId ? [event.data.run.status] : []
+            );
 
-        expect(statuses.filter((status, index) => status !== statuses[index - 1])).toEqual(['queued', 'running', 'succeeded']);
-        expect(h.run(runId)).toMatchObject({ result: expect.stringContaining('Complete task REP-1: A'), sessionId: expect.stringContaining('gate-Follow clowdy:orchestrate. Mode: autopilot') });
+        expect(statuses.filter((status, index) => status !== statuses[index - 1])).toEqual([
+            'queued',
+            'running',
+            'succeeded',
+        ]);
+        expect(h.run(runId)).toMatchObject({
+            result: expect.stringContaining('Complete task REP-1: A'),
+            sessionId: expect.stringContaining('gate-Follow clowdy:orchestrate. Mode: autopilot'),
+        });
     });
 
     test('a task moves with its run: in progress, review on success, back to todo when the run dies', async () => {
         const { h, gate, task, start } = await setup();
         const categoryOf = (taskId: string) => {
-            const snapshot = h.store.db.query('SELECT s.category FROM tasks t JOIN task_statuses s ON s.id = t.status_id WHERE t.id = ?').get(taskId) as { category: string };
+            const snapshot = h.store.db
+                .query('SELECT s.category FROM tasks t JOIN task_statuses s ON s.id = t.status_id WHERE t.id = ?')
+                .get(taskId) as { category: string };
 
             return snapshot.category;
         };
@@ -135,7 +159,10 @@ describe('status machine', () => {
 
         expect(h.send('task.start', { taskId: a.id })).toMatchObject({ ok: false, error: { code: 'already_running' } });
         expect(() => start(a.id, true)).not.toThrow();
-        expect(h.send('task.start', { taskId: 'tsk_missing' })).toMatchObject({ ok: false, error: { code: 'not_found' } });
+        expect(h.send('task.start', { taskId: 'tsk_missing' })).toMatchObject({
+            ok: false,
+            error: { code: 'not_found' },
+        });
     });
 });
 
@@ -145,7 +172,11 @@ describe('waiting for background work', () => {
         const { h, project } = await setup();
         const { runs } = h.daemon.services;
         const create = () => {
-            const run = runs.createRun({ project: getProject(h.store.db, project.id)!, role: 'orchestrator', summary: 'Plan' });
+            const run = runs.createRun({
+                project: getProject(h.store.db, project.id)!,
+                role: 'orchestrator',
+                summary: 'Plan',
+            });
 
             runs.setStatus(run.id, 'running');
 
@@ -157,11 +188,21 @@ describe('waiting for background work', () => {
 
     test('is entered from running (or from a run parked for the person, whose turn ends with a request open), and leaves by queued or an end, never straight to running', () => {
         for (const from of Object.keys(TRANSITIONS) as RunStatus[]) {
-            expect(canTransition(from, 'waiting_background')).toBe(from === 'running' || from === 'waiting_user' || from === 'waiting_background');
+            expect(canTransition(from, 'waiting_background')).toBe(
+                from === 'running' || from === 'waiting_user' || from === 'waiting_background'
+            );
         }
 
         // It repeats to refresh its reason, and a session that fails for a moment is retried through `blocked`.
-        expect(TRANSITIONS.waiting_background).toEqual(['waiting_background', 'queued', 'blocked', 'succeeded', 'failed', 'cancelled', 'interrupted']);
+        expect(TRANSITIONS.waiting_background).toEqual([
+            'waiting_background',
+            'queued',
+            'blocked',
+            'succeeded',
+            'failed',
+            'cancelled',
+            'interrupted',
+        ]);
         expect(NEEDS_REASON).toContain('waiting_background');
     });
 
@@ -183,14 +224,20 @@ describe('waiting for background work', () => {
         expect(() => runs.setStatus(runId, 'waiting_background')).toThrow(/needs a status reason/);
         expect(runningCounts(h.store.db)).toEqual([{ engine: 'fake', projectId: h.run(runId).projectId, count: 1 }]);
 
-        expect(runs.setStatus(runId, 'waiting_background', { reason: BACKGROUND_REASON })).toMatchObject({ status: 'waiting_background', statusReason: 'Waiting for background work' });
+        expect(runs.setStatus(runId, 'waiting_background', { reason: BACKGROUND_REASON })).toMatchObject({
+            status: 'waiting_background',
+            statusReason: 'Waiting for background work',
+        });
         expect(runningCounts(h.store.db)).toEqual([]);
         expect(h.run(runId).finishedAt).toBeUndefined();
 
         // A repeat refreshes the reason; the same reason again changes nothing.
-        expect(runs.setStatus(runId, 'waiting_background', { reason: 'Waiting for 2 background tasks' })).toMatchObject({ statusReason: 'Waiting for 2 background tasks' });
+        expect(runs.setStatus(runId, 'waiting_background', { reason: 'Waiting for 2 background tasks' })).toMatchObject(
+            { statusReason: 'Waiting for 2 background tasks' }
+        );
 
-        const upserts = () => h.events().filter(event => event.data.type === 'run.upserted' && event.data.run.id === runId).length;
+        const upserts = () =>
+            h.events().filter(event => event.data.type === 'run.upserted' && event.data.run.id === runId).length;
         const before = upserts();
 
         runs.setStatus(runId, 'waiting_background', { reason: 'Waiting for 2 background tasks' });
@@ -199,8 +246,13 @@ describe('waiting for background work', () => {
         expect(() => runs.setStatus(runId, 'running')).toThrow(/Illegal run transition waiting_background -> running/);
         expect(runs.setStatus(runId, 'queued')).toMatchObject({ status: 'queued', statusReason: QUEUE_REASON });
         expect(runs.setStatus(runId, 'running').status).toBe('running');
-        expect(runs.setStatus(runId, 'waiting_background', { reason: BACKGROUND_REASON }).status).toBe('waiting_background');
-        expect(runs.setStatus(runId, 'succeeded', { result: 'All done' })).toMatchObject({ status: 'succeeded', result: 'All done' });
+        expect(runs.setStatus(runId, 'waiting_background', { reason: BACKGROUND_REASON }).status).toBe(
+            'waiting_background'
+        );
+        expect(runs.setStatus(runId, 'succeeded', { result: 'All done' })).toMatchObject({
+            status: 'succeeded',
+            result: 'All done',
+        });
         expect(h.run(runId).statusReason).toBeUndefined();
         expect(h.run(runId).finishedAt).toBeNumber();
     });
@@ -220,15 +272,23 @@ describe('waiting for background work', () => {
         runs.setStatus(runId, 'waiting_background', { reason: BACKGROUND_REASON });
 
         for (const to of ['running', 'waiting_user'] as const) {
-            expect(() => runs.setStatus(runId, to, { reason: 'Nope' })).toThrow(`Illegal run transition waiting_background -> ${ to }`);
+            expect(() => runs.setStatus(runId, to, { reason: 'Nope' })).toThrow(
+                `Illegal run transition waiting_background -> ${to}`
+            );
         }
 
         expect(runs.require(runId).status).toBe('waiting_background');
 
         // Only a running run waits for background work.
-        const queued = runs.createRun({ project: getProject(h.store.db, runs.require(runId).projectId)!, role: 'orchestrator', summary: 'Queued' });
+        const queued = runs.createRun({
+            project: getProject(h.store.db, runs.require(runId).projectId)!,
+            role: 'orchestrator',
+            summary: 'Queued',
+        });
 
-        expect(() => runs.setStatus(queued.id, 'waiting_background', { reason: BACKGROUND_REASON })).toThrow(/Illegal run transition queued -> waiting_background/);
+        expect(() => runs.setStatus(queued.id, 'waiting_background', { reason: BACKGROUND_REASON })).toThrow(
+            /Illegal run transition queued -> waiting_background/
+        );
     });
 
     test('refuses a question of a run that waits, in words a person can read, and keeps the run as it was', async () => {
@@ -236,7 +296,9 @@ describe('waiting for background work', () => {
         const runId = create();
 
         runs.setStatus(runId, 'waiting_background', { reason: 'Waiting' });
-        await expect(runs.ask(runId, { text: 'Which one?', options: [{ id: 'a', label: 'A' }] }, new AbortController().signal)).rejects.toThrow('Can\'t ask a question while the run waits for background work');
+        await expect(
+            runs.ask(runId, { text: 'Which one?', options: [{ id: 'a', label: 'A' }] }, new AbortController().signal)
+        ).rejects.toThrow("Can't ask a question while the run waits for background work");
         expect(runs.require(runId).status).toBe('waiting_background');
     });
 
@@ -253,18 +315,33 @@ describe('waiting for background work', () => {
             runs.setBackground(runId, [command, subagent]);
 
             expect(h.run(runId).background).toEqual([command, subagent]);
-            expect(listRuns(h.store.db, project.id).find(run => run.id === runId)?.background).toEqual([command, subagent]);
-            expect(JSON.parse((h.store.db.query('SELECT background FROM runs WHERE id = ?').get(runId) as { background: string }).background)).toEqual([command, subagent]);
+            expect(listRuns(h.store.db, project.id).find(run => run.id === runId)?.background).toEqual([
+                command,
+                subagent,
+            ]);
+            expect(
+                JSON.parse(
+                    (h.store.db.query('SELECT background FROM runs WHERE id = ?').get(runId) as { background: string })
+                        .background
+                )
+            ).toEqual([command, subagent]);
 
-            const published = h.events().filter(event => event.data.type === 'run.upserted' && event.data.run.id === runId).at(-1)?.data;
+            const published = h
+                .events()
+                .filter(event => event.data.type === 'run.upserted' && event.data.run.id === runId)
+                .at(-1)?.data;
 
-            expect(published).toMatchObject({ type: 'run.upserted', run: { id: runId, background: [command, subagent] } });
+            expect(published).toMatchObject({
+                type: 'run.upserted',
+                run: { id: runId, background: [command, subagent] },
+            });
         });
 
         test('are written only when the list changed, and an empty list clears them', async () => {
             const { h, runs, create } = await runningRun();
             const runId = create();
-            const upserts = () => h.events().filter(event => event.data.type === 'run.upserted' && event.data.run.id === runId).length;
+            const upserts = () =>
+                h.events().filter(event => event.data.type === 'run.upserted' && event.data.run.id === runId).length;
             const start = upserts();
 
             runs.setBackground(runId, []);
@@ -287,7 +364,13 @@ describe('waiting for background work', () => {
             runs.setBackground(runId, []);
             expect(upserts()).toBe(start + 4);
             expect('background' in h.run(runId)).toBe(false);
-            expect((h.store.db.query('SELECT background FROM runs WHERE id = ?').get(runId) as { background: string | null }).background).toBeNull();
+            expect(
+                (
+                    h.store.db.query('SELECT background FROM runs WHERE id = ?').get(runId) as {
+                        background: string | null;
+                    }
+                ).background
+            ).toBeNull();
 
             runs.setBackground(runId, []);
             expect(upserts()).toBe(start + 4);
@@ -308,7 +391,8 @@ describe('waiting for background work', () => {
         test('keep whether an item can be stopped alone, and a change of that is a change of the list; only the value true is kept', async () => {
             const { h, runs, create } = await runningRun();
             const runId = create();
-            const upserts = () => h.events().filter(event => event.data.type === 'run.upserted' && event.data.run.id === runId).length;
+            const upserts = () =>
+                h.events().filter(event => event.data.type === 'run.upserted' && event.data.run.id === runId).length;
 
             runs.setBackground(runId, [command]);
 
@@ -317,7 +401,12 @@ describe('waiting for background work', () => {
             runs.setBackground(runId, [{ ...command, canStopAlone: true }]);
             expect(h.run(runId).background).toEqual([{ ...command, canStopAlone: true }]);
             expect(upserts()).toBe(start + 1);
-            expect(JSON.parse((h.store.db.query('SELECT background FROM runs WHERE id = ?').get(runId) as { background: string }).background)).toEqual([{ ...command, canStopAlone: true }]);
+            expect(
+                JSON.parse(
+                    (h.store.db.query('SELECT background FROM runs WHERE id = ?').get(runId) as { background: string })
+                        .background
+                )
+            ).toEqual([{ ...command, canStopAlone: true }]);
 
             runs.setBackground(runId, [{ ...command, canStopAlone: true }]);
             expect(upserts()).toBe(start + 1);
@@ -346,7 +435,11 @@ describe('waiting for background work', () => {
         test('bound the list and the titles that an engine reports', async () => {
             const { h, runs, create } = await runningRun();
             const runId = create();
-            const many = Array.from({ length: 80 }, (_, index) => ({ id: `task-${ index }`, kind: 'command' as const, title: 'x'.repeat(500) }));
+            const many = Array.from({ length: 80 }, (_, index) => ({
+                id: `task-${index}`,
+                kind: 'command' as const,
+                title: 'x'.repeat(500),
+            }));
 
             runs.setBackground(runId, many);
 
@@ -364,7 +457,11 @@ describe('approvals of the agent', () => {
         const { h, project } = await setup();
         const { runs } = h.daemon.services;
         const create = () => {
-            const run = runs.createRun({ project: getProject(h.store.db, project.id)!, role: 'orchestrator', summary: 'Plan' });
+            const run = runs.createRun({
+                project: getProject(h.store.db, project.id)!,
+                role: 'orchestrator',
+                summary: 'Plan',
+            });
 
             runs.setStatus(run.id, 'running');
 
@@ -374,8 +471,16 @@ describe('approvals of the agent', () => {
         return { h, runs, create };
     }
 
-    const request = (key: string, overrides: Partial<ApprovalRequest> = {}): ApprovalRequest => ({ toolCallId: `call-${ key }`, title: `Run ${ key }`, subject: { kind: 'command', command: key }, decisions: ['allow_once', 'allow_always', 'reject'], key: `command:${ key }`, ...overrides });
-    const approvalsOf = (h: Harness, runId: string) => listItems(h.store.db, runId, 0).flatMap(item => (item.body.kind === 'approval' ? [item.body] : []));
+    const request = (key: string, overrides: Partial<ApprovalRequest> = {}): ApprovalRequest => ({
+        toolCallId: `call-${key}`,
+        title: `Run ${key}`,
+        subject: { kind: 'command', command: key },
+        decisions: ['allow_once', 'allow_always', 'reject'],
+        key: `command:${key}`,
+        ...overrides,
+    });
+    const approvalsOf = (h: Harness, runId: string) =>
+        listItems(h.store.db, runId, 0).flatMap(item => (item.body.kind === 'approval' ? [item.body] : []));
     const live = () => new AbortController();
 
     test('a request is put to the person as an item, the run waits for them, and their decision is the answer', async () => {
@@ -387,7 +492,14 @@ describe('approvals of the agent', () => {
 
         const [item] = approvalsOf(h, runId);
 
-        expect(item).toMatchObject({ kind: 'approval', state: 'open', toolCallId: 'call-ls', title: 'Run ls', subject: { kind: 'command', command: 'ls' }, decisions: ['allow_once', 'allow_always', 'reject'] });
+        expect(item).toMatchObject({
+            kind: 'approval',
+            state: 'open',
+            toolCallId: 'call-ls',
+            title: 'Run ls',
+            subject: { kind: 'command', command: 'ls' },
+            decisions: ['allow_once', 'allow_always', 'reject'],
+        });
         expect(item).not.toHaveProperty('key');
         expect(h.ok('run.decide', { runId, approvalId: item!.approvalId, decision: 'allow_once' })).toEqual({ runId });
         expect(await asked).toBe('allow_once');
@@ -416,7 +528,9 @@ describe('approvals of the agent', () => {
         const runId = create();
         const asked = runs.ask(runId, { text: 'Which one?', options: [{ id: 'a', label: 'A' }] }, live().signal);
         const approved = runs.askApproval(runId, request('ls'), live().signal);
-        const question = listItems(h.store.db, runId, 0).flatMap(item => (item.body.kind === 'question' ? [item.body] : []))[0]!;
+        const question = listItems(h.store.db, runId, 0).flatMap(item =>
+            item.body.kind === 'question' ? [item.body] : []
+        )[0]!;
 
         expect(h.run(runId).status).toBe('waiting_user');
         h.ok('run.answer', { runId, questionId: question.questionId, answer: 'A' });
@@ -437,7 +551,9 @@ describe('approvals of the agent', () => {
         expect(await first).toBe('allow_always');
         await waitFor(() => h.run(runId).status === 'running', 'the run to go back to work');
 
-        expect(await runs.askApproval(runId, request('ls', { toolCallId: 'another-call' }), live().signal)).toBe('allow_once');
+        expect(await runs.askApproval(runId, request('ls', { toolCallId: 'another-call' }), live().signal)).toBe(
+            'allow_once'
+        );
         expect(approvalsOf(h, runId)).toHaveLength(1);
         expect(h.run(runId).status).toBe('running');
 
@@ -475,7 +591,10 @@ describe('approvals of the agent', () => {
         expect(await asked).toBeUndefined();
         expect(approvalsOf(h, runId)[0]).toMatchObject({ state: 'cancelled' });
         expect(approvalsOf(h, runId)[0]).not.toHaveProperty('decision');
-        expect(h.send('run.decide', { runId, approvalId, decision: 'allow_once' })).toMatchObject({ ok: false, error: { code: 'conflict' } });
+        expect(h.send('run.decide', { runId, approvalId, decision: 'allow_once' })).toMatchObject({
+            ok: false,
+            error: { code: 'conflict' },
+        });
     });
 
     test('a request whose options the person could not answer is not put to anyone, and the agent is told it was withdrawn', async () => {
@@ -511,7 +630,9 @@ describe('approvals of the agent', () => {
         const runId = create();
         const asked = runs.askApproval(runId, request('ls'), live().signal);
 
-        expect(runs.setStatus(runId, 'waiting_background', { reason: BACKGROUND_REASON }).status).toBe('waiting_background');
+        expect(runs.setStatus(runId, 'waiting_background', { reason: BACKGROUND_REASON }).status).toBe(
+            'waiting_background'
+        );
         h.ok('run.decide', { runId, approvalId: approvalsOf(h, runId)[0]!.approvalId, decision: 'allow_once' });
         expect(await asked).toBe('allow_once');
         expect(h.run(runId).status).toBe('waiting_background');
@@ -534,15 +655,27 @@ describe('approvals of the agent', () => {
         const asked = runs.askApproval(runId, request('ls', { decisions: ['allow_once', 'reject'] }), live().signal);
         const approvalId = approvalsOf(h, runId)[0]!.approvalId;
 
-        expect(h.send('run.decide', { runId, approvalId: 'apv_missing', decision: 'allow_once' })).toMatchObject({ ok: false, error: { code: 'not_found' } });
-        expect(h.send('run.decide', { runId: 'run_missing', approvalId, decision: 'allow_once' })).toMatchObject({ ok: false, error: { code: 'not_found' } });
-        expect(h.send('run.decide', { runId, approvalId, decision: 'allow_always' })).toMatchObject({ ok: false, error: { code: 'invalid', message: 'The agent did not offer that answer' } });
+        expect(h.send('run.decide', { runId, approvalId: 'apv_missing', decision: 'allow_once' })).toMatchObject({
+            ok: false,
+            error: { code: 'not_found' },
+        });
+        expect(h.send('run.decide', { runId: 'run_missing', approvalId, decision: 'allow_once' })).toMatchObject({
+            ok: false,
+            error: { code: 'not_found' },
+        });
+        expect(h.send('run.decide', { runId, approvalId, decision: 'allow_always' })).toMatchObject({
+            ok: false,
+            error: { code: 'invalid', message: 'The agent did not offer that answer' },
+        });
         expect(approvalsOf(h, runId)[0]!.state).toBe('open');
 
         h.ok('run.decide', { runId, approvalId, decision: 'reject' });
         await asked;
 
-        expect(h.send('run.decide', { runId, approvalId, decision: 'reject' })).toMatchObject({ ok: false, error: { code: 'conflict' } });
+        expect(h.send('run.decide', { runId, approvalId, decision: 'reject' })).toMatchObject({
+            ok: false,
+            error: { code: 'conflict' },
+        });
     });
 
     test('a run that waits for background work keeps its state while its agent asks, and the card can still be decided', async () => {
@@ -569,10 +702,19 @@ describe('approvals of the agent', () => {
 
         const asked = runs.askApproval(runId, request('ls'), live().signal);
 
-        expect(h.run(runId)).toMatchObject({ status: 'waiting_background', statusReason: BACKGROUND_REASON, awaitingUser: true });
+        expect(h.run(runId)).toMatchObject({
+            status: 'waiting_background',
+            statusReason: BACKGROUND_REASON,
+            awaitingUser: true,
+        });
         expect(shownRunStatus(h.run(runId))).toBe('waiting_user');
         expect(threadState(h.run(runId))).toBe('asking');
-        expect(h.events().filter(event => event.data.type === 'run.upserted' && event.data.run.id === runId).at(-1)?.data).toMatchObject({ run: { awaitingUser: true } });
+        expect(
+            h
+                .events()
+                .filter(event => event.data.type === 'run.upserted' && event.data.run.id === runId)
+                .at(-1)?.data
+        ).toMatchObject({ run: { awaitingUser: true } });
 
         h.ok('run.decide', { runId, approvalId: approvalsOf(h, runId)[0]!.approvalId, decision: 'allow_once' });
         await asked;
@@ -581,7 +723,12 @@ describe('approvals of the agent', () => {
         expect(h.run(runId).awaitingUser).toBeUndefined();
         expect(shownRunStatus(h.run(runId))).toBe('waiting_background');
         expect(threadState(h.run(runId))).toBe('idle');
-        expect(h.events().filter(event => event.data.type === 'run.upserted' && event.data.run.id === runId).at(-1)?.data).not.toMatchObject({ run: { awaitingUser: true } });
+        expect(
+            h
+                .events()
+                .filter(event => event.data.type === 'run.upserted' && event.data.run.id === runId)
+                .at(-1)?.data
+        ).not.toMatchObject({ run: { awaitingUser: true } });
     });
 
     test('the mark holds while any card is open, covers a parked run too, and a request that is withdrawn clears it', async () => {
@@ -625,7 +772,9 @@ describe('approvals of the agent', () => {
         expect(h.run(runId)).toMatchObject({ status: 'waiting_user', awaitingUser: true });
 
         const approved = runs.askApproval(runId, request('ls'), live().signal);
-        const question = listItems(h.store.db, runId, 0).flatMap(item => (item.body.kind === 'question' ? [item.body] : []))[0]!;
+        const question = listItems(h.store.db, runId, 0).flatMap(item =>
+            item.body.kind === 'question' ? [item.body] : []
+        )[0]!;
 
         h.ok('run.answer', { runId, questionId: question.questionId, answer: 'A' });
         expect(await asked).toBe('A');
@@ -692,7 +841,7 @@ describe('approvals of the agent', () => {
 describe('scheduler', () => {
     test('never runs more than the global cap, queues the rest with a reason, and drains in order', async () => {
         const { h, gate, task, start } = await setup({ maxRuns: 2 });
-        const runs = [1, 2, 3, 4, 5].map(index => start(task(`T${ index }`).id));
+        const runs = [1, 2, 3, 4, 5].map(index => start(task(`T${index}`).id));
 
         await waitFor(() => gate.isStarted('REP-2'), 'two engines');
         expect(runs.map(id => h.run(id).status)).toEqual(['running', 'running', 'queued', 'queued', 'queued']);
@@ -713,7 +862,13 @@ describe('scheduler', () => {
         await waitFor(() => h.run(runs[4]).status === 'succeeded', 'all runs to finish');
 
         expect(peakRunning(h.events())).toBe(2);
-        expect(gate.started.map(prompt => /Complete task (REP-\d+)/.exec(prompt)?.[1])).toEqual(['REP-1', 'REP-2', 'REP-3', 'REP-4', 'REP-5']);
+        expect(gate.started.map(prompt => /Complete task (REP-\d+)/.exec(prompt)?.[1])).toEqual([
+            'REP-1',
+            'REP-2',
+            'REP-3',
+            'REP-4',
+            'REP-5',
+        ]);
     });
 
     test('a project limit holds that project back without blocking others', async () => {
@@ -808,10 +963,18 @@ describe('cancellation', () => {
         const result = h.ok('run.cancel', { runId: root.id });
 
         expect(result.cancelled).toEqual([grandchild.id, child.id, root.id]);
-        expect([root, child, grandchild].map(run => h.run(run.id).status)).toEqual(['cancelled', 'cancelled', 'cancelled']);
+        expect([root, child, grandchild].map(run => h.run(run.id).status)).toEqual([
+            'cancelled',
+            'cancelled',
+            'cancelled',
+        ]);
         expect(h.run(finished.id).status).toBe('succeeded');
 
-        const order = h.events(cursor).flatMap(event => (event.data.type === 'run.upserted' && event.data.run.status === 'cancelled' ? [event.data.run.id] : []));
+        const order = h
+            .events(cursor)
+            .flatMap(event =>
+                event.data.type === 'run.upserted' && event.data.run.status === 'cancelled' ? [event.data.run.id] : []
+            );
 
         expect(order).toEqual([grandchild.id, child.id, root.id]);
         await waitFor(() => gate.aborted.length === 1, 'the engine to be aborted');
@@ -819,7 +982,10 @@ describe('cancellation', () => {
 
         // Cancelling again finds nothing active.
         expect(h.ok('run.cancel', { runId: root.id }).cancelled).toEqual([]);
-        expect(h.send('run.cancel', { runId: 'run_missing' })).toMatchObject({ ok: false, error: { code: 'not_found' } });
+        expect(h.send('run.cancel', { runId: 'run_missing' })).toMatchObject({
+            ok: false,
+            error: { code: 'not_found' },
+        });
     });
 });
 
@@ -830,7 +996,12 @@ describe('restart recovery', () => {
         const project = first.openRepo();
         const task = first.ok('task.create', { projectId: project.id, title: 'Asking' }).task;
         const runId = first.ok('task.start', { taskId: task.id }).runId as string;
-        const body: Omit<Extract<StreamItemBody, { kind: 'approval' }>, 'approvalId' | 'state'> = { kind: 'approval', title: 'Run ls', subject: { kind: 'command', command: 'ls' }, decisions: ['allow_once', 'reject'] };
+        const body: Omit<Extract<StreamItemBody, { kind: 'approval' }>, 'approvalId' | 'state'> = {
+            kind: 'approval',
+            title: 'Run ls',
+            subject: { kind: 'command', command: 'ls' },
+            decisions: ['allow_once', 'reject'],
+        };
 
         await waitFor(() => first.run(runId).status === 'running', 'the run to start');
         appendItem(first.store, runId, { ...body, approvalId: 'apv_open', state: 'open' });
@@ -841,10 +1012,15 @@ describe('restart recovery', () => {
 
         harnesses.push(second);
 
-        const approvals = listItems(second.store.db, runId, 0).flatMap(item => (item.body.kind === 'approval' ? [item.body] : []));
+        const approvals = listItems(second.store.db, runId, 0).flatMap(item =>
+            item.body.kind === 'approval' ? [item.body] : []
+        );
 
         expect(second.run(runId).status).toBe('interrupted');
-        expect(approvals.map(approval => [approval.approvalId, approval.state])).toEqual([['apv_open', 'expired'], ['apv_done', 'decided']]);
+        expect(approvals.map(approval => [approval.approvalId, approval.state])).toEqual([
+            ['apv_open', 'expired'],
+            ['apv_done', 'decided'],
+        ]);
     });
 
     test('what a run had open to the person does not survive a restart, wherever the run rests', async () => {
@@ -889,16 +1065,22 @@ describe('restart recovery', () => {
 
         harnesses.push(second);
 
-        const thoughts = listItems(second.store.db, runId, 0).flatMap(item => (item.body.kind === 'reasoning' ? [item.body] : []));
+        const thoughts = listItems(second.store.db, runId, 0).flatMap(item =>
+            item.body.kind === 'reasoning' ? [item.body] : []
+        );
 
-        expect(thoughts).toEqual([{ kind: 'reasoning', text: 'Let me see', done: true }, { kind: 'reasoning', text: 'Already over', done: true, durationMs: 1200 }]);
+        expect(thoughts).toEqual([
+            { kind: 'reasoning', text: 'Let me see', done: true },
+            { kind: 'reasoning', text: 'Already over', done: true, durationMs: 1200 },
+        ]);
     });
 
     test('runs that were mid-turn come back interrupted with a notice; runs that only waited keep waiting', async () => {
         const gate = new GateEngine();
         const first = await startHarness({ maxRuns: 1 }, { engines: gateEngines(gate) });
         const project = first.openRepo();
-        const task = (title: string, dependsOn: string[] = []) => first.ok('task.create', { projectId: project.id, title, dependsOn }).task;
+        const task = (title: string, dependsOn: string[] = []) =>
+            first.ok('task.create', { projectId: project.id, title, dependsOn }).task;
         const done = task('Done');
         const running = task('Running');
         const blockedTask = task('Blocked', [done.id]);
@@ -936,7 +1118,11 @@ describe('restart recovery', () => {
         expect(notice?.data).toMatchObject({ level: 'warn', text: expect.stringContaining('1 run was interrupted') });
 
         // Their tasks no longer claim to be in progress, and the restarted one is.
-        const categories = second.store.db.query('SELECT t.title, s.category FROM tasks t JOIN task_statuses s ON s.id = t.status_id ORDER BY t.number').all();
+        const categories = second.store.db
+            .query(
+                'SELECT t.title, s.category FROM tasks t JOIN task_statuses s ON s.id = t.status_id ORDER BY t.number'
+            )
+            .all();
 
         expect(categories).toEqual([
             { title: 'Done', category: 'review' },
@@ -950,7 +1136,11 @@ describe('restart recovery', () => {
         const first = await startHarness();
         const project = first.openRepo();
         const { runs } = first.daemon.services;
-        const { id } = runs.createRun({ project: getProject(first.store.db, project.id)!, role: 'orchestrator', summary: 'Plan' });
+        const { id } = runs.createRun({
+            project: getProject(first.store.db, project.id)!,
+            role: 'orchestrator',
+            summary: 'Plan',
+        });
 
         runs.setStatus(id, 'running');
         runs.setStatus(id, 'waiting_background', { reason: BACKGROUND_REASON });
@@ -961,7 +1151,10 @@ describe('restart recovery', () => {
         harnesses.push(second);
         expect(second.run(id)).toMatchObject({ status: 'interrupted', statusReason: 'Daemon restarted' });
         expect(second.run(id).finishedAt).toBeNumber();
-        expect(second.events().find(event => event.data.type === 'notice')?.data).toMatchObject({ level: 'warn', text: expect.stringContaining('1 run was interrupted') });
+        expect(second.events().find(event => event.data.type === 'notice')?.data).toMatchObject({
+            level: 'warn',
+            text: expect.stringContaining('1 run was interrupted'),
+        });
     });
 });
 
@@ -970,7 +1163,8 @@ describe('daemon shutdown', () => {
         const gate = new GateEngine();
         const h = await startHarness({}, { engines: gateEngines(gate) });
         const project = h.openRepo();
-        const runId = h.ok('task.start', { taskId: h.ok('task.create', { projectId: project.id, title: 'A' }).task.id }).runId as string;
+        const runId = h.ok('task.start', { taskId: h.ok('task.create', { projectId: project.id, title: 'A' }).task.id })
+            .runId as string;
 
         await waitFor(() => gate.isStarted('REP-1'), 'the engine');
         await h.stop();

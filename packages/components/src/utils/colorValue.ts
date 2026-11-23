@@ -57,7 +57,7 @@ function normalizeRgbFunction(parts: ParsedFunctionParts): string | null {
         return null;
     }
 
-    return `rgba(${ channels.join(', ') }, ${ alpha })`;
+    return `rgba(${channels.join(', ')}, ${alpha})`;
 }
 
 function normalizeHslFunction(parts: ParsedFunctionParts): string | null {
@@ -70,7 +70,7 @@ function normalizeHslFunction(parts: ParsedFunctionParts): string | null {
         return null;
     }
 
-    return `hsla(${ hue }, ${ saturation }, ${ lightness }, ${ alpha })`;
+    return `hsla(${hue}, ${saturation}, ${lightness}, ${alpha})`;
 }
 
 interface ParsedFunctionParts {
@@ -129,7 +129,7 @@ function formatRgbChannel(value: string): string | null {
 function formatHslPercent(value: string): string | null {
     const percent = parsePercent(value);
 
-    return percent == null ? null : `${ formatNumber(clamp(percent, 0, 100)) }%`;
+    return percent == null ? null : `${formatNumber(clamp(percent, 0, 100))}%`;
 }
 
 function formatHue(value: string): string | null {
@@ -155,7 +155,7 @@ function formatHue(value: string): string | null {
     }
 
     if (unit === 'rad') {
-        return formatNumber(number * 180 / Math.PI);
+        return formatNumber((number * 180) / Math.PI);
     }
 
     return formatNumber(number);
@@ -202,8 +202,7 @@ function parseReactColor(value: string): Color | null {
         const color = parseColor(value);
 
         return isUsableColor(color) ? color : null;
-    }
-    catch {
+    } catch {
         return null;
     }
 }

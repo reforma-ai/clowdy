@@ -3,6 +3,7 @@ export {
     ImageSwatch,
     Swatch,
 } from './Swatch';
+
 export type {
     ColorSwatchProps,
     ImageSwatchProps,

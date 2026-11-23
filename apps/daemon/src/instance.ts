@@ -4,8 +4,13 @@ import { join } from 'node:path';
 import type { DaemonInfo } from '@clowdy/protocol';
 
 export class AlreadyRunningError extends Error {
-    constructor(readonly pid: number, readonly dataDir: string) {
-        super(`A Clowdy daemon is already running on ${ dataDir } (pid ${ pid }). Stop it first, or use another CLOWDY_DATA_DIR.`);
+    constructor(
+        readonly pid: number,
+        readonly dataDir: string
+    ) {
+        super(
+            `A Clowdy daemon is already running on ${dataDir} (pid ${pid}). Stop it first, or use another CLOWDY_DATA_DIR.`
+        );
     }
 }
 
@@ -17,8 +22,7 @@ function isAlive(pid: number): boolean {
         process.kill(pid, 0);
 
         return true;
-    }
-    catch (error) {
+    } catch (error) {
         // EPERM: the process exists but belongs to someone else.
         return (error as NodeJS.ErrnoException).code === 'EPERM';
     }
@@ -49,8 +53,7 @@ export function acquireLock(dataDir: string): () => void {
                     rmSync(path, { force: true });
                 }
             };
-        }
-        catch (error) {
+        } catch (error) {
             if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
                 throw error;
             }
@@ -66,14 +69,13 @@ export function acquireLock(dataDir: string): () => void {
         rmSync(path, { force: true });
     }
 
-    throw new Error(`Could not take the lock ${ path }`);
+    throw new Error(`Could not take the lock ${path}`);
 }
 
 function readPidSafely(path: string): number | undefined {
     try {
         return readPid(path);
-    }
-    catch {
+    } catch {
         return undefined;
     }
 }
@@ -81,7 +83,7 @@ function readPidSafely(path: string): number | undefined {
 /** Writes `daemon.json` (mode 0600) so clients can find this daemon. Returns the function that removes it. */
 export function writeDaemonInfo(dataDir: string, info: DaemonInfo): () => void {
     const path = infoPath(dataDir);
-    const temp = `${ path }.${ process.pid }.tmp`;
+    const temp = `${path}.${process.pid}.tmp`;
 
     writeFileSync(temp, JSON.stringify(info, null, 4), { mode: 0o600 });
     renameSync(temp, path);
@@ -91,8 +93,7 @@ export function writeDaemonInfo(dataDir: string, info: DaemonInfo): () => void {
             if ((JSON.parse(readFileSync(path, 'utf8')) as DaemonInfo).pid === info.pid) {
                 rmSync(path, { force: true });
             }
-        }
-        catch {
+        } catch {
             // already gone
         }
     };

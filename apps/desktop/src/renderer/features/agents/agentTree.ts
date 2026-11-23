@@ -1,4 +1,16 @@
-import { folderNames, isTerminalRunStatus, mainFolder, shownRunStatus, type Chat, type ChatId, type FolderId, type ProjectFolder, type Run, type RunId } from '@clowdy/protocol';
+import { calendarDayDiff } from '@clowdy/lib/date';
+import {
+    type Chat,
+    type ChatId,
+    type FolderId,
+    folderNames,
+    isTerminalRunStatus,
+    mainFolder,
+    type ProjectFolder,
+    type Run,
+    type RunId,
+    shownRunStatus,
+} from '@clowdy/protocol';
 
 import { isRunActive } from '../chats/chatRun';
 
@@ -71,7 +83,7 @@ export function agentRows({ roots, threadsOf, runs, expanded, showFinished, open
 
         visiting.add(chatId);
 
-        const kept = threadsOf(chatId).filter((thread) => {
+        const kept = threadsOf(chatId).filter(thread => {
             // Chats form a tree by contract; the guard keeps a corrupt parent cycle from looping.
             if (thread.archivedAt !== undefined || visiting.has(thread.id)) return false;
 
@@ -114,7 +126,9 @@ export function visibleChats(chatList: readonly Chat[], sort: ChatSort = 'activi
     const ordered = sort === 'created' ? [...chatList].sort((a, b) => b.createdAt - a.createdAt) : chatList;
     const inUse = new Set(chatList.filter(chat => chat.archivedAt === undefined).map(chat => chat.id));
 
-    return ordered.filter(chat => chat.archivedAt === undefined && (chat.parentChatId === undefined || !inUse.has(chat.parentChatId)));
+    return ordered.filter(
+        chat => chat.archivedAt === undefined && (chat.parentChatId === undefined || !inUse.has(chat.parentChatId))
+    );
 }
 
 /** One folder's part of the grouped list: its chats at depth 0, in the order `visibleChats` gave them. */
@@ -132,7 +146,10 @@ export function folderById(folders: readonly ProjectFolder[], folderId: FolderId
 }
 
 /** The folder a new chat of the grouped list is for: the one `draftFolderId` names, else the main one (see `folderById`), with its short name. */
-export function draftTarget(folders: readonly ProjectFolder[], draftFolderId: FolderId | null | undefined): Pick<AgentGroup, 'folder' | 'name' | 'isMain'> {
+export function draftTarget(
+    folders: readonly ProjectFolder[],
+    draftFolderId: FolderId | null | undefined
+): Pick<AgentGroup, 'folder' | 'name' | 'isMain'> {
     const folder = folderById(folders, draftFolderId);
     const index = folders.indexOf(folder);
 
@@ -145,7 +162,9 @@ export function draftTarget(folders: readonly ProjectFolder[], draftFolderId: Fo
  */
 export function agentGroups(roots: readonly Chat[], folders: readonly ProjectFolder[]): AgentGroup[] {
     const names = folderNames(folders);
-    const groups = folders.map((folder, index): AgentGroup => ({ folder, name: names[index] ?? folder.path, isMain: index === 0, roots: [] }));
+    const groups = folders.map(
+        (folder, index): AgentGroup => ({ folder, name: names[index] ?? folder.path, isMain: index === 0, roots: [] })
+    );
 
     for (const chat of roots) {
         const { id } = folderById(folders, chat.folderId);
@@ -157,7 +176,11 @@ export function agentGroups(roots: readonly Chat[], folders: readonly ProjectFol
 }
 
 /** The folder whose group lists a chat: the folder of the chat the person made that it sits below (a thread is below its parent, in its group). */
-export function groupFolderOf(chats: ReadonlyMap<ChatId, Chat>, folders: readonly ProjectFolder[], chatId: ChatId): FolderId | undefined {
+export function groupFolderOf(
+    chats: ReadonlyMap<ChatId, Chat>,
+    folders: readonly ProjectFolder[],
+    chatId: ChatId
+): FolderId | undefined {
     const chat = chats.get(chatId);
 
     if (!chat) return undefined;
@@ -166,7 +189,11 @@ export function groupFolderOf(chats: ReadonlyMap<ChatId, Chat>, folders: readonl
 }
 
 /** The folder a chat works in, with its short name: the one whose group lists it (`groupFolderOf`), so a thread works where the chat it is below does. */
-export function chatFolder(chats: ReadonlyMap<ChatId, Chat>, folders: readonly ProjectFolder[], chatId: ChatId): Pick<AgentGroup, 'folder' | 'name'> | undefined {
+export function chatFolder(
+    chats: ReadonlyMap<ChatId, Chat>,
+    folders: readonly ProjectFolder[],
+    chatId: ChatId
+): Pick<AgentGroup, 'folder' | 'name'> | undefined {
     const id = groupFolderOf(chats, folders, chatId);
     const index = folders.findIndex(folder => folder.id === id);
     const folder = folders[index];
@@ -182,15 +209,66 @@ export function archivedChats(chatList: readonly Chat[]): (Chat & { archivedAt: 
     const archived = new Set(chatList.filter(chat => chat.archivedAt !== undefined).map(chat => chat.id));
 
     return chatList
-        .filter((chat): chat is Chat & { archivedAt: number } => chat.archivedAt !== undefined && (chat.parentChatId === undefined || !archived.has(chat.parentChatId)))
+        .filter(
+            (chat): chat is Chat & { archivedAt: number } =>
+                chat.archivedAt !== undefined && (chat.parentChatId === undefined || !archived.has(chat.parentChatId))
+        )
         .sort((a, b) => b.archivedAt - a.archivedAt);
+}
+
+export type ArchiveGroupId = 'today' | 'yesterday' | 'week' | 'older';
+
+/** The archive's chats put away in one stretch of days, under its title. */
+export interface ArchiveGroup {
+    id: ArchiveGroupId;
+    title: string;
+    chats: (Chat & { archivedAt: number })[];
+}
+
+const ARCHIVE_GROUP_TITLES: Record<ArchiveGroupId, string> = {
+    today: 'Today',
+    yesterday: 'Yesterday',
+    week: 'Last 7 days',
+    older: 'Older',
+};
+
+/** The group of a chat put away `days` calendar days ago: a moment ahead of the clock is today. */
+function archiveGroupOf(days: number): ArchiveGroupId {
+    if (days <= 0) return 'today';
+
+    if (days === 1) return 'yesterday';
+
+    return days <= 7 ? 'week' : 'older';
+}
+
+/**
+ * The archive's chats (`archivedChats`) in groups by the calendar day they were put away: today, yesterday, the 7 days before, and older. The order of the chats is
+ * kept, the last one first, and a group with no chat is left out. `now` is for tests.
+ */
+export function archiveGroups(chats: readonly (Chat & { archivedAt: number })[], now = Date.now()): ArchiveGroup[] {
+    const today = new Date(now);
+    const groups = new Map<ArchiveGroupId, ArchiveGroup>();
+
+    for (const chat of chats) {
+        const id = archiveGroupOf(calendarDayDiff(new Date(chat.archivedAt), today));
+        const group = groups.get(id) ?? { id, title: ARCHIVE_GROUP_TITLES[id], chats: [] };
+
+        group.chats.push(chat);
+        groups.set(id, group);
+    }
+
+    return (Object.keys(ARCHIVE_GROUP_TITLES) as ArchiveGroupId[]).flatMap(id => groups.get(id) ?? []);
 }
 
 /** The chats a thread sits below, nearest first: its parent, the parent's parent, up to the chat the person made. Empty for such a chat. */
 export function ancestorChats(chats: ReadonlyMap<ChatId, Chat>, chatId: ChatId): Chat[] {
     const ancestors: Chat[] = [];
 
-    for (let parent = chats.get(chatId)?.parentChatId; parent !== undefined && parent !== chatId; parent = chats.get(parent)?.parentChatId) {
+    for (
+        let parent = chats.get(chatId)?.parentChatId;
+        parent !== undefined && parent !== chatId;
+        parent = chats.get(parent)?.parentChatId
+    ) {
         const chat = chats.get(parent);
 
         if (!chat || ancestors.includes(chat)) break;
@@ -221,13 +299,21 @@ export interface AgentSelection {
  * no page: opening one brings it back first, `openChat`), falls back to the chat that was selected, and then to the first
  * chat of `chatList`, the chats the list shows; with no chat at all the new-chat page is what shows.
  */
-export function resolveSelection(chats: ReadonlyMap<ChatId, Chat>, chatList: readonly Chat[], runs: ReadonlyMap<RunId, Run>, chatId: ChatId | null, runId: RunId | null, draft = false): AgentSelection {
+export function resolveSelection(
+    chats: ReadonlyMap<ChatId, Chat>,
+    chatList: readonly Chat[],
+    runs: ReadonlyMap<RunId, Run>,
+    chatId: ChatId | null,
+    runId: RunId | null,
+    draft = false
+): AgentSelection {
     if (draft) return { chat: undefined, run: undefined, draft: true };
 
     const run = runId === null ? undefined : runs.get(runId);
     const owner = run ? chatOfRun(chats.values(), run) : undefined;
 
-    if (run && owner && owner.archivedAt === undefined) return { chat: owner, run: run.parentRunId === undefined ? undefined : run, draft: false };
+    if (run && owner && owner.archivedAt === undefined)
+        return { chat: owner, run: run.parentRunId === undefined ? undefined : run, draft: false };
 
     const remembered = chatId === null ? undefined : chats.get(chatId);
     const chat = (remembered?.archivedAt === undefined ? remembered : undefined) ?? chatList[0];

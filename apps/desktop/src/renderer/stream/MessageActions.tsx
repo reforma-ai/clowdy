@@ -1,10 +1,10 @@
 import { Button } from '@clowdy/components/Button';
 import { CopyButton } from '@clowdy/components/CopyButton';
 import { Show } from '@clowdy/components/Show';
-// Fork wears the thread's mark until a Fork icon is drawn: swapping it is this one import.
-import { EditPen, Split as ForkIcon, Reply } from '@clowdy/icons/14';
+import { EditPen, Reply } from '@clowdy/icons/14';
 
 import { formatFullTime, formatMessageTime } from '../shared/time';
+import { type ForkAgent, ForkMenu } from './ForkMenu';
 import styles from './MessageActions.module.css';
 
 /** A whole message handed to Reply: who wrote it (the person, or the agent whose answer it is), and its source Markdown. */
@@ -28,10 +28,17 @@ export interface MessageActionsConfig {
     swipeToReply?: boolean;
     /** Edit the message in place: drawn only where it is given (`StreamView` gives it to a message of the person's that the agent can rewrite the chat from, and to none while one is being edited). */
     onEdit?: () => void;
-    /** Fork into a new chat, at this message: drawn only where it is given (`StreamView` gives it to an answer the agent can fork at). */
+    /**
+     * Fork into a new chat, at this message: the Fork menu is drawn only where it is given. `StreamView` gives it to every final answer: a copy of the session where the agent can cut it
+     * there, and where it cannot, a hand-off of the conversation to the chat's own agent.
+     */
     onFork?: () => void;
     /** A fork is being made: `pending` on the button that started it, `blocked` on the others, so there is one at a time. */
     forkState?: 'pending' | 'blocked';
+    /** Hand the conversation up to this message to another agent (the id of the one picked): the Fork menu's `Hand off to…`, drawn only where it is given, beside `onFork`. */
+    onHandoff?: (agentId: string) => void;
+    /** The agents `onHandoff` can take, in the order the list shows them: none disables the item, with the reason. */
+    handoffAgents?: readonly ForkAgent[];
 }
 
 export interface MessageActionsProps {
@@ -51,53 +58,68 @@ export interface MessageActionsProps {
  * pointer or the focus has to be on (see the stylesheet).
  */
 export function MessageActions({ text, at, align, actions }: MessageActionsProps) {
-    const { show, onReply, onEdit, onFork, forkState } = actions;
-    const time = <time className={ styles.time } dateTime={ new Date(at).toISOString() } title={ formatFullTime(at) }>{ formatMessageTime(at) }</time>;
+    const { show, onReply, onEdit, onFork, forkState, onHandoff, handoffAgents } = actions;
+    const time = (
+        <time className={styles.time} dateTime={new Date(at).toISOString()} title={formatFullTime(at)}>
+            {formatMessageTime(at)}
+        </time>
+    );
     const hasText = text.trim() !== '';
 
     return (
-        <div className={ styles.row } data-align={ align } data-show={ show }>
-            { align === 'end' && time }
-            { /* A message of files alone has nothing to copy or quote, so no group of those: its empty box would still move the time. Edit stays, since it can be given words. */ }
-            <Show when={ hasText || onEdit }>
-                <div className={ styles.buttons }>
-                    <Show when={ hasText && onReply }>
-                        { reply => (
-                            <Button variant="filling" size="xs" iconOnly tooltip="Reply" tooltipPlacement="bottom" aria-label="Reply" onPress={ () => reply(text) }>
-                                <Reply />
-                            </Button>
-                        ) }
-                    </Show>
-                    <Show when={ onEdit }>
-                        { edit => (
-                            <Button variant="filling" size="xs" iconOnly tooltip="Edit message" tooltipPlacement="bottom" aria-label="Edit message" onPress={ edit }>
-                                <EditPen />
-                            </Button>
-                        ) }
-                    </Show>
-                    <Show when={ hasText }>
-                        <CopyButton value={ text } variant="filling" size="xs" tooltip="Copy message" tooltipPlacement="bottom" aria-label="Copy message" />
-                    </Show>
-                    <Show when={ onFork }>
-                        { fork => (
+        <div className={styles.row} data-align={align} data-show={show}>
+            {align === 'end' && time}
+            {/* A message of files alone has nothing to copy or quote, so no group of those: its empty box would still move the time. Edit stays, since it can be given words. */}
+            <Show when={hasText || onEdit}>
+                <div className={styles.buttons}>
+                    <Show when={hasText && onReply}>
+                        {reply => (
                             <Button
                                 variant="filling"
                                 size="xs"
                                 iconOnly
-                                tooltip="Fork into new chat"
+                                tooltip="Reply"
                                 tooltipPlacement="bottom"
-                                aria-label="Fork into new chat"
-                                isPending={ forkState === 'pending' }
-                                isDisabled={ forkState === 'blocked' }
-                                onPress={ fork }
+                                aria-label="Reply"
+                                onPress={() => reply(text)}
                             >
-                                <ForkIcon />
+                                <Reply />
                             </Button>
-                        ) }
+                        )}
+                    </Show>
+                    <Show when={onEdit}>
+                        {edit => (
+                            <Button
+                                variant="filling"
+                                size="xs"
+                                iconOnly
+                                tooltip="Edit message"
+                                tooltipPlacement="bottom"
+                                aria-label="Edit message"
+                                onPress={edit}
+                            >
+                                <EditPen />
+                            </Button>
+                        )}
+                    </Show>
+                    <Show when={hasText}>
+                        <CopyButton
+                            value={text}
+                            variant="filling"
+                            size="xs"
+                            tooltip="Copy message"
+                            tooltipPlacement="bottom"
+                            aria-label="Copy message"
+                        />
+                    </Show>
+                    <Show when={onFork}>
+                        {fork => (
+                            <ForkMenu onFork={fork} state={forkState} onHandoff={onHandoff} agents={handoffAgents} />
+                        )}
                     </Show>
                 </div>
             </Show>
-            { align === 'start' && time }
+            {align === 'start' && time}
         </div>
     );
 }

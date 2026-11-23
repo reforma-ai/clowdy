@@ -1,10 +1,18 @@
 import { isClosedCategory, MAX_TASK_DEPTH } from '@clowdy/protocol';
 
 import { chatIdsOfTask, insertChatTaskLink } from '../db/chats';
-import { listStatuses } from '../db/projects';
-import { takeTaskNumber } from '../db/projects';
+import { listStatuses, takeTaskNumber } from '../db/projects';
 import { insertRunTaskLink, linksOfTask } from '../db/runs';
-import { childIdsOf, deleteTask as deleteTaskRow, dependenciesOf, dependentsOf, getTask, getTaskByNumber, listAllTasks, upsertTask } from '../db/tasks';
+import {
+    childIdsOf,
+    deleteTask as deleteTaskRow,
+    dependenciesOf,
+    dependentsOf,
+    getTask,
+    getTaskByNumber,
+    listAllTasks,
+    upsertTask,
+} from '../db/tasks';
 import { invalid, notFound } from '../errors';
 import { newId } from '../ids';
 import { requireChat } from './chats';
@@ -27,7 +35,7 @@ export function requireTask(store: Store, taskId: string): Task {
 /** A task in the archive takes no new work: a run starts on it only after it is restored. */
 export function requireNotArchived(task: Task): void {
     if (task.archivedAt !== undefined) {
-        throw invalid(`Task ${ task.key } is archived: restore it first`);
+        throw invalid(`Task ${task.key} is archived: restore it first`);
     }
 }
 
@@ -37,7 +45,7 @@ export function resolveTask(store: Store, projectId: string, reference: string):
 
     if (byId) {
         if (byId.projectId !== projectId) {
-            throw invalid(`Task ${ reference } belongs to another project`);
+            throw invalid(`Task ${reference} belongs to another project`);
         }
 
         return byId;
@@ -59,7 +67,9 @@ export function resolveTask(store: Store, projectId: string, reference: string):
 export function findTaskByKey(store: Store, project: Project, key: string): Task | undefined {
     const match = /^(.+)-(\d+)$/.exec(key);
 
-    return match && match[1].toUpperCase() === project.taskPrefix ? getTaskByNumber(store.db, project.id, Number(match[2])) : undefined;
+    return match && match[1].toUpperCase() === project.taskPrefix
+        ? getTaskByNumber(store.db, project.id, Number(match[2]))
+        : undefined;
 }
 
 /** Whether `taskId` already depends on any of `dependencies`, directly or through other tasks. */
@@ -91,11 +101,13 @@ function checkDependencies(store: Store, projectId: string, taskId: string, refe
         const dependency = requireTask(store, id);
 
         if (dependency.projectId !== projectId) {
-            throw invalid(`Task ${ dependency.key } belongs to another project`);
+            throw invalid(`Task ${dependency.key} belongs to another project`);
         }
 
         if (createsCycle(store, taskId, [id])) {
-            throw invalid(`Circular dependency: the task would depend on ${ dependency.key }, which already depends on it`);
+            throw invalid(
+                `Circular dependency: the task would depend on ${dependency.key}, which already depends on it`
+            );
         }
     }
 
@@ -108,33 +120,39 @@ function checkDependencies(store: Store, projectId: string, taskId: string, refe
  * task's own subtree, so moving an epic under a deep task is refused as one move. An archived task is no parent for a task that is not archived (restore it
  * first): the child would stay on the board under a parent that is off it.
  */
-function checkParent(store: Store, task: Pick<Task, 'id' | 'key' | 'projectId' | 'archivedAt'>, parentId: string): string {
+function checkParent(
+    store: Store,
+    task: Pick<Task, 'id' | 'key' | 'projectId' | 'archivedAt'>,
+    parentId: string
+): string {
     const parent = requireTask(store, parentId);
 
     if (parent.projectId !== task.projectId) {
-        throw invalid(`Task ${ parent.key } belongs to another project`);
+        throw invalid(`Task ${parent.key} belongs to another project`);
     }
 
     if (parent.id === task.id) {
-        throw invalid(`Task ${ task.key } cannot be its own parent`);
+        throw invalid(`Task ${task.key} cannot be its own parent`);
     }
 
     if (parent.archivedAt !== undefined && task.archivedAt === undefined) {
-        throw invalid(`Task ${ parent.key } is archived: restore it before putting tasks inside it`);
+        throw invalid(`Task ${parent.key} is archived: restore it before putting tasks inside it`);
     }
 
     // The archived tasks are part of the tree: a task in the archive keeps its place in it and its depth.
     const tree = new TaskTree(listAllTasks(store.db, task.projectId));
 
     if (tree.ancestorsOf(parent.id).some(ancestor => ancestor.id === task.id)) {
-        throw invalid(`Task ${ parent.key } is inside ${ task.key }, so it cannot be its parent`);
+        throw invalid(`Task ${parent.key} is inside ${task.key}, so it cannot be its parent`);
     }
 
     const inside = tree.heightOf(task.id);
     const reach = tree.depthOf(parent.id) + 1 + inside;
 
     if (reach > MAX_TASK_DEPTH) {
-        throw invalid(`Too deep: ${ task.key } under ${ parent.key } would reach level ${ reach }${ inside > 0 ? `, counting the ${ inside } level${ inside === 1 ? '' : 's' } of tasks inside it` : '' }, and a tree has at most ${ MAX_TASK_DEPTH } levels`);
+        throw invalid(
+            `Too deep: ${task.key} under ${parent.key} would reach level ${reach}${inside > 0 ? `, counting the ${inside} level${inside === 1 ? '' : 's'} of tasks inside it` : ''}, and a tree has at most ${MAX_TASK_DEPTH} levels`
+        );
     }
 
     return parent.id;
@@ -173,7 +191,9 @@ export function createTask(store: Store, input: NewTask): Task {
             throw invalid('The chat belongs to another project');
         }
 
-        const status = input.statusId ? requireStatus(store, project.id, input.statusId) : statusOfCategory(store, project.id, 'todo');
+        const status = input.statusId
+            ? requireStatus(store, project.id, input.statusId)
+            : statusOfCategory(store, project.id, 'todo');
         const id = newId('tsk');
         const number = takeTaskNumber(store.db, project.id);
         const now = Date.now();
@@ -181,7 +201,7 @@ export function createTask(store: Store, input: NewTask): Task {
             id,
             projectId: project.id,
             number,
-            key: `${ project.taskPrefix }-${ number }`,
+            key: `${project.taskPrefix}-${number}`,
             title: cleanTitle(input.title),
             description: input.description ?? '',
             statusId: status.id,
@@ -226,25 +246,31 @@ export function updateTask(store: Store, taskId: string, patch: TaskPatch): Task
             title: patch.title === undefined ? task.title : cleanTitle(patch.title),
             description: patch.description ?? task.description,
             statusId: patch.statusId ? requireStatus(store, task.projectId, patch.statusId).id : task.statusId,
-            dependsOn: patch.dependsOn ? checkDependencies(store, task.projectId, task.id, patch.dependsOn) : task.dependsOn,
+            dependsOn: patch.dependsOn
+                ? checkDependencies(store, task.projectId, task.id, patch.dependsOn)
+                : task.dependsOn,
         };
 
         // A parent that does not change is not checked again: an edit of something else must not be refused for a tree that was fine when it was made.
         if (patch.parentId === null) {
             delete next.parentId;
-        }
-        else if (patch.parentId !== undefined && patch.parentId !== task.parentId) {
+        } else if (patch.parentId !== undefined && patch.parentId !== task.parentId) {
             next.parentId = checkParent(store, task, patch.parentId);
         }
 
-        if (next.title === task.title && next.description === task.description && next.statusId === task.statusId
-            && next.dependsOn.join() === task.dependsOn.join() && next.parentId === task.parentId) {
+        if (
+            next.title === task.title &&
+            next.description === task.description &&
+            next.statusId === task.statusId &&
+            next.dependsOn.join() === task.dependsOn.join() &&
+            next.parentId === task.parentId
+        ) {
             return task;
         }
 
         // An archived task is closed, and stays so until it is restored: reopening it would leave work hidden from the board.
         if (task.archivedAt !== undefined && !isClosedCategory(categoryOf(store, next))) {
-            throw invalid(`Task ${ task.key } is archived: restore it before reopening it`);
+            throw invalid(`Task ${task.key} is archived: restore it before reopening it`);
         }
 
         const now = Date.now();
@@ -252,8 +278,7 @@ export function updateTask(store: Store, taskId: string, patch: TaskPatch): Task
         // The closing time is when the task entered a closed status; a move between two closed ones (Done to Canceled) keeps it.
         if (!isClosedCategory(categoryOf(store, next))) {
             delete next.closedAt;
-        }
-        else if (!isClosedCategory(categoryOf(store, task))) {
+        } else if (!isClosedCategory(categoryOf(store, task))) {
             next.closedAt = now;
         }
 
@@ -267,7 +292,11 @@ export function updateTask(store: Store, taskId: string, patch: TaskPatch): Task
 
 /** Moves a task to the project's first status of `category` (logic moving a task, not a person choosing a column). */
 export function moveTask(store: Store, taskId: string, category: TaskStatusCategory): Task {
-    return store.tx(() => updateTask(store, taskId, { statusId: statusOfCategory(store, requireTask(store, taskId).projectId, category).id }));
+    return store.tx(() =>
+        updateTask(store, taskId, {
+            statusId: statusOfCategory(store, requireTask(store, taskId).projectId, category).id,
+        })
+    );
 }
 
 export function categoryOf(store: Store, task: Task): TaskStatusCategory {
@@ -293,16 +322,19 @@ export function deleteTask(store: Store, taskId: string): void {
         for (const id of dependentsOf(store.db, taskId)) {
             const dependent = requireTask(store, id);
 
-            changed.set(id, { ...dependent, dependsOn: dependent.dependsOn.filter(dependencyId => dependencyId !== taskId), updatedAt: now });
+            changed.set(id, {
+                ...dependent,
+                dependsOn: dependent.dependsOn.filter(dependencyId => dependencyId !== taskId),
+                updatedAt: now,
+            });
         }
 
         for (const id of childIdsOf(store.db, taskId)) {
-            const moved: Task = { ...changed.get(id) ?? requireTask(store, id), updatedAt: now };
+            const moved: Task = { ...(changed.get(id) ?? requireTask(store, id)), updatedAt: now };
 
             if (task.parentId === undefined) {
                 delete moved.parentId;
-            }
-            else {
+            } else {
                 moved.parentId = task.parentId;
             }
 

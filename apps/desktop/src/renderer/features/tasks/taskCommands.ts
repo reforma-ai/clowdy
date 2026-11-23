@@ -30,7 +30,8 @@ export type FocusZone = 'list' | 'nav' | 'other';
 export const TASK_CONTROL = '[data-task-control]';
 
 /** The id of the task whose card or row holds the element, or null for what is not the task itself: an agent chip, or anything outside a card or row. */
-const taskIdOf = (element: Element): TaskId | null => (element.closest(TASK_CONTROL) ? null : element.closest<HTMLElement>('[data-task-id]')?.dataset.taskId ?? null);
+const taskIdOf = (element: Element): TaskId | null =>
+    element.closest(TASK_CONTROL) ? null : (element.closest<HTMLElement>('[data-task-id]')?.dataset.taskId ?? null);
 
 /**
  * The zone of the element that has focus, given the element that holds the board or the list.
@@ -153,12 +154,21 @@ const hasCursor = ({ cursor }: TaskCommandDeps) => cursor.cursorId !== null;
 const inList = ({ focusZone }: TaskCommandDeps) => focusZone() !== 'other';
 
 /** The gates of a key that acts on the cursor task where the list has the focus. */
-const onTheList = (deps: TaskCommandDeps): Pick<Command, 'when' | 'focus'> => ({ when: () => hasCursor(deps), focus: () => inList(deps) });
+const onTheList = (deps: TaskCommandDeps): Pick<Command, 'when' | 'focus'> => ({
+    when: () => hasCursor(deps),
+    focus: () => inList(deps),
+});
 
 /** The cursor, `Enter` and `Escape`. `Enter` only acts where the list has the focus, so it never takes a key from a widget that uses it. */
 function navigationCommands(deps: TaskCommandDeps): Command[] {
     const { cursor, ui, hasTask, view, rows, setFolded, focusZone, revealCursor } = deps;
-    const move = (id: string, title: string, keys: Command['keys'], direction: Direction, extra: Partial<Command> = {}): Command => ({
+    const move = (
+        id: string,
+        title: string,
+        keys: Command['keys'],
+        direction: Direction,
+        extra: Partial<Command> = {}
+    ): Command => ({
         id,
         title,
         group: GROUP,
@@ -166,36 +176,39 @@ function navigationCommands(deps: TaskCommandDeps): Command[] {
         scope: TASKS_SCOPE,
         ...onTheList(deps),
         repeat: true,
-        handler: () => onCursor(deps, () => {
-            cursor.move(direction);
-            settle(deps);
-        }),
+        handler: () =>
+            onCursor(deps, () => {
+                cursor.move(direction);
+                settle(deps);
+            }),
         ...extra,
     });
 
     // The arrows are the board's columns, and the tree list's folds: one command each, since two commands cannot share a key. In the list a key with nothing to do
     // (Right on a row with nothing inside, Left on a row at the top) is not ours, and stays the page's.
-    const sideways = (id: string, title: string, keys: string, direction: 'left' | 'right'): Command => move(id, title, keys, direction, {
-        when: () => hasCursor(deps) && (view() === 'board' || treeMove(rows(), cursor.cursorId, direction) !== undefined),
-        handler: () => onCursor(deps, () => {
-            if (view() === 'board') {
-                cursor.move(direction);
-                settle(deps);
+    const sideways = (id: string, title: string, keys: string, direction: 'left' | 'right'): Command =>
+        move(id, title, keys, direction, {
+            when: () =>
+                hasCursor(deps) && (view() === 'board' || treeMove(rows(), cursor.cursorId, direction) !== undefined),
+            handler: () =>
+                onCursor(deps, () => {
+                    if (view() === 'board') {
+                        cursor.move(direction);
+                        settle(deps);
 
-                return;
-            }
+                        return;
+                    }
 
-            const step = treeMove(rows(), cursor.cursorId, direction);
+                    const step = treeMove(rows(), cursor.cursorId, direction);
 
-            if (step?.kind === 'move') {
-                cursor.setCursor(step.taskId);
-                settle(deps);
-            }
-            else if (step) {
-                setFolded(step.taskId, step.kind === 'fold');
-            }
-        }),
-    });
+                    if (step?.kind === 'move') {
+                        cursor.setCursor(step.taskId);
+                        settle(deps);
+                    } else if (step) {
+                        setFolded(step.taskId, step.kind === 'fold');
+                    }
+                }),
+        });
 
     return [
         move('tasks.cursor.down', 'Move down', ['ArrowDown', 'j'], 'down'),
@@ -213,9 +226,10 @@ function navigationCommands(deps: TaskCommandDeps): Command[] {
             when: () => hasCursor(deps),
             // Enter presses a button, so unlike the arrows it is not ours on a rail button either.
             focus: () => focusZone() === 'list',
-            handler: () => onCursor(deps, () => {
-                if (cursor.cursorId !== null) ui.openTask(cursor.cursorId);
-            }),
+            handler: () =>
+                onCursor(deps, () => {
+                    if (cursor.cursorId !== null) ui.openTask(cursor.cursorId);
+                }),
         },
         {
             id: 'tasks.escape',
@@ -249,10 +263,11 @@ function selectionCommands(deps: TaskCommandDeps): Command[] {
         scope: TASKS_SCOPE,
         ...onTheList(deps),
         repeat: true,
-        handler: () => onCursor(deps, () => {
-            cursor.extend(direction);
-            settle(deps);
-        }),
+        handler: () =>
+            onCursor(deps, () => {
+                cursor.extend(direction);
+                settle(deps);
+            }),
     });
 
     return [
@@ -297,15 +312,16 @@ function statusCommands(deps: TaskCommandDeps): Command[] {
         scope: TASKS_SCOPE,
         ...onTheList(deps),
         // One press is one step: a held key would run through the whole workflow before the first move has come back.
-        handler: () => onTargets(deps, () => {
-            const inputs: CommandInput[] = targetTasks(deps).flatMap((task) => {
-                const next = adjacentStatus(statuses(), task.statusId, by);
+        handler: () =>
+            onTargets(deps, () => {
+                const inputs: CommandInput[] = targetTasks(deps).flatMap(task => {
+                    const next = adjacentStatus(statuses(), task.statusId, by);
 
-                return next ? [{ type: 'task.update', taskId: task.id, statusId: next.id }] : [];
-            });
+                    return next ? [{ type: 'task.update', taskId: task.id, statusId: next.id }] : [];
+                });
 
-            if (inputs.length > 0) void send(inputs);
-        }),
+                if (inputs.length > 0) void send(inputs);
+            }),
     });
 
     return [
@@ -316,32 +332,43 @@ function statusCommands(deps: TaskCommandDeps): Command[] {
             keys: 's',
             scope: TASKS_SCOPE,
             ...onTheList(deps),
-            handler: () => onTargets(deps, () => {
-                const targets = targetTasks(deps);
+            handler: () =>
+                onTargets(deps, () => {
+                    const targets = targetTasks(deps);
 
-                if (targets.length === 0) return;
+                    if (targets.length === 0) return;
 
-                const ids = targets.map(task => task.id);
-                const shared = targets.every(task => task.statusId === targets[0].statusId);
+                    const ids = targets.map(task => task.id);
+                    const shared = targets.every(task => task.statusId === targets[0].statusId);
 
-                openPicker({
-                    'aria-label': 'Change status',
-                    placeholder: targets.length === 1 ? 'Change status…' : `Change status of ${ targets.length } tasks…`,
-                    options: statusOptions(statuses()),
-                    // Tasks that disagree have no current status to mark.
-                    selectedIds: shared ? [targets[0].statusId] : [],
-                    onPick: (statusId) => {
-                        // Read again: the picker was open while events came in, and a task may be gone or already there.
-                        const current = new Map(tasks().map(task => [task.id, task]));
-                        const inputs: CommandInput[] = ids.flatMap(id => (current.get(id) && current.get(id)?.statusId !== statusId ? [{ type: 'task.update', taskId: id, statusId }] : []));
+                    openPicker({
+                        'aria-label': 'Change status',
+                        placeholder:
+                            targets.length === 1 ? 'Change status…' : `Change status of ${targets.length} tasks…`,
+                        options: statusOptions(statuses()),
+                        // Tasks that disagree have no current status to mark.
+                        selectedIds: shared ? [targets[0].statusId] : [],
+                        onPick: statusId => {
+                            // Read again: the picker was open while events came in, and a task may be gone or already there.
+                            const current = new Map(tasks().map(task => [task.id, task]));
+                            const inputs: CommandInput[] = ids.flatMap(id =>
+                                current.get(id) && current.get(id)?.statusId !== statusId
+                                    ? [{ type: 'task.update', taskId: id, statusId }]
+                                    : []
+                            );
 
-                        if (inputs.length > 0) void send(inputs);
-                    },
-                });
-            }),
+                            if (inputs.length > 0) void send(inputs);
+                        },
+                    });
+                }),
         },
         step('tasks.status.next', 'Move to the next status', { mac: 'Alt+ArrowRight', win: 'Control+ArrowRight' }, 1),
-        step('tasks.status.prev', 'Move to the previous status', { mac: 'Alt+ArrowLeft', win: 'Control+ArrowLeft' }, -1),
+        step(
+            'tasks.status.prev',
+            'Move to the previous status',
+            { mac: 'Alt+ArrowLeft', win: 'Control+ArrowLeft' },
+            -1
+        ),
     ];
 }
 
@@ -358,29 +385,41 @@ function dependencyCommands(deps: TaskCommandDeps): Command[] {
         keys,
         scope: TASKS_SCOPE,
         ...onTheList(deps),
-        handler: () => onCursor(deps, () => {
-            const all = tasks();
-            const task = all.find(candidate => candidate.id === cursor.cursorId);
+        handler: () =>
+            onCursor(deps, () => {
+                const all = tasks();
+                const task = all.find(candidate => candidate.id === cursor.cursorId);
 
-            if (!task) return;
+                if (!task) return;
 
-            const isBlockedBy = side === 'blockedBy';
-            const others = isBlockedBy ? blockedByOptions(all, task) : blockingOptions(all, task);
+                const isBlockedBy = side === 'blockedBy';
+                const others = isBlockedBy ? blockedByOptions(all, task) : blockingOptions(all, task);
 
-            openPicker({
-                'aria-label': isBlockedBy ? 'Blocked by' : 'Blocking',
-                placeholder: isBlockedBy ? `${ task.key } is blocked by…` : `${ task.key } is blocking…`,
-                options: taskOptions(others, statuses()),
-                selectedIds: others.filter(other => (isBlockedBy ? task.dependsOn.includes(other.id) : other.dependsOn.includes(task.id))).map(other => other.id),
-                onPick: (otherId) => {
-                    // The task whose list changes is the cursor task for "blocked by" and the picked one for "blocking". Read it again, the list may have changed meanwhile.
-                    const ownerId = isBlockedBy ? task.id : otherId;
-                    const owner = tasks().find(candidate => candidate.id === ownerId);
+                openPicker({
+                    'aria-label': isBlockedBy ? 'Blocked by' : 'Blocking',
+                    placeholder: isBlockedBy ? `${task.key} is blocked by…` : `${task.key} is blocking…`,
+                    options: taskOptions(others, statuses()),
+                    selectedIds: others
+                        .filter(other =>
+                            isBlockedBy ? task.dependsOn.includes(other.id) : other.dependsOn.includes(task.id)
+                        )
+                        .map(other => other.id),
+                    onPick: otherId => {
+                        // The task whose list changes is the cursor task for "blocked by" and the picked one for "blocking". Read it again, the list may have changed meanwhile.
+                        const ownerId = isBlockedBy ? task.id : otherId;
+                        const owner = tasks().find(candidate => candidate.id === ownerId);
 
-                    if (owner) void send([{ type: 'task.update', taskId: owner.id, dependsOn: toggleDependency(owner.dependsOn, isBlockedBy ? otherId : task.id) }]);
-                },
-            });
-        }),
+                        if (owner)
+                            void send([
+                                {
+                                    type: 'task.update',
+                                    taskId: owner.id,
+                                    dependsOn: toggleDependency(owner.dependsOn, isBlockedBy ? otherId : task.id),
+                                },
+                            ]);
+                    },
+                });
+            }),
     });
 
     return [
@@ -391,9 +430,16 @@ function dependencyCommands(deps: TaskCommandDeps): Command[] {
 
 /** What the person is about to delete, in words: the task by name when it is one. */
 function deleteDialog(tasks: readonly Task[]): Pick<OpenConfirmModalOptions, 'title' | 'message'> {
-    if (tasks.length === 1) return { title: `Delete ${ tasks[0].key }?`, message: `"${ tasks[0].title }" will be deleted. This cannot be undone.` };
+    if (tasks.length === 1)
+        return {
+            title: `Delete ${tasks[0].key}?`,
+            message: `"${tasks[0].title}" will be deleted. This cannot be undone.`,
+        };
 
-    return { title: `Delete ${ tasks.length } tasks?`, message: `The ${ tasks.length } selected tasks will be deleted. This cannot be undone.` };
+    return {
+        title: `Delete ${tasks.length} tasks?`,
+        message: `The ${tasks.length} selected tasks will be deleted. This cannot be undone.`,
+    };
 }
 
 /** Whether the detail panel shows a task that still exists. */
@@ -422,12 +468,13 @@ function actionCommands(deps: TaskCommandDeps): Command[] {
             keys: 'Shift+r',
             scope: TASKS_SCOPE,
             ...onTheList(deps),
-            handler: () => onCursor(deps, () => {
-                if (cursor.cursorId === null) return;
+            handler: () =>
+                onCursor(deps, () => {
+                    if (cursor.cursorId === null) return;
 
-                ui.openTask(cursor.cursorId);
-                focusTitle(cursor.cursorId);
-            }),
+                    ui.openTask(cursor.cursorId);
+                    focusTitle(cursor.cursorId);
+                }),
         },
         {
             id: 'tasks.start',
@@ -462,11 +509,12 @@ function actionCommands(deps: TaskCommandDeps): Command[] {
             keys: 'e',
             scope: TASKS_SCOPE,
             ...onTheList(deps),
-            handler: () => onTargets(deps, () => {
-                const targets = targetTasks(deps);
+            handler: () =>
+                onTargets(deps, () => {
+                    const targets = targetTasks(deps);
 
-                if (targets.length > 0) archive(targets);
-            }),
+                    if (targets.length > 0) archive(targets);
+                }),
         },
         {
             id: 'tasks.delete',
@@ -475,26 +523,27 @@ function actionCommands(deps: TaskCommandDeps): Command[] {
             keys: { mac: '$mod+Backspace', win: '$mod+Delete' },
             scope: TASKS_SCOPE,
             ...onTheList(deps),
-            handler: () => onTargets(deps, () => {
-                const targets = targetTasks(deps);
+            handler: () =>
+                onTargets(deps, () => {
+                    const targets = targetTasks(deps);
 
-                if (targets.length === 0) return;
+                    if (targets.length === 0) return;
 
-                const ids = targets.map(task => task.id);
+                    const ids = targets.map(task => task.id);
 
-                confirm({
-                    ...deleteDialog(targets),
-                    confirmLabel: 'Delete',
-                    destructive: true,
-                    onConfirm: async () => {
-                        const results = await send(ids.map(taskId => ({ type: 'task.delete', taskId })));
-                        const deleted = ids.filter((_, index) => results[index]?.ok);
+                    confirm({
+                        ...deleteDialog(targets),
+                        confirmLabel: 'Delete',
+                        destructive: true,
+                        onConfirm: async () => {
+                            const results = await send(ids.map(taskId => ({ type: 'task.delete', taskId })));
+                            const deleted = ids.filter((_, index) => results[index]?.ok);
 
-                        // The panel of a task that is gone has nothing to show; the stale id would keep it open for a task that reappears.
-                        if (ui.taskId !== null && deleted.includes(ui.taskId)) ui.openTask(null);
-                    },
-                });
-            }),
+                            // The panel of a task that is gone has nothing to show; the stale id would keep it open for a task that reappears.
+                            if (ui.taskId !== null && deleted.includes(ui.taskId)) ui.openTask(null);
+                        },
+                    });
+                }),
         },
     ];
 }
@@ -504,7 +553,17 @@ function actionCommands(deps: TaskCommandDeps): Command[] {
  * so they work wherever the key is not a character of a text field, which the dispatcher already keeps out.
  * Inside a task `C` makes a sub-task of it, as the "+ Sub-task" button does, and at the last level it says why it cannot, as that button does when it is off.
  */
-function screenCommands({ view, setView, scope, isArchive, canHaveChildren, create, notify, openFilter, focusSearch }: TaskCommandDeps): Command[] {
+function screenCommands({
+    view,
+    setView,
+    scope,
+    isArchive,
+    canHaveChildren,
+    create,
+    notify,
+    openFilter,
+    focusSearch,
+}: TaskCommandDeps): Command[] {
     // The controls these keys stand for leave the header while the archive shows, so a key must not act on what is not there (`F` would open the filter for later).
     const inScope = () => !isArchive();
 
@@ -523,9 +582,33 @@ function screenCommands({ view, setView, scope, isArchive, canHaveChildren, crea
                 else create();
             },
         },
-        { id: 'tasks.view.toggle', title: 'Switch between board and list', group: GROUP, keys: '$mod+b', scope: TASKS_SCOPE, when: inScope, handler: () => setView(view() === 'board' ? 'list' : 'board') },
-        { id: 'tasks.filter', title: 'Filter tasks', group: GROUP, keys: 'f', scope: TASKS_SCOPE, when: inScope, handler: () => openFilter() },
-        { id: 'tasks.search', title: 'Search tasks', group: GROUP, keys: '/', scope: TASKS_SCOPE, when: inScope, handler: () => focusSearch() },
+        {
+            id: 'tasks.view.toggle',
+            title: 'Switch between board and list',
+            group: GROUP,
+            keys: '$mod+b',
+            scope: TASKS_SCOPE,
+            when: inScope,
+            handler: () => setView(view() === 'board' ? 'list' : 'board'),
+        },
+        {
+            id: 'tasks.filter',
+            title: 'Filter tasks',
+            group: GROUP,
+            keys: 'f',
+            scope: TASKS_SCOPE,
+            when: inScope,
+            handler: () => openFilter(),
+        },
+        {
+            id: 'tasks.search',
+            title: 'Search tasks',
+            group: GROUP,
+            keys: '/',
+            scope: TASKS_SCOPE,
+            when: inScope,
+            handler: () => focusSearch(),
+        },
     ];
 }
 
@@ -548,9 +631,14 @@ function copyCommands(deps: TaskCommandDeps): Command[] {
 
             const text = targets.map(task => task[part]).join('\n');
             const [first] = targets;
-            const what = targets.length === 1 ? (part === 'key' ? first.key : `the title of ${ first.key }`) : `${ targets.length } task ${ part }s`;
+            const what =
+                targets.length === 1
+                    ? part === 'key'
+                        ? first.key
+                        : `the title of ${first.key}`
+                    : `${targets.length} task ${part}s`;
 
-            deps.copy(text, `Copied ${ what }`);
+            deps.copy(text, `Copied ${what}`);
         },
     });
 
@@ -571,11 +659,13 @@ async function openLatestDoc({ ui, docPathOf, notify }: TaskCommandDeps, task: T
     try {
         const path = await docPathOf(task.id);
 
-        if (path === null) notify(`${ task.key } has no document yet`);
+        if (path === null) notify(`${task.key} has no document yet`);
         else ui.openDoc(path);
-    }
-    catch (error) {
-        notify(`Could not load the results of ${ task.key }: ${ error instanceof Error ? error.message : String(error) }`, 'error');
+    } catch (error) {
+        notify(
+            `Could not load the results of ${task.key}: ${error instanceof Error ? error.message : String(error)}`,
+            'error'
+        );
     }
 }
 
@@ -595,16 +685,17 @@ function linkedCommands(deps: TaskCommandDeps): Command[] {
             scope: TASKS_SCOPE,
             when: () => cursorTask(deps) !== undefined,
             focus: () => inList(deps),
-            handler: () => onCursor(deps, () => {
-                const task = cursorTask(deps);
+            handler: () =>
+                onCursor(deps, () => {
+                    const task = cursorTask(deps);
 
-                if (!task) return;
+                    if (!task) return;
 
-                const chat = newestChat(chatsOf(task.id));
+                    const chat = newestChat(chatsOf(task.id));
 
-                if (chat) deps.openChat(chat.id);
-                else notify(`${ task.key } has no chat yet`);
-            }),
+                    if (chat) deps.openChat(chat.id);
+                    else notify(`${task.key} has no chat yet`);
+                }),
         },
         {
             id: 'tasks.doc.open',
@@ -614,11 +705,12 @@ function linkedCommands(deps: TaskCommandDeps): Command[] {
             scope: TASKS_SCOPE,
             when: () => cursorTask(deps) !== undefined,
             focus: () => inList(deps),
-            handler: () => onCursor(deps, () => {
-                const task = cursorTask(deps);
+            handler: () =>
+                onCursor(deps, () => {
+                    const task = cursorTask(deps);
 
-                if (task) void openLatestDoc(deps, task);
-            }),
+                    if (task) void openLatestDoc(deps, task);
+                }),
         },
     ];
 }
@@ -641,16 +733,25 @@ function scopeCommands(deps: TaskCommandDeps): Command[] {
             scope: TASKS_SCOPE,
             when: () => cursorTask(deps) !== undefined,
             focus: () => inList(deps),
-            handler: () => onCursor(deps, () => {
-                const task = cursorTask(deps);
+            handler: () =>
+                onCursor(deps, () => {
+                    const task = cursorTask(deps);
 
-                if (!task) return;
+                    if (!task) return;
 
-                if (canHaveChildren(task.id)) openScope(task.id);
-                else notify(`${ task.key } cannot hold sub-tasks: tasks go only ${ MAX_TASK_DEPTH } levels deep`);
-            }),
+                    if (canHaveChildren(task.id)) openScope(task.id);
+                    else notify(`${task.key} cannot hold sub-tasks: tasks go only ${MAX_TASK_DEPTH} levels deep`);
+                }),
         },
-        { id: 'tasks.scope.up', title: 'Go up one level', group: GROUP, keys: 'u', scope: TASKS_SCOPE, when: () => scope() !== null, handler: () => goUp() },
+        {
+            id: 'tasks.scope.up',
+            title: 'Go up one level',
+            group: GROUP,
+            keys: 'u',
+            scope: TASKS_SCOPE,
+            when: () => scope() !== null,
+            handler: () => goUp(),
+        },
     ];
 }
 
@@ -660,7 +761,15 @@ function scopeCommands(deps: TaskCommandDeps): Command[] {
  */
 function undoCommands({ undo }: TaskCommandDeps): Command[] {
     return [
-        { id: 'tasks.undo', title: 'Undo', group: GROUP, keys: '$mod+z', scope: TASKS_SCOPE, when: () => undo.canUndo(), handler: () => void undo.undoLatest() },
+        {
+            id: 'tasks.undo',
+            title: 'Undo',
+            group: GROUP,
+            keys: '$mod+z',
+            scope: TASKS_SCOPE,
+            when: () => undo.canUndo(),
+            handler: () => void undo.undoLatest(),
+        },
     ];
 }
 

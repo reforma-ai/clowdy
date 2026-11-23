@@ -1,6 +1,6 @@
-import { folderNames } from '@clowdy/protocol';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { folderNames } from '@clowdy/protocol';
 
 import { getProject, listProjects } from '../db/projects';
 import { invalid, notFound } from '../errors';
@@ -18,9 +18,13 @@ import type { LabeledScan, ProjectScan } from './catalog';
 import type { RootScan } from './scan';
 
 /** A project's skill folders, relative to each of its folders, and the engine that reads each. */
-const PROJECT_ROOTS = [{ dir: '.claude/skills', engine: 'claude' }, { dir: '.agents/skills', engine: 'codex' }] as const;
+const PROJECT_ROOTS = [
+    { dir: '.claude/skills', engine: 'claude' },
+    { dir: '.agents/skills', engine: 'codex' },
+] as const;
 
-const skillDirs = (project: Project) => project.folders.flatMap(folder => PROJECT_ROOTS.map(({ dir }) => join(folder.path, dir)));
+const skillDirs = (project: Project) =>
+    project.folders.flatMap(folder => PROJECT_ROOTS.map(({ dir }) => join(folder.path, dir)));
 
 const fingerprintOf = (scans: readonly { scan: RootScan }[]) => scans.map(({ scan }) => scan.fingerprint).join('|');
 
@@ -40,9 +44,15 @@ export class SkillsService {
     private projectFingerprints = new Map<string, string>();
 
     /** Materializes the system skills and builds the user plugin; throws when the system skills are missing. */
-    constructor(private store: Store, private config: Config) {
+    constructor(
+        private store: Store,
+        private config: Config
+    ) {
         this.settings = new SkillSettings(config.dataDir);
-        this.systemDir = materializeSystemSkills(config.systemSkillsSource ?? defaultSystemSkillsSource(), config.dataDir).dir;
+        this.systemDir = materializeSystemSkills(
+            config.systemSkillsSource ?? defaultSystemSkillsSource(),
+            config.dataDir
+        ).dir;
         config.systemSkillsDir = this.systemDir;
         this.syncUser();
     }
@@ -92,12 +102,12 @@ export class SkillsService {
 
     /** Switches a user skill on or off for every run; `name` is the entry's name (`user:deploy`). */
     setEnabled(name: string, enabled: boolean): void {
-        if (name.startsWith(`${ SYSTEM_PLUGIN_NAME }:`)) {
+        if (name.startsWith(`${SYSTEM_PLUGIN_NAME}:`)) {
             throw invalid('System skills cannot be switched off');
         }
 
-        if (!name.startsWith(`${ USER_PLUGIN_NAME }:`)) {
-            throw invalid(`Only user skills (named ${ USER_PLUGIN_NAME }:<skill>) can be switched on or off`);
+        if (!name.startsWith(`${USER_PLUGIN_NAME}:`)) {
+            throw invalid(`Only user skills (named ${USER_PLUGIN_NAME}:<skill>) can be switched on or off`);
         }
 
         const folder = name.slice(USER_PLUGIN_NAME.length + 1);
@@ -116,7 +126,7 @@ export class SkillsService {
         const home = homedir();
 
         return (this.config.userSkillRoots ?? []).map(dir => ({
-            label: dir.startsWith(home) ? `~${ dir.slice(home.length) }` : dir,
+            label: dir.startsWith(home) ? `~${dir.slice(home.length)}` : dir,
             scan: this.scanner.scan(dir),
         }));
     }
@@ -125,11 +135,13 @@ export class SkillsService {
     private projectScans(project: Project): ProjectScan[] {
         const names = folderNames(project.folders);
 
-        return project.folders.flatMap((folder, index) => PROJECT_ROOTS.map(({ dir, engine }) => ({
-            label: project.folders.length === 1 ? dir : `${ names[index] }/${ dir }`,
-            engine,
-            scan: this.scanner.scan(join(folder.path, dir)),
-        })));
+        return project.folders.flatMap((folder, index) =>
+            PROJECT_ROOTS.map(({ dir, engine }) => ({
+                label: project.folders.length === 1 ? dir : `${names[index]}/${dir}`,
+                engine,
+                scan: this.scanner.scan(join(folder.path, dir)),
+            }))
+        );
     }
 
     /** Rebuilds the `user` plugin when the folders changed since the last look. Returns whether they did. */

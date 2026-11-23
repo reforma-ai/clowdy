@@ -4,17 +4,17 @@ import { createContext, use } from 'react';
 import {
     composeRenderProps,
     Cell as RACCell,
+    type CellProps as RACCellProps,
     Column as RACColumn,
+    type ColumnProps as RACColumnProps,
     Row as RACRow,
+    type RowProps as RACRowProps,
     Table as RACTable,
     TableBody as RACTableBody,
-    TableFooter as RACTableFooter,
-    TableHeader as RACTableHeader,
-    type CellProps as RACCellProps,
-    type ColumnProps as RACColumnProps,
-    type RowProps as RACRowProps,
     type TableBodyProps as RACTableBodyProps,
+    TableFooter as RACTableFooter,
     type TableFooterProps as RACTableFooterProps,
+    TableHeader as RACTableHeader,
     type TableHeaderProps as RACTableHeaderProps,
     type TableProps as RACTableProps,
 } from 'react-aria-components';
@@ -77,24 +77,22 @@ export function Table({
     const cap = maxHeight != null;
 
     return (
-        <TableStaticContext value={ !interactive }>
+        <TableStaticContext value={!interactive}>
             <Scrollable
-                containerRef={ scrollRef }
-                className={ cn(styles.viewport, scrollClassName) }
-                contentClass={ styles.viewportContent }
+                containerRef={scrollRef}
+                className={cn(styles.viewport, scrollClassName)}
+                contentClass={styles.viewportContent}
                 horizontal
-                vertical={ cap }
-                data-max-height={ cap ? '' : undefined }
-                style={ cap
-                    ? { maxHeight: typeof maxHeight === 'number' ? `${ maxHeight }px` : maxHeight }
-                    : undefined }
+                vertical={cap}
+                data-max-height={cap ? '' : undefined}
+                style={cap ? { maxHeight: typeof maxHeight === 'number' ? `${maxHeight}px` : maxHeight } : undefined}
             >
                 <RACTable
-                    { ...props }
-                    selectionMode={ selectionMode }
-                    data-size={ size }
-                    data-interactive={ interactive || undefined }
-                    className={ composeRenderProps(className, className => cn(styles.table, className)) }
+                    {...props}
+                    selectionMode={selectionMode}
+                    data-size={size}
+                    data-interactive={interactive || undefined}
+                    className={composeRenderProps(className, className => cn(styles.table, className))}
                 />
             </Scrollable>
         </TableStaticContext>
@@ -102,68 +100,64 @@ export function Table({
 }
 
 export function TableHeader<T extends object>({ className, ...props }: TableHeaderProps<T>) {
-    return <RACTableHeader { ...props } className={ composeRenderProps(className, className => cn(styles.header, className)) } />;
+    return (
+        <RACTableHeader
+            {...props}
+            className={composeRenderProps(className, className => cn(styles.header, className))}
+        />
+    );
 }
 
 export function TableBody<T extends object>({ className, ...props }: TableBodyProps<T>) {
-    return <RACTableBody { ...props } className={ composeRenderProps(className, className => cn(styles.body, className)) } />;
+    return (
+        <RACTableBody {...props} className={composeRenderProps(className, className => cn(styles.body, className))} />
+    );
 }
 
 export function TableFooter<T extends object>({ className, ...props }: TableFooterProps<T>) {
-    return <RACTableFooter { ...props } className={ cn(styles.footer, className) } />;
+    return <RACTableFooter {...props} className={cn(styles.footer, className)} />;
 }
 
-export function TableHead({
-    align,
-    className,
-    children,
-    ...props
-}: TableHeadProps) {
+export function TableHead({ align, className, children, ...props }: TableHeadProps) {
     const isStatic = use(TableStaticContext);
 
     return (
         <RACColumn
-            { ...props }
-            data-align={ align }
-            className={ composeRenderProps(className, className => cn(styles.head, className)) }
-            ref={ isStatic && !props.allowsSorting ? rejectChromeFocus : undefined }
+            {...props}
+            data-align={align}
+            className={composeRenderProps(className, className => cn(styles.head, className))}
+            ref={isStatic && !props.allowsSorting ? rejectChromeFocus : undefined}
         >
-            { typeof children === 'function'
+            {typeof children === 'function'
                 ? children
                 : ({ allowsSorting }) => (
-                    <span className={ styles.headInner }>
-                        <span className={ styles.headLabel }>{ children }</span>
-                        { allowsSorting
-                            ? (
-                                <span className={ styles.sort } aria-hidden>
-                                    <ChevronUp className={ styles.sortUp } />
-                                    <ChevronDown className={ styles.sortDown } />
-                                </span>
-                            )
-                            : null }
-                    </span>
-                ) }
+                      <span className={styles.headInner}>
+                          <span className={styles.headLabel}>{children}</span>
+                          {allowsSorting ? (
+                              <span className={styles.sort} aria-hidden>
+                                  <ChevronUp className={styles.sortUp} />
+                                  <ChevronDown className={styles.sortDown} />
+                              </span>
+                          ) : null}
+                      </span>
+                  )}
         </RACColumn>
     );
 }
 
 export function TableRow<T extends object>({ className, ...props }: TableRowProps<T>) {
-    return <RACRow { ...props } className={ composeRenderProps(className, className => cn(styles.row, className)) } />;
+    return <RACRow {...props} className={composeRenderProps(className, className => cn(styles.row, className))} />;
 }
 
-export function TableCell({
-    align,
-    className,
-    ...props
-}: TableCellProps) {
+export function TableCell({ align, className, ...props }: TableCellProps) {
     const isStatic = use(TableStaticContext);
 
     return (
         <RACCell
-            { ...props }
-            data-align={ align }
-            className={ composeRenderProps(className, className => cn(styles.cell, className)) }
-            ref={ isStatic ? rejectChromeFocus : undefined }
+            {...props}
+            data-align={align}
+            className={composeRenderProps(className, className => cn(styles.cell, className))}
+            ref={isStatic ? rejectChromeFocus : undefined}
         />
     );
 }

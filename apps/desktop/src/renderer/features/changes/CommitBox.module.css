@@ -1,0 +1,221 @@
+@reference '@clowdy/styles/rulesets';
+
+/* The commit stands between the files of the scope and the commits of the branch: as tall as it is, and not squeezed by them. */
+.root {
+    display: flex;
+    flex-shrink: 0;
+    flex-direction: column;
+    gap: var(--spacing-6);
+    padding: var(--spacing-8) var(--spacing-12) var(--spacing-12);
+    border-top: 1px solid var(--color-surface-border);
+}
+
+/* What git and the agent say is the person's to copy. */
+.root,
+.failure {
+    user-select: text;
+}
+
+.header {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-6);
+    min-height: var(--spacing-22);
+}
+
+.count {
+    margin-inline-start: auto;
+    white-space: nowrap;
+}
+
+/* The checklist shows a few files and scrolls for the rest, so the message box never leaves the sidebar. */
+.list {
+    flex: 0 1 auto;
+    max-height: var(--spacing-144);
+    margin-inline: calc(var(--spacing-6) * -1);
+}
+
+.rows {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+    padding: 0 var(--spacing-6);
+}
+
+/* A file is a tick and its name in one press. The label of the checkbox is the last child, and takes what the tick leaves. */
+.row[data-size] {
+    display: flex;
+    width: 100%;
+    min-height: var(--spacing-24);
+}
+
+.row[data-size] > :last-child {
+    flex: 1;
+    gap: var(--spacing-6);
+    min-width: 0;
+}
+
+.glyph {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: var(--spacing-14);
+}
+
+/* The name first, strong, and the folder after it, dimmed: the folder is cut before the name is. */
+.fileName {
+    display: flex;
+    flex: 1;
+    align-items: baseline;
+    gap: var(--spacing-6);
+    min-width: 0;
+}
+
+.name {
+    flex-shrink: 0;
+    max-width: 100%;
+}
+
+.folderHint {
+    flex: 0 1 auto;
+    min-width: 0;
+}
+
+.counts {
+    display: inline-flex;
+    flex-shrink: 0;
+    gap: var(--spacing-4);
+    margin-inline-start: var(--spacing-6);
+    white-space: nowrap;
+}
+
+/* In a sidebar dragged to its narrowest the folders and the counts go, and the names stay. */
+@container (max-width: 12rem) {
+    .folderHint,
+    .counts {
+        display: none;
+    }
+}
+
+.message {
+    width: 100%;
+}
+
+.actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-6);
+}
+
+/* Commit, with the button of its menu beside it, is the main action and has a line of its own: its words name the files and the branch (`Commit 3 files to main`), and they must not be squeezed to make room for Generate. */
+.commitGroup {
+    display: flex;
+    flex: 1 1 100%;
+    gap: var(--spacing-6);
+    min-width: 0;
+}
+
+/* The Commit button's stop (`Unavailable`), when it is off and says why: it is the button's place in the group, and its focus ring follows the button's corners. */
+.commitHost {
+    flex: 1 1 0;
+    min-width: 0;
+    border-radius: calc(var(--radius-md) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+}
+
+/* Commit names the files and the branch (`Commit 3 files to main`), which is the point of it: it goes onto a second line where the sidebar is narrow, and is as tall as its lines. */
+.commit[data-size][data-variant] {
+    flex: 1 1 0;
+    min-width: 0;
+    height: auto;
+    min-height: var(--spacing-30);
+    padding-block: var(--spacing-4);
+}
+
+.commitContent {
+    min-width: 0;
+}
+
+.commitText {
+    min-width: 0;
+    line-height: 1.2;
+    overflow-wrap: break-word;
+    text-align: center;
+    white-space: normal;
+}
+
+/* At the narrowest the button's menu and its own sides give up room, so the branch's name has a line to itself. */
+@container (max-width: 12rem) {
+    .commit[data-size][data-variant] {
+        padding-inline: var(--spacing-6);
+    }
+
+    .commitText {
+        font-size: var(--text-xs);
+    }
+
+    .more[data-size][data-variant] {
+        min-width: var(--spacing-24);
+    }
+}
+
+.generate[data-size][data-variant],
+.more[data-size][data-variant] {
+    flex: 0 0 auto;
+}
+
+/* Git's line, its hint, and for a push turned down for newer commits the Fetch origin button, which goes under the line where there is no room beside it. */
+.failure {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-2);
+    overflow-wrap: anywhere;
+}
+
+.fetch[data-size][data-variant] {
+    margin-top: var(--spacing-2);
+}
+
+/* The empty box's next step: its title is the button, which wraps where the sidebar is narrow, and a phrase of why under it. */
+.step {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-4);
+}
+
+.stepButton[data-size][data-variant] {
+    width: 100%;
+    height: auto;
+    min-height: var(--spacing-30);
+    padding-block: var(--spacing-6);
+}
+
+.stepText {
+    min-width: 0;
+    line-height: 1.25;
+    text-align: center;
+    white-space: normal;
+}
+
+/* The three quiet ways out, one under another. */
+.quiet {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+    margin-inline: calc(var(--spacing-6) * -1);
+}
+
+.quietButton[data-size][data-variant] {
+    justify-content: flex-start;
+    width: 100%;
+    min-width: 0;
+    padding-inline: var(--spacing-6);
+}
+
+.quietContent {
+    justify-content: flex-start;
+    min-width: 0;
+    gap: var(--spacing-6);
+}

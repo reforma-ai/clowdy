@@ -1,4 +1,4 @@
-import { useRootStore, type NoHalfReason, type SidePanelSize, type SidePanelTab } from '../../stores';
+import { type NoHalfReason, type SidePanelSize, type SidePanelTab, useRootStore } from '../../stores';
 
 export interface SidePanelControl {
     /** The window shows a project's screen (Settings may be open over it), so the panel and the project's tabs of the rail can be there. */
@@ -11,9 +11,9 @@ export interface SidePanelControl {
     tab: SidePanelTab;
     /** The panel is drawn in the place of the chat: it is open, and the project has it expanded or it shows the Tasks tab, which is always so. A shut panel is never expanded, and comes back expanded when the project has it so. */
     expanded: boolean;
-    /** Why the tab the panel shows, or showed last, cannot be beside the chat, if it cannot: it is in the place of the chat whatever the project chose (Tasks always, Files and Docs in a window too narrow for them beside it). */
+    /** Why the tab the panel shows, or showed last, cannot be beside the chat, if it cannot: it is in the place of the chat whatever the project chose (Tasks always, Files, Docs and Changes in a window too narrow for them beside it). */
     noHalf: NoHalfReason | null;
-    /** The tab is a tree beside a view (Files, Docs), which needs more room than the other tabs while it is beside the chat. */
+    /** The tab is a list beside a view (Files, Docs, Changes), which needs more room than the other tabs while it is beside the chat. */
     tabHasTree: boolean;
     toggle: () => void;
     /** Sets the panel to one of the sizes the corner button's menu offers. */
@@ -25,7 +25,19 @@ export interface SidePanelControl {
 /** The side panel of the selected project: whether it can be drawn, whether it is open and expanded, and how to flip it. */
 export function useSidePanel(): SidePanelControl {
     const root = useRootStore();
-    const ui = root.projectScreenReady && root.selectedProjectId ? root.ui.forProject(root.selectedProjectId) : undefined;
+    const ui =
+        root.projectScreenReady && root.selectedProjectId ? root.ui.forProject(root.selectedProjectId) : undefined;
 
-    return { available: ui !== undefined, railShown: root.phase === 'ready', open: ui?.sidePanelOpen === true, tab: ui?.sidePanelTab ?? 'info', expanded: ui?.sidePanelCoversChat === true, noHalf: ui?.sidePanelNoHalf ?? null, tabHasTree: ui?.sidePanelTabHasTree === true, toggle: () => ui?.toggleSidePanel(), setSize: size => ui?.setSidePanelSize(size), toggleTab: tab => ui?.toggleSidePanelTab(tab) };
+    return {
+        available: ui !== undefined,
+        railShown: root.phase === 'ready',
+        open: ui?.sidePanelOpen === true,
+        tab: ui?.sidePanelTab ?? 'info',
+        expanded: ui?.sidePanelCoversChat === true,
+        noHalf: ui?.sidePanelNoHalf ?? null,
+        tabHasTree: ui?.sidePanelTabHasTree === true,
+        toggle: () => ui?.toggleSidePanel(),
+        setSize: size => ui?.setSidePanelSize(size),
+        toggleTab: tab => ui?.toggleSidePanelTab(tab),
+    };
 }

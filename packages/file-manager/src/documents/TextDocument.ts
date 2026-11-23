@@ -195,8 +195,7 @@ export class TextDocument {
                 if (!this.#disposed) {
                     this.#show(content);
                 }
-            }
-            catch (error) {
+            } catch (error) {
                 if (FileSystemError.is(error, 'NotFound')) {
                     this.#markDeleted();
 
@@ -260,8 +259,7 @@ export class TextDocument {
 
         if (this.#editor) {
             this.#editor.dispatch(transaction);
-        }
-        else {
+        } else {
             this.state = transaction.state;
         }
     }
@@ -314,8 +312,7 @@ export class TextDocument {
 
             try {
                 content = await this.#manager.provider.read(this.path);
-            }
-            catch (error) {
+            } catch (error) {
                 // Gone with no delete event, e.g. one a resync makes up for. Other failures wait for the next change.
                 return FileSystemError.is(error, 'NotFound') && this.#gone();
             }
@@ -327,8 +324,7 @@ export class TextDocument {
 
             if (this.dirty) {
                 this.#markConflict(content.version);
-            }
-            else {
+            } else {
                 this.#show(content);
             }
 
@@ -371,8 +367,7 @@ export class TextDocument {
             if (!this.#disposed) {
                 this.#show(content);
             }
-        }
-        catch (error) {
+        } catch (error) {
             runInAction(() => {
                 this.status = 'error';
                 this.error = messageOf(error);
@@ -402,8 +397,7 @@ export class TextDocument {
 
         if (this.status === 'text' && this.state) {
             this.replaceText(text);
-        }
-        else {
+        } else {
             this.state = EditorState.create({
                 doc: text,
                 extensions: [viewExtensions.of([]), EditorState.readOnly.of(this.#manager.readonly)],
@@ -429,8 +423,7 @@ export class TextDocument {
         for (const participant of this.#manager.saveParticipants) {
             try {
                 text = (await participant(this.path, text))?.replace(/\r\n?/g, '\n') ?? text;
-            }
-            catch (error) {
+            } catch (error) {
                 this.#manager.notify(`Couldn’t run a save step for ${this.path}`, error);
             }
         }
@@ -464,15 +457,12 @@ export class TextDocument {
             });
 
             return true;
-        }
-        catch (error) {
+        } catch (error) {
             if (FileSystemError.is(error, 'Conflict') || FileSystemError.is(error, 'Exists')) {
                 this.#markConflict(error.currentVersion);
-            }
-            else if (FileSystemError.is(error, 'NotFound')) {
+            } else if (FileSystemError.is(error, 'NotFound')) {
                 this.#markConflict(null);
-            }
-            else {
+            } else {
                 this.#manager.notify(`Couldn’t save ${this.path}`, error);
             }
 

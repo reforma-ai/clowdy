@@ -5,7 +5,15 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createFixtureData, FIXTURE_APPROVALS_CHAT_ID, FIXTURE_FORK_CHAT_ID, FIXTURE_PROJECT_ID, withFixtureApprovals, withFixtureFork, type FixtureData } from '../../daemon/fixtureData';
+import {
+    createFixtureData,
+    FIXTURE_APPROVALS_CHAT_ID,
+    FIXTURE_FORK_CHAT_ID,
+    FIXTURE_PROJECT_ID,
+    type FixtureData,
+    withFixtureApprovals,
+    withFixtureFork,
+} from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { SWIPE } from '../../stream/swipeReply';
@@ -24,8 +32,10 @@ import type { KeyValueStorage } from '../../stores/storage';
 // `Modal` cannot load under the desktop's Vitest (decorators), and no confirmation is opened here.
 vi.mock('@clowdy/components/modals', () => ({ openConfirmModal: vi.fn() }));
 // Streamdown highlights code with Shiki, whose WebAssembly cannot load under happy-dom and fails after the test that drew a fence; the messages' words are what is checked here.
-vi.mock('../../stream/Markdown', () => ({ Markdown: ({ text }: { text: string }) => <div>{ text }</div> }));
-vi.mock('@clowdy/components/Toast', () => ({ toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn(), show: vi.fn() } }));
+vi.mock('../../stream/Markdown', () => ({ Markdown: ({ text }: { text: string }) => <div>{text}</div> }));
+vi.mock('@clowdy/components/Toast', () => ({
+    toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn(), show: vi.fn() },
+}));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -49,9 +59,14 @@ let transport: FixtureTransport;
 const ui = () => store.ui.forProject(FIXTURE_PROJECT_ID);
 const chatOf = (id: string) => store.selectedProject!.chats.get(id)!;
 
-const render = (chatId: string, controls?: ReactNode) => act(async () => {
-    reactRoot.render(<RootStoreProvider value={ store }><ChatView key={ chatId } chat={ chatOf(chatId) } controls={ controls } /></RootStoreProvider>);
-});
+const render = (chatId: string, controls?: ReactNode) =>
+    act(async () => {
+        reactRoot.render(
+            <RootStoreProvider value={store}>
+                <ChatView key={chatId} chat={chatOf(chatId)} controls={controls} />
+            </RootStoreProvider>
+        );
+    });
 
 /** Draws the chat, then again once its messages have been fetched. */
 async function draw(chatId: string, controls?: ReactNode) {
@@ -61,9 +76,13 @@ async function draw(chatId: string, controls?: ReactNode) {
 
 const field = () => container.querySelector('[contenteditable="true"]');
 const notice = () => container.querySelector<HTMLElement>('[aria-label="This chat is read only"]');
-const button = (label: string) => [...container.querySelectorAll<HTMLButtonElement>('button')].find(candidate => candidate.textContent === label);
+const button = (label: string) =>
+    [...container.querySelectorAll<HTMLButtonElement>('button')].find(candidate => candidate.textContent === label);
 // The notice's own buttons: the strip of the chat's working agents above it has a Stop per agent.
-const noticeButton = (label: string) => [...notice()?.querySelectorAll<HTMLButtonElement>('button') ?? []].find(candidate => candidate.textContent === label);
+const noticeButton = (label: string) =>
+    [...(notice()?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find(
+        candidate => candidate.textContent === label
+    );
 
 /** Starts the store on the fixtures, with the agents read, after `change` has had its say about them. */
 async function start(change?: (agents: FixtureData['agents']) => void, tweak?: (data: FixtureData) => void) {
@@ -129,6 +148,22 @@ describe('the line under the message box', () => {
     });
 });
 
+describe('git over the message box', () => {
+    const withPullRequest = (data: FixtureData) => {
+        data.pullRequests['/Users/dev/car-rental'] = { checkout: 'open' };
+    };
+
+    it('has no plate of the pull request or of the changes against the base, whatever the branch has', async () => {
+        await start(undefined, withPullRequest);
+        await draw('c-1');
+        await render('c-1');
+
+        expect(container.querySelector('[aria-label="Pull request and changes"]')).toBeNull();
+        expect(container.textContent).not.toContain('Files changed');
+        expect(container.textContent).not.toContain('PR #128');
+    });
+});
+
 describe('a chat on a provider that cannot run', () => {
     it('shows the notice in place of the message box and keeps the conversation readable', async () => {
         await start(claudeOff);
@@ -147,7 +182,7 @@ describe('a chat on a provider that cannot run', () => {
     });
 
     it('says why for each reason', async () => {
-        await start((agents) => {
+        await start(agents => {
             agents.find(agent => agent.id === 'claude')!.signIn = { status: 'signed-out', checkedAt: 1 };
         });
         await draw('c-1');
@@ -211,7 +246,11 @@ describe('a chat on a provider that cannot run', () => {
         expect(announced.querySelector('button')).toBeNull();
 
         // The buttons are named by their words, and the first one to reach with the keyboard is the way on the owner asked for.
-        expect([...notice()!.querySelectorAll('button')].map(candidate => candidate.textContent)).toEqual(['Hand off to a new chat', 'Open Providers', 'Stop']);
+        expect([...notice()!.querySelectorAll('button')].map(candidate => candidate.textContent)).toEqual([
+            'Hand off to a new chat',
+            'Open Providers',
+            'Stop',
+        ]);
     });
 
     it('offers Stop while the orchestrator still works, and sends the same command as the message box', async () => {
@@ -234,7 +273,7 @@ describe('a chat on a provider that cannot run', () => {
     });
 
     it('has no Stop when the orchestrator is not working', async () => {
-        await start(claudeOff, (fixtures) => {
+        await start(claudeOff, fixtures => {
             fixtures.runs.find(run => run.id === 'r-orch-1')!.status = 'succeeded';
         });
         await draw('c-1');
@@ -247,7 +286,7 @@ describe('a chat on a provider that cannot run', () => {
         await start(claudeOff);
 
         let release!: () => void;
-        const gate = new Promise<void>((resolve) => {
+        const gate = new Promise<void>(resolve => {
             release = resolve;
         });
 
@@ -269,14 +308,18 @@ describe('a chat on a provider that cannot run', () => {
     });
 
     it('brings the message box back when the person has signed in again, on the next reading of the agents', async () => {
-        await start((agents) => {
+        await start(agents => {
             agents.find(agent => agent.id === 'claude')!.signIn = { status: 'signed-out', checkedAt: 1 };
         });
         await draw('c-1');
 
         expect(notice()!.textContent).toContain('Claude Code is not signed in');
 
-        data.agents.find(agent => agent.id === 'claude')!.signIn = { status: 'signed-in', account: { email: 'dev@example.com' }, checkedAt: 2 };
+        data.agents.find(agent => agent.id === 'claude')!.signIn = {
+            status: 'signed-in',
+            account: { email: 'dev@example.com' },
+            checkedAt: 2,
+        };
         await act(async () => store.refreshAgents());
         await draw('c-1');
 
@@ -320,7 +363,7 @@ describe('a chat that can be written to', () => {
     });
 
     it('keeps the message box for a chat with no orchestrator yet, whatever its provider', async () => {
-        await start((agents) => {
+        await start(agents => {
             claudeOff(agents);
             agents.find(agent => agent.id === 'codex')!.status = 'missing';
         });
@@ -332,7 +375,7 @@ describe('a chat that can be written to', () => {
 });
 
 describe('a chat whose conversation outgrew the context window', () => {
-    const OVERFLOW = 'The conversation no longer fits the model\'s context window. Compact it or start a new chat.';
+    const OVERFLOW = "The conversation no longer fits the model's context window. Compact it or start a new chat.";
 
     /** The second fixture chat's orchestrator failed its last turn with `failure`, and its stream ends on the error. */
     const failed = (failure?: string) => (fixture: FixtureData) => {
@@ -344,15 +387,26 @@ describe('a chat whose conversation outgrew the context window', () => {
 
         if (failure) run.failureCode = failure;
 
-        items.push({ id: 'r-orch-2-overflow', runId: 'r-orch-2', seq: items.length + 1, at: Date.now(), body: { kind: 'error', text: OVERFLOW } });
+        items.push({
+            id: 'r-orch-2-overflow',
+            runId: 'r-orch-2',
+            seq: items.length + 1,
+            at: Date.now(),
+            body: { kind: 'error', text: OVERFLOW },
+        });
     };
-    const alertOf = () => [...container.querySelectorAll<HTMLElement>('[role="alert"]')].find(candidate => candidate.textContent?.includes('no longer fits'));
+    const alertOf = () =>
+        [...container.querySelectorAll<HTMLElement>('[role="alert"]')].find(candidate =>
+            candidate.textContent?.includes('no longer fits')
+        );
 
     it('offers Compact on the failure, which compacts the chat', async () => {
         await start(undefined, failed('context_too_long'));
         await draw('c-2');
 
-        const compact = [...alertOf()!.querySelectorAll('button')].find(candidate => candidate.textContent === 'Compact');
+        const compact = [...alertOf()!.querySelectorAll('button')].find(
+            candidate => candidate.textContent === 'Compact'
+        );
         const command = vi.spyOn(store, 'command');
 
         await act(async () => compact!.click());
@@ -372,7 +426,7 @@ describe('a chat whose conversation outgrew the context window', () => {
         expect(alertOf()).toBeDefined();
         expect(alertOf()!.querySelector('button')).toBeNull();
 
-        await start((agents) => {
+        await start(agents => {
             delete agents.find(agent => agent.id === 'claude')!.canCompact;
         }, failed('context_too_long'));
         await draw('c-2');
@@ -387,7 +441,9 @@ describe('a chat whose orchestrator waits for background work', () => {
         await draw('c-5');
 
         // The first command can be stopped alone and has a row of its own; the other is counted.
-        expect([...container.querySelectorAll('[aria-label="Work in progress"] > div')].map(row => row.textContent)).toEqual(['Command · bun run testStop', 'Background task runningStop']);
+        expect(
+            [...container.querySelectorAll('[aria-label="Work in progress"] > div')].map(row => row.textContent)
+        ).toEqual(['Command · bun run testStop', 'Background task runningStop']);
         expect(container.textContent).not.toContain('Waiting for background work…');
         expect(notice()).toBeNull();
         expect(field()).not.toBeNull();
@@ -416,7 +472,11 @@ describe('a thread', () => {
 
         expect(crumb()?.textContent).toBe('Thread of Fix the price rounding');
 
-        await act(async () => [...crumb()!.querySelectorAll('button')].find(candidate => candidate.textContent === 'Fix the price rounding')!.click());
+        await act(async () =>
+            [...crumb()!.querySelectorAll('button')]
+                .find(candidate => candidate.textContent === 'Fix the price rounding')!
+                .click()
+        );
 
         await vi.waitFor(() => expect(ui().chatId).toBe('c-6a'));
     });
@@ -426,7 +486,9 @@ describe('a thread', () => {
         await draw('c-6b');
 
         expect(field()).not.toBeNull();
-        expect(container.querySelector('[data-slot="thread-message"]')?.textContent).toContain('Message from Ship the checkout');
+        expect(container.querySelector('[data-slot="thread-message"]')?.textContent).toContain(
+            'Message from Ship the checkout'
+        );
     });
 
     it('sends what the person writes to the thread itself', async () => {
@@ -436,13 +498,19 @@ describe('a thread', () => {
         const command = vi.spyOn(store, 'command');
 
         await act(async () => {
-            (container.querySelector('[contenteditable="true"]') as HTMLElement & { editor: { commands: { insertContent: (text: string) => void } } }).editor.commands.insertContent('One more case');
+            (
+                container.querySelector('[contenteditable="true"]') as HTMLElement & {
+                    editor: { commands: { insertContent: (text: string) => void } };
+                }
+            ).editor.commands.insertContent('One more case');
         });
         await act(async () => {
             field()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
         });
 
-        expect(command).toHaveBeenCalledWith(expect.objectContaining({ type: 'chat.send', chatId: 'c-6b', text: 'One more case' }));
+        expect(command).toHaveBeenCalledWith(
+            expect.objectContaining({ type: 'chat.send', chatId: 'c-6b', text: 'One more case' })
+        );
     });
 
     it('has no such line on a chat the person made', async () => {
@@ -451,13 +519,16 @@ describe('a thread', () => {
 
         expect(crumb()).toBeNull();
         // Its threads at work are rows above the message box.
-        expect(container.querySelector('[aria-label="Work in progress"]')?.textContent).toContain('Fix the price rounding');
+        expect(container.querySelector('[aria-label="Work in progress"]')?.textContent).toContain(
+            'Fix the price rounding'
+        );
     });
 });
 
 describe('the messages of a chat', () => {
     // The row under a message: the time it was written beside Copy.
-    const rows = () => [...container.querySelectorAll<HTMLElement>('time')].map(time => time.parentElement as HTMLElement);
+    const rows = () =>
+        [...container.querySelectorAll<HTMLElement>('time')].map(time => time.parentElement as HTMLElement);
     const rowOf = (words: string) => rows().find(row => row.parentElement?.textContent?.includes(words));
 
     it('have a row under what the person wrote and under the answer of a finished turn, the last one always showing', async () => {
@@ -494,19 +565,23 @@ describe('the messages of a chat', () => {
 });
 
 describe('Reply in a chat', () => {
-    const reply = (words: string) => [...container.querySelectorAll<HTMLElement>('time')]
-        .map(time => time.parentElement as HTMLElement)
-        .find(row => row.parentElement?.textContent?.includes(words))
-        ?.querySelector<HTMLButtonElement>('button[aria-label="Reply"]');
-    const editor = () => (field() as HTMLElement & { editor: { getText: (options?: { blockSeparator?: string }) => string } }).editor;
+    const reply = (words: string) =>
+        [...container.querySelectorAll<HTMLElement>('time')]
+            .map(time => time.parentElement as HTMLElement)
+            .find(row => row.parentElement?.textContent?.includes(words))
+            ?.querySelector<HTMLButtonElement>('button[aria-label="Reply"]');
+    const editor = () =>
+        (field() as HTMLElement & { editor: { getText: (options?: { blockSeparator?: string }) => string } }).editor;
     const written = () => editor().getText({ blockSeparator: '\n' });
 
     const card = () => container.querySelector<HTMLElement>('[role="group"][aria-label^="Replying to"]');
-    const wheel = (target: Element, deltaX: number) => target.dispatchEvent(new WheelEvent('wheel', { deltaX, deltaY: 0, bubbles: true, cancelable: true }));
+    const wheel = (target: Element, deltaX: number) =>
+        target.dispatchEvent(new WheelEvent('wheel', { deltaX, deltaY: 0, bubbles: true, cancelable: true }));
     // A swipe replies when it is over, once the wheel has been quiet for a while.
-    const quiet = () => act(async () => {
-        await new Promise(resolve => setTimeout(resolve, SWIPE.idleMs + 50));
-    });
+    const quiet = () =>
+        act(async () => {
+            await new Promise(resolve => setTimeout(resolve, SWIPE.idleMs + 50));
+        });
 
     // What is typed and not sent, and the message replied to, are kept per chat for the whole session.
     beforeEach(() => {
@@ -537,7 +612,9 @@ describe('Reply in a chat', () => {
         await draw('c-2');
         await act(async () => reply('Build the first version')!.click());
         await act(async () => {
-            (field() as HTMLElement & { editor: { commands: { insertContent: (text: string) => void } } }).editor.commands.insertContent('See this');
+            (
+                field() as HTMLElement & { editor: { commands: { insertContent: (text: string) => void } } }
+            ).editor.commands.insertContent('See this');
         });
         await act(async () => reply('The booking page, the fleet list and the price calculation are in.')!.click());
 
@@ -555,11 +632,19 @@ describe('Reply in a chat', () => {
 
         await act(async () => reply('The booking page, the fleet list and the price calculation are in.')!.click());
         await act(async () => {
-            (field() as HTMLElement & { editor: { commands: { insertContent: (text: string) => void } } }).editor.commands.insertContent('Now the invoices');
+            (
+                field() as HTMLElement & { editor: { commands: { insertContent: (text: string) => void } } }
+            ).editor.commands.insertContent('Now the invoices');
         });
         await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Send"]')!.click());
 
-        expect(send).toHaveBeenCalledWith(expect.objectContaining({ type: 'chat.send', chatId: 'c-2', text: '> The booking page, the fleet list and the price calculation are in.\n\nNow the invoices' }));
+        expect(send).toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: 'chat.send',
+                chatId: 'c-2',
+                text: '> The booking page, the fleet list and the price calculation are in.\n\nNow the invoices',
+            })
+        );
         expect(card()).toBeNull();
     });
 
@@ -567,7 +652,9 @@ describe('Reply in a chat', () => {
         await start();
         await draw('c-2');
 
-        const message = [...container.querySelectorAll<HTMLElement>('[data-message]')].find(node => node.textContent?.includes('Build the first version'))!;
+        const message = [...container.querySelectorAll<HTMLElement>('[data-message]')].find(node =>
+            node.textContent?.includes('Build the first version')
+        )!;
 
         for (let i = 0; i < 30; i++) wheel(message, -10);
 
@@ -630,8 +717,12 @@ describe('Reply in a chat', () => {
         const frames: FrameRequestCallback[] = [];
 
         vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => frames.push(callback));
-        vi.spyOn(Range.prototype, 'getClientRects').mockImplementation(() => [{ left: 10, right: 90, top: 100, bottom: 120, width: 80, height: 20 }] as unknown as DOMRectList);
-        vi.spyOn(Range.prototype, 'getBoundingClientRect').mockImplementation(() => ({ left: 10, right: 90, top: 100, bottom: 120, width: 80, height: 20 }) as DOMRect);
+        vi.spyOn(Range.prototype, 'getClientRects').mockImplementation(
+            () => [{ left: 10, right: 90, top: 100, bottom: 120, width: 80, height: 20 }] as unknown as DOMRectList
+        );
+        vi.spyOn(Range.prototype, 'getBoundingClientRect').mockImplementation(
+            () => ({ left: 10, right: 90, top: 100, bottom: 120, width: 80, height: 20 }) as DOMRect
+        );
 
         try {
             await start();
@@ -654,12 +745,11 @@ describe('Reply in a chat', () => {
             // The editor takes the focus on a frame of its own.
             await act(async () => frames.splice(0).forEach(callback => callback(0)));
 
-            expect(written()).toBe(`> ${ node.textContent!.slice(6, 15) }\n`);
+            expect(written()).toBe(`> ${node.textContent!.slice(6, 15)}\n`);
             expect(window.getSelection()!.isCollapsed).toBe(true);
             expect(document.activeElement).toBe(field());
             expect(document.body.querySelector('[role="toolbar"]')).toBeNull();
-        }
-        finally {
+        } finally {
             window.getSelection()!.removeAllRanges();
             vi.unstubAllGlobals();
             vi.restoreAllMocks();
@@ -670,19 +760,43 @@ describe('Reply in a chat', () => {
 describe('Fork in a chat', () => {
     // The fork chat of the fixtures (c-7) is a fork of First version (c-2) at its final answer, which is the one answer that can be forked.
     const withFork = (fixtures: FixtureData) => void withFixtureFork(fixtures);
-    const forkButtons = () => [...container.querySelectorAll<HTMLButtonElement>('button[aria-label="Fork into new chat"]')];
+    const forkButtons = () => [...container.querySelectorAll<HTMLButtonElement>('button[aria-label="Fork"]')];
+    const menuItems = () => [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+    const menuItem = (name: string) => menuItems().find(row => row.textContent?.startsWith(name))!;
+    /** A press with a mouse: what React Aria opens a menu on and picks an item with. */
+    const press = (target: HTMLElement) =>
+        act(async () => {
+            target.dispatchEvent(
+                new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true })
+            );
+            target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+            target.dispatchEvent(
+                new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true })
+            );
+            target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
+            target.click();
+        });
+    /** Opens the Fork menu of the first answer that can be forked and presses Fork in it. */
+    const fork = async () => {
+        await press(forkButtons()[0]);
+        await press(menuItem('Fork'));
+    };
     const divider = () => container.querySelector<HTMLElement>('[data-slot="fork-divider"]');
     const ANSWER = 'The booking page, the fleet list and the price calculation are in.';
-    const refusal = { ok: false as const, requestId: 'x', error: { code: 'unavailable' as const, message: 'Claude Code is switched off' } };
+    const refusal = {
+        ok: false as const,
+        requestId: 'x',
+        error: { code: 'unavailable' as const, message: 'Claude Code is switched off' },
+    };
 
     /** Holds the answer to `chat.fork` until `release`, and lets every other command through. */
     function holdFork(result?: Awaited<ReturnType<RootStore['command']>>) {
         const command = store.command.bind(store);
         let release!: () => void;
-        const gate = new Promise<void>((resolve) => {
+        const gate = new Promise<void>(resolve => {
             release = resolve;
         });
-        const spy = vi.spyOn(store, 'command').mockImplementation(async (input) => {
+        const spy = vi.spyOn(store, 'command').mockImplementation(async input => {
             if (input.type !== 'chat.fork') return command(input);
 
             await gate;
@@ -705,7 +819,11 @@ describe('Fork in a chat', () => {
 
         expect(row.textContent).toContain(ANSWER);
         // Reply and Copy stay before it.
-        expect([...row.querySelectorAll('button')].map(node => node.getAttribute('aria-label'))).toEqual(['Reply', 'Copy message', 'Fork into new chat']);
+        expect([...row.querySelectorAll('button')].map(node => node.getAttribute('aria-label'))).toEqual([
+            'Reply',
+            'Copy message',
+            'Fork',
+        ]);
     });
 
     it('draws none in a chat whose answers carry no flag', async () => {
@@ -731,27 +849,32 @@ describe('Fork in a chat', () => {
         const command = vi.spyOn(store, 'command');
         const answer = data.items['r-orch-2'][5];
 
-        await act(async () => forkButtons()[0].click());
+        await fork();
 
-        expect(command).toHaveBeenCalledWith(expect.objectContaining({ type: 'chat.fork', chatId: 'c-2', itemId: answer.id }));
+        expect(command).toHaveBeenCalledWith(
+            expect.objectContaining({ type: 'chat.fork', chatId: 'c-2', itemId: answer.id })
+        );
 
         const opened = ui().chatId!;
 
         // Not the fork the fixtures hold (c-7): the one the press made.
         expect(opened).not.toBe('c-2');
         expect(opened).not.toBe(FIXTURE_FORK_CHAT_ID);
-        expect(chatOf(opened)).toMatchObject({ title: '(1) First version', forkedFrom: { chatId: 'c-2', atSeq: answer.seq } });
+        expect(chatOf(opened)).toMatchObject({
+            title: '(1) First version',
+            forkedFrom: { chatId: 'c-2', atSeq: answer.seq },
+        });
         expect(toast.error).not.toHaveBeenCalled();
     });
 
-    it('shows the daemon\'s words when it refuses, and stays on the chat', async () => {
+    it("shows the daemon's words when it refuses, and stays on the chat", async () => {
         await start(undefined, withFork);
         await draw('c-2');
         holdFork(refusal).release();
 
         const before = ui().chatId;
 
-        await act(async () => forkButtons()[0].click());
+        await fork();
 
         expect(toast.error).toHaveBeenCalledExactlyOnceWith({ message: 'Claude Code is switched off' });
         expect(ui().chatId).toBe(before);
@@ -762,9 +885,9 @@ describe('Fork in a chat', () => {
         await start(undefined, withFork);
         await draw('c-2');
         holdFork({ ...refusal, error: { ...refusal.error, message: '' } }).release();
-        await act(async () => forkButtons()[0].click());
+        await fork();
 
-        expect(toast.error).toHaveBeenCalledExactlyOnceWith({ message: 'Couldn\'t fork the chat' });
+        expect(toast.error).toHaveBeenCalledExactlyOnceWith({ message: "Couldn't fork the chat" });
     });
 
     it('spins while the command runs, takes no second press, and lets the person fork again afterwards', async () => {
@@ -773,19 +896,21 @@ describe('Fork in a chat', () => {
 
         const held = holdFork(refusal);
 
-        await act(async () => forkButtons()[0].click());
+        await fork();
 
         expect(forkButtons()[0].hasAttribute('data-pending')).toBe(true);
 
-        await act(async () => forkButtons()[0].click());
+        // The button that spins opens no menu, so there is no second fork to press.
+        await press(forkButtons()[0]);
 
+        expect(menuItems()).toEqual([]);
         expect(held.forks()).toHaveLength(1);
 
         await act(async () => held.release());
 
         expect(forkButtons()[0].hasAttribute('data-pending')).toBe(false);
 
-        await act(async () => forkButtons()[0].click());
+        await fork();
 
         expect(held.forks()).toHaveLength(2);
     });
@@ -801,27 +926,38 @@ describe('Fork in a chat', () => {
 
         const before = ui().chatId;
 
-        await act(async () => forkButtons()[0].click());
+        await fork();
 
         expect(ui().chatId).toBe(before);
 
         const project = store.selectedProject!;
 
-        await act(async () => project.applyEvent({ cursor: project.cursor + 1, at: 1, projectId: FIXTURE_PROJECT_ID, data: { type: 'chat.upserted', chat: late } }));
+        await act(async () =>
+            project.applyEvent({
+                cursor: project.cursor + 1,
+                at: 1,
+                projectId: FIXTURE_PROJECT_ID,
+                data: { type: 'chat.upserted', chat: late },
+            })
+        );
 
         await vi.waitFor(() => expect(ui().chatId).toBe('c-late'));
     });
 
-    it('sends one fork for two presses made before the button has drawn its spinner', async () => {
+    it('sends one fork for two presses of Fork made before the button has drawn its spinner', async () => {
         await start(undefined, withFork);
         await draw('c-2');
 
         const held = holdFork(refusal);
 
-        // Both clicks land in one batch of updates, so the second sees a button that does not yet know a fork has started.
+        await press(forkButtons()[0]);
+
+        const item = menuItem('Fork');
+
+        // Both presses land in one batch of updates, so the second sees a button that does not yet know a fork has started.
         await act(async () => {
-            forkButtons()[0].click();
-            forkButtons()[0].click();
+            item.click();
+            item.click();
         });
 
         expect(held.forks()).toHaveLength(1);
@@ -839,7 +975,7 @@ describe('Fork in a chat', () => {
         vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
 
         try {
-            await act(async () => forkButtons()[0].click());
+            await fork();
             await act(async () => vi.advanceTimersByTimeAsync(4900));
 
             expect(ui().chatId).not.toBe('c-late');
@@ -847,8 +983,7 @@ describe('Fork in a chat', () => {
             await act(async () => vi.advanceTimersByTimeAsync(200));
 
             expect(ui().chatId).toBe('c-late');
-        }
-        finally {
+        } finally {
             vi.useRealTimers();
         }
     });
@@ -859,7 +994,7 @@ describe('Fork in a chat', () => {
 
         const held = holdFork();
 
-        await act(async () => forkButtons()[0].click());
+        await fork();
         await render('c-3');
 
         const before = ui().chatId;
@@ -868,7 +1003,169 @@ describe('Fork in a chat', () => {
 
         expect(ui().chatId).toBe(before);
         // The chat was made all the same.
-        expect([...store.selectedProject!.chats.values()].some(chat => chat.forkedFrom?.chatId === 'c-2' && chat.id !== FIXTURE_FORK_CHAT_ID)).toBe(true);
+        expect(
+            [...store.selectedProject!.chats.values()].some(
+                chat => chat.forkedFrom?.chatId === 'c-2' && chat.id !== FIXTURE_FORK_CHAT_ID
+            )
+        ).toBe(true);
+    });
+
+    describe('to another agent', () => {
+        const agentRows = () =>
+            [
+                ...document.body.querySelectorAll<HTMLElement>(
+                    '[role="menu"][aria-label="Hand off to"] [role="menuitem"]'
+                ),
+            ].map(row => row.textContent);
+        const openAgents = async (index = 0) => {
+            await press(forkButtons()[index]);
+            await press(menuItem('Hand off to'));
+        };
+        const change =
+            (id: string, edit: (agent: FixtureData['agents'][number]) => void) => (agents: FixtureData['agents']) =>
+                edit(agents.find(agent => agent.id === id)!);
+        const files = () => ui().pendingFiles;
+
+        it("lists the signed-in agents other than the chat's own, with their marks", async () => {
+            await start(undefined, withFork);
+            await draw('c-2');
+            await openAgents();
+
+            expect(agentRows()).toEqual(['Codex', 'Cursor']);
+            expect(
+                document.body.querySelectorAll('[role="menu"][aria-label="Hand off to"] svg').length
+            ).toBeGreaterThanOrEqual(2);
+        });
+
+        it('leaves out an agent that is signed out or switched off', async () => {
+            await start(agents => {
+                change('codex', codex => {
+                    codex.signIn = { status: 'signed-out', checkedAt: 0 };
+                })(agents);
+            }, withFork);
+            await draw('c-2');
+            await openAgents();
+
+            expect(agentRows()).toEqual(['Cursor']);
+        });
+
+        it('turns the item off, with the reason under it, when no other agent is ready', async () => {
+            await start(agents => {
+                for (const id of ['codex', 'cursor']) {
+                    change(id, agent => {
+                        agent.enabled = false;
+                        agent.status = 'disabled';
+                    })(agents);
+                }
+            }, withFork);
+            await draw('c-2');
+            await press(forkButtons()[0]);
+
+            expect(menuItem('Hand off to').getAttribute('aria-disabled')).toBe('true');
+            expect(menuItem('Hand off to').textContent).toContain('No other agent is ready');
+        });
+
+        it('opens the new-chat page on the agent, with the conversation up to that answer attached, and sends nothing to the daemon', async () => {
+            await start(undefined, withFork);
+            // The fork chat holds two answers that can be forked at: the one it inherited, and its own.
+            await draw(FIXTURE_FORK_CHAT_ID);
+
+            const command = vi.spyOn(store, 'command');
+
+            expect(forkButtons()).toHaveLength(2);
+
+            await openAgents(0);
+            await press(menuItem('Codex'));
+            await vi.waitFor(() => expect(ui().draft).toBe(true));
+
+            expect(ui().draftEngine).toBe('codex');
+            expect(files().map(file => file.name)).toEqual(['1-first-version-conversation.md']);
+
+            const transcript = await files()[0].text();
+
+            expect(transcript).toContain('Build the first version: fleet list, booking page, price calculation.');
+            expect(transcript).toContain(ANSWER);
+            // What came after the answer it was handed off at is left out.
+            expect(transcript).not.toContain('Add the weekend surcharge to the price.');
+            expect(command).not.toHaveBeenCalled();
+        });
+
+        it("takes the later answer's whole conversation when it is handed off there", async () => {
+            await start(undefined, withFork);
+            await draw(FIXTURE_FORK_CHAT_ID);
+            await openAgents(1);
+            await press(menuItem('Cursor'));
+            await vi.waitFor(() => expect(ui().draft).toBe(true));
+
+            expect(ui().draftEngine).toBe('cursor');
+            expect(await files()[0].text()).toContain('The weekend surcharge is in `src/booking/price.ts`.');
+        });
+
+        it('does not fork the chat: Fork stays the one that does', async () => {
+            await start(undefined, withFork);
+            await draw('c-2');
+
+            const command = vi.spyOn(store, 'command');
+
+            await openAgents();
+            await press(menuItem('Codex'));
+            await vi.waitFor(() => expect(ui().draft).toBe(true));
+
+            expect(command.mock.calls.filter(([input]) => input.type === 'chat.fork')).toEqual([]);
+        });
+    });
+
+    describe('where the agent cannot cut its session', () => {
+        // First version's answer loses its flag, as the answer of an agent with no `session/fork` (Cursor), one from before the rewind points or one of a stopped turn has none.
+        const unflagged = (fixtures: FixtureData) => {
+            const { canFork: _flag, ...answer } = fixtures.items['r-orch-2'][5];
+
+            fixtures.items['r-orch-2'][5] = answer;
+        };
+
+        it("draws the same Fork on the answer, which opens a new-chat page on the chat's own agent with the conversation up to the answer attached", async () => {
+            await start(undefined, unflagged);
+            await draw('c-2');
+
+            expect(forkButtons()).toHaveLength(1);
+
+            const command = vi.spyOn(store, 'command');
+
+            await press(forkButtons()[0]);
+
+            expect(menuItems().map(row => row.textContent)).toEqual(['Fork', 'Hand off to…']);
+
+            await press(menuItem('Fork'));
+            await vi.waitFor(() => expect(ui().draft).toBe(true));
+
+            expect(ui().draftEngine).toBe('claude');
+            expect(ui().pendingFiles.map(file => file.name)).toEqual(['first-version-conversation.md']);
+            expect(await ui().pendingFiles[0].text()).toContain(ANSWER);
+            // The daemon is asked for nothing: no chat exists until the first message of the page.
+            expect(command).not.toHaveBeenCalled();
+        });
+
+        it('still offers the other agents', async () => {
+            await start(undefined, unflagged);
+            await draw('c-2');
+            await press(forkButtons()[0]);
+            await press(menuItem('Hand off to'));
+
+            expect(
+                [
+                    ...document.body.querySelectorAll<HTMLElement>(
+                        '[role="menu"][aria-label="Hand off to"] [role="menuitem"]'
+                    ),
+                ].map(row => row.textContent)
+            ).toEqual(['Codex', 'Cursor']);
+        });
+
+        it('draws none in a chat that is read only', async () => {
+            await start(claudeOff, unflagged);
+            await draw('c-2');
+
+            expect(forkButtons()).toHaveLength(0);
+        });
     });
 
     describe('the divider', () => {
@@ -890,7 +1187,7 @@ describe('Fork in a chat', () => {
         });
 
         it('names a source that is in the archive without opening it', async () => {
-            await start(undefined, (fixtures) => {
+            await start(undefined, fixtures => {
                 withFixtureFork(fixtures);
                 fixtures.chats.find(chat => chat.id === 'c-2')!.archivedAt = 1;
             });
@@ -901,9 +1198,12 @@ describe('Fork in a chat', () => {
         });
 
         it('says only Forked once the source is gone', async () => {
-            await start(undefined, (fixtures) => {
+            await start(undefined, fixtures => {
                 withFixtureFork(fixtures);
-                fixtures.chats.splice(fixtures.chats.findIndex(chat => chat.id === 'c-2'), 1);
+                fixtures.chats.splice(
+                    fixtures.chats.findIndex(chat => chat.id === 'c-2'),
+                    1
+                );
             });
             await draw(FIXTURE_FORK_CHAT_ID);
 
@@ -929,7 +1229,7 @@ describe('Fork in a chat', () => {
         it('shows the fork the person just made, with the divider after the answer they forked at', async () => {
             await start(undefined, withFork);
             await draw('c-2');
-            await act(async () => forkButtons()[0].click());
+            await fork();
 
             const made = ui().chatId!;
 
@@ -952,51 +1252,88 @@ describe('Edit in a chat', () => {
     const notes: Attachment = { id: 'a-notes', name: 'notes.txt', mediaType: 'text/plain', size: 40 };
     const build: Attachment = { id: 'a-build', name: 'build.log', mediaType: 'text/plain', size: 90 };
     const accepted: CommandResult = { ok: true, requestId: 'x', data: { chatId: 'c-2', runId: 'r-orch-2' } };
-    const refusal = (message: string): CommandResult => ({ ok: false, requestId: 'x', error: { code: 'conflict', message } });
+    const refusal = (message: string): CommandResult => ({
+        ok: false,
+        requestId: 'x',
+        error: { code: 'conflict', message },
+    });
 
     /**
      * First version with a second turn, whose message starts it and can be edited, and an answer to it; then a message the person wrote while it ran, a
      * steer, which cannot. The first message of the chat can be edited from the seed.
      */
-    const withTurns = (files: Attachment[] = []) => (fixtures: FixtureData) => {
-        const items = fixtures.items['r-orch-2'];
-        const now = Date.now();
-        const next = (offset: number, body: StreamItemBody, flags: Pick<StreamItem, 'canEdit' | 'canFork'> = {}): StreamItem => ({ id: `r-orch-2-${ items.length + 1 }`, runId: 'r-orch-2', seq: items.length + 1, at: now - offset * 60_000, body, ...flags });
+    const withTurns =
+        (files: Attachment[] = []) =>
+        (fixtures: FixtureData) => {
+            const items = fixtures.items['r-orch-2'];
+            const now = Date.now();
+            const next = (
+                offset: number,
+                body: StreamItemBody,
+                flags: Pick<StreamItem, 'canEdit' | 'canFork'> = {}
+            ): StreamItem => ({
+                id: `r-orch-2-${items.length + 1}`,
+                runId: 'r-orch-2',
+                seq: items.length + 1,
+                at: now - offset * 60_000,
+                body,
+                ...flags,
+            });
 
-        items.push(next(500, { kind: 'user', text: SECOND, ...(files.length > 0 && { attachments: files }) }, { canEdit: true }));
-        items.push(next(498, { kind: 'assistant', done: true, text: SURCHARGE }, { canFork: true }));
-        items.push(next(30, { kind: 'user', text: STEER }));
-    };
+            items.push(
+                next(
+                    500,
+                    { kind: 'user', text: SECOND, ...(files.length > 0 && { attachments: files }) },
+                    { canEdit: true }
+                )
+            );
+            items.push(next(498, { kind: 'assistant', done: true, text: SURCHARGE }, { canFork: true }));
+            items.push(next(30, { kind: 'user', text: STEER }));
+        };
 
     const editButtons = () => [...container.querySelectorAll<HTMLButtonElement>('button[aria-label="Edit message"]')];
     const frame = () => container.querySelector<HTMLElement>('[role="group"][aria-label="Editing message"]');
     const editField = () => frame()?.querySelector<HTMLElement & { editor: Editor }>('[contenteditable="true"]');
-    const bottomField = () => [...container.querySelectorAll<HTMLElement & { editor: Editor }>('[contenteditable="true"]')].find(candidate => !frame()?.contains(candidate));
+    const bottomField = () =>
+        [...container.querySelectorAll<HTMLElement & { editor: Editor }>('[contenteditable="true"]')].find(
+            candidate => !frame()?.contains(candidate)
+        );
     const submitButton = () => frame()?.querySelector<HTMLButtonElement>('button[aria-label="Submit edit"]');
-    const tilesIn = (scope: Element | null | undefined) => [...scope?.querySelectorAll('[data-slot="attachments"] > *') ?? []];
+    const tilesIn = (scope: Element | null | undefined) => [
+        ...(scope?.querySelectorAll('[data-slot="attachments"] > *') ?? []),
+    ];
     const itemsOf = () => data.items['r-orch-2'];
-    const editsSent = (spy: { mock: { calls: Array<[CommandInput]> } }) => spy.mock.calls.filter(([input]) => input.type === 'chat.edit');
+    const editsSent = (spy: { mock: { calls: Array<[CommandInput]> } }) =>
+        spy.mock.calls.filter(([input]) => input.type === 'chat.edit');
 
     /** Presses Edit under the message with these words, and lets the editor take the focus, which it does on a frame of its own. */
     async function openEdit(words: string) {
-        const row = [...container.querySelectorAll<HTMLElement>('[data-message]')].find(message => message.textContent?.includes(words))!;
+        const row = [...container.querySelectorAll<HTMLElement>('[data-message]')].find(message =>
+            message.textContent?.includes(words)
+        )!;
 
         await act(async () => row.querySelector<HTMLButtonElement>('button[aria-label="Edit message"]')!.click());
         await act(async () => new Promise(requestAnimationFrame));
     }
 
-    const typeIn = (target: HTMLElement & { editor: Editor }, words: string) => act(async () => {
-        target.editor.chain().focus('end').insertContent(words).run();
-    });
-    const press = (target: Element, key: string, mods: { metaKey?: boolean } = {}) => act(async () => {
-        target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...mods }));
-    });
+    const typeIn = (target: HTMLElement & { editor: Editor }, words: string) =>
+        act(async () => {
+            target.editor.chain().focus('end').insertContent(words).run();
+        });
+    const press = (target: Element, key: string, mods: { metaKey?: boolean } = {}) =>
+        act(async () => {
+            target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...mods }));
+        });
 
     /** Answers `chat.edit` as `answer` says, after the real command when `real`, and lets every other command through. */
     function stubEdit(answer: (run: () => Promise<CommandResult>) => Promise<CommandResult> | CommandResult) {
         const command = store.command.bind(store);
 
-        return vi.spyOn(store, 'command').mockImplementation(async input => (input.type === 'chat.edit' ? answer(() => command(input)) : command(input)));
+        return vi
+            .spyOn(store, 'command')
+            .mockImplementation(async input =>
+                input.type === 'chat.edit' ? answer(() => command(input)) : command(input)
+            );
     }
 
     beforeEach(() => {
@@ -1006,7 +1343,7 @@ describe('Edit in a chat', () => {
     });
 
     describe('the button', () => {
-        it('is drawn under the person\'s messages the daemon marked, between Reply and Copy, and under no other', async () => {
+        it("is drawn under the person's messages the daemon marked, between Reply and Copy, and under no other", async () => {
             await start(undefined, withTurns());
             await draw('c-2');
 
@@ -1015,9 +1352,17 @@ describe('Edit in a chat', () => {
             const row = editButtons()[0].closest('[data-message]')!;
 
             expect(row.textContent).toContain(FIRST);
-            expect([...row.querySelectorAll('button')].map(node => node.getAttribute('aria-label'))).toEqual(['Reply', 'Edit message', 'Copy message']);
+            expect([...row.querySelectorAll('button')].map(node => node.getAttribute('aria-label'))).toEqual([
+                'Reply',
+                'Edit message',
+                'Copy message',
+            ]);
             // The steer has a row and no flag.
-            expect([...container.querySelectorAll('[data-message]')].find(message => message.textContent?.includes(STEER))?.querySelector('button[aria-label="Edit message"]')).toBeNull();
+            expect(
+                [...container.querySelectorAll('[data-message]')]
+                    .find(message => message.textContent?.includes(STEER))
+                    ?.querySelector('button[aria-label="Edit message"]')
+            ).toBeNull();
         });
 
         it('is drawn in no chat whose messages carry no flag', async () => {
@@ -1046,7 +1391,7 @@ describe('Edit in a chat', () => {
     });
 
     describe('opening it', () => {
-        it('puts the frame where the bubble stood, with the message\'s words in a box that has the focus, and keeps the rest of the stream', async () => {
+        it("puts the frame where the bubble stood, with the message's words in a box that has the focus, and keeps the rest of the stream", async () => {
             await start(undefined, withTurns());
             await draw('c-2');
             await openEdit(SECOND);
@@ -1061,7 +1406,9 @@ describe('Edit in a chat', () => {
             // The caret is at the end of the words.
             expect(editField()?.editor.state.selection.$from.parentOffset).toBe(SECOND.length);
             // The bubble is gone from its place: the words are in the box alone. What came before and after is still drawn.
-            expect([...container.querySelectorAll('[data-message]')].some(message => message.textContent?.includes(SECOND))).toBe(false);
+            expect(
+                [...container.querySelectorAll('[data-message]')].some(message => message.textContent?.includes(SECOND))
+            ).toBe(false);
             expect(container.textContent).toContain(ANSWER);
             expect(container.textContent).toContain(SURCHARGE);
             expect(container.textContent).toContain(STEER);
@@ -1071,9 +1418,11 @@ describe('Edit in a chat', () => {
         });
 
         it('is the message box without what belongs to the chat: no queue, running agents, mode or model, and a placeholder of its own', async () => {
-            await start(undefined, (fixtures) => {
+            await start(undefined, fixtures => {
                 withTurns()(fixtures);
-                fixtures.chats.find(chat => chat.id === 'c-2')!.queue = [{ id: 'q-1', mode: 'queue', text: 'Then the footer', content: 'Then the footer', createdAt: 0 }];
+                fixtures.chats.find(chat => chat.id === 'c-2')!.queue = [
+                    { id: 'q-1', mode: 'queue', text: 'Then the footer', content: 'Then the footer', createdAt: 0 },
+                ];
             });
             await draw('c-2');
 
@@ -1097,14 +1446,19 @@ describe('Edit in a chat', () => {
 
             expect(editButtons()).toHaveLength(0);
 
-            await act(async () => frame()!.querySelector<HTMLButtonElement>('button[aria-label="Stop editing"]')!.click());
+            await act(async () =>
+                frame()!.querySelector<HTMLButtonElement>('button[aria-label="Stop editing"]')!.click()
+            );
 
             expect(frame()).toBeNull();
             expect(editButtons()).toHaveLength(2);
         });
 
         it('leaves the box at the bottom where it is, with its own words, and it goes on working', async () => {
-            saveDraft('c-2', { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'what I was typing' }] }] });
+            saveDraft('c-2', {
+                type: 'doc',
+                content: [{ type: 'paragraph', content: [{ type: 'text', text: 'what I was typing' }] }],
+            });
             await start(undefined, withTurns());
             await draw('c-2');
             await openEdit(SECOND);
@@ -1117,23 +1471,28 @@ describe('Edit in a chat', () => {
             await typeIn(bottomField()!, ' below');
 
             expect(messageOf(draftOf('c-2'))).toBe('what I was typing below');
-            expect(messageOf(draftOf(editDraftKey('c-2', itemsOf()[7].id)))).toBe(`${ SECOND } in blue`);
+            expect(messageOf(draftOf(editDraftKey('c-2', itemsOf()[7].id)))).toBe(`${SECOND} in blue`);
 
             // A message from the box at the bottom is sent as always, and the frame is still open.
             const command = vi.spyOn(store, 'command');
 
             await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Send"]')!.click());
 
-            expect(command).toHaveBeenCalledWith(expect.objectContaining({ type: 'chat.send', chatId: 'c-2', text: 'what I was typing below' }));
+            expect(command).toHaveBeenCalledWith(
+                expect.objectContaining({ type: 'chat.send', chatId: 'c-2', text: 'what I was typing below' })
+            );
             expect(editsSent(command)).toHaveLength(0);
             expect(frame()).not.toBeNull();
-            expect(editField()?.editor.getText()).toBe(`${ SECOND } in blue`);
+            expect(editField()?.editor.getText()).toBe(`${SECOND} in blue`);
         });
     });
 
     describe('closing it without sending', () => {
-        it('is what Escape does, with no command sent, and the chat\'s own draft is as it was', async () => {
-            saveDraft('c-2', { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'what I was typing' }] }] });
+        it("is what Escape does, with no command sent, and the chat's own draft is as it was", async () => {
+            saveDraft('c-2', {
+                type: 'doc',
+                content: [{ type: 'paragraph', content: [{ type: 'text', text: 'what I was typing' }] }],
+            });
             await start(undefined, withTurns());
             await draw('c-2');
 
@@ -1159,7 +1518,9 @@ describe('Edit in a chat', () => {
             const key = editDraftKey('c-2', itemsOf()[7].id);
 
             await typeIn(editField()!, ' in blue');
-            await act(async () => frame()!.querySelector<HTMLButtonElement>('button[aria-label="Stop editing"]')!.click());
+            await act(async () =>
+                frame()!.querySelector<HTMLButtonElement>('button[aria-label="Stop editing"]')!.click()
+            );
 
             expect(frame()).toBeNull();
             // The session's draft and files are released.
@@ -1198,7 +1559,9 @@ describe('Edit in a chat', () => {
             await typeIn(editField()!, ' (the short one)');
             await press(editField()!, 'Enter');
 
-            expect(editsSent(command).map(([input]) => input)).toEqual([{ type: 'chat.edit', chatId: 'c-2', itemId: first, text: `${ FIRST } (the short one)` }]);
+            expect(editsSent(command).map(([input]) => input)).toEqual([
+                { type: 'chat.edit', chatId: 'c-2', itemId: first, text: `${FIRST} (the short one)` },
+            ]);
 
             await vi.waitFor(() => expect(frame()).toBeNull());
             await render('c-2');
@@ -1208,7 +1571,7 @@ describe('Edit in a chat', () => {
             expect(container.textContent).not.toContain(SECOND);
             expect(container.textContent).not.toContain(SURCHARGE);
             expect(container.textContent).not.toContain(STEER);
-            expect(container.textContent).toContain(`${ FIRST } (the short one)`);
+            expect(container.textContent).toContain(`${FIRST} (the short one)`);
             expect(toast.error).not.toHaveBeenCalled();
             // Nothing says the message was lost: the edit itself removed it.
             expect(toast.warning).not.toHaveBeenCalled();
@@ -1249,10 +1612,14 @@ describe('Edit in a chat', () => {
             expect(frame()?.textContent).toContain('build.log');
 
             // One is taken off the message.
-            await act(async () => frame()!.querySelector<HTMLButtonElement>('[data-slot="attachments"] button')!.click());
+            await act(async () =>
+                frame()!.querySelector<HTMLButtonElement>('[data-slot="attachments"] button')!.click()
+            );
             await press(editField()!, 'Enter');
 
-            expect(editsSent(command).map(([input]) => input)).toEqual([{ type: 'chat.edit', chatId: 'c-2', itemId: itemsOf()[7].id, text: SECOND, attachmentIds: ['a-build'] }]);
+            expect(editsSent(command).map(([input]) => input)).toEqual([
+                { type: 'chat.edit', chatId: 'c-2', itemId: itemsOf()[7].id, text: SECOND, attachmentIds: ['a-build'] },
+            ]);
         });
 
         it('holds the editor open with its words and files when the daemon refuses, and says why', async () => {
@@ -1265,7 +1632,7 @@ describe('Edit in a chat', () => {
 
             expect(toast.error).toHaveBeenCalledExactlyOnceWith({ message: 'Stop the agent to edit this message' });
             expect(frame()).not.toBeNull();
-            expect(editField()?.editor.getText()).toBe(`${ SECOND } in blue`);
+            expect(editField()?.editor.getText()).toBe(`${SECOND} in blue`);
             expect(tilesIn(frame())).toHaveLength(1);
             expect(submitButton()?.hasAttribute('data-pending')).toBe(false);
             // The stream is as it was: nothing was cut.
@@ -1282,7 +1649,7 @@ describe('Edit in a chat', () => {
             await openEdit(SECOND);
             await press(editField()!, 'Enter');
 
-            expect(toast.error).toHaveBeenCalledExactlyOnceWith({ message: 'Couldn\'t edit the message' });
+            expect(toast.error).toHaveBeenCalledExactlyOnceWith({ message: "Couldn't edit the message" });
             expect(frame()).not.toBeNull();
 
             await press(editField()!, 'Enter');
@@ -1296,7 +1663,7 @@ describe('Edit in a chat', () => {
             await draw('c-2');
 
             let release!: () => void;
-            const gate = new Promise<void>((resolve) => {
+            const gate = new Promise<void>(resolve => {
                 release = resolve;
             });
 
@@ -1311,7 +1678,9 @@ describe('Edit in a chat', () => {
             expect(submitButton()?.hasAttribute('data-pending')).toBe(true);
 
             await press(editField()!, 'Escape');
-            await act(async () => frame()!.querySelector<HTMLButtonElement>('button[aria-label="Stop editing"]')!.click());
+            await act(async () =>
+                frame()!.querySelector<HTMLButtonElement>('button[aria-label="Stop editing"]')!.click()
+            );
 
             expect(frame()).not.toBeNull();
 
@@ -1326,7 +1695,7 @@ describe('Edit in a chat', () => {
             await draw('c-2');
 
             let release!: () => void;
-            const gate = new Promise<void>((resolve) => {
+            const gate = new Promise<void>(resolve => {
                 release = resolve;
             });
             const command = stubEdit(async () => {
@@ -1338,8 +1707,12 @@ describe('Edit in a chat', () => {
             await openEdit(SECOND);
             // Both land in one batch of updates, so the second sees a box that does not yet know an edit has started.
             await act(async () => {
-                editField()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
-                editField()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+                editField()!.dispatchEvent(
+                    new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+                );
+                editField()!.dispatchEvent(
+                    new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+                );
             });
 
             expect(editsSent(command)).toHaveLength(1);
@@ -1373,13 +1746,17 @@ describe('Edit in a chat', () => {
             const deleted = vi.spyOn(transport, 'deleteAttachment');
 
             await openEdit(SECOND);
-            await act(async () => frame()!.querySelector<HTMLButtonElement>('[data-slot="attachments"] button')!.click());
+            await act(async () =>
+                frame()!.querySelector<HTMLButtonElement>('[data-slot="attachments"] button')!.click()
+            );
             await press(editField()!, 'Escape');
 
             expect(deleted).not.toHaveBeenCalled();
             expect(frame()).toBeNull();
             // The message still shows both, since nothing was sent.
-            const message = [...container.querySelectorAll('[data-message]')].find(candidate => candidate.textContent?.includes(SECOND));
+            const message = [...container.querySelectorAll('[data-message]')].find(candidate =>
+                candidate.textContent?.includes(SECOND)
+            );
 
             expect(tilesIn(message)).toHaveLength(2);
         });
@@ -1388,7 +1765,9 @@ describe('Edit in a chat', () => {
             await start(undefined, withTurns([notes, build]));
             await draw('c-2');
             await openEdit(SECOND);
-            await act(async () => frame()!.querySelector<HTMLButtonElement>('[data-slot="attachments"] button')!.click());
+            await act(async () =>
+                frame()!.querySelector<HTMLButtonElement>('[data-slot="attachments"] button')!.click()
+            );
             await press(editField()!, 'Escape');
             await openEdit(SECOND);
 
@@ -1399,13 +1778,22 @@ describe('Edit in a chat', () => {
         async function uploadExtra() {
             const input = frame()!.querySelector<HTMLInputElement>('input[type="file"]')!;
 
-            Object.defineProperty(input, 'files', { value: [new File(['x'], 'extra.txt', { type: 'text/plain' })], configurable: true });
+            Object.defineProperty(input, 'files', {
+                value: [new File(['x'], 'extra.txt', { type: 'text/plain' })],
+                configurable: true,
+            });
             await act(async () => {
                 input.dispatchEvent(new Event('change', { bubbles: true }));
             });
-            await vi.waitFor(() => expect(filesOf(editDraftKey('c-2', itemsOf()[7].id)).map(file => file.status)).toEqual(['ready', 'ready']));
+            await vi.waitFor(() =>
+                expect(filesOf(editDraftKey('c-2', itemsOf()[7].id)).map(file => file.status)).toEqual([
+                    'ready',
+                    'ready',
+                ])
+            );
 
-            return filesOf(editDraftKey('c-2', itemsOf()[7].id)).find(file => file.name === 'extra.txt')!.attachment!.id;
+            return filesOf(editDraftKey('c-2', itemsOf()[7].id)).find(file => file.name === 'extra.txt')!.attachment!
+                .id;
         }
 
         it('are told from what the editor uploaded and nobody sent, which goes when the editor is closed', async () => {
@@ -1443,7 +1831,7 @@ describe('Edit in a chat', () => {
             await draw('c-2');
 
             let release!: () => void;
-            const gate = new Promise<void>((resolve) => {
+            const gate = new Promise<void>(resolve => {
                 release = resolve;
             });
             const deleted = vi.spyOn(transport, 'deleteAttachment');
@@ -1469,7 +1857,7 @@ describe('Edit in a chat', () => {
     });
 
     describe('a message that goes while the editor is open', () => {
-        it('closes the editor with a toast when the stream cuts it, someone else\'s edit or a fork', async () => {
+        it("closes the editor with a toast when the stream cuts it, someone else's edit or a fork", async () => {
             await start(undefined, withTurns());
             await draw('c-2');
             await openEdit(SECOND);
@@ -1504,12 +1892,12 @@ describe('Edit in a chat', () => {
             await draw('c-2');
 
             let release!: () => void;
-            const gate = new Promise<void>((resolve) => {
+            const gate = new Promise<void>(resolve => {
                 release = resolve;
             });
 
             // The daemon cuts the stream and tells the app, and the answer to the command comes later.
-            stubEdit(async (run) => {
+            stubEdit(async run => {
                 const result = await run();
 
                 await gate;
@@ -1580,7 +1968,7 @@ describe('Edit in a chat', () => {
             await render('c-2');
 
             expect(submitButton()?.disabled).toBe(false);
-            expect(editField()?.editor.getText()).toBe(`${ SECOND } in blue`);
+            expect(editField()?.editor.getText()).toBe(`${SECOND} in blue`);
         });
     });
 });
@@ -1588,8 +1976,12 @@ describe('Edit in a chat', () => {
 describe('requests for permission', () => {
     const withApprovals = (fixtures: FixtureData) => void withFixtureApprovals(fixtures);
     /** The last card that asks for this (`Run this command`, `Change these files`, `Use <tool>`): the chat has an answered request for a command before its open one. */
-    const card = (heading: string) => [...container.querySelectorAll<HTMLElement>(`div[role="group"][aria-label="${ heading }"]`)].at(-1) ?? null;
-    const cardButton = (heading: string, label: string) => [...card(heading)?.querySelectorAll<HTMLButtonElement>('button') ?? []].find(candidate => candidate.textContent === label);
+    const card = (heading: string) =>
+        [...container.querySelectorAll<HTMLElement>(`div[role="group"][aria-label="${heading}"]`)].at(-1) ?? null;
+    const cardButton = (heading: string, label: string) =>
+        [...(card(heading)?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find(
+            candidate => candidate.textContent === label
+        );
 
     it('draws each request in the stream, and a click on a decision sends it with the run and the request, and the card keeps it', async () => {
         await start(undefined, withApprovals);
@@ -1604,7 +1996,12 @@ describe('requests for permission', () => {
         await act(async () => cardButton('Run this command', 'Allow once')!.click());
         await render(FIXTURE_APPROVALS_CHAT_ID);
 
-        expect(command).toHaveBeenCalledWith({ type: 'run.decide', runId: 'r-orch-8', approvalId: 'apv-2', decision: 'allow_once' });
+        expect(command).toHaveBeenCalledWith({
+            type: 'run.decide',
+            runId: 'r-orch-8',
+            approvalId: 'apv-2',
+            decision: 'allow_once',
+        });
         expect(card('Run this command')?.textContent).toContain('Allowed once');
         expect(cardButton('Run this command', 'Allow once')).toBeUndefined();
         // The other two still wait, and so does the run.
@@ -1613,7 +2010,7 @@ describe('requests for permission', () => {
     });
 
     it('lets the person decide while the run is in another state, because the card goes by its own', async () => {
-        await start(undefined, (fixtures) => {
+        await start(undefined, fixtures => {
             withFixtureApprovals(fixtures);
             fixtures.runs.find(run => run.id === 'r-orch-8')!.status = 'waiting_background';
         });
@@ -1625,13 +2022,21 @@ describe('requests for permission', () => {
 
         await act(async () => cardButton('Change these files', 'Deny')!.click());
 
-        expect(command).toHaveBeenCalledWith({ type: 'run.decide', runId: 'r-orch-8', approvalId: 'apv-3', decision: 'reject' });
+        expect(command).toHaveBeenCalledWith({
+            type: 'run.decide',
+            runId: 'r-orch-8',
+            approvalId: 'apv-3',
+            decision: 'reject',
+        });
     });
 
     it('tells the person when the daemon refuses a decision, and leaves the card open', async () => {
         await start(undefined, withApprovals);
         await draw(FIXTURE_APPROVALS_CHAT_ID);
-        vi.spyOn(store, 'command').mockResolvedValue({ ok: false, error: { code: 'conflict', message: 'The agent is gone' } } as CommandResult);
+        vi.spyOn(store, 'command').mockResolvedValue({
+            ok: false,
+            error: { code: 'conflict', message: 'The agent is gone' },
+        } as CommandResult);
 
         await act(async () => cardButton('Run this command', 'Deny')!.click());
         await render(FIXTURE_APPROVALS_CHAT_ID);
@@ -1640,4 +2045,3 @@ describe('requests for permission', () => {
         expect(cardButton('Run this command', 'Deny')?.disabled).toBe(false);
     });
 });
-

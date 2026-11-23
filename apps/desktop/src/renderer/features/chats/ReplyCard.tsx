@@ -21,12 +21,23 @@ export interface ReplyCardProps {
  */
 export function ReplyCard({ message, who, onRemove }: ReplyCardProps) {
     return (
-        <div className={ styles.card } role="group" aria-label={ `Replying to ${ who }` }>
-            <div className={ styles.text }>
-                <Text variant="xs" weight="medium">{ who }</Text>
-                <p className={ styles.quote }>{ message.text }</p>
+        <div className={styles.card} role="group" aria-label={`Replying to ${who}`}>
+            <div className={styles.text}>
+                <Text variant="xs" weight="medium">
+                    {who}
+                </Text>
+                <p className={styles.quote}>{message.text}</p>
             </div>
-            <Button size="xs" variant="filling" color="secondary" iconOnly aria-label="Remove quote" tooltip="Remove quote" tooltipPlacement="bottom" onPress={ onRemove }>
+            <Button
+                size="xs"
+                variant="filling"
+                color="secondary"
+                iconOnly
+                aria-label="Remove quote"
+                tooltip="Remove quote"
+                tooltipPlacement="bottom"
+                onPress={onRemove}
+            >
                 <Close />
             </Button>
         </div>

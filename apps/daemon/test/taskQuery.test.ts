@@ -23,11 +23,11 @@ function task(number: number, category: TaskStatusCategory, extra: Partial<Task>
     const status = statuses.find(candidate => candidate.category === category) as TaskStatus;
 
     return {
-        id: `tsk_${ number }`,
+        id: `tsk_${number}`,
         projectId: 'prj_1',
         number,
-        key: `CLW-${ number }`,
-        title: `Task ${ number }`,
+        key: `CLW-${number}`,
+        title: `Task ${number}`,
         description: '',
         statusId: status.id,
         dependsOn: [],
@@ -38,12 +38,16 @@ function task(number: number, category: TaskStatusCategory, extra: Partial<Task>
     };
 }
 
-const list = (tasks: Task[], query: TaskQuery = {}, running: string[] = [], linked: string[] = []) => queryTasks({
-    tasks,
-    statuses,
-    isRunning: id => running.includes(id),
-    linkedToChat: id => linked.includes(id),
-}, query);
+const list = (tasks: Task[], query: TaskQuery = {}, running: string[] = [], linked: string[] = []) =>
+    queryTasks(
+        {
+            tasks,
+            statuses,
+            isRunning: id => running.includes(id),
+            linkedToChat: id => linked.includes(id),
+        },
+        query
+    );
 
 const keys = (page: ReturnType<typeof list>) => page.tasks.map(row => row.key);
 
@@ -72,11 +76,28 @@ describe('what a listing shows by default', () => {
     });
 
     test('a row has no description and names what blocks it and whether a run works on it', () => {
-        const tasks = [task(1, 'todo', { description: 'long text'.repeat(100) }), task(2, 'todo', { dependsOn: ['tsk_1'] }), task(3, 'done'), task(4, 'todo', { dependsOn: ['tsk_3'] })];
+        const tasks = [
+            task(1, 'todo', { description: 'long text'.repeat(100) }),
+            task(2, 'todo', { dependsOn: ['tsk_1'] }),
+            task(3, 'done'),
+            task(4, 'todo', { dependsOn: ['tsk_3'] }),
+        ];
         const page = list(tasks, { sort: 'number' }, ['tsk_2']);
 
-        expect(page.tasks[0]).toEqual({ key: 'CLW-1', title: 'Task 1', status: 'To do', category: 'todo', dependsOn: [], updatedAt: '2026-11-21T11:00:00Z' });
-        expect(page.tasks[1]).toMatchObject({ key: 'CLW-2', dependsOn: ['CLW-1'], blockedBy: ['CLW-1'], running: true });
+        expect(page.tasks[0]).toEqual({
+            key: 'CLW-1',
+            title: 'Task 1',
+            status: 'To do',
+            category: 'todo',
+            dependsOn: [],
+            updatedAt: '2026-11-21T11:00:00Z',
+        });
+        expect(page.tasks[1]).toMatchObject({
+            key: 'CLW-2',
+            dependsOn: ['CLW-1'],
+            blockedBy: ['CLW-1'],
+            running: true,
+        });
         expect(page.tasks[2]).toMatchObject({ key: 'CLW-4', dependsOn: ['CLW-3'] });
         expect(page.tasks[2]).not.toHaveProperty('blockedBy');
         expect(page.tasks[2]).not.toHaveProperty('running');
@@ -94,7 +115,11 @@ describe('what a listing shows by default', () => {
     });
 
     test('a text query matches the key, the title and the description in any case', () => {
-        const tasks = [task(1, 'todo', { title: 'CSV export' }), task(2, 'todo', { description: 'Needs the csv parser' }), task(3, 'done', { title: 'Other' })];
+        const tasks = [
+            task(1, 'todo', { title: 'CSV export' }),
+            task(2, 'todo', { description: 'Needs the csv parser' }),
+            task(3, 'done', { title: 'Other' }),
+        ];
 
         expect(list(tasks, { query: 'CSV', sort: 'number' }).tasks.map(row => row.key)).toEqual(['CLW-1', 'CLW-2']);
         expect(keys(list(tasks, { query: 'clw-3' }))).toEqual(['CLW-3']);
@@ -132,11 +157,18 @@ describe('filters', () => {
 
     test('running and mine narrow to the tasks a run works on and the ones linked to the chat', () => {
         expect(keys(list(tasks, { running: true }, ['tsk_3']))).toEqual(['CLW-3']);
-        expect(keys(list(tasks, { mine: true, sort: 'number' }, [], ['tsk_2', 'tsk_4', 'tsk_1']))).toEqual(['CLW-2', 'CLW-4']);
+        expect(keys(list(tasks, { mine: true, sort: 'number' }, [], ['tsk_2', 'tsk_4', 'tsk_1']))).toEqual([
+            'CLW-2',
+            'CLW-4',
+        ]);
     });
 
     test('updatedSince keeps what changed at or after the time', () => {
-        const aged = [task(1, 'todo', { hoursAgo: 30 }), task(2, 'todo', { hoursAgo: 5 }), task(3, 'todo', { hoursAgo: 1 })];
+        const aged = [
+            task(1, 'todo', { hoursAgo: 30 }),
+            task(2, 'todo', { hoursAgo: 5 }),
+            task(3, 'todo', { hoursAgo: 1 }),
+        ];
 
         expect(keys(list(aged, { updatedSince: NOW - 6 * HOUR }))).toEqual(['CLW-3', 'CLW-2']);
         expect(keys(list(aged, { updatedSince: NOW - 5 * HOUR }))).toEqual(['CLW-3', 'CLW-2']);
@@ -155,7 +187,12 @@ describe('filters', () => {
 });
 
 describe('order and pages', () => {
-    const tasks = [task(1, 'todo', { hoursAgo: 9 }), task(2, 'todo', { hoursAgo: 1 }), task(3, 'todo', { hoursAgo: 5 }), task(4, 'todo', { hoursAgo: 1 })];
+    const tasks = [
+        task(1, 'todo', { hoursAgo: 9 }),
+        task(2, 'todo', { hoursAgo: 1 }),
+        task(3, 'todo', { hoursAgo: 5 }),
+        task(4, 'todo', { hoursAgo: 1 }),
+    ];
 
     test('updated puts the newest change first and a tie goes to the lower number; number goes up; reverse turns it round', () => {
         expect(keys(list(tasks))).toEqual(['CLW-2', 'CLW-4', 'CLW-3', 'CLW-1']);
@@ -180,7 +217,13 @@ describe('order and pages', () => {
         expect(third.nextCursor).toBeUndefined();
         expect([...keys(first), ...keys(second), ...keys(third)]).toEqual(many.map(item => item.key));
         expect(list(many, { limit: MAX_LIMIT + 50 }).shown).toBe(60);
-        expect(list(many, { limit: 5, sort: 'number', reverse: true }).tasks.map(row => row.key)).toEqual(['CLW-60', 'CLW-59', 'CLW-58', 'CLW-57', 'CLW-56']);
+        expect(list(many, { limit: 5, sort: 'number', reverse: true }).tasks.map(row => row.key)).toEqual([
+            'CLW-60',
+            'CLW-59',
+            'CLW-58',
+            'CLW-57',
+            'CLW-56',
+        ]);
     });
 
     test('a task that changes between two pages does not repeat or push another one out', () => {
@@ -196,7 +239,13 @@ describe('order and pages', () => {
 
     test('a page that ends inside a run of tasks with the same time continues with the next one, in either direction', () => {
         // Three tasks changed in the same instant, split over two pages by the limit.
-        const tied = [task(1, 'todo', { hoursAgo: 4 }), task(2, 'todo', { hoursAgo: 2 }), task(3, 'todo', { hoursAgo: 2 }), task(4, 'todo', { hoursAgo: 2 }), task(5, 'todo', { hoursAgo: 1 })];
+        const tied = [
+            task(1, 'todo', { hoursAgo: 4 }),
+            task(2, 'todo', { hoursAgo: 2 }),
+            task(3, 'todo', { hoursAgo: 2 }),
+            task(4, 'todo', { hoursAgo: 2 }),
+            task(5, 'todo', { hoursAgo: 1 }),
+        ];
         const pages = (query: TaskQuery) => {
             const first = list(tied, { ...query, limit: 2 });
             const second = list(tied, { ...query, limit: 2, cursor: first.nextCursor });
@@ -216,7 +265,13 @@ describe('order and pages', () => {
     });
 
     test('an empty project answers an empty page', () => {
-        expect(list([])).toEqual({ tasks: [], total: 0, shown: 0, counts: { backlog: 0, todo: 0, active: 0, review: 0, done: 0, canceled: 0 }, archived: 0 });
+        expect(list([])).toEqual({
+            tasks: [],
+            total: 0,
+            shown: 0,
+            counts: { backlog: 0, todo: 0, active: 0, review: 0, done: 0, canceled: 0 },
+            archived: 0,
+        });
     });
 });
 
@@ -261,7 +316,13 @@ describe('the tree', () => {
 
     test('parent lists the direct children, under every task below, and roots the tasks with no parent', () => {
         expect(keys(list(tree, { parentId: 'tsk_1', all: true, sort: 'number' }))).toEqual(['CLW-2', 'CLW-3', 'CLW-4']);
-        expect(keys(list(tree, { underId: 'tsk_1', all: true, sort: 'number' }))).toEqual(['CLW-2', 'CLW-3', 'CLW-4', 'CLW-5', 'CLW-6']);
+        expect(keys(list(tree, { underId: 'tsk_1', all: true, sort: 'number' }))).toEqual([
+            'CLW-2',
+            'CLW-3',
+            'CLW-4',
+            'CLW-5',
+            'CLW-6',
+        ]);
         expect(keys(list(tree, { underId: 'tsk_4', all: true, sort: 'number' }))).toEqual(['CLW-5', 'CLW-6']);
         expect(keys(list(tree, { roots: true, all: true, sort: 'number' }))).toEqual(['CLW-1', 'CLW-7', 'CLW-8']);
         expect(keys(list(tree, { parentId: 'tsk_6', all: true }))).toEqual([]);
@@ -274,16 +335,48 @@ describe('the tree', () => {
         expect(keys(list(tree, { roots: true, sort: 'number' }))).toEqual(['CLW-1', 'CLW-7']);
         expect(keys(list(tree, { underId: 'tsk_1', statusIds: new Set(['sts_canceled']) }))).toEqual(['CLW-5']);
         expect(keys(list(tree, { parentId: 'tsk_1', query: 'zzz' }))).toEqual([]);
-        expect(keys(list(tree, { underId: 'tsk_1', ready: true, sort: 'number' }))).toEqual(['CLW-3', 'CLW-4', 'CLW-6']);
+        expect(keys(list(tree, { underId: 'tsk_1', ready: true, sort: 'number' }))).toEqual([
+            'CLW-3',
+            'CLW-4',
+            'CLW-6',
+        ]);
         expect(list(tree, { parentId: 'tsk_1' }).total).toBe(2);
     });
 
-    test('counts describe the structural scope, before the status scope hides anything; with no scope they are the project\'s', () => {
+    test("counts describe the structural scope, before the status scope hides anything; with no scope they are the project's", () => {
         expect(list(tree).counts).toEqual({ backlog: 0, todo: 3, active: 1, review: 1, done: 2, canceled: 1 });
-        expect(list(tree, { parentId: 'tsk_1' }).counts).toEqual({ backlog: 0, todo: 2, active: 0, review: 0, done: 1, canceled: 0 });
-        expect(list(tree, { underId: 'tsk_1' }).counts).toEqual({ backlog: 0, todo: 2, active: 0, review: 1, done: 1, canceled: 1 });
-        expect(list(tree, { roots: true }).counts).toEqual({ backlog: 0, todo: 1, active: 1, review: 0, done: 1, canceled: 0 });
-        expect(list(tree, { parentId: 'tsk_6' }).counts).toEqual({ backlog: 0, todo: 0, active: 0, review: 0, done: 0, canceled: 0 });
+        expect(list(tree, { parentId: 'tsk_1' }).counts).toEqual({
+            backlog: 0,
+            todo: 2,
+            active: 0,
+            review: 0,
+            done: 1,
+            canceled: 0,
+        });
+        expect(list(tree, { underId: 'tsk_1' }).counts).toEqual({
+            backlog: 0,
+            todo: 2,
+            active: 0,
+            review: 1,
+            done: 1,
+            canceled: 1,
+        });
+        expect(list(tree, { roots: true }).counts).toEqual({
+            backlog: 0,
+            todo: 1,
+            active: 1,
+            review: 0,
+            done: 1,
+            canceled: 0,
+        });
+        expect(list(tree, { parentId: 'tsk_6' }).counts).toEqual({
+            backlog: 0,
+            todo: 0,
+            active: 0,
+            review: 0,
+            done: 0,
+            canceled: 0,
+        });
     });
 
     test('pages and their cursor stay inside the structural scope, with the same total and counts on every page', () => {
@@ -343,11 +436,19 @@ describe('the archive', () => {
 
     test('the archived filter lists only archived tasks, whatever their status, and the other filters narrow that listing', () => {
         expect(keys(list(archive, { archived: true, sort: 'number' }))).toEqual(['CLW-1', 'CLW-2', 'CLW-3', 'CLW-6']);
-        expect(keys(list(archive, { archived: true, all: true, sort: 'number' }))).toEqual(['CLW-1', 'CLW-2', 'CLW-3', 'CLW-6']);
+        expect(keys(list(archive, { archived: true, all: true, sort: 'number' }))).toEqual([
+            'CLW-1',
+            'CLW-2',
+            'CLW-3',
+            'CLW-6',
+        ]);
         expect(keys(list(archive, { archived: true, statusIds: new Set(['sts_canceled']) }))).toEqual(['CLW-3']);
         expect(keys(list(archive, { archived: true, query: 'task 6' }))).toEqual(['CLW-6']);
         expect(keys(list(archive, { archived: true, query: 'zzz' }))).toEqual([]);
-        expect(keys(list(archive, { archived: true, updatedSince: NOW - 31.5 * HOUR, sort: 'number' }))).toEqual(['CLW-1', 'CLW-2']);
+        expect(keys(list(archive, { archived: true, updatedSince: NOW - 31.5 * HOUR, sort: 'number' }))).toEqual([
+            'CLW-1',
+            'CLW-2',
+        ]);
         // An archived task is closed, so nothing of it is ready, blocked or running.
         expect(keys(list(archive, { archived: true, ready: true }))).toEqual([]);
         expect(keys(list(archive, { archived: true, blocked: true }))).toEqual([]);
@@ -370,15 +471,57 @@ describe('the archive', () => {
         expect(() => list(archive, { archived: true, parentId: 'tsk_1', roots: true })).toThrow(/give one of them/);
     });
 
-    test('counts describe the structural scope on the side that was asked for, and archived is the project\'s number whatever the query', () => {
+    test("counts describe the structural scope on the side that was asked for, and archived is the project's number whatever the query", () => {
         expect(list(archive).counts).toEqual({ backlog: 1, todo: 1, active: 1, review: 0, done: 1, canceled: 0 });
-        expect(list(archive, { archived: true }).counts).toEqual({ backlog: 0, todo: 0, active: 0, review: 0, done: 3, canceled: 1 });
-        expect(list(archive, { archived: true, parentId: 'tsk_1' }).counts).toEqual({ backlog: 0, todo: 0, active: 0, review: 0, done: 1, canceled: 1 });
-        expect(list(archive, { archived: true, parentId: 'tsk_4' }).counts).toEqual({ backlog: 0, todo: 0, active: 0, review: 0, done: 1, canceled: 0 });
-        expect(list(archive, { parentId: 'tsk_4' }).counts).toEqual({ backlog: 0, todo: 0, active: 0, review: 0, done: 1, canceled: 0 });
-        expect(list(archive, { roots: true }).counts).toEqual({ backlog: 1, todo: 1, active: 1, review: 0, done: 0, canceled: 0 });
+        expect(list(archive, { archived: true }).counts).toEqual({
+            backlog: 0,
+            todo: 0,
+            active: 0,
+            review: 0,
+            done: 3,
+            canceled: 1,
+        });
+        expect(list(archive, { archived: true, parentId: 'tsk_1' }).counts).toEqual({
+            backlog: 0,
+            todo: 0,
+            active: 0,
+            review: 0,
+            done: 1,
+            canceled: 1,
+        });
+        expect(list(archive, { archived: true, parentId: 'tsk_4' }).counts).toEqual({
+            backlog: 0,
+            todo: 0,
+            active: 0,
+            review: 0,
+            done: 1,
+            canceled: 0,
+        });
+        expect(list(archive, { parentId: 'tsk_4' }).counts).toEqual({
+            backlog: 0,
+            todo: 0,
+            active: 0,
+            review: 0,
+            done: 1,
+            canceled: 0,
+        });
+        expect(list(archive, { roots: true }).counts).toEqual({
+            backlog: 1,
+            todo: 1,
+            active: 1,
+            review: 0,
+            done: 0,
+            canceled: 0,
+        });
 
-        for (const query of [{}, { all: true }, { archived: true }, { parentId: 'tsk_4' }, { query: 'zzz' }, { archived: true, query: 'zzz' }]) {
+        for (const query of [
+            {},
+            { all: true },
+            { archived: true },
+            { parentId: 'tsk_4' },
+            { query: 'zzz' },
+            { archived: true, query: 'zzz' },
+        ]) {
             expect({ query, archived: list(archive, query).archived }).toEqual({ query, archived: 4 });
         }
 
@@ -395,7 +538,9 @@ describe('the archive', () => {
         expect(archived.find(row => row.key === 'CLW-6')).not.toHaveProperty('children');
 
         // Every child archived: the parent on the board has none to count.
-        const emptied = list([task(1, 'done'), task(2, 'done', { parentId: 'tsk_1', archivedAt: AT })], { all: true }).tasks;
+        const emptied = list([task(1, 'done'), task(2, 'done', { parentId: 'tsk_1', archivedAt: AT })], {
+            all: true,
+        }).tasks;
 
         expect(emptied).toHaveLength(1);
         expect(emptied[0]).not.toHaveProperty('children');
@@ -414,7 +559,7 @@ describe('the archive', () => {
         expect(board.find(row => row.key === 'CLW-5')?.parent).toBe('CLW-4');
     });
 
-    test('only an archived task\'s row has archivedAt, as the time to the second', () => {
+    test("only an archived task's row has archivedAt, as the time to the second", () => {
         const board = list(archive, { all: true }).tasks;
         const archived = list(archive, { archived: true, sort: 'number' }).tasks;
 

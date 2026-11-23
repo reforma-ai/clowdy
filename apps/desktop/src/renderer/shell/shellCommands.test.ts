@@ -9,7 +9,7 @@ import { commandHint } from '../hotkeys/react';
 import { commandPresses, createRegistry, type HotkeyRegistry } from '../hotkeys/registry';
 import { UiStore } from '../stores';
 import { findCommands } from './findCommands';
-import { NEW_CHAT_COMMAND, shellCommands, type ShellCommandsRoot } from './shellCommands';
+import { NEW_CHAT_COMMAND, type ShellCommandsRoot, shellCommands } from './shellCommands';
 
 let registry: HotkeyRegistry;
 let uninstall: () => void;
@@ -33,24 +33,30 @@ beforeEach(() => {
     registry = createRegistry('darwin');
     ui = new UiStore();
     // A stand-in for the real history, which has its own tests: only what the commands read and call.
-    history = observable({ canGoBack: false, canGoForward: false, back: vi.fn(), forward: vi.fn() }, { back: false, forward: false });
+    history = observable(
+        { canGoBack: false, canGoForward: false, back: vi.fn(), forward: vi.fn() },
+        { back: false, forward: false }
+    );
     // `ui` and `history` stay out of the observable: they are stores of their own, like on the real `RootStore`.
     screen = observable({ shown: true });
     loading = observable({ phase: 'ready' as ShellCommandsRoot['phase'] });
-    root = observable({
-        get phase() {
-            return loading.phase;
+    root = observable(
+        {
+            get phase() {
+                return loading.phase;
+            },
+            selectedProjectId: 'p' as string | null,
+            get selectedProjectUi() {
+                return this.selectedProjectId ? ui.forProject(this.selectedProjectId) : undefined;
+            },
+            get showsProjectScreen() {
+                return screen.shown;
+            },
+            ui,
+            history,
         },
-        selectedProjectId: 'p' as string | null,
-        get selectedProjectUi() {
-            return this.selectedProjectId ? ui.forProject(this.selectedProjectId) : undefined;
-        },
-        get showsProjectScreen() {
-            return screen.shown;
-        },
-        ui,
-        history,
-    }, { ui: false, history: false });
+        { ui: false, history: false }
+    );
 
     for (const command of shellCommands(root)) registry.defineCommand({ ...command, scope: 'app' });
 
@@ -116,8 +122,7 @@ describe('help.open', () => {
 
             expect(ui.settingsOpen).toBe(false);
             expect(event.defaultPrevented).toBe(false);
-        }
-        finally {
+        } finally {
             input.remove();
         }
     });
@@ -152,8 +157,7 @@ describe('settings.open', () => {
             press({ key: ',', code: 'Comma', metaKey: true }, input);
 
             expect([ui.settingsOpen, ui.settingsPage]).toEqual([true, 'skills']);
-        }
-        finally {
+        } finally {
             input.remove();
         }
     });
@@ -184,8 +188,7 @@ describe('settings.open', () => {
             press({ key: ',', code: 'Comma', metaKey: true });
 
             expect(ui.settingsOpen).toBe(false);
-        }
-        finally {
+        } finally {
             overlay.remove();
         }
     });
@@ -198,10 +201,11 @@ describe('settings.open', () => {
 });
 
 describe('back and forward', () => {
-    const setHistory = (canGoBack: boolean, canGoForward: boolean) => runInAction(() => {
-        history.canGoBack = canGoBack;
-        history.canGoForward = canGoForward;
-    });
+    const setHistory = (canGoBack: boolean, canGoForward: boolean) =>
+        runInAction(() => {
+            history.canGoBack = canGoBack;
+            history.canGoForward = canGoForward;
+        });
 
     it('go back on Cmd+[ and forward on Cmd+], when there is somewhere to go', () => {
         setHistory(true, true);
@@ -271,8 +275,7 @@ describe('back and forward', () => {
 
             expect(history.back).not.toHaveBeenCalled();
             expect(event.defaultPrevented).toBe(false);
-        }
-        finally {
+        } finally {
             input.remove();
         }
     });
@@ -292,10 +295,29 @@ describe('the keymap', () => {
 
         for (const command of shellCommands(root)) probe.defineCommand({ ...command, scope: 'app' });
 
-        for (const command of findCommands({ open() {}, next() {}, previous() {} })) probe.defineCommand({ ...command, scope: 'app' });
+        for (const command of findCommands({ open() {}, next() {}, previous() {} }))
+            probe.defineCommand({ ...command, scope: 'app' });
 
         expect(() => probe.assertNoConflicts()).not.toThrow();
-        expect(probe.entries.map(({ command }) => command.id)).toEqual(['help.open', 'settings.open', 'chats.new', 'sidePanel.toggle', 'sidePanel.expand', 'sidePanel.terminal', 'sidePanel.tab.info', 'sidePanel.tab.files', 'sidePanel.tab.docs', 'sidePanel.tab.terminal', 'sidePanel.tab.tasks', 'nav.back', 'nav.forward', 'find.open', 'find.next', 'find.previous']);
+        expect(probe.entries.map(({ command }) => command.id)).toEqual([
+            'help.open',
+            'settings.open',
+            'chats.new',
+            'sidePanel.toggle',
+            'sidePanel.expand',
+            'sidePanel.terminal',
+            'sidePanel.tab.info',
+            'sidePanel.tab.files',
+            'sidePanel.tab.docs',
+            'sidePanel.tab.terminal',
+            'sidePanel.tab.tasks',
+            'sidePanel.tab.changes',
+            'nav.back',
+            'nav.forward',
+            'find.open',
+            'find.next',
+            'find.previous',
+        ]);
     });
 });
 
@@ -337,8 +359,7 @@ describe('new chat', () => {
             press({ key: 'n', code: 'KeyN' }, input);
 
             expect(ui.forProject('p').draft).toBe(false);
-        }
-        finally {
+        } finally {
             input.remove();
         }
     });
@@ -353,8 +374,7 @@ describe('new chat', () => {
             press({ key: 'n', code: 'KeyN', metaKey: true });
 
             expect(ui.forProject('p').draft).toBe(false);
-        }
-        finally {
+        } finally {
             overlay.remove();
         }
     });
@@ -393,7 +413,7 @@ describe('the terminal key', () => {
         expect(state()).toEqual({ open: false, tab: 'terminal' });
     });
 
-    it('works from a text field, which is where the terminal\'s own input is', () => {
+    it("works from a text field, which is where the terminal's own input is", () => {
         const input = document.createElement('textarea');
 
         document.body.append(input);
@@ -401,8 +421,7 @@ describe('the terminal key', () => {
         try {
             press_(input);
             expect(state().open).toBe(true);
-        }
-        finally {
+        } finally {
             input.remove();
         }
     });
@@ -423,7 +442,7 @@ describe('the terminal key', () => {
 describe('the side panel', () => {
     const panelOpen = () => ui.forProject('p').sidePanelOpen;
 
-    it('opens and shuts the selected project\'s panel on Cmd+Esc', () => {
+    it("opens and shuts the selected project's panel on Cmd+Esc", () => {
         const first = press({ key: 'Escape', code: 'Escape', metaKey: true });
 
         expect(panelOpen()).toBe(true);
@@ -449,8 +468,7 @@ describe('the side panel', () => {
             press({ key: 'Escape', code: 'Escape', metaKey: true }, input);
 
             expect(panelOpen()).toBe(true);
-        }
-        finally {
+        } finally {
             input.remove();
         }
     });
@@ -490,7 +508,8 @@ describe('the side panel', () => {
 
 describe('the expanded side panel', () => {
     const expanded = () => ui.forProject('p').sidePanelExpanded;
-    const expand = (target?: EventTarget) => press({ key: 'Enter', code: 'Enter', metaKey: true, shiftKey: true }, target);
+    const expand = (target?: EventTarget) =>
+        press({ key: 'Enter', code: 'Enter', metaKey: true, shiftKey: true }, target);
 
     it('has Cmd+Shift+Enter on a Mac and Ctrl+Shift+Enter elsewhere', () => {
         expect(commandPresses({ keys: SIDE_PANEL_EXPAND_KEYS }, 'darwin')).toEqual([['shift', 'meta', 'enter']]);
@@ -512,8 +531,7 @@ describe('the expanded side panel', () => {
         try {
             expand(input);
             expect(expanded()).toBe(false);
-        }
-        finally {
+        } finally {
             input.remove();
         }
     });
@@ -551,9 +569,10 @@ describe('the expanded side panel', () => {
 
 describe('the tabs of the side panel', () => {
     const state = () => ({ open: ui.forProject('p').sidePanelOpen, tab: ui.forProject('p').sidePanelTab });
-    const digit = (value: string, extra: KeyboardEventInit = {}, target?: EventTarget) => press({ key: value, code: `Digit${ value }`, metaKey: true, ...extra }, target);
+    const digit = (value: string, extra: KeyboardEventInit = {}, target?: EventTarget) =>
+        press({ key: value, code: `Digit${value}`, metaKey: true, ...extra }, target);
 
-    it('shows Info on Cmd+0, Files on Cmd+1, Terminal on Cmd+2, Docs on Cmd+3 and Tasks on Cmd+4, opening the panel when it is shut', () => {
+    it('shows Info on Cmd+0, Files on Cmd+1, Terminal on Cmd+2, Docs on Cmd+3, Tasks on Cmd+4 and Changes on Cmd+5, opening the panel when it is shut', () => {
         const first = digit('1');
 
         expect(state()).toEqual({ open: true, tab: 'files' });
@@ -571,8 +590,11 @@ describe('the tabs of the side panel', () => {
         digit('4');
         expect(state()).toEqual({ open: true, tab: 'tasks' });
 
+        digit('5');
+        expect(state()).toEqual({ open: true, tab: 'changes' });
+
         runInAction(() => ui.forProject('p').toggleSidePanel());
-        expect(state()).toEqual({ open: false, tab: 'tasks' });
+        expect(state()).toEqual({ open: false, tab: 'changes' });
 
         digit('2');
         expect(state()).toEqual({ open: true, tab: 'terminal' });
@@ -605,8 +627,7 @@ describe('the tabs of the side panel', () => {
 
             digit('2', {}, input);
             expect(state().tab).toBe('terminal');
-        }
-        finally {
+        } finally {
             input.remove();
         }
     });
@@ -624,7 +645,7 @@ describe('the tabs of the side panel', () => {
         runInAction(() => {
             screen.shown = true;
         });
-        digit('5');
+        digit('6');
         digit('1', { shiftKey: true });
         digit('1', { metaKey: false });
         digit('1', { altKey: true });
@@ -636,6 +657,7 @@ describe('the tabs of the side panel', () => {
         expect(commandPresses({ keys: SIDE_PANEL_TAB_KEYS.info }, 'darwin')).toEqual([['meta', '0']]);
         expect(commandPresses({ keys: SIDE_PANEL_TAB_KEYS.terminal }, 'win32')).toEqual([['ctrl', '2']]);
         expect(commandPresses({ keys: SIDE_PANEL_TAB_KEYS.tasks }, 'win32')).toEqual([['ctrl', '4']]);
+        expect(commandPresses({ keys: SIDE_PANEL_TAB_KEYS.changes }, 'win32')).toEqual([['ctrl', '5']]);
         expect(commandHint('sidePanel.tab.files', registry)).toEqual([['meta', '1']]);
 
         runInAction(() => {

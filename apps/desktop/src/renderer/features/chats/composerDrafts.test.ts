@@ -1,23 +1,41 @@
-import { docToPlainText, emptyComposerDoc, plainTextToDoc, type ComposerDoc } from '@clowdy/components/RichInput';
+import { type ComposerDoc, docToPlainText, emptyComposerDoc, plainTextToDoc } from '@clowdy/components/RichInput';
 import { describe, expect, it } from 'vitest';
 
-import { docOfMessage, draftOf, dropDraft, editDraftKey, messageOf, newChatDraftKey, quotedMessage, saveDraft, withQuoteLast } from './composerDrafts';
+import {
+    docOfMessage,
+    draftOf,
+    dropDraft,
+    editDraftKey,
+    messageOf,
+    newChatDraftKey,
+    quotedMessage,
+    saveDraft,
+    withQuoteLast,
+} from './composerDrafts';
 
 /** What the doc writes, with the line break a hard break writes (a Markdown line break) shown as the newline it is. */
 const written = (doc: ComposerDoc) => docToPlainText(doc).replaceAll('  \n', '\n');
 
 /** The draft with `words` typed into its last paragraph, as the person does under a quote. */
-const typed = (doc: ComposerDoc, words: string): ComposerDoc => ({ ...doc, content: [...doc.content!.slice(0, -1), plainTextToDoc(words).content![0]] });
+const typed = (doc: ComposerDoc, words: string): ComposerDoc => ({
+    ...doc,
+    content: [...doc.content!.slice(0, -1), plainTextToDoc(words).content![0]],
+});
 
 describe('withQuoteLast', () => {
     it('puts a one-line quote in an empty draft, trimmed, with an empty paragraph after it for the caret', () => {
         const next = withQuoteLast(emptyComposerDoc(), '  hello world  ');
 
-        expect(next.content).toEqual([{ type: 'paragraph', content: [{ type: 'text', text: '> hello world' }] }, { type: 'paragraph' }]);
+        expect(next.content).toEqual([
+            { type: 'paragraph', content: [{ type: 'text', text: '> hello world' }] },
+            { type: 'paragraph' },
+        ]);
     });
 
     it('prefixes each line of a longer quote and writes a blank line as a bare `>`', () => {
-        expect(written(withQuoteLast(emptyComposerDoc(), 'para one\n\npara two'))).toBe('> para one\n>\n> para two\n\n');
+        expect(written(withQuoteLast(emptyComposerDoc(), 'para one\n\npara two'))).toBe(
+            '> para one\n>\n> para two\n\n'
+        );
     });
 
     it('reads Windows and old Mac line ends as lines', () => {
@@ -30,12 +48,31 @@ describe('withQuoteLast', () => {
         expect(written(withQuoteLast(emptyComposerDoc(), '> one\n\ntwo'))).toBe('> > one\n>\n> two\n\n');
     });
 
+    it("keeps the blank lines of a fenced block of code, where they are the code's own", () => {
+        const code = '`a.md:1-3`\n```md\n> one\n\n> two\n```\n\n> three\n\n> four';
+
+        // The blank line inside the block stays; the one between the two quotes after it is left out, as before.
+        expect(written(withQuoteLast(emptyComposerDoc(), code))).toBe(
+            '> `a.md:1-3`\n> ```md\n> > one\n>\n> > two\n> ```\n>\n> > three\n> > four\n\n'
+        );
+    });
+
+    it('closes a fenced block only with a fence at least as long, so a shorter one inside it is code', () => {
+        const code = '````md\n> one\n```\n\n> two\n````\n\n> three\n\n> four';
+
+        expect(written(withQuoteLast(emptyComposerDoc(), code))).toBe(
+            '> ````md\n> > one\n> ```\n>\n> > two\n> ````\n>\n> > three\n> > four\n\n'
+        );
+    });
+
     it('writes a line of blanks as a bare `>` too', () => {
         expect(written(withQuoteLast(emptyComposerDoc(), 'one\n   \ntwo'))).toBe('> one\n>\n> two\n\n');
     });
 
     it('puts the quote in a paragraph of its own after the words that are there, with a blank line between', () => {
-        expect(written(withQuoteLast(plainTextToDoc('existing reply'), 'quoted'))).toBe('existing reply\n\n> quoted\n\n');
+        expect(written(withQuoteLast(plainTextToDoc('existing reply'), 'quoted'))).toBe(
+            'existing reply\n\n> quoted\n\n'
+        );
     });
 
     it('stacks a second quote below the first, with a blank line between and one empty paragraph after', () => {
@@ -55,7 +92,16 @@ describe('withQuoteLast', () => {
     });
 
     it('takes the empty paragraphs that end the draft for the place of the quote, and leaves the ones between', () => {
-        const words: ComposerDoc = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'a' }] }, { type: 'paragraph' }, { type: 'paragraph', content: [{ type: 'text', text: 'b' }] }, { type: 'paragraph' }, { type: 'paragraph' }] };
+        const words: ComposerDoc = {
+            type: 'doc',
+            content: [
+                { type: 'paragraph', content: [{ type: 'text', text: 'a' }] },
+                { type: 'paragraph' },
+                { type: 'paragraph', content: [{ type: 'text', text: 'b' }] },
+                { type: 'paragraph' },
+                { type: 'paragraph' },
+            ],
+        };
 
         expect(written(withQuoteLast(words, 'q'))).toBe('a\n\n\n\nb\n\n> q\n\n');
     });
@@ -73,8 +119,14 @@ describe('withQuoteLast', () => {
     });
 
     it('keeps what was in the draft as it was, a mention chip included, and adds only after it', () => {
-        const mention = { type: 'composerMention', attrs: { id: 'src/a.ts', label: 'a.ts', kind: 'file', data: null, mentionSuggestionChar: '@' } };
-        const draft: ComposerDoc = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Look at ' }, mention] }] };
+        const mention = {
+            type: 'composerMention',
+            attrs: { id: 'src/a.ts', label: 'a.ts', kind: 'file', data: null, mentionSuggestionChar: '@' },
+        };
+        const draft: ComposerDoc = {
+            type: 'doc',
+            content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Look at ' }, mention] }],
+        };
         const next = withQuoteLast(draft, 'context');
 
         expect(next.content).toHaveLength(3);
@@ -90,7 +142,12 @@ describe('withQuoteLast', () => {
         const inline = next.content![0].content!;
 
         expect(next.content).toHaveLength(2);
-        expect(inline.filter(node => node.type === 'text').map(node => node.text)).toEqual(['> one', '> two', '>', '> three']);
+        expect(inline.filter(node => node.type === 'text').map(node => node.text)).toEqual([
+            '> one',
+            '> two',
+            '>',
+            '> three',
+        ]);
         expect(inline.filter(node => node.type === 'hardBreak')).toHaveLength(3);
         expect(inline.some(node => node.type === 'text' && node.text?.includes('\n'))).toBe(false);
         expect(inline.at(-1)?.type).toBe('text');
@@ -99,7 +156,17 @@ describe('withQuoteLast', () => {
     it('puts the quote in a paragraph of its own after a list', () => {
         const list: ComposerDoc = {
             type: 'doc',
-            content: [{ type: 'bulletList', content: [{ type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'item' }] }] }] }],
+            content: [
+                {
+                    type: 'bulletList',
+                    content: [
+                        {
+                            type: 'listItem',
+                            content: [{ type: 'paragraph', content: [{ type: 'text', text: 'item' }] }],
+                        },
+                    ],
+                },
+            ],
         };
         const next = withQuoteLast(list, 'quoted');
 
@@ -163,7 +230,7 @@ describe('docOfMessage', () => {
 });
 
 describe('the key of an edit session', () => {
-    it('is not the chat\'s id, and not the key of the new-chat page, so a draft under it is not the chat\'s', () => {
+    it("is not the chat's id, and not the key of the new-chat page, so a draft under it is not the chat's", () => {
         const key = editDraftKey('c-1', 'i-4');
 
         expect(key).not.toBe('c-1');
@@ -173,7 +240,7 @@ describe('the key of an edit session', () => {
         expect(editDraftKey('c-2', 'i-4')).not.toBe(key);
     });
 
-    it('keeps a draft apart from the chat\'s, which dropDraft forgets alone', () => {
+    it("keeps a draft apart from the chat's, which dropDraft forgets alone", () => {
         const key = editDraftKey('c-drop', 'i-1');
 
         saveDraft('c-drop', plainTextToDoc('chat words'));
@@ -200,8 +267,10 @@ describe('quotedMessage', () => {
         const quoted = 'First paragraph\nsecond line\n\nSecond paragraph';
 
         // The same text as the draft would send for a selection quoted the same way, then the words after a blank line.
-        expect(quotedMessage(quoted, 'Both')).toBe(`${ messageOf(withQuoteLast(emptyComposerDoc(), quoted)) }\n\nBoth`);
-        expect(quotedMessage(quoted, 'Both')).toContain('> First paragraph  \n> second line  \n>  \n> Second paragraph');
+        expect(quotedMessage(quoted, 'Both')).toBe(`${messageOf(withQuoteLast(emptyComposerDoc(), quoted))}\n\nBoth`);
+        expect(quotedMessage(quoted, 'Both')).toContain(
+            '> First paragraph  \n> second line  \n>  \n> Second paragraph'
+        );
     });
 
     it('leaves the words as they are when there is nothing to quote', () => {

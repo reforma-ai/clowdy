@@ -16,13 +16,13 @@ export type FolderRepository =
 const LOADING: FolderRepository = { status: 'loading' };
 
 /**
- * The branches and worktrees of one folder of a project (`Transport.getFolderGit`), for the chips of the new-chat page. Read when the page opens, when its folder
+ * The branches and worktrees of one folder of a project (`Transport.getFolderGit`), for the control of where the new chat works (`WorkspaceChips`). Read when the page opens, when its folder
  * changes and when the window gets focus again, since a branch or a worktree comes and goes in a terminal or by an agent while the app is in the background. Nothing but
  * `loading` until the answer for this folder comes (never another folder's), and a later read that fails leaves what was known for the same folder, as `useFolderGit` does.
  */
 export function useFolderRepository(projectId: ProjectId, folderId: FolderId): FolderRepository {
     const root = useRootStore();
-    const key = `${ projectId }/${ folderId }`;
+    const key = `${projectId}/${folderId}`;
     const [read, setRead] = useState<{ key: string; repository: FolderRepository }>();
 
     useEffect(() => {
@@ -33,7 +33,7 @@ export function useFolderRepository(projectId: ProjectId, folderId: FolderId): F
             const request = ++latest;
 
             root.transport.getFolderGit(projectId, folderId).then(
-                (git) => {
+                git => {
                     if (request === latest) setRead({ key, repository: { status: 'ready', git } });
                 },
                 (error: unknown) => {
@@ -42,7 +42,11 @@ export function useFolderRepository(projectId: ProjectId, folderId: FolderId): F
                     // The daemon says why in a 503 (`unavailable`); any other failure has nothing a person should read.
                     const reason = error instanceof TransportError && error.status === 503 ? error.message : '';
 
-                    setRead(known => (known?.key === key && known.repository.status === 'ready' ? known : { key, repository: { status: 'failed', reason } }));
+                    setRead(known =>
+                        known?.key === key && known.repository.status === 'ready'
+                            ? known
+                            : { key, repository: { status: 'failed', reason } }
+                    );
                 }
             );
         };

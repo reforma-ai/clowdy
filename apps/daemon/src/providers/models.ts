@@ -48,7 +48,11 @@ export class ModelCatalog {
         const provider = this.providers.get(id);
 
         if (!provider?.models) {
-            return { state: 'unavailable', models: [], detail: `Clowdy cannot list the models of ${ this.options.registry.nameOf(id) } yet` };
+            return {
+                state: 'unavailable',
+                models: [],
+                detail: `Clowdy cannot list the models of ${this.options.registry.nameOf(id)} yet`,
+            };
         }
 
         const cached = this.cache.get(id);
@@ -77,7 +81,11 @@ export class ModelCatalog {
             const target = await this.options.registry.probeTarget(id);
 
             if (!target) {
-                return { state: 'unavailable', models: [], detail: `${ this.options.registry.nameOf(id) } is not installed or is switched off in Clowdy` };
+                return {
+                    state: 'unavailable',
+                    models: [],
+                    detail: `${this.options.registry.nameOf(id)} is not installed or is switched off in Clowdy`,
+                };
             }
 
             return await route({
@@ -89,8 +97,7 @@ export class ModelCatalog {
                 home: this.options.home ?? homedir(),
                 signal: this.stopper.signal,
             });
-        }
-        catch (error) {
+        } catch (error) {
             return { state: 'error', models: [], detail: error instanceof Error ? error.message : String(error) };
         }
     }
@@ -104,8 +111,7 @@ export class ModelCatalog {
     forget(id?: string): void {
         if (id === undefined) {
             this.cache.clear();
-        }
-        else {
+        } else {
             this.cache.delete(id);
         }
     }

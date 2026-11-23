@@ -1,0 +1,220 @@
+.dialog {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xxl);
+    padding: var(--spacing-20);
+}
+
+.heading {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xxs);
+    min-width: 0;
+}
+
+/* The list on screen is from an earlier read: what failed to refresh it, and the way to read again. */
+.notice {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+.groups {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xxl);
+    min-width: 0;
+}
+
+/* The table before the list: the same card and rows, with blocks where the text goes. Each line is as tall as the text it stands for, so the list comes in without a jump. */
+.skeletonName {
+    display: inline-block;
+    width: 6rem;
+    height: 0.9em;
+    vertical-align: middle;
+}
+
+.skeletonIcon {
+    width: var(--spacing-14);
+    min-height: 0;
+    height: var(--spacing-14);
+}
+
+.skeletonLine {
+    width: 8rem;
+    max-width: 100%;
+    min-height: 0;
+    height: 0.8rem;
+}
+
+.card[data-skeleton] {
+    pointer-events: none;
+}
+
+.card[data-skeleton] .row:hover {
+    background: none;
+}
+
+.card[data-skeleton] .title {
+    min-height: var(--leading-md);
+}
+
+.card[data-skeleton] .facts {
+    min-height: var(--leading-sm);
+}
+
+.visuallyHidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+/* The failure and the empty note, in the middle of the space the groups would take. */
+.message {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--spacing-lg);
+    padding: var(--spacing-xxl);
+    text-align: center;
+    text-wrap: balance;
+}
+
+.group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+    min-width: 0;
+}
+
+/* One surface for the folder's worktrees, as Settings' folder card is: the rows bring no border of their own, hairlines join them. */
+.card {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    overflow: clip;
+    border: 1px solid var(--color-secondary-muted-border);
+    border-radius: calc(var(--radius-xl) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    background-color: var(--color-surface-float);
+    list-style: none;
+}
+
+.card > * + * {
+    border-top: 1px solid var(--color-secondary-muted-border);
+}
+
+.row {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--spacing-md);
+    min-width: 0;
+    box-sizing: border-box;
+    padding: var(--spacing-lg) var(--spacing-xl);
+    /* The buttons at the end stand as far from the right edge as they do from the top of the row. */
+    padding-inline-end: var(--spacing-lg);
+}
+
+.row:hover {
+    background: var(--color-secondary-muted);
+}
+
+.row:hover .actions,
+.row:focus-within .actions,
+.row[data-open] .actions {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* A worktree whose folder is gone is dimmed: there is little to do with it. The actions keep their own look (Remove record is the point of the row). */
+.row[data-missing] .title,
+.row[data-missing] .text > :not(.title) {
+    opacity: var(--opacity-inactive);
+}
+
+/* The mark stands on the first line of the text: as tall as the branch's line. */
+.icon {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    height: var(--leading-md);
+    color: var(--color-secondary-muted-text);
+}
+
+.text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--spacing-xxs);
+    min-width: 0;
+}
+
+.title {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    min-width: 0;
+}
+
+/* The branch gives way to the marks after it (it is cut with an ellipsis), never the marks to the branch. */
+.title > :not(:first-child) {
+    flex-shrink: 0;
+}
+
+.facts {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+.chats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-xs);
+    margin-top: var(--spacing-xs);
+    /* The chips' own side padding (xs buttons: --spacing-md) hangs out to the left, so the titles line up with the path above them. */
+    margin-inline-start: calc(var(--spacing-md) * -1);
+}
+
+.chat {
+    max-width: 16rem;
+}
+
+.chatTitle {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.archived {
+    flex-shrink: 0;
+    margin-inline-start: var(--spacing-sm);
+    color: var(--color-secondary-muted-text);
+}
+
+/* Shown on hover, on focus inside the row and while a menu of the row is open, as the lists' row actions are; always where nothing hovers (a touch screen). */
+.actions {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--transition-duration-fast) ease;
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: var(--spacing-xs);
+    /* The buttons are centred on the row, whatever it holds: one line, or the chats under it. */
+    align-self: center;
+}
+
+@media (hover: none) {
+    .actions {
+        opacity: 1;
+        pointer-events: auto;
+    }
+}

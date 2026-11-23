@@ -1,5 +1,8 @@
 /** What a key does in the shell that xterm alone would not: the shortcuts of the person's own terminal app. `undefined` leaves the key to xterm. */
-export function shellSequence(event: Pick<KeyboardEvent, 'type' | 'key' | 'altKey' | 'ctrlKey' | 'metaKey' | 'shiftKey'>, platform: string): string | undefined {
+export function shellSequence(
+    event: Pick<KeyboardEvent, 'type' | 'key' | 'altKey' | 'ctrlKey' | 'metaKey' | 'shiftKey'>,
+    platform: string
+): string | undefined {
     if (event.type !== 'keydown' || event.shiftKey || platform !== 'darwin') return undefined;
 
     // Option+←/→ jump by word, as in Terminal.app; xterm alone sends sequences a shell does not bind.
@@ -23,10 +26,13 @@ export function shellSequence(event: Pick<KeyboardEvent, 'type' | 'key' | 'altKe
 
 /**
  * Keys that are the app's own and must reach it from the terminal, where xterm would turn them into bytes for the shell and stop them: `Ctrl+`` (the terminal's
- * toggle) on every system, `Cmd+Esc` (the side panel's) on a Mac, where xterm would send the Esc, and `Ctrl+Shift+B`, `Ctrl+Shift+Enter` and `Ctrl+0` to `4` (the panel's, its
+ * toggle) on every system, `Cmd+Esc` (the side panel's) on a Mac, where xterm would send the Esc, and `Ctrl+Shift+B`, `Ctrl+Shift+Enter` and `Ctrl+0` to `5` (the panel's, its
  * expanded view's and its tabs') elsewhere. Other Cmd chords on a Mac are never taken by xterm.
  */
-export function isAppShortcut(event: Pick<KeyboardEvent, 'type' | 'code' | 'ctrlKey' | 'altKey' | 'metaKey' | 'shiftKey'>, platform: string): boolean {
+export function isAppShortcut(
+    event: Pick<KeyboardEvent, 'type' | 'code' | 'ctrlKey' | 'altKey' | 'metaKey' | 'shiftKey'>,
+    platform: string
+): boolean {
     if (event.type !== 'keydown' || event.altKey) return false;
 
     if (platform === 'darwin' && event.code === 'Escape') return event.metaKey && !event.ctrlKey && !event.shiftKey;
@@ -35,8 +41,8 @@ export function isAppShortcut(event: Pick<KeyboardEvent, 'type' | 'code' | 'ctrl
 
     if (event.code === 'Backquote') return !event.shiftKey;
 
-    // The panel's tabs (`SIDE_PANEL_TAB_KEYS`) are Ctrl+0 to 4 where Ctrl is the app's modifier.
-    if (platform !== 'darwin' && !event.shiftKey && /^(?:Digit|Numpad)[0-4]$/.test(event.code)) return true;
+    // The panel's tabs (`SIDE_PANEL_TAB_KEYS`) are Ctrl+0 to 5 where Ctrl is the app's modifier.
+    if (platform !== 'darwin' && !event.shiftKey && /^(?:Digit|Numpad)[0-5]$/.test(event.code)) return true;
 
     return platform !== 'darwin' && event.shiftKey && (event.code === 'KeyB' || event.code === 'Enter');
 }

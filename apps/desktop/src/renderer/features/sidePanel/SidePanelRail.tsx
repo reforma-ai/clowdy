@@ -1,4 +1,4 @@
-import { Checkbox, Terminal } from '@clowdy/icons/14';
+import { Checkbox, Commit, Terminal } from '@clowdy/icons/14';
 import { File, Folder, Info, Settings } from '@clowdy/icons/16';
 
 import { commandTooltip } from '../../hotkeys';
@@ -15,6 +15,7 @@ import type { SidePanelTab } from '../../stores';
 /** The tabs of the rail, in order: the tools from the top, and Info at the bottom beside Settings. Each icon is drawn at its own size: the 16 pack where it has the glyph, else the 14 pack, never scaled. */
 const TABS: ReadonlyArray<{ tab: SidePanelTab; icon: typeof Info; size: number }> = [
     { tab: 'files', icon: Folder, size: 16 },
+    { tab: 'changes', icon: Commit, size: 14 },
     { tab: 'docs', icon: File, size: 16 },
     { tab: 'terminal', icon: Terminal, size: 14 },
     { tab: 'tasks', icon: Checkbox, size: 14 },
@@ -39,37 +40,37 @@ export function SidePanelRail() {
     if (!railShown) return null;
 
     return (
-        <div className={ styles.rail }>
+        <div className={styles.rail}>
             <SidePanelCorner />
-            { available && (
-                <nav className={ styles.tabs } aria-label="Panel tabs">
-                    { TABS.map(({ tab, icon, size }) => (
+            {available && (
+                <nav className={styles.tabs} aria-label="Panel tabs">
+                    {TABS.map(({ tab, icon, size }) => (
                         <RailItem
-                            key={ tab }
-                            className={ tab === AT_BOTTOM ? styles.bottom : undefined }
-                            label={ SIDE_PANEL_TAB_LABELS[tab] }
-                            icon={ icon }
-                            size={ size }
-                            current={ open && tab === shown }
+                            key={tab}
+                            className={tab === AT_BOTTOM ? styles.bottom : undefined}
+                            label={SIDE_PANEL_TAB_LABELS[tab]}
+                            icon={icon}
+                            size={size}
+                            current={open && tab === shown}
                             accent
-                            tooltip={ commandTooltip(SIDE_PANEL_TAB_LABELS[tab], sidePanelTabCommand(tab)) }
+                            tooltip={commandTooltip(SIDE_PANEL_TAB_LABELS[tab], sidePanelTabCommand(tab))}
                             tooltipPlacement="left"
-                            onPress={ () => toggleTab(tab) }
+                            onPress={() => toggleTab(tab)}
                         />
-                    )) }
+                    ))}
                 </nav>
-            ) }
+            )}
 
             <RailItem
-                className={ available ? undefined : styles.bottom }
+                className={available ? undefined : styles.bottom}
                 label="Settings"
-                icon={ Settings }
-                size={ 16 }
-                current={ root.ui.settingsOpen }
+                icon={Settings}
+                size={16}
+                current={root.ui.settingsOpen}
                 accent
-                tooltip={ commandTooltip('Settings', SETTINGS_COMMAND) }
+                tooltip={commandTooltip('Settings', SETTINGS_COMMAND)}
                 tooltipPlacement="left"
-                onPress={ () => root.ui.openSettings() }
+                onPress={() => root.ui.openSettings()}
             />
         </div>
     );

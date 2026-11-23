@@ -4,7 +4,13 @@ import { serializeMention } from './composerMentions';
 
 import type { ComposerMentionAttrs } from '@clowdy/components/RichInput';
 
-const mention = (kind: ComposerMentionAttrs['kind'], data: unknown): ComposerMentionAttrs => ({ id: 'x', label: 'x', kind, trigger: '@', data });
+const mention = (kind: ComposerMentionAttrs['kind'], data: unknown): ComposerMentionAttrs => ({
+    id: 'x',
+    label: 'x',
+    kind,
+    trigger: '@',
+    data,
+});
 
 describe('serializeMention', () => {
     it('writes a task as its key', () => {
@@ -13,7 +19,9 @@ describe('serializeMention', () => {
 
     it('writes a file and a document as @path, from the project folder', () => {
         expect(serializeMention(mention('file', { path: 'src/booking/index.tsx' }))).toBe('@src/booking/index.tsx');
-        expect(serializeMention(mention('doc', { path: '.clowdy/docs/decisions/pricing.md' }))).toBe('@.clowdy/docs/decisions/pricing.md');
+        expect(serializeMention(mention('doc', { path: '.clowdy/docs/decisions/pricing.md' }))).toBe(
+            '@.clowdy/docs/decisions/pricing.md'
+        );
     });
 
     it('quotes a path that holds a space', () => {

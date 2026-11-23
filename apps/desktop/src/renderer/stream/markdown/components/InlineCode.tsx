@@ -19,18 +19,26 @@ export function StreamdownInlineCode(props: StreamdownInlineCodeProps) {
     const task = taskOfKey?.(text.trim());
 
     if (task) {
-        return <span data-streamdown="inline-code-chip"><TaskKeyChip task={ task } /></span>;
+        return (
+            <span data-streamdown="inline-code-chip">
+                <TaskKeyChip task={task} />
+            </span>
+        );
     }
 
     const path = normalizeFileReferencePath(text);
 
     if (isFilePathLike(path)) {
-        return <span data-streamdown="inline-code-chip"><FileChip path={ path } /></span>;
+        return (
+            <span data-streamdown="inline-code-chip">
+                <FileChip path={path} />
+            </span>
+        );
     }
 
     return (
-        <code data-streamdown="inline-code" { ...rest }>
-            { children }
+        <code data-streamdown="inline-code" {...rest}>
+            {children}
         </code>
     );
 }

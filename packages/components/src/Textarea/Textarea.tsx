@@ -1,10 +1,6 @@
 import { cn, mergeRefs } from '@clowdy/lib';
-import React, { useCallback, useEffect, useLayoutEffect, useRef, type ReactNode, type Ref } from 'react';
-import {
-    Group,
-    TextArea as RACTextArea,
-    type TextAreaProps as RACTextAreaProps,
-} from 'react-aria-components';
+import React, { type ReactNode, type Ref, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
+import { Group, TextArea as RACTextArea, type TextAreaProps as RACTextAreaProps } from 'react-aria-components';
 
 import { Show } from '../Show';
 import { useSlotContextProps } from '../Slot';
@@ -13,10 +9,8 @@ import styles from './Textarea.module.css';
 export type TextareaVariant = 'filled' | 'bordered' | 'transparent' | 'inline';
 export type TextareaSize = 'xs' | 'sm' | 'md' | 'lg';
 
-export interface TextareaProps extends Omit<
-    RACTextAreaProps,
-    'className' | 'isDisabled' | 'isInvalid' | 'isReadOnly' | 'onChange'
-> {
+export interface TextareaProps
+    extends Omit<RACTextAreaProps, 'className' | 'isDisabled' | 'isInvalid' | 'isReadOnly' | 'onChange'> {
     ref?: Ref<HTMLTextAreaElement | null>;
     variant?: TextareaVariant;
     size?: TextareaSize;
@@ -124,7 +118,7 @@ export function Textarea(props: TextareaProps) {
     );
 
     const handleInput: NonNullable<RACTextAreaProps['onInput']> = useCallback(
-        (e) => {
+        e => {
             if (autoResize) {
                 notifyRowCount(e.currentTarget);
             }
@@ -140,43 +134,43 @@ export function Textarea(props: TextareaProps) {
 
     return (
         <Group
-            className={ cn(styles.field, className) }
-            data-variant={ variant }
-            data-size={ size }
-            data-end-action={ endAction ? '' : undefined }
-            isDisabled={ isDisabled }
-            isReadOnly={ isReadOnly }
-            isInvalid={ isInvalid }
+            className={cn(styles.field, className)}
+            data-variant={variant}
+            data-size={size}
+            data-end-action={endAction ? '' : undefined}
+            isDisabled={isDisabled}
+            isReadOnly={isReadOnly}
+            isInvalid={isInvalid}
             data-modal-drag-exclude
-            onClick={ handleContainerClick }
+            onClick={handleContainerClick}
         >
             <RACTextArea
-                { ...restProps }
-                rows={ rows }
-                ref={ mergeRefs(ref, refProp) }
-                value={ value }
-                defaultValue={ defaultValue }
-                onChange={ handleChange }
-                onInput={ handleInput }
-                className={ cn(styles.textarea, textareaClassName) }
-                style={ { '--clowdy-textarea-min-rows': minRows } as React.CSSProperties }
-                data-resizable={ autoResize ? 'false' : (isResizable ? 'true' : 'false') }
-                data-autoresize={ autoResize ? 'true' : undefined }
-                disabled={ isDisabled }
-                readOnly={ isReadOnly }
-                aria-invalid={ isInvalid ?? restProps['aria-invalid'] }
+                {...restProps}
+                rows={rows}
+                ref={mergeRefs(ref, refProp)}
+                value={value}
+                defaultValue={defaultValue}
+                onChange={handleChange}
+                onInput={handleInput}
+                className={cn(styles.textarea, textareaClassName)}
+                style={{ '--clowdy-textarea-min-rows': minRows } as React.CSSProperties}
+                data-resizable={autoResize ? 'false' : isResizable ? 'true' : 'false'}
+                data-autoresize={autoResize ? 'true' : undefined}
+                disabled={isDisabled}
+                readOnly={isReadOnly}
+                aria-invalid={isInvalid ?? restProps['aria-invalid']}
             />
-            <Show when={ endAction }>
+            <Show when={endAction}>
                 <span
-                    className={ styles.endAction }
-                    onClick={ (event) => {
+                    className={styles.endAction}
+                    onClick={event => {
                         event.stopPropagation();
-                    } }
-                    onPointerDown={ (event) => {
+                    }}
+                    onPointerDown={event => {
                         event.stopPropagation();
-                    } }
+                    }}
                 >
-                    { endAction }
+                    {endAction}
                 </span>
             </Show>
         </Group>

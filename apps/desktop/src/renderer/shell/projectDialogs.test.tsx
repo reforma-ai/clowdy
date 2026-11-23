@@ -20,9 +20,12 @@ vi.mock('@clowdy/components/Toast', () => ({ toast: toasts }));
  * happy-dom cannot drag, so the tests move a folder the way a drop does: through the list's own `onChange`, with the items in their new
  * order. The real list still draws the rows.
  */
-const sortable = vi.hoisted(() => ({ items: [] as unknown[], onChange: undefined as ((items: unknown[]) => void) | undefined }));
+const sortable = vi.hoisted(() => ({
+    items: [] as unknown[],
+    onChange: undefined as ((items: unknown[]) => void) | undefined,
+}));
 
-vi.mock('@clowdy/components/SortableList', async (importOriginal) => {
+vi.mock('@clowdy/components/SortableList', async importOriginal => {
     const actual = await importOriginal<{ SortableList: typeof SortableListComponent }>();
     const { createElement } = await import('react');
 
@@ -44,7 +47,10 @@ let store: RootStore;
 const memoryStorage = () => {
     const data: Record<string, string> = {};
 
-    return { getItem: (key: string) => data[key] ?? null, setItem: (key: string, value: string) => void (data[key] = value) };
+    return {
+        getItem: (key: string) => data[key] ?? null,
+        setItem: (key: string, value: string) => void (data[key] = value),
+    };
 };
 
 /** The window draws on the next animation frame and its content mounts a little later. */
@@ -71,12 +77,18 @@ async function open(overrides: Partial<Transport> = {}) {
 }
 
 const form = () => document.body.querySelector('form');
-const button = (text: string) => [...document.body.querySelectorAll<HTMLButtonElement>('button')].find(candidate => candidate.textContent?.trim() === text || candidate.getAttribute('aria-label') === text);
-const input = (label: string) => document.body.querySelector<HTMLInputElement>(`input[aria-label="${ label }"]`)!;
+const button = (text: string) =>
+    [...document.body.querySelectorAll<HTMLButtonElement>('button')].find(
+        candidate => candidate.textContent?.trim() === text || candidate.getAttribute('aria-label') === text
+    );
+const input = (label: string) => document.body.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)!;
 const rows = () => [...document.body.querySelectorAll<HTMLElement>('[data-folder-path]')];
 const paths = () => rows().map(row => row.dataset.folderPath);
 /** The folders marked Main: there is one, the first, whenever there are folders. */
-const marked = () => rows().filter(row => row.textContent?.includes('Main')).map(row => row.dataset.folderPath);
+const marked = () =>
+    rows()
+        .filter(row => row.textContent?.includes('Main'))
+        .map(row => row.dataset.folderPath);
 const alert = () => document.body.querySelector('[role="alert"]')?.textContent;
 
 async function press(element: HTMLElement | undefined) {
@@ -132,7 +144,10 @@ describe('the Add project form', () => {
 
         await press(button('Add project'));
 
-        expect(store.selectedProject?.project).toMatchObject({ name: 'Garden Planner', folders: [{ path: '/Users/dev/Clowdy/projects/garden-planner' }] });
+        expect(store.selectedProject?.project).toMatchObject({
+            name: 'Garden Planner',
+            folders: [{ path: '/Users/dev/Clowdy/projects/garden-planner' }],
+        });
         expect(form()).toBeNull();
         expect(toasts.info).not.toHaveBeenCalled();
     });
@@ -191,7 +206,10 @@ describe('the Add project form', () => {
 
         await press(button('Add project'));
 
-        expect(store.selectedProject?.project).toMatchObject({ name: 'web', folders: [{ path: '/Users/dev/web' }, { path: '/Users/dev/api' }] });
+        expect(store.selectedProject?.project).toMatchObject({
+            name: 'web',
+            folders: [{ path: '/Users/dev/web' }, { path: '/Users/dev/api' }],
+        });
         expect(form()).toBeNull();
     });
 
@@ -200,7 +218,11 @@ describe('the Add project form', () => {
         await open();
         await press(button('Add folders…'));
 
-        for (const [removed, focused] of [['Remove api', 'Remove docs'], ['Remove docs', 'Remove web'], ['Remove web', 'Add folders…']]) {
+        for (const [removed, focused] of [
+            ['Remove api', 'Remove docs'],
+            ['Remove docs', 'Remove web'],
+            ['Remove web', 'Add folders…'],
+        ]) {
             act(() => button(removed)!.focus());
             await press(button(removed));
 
@@ -208,9 +230,15 @@ describe('the Add project form', () => {
         }
     });
 
-    it('shows the daemon\'s refusal in the form and stays open, until the folders change', async () => {
+    it("shows the daemon's refusal in the form and stays open, until the folders change", async () => {
         desktop(['/Users/dev', '/Users/dev/api']);
-        await open({ command: async () => ({ ok: false, requestId: 'r', error: { code: 'invalid', message: '/Users/dev/api is inside /Users/dev' } }) });
+        await open({
+            command: async () => ({
+                ok: false,
+                requestId: 'r',
+                error: { code: 'invalid', message: '/Users/dev/api is inside /Users/dev' },
+            }),
+        });
         await press(button('Add folders…'));
         await press(button('Add project'));
 
@@ -249,7 +277,9 @@ describe('the Add project form', () => {
         // Enter adds what is typed; the folder the list has already is not added again.
         for (const path of ['/Users/dev/web', '/Users/dev/api']) {
             type(input('Folder path'), path);
-            await act(async () => input('Folder path').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })));
+            await act(async () =>
+                input('Folder path').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+            );
         }
 
         expect(paths()).toEqual(['/Users/dev/web', '/Users/dev/api']);

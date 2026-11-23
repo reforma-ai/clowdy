@@ -1,4 +1,4 @@
-import { useState, type DragEvent } from 'react';
+import { type DragEvent, useState } from 'react';
 
 import { ArchiveDropTarget } from './ArchiveDropTarget';
 import styles from './Board.module.css';
@@ -37,7 +37,16 @@ export interface BoardProps {
  * changes the task's status, in both. While a card is dragged an Archive strip floats along the bottom edge, and a card dropped on it is archived.
  * The screen handles clicks and keys.
  */
-export function Board({ columns, runsOfTask, notesOf, onOpenScope, openId, selectedIds, onMove, onArchive }: BoardProps) {
+export function Board({
+    columns,
+    runsOfTask,
+    notesOf,
+    onOpenScope,
+    openId,
+    selectedIds,
+    onMove,
+    onArchive,
+}: BoardProps) {
     const [dragging, setDragging] = useState<TaskId | null>(null);
     const [over, setOver] = useState<string | null>(null);
 
@@ -52,24 +61,28 @@ export function Board({ columns, runsOfTask, notesOf, onOpenScope, openId, selec
     const accepts = (event: DragEvent) => event.dataTransfer.types.includes(DRAG_TYPE);
 
     return (
-        <div className={ styles.root }>
-            <div className={ styles.board }>
-                { columns.map(({ status, tasks }) => (
+        <div className={styles.root}>
+            <div className={styles.board}>
+                {columns.map(({ status, tasks }) => (
                     <section
-                        key={ status.id }
-                        className={ styles.column }
-                        aria-label={ status.name }
-                        onDragOver={ (event) => {
+                        key={status.id}
+                        className={styles.column}
+                        aria-label={status.name}
+                        onDragOver={event => {
                             if (!accepts(event)) return;
 
                             event.preventDefault();
                             event.dataTransfer.dropEffect = 'move';
                             setOver(status.id);
-                        } }
-                        onDragLeave={ (event) => {
-                            if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) setOver(null);
-                        } }
-                        onDrop={ (event) => {
+                        }}
+                        onDragLeave={event => {
+                            if (
+                                !(event.relatedTarget instanceof Node) ||
+                                !event.currentTarget.contains(event.relatedTarget)
+                            )
+                                setOver(null);
+                        }}
+                        onDrop={event => {
                             if (!accepts(event)) return;
 
                             event.preventDefault();
@@ -79,44 +92,47 @@ export function Board({ columns, runsOfTask, notesOf, onOpenScope, openId, selec
                             endDrag();
 
                             if (taskId) onMove(taskId, status.id);
-                        } }
+                        }}
                     >
-                        <div className={ styles.head }>
-                            <StatusPill status={ status } count={ tasks.length } />
+                        <div className={styles.head}>
+                            <StatusPill status={status} count={tasks.length} />
                         </div>
-                        <div className={ styles.cards } data-drop={ (over === status.id && dragging !== null) || undefined }>
-                            { tasks.map(task => (
+                        <div
+                            className={styles.cards}
+                            data-drop={(over === status.id && dragging !== null) || undefined}
+                        >
+                            {tasks.map(task => (
                                 <TaskCard
-                                    key={ task.id }
-                                    task={ task }
-                                    executors={ activeExecutors(runsOfTask.get(task.id)) }
-                                    notes={ notesOf(task) }
-                                    onOpenScope={ () => onOpenScope(task.id) }
-                                    isSelected={ selectedIds.has(task.id) }
-                                    isOpen={ task.id === openId }
-                                    isDragging={ task.id === dragging }
-                                    onDragStart={ (event) => {
+                                    key={task.id}
+                                    task={task}
+                                    executors={activeExecutors(runsOfTask.get(task.id))}
+                                    notes={notesOf(task)}
+                                    onOpenScope={() => onOpenScope(task.id)}
+                                    isSelected={selectedIds.has(task.id)}
+                                    isOpen={task.id === openId}
+                                    isDragging={task.id === dragging}
+                                    onDragStart={event => {
                                         event.dataTransfer.setData(DRAG_TYPE, task.id);
                                         event.dataTransfer.effectAllowed = 'move';
                                         setDragging(task.id);
-                                    } }
-                                    onDragEnd={ endDrag }
+                                    }}
+                                    onDragEnd={endDrag}
                                 />
-                            )) }
-                            { tasks.length === 0 && <div className={ styles.empty }>No tasks</div> }
+                            ))}
+                            {tasks.length === 0 && <div className={styles.empty}>No tasks</div>}
                         </div>
                     </section>
-                )) }
+                ))}
             </div>
 
-            { dragging !== null && (
+            {dragging !== null && (
                 <ArchiveDropTarget
-                    onDropTask={ (taskId) => {
+                    onDropTask={taskId => {
                         endDrag();
                         onArchive(taskId);
-                    } }
+                    }}
                 />
-            ) }
+            )}
         </div>
     );
 }

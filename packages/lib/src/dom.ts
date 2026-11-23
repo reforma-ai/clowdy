@@ -12,7 +12,11 @@ export function isElement(target: any): target is Element {
 /**
  * Get relative cursor position relative to element
  */
-export function getRelativeCursorPos(element: Element, event: Pick<MouseEvent, 'clientX' | 'clientY'>, scale = 1): { x: number; y: number } {
+export function getRelativeCursorPos(
+    element: Element,
+    event: Pick<MouseEvent, 'clientX' | 'clientY'>,
+    scale = 1
+): { x: number; y: number } {
     const rect = element.getBoundingClientRect();
 
     const x = (event.clientX - rect.left) / scale;
@@ -70,7 +74,7 @@ export function scrollParent(node: Element | null): Element {
         else {
             const root = el.getRootNode?.();
 
-            el = (root instanceof ShadowRoot ? root.host : null);
+            el = root instanceof ShadowRoot ? root.host : null;
         }
     }
 
@@ -83,7 +87,10 @@ export function scrollParent(node: Element | null): Element {
  * @param range - Range (optional, useful for reusing range)
  * @returns Rects and bounds of the element
  */
-export function getElementRects(element: Element | Text, range = document.createRange()): { rects: DOMRect[]; bounds: DOMRect } {
+export function getElementRects(
+    element: Element | Text,
+    range = document.createRange()
+): { rects: DOMRect[]; bounds: DOMRect } {
     // For text nodes, use range to get accurate text rects
     if (element.nodeType === Node.TEXT_NODE) {
         range.selectNodeContents(element);

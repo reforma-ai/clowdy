@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
-import { APP_ICON_SIZE, APP_ICON_TIMEOUT_MS, createAppIcon, type AppIconSources } from './appIcon';
+import { APP_ICON_SIZE, APP_ICON_TIMEOUT_MS, type AppIconSources, createAppIcon } from './appIcon';
 
 import type { NativeImage } from 'electron';
 
-const image = (url: string, empty = false) => ({ isEmpty: () => empty, toDataURL: () => url }) as unknown as NativeImage;
+const image = (url: string, empty = false) =>
+    ({ isEmpty: () => empty, toDataURL: () => url }) as unknown as NativeImage;
 
 function sources(platform: NodeJS.Platform, overrides: Partial<AppIconSources> = {}) {
     const thumbnail = vi.fn<AppIconSources['thumbnail']>(async () => image('data:image/png;base64,thumbnail'));

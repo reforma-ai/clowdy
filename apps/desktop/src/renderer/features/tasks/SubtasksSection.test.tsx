@@ -16,25 +16,33 @@ const STATUSES: TaskStatus[] = [
     { id: 'done', name: 'Done', category: 'done' },
 ] as TaskStatus[];
 
-const task = (number: number, title: string, statusId: string): Task => ({ id: `t-${ number }`, key: `CAR-${ number }`, number, title, statusId }) as Task;
+const task = (number: number, title: string, statusId: string): Task =>
+    ({ id: `t-${number}`, key: `CAR-${number}`, number, title, statusId }) as Task;
 
 let container: HTMLDivElement;
 let root: Root;
 let onOpen: ReturnType<typeof vi.fn<(taskId: string) => void>>;
 let onCreate: ReturnType<typeof vi.fn<() => void>>;
 
-const render = (props: Partial<SubtasksSectionProps> = {}) => act(async () => root.render(
-    <SubtasksSection
-        task={ { key: 'CAR-1' } }
-        subtasks={ [task(2, 'First step', 'todo'), task(3, 'Second step', 'active'), task(4, 'Third step', 'done')] }
-        rollUp={ { done: 1, total: 3 } }
-        statuses={ STATUSES }
-        canHaveChildren
-        onOpen={ onOpen }
-        onCreate={ onCreate }
-        { ...props }
-    />
-));
+const render = (props: Partial<SubtasksSectionProps> = {}) =>
+    act(async () =>
+        root.render(
+            <SubtasksSection
+                task={{ key: 'CAR-1' }}
+                subtasks={[
+                    task(2, 'First step', 'todo'),
+                    task(3, 'Second step', 'active'),
+                    task(4, 'Third step', 'done'),
+                ]}
+                rollUp={{ done: 1, total: 3 }}
+                statuses={STATUSES}
+                canHaveChildren
+                onOpen={onOpen}
+                onCreate={onCreate}
+                {...props}
+            />
+        )
+    );
 
 const rows = () => [...container.querySelectorAll<HTMLButtonElement>('button[title]')];
 
@@ -90,7 +98,9 @@ describe('SubtasksSection', () => {
         expect(rows()).toEqual([]);
         expect(container.querySelector('[role="img"]')).toBeNull();
 
-        await act(async () => [...container.querySelectorAll('button')].find(button => button.textContent === 'New sub-task')!.click());
+        await act(async () =>
+            [...container.querySelectorAll('button')].find(button => button.textContent === 'New sub-task')!.click()
+        );
 
         expect(onCreate).toHaveBeenCalledTimes(1);
     });
@@ -103,7 +113,9 @@ describe('SubtasksSection', () => {
 
     it('asks for a new sub-task with its button', async () => {
         await render();
-        await act(async () => [...container.querySelectorAll('button')].find(button => button.textContent === 'New sub-task')!.click());
+        await act(async () =>
+            [...container.querySelectorAll('button')].find(button => button.textContent === 'New sub-task')!.click()
+        );
 
         expect(onCreate).toHaveBeenCalledTimes(1);
     });
@@ -111,7 +123,9 @@ describe('SubtasksSection', () => {
     it('turns the button off at the last level and says why, on a stand-in that has the focus', async () => {
         await render({ subtasks: [], rollUp: undefined, canHaveChildren: false });
 
-        const button = [...container.querySelectorAll('button')].find(candidate => candidate.textContent === 'New sub-task')!;
+        const button = [...container.querySelectorAll('button')].find(
+            candidate => candidate.textContent === 'New sub-task'
+        )!;
         const standIn = container.querySelector<HTMLElement>('[role="button"][aria-label="New sub-task"]')!;
 
         expect(button.hasAttribute('disabled')).toBe(true);

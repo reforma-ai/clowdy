@@ -1,20 +1,13 @@
 import { cn } from '@clowdy/lib';
-import {
-    Children,
-    createContext,
-    isValidElement,
-    use,
-    useId,
-    type ReactNode,
-} from 'react';
+import { Children, createContext, isValidElement, type ReactNode, use, useId } from 'react';
 import {
     Provider,
     Label as RACLabel,
+    type LabelProps as RACLabelProps,
     SelectContext,
     SwitchContext,
     TextAreaContext,
     TextFieldContext,
-    type LabelProps as RACLabelProps,
 } from 'react-aria-components';
 
 import { Show } from '../Show';
@@ -81,30 +74,26 @@ function useFormFieldContext(slot: string): FormFieldContextValue {
     const context = use(FormFieldContext);
 
     if (!context) {
-        throw new Error(`${ slot } must be used within FormField`);
+        throw new Error(`${slot} must be used within FormField`);
     }
 
     return context;
 }
 
-function labelPlacementFor(layout: FormFieldLayout, labelPlacement: FormFieldLabelPlacement | undefined): FormFieldLabelPlacement {
+function labelPlacementFor(
+    layout: FormFieldLayout,
+    labelPlacement: FormFieldLabelPlacement | undefined
+): FormFieldLabelPlacement {
     return labelPlacement ?? (layout === 'horizontal' ? 'start' : 'top');
 }
 
 function FormFieldLabel({ className, children, ...props }: FormFieldLabelProps) {
     const { size, controlId } = useFormFieldContext('FormField.Label');
-    const content = typeof children === 'string'
-        ? <Text variant={ LABEL_VARIANT[size] }>{ children }</Text>
-        : children;
+    const content = typeof children === 'string' ? <Text variant={LABEL_VARIANT[size]}>{children}</Text> : children;
 
     return (
-        <RACLabel
-            { ...props }
-            htmlFor={ controlId }
-            data-slot="label"
-            className={ cn(styles.label, className) }
-        >
-            { content }
+        <RACLabel {...props} htmlFor={controlId} data-slot="label" className={cn(styles.label, className)}>
+            {content}
         </RACLabel>
     );
 }
@@ -114,14 +103,14 @@ function FormFieldDescription({ className, children }: FormFieldDescriptionProps
 
     return (
         <Text
-            id={ descriptionId }
+            id={descriptionId}
             slot="description"
             data-slot="description"
-            variant={ DESCRIPTION_VARIANT[size] }
+            variant={DESCRIPTION_VARIANT[size]}
             color="secondary"
-            className={ cn(styles.description, className) }
+            className={cn(styles.description, className)}
         >
-            { children }
+            {children}
         </Text>
     );
 }
@@ -135,14 +124,14 @@ function FormFieldError({ className, children }: FormFieldErrorProps) {
 
     return (
         <Text
-            id={ errorId }
+            id={errorId}
             data-slot="error"
             role="alert"
             variant="xs"
             color="danger"
-            className={ cn(styles.error, className) }
+            className={cn(styles.error, className)}
         >
-            { children }
+            {children}
         </Text>
     );
 }
@@ -153,7 +142,7 @@ function splitSlots(children: ReactNode) {
     let description: ReactNode;
     let error: ReactNode;
 
-    Children.forEach(children, (child) => {
+    Children.forEach(children, child => {
         if (isValidElement(child) && child.type === FormFieldLabel) {
             label = child;
 
@@ -195,9 +184,8 @@ function FormFieldRoot({
     const placement = labelPlacementFor(layout, labelPlacement);
     const { label, description, error, control } = splitSlots(children);
     const packCopy = Boolean(description) && placement !== 'bottom';
-    const describedBy = [description ? descriptionId : null, error ? errorId : null]
-        .filter(Boolean)
-        .join(' ') || undefined;
+    const describedBy =
+        [description ? descriptionId : null, error ? errorId : null].filter(Boolean).join(' ') || undefined;
     const fieldProps = {
         id: controlId,
         isDisabled: isDisabled || undefined,
@@ -211,46 +199,44 @@ function FormFieldRoot({
     };
 
     return (
-        <FormFieldContext value={ { size, controlId, descriptionId, errorId } }>
+        <FormFieldContext value={{ size, controlId, descriptionId, errorId }}>
             <Provider
-                values={ [
+                values={[
                     [SlotContext, { slots: { [DEFAULT_SLOT]: slotProps, description: { id: descriptionId } } }],
                     [TextFieldContext, fieldProps],
                     [TextAreaContext, fieldProps],
                     [SelectContext, fieldProps],
                     [SwitchContext, fieldProps],
-                ] }
+                ]}
             >
                 <div
-                    id={ id }
-                    className={ cn(styles.field, className) }
-                    data-size={ size }
-                    data-layout={ layout }
-                    data-label-placement={ placement }
-                    data-label-align={ labelAlign }
-                    data-has-control={ (control.length > 0 || error) ? '' : undefined }
-                    data-has-description={ description ? '' : undefined }
-                    data-has-error={ error ? '' : undefined }
-                    data-disabled={ isDisabled || undefined }
-                    data-invalid={ isInvalid || undefined }
+                    id={id}
+                    className={cn(styles.field, className)}
+                    data-size={size}
+                    data-layout={layout}
+                    data-label-placement={placement}
+                    data-label-align={labelAlign}
+                    data-has-control={control.length > 0 || error ? '' : undefined}
+                    data-has-description={description ? '' : undefined}
+                    data-has-error={error ? '' : undefined}
+                    data-disabled={isDisabled || undefined}
+                    data-invalid={isInvalid || undefined}
                 >
-                    { packCopy
-                        ? (
-                            <div data-slot="copy" className={ styles.copy }>
-                                { label }
-                                { description }
-                            </div>
-                        )
-                        : label }
-                    <Show when={ control.length > 0 || error }>
-                        <div data-slot="control" className={ styles.control }>
-                            <div className={ styles.controlBody }>
-                                { control }
-                            </div>
-                            { error }
+                    {packCopy ? (
+                        <div data-slot="copy" className={styles.copy}>
+                            {label}
+                            {description}
+                        </div>
+                    ) : (
+                        label
+                    )}
+                    <Show when={control.length > 0 || error}>
+                        <div data-slot="control" className={styles.control}>
+                            <div className={styles.controlBody}>{control}</div>
+                            {error}
                         </div>
                     </Show>
-                    <Show when={ !packCopy && description }>{ description }</Show>
+                    <Show when={!packCopy && description}>{description}</Show>
                 </div>
             </Provider>
         </FormFieldContext>

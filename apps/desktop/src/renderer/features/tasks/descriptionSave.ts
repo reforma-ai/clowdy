@@ -58,14 +58,12 @@ export class LatestSaver {
 
                 if (await this.send(next)) {
                     this.#lastSent = next;
-                }
-                else {
+                } else {
                     this.#pending = undefined;
                     this.onRefused();
                 }
             }
-        }
-        finally {
+        } finally {
             this.#isBusy = false;
         }
     }

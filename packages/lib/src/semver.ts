@@ -33,7 +33,9 @@ export function isVersionAheadOf(candidate: string, current: string | null | und
         return false;
     }
 
-    return ahead.major > checkout.major
-      || (ahead.major === checkout.major && ahead.minor > checkout.minor)
-      || (ahead.major === checkout.major && ahead.minor === checkout.minor && ahead.patch > checkout.patch);
+    return (
+        ahead.major > checkout.major ||
+        (ahead.major === checkout.major && ahead.minor > checkout.minor) ||
+        (ahead.major === checkout.major && ahead.minor === checkout.minor && ahead.patch > checkout.patch)
+    );
 }

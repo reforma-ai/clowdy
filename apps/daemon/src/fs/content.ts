@@ -6,22 +6,25 @@ import { dirname, join } from 'node:path';
 import { conflict, invalid, TooLargeError } from '../errors';
 import { exists, outside, reasoned, versionOf } from './paths';
 
-import type { FsErrorReason } from '@clowdy/protocol';
 import type { BigIntStats } from 'node:fs';
+import type { FsErrorReason } from '@clowdy/protocol';
 
 /** Opening a link in place of the file that was checked fails instead of following it (Windows has no such flag). */
 const NO_FOLLOW = constants.O_NOFOLLOW ?? 0;
 
 /** A name for what the daemon keeps next to a file for a moment; `TRANSIENT_NAME` is what a watcher leaves out. */
-export const transientName = (kind: 'tmp' | 'replaced') => `.clowdy-${ randomBytes(4).toString('hex') }.${ kind }`;
+export const transientName = (kind: 'tmp' | 'replaced') => `.clowdy-${randomBytes(4).toString('hex')}.${kind}`;
 
-const tooLargeDetails = (path: string, maxBytes: number, size?: number) => reasoned('too_large', { path, maxBytes, ...size !== undefined && { size } });
+const tooLargeDetails = (path: string, maxBytes: number, size?: number) =>
+    reasoned('too_large', { path, maxBytes, ...(size !== undefined && { size }) });
 
 /** A file to read that is over the limit: `invalid`, HTTP 400. */
-export const tooLargeToRead = (path: string, maxBytes: number, size: number) => invalid(`${ path } is over ${ maxBytes } bytes`, tooLargeDetails(path, maxBytes, size));
+export const tooLargeToRead = (path: string, maxBytes: number, size: number) =>
+    invalid(`${path} is over ${maxBytes} bytes`, tooLargeDetails(path, maxBytes, size));
 
 /** A body to write that is over the limit: `invalid`, HTTP 413 as an upload is. */
-export const tooLargeToWrite = (path: string, maxBytes: number) => new TooLargeError(`${ path } is over ${ maxBytes } bytes`, tooLargeDetails(path, maxBytes));
+export const tooLargeToWrite = (path: string, maxBytes: number) =>
+    new TooLargeError(`${path} is over ${maxBytes} bytes`, tooLargeDetails(path, maxBytes));
 
 const READ_ATTEMPTS = 3;
 
@@ -29,7 +32,11 @@ const READ_ATTEMPTS = 3;
  * The whole file and its version. The version is taken before and after the read, and the read repeated when the file changed under it, so
  * the version never belongs to older bytes than it names (a version older than the bytes would only make a later save conflict).
  */
-export async function readFileBytes(real: string, rel: string, maxBytes: number): Promise<{ bytes: Buffer; version: string }> {
+export async function readFileBytes(
+    real: string,
+    rel: string,
+    maxBytes: number
+): Promise<{ bytes: Buffer; version: string }> {
     const handle = await open(real, constants.O_RDONLY | NO_FOLLOW);
 
     try {
@@ -37,7 +44,7 @@ export async function readFileBytes(real: string, rel: string, maxBytes: number)
             const before = await handle.stat({ bigint: true });
 
             if (!before.isFile()) {
-                throw invalid(`${ rel } is not a file`, { path: rel });
+                throw invalid(`${rel} is not a file`, { path: rel });
             }
 
             if (before.size > BigInt(maxBytes)) {
@@ -63,14 +70,18 @@ export async function readFileBytes(real: string, rel: string, maxBytes: number)
                 return { bytes: bytes.subarray(0, length), version: versionOf(after) };
             }
         }
-    }
-    finally {
+    } finally {
         await handle.close();
     }
 }
 
 /** The request's body, cut off at `maxBytes`: a declared length over it is refused unread, and a body that hides its length is cut while it is read. */
-export async function readBody(body: AsyncIterable<Uint8Array> | null, declaredLength: number, rel: string, maxBytes: number): Promise<Buffer> {
+export async function readBody(
+    body: AsyncIterable<Uint8Array> | null,
+    declaredLength: number,
+    rel: string,
+    maxBytes: number
+): Promise<Buffer> {
     if (declaredLength > maxBytes) {
         throw tooLargeToWrite(rel, maxBytes);
     }
@@ -107,8 +118,7 @@ export async function makeFolders(base: string, names: readonly string[], rel: s
         try {
             await mkdir(current);
             made.push(current);
-        }
-        catch (error) {
+        } catch (error) {
             if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
                 await removeFolders(made);
                 throw error;
@@ -118,12 +128,12 @@ export async function makeFolders(base: string, names: readonly string[], rel: s
 
             if (info.isSymbolicLink()) {
                 await removeFolders(made);
-                throw outside(`${ rel } runs through a symbolic link that appeared while it was made`);
+                throw outside(`${rel} runs through a symbolic link that appeared while it was made`);
             }
 
             if (!info.isDirectory()) {
                 await removeFolders(made);
-                throw exists(rel, `A part of ${ rel } is a file`);
+                throw exists(rel, `A part of ${rel} is a file`);
             }
         }
     }
@@ -149,15 +159,18 @@ export interface Preconditions {
 /** `current` is the version of the file that is there now, `null` when nothing is. */
 export function checkPreconditions(rel: string, current: string | null, { create, version }: Preconditions): void {
     if (create && current !== null) {
-        throw conflict(`${ rel } already exists`, reasoned('exists' satisfies FsErrorReason, { path: rel }));
+        throw conflict(`${rel} already exists`, reasoned('exists' satisfies FsErrorReason, { path: rel }));
     }
 
     if (version !== undefined && current !== version) {
-        throw conflict(`${ rel } changed on disk`, reasoned('version' satisfies FsErrorReason, { path: rel, currentVersion: current }));
+        throw conflict(
+            `${rel} changed on disk`,
+            reasoned('version' satisfies FsErrorReason, { path: rel, currentVersion: current })
+        );
     }
 }
 
-const versionAt = (stat: BigIntStats | undefined) => stat?.isFile() ? versionOf(stat) : null;
+const versionAt = (stat: BigIntStats | undefined) => (stat?.isFile() ? versionOf(stat) : null);
 
 /**
  * Replaces the file at `real` (or makes it) with `bytes`, atomically enough that a crash leaves the old file or the new one: the bytes go to a
@@ -166,10 +179,16 @@ const versionAt = (stat: BigIntStats | undefined) => stat?.isFile() ? versionOf(
  * between that check and the rename; a write that loses that race overwrites it (a lock cannot reach a process outside the daemon).
  * Answers the version of the file written.
  */
-export async function writeFileAtomically(real: string, rel: string, bytes: Uint8Array, existing: BigIntStats | undefined, preconditions: Preconditions): Promise<string> {
+export async function writeFileAtomically(
+    real: string,
+    rel: string,
+    bytes: Uint8Array,
+    existing: BigIntStats | undefined,
+    preconditions: Preconditions
+): Promise<string> {
     if (existing) {
         await access(real, constants.W_OK).catch(() => {
-            throw invalid(`${ rel } is read only`, reasoned('permission', { path: rel }));
+            throw invalid(`${rel} is read only`, reasoned('permission', { path: rel }));
         });
     }
 
@@ -187,8 +206,7 @@ export async function writeFileAtomically(real: string, rel: string, bytes: Uint
             }
 
             await handle.sync();
-        }
-        finally {
+        } finally {
             await handle.close();
         }
 
@@ -199,8 +217,7 @@ export async function writeFileAtomically(real: string, rel: string, bytes: Uint
         await rename(temp, real);
 
         return version;
-    }
-    catch (error) {
+    } catch (error) {
         await rm(temp, { force: true });
         throw error;
     }

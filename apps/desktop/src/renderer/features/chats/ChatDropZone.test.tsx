@@ -38,7 +38,13 @@ describe('ChatDropZone', () => {
         const onFiles = vi.fn();
         const file = new File(['a'], 'a.txt');
 
-        await act(async () => root.render(<ChatDropZone onFiles={ onFiles }><p>chat</p></ChatDropZone>));
+        await act(async () =>
+            root.render(
+                <ChatDropZone onFiles={onFiles}>
+                    <p>chat</p>
+                </ChatDropZone>
+            )
+        );
 
         expect(veil()).toBe(false);
 
@@ -53,7 +59,13 @@ describe('ChatDropZone', () => {
     });
 
     it('lets go of the veil when the drag leaves', async () => {
-        await act(async () => root.render(<ChatDropZone onFiles={ vi.fn() }><p>chat</p></ChatDropZone>));
+        await act(async () =>
+            root.render(
+                <ChatDropZone onFiles={vi.fn()}>
+                    <p>chat</p>
+                </ChatDropZone>
+            )
+        );
         await act(async () => void zone().dispatchEvent(dragEvent('dragenter')));
         await act(async () => void zone().dispatchEvent(dragEvent('dragleave')));
 
@@ -64,7 +76,13 @@ describe('ChatDropZone', () => {
         const onFiles = vi.fn();
         const file = new File(['a'], 'a.txt');
 
-        await act(async () => root.render(<ChatDropZone disabled onFiles={ onFiles }><p>chat</p></ChatDropZone>));
+        await act(async () =>
+            root.render(
+                <ChatDropZone disabled onFiles={onFiles}>
+                    <p>chat</p>
+                </ChatDropZone>
+            )
+        );
         await act(async () => void zone().dispatchEvent(dragEvent('dragenter')));
 
         expect(veil()).toBe(false);
@@ -86,9 +104,27 @@ describe('ChatDropZone', () => {
         const removed = vi.spyOn(document, 'removeEventListener');
         const count = (spy: typeof added, type: string) => spy.mock.calls.filter(([name]) => name === type).length;
 
-        await act(async () => root.render(<ChatDropZone onFiles={ vi.fn() }><p>chat</p></ChatDropZone>));
-        await act(async () => root.render(<ChatDropZone disabled onFiles={ vi.fn() }><p>chat</p></ChatDropZone>));
-        await act(async () => root.render(<ChatDropZone onFiles={ vi.fn() }><p>chat</p></ChatDropZone>));
+        await act(async () =>
+            root.render(
+                <ChatDropZone onFiles={vi.fn()}>
+                    <p>chat</p>
+                </ChatDropZone>
+            )
+        );
+        await act(async () =>
+            root.render(
+                <ChatDropZone disabled onFiles={vi.fn()}>
+                    <p>chat</p>
+                </ChatDropZone>
+            )
+        );
+        await act(async () =>
+            root.render(
+                <ChatDropZone onFiles={vi.fn()}>
+                    <p>chat</p>
+                </ChatDropZone>
+            )
+        );
 
         expect(count(added, 'dragend')).toBe(1);
         expect(count(removed, 'dragend')).toBe(0);
@@ -105,16 +141,34 @@ describe('ChatDropZone', () => {
         const onFiles = vi.fn();
         const file = new File(['a'], 'a.txt');
 
-        await act(async () => root.render(<ChatDropZone onFiles={ onFiles }><p>chat</p></ChatDropZone>));
+        await act(async () =>
+            root.render(
+                <ChatDropZone onFiles={onFiles}>
+                    <p>chat</p>
+                </ChatDropZone>
+            )
+        );
         await act(async () => void zone().dispatchEvent(dragEvent('dragenter')));
 
         expect(veil()).toBe(true);
 
-        await act(async () => root.render(<ChatDropZone disabled onFiles={ onFiles }><p>chat</p></ChatDropZone>));
+        await act(async () =>
+            root.render(
+                <ChatDropZone disabled onFiles={onFiles}>
+                    <p>chat</p>
+                </ChatDropZone>
+            )
+        );
 
         expect(veil()).toBe(false);
 
-        await act(async () => root.render(<ChatDropZone onFiles={ onFiles }><p>chat</p></ChatDropZone>));
+        await act(async () =>
+            root.render(
+                <ChatDropZone onFiles={onFiles}>
+                    <p>chat</p>
+                </ChatDropZone>
+            )
+        );
 
         // A drag that was cut short by the switch must not leave a veil behind once the zone takes files again.
         expect(veil()).toBe(false);
@@ -128,12 +182,20 @@ describe('ChatDropZone', () => {
         const onFiles = vi.fn();
         const file = new File(['a'], 'shot.png', { type: 'image/png' });
 
-        await act(async () => root.render(<ChatDropZone onFiles={ onFiles }><p>chat</p></ChatDropZone>));
+        await act(async () =>
+            root.render(
+                <ChatDropZone onFiles={onFiles}>
+                    <p>chat</p>
+                </ChatDropZone>
+            )
+        );
 
         const paste = (files: File[]) => {
             const event = new Event('paste', { bubbles: true, cancelable: true });
 
-            Object.defineProperty(event, 'clipboardData', { value: { files, items: [], types: files.length > 0 ? ['Files'] : ['text/plain'] } });
+            Object.defineProperty(event, 'clipboardData', {
+                value: { files, items: [], types: files.length > 0 ? ['Files'] : ['text/plain'] },
+            });
             act(() => void zone().dispatchEvent(event));
 
             return event;
@@ -150,7 +212,13 @@ describe('ChatDropZone', () => {
         const onPasteFiles = vi.fn();
         const file = new File(['a'], 'a.ts');
 
-        await act(async () => root.render(<ChatDropZone onFiles={ onFiles } onPasteFiles={ onPasteFiles }><p>chat</p></ChatDropZone>));
+        await act(async () =>
+            root.render(
+                <ChatDropZone onFiles={onFiles} onPasteFiles={onPasteFiles}>
+                    <p>chat</p>
+                </ChatDropZone>
+            )
+        );
 
         const paste = new Event('paste', { bubbles: true, cancelable: true });
 

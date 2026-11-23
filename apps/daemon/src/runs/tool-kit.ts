@@ -32,7 +32,7 @@ export function defineTool<Schema extends z.ZodType>(
             const parsed = schema.safeParse(input);
 
             if (!parsed.success) {
-                throw new Error(`Invalid input for ${ name }: ${ z.prettifyError(parsed.error) }`);
+                throw new Error(`Invalid input for ${name}: ${z.prettifyError(parsed.error)}`);
             }
 
             return run(parsed.data, signal);
@@ -50,7 +50,7 @@ export const taskRef = z.string().min(1).describe('A task key such as CLW-3 (an 
 export function cut(text: string, length: number): string {
     const last = text.charCodeAt(length - 1);
 
-    return text.slice(0, last >= 0xD800 && last <= 0xDBFF ? length - 1 : length);
+    return text.slice(0, last >= 0xd800 && last <= 0xdbff ? length - 1 : length);
 }
 
-export const clip = (text: string, limit: number) => (text.length > limit ? `${ cut(text, limit - 1) }…` : text);
+export const clip = (text: string, limit: number) => (text.length > limit ? `${cut(text, limit - 1)}…` : text);

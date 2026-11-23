@@ -1,0 +1,21 @@
+@reference '@clowdy/styles/rulesets';
+
+/* The pull request as a chip in two parts: its number and state, and the dot of its checks. Drawn by the Changes tab's sidebar. */
+.chip {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+
+.chip[data-stale] {
+    opacity: var(--opacity-inactive);
+}
+
+.pr {
+    gap: var(--spacing-sm);
+    min-width: 0;
+}
+
+.checks {
+    flex-shrink: 0;
+}

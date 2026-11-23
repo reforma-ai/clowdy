@@ -1,3 +1,7 @@
 :root {
-    --color-border-ai: linear-gradient(rgba(250, 136, 84, 0.1) 0%, rgba(91, 141, 239, 0.2) 50%, rgba(255, 161, 231, 0.2) 100%);
+    --color-border-ai: linear-gradient(
+        rgba(250, 136, 84, 0.1) 0%,
+        rgba(91, 141, 239, 0.2) 50%,
+        rgba(255, 161, 231, 0.2) 100%
+    );
 }

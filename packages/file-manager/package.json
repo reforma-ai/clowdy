@@ -4,7 +4,7 @@
     "description": "File manager and text editor over any file system provider",
     "type": "module",
     "version": "0.0.0",
-    "license": "UNLICENSED",
+    "license": "Apache-2.0",
     "sideEffects": [
         "**/*.css"
     ],
@@ -47,7 +47,8 @@
     },
     "scripts": {
         "clean": "rm -rf node_modules/{*,.*} .turbo 2>/dev/null || true",
-        "lint": "eslint .",
+        "lint": "biome check",
+        "lint:fix": "biome check --write",
         "test": "vitest run",
         "typecheck": "tsc --noEmit"
     },
@@ -58,6 +59,7 @@
         "@codemirror/autocomplete": "^6.20.4",
         "@codemirror/commands": "^6.11.1",
         "@codemirror/language": "^6.13.1",
+        "@codemirror/merge": "6.12.3",
         "@codemirror/search": "^6.7.2",
         "@codemirror/state": "^6.7.6",
         "@codemirror/view": "^6.43.15",

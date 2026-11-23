@@ -2,8 +2,11 @@
     "name": "@clowdy/config-typescript",
     "version": "0.0.0",
     "private": true,
+    "license": "Apache-2.0",
     "description": "Shared tsconfig bases and ambient type shims",
     "scripts": {
-        "clean": "rm -rf node_modules/{*,.*} .turbo 2>/dev/null || true"
+        "clean": "rm -rf node_modules/{*,.*} .turbo 2>/dev/null || true",
+        "lint": "biome check",
+        "lint:fix": "biome check --write"
     }
 }

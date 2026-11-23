@@ -1,7 +1,7 @@
-import { mainFolder } from '@clowdy/protocol';
 import { existsSync, mkdirSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { basename, isAbsolute, join, sep } from 'node:path';
+import { mainFolder } from '@clowdy/protocol';
 
 import { chatCountsByFolder, clearChatFolders } from '../db/chats';
 import {
@@ -17,17 +17,27 @@ import {
     projectCounts,
     upsertProject,
 } from '../db/projects';
-import { listWorkspacesInUse } from '../db/workspaces';
+import { deleteViewedOutsideFolders } from '../db/viewed';
+import { listWorkspaceUses } from '../db/workspaces';
 import { conflict, invalid, notFound, unavailable } from '../errors';
 import { folderHead } from '../git/state';
 import { newId } from '../ids';
 import { mergeFolderSettings } from './folderSettings';
 import { git, gitLine } from './git';
 
-import type { Project, ProjectFolder, ProjectFolderInfo, ProjectInfo, ProjectSettings, ProjectWorkspaceInfo, TaskStatus, TaskStatusCategory } from '@clowdy/protocol';
+import type {
+    Project,
+    ProjectFolder,
+    ProjectFolderInfo,
+    ProjectInfo,
+    ProjectSettings,
+    ProjectWorkspaceInfo,
+    TaskStatus,
+    TaskStatusCategory,
+} from '@clowdy/protocol';
 import type { AttachmentsService } from '../attachments/service';
 import type { Config } from '../config';
-import type { WorkspaceRecord } from '../db/workspaces';
+import type { WorkspaceUse } from '../db/workspaces';
 import type { SkillsService } from '../skills/service';
 import type { Store } from '../store';
 import type { FolderSettingsPatch } from './folderSettings';
@@ -55,13 +65,23 @@ export function requireProject(store: Store, projectId: string): Project {
 
 /** `Car Rental` gives `CAR`: the first three letters or digits of the name. */
 function deriveTaskPrefix(name: string): string {
-    const letters = name.match(/[\p{L}\p{N}]/gu)?.slice(0, 3).join('') ?? '';
+    const letters =
+        name
+            .match(/[\p{L}\p{N}]/gu)
+            ?.slice(0, 3)
+            .join('') ?? '';
 
     return letters ? letters.toUpperCase() : 'PRJ';
 }
 
 function kebabCase(name: string): string {
-    return name.normalize('NFKD').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '') || 'project';
+    return (
+        name
+            .normalize('NFKD')
+            .toLowerCase()
+            .replace(/[^\p{L}\p{N}]+/gu, '-')
+            .replace(/^-+|-+$/g, '') || 'project'
+    );
 }
 
 function cleanName(name: string): string {
@@ -93,7 +113,9 @@ function insertProject(store: Store, input: { name: string; folders: readonly st
         };
 
         upsertProject(store.db, project);
-        DEFAULT_STATUSES.forEach((status, position) => insertStatus(store.db, project.id, { id: newId('sts'), ...status }, position));
+        DEFAULT_STATUSES.forEach((status, position) =>
+            insertStatus(store.db, project.id, { id: newId('sts'), ...status }, position)
+        );
         publishProject(store, project);
 
         return project;
@@ -102,15 +124,15 @@ function insertProject(store: Store, input: { name: string; folders: readonly st
 
 function realDirectory(path: string): string {
     if (!isAbsolute(path)) {
-        throw invalid(`The path must be absolute: ${ path }`);
+        throw invalid(`The path must be absolute: ${path}`);
     }
 
     if (!existsSync(path)) {
-        throw invalid(`${ path } does not exist`);
+        throw invalid(`${path} does not exist`);
     }
 
     if (!statSync(path).isDirectory()) {
-        throw invalid(`${ path } is not a folder`);
+        throw invalid(`${path} is not a folder`);
     }
 
     return realpathSync.native(path);
@@ -124,13 +146,13 @@ function requireSeparateFolders(paths: readonly string[]): void {
     paths.forEach((path, index) => {
         for (const other of paths.slice(index + 1)) {
             if (path === other) {
-                throw invalid(`${ path } is listed twice`);
+                throw invalid(`${path} is listed twice`);
             }
 
             const [outer, inner] = path.length < other.length ? [path, other] : [other, path];
 
             if (inner.startsWith(outer.endsWith(sep) ? outer : outer + sep)) {
-                throw invalid(`${ inner } is inside ${ outer }, which the project has already`);
+                throw invalid(`${inner} is inside ${outer}, which the project has already`);
             }
         }
     });
@@ -148,7 +170,11 @@ export interface AddedProject {
  * Adds a project of `folders`, the first being the main one: any existing folders, repositories or not, never changed. Without folders a new
  * folder is made for it (`newFolderProject`). The same set of folders as a project already has, in any order, answers that project.
  */
-export function addProject(store: Store, config: Config, input: { name?: string; folders?: readonly string[] }): AddedProject {
+export function addProject(
+    store: Store,
+    config: Config,
+    input: { name?: string; folders?: readonly string[] }
+): AddedProject {
     if (!input.folders?.length) {
         return newFolderProject(store, config, input.name);
     }
@@ -182,10 +208,9 @@ function newFolderProject(store: Store, config: Config, name: string | undefined
 
     if (existsSync(target)) {
         if (!statSync(target).isDirectory() || readdirSync(target).length > 0) {
-            throw conflict(`${ target } already exists and is not an empty folder`);
+            throw conflict(`${target} already exists and is not an empty folder`);
         }
-    }
-    else {
+    } else {
         mkdirSync(target, { recursive: true });
     }
 
@@ -206,15 +231,23 @@ function initRepository(folder: string): void {
     const init = git(folder, ['init', '-b', 'main']);
 
     if (!init.ok) {
-        throw unavailable(`git init failed: ${ init.stderr }`);
+        throw unavailable(`git init failed: ${init.stderr}`);
     }
 
     const hasIdentity = ['user.name', 'user.email'].every(key => git(folder, ['config', key]).stdout !== '');
     const identity = hasIdentity ? [] : ['-c', 'user.name=Clowdy', '-c', 'user.email=clowdy@localhost'];
-    const commit = git(folder, [...identity, '-c', 'commit.gpgsign=false', 'commit', '--allow-empty', '-m', 'Initial commit']);
+    const commit = git(folder, [
+        ...identity,
+        '-c',
+        'commit.gpgsign=false',
+        'commit',
+        '--allow-empty',
+        '-m',
+        'Initial commit',
+    ]);
 
     if (!commit.ok) {
-        throw unavailable(`The initial commit failed: ${ commit.stderr }`);
+        throw unavailable(`The initial commit failed: ${commit.stderr}`);
     }
 }
 
@@ -225,9 +258,8 @@ function initRepository(folder: string): void {
 function prepareFolder(folder: string): boolean {
     try {
         mkdirSync(folder, { recursive: true });
-    }
-    catch (error) {
-        console.warn(`[clowdy] the personal space folder ${ folder } cannot be made:`, error);
+    } catch (error) {
+        console.warn(`[clowdy] the personal space folder ${folder} cannot be made:`, error);
 
         return false;
     }
@@ -239,9 +271,8 @@ function prepareFolder(folder: string): boolean {
         if (!top.ok || realpathSync.native(top.stdout) !== realpathSync.native(folder)) {
             initRepository(folder);
         }
-    }
-    catch (error) {
-        console.warn(`[clowdy] the personal space folder ${ folder } is not a git repository:`, error);
+    } catch (error) {
+        console.warn(`[clowdy] the personal space folder ${folder} is not a git repository:`, error);
     }
 
     return true;
@@ -282,8 +313,7 @@ export function ensurePersonalProject(store: Store, config: Config): Project | u
 
             return moved;
         });
-    }
-    catch (error) {
+    } catch (error) {
         console.warn('[clowdy] the personal space cannot be set up:', error);
 
         return undefined;
@@ -314,8 +344,7 @@ function mergeSettings(current: ProjectSettings, patch: SettingsPatch = {}): Pro
     for (const [key, value] of Object.entries(patch)) {
         if (value === null) {
             delete merged[key];
-        }
-        else if (value !== undefined) {
+        } else if (value !== undefined) {
             merged[key] = value;
         }
     }
@@ -334,12 +363,12 @@ function nextFolders(current: Project, entries: readonly FolderEntry[]): Project
         throw invalid('A project needs at least one folder');
     }
 
-    const folders = entries.map((entry) => {
+    const folders = entries.map(entry => {
         if ('id' in entry) {
             const folder = current.folders.find(candidate => candidate.id === entry.id);
 
             if (!folder) {
-                throw invalid(`Folder ${ entry.id } is not one of the project's`);
+                throw invalid(`Folder ${entry.id} is not one of the project's`);
             }
 
             // The folder is the same one at another place, so what it was given (its settings) stays with it.
@@ -356,13 +385,19 @@ function nextFolders(current: Project, entries: readonly FolderEntry[]): Project
     return folders;
 }
 
-const sameFolders = (a: readonly ProjectFolder[], b: readonly ProjectFolder[]) => a.length === b.length && a.every((folder, index) => folder.id === b[index]?.id && folder.path === b[index]?.path);
+const sameFolders = (a: readonly ProjectFolder[], b: readonly ProjectFolder[]) =>
+    a.length === b.length && a.every((folder, index) => folder.id === b[index]?.id && folder.path === b[index]?.path);
 
 /**
  * Renames the project, gives it another list of folders, or changes its settings. New folders, and a folder moved to another path, take the checks of `addProject`;
  * a new main folder, or the main folder moved, waits until no agent of the project is working, as the agents work in it. The personal space keeps its name and its one folder.
  */
-export function updateProject(store: Store, projectId: string, patch: ProjectPatch, { skills }: ProjectWatchers): Project {
+export function updateProject(
+    store: Store,
+    projectId: string,
+    patch: ProjectPatch,
+    { skills }: ProjectWatchers
+): Project {
     return store.tx(() => {
         const current = requireProject(store, projectId);
         const name = patch.name === undefined ? current.name : cleanName(patch.name);
@@ -378,14 +413,21 @@ export function updateProject(store: Store, projectId: string, patch: ProjectPat
         }
 
         // `project.add` answers a set of folders with the project that has it, so two projects never share the whole set.
-        const twin = foldersChanged ? getProjectByFolders(store.db, folders.map(folder => folder.path)) : undefined;
+        const twin = foldersChanged
+            ? getProjectByFolders(
+                  store.db,
+                  folders.map(folder => folder.path)
+              )
+            : undefined;
 
         if (twin && twin.id !== projectId) {
-            throw conflict(`${ twin.name } has these folders already`);
+            throw conflict(`${twin.name} has these folders already`);
         }
 
         // A new main folder, and the main folder at another place: the agents work in it.
-        const mainChanged = mainFolder({ folders }).id !== mainFolder(current).id || mainFolder({ folders }).path !== mainFolder(current).path;
+        const mainChanged =
+            mainFolder({ folders }).id !== mainFolder(current).id ||
+            mainFolder({ folders }).path !== mainFolder(current).path;
 
         if (mainChanged && hasUnfinishedRuns(store.db, projectId)) {
             throw stillWorking();
@@ -398,9 +440,20 @@ export function updateProject(store: Store, projectId: string, patch: ProjectPat
 
         if (foldersChanged) {
             // A chat that worked in a folder that left goes back to the main folder: its next turn starts a new conversation there.
-            for (const chat of clearChatFolders(store.db, projectId, folders.map(folder => folder.id))) {
+            for (const chat of clearChatFolders(
+                store.db,
+                projectId,
+                folders.map(folder => folder.id)
+            )) {
                 store.emit(projectId, { type: 'chat.upserted', chat });
             }
+
+            // The marks of viewed files that were made in a folder that left, and in its worktrees, are of a place nobody reads any more.
+            deleteViewedOutsideFolders(
+                store.db,
+                projectId,
+                folders.map(folder => folder.id)
+            );
 
             // The project's skills come from its folders, so a catalog read before is out of date.
             store.emit(projectId, { type: 'skills.changed' });
@@ -417,7 +470,12 @@ export function updateProject(store: Store, projectId: string, patch: ProjectPat
  * the same path in another project is not touched. `conflict` for the personal space, `not_found` for a folder the project does not have, `invalid` for a branch or a
  * setup that is refused. The agents need not be stopped: a worktree reads the settings when it is made.
  */
-export function updateProjectFolder(store: Store, projectId: string, folderId: string, patch: FolderSettingsPatch): Project {
+export function updateProjectFolder(
+    store: Store,
+    projectId: string,
+    folderId: string,
+    patch: FolderSettingsPatch
+): Project {
     return store.tx(() => {
         const current = requireProject(store, projectId);
 
@@ -433,7 +491,12 @@ export function updateProjectFolder(store: Store, projectId: string, folderId: s
 
         const { settings: _, ...bare } = folder;
         const settings = mergeFolderSettings(folder.settings, patch);
-        const next: Project = { ...current, folders: current.folders.map(candidate => (candidate.id === folderId ? { ...bare, ...(settings && { settings }) } : candidate)) };
+        const next: Project = {
+            ...current,
+            folders: current.folders.map(candidate =>
+                candidate.id === folderId ? { ...bare, ...(settings && { settings }) } : candidate
+            ),
+        };
 
         upsertProject(store.db, next);
         publishProject(store, next);
@@ -447,7 +510,11 @@ export function updateProjectFolder(store: Store, projectId: string, folderId: s
  * attachment folders go once the transaction commits). Its own folder and files are never touched. The agents must have stopped,
  * and the personal space stays.
  */
-export function deleteProject(store: Store, projectId: string, { attachments, skills }: ProjectWatchers & { attachments: AttachmentsService }): void {
+export function deleteProject(
+    store: Store,
+    projectId: string,
+    { attachments, skills }: ProjectWatchers & { attachments: AttachmentsService }
+): void {
     store.tx(() => {
         const project = requireProject(store, projectId);
 
@@ -477,7 +544,7 @@ export function reorderProjects(store: Store, projectIds: readonly string[]): Pr
         const unknown = projectIds.find(id => !known.has(id));
 
         if (unknown !== undefined) {
-            throw invalid(`Project ${ unknown } does not exist`);
+            throw invalid(`Project ${unknown} does not exist`);
         }
 
         const line = all.filter(project => !project.personal);
@@ -501,8 +568,7 @@ export function reorderProjects(store: Store, projectIds: readonly string[]): Pr
 async function isFolder(path: string): Promise<boolean> {
     try {
         return (await stat(path)).isDirectory();
-    }
-    catch {
+    } catch {
         return false;
     }
 }
@@ -510,31 +576,45 @@ async function isFolder(path: string): Promise<boolean> {
 /** How many worktrees of a project are read at once: a project whose chats each work in one has dozens, and each read starts a git. */
 const WORKSPACE_READS = 4;
 
-/** Whether a worktree is there and what it has checked out, read like a folder's head (`folderHead`): not there while it is not made (`ready` false) or gone from the disk. */
-async function workspaceInfo(workspace: WorkspaceRecord): Promise<ProjectWorkspaceInfo> {
-    const exists = workspace.ready && await isFolder(workspace.path);
-    const head = exists ? await folderHead(workspace.path) : undefined;
+/**
+ * Whether a worktree is there and what it has checked out, read like a folder's head (`folderHead`): not there while it is not made (`ready` false) or gone from the disk.
+ * A row no chat points at (one a new-chat page opened) is reported only while its worktree is there: with no chat to call it gone, a missing one has nothing to tell. And only
+ * while its folder is one the project has: the row a chat left when its folder was dropped (`clearChatFolders`) stays for good, and no page can choose a worktree of that folder.
+ */
+async function workspaceInfo(
+    { record, inUse }: WorkspaceUse,
+    folderIds: ReadonlySet<string>
+): Promise<ProjectWorkspaceInfo | undefined> {
+    if (!inUse && !folderIds.has(record.folderId)) return undefined;
 
-    return { workspaceId: workspace.id, exists, ...head };
+    const exists = record.ready && (await isFolder(record.path));
+
+    if (!exists && !inUse) return undefined;
+
+    const head = exists ? await folderHead(record.path) : undefined;
+
+    return { workspaceId: record.id, exists, ...head };
 }
 
 /**
  * What the page that manages projects shows besides the snapshot: whether each folder is there and its remote, what the project holds, and the head of each worktree
- * its chats work in (`workspaces`, those a chat points at; absent when it has none). The page asks again every few seconds, so nothing here may stop the daemon: the folders are read
- * asynchronously, one project after another, and a project's worktrees a few at a time, so a long list never starts a crowd of processes. With a `projectId` only that
- * project is read (`notFound` when there is none), for a screen that wants one folder's git facts.
+ * the project has a row of (`workspaces`: those its chats work in, and those a new-chat page opened that are still on the disk; absent when it has none). The page asks again every
+ * few seconds, so nothing here may stop the daemon: the folders are read asynchronously, one project after another, and a project's worktrees a few at a time, so a long list never
+ * starts a crowd of processes. With a `projectId` only that project is read (`notFound` when there is none), for a screen that wants one folder's git facts.
  */
 export async function projectsInfo(store: Store, projectId?: string): Promise<ProjectInfo[]> {
     if (projectId !== undefined) requireProject(store, projectId);
 
     const { projects, counts, chatsIn, workspacesOf } = store.read(() => {
-        const wanted = listProjects(store.db).filter(candidate => projectId === undefined || candidate.id === projectId);
+        const wanted = listProjects(store.db).filter(
+            candidate => projectId === undefined || candidate.id === projectId
+        );
 
         return {
             projects: wanted,
             counts: projectCounts(store.db),
             chatsIn: chatCountsByFolder(store.db),
-            workspacesOf: new Map(wanted.map(project => [project.id, listWorkspacesInUse(store.db, project.id)])),
+            workspacesOf: new Map(wanted.map(project => [project.id, listWorkspaceUses(store.db, project.id)])),
         };
     });
     const info: ProjectInfo[] = [];
@@ -547,17 +627,35 @@ export async function projectsInfo(store: Store, projectId?: string): Promise<Pr
             const remoteUrl = exists ? await gitLine(folder.path, ['remote', 'get-url', 'origin']) : undefined;
             const head = exists ? await folderHead(folder.path) : undefined;
 
-            folders.push({ folderId: folder.id, exists, ...(remoteUrl && { remoteUrl }), ...head, chats: chatsIn.get(folder.id) ?? 0 });
+            folders.push({
+                folderId: folder.id,
+                exists,
+                ...(remoteUrl && { remoteUrl }),
+                ...head,
+                chats: chatsIn.get(folder.id) ?? 0,
+            });
         }
 
         const workspaces: ProjectWorkspaceInfo[] = [];
         const records = workspacesOf.get(project.id) ?? [];
+        const folderIds = new Set(project.folders.map(folder => folder.id));
 
         for (let start = 0; start < records.length; start += WORKSPACE_READS) {
-            workspaces.push(...await Promise.all(records.slice(start, start + WORKSPACE_READS).map(workspaceInfo)));
+            workspaces.push(
+                ...(
+                    await Promise.all(
+                        records.slice(start, start + WORKSPACE_READS).map(use => workspaceInfo(use, folderIds))
+                    )
+                ).flatMap(entry => entry ?? [])
+            );
         }
 
-        info.push({ projectId: project.id, folders, ...(counts.get(project.id) ?? { chats: 0, tasks: 0, activeRuns: 0 }), ...(workspaces.length > 0 && { workspaces }) });
+        info.push({
+            projectId: project.id,
+            folders,
+            ...(counts.get(project.id) ?? { chats: 0, tasks: 0, activeRuns: 0 }),
+            ...(workspaces.length > 0 && { workspaces }),
+        });
     }
 
     return info;
@@ -567,7 +665,7 @@ export function requireStatus(store: Store, projectId: string, statusId: string)
     const status = listStatuses(store.db, projectId).find(candidate => candidate.id === statusId);
 
     if (!status) {
-        throw invalid(`Status ${ statusId } does not belong to project ${ projectId }`);
+        throw invalid(`Status ${statusId} does not belong to project ${projectId}`);
     }
 
     return status;
@@ -578,7 +676,7 @@ export function statusOfCategory(store: Store, projectId: string, category: Task
     const status = listStatuses(store.db, projectId).find(candidate => candidate.category === category);
 
     if (!status) {
-        throw invalid(`Project ${ projectId } has no status in the ${ category } category`);
+        throw invalid(`Project ${projectId} has no status in the ${category} category`);
     }
 
     return status;

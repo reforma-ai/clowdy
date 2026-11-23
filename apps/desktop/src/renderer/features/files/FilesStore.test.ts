@@ -2,23 +2,36 @@
 import { MemoryFileSystem } from '@clowdy/file-manager/memory';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { createFixtureData, FIXTURE_PROJECT_ID, FIXTURE_WORKSPACE_CHAT_ID, withFixtureWorkspace } from '../../daemon/fixtureData';
+import {
+    createFixtureData,
+    FIXTURE_PROJECT_ID,
+    FIXTURE_WORKSPACE_CHAT_ID,
+    withFixtureWorkspace,
+} from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
-import { FilesStore } from './FilesStore';
+import { FilesStore, MAX_OPEN_PLACES } from './FilesStore';
 
 import type { Place } from '../sidePanel/currentPlace';
 
 const memory = (initial: Record<string, string> = {}) => {
     const data = new Map(Object.entries(initial));
 
-    return { data, getItem: (key: string) => data.get(key) ?? null, setItem: (key: string, value: string) => void data.set(key, value), removeItem: (key: string) => void data.delete(key) };
+    return {
+        data,
+        getItem: (key: string) => data.get(key) ?? null,
+        setItem: (key: string, value: string) => void data.set(key, value),
+        removeItem: (key: string) => void data.delete(key),
+    };
 };
 
 const FOLDER = { id: 'fld_car_rental', path: '/Users/dev/car-rental' };
 /** A place that is a folder's own checkout. */
-const folderPlace = (id: string, path = `/Users/dev/${ id }`): Place => ({ folder: { id, path } });
+const folderPlace = (id: string, path = `/Users/dev/${id}`): Place => ({ folder: { id, path } });
 /** A place that is a worktree of a folder; it has the fixture's own files when it is the fixture's. */
-const worktreePlace = (id: string, path: string, folder = FOLDER): Place => ({ folder, workspace: { id, folderId: folder.id, path, branch: `clowdy/${ id }`, managed: true, ready: true } });
+const worktreePlace = (id: string, path: string, folder = FOLDER): Place => ({
+    folder,
+    workspace: { id, folderId: folder.id, path, branch: `clowdy/${id}`, managed: true, ready: true },
+});
 const settle = () => new Promise(resolve => setTimeout(resolve, 20));
 const CAR_RENTAL = folderPlace(FOLDER.id, FOLDER.path);
 
@@ -27,18 +40,29 @@ describe('FilesStore', () => {
         delete window.desktop;
     });
 
-    it('gives a folder the desktop app\'s clipboard when the app is there and says where the folder is, and none otherwise', async () => {
+    it("gives a folder the desktop app's clipboard when the app is there and says where the folder is, and none otherwise", async () => {
         const bare = new FilesStore({ fileSystem: () => new MemoryFileSystem() }, memory());
 
         expect(bare.managerOf('p', folderPlace('f1', '/Users/dev/web')).clipboard).toBeUndefined();
 
         const writeClipboardFiles = vi.fn(async () => undefined);
 
-        window.desktop = { platform: 'darwin', readClipboardFiles: async () => [], writeClipboardFiles, pasteClipboardFiles: async () => undefined } as never;
+        window.desktop = {
+            platform: 'darwin',
+            readClipboardFiles: async () => [],
+            writeClipboardFiles,
+            pasteClipboardFiles: async () => undefined,
+        } as never;
 
         const located = new FilesStore({ fileSystem: () => new MemoryFileSystem({ 'a.ts': '' }) }, memory());
         const manager = located.managerOf('p', folderPlace('f1', '/Users/dev/web'));
-        const worktree = located.managerOf('p', worktreePlace('wks_1', '/Users/dev/Clowdy/workspaces/web/ab12cd34/web', { id: 'f1', path: '/Users/dev/web' }));
+        const worktree = located.managerOf(
+            'p',
+            worktreePlace('wks_1', '/Users/dev/Clowdy/workspaces/web/ab12cd34/web', {
+                id: 'f1',
+                path: '/Users/dev/web',
+            })
+        );
 
         expect(manager.canCopy).toBe(true);
 
@@ -53,7 +77,10 @@ describe('FilesStore', () => {
         delete window.desktop;
 
         // In a page that is not the desktop app the tree has no Copy and no Paste.
-        expect(new FilesStore({ fileSystem: () => new MemoryFileSystem() }, memory()).managerOf('p', folderPlace('f1')).clipboard).toBeUndefined();
+        expect(
+            new FilesStore({ fileSystem: () => new MemoryFileSystem() }, memory()).managerOf('p', folderPlace('f1'))
+                .clipboard
+        ).toBeUndefined();
 
         for (const store of [bare, located]) store.dispose();
     });
@@ -94,8 +121,14 @@ describe('FilesStore', () => {
         // A tab of one is not a tab of the other, though both are the same folder on the disk.
         expect(files.tabs.documents.map(document => document.path)).toEqual(['README.md']);
         expect(docs.tabs.documents.map(document => document.path)).toEqual(['.clowdy/docs/decisions/pricing.md']);
-        expect(JSON.parse(storage.data.get(`clowdy:files:${ FIXTURE_PROJECT_ID }:${ FOLDER.id }`)!)).toEqual({ paths: ['README.md'], active: 'README.md' });
-        expect(JSON.parse(storage.data.get(`clowdy:docs:${ FIXTURE_PROJECT_ID }:${ FOLDER.id }`)!)).toEqual({ paths: ['.clowdy/docs/decisions/pricing.md'], active: '.clowdy/docs/decisions/pricing.md' });
+        expect(JSON.parse(storage.data.get(`clowdy:files:${FIXTURE_PROJECT_ID}:${FOLDER.id}`)!)).toEqual({
+            paths: ['README.md'],
+            active: 'README.md',
+        });
+        expect(JSON.parse(storage.data.get(`clowdy:docs:${FIXTURE_PROJECT_ID}:${FOLDER.id}`)!)).toEqual({
+            paths: ['.clowdy/docs/decisions/pricing.md'],
+            active: '.clowdy/docs/decisions/pricing.md',
+        });
 
         first.dispose();
 
@@ -103,33 +136,64 @@ describe('FilesStore', () => {
         const reopened = await second.startedManagerOf(FIXTURE_PROJECT_ID, CAR_RENTAL, 'docs');
 
         expect(reopened.tabs.documents.map(document => document.path)).toEqual(['.clowdy/docs/decisions/pricing.md']);
-        expect((await second.startedManagerOf(FIXTURE_PROJECT_ID, CAR_RENTAL)).tabs.documents.map(document => document.path)).toEqual(['README.md']);
+        expect(
+            (await second.startedManagerOf(FIXTURE_PROJECT_ID, CAR_RENTAL)).tabs.documents.map(
+                document => document.path
+            )
+        ).toEqual(['README.md']);
 
         second.dispose();
     });
 
     it('lists the folder through the provider and keeps the hidden files back until asked: the names that start with a dot, and node_modules', async () => {
-        const provider = new MemoryFileSystem({ 'a.ts': '', '.git/config': '', '.DS_Store': '', 'src/.env': '', 'src/b.ts': '', 'node_modules/x/index.js': '', '.clowdy/docs/a.md': '' });
+        const provider = new MemoryFileSystem({
+            'a.ts': '',
+            '.git/config': '',
+            '.DS_Store': '',
+            'src/.env': '',
+            'src/b.ts': '',
+            'node_modules/x/index.js': '',
+            '.clowdy/docs/a.md': '',
+        });
         const store = new FilesStore({ fileSystem: () => provider }, memory());
         const manager = store.managerOf('p', folderPlace('f'));
 
         await settle();
 
         expect(['a.ts', 'src', 'src/b.ts'].map(path => manager.tree.isVisible(path))).toEqual([true, true, true]);
-        expect(['.git', '.DS_Store', 'src/.env', 'node_modules', '.clowdy', '.clowdy/docs/a.md'].map(path => manager.tree.isVisible(path))).toEqual([false, false, false, false, false, false]);
+        expect(
+            ['.git', '.DS_Store', 'src/.env', 'node_modules', '.clowdy', '.clowdy/docs/a.md'].map(path =>
+                manager.tree.isVisible(path)
+            )
+        ).toEqual([false, false, false, false, false, false]);
 
         manager.tree.setShowHidden(true);
 
-        expect(['.git', '.DS_Store', 'src/.env', 'node_modules', '.clowdy', '.clowdy/docs/a.md'].map(path => manager.tree.isVisible(path))).toEqual([true, true, true, true, true, true]);
+        expect(
+            ['.git', '.DS_Store', 'src/.env', 'node_modules', '.clowdy', '.clowdy/docs/a.md'].map(path =>
+                manager.tree.isVisible(path)
+            )
+        ).toEqual([true, true, true, true, true, true]);
 
         store.dispose();
     });
 
     it('searches through the daemon when its file system has a search, and scans the files itself when it has none', async () => {
-        const found = { files: [{ path: 'a.ts', matches: [{ line: 1, column: 1, preview: 'needle', ranges: [{ start: 0, end: 6 }] }] }], truncated: false };
+        const found = {
+            files: [
+                { path: 'a.ts', matches: [{ line: 1, column: 1, preview: 'needle', ranges: [{ start: 0, end: 6 }] }] },
+            ],
+            truncated: false,
+        };
         const search = vi.fn(async () => found);
-        const served = new FilesStore({ fileSystem: () => Object.assign(new MemoryFileSystem({ 'a.ts': 'needle' }), { search }) }, memory());
-        const scanned = new FilesStore({ fileSystem: () => new MemoryFileSystem({ 'a.ts': 'a needle\n', 'b.ts': 'nothing' }) }, memory());
+        const served = new FilesStore(
+            { fileSystem: () => Object.assign(new MemoryFileSystem({ 'a.ts': 'needle' }), { search }) },
+            memory()
+        );
+        const scanned = new FilesStore(
+            { fileSystem: () => new MemoryFileSystem({ 'a.ts': 'a needle\n', 'b.ts': 'nothing' }) },
+            memory()
+        );
         const remote = served.managerOf('p', folderPlace('f'));
         const local = scanned.managerOf('p', folderPlace('f'));
 
@@ -140,7 +204,10 @@ describe('FilesStore', () => {
         await local.search.run();
 
         expect(search).toHaveBeenCalledOnce();
-        expect(search).toHaveBeenCalledWith(expect.objectContaining({ query: 'needle', matchCase: false, wholeWord: false }), expect.any(AbortSignal));
+        expect(search).toHaveBeenCalledWith(
+            expect.objectContaining({ query: 'needle', matchCase: false, wholeWord: false }),
+            expect.any(AbortSignal)
+        );
         expect(remote.search.result).toEqual(found);
         expect(local.search.result?.files.map(file => file.path)).toEqual(['a.ts']);
 
@@ -158,12 +225,18 @@ describe('FilesStore', () => {
         await manager.open('package.json');
         await settle();
 
-        expect(JSON.parse(storage.data.get(`clowdy:files:${ FIXTURE_PROJECT_ID }:${ FOLDER.id }`)!)).toEqual({ paths: ['README.md', 'package.json'], active: 'package.json' });
+        expect(JSON.parse(storage.data.get(`clowdy:files:${FIXTURE_PROJECT_ID}:${FOLDER.id}`)!)).toEqual({
+            paths: ['README.md', 'package.json'],
+            active: 'package.json',
+        });
 
         first.dispose();
 
         // A file that was open and is gone, in the stored list of the next run.
-        storage.data.set(`clowdy:files:${ FIXTURE_PROJECT_ID }:${ FOLDER.id }`, JSON.stringify({ paths: ['README.md', 'gone.md', 'package.json'], active: 'README.md' }));
+        storage.data.set(
+            `clowdy:files:${FIXTURE_PROJECT_ID}:${FOLDER.id}`,
+            JSON.stringify({ paths: ['README.md', 'gone.md', 'package.json'], active: 'README.md' })
+        );
 
         const second = new FilesStore(new FixtureTransport(), storage);
         const reopened = second.managerOf(FIXTURE_PROJECT_ID, CAR_RENTAL);
@@ -177,7 +250,10 @@ describe('FilesStore', () => {
     });
 
     it('ignores tabs that were stored damaged', async () => {
-        const store = new FilesStore(new FixtureTransport(), memory({ [`clowdy:files:${ FIXTURE_PROJECT_ID }:${ FOLDER.id }`]: '{"paths":"README.md"}' }));
+        const store = new FilesStore(
+            new FixtureTransport(),
+            memory({ [`clowdy:files:${FIXTURE_PROJECT_ID}:${FOLDER.id}`]: '{"paths":"README.md"}' })
+        );
         const manager = store.managerOf(FIXTURE_PROJECT_ID, CAR_RENTAL);
 
         await settle();
@@ -204,10 +280,12 @@ describe('FilesStore', () => {
 describe('FilesStore over a worktree', () => {
     // The fixture's chat in a worktree of Car Rental: the worktree has a file (`src/booking/weekend.ts`) and a plan (`.briefback/weekend-surcharge/plan.md`) the folder's own checkout lacks.
     const transport = () => new FixtureTransport({ data: withFixtureWorkspace(createFixtureData()) });
-    const workspace = withFixtureWorkspace(createFixtureData()).chats.find(chat => chat.id === FIXTURE_WORKSPACE_CHAT_ID)!.workspace!;
+    const workspace = withFixtureWorkspace(createFixtureData()).chats.find(
+        chat => chat.id === FIXTURE_WORKSPACE_CHAT_ID
+    )!.workspace!;
     const WORKTREE: Place = { folder: FOLDER, workspace };
 
-    it('gives a worktree a file manager of its own, listing the worktree\'s files and not the folder\'s, and the same one to every chat that works in it', async () => {
+    it("gives a worktree a file manager of its own, listing the worktree's files and not the folder's, and the same one to every chat that works in it", async () => {
         const store = new FilesStore(transport(), memory());
         const own = store.managerOf(FIXTURE_PROJECT_ID, CAR_RENTAL);
         const worktree = store.managerOf(FIXTURE_PROJECT_ID, WORKTREE);
@@ -218,7 +296,9 @@ describe('FilesStore over a worktree', () => {
         expect(worktree.tree.get('src/booking/weekend.ts')).toBeDefined();
         expect(own.tree.get('src/booking/weekend.ts')).toBeUndefined();
         // Another chat in the same worktree has another place object and the same worktree.
-        expect(store.managerOf(FIXTURE_PROJECT_ID, { folder: { ...FOLDER }, workspace: { ...workspace } })).toBe(worktree);
+        expect(store.managerOf(FIXTURE_PROJECT_ID, { folder: { ...FOLDER }, workspace: { ...workspace } })).toBe(
+            worktree
+        );
         expect(store.managerOf(FIXTURE_PROJECT_ID, WORKTREE, 'docs')).not.toBe(worktree);
 
         store.dispose();
@@ -237,7 +317,7 @@ describe('FilesStore over a worktree', () => {
         store.dispose();
     });
 
-    it('keeps the tabs of a worktree under its own id, apart from the folder\'s, and brings each back to its own place', async () => {
+    it("keeps the tabs of a worktree under its own id, apart from the folder's, and brings each back to its own place", async () => {
         const storage = memory();
         const first = new FilesStore(transport(), storage);
         const own = first.managerOf(FIXTURE_PROJECT_ID, CAR_RENTAL);
@@ -250,29 +330,160 @@ describe('FilesStore over a worktree', () => {
         await plans.open('.briefback/weekend-surcharge/plan.md');
         await settle();
 
-        expect(JSON.parse(storage.data.get(`clowdy:files:${ FIXTURE_PROJECT_ID }:${ FOLDER.id }`)!)).toEqual({ paths: ['README.md'], active: 'README.md' });
-        expect(JSON.parse(storage.data.get(`clowdy:files:${ FIXTURE_PROJECT_ID }:${ workspace.id }`)!)).toEqual({ paths: ['src/booking/weekend.ts'], active: 'src/booking/weekend.ts' });
-        expect(JSON.parse(storage.data.get(`clowdy:docs:${ FIXTURE_PROJECT_ID }:${ workspace.id }`)!)).toEqual({ paths: ['.briefback/weekend-surcharge/plan.md'], active: '.briefback/weekend-surcharge/plan.md' });
-        expect(storage.data.has(`clowdy:docs:${ FIXTURE_PROJECT_ID }:${ FOLDER.id }`)).toBe(false);
+        expect(JSON.parse(storage.data.get(`clowdy:files:${FIXTURE_PROJECT_ID}:${FOLDER.id}`)!)).toEqual({
+            paths: ['README.md'],
+            active: 'README.md',
+        });
+        expect(JSON.parse(storage.data.get(`clowdy:files:${FIXTURE_PROJECT_ID}:${workspace.id}`)!)).toEqual({
+            paths: ['src/booking/weekend.ts'],
+            active: 'src/booking/weekend.ts',
+        });
+        expect(JSON.parse(storage.data.get(`clowdy:docs:${FIXTURE_PROJECT_ID}:${workspace.id}`)!)).toEqual({
+            paths: ['.briefback/weekend-surcharge/plan.md'],
+            active: '.briefback/weekend-surcharge/plan.md',
+        });
+        expect(storage.data.has(`clowdy:docs:${FIXTURE_PROJECT_ID}:${FOLDER.id}`)).toBe(false);
 
         first.dispose();
 
         const second = new FilesStore(transport(), storage);
 
-        expect((await second.startedManagerOf(FIXTURE_PROJECT_ID, WORKTREE)).tabs.documents.map(document => document.path)).toEqual(['src/booking/weekend.ts']);
-        expect((await second.startedManagerOf(FIXTURE_PROJECT_ID, WORKTREE, 'docs')).tabs.documents.map(document => document.path)).toEqual(['.briefback/weekend-surcharge/plan.md']);
-        expect((await second.startedManagerOf(FIXTURE_PROJECT_ID, CAR_RENTAL)).tabs.documents.map(document => document.path)).toEqual(['README.md']);
+        expect(
+            (await second.startedManagerOf(FIXTURE_PROJECT_ID, WORKTREE)).tabs.documents.map(document => document.path)
+        ).toEqual(['src/booking/weekend.ts']);
+        expect(
+            (await second.startedManagerOf(FIXTURE_PROJECT_ID, WORKTREE, 'docs')).tabs.documents.map(
+                document => document.path
+            )
+        ).toEqual(['.briefback/weekend-surcharge/plan.md']);
+        expect(
+            (await second.startedManagerOf(FIXTURE_PROJECT_ID, CAR_RENTAL)).tabs.documents.map(
+                document => document.path
+            )
+        ).toEqual(['README.md']);
 
         second.dispose();
     });
 
     it('does not bring a tab back into a worktree that lacks its file: the worktree is another checkout', async () => {
         // A file of the folder's own checkout in the worktree's stored tabs, such as a worktree made again on another commit.
-        const storage = memory({ [`clowdy:files:${ FIXTURE_PROJECT_ID }:${ workspace.id }`]: JSON.stringify({ paths: ['README.md', 'only-in-the-folder.md'], active: 'only-in-the-folder.md' }) });
+        const storage = memory({
+            [`clowdy:files:${FIXTURE_PROJECT_ID}:${workspace.id}`]: JSON.stringify({
+                paths: ['README.md', 'only-in-the-folder.md'],
+                active: 'only-in-the-folder.md',
+            }),
+        });
         const store = new FilesStore(transport(), storage);
         const worktree = await store.startedManagerOf(FIXTURE_PROJECT_ID, WORKTREE);
 
         expect(worktree.tabs.documents.map(document => document.path)).toEqual(['README.md']);
+
+        store.dispose();
+    });
+});
+
+describe('FilesStore limit of open places', () => {
+    const files = () => ({ fileSystem: () => new MemoryFileSystem({ 'a.ts': 'one', 'b.ts': 'two' }) });
+    const place = (n: number) => folderPlace(`f${n}`);
+
+    it('keeps the managers of the last places asked for, and closes the place asked for the longest ago past that, taking its Files and its Docs manager together', async () => {
+        const store = new FilesStore(files(), memory());
+        const first = store.managerOf('p', place(1));
+        const firstDocs = store.managerOf('p', place(1), 'docs');
+        const dispose = vi.spyOn(first, 'dispose');
+        const disposeDocs = vi.spyOn(firstDocs, 'dispose');
+
+        for (let n = 2; n <= MAX_OPEN_PLACES; n += 1) store.managerOf('p', place(n));
+
+        expect(dispose).not.toHaveBeenCalled();
+
+        store.managerOf('p', place(MAX_OPEN_PLACES + 1));
+
+        expect(dispose).toHaveBeenCalledOnce();
+        expect(disposeDocs).toHaveBeenCalledOnce();
+        // A place that was closed has a new manager when it is asked for again; the others kept theirs.
+        expect(store.managerOf('p', place(1))).not.toBe(first);
+
+        store.dispose();
+    });
+
+    it('closes the place asked for longest ago, not the one made first: asking again keeps a place', async () => {
+        const store = new FilesStore(files(), memory());
+        const kept = store.managerOf('p', place(1));
+        const closed = store.managerOf('p', place(2));
+
+        store.managerOf('p', place(3));
+        // The first is on show again, so the second is the oldest.
+        expect(store.managerOf('p', place(1))).toBe(kept);
+        store.managerOf('p', place(4));
+
+        expect(store.managerOf('p', place(1))).toBe(kept);
+        expect(store.managerOf('p', place(2))).not.toBe(closed);
+
+        store.dispose();
+    });
+
+    it('brings the tabs of a place that was closed back when it is asked for again', async () => {
+        const storage = memory();
+        const store = new FilesStore(files(), storage);
+        const first = store.managerOf('p', place(1));
+
+        await settle();
+        await first.open('a.ts');
+        await settle();
+
+        for (let n = 2; n <= MAX_OPEN_PLACES + 1; n += 1) store.managerOf('p', place(n));
+
+        const again = store.managerOf('p', place(1));
+
+        await settle();
+
+        expect(again).not.toBe(first);
+        expect(again.tabs.active?.path).toBe('a.ts');
+
+        store.dispose();
+    });
+
+    it('keeps a place with unsaved edits open past the limit, and closes it once they are gone', async () => {
+        const store = new FilesStore(files(), memory());
+        const dirty = store.managerOf('p', place(1));
+
+        await settle();
+
+        const document = await dirty.open('a.ts');
+
+        document!.replaceText('changed');
+        await settle();
+
+        expect(document!.dirty).toBe(true);
+
+        for (let n = 2; n <= MAX_OPEN_PLACES + 2; n += 1) store.managerOf('p', place(n));
+
+        // Every clean place before the last ones went, the one with edits stayed.
+        expect(store.managerOf('p', place(1))).toBe(dirty);
+
+        await document!.save();
+
+        // Asked for just now, the place is the newest; once the others have come after it, it is the one to go.
+        for (let n = MAX_OPEN_PLACES + 3; n <= MAX_OPEN_PLACES * 2 + 3; n += 1) store.managerOf('p', place(n));
+
+        expect(store.managerOf('p', place(1))).not.toBe(dirty);
+
+        store.dispose();
+    });
+
+    it('stops keeping the tabs of a place that was closed while it was still being listed', async () => {
+        const storage = memory();
+        const store = new FilesStore(files(), storage);
+        const first = store.managerOf('p', place(1));
+
+        for (let n = 2; n <= MAX_OPEN_PLACES + 1; n += 1) store.managerOf('p', place(n));
+
+        await settle();
+        await first.open('a.ts');
+        await settle();
+
+        expect(storage.data.has('clowdy:files:p:f1')).toBe(false);
 
         store.dispose();
     });

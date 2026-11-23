@@ -71,10 +71,15 @@ describe('probeHealth', () => {
 
     afterEach(async () => {
         vi.unstubAllEnvs();
-        await Promise.all(servers.splice(0).map(server => new Promise(resolve => {
-            server.closeAllConnections();
-            server.close(resolve);
-        })));
+        await Promise.all(
+            servers.splice(0).map(
+                server =>
+                    new Promise(resolve => {
+                        server.closeAllConnections();
+                        server.close(resolve);
+                    })
+            )
+        );
     });
 
     test('reads the health of a daemon, asking /v1/health without credentials', async () => {
@@ -107,7 +112,9 @@ describe('probeHealth', () => {
             response.end(JSON.stringify(health));
         });
         const other = await fakeDaemon((_request, response) => response.end('<html>hello</html>'));
-        const huge = await fakeDaemon((_request, response) => response.end(JSON.stringify({ ...health, padding: 'x'.repeat(100_000) })));
+        const huge = await fakeDaemon((_request, response) =>
+            response.end(JSON.stringify({ ...health, padding: 'x'.repeat(100_000) }))
+        );
 
         expect(await probeHealth(unauthorized, 1000)).toBeUndefined();
         expect(await probeHealth(other, 1000)).toBeUndefined();

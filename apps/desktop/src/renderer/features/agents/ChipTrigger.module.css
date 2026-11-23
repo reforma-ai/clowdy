@@ -31,3 +31,19 @@
 .triggerContent svg {
     flex-shrink: 0;
 }
+
+/* The dim words around the label: the lead stays whole, and the trail is what gives way, since a label with a trail after it is read whole (`.whole`), and it may also be cut at a length of its own. */
+.lead {
+    flex-shrink: 0;
+}
+
+.trail {
+    flex-shrink: 1;
+    min-width: 0;
+    max-width: 9rem;
+}
+
+/* A label with a trail after it is read whole: the trail is what is cut. */
+.whole {
+    flex-shrink: 0;
+}

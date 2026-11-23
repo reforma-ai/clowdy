@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'no
 import { networkInterfaces } from 'node:os';
 
 import { startDaemon } from '../src/daemon';
-import { acquireLock, AlreadyRunningError, infoPath, lockPath } from '../src/instance';
+import { AlreadyRunningError, acquireLock, infoPath, lockPath } from '../src/instance';
 import { cleanTempDirs, tempDir, testConfig } from './helpers';
 
 afterAll(cleanTempDirs);
@@ -54,7 +54,13 @@ describe('daemon lifecycle', () => {
         const daemon = await startDaemon(config);
         const info = JSON.parse(readFileSync(infoPath(config.dataDir), 'utf8'));
 
-        expect(info).toEqual({ pid: process.pid, port: daemon.info.port, token: 'test-token', protocol: 1, startedAt: daemon.info.startedAt });
+        expect(info).toEqual({
+            pid: process.pid,
+            port: daemon.info.port,
+            token: 'test-token',
+            protocol: 1,
+            startedAt: daemon.info.startedAt,
+        });
         expect(daemon.info.port).toBeGreaterThan(0);
 
         if (process.platform !== 'win32') {
@@ -74,19 +80,21 @@ describe('daemon lifecycle', () => {
 
         await expect(startDaemon(config)).rejects.toThrow(AlreadyRunningError);
         expect(existsSync(lockPath(config.dataDir))).toBe(true);
-        expect((await fetch(`http://127.0.0.1:${ first.info.port }/v1/health`)).status).toBe(200);
+        expect((await fetch(`http://127.0.0.1:${first.info.port}/v1/health`)).status).toBe(200);
 
         await first.stop();
     });
 
     test('binds the loopback interface only', async () => {
         const daemon = await startDaemon(testConfig());
-        const external = Object.values(networkInterfaces()).flat().find(address => address?.family === 'IPv4' && !address.internal)?.address;
+        const external = Object.values(networkInterfaces())
+            .flat()
+            .find(address => address?.family === 'IPv4' && !address.internal)?.address;
 
-        expect((await fetch(`http://127.0.0.1:${ daemon.info.port }/v1/health`)).status).toBe(200);
+        expect((await fetch(`http://127.0.0.1:${daemon.info.port}/v1/health`)).status).toBe(200);
 
         if (external) {
-            await expect(fetch(`http://${ external }:${ daemon.info.port }/v1/health`)).rejects.toThrow();
+            await expect(fetch(`http://${external}:${daemon.info.port}/v1/health`)).rejects.toThrow();
         }
 
         await daemon.stop();

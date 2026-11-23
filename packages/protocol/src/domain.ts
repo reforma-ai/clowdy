@@ -78,7 +78,7 @@ export function folderNames(folders: readonly Pick<ProjectFolder, 'path'>[]): st
         let name = base;
 
         for (let count = 2; taken.has(name); count++) {
-            name = `${ base }-${ count }`;
+            name = `${base}-${count}`;
         }
 
         taken.add(name);
@@ -99,7 +99,11 @@ export interface ProjectInfo {
     tasks: number;
     /** Runs that are not finished. Removing the project or choosing another main folder waits until there are none. */
     activeRuns: number;
-    /** The workspaces of the project's chats, read as the folders are. Absent when no chat has one. */
+    /**
+     * The worktrees the project has a row of, read as the folders are: the ones its chats work in (one gone from the disk is there with `exists: false`, so the chat can say it is
+     * gone) and the ones a new-chat page opened (`workspace.open`) that no chat works in yet, which are there only while they are on the disk and in a folder the project has. Absent when there are none. Not
+     * every worktree git lists for a folder: that is `FolderGit.worktrees`.
+     */
     workspaces?: ProjectWorkspaceInfo[];
 }
 
@@ -123,7 +127,7 @@ export interface ProjectFolderInfo {
     chats: number;
 }
 
-/** What `GET /v1/projects/info` reads of one workspace (a worktree a chat works in): whether it is there and the branch it has checked out now. */
+/** What `GET /v1/projects/info` reads of one workspace (a worktree a chat works in, or a new-chat page opened): whether it is there and the branch it has checked out now. */
 export interface ProjectWorkspaceInfo {
     workspaceId: WorkspaceId;
     /** False when the worktree's folder is gone from the disk, or was not made yet. */
@@ -250,8 +254,82 @@ export interface ChatWorkspace {
     ready: boolean;
 }
 
-/** Where a new chat works when it is not in the folder itself: in a new worktree started from `base` (the folder's default branch when absent), or in a worktree that exists. */
-export type ChatWorkspaceChoice = { mode: 'new'; base?: string } | { mode: 'existing'; path: string };
+/**
+ * Where a new chat works when it is not in the folder itself: in a new worktree started from `base` (the folder's default branch when absent) on the branch
+ * `<branchPrefix>/<branchName>` (`DEFAULT_BRANCH_PREFIX` when the prefix is absent or empty; the chat's id8 when there is no name, which is what a chat the person starts
+ * has), or in a worktree that exists. The folder of the worktree is named by its chat's id8 whatever the branch is called.
+ */
+export type ChatWorkspaceChoice =
+    | { mode: 'new'; base?: string; branchPrefix?: string; branchName?: string }
+    | { mode: 'existing'; path: string };
+
+/** What the branch of a new worktree starts with when none is chosen: `clowdy/<chat id8>`. */
+export const DEFAULT_BRANCH_PREFIX = 'clowdy';
+
+export const MAX_BRANCH_PREFIX_LENGTH = 64;
+
+/** What a branch prefix is as git takes it: the text without the space around it, `DEFAULT_BRANCH_PREFIX` when it holds nothing. */
+export const branchPrefixOf = (text: string | undefined): string => text?.trim() || DEFAULT_BRANCH_PREFIX;
+
+/**
+ * Why `text` cannot start a branch name (`<prefix>/<chat id8>`), in words for the person, or `undefined` when it can; an empty one is the default prefix and fine.
+ * The rules are git's own for a ref name (`git check-ref-format`), a little stricter at the edges: no space, control or invisible character, none of `~ ^ : ? * [ \`,
+ * no `..` or `@{`, no empty part between slashes, no part that starts with `.` or ends with `.lock`, and no slash or dot at either end (a slash is added after the
+ * prefix). A leading `-` is refused as well: a branch name that starts so would be an option wherever it is handed to git. So are `" < > |`, which git takes but
+ * Windows does not take in a file name, and git keeps a branch as a file. The text is read as `branchPrefixOf` reads it.
+ */
+export function branchPrefixProblem(text: string | undefined): string | undefined {
+    const prefix = branchPrefixOf(text);
+
+    if (prefix.length > MAX_BRANCH_PREFIX_LENGTH)
+        return `The branch prefix is longer than ${MAX_BRANCH_PREFIX_LENGTH} characters`;
+
+    // `\s` is the spaces, `Cc` the control characters and `Cf` the invisible ones (a zero-width space, a right-to-left override).
+    if (/[\s\p{Cc}\p{Cf}]/u.test(prefix)) return 'The branch prefix cannot have a space or a control character';
+
+    if (/[~^:?*[\\"<>|]/.test(prefix)) return 'The branch prefix cannot have any of ~ ^ : ? * [ \\ " < > |';
+
+    if (prefix.includes('..')) return 'The branch prefix cannot have two dots in a row';
+
+    if (prefix.includes('@{')) return 'The branch prefix cannot have @{';
+
+    if (/^[/.-]/.test(prefix)) return 'The branch prefix cannot start with / . or -';
+
+    if (/[/.]$/.test(prefix)) return 'The branch prefix cannot end with / or .';
+
+    if (prefix.includes('//')) return 'The branch prefix cannot have an empty part between slashes';
+
+    const parts = prefix.split('/');
+
+    if (parts.some(part => part.startsWith('.'))) return 'A part of the branch prefix cannot start with a dot';
+
+    return parts.some(part => part.endsWith('.lock')) ? 'A part of the branch prefix cannot end with .lock' : undefined;
+}
+
+export const MAX_BRANCH_NAME_LENGTH = 48;
+
+/**
+ * Why `text` cannot be the name of a worktree's branch after its prefix (`<prefix>/<name>`), in words for the one who chose it, or `undefined` when it can: lower-case
+ * letters and digits with `-`, `_` and `.` between them, none of them at either end, and no more than `MAX_BRANCH_NAME_LENGTH` characters. Narrower than git's own rules
+ * on purpose: a name is read in a list of branches and typed in a shell, and one that is made of these is the same on every system.
+ */
+export function branchNameProblem(text: string): string | undefined {
+    if (text === '') return 'The branch name is empty';
+
+    if (text.length > MAX_BRANCH_NAME_LENGTH)
+        return `The branch name is longer than ${MAX_BRANCH_NAME_LENGTH} characters`;
+
+    if (!/^[a-z0-9]([a-z0-9._-]*[a-z0-9])?$/.test(text))
+        return 'The branch name takes lower-case letters, digits, -, _ and . only, and starts and ends with a letter or a digit';
+
+    if (text.includes('..') || text.endsWith('.lock'))
+        return 'The branch name cannot have two dots in a row or end with .lock';
+
+    // A name Windows keeps for a device (`con`, `nul`, `com1`) cannot be a file there, and git keeps a branch as one.
+    return /^(con|prn|aux|nul|com\d|lpt\d)$/.test(text)
+        ? 'The branch name cannot be a name Windows keeps for a device, such as con or nul'
+        : undefined;
+}
 
 /** How a thread ended its turn, as its parent is told. */
 export type ThreadOutcome = 'finished' | 'failed' | 'interrupted';
@@ -410,7 +488,13 @@ export type RunStatus =
     | 'cancelled'
     | 'interrupted';
 
-export const ACTIVE_RUN_STATUSES: readonly RunStatus[] = ['queued', 'running', 'waiting_background', 'waiting_user', 'blocked'];
+export const ACTIVE_RUN_STATUSES: readonly RunStatus[] = [
+    'queued',
+    'running',
+    'waiting_background',
+    'waiting_user',
+    'blocked',
+];
 export const TERMINAL_RUN_STATUSES: readonly RunStatus[] = ['succeeded', 'failed', 'cancelled', 'interrupted'];
 
 export function isTerminalRunStatus(status: RunStatus): boolean {
@@ -433,7 +517,9 @@ export function isBusyRunStatus(status: RunStatus): boolean {
  * can be stopped) by `status`.
  */
 export function shownRunStatus(run: Pick<Run, 'status' | 'awaitingUser'>): RunStatus {
-    return run.awaitingUser === true && (run.status === 'running' || run.status === 'waiting_background') ? 'waiting_user' : run.status;
+    return run.awaitingUser === true && (run.status === 'running' || run.status === 'waiting_background')
+        ? 'waiting_user'
+        : run.status;
 }
 
 /** Why the run waits, as it reads beside `shownRunStatus`: its own reason, except where the card open to the person overrides a status that says otherwise. */
@@ -598,17 +684,41 @@ export type StreamItemBody =
      * (`durationMs`, set with `done`). Not part of the story the agent is told again, and not an answer: it is shown folded, as the work of a turn.
      */
     | { kind: 'reasoning'; text: string; done: boolean; durationMs?: number }
-    | { kind: 'tool'; toolCallId: string; name: string; input: unknown; state: ToolState; output?: unknown; error?: string }
+    | {
+          kind: 'tool';
+          toolCallId: string;
+          name: string;
+          input: unknown;
+          state: ToolState;
+          output?: unknown;
+          error?: string;
+      }
     /** A system line such as "Background command finished: bun test". */
     | { kind: 'note'; text: string }
     /** A question the run is waiting on (semi-manual mode); `answer` is set once the user replied. */
-    | { kind: 'question'; questionId: string; text: string; options: QuestionOption[]; recommended?: string; answer?: string }
+    | {
+          kind: 'question';
+          questionId: string;
+          text: string;
+          options: QuestionOption[];
+          recommended?: string;
+          answer?: string;
+      }
     /**
      * A request of the agent for permission to do something, put to the person (an agent on a preset that asks). The run waits in `waiting_user` while any
      * is `open`. `decisions` are the answers the agent's options allow, by kind; `decision` is set once the person answered (`run.decide`) or Clowdy
      * answered from a grant. `cancelled`: the agent withdrew it or the run was stopped; `expired`: the daemon restarted and the agent is gone.
      */
-    | { kind: 'approval'; approvalId: string; toolCallId?: string; title: string; subject: ApprovalSubject; decisions: ApprovalDecision[]; state: ApprovalState; decision?: ApprovalDecision }
+    | {
+          kind: 'approval';
+          approvalId: string;
+          toolCallId?: string;
+          title: string;
+          subject: ApprovalSubject;
+          decisions: ApprovalDecision[];
+          state: ApprovalState;
+          decision?: ApprovalDecision;
+      }
     | { kind: 'error'; text: string };
 
 /** What an agent asks to do: a command, a change to files, or any other tool. The daemon classifies the request, so a client draws it with no knowledge of the agent. */

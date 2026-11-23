@@ -7,7 +7,7 @@ import { codeHighlighter, codeLanguage } from '../codeLanguages';
 /** Fence names whose language failed to load. Each settled load highlights again, so they are not retried. */
 const failed = new Set<string>();
 
-const parser: Parser = (options) => {
+const parser: Parser = options => {
     const name = options.language;
 
     if (!name || failed.has(name)) {
@@ -17,7 +17,7 @@ const parser: Parser = (options) => {
     const support = codeLanguage(name);
 
     if (support instanceof Promise) {
-        return support.then((loaded) => {
+        return support.then(loaded => {
             if (!loaded) {
                 failed.add(name);
             }
@@ -25,7 +25,10 @@ const parser: Parser = (options) => {
     }
 
     return support
-        ? createParser({ parse: ({ content }) => support.language.parser.parse(content), highlighter: codeHighlighter })(options)
+        ? createParser({
+              parse: ({ content }) => support.language.parser.parse(content),
+              highlighter: codeHighlighter,
+          })(options)
         : [];
 };
 

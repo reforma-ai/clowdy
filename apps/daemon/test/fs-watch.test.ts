@@ -34,8 +34,9 @@ async function listen(folder: OpenFolder): Promise<EventReader> {
     return reader;
 }
 
-const changesOf = (events: FsWatchEvent[]): FsChange[] => events.flatMap(event => event.type === 'changes' ? event.changes : []);
-const sorted = (changes: FsChange[]) => [...changes].sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+const changesOf = (events: FsWatchEvent[]): FsChange[] =>
+    events.flatMap(event => (event.type === 'changes' ? event.changes : []));
+const sorted = (changes: FsChange[]) => [...changes].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
 const watchesOf = (folder: OpenFolder) => (folder.fs as unknown as { watches: Map<string, unknown> }).watches.size;
 
 describe('watch', () => {
@@ -52,7 +53,7 @@ describe('watch', () => {
         const reader = await listen(folder);
 
         for (let n = 0; n < 20; n++) {
-            writeFileSync(join(folder.dir, `file${ n }.txt`), String(n));
+            writeFileSync(join(folder.dir, `file${n}.txt`), String(n));
         }
 
         writeFileSync(join(folder.dir, 'existing.txt'), 'changed!');
@@ -61,7 +62,11 @@ describe('watch', () => {
 
         expect(await reader.quiet()).toEqual([]);
         expect(event?.type).toBe('changes');
-        expect(changesOf([event as FsWatchEvent]).map(change => change.path).sort()).toEqual(['existing.txt', ...Array.from({ length: 20 }, (_, n) => `file${ n }.txt`)].sort());
+        expect(
+            changesOf([event as FsWatchEvent])
+                .map(change => change.path)
+                .sort()
+        ).toEqual(['existing.txt', ...Array.from({ length: 20 }, (_, n) => `file${n}.txt`)].sort());
     });
 
     test('tells created, changed and deleted, with the version and size a read gives', async () => {
@@ -72,13 +77,28 @@ describe('watch', () => {
 
         const created = changesOf(await reader.next());
 
-        expect(created).toEqual([{ type: 'created', path: 'new.txt', kind: 'file', version: (await folder.fs.read(folder.project, folder.folderId, 'new.txt')).version, size: 5 }]);
+        expect(created).toEqual([
+            {
+                type: 'created',
+                path: 'new.txt',
+                kind: 'file',
+                version: (await folder.fs.read(folder.project, folder.folderId, 'new.txt')).version,
+                size: 5,
+            },
+        ]);
 
         appendFileSync(join(folder.dir, 'new.txt'), ' world');
 
         const changed = changesOf(await reader.next());
 
-        expect(changed).toEqual([{ type: 'changed', path: 'new.txt', version: (await folder.fs.read(folder.project, folder.folderId, 'new.txt')).version, size: 11 }]);
+        expect(changed).toEqual([
+            {
+                type: 'changed',
+                path: 'new.txt',
+                version: (await folder.fs.read(folder.project, folder.folderId, 'new.txt')).version,
+                size: 11,
+            },
+        ]);
         expect((changed[0] as { version: string }).version).not.toBe((created[0] as { version: string }).version);
 
         rmSync(join(folder.dir, 'old.txt'));
@@ -113,8 +133,17 @@ describe('watch', () => {
 
         const changes = sorted(changesOf(await reader.next()));
 
-        expect(changes.map(change => `${ change.type } ${ change.path }`)).toEqual(['created moved', 'created moved/b.txt', 'created moved/deep', 'created moved/deep/a.txt']);
-        expect(changes.find(change => change.path === 'moved/b.txt')).toMatchObject({ kind: 'file', size: 2, version: expect.any(String) });
+        expect(changes.map(change => `${change.type} ${change.path}`)).toEqual([
+            'created moved',
+            'created moved/b.txt',
+            'created moved/deep',
+            'created moved/deep/a.txt',
+        ]);
+        expect(changes.find(change => change.path === 'moved/b.txt')).toMatchObject({
+            kind: 'file',
+            size: 2,
+            version: expect.any(String),
+        });
     });
 
     test('tells nothing from .git or node_modules, and tells what else changed', async () => {
@@ -142,17 +171,26 @@ describe('watch', () => {
 
         const changes = sorted(changesOf(await reader.next()));
 
-        expect(changes).toEqual([{ type: 'created', path: '.git', kind: 'directory' }, { type: 'created', path: 'node_modules', kind: 'directory' }]);
+        expect(changes).toEqual([
+            { type: 'created', path: '.git', kind: 'directory' },
+            { type: 'created', path: 'node_modules', kind: 'directory' },
+        ]);
         expect(await reader.quiet()).toEqual([]);
     });
 
-    test('the daemon\'s own writes are told like anyone\'s, with the version the write answered', async () => {
+    test("the daemon's own writes are told like anyone's, with the version the write answered", async () => {
         const folder = openFolder(h);
         const reader = await listen(folder);
         const encoded = new TextEncoder().encode('from the daemon');
-        const { version } = await folder.fs.write(folder.project, folder.folderId, 'sub/own.txt', (async function* () {
-            yield encoded;
-        })(), { create: false, declaredLength: 0 });
+        const { version } = await folder.fs.write(
+            folder.project,
+            folder.folderId,
+            'sub/own.txt',
+            (async function* () {
+                yield encoded;
+            })(),
+            { create: false, declaredLength: 0 }
+        );
         const changes = sorted(changesOf(await reader.next()));
 
         expect(changes).toEqual([
@@ -174,9 +212,15 @@ describe('watch', () => {
         await reader.next();
         await reader.quiet();
 
-        const all = changesOf(reader.events).map(change => `${ change.type } ${ change.path }`);
+        const all = changesOf(reader.events).map(change => `${change.type} ${change.path}`);
 
-        for (const wanted of ['created moved.txt', 'deleted a.txt', 'created dir2', 'created dir2/b.txt', 'deleted dir']) {
+        for (const wanted of [
+            'created moved.txt',
+            'deleted a.txt',
+            'created dir2',
+            'created dir2/b.txt',
+            'deleted dir',
+        ]) {
             expect(all).toContain(wanted);
         }
     });
@@ -275,10 +319,12 @@ describe('a watcher that cannot tell exactly', () => {
         cleanup.push(() => watcher.close());
 
         // Files made just before the watch began may still be reported by the platform; a watcher that knows the folder tells nothing of them.
-        const ready = new Promise<void>(resolve => setTimeout(() => {
-            events.length = 0;
-            resolve();
-        }, 300));
+        const ready = new Promise<void>(resolve =>
+            setTimeout(() => {
+                events.length = 0;
+                resolve();
+            }, 300)
+        );
 
         return { dir, events, ready };
     }
@@ -293,7 +339,7 @@ describe('a watcher that cannot tell exactly', () => {
         await ready;
 
         for (let n = 0; n < 12; n++) {
-            writeFileSync(join(dir, `burst${ n }.txt`), '1');
+            writeFileSync(join(dir, `burst${n}.txt`), '1');
         }
 
         await waitFor(() => events.length > 0 && events, 'the resync');
@@ -306,11 +352,16 @@ describe('a watcher that cannot tell exactly', () => {
 
         await waitFor(() => events.length > 1 && events, 'the change after the resync');
 
-        expect(changesOf(events)).toEqual([{ type: 'changed', path: 'burst3.txt', version: expect.any(String), size: 8 }]);
+        expect(changesOf(events)).toEqual([
+            { type: 'changed', path: 'burst3.txt', version: expect.any(String), size: 8 },
+        ]);
     });
 
     test('with more entries than it can remember it tells a path it does not know as created and one that vanished as deleted', async () => {
-        const { dir, events, ready } = watching({ 'a.txt': '1', 'b.txt': '2', 'c.txt': '3', 'd.txt': '4', 'e.txt': '5' }, { maxKnown: 2 });
+        const { dir, events, ready } = watching(
+            { 'a.txt': '1', 'b.txt': '2', 'c.txt': '3', 'd.txt': '4', 'e.txt': '5' },
+            { maxKnown: 2 }
+        );
 
         await ready;
 
@@ -319,7 +370,10 @@ describe('a watcher that cannot tell exactly', () => {
 
         await waitFor(() => changesOf(events).length >= 2 && events, 'both changes');
 
-        expect(sorted(changesOf(events)).map(change => `${ change.type } ${ change.path }`)).toEqual(['deleted d.txt', 'created new.txt']);
+        expect(sorted(changesOf(events)).map(change => `${change.type} ${change.path}`)).toEqual([
+            'deleted d.txt',
+            'created new.txt',
+        ]);
     });
 
     test('a folder that appears with more in it than it tells is followed by a resync', async () => {
@@ -328,7 +382,7 @@ describe('a watcher that cannot tell exactly', () => {
         const files: Record<string, string> = {};
 
         for (let n = 0; n < 2100; n++) {
-            files[`big/f${ n }.txt`] = '1';
+            files[`big/f${n}.txt`] = '1';
         }
 
         put(staging, files);

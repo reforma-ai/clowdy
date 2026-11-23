@@ -16,10 +16,14 @@ export interface SelectedText {
 }
 
 export function sameSelection(a: SelectedText | null, b: SelectedText | null): boolean {
-    return a === b || (a !== null && b !== null && a.text === b.text && a.x === b.x && a.above === b.above && a.below === b.below);
+    return (
+        a === b ||
+        (a !== null && b !== null && a.text === b.text && a.x === b.x && a.above === b.above && a.below === b.below)
+    );
 }
 
-const messageAround = (node: Node): HTMLElement | null => (node instanceof Element ? node : node.parentElement)?.closest<HTMLElement>(MESSAGE) ?? null;
+const messageAround = (node: Node): HTMLElement | null =>
+    (node instanceof Element ? node : node.parentElement)?.closest<HTMLElement>(MESSAGE) ?? null;
 
 /**
  * The message of `scope` a range lies inside. A range may start or end just outside it with nothing but line breaks between its words and that
@@ -71,7 +75,7 @@ export function readSelection(scope: Element | null): SelectedText | null {
 
     const box = range.getBoundingClientRect();
 
-    return { text, x: box.left + (box.width / 2), above: first.top, below: last.bottom };
+    return { text, x: box.left + box.width / 2, above: first.top, below: last.bottom };
 }
 
 /** A box on screen, in viewport pixels. */
@@ -91,12 +95,16 @@ const MARGIN = 8;
  * last line when there is no room above, and never past the edge of `within`: the part of the window the list shows in, so that the box does not go
  * over the title band, whose drag region takes the presses that land on it, or over the message box.
  */
-export function placeToolbar(at: Pick<SelectedText, 'x' | 'above' | 'below'>, size: { width: number; height: number }, within: Bounds): { left: number; top: number } {
+export function placeToolbar(
+    at: Pick<SelectedText, 'x' | 'above' | 'below'>,
+    size: { width: number; height: number },
+    within: Bounds
+): { left: number; top: number } {
     const fitsAbove = at.above - GAP - size.height >= within.top + MARGIN;
     const top = fitsAbove ? at.above - GAP - size.height : at.below + GAP;
 
     return {
-        left: clamp(within.left + MARGIN, at.x - (size.width / 2), within.right - MARGIN - size.width),
+        left: clamp(within.left + MARGIN, at.x - size.width / 2, within.right - MARGIN - size.width),
         top: clamp(within.top + MARGIN, top, within.bottom - MARGIN - size.height),
     };
 }
@@ -105,5 +113,10 @@ export function placeToolbar(at: Pick<SelectedText, 'x' | 'above' | 'below'>, si
 export function visibleBounds(element: Element): Bounds {
     const rect = element.getBoundingClientRect();
 
-    return { left: Math.max(0, rect.left), top: Math.max(0, rect.top), right: Math.min(window.innerWidth, rect.right), bottom: Math.min(window.innerHeight, rect.bottom) };
+    return {
+        left: Math.max(0, rect.left),
+        top: Math.max(0, rect.top),
+        right: Math.min(window.innerWidth, rect.right),
+        bottom: Math.min(window.innerHeight, rect.bottom),
+    };
 }

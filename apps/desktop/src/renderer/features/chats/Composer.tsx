@@ -1,27 +1,37 @@
 import { Attachments, PreviewableAttachment } from '@clowdy/components/Attachment';
 import { Button } from '@clowdy/components/Button';
 import { ListBoxItem } from '@clowdy/components/List';
-import { emptyComposerDoc, RichInput, type ComposerDoc, type RichInputHandle } from '@clowdy/components/RichInput';
+import { type ComposerDoc, emptyComposerDoc, RichInput, type RichInputHandle } from '@clowdy/components/RichInput';
 import { Clip } from '@clowdy/icons/14';
-import { useImperativeHandle, useLayoutEffect, useRef, useState, type MouseEvent, type Ref } from 'react';
+import { type MouseEvent, type Ref, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
 
 import { Unavailable } from '../../shared/Unavailable';
 import { useAgents, useProjectState, useRootStore } from '../../stores';
 import { folderById } from '../agents/agentTree';
 import { chatPlace } from '../sidePanel/currentPlace';
+import { branchPrefix } from './branchPrefix';
 import { busyEnter, sendMode } from './busyEnter';
 import { ChatControls } from './ChatControls';
+import styles from './Composer.module.css';
+import { ComposerQueue } from './ComposerQueue';
+import { ComposerSend } from './ComposerSend';
+import { ContextRing } from './ContextRing';
 import { readRememberedMode, startingMode, writeRememberedMode } from './chatModeMemory';
 import { isRunActive, isRunBusy } from './chatRun';
 import { perform } from './commands';
-import styles from './Composer.module.css';
-import { draftOf, messageOf, newChatDraftKey, quotedMessage, saveDraft, withQuoteLast, withTextFirst } from './composerDrafts';
-import { filesOf, releaseFiles, restoreFiles, takeFiles, type DraftFile } from './composerFiles';
+import { useRegisterComposer } from './composerBridge';
+import {
+    draftOf,
+    messageOf,
+    newChatDraftKey,
+    quotedMessage,
+    saveDraft,
+    withQuoteLast,
+    withTextFirst,
+} from './composerDrafts';
+import { type DraftFile, filesOf, releaseFiles, restoreFiles, takeFiles } from './composerFiles';
 import { serializeMention } from './composerMentions';
-import { ComposerQueue } from './ComposerQueue';
 import { dropReplyQuote, restoreReplyQuote, setReplyQuote, takeReplyQuote, useReplyQuote } from './composerQuotes';
-import { ComposerSend } from './ComposerSend';
-import { ContextRing } from './ContextRing';
 import { MentionChip } from './MentionChip';
 import { ModelPicker, ModelPickerOff } from './ModelPicker';
 import { ModePicker } from './ModePicker';
@@ -31,7 +41,17 @@ import { useComposerFiles } from './useComposerFiles';
 import { useMentionTriggers } from './useMentionTriggers';
 import { NO_PROVIDER_HINT, useModelChoice } from './useModelChoice';
 
-import type { Chat, ChatId, ChatMode, ChatWorkspaceChoice, FolderId, ProjectId, QueuedMessage, Run } from '@clowdy/protocol';
+import type {
+    Chat,
+    ChatId,
+    ChatMode,
+    ChatWorkspace,
+    ChatWorkspaceChoice,
+    FolderId,
+    ProjectId,
+    QueuedMessage,
+    Run,
+} from '@clowdy/protocol';
 import type { ReactNode } from 'react';
 import type { ReplyMessage } from '../../stream/MessageActions';
 
@@ -80,9 +100,19 @@ export interface ComposerProps {
      * For the new-chat page: the project the chat is made in, the folder of it the chat works in (none: the main folder) and where in that folder (`workspace`: a
      * worktree the chat makes or one that exists; none: the folder's own checkout), what to do once its first message is sent, and what the project asks a new chat to
      * start with (its agent and its mode; what it leaves out starts where the last chat left off). `waiting` is why the first message cannot be sent yet, when what it is sent
-     * with is not known until an answer comes (the folder's worktrees are being read): the chat is not made, and Send says why.
+     * with is not known until an answer comes (the folder's worktrees are being read): the chat is not made, and Send says why. `workspaceRow` is the daemon's row of the
+     * worktree `workspace` names when it exists and the page has asked for it (`ProjectUi.draftWorkspaceRow`): the place the box reads for `@`, as the chat will, since the
+     * first message makes the chat in that same row.
      */
-    start?: { projectId: ProjectId; folderId?: FolderId; workspace?: ChatWorkspaceChoice; waiting?: string; onStarted: (chatId: ChatId) => void; defaults?: { engine?: string; mode?: ChatMode } };
+    start?: {
+        projectId: ProjectId;
+        folderId?: FolderId;
+        workspace?: ChatWorkspaceChoice;
+        workspaceRow?: ChatWorkspace;
+        waiting?: string;
+        onStarted: (chatId: ChatId) => void;
+        defaults?: { engine?: string; mode?: ChatMode };
+    };
     /** How many lines the empty field is tall (it still grows with the text). One by default. */
     minLines?: number;
     /** The box of an edit frame (see `EditMode`) in place of the chat's message box. */
@@ -114,12 +144,20 @@ export function Composer({ chat, run, start, minLines, editMode, controls, ref }
     // The mode a new chat starts in: what was picked on this page for this project, else where the project and the last pick say it starts.
     const [rememberedMode, setRememberedMode] = useState(readRememberedMode);
     const [pickedMode, setPickedMode] = useState<{ projectId: ProjectId | undefined; mode: ChatMode }>();
-    const draftMode = pickedMode && pickedMode.projectId === start?.projectId ? pickedMode.mode : startingMode(start?.defaults?.mode, rememberedMode);
+    const draftMode =
+        pickedMode && pickedMode.projectId === start?.projectId
+            ? pickedMode.mode
+            : startingMode(start?.defaults?.mode, rememberedMode);
     // The chat a first message made, when sending the message then failed. It belongs to the project, the folder and the place in it (`where`: its worktree is fixed from
     // the start) it was made for: the page of another project, folder or place (the same composer, drawn again) starts its own chat, and a model picked there is not picked for this one.
     const where = JSON.stringify(start?.workspace ?? null);
     const [madeIn, setMade] = useState<{ chat: Chat; where: string }>();
-    const made = madeIn?.chat.projectId === start?.projectId && madeIn?.chat.folderId === start?.folderId && madeIn?.where === where ? madeIn?.chat : undefined;
+    const made =
+        madeIn?.chat.projectId === start?.projectId &&
+        madeIn?.chat.folderId === start?.folderId &&
+        madeIn?.where === where
+            ? madeIn?.chat
+            : undefined;
     const target = chat ?? made;
     const running = isRunActive(run);
     // A message to a busy orchestrator waits in the queue; the box says so, and Send now on a queued message steers.
@@ -127,9 +165,14 @@ export function Composer({ chat, run, start, minLines, editMode, controls, ref }
     const model = useModelChoice({ chat, made, run, preferredEngine: start?.defaults?.engine });
     const attach = useComposerFiles(key, chat?.projectId ?? start?.projectId);
     const { folders } = useProjectState().project;
-    // Where the message is read: the chat's folder and its worktree, or the folder of the new chat (no worktree to name before the chat is made). The `@` menu lists that place's
-    // files and documents, and a path in the message is the one the agent reads from its working directory there.
-    const place = target ? chatPlace(folders, target) : { folder: folderById(folders, start?.folderId) };
+    // Where the message is read: the chat's folder and its worktree, or the folder of the new chat and the worktree it chose when that exists (a new worktree is made by the first
+    // message, so there is none to name before). The `@` menu lists that place's files and documents, and a path in the message is the one the agent reads from its working directory there.
+    const place = target
+        ? chatPlace(folders, target)
+        : {
+              folder: folderById(folders, start?.folderId),
+              ...(start?.workspaceRow && { workspace: start.workspaceRow }),
+          };
     const triggers = useMentionTriggers(box, place);
     // The message the box replies to, shown as a card above the field. The box of an edit frame has none.
     const replyTo = useReplyQuote(key);
@@ -138,12 +181,20 @@ export function Composer({ chat, run, start, minLines, editMode, controls, ref }
     const picker = useRef<HTMLInputElement>(null);
     const hasMessage = messageOf(doc) !== '' || attach.files.length > 0;
     // A file still going up, or one that failed, holds the message back until the person has dealt with it.
-    const uploadHint = attach.uploading ? 'Wait until the files are uploaded' : attach.failed ? 'Retry or remove the file that did not upload' : undefined;
+    const uploadHint = attach.uploading
+        ? 'Wait until the files are uploaded'
+        : attach.failed
+          ? 'Retry or remove the file that did not upload'
+          : undefined;
     // An edit rewrites the chat from its message, which the daemon does only at rest (the Edit button says so): if the agent starts working while the frame is open,
     // Submit waits for it to stop, as it waits for a file, rather than sending what is refused.
     const blocked = editMode
-        ? running ? 'Stop the agent to edit' : uploadHint
-        : model.noProvider ? NO_PROVIDER_HINT : uploadHint ?? (target ? undefined : start?.waiting);
+        ? running
+            ? 'Stop the agent to edit'
+            : uploadHint
+        : model.noProvider
+          ? NO_PROVIDER_HINT
+          : (uploadHint ?? (target ? undefined : start?.waiting));
 
     const edit = (next: ComposerDoc) => {
         saveDraft(key, next);
@@ -176,16 +227,35 @@ export function Composer({ chat, run, start, minLines, editMode, controls, ref }
         field.current?.focus();
     };
 
-    const pasted = (files: readonly File[]) => void pasteFiles(files, { folders, place, mention: chip => field.current?.insertMention(chip), attach: attach.add });
+    const pasted = (files: readonly File[]) =>
+        void pasteFiles(files, {
+            folders,
+            place,
+            mention: chip => field.current?.insertMention(chip),
+            attach: attach.add,
+        });
 
-    useImperativeHandle(ref, () => ({ addFiles: attach.add, pasteFiles: pasted, reply, quote }), [attach.add, pasted, reply, quote]);
+    useImperativeHandle(ref, () => ({ addFiles: attach.add, pasteFiles: pasted, reply, quote }), [
+        attach.add,
+        pasted,
+        reply,
+        quote,
+    ]);
+    // The side panel's Add to chat quotes code into this box (`composerBridge`); the box of an edit frame is not the one it means.
+    useRegisterComposer(editMode ? undefined : quote);
 
     /** Sends the message; `mod` (Cmd/Ctrl+Enter) sends it the other way than Enter while the orchestrator works. */
     const send = async (from: ComposerDoc, mod = false) => {
         const message = messageOf(from);
         const held = filesOf(key);
 
-        if ((!message && held.length === 0) || held.some(file => file.status !== 'ready') || model.noProvider || (!target && start?.waiting !== undefined)) return;
+        if (
+            (!message && held.length === 0) ||
+            held.some(file => file.status !== 'ready') ||
+            model.noProvider ||
+            (!target && start?.waiting !== undefined)
+        )
+            return;
 
         edit(emptyComposerDoc());
 
@@ -214,10 +284,14 @@ export function Composer({ chat, run, start, minLines, editMode, controls, ref }
                 type: 'chat.create',
                 projectId: start.projectId,
                 ...(start.folderId && { folderId: start.folderId }),
-                // A copy of the choice: the store keeps the one it holds, and the command is what the transport sends on.
-                ...(start.workspace && { workspace: { ...start.workspace } }),
+                // A copy of the choice (the store keeps the one it holds, and the command is what the transport sends on), with the app's branch prefix for a new worktree.
+                ...(start.workspace && { workspace: branchPrefix.withPrefix(start.workspace) }),
                 mode: draftMode,
-                ...(choice && { engine: choice.engine, ...(choice.model && { model: choice.model }), ...(choice.effort && { effort: choice.effort }) }),
+                ...(choice && {
+                    engine: choice.engine,
+                    ...(choice.model && { model: choice.model }),
+                    ...(choice.effort && { effort: choice.effort }),
+                }),
             });
             const fresh = (created.ok ? created.data : {}) as { chat?: Chat };
 
@@ -262,23 +336,35 @@ export function Composer({ chat, run, start, minLines, editMode, controls, ref }
         const message = messageOf(from);
         const held = filesOf(key);
 
-        if (!editMode || editMode.isPending || running || (!message && held.length === 0) || held.some(file => file.status !== 'ready')) return;
+        if (
+            !editMode ||
+            editMode.isPending ||
+            running ||
+            (!message && held.length === 0) ||
+            held.some(file => file.status !== 'ready')
+        )
+            return;
 
-        editMode.onSubmit({ text: message, attachmentIds: held.flatMap(file => (file.attachment ? [file.attachment.id] : [])) });
+        editMode.onSubmit({
+            text: message,
+            attachmentIds: held.flatMap(file => (file.attachment ? [file.attachment.id] : [])),
+        });
     };
 
     /** Edit on a queued message: it has left the queue, and its words go in front of the draft and its files back into the box, uploaded already. */
     const editQueued = (item: QueuedMessage) => {
         edit(withTextFirst(draftOf(key), item.text));
 
-        const files = (item.attachments ?? []).map((attachment): DraftFile => ({
-            key: crypto.randomUUID(),
-            name: attachment.name,
-            mediaType: attachment.mediaType,
-            size: attachment.size,
-            status: 'ready',
-            attachment,
-        }));
+        const files = (item.attachments ?? []).map(
+            (attachment): DraftFile => ({
+                key: crypto.randomUUID(),
+                name: attachment.name,
+                mediaType: attachment.mediaType,
+                size: attachment.size,
+                status: 'ready',
+                attachment,
+            })
+        );
 
         if (files.length > 0) restoreFiles(key, files);
 
@@ -306,99 +392,127 @@ export function Composer({ chat, run, start, minLines, editMode, controls, ref }
 
     return (
         <>
-            <div ref={ box } className={ styles.surface }>
-                { chat && !editMode && <ComposerQueue chat={ chat } busy={ busy } running={ running } onEdit={ editQueued } /> }
+            <div ref={box} className={styles.surface}>
+                {chat && !editMode && <ComposerQueue chat={chat} busy={busy} running={running} onEdit={editQueued} />}
 
-                { /* The field is the keyboard way in; this only gives the mouse the whole card. */ }
-                <div className={ styles.main } onMouseDown={ focusField }>
-                    { replyTo && !editMode && (
+                {/* The field is the keyboard way in; this only gives the mouse the whole card. */}
+                <div className={styles.main} onMouseDown={focusField}>
+                    {replyTo && !editMode && (
                         <ReplyCard
-                            message={ replyTo }
-                            who={ replyTo.role === 'user' ? 'You' : agentName }
-                            onRemove={ () => {
+                            message={replyTo}
+                            who={replyTo.role === 'user' ? 'You' : agentName}
+                            onRemove={() => {
                                 dropReplyQuote(key);
                                 field.current?.focus();
-                            } }
+                            }}
                         />
-                    ) }
+                    )}
 
-                    { attach.files.length > 0 && (
-                        <Attachments size="sm" className={ styles.files }>
-                            { attach.files.map(file => (
+                    {attach.files.length > 0 && (
+                        <Attachments size="sm" className={styles.files}>
+                            {attach.files.map(file => (
                                 <PreviewableAttachment
-                                    key={ file.key }
-                                    data={ { id: file.key, filename: file.name, mediaType: file.mediaType, size: file.size, preview: file.preview } }
-                                    loading={ file.status === 'uploading' }
-                                    error={ file.status === 'error' }
-                                    onRetry={ () => attach.retry(file.key) }
-                                    onRemove={ () => attach.remove(file.key) }
+                                    key={file.key}
+                                    data={{
+                                        id: file.key,
+                                        filename: file.name,
+                                        mediaType: file.mediaType,
+                                        size: file.size,
+                                        preview: file.preview,
+                                    }}
+                                    loading={file.status === 'uploading'}
+                                    error={file.status === 'error'}
+                                    onRetry={() => attach.retry(file.key)}
+                                    onRemove={() => attach.remove(file.key)}
                                 />
-                            )) }
+                            ))}
                         </Attachments>
-                    ) }
+                    )}
 
                     <RichInput
-                        ref={ field }
-                        value={ doc }
-                        onChange={ edit }
-                        triggers={ triggers }
-                        renderMention={ MentionChip }
-                        serializeMention={ serializeMention }
-                        autoFocus={ editMode !== undefined || !chat?.orchestratorRunId }
-                        className={ styles.field }
-                        minHeight={ minLines ? minLines * LINE_HEIGHT : undefined }
-                        aria-label={ editMode ? 'Edit message' : 'Message' }
-                        placeholder={ editMode ? 'Edit message' : busy ? 'Queue another message…' : 'Write a message…' }
+                        ref={field}
+                        value={doc}
+                        onChange={edit}
+                        triggers={triggers}
+                        renderMention={MentionChip}
+                        serializeMention={serializeMention}
+                        autoFocus={editMode !== undefined || !chat?.orchestratorRunId}
+                        className={styles.field}
+                        minHeight={minLines ? minLines * LINE_HEIGHT : undefined}
+                        aria-label={editMode ? 'Edit message' : 'Message'}
+                        placeholder={editMode ? 'Edit message' : busy ? 'Queue another message…' : 'Write a message…'}
                         submitOnEnter
-                        onSubmit={ (next, origin) => (editMode ? submitEdit(next) : void send(next, origin?.mod === true)) }
-                        onEscape={ editMode?.onCancel }
+                        onSubmit={(next, origin) =>
+                            editMode ? submitEdit(next) : void send(next, origin?.mod === true)
+                        }
+                        onEscape={editMode?.onCancel}
                         // Files before text, as the zone around the page does: a file copied in Finder also puts its name on the clipboard as text.
-                        onPasteFiles={ pasted }
+                        onPasteFiles={pasted}
                     />
 
-                    <div className={ styles.row }>
-                        <div className={ styles.start }>
-                            <Button variant="filling" color="secondary" size="sm" iconOnly aria-label="Attach files" tooltip="Attach files" onPress={ () => picker.current?.click() }>
+                    <div className={styles.row}>
+                        <div className={styles.start}>
+                            <Button
+                                variant="filling"
+                                color="secondary"
+                                size="sm"
+                                iconOnly
+                                aria-label="Attach files"
+                                tooltip="Attach files"
+                                onPress={() => picker.current?.click()}
+                            >
                                 <Clip />
                             </Button>
                         </div>
                         <input
-                            ref={ picker }
+                            ref={picker}
                             type="file"
                             multiple
                             hidden
                             aria-hidden
-                            tabIndex={ -1 }
-                            onChange={ event => {
+                            tabIndex={-1}
+                            onChange={event => {
                                 attach.add(Array.from(event.currentTarget.files ?? []));
                                 // The same file may be picked again.
                                 event.currentTarget.value = '';
                                 field.current?.focus();
-                            } }
+                            }}
                         />
 
-                        <div className={ styles.end }>
-                            { /* The model and the context belong to the chat, not to a message that is sent again: an edit frame has neither. */ }
-                            { !editMode && (
+                        <div className={styles.end}>
+                            {/* The model and the context belong to the chat, not to a message that is sent again: an edit frame has neither. */}
+                            {!editMode && (
                                 <>
-                                    <ContextRing chat={ chat } run={ run } />
+                                    <ContextRing chat={chat} run={run} />
 
-                                    { model.noProvider
-                                        ? <Unavailable label="Model" hint={ NO_PROVIDER_HINT }><ModelPickerOff /></Unavailable>
-                                        : <ModelPicker choice={ model.choice } providers={ model.providers } running={ running } onPick={ model.pick } /> }
+                                    {model.noProvider ? (
+                                        <Unavailable label="Model" hint={NO_PROVIDER_HINT}>
+                                            <ModelPickerOff />
+                                        </Unavailable>
+                                    ) : (
+                                        <ModelPicker
+                                            choice={model.choice}
+                                            providers={model.providers}
+                                            running={running}
+                                            onPick={model.pick}
+                                        />
+                                    )}
                                 </>
-                            ) }
+                            )}
 
-                            <Unavailable label={ editMode ? 'Submit edit' : 'Send' } hint={ hasMessage ? blocked : undefined }>
+                            <Unavailable
+                                label={editMode ? 'Submit edit' : 'Send'}
+                                hint={hasMessage ? blocked : undefined}
+                            >
                                 <ComposerSend
-                                    label={ editMode ? 'Submit edit' : undefined }
-                                    canSend={ hasMessage }
-                                    blocked={ blocked !== undefined }
-                                    isPending={ editMode?.isPending }
-                                    running={ running && !editMode }
-                                    waits={ busy && !editMode ? busyEnter.mode : undefined }
-                                    isStopping={ isStopping }
-                                    onSend={ () => {
+                                    label={editMode ? 'Submit edit' : undefined}
+                                    canSend={hasMessage}
+                                    blocked={blocked !== undefined}
+                                    isPending={editMode?.isPending}
+                                    running={running && !editMode}
+                                    waits={busy && !editMode ? busyEnter.mode : undefined}
+                                    isStopping={isStopping}
+                                    onSend={() => {
                                         if (editMode) {
                                             submitEdit(doc);
 
@@ -408,8 +522,8 @@ export function Composer({ chat, run, start, minLines, editMode, controls, ref }
                                         void send(doc);
                                         // The button is off once the text is gone; the caret goes back to the field.
                                         field.current?.focus();
-                                    } }
-                                    onStop={ () => void stop() }
+                                    }}
+                                    onStop={() => void stop()}
                                 />
                             </Unavailable>
                         </div>
@@ -417,30 +531,34 @@ export function Composer({ chat, run, start, minLines, editMode, controls, ref }
                 </div>
             </div>
 
-            { /* The mode stands at the end of the line under the card, where the chat's other starting controls are. It belongs to the chat, not to a message that is sent again: an edit frame has no line. */ }
-            { !editMode && (
+            {/* The mode stands at the end of the line under the card, where the chat's other starting controls are. It belongs to the chat, not to a message that is sent again: an edit frame has no line. */}
+            {!editMode && (
                 <ChatControls
-                    end={ (
-                        <Unavailable label="Mode" hint={ running ? 'The mode stays as it is while the orchestrator works' : undefined }>
+                    end={
+                        <Unavailable
+                            label="Mode"
+                            hint={running ? 'The mode stays as it is while the orchestrator works' : undefined}
+                        >
                             <ModePicker
-                                mode={ target?.mode ?? draftMode }
+                                mode={target?.mode ?? draftMode}
                                 // A chat made by a first message that failed keeps the mode it was made with.
-                                isDisabled={ running || (!chat && made !== undefined) }
-                                onPick={ (picked) => {
-                                    if (chat) void perform(root, { type: 'chat.setMode', chatId: chat.id, mode: picked });
+                                isDisabled={running || (!chat && made !== undefined)}
+                                onPick={picked => {
+                                    if (chat)
+                                        void perform(root, { type: 'chat.setMode', chatId: chat.id, mode: picked });
                                     else setPickedMode({ projectId: start?.projectId, mode: picked });
 
                                     // Every pick is remembered, as the model's is, for the next new chat that has no mode of its project's.
                                     setRememberedMode(picked);
                                     writeRememberedMode(picked);
-                                } }
+                                }}
                             />
                         </Unavailable>
-                    ) }
+                    }
                 >
-                    { controls }
+                    {controls}
                 </ChatControls>
-            ) }
+            )}
         </>
     );
 }

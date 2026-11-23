@@ -1,7 +1,7 @@
-import { NO_PROJECT_ICON } from '@clowdy/protocol';
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { NO_PROJECT_ICON } from '@clowdy/protocol';
 
 import { findProjectIcon, MAX_ICON_FILE_BYTES } from '../src/domain/projectIcon';
 import { cleanTempDirs, startHarness, tempDir } from './helpers';
@@ -39,7 +39,9 @@ describe('findProjectIcon', () => {
 
     test('takes a drawing over an app icon over a .ico, and the root over a static folder', () => {
         expect(found({ 'favicon.ico': 'ico', 'favicon.svg': '<svg/>' })).toBe('favicon.svg');
-        expect(found({ 'public/favicon.ico': 'ico', 'public/apple-touch-icon.png': 'png' })).toBe('public/apple-touch-icon.png');
+        expect(found({ 'public/favicon.ico': 'ico', 'public/apple-touch-icon.png': 'png' })).toBe(
+            'public/apple-touch-icon.png'
+        );
         expect(found({ 'public/favicon.svg': '<svg/>', 'favicon.ico': 'ico' })).toBe('favicon.ico');
     });
 
@@ -52,14 +54,20 @@ describe('findProjectIcon', () => {
     });
 
     test('looks in the packages of a monorepo, in name order, when the root has none', () => {
-        expect(found({ 'apps/web/public/favicon.ico': 'ico', 'apps/admin/public/favicon.svg': '<svg/>' })).toBe('apps/admin/public/favicon.svg');
+        expect(found({ 'apps/web/public/favicon.ico': 'ico', 'apps/admin/public/favicon.svg': '<svg/>' })).toBe(
+            'apps/admin/public/favicon.svg'
+        );
         expect(found({ 'packages/ui/public/favicon.ico': 'ico' })).toBe('packages/ui/public/favicon.ico');
-        expect(found({ 'apps/web/public/favicon.svg': '<svg/>', 'public/favicon.ico': 'ico' })).toBe('public/favicon.ico');
+        expect(found({ 'apps/web/public/favicon.svg': '<svg/>', 'public/favicon.ico': 'ico' })).toBe(
+            'public/favicon.ico'
+        );
     });
 
-    test('passes over an empty file, one that is too large, and a folder by an icon\'s name', () => {
+    test("passes over an empty file, one that is too large, and a folder by an icon's name", () => {
         expect(found({ 'favicon.svg': '', 'favicon.ico': 'ico' })).toBe('favicon.ico');
-        expect(found({ 'favicon.svg': new Uint8Array(MAX_ICON_FILE_BYTES + 1), 'favicon.ico': 'ico' })).toBe('favicon.ico');
+        expect(found({ 'favicon.svg': new Uint8Array(MAX_ICON_FILE_BYTES + 1), 'favicon.ico': 'ico' })).toBe(
+            'favicon.ico'
+        );
         expect(found({ 'favicon.svg/inside': 'x', 'favicon.ico': 'ico' })).toBe('favicon.ico');
     });
 
@@ -90,14 +98,14 @@ describe('the project icon', () => {
         h = await startHarness();
 
         const { id, path } = h.openRepo('web');
-        const none = await h.fetch(`/v1/projects/${ id }/icon`);
+        const none = await h.fetch(`/v1/projects/${id}/icon`);
 
         expect(none.status).toBe(404);
         expect(await none.json()).toMatchObject({ ok: false, error: { code: 'not_found' } });
 
         files(path, { 'public/favicon.svg': '<svg xmlns="http://www.w3.org/2000/svg"/>' });
 
-        const icon = await h.fetch(`/v1/projects/${ id }/icon`);
+        const icon = await h.fetch(`/v1/projects/${id}/icon`);
 
         expect(icon.status).toBe(200);
         expect(icon.headers.get('content-type')).toBe('image/svg+xml');
@@ -107,7 +115,7 @@ describe('the project icon', () => {
         expect(await icon.text()).toBe('<svg xmlns="http://www.w3.org/2000/svg"/>');
 
         files(h.config.personalDir, { 'favicon.ico': 'ico' });
-        expect((await h.fetch(`/v1/projects/${ h.personal.id }/icon`)).status).toBe(404);
+        expect((await h.fetch(`/v1/projects/${h.personal.id}/icon`)).status).toBe(404);
     });
 
     test('an uploaded icon is a PNG data URL in the settings, cleared with null, and refused for the personal space', async () => {
@@ -117,29 +125,45 @@ describe('the project icon', () => {
         const set = h.ok('project.update', { projectId: id, settings: { icon: PNG } }).project as Project;
 
         expect(set.settings.icon).toBe(PNG);
-        expect((h.ok('project.update', { projectId: id, settings: { icon: NO_PROJECT_ICON } }).project as Project).settings.icon).toBe(NO_PROJECT_ICON);
-        expect((h.ok('project.update', { projectId: id, settings: { icon: null } }).project as Project).settings.icon).toBeUndefined();
+        expect(
+            (h.ok('project.update', { projectId: id, settings: { icon: NO_PROJECT_ICON } }).project as Project).settings
+                .icon
+        ).toBe(NO_PROJECT_ICON);
+        expect(
+            (h.ok('project.update', { projectId: id, settings: { icon: null } }).project as Project).settings.icon
+        ).toBeUndefined();
 
         const refused = h.send('project.update', { projectId: h.personal.id, settings: { icon: PNG } });
 
-        expect(refused.ok ? undefined : refused.error).toMatchObject({ code: 'conflict', message: 'The personal space has no icon of its own' });
+        expect(refused.ok ? undefined : refused.error).toMatchObject({
+            code: 'conflict',
+            message: 'The personal space has no icon of its own',
+        });
     });
 
     test('over HTTP an icon that is not a small PNG data URL is refused', async () => {
         h = await startHarness();
 
         const { id } = h.openRepo('web');
-        const send = async (icon: string) => (await h.fetch('/v1/commands', {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ requestId: crypto.randomUUID(), type: 'project.update', projectId: id, settings: { icon } }),
-        })).status;
+        const send = async (icon: string) =>
+            (
+                await h.fetch('/v1/commands', {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({
+                        requestId: crypto.randomUUID(),
+                        type: 'project.update',
+                        projectId: id,
+                        settings: { icon },
+                    }),
+                })
+            ).status;
 
         expect(await send(PNG)).toBe(200);
         expect(await send(NO_PROJECT_ICON)).toBe(200);
         expect(await send('default')).toBe(400);
         expect(await send('data:image/svg+xml;base64,PHN2Zy8+')).toBe(400);
         expect(await send('https://example.com/icon.png')).toBe(400);
-        expect(await send(`data:image/png;base64,${ 'A'.repeat(64 * 1024) }`)).toBe(400);
+        expect(await send(`data:image/png;base64,${'A'.repeat(64 * 1024)}`)).toBe(400);
     });
 });

@@ -23,13 +23,25 @@ afterEach(() => {
 
 describe('Scrollable', () => {
     it('draws a thumb, and leaves it out when scrollbar is off', async () => {
-        await act(async () => root.render(<Scrollable><div>Notes</div></Scrollable>));
+        await act(async () =>
+            root.render(
+                <Scrollable>
+                    <div>Notes</div>
+                </Scrollable>
+            )
+        );
 
         const withThumb = container.firstElementChild;
 
         expect(withThumb?.childElementCount).toBe(2);
 
-        await act(async () => root.render(<Scrollable scrollbar={ false }><div>Notes</div></Scrollable>));
+        await act(async () =>
+            root.render(
+                <Scrollable scrollbar={false}>
+                    <div>Notes</div>
+                </Scrollable>
+            )
+        );
 
         expect(container.firstElementChild?.childElementCount).toBe(1);
         expect(container.textContent).toContain('Notes');

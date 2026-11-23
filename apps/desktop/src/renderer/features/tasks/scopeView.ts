@@ -1,4 +1,4 @@
-import { checklistOf, type Checklist, type Keep, type Rollup, type TaskTree, type TreeRow } from './taskTree';
+import { type Checklist, checklistOf, type Keep, type Rollup, type TaskTree, type TreeRow } from './taskTree';
 import { boardColumns, taskGrid } from './taskView';
 
 import type { Task, TaskId, TaskStatus } from '@clowdy/protocol';
@@ -35,12 +35,25 @@ export interface ScopeContent {
  * What the screen draws for a scope in a mode, with the filter's `keep` and the folded tasks of the tree. A match is never hidden: the filter keeps the tasks it
  * matches whatever their parents are, so a task whose parent it drops stands under the nearest parent it keeps (or at the top of the view).
  */
-export function scopeContent(tree: TaskTree, statuses: readonly TaskStatus[], scope: TaskId | null, mode: TasksMode, { collapsed, keep }: { collapsed?: Iterable<TaskId>; keep?: Keep } = {}): ScopeContent {
+export function scopeContent(
+    tree: TaskTree,
+    statuses: readonly TaskStatus[],
+    scope: TaskId | null,
+    mode: TasksMode,
+    { collapsed, keep }: { collapsed?: Iterable<TaskId>; keep?: Keep } = {}
+): ScopeContent {
     if (mode === 'tree') {
         const rows = tree.rows(scope, collapsed, keep);
         const tasks = rows.map(row => row.task);
 
-        return { mode, total: tree.descendantsOf(scope).length, tasks, columns: [], rows, grid: taskGrid('list', tasks, statuses) };
+        return {
+            mode,
+            total: tree.descendantsOf(scope).length,
+            tasks,
+            columns: [],
+            rows,
+            grid: taskGrid('list', tasks, statuses),
+        };
     }
 
     const tasks = mode === 'board' ? tree.levelOf(scope, keep) : tree.descendantsOf(scope, keep);
@@ -68,7 +81,11 @@ export interface TaskNotes {
  * `withParent` is for a board: its cards sit in columns by status, away from the task they are inside, so a card names it unless it is the scope itself,
  * which the screen's own header already shows. The tree shows the parent by indenting under it.
  */
-export function taskNotes(tree: TaskTree, task: Task, { scope, withParent }: { scope: TaskId | null; withParent: boolean }): TaskNotes {
+export function taskNotes(
+    tree: TaskTree,
+    task: Task,
+    { scope, withParent }: { scope: TaskId | null; withParent: boolean }
+): TaskNotes {
     const parent = withParent ? tree.parentOf(task) : undefined;
 
     return {

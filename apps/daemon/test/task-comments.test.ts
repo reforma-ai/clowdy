@@ -27,13 +27,19 @@ const failure = (result: ReturnType<Harness['send']>) => {
     return result.error;
 };
 
-const rows = (table: string) => (h.store.db.query(`SELECT COUNT(*) AS n FROM ${ table }`).get() as { n: number }).n;
+const rows = (table: string) => (h.store.db.query(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n;
 
 function setup() {
     const project = h.openRepo();
-    const create = (title: string, extra: Record<string, unknown> = {}): Task => h.ok('task.create', { projectId: project.id, title, ...extra }).task;
+    const create = (title: string, extra: Record<string, unknown> = {}): Task =>
+        h.ok('task.create', { projectId: project.id, title, ...extra }).task;
     const add = (taskId: string, body: string): TaskComment => h.ok('task.comment.add', { taskId, body }).comment;
-    const page = async (taskId: string, query = '') => (await h.fetch(`/v1/tasks/${ taskId }/comments${ query }`)).json() as Promise<{ comments: TaskComment[]; total: number; nextCursor?: string }>;
+    const page = async (taskId: string, query = '') =>
+        (await h.fetch(`/v1/tasks/${taskId}/comments${query}`)).json() as Promise<{
+            comments: TaskComment[];
+            total: number;
+            nextCursor?: string;
+        }>;
 
     return { project, create, add, page };
 }
@@ -63,7 +69,9 @@ describe('task.comment.add', () => {
         const { create, add } = setup();
         const task = create('Epic');
 
-        expect(add(task.id, '    indented first line\n\nsecond\n\n  \n').body).toBe('    indented first line\n\nsecond');
+        expect(add(task.id, '    indented first line\n\nsecond\n\n  \n').body).toBe(
+            '    indented first line\n\nsecond'
+        );
     });
 
     test('refuses a body with nothing in it, a task that does not exist, and a repeat of the request does not add a second comment', () => {
@@ -71,7 +79,10 @@ describe('task.comment.add', () => {
         const task = create('Epic');
         const cursor = h.store.headCursor();
 
-        expect(failure(h.send('task.comment.add', { taskId: task.id, body: '' }))).toEqual({ code: 'invalid', message: 'A comment cannot be empty' });
+        expect(failure(h.send('task.comment.add', { taskId: task.id, body: '' }))).toEqual({
+            code: 'invalid',
+            message: 'A comment cannot be empty',
+        });
         expect(failure(h.send('task.comment.add', { taskId: task.id, body: ' \n\t ' })).code).toBe('invalid');
         expect(failure(h.send('task.comment.add', { taskId: 'tsk_nope', body: 'x' })).code).toBe('not_found');
         expect(h.store.headCursor()).toBe(cursor);
@@ -79,7 +90,9 @@ describe('task.comment.add', () => {
 
         const first = h.send('task.comment.add', { requestId: 'req-comment-once', taskId: task.id, body: 'Once' });
 
-        expect(h.send('task.comment.add', { requestId: 'req-comment-once', taskId: task.id, body: 'Twice' })).toEqual(first);
+        expect(h.send('task.comment.add', { requestId: 'req-comment-once', taskId: task.id, body: 'Twice' })).toEqual(
+            first
+        );
         expect(rows('task_comments')).toBe(1);
     });
 });
@@ -91,7 +104,11 @@ describe('task.comment.edit', () => {
         const written = add(task.id, 'First draft');
         const cursor = h.store.headCursor();
         const before = Date.now();
-        const { comment } = h.ok('task.comment.edit', { taskId: task.id, commentId: written.id, body: 'Second draft\n' });
+        const { comment } = h.ok('task.comment.edit', {
+            taskId: task.id,
+            commentId: written.id,
+            body: 'Second draft\n',
+        });
 
         expect(comment).toEqual({ ...written, body: 'Second draft', editedAt: expect.any(Number) });
         expect(comment.editedAt).toBeGreaterThanOrEqual(before);
@@ -105,7 +122,9 @@ describe('task.comment.edit', () => {
         const written = add(task.id, 'Same');
         const cursor = h.store.headCursor();
 
-        expect(h.ok('task.comment.edit', { taskId: task.id, commentId: written.id, body: 'Same\n\n' }).comment).toEqual(written);
+        expect(h.ok('task.comment.edit', { taskId: task.id, commentId: written.id, body: 'Same\n\n' }).comment).toEqual(
+            written
+        );
         expect(h.store.headCursor()).toBe(cursor);
     });
 
@@ -115,10 +134,18 @@ describe('task.comment.edit', () => {
         const written = add(task.id, 'Keep me');
         const cursor = h.store.headCursor();
 
-        expect(failure(h.send('task.comment.edit', { taskId: task.id, commentId: written.id, body: '  ' })).code).toBe('invalid');
-        expect(failure(h.send('task.comment.edit', { taskId: task.id, commentId: 'cmt_nope', body: 'x' })).code).toBe('not_found');
-        expect(failure(h.send('task.comment.edit', { taskId: other.id, commentId: written.id, body: 'x' })).code).toBe('not_found');
-        expect(failure(h.send('task.comment.edit', { taskId: 'tsk_nope', commentId: written.id, body: 'x' })).code).toBe('not_found');
+        expect(failure(h.send('task.comment.edit', { taskId: task.id, commentId: written.id, body: '  ' })).code).toBe(
+            'invalid'
+        );
+        expect(failure(h.send('task.comment.edit', { taskId: task.id, commentId: 'cmt_nope', body: 'x' })).code).toBe(
+            'not_found'
+        );
+        expect(failure(h.send('task.comment.edit', { taskId: other.id, commentId: written.id, body: 'x' })).code).toBe(
+            'not_found'
+        );
+        expect(
+            failure(h.send('task.comment.edit', { taskId: 'tsk_nope', commentId: written.id, body: 'x' })).code
+        ).toBe('not_found');
         expect(h.store.headCursor()).toBe(cursor);
         expect(taskCommentsPage(h.store, task.id).comments).toEqual([written]);
     });
@@ -131,8 +158,13 @@ describe('task.comment.delete', () => {
         const [first, second] = [add(task.id, 'One'), add(task.id, 'Two')];
         const cursor = h.store.headCursor();
 
-        expect(h.ok('task.comment.delete', { taskId: task.id, commentId: first.id })).toEqual({ taskId: task.id, commentId: first.id });
-        expect(h.events(cursor).map(event => event.data)).toEqual([{ type: 'task.comment.deleted', taskId: task.id, commentId: first.id }]);
+        expect(h.ok('task.comment.delete', { taskId: task.id, commentId: first.id })).toEqual({
+            taskId: task.id,
+            commentId: first.id,
+        });
+        expect(h.events(cursor).map(event => event.data)).toEqual([
+            { type: 'task.comment.deleted', taskId: task.id, commentId: first.id },
+        ]);
         expect(taskCommentsPage(h.store, task.id)).toMatchObject({ comments: [second], total: 1 });
     });
 
@@ -141,18 +173,24 @@ describe('task.comment.delete', () => {
         const [task, other] = [create('Epic'), create('Other')];
         const written = add(task.id, 'One');
 
-        expect(failure(h.send('task.comment.delete', { taskId: other.id, commentId: written.id })).code).toBe('not_found');
-        expect(failure(h.send('task.comment.delete', { taskId: 'tsk_nope', commentId: written.id })).code).toBe('not_found');
+        expect(failure(h.send('task.comment.delete', { taskId: other.id, commentId: written.id })).code).toBe(
+            'not_found'
+        );
+        expect(failure(h.send('task.comment.delete', { taskId: 'tsk_nope', commentId: written.id })).code).toBe(
+            'not_found'
+        );
         h.ok('task.comment.delete', { taskId: task.id, commentId: written.id });
-        expect(failure(h.send('task.comment.delete', { taskId: task.id, commentId: written.id })).code).toBe('not_found');
+        expect(failure(h.send('task.comment.delete', { taskId: task.id, commentId: written.id })).code).toBe(
+            'not_found'
+        );
     });
 });
 
-describe('a task\'s comments, paged', () => {
+describe("a task's comments, paged", () => {
     test('come oldest first in pages of the size asked for, and the cursor of one page leads to the next', () => {
         const { create, add } = setup();
         const task = create('Epic');
-        const bodies = Array.from({ length: 7 }, (_, index) => `Comment ${ index + 1 }`);
+        const bodies = Array.from({ length: 7 }, (_, index) => `Comment ${index + 1}`);
 
         for (const body of bodies) {
             add(task.id, body);
@@ -188,7 +226,13 @@ describe('a task\'s comments, paged', () => {
         expect(empty).toEqual({ comments: [], total: 0, shown: 0 });
 
         for (let index = 0; index < 130; index++) {
-            insertTaskComment(h.store.db, { id: `cmt_${ String(index).padStart(26, '0') }`, taskId: task.id, author: { kind: 'user' }, body: `c${ index }`, createdAt: 1000 + index });
+            insertTaskComment(h.store.db, {
+                id: `cmt_${String(index).padStart(26, '0')}`,
+                taskId: task.id,
+                author: { kind: 'user' },
+                body: `c${index}`,
+                createdAt: 1000 + index,
+            });
         }
 
         expect(taskCommentsPage(h.store, task.id)).toMatchObject({ total: 130, shown: 25 });
@@ -199,11 +243,23 @@ describe('a task\'s comments, paged', () => {
     test('comments written in the same millisecond keep their order across a page boundary, none repeated or skipped', () => {
         const { create } = setup();
         const task = create('Epic');
-        const ids = ['cmt_0000000000000000000000000A', 'cmt_0000000000000000000000000B', 'cmt_0000000000000000000000000C', 'cmt_0000000000000000000000000D', 'cmt_0000000000000000000000000E'];
+        const ids = [
+            'cmt_0000000000000000000000000A',
+            'cmt_0000000000000000000000000B',
+            'cmt_0000000000000000000000000C',
+            'cmt_0000000000000000000000000D',
+            'cmt_0000000000000000000000000E',
+        ];
 
         // Inserted out of order: the order is the time, then the id.
         for (const id of [...ids].reverse()) {
-            insertTaskComment(h.store.db, { id, taskId: task.id, author: { kind: 'user' }, body: id.slice(-1), createdAt: 5000 });
+            insertTaskComment(h.store.db, {
+                id,
+                taskId: task.id,
+                author: { kind: 'user' },
+                body: id.slice(-1),
+                createdAt: 5000,
+            });
         }
 
         const seen: string[] = [];
@@ -239,12 +295,14 @@ describe('a task\'s comments, paged', () => {
         const { create } = setup();
         const task = create('Epic');
 
-        expect(() => taskCommentsPage(h.store, task.id, { cursor: 'abc' })).toThrow('"abc" is not a cursor: pass the nextCursor of the previous page unchanged');
+        expect(() => taskCommentsPage(h.store, task.id, { cursor: 'abc' })).toThrow(
+            '"abc" is not a cursor: pass the nextCursor of the previous page unchanged'
+        );
         expect(() => taskCommentsPage(h.store, task.id, { cursor: '12.tsk_nope' })).toThrow('is not a cursor');
         expect(() => taskCommentsPage(h.store, 'tsk_nope')).toThrow('does not exist');
     });
 
-    test('are another task\'s own: a page holds only the comments of its task', () => {
+    test("are another task's own: a page holds only the comments of its task", () => {
         const { create, add } = setup();
         const [task, other] = [create('Epic'), create('Other')];
 
@@ -267,9 +325,13 @@ describe('GET /v1/tasks/:id/comments', () => {
 
         const first = await page(task.id, '?limit=2');
 
-        expect(first).toEqual({ comments: written.slice(0, 2), total: 3, nextCursor: `${ written[1].createdAt }.${ written[1].id }` });
+        expect(first).toEqual({
+            comments: written.slice(0, 2),
+            total: 3,
+            nextCursor: `${written[1].createdAt}.${written[1].id}`,
+        });
 
-        const rest = await page(task.id, `?limit=2&cursor=${ encodeURIComponent(first.nextCursor as string) }`);
+        const rest = await page(task.id, `?limit=2&cursor=${encodeURIComponent(first.nextCursor as string)}`);
 
         expect(rest).toEqual({ comments: written.slice(2), total: 3 });
         expect(await page(task.id, '?limit=500')).toMatchObject({ total: 3 });
@@ -285,7 +347,7 @@ describe('GET /v1/tasks/:id/comments', () => {
 
         expect((await page(task.id)).comments).toEqual([{ ...one, body: 'One, edited', editedAt: expect.any(Number) }]);
 
-        const snapshot = await (await h.fetch(`/v1/projects/${ project.id }/snapshot`)).json();
+        const snapshot = await (await h.fetch(`/v1/projects/${project.id}/snapshot`)).json();
 
         expect(JSON.stringify(snapshot)).not.toContain('One, edited');
         expect(snapshot).not.toHaveProperty('comments');
@@ -295,11 +357,11 @@ describe('GET /v1/tasks/:id/comments', () => {
         const { create } = setup();
         const task = create('Epic');
 
-        expect((await h.fetch(`/v1/tasks/${ task.id }/comments?limit=ten`)).status).toBe(400);
-        expect((await h.fetch(`/v1/tasks/${ task.id }/comments?limit=-1`)).status).toBe(400);
-        expect((await h.fetch(`/v1/tasks/${ task.id }/comments?cursor=nope`)).status).toBe(400);
+        expect((await h.fetch(`/v1/tasks/${task.id}/comments?limit=ten`)).status).toBe(400);
+        expect((await h.fetch(`/v1/tasks/${task.id}/comments?limit=-1`)).status).toBe(400);
+        expect((await h.fetch(`/v1/tasks/${task.id}/comments?cursor=nope`)).status).toBe(400);
         expect((await h.fetch('/v1/tasks/tsk_nope/comments')).status).toBe(404);
-        expect((await fetch(`${ h.url }/v1/tasks/${ task.id }/comments`)).status).toBe(401);
+        expect((await fetch(`${h.url}/v1/tasks/${task.id}/comments`)).status).toBe(401);
     });
 });
 

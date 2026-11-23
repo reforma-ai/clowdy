@@ -20,7 +20,7 @@ vi.mock('../../theme', () => ({
 let container: HTMLDivElement;
 let root: Root;
 
-const card = (label: string) => container.querySelector<HTMLElement>(`[role="button"][aria-label="${ label }"]`)!;
+const card = (label: string) => container.querySelector<HTMLElement>(`[role="button"][aria-label="${label}"]`)!;
 
 beforeEach(() => {
     theme.current = 'system';
@@ -38,14 +38,22 @@ afterEach(() => {
 
 describe('AppearancePage', () => {
     it('offers light, dark and system, with the current one pressed', () => {
-        expect(['Light', 'Dark', 'System'].map(label => card(label).getAttribute('aria-pressed'))).toEqual(['false', 'false', 'true']);
+        expect(['Light', 'Dark', 'System'].map(label => card(label).getAttribute('aria-pressed'))).toEqual([
+            'false',
+            'false',
+            'true',
+        ]);
     });
 
     it('applies a theme on click and presses its card', () => {
         act(() => card('Dark').click());
 
         expect(theme.set).toHaveBeenCalledWith('dark');
-        expect(['Light', 'Dark', 'System'].map(label => card(label).getAttribute('aria-pressed'))).toEqual(['false', 'true', 'false']);
+        expect(['Light', 'Dark', 'System'].map(label => card(label).getAttribute('aria-pressed'))).toEqual([
+            'false',
+            'true',
+            'false',
+        ]);
     });
 
     it('applies a theme from the keyboard with Enter or Space', () => {

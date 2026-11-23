@@ -41,24 +41,23 @@ export function Card<E extends ElementType = 'div'>({
     const resolvedPadding: BoxProps['padding'] = padding ?? SIZE_TO_PADDING[size];
     const resolvedPaddingX: BoxProps['paddingX'] = paddingX;
     const resolvedPaddingY: BoxProps['paddingY'] = paddingY;
-    const resolvedColor = (color && color !== 'secondary') ? color : undefined;
+    const resolvedColor = color && color !== 'secondary' ? color : undefined;
 
     return (
         <Box<E>
-            { ...(props as BoxProps<E>) }
-            className={ cn(styles.card, className) }
-            data-variant={ variant }
-            data-color={ resolvedColor }
-            data-size={ size }
-            data-hoverable={ hoverable || undefined }
-            data-active={ isActive || undefined }
-            padding={ resolvedPadding }
-            paddingX={ resolvedPaddingX }
-            paddingY={ resolvedPaddingY }
-            style={ style }
+            {...(props as BoxProps<E>)}
+            className={cn(styles.card, className)}
+            data-variant={variant}
+            data-color={resolvedColor}
+            data-size={size}
+            data-hoverable={hoverable || undefined}
+            data-active={isActive || undefined}
+            padding={resolvedPadding}
+            paddingX={resolvedPaddingX}
+            paddingY={resolvedPaddingY}
+            style={style}
         />
     );
 }
 
 Card.displayName = 'Card';
-

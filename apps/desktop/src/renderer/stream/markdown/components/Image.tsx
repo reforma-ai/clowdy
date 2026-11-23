@@ -16,20 +16,16 @@ export function StreamdownImage(props: ExtraProps) {
     if (!imageSrc) {
         return (
             <span data-streamdown="image-wrapper">
-                <img data-streamdown="image" { ...domProps } />
+                <img data-streamdown="image" {...domProps} />
             </span>
         );
     }
 
     return (
-        <Lightbox src={ imageSrc } alt={ imageAlt || 'Image' }>
+        <Lightbox src={imageSrc} alt={imageAlt || 'Image'}>
             {(open: LightboxOpen) => (
-                <Pressable
-                    data-streamdown="image-wrapper"
-                    aria-label={ imageAlt || 'View image' }
-                    onPress={ open }
-                >
-                    <Image data-streamdown="image" src={ imageSrc } alt={ imageAlt } { ...rest } />
+                <Pressable data-streamdown="image-wrapper" aria-label={imageAlt || 'View image'} onPress={open}>
+                    <Image data-streamdown="image" src={imageSrc} alt={imageAlt} {...rest} />
                 </Pressable>
             )}
         </Lightbox>

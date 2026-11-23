@@ -4,6 +4,7 @@
     "type": "module",
     "version": "0.0.0",
     "private": true,
+    "license": "Apache-2.0",
     "files": [
         "src"
     ],
@@ -19,7 +20,8 @@
     },
     "scripts": {
         "clean": "rm -rf node_modules/{*,.*} .turbo 2>/dev/null || true",
-        "lint": "eslint src",
+        "lint": "biome check",
+        "lint:fix": "biome check --write",
         "typecheck": "tsc --noEmit"
     }
 }

@@ -17,20 +17,29 @@ import type { Chat, Run } from '@clowdy/protocol';
  */
 export function ChatIcon({ chat, run, threads }: { chat: Chat; run: Run | undefined; threads?: ThreadsActivity }) {
     const engine = chat.engine ?? run?.engine;
-    const icon = chat.orchestratorRunId && engine && (PROVIDER_IDS as readonly string[]).includes(engine) ? <ProviderIcon agentId={ engine } size={ 14 } data-provider={ engine } /> : <Message />;
+    const icon =
+        chat.orchestratorRunId && engine && (PROVIDER_IDS as readonly string[]).includes(engine) ? (
+            <ProviderIcon agentId={engine} size={14} data-provider={engine} />
+        ) : (
+            <Message />
+        );
     const tone = chatDotTone(run, threads);
     // The run's own state wins, unless a thread's wait for the person takes the dot over; only a chat whose run says nothing shows its threads.
     const own = run !== undefined && chatDotTone(run) === tone ? run : undefined;
     const ownStatus = own && shownRunStatus(own);
-    const label = ownStatus ? RUN_STATUS_VIEW[ownStatus].label : threads === 'asking' ? 'A thread is waiting for you' : 'Threads working';
+    const label = ownStatus
+        ? RUN_STATUS_VIEW[ownStatus].label
+        : threads === 'asking'
+          ? 'A thread is waiting for you'
+          : 'Threads working';
 
     if (!tone) return icon;
 
     return (
-        <span className={ styles.icon }>
-            { icon }
-            <span className={ styles.dot } role="img" aria-label={ label }>
-                <StatusDot status={ ownStatus } tone={ tone } className={ styles.dotMark } />
+        <span className={styles.icon}>
+            {icon}
+            <span className={styles.dot} role="img" aria-label={label}>
+                <StatusDot status={ownStatus} tone={tone} className={styles.dotMark} />
             </span>
         </span>
     );

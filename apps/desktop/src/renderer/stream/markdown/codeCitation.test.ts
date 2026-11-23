@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-    isFilePathLike,
-    parseCodeFenceInfo,
-} from './codeCitation';
+import { isFilePathLike, parseCodeFenceInfo } from './codeCitation';
 
 describe('isFilePathLike', () => {
     it('returns true for slash paths and extension-only names', () => {

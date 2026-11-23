@@ -1,3 +1,5 @@
+import { isUsableProvider, providerAgents } from '../settings/providers/providerView';
+
 import type { AgentInfo, Chat, EngineId, Run } from '@clowdy/protocol';
 
 /** The scripted demo agent. It is not a program on this machine, so the agents list does not have it, and it can always answer. */
@@ -9,17 +11,29 @@ export type ReadOnlyReason = 'unknown' | 'disabled' | 'not-installed' | 'needs-r
 export type ChatWritability =
     | { writable: true }
     | {
-        writable: false;
-        reason: ReadOnlyReason;
-        /** Says what is wrong, for the person: `Claude Code is turned off in Clowdy`. */
-        message: string;
-    };
+          writable: false;
+          reason: ReadOnlyReason;
+          /** Says what is wrong, for the person: `Claude Code is turned off in Clowdy`. */
+          message: string;
+      };
 
 const WRITABLE: ChatWritability = { writable: true };
 
 /** The agent a chat runs on: its own `engine`, or the one its orchestrator runs on for a chat from before the chat kept one. */
 export function chatProvider(chat: Chat, run: Run | undefined): EngineId | undefined {
     return chat.engine ?? run?.engine;
+}
+
+/**
+ * The agents a conversation can be handed to from a chat: the ones a new chat can start on (switched on and installed, the cards of the Providers page) that are
+ * not signed out (`unknown` or no reading is no reason, as in `chatWritability`), without the chat's own. In the order of the Providers page.
+ */
+export function handoffAgents(agents: readonly AgentInfo[], chat: Chat, run: Run | undefined): AgentInfo[] {
+    const own = chatProvider(chat, run);
+
+    return providerAgents(agents).filter(
+        agent => isUsableProvider(agent) && agent.signIn?.status !== 'signed-out' && agent.id !== own
+    );
 }
 
 /** Whether the chat's agent has a command that compacts its conversation (`AgentInfo.canCompact`), which is what Compact is offered for. */
@@ -48,25 +62,29 @@ export function chatWritability(
     const agent = agents.find(candidate => candidate.id === engine);
 
     if (!agent) {
-        return { writable: false, reason: 'unknown', message: `This chat ran on "${ engine }", which Clowdy no longer has` };
+        return {
+            writable: false,
+            reason: 'unknown',
+            message: `This chat ran on "${engine}", which Clowdy no longer has`,
+        };
     }
 
     // The daemon reports a switched-off agent as `disabled` whether or not its program is installed.
     if (agent.status === 'disabled' || !agent.enabled) {
-        return { writable: false, reason: 'disabled', message: `${ agent.name } is turned off in Clowdy` };
+        return { writable: false, reason: 'disabled', message: `${agent.name} is turned off in Clowdy` };
     }
 
     if (agent.status === 'missing') {
-        return { writable: false, reason: 'not-installed', message: `${ agent.name } is not installed` };
+        return { writable: false, reason: 'not-installed', message: `${agent.name} is not installed` };
     }
 
     if (agent.status === 'needs-runtime') {
-        return { writable: false, reason: 'needs-runtime', message: `${ agent.name } needs Bun to start` };
+        return { writable: false, reason: 'needs-runtime', message: `${agent.name} needs Bun to start` };
     }
 
     // `unknown` and an account not read yet are no reason to hold the person back.
     if (agent.signIn?.status === 'signed-out') {
-        return { writable: false, reason: 'signed-out', message: `${ agent.name } is not signed in` };
+        return { writable: false, reason: 'signed-out', message: `${agent.name} is not signed in` };
     }
 
     return WRITABLE;

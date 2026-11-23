@@ -3,7 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { RootStoreProvider, type RootStore } from '../../stores';
+import { type RootStore, RootStoreProvider } from '../../stores';
 import { FETCH_DELAY_MS } from './useTaskArtifacts';
 import { COMMENTS_PAGE_SIZE, MAX_COMMENTS, REFRESH_DELAY_MS, useTaskComments } from './useTaskComments';
 
@@ -12,7 +12,13 @@ import type { PageQuery } from '../../daemon/transport';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const comment = (index: number, taskId = 't-1'): TaskComment => ({ id: `c-${ taskId }-${ index }`, taskId, author: { kind: 'user' }, body: `Comment ${ index }`, createdAt: index });
+const comment = (index: number, taskId = 't-1'): TaskComment => ({
+    id: `c-${taskId}-${index}`,
+    taskId,
+    author: { kind: 'user' },
+    body: `Comment ${index}`,
+    createdAt: index,
+});
 
 /** A daemon with `total` comments on a task, answering pages the way the route does: oldest first, `limit` at a time, a cursor that names the last one. */
 function pagedDaemon(total: number) {
@@ -45,17 +51,19 @@ const store = {
     selectedProject: { commentsRevision: (id: string) => revisions.get(id) ?? 0 },
 } as unknown as RootStore;
 
-const render = (taskId: string) => act(async () => {
-    root.render(
-        <RootStoreProvider value={ store }>
-            <Probe taskId={ taskId } />
-        </RootStoreProvider>
-    );
-});
+const render = (taskId: string) =>
+    act(async () => {
+        root.render(
+            <RootStoreProvider value={store}>
+                <Probe taskId={taskId} />
+            </RootStoreProvider>
+        );
+    });
 
-const advance = (ms: number) => act(async () => {
-    await vi.advanceTimersByTimeAsync(ms);
-});
+const advance = (ms: number) =>
+    act(async () => {
+        await vi.advanceTimersByTimeAsync(ms);
+    });
 
 const readyComments = () => (latest.state.status === 'ready' ? latest.state.comments : []);
 const refreshError = () => (latest.state.status === 'ready' ? latest.state.refreshError : undefined);
@@ -87,7 +95,10 @@ describe('useTaskComments', () => {
 
         await advance(1);
 
-        expect(getTaskComments).toHaveBeenCalledExactlyOnceWith('t-1', { limit: COMMENTS_PAGE_SIZE, cursor: undefined });
+        expect(getTaskComments).toHaveBeenCalledExactlyOnceWith('t-1', {
+            limit: COMMENTS_PAGE_SIZE,
+            cursor: undefined,
+        });
         expect(latest.state).toMatchObject({ status: 'ready', total: 3, isCut: false });
         expect(readyComments().map(found => found.body)).toEqual(['Comment 1', 'Comment 2', 'Comment 3']);
     });
@@ -104,7 +115,9 @@ describe('useTaskComments', () => {
             { limit: 100, cursor: '200' },
         ]);
         expect(latest.state).toMatchObject({ status: 'ready', total: 250, isCut: false });
-        expect(readyComments().map(found => found.createdAt)).toEqual(Array.from({ length: 250 }, (_, index) => index + 1));
+        expect(readyComments().map(found => found.createdAt)).toEqual(
+            Array.from({ length: 250 }, (_, index) => index + 1)
+        );
     });
 
     it('stops at 1000 comments and says the task has more', async () => {
@@ -134,9 +147,12 @@ describe('useTaskComments', () => {
 
         let answer: (page: TaskCommentsPage) => void = () => {};
 
-        getTaskComments.mockImplementationOnce(() => new Promise((resolve) => {
-            answer = resolve;
-        }));
+        getTaskComments.mockImplementationOnce(
+            () =>
+                new Promise(resolve => {
+                    answer = resolve;
+                })
+        );
         revisions.set('t-1', 1);
         await render('t-1');
         await advance(REFRESH_DELAY_MS - 1);
@@ -184,9 +200,12 @@ describe('useTaskComments', () => {
 
         let stale: (page: TaskCommentsPage) => void = () => {};
 
-        getTaskComments.mockImplementationOnce(() => new Promise((resolve) => {
-            stale = resolve;
-        }));
+        getTaskComments.mockImplementationOnce(
+            () =>
+                new Promise(resolve => {
+                    stale = resolve;
+                })
+        );
         revisions.set('t-1', 1);
         await render('t-1');
         await advance(REFRESH_DELAY_MS);
@@ -302,9 +321,12 @@ describe('useTaskComments', () => {
     it('drops an answer that comes after the task changed', async () => {
         let answer: (page: TaskCommentsPage) => void = () => {};
 
-        getTaskComments.mockImplementationOnce(() => new Promise((resolve) => {
-            answer = resolve;
-        }));
+        getTaskComments.mockImplementationOnce(
+            () =>
+                new Promise(resolve => {
+                    answer = resolve;
+                })
+        );
 
         await render('t-1');
         await advance(FETCH_DELAY_MS);

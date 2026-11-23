@@ -1,0 +1,195 @@
+@reference '@clowdy/styles/rulesets';
+
+/* The panel's own width is the view's to give: the edge to drag sets it. Its box is a container, so its rows can drop what does not fit. */
+.sidebar {
+    flex: 1;
+    width: 100%;
+    min-width: 0;
+    container-type: inline-size;
+}
+
+/* The branch is the header's title: its name gives way to the buttons at the end. */
+.branch {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: var(--spacing-6);
+    min-width: 0;
+}
+
+.branchIcon {
+    flex-shrink: 0;
+    color: var(--color-secondary-muted-text);
+}
+
+/* Everything under the header: the facts, then the lists, which share what is left. */
+.body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+}
+
+/* The base and how far the branch is from it, the row of the upstream with its menu, and the pull request or Create PR. */
+.facts {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-4);
+    flex-shrink: 0;
+    padding: var(--spacing-8) var(--spacing-12);
+    border-bottom: 1px solid var(--color-surface-border);
+}
+
+/* The lines of the facts are cut by the sidebar's edge with an ellipsis, as narrow as it is dragged: a column that lines its items up at the start leaves each as wide as its text. */
+.facts > * {
+    max-width: 100%;
+}
+
+/* The files take what the commits leave: a long list scrolls in its own box and does not push the commits out. */
+.files {
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    min-height: var(--spacing-96);
+}
+
+/* The commits are as tall as they are, up to a share of the sidebar, then they scroll. */
+.commits {
+    display: flex;
+    flex: 0 1 auto;
+    flex-direction: column;
+    max-height: 45%;
+    min-height: 0;
+    border-top: 1px solid var(--color-surface-border);
+}
+
+.sectionHeader {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-8);
+    min-height: var(--spacing-30);
+    padding: 0 var(--spacing-12);
+}
+
+.list {
+    flex: 1;
+    min-height: 0;
+}
+
+.rows {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+    padding: 0 var(--spacing-6) var(--spacing-6);
+}
+
+/* A row is a press that fills the list's width, its content laid out from the start. */
+.row[data-size][data-variant],
+.commit[data-size][data-variant] {
+    justify-content: flex-start;
+    width: 100%;
+    height: auto;
+    min-height: var(--spacing-26);
+    padding-inline: var(--spacing-6);
+    text-align: start;
+}
+
+.rowContent,
+.commitContent {
+    flex: 1;
+    justify-content: flex-start;
+    min-width: 0;
+    gap: var(--spacing-6);
+}
+
+.glyph {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: var(--spacing-14);
+}
+
+/* The name first, strong, and the folder after it, dimmed: the folder is cut before the name is. */
+.fileName {
+    display: flex;
+    flex: 1;
+    align-items: baseline;
+    gap: var(--spacing-6);
+    min-width: 0;
+}
+
+.name {
+    flex-shrink: 0;
+    max-width: 100%;
+}
+
+.folderHint {
+    flex: 0 1 auto;
+    min-width: 0;
+}
+
+.counts {
+    display: inline-flex;
+    flex-shrink: 0;
+    gap: var(--spacing-4);
+    white-space: nowrap;
+}
+
+/* The tick of a viewed file: a place of its own at the row's end, empty for a file that is not, so the counts stand in one column and the list reads as a checklist. */
+.tick {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: var(--spacing-14);
+    color: var(--color-success-text);
+}
+
+/* In a sidebar dragged to its narrowest the folders and the counts go, and the names stay. */
+@container (max-width: 12rem) {
+    .folderHint,
+    .counts {
+        display: none;
+    }
+}
+
+/* A commit is two lines: its message, and under it its hash and the time. */
+.commit[data-size][data-variant] {
+    padding-block: var(--spacing-4);
+}
+
+.commitContent {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+}
+
+.subject {
+    min-width: 0;
+}
+
+.commitMeta {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-8);
+    min-width: 0;
+}
+
+.sha {
+    @ruleset typography-text-code-xs;
+}
+
+.back[data-size][data-variant] {
+    flex-shrink: 0;
+    justify-content: flex-start;
+    margin: 0 var(--spacing-6) var(--spacing-2);
+    width: calc(100% - var(--spacing-12));
+}
+
+.more {
+    padding: var(--spacing-4) var(--spacing-6);
+}

@@ -6,8 +6,8 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ModelPicker, ModelPickerOff, type ModelPickerProps, type PickerProvider } from './ModelPicker';
-import { readRemembered, writeRemembered, type ModelChoice } from './modelSelection';
-import { modelStore, type ModelStoreOptions } from './modelTestKit';
+import { type ModelChoice, readRemembered, writeRemembered } from './modelSelection';
+import { type ModelStoreOptions, modelStore } from './modelTestKit';
 
 import type { AgentModel, AgentModels } from '@clowdy/protocol';
 
@@ -34,7 +34,12 @@ let store: Awaited<ReturnType<typeof modelStore>>;
 let props: ModelPickerProps;
 
 /** Builds the picker's providers from the models store; `engines` are the ones the list offers. */
-async function setup(choice: ModelChoice | undefined, options: ModelStoreOptions = {}, engines: string[] = ['claude', 'codex', 'cursor'], running = false) {
+async function setup(
+    choice: ModelChoice | undefined,
+    options: ModelStoreOptions = {},
+    engines: string[] = ['claude', 'codex', 'cursor'],
+    running = false
+) {
     store = await modelStore(options);
 
     const providers: PickerProvider[] = engines.map(id => ({ id, name: NAMES[id]!, list: store.models.of(id) }));
@@ -43,25 +48,38 @@ async function setup(choice: ModelChoice | undefined, options: ModelStoreOptions
     await draw();
 }
 
-const draw = () => act(async () => {
-    root.render(<ModelPicker { ...props } />);
-});
+const draw = () =>
+    act(async () => {
+        root.render(<ModelPicker {...props} />);
+    });
 
 /** Lets what a popover does as it opens or closes run its course. Nothing in the test build waits on a timer, so no time needs to pass. */
-const settle = () => act(async () => {
-    await Promise.resolve();
-});
+const settle = () =>
+    act(async () => {
+        await Promise.resolve();
+    });
 
-const pointer = { bubbles: true, cancelable: true, pointerId: 1, pointerType: 'mouse', button: 0, width: 1, height: 1, pressure: 0.5, detail: 1 };
+const pointer = {
+    bubbles: true,
+    cancelable: true,
+    pointerId: 1,
+    pointerType: 'mouse',
+    button: 0,
+    width: 1,
+    height: 1,
+    pressure: 0.5,
+    detail: 1,
+};
 
 /** A press as a mouse makes it. */
-const press = (element: Element | null | undefined) => act(async () => {
-    element!.dispatchEvent(new PointerEvent('pointerdown', pointer));
-    element!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
-    element!.dispatchEvent(new PointerEvent('pointerup', pointer));
-    element!.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
-    element!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, detail: 1 }));
-});
+const press = (element: Element | null | undefined) =>
+    act(async () => {
+        element!.dispatchEvent(new PointerEvent('pointerdown', pointer));
+        element!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+        element!.dispatchEvent(new PointerEvent('pointerup', pointer));
+        element!.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
+        element!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, detail: 1 }));
+    });
 
 const trigger = () => container.querySelector<HTMLButtonElement>('button[aria-label^="Model:"]')!;
 const dialog = () => document.querySelector<HTMLElement>('[role="dialog"][aria-label="Model and reasoning effort"]');
@@ -74,15 +92,19 @@ const optionNamed = (name: string) => options().find(option => option.textConten
 const texts = (elements: Element[]) => elements.map(element => element.textContent);
 const tabs = () => [...listLayer().querySelectorAll<HTMLElement>('[role="tab"]')];
 const tabNamed = (name: string) => tabs().find(tab => tab.getAttribute('aria-label') === name)!;
-const selectedTab = () => tabs().filter(tab => tab.getAttribute('aria-selected') === 'true').map(tab => tab.getAttribute('aria-label'));
+const selectedTab = () =>
+    tabs()
+        .filter(tab => tab.getAttribute('aria-selected') === 'true')
+        .map(tab => tab.getAttribute('aria-label'));
 const flyout = () => document.querySelector<HTMLElement>('[data-model-flyout]');
 const flyoutOptions = () => [...(flyout()?.querySelectorAll<HTMLElement>('[role="option"]') ?? [])];
 const flyoutOptionNamed = (name: string) => flyoutOptions().find(option => option.textContent === name)!;
 const onList = () => !listLayer().hasAttribute('inert');
 const onFace = () => !faceLayer().hasAttribute('inert');
-const key = (target: Element, name: string) => act(async () => {
-    target.dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true }));
-});
+const key = (target: Element, name: string) =>
+    act(async () => {
+        target.dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true }));
+    });
 
 async function open() {
     await press(trigger());
@@ -123,7 +145,12 @@ async function openFlyout() {
 /** A model list of a provider, with the levels each model is given. */
 const models = (...entries: [id: string, efforts?: string[], rest?: Partial<AgentModel>][]): AgentModels => ({
     state: 'ok',
-    models: entries.map(([id, efforts, rest]) => ({ id, name: id.toUpperCase(), ...(efforts && { efforts }), ...rest })),
+    models: entries.map(([id, efforts, rest]) => ({
+        id,
+        name: id.toUpperCase(),
+        ...(efforts && { efforts }),
+        ...rest,
+    })),
 });
 
 beforeEach(() => {
@@ -142,7 +169,7 @@ afterEach(() => {
 });
 
 describe('the pill', () => {
-    it('shows the provider\'s mark, the model and its level muted, and names them for a screen reader', async () => {
+    it("shows the provider's mark, the model and its level muted, and names them for a screen reader", async () => {
         await setup(opus);
 
         // The provider's mark and the chevron.
@@ -151,13 +178,13 @@ describe('the pill', () => {
         expect(trigger().getAttribute('aria-label')).toBe('Model: Opus 5.5 · High');
     });
 
-    it('says the level in the words of the person, in the agent\'s own spelling', async () => {
+    it("says the level in the words of the person, in the agent's own spelling", async () => {
         await setup({ engine: 'codex', model: 'gpt-6.2-sol', effort: 'xhigh' });
 
         expect(trigger().textContent).toBe('GPT-6.2 SolExtra high');
     });
 
-    it('shows no level for a model that has none, and the model\'s own default for a level it does not offer', async () => {
+    it("shows no level for a model that has none, and the model's own default for a level it does not offer", async () => {
         await setup({ engine: 'claude', model: 'claude-haiku-4-5-20251001' });
 
         expect(trigger().textContent).toBe('Haiku 4.5');
@@ -257,7 +284,7 @@ describe('the popover', () => {
         expect(dialog()!.textContent).not.toContain('Applies from the next message');
     });
 
-    it('takes the pill\'s rectangle once for as long as it is open, and again at the next opening', async () => {
+    it("takes the pill's rectangle once for as long as it is open, and again at the next opening", async () => {
         await setup(opus);
 
         // What the popover itself asks of the pill is not what the popover's anchor is: count the asks that come from the picker.
@@ -266,7 +293,17 @@ describe('the popover', () => {
         vi.spyOn(trigger(), 'getBoundingClientRect').mockImplementation(() => {
             if (new Error().stack?.includes('ModelPicker.tsx')) taken += 1;
 
-            return { left: 0, top: 500, width: 120, height: 30, right: 120, bottom: 530, x: 0, y: 500, toJSON: () => ({}) };
+            return {
+                left: 0,
+                top: 500,
+                width: 120,
+                height: 30,
+                right: 120,
+                bottom: 530,
+                x: 0,
+                y: 500,
+                toJSON: () => ({}),
+            };
         });
 
         await open();
@@ -305,26 +342,29 @@ describe('the popover', () => {
         const watching = new Set<Element>();
         const seen: Element[] = [];
 
-        vi.stubGlobal('ResizeObserver', class {
-            #targets = new Set<Element>();
+        vi.stubGlobal(
+            'ResizeObserver',
+            class {
+                #targets = new Set<Element>();
 
-            // The popover and the list's scroll chrome have their own observers: only the stage's panes are of interest here.
-            observe(target: Element) {
-                if (!target.matches('[class*="layer"]')) return;
+                // The popover and the list's scroll chrome have their own observers: only the stage's panes are of interest here.
+                observe(target: Element) {
+                    if (!target.matches('[class*="layer"]')) return;
 
-                this.#targets.add(target);
-                watching.add(target);
-                seen.push(target);
+                    this.#targets.add(target);
+                    watching.add(target);
+                    seen.push(target);
+                }
+
+                disconnect() {
+                    for (const target of this.#targets) watching.delete(target);
+
+                    this.#targets.clear();
+                }
+
+                unobserve() {}
             }
-
-            disconnect() {
-                for (const target of this.#targets) watching.delete(target);
-
-                this.#targets.clear();
-            }
-
-            unobserve() {}
-        });
+        );
 
         await setup(opus);
         await open();
@@ -354,7 +394,11 @@ describe('the popover', () => {
         const heights: Record<string, number> = { face: 130, list: 300 };
 
         vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (this: HTMLElement) {
-            return this.querySelector('[role="listbox"]') ? heights.list! : this.querySelector('button[aria-label="Select model"]') ? heights.face! : 0;
+            return this.querySelector('[role="listbox"]')
+                ? heights.list!
+                : this.querySelector('button[aria-label="Select model"]')
+                  ? heights.face!
+                  : 0;
         });
 
         await setup(opus);
@@ -380,7 +424,11 @@ describe('the list', () => {
 
         // The "Default (recommended)" row is Opus once, as the default, and the daemon marks Claude's four aliases as the main ones.
         expect(texts(options())).toEqual(['Opus 5.5', 'Fable 5.2', 'Sonnet 5.5', 'Haiku 5.5', 'More models']);
-        expect(options().filter(option => option.hasAttribute('data-model-id')).every(option => option.querySelector('svg') !== null)).toBe(true);
+        expect(
+            options()
+                .filter(option => option.hasAttribute('data-model-id'))
+                .every(option => option.querySelector('svg') !== null)
+        ).toBe(true);
         expect(options().map(option => option.getAttribute('data-engine'))).toEqual([...Array(4).fill('claude'), null]);
         expect(listLayer().querySelector('header')).toBeNull();
         expect(listLayer().querySelector('[role="listbox"]')!.getAttribute('aria-label')).toBe('Model');
@@ -395,19 +443,26 @@ describe('the list', () => {
         expect(texts(selected)).toEqual(['Opus 5.5']);
         // The mark and the check, against the mark alone.
         expect(selected[0]!.querySelectorAll('svg')).toHaveLength(2);
-        expect(options().filter(option => option.getAttribute('aria-selected') !== 'true').every(option => option.querySelectorAll('svg').length === 1)).toBe(true);
+        expect(
+            options()
+                .filter(option => option.getAttribute('aria-selected') !== 'true')
+                .every(option => option.querySelectorAll('svg').length === 1)
+        ).toBe(true);
     });
 
     it('marks the model of the right provider when two share an id', async () => {
-        await setup({ engine: 'cursor', model: 'default', effort: undefined }, {
-            change: (data) => {
-                // Claude Code's own `default` row stands for Opus and is left out of the list; here it is a row of its own.
-                const row = data.agentModels.claude!.models.find(model => model.id === 'default')!;
+        await setup(
+            { engine: 'cursor', model: 'default', effort: undefined },
+            {
+                change: data => {
+                    // Claude Code's own `default` row stands for Opus and is left out of the list; here it is a row of its own.
+                    const row = data.agentModels.claude!.models.find(model => model.id === 'default')!;
 
-                row.isDefault = false;
-                delete row.resolvedId;
-            },
-        });
+                    row.isDefault = false;
+                    delete row.resolvedId;
+                },
+            }
+        );
         await openList();
 
         expect(texts(options().filter(option => option.getAttribute('data-model-id') === 'default'))).toEqual(['Auto']);
@@ -415,7 +470,9 @@ describe('the list', () => {
 
         await press(tabNamed('Claude Code'));
 
-        expect(texts(options().filter(option => option.getAttribute('data-model-id') === 'default'))).toEqual(['Default (recommended)']);
+        expect(texts(options().filter(option => option.getAttribute('data-model-id') === 'default'))).toEqual([
+            'Default (recommended)',
+        ]);
         expect(options().filter(option => option.getAttribute('aria-selected') === 'true')).toEqual([]);
     });
 
@@ -425,7 +482,11 @@ describe('the list', () => {
 
         expect(listLayer().querySelector('[role="tablist"]')).toBeNull();
         expect(texts(options())).toEqual(['Opus 5.5', 'Fable 5.2', 'Sonnet 5.5', 'Haiku 5.5', 'More models']);
-        expect(options().filter(option => option.hasAttribute('data-engine')).every(option => option.getAttribute('data-engine') === 'claude')).toBe(true);
+        expect(
+            options()
+                .filter(option => option.hasAttribute('data-engine'))
+                .every(option => option.getAttribute('data-engine') === 'claude')
+        ).toBe(true);
     });
 
     it('goes back to the face with Back, and writes nothing', async () => {
@@ -486,7 +547,9 @@ describe('the list', () => {
         await key(document.activeElement!, 'ArrowDown');
         await key(document.activeElement!, 'Enter');
         await act(async () => {
-            document.activeElement!.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true, cancelable: true }));
+            document.activeElement!.dispatchEvent(
+                new KeyboardEvent('keyup', { key: 'Enter', bubbles: true, cancelable: true })
+            );
         });
 
         expect(picks).toEqual([{ engine: 'claude', model: 'fable', effort: 'high' }]);
@@ -513,7 +576,9 @@ describe('the list', () => {
 
             await key(document.activeElement!, name);
             await act(async () => {
-                document.activeElement!.dispatchEvent(new KeyboardEvent('keyup', { key: name, bubbles: true, cancelable: true }));
+                document.activeElement!.dispatchEvent(
+                    new KeyboardEvent('keyup', { key: name, bubbles: true, cancelable: true })
+                );
             });
 
             expect(onFace()).toBe(true);
@@ -568,7 +633,13 @@ describe('the reasoning levels', () => {
 
     /** Claude's models with every number of levels. */
     const withLevels = (data: { agentModels: Record<string, AgentModels> }) => {
-        data.agentModels.claude = models(['six', levels], ['five', levels.slice(0, 5)], ['two', ['low', 'high']], ['one', ['max']], ['none', undefined, { description: 'Small and quick, with no reasoning control' }]);
+        data.agentModels.claude = models(
+            ['six', levels],
+            ['five', levels.slice(0, 5)],
+            ['two', ['low', 'high']],
+            ['one', ['max']],
+            ['none', undefined, { description: 'Small and quick, with no reasoning control' }]
+        );
     };
 
     it.each([
@@ -597,7 +668,7 @@ describe('the reasoning levels', () => {
         ]);
     });
 
-    it('shows a model\'s only level as text, without a slider', async () => {
+    it("shows a model's only level as text, without a slider", async () => {
         await setup({ engine: 'claude', model: 'one', effort: 'max' }, { change: withLevels });
         await open();
 
@@ -660,9 +731,10 @@ describe('when the models are not there', () => {
 
     it('shows the model by its name once its list has come', async () => {
         const arrive: (() => void)[] = [];
-        const read = (_agentId: string, fixture: AgentModels) => new Promise<AgentModels>((resolve) => {
-            arrive.push(() => resolve(fixture));
-        });
+        const read = (_agentId: string, fixture: AgentModels) =>
+            new Promise<AgentModels>(resolve => {
+                arrive.push(() => resolve(fixture));
+            });
 
         await setup(opus, { read, preload: false });
         await open();
@@ -708,7 +780,7 @@ describe('when the models are not there', () => {
 
     it('says what an agent that cannot list its models answers, with Retry', async () => {
         await setup(opus, {
-            change: (data) => {
+            change: data => {
                 data.agentModels.cursor = { state: 'unavailable', models: [], detail: 'Cursor is not signed in' };
             },
         });
@@ -724,9 +796,12 @@ describe('when the models are not there', () => {
 
     it('reads a list again each time it opens while the last read gave no models, and reads nothing else', async () => {
         let signedIn = false;
-        const read = vi.fn(async (agentId: string, fixture: AgentModels): Promise<AgentModels> => (
-            agentId === 'cursor' && !signedIn ? { state: 'error', models: [], detail: 'Cursor is not signed in' } : fixture
-        ));
+        const read = vi.fn(
+            async (agentId: string, fixture: AgentModels): Promise<AgentModels> =>
+                agentId === 'cursor' && !signedIn
+                    ? { state: 'error', models: [], detail: 'Cursor is not signed in' }
+                    : fixture
+        );
 
         await setup(opus, { read });
         read.mockClear();
@@ -827,7 +902,7 @@ describe('the remembered choice', () => {
 
 describe('a chat with no model', () => {
     const bare = { engine: 'claude' } satisfies ModelChoice;
-    const sentence = 'Runs on Claude Code\'s own default until you pick a model.';
+    const sentence = "Runs on Claude Code's own default until you pick a model.";
 
     it('reads "Default model" on the face, with the provider\'s mark and a muted line, and the provider on the pill', async () => {
         await setup(bare, {}, ['claude']);
@@ -838,7 +913,7 @@ describe('a chat with no model', () => {
 
         expect(selectModel().textContent).toBe('Default model');
         expect(selectModel().querySelectorAll('svg')).toHaveLength(2);
-        expect(faceLayer().textContent).toBe(`Default model${ sentence }`);
+        expect(faceLayer().textContent).toBe(`Default model${sentence}`);
         expect(slider()).toBeNull();
         expect(dialog()!.textContent).not.toContain('Reasoning effort');
     });
@@ -847,7 +922,7 @@ describe('a chat with no model', () => {
         await setup({ engine: 'codex' }, {}, ['codex']);
         await open();
 
-        expect(faceLayer().textContent).toBe('Default modelRuns on Codex\'s own default until you pick a model.');
+        expect(faceLayer().textContent).toBe("Default modelRuns on Codex's own default until you pick a model.");
     });
 
     it('checks no row of the list', async () => {
@@ -876,17 +951,20 @@ describe('a chat with no model', () => {
     });
 });
 
-describe('the face\'s spacing', () => {
+describe("the face's spacing", () => {
     /** The block under the model button: the slider, the description, the line of a chat with no model. */
     const reasoning = () => faceLayer().querySelector('[class*="reasoning"]');
 
     it('reserves no block under the model button when there is nothing to put in it', async () => {
         // A model with no levels and no description: the face is the button alone.
-        await setup({ engine: 'claude', model: 'bare' }, {
-            change: (data) => {
-                data.agentModels.claude = models(['bare']);
-            },
-        });
+        await setup(
+            { engine: 'claude', model: 'bare' },
+            {
+                change: data => {
+                    data.agentModels.claude = models(['bare']);
+                },
+            }
+        );
         await open();
 
         expect(faceLayer().textContent).toBe('BARE');
@@ -902,11 +980,14 @@ describe('the face\'s spacing', () => {
     });
 
     it('has the block for a description', async () => {
-        await setup({ engine: 'claude', model: 'described' }, {
-            change: (data) => {
-                data.agentModels.claude = models(['described', undefined, { description: 'Quick' }]);
-            },
-        });
+        await setup(
+            { engine: 'claude', model: 'described' },
+            {
+                change: data => {
+                    data.agentModels.claude = models(['described', undefined, { description: 'Quick' }]);
+                },
+            }
+        );
         await open();
 
         expect(reasoning()!.textContent).toBe('Quick');
@@ -916,15 +997,20 @@ describe('the face\'s spacing', () => {
         await setup({ engine: 'claude' }, {}, ['claude']);
         await open();
 
-        expect(reasoning()!.textContent).toBe('Runs on Claude Code\'s own default until you pick a model.');
+        expect(reasoning()!.textContent).toBe("Runs on Claude Code's own default until you pick a model.");
     });
 
     it('has the block for the word that a pick applies later, and for that alone', async () => {
-        await setup({ engine: 'claude', model: 'bare' }, {
-            change: (data) => {
-                data.agentModels.claude = models(['bare']);
+        await setup(
+            { engine: 'claude', model: 'bare' },
+            {
+                change: data => {
+                    data.agentModels.claude = models(['bare']);
+                },
             },
-        }, ['claude'], true);
+            ['claude'],
+            true
+        );
         await open();
 
         expect(reasoning()!.textContent).toBe('Applies from the next message');
@@ -932,7 +1018,7 @@ describe('the face\'s spacing', () => {
 });
 
 describe('the provider strip', () => {
-    it('is a tablist of the providers\' marks with their names, the one in force selected', async () => {
+    it("is a tablist of the providers' marks with their names, the one in force selected", async () => {
         await setup({ engine: 'codex', model: 'gpt-6-sol', effort: 'high' });
         await openList();
 
@@ -941,7 +1027,11 @@ describe('the provider strip', () => {
         expect(tabs().every(tab => tab.querySelector('svg') !== null && tab.textContent === '')).toBe(true);
         expect(selectedTab()).toEqual(['Codex']);
         expect(tabs().map(tab => tab.tabIndex)).toEqual([-1, 0, -1]);
-        expect(options().filter(option => option.hasAttribute('data-engine')).every(option => option.getAttribute('data-engine') === 'codex')).toBe(true);
+        expect(
+            options()
+                .filter(option => option.hasAttribute('data-engine'))
+                .every(option => option.getAttribute('data-engine') === 'codex')
+        ).toBe(true);
     });
 
     it('sits at the end of the head row, after the title, above the list', async () => {
@@ -961,7 +1051,14 @@ describe('the provider strip', () => {
         await press(tabNamed('Cursor'));
 
         expect(selectedTab()).toEqual(['Cursor']);
-        expect(texts(options())).toEqual(['Auto', 'Grok 4.7', 'Grok 4.6', 'Composer 2.5', 'Claude Opus 5.5', 'More models']);
+        expect(texts(options())).toEqual([
+            'Auto',
+            'Grok 4.7',
+            'Grok 4.6',
+            'Composer 2.5',
+            'Claude Opus 5.5',
+            'More models',
+        ]);
         expect(options().filter(option => option.getAttribute('aria-selected') === 'true')).toEqual([]);
         expect(picks).toEqual([]);
         expect(onList()).toBe(true);
@@ -970,7 +1067,9 @@ describe('the provider strip', () => {
 
         await press(tabNamed('Claude Code'));
 
-        expect(texts(options().filter(option => option.getAttribute('aria-selected') === 'true'))).toEqual(['Opus 5.5']);
+        expect(texts(options().filter(option => option.getAttribute('aria-selected') === 'true'))).toEqual([
+            'Opus 5.5',
+        ]);
     });
 
     it('moves between the tabs with the arrows, Home and End, and wraps', async () => {
@@ -1037,10 +1136,12 @@ describe('the provider strip', () => {
         await press(selectModel());
 
         expect(selectedTab()).toEqual(['Codex']);
-        expect(texts(options().filter(option => option.getAttribute('aria-selected') === 'true'))).toEqual(['GPT-6 Sol']);
+        expect(texts(options().filter(option => option.getAttribute('aria-selected') === 'true'))).toEqual([
+            'GPT-6 Sol',
+        ]);
     });
 
-    it('is not there for one provider, and the list shows the held model\'s provider when the held one is not offered', async () => {
+    it("is not there for one provider, and the list shows the held model's provider when the held one is not offered", async () => {
         await setup(opus, {}, ['codex', 'cursor']);
         await openList();
 
@@ -1049,7 +1150,7 @@ describe('the provider strip', () => {
         expect(tabs()).toHaveLength(2);
     });
 
-    it('shows the provider\'s name as a tooltip when a tab is reached with the keyboard', async () => {
+    it("shows the provider's name as a tooltip when a tab is reached with the keyboard", async () => {
         await setup(opus);
         await openList();
         tabNamed('Claude Code').focus();
@@ -1061,23 +1162,41 @@ describe('the provider strip', () => {
 });
 
 describe('the main models', () => {
-    it('are the first five in the agent\'s own order when it marks none as featured', async () => {
+    it("are the first five in the agent's own order when it marks none as featured", async () => {
         await setup({ engine: 'cursor', model: 'default' });
         await openList();
 
-        expect(texts(options())).toEqual(['Auto', 'Grok 4.7', 'Grok 4.6', 'Composer 2.5', 'Claude Opus 5.5', 'More models']);
+        expect(texts(options())).toEqual([
+            'Auto',
+            'Grok 4.7',
+            'Grok 4.6',
+            'Composer 2.5',
+            'Claude Opus 5.5',
+            'More models',
+        ]);
 
         await press(tabNamed('Codex'));
 
-        expect(texts(options())).toEqual(['GPT-6.2 Sol', 'GPT-6 Sol', 'GPT-6 Luna', 'GPT-6 Mini', 'GPT-6 Codex', 'More models']);
+        expect(texts(options())).toEqual([
+            'GPT-6.2 Sol',
+            'GPT-6 Sol',
+            'GPT-6 Luna',
+            'GPT-6 Mini',
+            'GPT-6 Codex',
+            'More models',
+        ]);
     });
 
     it('are the featured rows when the agent marks some, however many', async () => {
-        await setup({ engine: 'claude', model: 'sonnet', effort: 'high' }, {
-            change: (data) => {
-                for (const model of data.agentModels.claude!.models) model.featured = ['claude-opus-4-6', 'fable'].includes(model.id) || undefined;
-            },
-        });
+        await setup(
+            { engine: 'claude', model: 'sonnet', effort: 'high' },
+            {
+                change: data => {
+                    for (const model of data.agentModels.claude!.models)
+                        model.featured = ['claude-opus-4-6', 'fable'].includes(model.id) || undefined;
+                },
+            }
+        );
         await openList();
 
         // Two featured rows, and the model in force (Sonnet, which is not one of them) after them.
@@ -1093,20 +1212,40 @@ describe('the main models', () => {
         await setup({ engine: 'cursor', model: 'gpt-5.5', effort: 'medium' });
         await openList();
 
-        expect(texts(options())).toEqual(['Auto', 'Grok 4.7', 'Grok 4.6', 'Composer 2.5', 'Claude Opus 5.5', 'GPT-5.5', 'More models']);
+        expect(texts(options())).toEqual([
+            'Auto',
+            'Grok 4.7',
+            'Grok 4.6',
+            'Composer 2.5',
+            'Claude Opus 5.5',
+            'GPT-5.5',
+            'More models',
+        ]);
         expect(texts(options().filter(option => option.getAttribute('aria-selected') === 'true'))).toEqual(['GPT-5.5']);
 
         await press(optionNamed('More models'));
         await settle();
 
-        expect(texts(flyoutOptions())).toEqual(['Claude Opus 5', 'Claude Opus 4.8', 'Gemini 4 Carbon', 'Muse Wonder 1.0']);
+        expect(texts(flyoutOptions())).toEqual([
+            'Claude Opus 5',
+            'Claude Opus 4.8',
+            'Gemini 4 Carbon',
+            'Muse Wonder 1.0',
+        ]);
     });
 
     it('show a model in force that the agent has not featured after the featured rows', async () => {
         await setup({ engine: 'claude', model: 'claude-opus-4-6', effort: 'high' });
         await openList();
 
-        expect(texts(options())).toEqual(['Opus 5.5', 'Fable 5.2', 'Sonnet 5.5', 'Haiku 5.5', 'Opus 4.6', 'More models']);
+        expect(texts(options())).toEqual([
+            'Opus 5.5',
+            'Fable 5.2',
+            'Sonnet 5.5',
+            'Haiku 5.5',
+            'Opus 4.6',
+            'More models',
+        ]);
 
         await press(optionNamed('More models'));
         await settle();
@@ -1115,11 +1254,14 @@ describe('the main models', () => {
     });
 
     it('have no "More models" row when there is no more', async () => {
-        await setup({ engine: 'claude', model: 'a' }, {
-            change: (data) => {
-                data.agentModels.claude = models(['a'], ['b'], ['c']);
-            },
-        });
+        await setup(
+            { engine: 'claude', model: 'a' },
+            {
+                change: data => {
+                    data.agentModels.claude = models(['a'], ['b'], ['c']);
+                },
+            }
+        );
         await openList();
 
         expect(texts(options())).toEqual(['A', 'B', 'C']);
@@ -1134,7 +1276,9 @@ describe('the main models', () => {
 
         await openList();
 
-        expect(texts(options().filter(option => option.getAttribute('aria-selected') === 'true'))).toEqual(['Opus 5.5']);
+        expect(texts(options().filter(option => option.getAttribute('aria-selected') === 'true'))).toEqual([
+            'Opus 5.5',
+        ]);
         expect(texts(options())).not.toContain('Default (recommended)');
 
         // The model in force is not a new pick.
@@ -1157,14 +1301,18 @@ describe('the flyout of "More models"', () => {
         expect(moreRow().getAttribute('aria-selected')).not.toBe('true');
     });
 
-    it('opens on a press with the rest of the provider\'s models, as rows with a mark', async () => {
+    it("opens on a press with the rest of the provider's models, as rows with a mark", async () => {
         await setup(opus);
         await openFlyout();
 
         expect(flyout()).not.toBeNull();
         expect(flyout()!.getAttribute('aria-label')).toBe('More models');
         expect(texts(flyoutOptions())).toEqual(['Opus 4.6', 'Haiku 4.5']);
-        expect(flyoutOptions().every(option => option.querySelector('svg') !== null && option.getAttribute('data-engine') === 'claude')).toBe(true);
+        expect(
+            flyoutOptions().every(
+                option => option.querySelector('svg') !== null && option.getAttribute('data-engine') === 'claude'
+            )
+        ).toBe(true);
         expect(flyout()!.querySelector('[role="listbox"]')!.getAttribute('aria-label')).toBe('More models');
         // The flyout is a popover of its own, outside the picker's, and the picker stays where it is.
         expect(dialog()!.contains(flyout())).toBe(false);
@@ -1205,24 +1353,27 @@ describe('the flyout of "More models"', () => {
         expect(flyout()).toBeNull();
     });
 
-    it.each([['Escape'], ['ArrowLeft']])('closes on %s, with the focus back on the row, and the picker stays where it was', async (name) => {
-        await setup(opus);
-        await openFlyout();
-        await key(document.activeElement!, name);
-        await settle();
+    it.each([['Escape'], ['ArrowLeft']])(
+        'closes on %s, with the focus back on the row, and the picker stays where it was',
+        async name => {
+            await setup(opus);
+            await openFlyout();
+            await key(document.activeElement!, name);
+            await settle();
 
-        expect(flyout()).toBeNull();
-        expect(document.activeElement).toBe(moreRow());
-        // Escape closes only the layer on top: the list is still there, and so is the popover.
-        expect(onList()).toBe(true);
-        expect(dialog()).not.toBeNull();
-        expect(picks).toEqual([]);
+            expect(flyout()).toBeNull();
+            expect(document.activeElement).toBe(moreRow());
+            // Escape closes only the layer on top: the list is still there, and so is the popover.
+            expect(onList()).toBe(true);
+            expect(dialog()).not.toBeNull();
+            expect(picks).toEqual([]);
 
-        // And the next Escape goes back to the face, as ever.
-        await key(document.activeElement!, 'Escape');
+            // And the next Escape goes back to the face, as ever.
+            await key(document.activeElement!, 'Escape');
 
-        expect(onFace()).toBe(true);
-    });
+            expect(onFace()).toBe(true);
+        }
+    );
 
     it('opens again after it closed', async () => {
         await setup(opus);
@@ -1331,11 +1482,15 @@ describe('the flyout of "More models"', () => {
         expect(picks).toEqual([]);
     });
 
-    it('does not change the height of the picker, which is the list\'s: the flyout is outside it', async () => {
+    it("does not change the height of the picker, which is the list's: the flyout is outside it", async () => {
         const heights: Record<string, number> = { face: 130, list: 300 };
 
         vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (this: HTMLElement) {
-            return this.matches('[class*="layer"]') ? (this.querySelector('[role="listbox"]') ? heights.list! : heights.face!) : 0;
+            return this.matches('[class*="layer"]')
+                ? this.querySelector('[role="listbox"]')
+                    ? heights.list!
+                    : heights.face!
+                : 0;
         });
 
         await setup(opus);
@@ -1367,9 +1522,9 @@ describe('the flyout of "More models"', () => {
         expect(flyout()).toBeNull();
     });
 
-    it('turns to another provider\'s rest when the strip does, and has none for a provider with no more', async () => {
+    it("turns to another provider's rest when the strip does, and has none for a provider with no more", async () => {
         await setup(opus, {
-            change: (data) => {
+            change: data => {
                 data.agentModels.cursor = models(['a'], ['b']);
             },
         });
@@ -1384,9 +1539,10 @@ describe('the flyout of "More models"', () => {
 });
 
 describe('a press on a row', () => {
-    const up = (element: Element, button: number) => act(async () => {
-        element.dispatchEvent(new PointerEvent('pointerup', { ...pointer, button }));
-    });
+    const up = (element: Element, button: number) =>
+        act(async () => {
+            element.dispatchEvent(new PointerEvent('pointerup', { ...pointer, button }));
+        });
 
     it('picks the model as the pointer lets go with the primary button', async () => {
         await setup(opus);
@@ -1396,7 +1552,7 @@ describe('a press on a row', () => {
         expect(picks).toEqual([{ engine: 'claude', model: 'fable', effort: 'high' }]);
     });
 
-    it('is not a pick with any other button: a secondary press is the system\'s', async () => {
+    it("is not a pick with any other button: a secondary press is the system's", async () => {
         await setup(opus);
         await openList();
         await up(optionNamed('Fable 5.2'), 2);

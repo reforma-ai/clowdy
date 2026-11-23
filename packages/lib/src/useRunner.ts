@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject } from 'react';
+import { type RefObject, useEffect, useRef, useState } from 'react';
 
 import { clamp } from './math';
 
@@ -63,10 +63,7 @@ function inRange(value: number, min: number, max: number): boolean {
     return Math.min(min, max) <= value && Math.max(min, max) >= value;
 }
 
-export function useRunner<T extends HTMLElement>(
-    ref: RefObject<T | null>,
-    options: UseRunnerOptions
-): UseRunnerReturn {
+export function useRunner<T extends HTMLElement>(ref: RefObject<T | null>, options: UseRunnerOptions): UseRunnerReturn {
     const [isDragging, setIsDragging] = useState(false);
 
     const optionsRef = useRef(options);
@@ -83,8 +80,8 @@ export function useRunner<T extends HTMLElement>(
         }
 
         const cursor = cursorMap[direction][cursorType];
-        const axis: keyof Coord = (direction === 'right' || direction === 'left') ? 'x' : 'y';
-        const signFactor: -1 | 1 = (direction === 'right' || direction === 'bottom') ? 1 : -1;
+        const axis: keyof Coord = direction === 'right' || direction === 'left' ? 'x' : 'y';
+        const signFactor: -1 | 1 = direction === 'right' || direction === 'bottom' ? 1 : -1;
 
         let overlay: HTMLElement | null = null;
         let fakeCursorEl: HTMLElement | null = null;
@@ -96,11 +93,10 @@ export function useRunner<T extends HTMLElement>(
         let dragAbort: AbortController | null = null;
         let shiftHeld = false;
 
-        const allowFakeCursor = () => (
-            (optionsRef.current.allowFakeCursor ?? true)
-            && typeof navigator !== 'undefined'
-            && /Chrome/.test(navigator.userAgent)
-        );
+        const allowFakeCursor = () =>
+            (optionsRef.current.allowFakeCursor ?? true) &&
+            typeof navigator !== 'undefined' &&
+            /Chrome/.test(navigator.userAgent);
 
         const applyValue = (raw: number): number => {
             const { min, max } = optionsRef.current;
@@ -131,8 +127,8 @@ export function useRunner<T extends HTMLElement>(
                 ny += height;
             }
 
-            fakeCursorEl.style.left = `${ nx }px`;
-            fakeCursorEl.style.top = `${ ny }px`;
+            fakeCursorEl.style.left = `${nx}px`;
+            fakeCursorEl.style.top = `${ny}px`;
         };
 
         const createFakeCursor = () => {
@@ -148,7 +144,7 @@ export function useRunner<T extends HTMLElement>(
                 z-index: 1;
                 width: max-content;
                 pointer-events: none;
-                transform: translate(-50%, -35%) rotate(${ axis === 'y' ? 90 : 0 }deg);
+                transform: translate(-50%, -35%) rotate(${axis === 'y' ? 90 : 0}deg);
             `;
             fakeCursorEl.innerHTML = FAKE_CURSOR_SVG;
             overlay.append(fakeCursorEl);
@@ -163,8 +159,7 @@ export function useRunner<T extends HTMLElement>(
 
             try {
                 document.exitPointerLock?.();
-            }
-            catch {
+            } catch {
                 // pointer lock may not be active
             }
 
@@ -180,7 +175,7 @@ export function useRunner<T extends HTMLElement>(
                 position: fixed;
                 inset: 0;
                 z-index: 100000000;
-                cursor: ${ cursor };
+                cursor: ${cursor};
             `;
             doc.body.appendChild(overlay);
 
@@ -196,7 +191,7 @@ export function useRunner<T extends HTMLElement>(
         const getPayload = (ev: PointerEvent | null): RunnerChangePayload => ({
             event: ev,
             value: currentValue,
-            shift: (lastCoords[axis] - startCoords[axis]) * signFactor / (optionsRef.current.factor ?? 1),
+            shift: ((lastCoords[axis] - startCoords[axis]) * signFactor) / (optionsRef.current.factor ?? 1),
         });
 
         // `ev` is absent when a Shift toggle re-applies the step without pointer movement
@@ -230,7 +225,7 @@ export function useRunner<T extends HTMLElement>(
                     return;
                 }
 
-                startCoords[axis] += (lastCoords[axis] < min) ? -snapDuration : snapDuration;
+                startCoords[axis] += lastCoords[axis] < min ? -snapDuration : snapDuration;
                 snapCoords[axis] = null;
             }
 
@@ -239,14 +234,12 @@ export function useRunner<T extends HTMLElement>(
             }
 
             const factor = optionsRef.current.factor ?? 1;
-            const step = shiftHeld
-                ? (optionsRef.current.shiftStep ?? 10)
-                : (optionsRef.current.step ?? 1);
+            const step = shiftHeld ? (optionsRef.current.shiftStep ?? 10) : (optionsRef.current.step ?? 1);
 
             const rawDelta = Math.round(lastCoords[axis] - startCoords[axis]) * signFactor;
             const steppedDelta = Math.round(rawDelta / factor) * step;
             // integer math keeps up to 4 decimal places without fp drift
-            const next = applyValue(((startValue * 1e4) + (steppedDelta * 1e4)) / 1e4);
+            const next = applyValue((startValue * 1e4 + steppedDelta * 1e4) / 1e4);
 
             if (snapMultipleOf || snapValues.length) {
                 const hitsMultiple = snapMultipleOf != null && next % snapMultipleOf === 0;

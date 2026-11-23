@@ -1,7 +1,8 @@
 import { FILE_MANAGER_MIN_WIDTH } from '@clowdy/file-manager/layout';
 
 import { MAIN_MIN_WIDTH, SIDEBAR_MIN_WIDTH } from '../../shared/sidebarWidth';
-import { readStored, writeStored, type KeyValueStorage } from '../../stores/storage';
+import { type KeyValueStorage, readStored, writeStored } from '../../stores/storage';
+import { CHANGES_MIN_WIDTH } from '../changes/layout';
 
 /**
  * How narrow the side panel can be dragged, in pixels, and the width it opens at until the person drags it. There is no widest: the panel can take all that the
@@ -23,12 +24,12 @@ const PANEL_FRAME_WIDTH = 4;
 /** The least the left part of the window can be: the list and the chat at their narrowest, so dragging the panel wide cannot squeeze them out. The rails are outside the layout. */
 export const WINDOW_MIN_WIDTH = SIDEBAR_MIN_WIDTH + MAIN_MIN_WIDTH + PAGE_FRAME_WIDTH;
 
-/** The least the panel can be while it shows a tree beside a view (Files and Docs): the file manager at its narrowest, in the panel's plate. */
-export const TREE_PANEL_MIN_WIDTH = FILE_MANAGER_MIN_WIDTH + PANEL_FRAME_WIDTH;
+/** The least the panel can be while it shows a list beside a view (Files and Docs: the file manager; Changes: the diffs and the sidebar) at its narrowest, in the panel's plate. One for the three, the widest of their views. */
+export const TREE_PANEL_MIN_WIDTH = Math.max(FILE_MANAGER_MIN_WIDTH, CHANGES_MIN_WIDTH) + PANEL_FRAME_WIDTH;
 
 /**
  * The window's width from which the panel with a tree fits beside the chat: the rail, the left part and the panel, each at its least (1140). Under it Files and Docs
- * are in the chat's place, as the Tasks tab always is (`ProjectUi.sidePanelTabIsFull`). The other tabs are narrow enough to fit beside the chat in any window: the window
+ * are in the chat's place, as the Tasks tab always is (`ProjectUi.sidePanelTabIsFull`), and so is Changes. The other tabs are narrow enough to fit beside the chat in any window: the window
  * itself is not narrower than the rail, the left part and `SIDE_PANEL_MIN_WIDTH`.
  */
 export const HALF_MIN_WINDOW_WIDTH = SIDE_RAIL_WIDTH + WINDOW_MIN_WIDTH + TREE_PANEL_MIN_WIDTH;

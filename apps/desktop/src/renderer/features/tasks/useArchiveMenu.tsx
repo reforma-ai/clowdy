@@ -1,5 +1,5 @@
 import { useContextMenu } from '@clowdy/components/Popover';
-import { useEffect, useState, type MouseEvent } from 'react';
+import { type MouseEvent, useEffect, useState } from 'react';
 
 import { ArchiveMenu } from './ArchiveMenu';
 import { openWork } from './archiveRules';
@@ -40,6 +40,6 @@ export function useArchiveMenu({ project, tree, cursor, archive }: UseArchiveMen
             setIds(cursor.selected.has(taskId) ? cursor.targets() : [taskId]);
             contextMenu.areaProps.onContextMenu(event);
         },
-        menu: <ArchiveMenu contextMenu={ contextMenu } targets={ targets } isOpen={ hasOpenWork } onArchive={ archive } />,
+        menu: <ArchiveMenu contextMenu={contextMenu} targets={targets} isOpen={hasOpenWork} onArchive={archive} />,
     };
 }

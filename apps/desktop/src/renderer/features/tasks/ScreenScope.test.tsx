@@ -4,7 +4,29 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { FIXTURE_PROJECT_ID } from '../../daemon/fixtureData';
 import { openCreateTask } from './CreateTaskDialog';
-import { buttonNamed, change, click, closePage, columnOf, draw, drawn, focusableOf, focusTask, itemOf, lateTaskEvents, mountScreen, openPage, page, pathText, press, pressKeys, pressOn, project, ui, wait } from './screenHarness';
+import {
+    buttonNamed,
+    change,
+    click,
+    closePage,
+    columnOf,
+    draw,
+    drawn,
+    focusableOf,
+    focusTask,
+    itemOf,
+    lateTaskEvents,
+    mountScreen,
+    openPage,
+    page,
+    pathText,
+    press,
+    pressKeys,
+    pressOn,
+    project,
+    ui,
+    wait,
+} from './screenHarness';
 import { createdTaskId } from './taskView';
 
 // `Modal` cannot load under the desktop's Vitest (decorators), and neither dialog is opened here.
@@ -24,18 +46,24 @@ afterEach(() => {
 });
 
 /** The roll-up chip of a card or row, which opens the task's own scope. */
-const chipOf = (taskId: string) => itemOf(taskId)!.querySelector<HTMLElement>('button[aria-label^="Open sub-tasks of"]');
+const chipOf = (taskId: string) =>
+    itemOf(taskId)!.querySelector<HTMLElement>('button[aria-label^="Open sub-tasks of"]');
 
-const scopeHeader = (key: string) => page.container.querySelector<HTMLElement>(`section[aria-label="Inside ${ key }"]`);
+const scopeHeader = (key: string) => page.container.querySelector<HTMLElement>(`section[aria-label="Inside ${key}"]`);
 
-const panel = (key: string) => page.container.querySelector<HTMLElement>(`aside[aria-label="Task ${ key }"]`);
+const panel = (key: string) => page.container.querySelector<HTMLElement>(`aside[aria-label="Task ${key}"]`);
 
 /** A task at the last level the daemon allows (level 8): CAR-33 is level 3, and five more go under it. Returns its id. */
 async function deepestTask() {
     let parentId = 't-33';
 
     for (let level = 4; level <= 8; level++) {
-        const result = await page.store.command({ type: 'task.create', projectId: FIXTURE_PROJECT_ID, title: `Level ${ level }`, parentId });
+        const result = await page.store.command({
+            type: 'task.create',
+            projectId: FIXTURE_PROJECT_ID,
+            title: `Level ${level}`,
+            parentId,
+        });
 
         expect(result.ok).toBe(true);
         parentId = (result as { ok: true; data: { task: { id: string } } }).data.task.id;
@@ -119,7 +147,6 @@ describe('going into a task', () => {
         expect(pathText()).toEqual([]);
         expect(drawn()).toHaveLength(12);
     });
-
 });
 
 describe('the header of a scope', () => {
@@ -161,7 +188,9 @@ describe('the header of a scope', () => {
         await draw();
 
         const header = page.container.querySelector<HTMLElement>('section[aria-label^="Inside"]')!;
-        const button = [...header.querySelectorAll('button')].find(candidate => candidate.textContent?.trim() === 'New sub-task');
+        const button = [...header.querySelectorAll('button')].find(
+            candidate => candidate.textContent?.trim() === 'New sub-task'
+        );
 
         expect(header.textContent).toContain('Level 8');
         expect(button?.hasAttribute('disabled')).toBe(true);
@@ -169,9 +198,12 @@ describe('the header of a scope', () => {
         expect(header.querySelector('[role="button"][aria-disabled][aria-label="New sub-task"]')).not.toBeNull();
         expect(page.container.textContent).toContain('No sub-tasks yet');
         expect(page.container.textContent).toContain('This task is at the last level');
-        expect([...page.container.querySelectorAll('button')].filter(candidate => candidate.textContent?.trim() === 'New sub-task')).toHaveLength(1);
+        expect(
+            [...page.container.querySelectorAll('button')].filter(
+                candidate => candidate.textContent?.trim() === 'New sub-task'
+            )
+        ).toHaveLength(1);
     });
-
 });
 
 describe('making a task from the header and from the key', () => {
@@ -222,7 +254,9 @@ describe('making a task from the header and from the key', () => {
 
         const info = vi.spyOn(toast, 'info');
         const header = page.container.querySelector('header')!;
-        const button = [...header.querySelectorAll('button')].find(candidate => candidate.textContent?.trim() === 'Sub-task');
+        const button = [...header.querySelectorAll('button')].find(
+            candidate => candidate.textContent?.trim() === 'Sub-task'
+        );
 
         expect(button?.hasAttribute('disabled')).toBe(true);
         expect(header.querySelector('[role="button"][aria-disabled][aria-label="New sub-task"]')).not.toBeNull();
@@ -237,13 +271,18 @@ describe('making a task from the header and from the key', () => {
         info.mockRestore();
     });
 
-    it('shows the new sub-task in the scope and opens it, also when the daemon\'s event comes after the reply', async () => {
+    it("shows the new sub-task in the scope and opens it, also when the daemon's event comes after the reply", async () => {
         const late = lateTaskEvents();
 
         await mountScreen({ transport: late.wrap, prepare: window => window.setTasksScope('t-31') });
         late.hold();
 
-        const result = await page.store.command({ type: 'task.create', projectId: FIXTURE_PROJECT_ID, title: 'Late sub-task', parentId: 't-31' });
+        const result = await page.store.command({
+            type: 'task.create',
+            projectId: FIXTURE_PROJECT_ID,
+            title: 'Late sub-task',
+            parentId: 't-31',
+        });
         const created = createdTaskId(result.ok ? result.data : undefined)!;
 
         // What the dialog does once the reply is in: the project does not hold the task yet.
@@ -274,7 +313,9 @@ describe('an empty scope', () => {
         expect(page.container.textContent).toContain('No sub-tasks yet');
         expect(page.container.querySelector('[data-task-id]')).toBeNull();
 
-        const buttons = [...page.container.querySelectorAll('button')].filter(button => button.textContent?.trim() === 'New sub-task');
+        const buttons = [...page.container.querySelectorAll('button')].filter(
+            button => button.textContent?.trim() === 'New sub-task'
+        );
 
         // The one of the header and the one of the empty state.
         expect(buttons).toHaveLength(2);

@@ -1,12 +1,12 @@
-import { docSourcesOf } from '@clowdy/protocol';
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { docSourcesOf } from '@clowdy/protocol';
 
 import { CommandError, unavailable } from '../errors';
 import { isDocFile, realPathBelow } from './paths';
 
-import type { DocNode, DocsSource, DocsTree, Project } from '@clowdy/protocol';
 import type { Dirent } from 'node:fs';
+import type { DocNode, DocsSource, DocsTree, Project } from '@clowdy/protocol';
 import type { Place } from '../domain/places';
 
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
@@ -27,22 +27,20 @@ export function listDocs(root: string, relative = '', budget = { left: MAX_DOC_E
     let entries: Dirent[];
 
     try {
-        entries = readdirSync(relative ? `${ root }/${ relative }` : root, { withFileTypes: true });
-    }
-    catch {
+        entries = readdirSync(relative ? `${root}/${relative}` : root, { withFileTypes: true });
+    } catch {
         return nodes;
     }
 
     for (const entry of entries) {
         if (budget.left <= 0) break;
 
-        const path = relative ? `${ relative }/${ entry.name }` : entry.name;
+        const path = relative ? `${relative}/${entry.name}` : entry.name;
 
         if (entry.isDirectory() && !NEVER_LISTED.has(entry.name)) {
             budget.left--;
             nodes.push({ path, name: entry.name, kind: 'dir', children: listDocs(root, path, budget) });
-        }
-        else if (entry.isFile() && isDocFile(entry.name)) {
+        } else if (entry.isFile() && isDocFile(entry.name)) {
             budget.left--;
             nodes.push({ path, name: entry.name, kind: 'file' });
         }
@@ -55,14 +53,14 @@ export function listDocs(root: string, relative = '', budget = { left: MAX_DOC_E
 function isFolder(path: string): boolean {
     try {
         return statSync(path).isDirectory();
-    }
-    catch {
+    } catch {
         return false;
     }
 }
 
 /** Whether a tree has a document in it, at any depth. */
-const hasDocument = (nodes: readonly DocNode[]): boolean => nodes.some(node => (node.kind === 'file' ? true : hasDocument(node.children ?? [])));
+const hasDocument = (nodes: readonly DocNode[]): boolean =>
+    nodes.some(node => (node.kind === 'file' ? true : hasDocument(node.children ?? [])));
 
 /**
  * The document sources a checkout has, each with its Markdown tree: the roots of the registry (`DOC_SOURCES`) that are folders on the disk, in its order. A root that is a link
@@ -70,7 +68,7 @@ const hasDocument = (nodes: readonly DocNode[]): boolean => nodes.some(node => (
  * documents), and so is one with no Markdown file in it. Nothing here makes a folder.
  */
 function sourcesOf(checkout: string): DocsSource[] {
-    return docSourcesOf(path => isFolder(join(checkout, path))).flatMap((source) => {
+    return docSourcesOf(path => isFolder(join(checkout, path))).flatMap(source => {
         const root = realPathBelow(checkout, join(checkout, source.root));
 
         if (!root) {
@@ -97,12 +95,11 @@ export function docsTree(project: Project, place?: Place): DocsTree {
 
         try {
             if (!existsSync(checkout)) {
-                throw unavailable(`The ${ checkout === folder.path ? 'folder' : 'worktree' } ${ checkout } is missing`);
+                throw unavailable(`The ${checkout === folder.path ? 'folder' : 'worktree'} ${checkout} is missing`);
             }
 
             return [{ folderId: folder.id, sources: sourcesOf(checkout) }];
-        }
-        catch (error) {
+        } catch (error) {
             if (index === 0 || !(error instanceof CommandError)) {
                 throw error;
             }

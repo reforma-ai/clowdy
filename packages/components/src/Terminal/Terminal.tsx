@@ -1,16 +1,8 @@
 import { CodeBraces } from '@clowdy/icons/14';
 import { cn } from '@clowdy/lib';
 import Anser from 'anser';
-import {
-    createContext,
-    useMemo,
-} from 'react';
-import {
-    Provider,
-    SlotProps,
-    useContextProps,
-    type ContextValue
-} from 'react-aria-components';
+import { createContext, useMemo } from 'react';
+import { type ContextValue, Provider, SlotProps, useContextProps } from 'react-aria-components';
 
 import { Box, type BoxProps } from '../Box';
 import { Button } from '../Button';
@@ -33,10 +25,7 @@ export type TerminalHeaderProps = HTMLAttributes<HTMLDivElement>;
 
 export function TerminalHeader({ className, children, ...props }: TerminalHeaderProps) {
     return (
-        <div
-            { ...props }
-            className={ cn(styles.header, className) }
-        >
+        <div {...props} className={cn(styles.header, className)}>
             {children}
         </div>
     );
@@ -46,11 +35,8 @@ export type TerminalTitleProps = HTMLAttributes<HTMLDivElement>;
 
 export function TerminalTitle({ className, children, ...props }: TerminalTitleProps) {
     return (
-        <div
-            { ...props }
-            className={ cn(styles.title, className) }
-        >
-            <CodeBraces aria-hidden className={ styles.titleIcon } />
+        <div {...props} className={cn(styles.title, className)}>
+            <CodeBraces aria-hidden className={styles.titleIcon} />
             {children ?? 'Terminal'}
         </div>
     );
@@ -79,10 +65,7 @@ export function TerminalStatus(props: TerminalStatusProps) {
     } = merged as TerminalStatusProps & TerminalStateProps & { ref?: Ref<HTMLDivElement | null> };
 
     return (
-        <div
-            { ...rest }
-            className={ cn(styles.status, className) }
-        >
+        <div {...rest} className={cn(styles.status, className)}>
             {children ?? 'Running…'}
         </div>
     );
@@ -92,13 +75,7 @@ export type TerminalActionsProps = BoxProps;
 
 export function TerminalActions({ className, children, ...props }: TerminalActionsProps) {
     return (
-        <Box
-            align="center"
-            direction="row"
-            gap="xs"
-            { ...props }
-            className={ className }
-        >
+        <Box align="center" direction="row" gap="xs" {...props} className={className}>
             {children}
         </Box>
     );
@@ -106,34 +83,21 @@ export function TerminalActions({ className, children, ...props }: TerminalActio
 
 export type TerminalActionButtonProps = ComponentProps<typeof Button>;
 
-export function TerminalActionButton({
-    children,
-    className,
-    ...props
-}: TerminalActionButtonProps) {
+export function TerminalActionButton({ children, className, ...props }: TerminalActionButtonProps) {
     return (
-        <Button
-            className={ className }
-            iconOnly
-            size="sm"
-            variant="filling"
-            { ...props }
-        >
+        <Button className={className} iconOnly size="sm" variant="filling" {...props}>
             {children}
         </Button>
     );
 }
 
-export type TerminalContentProps = (
-    Omit<HTMLAttributes<HTMLDivElement>, 'onScroll'>
-    & TerminalStateProps
-    & {
+export type TerminalContentProps = Omit<HTMLAttributes<HTMLDivElement>, 'onScroll'> &
+    TerminalStateProps & {
         ref?: Ref<HTMLDivElement | null>;
         children?: ReactNode;
         overlay?: ReactNode;
         onScroll?: (e: Event) => void;
-    }
-);
+    };
 
 export function TerminalContent(props: TerminalContentProps) {
     const slotMerged = useSlotContextProps(props);
@@ -143,10 +107,7 @@ export function TerminalContent(props: TerminalContentProps) {
     const isStreaming = merged.isStreaming ?? false;
     const autoScroll = merged.autoScroll ?? true;
     // Anser: escape `& < >` before converting ANSI so stdout that looks like HTML stays text (see README).
-    const html = useMemo(
-        () => Anser.ansiToHtml(Anser.escapeForHtml(output)),
-        [output]
-    );
+    const html = useMemo(() => Anser.ansiToHtml(Anser.escapeForHtml(output)), [output]);
 
     const {
         children,
@@ -163,24 +124,19 @@ export function TerminalContent(props: TerminalContentProps) {
         <Scrollable
             vertical
             horizontal
-            ref={ mergedRef }
-            className={ cn(styles.scroll, className) }
-            overlay={ overlay }
-            stickToBottom={ autoScroll }
-            { ...scrollProps }
+            ref={mergedRef}
+            className={cn(styles.scroll, className)}
+            overlay={overlay}
+            stickToBottom={autoScroll}
+            {...scrollProps}
         >
             {children ?? (
-                <pre className={ styles.pre }>
+                <pre className={styles.pre}>
                     {/* nosemgrep: typescript.react.security.audit.react-dangerouslysetinnerhtml.react-dangerouslysetinnerhtml -- output is escaped before Anser adds color spans */}
-                    <span dangerouslySetInnerHTML={ { __html: html } } />
-                    {isStreaming && (
-                        <span
-                            aria-hidden
-                            className={ styles.cursor }
-                        />
-                    )}
+                    <span dangerouslySetInnerHTML={{ __html: html }} />
+                    {isStreaming && <span aria-hidden className={styles.cursor} />}
                 </pre>
-            ) }
+            )}
         </Scrollable>
     );
 }
@@ -202,17 +158,11 @@ export function Terminal({
     children,
     ...props
 }: TerminalProps) {
-    const terminalValues = useMemo(
-        () => ({ autoScroll, isStreaming, output }),
-        [autoScroll, isStreaming, output]
-    );
+    const terminalValues = useMemo(() => ({ autoScroll, isStreaming, output }), [autoScroll, isStreaming, output]);
 
     return (
-        <Provider values={ [[TerminalContext, terminalValues]] }>
-            <div
-                { ...props }
-                className={ cn(styles.root, className) }
-            >
+        <Provider values={[[TerminalContext, terminalValues]]}>
+            <div {...props} className={cn(styles.root, className)}>
                 {children ?? (
                     <>
                         <TerminalHeader>

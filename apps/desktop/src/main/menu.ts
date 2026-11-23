@@ -1,6 +1,6 @@
 import { BrowserWindow, Menu, type MenuItem, type MenuItemConstructorOptions } from 'electron';
 
-import { IPC_CHANNELS, type FindCommand } from '../shared/bridge';
+import { type FindCommand, IPC_CHANNELS } from '../shared/bridge';
 
 export interface AppMenuOptions {
     /** "Check for Updates…", in a build that updates itself. Gets the item, to disable it while a check runs. */
@@ -20,7 +20,12 @@ function findItems(): MenuItemConstructorOptions[] {
         { type: 'separator' },
         { id: 'find', label: 'Find', accelerator: 'CmdOrCtrl+F', click: () => sendFind('open') },
         { id: 'find-next', label: 'Find Next', accelerator: 'CmdOrCtrl+G', click: () => sendFind('next') },
-        { id: 'find-previous', label: 'Find Previous', accelerator: 'CmdOrCtrl+Shift+G', click: () => sendFind('previous') },
+        {
+            id: 'find-previous',
+            label: 'Find Previous',
+            accelerator: 'CmdOrCtrl+Shift+G',
+            click: () => sendFind('previous'),
+        },
     ];
 }
 
@@ -31,7 +36,9 @@ function findItems(): MenuItemConstructorOptions[] {
  */
 export function createAppMenu({ checkForUpdates }: AppMenuOptions = {}): Menu {
     const mac = process.platform === 'darwin';
-    const updates: MenuItemConstructorOptions[] = checkForUpdates ? [{ label: 'Check for Updates…', click: item => checkForUpdates(item) }] : [];
+    const updates: MenuItemConstructorOptions[] = checkForUpdates
+        ? [{ label: 'Check for Updates…', click: item => checkForUpdates(item) }]
+        : [];
     const speech: MenuItemConstructorOptions = {
         label: 'Speech',
         submenu: [{ role: 'startSpeaking' }, { role: 'stopSpeaking' }],
@@ -43,40 +50,47 @@ export function createAppMenu({ checkForUpdates }: AppMenuOptions = {}): Menu {
         { role: 'cut' },
         { role: 'copy' },
         { role: 'paste' },
-        ...mac
+        ...(mac
             ? [
-                { role: 'pasteAndMatchStyle' } as const,
-                { role: 'delete' } as const,
-                { role: 'selectAll' } as const,
-                ...findItems(),
-                { type: 'separator' } as const,
-                speech,
-            ]
+                  { role: 'pasteAndMatchStyle' } as const,
+                  { role: 'delete' } as const,
+                  { role: 'selectAll' } as const,
+                  ...findItems(),
+                  { type: 'separator' } as const,
+                  speech,
+              ]
             : [
-                { role: 'delete' } as const,
-                { type: 'separator' } as const,
-                { role: 'selectAll' } as const,
-                ...findItems(),
-            ],
+                  { role: 'delete' } as const,
+                  { type: 'separator' } as const,
+                  { role: 'selectAll' } as const,
+                  ...findItems(),
+              ]),
     ];
     const template: MenuItemConstructorOptions[] = [
         mac
             ? {
-                role: 'appMenu',
-                submenu: [
-                    { role: 'about' },
-                    ...updates,
-                    { type: 'separator' },
-                    { role: 'services' },
-                    { type: 'separator' },
-                    { role: 'hide' },
-                    { role: 'hideOthers' },
-                    { role: 'unhide' },
-                    { type: 'separator' },
-                    { role: 'quit' },
-                ],
-            }
-            : { role: 'fileMenu', submenu: [...updates, ...updates.length > 0 ? [{ type: 'separator' } as const] : [], { role: 'quit' }] },
+                  role: 'appMenu',
+                  submenu: [
+                      { role: 'about' },
+                      ...updates,
+                      { type: 'separator' },
+                      { role: 'services' },
+                      { type: 'separator' },
+                      { role: 'hide' },
+                      { role: 'hideOthers' },
+                      { role: 'unhide' },
+                      { type: 'separator' },
+                      { role: 'quit' },
+                  ],
+              }
+            : {
+                  role: 'fileMenu',
+                  submenu: [
+                      ...updates,
+                      ...(updates.length > 0 ? [{ type: 'separator' } as const] : []),
+                      { role: 'quit' },
+                  ],
+              },
         { label: 'Edit', submenu: editSubmenu },
         {
             role: 'viewMenu',

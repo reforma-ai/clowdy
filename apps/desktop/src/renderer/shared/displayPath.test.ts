@@ -35,11 +35,25 @@ describe('tildePath', () => {
 
 describe('pathVariants', () => {
     it('starts with the whole path, then leaves out the middle names by whole names, the longest form first', () => {
-        expect(pathVariants('~/Foo/bar/baz/foo')).toEqual(['~/Foo/bar/baz/foo', '~/Foo/…/baz/foo', '~/…/baz/foo', '~/…/foo', '…/foo']);
+        expect(pathVariants('~/Foo/bar/baz/foo')).toEqual([
+            '~/Foo/bar/baz/foo',
+            '~/Foo/…/baz/foo',
+            '~/…/baz/foo',
+            '~/…/foo',
+            '…/foo',
+        ]);
     });
 
     it('keeps the start with its first name while two names are kept at the end', () => {
-        expect(pathVariants('~/a/b/c/d/e/f')).toEqual(['~/a/b/c/d/e/f', '~/a/…/c/d/e/f', '~/a/…/d/e/f', '~/a/…/e/f', '~/…/e/f', '~/…/f', '…/f']);
+        expect(pathVariants('~/a/b/c/d/e/f')).toEqual([
+            '~/a/b/c/d/e/f',
+            '~/a/…/c/d/e/f',
+            '~/a/…/d/e/f',
+            '~/a/…/e/f',
+            '~/…/e/f',
+            '~/…/f',
+            '…/f',
+        ]);
     });
 
     it('does the same for a path outside the home folder, with the root as its start', () => {

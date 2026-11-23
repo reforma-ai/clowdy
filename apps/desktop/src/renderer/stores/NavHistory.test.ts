@@ -35,7 +35,7 @@ const ui = () => root.ui.forProject(root.selectedProjectId!);
 function place(): string {
     const { chatId, runId, draft } = ui();
 
-    return `${ root.selectedProjectId }/${ draft ? '@new-chat' : (runId ?? chatId) }`;
+    return `${root.selectedProjectId}/${draft ? '@new-chat' : (runId ?? chatId)}`;
 }
 
 /** Goes back until the start and returns how many steps it took. */
@@ -79,12 +79,7 @@ describe('NavHistory recording', () => {
             stops.push(place());
         }
 
-        expect(stops).toEqual([
-            'p-car/c-2',
-            'p-car/r-na-02',
-            'p-car/c-1',
-            'p-car/null',
-        ]);
+        expect(stops).toEqual(['p-car/c-2', 'p-car/r-na-02', 'p-car/c-1', 'p-car/null']);
 
         const forward = [place()];
 
@@ -136,7 +131,11 @@ describe('NavHistory recording', () => {
         ui().openChat('c-1');
 
         root.history.back();
-        expect([ui().draft, ui().draftFolderId, ui().draftWorkspace]).toEqual([true, 'fld_other', { mode: 'new', base: 'origin/dev' }]);
+        expect([ui().draft, ui().draftFolderId, ui().draftWorkspace]).toEqual([
+            true,
+            'fld_other',
+            { mode: 'new', base: 'origin/dev' },
+        ]);
 
         root.history.forward();
         expect([ui().draft, ui().draftWorkspace]).toEqual([false, null]);
@@ -181,13 +180,7 @@ describe('NavHistory recording', () => {
             stops.push(place());
         }
 
-        expect(stops).toEqual([
-            'p-car/c-1',
-            'p-clowdy/@new-chat',
-            'p-clowdy/null',
-            'p-car/c-1',
-            'p-car/null',
-        ]);
+        expect(stops).toEqual(['p-car/c-1', 'p-clowdy/@new-chat', 'p-clowdy/null', 'p-car/c-1', 'p-car/null']);
         expect(root.selectedProjectId).toBe(FIXTURE_PROJECT_ID);
 
         while (root.history.canGoForward) root.history.forward();
@@ -309,7 +302,9 @@ describe('NavHistory entries that are gone', () => {
         const transport = new FixtureTransport();
 
         root.dispose();
-        root = new RootStore(overrideTransport(transport, { getProjectSnapshot: () => new Promise(() => {}) }), { storage: memoryStorage() });
+        root = new RootStore(overrideTransport(transport, { getProjectSnapshot: () => new Promise(() => {}) }), {
+            storage: memoryStorage(),
+        });
         await root.load();
 
         expect(root.selectedProject?.status).toBe('loading');
@@ -349,12 +344,13 @@ describe('NavHistory entries that are gone', () => {
         await remove({ type: 'chat.delete', chatId: 'c-2' });
         expect(root.history.canGoForward).toBe(false);
     });
-
 });
 
 describe('NavHistory at the start', () => {
     it('records nothing while there is no project, and takes the first one as its first entry', async () => {
-        const store = new RootStore(new FixtureTransport({ data: { ...createFixtureData(), projects: [] } }), { storage: memoryStorage() });
+        const store = new RootStore(new FixtureTransport({ data: { ...createFixtureData(), projects: [] } }), {
+            storage: memoryStorage(),
+        });
 
         await store.load();
         store.ui.openSettings('skills');
@@ -362,7 +358,12 @@ describe('NavHistory at the start', () => {
         expect(store.history.canGoBack).toBe(false);
 
         const project = createFixtureData().projects[0];
-        const upsert: ClowdyEvent = { cursor: 7000, at: 0, projectId: project.id, data: { type: 'project.upserted', project, statuses: [] } };
+        const upsert: ClowdyEvent = {
+            cursor: 7000,
+            at: 0,
+            projectId: project.id,
+            data: { type: 'project.upserted', project, statuses: [] },
+        };
 
         store.handleEvent(upsert);
         expect(store.selectedProjectId).toBe(project.id);

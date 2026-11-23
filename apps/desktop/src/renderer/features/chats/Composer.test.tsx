@@ -3,26 +3,73 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { RootStoreProvider, type RootStore } from '../../stores';
+import { type RootStore, RootStoreProvider } from '../../stores';
 import { busyEnter } from './busyEnter';
-import { Composer } from './Composer';
+import { Composer, type ComposerProps } from './Composer';
 import { modelStore } from './modelTestKit';
 
-import type { Chat, ChatWorkspace, CommandResult, DocsTree, ProjectFolder, Run, SkillEntry, Task } from '@clowdy/protocol';
+import type {
+    Chat,
+    ChatWorkspace,
+    CommandResult,
+    DocsTree,
+    ProjectFolder,
+    Run,
+    SkillEntry,
+    Task,
+} from '@clowdy/protocol';
 import type { Editor } from '@tiptap/core';
 import type { CommandInput } from '../../daemon/transport';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const newChat = (id: string): Chat => ({ id, projectId: 'p', title: 'New chat', mode: 'autopilot', createdAt: 0, updatedAt: 0 });
+const newChat = (id: string): Chat => ({
+    id,
+    projectId: 'p',
+    title: 'New chat',
+    mode: 'autopilot',
+    createdAt: 0,
+    updatedAt: 0,
+});
 const runWith = (status: Run['status']) => ({ id: 'r-1', status }) as Run;
 const accepted: CommandResult = { ok: true, requestId: 'request-1', data: {} };
-const refused: CommandResult = { ok: false, requestId: 'request-1', error: { code: 'unavailable', message: 'The daemon cannot be reached' } };
+const refused: CommandResult = {
+    ok: false,
+    requestId: 'request-1',
+    error: { code: 'unavailable', message: 'The daemon cannot be reached' },
+};
 
 const tasks = [{ id: 't-24', number: 24, key: 'CAR-24', title: 'Rebuild the form as one view' }] as Task[];
 const FOLDERS: ProjectFolder[] = [{ id: 'fld_p', path: '/work/p' }];
-const docs: DocsTree = [{ folderId: 'fld_p', sources: [{ id: 'documents', label: 'Documents', root: '.clowdy/docs', nodes: [{ path: 'decisions', name: 'decisions', kind: 'dir', children: [{ path: 'decisions/pricing.md', name: 'pricing.md', kind: 'file' }] }] }] }];
-const skill = (name: string, source: SkillEntry['source']): SkillEntry => ({ id: `${ source }:${ name }`, name, source, description: `${ name } skill`, enabled: true, tokens: 20, engines: [] });
+const docs: DocsTree = [
+    {
+        folderId: 'fld_p',
+        sources: [
+            {
+                id: 'documents',
+                label: 'Documents',
+                root: '.clowdy/docs',
+                nodes: [
+                    {
+                        path: 'decisions',
+                        name: 'decisions',
+                        kind: 'dir',
+                        children: [{ path: 'decisions/pricing.md', name: 'pricing.md', kind: 'file' }],
+                    },
+                ],
+            },
+        ],
+    },
+];
+const skill = (name: string, source: SkillEntry['source']): SkillEntry => ({
+    id: `${source}:${name}`,
+    name,
+    source,
+    description: `${name} skill`,
+    enabled: true,
+    tokens: 20,
+    engines: [],
+});
 const skills = [skill('clowdy:orchestrate', 'system'), skill('user:review', 'user')];
 
 let container: HTMLDivElement;
@@ -33,25 +80,39 @@ let chat: Chat;
 let chatNumber = 0;
 
 /** What the pick lists read: the project's tasks, and the daemon's documents, files and skills. */
-const findFiles = async (_projectId: string, query: string) => ['src/booking/index.tsx', 'src/booking/price.ts'].filter(path => path.includes(query)).map(path => ({ folderId: 'fld_p', path }));
+const findFiles = async (_projectId: string, query: string) =>
+    ['src/booking/index.tsx', 'src/booking/price.ts']
+        .filter(path => path.includes(query))
+        .map(path => ({ folderId: 'fld_p', path }));
 const transport = {
     getDocsTree: vi.fn(async (): Promise<DocsTree> => docs),
     getProjectFiles: vi.fn(findFiles),
     getSkills: vi.fn(async () => ({ entries: skills, tokens: 0, warnings: [] })),
 };
 
-async function mount(result: CommandResult | Promise<CommandResult>, run?: Run, folders = FOLDERS) {
+async function mount(
+    result: CommandResult | Promise<CommandResult>,
+    run?: Run,
+    folders = FOLDERS,
+    start?: ComposerProps['start']
+) {
     const command = vi.fn(async (input: CommandInput) => {
         sent.push(input);
 
         return result;
     });
-    const store = { command, transport, skillsRevision: 0, selectedProject: { project: { id: 'p', folders }, taskList: tasks }, ...await modelStore() };
+    const store = {
+        command,
+        transport,
+        skillsRevision: 0,
+        selectedProject: { project: { id: 'p', folders }, taskList: tasks },
+        ...(await modelStore()),
+    };
 
     await act(async () => {
         root.render(
-            <RootStoreProvider value={ store as unknown as RootStore }>
-                <Composer chat={ chat } run={ run } />
+            <RootStoreProvider value={store as unknown as RootStore}>
+                <Composer chat={start ? undefined : chat} run={run} start={start} />
             </RootStoreProvider>
         );
     });
@@ -60,7 +121,7 @@ async function mount(result: CommandResult | Promise<CommandResult>, run?: Run, 
 const field = () => container.querySelector<HTMLElement>('[contenteditable="true"]')!;
 const editor = () => (field() as HTMLElement & { editor: Editor }).editor;
 const text = () => editor().getText();
-const button = (label: string) => container.querySelector<HTMLButtonElement>(`button[aria-label="${ label }"]`);
+const button = (label: string) => container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
 
 function type(value: string) {
     act(() => {
@@ -70,7 +131,9 @@ function type(value: string) {
 
 async function press(key: string, shiftKey = false, metaKey = false) {
     await act(async () => {
-        field().dispatchEvent(new KeyboardEvent('keydown', { key, shiftKey, metaKey, bubbles: true, cancelable: true }));
+        field().dispatchEvent(
+            new KeyboardEvent('keydown', { key, shiftKey, metaKey, bubbles: true, cancelable: true })
+        );
     });
 }
 
@@ -78,7 +141,7 @@ beforeEach(() => {
     transport.getProjectFiles.mockImplementation(findFiles);
     transport.getDocsTree.mockImplementation(async () => docs);
     sent = [];
-    chat = newChat(`c-${ ++chatNumber }`);
+    chat = newChat(`c-${++chatNumber}`);
     container = document.createElement('div');
     document.body.append(container);
     root = createRoot(container);
@@ -128,7 +191,7 @@ describe('Composer', () => {
 
     it('does not put the refused words over what was typed since', async () => {
         let refuse!: (result: CommandResult) => void;
-        const pending = new Promise<CommandResult>((resolve) => {
+        const pending = new Promise<CommandResult>(resolve => {
             refuse = resolve;
         });
 
@@ -155,7 +218,9 @@ describe('Composer', () => {
 
         await press('Enter');
 
-        expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Make the **title** bigger', mode: 'steer' }]);
+        expect(sent).toEqual([
+            { type: 'chat.send', chatId: chat.id, text: 'Make the **title** bigger', mode: 'steer' },
+        ]);
     });
 
     it('sends with the send button and keeps it off while the field is empty', async () => {
@@ -215,12 +280,24 @@ describe('Composer', () => {
 
         const choose = async (label: string) => {
             const option = options().find(candidate => candidate.textContent?.includes(label))!;
-            const pointer = { bubbles: true, cancelable: true, pointerId: 1, pointerType: 'mouse', button: 0, width: 1, height: 1, pressure: 0.5, detail: 1 };
+            const pointer = {
+                bubbles: true,
+                cancelable: true,
+                pointerId: 1,
+                pointerType: 'mouse',
+                button: 0,
+                width: 1,
+                height: 1,
+                pressure: 0.5,
+                detail: 1,
+            };
 
             await act(async () => {
                 option.dispatchEvent(new PointerEvent('pointerdown', pointer));
                 option.dispatchEvent(new PointerEvent('pointerup', pointer));
-                option.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, detail: 1 }));
+                option.dispatchEvent(
+                    new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, detail: 1 })
+                );
             });
         };
 
@@ -250,7 +327,9 @@ describe('Composer', () => {
             await choose('price.ts');
             await press('Enter');
 
-            expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Look at @src/booking/price.ts', mode: 'steer' }]);
+            expect(sent).toEqual([
+                { type: 'chat.send', chatId: chat.id, text: 'Look at @src/booking/price.ts', mode: 'steer' },
+            ]);
         });
 
         it('sends a document as @path from the project folder', async () => {
@@ -259,11 +338,31 @@ describe('Composer', () => {
             await choose('pricing.md');
             await press('Enter');
 
-            expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Follow @.clowdy/docs/decisions/pricing.md', mode: 'steer' }]);
+            expect(sent).toEqual([
+                {
+                    type: 'chat.send',
+                    chatId: chat.id,
+                    text: 'Follow @.clowdy/docs/decisions/pricing.md',
+                    mode: 'steer',
+                },
+            ]);
         });
 
         it('sends a document of another folder by its absolute path, and names the folder in the suggestion', async () => {
-            transport.getDocsTree.mockImplementation(async () => [...docs, { folderId: 'fld_api', sources: [{ id: 'documents', label: 'Documents', root: '.clowdy/docs', nodes: [{ path: 'endpoints.md', name: 'endpoints.md', kind: 'file' }] }] }]);
+            transport.getDocsTree.mockImplementation(async () => [
+                ...docs,
+                {
+                    folderId: 'fld_api',
+                    sources: [
+                        {
+                            id: 'documents',
+                            label: 'Documents',
+                            root: '.clowdy/docs',
+                            nodes: [{ path: 'endpoints.md', name: 'endpoints.md', kind: 'file' }],
+                        },
+                    ],
+                },
+            ]);
             await mount(accepted, undefined, [...FOLDERS, { id: 'fld_api', path: '/work/api' }]);
             await open('Read @endpoints');
 
@@ -272,15 +371,28 @@ describe('Composer', () => {
             await choose('endpoints.md');
             await press('Enter');
 
-            expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Read @/work/api/.clowdy/docs/endpoints.md', mode: 'steer' }]);
+            expect(sent).toEqual([
+                {
+                    type: 'chat.send',
+                    chatId: chat.id,
+                    text: 'Read @/work/api/.clowdy/docs/endpoints.md',
+                    mode: 'steer',
+                },
+            ]);
         });
 
-        it('lists the files of every folder, sends another folder\'s by its absolute path, and names the folder in the suggestion', async () => {
-            transport.getProjectFiles.mockImplementation(async () => [{ folderId: 'fld_api', path: 'src/routes/price.ts' }, { folderId: 'fld_p', path: 'src/booking/price.ts' }]);
+        it("lists the files of every folder, sends another folder's by its absolute path, and names the folder in the suggestion", async () => {
+            transport.getProjectFiles.mockImplementation(async () => [
+                { folderId: 'fld_api', path: 'src/routes/price.ts' },
+                { folderId: 'fld_p', path: 'src/booking/price.ts' },
+            ]);
             await mount(accepted, undefined, [...FOLDERS, { id: 'fld_api', path: '/work/api' }]);
             await open('Compare @price');
 
-            expect(optionTexts()).toEqual([expect.stringMatching(/price\.ts.*api\/src\/routes/), expect.stringMatching(/price\.ts.*p\/src\/booking/)]);
+            expect(optionTexts()).toEqual([
+                expect.stringMatching(/price\.ts.*api\/src\/routes/),
+                expect.stringMatching(/price\.ts.*p\/src\/booking/),
+            ]);
 
             await choose('api/src/routes');
             // A chosen mention is followed by a space.
@@ -289,13 +401,27 @@ describe('Composer', () => {
             await choose('p/src/booking');
             await press('Enter');
 
-            expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Compare @/work/api/src/routes/price.ts and @src/booking/price.ts', mode: 'steer' }]);
+            expect(sent).toEqual([
+                {
+                    type: 'chat.send',
+                    chatId: chat.id,
+                    text: 'Compare @/work/api/src/routes/price.ts and @src/booking/price.ts',
+                    mode: 'steer',
+                },
+            ]);
         });
 
         describe('in a worktree', () => {
-            const worktree = (folderId: string, ready = true): ChatWorkspace => ({ id: 'wks_1', folderId, path: `/Users/dev/Clowdy/workspaces/p/ab12cd34/${ folderId }`, branch: 'clowdy/ab12cd34', managed: true, ready });
+            const worktree = (folderId: string, ready = true): ChatWorkspace => ({
+                id: 'wks_1',
+                folderId,
+                path: `/Users/dev/Clowdy/workspaces/p/ab12cd34/${folderId}`,
+                branch: 'clowdy/ab12cd34',
+                managed: true,
+                ready,
+            });
 
-            it('lists the files and the documents of the chat\'s worktree, and sends a path from there, which is the agent\'s working directory', async () => {
+            it("lists the files and the documents of the chat's worktree, and sends a path from there, which is the agent's working directory", async () => {
                 chat = { ...chat, workspace: worktree('fld_p') };
                 transport.getProjectFiles.mockClear();
                 transport.getDocsTree.mockClear();
@@ -308,10 +434,12 @@ describe('Composer', () => {
                 await choose('price.ts');
                 await press('Enter');
 
-                expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Look at @src/booking/price.ts', mode: 'steer' }]);
+                expect(sent).toEqual([
+                    { type: 'chat.send', chatId: chat.id, text: 'Look at @src/booking/price.ts', mode: 'steer' },
+                ]);
             });
 
-            it('lists no file and no document while the worktree is not made yet, whatever the folder\'s own checkout has, and still the tasks', async () => {
+            it("lists no file and no document while the worktree is not made yet, whatever the folder's own checkout has, and still the tasks", async () => {
                 chat = { ...chat, workspace: worktree('fld_p', false) };
                 transport.getProjectFiles.mockClear();
                 transport.getDocsTree.mockClear();
@@ -323,7 +451,45 @@ describe('Composer', () => {
                 expect(transport.getDocsTree).not.toHaveBeenCalled();
             });
 
-            it('asks for the folder\'s own checkout for a chat that has no worktree, with no workspace named', async () => {
+            describe('of the new-chat page', () => {
+                const page = (workspaceRow?: ChatWorkspace): ComposerProps['start'] => ({
+                    projectId: 'p',
+                    folderId: 'fld_p',
+                    workspace: { mode: 'existing', path: '/work/p-feature' },
+                    ...(workspaceRow && { workspaceRow }),
+                    onStarted: () => undefined,
+                });
+                const found: ChatWorkspace = {
+                    id: 'wks_found',
+                    folderId: 'fld_p',
+                    path: '/work/p-feature',
+                    branch: 'feature',
+                    managed: false,
+                    ready: true,
+                };
+
+                it('lists the files and the documents of the worktree it chose once its row is there, the same place the chat will have', async () => {
+                    transport.getProjectFiles.mockClear();
+                    transport.getDocsTree.mockClear();
+                    await mount(accepted, undefined, FOLDERS, page(found));
+                    await open('Look at @price');
+
+                    expect(transport.getProjectFiles).toHaveBeenCalledWith('p', 'price', 20, 'wks_found');
+                    expect(transport.getDocsTree).toHaveBeenCalledWith('p', 'wks_found');
+                });
+
+                it("lists the folder's own checkout until the row is there, and for a worktree that is not made yet", async () => {
+                    transport.getProjectFiles.mockClear();
+                    transport.getDocsTree.mockClear();
+                    await mount(accepted, undefined, FOLDERS, page());
+                    await open('Look at @price');
+
+                    expect(transport.getProjectFiles).toHaveBeenCalledWith('p', 'price', 20, undefined);
+                    expect(transport.getDocsTree).toHaveBeenCalledWith('p', undefined);
+                });
+            });
+
+            it("asks for the folder's own checkout for a chat that has no worktree, with no workspace named", async () => {
                 transport.getProjectFiles.mockClear();
                 transport.getDocsTree.mockClear();
                 await mount(accepted);
@@ -333,9 +499,12 @@ describe('Composer', () => {
                 expect(transport.getDocsTree).toHaveBeenCalledWith('p', undefined);
             });
 
-            it('cites a file of the folder the chat works in from there, and the main folder\'s by its absolute path, when the chat is in another folder of the project', async () => {
+            it("cites a file of the folder the chat works in from there, and the main folder's by its absolute path, when the chat is in another folder of the project", async () => {
                 chat = { ...chat, folderId: 'fld_api', workspace: worktree('fld_api') };
-                transport.getProjectFiles.mockImplementation(async () => [{ folderId: 'fld_api', path: 'src/routes/price.ts' }, { folderId: 'fld_p', path: 'src/booking/price.ts' }]);
+                transport.getProjectFiles.mockImplementation(async () => [
+                    { folderId: 'fld_api', path: 'src/routes/price.ts' },
+                    { folderId: 'fld_p', path: 'src/booking/price.ts' },
+                ]);
                 await mount(accepted, undefined, [...FOLDERS, { id: 'fld_api', path: '/work/api' }]);
                 await open('Compare @price');
                 await choose('api/src/routes');
@@ -344,7 +513,14 @@ describe('Composer', () => {
                 await choose('p/src/booking');
                 await press('Enter');
 
-                expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Compare @src/routes/price.ts and @/work/p/src/booking/price.ts', mode: 'steer' }]);
+                expect(sent).toEqual([
+                    {
+                        type: 'chat.send',
+                        chatId: chat.id,
+                        text: 'Compare @src/routes/price.ts and @/work/p/src/booking/price.ts',
+                        mode: 'steer',
+                    },
+                ]);
             });
         });
 
@@ -356,7 +532,7 @@ describe('Composer', () => {
             expect(optionTexts()).toEqual([expect.stringContaining('CAR-24'), expect.stringContaining('pricing.md')]);
         });
 
-        it('lists the person\'s skills after /, not the system ones, and asks for the chosen one in words', async () => {
+        it("lists the person's skills after /, not the system ones, and asks for the chosen one in words", async () => {
             await mount(accepted);
             await open('/');
 
@@ -366,7 +542,9 @@ describe('Composer', () => {
             await type('the diff');
             await press('Enter');
 
-            expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Use the skill "review" the diff', mode: 'steer' }]);
+            expect(sent).toEqual([
+                { type: 'chat.send', chatId: chat.id, text: 'Use the skill "review" the diff', mode: 'steer' },
+            ]);
         });
 
         it('asks for the skills again after a read that failed, not once the skills change', async () => {
@@ -415,7 +593,7 @@ describe('Composer', () => {
         // The button row has gaps between its controls: space that is not a control.
         const space = () => button('Send')!.parentElement!.parentElement!;
 
-        it('puts the caret in the text when the press lands on the card\'s own space', async () => {
+        it("puts the caret in the text when the press lands on the card's own space", async () => {
             await mount(accepted);
             (document.activeElement as HTMLElement | null)?.blur();
 
@@ -428,7 +606,9 @@ describe('Composer', () => {
         it('leaves a press on a control to the control', async () => {
             await mount(accepted, runWith('running'));
 
-            expect((await mouseDown(container.querySelector('[role="button"][aria-label="Mode"]')!)).defaultPrevented).toBe(false);
+            expect(
+                (await mouseDown(container.querySelector('[role="button"][aria-label="Mode"]')!)).defaultPrevented
+            ).toBe(false);
             expect((await mouseDown(button('Stop')!)).defaultPrevented).toBe(false);
         });
 
@@ -438,9 +618,13 @@ describe('Composer', () => {
             const trigger = container.querySelector<HTMLButtonElement>('button[aria-label^="Mode:"]')!;
 
             await act(async () => {
-                trigger.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
+                trigger.dispatchEvent(
+                    new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true })
+                );
                 trigger.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
-                trigger.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
+                trigger.dispatchEvent(
+                    new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true })
+                );
                 trigger.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
                 trigger.click();
             });
@@ -503,7 +687,9 @@ describe('Composer', () => {
 
             await act(async () => button('Send')!.click());
 
-            expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'How is the test run going?', mode: 'steer' }]);
+            expect(sent).toEqual([
+                { type: 'chat.send', chatId: chat.id, text: 'How is the test run going?', mode: 'steer' },
+            ]);
             expect(text()).toBe('');
         });
     });

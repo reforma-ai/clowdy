@@ -121,14 +121,14 @@ export interface AgentSignInSession {
  */
 export const PERMISSION_PRESETS = ['ask', 'accept-edits', 'auto', 'full'] as const;
 
-export type PermissionPresetId = typeof PERMISSION_PRESETS[number];
+export type PermissionPresetId = (typeof PERMISSION_PRESETS)[number];
 
 /** What a preset is called, whichever agent offers it. */
 export const PERMISSION_PRESET_NAMES: Record<PermissionPresetId, string> = {
-    'ask': 'Ask for approval',
+    ask: 'Ask for approval',
     'accept-edits': 'Accept edits',
-    'auto': 'Approve for me',
-    'full': 'Full access',
+    auto: 'Approve for me',
+    full: 'Full access',
 };
 
 /** One preset an agent offers, with the agent's own description of what it does there. */
@@ -156,6 +156,22 @@ export interface AgentSetting {
     value: boolean;
     /** The value when the person has not chosen. */
     default: boolean;
+}
+
+/** The `AgentSetting.id` of the switch that lets an agent write commit messages (`Commit messages`, off until the person turns it on). Only the daemon reads it. */
+export const COMMIT_MESSAGE_SETTING_ID = 'commitMessage';
+
+/**
+ * Whether the app may offer to have a commit message written by this agent: it is switched on and can start, somebody is signed in to it (`unknown` is not a yes) and the person turned
+ * `Commit messages` on for it. The daemon decides again when it is asked (`POST .../git/message`), so this only says whether to show the button.
+ */
+export function writesCommitMessages(agent: AgentInfo): boolean {
+    return (
+        agent.enabled &&
+        agent.status === 'ready' &&
+        agent.signIn?.status === 'signed-in' &&
+        agent.settings?.some(setting => setting.id === COMMIT_MESSAGE_SETTING_ID && setting.value) === true
+    );
 }
 
 /** One model an agent offers, as its own program lists it on this machine and account. */

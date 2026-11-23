@@ -17,7 +17,8 @@
     margin-inline: var(--spacing-lg);
     /* A row is a list item of the small size (30px) between two 2px insets. Its button (24px) sits 3px from the item's edges, as in a list. */
     min-height: calc(var(--spacing-30) + var(--spacing-2) * 2);
-    padding: var(--spacing-2) calc(var(--spacing-xs) + (var(--spacing-30) - var(--spacing-24)) / 2) var(--spacing-2) var(--spacing-lg);
+    padding: var(--spacing-2) calc(var(--spacing-xs) + (var(--spacing-30) - var(--spacing-24)) / 2) var(--spacing-2)
+        var(--spacing-lg);
     border-top-left-radius: calc(var(--radius-md) * var(--squircle-radius-factor));
     border-top-right-radius: calc(var(--radius-md) * var(--squircle-radius-factor));
     corner-shape: superellipse(var(--squircle-value)) superellipse(var(--squircle-value)) square square;

@@ -1,27 +1,27 @@
 import { readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 
-import { sha256, type BundleFiles } from './bundleManifest';
+import { type BundleFiles, sha256 } from './bundleManifest';
 import { APP_HOST } from './security';
 
 export const CONTENT_SECURITY_POLICY = [
-    'default-src \'self\'',
-    'script-src \'self\' \'wasm-unsafe-eval\'',
-    'style-src \'self\' \'unsafe-inline\'',
+    "default-src 'self'",
+    "script-src 'self' 'wasm-unsafe-eval'",
+    "style-src 'self' 'unsafe-inline'",
     // No remote images: an image request would be a way out for page data. Remote content goes through the daemon.
-    'img-src \'self\' data: blob:',
-    'font-src \'self\' data:',
-    'media-src \'self\' data: blob:',
+    "img-src 'self' data: blob:",
+    "font-src 'self' data:",
+    "media-src 'self' data: blob:",
     // Loopback only: the daemon listens there with a local token (see spec §5).
-    'connect-src \'self\' data: blob: http://127.0.0.1:* ws://127.0.0.1:*',
+    "connect-src 'self' data: blob: http://127.0.0.1:* ws://127.0.0.1:*",
     // `blob:` for the file manager's PDF preview, which frames the file as a PDF blob.
-    'frame-src \'self\' blob:',
-    'worker-src \'self\' blob:',
-    'object-src \'none\'',
-    'base-uri \'none\'',
-    'form-action \'self\'',
+    "frame-src 'self' blob:",
+    "worker-src 'self' blob:",
+    "object-src 'none'",
+    "base-uri 'none'",
+    "form-action 'self'",
     // No page of the app is ever framed.
-    'frame-ancestors \'none\'',
+    "frame-ancestors 'none'",
 ].join('; ');
 
 const CONTENT_TYPES: Record<string, string> = {
@@ -80,15 +80,17 @@ async function resolveFile(root: string, pathname: string): Promise<{ path: stri
     if (decoded === undefined || !realRoot) return null;
 
     const candidate = path.join(realRoot, decoded);
-    const found = await existingFile(candidate)
-        ?? await existingFile(path.join(candidate, 'index.html'))
-        ?? (path.extname(candidate) ? null : await existingFile(path.join(realRoot, 'index.html')));
+    const found =
+        (await existingFile(candidate)) ??
+        (await existingFile(path.join(candidate, 'index.html'))) ??
+        (path.extname(candidate) ? null : await existingFile(path.join(realRoot, 'index.html')));
 
     if (!found) return null;
 
     const real = await realpath(found);
     const relative = path.relative(realRoot, real);
-    const inside = relative !== '' && relative !== '..' && !relative.startsWith(`..${ path.sep }`) && !path.isAbsolute(relative);
+    const inside =
+        relative !== '' && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
 
     return inside ? { path: real, name: relative.split(path.sep).join('/') } : null;
 }
@@ -97,8 +99,7 @@ async function resolveFile(root: string, pathname: string): Promise<{ path: stri
 function decodePath(pathname: string): string | undefined {
     try {
         return decodeURIComponent(pathname);
-    }
-    catch {
+    } catch {
         return undefined;
     }
 }

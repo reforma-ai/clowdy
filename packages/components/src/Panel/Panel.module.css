@@ -16,7 +16,6 @@
     .panelLeft {
         border-right: 1px solid var(--color-surface-border);
         width: var(--panel-width, 15.625rem); /* 250px */
-        animation: panel-side-enter-left 0.22s var(--ease-in-out) both;
     }
 
     .panelLeft[data-collapsed] {
@@ -26,7 +25,6 @@
     .panelRight {
         border-left: 1px solid var(--color-surface-border);
         width: var(--panel-width, 15.625rem); /* 250px */
-        animation: panel-side-enter-right 0.22s var(--ease-in-out) both;
     }
 
     .panelSearch {
@@ -113,15 +111,6 @@
         overflow: hidden;
     }
 
-    .tabEnter {
-        display: flex;
-        flex: 1;
-        flex-direction: column;
-        min-height: 0;
-        /* Delay so Design side-slide finishes a beat before content reveals. */
-        animation: panel-tab-enter-fade 0.22s var(--ease-in-out) 0.12s both;
-    }
-
     /* Same height as one style control row, so an empty section doesn't collapse. */
     .emptyRow {
         min-height: 50px;
@@ -141,47 +130,5 @@
         width: var(--spacing-8);
         height: var(--spacing-8);
         padding: var(--spacing-4);
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-        .panelLeft,
-        .panelRight,
-        .tabEnter {
-            animation: none;
-        }
-    }
-}
-
-@keyframes panel-side-enter-left {
-    from {
-        opacity: 0;
-        transform: translateX(-16px);
-    }
-
-    to {
-        opacity: 1;
-        transform: translateX(0);
-    }
-}
-
-@keyframes panel-side-enter-right {
-    from {
-        opacity: 0;
-        transform: translateX(16px);
-    }
-
-    to {
-        opacity: 1;
-        transform: translateX(0);
-    }
-}
-
-@keyframes panel-tab-enter-fade {
-    from {
-        opacity: 0;
-    }
-
-    to {
-        opacity: 1;
     }
 }

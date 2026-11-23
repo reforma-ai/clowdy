@@ -30,37 +30,53 @@ export interface TaskCardProps {
  * and a chip for each agent working on it. Drag it to another column to change its status.
  * Clicks and keys are read by the screen from `data-task-id`, not here, so a card has no handler of its own.
  */
-export function TaskCard({ task, executors, notes, onOpenScope, isSelected, isOpen, isDragging, onDragStart, onDragEnd }: TaskCardProps) {
+export function TaskCard({
+    task,
+    executors,
+    notes,
+    onOpenScope,
+    isSelected,
+    isOpen,
+    isDragging,
+    onDragStart,
+    onDragEnd,
+}: TaskCardProps) {
     const { rollUp, checklist, parentKey } = notes;
 
     return (
         <article
-            className={ styles.card }
-            data-task-id={ task.id }
-            data-selected={ isSelected || undefined }
-            data-open={ isOpen || undefined }
-            data-dragging={ isDragging || undefined }
+            className={styles.card}
+            data-task-id={task.id}
+            data-selected={isSelected || undefined}
+            data-open={isOpen || undefined}
+            data-dragging={isDragging || undefined}
             draggable
-            onDragStart={ onDragStart }
-            onDragEnd={ onDragEnd }
+            onDragStart={onDragStart}
+            onDragEnd={onDragEnd}
         >
-            <span className={ styles.key }>
-                <Box aria-hidden width={ 12 } height={ 12 } />
-                { task.key }
-                { parentKey && <span className={ styles.parent } title={ `Sub-task of ${ parentKey }` }>{ `in ${ parentKey }` }</span> }
+            <span className={styles.key}>
+                <Box aria-hidden width={12} height={12} />
+                {task.key}
+                {parentKey && (
+                    <span className={styles.parent} title={`Sub-task of ${parentKey}`}>{`in ${parentKey}`}</span>
+                )}
             </span>
-            <button type="button" className={ styles.title } aria-pressed={ isSelected } aria-current={ isOpen || undefined }>{ task.title }</button>
-            { (checklist || rollUp) && (
-                <div className={ styles.chips }>
-                    { checklist && <ChecklistChip checklist={ checklist } /> }
-                    { rollUp && <RollUpChip rollUp={ rollUp } taskKey={ task.key } onPress={ onOpenScope } /> }
+            <button type="button" className={styles.title} aria-pressed={isSelected} aria-current={isOpen || undefined}>
+                {task.title}
+            </button>
+            {(checklist || rollUp) && (
+                <div className={styles.chips}>
+                    {checklist && <ChecklistChip checklist={checklist} />}
+                    {rollUp && <RollUpChip rollUp={rollUp} taskKey={task.key} onPress={onOpenScope} />}
                 </div>
-            ) }
-            { executors.length > 0 && (
-                <div className={ styles.agents } data-task-control>
-                    { executors.map(run => <AgentChip key={ run.id } run={ run } />) }
+            )}
+            {executors.length > 0 && (
+                <div className={styles.agents} data-task-control>
+                    {executors.map(run => (
+                        <AgentChip key={run.id} run={run} />
+                    ))}
                 </div>
-            ) }
+            )}
         </article>
     );
 }

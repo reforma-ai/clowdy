@@ -19,7 +19,7 @@
     flex-shrink: 0;
     align-items: center;
     gap: var(--spacing-sm);
-    width: 6rem;
+    width: 8.25rem;
 }
 
 /* The same height for both, so the label and its value are level whatever sits in them (an icon, a path). */
@@ -44,4 +44,10 @@
 /* A path or a name shrinks to the room that is left, as `PathText` asks of where it stands. */
 .value > * {
     min-width: 0;
+}
+
+/* The Manage button keeps its size beside a long path, which gives way to it. */
+.value > .manage {
+    flex: none;
+    margin-inline-start: var(--spacing-sm);
 }

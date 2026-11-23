@@ -1,0 +1,19 @@
+/* The plate fills the middle of the title band, whose width is the field's (`TitleBand.module.css`). */
+.button {
+    width: 100%;
+    min-width: 0;
+}
+
+/* The mark and the label at the start, the keys at the end: the button's content is centered otherwise. */
+.content {
+    justify-content: flex-start;
+    min-width: 0;
+}
+
+.label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-align: start;
+    text-overflow: ellipsis;
+}

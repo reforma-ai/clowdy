@@ -13,6 +13,6 @@ export function terminalLabels(terminals: ReadonlyArray<Pick<TerminalInfo, 'shel
 
         seen.set(shell, number);
 
-        return number === 1 ? shell : `${ shell } ${ number }`;
+        return number === 1 ? shell : `${shell} ${number}`;
     });
 }

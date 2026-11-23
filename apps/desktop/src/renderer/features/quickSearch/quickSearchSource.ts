@@ -29,7 +29,12 @@ function scoreOf(path: string, first: string): number {
 export function mergeFiles(query: string, ...lists: ReadonlyArray<readonly string[]>): string[] {
     const first = query.trim().toLowerCase().split(/\s+/)[0] ?? '';
 
-    return [...new Set(lists.flat())].toSorted((a, b) => scoreOf(a, first) - scoreOf(b, first) || Number(isHiddenPath(a)) - Number(isHiddenPath(b)) || a.length - b.length);
+    return [...new Set(lists.flat())].toSorted(
+        (a, b) =>
+            scoreOf(a, first) - scoreOf(b, first) ||
+            Number(isHiddenPath(a)) - Number(isHiddenPath(b)) ||
+            a.length - b.length
+    );
 }
 
 /**
@@ -42,7 +47,7 @@ export function matchDocs(query: string, paths: readonly string[]): string[] {
     const first = words[0] ?? '';
 
     return [...new Set(paths)]
-        .filter((path) => {
+        .filter(path => {
             const lower = path.toLowerCase();
 
             return words.every(word => lower.includes(word));
@@ -54,7 +59,12 @@ export function matchDocs(query: string, paths: readonly string[]): string[] {
  * Opens a result in the side panel's Files tab: the panel shows, the tab is the Files one, and the file is in a tab of the editor, with the match selected
  * when the result is a line. The tab shows the place the window is working in, which is the one the palette searched.
  */
-export async function openFound(root: RootStore, projectId: ProjectId, place: Place, found: Exclude<Found, FoundChat | FoundDoc>): Promise<void> {
+export async function openFound(
+    root: RootStore,
+    projectId: ProjectId,
+    place: Place,
+    found: Exclude<Found, FoundChat | FoundDoc>
+): Promise<void> {
     // A worktree that is not made yet has no file to open (the palette lists none of it either).
     if (!isPlaceReady(place)) return;
 
@@ -73,7 +83,10 @@ export async function openFound(root: RootStore, projectId: ProjectId, place: Pl
     const [first] = found.ranges;
     const length = first ? first.end - first.start : 0;
 
-    await manager.open(found.path, { from: { line: found.line, column: found.column }, to: { line: found.line, column: found.column + length } });
+    await manager.open(found.path, {
+        from: { line: found.line, column: found.column },
+        to: { line: found.line, column: found.column + length },
+    });
 }
 
 /** What a person has selected in the open file of the Files tab, on one line: what a search of the text starts with. Nothing when the tab is not on show. */
@@ -81,7 +94,8 @@ export async function selectedText(root: RootStore, projectId: ProjectId, place:
     const ui = root.ui.forProject(projectId);
 
     // The Docs tab is the same editor, over tabs of its own: the selection is the one of the tab on show.
-    if (!ui.sidePanelOpen || (ui.sidePanelTab !== 'files' && ui.sidePanelTab !== 'docs') || !isPlaceReady(place)) return undefined;
+    if (!ui.sidePanelOpen || (ui.sidePanelTab !== 'files' && ui.sidePanelTab !== 'docs') || !isPlaceReady(place))
+        return undefined;
 
     return (await managerOf(root, projectId, place, ui.sidePanelTab)).selectedText();
 }
@@ -90,7 +104,8 @@ export async function selectedText(root: RootStore, projectId: ProjectId, place:
  * Whether a path of the project's list is not what a person looks for by name: a file in a folder of dependencies (vendored code, if git tracks it) or one the file
  * manager of the system leaves behind, which a folder outside a repository lists as it lists every file.
  */
-const isNoise = (path: string) => path.split('/').some(name => name === 'node_modules' || name === '.DS_Store' || name === 'Thumbs.db');
+const isNoise = (path: string) =>
+    path.split('/').some(name => name === 'node_modules' || name === '.DS_Store' || name === 'Thumbs.db');
 
 /**
  * The palette's search of one place of a project, a folder's own checkout or the worktree of a chat. The names come from the daemon's list of the project's files (git's tracked
@@ -112,14 +127,14 @@ export function quickSearchSource(root: RootStore, project: ProjectState, place:
 
     return {
         chats: query => foundChats(project, query),
-        files: async (query) => {
+        files: async query => {
             if (!ready) return [];
 
             // Two answers: the project's list (git's tracked and unignored files, the words matched one by one), and the files the tree has, which is what the person
             // sees: a file that git ignores is in the tree and not in that list. Either one on its own is an answer; a failure is one only when both fail.
             const [listed, shown] = await Promise.allSettled([
                 root.transport.getProjectFiles(projectId, query, FILE_LIMIT, workspaceId),
-                managerOf(root, projectId, place).then((manager) => {
+                managerOf(root, projectId, place).then(manager => {
                     manager.tree.setShowHidden(treeLayout.showHidden);
 
                     return manager.listedFiles(query);
@@ -128,12 +143,19 @@ export function quickSearchSource(root: RootStore, project: ProjectState, place:
 
             if (listed.status === 'rejected' && shown.status === 'rejected') throw listed.reason;
 
-            const tracked = listed.status === 'fulfilled' ? listed.value.filter(match => match.folderId === folder.id).map(match => match.path) : [];
+            const tracked =
+                listed.status === 'fulfilled'
+                    ? listed.value.filter(match => match.folderId === folder.id).map(match => match.path)
+                    : [];
 
             // What the tree lists is already as the tree shows it, hidden files or not.
-            return mergeFiles(query, treeLayout.showHidden ? tracked : tracked.filter(path => !isNoise(path)), shown.status === 'fulfilled' ? shown.value : []);
+            return mergeFiles(
+                query,
+                treeLayout.showHidden ? tracked : tracked.filter(path => !isNoise(path)),
+                shown.status === 'fulfilled' ? shown.value : []
+            );
         },
-        docs: async (query) => {
+        docs: async query => {
             if (!ready) return [];
 
             // The daemon reads the folder's document sources from the disk (`.briefback`, `.clowdy/docs`, the roots of Spec Kit, OpenSpec and Kiro), which the file names leave out as
@@ -147,9 +169,14 @@ export function quickSearchSource(root: RootStore, project: ProjectState, place:
             });
             const mine = tree.find(entry => entry.folderId === folder.id);
 
-            return matchDocs(query, mine?.sources.flatMap(({ root: sourceRoot, nodes }) => docPaths(nodes).map(path => `${ sourceRoot }/${ path }`)) ?? []);
+            return matchDocs(
+                query,
+                mine?.sources.flatMap(({ root: sourceRoot, nodes }) =>
+                    docPaths(nodes).map(path => `${sourceRoot}/${path}`)
+                ) ?? []
+            );
         },
-        text: async (query) => {
+        text: async query => {
             if (!ready) return { files: [], truncated: false };
 
             manager = await managerOf(root, projectId, place);
@@ -164,9 +191,10 @@ export function quickSearchSource(root: RootStore, project: ProjectState, place:
 
             return search.result ?? { files: [], truncated: false };
         },
-        open: (found) => {
+        open: found => {
             if (found.kind === 'chat') void openChat(root, project, root.ui.forProject(projectId), found.chatId);
-            else if (found.kind === 'doc') void openFound(root, projectId, place, { kind: 'file', id: found.id, path: found.path });
+            else if (found.kind === 'doc')
+                void openFound(root, projectId, place, { kind: 'file', id: found.id, path: found.path });
             else void openFound(root, projectId, place, found);
         },
         dispose: () => manager?.search.dispose(),

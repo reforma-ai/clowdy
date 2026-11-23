@@ -10,3 +10,5 @@ export { ToolCard, type ToolCardProps } from './ToolCard';
 export { describeTool, type ToolView } from './toolView';
 export { UserBubble, type UserBubbleProps } from './UserBubble';
 export { WorkingLine } from './WorkingLine';
+
+export type { ForkAgent } from './ForkMenu';

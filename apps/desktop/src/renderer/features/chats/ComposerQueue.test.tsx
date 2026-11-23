@@ -3,7 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { RootStoreProvider, type RootStore } from '../../stores';
+import { type RootStore, RootStoreProvider } from '../../stores';
 import { Composer } from './Composer';
 import { filesOf } from './composerFiles';
 import { modelStore } from './modelTestKit';
@@ -15,9 +15,20 @@ import type { CommandInput } from '../../daemon/transport';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const accepted: CommandResult = { ok: true, requestId: 'request-1', data: {} };
-const queued = (id: string, text: string, fields: Partial<QueuedMessage> = {}): QueuedMessage => ({ id, mode: 'queue', text, content: text, createdAt: 0, ...fields });
+const queued = (id: string, text: string, fields: Partial<QueuedMessage> = {}): QueuedMessage => ({
+    id,
+    mode: 'queue',
+    text,
+    content: text,
+    createdAt: 0,
+    ...fields,
+});
 const notes = { id: 'a-notes', name: 'notes.txt', mediaType: 'text/plain', size: 5 };
-const transport = { getDocsTree: vi.fn(async () => []), getProjectFiles: vi.fn(async () => []), getSkills: vi.fn(async () => ({ entries: [], tokens: 0, warnings: [] })) };
+const transport = {
+    getDocsTree: vi.fn(async () => []),
+    getProjectFiles: vi.fn(async () => []),
+    getSkills: vi.fn(async () => ({ entries: [], tokens: 0, warnings: [] })),
+};
 
 let container: HTMLDivElement;
 let root: Root;
@@ -30,26 +41,48 @@ async function mount(chat: Chat, status: Run['status'] = 'running') {
 
         return accepted;
     });
-    const store = { command, transport, skillsRevision: 0, selectedProject: { project: { id: 'p', folders: [{ id: 'f1', path: '/Users/dev/web' }] }, taskList: [] }, ...await modelStore() };
+    const store = {
+        command,
+        transport,
+        skillsRevision: 0,
+        selectedProject: { project: { id: 'p', folders: [{ id: 'f1', path: '/Users/dev/web' }] }, taskList: [] },
+        ...(await modelStore()),
+    };
 
     await act(async () => {
         root.render(
-            <RootStoreProvider value={ store as unknown as RootStore }>
-                <Composer chat={ chat } run={ { id: 'r-1', status } as Run } />
+            <RootStoreProvider value={store as unknown as RootStore}>
+                <Composer chat={chat} run={{ id: 'r-1', status } as Run} />
             </RootStoreProvider>
         );
     });
 }
 
 function chatWith(queue: QueuedMessage[], fields: Partial<Chat> = {}): Chat {
-    return { id: `c-queue-${ ++chatNumber }`, projectId: 'p', title: 'Chat', mode: 'autopilot', orchestratorRunId: 'r-1', queue, createdAt: 0, updatedAt: 0, ...fields };
+    return {
+        id: `c-queue-${++chatNumber}`,
+        projectId: 'p',
+        title: 'Chat',
+        mode: 'autopilot',
+        orchestratorRunId: 'r-1',
+        queue,
+        createdAt: 0,
+        updatedAt: 0,
+        ...fields,
+    };
 }
 
 const previews = () => container.querySelectorAll<HTMLElement>('[aria-label^="Edit: "]');
 /** The row of a message: the preview is pressed to edit, and the row holds it with the status and the actions. */
-const rowOf = (label: string) => container.querySelector<HTMLElement>(`[aria-label="Edit: ${ label }"]`)!.parentElement!;
-const buttonIn = (scope: HTMLElement, name: string) => [...scope.querySelectorAll<HTMLButtonElement>('button')].find(button => button.getAttribute('aria-label') === name || button.textContent === name);
-const fieldText = () => (container.querySelector<HTMLElement>('[contenteditable="true"]') as HTMLElement & { editor: Editor }).editor.getText();
+const rowOf = (label: string) => container.querySelector<HTMLElement>(`[aria-label="Edit: ${label}"]`)!.parentElement!;
+const buttonIn = (scope: HTMLElement, name: string) =>
+    [...scope.querySelectorAll<HTMLButtonElement>('button')].find(
+        button => button.getAttribute('aria-label') === name || button.textContent === name
+    );
+const fieldText = () =>
+    (
+        container.querySelector<HTMLElement>('[contenteditable="true"]') as HTMLElement & { editor: Editor }
+    ).editor.getText();
 
 beforeEach(() => {
     sent = [];
@@ -65,7 +98,13 @@ afterEach(() => {
 
 describe('the queue in the composer', () => {
     it('shows each waiting message with its files, and a steer as steering without Send now', async () => {
-        await mount(chatWith([queued('q-1', 'Use the blue one', { mode: 'steer' }), queued('q-2', 'Then the footer', { attachments: [notes] }), queued('q-3', '', { attachments: [notes, { ...notes, id: 'a-2' }] })]));
+        await mount(
+            chatWith([
+                queued('q-1', 'Use the blue one', { mode: 'steer' }),
+                queued('q-2', 'Then the footer', { attachments: [notes] }),
+                queued('q-3', '', { attachments: [notes, { ...notes, id: 'a-2' }] }),
+            ])
+        );
 
         expect(container.querySelector('[aria-label="Queued messages"]')).not.toBeNull();
         expect(previews()).toHaveLength(3);
@@ -88,11 +127,15 @@ describe('the queue in the composer', () => {
     it('says why a paused queue holds and how to resume it', async () => {
         await mount(chatWith([queued('q-1', 'Later')], { queuePaused: 'stopped' }), 'cancelled');
 
-        expect(container.querySelector('[role="status"]')?.textContent).toBe('Queue paused after Stop. Use Send now on a message to resume.');
+        expect(container.querySelector('[role="status"]')?.textContent).toBe(
+            'Queue paused after Stop. Use Send now on a message to resume.'
+        );
 
         await mount(chatWith([queued('q-1', 'Later')], { queuePaused: 'failed' }), 'failed');
 
-        expect(container.querySelector('[role="status"]')?.textContent).toBe('Queue paused: the reply failed. Use Send now on a message to resume.');
+        expect(container.querySelector('[role="status"]')?.textContent).toBe(
+            'Queue paused: the reply failed. Use Send now on a message to resume.'
+        );
     });
 
     it('sends a message now, and removes one with its files', async () => {
@@ -116,7 +159,9 @@ describe('the queue in the composer', () => {
 
         expect(sent).toEqual([{ type: 'chat.removeQueued', chatId: chat.id, itemId: 'q-1', keepFiles: true }]);
         expect(fieldText()).toBe('Then the footer');
-        expect(filesOf(chat.id)).toEqual([expect.objectContaining({ name: 'notes.txt', status: 'ready', attachment: notes })]);
+        expect(filesOf(chat.id)).toEqual([
+            expect.objectContaining({ name: 'notes.txt', status: 'ready', attachment: notes }),
+        ]);
     });
 
     it('puts the words of an edited message in front of what is typed', async () => {
@@ -124,7 +169,9 @@ describe('the queue in the composer', () => {
 
         await mount(chat);
         act(() => {
-            (container.querySelector<HTMLElement>('[contenteditable="true"]') as HTMLElement & { editor: Editor }).editor.commands.insertContent('typed since');
+            (
+                container.querySelector<HTMLElement>('[contenteditable="true"]') as HTMLElement & { editor: Editor }
+            ).editor.commands.insertContent('typed since');
         });
         await act(async () => container.querySelector<HTMLElement>('[aria-label="Edit: Queued words"]')!.click());
 
@@ -133,7 +180,10 @@ describe('the queue in the composer', () => {
 
     describe('a compact item', () => {
         const compact = queued('q-c', 'Compact the conversation', { command: 'compact', content: '/compact' });
-        const compactRow = () => [...container.querySelectorAll<HTMLElement>('[data-first], [class*="item"]')].find(row => row.textContent?.startsWith('Compact the conversation'))!;
+        const compactRow = () =>
+            [...container.querySelectorAll<HTMLElement>('[data-first], [class*="item"]')].find(row =>
+                row.textContent?.startsWith('Compact the conversation')
+            )!;
         const sendNow = () => buttonIn(compactRow(), 'Send now')!;
 
         it('reads "Compact the conversation", with nothing to edit, and can be removed', async () => {
@@ -166,7 +216,9 @@ describe('the queue in the composer', () => {
             await mount(chatWith([compact]), 'running');
 
             expect(sendNow().disabled).toBe(true);
-            expect(compactRow().querySelector('[role="button"][aria-disabled]')?.getAttribute('aria-label')).toBe('Send now');
+            expect(compactRow().querySelector('[role="button"][aria-disabled]')?.getAttribute('aria-label')).toBe(
+                'Send now'
+            );
             expect(await sendNowHint()).toBe('Runs when the agent finishes');
 
             await act(async () => sendNow().click());
@@ -196,7 +248,10 @@ describe('the queue in the composer', () => {
 
     describe('an item a thread sent', () => {
         const notice = queued('q-n', 'Thread "Fix login" finished', {
-            from: { kind: 'threadNotice', threads: [{ chatId: 'c-t', title: 'Fix login', outcome: 'finished', text: 'Done' }] },
+            from: {
+                kind: 'threadNotice',
+                threads: [{ chatId: 'c-t', title: 'Fix login', outcome: 'finished', text: 'Done' }],
+            },
             // A daemon never puts files on one; the row would not show them anyway.
             attachments: [notes],
         });
@@ -227,8 +282,14 @@ describe('the queue in the composer', () => {
             ]);
         });
 
-        it('draws a thread\'s message the same way, by its words and the title of the thread that wrote them', async () => {
-            await mount(chatWith([queued('q-m', 'Use the staging keys', { from: { kind: 'thread', chatId: 'c-t', title: 'Fix login' } })]));
+        it("draws a thread's message the same way, by its words and the title of the thread that wrote them", async () => {
+            await mount(
+                chatWith([
+                    queued('q-m', 'Use the staging keys', {
+                        from: { kind: 'thread', chatId: 'c-t', title: 'Fix login' },
+                    }),
+                ])
+            );
 
             expect(noticeRow().textContent).toContain('Fix login: Use the staging keys');
             expect(buttonIn(noticeRow(), 'Edit')).toBeUndefined();

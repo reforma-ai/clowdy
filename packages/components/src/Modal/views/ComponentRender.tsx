@@ -11,7 +11,14 @@ export type ComponentRendererProps = {
     onUnmounted?: (modal: ModalInstance) => void;
 };
 
-export function ComponentRenderer({ component, props: componentProps, modal, store, onMounted, onUnmounted }: ComponentRendererProps) {
+export function ComponentRenderer({
+    component,
+    props: componentProps,
+    modal,
+    store,
+    onMounted,
+    onUnmounted,
+}: ComponentRendererProps) {
     useEffect(() => {
         onMounted?.(modal);
 
@@ -32,11 +39,5 @@ export function ComponentRenderer({ component, props: componentProps, modal, sto
     // component: FancyDialog
     const Component = component;
 
-    return (
-        <Component
-            store={ store }
-            modal={ modal }
-            { ...componentProps }
-        />
-    );
+    return <Component store={store} modal={modal} {...componentProps} />;
 }

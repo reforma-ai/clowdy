@@ -6,7 +6,8 @@ const MOVEMENT_THRESHOLD = 1;
 const RESIZE_HANDLE_SELECTOR = '[data-modal-resize-handle]';
 const RESIZE_DEFAULT_MIN_WIDTH = 200;
 const RESIZE_DEFAULT_MIN_HEIGHT = 120;
-const DRAG_EXCLUDE_SELECTORS = 'input, textarea, select, button, a, [contenteditable="true"], [data-modal-drag-exclude], [data-modal-close], [type="button"], [role="button"]';
+const DRAG_EXCLUDE_SELECTORS =
+    'input, textarea, select, button, a, [contenteditable="true"], [data-modal-drag-exclude], [data-modal-close], [type="button"], [role="button"]';
 
 /**
  * Handles draggable and resizable functionality for modal windows
@@ -45,11 +46,12 @@ export default class ModalInteractions {
             return;
         }
 
-        overlayEl.addEventListener('pointerdown', (e) => {
+        overlayEl.addEventListener('pointerdown', e => {
             const target = e.target as HTMLElement;
-            const handleElement = options.handle === true
-                ? target.closest('[data-modal-window]')
-                : target.closest(options.handle as string);
+            const handleElement =
+                options.handle === true
+                    ? target.closest('[data-modal-window]')
+                    : target.closest(options.handle as string);
 
             if (!handleElement) {
                 return;
@@ -83,7 +85,7 @@ export default class ModalInteractions {
             return;
         }
 
-        overlayEl.addEventListener('dblclick', (e) => {
+        overlayEl.addEventListener('dblclick', e => {
             const target = e.target as HTMLElement;
 
             if (!target.closest(RESIZE_HANDLE_SELECTOR)) {
@@ -103,7 +105,7 @@ export default class ModalInteractions {
             this.#handleDoubleClick();
         });
 
-        overlayEl.addEventListener('pointerdown', (e) => {
+        overlayEl.addEventListener('pointerdown', e => {
             const target = e.target as HTMLElement;
             const resizeHandle = target.closest(RESIZE_HANDLE_SELECTOR);
 
@@ -125,7 +127,6 @@ export default class ModalInteractions {
             this.#handleResizeStart(e, direction);
         });
     }
-
 
     /**
      * Maximize modal to available space (respecting constraints)
@@ -166,10 +167,13 @@ export default class ModalInteractions {
             maxHeight = Math.max(maxHeight, resizableConfig.minHeight);
         }
 
-        this.#modal.updateStyles({
-            width: maxWidth,
-            height: maxHeight,
-        }, true);
+        this.#modal.updateStyles(
+            {
+                width: maxWidth,
+                height: maxHeight,
+            },
+            true
+        );
 
         this.#resizableDimensions = {
             width: maxWidth,
@@ -197,13 +201,16 @@ export default class ModalInteractions {
 
         const modalEl = this.#getWindowElement();
 
-        modalEl.style.width = `${ initialWidth }px`;
-        modalEl.style.height = `${ initialHeight }px`;
+        modalEl.style.width = `${initialWidth}px`;
+        modalEl.style.height = `${initialHeight}px`;
 
-        this.#modal.updateStyles({
-            width: initialWidth,
-            height: initialHeight,
-        }, true);
+        this.#modal.updateStyles(
+            {
+                width: initialWidth,
+                height: initialHeight,
+            },
+            true
+        );
 
         this.isMaximized = false;
     }
@@ -233,12 +240,20 @@ export default class ModalInteractions {
         };
 
         const direction = resizableConfig.direction || 'both';
-        const clamped = this.#clampDimensions(savedDimensions.width, savedDimensions.height, resizableConfig, direction);
+        const clamped = this.#clampDimensions(
+            savedDimensions.width,
+            savedDimensions.height,
+            resizableConfig,
+            direction
+        );
 
-        this.#modal.updateStyles({
-            width: clamped.width,
-            height: clamped.height,
-        }, true);
+        this.#modal.updateStyles(
+            {
+                width: clamped.width,
+                height: clamped.height,
+            },
+            true
+        );
     }
 
     /**
@@ -421,8 +436,8 @@ export default class ModalInteractions {
             const deltaX = moveEvent.clientX - this.#initialResizeCoords.clientX;
             const deltaY = moveEvent.clientY - this.#initialResizeCoords.clientY;
 
-            const allowedDeltaX = (direction === 'x' || direction === 'both') ? deltaX : 0;
-            const allowedDeltaY = (direction === 'y' || direction === 'both') ? deltaY : 0;
+            const allowedDeltaX = direction === 'x' || direction === 'both' ? deltaX : 0;
+            const allowedDeltaY = direction === 'y' || direction === 'both' ? deltaY : 0;
 
             if (Math.abs(allowedDeltaX) >= MOVEMENT_THRESHOLD || Math.abs(allowedDeltaY) >= MOVEMENT_THRESHOLD) {
                 resized = true;
@@ -431,17 +446,15 @@ export default class ModalInteractions {
             const newWidth = this.#initialModalSize.width + allowedDeltaX;
             const newHeight = this.#initialModalSize.height + allowedDeltaY;
 
-            const clamped = this.#clampDimensions(
-                newWidth,
-                newHeight,
-                resizableConfig,
-                direction
-            );
+            const clamped = this.#clampDimensions(newWidth, newHeight, resizableConfig, direction);
 
-            this.#modal.updateStyles({
-                width: clamped.width,
-                height: clamped.height,
-            }, true);
+            this.#modal.updateStyles(
+                {
+                    width: clamped.width,
+                    height: clamped.height,
+                },
+                true
+            );
         };
 
         const handleEnd = (endEvent: PointerEvent) => {
@@ -502,8 +515,7 @@ export default class ModalInteractions {
 
         if (this.isMaximized) {
             this.restore();
-        }
-        else {
+        } else {
             this.maximize();
         }
     }
@@ -576,7 +588,7 @@ export default class ModalInteractions {
         overlayEl.classList.add('on');
 
         if (type) {
-            modalEl.setAttribute(`data-modal-in-${ type }`, '');
+            modalEl.setAttribute(`data-modal-in-${type}`, '');
         }
     }
 
@@ -587,7 +599,7 @@ export default class ModalInteractions {
         overlayEl.classList.remove('on');
 
         if (type) {
-            modalEl.removeAttribute(`data-modal-in-${ type }`);
+            modalEl.removeAttribute(`data-modal-in-${type}`);
         }
     }
 

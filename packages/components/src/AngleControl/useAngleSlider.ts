@@ -2,11 +2,7 @@ import { useCallback, useMemo, useRef } from 'react';
 import { mergeProps, useSlider, useSliderThumb } from 'react-aria';
 import { useSliderState } from 'react-stately';
 
-import {
-    formatAngleNumber,
-    getAnglePrecision,
-    toDegrees,
-} from './angle';
+import { formatAngleNumber, getAnglePrecision, toDegrees } from './angle';
 
 import type { InputHTMLAttributes, KeyboardEvent, RefObject } from 'react';
 import type { AngleChangeSource, AnglePrecision, AngleUnit, AngleValue, AngleValueRange } from './angle';
@@ -47,7 +43,7 @@ function formatAriaValue(value: AngleValue, precision?: AnglePrecision): string 
         turn: 'turns',
     };
 
-    return `${ formatAngleNumber(value, { precision }) } ${ unitLabel[value.unit] }`;
+    return `${formatAngleNumber(value, { precision })} ${unitLabel[value.unit]}`;
 }
 
 function sliderBoundsForAngle(
@@ -60,11 +56,9 @@ function sliderBoundsForAngle(
 
     if (valueRange === 'signed') {
         fallback = { min: -180, max: 180 };
-    }
-    else if (valueRange === 'positive') {
+    } else if (valueRange === 'positive') {
         fallback = { min: 0, max: 360 };
-    }
-    else {
+    } else {
         const revolutionStart = Math.floor(degrees / 360) * 360;
 
         fallback = { min: revolutionStart, max: revolutionStart + 360 };
@@ -85,7 +79,7 @@ function sliderBoundsForAngle(
 function stepDegreesForUnit(step: number | undefined, unit: AngleUnit): number {
     const degrees = toDegrees({ value: step ?? DEFAULT_STEP_BY_UNIT[unit], unit });
 
-    return (Number.isFinite(degrees) && degrees > 0) ? degrees : 1;
+    return Number.isFinite(degrees) && degrees > 0 ? degrees : 1;
 }
 
 export function useAngleSlider({
@@ -103,15 +97,22 @@ export function useAngleSlider({
     const bounds = sliderBoundsForAngle(angle.degrees, angle.minDegrees, angle.maxDegrees, valueRange);
     const value = Math.min(Math.max(angle.degrees, bounds.min), bounds.max);
     const sliderStep = stepDegreesForUnit(step, angle.unit);
-    const numberFormatter = useMemo(() => new Intl.NumberFormat(undefined, {
-        maximumFractionDigits: getAnglePrecision(angle.unit, precision),
-    }), [angle.unit, precision]);
+    const numberFormatter = useMemo(
+        () =>
+            new Intl.NumberFormat(undefined, {
+                maximumFractionDigits: getAnglePrecision(angle.unit, precision),
+            }),
+        [angle.unit, precision]
+    );
 
-    const handleChange = useCallback((nextDegrees: number | number[]) => {
-        if (typeof nextDegrees === 'number') {
-            onChangeDegrees(nextDegrees, 'keyboard', true);
-        }
-    }, [onChangeDegrees]);
+    const handleChange = useCallback(
+        (nextDegrees: number | number[]) => {
+            if (typeof nextDegrees === 'number') {
+                onChangeDegrees(nextDegrees, 'keyboard', true);
+            }
+        },
+        [onChangeDegrees]
+    );
 
     const sliderProps = {
         value,
@@ -133,14 +134,17 @@ export function useAngleSlider({
         inputProps: sliderInputProps,
         isDragging,
         isFocused,
-    } = useSliderThumb({
-        index: SLIDER_THUMB_INDEX,
-        trackRef: rootRef,
-        inputRef,
-        isDisabled,
-        'aria-label': ariaLabel,
-        'aria-labelledby': ariaLabelledBy,
-    }, state);
+    } = useSliderThumb(
+        {
+            index: SLIDER_THUMB_INDEX,
+            trackRef: rootRef,
+            inputRef,
+            isDisabled,
+            'aria-label': ariaLabel,
+            'aria-labelledby': ariaLabelledBy,
+        },
+        state
+    );
 
     const focusThumb = useCallback(() => {
         state.setFocusedThumb(SLIDER_THUMB_INDEX);
@@ -156,20 +160,22 @@ export function useAngleSlider({
         state.setThumbDragging(SLIDER_THUMB_INDEX, false);
     }, [state]);
 
-    const handleKeyDown = useCallback((event: KeyboardEvent<HTMLInputElement>) => {
-        if (isDisabled || !event.shiftKey) {
-            return;
-        }
+    const handleKeyDown = useCallback(
+        (event: KeyboardEvent<HTMLInputElement>) => {
+            if (isDisabled || !event.shiftKey) {
+                return;
+            }
 
-        if (event.key === 'ArrowUp' || event.key === 'ArrowRight') {
-            event.preventDefault();
-            onChangeDegrees(angle.degrees + SHIFT_KEY_STEP_DEGREES, 'keyboard', true);
-        }
-        else if (event.key === 'ArrowDown' || event.key === 'ArrowLeft') {
-            event.preventDefault();
-            onChangeDegrees(angle.degrees - SHIFT_KEY_STEP_DEGREES, 'keyboard', true);
-        }
-    }, [angle.degrees, isDisabled, onChangeDegrees]);
+            if (event.key === 'ArrowUp' || event.key === 'ArrowRight') {
+                event.preventDefault();
+                onChangeDegrees(angle.degrees + SHIFT_KEY_STEP_DEGREES, 'keyboard', true);
+            } else if (event.key === 'ArrowDown' || event.key === 'ArrowLeft') {
+                event.preventDefault();
+                onChangeDegrees(angle.degrees - SHIFT_KEY_STEP_DEGREES, 'keyboard', true);
+            }
+        },
+        [angle.degrees, isDisabled, onChangeDegrees]
+    );
 
     const inputProps = mergeProps(sliderInputProps, {
         'aria-valuetext': formatAriaValue(angle.value, precision),

@@ -45,10 +45,15 @@ export const ui = () => page.store.ui.forProject(page.store.selectedProjectId ??
 export const project = () => page.store.selectedProject!;
 
 /** Draws the screen, after `before` if there is one, in the same step: the observer does that in the app, where a key that changes the store is drawn before the next frame. */
-export const draw = (before?: () => void) => act(async () => {
-    before?.();
-    reactRoot.render(<RootStoreProvider value={ page.store }><Screen /></RootStoreProvider>);
-});
+export const draw = (before?: () => void) =>
+    act(async () => {
+        before?.();
+        reactRoot.render(
+            <RootStoreProvider value={page.store}>
+                <Screen />
+            </RootStoreProvider>
+        );
+    });
 
 /** Opens a page with the keys installed, for each test; `closePage` in `afterEach`. */
 export function openPage() {
@@ -109,16 +114,26 @@ export function lateTaskEvents() {
     const held: (() => void)[] = [];
 
     return {
-        wrap: (base: Transport): Transport => overrideTransport(base, {
-            subscribe: (cursor, onEvent, onStatus) => base.subscribe(cursor, event => (holding && event.data.type === 'task.upserted' ? void held.push(() => onEvent(event)) : onEvent(event)), onStatus),
-        }),
+        wrap: (base: Transport): Transport =>
+            overrideTransport(base, {
+                subscribe: (cursor, onEvent, onStatus) =>
+                    base.subscribe(
+                        cursor,
+                        event =>
+                            holding && event.data.type === 'task.upserted'
+                                ? void held.push(() => onEvent(event))
+                                : onEvent(event),
+                        onStatus
+                    ),
+            }),
         hold: () => {
             holding = true;
         },
-        release: () => act(async () => {
-            holding = false;
-            held.splice(0).forEach(deliver => deliver());
-        }),
+        release: () =>
+            act(async () => {
+                holding = false;
+                held.splice(0).forEach(deliver => deliver());
+            }),
     };
 }
 
@@ -131,10 +146,11 @@ export async function change(input: CommandInput) {
 }
 
 /** The card or the row of a task. */
-export const itemOf = (taskId: string) => container.querySelector<HTMLElement>(`[data-task-id="${ taskId }"]`);
+export const itemOf = (taskId: string) => container.querySelector<HTMLElement>(`[data-task-id="${taskId}"]`);
 
 /** The ids of the cards or rows drawn, in the order of the page. */
-export const drawn = () => [...container.querySelectorAll<HTMLElement>('[data-task-id]')].map(item => item.dataset.taskId);
+export const drawn = () =>
+    [...container.querySelectorAll<HTMLElement>('[data-task-id]')].map(item => item.dataset.taskId);
 
 /** The keys of the tasks drawn, for a test that reads better by the names the person sees. */
 export const drawnKeys = () => drawn().map(id => project().tasks.get(id!)?.key);
@@ -148,9 +164,12 @@ export const focusableOf = (taskId: string) => {
 
 export const columnOf = (taskId: string) => itemOf(taskId)?.closest('section')?.getAttribute('aria-label');
 
-export const buttonNamed = (name: string | RegExp, within: ParentNode = container) => [...within.querySelectorAll<HTMLElement>('button, [role="button"]')].find(button => (typeof name === 'string'
-    ? (button.getAttribute('aria-label') ?? button.textContent?.trim()) === name
-    : name.test(button.getAttribute('aria-label') ?? button.textContent?.trim() ?? '')));
+export const buttonNamed = (name: string | RegExp, within: ParentNode = container) =>
+    [...within.querySelectorAll<HTMLElement>('button, [role="button"]')].find(button =>
+        typeof name === 'string'
+            ? (button.getAttribute('aria-label') ?? button.textContent?.trim()) === name
+            : name.test(button.getAttribute('aria-label') ?? button.textContent?.trim() ?? '')
+    );
 
 /** Presses a button the way a person does, and draws what came of it. */
 export async function click(element: Element | undefined | null) {
@@ -161,7 +180,11 @@ export async function click(element: Element | undefined | null) {
 }
 
 /** A key as the dispatcher sees it, from the body or from an element, with the platform's Cmd or Ctrl for `mod`. */
-export function press(key: string, { mod = false, ...init }: KeyboardEventInit & { mod?: boolean } = {}, target: Element = document.body) {
+export function press(
+    key: string,
+    { mod = false, ...init }: KeyboardEventInit & { mod?: boolean } = {},
+    target: Element = document.body
+) {
     const modifier = hotkeys.platform === 'darwin' ? { metaKey: mod } : { ctrlKey: mod };
     const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...modifier, ...init });
 
@@ -189,9 +212,10 @@ export async function pressKeys(...keys: string[]) {
 }
 
 /** Real time: the screen hands the keyboard back a tick after a dialog closes, and after a frame for the title field. */
-export const wait = (ms = 40) => act(async () => {
-    await new Promise(resolve => setTimeout(resolve, ms));
-});
+export const wait = (ms = 40) =>
+    act(async () => {
+        await new Promise(resolve => setTimeout(resolve, ms));
+    });
 
 /** Types into the search field the way a person does: the value, then the input event React listens to. */
 export async function search(text: string) {
@@ -208,13 +232,16 @@ export async function search(text: string) {
 export async function drop(taskId: string, column: string) {
     const event = new Event('drop', { bubbles: true, cancelable: true });
 
-    Object.defineProperty(event, 'dataTransfer', { value: { types: ['application/x-clowdy-task'], getData: () => taskId } });
-    await act(async () => void container.querySelector(`section[aria-label="${ column }"]`)!.dispatchEvent(event));
+    Object.defineProperty(event, 'dataTransfer', {
+        value: { types: ['application/x-clowdy-task'], getData: () => taskId },
+    });
+    await act(async () => void container.querySelector(`section[aria-label="${column}"]`)!.dispatchEvent(event));
     await draw();
 }
 
 /** The text of the screen's header controls and the path, to read what the person sees. */
-export const pathText = () => [...container.querySelectorAll('nav[aria-label="Task path"] li')].map(item => item.textContent?.trim());
+export const pathText = () =>
+    [...container.querySelectorAll('nav[aria-label="Task path"] li')].map(item => item.textContent?.trim());
 
 /** Whether a toggle of the header (a view, the sub-tasks) is on: a button of a group of one choice says it as `aria-checked`, a lone toggle as `aria-pressed`. */
 export const isOn = (name: string) => {

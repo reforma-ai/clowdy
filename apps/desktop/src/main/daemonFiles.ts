@@ -29,7 +29,8 @@ export async function restoreDatabase(dataDir: string, since: number): Promise<s
     for (const name of await readdir(dataDir).catch(() => [] as string[])) {
         const match = BACKUP.exec(name);
 
-        if (match && (await stat(path.join(dataDir, name))).mtimeMs >= since) backups.push({ name, schema: Number(match[1]) });
+        if (match && (await stat(path.join(dataDir, name))).mtimeMs >= since)
+            backups.push({ name, schema: Number(match[1]) });
     }
 
     const [oldest] = backups.sort((a, b) => a.schema - b.schema);
@@ -39,10 +40,10 @@ export async function restoreDatabase(dataDir: string, since: number): Promise<s
     const database = path.join(dataDir, DATABASE);
 
     // The copy first: when it fails, the migrated database still has its log.
-    await copyFile(path.join(dataDir, oldest.name), `${ database }.restoring`);
-    await rm(`${ database }-wal`, { force: true });
-    await rm(`${ database }-shm`, { force: true });
-    await rename(`${ database }.restoring`, database);
+    await copyFile(path.join(dataDir, oldest.name), `${database}.restoring`);
+    await rm(`${database}-wal`, { force: true });
+    await rm(`${database}-shm`, { force: true });
+    await rename(`${database}.restoring`, database);
 
     return oldest.name;
 }

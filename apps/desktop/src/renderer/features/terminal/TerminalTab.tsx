@@ -12,9 +12,9 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { currentPlace, isPlaceReady } from '../sidePanel/currentPlace';
 import { PlaceWaiting } from '../sidePanel/PlaceWaiting';
-import { terminalLabels } from './terminalLabels';
 import styles from './TerminalTab.module.css';
 import { TerminalView } from './TerminalView';
+import { terminalLabels } from './terminalLabels';
 import { useTerminalsStore } from './useTerminalsStore';
 
 import '@xterm/xterm/css/xterm.css';
@@ -36,14 +36,21 @@ export function TerminalShell({ session, onEmptied }: { session: TerminalSession
 
         if (!host) return;
 
-        const view = session.view instanceof TerminalView ? session.view : new TerminalView(session, {
-            transport,
-            onGone: () => {
-                store.forget(session);
+        const view =
+            session.view instanceof TerminalView
+                ? session.view
+                : new TerminalView(session, {
+                      transport,
+                      onGone: () => {
+                          store.forget(session);
 
-                if (store.sessionsOf(session.info.projectId, session.info.folderId, session.info.workspaceId).length === 0) onEmptied?.();
-            },
-        });
+                          if (
+                              store.sessionsOf(session.info.projectId, session.info.folderId, session.info.workspaceId)
+                                  .length === 0
+                          )
+                              onEmptied?.();
+                      },
+                  });
 
         session.view = view;
         view.mount(host);
@@ -64,16 +71,34 @@ export function TerminalShell({ session, onEmptied }: { session: TerminalSession
 
     return (
         <>
-            <div ref={ hostRef } className={ styles.host } data-terminal="" />
-            <Show when={ session.status === 'reconnecting' }>
-                <div className={ styles.banner }>
-                    <Text variant="sm" color="secondary">Reconnecting</Text>
+            <div ref={hostRef} className={styles.host} data-terminal="" />
+            <Show when={session.status === 'reconnecting'}>
+                <div className={styles.banner}>
+                    <Text variant="sm" color="secondary">
+                        Reconnecting
+                    </Text>
                 </div>
             </Show>
-            <Show when={ !session.isRunning }>
-                <div className={ styles.banner }>
-                    <Text variant="sm" color="secondary">Process exited</Text>
-                    <Button size="xs" variant="filled" color="secondary" onPress={ () => void store.start(session.info.projectId, session.info.folderId, undefined, session.info.workspaceId) }>New terminal</Button>
+            <Show when={!session.isRunning}>
+                <div className={styles.banner}>
+                    <Text variant="sm" color="secondary">
+                        Process exited
+                    </Text>
+                    <Button
+                        size="xs"
+                        variant="filled"
+                        color="secondary"
+                        onPress={() =>
+                            void store.start(
+                                session.info.projectId,
+                                session.info.folderId,
+                                undefined,
+                                session.info.workspaceId
+                            )
+                        }
+                    >
+                        New terminal
+                    </Button>
                 </div>
             </Show>
         </>
@@ -81,7 +106,17 @@ export function TerminalShell({ session, onEmptied }: { session: TerminalSession
 }
 
 /** The tabs of the place's shells; `onEmptied` is told when closing a shell left the place with none. */
-function TerminalBar({ projectId, folderId, workspaceId, onEmptied }: { projectId: ProjectId; folderId: FolderId; workspaceId?: WorkspaceId; onEmptied: () => void }) {
+function TerminalBar({
+    projectId,
+    folderId,
+    workspaceId,
+    onEmptied,
+}: {
+    projectId: ProjectId;
+    folderId: FolderId;
+    workspaceId?: WorkspaceId;
+    onEmptied: () => void;
+}) {
     const store = useTerminalsStore();
     const sessions = store.sessionsOf(projectId, folderId, workspaceId);
     const active = store.activeOf(projectId, folderId, workspaceId);
@@ -91,28 +126,38 @@ function TerminalBar({ projectId, folderId, workspaceId, onEmptied }: { projectI
         <TabStrip
             aria-label="Terminals"
             end={
-                <Button className={ styles.add } size="sm" variant="filling" color="secondary" iconOnly tooltip="New terminal" tooltipPlacement="bottom" aria-label="New terminal" onPress={ () => void store.start(projectId, folderId, undefined, workspaceId) }>
+                <Button
+                    className={styles.add}
+                    size="sm"
+                    variant="filling"
+                    color="secondary"
+                    iconOnly
+                    tooltip="New terminal"
+                    tooltipPlacement="bottom"
+                    aria-label="New terminal"
+                    onPress={() => void store.start(projectId, folderId, undefined, workspaceId)}
+                >
                     <Plus aria-hidden="true" />
                 </Button>
             }
         >
-            <For each={ sessions }>
-                { (session, index) => (
+            <For each={sessions}>
+                {(session, index) => (
                     <Tab
-                        key={ session.id }
-                        label={ labels[index] }
-                        icon={ <Terminal aria-hidden="true" /> }
-                        active={ session === active }
-                        closeLabel={ `Close ${ labels[index] }` }
-                        onSelect={ () => store.select(session) }
-                        onClose={ () => {
+                        key={session.id}
+                        label={labels[index]}
+                        icon={<Terminal aria-hidden="true" />}
+                        active={session === active}
+                        closeLabel={`Close ${labels[index]}`}
+                        onSelect={() => store.select(session)}
+                        onClose={() => {
                             // The shell is gone from the list at once; the daemon is told meanwhile.
                             void store.close(session);
 
                             if (store.sessionsOf(projectId, folderId, workspaceId).length === 0) onEmptied();
-                        } }
+                        }}
                     />
-                ) }
+                )}
             </For>
         </TabStrip>
     );
@@ -146,9 +191,10 @@ export default function TerminalTab() {
         // A tab that went before the shells were read has nothing to start for.
         let current = true;
 
-        void store.load(projectId)
+        void store
+            .load(projectId)
             .then(() => (current ? store.ensureOne(projectId, folderId, workspaceId) : undefined))
-            .then((session) => {
+            .then(session => {
                 if (!current || session) return;
 
                 toast.error({ title: 'Couldn’t start a terminal', message: store.error || undefined });
@@ -163,11 +209,11 @@ export default function TerminalTab() {
     if (!ready) return <PlaceWaiting />;
 
     return (
-        <div className={ styles.root }>
-            <TerminalBar projectId={ projectId } folderId={ folderId } workspaceId={ workspaceId } onEmptied={ shutIfEmpty } />
-            <div className={ styles.stage }>
-                <Show when={ active } fallback={ <PanelLoadingState /> }>
-                    { session => <TerminalShell key={ session.id } session={ session } onEmptied={ shutIfEmpty } /> }
+        <div className={styles.root}>
+            <TerminalBar projectId={projectId} folderId={folderId} workspaceId={workspaceId} onEmptied={shutIfEmpty} />
+            <div className={styles.stage}>
+                <Show when={active} fallback={<PanelLoadingState />}>
+                    {session => <TerminalShell key={session.id} session={session} onEmptied={shutIfEmpty} />}
                 </Show>
             </div>
         </div>

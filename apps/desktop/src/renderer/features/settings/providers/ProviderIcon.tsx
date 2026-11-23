@@ -18,11 +18,11 @@ export function ProviderIcon({ agentId, size = 20, ...props }: ProviderIconProps
     const Mark = MARKS[agentId];
 
     if (Mark) {
-        return <Mark size={ size } { ...props } />;
+        return <Mark size={size} {...props} />;
     }
 
     return (
-        <svg width={ size } height={ size } viewBox="0 0 24 24" aria-hidden focusable="false" { ...props }>
+        <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden focusable="false" {...props}>
             <circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" strokeWidth="1.7" />
         </svg>
     );

@@ -1,5 +1,15 @@
 import { SETTINGS_COMMAND, SETTINGS_KEYS } from '../features/settings/commands';
-import { SIDE_PANEL_COMMAND, SIDE_PANEL_EXPAND_COMMAND, SIDE_PANEL_EXPAND_KEYS, SIDE_PANEL_KEYS, SIDE_PANEL_TAB_KEYS, SIDE_PANEL_TAB_LABELS, sidePanelTabCommand, TERMINAL_COMMAND, TERMINAL_KEYS } from '../features/sidePanel';
+import {
+    SIDE_PANEL_COMMAND,
+    SIDE_PANEL_EXPAND_COMMAND,
+    SIDE_PANEL_EXPAND_KEYS,
+    SIDE_PANEL_KEYS,
+    SIDE_PANEL_TAB_KEYS,
+    SIDE_PANEL_TAB_LABELS,
+    sidePanelTabCommand,
+    TERMINAL_COMMAND,
+    TERMINAL_KEYS,
+} from '../features/sidePanel';
 import { SIDE_PANEL_TABS } from '../stores';
 
 import type { ScopedCommand } from '../hotkeys';
@@ -13,13 +23,14 @@ const BACK_KEYS = '$mod+BracketLeft';
 const FORWARD_KEYS = '$mod+BracketRight';
 
 /** What the shell's commands need of the root store. */
-export interface ShellCommandsRoot extends Pick<RootStore, 'phase' | 'selectedProjectId' | 'selectedProjectUi' | 'showsProjectScreen' | 'ui'> {
+export interface ShellCommandsRoot
+    extends Pick<RootStore, 'phase' | 'selectedProjectId' | 'selectedProjectUi' | 'showsProjectScreen' | 'ui'> {
     history: Pick<NavHistory, 'back' | 'forward' | 'canGoBack' | 'canGoForward'>;
 }
 
 /**
  * The commands that work in the whole window, for `useCommands('app', …)`: the shortcuts page of Settings, `Cmd+,` for the Settings window, `Cmd+N` for a new chat, `Cmd+Esc` (`Ctrl+Shift+B` off a Mac) for
- * the side panel, `Cmd+Shift+Enter` (`Ctrl+Shift+Enter`) for its expanded view, `Ctrl+`` for its terminal, `Cmd+0` to `Cmd+4` for its tabs, and back and forward.
+ * the side panel, `Cmd+Shift+Enter` (`Ctrl+Shift+Enter`) for its expanded view, `Ctrl+`` for its terminal, `Cmd+0` to `Cmd+5` for its tabs, and back and forward.
  * `?` opens Settings on its Shortcuts page, once the window shows anything to open it over: while the app loads or cannot reach its daemon, the key reaches the page.
  * A new chat needs a selected project, and also leaves Settings.
  * `Cmd+N` shows the new-chat page, and works from a text field too: the message box is the place it is most wanted.
@@ -79,7 +90,10 @@ export function shellCommands(root: ShellCommandsRoot): ScopedCommand[] {
             inInputs: true,
             // Only with the panel open, as the button in the title band's corner: with it shut there is nothing to expand, and the key reaches the page.
             // And not on a tab that is full already (Tasks).
-            when: () => root.showsProjectScreen && root.selectedProjectUi?.sidePanelOpen === true && !root.selectedProjectUi.sidePanelTabIsFull,
+            when: () =>
+                root.showsProjectScreen &&
+                root.selectedProjectUi?.sidePanelOpen === true &&
+                !root.selectedProjectUi.sidePanelTabIsFull,
             handler: () => root.selectedProjectUi?.toggleSidePanelExpanded(),
         },
         {
@@ -97,7 +111,7 @@ export function shellCommands(root: ShellCommandsRoot): ScopedCommand[] {
         // The tabs of the panel, one key to open the panel on a tab and the same key to shut it, as a click on the tab's item in the rail does, from a text field too, and from the terminal, which hands the keys on (`isAppShortcut`).
         ...SIDE_PANEL_TABS.map(tab => ({
             id: sidePanelTabCommand(tab),
-            title: `Toggle ${ SIDE_PANEL_TAB_LABELS[tab] } in the side panel`,
+            title: `Toggle ${SIDE_PANEL_TAB_LABELS[tab]} in the side panel`,
             group: 'General',
             keys: SIDE_PANEL_TAB_KEYS[tab],
             inInputs: true,
@@ -106,7 +120,21 @@ export function shellCommands(root: ShellCommandsRoot): ScopedCommand[] {
                 if (root.selectedProjectId) root.ui.forProject(root.selectedProjectId).toggleSidePanelTab(tab);
             },
         })),
-        { id: 'nav.back', title: 'Go back', group: 'Navigation', keys: BACK_KEYS, when: () => root.history.canGoBack, handler: () => root.history.back() },
-        { id: 'nav.forward', title: 'Go forward', group: 'Navigation', keys: FORWARD_KEYS, when: () => root.history.canGoForward, handler: () => root.history.forward() },
+        {
+            id: 'nav.back',
+            title: 'Go back',
+            group: 'Navigation',
+            keys: BACK_KEYS,
+            when: () => root.history.canGoBack,
+            handler: () => root.history.back(),
+        },
+        {
+            id: 'nav.forward',
+            title: 'Go forward',
+            group: 'Navigation',
+            keys: FORWARD_KEYS,
+            when: () => root.history.canGoForward,
+            handler: () => root.history.forward(),
+        },
     ];
 }

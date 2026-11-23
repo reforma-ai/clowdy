@@ -4,7 +4,15 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, test } from 'vitest';
 
-import { hashFolder, isBundlePath, openManifest, parseManifest, sha256, signManifest, type BundleManifest } from './bundleManifest';
+import {
+    type BundleManifest,
+    hashFolder,
+    isBundlePath,
+    openManifest,
+    parseManifest,
+    sha256,
+    signManifest,
+} from './bundleManifest';
 
 const key = () => {
     const pair = generateKeyPairSync('ed25519');
@@ -54,7 +62,9 @@ describe('bundle manifests', () => {
 
     test('paths stay inside the bundle on every OS', () => {
         expect(['renderer/index.html', 'daemon/main.js'].every(isBundlePath)).toBe(true);
-        expect(['', '/etc/passwd', 'a/../b', 'a\\b', 'C:/x', 'a//b', './a', 'manifest.json', 'a\0b'].some(isBundlePath)).toBe(false);
+        expect(
+            ['', '/etc/passwd', 'a/../b', 'a\\b', 'C:/x', 'a//b', './a', 'manifest.json', 'a\0b'].some(isBundlePath)
+        ).toBe(false);
     });
 
     test('hashFolder hashes every file but the manifest, by its / path', async () => {
@@ -65,9 +75,10 @@ describe('bundle manifests', () => {
             writeFileSync(path.join(dir, 'renderer/assets/a.js'), 'a');
             writeFileSync(path.join(dir, 'manifest.json'), '{}');
 
-            expect(await hashFolder(dir)).toEqual({ 'renderer/assets/a.js': { sha256: sha256(new TextEncoder().encode('a')), size: 1 } });
-        }
-        finally {
+            expect(await hashFolder(dir)).toEqual({
+                'renderer/assets/a.js': { sha256: sha256(new TextEncoder().encode('a')), size: 1 },
+            });
+        } finally {
             rmSync(dir, { recursive: true, force: true });
         }
     });
@@ -83,8 +94,7 @@ describe('bundle manifests', () => {
             symlinkSync('a.md', path.join(dir, 'b.md'));
 
             await expect(hashFolder(dir)).rejects.toThrow('b.md is not a regular file');
-        }
-        finally {
+        } finally {
             rmSync(dir, { recursive: true, force: true });
         }
     });

@@ -24,8 +24,7 @@ export interface Place {
 function isDirectory(path: string): boolean {
     try {
         return statSync(path).isDirectory();
-    }
-    catch {
+    } catch {
         return false;
     }
 }
@@ -60,11 +59,11 @@ export function resolvePlace(store: Store, project: Project, folderId: FolderId,
     }
 
     if (!workspace.ready) {
-        throw unavailable(`The worktree ${ workspace.path } is not made yet`);
+        throw unavailable(`The worktree ${workspace.path} is not made yet`);
     }
 
     if (!isDirectory(workspace.path)) {
-        throw unavailable(`The worktree ${ workspace.path } is missing`);
+        throw unavailable(`The worktree ${workspace.path} is missing`);
     }
 
     return { folder, workspace, path: workspace.path };
@@ -97,5 +96,9 @@ export function ownsPlace(project: Project, place: Place): boolean {
         return place.path === folder.path;
     }
 
-    return place.workspace.projectId === project.id && place.workspace.folderId === folder.id && place.path === place.workspace.path;
+    return (
+        place.workspace.projectId === project.id &&
+        place.workspace.folderId === folder.id &&
+        place.path === place.workspace.path
+    );
 }

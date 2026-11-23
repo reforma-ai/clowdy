@@ -55,7 +55,15 @@ describe('liveLine', () => {
     });
 
     it('shows no line when the run waits for the person (its question is in the stream), waits for background work, is blocked, or has ended', () => {
-        for (const status of ['waiting_user', 'waiting_background', 'blocked', 'succeeded', 'failed', 'cancelled', 'interrupted'] as const) {
+        for (const status of [
+            'waiting_user',
+            'waiting_background',
+            'blocked',
+            'succeeded',
+            'failed',
+            'cancelled',
+            'interrupted',
+        ] as const) {
             expect(liveLine(status), status).toBe(false);
         }
     });

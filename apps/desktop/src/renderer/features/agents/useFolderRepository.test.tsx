@@ -4,14 +4,20 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { TransportError } from '../../daemon/transport';
-import { RootStoreProvider, type RootStore } from '../../stores';
+import { type RootStore, RootStoreProvider } from '../../stores';
 import { useFolderRepository } from './useFolderRepository';
 
 import type { FolderGit } from '@clowdy/protocol';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const repository = (branch: string): FolderGit => ({ isRepository: true, branch, defaultBranch: 'origin/main', branches: [{ name: branch, remote: false }], worktrees: [] });
+const repository = (branch: string): FolderGit => ({
+    isRepository: true,
+    branch,
+    defaultBranch: 'origin/main',
+    branches: [{ name: branch, remote: false }],
+    worktrees: [],
+});
 
 /** The reads the hook has made, each one answered or refused when the test says so. */
 function transport() {
@@ -21,7 +27,8 @@ function transport() {
     return {
         getFolderGit,
         answer: (read: number, answer: FolderGit) => act(async () => reads[read]!.resolve(answer)),
-        refuse: (read: number, message: string, status = 503) => act(async () => reads[read]!.reject(new TransportError(message, status))),
+        refuse: (read: number, message: string, status = 503) =>
+            act(async () => reads[read]!.reject(new TransportError(message, status))),
     };
 }
 
@@ -31,9 +38,26 @@ let root: Root;
 const Said = ({ folderId }: { folderId: string }) => {
     const repo = useFolderRepository('p-1', folderId);
 
-    return <span>{ repo.status === 'ready' ? (repo.git.isRepository ? `ready ${ repo.git.branch }` : 'ready none') : repo.status === 'failed' ? `failed ${ repo.reason }` : 'loading' }</span>;
+    return (
+        <span>
+            {repo.status === 'ready'
+                ? repo.git.isRepository
+                    ? `ready ${repo.git.branch}`
+                    : 'ready none'
+                : repo.status === 'failed'
+                  ? `failed ${repo.reason}`
+                  : 'loading'}
+        </span>
+    );
 };
-const draw = (store: RootStore, folderId: string) => act(() => root.render(<RootStoreProvider value={ store }><Said folderId={ folderId } /></RootStoreProvider>));
+const draw = (store: RootStore, folderId: string) =>
+    act(() =>
+        root.render(
+            <RootStoreProvider value={store}>
+                <Said folderId={folderId} />
+            </RootStoreProvider>
+        )
+    );
 const shown = () => container.textContent;
 
 beforeEach(() => {
@@ -81,7 +105,7 @@ describe('useFolderRepository', () => {
         expect(shown()).toBe('ready none');
     });
 
-    it('gives no reason for a failure that is not the daemon saying it cannot read the folder, whose words are a route or the network\'s', async () => {
+    it("gives no reason for a failure that is not the daemon saying it cannot read the folder, whose words are a route or the network's", async () => {
         const daemon = transport();
         const store = { transport: daemon } as unknown as RootStore;
 

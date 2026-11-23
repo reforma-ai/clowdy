@@ -5,14 +5,8 @@ import type { ExtraProps } from 'streamdown';
 
 export function StreamdownTable({ children }: ComponentPropsWithoutRef<'table'> & ExtraProps) {
     return (
-        <Scrollable
-            vertical={ false }
-            horizontal
-            data-streamdown="table-wrapper"
-        >
-            <table data-streamdown="table">
-                { children }
-            </table>
+        <Scrollable vertical={false} horizontal data-streamdown="table-wrapper">
+            <table data-streamdown="table">{children}</table>
         </Scrollable>
     );
 }

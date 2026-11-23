@@ -5,14 +5,15 @@ import path from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
-import { MANIFEST_FILE, sha256, signManifest, type BundleManifest } from './bundleManifest';
+import { type BundleManifest, MANIFEST_FILE, sha256, signManifest } from './bundleManifest';
 import { createOta, type RunningBundle } from './ota';
 import { writeTar } from './tar';
 
-const keyPair = () => generateKeyPairSync('ed25519', {
-    privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
-    publicKeyEncoding: { type: 'spki', format: 'pem' },
-});
+const keyPair = () =>
+    generateKeyPairSync('ed25519', {
+        privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+        publicKeyEncoding: { type: 'spki', format: 'pem' },
+    });
 const release = keyPair();
 const stranger = keyPair();
 const FEED = 'https://feed.test/ota';
@@ -31,10 +32,10 @@ afterEach(async () => {
 });
 
 const bundleFiles = (version: number): Record<string, string> => ({
-    'renderer/index.html': `page ${ version }`,
-    'renderer/assets/app.js': `app ${ version }`,
-    'daemon/main.js': `daemon ${ version }`,
-    'system-skills/skills/plan/SKILL.md': `skill ${ version }`,
+    'renderer/index.html': `page ${version}`,
+    'renderer/assets/app.js': `app ${version}`,
+    'daemon/main.js': `daemon ${version}`,
+    'system-skills/skills/plan/SKILL.md': `skill ${version}`,
 });
 
 interface Publish {
@@ -60,7 +61,12 @@ function machine({ ownVersion = 100, shellVersion = '0.2.0', catchUpMs = { manif
     const relaunch = vi.fn();
     const onInstalled = vi.fn();
     let daemonVersion: number | undefined | Error;
-    const own: RunningBundle = { version: ownVersion, rendererRoot: path.join(base, 'app/renderer'), dir: null, rendererFiles: null };
+    const own: RunningBundle = {
+        version: ownVersion,
+        rendererRoot: path.join(base, 'app/renderer'),
+        dir: null,
+        rendererFiles: null,
+    };
 
     return {
         updates,
@@ -97,25 +103,44 @@ function machine({ ownVersion = 100, shellVersion = '0.2.0', catchUpMs = { manif
             return { ota, bundle: await ota.choose() };
         },
         /** What `publish-ota.ts` leaves in the `ota` release. */
-        publish(version: number, { minShell = '0.1.0', protocol = PROTOCOL, key = release.privateKey, alter = files => files, corrupt = false }: Publish = {}) {
+        publish(
+            version: number,
+            {
+                minShell = '0.1.0',
+                protocol = PROTOCOL,
+                key = release.privateKey,
+                alter = files => files,
+                corrupt = false,
+            }: Publish = {}
+        ) {
             const files = bundleFiles(version);
-            const archive = gzipSync(writeTar(Object.entries(alter(files)).map(([file, text]) => ({ path: file, data: encoder.encode(text) }))));
-            const name = `bundle-${ version }.tar.gz`;
+            const archive = gzipSync(
+                writeTar(
+                    Object.entries(alter(files)).map(([file, text]) => ({ path: file, data: encoder.encode(text) }))
+                )
+            );
+            const name = `bundle-${version}.tar.gz`;
             const manifest: BundleManifest = {
                 version,
                 minShell,
                 protocol,
                 archive: { name, sha256: sha256(archive), size: archive.length },
-                files: Object.fromEntries(Object.entries(files).map(([file, text]) => [file, { sha256: sha256(encoder.encode(text)), size: encoder.encode(text).length }])),
+                files: Object.fromEntries(
+                    Object.entries(files).map(([file, text]) => [
+                        file,
+                        { sha256: sha256(encoder.encode(text)), size: encoder.encode(text).length },
+                    ])
+                ),
             };
 
             if (corrupt) archive[archive.length - 1] ^= 0xff;
 
-            feed.set(`${ FEED }/${ name }`, archive);
-            feed.set(`${ FEED }/manifest.json`, encoder.encode(JSON.stringify(signManifest(manifest, key))));
+            feed.set(`${FEED}/${name}`, archive);
+            feed.set(`${FEED}/manifest.json`, encoder.encode(JSON.stringify(signManifest(manifest, key))));
         },
         installed: async () => (await readdir(path.join(updates, 'bundles')).catch(() => [] as string[])).sort(),
-        state: async () => JSON.parse(await readFile(path.join(updates, 'state.json'), 'utf8')) as Record<string, unknown>,
+        state: async () =>
+            JSON.parse(await readFile(path.join(updates, 'state.json'), 'utf8')) as Record<string, unknown>,
     };
 }
 
@@ -139,13 +164,13 @@ async function installAndConfirm(app: Machine, version: number) {
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 describe('choose', () => {
-    test('runs the app\'s own copy when nothing is installed', async () => {
+    test("runs the app's own copy when nothing is installed", async () => {
         const app = machine();
 
         expect((await app.launch()).bundle).toBe(app.own);
     });
 
-    test('runs an installed bundle from its folder, with its renderer\'s hashes', async () => {
+    test("runs an installed bundle from its folder, with its renderer's hashes", async () => {
         const app = machine();
 
         app.publish(101);
@@ -167,7 +192,7 @@ describe('choose', () => {
         expect((await app.launch()).bundle).toBe(app.own);
     });
 
-    test('skips an installed bundle that is not newer than the app\'s own copy', async () => {
+    test("skips an installed bundle that is not newer than the app's own copy", async () => {
         const app = machine();
 
         await installAndConfirm(app, 101);
@@ -189,9 +214,18 @@ describe('check', () => {
         expect(ota.pending()).toBe(101);
         expect(app.onInstalled).toHaveBeenCalledWith(101);
         expect(await app.installed()).toEqual(['101']);
-        expect(await app.state()).toEqual({ current: 101, previous: null, unconfirmed: true, rejected: [], proven: [], shell: null });
+        expect(await app.state()).toEqual({
+            current: 101,
+            previous: null,
+            unconfirmed: true,
+            rejected: [],
+            proven: [],
+            shell: null,
+        });
         expect(await readFile(path.join(app.updates, 'bundles/101/renderer/index.html'), 'utf8')).toBe('page 101');
-        expect(JSON.parse(await readFile(path.join(app.updates, 'bundles/101', MANIFEST_FILE), 'utf8'))).toHaveProperty('signature');
+        expect(JSON.parse(await readFile(path.join(app.updates, 'bundles/101', MANIFEST_FILE), 'utf8'))).toHaveProperty(
+            'signature'
+        );
     });
 
     test('keeps the running installed bundle as the one to go back to', async () => {
@@ -226,7 +260,10 @@ describe('check', () => {
         await expect(ota.check()).resolves.toBeNull();
 
         await mkdir(app.updates, { recursive: true });
-        await writeFile(path.join(app.updates, 'state.json'), JSON.stringify({ current: null, previous: null, unconfirmed: false, rejected: [102] }));
+        await writeFile(
+            path.join(app.updates, 'state.json'),
+            JSON.stringify({ current: null, previous: null, unconfirmed: false, rejected: [102] })
+        );
         app.publish(102);
         await expect(ota.check()).resolves.toBeNull();
 
@@ -285,7 +322,18 @@ describe('check', () => {
 
     test('is off without a feed', async () => {
         const app = machine();
-        const ota = createOta({ updates: app.updates, dataDir: app.dataDir, own: app.own, shellVersion: '0.2.0', protocol: PROTOCOL, publicKey: release.publicKey, feed: '', fetch: app.fetch, daemonVersion: async () => undefined, relaunch: app.relaunch });
+        const ota = createOta({
+            updates: app.updates,
+            dataDir: app.dataDir,
+            own: app.own,
+            shellVersion: '0.2.0',
+            protocol: PROTOCOL,
+            publicKey: release.publicKey,
+            feed: '',
+            fetch: app.fetch,
+            daemonVersion: async () => undefined,
+            relaunch: app.relaunch,
+        });
 
         expect(ota.enabled).toBe(false);
         await expect(ota.check()).resolves.toBeNull();
@@ -318,7 +366,14 @@ describe('trial', () => {
         ota.watchReady();
         await vi.waitFor(() => expect(app.relaunch).toHaveBeenCalledOnce());
 
-        expect(await app.state()).toEqual({ current: 101, previous: null, unconfirmed: true, rejected: [102], proven: [], shell: null });
+        expect(await app.state()).toEqual({
+            current: 101,
+            previous: null,
+            unconfirmed: true,
+            rejected: [102],
+            proven: [],
+            shell: null,
+        });
 
         const back = await app.launch();
 
@@ -330,7 +385,7 @@ describe('trial', () => {
         expect(await app.installed()).toEqual(['101', '102']);
     });
 
-    test('a bundle installed over the app\'s own copy goes back to it', async () => {
+    test("a bundle installed over the app's own copy goes back to it", async () => {
         const app = machine();
 
         app.publish(101);
@@ -338,11 +393,18 @@ describe('trial', () => {
         (await app.launch()).ota.watchReady();
         await vi.waitFor(() => expect(app.relaunch).toHaveBeenCalledOnce());
 
-        expect(await app.state()).toEqual({ current: null, previous: null, unconfirmed: false, rejected: [101], proven: [], shell: null });
+        expect(await app.state()).toEqual({
+            current: null,
+            previous: null,
+            unconfirmed: false,
+            rejected: [101],
+            proven: [],
+            shell: null,
+        });
         expect((await app.launch()).bundle).toBe(app.own);
     });
 
-    test('the app\'s own copy needs no trial', async () => {
+    test("the app's own copy needs no trial", async () => {
         const app = machine();
         const { ota } = await app.launch();
 
@@ -444,7 +506,7 @@ describe('daemon trial', () => {
         expect(await app.state()).toMatchObject({ current: 101, unconfirmed: false, proven: [101] });
     });
 
-    test('only the running bundle\'s daemon proves it', async () => {
+    test("only the running bundle's daemon proves it", async () => {
         const app = machine();
         const { ota } = await installAndConfirm(app, 101);
 
@@ -470,7 +532,7 @@ describe('daemon trial', () => {
         expect(await app.state()).toMatchObject({ current: null, rejected: [101] });
     });
 
-    test('the app\'s own copy has no daemon trial', async () => {
+    test("the app's own copy has no daemon trial", async () => {
         const app = machine();
         const { ota } = await app.launch();
 
@@ -480,9 +542,10 @@ describe('daemon trial', () => {
 });
 
 /** A request that hangs until it is aborted, as one on a blackholed network does. */
-const hangs = (init?: { signal?: AbortSignal }) => new Promise<Response>((_resolve, reject) => {
-    init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
-});
+const hangs = (init?: { signal?: AbortSignal }) =>
+    new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
+    });
 
 describe('catchUp', () => {
     /** A first launch: the bundle is chosen, then the catch-up runs and chooses again when it installed one. */
@@ -544,11 +607,11 @@ describe('catchUp', () => {
     });
 
     test.each<[string, number, Publish]>([
-        ['nothing newer than the app\'s own copy', 100, {}],
+        ["nothing newer than the app's own copy", 100, {}],
         ['a bundle for a newer shell', 101, { minShell: '0.3.0' }],
         ['a manifest signed with another key', 101, { key: stranger.privateKey }],
         ['an archive that does not match', 101, { corrupt: true }],
-    ])('starts the app\'s own copy for %s, and does not wait again', async (_name, version, published) => {
+    ])("starts the app's own copy for %s, and does not wait again", async (_name, version, published) => {
         const app = machine();
 
         app.publish(version, published);
@@ -558,7 +621,7 @@ describe('catchUp', () => {
         await expect((await app.launch()).ota.catchUp(vi.fn())).resolves.toBe(false);
     });
 
-    test('starts the app\'s own copy when the feed is down, then installs in the background', async () => {
+    test("starts the app's own copy when the feed is down, then installs in the background", async () => {
         const app = machine();
         const serve = app.fetch.getMockImplementation()!;
 
@@ -601,11 +664,12 @@ describe('catchUp', () => {
 });
 
 describe('prune', () => {
-    test('keeps the choices, the own copy, and the running daemon\'s bundle', async () => {
+    test("keeps the choices, the own copy, and the running daemon's bundle", async () => {
         const app = machine();
         const bundles = path.join(app.updates, 'bundles');
 
-        for (const leftover of ['90', '95', '100', '.staging-99-abcd', '100.tmp-1234']) await mkdir(path.join(bundles, leftover), { recursive: true });
+        for (const leftover of ['90', '95', '100', '.staging-99-abcd', '100.tmp-1234'])
+            await mkdir(path.join(bundles, leftover), { recursive: true });
 
         app.setDaemonVersion(95);
         await installAndConfirm(app, 101);
@@ -636,7 +700,7 @@ describe('prune', () => {
         const serve = app.fetch.getMockImplementation()!;
         const download = Promise.withResolvers<void>();
 
-        app.fetch.mockImplementation(async (url) => {
+        app.fetch.mockImplementation(async url => {
             if (url.endsWith('.tar.gz')) await download.promise;
 
             return serve(url);

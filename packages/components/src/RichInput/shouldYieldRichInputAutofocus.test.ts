@@ -17,8 +17,7 @@ function withDom(run: (document: Document) => void): void {
 
     try {
         run(window.document);
-    }
-    finally {
+    } finally {
         Object.defineProperty(globalThis, 'window', { value: prev.window, configurable: true });
         Object.defineProperty(globalThis, 'document', { value: prev.document, configurable: true });
         globalThis.HTMLIFrameElement = prev.HTMLIFrameElement;
@@ -27,7 +26,7 @@ function withDom(run: (document: Document) => void): void {
 
 describe('shouldYieldRichInputAutofocus', () => {
     it('should autofocus on first mount', () => {
-        withDom((document) => {
+        withDom(document => {
             const field = document.createElement('textarea');
 
             document.body.append(field);
@@ -38,7 +37,7 @@ describe('shouldYieldRichInputAutofocus', () => {
     });
 
     it('should keep focus in another textarea, input, or contenteditable', () => {
-        withDom((document) => {
+        withDom(document => {
             const own = document.createElement('div');
             const textarea = document.createElement('textarea');
             const input = document.createElement('input');
@@ -59,7 +58,7 @@ describe('shouldYieldRichInputAutofocus', () => {
     });
 
     it('should keep focus in a code editor', () => {
-        withDom((document) => {
+        withDom(document => {
             const own = document.createElement('div');
             const code = document.createElement('div');
 
@@ -73,7 +72,7 @@ describe('shouldYieldRichInputAutofocus', () => {
     });
 
     it('should keep focus in a code editor inside a frame', () => {
-        withDom((document) => {
+        withDom(document => {
             const own = document.createElement('div');
             const frame = document.createElement('iframe');
 
@@ -94,7 +93,7 @@ describe('shouldYieldRichInputAutofocus', () => {
     });
 
     it('should still autofocus when focus is already in this field', () => {
-        withDom((document) => {
+        withDom(document => {
             const own = document.createElement('div');
 
             own.setAttribute('contenteditable', 'true');
@@ -106,7 +105,7 @@ describe('shouldYieldRichInputAutofocus', () => {
     });
 
     it('should still autofocus when focus is not in a text field', () => {
-        withDom((document) => {
+        withDom(document => {
             const own = document.createElement('div');
             const button = document.createElement('button');
 

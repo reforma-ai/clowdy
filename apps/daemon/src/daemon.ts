@@ -1,5 +1,5 @@
-import { PROTOCOL_VERSION } from '@clowdy/protocol';
 import { join } from 'node:path';
+import { PROTOCOL_VERSION } from '@clowdy/protocol';
 
 import pkg from '../package.json';
 import { AttachmentsService } from './attachments/service';
@@ -12,9 +12,15 @@ import { CHAT_TITLE_SETTING } from './engine/acp/catalog';
 import { AgentRegistry } from './engine/acp/registry';
 import { FilesService } from './files/service';
 import { FsService } from './fs/service';
+import { GitWrites } from './git/commit';
+import { CommitMessages } from './git/message';
+import { PullRequests } from './git/pullRequest';
+import { GitRemote } from './git/remote';
+import { WriteEnvironment } from './git/writeEnv';
 import { startServer } from './http/server';
 import { acquireLock, writeDaemonInfo } from './instance';
 import { announceAgentsChanged } from './providers/announce';
+import { TextGeneration } from './providers/generate';
 import { ModelCatalog } from './providers/models';
 import { ProvidersService } from './providers/service';
 import { RunDriver } from './runs/driver';
@@ -56,6 +62,12 @@ export interface DaemonOptions {
     models?: ModelCatalog;
     /** Replaces the terminal service; tests use it to run a shell of their own on a PTY of their own. */
     terminals?: TerminalService;
+    /** Replaces the reader of pull requests; tests use it to put a `gh` of their own in the place of the person's. */
+    pullRequests?: PullRequests;
+    /** Replaces the environment of the git writes and its search for the signing agent; tests use it to put an `ssh` and a shell of their own in the place of the person's. */
+    gitEnvironment?: WriteEnvironment;
+    /** Replaces the runner of the agents' no-tools runs (commit messages); tests use it to give a run a limit of its own. */
+    textGeneration?: TextGeneration;
     heartbeatMs?: number;
     /** Called once the daemon has stopped because a client asked (`POST /v1/shutdown`); the entry point exits the process here. */
     onShutdown?: () => void;
@@ -74,10 +86,12 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
         // Before the engines: the agents of sessions with shell commands get the `clowdy` command on their `PATH`.
         const shim = installShimOrWarn(config.dataDir);
         const created = options.engines ? undefined : createEngines(config, agents, process.env, shim);
-        const engines = options.engines ?? created as EngineRegistry;
+        const engines = options.engines ?? (created as EngineRegistry);
 
         if (!engines.has(config.engine)) {
-            throw new Error(`CLOWDY_ENGINE=${ config.engine } is not an agent this daemon knows: pick fake, claude, codex, cursor, opencode, gemini, copilot, grok, omp, hermes, or the id of a custom agent`);
+            throw new Error(
+                `CLOWDY_ENGINE=${config.engine} is not an agent this daemon knows: pick fake, claude, codex, cursor, opencode, gemini, copilot, grok, omp, hermes, or the id of a custom agent`
+            );
         }
 
         // Stream items say what the agent behind them can fork (`StreamItem.canFork`, `canEdit`), read from the engine when an item is listed or published.
@@ -85,19 +99,53 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
 
         const runs = new RunService(store, config, engines);
         // A turn asks for its tools when it starts, by which time the thread service below exists.
-        const driver = new RunDriver({ store, config, runs, engines, tools: (run, mode) => toolsFor({ store, runs, threads }, run, mode, agents.taskChannel(run.engine)), compactCommand: engine => agents.compactCommand(engine), namesChats: engine => agents.setting(engine, CHAT_TITLE_SETTING) });
+        const driver = new RunDriver({
+            store,
+            config,
+            runs,
+            engines,
+            tools: (run, mode) => toolsFor({ store, runs, threads }, run, mode, agents.taskChannel(run.engine)),
+            compactCommand: engine => agents.compactCommand(engine),
+            namesChats: engine => agents.setting(engine, CHAT_TITLE_SETTING),
+        });
         const attachments = new AttachmentsService(store, config.dataDir);
         // Before the recovery: a turn the restart interrupted holds its chat's queue.
         const queue = new ChatQueue({ store, runs, driver, attachments });
         // After the queue, whose status hook it extends, and before the recovery, whose interrupted threads it tells their parents of.
         const notices = new ThreadNotices({ store, config, runs, driver, queue, attachments, agents });
         const threads = new ThreadService({ store, config, runs, driver, queue, attachments, agents, notices });
-        const providers = options.providers ?? new ProvidersService({
-            registry: agents,
-            announce: () => announceAgentsChanged(store),
-        });
+        const providers =
+            options.providers ??
+            new ProvidersService({
+                registry: agents,
+                announce: () => announceAgentsChanged(store),
+            });
         const files = new FilesService();
-        const services: Services = { config, store, runs, driver, queue, threads, files, fs: new FsService(files, {}, { ripgrep: config.ripgrep }), attachments, skills, agents, providers, models: options.models ?? new ModelCatalog({ registry: agents }), terminals: options.terminals ?? new TerminalService() };
+        const textGeneration =
+            options.textGeneration ??
+            new TextGeneration({ target: id => agents.probeTarget(id), dataDir: config.dataDir });
+        // One environment for every write, so the signing agent found for a commit is the one a push uses.
+        const gitEnvironment = options.gitEnvironment ?? new WriteEnvironment();
+        const services: Services = {
+            config,
+            store,
+            runs,
+            driver,
+            queue,
+            threads,
+            files,
+            fs: new FsService(files, {}, { ripgrep: config.ripgrep }),
+            attachments,
+            skills,
+            agents,
+            providers,
+            models: options.models ?? new ModelCatalog({ registry: agents }),
+            terminals: options.terminals ?? new TerminalService(),
+            pullRequests: options.pullRequests ?? new PullRequests(),
+            gitWrites: new GitWrites({ store, environment: gitEnvironment }),
+            gitRemote: new GitRemote({ store, environment: gitEnvironment }),
+            commitMessages: new CommitMessages({ store, agents, providers, generation: textGeneration }),
+        };
 
         await runs.recover();
         attachments.sweep();
@@ -109,21 +157,26 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
 
         let stopping: Promise<void> | undefined;
 
-        const stop = () => stopping ??= (async () => {
-            // Notices still in their window are lost: their timers must not write to a store that is closing.
-            notices.stop();
-            await server.stop(true);
-            services.terminals.stop();
-            await driver.stop();
-            created?.stop();
-            providers.stop();
-            services.models.stop();
-            services.fs.stop();
-            skills.stop();
-            store.db.close();
-            removeInfo();
-            releaseLock();
-        })();
+        const stop = () =>
+            (stopping ??= (async () => {
+                // Notices still in their window are lost: their timers must not write to a store that is closing.
+                notices.stop();
+                await server.stop(true);
+                services.terminals.stop();
+                services.pullRequests.stop();
+                services.gitWrites.stop();
+                services.gitRemote.stop();
+                services.commitMessages.stop();
+                await driver.stop();
+                created?.stop();
+                providers.stop();
+                services.models.stop();
+                services.fs.stop();
+                skills.stop();
+                store.db.close();
+                removeInfo();
+                releaseLock();
+            })());
         const server = startServer({
             services,
             version: VERSION,
@@ -132,12 +185,17 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
             // Answer first: stopping closes the connection this request came in on.
             shutdown: () => void setTimeout(() => void stop().then(options.onShutdown), 50),
         });
-        const info: DaemonInfo = { pid: process.pid, port: server.port as number, token: config.token, protocol: PROTOCOL_VERSION, startedAt };
+        const info: DaemonInfo = {
+            pid: process.pid,
+            port: server.port as number,
+            token: config.token,
+            protocol: PROTOCOL_VERSION,
+            startedAt,
+        };
         const removeInfo = writeDaemonInfo(config.dataDir, info);
 
         return { info, services, stop };
-    }
-    catch (error) {
+    } catch (error) {
         releaseLock();
         throw error;
     }

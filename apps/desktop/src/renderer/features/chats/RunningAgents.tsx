@@ -5,8 +5,8 @@ import { shownRunStatus } from '@clowdy/protocol';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { useAgentActivity } from '../../stream/useAgentActivity';
 import { openChat } from './archiveChat';
-import { perform } from './commands';
 import { ComposerBanner, ComposerBannerHeader, ComposerBannerStatus } from './ComposerBanner';
+import { perform } from './commands';
 import {
     agentRowLabel,
     agentRowText,
@@ -19,11 +19,11 @@ import {
     offersStopAll,
     openBackground,
     runningAgents,
+    type StripRow,
     stripRows,
+    type ThreadAtWork,
     threadRowText,
     threadsAtWork,
-    type StripRow,
-    type ThreadAtWork,
 } from './runningAgentRows';
 
 import type { BackgroundItem, Chat, Run, RunId } from '@clowdy/protocol';
@@ -40,13 +40,13 @@ function AgentRow({ run }: { run: Run }) {
 
     return (
         <ComposerBannerStatus
-            icon={ <Robot /> }
-            action={ stoppable ? 'Stop' : undefined }
-            onAction={ stoppable ? () => void perform(root, { type: 'run.cancel', runId: run.id }) : undefined }
-            onPress={ () => ui.openRun(run.id) }
-            pressLabel={ `Open ${ agentRowLabel(run) }. ${ text }` }
+            icon={<Robot />}
+            action={stoppable ? 'Stop' : undefined}
+            onAction={stoppable ? () => void perform(root, { type: 'run.cancel', runId: run.id }) : undefined}
+            onPress={() => ui.openRun(run.id)}
+            pressLabel={`Open ${agentRowLabel(run)}. ${text}`}
         >
-            { waiting ? text : <Shimmer duration={ 1 }>{ text }</Shimmer> }
+            {waiting ? text : <Shimmer duration={1}>{text}</Shimmer>}
         </ComposerBannerStatus>
     );
 }
@@ -65,13 +65,13 @@ function ThreadRow({ chat, run }: ThreadAtWork) {
 
     return (
         <ComposerBannerStatus
-            icon={ <Split /> }
+            icon={<Split />}
             action="Stop"
-            onAction={ () => void perform(root, { type: 'run.cancel', runId: run.id }) }
-            onPress={ () => void openChat(root, project, ui, chat.id) }
-            pressLabel={ `Open ${ chat.title }. ${ text }` }
+            onAction={() => void perform(root, { type: 'run.cancel', runId: run.id })}
+            onPress={() => void openChat(root, project, ui, chat.id)}
+            pressLabel={`Open ${chat.title}. ${text}`}
         >
-            { working ? <Shimmer duration={ 1 }>{ text }</Shimmer> : text }
+            {working ? <Shimmer duration={1}>{text}</Shimmer> : text}
         </ComposerBannerStatus>
     );
 }
@@ -82,27 +82,36 @@ function ThreadRow({ chat, run }: ThreadAtWork) {
  * when two or more rows have a Stop of their own. Its chevron folds the rows away (`ProjectUi.agentsFolded`), and the line then says how many agents
  * are at work.
  */
-function AgentsHeader({ orchestrator, agents, threads }: { orchestrator: Run | undefined; agents: readonly Run[]; threads: readonly ThreadAtWork[] }) {
+function AgentsHeader({
+    orchestrator,
+    agents,
+    threads,
+}: {
+    orchestrator: Run | undefined;
+    agents: readonly Run[];
+    threads: readonly ThreadAtWork[];
+}) {
     const root = useRootStore();
     const ui = useProjectUi();
     const folded = ui.agentsFolded;
     const stopAll = offersStopAll(agents, threads.length);
 
     const stop = () => {
-        if (orchestrator && agents.some(canStopAlone)) void perform(root, { type: 'run.stopAgents', runId: orchestrator.id });
+        if (orchestrator && agents.some(canStopAlone))
+            void perform(root, { type: 'run.stopAgents', runId: orchestrator.id });
 
         threads.forEach(({ run }) => void perform(root, { type: 'run.cancel', runId: run.id }));
     };
 
     return (
         <ComposerBannerHeader
-            action={ stopAll ? 'Stop all' : undefined }
-            onAction={ stopAll ? stop : undefined }
-            collapsed={ folded }
-            onToggle={ () => ui.toggleAgentsFolded() }
-            toggleLabel={ folded ? 'Show agents' : 'Hide agents' }
+            action={stopAll ? 'Stop all' : undefined}
+            onAction={stopAll ? stop : undefined}
+            collapsed={folded}
+            onToggle={() => ui.toggleAgentsFolded()}
+            toggleLabel={folded ? 'Show agents' : 'Hide agents'}
         >
-            { folded ? `Agents running · ${ agents.length + threads.length }` : 'Agents running' }
+            {folded ? `Agents running · ${agents.length + threads.length}` : 'Agents running'}
         </ComposerBannerHeader>
     );
 }
@@ -117,11 +126,11 @@ function BackgroundItemRow({ runId, item }: { runId: RunId; item: BackgroundItem
 
     return (
         <ComposerBannerStatus
-            icon={ <Terminal /> }
+            icon={<Terminal />}
             action="Stop"
-            onAction={ () => void perform(root, { type: 'run.stopBackground', runId, itemId: item.id }) }
+            onAction={() => void perform(root, { type: 'run.stopBackground', runId, itemId: item.id })}
         >
-            <Shimmer duration={ 1 }>{ backgroundItemText(item) }</Shimmer>
+            <Shimmer duration={1}>{backgroundItemText(item)}</Shimmer>
         </ComposerBannerStatus>
     );
 }
@@ -135,17 +144,17 @@ function BackgroundRow({ runId, count }: { runId: RunId; count: number }) {
 
     return (
         <ComposerBannerStatus
-            icon={ <BackgroundTask /> }
+            icon={<BackgroundTask />}
             action="Stop"
-            onAction={ () => void perform(root, { type: 'run.cancel', runId }) }
+            onAction={() => void perform(root, { type: 'run.cancel', runId })}
         >
-            <Shimmer duration={ 1 }>{ backgroundRowText(count) }</Shimmer>
+            <Shimmer duration={1}>{backgroundRowText(count)}</Shimmer>
         </ComposerBannerStatus>
     );
 }
 
 function Row({ row }: { row: StripRow }) {
-    return row.kind === 'agent' ? <AgentRow run={ row.run } /> : <ThreadRow chat={ row.chat } run={ row.run } />;
+    return row.kind === 'agent' ? <AgentRow run={row.run} /> : <ThreadRow chat={row.chat} run={row.run} />;
 }
 
 /**
@@ -175,11 +184,21 @@ export function RunningAgents({ chat }: { chat: Chat }) {
 
     return (
         <ComposerBanner role="group" aria-label="Work in progress">
-            { rows.length > 0 && <AgentsHeader orchestrator={ orchestrator } agents={ agents } threads={ threads } /> }
-            { drawn.slice(0, MAX_AGENT_ROWS).map(row => <Row key={ row.id } row={ row } />) }
-            { hidden > 0 && <ComposerBannerStatus icon={ <Robot /> }>{ `${ hidden } more ${ hidden === 1 ? 'agent' : 'agents' } at work` }</ComposerBannerStatus> }
-            { !folded && orchestrator && own.map(item => <BackgroundItemRow key={ item.id } runId={ orchestrator.id } item={ item } />) }
-            { !folded && orchestrator && background.length > 0 && <BackgroundRow runId={ orchestrator.id } count={ background.length } /> }
+            {rows.length > 0 && <AgentsHeader orchestrator={orchestrator} agents={agents} threads={threads} />}
+            {drawn.slice(0, MAX_AGENT_ROWS).map(row => (
+                <Row key={row.id} row={row} />
+            ))}
+            {hidden > 0 && (
+                <ComposerBannerStatus
+                    icon={<Robot />}
+                >{`${hidden} more ${hidden === 1 ? 'agent' : 'agents'} at work`}</ComposerBannerStatus>
+            )}
+            {!folded &&
+                orchestrator &&
+                own.map(item => <BackgroundItemRow key={item.id} runId={orchestrator.id} item={item} />)}
+            {!folded && orchestrator && background.length > 0 && (
+                <BackgroundRow runId={orchestrator.id} count={background.length} />
+            )}
         </ComposerBanner>
     );
 }

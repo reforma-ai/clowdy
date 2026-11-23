@@ -31,7 +31,7 @@
         },
 
         "lint": {
-            "dependsOn": ["^build"]
+            "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/biome.json"]
         },
 
         "typecheck": {

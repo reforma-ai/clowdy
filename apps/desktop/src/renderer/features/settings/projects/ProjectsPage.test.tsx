@@ -6,7 +6,13 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createFixtureData, FIXTURE_EMPTY_PROJECT_ID, FIXTURE_PERSONAL_PROJECT_ID, FIXTURE_PROJECT_ID, type FixtureData } from '../../../daemon/fixtureData';
+import {
+    createFixtureData,
+    FIXTURE_EMPTY_PROJECT_ID,
+    FIXTURE_PERSONAL_PROJECT_ID,
+    FIXTURE_PROJECT_ID,
+    type FixtureData,
+} from '../../../daemon/fixtureData';
 import { FixtureTransport } from '../../../daemon/fixtureTransport';
 import { overrideTransport } from '../../../daemon/testing';
 import { RootStore, RootStoreProvider } from '../../../stores';
@@ -25,9 +31,12 @@ const square = vi.hoisted(() => vi.fn<(file: Blob) => Promise<string>>());
 vi.mock('@clowdy/components/modals', () => ({ openConfirmModal: confirm }));
 vi.mock('@clowdy/components/Toast', () => ({ toast: toasts }));
 // happy-dom draws no pictures: the tests say what drawing a picture small gives.
-vi.mock('./squareIcon', async importOriginal => ({ ...await importOriginal<Record<string, unknown>>(), squareIcon: square }));
+vi.mock('./squareIcon', async importOriginal => ({
+    ...(await importOriginal<Record<string, unknown>>()),
+    squareIcon: square,
+}));
 // The babel plugin that makes the app's components observers does not run under Vitest: `observer` stands in for it here.
-vi.mock('../../../shared/ProjectIcon', async (importOriginal) => {
+vi.mock('../../../shared/ProjectIcon', async importOriginal => {
     const { ProjectIcon } = await importOriginal<typeof import('../../../shared/ProjectIcon')>();
     const mobx = await import('mobx-react-lite');
 
@@ -38,13 +47,19 @@ vi.mock('../../../shared/ProjectIcon', async (importOriginal) => {
  * happy-dom cannot drag, so the tests move a row the way a drop does: through the list's own `onChange`, with the items in their new
  * order, and ask its `canDrop` what a drag would. The real list still draws the rows; each list is found by its label.
  */
-const sortables = vi.hoisted(() => new Map<string, {
-    items: unknown[];
-    onChange: (items: unknown[]) => void;
-    canDrop?: (context: SortableListDropContext<unknown>) => boolean;
-}>());
+const sortables = vi.hoisted(
+    () =>
+        new Map<
+            string,
+            {
+                items: unknown[];
+                onChange: (items: unknown[]) => void;
+                canDrop?: (context: SortableListDropContext<unknown>) => boolean;
+            }
+        >()
+);
 
-vi.mock('@clowdy/components/SortableList', async (importOriginal) => {
+vi.mock('@clowdy/components/SortableList', async importOriginal => {
     const actual = await importOriginal<{ SortableList: typeof SortableListComponent }>();
     const { createElement } = await import('react');
 
@@ -71,7 +86,10 @@ let store: RootStore;
 const memoryStorage = () => {
     const data: Record<string, string> = {};
 
-    return { getItem: (key: string) => data[key] ?? null, setItem: (key: string, value: string) => void (data[key] = value) };
+    return {
+        getItem: (key: string) => data[key] ?? null,
+        setItem: (key: string, value: string) => void (data[key] = value),
+    };
 };
 
 async function flush() {
@@ -81,20 +99,35 @@ async function flush() {
 }
 
 /** `overrides` may be made from the transport it overrides, to pass a call on after looking at it. */
-async function open(projectId: string | null = null, overrides: Partial<Transport> | ((base: Transport) => Partial<Transport>) = {}, data: FixtureData = createFixtureData()) {
+async function open(
+    projectId: string | null = null,
+    overrides: Partial<Transport> | ((base: Transport) => Partial<Transport>) = {},
+    data: FixtureData = createFixtureData()
+) {
     const base = new FixtureTransport({ data });
 
-    store = new RootStore(overrideTransport(base, typeof overrides === 'function' ? overrides(base) : overrides), { storage: memoryStorage() });
+    store = new RootStore(overrideTransport(base, typeof overrides === 'function' ? overrides(base) : overrides), {
+        storage: memoryStorage(),
+    });
     await store.load();
     store.ui.openProjectSettings(projectId);
     // The page is drawn in the Settings window, whose layout holds the project's page as its stack.
-    act(() => reactRoot.render(<RootStoreProvider value={ store }><SettingsWindow /></RootStoreProvider>));
+    act(() =>
+        reactRoot.render(
+            <RootStoreProvider value={store}>
+                <SettingsWindow />
+            </RootStoreProvider>
+        )
+    );
     await flush();
 }
 
-const button = (label: string) => container.querySelector<HTMLButtonElement>(`button[aria-label="${ label }"]`)!;
-const row = (projectId: string) => container.querySelector<HTMLButtonElement>(`button[data-project-id="${ projectId }"]`);
-const named = (text: string) => [...container.querySelectorAll<HTMLButtonElement>('button')].find(candidate => candidate.textContent?.trim() === text)!;
+const button = (label: string) => container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!;
+const row = (projectId: string) => container.querySelector<HTMLButtonElement>(`button[data-project-id="${projectId}"]`);
+const named = (text: string) =>
+    [...container.querySelectorAll<HTMLButtonElement>('button')].find(
+        candidate => candidate.textContent?.trim() === text
+    )!;
 const click = (element: HTMLElement) => act(async () => element.click());
 const lastConfirm = () => confirm.mock.calls.at(-1)![0] as OpenConfirmModalOptions;
 /** Closes the last confirmation as the window does, after a confirm or a cancel. */
@@ -105,21 +138,33 @@ function withFolders(projectId: ProjectId, ...paths: string[]): FixtureData {
     const data = createFixtureData();
     const project = data.projects.find(candidate => candidate.id === projectId)!;
 
-    project.folders.push(...paths.map((path, index) => ({ id: `fld_added_${ index + 1 }`, path })));
+    project.folders.push(...paths.map((path, index) => ({ id: `fld_added_${index + 1}`, path })));
 
     return data;
 }
 
-const folderPaths = (projectId: ProjectId) => store.projects.find(project => project.id === projectId)!.folders.map(folder => folder.path);
+const folderPaths = (projectId: ProjectId) =>
+    store.projects.find(project => project.id === projectId)!.folders.map(folder => folder.path);
 const rows = () => [...container.querySelectorAll<HTMLElement>('[data-folder-path]')];
 const rowPaths = () => rows().map(item => item.dataset.folderPath);
 /** The rows marked Main: there is one, the first, in a project of its own. */
-const marked = () => rows().filter(item => item.textContent?.includes('Main')).map(item => item.dataset.folderPath);
+const marked = () =>
+    rows()
+        .filter(item => item.textContent?.includes('Main'))
+        .map(item => item.dataset.folderPath);
 
 /** Whether the list lets the folder at `from` be dropped on the one at `to`, as it asks while a row is dragged over another. */
 function canDropOn(from: number, to: number): boolean {
     const { items, canDrop } = sortables.get('Folders')!;
-    const context = { items: [items[from]], target: items[to], sourceParent: null, sourceLevel: 1, parent: null, targetLevel: 1, dropPosition: 'before' as const };
+    const context = {
+        items: [items[from]],
+        target: items[to],
+        sourceParent: null,
+        sourceLevel: 1,
+        parent: null,
+        targetLevel: 1,
+        dropPosition: 'before' as const,
+    };
 
     return canDrop?.(context) ?? true;
 }
@@ -204,7 +249,11 @@ describe('ProjectsPage list', () => {
     it('opens the page of a project from its menu', async () => {
         await open();
         await click(button('Clowdy actions'));
-        await click([...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(item => item.textContent === 'Configure')!);
+        await click(
+            [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+                item => item.textContent === 'Configure'
+            )!
+        );
 
         expect(store.ui.settingsProjectId).toBe(FIXTURE_EMPTY_PROJECT_ID);
     });
@@ -212,7 +261,11 @@ describe('ProjectsPage list', () => {
     it('opens a project from its menu, leaving Settings', async () => {
         await open();
         await click(button('Clowdy actions'));
-        await click([...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(item => item.textContent === 'Open project')!);
+        await click(
+            [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+                item => item.textContent === 'Open project'
+            )!
+        );
 
         expect(store.selectedProjectId).toBe(FIXTURE_EMPTY_PROJECT_ID);
         expect(store.ui.settingsOpen).toBe(false);
@@ -221,7 +274,11 @@ describe('ProjectsPage list', () => {
     it('leaves Settings for the opened project, and one step back goes to the project the window was on', async () => {
         await open();
         await click(button('Clowdy actions'));
-        await click([...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(item => item.textContent === 'Open project')!);
+        await click(
+            [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+                item => item.textContent === 'Open project'
+            )!
+        );
 
         expect(store.ui.settingsOpen).toBe(false);
 
@@ -235,13 +292,20 @@ describe('ProjectsPage list', () => {
         await open();
         await click(button('Personal actions'));
 
-        expect([...document.body.querySelectorAll('[role="menuitem"]')].map(item => item.textContent)).toEqual(['Configure', 'Open project']);
+        expect([...document.body.querySelectorAll('[role="menuitem"]')].map(item => item.textContent)).toEqual([
+            'Configure',
+            'Open project',
+        ]);
     });
 
     it('asks before removing a project from its menu, and removes it once confirmed', async () => {
         await open();
         await click(button('Clowdy actions'));
-        await click([...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(item => item.textContent === 'Remove…')!);
+        await click(
+            [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+                item => item.textContent === 'Remove…'
+            )!
+        );
 
         expect(lastConfirm()).toMatchObject({ title: 'Remove Clowdy?', destructive: true });
         expect(lastConfirm().message).toContain('/Users/dev/clowdy');
@@ -260,14 +324,18 @@ describe('ProjectsPage list', () => {
         });
 
         expect(document.body.querySelectorAll('[role="menuitem"]')).toHaveLength(0);
-        expect(document.body.querySelector('form')?.textContent).toContain('Without folders, Clowdy creates one named after the project');
+        expect(document.body.querySelector('form')?.textContent).toContain(
+            'Without folders, Clowdy creates one named after the project'
+        );
     });
 
     it('does not offer removal while agents work in the project', async () => {
         await open();
         await click(button('Car Rental actions'));
 
-        const remove = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(item => item.textContent === 'Remove…')!;
+        const remove = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+            item => item.textContent === 'Remove…'
+        )!;
 
         expect(remove.getAttribute('aria-disabled')).toBe('true');
     });
@@ -279,10 +347,33 @@ describe('ProjectsPage project', () => {
 
         expect(rowPaths()).toEqual(['/Users/dev/car-rental', '/Users/dev/car-rental-api']);
         expect(marked()).toEqual(['/Users/dev/car-rental']);
-        expect(rows()[0]!.querySelector<HTMLAnchorElement>('a[href="https://github.com/acme/car-rental"]')?.textContent).toBe('Open in GitHub');
-        expect(rows()[1]!.querySelector<HTMLAnchorElement>('a[href="https://github.com/acme/car-rental-api"]')?.textContent).toBe('Open in GitHub');
+        expect(
+            rows()[0]!.querySelector<HTMLAnchorElement>('a[href="https://github.com/acme/car-rental"]')?.textContent
+        ).toBe('Open in GitHub');
+        expect(
+            rows()[1]!.querySelector<HTMLAnchorElement>('a[href="https://github.com/acme/car-rental-api"]')?.textContent
+        ).toBe('Open in GitHub');
         expect(container.textContent).not.toContain('Branch');
         expect(container.textContent).not.toContain('Change folder');
+    });
+
+    it("has a button for the project's worktrees that opens Manage worktrees over Settings, and none for the personal space", async () => {
+        const button = () =>
+            [...container.querySelectorAll<HTMLButtonElement>('button')].find(
+                candidate => candidate.textContent === 'Manage worktrees'
+            );
+        await open(FIXTURE_PERSONAL_PROJECT_ID);
+
+        expect(button()).toBeUndefined();
+
+        await open(FIXTURE_PROJECT_ID);
+
+        expect(document.body.querySelector('[data-modal-window]')).toBeNull();
+
+        await click(button()!);
+        await flush();
+
+        expect(document.body.querySelector('[data-modal-window]')?.textContent).toContain('Manage worktrees');
     });
 
     it('renames on blur, and puts the name back on Escape', async () => {
@@ -299,7 +390,9 @@ describe('ProjectsPage project', () => {
         await flush();
 
         expect(store.projects.find(project => project.id === FIXTURE_EMPTY_PROJECT_ID)?.name).toBe('Clowdy Desktop');
-        expect(container.querySelector<HTMLInputElement>('input[aria-label="Project name"]')?.value).toBe('Clowdy Desktop');
+        expect(container.querySelector<HTMLInputElement>('input[aria-label="Project name"]')?.value).toBe(
+            'Clowdy Desktop'
+        );
     });
 
     it('does not rename to nothing', async () => {
@@ -319,8 +412,12 @@ describe('ProjectsPage project', () => {
         await open(FIXTURE_EMPTY_PROJECT_ID);
 
         const settings = () => store.projects.find(project => project.id === FIXTURE_EMPTY_PROJECT_ID)!.settings;
-        const radio = (group: string, label: string) => [...container.querySelectorAll<HTMLElement>(`[aria-label="${ group }"] [role="radio"]`)].find(item => item.textContent === label)!;
-        const checked = (group: string) => container.querySelector(`[aria-label="${ group }"] [role="radio"][aria-checked="true"]`)?.textContent;
+        const radio = (group: string, label: string) =>
+            [...container.querySelectorAll<HTMLElement>(`[aria-label="${group}"] [role="radio"]`)].find(
+                item => item.textContent === label
+            )!;
+        const checked = (group: string) =>
+            container.querySelector(`[aria-label="${group}"] [role="radio"][aria-checked="true"]`)?.textContent;
 
         // Nothing saved is Default, for the agent and for the mode: the project follows Settings > Chat.
         expect([checked('Agent for new chats'), checked('Mode for new chats')]).toEqual(['Default', 'Default']);
@@ -354,7 +451,11 @@ describe('ProjectsPage project', () => {
         await open(FIXTURE_EMPTY_PROJECT_ID);
         await click(named('Remove project'));
 
-        expect(lastConfirm()).toMatchObject({ title: 'Remove Clowdy?', confirmLabel: 'Remove project', destructive: true });
+        expect(lastConfirm()).toMatchObject({
+            title: 'Remove Clowdy?',
+            confirmLabel: 'Remove project',
+            destructive: true,
+        });
 
         await act(async () => lastConfirm().onConfirm());
         await flush();
@@ -365,7 +466,14 @@ describe('ProjectsPage project', () => {
     });
 
     it('adds the folders picked in one dialog after the others, at once, leaving out one the project has', async () => {
-        (window as { desktop?: unknown }).desktop = { chooseDirectories: async () => ['/Users/dev/car-rental-api', '/Users/dev/clowdy', '/Users/dev/notes', '/Users/dev/notes'] };
+        (window as { desktop?: unknown }).desktop = {
+            chooseDirectories: async () => [
+                '/Users/dev/car-rental-api',
+                '/Users/dev/clowdy',
+                '/Users/dev/notes',
+                '/Users/dev/notes',
+            ],
+        };
         await open(FIXTURE_EMPTY_PROJECT_ID);
 
         // One folder: nothing to remove, it is the project's only one.
@@ -375,7 +483,11 @@ describe('ProjectsPage project', () => {
         await flush();
 
         expect(confirm).not.toHaveBeenCalled();
-        expect(folderPaths(FIXTURE_EMPTY_PROJECT_ID)).toEqual(['/Users/dev/clowdy', '/Users/dev/car-rental-api', '/Users/dev/notes']);
+        expect(folderPaths(FIXTURE_EMPTY_PROJECT_ID)).toEqual([
+            '/Users/dev/clowdy',
+            '/Users/dev/car-rental-api',
+            '/Users/dev/notes',
+        ]);
         expect(rowPaths()).toEqual(['/Users/dev/clowdy', '/Users/dev/car-rental-api', '/Users/dev/notes']);
         expect(marked()).toEqual(['/Users/dev/clowdy']);
         // The page reads the folders again when the project changes: the new folder's remote shows.
@@ -394,11 +506,19 @@ describe('ProjectsPage project', () => {
     });
 
     it('reorders the folders under the main one at once, with no dialog', async () => {
-        await open(FIXTURE_EMPTY_PROJECT_ID, {}, withFolders(FIXTURE_EMPTY_PROJECT_ID, '/Users/dev/car-rental-api', '/Users/dev/notes'));
+        await open(
+            FIXTURE_EMPTY_PROJECT_ID,
+            {},
+            withFolders(FIXTURE_EMPTY_PROJECT_ID, '/Users/dev/car-rental-api', '/Users/dev/notes')
+        );
         await move(2, 1);
 
         expect(confirm).not.toHaveBeenCalled();
-        expect(folderPaths(FIXTURE_EMPTY_PROJECT_ID)).toEqual(['/Users/dev/clowdy', '/Users/dev/notes', '/Users/dev/car-rental-api']);
+        expect(folderPaths(FIXTURE_EMPTY_PROJECT_ID)).toEqual([
+            '/Users/dev/clowdy',
+            '/Users/dev/notes',
+            '/Users/dev/car-rental-api',
+        ]);
         expect(rowPaths()).toEqual(['/Users/dev/clowdy', '/Users/dev/notes', '/Users/dev/car-rental-api']);
     });
 
@@ -410,7 +530,10 @@ describe('ProjectsPage project', () => {
 
         await move(1, 0);
 
-        expect(lastConfirm()).toMatchObject({ title: 'Make car-rental-api the main folder?', confirmLabel: 'Make main folder' });
+        expect(lastConfirm()).toMatchObject({
+            title: 'Make car-rental-api the main folder?',
+            confirmLabel: 'Make main folder',
+        });
         expect(lastConfirm().message).toContain('Clowdy will work in /Users/dev/car-rental-api from now on');
         expect(lastConfirm().message).toContain('starts a new conversation');
         // Nothing is sent before the answer; the list shows the order dragged meanwhile.
@@ -434,7 +557,10 @@ describe('ProjectsPage project', () => {
     it('applies a new main folder to the folders the project has when the person confirms, not when the dialog opened', async () => {
         /** Another window changes the folders while the dialog is open. */
         const elsewhere = async (folders: ({ id: string } | { path: string })[]) => {
-            await act(async () => void await store.command({ type: 'project.update', projectId: FIXTURE_EMPTY_PROJECT_ID, folders }));
+            await act(
+                async () =>
+                    void (await store.command({ type: 'project.update', projectId: FIXTURE_EMPTY_PROJECT_ID, folders }))
+            );
             await flush();
         };
         const confirmed = async () => {
@@ -448,13 +574,26 @@ describe('ProjectsPage project', () => {
         await elsewhere([{ id: 'fld_clowdy' }, { id: 'fld_added_1' }, { path: '/Users/dev/notes' }]);
         await confirmed();
 
-        expect(folderPaths(FIXTURE_EMPTY_PROJECT_ID)).toEqual(['/Users/dev/car-rental-api', '/Users/dev/clowdy', '/Users/dev/notes']);
+        expect(folderPaths(FIXTURE_EMPTY_PROJECT_ID)).toEqual([
+            '/Users/dev/car-rental-api',
+            '/Users/dev/clowdy',
+            '/Users/dev/notes',
+        ]);
 
         await click(button('Remove car-rental-api'));
-        await elsewhere([...store.projects.find(project => project.id === FIXTURE_EMPTY_PROJECT_ID)!.folders.map(folder => ({ id: folder.id })), { path: '/Users/dev/web' }]);
+        await elsewhere([
+            ...store.projects
+                .find(project => project.id === FIXTURE_EMPTY_PROJECT_ID)!
+                .folders.map(folder => ({ id: folder.id })),
+            { path: '/Users/dev/web' },
+        ]);
         await confirmed();
 
-        expect(folderPaths(FIXTURE_EMPTY_PROJECT_ID)).toEqual(['/Users/dev/clowdy', '/Users/dev/notes', '/Users/dev/web']);
+        expect(folderPaths(FIXTURE_EMPTY_PROJECT_ID)).toEqual([
+            '/Users/dev/clowdy',
+            '/Users/dev/notes',
+            '/Users/dev/web',
+        ]);
     });
 
     it('asks before removing the main folder, and makes the next one main', async () => {
@@ -462,7 +601,9 @@ describe('ProjectsPage project', () => {
         await click(button('Remove clowdy'));
 
         expect(lastConfirm()).toMatchObject({ title: 'Remove clowdy?', confirmLabel: 'Remove folder' });
-        expect(lastConfirm().message).toContain('Clowdy will work in /Users/dev/car-rental-api from now on, and /Users/dev/clowdy leaves the project');
+        expect(lastConfirm().message).toContain(
+            'Clowdy will work in /Users/dev/car-rental-api from now on, and /Users/dev/clowdy leaves the project'
+        );
         expect(folderPaths(FIXTURE_EMPTY_PROJECT_ID)).toHaveLength(2);
 
         await act(async () => lastConfirm().onConfirm());
@@ -473,9 +614,22 @@ describe('ProjectsPage project', () => {
     });
 
     it('asks before removing a folder that chats work in, saying how many go back to the main folder', async () => {
-        const info = { projectId: FIXTURE_EMPTY_PROJECT_ID, folders: [{ folderId: 'fld_clowdy', exists: true, chats: 0 }, { folderId: 'fld_added_1', exists: true, chats: 2 }], chats: 2, tasks: 0, activeRuns: 0 };
+        const info = {
+            projectId: FIXTURE_EMPTY_PROJECT_ID,
+            folders: [
+                { folderId: 'fld_clowdy', exists: true, chats: 0 },
+                { folderId: 'fld_added_1', exists: true, chats: 2 },
+            ],
+            chats: 2,
+            tasks: 0,
+            activeRuns: 0,
+        };
 
-        await open(FIXTURE_EMPTY_PROJECT_ID, { getProjectsInfo: async () => [info] }, withFolders(FIXTURE_EMPTY_PROJECT_ID, '/Users/dev/car-rental-api'));
+        await open(
+            FIXTURE_EMPTY_PROJECT_ID,
+            { getProjectsInfo: async () => [info] },
+            withFolders(FIXTURE_EMPTY_PROJECT_ID, '/Users/dev/car-rental-api')
+        );
         await click(button('Remove car-rental-api'));
 
         expect(lastConfirm()).toMatchObject({ title: 'Remove car-rental-api?', confirmLabel: 'Remove folder' });
@@ -489,9 +643,22 @@ describe('ProjectsPage project', () => {
     });
 
     it('keeps the folder when the person cancels the removal of one that chats work in', async () => {
-        const info = { projectId: FIXTURE_EMPTY_PROJECT_ID, folders: [{ folderId: 'fld_clowdy', exists: true, chats: 0 }, { folderId: 'fld_added_1', exists: true, chats: 1 }], chats: 1, tasks: 0, activeRuns: 0 };
+        const info = {
+            projectId: FIXTURE_EMPTY_PROJECT_ID,
+            folders: [
+                { folderId: 'fld_clowdy', exists: true, chats: 0 },
+                { folderId: 'fld_added_1', exists: true, chats: 1 },
+            ],
+            chats: 1,
+            tasks: 0,
+            activeRuns: 0,
+        };
 
-        await open(FIXTURE_EMPTY_PROJECT_ID, { getProjectsInfo: async () => [info] }, withFolders(FIXTURE_EMPTY_PROJECT_ID, '/Users/dev/car-rental-api'));
+        await open(
+            FIXTURE_EMPTY_PROJECT_ID,
+            { getProjectsInfo: async () => [info] },
+            withFolders(FIXTURE_EMPTY_PROJECT_ID, '/Users/dev/car-rental-api')
+        );
         await click(button('Remove car-rental-api'));
         await closeConfirm();
 
@@ -501,7 +668,11 @@ describe('ProjectsPage project', () => {
 
     it('removes another folder at once, and moves the focus to the folder that takes its place', async () => {
         (window as { desktop?: unknown }).desktop = { chooseDirectories: async () => [] };
-        await open(FIXTURE_EMPTY_PROJECT_ID, {}, withFolders(FIXTURE_EMPTY_PROJECT_ID, '/Users/dev/car-rental-api', '/Users/dev/notes'));
+        await open(
+            FIXTURE_EMPTY_PROJECT_ID,
+            {},
+            withFolders(FIXTURE_EMPTY_PROJECT_ID, '/Users/dev/car-rental-api', '/Users/dev/notes')
+        );
         await click(button('Remove car-rental-api'));
         await flush();
 
@@ -517,10 +688,21 @@ describe('ProjectsPage project', () => {
         expect(document.activeElement?.textContent).toBe('Add folders…');
     });
 
-    it('shows the daemon\'s refusal of a new main folder in the dialog, and of another change as a toast', async () => {
-        const refusal = { ok: false as const, requestId: 'r', error: { code: 'conflict' as const, message: 'The agents of this project are still working. Stop them first.' } };
+    it("shows the daemon's refusal of a new main folder in the dialog, and of another change as a toast", async () => {
+        const refusal = {
+            ok: false as const,
+            requestId: 'r',
+            error: {
+                code: 'conflict' as const,
+                message: 'The agents of this project are still working. Stop them first.',
+            },
+        };
 
-        await open(FIXTURE_EMPTY_PROJECT_ID, { command: async () => refusal }, withFolders(FIXTURE_EMPTY_PROJECT_ID, '/Users/dev/car-rental-api', '/Users/dev/notes'));
+        await open(
+            FIXTURE_EMPTY_PROJECT_ID,
+            { command: async () => refusal },
+            withFolders(FIXTURE_EMPTY_PROJECT_ID, '/Users/dev/car-rental-api', '/Users/dev/notes')
+        );
         await move(1, 0);
 
         await expect(lastConfirm().onConfirm()).rejects.toThrow('Stop them first');
@@ -529,18 +711,26 @@ describe('ProjectsPage project', () => {
         await flush();
         await move(2, 1);
 
-        expect(toasts.error).toHaveBeenCalledWith({ message: 'The agents of this project are still working. Stop them first.' });
+        expect(toasts.error).toHaveBeenCalledWith({
+            message: 'The agents of this project are still working. Stop them first.',
+        });
         // The order goes back to the daemon's.
         expect(rowPaths()).toEqual(['/Users/dev/clowdy', '/Users/dev/car-rental-api', '/Users/dev/notes']);
     });
 
     it('keeps the main folder in place while agents work, but moves, adds and removes the others', async () => {
         (window as { desktop?: unknown }).desktop = { chooseDirectories: async () => ['/Users/dev/notes'] };
-        await open(FIXTURE_PROJECT_ID, {}, withFolders(FIXTURE_PROJECT_ID, '/Users/dev/car-rental-api', '/Users/dev/car-rental-web'));
+        await open(
+            FIXTURE_PROJECT_ID,
+            {},
+            withFolders(FIXTURE_PROJECT_ID, '/Users/dev/car-rental-api', '/Users/dev/car-rental-web')
+        );
 
         expect(button('Remove car-rental').disabled).toBe(true);
         expect(button('Remove car-rental-api').disabled).toBe(false);
-        expect(container.textContent).toContain('Agents are working in this project. Stop them before changing the main folder.');
+        expect(container.textContent).toContain(
+            'Agents are working in this project. Stop them before changing the main folder.'
+        );
 
         // A drag neither moves the main folder nor puts another above it; the others change places.
         expect(canDropOn(0, 1)).toBe(false);
@@ -555,17 +745,30 @@ describe('ProjectsPage project', () => {
 
         await move(2, 1);
 
-        expect(folderPaths(FIXTURE_PROJECT_ID)).toEqual(['/Users/dev/car-rental', '/Users/dev/car-rental-web', '/Users/dev/car-rental-api']);
+        expect(folderPaths(FIXTURE_PROJECT_ID)).toEqual([
+            '/Users/dev/car-rental',
+            '/Users/dev/car-rental-web',
+            '/Users/dev/car-rental-api',
+        ]);
 
         await click(named('Add folders…'));
         await flush();
 
-        expect(folderPaths(FIXTURE_PROJECT_ID)).toEqual(['/Users/dev/car-rental', '/Users/dev/car-rental-web', '/Users/dev/car-rental-api', '/Users/dev/notes']);
+        expect(folderPaths(FIXTURE_PROJECT_ID)).toEqual([
+            '/Users/dev/car-rental',
+            '/Users/dev/car-rental-web',
+            '/Users/dev/car-rental-api',
+            '/Users/dev/notes',
+        ]);
 
         await click(button('Remove car-rental-api'));
         await flush();
 
-        expect(folderPaths(FIXTURE_PROJECT_ID)).toEqual(['/Users/dev/car-rental', '/Users/dev/car-rental-web', '/Users/dev/notes']);
+        expect(folderPaths(FIXTURE_PROJECT_ID)).toEqual([
+            '/Users/dev/car-rental',
+            '/Users/dev/car-rental-web',
+            '/Users/dev/notes',
+        ]);
         expect(toasts.error).not.toHaveBeenCalled();
     });
 
@@ -592,15 +795,31 @@ describe('ProjectsPage project', () => {
     it('says so when the folders could not be checked', async () => {
         await open(FIXTURE_EMPTY_PROJECT_ID, { getProjectsInfo: () => Promise.reject(new Error('offline')) });
 
-        expect(container.textContent).toContain('Couldn\'t check the folders');
+        expect(container.textContent).toContain("Couldn't check the folders");
     });
 
     it('warns about each folder that is gone: the main one stops the agents, another is left out', async () => {
-        const info = { projectId: FIXTURE_EMPTY_PROJECT_ID, folders: [{ folderId: 'fld_clowdy', exists: false, chats: 0 }, { folderId: 'fld_added_1', exists: false, chats: 0 }, { folderId: 'fld_added_2', exists: true, remoteUrl: 'git@github.com:acme/notes.git', chats: 0 }], chats: 0, tasks: 0, activeRuns: 0 };
+        const info = {
+            projectId: FIXTURE_EMPTY_PROJECT_ID,
+            folders: [
+                { folderId: 'fld_clowdy', exists: false, chats: 0 },
+                { folderId: 'fld_added_1', exists: false, chats: 0 },
+                { folderId: 'fld_added_2', exists: true, remoteUrl: 'git@github.com:acme/notes.git', chats: 0 },
+            ],
+            chats: 0,
+            tasks: 0,
+            activeRuns: 0,
+        };
 
-        await open(FIXTURE_EMPTY_PROJECT_ID, { getProjectsInfo: async () => [info] }, withFolders(FIXTURE_EMPTY_PROJECT_ID, '/Users/dev/car-rental-api', '/Users/dev/notes'));
+        await open(
+            FIXTURE_EMPTY_PROJECT_ID,
+            { getProjectsInfo: async () => [info] },
+            withFolders(FIXTURE_EMPTY_PROJECT_ID, '/Users/dev/car-rental-api', '/Users/dev/notes')
+        );
 
-        expect(rows()[0]!.textContent).toContain('This folder no longer exists, so the agents of this project cannot work.');
+        expect(rows()[0]!.textContent).toContain(
+            'This folder no longer exists, so the agents of this project cannot work.'
+        );
         expect(rows()[1]!.textContent).toContain('This folder no longer exists, so the agents leave it out');
         expect(rows()[2]!.textContent).not.toContain('no longer exists');
         expect(rows()[2]!.querySelector('a[href="https://github.com/acme/notes"]')).not.toBeNull();
@@ -608,7 +827,16 @@ describe('ProjectsPage project', () => {
 });
 
 describe('ProjectsPage, a folder that is gone', () => {
-    const info = { projectId: FIXTURE_EMPTY_PROJECT_ID, folders: [{ folderId: 'fld_clowdy', exists: true, chats: 0 }, { folderId: 'fld_added_1', exists: false, chats: 0 }], chats: 0, tasks: 0, activeRuns: 0 };
+    const info = {
+        projectId: FIXTURE_EMPTY_PROJECT_ID,
+        folders: [
+            { folderId: 'fld_clowdy', exists: true, chats: 0 },
+            { folderId: 'fld_added_1', exists: false, chats: 0 },
+        ],
+        chats: 0,
+        tasks: 0,
+        activeRuns: 0,
+    };
 
     afterEach(() => {
         (window as { desktop?: unknown }).desktop = undefined;
@@ -618,7 +846,11 @@ describe('ProjectsPage, a folder that is gone', () => {
         const choose = vi.fn(async () => ['/Users/dev/api-moved']);
 
         (window as { desktop?: unknown }).desktop = { chooseDirectories: choose };
-        await open(FIXTURE_EMPTY_PROJECT_ID, { getProjectsInfo: async () => [info] }, withFolders(FIXTURE_EMPTY_PROJECT_ID, '/Users/dev/car-rental-api'));
+        await open(
+            FIXTURE_EMPTY_PROJECT_ID,
+            { getProjectsInfo: async () => [info] },
+            withFolders(FIXTURE_EMPTY_PROJECT_ID, '/Users/dev/car-rental-api')
+        );
 
         // Only the folder that is gone has it.
         expect(container.querySelectorAll('button[aria-label^="Locate "]')).toHaveLength(1);
@@ -628,19 +860,29 @@ describe('ProjectsPage, a folder that is gone', () => {
 
         expect(choose).toHaveBeenCalledOnce();
         expect(folderPaths(FIXTURE_EMPTY_PROJECT_ID)).toEqual(['/Users/dev/clowdy', '/Users/dev/api-moved']);
-        expect(store.projects.find(project => project.id === FIXTURE_EMPTY_PROJECT_ID)!.folders[1]!.id).toBe('fld_added_1');
+        expect(store.projects.find(project => project.id === FIXTURE_EMPTY_PROJECT_ID)!.folders[1]!.id).toBe(
+            'fld_added_1'
+        );
     });
 
     it('moves nothing when the dialog is closed, and has no button where the window has no dialog', async () => {
         (window as { desktop?: unknown }).desktop = { chooseDirectories: async () => [] };
-        await open(FIXTURE_EMPTY_PROJECT_ID, { getProjectsInfo: async () => [info] }, withFolders(FIXTURE_EMPTY_PROJECT_ID, '/Users/dev/car-rental-api'));
+        await open(
+            FIXTURE_EMPTY_PROJECT_ID,
+            { getProjectsInfo: async () => [info] },
+            withFolders(FIXTURE_EMPTY_PROJECT_ID, '/Users/dev/car-rental-api')
+        );
         await click(button('Locate car-rental-api'));
         await flush();
 
         expect(folderPaths(FIXTURE_EMPTY_PROJECT_ID)).toEqual(['/Users/dev/clowdy', '/Users/dev/car-rental-api']);
 
         (window as { desktop?: unknown }).desktop = undefined;
-        await open(FIXTURE_EMPTY_PROJECT_ID, { getProjectsInfo: async () => [info] }, withFolders(FIXTURE_EMPTY_PROJECT_ID, '/Users/dev/car-rental-api'));
+        await open(
+            FIXTURE_EMPTY_PROJECT_ID,
+            { getProjectsInfo: async () => [info] },
+            withFolders(FIXTURE_EMPTY_PROJECT_ID, '/Users/dev/car-rental-api')
+        );
 
         expect(container.querySelector('button[aria-label^="Locate "]')).toBeNull();
     });
@@ -651,7 +893,8 @@ describe('ProjectsPage icon', () => {
     const settingsOf = (projectId: ProjectId) => store.projects.find(project => project.id === projectId)!.settings;
     const iconOf = (projectId: ProjectId) => row(projectId)?.querySelector('img')?.getAttribute('src');
     /** The picture in the name field. The project list under the page has pictures too, so this stays on the field. */
-    const preview = () => container.querySelector('input[type="file"]')!.parentElement!.querySelector('img')?.getAttribute('src');
+    const preview = () =>
+        container.querySelector('input[type="file"]')!.parentElement!.querySelector('img')?.getAttribute('src');
 
     /** Picks a file for the icon. */
     async function pick(file: File) {
@@ -662,7 +905,7 @@ describe('ProjectsPage icon', () => {
         await flush();
     }
 
-    it('shows the favicon found in a project\'s main folder before its name, and the folder icon without one', async () => {
+    it("shows the favicon found in a project's main folder before its name, and the folder icon without one", async () => {
         await open();
 
         expect(iconOf(FIXTURE_PROJECT_ID)).toMatch(/^blob:/);
@@ -722,7 +965,7 @@ describe('ProjectsPage icon', () => {
         expect(toasts.error).toHaveBeenLastCalledWith({ message: 'huge.png is over 5 MB' });
 
         await pick(new File(['x'], 'notes.txt'));
-        expect(toasts.error).toHaveBeenLastCalledWith({ message: 'Couldn\'t read notes.txt as a picture' });
+        expect(toasts.error).toHaveBeenLastCalledWith({ message: "Couldn't read notes.txt as a picture" });
         expect(settingsOf(FIXTURE_EMPTY_PROJECT_ID).icon).toBeUndefined();
     });
 });
@@ -741,15 +984,26 @@ describe('ProjectsPage workspace', () => {
         return data;
     }
 
-    const settingsOf = (projectId: ProjectId, folderId: string) => store.projects.find(project => project.id === projectId)?.folders.find(folder => folder.id === folderId)?.settings;
-    const openButton = (name: string) => container.querySelector<HTMLButtonElement>(`button[aria-label="Workspace of ${ name }"]`);
-    const form = () => document.body.querySelector<HTMLInputElement>('input[aria-label="Base branch"]')?.closest('form') ?? null;
-    const field = (label: string) => document.getElementById([...form()!.querySelectorAll('label')].find(candidate => candidate.textContent === label)!.htmlFor) as HTMLTextAreaElement;
+    const settingsOf = (projectId: ProjectId, folderId: string) =>
+        store.projects.find(project => project.id === projectId)?.folders.find(folder => folder.id === folderId)
+            ?.settings;
+    const openButton = (name: string) =>
+        container.querySelector<HTMLButtonElement>(`button[aria-label="Workspace of ${name}"]`);
+    const form = () =>
+        document.body.querySelector<HTMLInputElement>('input[aria-label="Base branch"]')?.closest('form') ?? null;
+    const field = (label: string) =>
+        document.getElementById(
+            [...form()!.querySelectorAll('label')].find(candidate => candidate.textContent === label)!.htmlFor
+        ) as HTMLTextAreaElement;
     const baseBranch = () => form()!.querySelector<HTMLInputElement>('input[aria-label="Base branch"]')!;
-    const save = () => [...form()!.querySelectorAll<HTMLButtonElement>('button[type="submit"]')].find(candidate => candidate.textContent === 'Save')!;
+    const save = () =>
+        [...form()!.querySelectorAll<HTMLButtonElement>('button[type="submit"]')].find(
+            candidate => candidate.textContent === 'Save'
+        )!;
 
     function typeInto(element: HTMLInputElement | HTMLTextAreaElement, value: string) {
-        const prototype = element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+        const prototype =
+            element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
 
         act(() => {
             element.focus();
@@ -768,7 +1022,7 @@ describe('ProjectsPage workspace', () => {
     /** The commands the page sent, passed on to the fixture daemon. */
     function recording(sent: unknown[]) {
         return (base: Transport): Partial<Transport> => ({
-            command: async (input) => {
+            command: async input => {
                 sent.push(input);
 
                 return base.command(input);
@@ -779,7 +1033,9 @@ describe('ProjectsPage workspace', () => {
     it('gives each folder of a project a Workspace button, and the personal space none', async () => {
         await open(FIXTURE_PROJECT_ID, {}, folders());
 
-        expect(rows().map(item => item.querySelector('button[aria-label^="Workspace of"]')?.getAttribute('aria-label'))).toEqual(['Workspace of car-rental', 'Workspace of car-rental-api', 'Workspace of notes']);
+        expect(
+            rows().map(item => item.querySelector('button[aria-label^="Workspace of"]')?.getAttribute('aria-label'))
+        ).toEqual(['Workspace of car-rental', 'Workspace of car-rental-api', 'Workspace of notes']);
         // Beside Open in GitHub, which a folder with a remote has.
         expect(rows()[0]!.querySelector('a[href="https://github.com/acme/car-rental"]')).not.toBeNull();
 
@@ -788,7 +1044,7 @@ describe('ProjectsPage workspace', () => {
         expect(container.querySelector('button[aria-label^="Workspace of"]')).toBeNull();
     });
 
-    it('opens with what the folder has set, and with the repository\'s default branch as the placeholder of the base branch', async () => {
+    it("opens with what the folder has set, and with the repository's default branch as the placeholder of the base branch", async () => {
         await openDialog('car-rental-api', {}, folders(SETTINGS));
 
         expect(form()!.textContent).toContain('Workspace of car-rental-api');
@@ -822,13 +1078,21 @@ describe('ProjectsPage workspace', () => {
         await act(async () => form()!.requestSubmit());
         await flush();
 
-        expect(sent).toEqual([{
-            type: 'project.updateFolder',
-            projectId: FIXTURE_PROJECT_ID,
-            folderId: API,
-            settings: { baseBranch: 'origin/dev', setup: { files: ['.env', '.npmrc'], command: 'bun install\nbun run build:shared' } },
-        }]);
-        expect(settingsOf(FIXTURE_PROJECT_ID, API)).toEqual({ baseBranch: 'origin/dev', setup: { files: ['.env', '.npmrc'], command: 'bun install\nbun run build:shared' } });
+        expect(sent).toEqual([
+            {
+                type: 'project.updateFolder',
+                projectId: FIXTURE_PROJECT_ID,
+                folderId: API,
+                settings: {
+                    baseBranch: 'origin/dev',
+                    setup: { files: ['.env', '.npmrc'], command: 'bun install\nbun run build:shared' },
+                },
+            },
+        ]);
+        expect(settingsOf(FIXTURE_PROJECT_ID, API)).toEqual({
+            baseBranch: 'origin/dev',
+            setup: { files: ['.env', '.npmrc'], command: 'bun install\nbun run build:shared' },
+        });
         expect(settingsOf(FIXTURE_PROJECT_ID, 'fld_car_rental')).toBeUndefined();
         expect(settingsOf(FIXTURE_PROJECT_ID, NOTES)).toBeUndefined();
         expect(form()).toBeNull();
@@ -844,7 +1108,14 @@ describe('ProjectsPage workspace', () => {
         await act(async () => form()!.requestSubmit());
         await flush();
 
-        expect(sent).toEqual([{ type: 'project.updateFolder', projectId: FIXTURE_PROJECT_ID, folderId: API, settings: { baseBranch: null, setup: null } }]);
+        expect(sent).toEqual([
+            {
+                type: 'project.updateFolder',
+                projectId: FIXTURE_PROJECT_ID,
+                folderId: API,
+                settings: { baseBranch: null, setup: null },
+            },
+        ]);
         expect(settingsOf(FIXTURE_PROJECT_ID, API)).toBeUndefined();
         expect(form()).toBeNull();
     });
@@ -865,12 +1136,26 @@ describe('ProjectsPage workspace', () => {
         await act(async () => form()!.requestSubmit());
         await flush();
 
-        expect(sent).toEqual([{ type: 'project.updateFolder', projectId: FIXTURE_PROJECT_ID, folderId: API, settings: { baseBranch: 'dev', setup: { files: ['.env', '.env*'], command: 'make' } } }]);
-        expect(settingsOf(FIXTURE_PROJECT_ID, API)).toEqual({ baseBranch: 'dev', setup: { files: ['.env', '.env*'], command: 'make' } });
+        expect(sent).toEqual([
+            {
+                type: 'project.updateFolder',
+                projectId: FIXTURE_PROJECT_ID,
+                folderId: API,
+                settings: { baseBranch: 'dev', setup: { files: ['.env', '.env*'], command: 'make' } },
+            },
+        ]);
+        expect(settingsOf(FIXTURE_PROJECT_ID, API)).toEqual({
+            baseBranch: 'dev',
+            setup: { files: ['.env', '.env*'], command: 'make' },
+        });
     });
 
     it('keeps the dialog and what was typed when the daemon refuses, with its reason as a toast', async () => {
-        const refusal = { ok: false as const, requestId: 'r', error: { code: 'invalid' as const, message: 'The file "../x" must not have a . or .. part' } };
+        const refusal = {
+            ok: false as const,
+            requestId: 'r',
+            error: { code: 'invalid' as const, message: 'The file "../x" must not have a . or .. part' },
+        };
 
         await openDialog('car-rental-api', { command: async () => refusal });
         typeInto(field('Files to copy'), '../x');
@@ -890,7 +1175,9 @@ describe('ProjectsPage workspace', () => {
         expect(form()!.textContent).not.toContain('has no branch');
 
         typeInto(baseBranch(), 'release');
-        expect(form()!.textContent).toContain('The repository has no branch called release, so the default branch is used');
+        expect(form()!.textContent).toContain(
+            'The repository has no branch called release, so the default branch is used'
+        );
         expect(form()!.textContent).not.toContain('is not one');
 
         await act(async () => Modal.opened[0]!.close(false));
@@ -917,7 +1204,11 @@ describe('ProjectsPage workspace', () => {
         const sent: unknown[] = [];
 
         await openDialog('car-rental-api', recording(sent));
-        await store.command({ type: 'project.update', projectId: FIXTURE_PROJECT_ID, folders: [{ id: 'fld_car_rental' }, { id: NOTES }] });
+        await store.command({
+            type: 'project.update',
+            projectId: FIXTURE_PROJECT_ID,
+            folders: [{ id: 'fld_car_rental' }, { id: NOTES }],
+        });
         await flush();
         // The form is drawn again with the next change to a field.
         typeInto(baseBranch(), 'dev');
@@ -925,7 +1216,13 @@ describe('ProjectsPage workspace', () => {
         expect(form()!.textContent).toContain('This folder is no longer in the project');
         expect(save().disabled).toBe(true);
         await act(async () => form()!.requestSubmit());
-        expect(sent).toEqual([{ type: 'project.update', projectId: FIXTURE_PROJECT_ID, folders: [{ id: 'fld_car_rental' }, { id: NOTES }] }]);
+        expect(sent).toEqual([
+            {
+                type: 'project.update',
+                projectId: FIXTURE_PROJECT_ID,
+                folders: [{ id: 'fld_car_rental' }, { id: NOTES }],
+            },
+        ]);
     });
 
     it('keeps the settings of a folder when the folders are dragged into another order', async () => {

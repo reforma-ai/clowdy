@@ -5,7 +5,12 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createFixtureData, FIXTURE_PROJECT_ID, FIXTURE_WORKSPACE_CHAT_ID, withFixtureWorkspace } from '../../daemon/fixtureData';
+import {
+    createFixtureData,
+    FIXTURE_PROJECT_ID,
+    FIXTURE_WORKSPACE_CHAT_ID,
+    withFixtureWorkspace,
+} from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider } from '../../stores';
 import TerminalTab, { TerminalShell } from './TerminalTab';
@@ -25,7 +30,10 @@ vi.mock('./TerminalView', () => ({
         unmounts = 0;
         disposed = false;
 
-        constructor(_session: unknown, readonly options: { onGone: () => void }) {
+        constructor(
+            _session: unknown,
+            readonly options: { onGone: () => void }
+        ) {
             views.push(this);
         }
 
@@ -53,32 +61,43 @@ const Shell = observer(TerminalShell);
 const memory = () => {
     const data = new Map<string, string>();
 
-    return { getItem: (key: string) => data.get(key) ?? null, setItem: (key: string, value: string) => void data.set(key, value), removeItem: (key: string) => void data.delete(key) };
+    return {
+        getItem: (key: string) => data.get(key) ?? null,
+        setItem: (key: string, value: string) => void data.set(key, value),
+        removeItem: (key: string) => void data.delete(key),
+    };
 };
 
 let container: HTMLDivElement;
 let root: Root;
 let store: RootStore;
 
-const settle = () => act(async () => {
-    await new Promise(resolve => setTimeout(resolve, 0));
-});
-const press = (target: Element | null | undefined) => act(async () => {
-    target?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
-    target?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
-    target?.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
-    target?.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
-    (target as HTMLElement | null | undefined)?.click();
-});
+const settle = () =>
+    act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 0));
+    });
+const press = (target: Element | null | undefined) =>
+    act(async () => {
+        target?.dispatchEvent(
+            new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true })
+        );
+        target?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+        target?.dispatchEvent(
+            new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true })
+        );
+        target?.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
+        (target as HTMLElement | null | undefined)?.click();
+    });
 const bar = () => container.querySelector('[role="tablist"][aria-label="Terminals"]');
 const tabs = () => [...(bar()?.querySelectorAll<HTMLButtonElement>('[role="tab"]') ?? [])];
 const labels = () => tabs().map(button => button.textContent);
 const chosen = () => tabs().find(button => button.getAttribute('aria-selected') === 'true')?.textContent;
-const button = (label: string) => container.querySelector<HTMLButtonElement>(`button[aria-label="${ label }"]`);
-const textButton = (text: string) => [...container.querySelectorAll('button')].find(candidate => candidate.textContent === text);
+const button = (label: string) => container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+const textButton = (text: string) =>
+    [...container.querySelectorAll('button')].find(candidate => candidate.textContent === text);
 
 async function draw(element: React.ReactElement) {
-    act(() => root.render(<RootStoreProvider value={ store }>{ element }</RootStoreProvider>));
+    act(() => root.render(<RootStoreProvider value={store}>{element}</RootStoreProvider>));
     await settle();
     await settle();
 }
@@ -200,7 +219,12 @@ describe('the Terminal tab', () => {
     it('does not start a second shell on a second look, and brings back the one the daemon already runs', async () => {
         const folder = store.selectedProject!.project.folders[0];
 
-        await store.transport.createTerminal({ projectId: store.selectedProjectId!, folderId: folder.id, cols: 80, rows: 24 });
+        await store.transport.createTerminal({
+            projectId: store.selectedProjectId!,
+            folderId: folder.id,
+            cols: 80,
+            rows: 24,
+        });
         await draw(<Tab />);
 
         expect(labels()).toEqual(['zsh']);
@@ -232,7 +256,7 @@ describe('a shell in the tab', () => {
     it('says the shell exited, and offers a new one', async () => {
         const made = await session();
 
-        await draw(<Shell session={ made } />);
+        await draw(<Shell session={made} />);
         expect(container.textContent).not.toContain('Process exited');
 
         act(() => made.update({ state: 'exited', exitCode: 1 }));
@@ -248,7 +272,7 @@ describe('a shell in the tab', () => {
     it('says it is reconnecting while the stream is down', async () => {
         const made = await session();
 
-        await draw(<Shell session={ made } />);
+        await draw(<Shell session={made} />);
         act(() => made.setStatus('reconnecting'));
 
         expect(container.textContent).toContain('Reconnecting');
@@ -261,47 +285,57 @@ describe('a shell in the tab', () => {
     it('moves its view out of the tab when the tab goes, and keeps it for the next time', async () => {
         const made = await session();
 
-        await draw(<Shell session={ made } />);
+        await draw(<Shell session={made} />);
         await draw(<p>Another tab</p>);
 
         expect(views).toHaveLength(1);
         expect(views[0].unmounts).toBe(1);
         expect(views[0].disposed).toBe(false);
 
-        await draw(<Shell session={ made } />);
+        await draw(<Shell session={made} />);
 
         expect(views).toHaveLength(1);
         expect(views[0].mounts).toBe(2);
     });
 });
 
-describe('the Terminal tab in a chat\'s worktree', () => {
+describe("the Terminal tab in a chat's worktree", () => {
     const WORKTREE = '/Users/dev/Clowdy/workspaces/car-rental/ab12cd34/car-rental';
 
     beforeEach(async () => {
         terminalsStoreOf(store.transport).dispose();
         store.dispose();
-        store = new RootStore(new FixtureTransport({ data: withFixtureWorkspace(createFixtureData()) }), { storage: memory() });
+        store = new RootStore(new FixtureTransport({ data: withFixtureWorkspace(createFixtureData()) }), {
+            storage: memory(),
+        });
         await store.load();
         await settle();
     });
 
     const openWorktreeChat = () => store.ui.forProject(FIXTURE_PROJECT_ID).openChat(FIXTURE_WORKSPACE_CHAT_ID);
 
-    it('opens on a shell in the worktree, and the folder\'s own shells are not its tabs', async () => {
+    it("opens on a shell in the worktree, and the folder's own shells are not its tabs", async () => {
         store.selectProject(FIXTURE_PROJECT_ID);
-        await store.transport.createTerminal({ projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental', cols: 80, rows: 24 });
+        await store.transport.createTerminal({
+            projectId: FIXTURE_PROJECT_ID,
+            folderId: 'fld_car_rental',
+            cols: 80,
+            rows: 24,
+        });
         openWorktreeChat();
         await draw(<Tab />);
 
         const terminals = terminalsStoreOf(store.transport);
 
         expect(labels()).toEqual(['zsh']);
-        expect(terminals.sessions.map(session => [session.info.cwd, session.info.workspaceId])).toEqual([['/Users/dev/car-rental', undefined], [WORKTREE, 'wks_ab12cd34']]);
+        expect(terminals.sessions.map(session => [session.info.cwd, session.info.workspaceId])).toEqual([
+            ['/Users/dev/car-rental', undefined],
+            [WORKTREE, 'wks_ab12cd34'],
+        ]);
         expect(terminals.activeOf(FIXTURE_PROJECT_ID, 'fld_car_rental', 'wks_ab12cd34')?.info.cwd).toBe(WORKTREE);
     });
 
-    it('adds a shell in the worktree with the plus, and brings back the folder\'s own shells when another chat is open', async () => {
+    it("adds a shell in the worktree with the plus, and brings back the folder's own shells when another chat is open", async () => {
         store.selectProject(FIXTURE_PROJECT_ID);
         openWorktreeChat();
         await draw(<Tab />);
@@ -324,8 +358,12 @@ describe('the Terminal tab in a chat\'s worktree', () => {
         expect(terminals.sessionsOf(FIXTURE_PROJECT_ID, 'fld_car_rental')[0]!.info.cwd).toBe('/Users/dev/car-rental');
     });
 
-    it('says the worktree is not made yet and starts no shell for it, then opens on one once the chat\'s first message has made it', async () => {
-        const made = await store.command({ type: 'chat.create', projectId: FIXTURE_PROJECT_ID, workspace: { mode: 'new' } });
+    it("says the worktree is not made yet and starts no shell for it, then opens on one once the chat's first message has made it", async () => {
+        const made = await store.command({
+            type: 'chat.create',
+            projectId: FIXTURE_PROJECT_ID,
+            workspace: { mode: 'new' },
+        });
         const { chat } = (made as { data: { chat: Chat } }).data;
         const project = store.projectState(FIXTURE_PROJECT_ID)!;
 

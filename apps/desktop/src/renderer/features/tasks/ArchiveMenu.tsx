@@ -26,18 +26,20 @@ export function ArchiveMenu({ contextMenu, targets, isOpen, onArchive }: Archive
     const { action } = archiveWording(targets, isOpen);
 
     return (
-        <Popover { ...contextMenu.popoverProps } placement="bottom start" spacing="xs">
+        <Popover {...contextMenu.popoverProps} placement="bottom start" spacing="xs">
             <PopoverScroll>
                 <Menu
                     aria-label="Task actions"
                     size="sm"
-                    onAction={ (key) => {
+                    onAction={key => {
                         contextMenu.close();
 
                         if (key === 'archive') onArchive(targets);
-                    } }
+                    }}
                 >
-                    <MenuItem id="archive" icon={ <Archive /> } textValue={ action }>{ action }</MenuItem>
+                    <MenuItem id="archive" icon={<Archive />} textValue={action}>
+                        {action}
+                    </MenuItem>
                 </Menu>
             </PopoverScroll>
         </Popover>

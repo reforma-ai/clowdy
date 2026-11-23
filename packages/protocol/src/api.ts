@@ -1,4 +1,5 @@
-import type { FolderId, Task, TaskComment } from './domain';
+import type { ChatId, FolderId, Task, TaskComment, WorkspaceId } from './domain';
+import type { GitRemoteAction } from './git';
 
 /** Version of this contract. The daemon refuses clients that send a different major in `x-clowdy-protocol`. */
 export const PROTOCOL_VERSION = 1;
@@ -14,8 +15,9 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  * GET  /v1/projects/info                  -> ProjectInfo[] (one per project, in the order of the snapshot: whether each of its folders exists, its
  *                                            git remote and branch and how many chats chose it, and how many chats, tasks and unfinished runs the
  *                                            project has; read when asked, never announced); `?project=ID` answers that project alone (404 when
- *                                            there is none). `workspaces` has one entry for each worktree of the project's chats (`ChatWorkspace`): whether
- *                                            it is there (not made yet, or gone from the disk, is not) and the branch it has checked out now, or on a
+ *                                            there is none). `workspaces` has one entry for each worktree of the project's chats (`ChatWorkspace`) and for each one
+ *                                            a new-chat page opened (`workspace.open`) that no chat works in yet, which is there only while it is on the disk:
+ *                                            whether it is there (not made yet, or gone from the disk, is not) and the branch it has checked out now, or on a
  *                                            detached HEAD the short hash with `detached`, read as a folder's is; absent when the project has none)
  * GET  /v1/events?cursor=N                -> text/event-stream of ClowdyEvent (frame name `clowdy`, id = cursor); without a
  *                                            cursor the stream is live only; `Last-Event-ID` also resumes; `&projectId=ID`
@@ -53,6 +55,27 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  *                                            changes). A folder that is not the root of a repository answers `isRepository: false` and nothing else; `folderId` of no
  *                                            folder of the project is `not_found`, none is `invalid`, and a folder gone from the disk, or a git that does not answer
  *                                            in time, is `unavailable`)
+ * GET  /v1/projects/:id/git/status?folderId=&workspaceId= -> GitStatus (what git says of a place, a folder's checkout or a worktree of it: the branch, its upstream, the
+ *                                            uncommitted paths and how far the branch is from its base)
+ * GET  /v1/projects/:id/git/changes?folderId=&workspaceId=&scope= -> GitChanges (the files that changed in a scope, `all`, `branch`, `uncommitted` or `commit:<sha>`, with
+ *                                            their line counts and revisions)
+ * GET  /v1/projects/:id/git/file?folderId=&workspaceId=&scope=&path=&oldPath=&from= -> GitFileSides (the text of one changed file before and after; `from` is the list's own start)
+ * GET  /v1/projects/:id/git/pull-request?folderId=&workspaceId= -> GitPullRequestInfo (whether the person's `gh` can be asked about the place's `origin`, and the pull
+ *                                            request of its branch with its checks, or none). The four are described in `git.ts`
+ * GET  /v1/projects/:id/git/viewed?folderId=&workspaceId=&scope= -> GitViewedMark[] (the files the person marked as viewed in a scope of the place, each with the revision it had
+ *                                            when it was marked; the daemon keeps them, and the client decides a file is still viewed while its own revision is the stored one)
+ * POST /v1/projects/:id/git/viewed       -> GitViewedMark (body GitViewedSet: marks one file as viewed in a scope)
+ * DELETE /v1/projects/:id/git/viewed?folderId=&workspaceId=&scope=&path= -> { ok: true } (clears one file's mark). The three are described in `git.ts`
+ * POST /v1/projects/:id/git/commit        -> GitCommitResult (commits the files the person ticked, `paths`, with `message`: the first route that changes a repository)
+ * POST /v1/projects/:id/git/message       -> GitMessage (a commit message for the ticked files, written by the provider the person turned `Commit messages` on for). Both are described in `git.ts`
+ * POST /v1/projects/:id/git/fetch|pull|push -> GitRemoteResult (the only routes that reach `origin`: `git fetch --no-recurse-submodules origin`, a fast-forward pull, a push or the first publish of the branch; a pull of
+ *                                            a diverged branch answers `state: 'diverged'` and changes nothing). Body `GitRemoteRequest`, described in `git.ts`
+ * GET  /v1/projects/:id/worktrees        -> FolderWorktrees[] (one entry per folder of the project, in the project's order: whether it is the root of a repository and, if
+ *                                            it is, its own checkout first and then every worktree git lists for it (one Clowdy made, one an agent or a person made, a locked one,
+ *                                            one whose folder is gone): ours above the others (made by Clowdy or with a chat, or the repository's own working tree), one whose
+ *                                            folder is gone last, git's order within each kind; each with the chats that work in it (archived ones too), the number of changed files, whether its work is
+ *                                            in the base as last fetched, and why it cannot be removed. A folder that is not a repository, or is gone from the disk, has an entry
+ *                                            with `isRepository: false` and no worktrees; `not_found` for no such project, `unavailable` for a git that does not answer)
  * GET  /v1/projects/:id/files?query=&limit=&workspaceId= -> ProjectFileMatch[] (files of the project's folders whose path contains every word of `query`,
  *                                            the folder's name counting as part of the path when there are several; best match first,
  *                                            at most `limit` (default 40, most 100); git's tracked and unignored files, or a walk outside
@@ -84,29 +107,41 @@ export const ROUTES = {
     health: '/v1/health',
     snapshot: '/v1/snapshot',
     projectsInfo: '/v1/projects/info',
-    projectSnapshot: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/snapshot`,
+    projectSnapshot: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/snapshot`,
     events: '/v1/events',
     commands: '/v1/commands',
-    runItems: (runId: string) => `/v1/runs/${ encodeURIComponent(runId) }/items`,
-    chatItems: (chatId: string) => `/v1/chats/${ encodeURIComponent(chatId) }/items`,
-    chatWorkspace: (chatId: string) => `/v1/chats/${ encodeURIComponent(chatId) }/workspace`,
-    taskDetail: (taskId: string) => `/v1/tasks/${ encodeURIComponent(taskId) }/detail`,
-    projectTaskDetail: (projectId: string, key: string) => `/v1/projects/${ encodeURIComponent(projectId) }/tasks/${ encodeURIComponent(key) }/detail`,
-    taskComments: (taskId: string) => `/v1/tasks/${ encodeURIComponent(taskId) }/comments`,
-    projectArchivedTasks: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/archived-tasks`,
-    docsTree: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/docs`,
-    projectGit: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/git`,
-    projectFiles: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/files`,
-    projectAttachments: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/attachments`,
-    projectAttachment: (projectId: string, attachmentId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/attachments/${ encodeURIComponent(attachmentId) }`,
-    projectIcon: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/icon`,
-    projectFs: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/fs`,
+    runItems: (runId: string) => `/v1/runs/${encodeURIComponent(runId)}/items`,
+    chatItems: (chatId: string) => `/v1/chats/${encodeURIComponent(chatId)}/items`,
+    chatWorkspace: (chatId: string) => `/v1/chats/${encodeURIComponent(chatId)}/workspace`,
+    taskDetail: (taskId: string) => `/v1/tasks/${encodeURIComponent(taskId)}/detail`,
+    projectTaskDetail: (projectId: string, key: string) =>
+        `/v1/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(key)}/detail`,
+    taskComments: (taskId: string) => `/v1/tasks/${encodeURIComponent(taskId)}/comments`,
+    projectArchivedTasks: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/archived-tasks`,
+    docsTree: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/docs`,
+    projectGit: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git`,
+    projectGitStatus: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git/status`,
+    projectGitChanges: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git/changes`,
+    projectGitFile: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git/file`,
+    projectGitViewed: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git/viewed`,
+    projectWorktrees: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/worktrees`,
+    projectGitPullRequest: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git/pull-request`,
+    projectGitCommit: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git/commit`,
+    projectGitMessage: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git/message`,
+    projectGitRemote: (projectId: string, action: GitRemoteAction) =>
+        `/v1/projects/${encodeURIComponent(projectId)}/git/${action}`,
+    projectFiles: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/files`,
+    projectAttachments: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/attachments`,
+    projectAttachment: (projectId: string, attachmentId: string) =>
+        `/v1/projects/${encodeURIComponent(projectId)}/attachments/${encodeURIComponent(attachmentId)}`,
+    projectIcon: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/icon`,
+    projectFs: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/fs`,
     terminals: '/v1/terminals',
-    terminal: (terminalId: string) => `/v1/terminals/${ encodeURIComponent(terminalId) }`,
-    terminalStream: (terminalId: string) => `/v1/terminals/${ encodeURIComponent(terminalId) }/stream`,
+    terminal: (terminalId: string) => `/v1/terminals/${encodeURIComponent(terminalId)}`,
+    terminalStream: (terminalId: string) => `/v1/terminals/${encodeURIComponent(terminalId)}/stream`,
     skills: '/v1/skills',
     agents: '/v1/agents',
-    agentModels: (agentId: string) => `/v1/agents/${ encodeURIComponent(agentId) }/models`,
+    agentModels: (agentId: string) => `/v1/agents/${encodeURIComponent(agentId)}/models`,
     shutdown: '/v1/shutdown',
 } as const;
 
@@ -160,18 +195,75 @@ export interface GitWorktree {
 }
 
 /** What `GET /v1/projects/:id/git` says about a folder: a repository's branches and worktrees, or that the folder is no repository. */
-export type FolderGit = { isRepository: false } | {
-    isRepository: true;
-    /** The branch the folder has checked out, or on a detached HEAD the short hash of its commit (with `detached`); in a repository with no commit yet, the name its first branch will have. */
+export type FolderGit =
+    | { isRepository: false }
+    | {
+          isRepository: true;
+          /** The branch the folder has checked out, or on a detached HEAD the short hash of its commit (with `detached`); in a repository with no commit yet, the name its first branch will have. */
+          branch?: string;
+          detached?: true;
+          /** The ref a new worktree starts from unless the person picks another (a `GitBranch.name`, or a short hash on a detached HEAD); absent in a repository with no commit yet. */
+          defaultBranch?: string;
+          branches: GitBranch[];
+          /** `branches` was cut at `MAX_GIT_BRANCHES`. */
+          truncated?: true;
+          worktrees: GitWorktree[];
+      };
+
+/** Why a worktree has no Remove: it is the folder's own checkout (or the repository's primary working tree, which git never removes, or another folder of the project), git has it locked, or a chat works in it. The first that holds, in that order. */
+export type WorktreeBlock = 'main' | 'locked' | 'chats';
+
+/** A chat that works in a worktree, as the Manage dialog lists it. */
+export interface WorktreeChat {
+    id: ChatId;
+    title: string;
+    archived: boolean;
+}
+
+/**
+ * One worktree of a folder's repository as `GET /v1/projects/:id/worktrees` describes it: what git lists, whoever made it, with who works in it and how far its work is from
+ * the base. The folder's own checkout is the first row of its group.
+ */
+export interface WorktreeInfo {
+    /** Absolute, written as the machine writes paths (git prints `C:/work` on Windows). */
+    path: string;
+    /** The branch it has checked out; absent on a detached HEAD. */
     branch?: string;
-    detached?: true;
-    /** The ref a new worktree starts from unless the person picks another (a `GitBranch.name`, or a short hash on a detached HEAD); absent in a repository with no commit yet. */
-    defaultBranch?: string;
-    branches: GitBranch[];
-    /** `branches` was cut at `MAX_GIT_BRANCHES`. */
-    truncated?: true;
-    worktrees: GitWorktree[];
-};
+    /** The first seven characters of the commit it is on; empty when git did not say. */
+    head: string;
+    /** The worktree is the folder's own checkout. */
+    main: boolean;
+    /** Git lists it but its folder is gone from the disk (`prunable`, or nothing there): only its record can be removed. */
+    missing: boolean;
+    /** Git has it locked, with the reason (empty when none was given). */
+    locked?: string;
+    /** How many files have uncommitted changes, a new file counted; 0 when clean, and for a missing worktree. A status that fails or does not answer in time counts as 1, so a row never says clean on a guess. */
+    changes: number;
+    /** An initialised submodule is checked out in it: `git worktree remove` refuses such a tree without `--force`, whatever `changes` says. */
+    submodules: boolean;
+    /** The commit it is on and its branch are both in `base`, as last fetched; absent for the folder's own checkout and when no base resolves. A squash merge reads as not merged. */
+    merged?: boolean;
+    /** The ref `merged` was checked against (`origin/main`): the base the worktree was made from, else the folder's own. Absent with `merged`. */
+    base?: string;
+    /** The record Clowdy keeps of it (`Chat.workspace.id`), when a chat has worked in it or the new-chat page opened it. */
+    workspaceId?: WorkspaceId;
+    /** Clowdy made it, under its workspaces folder. */
+    managed: boolean;
+    /** The chats that work in it, archived ones too, oldest first. */
+    chats: WorktreeChat[];
+    /** Why it cannot be removed; absent when it can. */
+    blocked?: WorktreeBlock;
+}
+
+/** What `GET /v1/projects/:id/worktrees` says about one folder of the project: no worktrees for a folder that is no repository, else its own checkout first and every worktree git lists: ours above the others, one gone from the disk last, git's order within each kind. */
+export interface FolderWorktrees {
+    folderId: FolderId;
+    /** The folder's name, as `folderNames` writes it. */
+    name: string;
+    /** The folder is the root of a working tree. False for any other folder, and for one gone from the disk. */
+    isRepository: boolean;
+    worktrees: WorktreeInfo[];
+}
 
 /** A file `GET /v1/projects/:id/files` found: the folder of the project it is in, and its path below that folder with `/` separators. */
 export interface ProjectFileMatch {

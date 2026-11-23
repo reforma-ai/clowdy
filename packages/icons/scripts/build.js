@@ -43,8 +43,7 @@ async function loadIconsMetadata() {
         const content = await fs.readFile(metadataPath, 'utf8');
 
         return JSON.parse(content);
-    }
-    catch {
+    } catch {
         // If metadata file doesn't exist, return empty structure
         return { packs: {}, icons: {} };
     }
@@ -81,8 +80,8 @@ function pascalCase(value) {
 
 /** Extract dimensions from SVG: width/height attributes first, then viewBox. Returns { viewBox, width, height }. */
 function extractDimensions(svgString) {
-    const attrNum = (name) => {
-        const m = svgString.match(new RegExp(`${ name }\\s*=\\s*["']([^"']+)["']`, 'i'));
+    const attrNum = name => {
+        const m = svgString.match(new RegExp(`${name}\\s*=\\s*["']([^"']+)["']`, 'i'));
 
         if (!m) {
             return null;
@@ -118,11 +117,8 @@ async function existingPackComponents(packDistDir) {
     try {
         const files = await fs.readdir(packDistDir);
 
-        return files
-            .filter(file => file.endsWith('.js') && file !== 'index.js')
-            .map(file => file.slice(0, -3));
-    }
-    catch (error) {
+        return files.filter(file => file.endsWith('.js') && file !== 'index.js').map(file => file.slice(0, -3));
+    } catch (error) {
         if (error && error.code === 'ENOENT') {
             return [];
         }
@@ -146,15 +142,13 @@ async function buildPack(pack, metadata) {
     const excludePatterns = metadata.packs?.[pack]?.excludeFromOptimization ?? [];
     const exclusionSuffix = metadata.optimization?.excludeFromOptimizationSuffix;
 
-    const matchesExclude = (iconName) => {
+    const matchesExclude = iconName => {
         return excludePatterns.some(pattern => minimatch(iconName, pattern));
     };
 
     for (const file of svgFiles) {
         const sourceIconName = file.replace(/\.svg$/, '');
-        const hasOptimizationExclusionSuffix = Boolean(
-            exclusionSuffix && sourceIconName.endsWith(exclusionSuffix)
-        );
+        const hasOptimizationExclusionSuffix = Boolean(exclusionSuffix && sourceIconName.endsWith(exclusionSuffix));
         const iconName = hasOptimizationExclusionSuffix
             ? sourceIconName.slice(0, -exclusionSuffix.length)
             : sourceIconName;
@@ -172,17 +166,17 @@ async function buildPack(pack, metadata) {
         const { width: vbWidth, height: vbHeight } = extractDimensions(rawSvg);
         const effectiveSize = Number.isNaN(packDefaultSize) ? null : packDefaultSize;
         const iconContext = {
-            defaultWidth: metadata.icons?.[componentName]?.defaultWidth ?? (effectiveSize ?? vbWidth),
-            defaultHeight: metadata.icons?.[componentName]?.defaultHeight ?? (effectiveSize ?? vbHeight),
+            defaultWidth: metadata.icons?.[componentName]?.defaultWidth ?? effectiveSize ?? vbWidth,
+            defaultHeight: metadata.icons?.[componentName]?.defaultHeight ?? effectiveSize ?? vbHeight,
         };
         const svgrConfig = await getSvgrConfig(iconContext);
 
         const svgToTransform = shouldExcludeIcon
             ? rawSvg
             : optimize(rawSvg, {
-                path: svgPath,
-                ...svgoConfig,
-            }).data;
+                  path: svgPath,
+                  ...svgoConfig,
+              }).data;
 
         // Transform to React component
         let componentCode = await transform(svgToTransform, svgrConfig, {
@@ -200,13 +194,13 @@ async function buildPack(pack, metadata) {
         componentCode = minifiedResult.code;
 
         // Write component file (as .js since esbuild transforms TSX to JS)
-        const componentPath = path.join(packDistDir, `${ componentName }.js`);
+        const componentPath = path.join(packDistDir, `${componentName}.js`);
 
         await fs.writeFile(componentPath, componentCode, 'utf8');
 
-        const declContent = `import type { IconProps } from '../IconBase.js';\nexport declare const ${ componentName }: (props: IconProps) => import('react').ReactElement;\n`;
+        const declContent = `import type { IconProps } from '../IconBase.js';\nexport declare const ${componentName}: (props: IconProps) => import('react').ReactElement;\n`;
 
-        await fs.writeFile(path.join(packDistDir, `${ componentName }.d.ts`), declContent, 'utf8');
+        await fs.writeFile(path.join(packDistDir, `${componentName}.d.ts`), declContent, 'utf8');
 
         icons.push({ componentName, iconName });
     }
@@ -222,10 +216,10 @@ async function buildPack(pack, metadata) {
 
     // Pack barrel: JS + d.ts (icons themselves are already .js)
     const uniqueExports = [...new Map(icons.map(i => [i.componentName, i])).values()];
-    const indexLines = uniqueExports.map(({ componentName }) => (
-        `export { ${ componentName } } from './${ componentName }.js';`
-    ));
-    const indexContent = `/* AUTO-GENERATED FILE. DO NOT EDIT. */\n${ indexLines.join('\n') }\n`;
+    const indexLines = uniqueExports.map(
+        ({ componentName }) => `export { ${componentName} } from './${componentName}.js';`
+    );
+    const indexContent = `/* AUTO-GENERATED FILE. DO NOT EDIT. */\n${indexLines.join('\n')}\n`;
 
     await fs.writeFile(path.join(packDistDir, 'index.js'), indexContent, 'utf8');
     await fs.writeFile(path.join(packDistDir, 'index.d.ts'), indexContent, 'utf8');
@@ -236,7 +230,7 @@ async function buildPack(pack, metadata) {
 
 function getPackLabel(pack) {
     if (/^\d+$/.test(pack)) {
-        return `${ pack }px`;
+        return `${pack}px`;
     }
 
     return pack.charAt(0).toUpperCase() + pack.slice(1);
@@ -247,21 +241,21 @@ async function writeRegistry(allExports) {
         '/* AUTO-GENERATED FILE. DO NOT EDIT. */',
         '',
         ...allExports.map(({ pack }) => {
-            const safeVar = `p${ pack.replace(/\W/g, '_') }`;
+            const safeVar = `p${pack.replace(/\W/g, '_')}`;
 
-            return `import * as ${ safeVar } from './${ pack }/index.js';`;
+            return `import * as ${safeVar} from './${pack}/index.js';`;
         }),
         '',
         'export const ICON_PACKS = {',
         ...allExports.map(({ pack }) => {
-            const safeVar = `p${ pack.replace(/\W/g, '_') }`;
+            const safeVar = `p${pack.replace(/\W/g, '_')}`;
 
-            return `    '${ pack }': ${ safeVar },`;
+            return `    '${pack}': ${safeVar},`;
         }),
         '};',
         '',
         'export const PACK_LABELS = {',
-        ...allExports.map(({ pack }) => `    '${ pack }': '${ getPackLabel(pack) }',`),
+        ...allExports.map(({ pack }) => `    '${pack}': '${getPackLabel(pack)}',`),
         '};',
         '',
     ];
@@ -325,10 +319,10 @@ async function updatePackageJson(allExports) {
     // Add pack exports (barrel files)
     // Modern bundlers (Vite, Rollup, Webpack 5) can tree-shake barrel files with named exports
     for (const { pack } of allExports) {
-        exports[`./${ pack }`] = {
-            types: `./dist/${ pack }/index.d.ts`,
-            import: `./dist/${ pack }/index.js`,
-            default: `./dist/${ pack }/index.js`,
+        exports[`./${pack}`] = {
+            types: `./dist/${pack}/index.d.ts`,
+            import: `./dist/${pack}/index.js`,
+            default: `./dist/${pack}/index.js`,
         };
     }
 
@@ -340,7 +334,7 @@ async function updatePackageJson(allExports) {
 
     packageJson.exports = exports;
 
-    await fs.writeFile(packageJsonPath, `${ JSON.stringify(packageJson, null, 4) }\n`, 'utf8');
+    await fs.writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, 4)}\n`, 'utf8');
 }
 
 async function build() {
@@ -363,11 +357,11 @@ async function build() {
 
     const mainIndexJs = `/* AUTO-GENERATED FILE. DO NOT EDIT. */
 export { IconWrapper } from './IconBase.js';
-${ allExports.map(({ pack }) => `export * from './${ pack }/index.js';`).join('\n') }
+${allExports.map(({ pack }) => `export * from './${pack}/index.js';`).join('\n')}
 `;
     const mainIndexDts = `/* AUTO-GENERATED FILE. DO NOT EDIT. */
 export { IconWrapper, type IconProps, type IconWrapperProps } from './IconBase.js';
-${ allExports.map(({ pack }) => `export * from './${ pack }/index.js';`).join('\n') }
+${allExports.map(({ pack }) => `export * from './${pack}/index.js';`).join('\n')}
 `;
 
     await fs.writeFile(path.join(distDir, 'index.js'), mainIndexJs, 'utf8');
@@ -379,8 +373,7 @@ ${ allExports.map(({ pack }) => `export * from './${ pack }/index.js';`).join('\
 
     try {
         await fs.copyFile(stylesPath, path.join(distDir, 'styles.css'));
-    }
-    catch {
+    } catch {
         // Styles might not exist, that's okay
     }
 
@@ -392,11 +385,10 @@ ${ allExports.map(({ pack }) => `export * from './${ pack }/index.js';`).join('\
 
     const totalIcons = allExports.reduce((sum, { icons }) => sum + icons.length, 0);
 
-    // eslint-disable-next-line no-console
-    console.log(`✅ Built ${ packs.length } packs with ${ totalIcons } icons`);
+    console.log(`✅ Built ${packs.length} packs with ${totalIcons} icons`);
 }
 
-build().catch((err) => {
+build().catch(err => {
     console.error(err);
     process.exit(1);
 });

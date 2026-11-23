@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
-import { describeRemaining, formatDuration, formatElapsed, formatFullTime, formatMessageTime, formatRemaining, formatTime } from './time';
+import {
+    describeRemaining,
+    formatDuration,
+    formatElapsed,
+    formatFullTime,
+    formatMessageTime,
+    formatRemaining,
+    formatTime,
+} from './time';
 
 describe('formatTime', () => {
     it('shows a 24-hour clock with a leading zero', () => {
@@ -12,7 +20,8 @@ describe('formatTime', () => {
 
 describe('formatMessageTime', () => {
     const now = new Date(2026, 10, 20, 12, 0).getTime();
-    const at = (year: number, month: number, day: number, hours: number, minutes: number) => new Date(year, month, day, hours, minutes).getTime();
+    const at = (year: number, month: number, day: number, hours: number, minutes: number) =>
+        new Date(year, month, day, hours, minutes).getTime();
 
     it('shows the time alone for today', () => {
         expect(formatMessageTime(at(2026, 10, 20, 22, 54), now)).toBe('22:54');
@@ -38,7 +47,9 @@ describe('formatMessageTime', () => {
 
 describe('formatFullTime', () => {
     it('names the weekday, the date with the month in full, and the time', () => {
-        expect(formatFullTime(new Date(2025, 10, 19, 22, 54).getTime())).toMatch(/^Wednesday,? 19 November 2025,? (at )?22:54$/);
+        expect(formatFullTime(new Date(2025, 10, 19, 22, 54).getTime())).toMatch(
+            /^Wednesday,? 19 November 2025,? (at )?22:54$/
+        );
     });
 });
 

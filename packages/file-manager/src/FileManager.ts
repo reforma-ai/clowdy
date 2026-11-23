@@ -9,7 +9,15 @@ import { FileTree } from './tree/FileTree';
 
 import type { TabsSnapshot } from './documents/Tabs';
 import type { TextSelection } from './documents/TextDocument';
-import type { ClipboardEntry, FileClipboard, FileSystemProvider, Notify, SaveParticipant, SearchService, WatchEvent } from './provider';
+import type {
+    ClipboardEntry,
+    FileClipboard,
+    FileSystemProvider,
+    Notify,
+    SaveParticipant,
+    SearchService,
+    WatchEvent,
+} from './provider';
 
 /** Most tabs open at once. Opening another closes the least recently used ones that have no unsaved edits. */
 export const MAX_TABS = 6;
@@ -191,8 +199,7 @@ export class FileManager {
 
         try {
             await this.clipboard.write(targets);
-        }
-        catch (error) {
+        } catch (error) {
             this.notify(`Couldn’t copy ${targets.length === 1 ? targets[0] : `${targets.length} items`}`, error);
         }
     }
@@ -212,8 +219,7 @@ export class FileManager {
 
         try {
             entries = await clipboard.read();
-        }
-        catch (error) {
+        } catch (error) {
             this.notify('Couldn’t read the clipboard', error);
 
             return;
@@ -227,11 +233,15 @@ export class FileManager {
 
         const target = normalizePath(folder);
         // The provider copies what its tree lists; whatever else is in its root, the tree does not know and the host copies.
-        const known = (entry: ClipboardEntry) => entry.local !== undefined && this.tree.get(normalizePath(entry.local)) !== undefined;
+        const known = (entry: ClipboardEntry) =>
+            entry.local !== undefined && this.tree.get(normalizePath(entry.local)) !== undefined;
         const own = entries.filter(known).map(entry => normalizePath(entry.local!));
         const into = own.includes(target) ? dirname(target) : target;
         const copied = await this.operations.copy(own, into);
-        const imported = await this.operations.import(entries.filter(entry => !known(entry)), into);
+        const imported = await this.operations.import(
+            entries.filter(entry => !known(entry)),
+            into
+        );
         const [first] = [...copied, ...imported];
 
         if (first) {
@@ -341,7 +351,12 @@ export class FileManager {
         }
 
         return [...this.tree.entries.values()]
-            .filter(({ path, kind }) => kind === 'file' && words.every(word => path.toLowerCase().includes(word)) && this.tree.isVisible(path))
+            .filter(
+                ({ path, kind }) =>
+                    kind === 'file' &&
+                    words.every(word => path.toLowerCase().includes(word)) &&
+                    this.tree.isVisible(path)
+            )
             .map(({ path }) => path);
     }
 
@@ -393,8 +408,7 @@ export class FileManager {
             const listed = await this.provider.list(dirname(path), 1);
 
             return listed.some(entry => entry.path === path && entry.kind === 'file');
-        }
-        catch {
+        } catch {
             return false;
         }
     }

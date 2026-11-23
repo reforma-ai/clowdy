@@ -17,14 +17,14 @@ export function useKindOnDisk(projectId: ProjectId, place: Place, relative: stri
     const root = useRootStore();
     // The parts of the place, not the place: a caller that builds the object again on every draw would otherwise read again on every draw.
     const { folder, workspace } = place;
-    const key = `${ projectId }/${ placeKey(place) }/${ relative }`;
+    const key = `${projectId}/${placeKey(place)}/${relative}`;
     const [read, setRead] = useState<{ key: string; kind: FileKind | null }>();
 
     useEffect(() => {
         let isCurrent = true;
 
         kindOnDisk(root, projectId, placeOf({ folder, workspace }), relative).then(
-            (kind) => {
+            kind => {
                 if (isCurrent) setRead({ key, kind: kind ?? null });
             },
             () => undefined

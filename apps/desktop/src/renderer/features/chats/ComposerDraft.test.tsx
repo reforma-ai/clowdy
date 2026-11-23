@@ -4,12 +4,13 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { RootStoreProvider, type RootStore } from '../../stores';
+import { type RootStore, RootStoreProvider } from '../../stores';
+import { branchPrefix } from './branchPrefix';
 import { Composer } from './Composer';
 import { draftOf, messageOf, newChatDraftKey, saveDraft } from './composerDrafts';
 import { modelStore } from './modelTestKit';
 
-import type { Chat, CommandResult } from '@clowdy/protocol';
+import type { Chat, ChatWorkspaceChoice, CommandResult } from '@clowdy/protocol';
 import type { Editor } from '@tiptap/core';
 import type { CommandInput } from '../../daemon/transport';
 
@@ -19,7 +20,11 @@ import type { CommandInput } from '../../daemon/transport';
 
 const made: Chat = { id: 'c-new', projectId: 'p', title: 'New chat', mode: 'autopilot', createdAt: 0, updatedAt: 0 };
 const accepted = (data: unknown = {}): CommandResult => ({ ok: true, requestId: 'request-1', data });
-const refused: CommandResult = { ok: false, requestId: 'request-1', error: { code: 'unavailable', message: 'The daemon cannot be reached' } };
+const refused: CommandResult = {
+    ok: false,
+    requestId: 'request-1',
+    error: { code: 'unavailable', message: 'The daemon cannot be reached' },
+};
 
 const transport = {
     getDocsTree: vi.fn(async () => []),
@@ -33,18 +38,40 @@ let sent: CommandInput[];
 let started: string[];
 
 /** `answer` says what the daemon answers to each command, in the order they are sent. Drawn again for another `projectId` or `folderId`, it is the same composer on another project's or folder's page. */
-async function mount(answer: (input: CommandInput) => CommandResult | Promise<CommandResult>, minLines?: number, projectId = 'p', folderId?: string) {
+async function mount(
+    answer: (input: CommandInput) => CommandResult | Promise<CommandResult>,
+    minLines?: number,
+    projectId = 'p',
+    folderId?: string,
+    workspace?: ChatWorkspaceChoice
+) {
     const command = vi.fn(async (input: CommandInput) => {
         sent.push(input);
 
         return answer(input);
     });
-    const store = { command, transport, skillsRevision: 0, selectedProject: { project: { id: 'p', folders: [{ id: 'f1', path: '/Users/dev/web' }] }, taskList: [] }, ...await modelStore() };
+    const store = {
+        command,
+        transport,
+        skillsRevision: 0,
+        selectedProject: { project: { id: 'p', folders: [{ id: 'f1', path: '/Users/dev/web' }] }, taskList: [] },
+        ...(await modelStore()),
+    };
 
     await act(async () => {
         root.render(
-            <RootStoreProvider value={ store as unknown as RootStore }>
-                <Composer chat={ undefined } run={ undefined } minLines={ minLines } start={ { projectId, folderId, onStarted: chatId => started.push(chatId) } } />
+            <RootStoreProvider value={store as unknown as RootStore}>
+                <Composer
+                    chat={undefined}
+                    run={undefined}
+                    minLines={minLines}
+                    start={{
+                        projectId,
+                        folderId,
+                        ...(workspace && { workspace }),
+                        onStarted: chatId => started.push(chatId),
+                    }}
+                />
             </RootStoreProvider>
         );
     });
@@ -60,9 +87,10 @@ function type(value: string) {
     });
 }
 
-const pressEnter = () => act(async () => {
-    field().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
-});
+const pressEnter = () =>
+    act(async () => {
+        field().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    });
 
 beforeEach(() => {
     // What is typed on the new-chat page is remembered for the whole session, so each test starts it empty.
@@ -117,7 +145,7 @@ describe('Composer without a chat', () => {
     it('keeps the chat it made when the message fails, and the retry goes to that chat instead of making another', async () => {
         let sends = 0;
 
-        await mount((input) => {
+        await mount(input => {
             if (input.type === 'chat.create') return accepted({ chat: made });
 
             return ++sends === 1 ? refused : accepted();
@@ -136,11 +164,24 @@ describe('Composer without a chat', () => {
     });
 
     it('makes the chat in the folder the page is for, and in none for the main folder', async () => {
-        await mount(input => (input.type === 'chat.create' ? accepted({ chat: { ...made, folderId: 'fld-api' } }) : accepted()), undefined, 'p', 'fld-api');
+        await mount(
+            input => (input.type === 'chat.create' ? accepted({ chat: { ...made, folderId: 'fld-api' } }) : accepted()),
+            undefined,
+            'p',
+            'fld-api'
+        );
         type('Fix the endpoint');
         await pressEnter();
 
-        expect(sent[0]).toEqual({ type: 'chat.create', projectId: 'p', folderId: 'fld-api', mode: 'autopilot', engine: 'claude', model: 'opus', effort: 'high' });
+        expect(sent[0]).toEqual({
+            type: 'chat.create',
+            projectId: 'p',
+            folderId: 'fld-api',
+            mode: 'autopilot',
+            engine: 'claude',
+            model: 'opus',
+            effort: 'high',
+        });
 
         sent = [];
         await mount(input => (input.type === 'chat.create' ? accepted({ chat: made }) : accepted()));
@@ -150,18 +191,61 @@ describe('Composer without a chat', () => {
         expect(sent[0]).not.toHaveProperty('folderId');
     });
 
-    it('does not send the message of another folder\'s page to the chat a failed message left in this one', async () => {
-        await mount((input) => {
-            if (input.type === 'chat.create') return accepted({ chat: { ...made, folderId: 'fld-api' } });
+    it('asks for a new worktree as the page chose it, with the branch prefix of Settings when it is not the default, and for no prefix otherwise', async () => {
+        const choice: ChatWorkspaceChoice = { mode: 'new', base: 'dev' };
+        const answer = (input: CommandInput) => (input.type === 'chat.create' ? accepted({ chat: made }) : accepted());
+        const workspaceOf = () => (sent[0] as { workspace?: unknown }).workspace;
 
-            return refused;
-        }, undefined, 'p', 'fld-api');
+        await mount(answer, undefined, 'p', 'f1', choice);
+        type('Start in a worktree');
+        await pressEnter();
+
+        // Nothing is added for the default prefix: a daemon from before the setting takes the command as it was.
+        expect(workspaceOf()).toEqual({ mode: 'new', base: 'dev' });
+
+        sent = [];
+        branchPrefix.setValue('max');
+
+        try {
+            await mount(answer, undefined, 'p', 'f1', choice);
+            type('Start in another worktree');
+            await pressEnter();
+
+            expect(workspaceOf()).toEqual({ mode: 'new', base: 'dev', branchPrefix: 'max' });
+            // The page's own choice is the one it had.
+            expect(choice).toEqual({ mode: 'new', base: 'dev' });
+
+            // A worktree that exists has no branch to name.
+            sent = [];
+            await mount(answer, undefined, 'p', 'f1', { mode: 'existing', path: '/work/p-feature' });
+            type('Start in the feature worktree');
+            await pressEnter();
+
+            expect(workspaceOf()).toEqual({ mode: 'existing', path: '/work/p-feature' });
+        } finally {
+            branchPrefix.setValue('');
+        }
+    });
+
+    it("does not send the message of another folder's page to the chat a failed message left in this one", async () => {
+        await mount(
+            input => {
+                if (input.type === 'chat.create') return accepted({ chat: { ...made, folderId: 'fld-api' } });
+
+                return refused;
+            },
+            undefined,
+            'p',
+            'fld-api'
+        );
         type('Fix the endpoint');
         await pressEnter();
 
         // The same composer, drawn again for the main folder: the chat made for the api folder is not its chat.
         sent = [];
-        await mount(input => (input.type === 'chat.create' ? accepted({ chat: { ...made, id: 'c-main' } }) : accepted()));
+        await mount(input =>
+            input.type === 'chat.create' ? accepted({ chat: { ...made, id: 'c-main' } }) : accepted()
+        );
         await pressEnter();
 
         expect(sent.map(input => input.type)).toEqual(['chat.create', 'chat.send']);
@@ -188,7 +272,7 @@ describe('Composer without a chat', () => {
 });
 
 describe('the words of the new-chat page', () => {
-    it('are kept per project, as its files are: another project\'s page has none of them', async () => {
+    it("are kept per project, as its files are: another project's page has none of them", async () => {
         await mount(() => accepted(), undefined, 'p-one');
         type('Words of one');
 
@@ -208,9 +292,14 @@ describe('the words of the new-chat page', () => {
     it('go back to the project they were typed in when sending them fails after the person has moved on', async () => {
         let release!: (result: CommandResult) => void;
 
-        await mount(() => new Promise<CommandResult>((resolve) => {
-            release = resolve;
-        }), undefined, 'p-one');
+        await mount(
+            () =>
+                new Promise<CommandResult>(resolve => {
+                    release = resolve;
+                }),
+            undefined,
+            'p-one'
+        );
         type('Build the thing');
         await pressEnter();
 

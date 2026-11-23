@@ -20,7 +20,7 @@ export type ModalProps = {
 } & Omit<HTMLAttributes<HTMLDivElement>, 'ref'>;
 
 function resolveSizeStyle(value: number | string): string {
-    return typeof value === 'number' ? `${ value }px` : value;
+    return typeof value === 'number' ? `${value}px` : value;
 }
 
 export const Modal = observer(({ modal, className: classNameProp, style: styleProp, ...rest }: ModalProps) => {
@@ -51,50 +51,51 @@ export const Modal = observer(({ modal, className: classNameProp, style: stylePr
         sizeStyle.height = resolveSizeStyle(options.height);
     }
 
-    const contentSized = options.height === 'auto'
-        || options.height === 'fit-content'
-        || options.height === 'min-content'
-        || options.height === 'max-content';
+    const contentSized =
+        options.height === 'auto' ||
+        options.height === 'fit-content' ||
+        options.height === 'min-content' ||
+        options.height === 'max-content';
 
     return (
         <div
-            className={ className }
+            className={className}
             data-modal-window
-            data-modal-height={ contentSized ? 'content' : undefined }
-            data-name={ modal.name }
-            aria-disabled={ modal.disabled ? 'true' : undefined }
-            style={ { ...sizeStyle, ...styleProp } }
-            { ...rest }
-            ref={ el => modal.setWindow(el) }
+            data-modal-height={contentSized ? 'content' : undefined}
+            data-name={modal.name}
+            aria-disabled={modal.disabled ? 'true' : undefined}
+            style={{ ...sizeStyle, ...styleProp }}
+            {...rest}
+            ref={el => modal.setWindow(el)}
         >
-            <Show when={ loading }>
-                <Spinner className={ modalStyles.loader } />
+            <Show when={loading}>
+                <Spinner className={modalStyles.loader} />
             </Show>
 
             <ModalTitle
-                modal={ modal }
-                titleClassName={ modalStyles.title }
-                closeClassName={ modalStyles.close }
-                tabsListClassName={ modalStyles.tabsList }
-                titleTextClassName={ modalStyles.titleText }
-                actionsClassName={ modalStyles.actions }
-                responsiveToggleClassName={ modalStyles.responsiveToggle }
+                modal={modal}
+                titleClassName={modalStyles.title}
+                closeClassName={modalStyles.close}
+                tabsListClassName={modalStyles.tabsList}
+                titleTextClassName={modalStyles.titleText}
+                actionsClassName={modalStyles.actions}
+                responsiveToggleClassName={modalStyles.responsiveToggle}
             />
 
-            <ModalData containerRef={ containerRef } className={ modalStyles.data }>
-                { options.component && (
+            <ModalData containerRef={containerRef} className={modalStyles.data}>
+                {options.component && (
                     <ComponentRenderer
-                        key={ `${ modal.contentRevision }-${ modal.activeTab ?? '' }-${ modal.responsiveMode ?? '' }` }
-                        component={ options.component }
-                        props={ options.props }
-                        modal={ modal }
-                        store={ options.store }
-                        onMounted={ options.onMounted }
-                        onUnmounted={ options.onUnmounted }
+                        key={`${modal.contentRevision}-${modal.activeTab ?? ''}-${modal.responsiveMode ?? ''}`}
+                        component={options.component}
+                        props={options.props}
+                        modal={modal}
+                        store={options.store}
+                        onMounted={options.onMounted}
+                        onUnmounted={options.onUnmounted}
                     />
-                ) }
+                )}
             </ModalData>
-            <ModalResizeHandles resizable={ options.resizable } handleClassName={ modalStyles.resizeHandle } />
+            <ModalResizeHandles resizable={options.resizable} handleClassName={modalStyles.resizeHandle} />
         </div>
     );
 });

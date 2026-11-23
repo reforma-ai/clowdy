@@ -21,5 +21,14 @@ export function ProjectIcon({ project, size = 16 }: ProjectIconProps) {
 
     if (!src) return project.personal ? <Home /> : <Folder />;
 
-    return <Image className={ styles.picture } src={ src } alt="" width={ size } height={ size } style={ { margin: (ICON_ROOM - size) / 2 } } />;
+    return (
+        <Image
+            className={styles.picture}
+            src={src}
+            alt=""
+            width={size}
+            height={size}
+            style={{ margin: (ICON_ROOM - size) / 2 }}
+        />
+    );
 }

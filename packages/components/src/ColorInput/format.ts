@@ -2,33 +2,33 @@ import { parseColorValue } from '../utils/colorValue';
 
 import type { Color } from 'react-stately';
 
-export type ColorInputFormat
-    = | 'auto'
-      | 'hex'
-      | 'hexa'
-      | 'rgb'
-      | 'rgba'
-      | 'hsl'
-      | 'hwb'
-      | 'lab'
-      | 'lch'
-      | 'oklab'
-      | 'oklch'
-      | 'color'
-      | 'css'
-      | 'raw';
+export type ColorInputFormat =
+    | 'auto'
+    | 'hex'
+    | 'hexa'
+    | 'rgb'
+    | 'rgba'
+    | 'hsl'
+    | 'hwb'
+    | 'lab'
+    | 'lch'
+    | 'oklab'
+    | 'oklch'
+    | 'color'
+    | 'css'
+    | 'raw';
 
-export type ColorInputEditorFormat
-    = | 'hex'
-      | 'rgb'
-      | 'hsl'
-      | 'hwb'
-      | 'lab'
-      | 'lch'
-      | 'oklab'
-      | 'oklch'
-      | 'color'
-      | 'raw';
+export type ColorInputEditorFormat =
+    | 'hex'
+    | 'rgb'
+    | 'hsl'
+    | 'hwb'
+    | 'lab'
+    | 'lch'
+    | 'oklab'
+    | 'oklch'
+    | 'color'
+    | 'raw';
 
 export type ColorObjectEditorFormat = Extract<ColorInputEditorFormat, 'rgb' | 'hsl'>;
 
@@ -56,14 +56,36 @@ type DetectableColorValue = string | Color | null | undefined;
 
 const CSS_FUNCTION_RE = /^([a-z-]+)\((.*)\)$/i;
 const HEX_RE = /^#?[0-9a-f]{3,8}$/i;
-const EDITOR_FORMATS: readonly ColorInputEditorFormat[] = ['hex', 'rgb', 'hsl', 'hwb', 'lab', 'lch', 'oklab', 'oklch', 'color', 'raw'];
+const EDITOR_FORMATS: readonly ColorInputEditorFormat[] = [
+    'hex',
+    'rgb',
+    'hsl',
+    'hwb',
+    'lab',
+    'lch',
+    'oklab',
+    'oklch',
+    'color',
+    'raw',
+];
 const PARSED_COLOR_EDITOR_FORMATS = new Set<ColorInputEditorFormat>(['hex', 'rgb', 'hsl']);
 const COLOR_OBJECT_EDITOR_FORMATS = new Set<ColorInputEditorFormat>(['rgb', 'hsl']);
 const ADVANCED_FORMATS = new Set<ColorInputEditorFormat>(['hwb', 'lab', 'lch', 'oklab', 'oklch', 'color']);
-const RGB_COLOR_SPACES = new Set(['srgb', 'srgb-linear', 'display-p3', 'display-p3-linear', 'a98-rgb', 'prophoto-rgb', 'rec2020']);
+const RGB_COLOR_SPACES = new Set([
+    'srgb',
+    'srgb-linear',
+    'display-p3',
+    'display-p3-linear',
+    'a98-rgb',
+    'prophoto-rgb',
+    'rec2020',
+]);
 const XYZ_COLOR_SPACES = new Set(['xyz', 'xyz-d50', 'xyz-d65']);
 
-export function resolveColorInputEditorFormat(value: DetectableColorValue, requestedFormat: ColorInputFormat): ColorInputEditorFormat {
+export function resolveColorInputEditorFormat(
+    value: DetectableColorValue,
+    requestedFormat: ColorInputFormat
+): ColorInputEditorFormat {
     if (requestedFormat === 'rgba') {
         return 'rgb';
     }
@@ -123,7 +145,9 @@ export function canEditColorChannels(value: DetectableColorValue, editorFormat: 
     return Boolean(parseCssColorChannels(typeof value === 'string' ? value : undefined, editorFormat));
 }
 
-export function isColorObjectEditorFormat(editorFormat: ColorInputEditorFormat): editorFormat is ColorObjectEditorFormat {
+export function isColorObjectEditorFormat(
+    editorFormat: ColorInputEditorFormat
+): editorFormat is ColorObjectEditorFormat {
     return COLOR_OBJECT_EDITOR_FORMATS.has(editorFormat);
 }
 
@@ -191,24 +215,24 @@ export function serializeCssColorChannels(parsed: ParsedCssColorChannels): strin
     const alpha = serializeAlpha(parsed.alpha);
 
     if (parsed.format === 'color') {
-        return `color(${ parsed.colorSpace } ${ parsed.channels.map(channel => formatNumber(channel.value)).join(' ') }${ alpha })`;
+        return `color(${parsed.colorSpace} ${parsed.channels.map(channel => formatNumber(channel.value)).join(' ')}${alpha})`;
     }
 
     if (parsed.format === 'hwb') {
         const [hue, whiteness, blackness] = parsed.channels;
 
-        return `hwb(${ formatNumber(hue.value) } ${ formatNumber(whiteness.value) }% ${ formatNumber(blackness.value) }%${ alpha })`;
+        return `hwb(${formatNumber(hue.value)} ${formatNumber(whiteness.value)}% ${formatNumber(blackness.value)}%${alpha})`;
     }
 
     if (parsed.format === 'lab' || parsed.format === 'oklab') {
         const [lightness, a, b] = parsed.channels;
 
-        return `${ parsed.format }(${ formatNumber(lightness.value) }% ${ formatNumber(a.value) } ${ formatNumber(b.value) }${ alpha })`;
+        return `${parsed.format}(${formatNumber(lightness.value)}% ${formatNumber(a.value)} ${formatNumber(b.value)}${alpha})`;
     }
 
     const [lightness, chroma, hue] = parsed.channels;
 
-    return `${ parsed.format }(${ formatNumber(lightness.value) }% ${ formatNumber(chroma.value) } ${ formatNumber(hue.value) }${ alpha })`;
+    return `${parsed.format}(${formatNumber(lightness.value)}% ${formatNumber(chroma.value)} ${formatNumber(hue.value)}${alpha})`;
 }
 
 export function serializeColorObject(
@@ -318,11 +342,7 @@ function parseLabChannels(tokens: string[], alpha: number): ParsedCssColorChanne
     return {
         format: 'lab',
         alpha,
-        channels: [
-            percentChannel('l', 'L', lightness),
-            signedChannel('a', 'A', a),
-            signedChannel('b', 'B', b),
-        ],
+        channels: [percentChannel('l', 'L', lightness), signedChannel('a', 'A', a), signedChannel('b', 'B', b)],
     };
 }
 
@@ -342,11 +362,7 @@ function parseLchChannels(tokens: string[], alpha: number): ParsedCssColorChanne
     return {
         format: 'lch',
         alpha,
-        channels: [
-            percentChannel('l', 'L', lightness),
-            numberChannel('c', 'C', chroma),
-            hueChannel('h', 'H', hue),
-        ],
+        channels: [percentChannel('l', 'L', lightness), numberChannel('c', 'C', chroma), hueChannel('h', 'H', hue)],
     };
 }
 
@@ -381,7 +397,12 @@ function parseColorFunction(channelsBody: string, alpha: number): ParsedCssColor
     const tokens = splitCssWhitespaceList(channelsBody);
     const [colorSpace, ...channels] = tokens;
 
-    if (!colorSpace || isUnsupportedEditableToken(colorSpace) || channels.length !== 3 || channels.some(isUnsupportedEditableToken)) {
+    if (
+        !colorSpace ||
+        isUnsupportedEditableToken(colorSpace) ||
+        channels.length !== 3 ||
+        channels.some(isUnsupportedEditableToken)
+    ) {
         return null;
     }
 
@@ -391,12 +412,8 @@ function parseColorFunction(channelsBody: string, alpha: number): ParsedCssColor
         return null;
     }
 
-    const labels = XYZ_COLOR_SPACES.has(colorSpace)
-        ? ['X', 'Y', 'Z']
-        : ['R', 'G', 'B'];
-    const keys: CssColorChannelKey[] = XYZ_COLOR_SPACES.has(colorSpace)
-        ? ['x', 'y', 'z']
-        : ['r', 'g', 'b'];
+    const labels = XYZ_COLOR_SPACES.has(colorSpace) ? ['X', 'Y', 'Z'] : ['R', 'G', 'B'];
+    const keys: CssColorChannelKey[] = XYZ_COLOR_SPACES.has(colorSpace) ? ['x', 'y', 'z'] : ['r', 'g', 'b'];
 
     if (!RGB_COLOR_SPACES.has(colorSpace) && !XYZ_COLOR_SPACES.has(colorSpace)) {
         return null;
@@ -466,7 +483,7 @@ function serializeRgbColor(color: Color, alpha: number): string {
     const rgbChannels = ['red', 'green', 'blue'] as const;
     const channelValues = rgbChannels.map(channel => Math.round(rgb.getChannelValue(channel)));
 
-    return `rgb(${ channelValues.join(' ') }${ serializeAlpha(alpha) })`;
+    return `rgb(${channelValues.join(' ')}${serializeAlpha(alpha)})`;
 }
 
 function serializeHslColor(color: Color, alpha: number): string {
@@ -475,13 +492,13 @@ function serializeHslColor(color: Color, alpha: number): string {
     const saturation = formatNumber(hsl.getChannelValue('saturation'), 2);
     const lightness = formatNumber(hsl.getChannelValue('lightness'), 2);
 
-    return `hsl(${ hue } ${ saturation }% ${ lightness }%${ serializeAlpha(alpha) })`;
+    return `hsl(${hue} ${saturation}% ${lightness}%${serializeAlpha(alpha)})`;
 }
 
 function serializeAlpha(alpha: number): string {
     const normalized = normalizeAlpha(alpha);
 
-    return normalized < 100 ? ` / ${ formatNumber(normalized / 100) }` : '';
+    return normalized < 100 ? ` / ${formatNumber(normalized / 100)}` : '';
 }
 
 function parseAlphaChannel(value: string): number | null {
@@ -540,7 +557,7 @@ function parseHueChannel(value: string): number | null {
     }
 
     if (unit === 'rad') {
-        return formatFiniteNumber(number * 180 / Math.PI);
+        return formatFiniteNumber((number * 180) / Math.PI);
     }
 
     return formatFiniteNumber(number);
@@ -607,7 +624,7 @@ function findTopLevelSlash(value: string): number {
             continue;
         }
 
-        if (char === '"' || char === '\'') {
+        if (char === '"' || char === "'") {
             quote = char;
 
             continue;
@@ -615,11 +632,9 @@ function findTopLevelSlash(value: string): number {
 
         if (char === '(') {
             depth += 1;
-        }
-        else if (char === ')') {
+        } else if (char === ')') {
             depth = Math.max(0, depth - 1);
-        }
-        else if (char === '/' && depth === 0) {
+        } else if (char === '/' && depth === 0) {
             return index;
         }
     }
@@ -669,7 +684,7 @@ function splitCssWhitespaceList(value: string): string[] {
             continue;
         }
 
-        if (char === '"' || char === '\'') {
+        if (char === '"' || char === "'") {
             current += char;
             quote = char;
 
@@ -678,8 +693,7 @@ function splitCssWhitespaceList(value: string): string[] {
 
         if (char === '(') {
             depth += 1;
-        }
-        else if (char === ')') {
+        } else if (char === ')') {
             depth = Math.max(0, depth - 1);
         }
 

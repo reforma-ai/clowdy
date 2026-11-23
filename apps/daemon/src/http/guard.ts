@@ -1,5 +1,5 @@
-import { PROTOCOL_VERSION } from '@clowdy/protocol';
 import { createHash, timingSafeEqual } from 'node:crypto';
+import { PROTOCOL_VERSION } from '@clowdy/protocol';
 
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]']);
 /** The app's own origin, which the desktop shell serves its files from. Anything else must be named in `CLOWDY_CORS_ORIGINS`. */

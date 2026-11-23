@@ -5,9 +5,11 @@ import { createRoot, type Root } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { RootStoreProvider, type RootStore } from '../../stores';
+import { type RootStore, RootStoreProvider } from '../../stores';
 import { UserBubble } from '../../stream/UserBubble';
 import { Composer, type ComposerHandle } from './Composer';
+import { codeQuote } from './codeQuote';
+import { quoteIntoComposer } from './composerBridge';
 import { draftOf, messageOf, newChatDraftKey, saveDraft } from './composerDrafts';
 import { modelStore } from './modelTestKit';
 
@@ -35,18 +37,24 @@ let chat: Chat;
 let chatNumber = 0;
 
 async function mount(props: { chat?: Chat; projectId?: string } = { chat }) {
-    const store = { command: vi.fn(async () => ({ ok: true, requestId: 'request-1', data: {} })), transport, skillsRevision: 0, selectedProject: { project: { id: 'p', folders: [{ id: 'f1', path: '/Users/dev/web' }] }, taskList: [] }, ...await modelStore() };
+    const store = {
+        command: vi.fn(async () => ({ ok: true, requestId: 'request-1', data: {} })),
+        transport,
+        skillsRevision: 0,
+        selectedProject: { project: { id: 'p', folders: [{ id: 'f1', path: '/Users/dev/web' }] }, taskList: [] },
+        ...(await modelStore()),
+    };
 
     await act(async () => {
         root.render(
-            <RootStoreProvider value={ store as unknown as RootStore }>
+            <RootStoreProvider value={store as unknown as RootStore}>
                 <Composer
-                    ref={ (value) => {
+                    ref={value => {
                         handle = value;
-                    } }
-                    chat={ props.chat }
-                    run={ undefined }
-                    start={ props.projectId ? { projectId: props.projectId, onStarted: () => undefined } : undefined }
+                    }}
+                    chat={props.chat}
+                    run={undefined}
+                    start={props.projectId ? { projectId: props.projectId, onStarted: () => undefined } : undefined}
                 />
             </RootStoreProvider>
         );
@@ -58,12 +66,13 @@ const editor = () => (field() as HTMLElement & { editor: Editor }).editor;
 /** What the field holds, as it would be sent, with a hard break shown as the newline it is. */
 const written = () => docToPlainText(editor().getJSON()).replaceAll('  \n', '\n');
 const quote = (text: string) => act(async () => handle!.quote(text));
-const atEnd = () => editor().state.selection.empty && editor().state.selection.from === editor().state.doc.content.size - 1;
+const atEnd = () =>
+    editor().state.selection.empty && editor().state.selection.from === editor().state.doc.content.size - 1;
 /** The text of the paragraph the caret is in: empty for the line under a quote. */
 const caretLine = () => editor().state.selection.$from.parent.textContent;
 /** What the message box would send, and what the stream then draws for it: the same Markdown as a message the person wrote. */
 const sent = () => messageOf(editor().getJSON());
-const drawn = (text: string) => renderToStaticMarkup(<UserBubble text={ text } at={ 0 } />);
+const drawn = (text: string) => renderToStaticMarkup(<UserBubble text={text} at={0} />);
 
 function type(value: string) {
     act(() => {
@@ -73,7 +82,15 @@ function type(value: string) {
 
 beforeEach(() => {
     // A chat that has run does not take the focus when it is drawn, as the new-chat page does.
-    chat = { id: `c-${ ++chatNumber }`, projectId: 'p', title: 'New chat', mode: 'autopilot', orchestratorRunId: 'r-1', createdAt: 0, updatedAt: 0 };
+    chat = {
+        id: `c-${++chatNumber}`,
+        projectId: 'p',
+        title: 'New chat',
+        mode: 'autopilot',
+        orchestratorRunId: 'r-1',
+        createdAt: 0,
+        updatedAt: 0,
+    };
     handle = null;
     saveDraft(newChatDraftKey('p'), emptyComposerDoc());
     container = document.createElement('div');
@@ -178,7 +195,7 @@ describe('ComposerHandle.quote', () => {
     });
 
     it('quotes into the draft of the chat that is open, not of another', async () => {
-        const other = `c-other-${ chatNumber }`;
+        const other = `c-other-${chatNumber}`;
 
         await mount();
         await quote('here');
@@ -205,5 +222,91 @@ describe('ComposerHandle.quote', () => {
         expect(docToPlainText(draftOf(newChatDraftKey('p'))).replaceAll('  \n', '\n')).toBe('> A line to build on\n\n');
         expect(document.activeElement).toBe(field());
         expect(atEnd()).toBe(true);
+    });
+});
+
+describe('a quote of code from the side panel, through the door the box registers (composerBridge)', () => {
+    const selected = { from: 3, to: 4, text: '    const a = 1;\n    b();' };
+
+    it('puts the path, the lines and the words in the draft, keeps their indentation and puts the caret under them', async () => {
+        await mount();
+
+        expect(await act(async () => quoteIntoComposer(codeQuote('src/a.ts', selected)))).toBe(true);
+
+        expect(written()).toBe('> `src/a.ts:3-4`\n> ```ts\n>     const a = 1;\n>     b();\n> ```\n\n');
+        expect(docToPlainText(draftOf(chat.id)).replaceAll('  \n', '\n')).toBe(written());
+        expect(document.activeElement).toBe(field());
+        expect(atEnd()).toBe(true);
+        expect(caretLine()).toBe('');
+    });
+
+    it('is sent as a quote with a code block in it, and what is typed under it stays out of the quote', async () => {
+        await mount();
+        await act(async () => quoteIntoComposer(codeQuote('src/a.ts', selected)));
+        type('Why is b called?');
+
+        const out = drawn(sent());
+        const quoted = out.slice(0, out.indexOf('</blockquote>'));
+
+        expect(sent()).toBe(
+            '> `src/a.ts:3-4`  \n> ```ts  \n>     const a = 1;  \n>     b();  \n> ```\n\nWhy is b called?'
+        );
+        expect(out.match(/<blockquote/g)).toHaveLength(1);
+        expect(quoted).toContain('src/a.ts:3-4');
+        expect(quoted).toContain('<pre');
+        expect(quoted).not.toContain('Why is b called?');
+    });
+
+    it('goes to the box of the new-chat page as well', async () => {
+        await mount({ projectId: 'p' });
+        act(() => field().blur());
+
+        expect(
+            await act(async () => quoteIntoComposer(codeQuote('README.md', { from: 1, to: 1, text: 'Words' })))
+        ).toBe(true);
+
+        expect(docToPlainText(draftOf(newChatDraftKey('p'))).replaceAll('  \n', '\n')).toBe(
+            '> `README.md:1`\n> ```md\n> Words\n> ```\n\n'
+        );
+    });
+
+    it('has no door once the box is gone', async () => {
+        await mount();
+        act(() => root.render(null));
+
+        expect(quoteIntoComposer('words')).toBe(false);
+    });
+
+    it('is not opened by the box of an edit frame, which is no box to write a new message in', async () => {
+        await act(async () => {
+            root.render(
+                <RootStoreProvider
+                    value={
+                        {
+                            command: vi.fn(),
+                            transport,
+                            skillsRevision: 0,
+                            selectedProject: {
+                                project: { id: 'p', folders: [{ id: 'f1', path: '/Users/dev/web' }] },
+                                taskList: [],
+                            },
+                            ...(await modelStore()),
+                        } as unknown as RootStore
+                    }
+                >
+                    <Composer
+                        chat={chat}
+                        run={undefined}
+                        editMode={{
+                            draftKey: `edit:${chat.id}:i-1`,
+                            onSubmit: () => undefined,
+                            onCancel: () => undefined,
+                        }}
+                    />
+                </RootStoreProvider>
+            );
+        });
+
+        expect(quoteIntoComposer('words')).toBe(false);
     });
 });

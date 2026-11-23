@@ -5,11 +5,11 @@ import { useState } from 'react';
 
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { Markdown } from '../../stream/Markdown';
-import { StreamLinksContext, type StreamLinks } from '../../stream/StreamLinks';
+import { type StreamLinks, StreamLinksContext } from '../../stream/StreamLinks';
 import { openRun as openRunInAgents } from '../chats/archiveChat';
+import styles from './ArchivedPanel.module.css';
 import { restoreTask } from './archiveActions';
 import { offersRestore } from './archiveBatches';
-import styles from './ArchivedPanel.module.css';
 import { CommentsSection } from './CommentsSection';
 import { DependencyList } from './DependencyList';
 import panelStyles from './DetailPanel.module.css';
@@ -61,81 +61,103 @@ export function ArchivedPanel({ task }: ArchivedPanelProps) {
     };
 
     return (
-        <aside className={ panelStyles.panel } aria-label={ `Task ${ task.key }` } data-archived>
-            <div className={ panelStyles.head }>
-                <span className={ panelStyles.key }>
-                    <Box aria-hidden width={ 12 } height={ 12 } />
-                    { task.key }
+        <aside className={panelStyles.panel} aria-label={`Task ${task.key}`} data-archived>
+            <div className={panelStyles.head}>
+                <span className={panelStyles.key}>
+                    <Box aria-hidden width={12} height={12} />
+                    {task.key}
                 </span>
-                <Button iconOnly size="sm" variant="filling" aria-label="Close" tooltip="Close" onPress={ () => nav.openTask(null) }>
+                <Button
+                    iconOnly
+                    size="sm"
+                    variant="filling"
+                    aria-label="Close"
+                    tooltip="Close"
+                    onPress={() => nav.openTask(null)}
+                >
                     <Close />
                 </Button>
             </div>
 
-            <div className={ panelStyles.body }>
-                <div className={ panelStyles.top }>
-                    <Text variant="heading-3" className={ styles.title }>{ task.title }</Text>
-                    <div className={ styles.state }>
-                        <Pill><PillLabel>Archived</PillLabel></Pill>
-                        <StatusPill status={ status } />
-                        { checklist && <ChecklistChip checklist={ checklist } /> }
+            <div className={panelStyles.body}>
+                <div className={panelStyles.top}>
+                    <Text variant="heading-3" className={styles.title}>
+                        {task.title}
+                    </Text>
+                    <div className={styles.state}>
+                        <Pill>
+                            <PillLabel>Archived</PillLabel>
+                        </Pill>
+                        <StatusPill status={status} />
+                        {checklist && <ChecklistChip checklist={checklist} />}
                     </div>
-                    { task.archivedAt !== undefined && <Text color="secondary">{ `Archived ${ formatAgo(task.archivedAt, Date.now()) }` }</Text> }
-                    { task.description !== '' && (
-                        <StreamLinksContext value={ links }>
-                            <Markdown text={ task.description } />
+                    {task.archivedAt !== undefined && (
+                        <Text color="secondary">{`Archived ${formatAgo(task.archivedAt, Date.now())}`}</Text>
+                    )}
+                    {task.description !== '' && (
+                        <StreamLinksContext value={links}>
+                            <Markdown text={task.description} />
                         </StreamLinksContext>
-                    ) }
+                    )}
                 </div>
 
                 <Section title="Parent">
-                    { task.parentId === undefined && <None>No parent</None> }
-                    { task.parentId !== undefined && parent.status === 'loading' && <None>Loading…</None> }
-                    { task.parentId !== undefined && parent.status === 'failed' && <None>{ 'Couldn\'t read the parent' }</None> }
-                    { task.parentId !== undefined && parent.status === 'missing' && <None>The parent was removed</None> }
-                    { above && (
-                        <button type="button" className={ styles.parent } title={ above.title } onClick={ () => nav.openTask(above.id) }>
-                            { aboveStatus && <StatusIcon category={ aboveStatus.category } /> }
-                            <span className={ styles.key }>{ above.key }</span>
-                            <span className={ styles.parentTitle }>{ above.title }</span>
-                            { above.archivedAt !== undefined && <span className={ styles.key }>Archived</span> }
+                    {task.parentId === undefined && <None>No parent</None>}
+                    {task.parentId !== undefined && parent.status === 'loading' && <None>Loading…</None>}
+                    {task.parentId !== undefined && parent.status === 'failed' && (
+                        <None>{"Couldn't read the parent"}</None>
+                    )}
+                    {task.parentId !== undefined && parent.status === 'missing' && <None>The parent was removed</None>}
+                    {above && (
+                        <button
+                            type="button"
+                            className={styles.parent}
+                            title={above.title}
+                            onClick={() => nav.openTask(above.id)}
+                        >
+                            {aboveStatus && <StatusIcon category={aboveStatus.category} />}
+                            <span className={styles.key}>{above.key}</span>
+                            <span className={styles.parentTitle}>{above.title}</span>
+                            {above.archivedAt !== undefined && <span className={styles.key}>Archived</span>}
                         </button>
-                    ) }
+                    )}
                 </Section>
 
-                <Section title="Dependencies" count={ task.dependsOn.length }>
-                    { task.dependsOn.length === 0 && <None>No dependencies</None> }
-                    { task.dependsOn.length > 0 && (
+                <Section title="Dependencies" count={task.dependsOn.length}>
+                    {task.dependsOn.length === 0 && <None>No dependencies</None>}
+                    {task.dependsOn.length > 0 && (
                         <DependencyList
-                            ids={ task.dependsOn }
-                            tasks={ project.tasks }
-                            readings={ dependencies }
-                            statuses={ project.statuses }
-                            candidates={ [] }
+                            ids={task.dependsOn}
+                            tasks={project.tasks}
+                            readings={dependencies}
+                            statuses={project.statuses}
+                            candidates={[]}
                             isReadOnly
-                            onAdd={ () => undefined }
-                            onRemove={ () => undefined }
-                            onOpen={ id => nav.openTask(id) }
+                            onAdd={() => undefined}
+                            onRemove={() => undefined}
+                            onOpen={id => nav.openTask(id)}
                         />
-                    ) }
+                    )}
                 </Section>
 
-                <CommentsSection taskId={ task.id } isReadOnly onOpenRun={ openRun } onOpenTask={ id => nav.openTask(id) } />
+                <CommentsSection taskId={task.id} isReadOnly onOpenRun={openRun} onOpenTask={id => nav.openTask(id)} />
             </div>
 
-            <div className={ panelStyles.foot }>
-                { !canRestore && above && (
+            <div className={panelStyles.foot}>
+                {!canRestore && above && (
                     <Text color="secondary">
-                        { above.archivedAt === task.archivedAt ? `It was archived with ${ above.key }. Restore ${ above.key } to bring it back.` : `Its parent ${ above.key } is in the archive, restore it first` }
+                        {above.archivedAt === task.archivedAt
+                            ? `It was archived with ${above.key}. Restore ${above.key} to bring it back.`
+                            : `Its parent ${above.key} is in the archive, restore it first`}
                     </Text>
-                ) }
-                <div className={ panelStyles.actions }>
+                )}
+                <div className={panelStyles.actions}>
                     <Button
                         color="primary"
                         size="sm"
-                        isDisabled={ !canRestore }
-                        isPending={ isRestoring }
-                        onPress={ () => void restore() }
+                        isDisabled={!canRestore}
+                        isPending={isRestoring}
+                        onPress={() => void restore()}
                     >
                         <Undo />
                         Restore

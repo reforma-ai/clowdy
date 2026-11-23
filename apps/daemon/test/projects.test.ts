@@ -9,7 +9,19 @@ import { projectSnapshot, rootSnapshot } from '../src/domain/snapshots';
 import { systemPrompt } from '../src/runs/prompts';
 import { FolderWatchers } from '../src/skills/watch';
 import { Store } from '../src/store';
-import { cleanTempDirs, command, GateEngine, gateEngines, git, makeRepo, restartHarness, startHarness, tempDir, testConfig, waitFor } from './helpers';
+import {
+    cleanTempDirs,
+    command,
+    GateEngine,
+    gateEngines,
+    git,
+    makeRepo,
+    restartHarness,
+    startHarness,
+    tempDir,
+    testConfig,
+    waitFor,
+} from './helpers';
 
 import type { ClowdyEvent, Project, ProjectInfo } from '@clowdy/protocol';
 import type { Harness } from './helpers';
@@ -42,7 +54,8 @@ const projectsOf = (h: Harness) => listProjects(h.store.db);
 const projectOf = (h: Harness, id: string) => projectsOf(h).find(project => project.id === id) as Project;
 const pathOf = (project: Project) => project.folders[0].path;
 const pathsOf = (project: Project) => project.folders.map(folder => folder.path);
-const count = (h: Harness, table: string) => (h.store.db.query(`SELECT COUNT(*) AS n FROM ${ table }`).get() as { n: number }).n;
+const count = (h: Harness, table: string) =>
+    (h.store.db.query(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n;
 const activeRuns = (h: Harness, projectId: string) => projectCounts(h.store.db).get(projectId)?.activeRuns;
 
 /** What belongs to a project, table by table, as the foreign keys see it. */
@@ -59,8 +72,14 @@ const OWNED_BY_PROJECT: Record<string, string> = {
     attachments: 'project_id = ?1',
 };
 
-const rowsOf = (h: Harness, projectId: string) => Object.fromEntries(Object.entries(OWNED_BY_PROJECT).map(([table, where]) => [table, (h.store.db.query(`SELECT COUNT(*) AS n FROM ${ table } WHERE ${ where }`).get(projectId) as { n: number }).n]));
-const info = async (h: Harness) => await (await h.fetch('/v1/projects/info')).json() as ProjectInfo[];
+const rowsOf = (h: Harness, projectId: string) =>
+    Object.fromEntries(
+        Object.entries(OWNED_BY_PROJECT).map(([table, where]) => [
+            table,
+            (h.store.db.query(`SELECT COUNT(*) AS n FROM ${table} WHERE ${where}`).get(projectId) as { n: number }).n,
+        ])
+    );
+const info = async (h: Harness) => (await (await h.fetch('/v1/projects/info')).json()) as ProjectInfo[];
 const upserted = (events: ClowdyEvent[]) => events.filter(event => event.data.type === 'project.upserted');
 
 /** A project with a task that a gated agent is working on, so the project has an unfinished run until the gate is released. */
@@ -82,11 +101,26 @@ describe('the personal space', () => {
         const folder = realpathSync.native(h.config.personalDir);
         const { projects } = rootSnapshot(h.store);
 
-        expect(projects).toEqual([expect.objectContaining({ name: 'Personal', folders: [{ id: expect.any(String), path: folder }], personal: true, position: 0, taskPrefix: 'PER', settings: {} })]);
+        expect(projects).toEqual([
+            expect.objectContaining({
+                name: 'Personal',
+                folders: [{ id: expect.any(String), path: folder }],
+                personal: true,
+                position: 0,
+                taskPrefix: 'PER',
+                settings: {},
+            }),
+        ]);
         expect(git(folder, 'rev-parse', '--show-toplevel')).toBe(folder);
         expect(git(folder, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('main');
         expect(git(folder, 'rev-list', '--count', 'HEAD')).toBe('1');
-        expect(h.statuses(projects[0].id).map(status => status.name)).toEqual(['To do', 'In progress', 'Review', 'Done', 'Canceled']);
+        expect(h.statuses(projects[0].id).map(status => status.name)).toEqual([
+            'To do',
+            'In progress',
+            'Review',
+            'Done',
+            'Canceled',
+        ]);
         expect(upserted(h.events()).map(event => event.projectId)).toEqual([projects[0].id]);
 
         // Opened projects come after it, whatever their own numbers are.
@@ -158,8 +192,7 @@ describe('the personal space', () => {
             expect(getPersonalProject(store.db)?.id).toBe(project?.id);
             expect(noGit).toHaveBeenCalled();
             expect(warn).toHaveBeenCalled();
-        }
-        finally {
+        } finally {
             noGit.mockRestore();
             warn.mockRestore();
             store.db.close();
@@ -178,8 +211,7 @@ describe('the personal space', () => {
             expect(ensurePersonalProject(store, config)).toBeUndefined();
             expect(listProjects(store.db)).toEqual([]);
             expect(warn).toHaveBeenCalled();
-        }
-        finally {
+        } finally {
             warn.mockRestore();
             store.db.close();
         }
@@ -196,16 +228,22 @@ describe('the personal space', () => {
             const moved = ensurePersonalProject(store, after) as Project;
             const folder = realpathSync.native(after.personalDir);
 
-            expect(moved).toMatchObject({ id: made.id, folders: [{ id: made.folders[0].id, path: folder }], personal: true, position: 0 });
+            expect(moved).toMatchObject({
+                id: made.id,
+                folders: [{ id: made.folders[0].id, path: folder }],
+                personal: true,
+                position: 0,
+            });
             expect(listProjects(store.db)).toEqual([moved]);
             expect(git(folder, 'rev-parse', '--show-toplevel')).toBe(folder);
-            expect(store.eventsAfter(cursor, undefined, 10).map(event => [event.projectId, event.data.type])).toEqual([[made.id, 'project.upserted']]);
+            expect(store.eventsAfter(cursor, undefined, 10).map(event => [event.projectId, event.data.type])).toEqual([
+                [made.id, 'project.upserted'],
+            ]);
 
             // Starting again in the same place changes nothing.
             expect(ensurePersonalProject(store, after)).toEqual(moved);
             expect(store.headCursor()).toBe(cursor + 1);
-        }
-        finally {
+        } finally {
             store.db.close();
         }
     });
@@ -216,8 +254,10 @@ describe('the personal space', () => {
         const personal = systemPrompt('autopilot', h.personal);
         const regular = systemPrompt('autopilot', projectsOf(h).find(project => project.id === repo.id) as Project);
 
-        expect(personal).toContain(`Project: Personal, the person's personal space, a folder at ${ pathOf(h.personal) } that belongs to no repository, task keys PER-<number>, project documents in .clowdy/docs/.`);
-        expect(regular).toContain(`Project: shop, folder at ${ repo.path }, task keys SHO-<number>`);
+        expect(personal).toContain(
+            `Project: Personal, the person's personal space, a folder at ${pathOf(h.personal)} that belongs to no repository, task keys PER-<number>, project documents in .clowdy/docs/.`
+        );
+        expect(regular).toContain(`Project: shop, folder at ${repo.path}, task keys SHO-<number>`);
         expect(regular).not.toContain('repository');
     });
 });
@@ -232,13 +272,23 @@ describe('the order of projects', () => {
         const created = h.ok('project.add', { name: 'Third' }).project as Project;
 
         expect(created.position).toBe(3);
-        expect(projectsOf(h).map(project => [project.name, project.position])).toEqual([['Personal', 0], ['first', 1], ['second', 2], ['Third', 3]]);
+        expect(projectsOf(h).map(project => [project.name, project.position])).toEqual([
+            ['Personal', 0],
+            ['first', 1],
+            ['second', 2],
+            ['Third', 3],
+        ]);
 
         // Adding the same folders again changes nothing, and a removed place is not handed out twice.
         h.ok('project.add', { folders: [first.path] });
         h.ok('project.delete', { projectId: first.id });
         h.openRepo('fourth');
-        expect(projectsOf(h).map(project => [project.name, project.position])).toEqual([['Personal', 0], ['second', 2], ['Third', 3], ['fourth', 4]]);
+        expect(projectsOf(h).map(project => [project.name, project.position])).toEqual([
+            ['Personal', 0],
+            ['second', 2],
+            ['Third', 3],
+            ['fourth', 4],
+        ]);
     });
 
     test('reorder puts the listed projects first, in the order given, and the others after them as they were', async () => {
@@ -267,7 +317,11 @@ describe('the order of projects', () => {
         const [a, b] = ['a', 'b'].map(name => h.openRepo(name).id);
 
         h.ok('project.reorder', { projectIds: [b, h.personal.id, b, a] });
-        expect(projectsOf(h).map(project => [project.name, project.position])).toEqual([['Personal', 0], ['b', 1], ['a', 2]]);
+        expect(projectsOf(h).map(project => [project.name, project.position])).toEqual([
+            ['Personal', 0],
+            ['b', 1],
+            ['a', 2],
+        ]);
 
         const cursor = h.store.headCursor();
         const refused = failure(h.send('project.reorder', { projectIds: [a, 'prj_missing'] }));
@@ -286,13 +340,25 @@ describe('the order of projects', () => {
         expect(h.events(cursor)).toEqual([]);
 
         h.ok('project.reorder', { projectIds: [b] });
-        expect(upserted(h.events(cursor)).map(event => event.projectId).sort()).toEqual([a, b].sort());
+        expect(
+            upserted(h.events(cursor))
+                .map(event => event.projectId)
+                .sort()
+        ).toEqual([a, b].sort());
         expect(h.events(cursor)).toHaveLength(2);
-        expect(upserted(h.events(cursor)).map(event => (event.data as { project: Project }).project.position).sort()).toEqual([1, 2]);
+        expect(
+            upserted(h.events(cursor))
+                .map(event => (event.data as { project: Project }).project.position)
+                .sort()
+        ).toEqual([1, 2]);
 
         cursor = h.store.headCursor();
         h.ok('project.reorder', { projectIds: [c, b, a] });
-        expect(upserted(h.events(cursor)).map(event => event.projectId).sort()).toEqual([a, b, c].sort());
+        expect(
+            upserted(h.events(cursor))
+                .map(event => event.projectId)
+                .sort()
+        ).toEqual([a, b, c].sort());
     });
 });
 
@@ -301,17 +367,42 @@ describe('project.delete', () => {
     async function fill(h: Harness, name: string) {
         const project = h.openRepo(name);
         const { chat } = h.ok('chat.create', { projectId: project.id });
-        const unsent = await (await h.fetch(`/v1/projects/${ project.id }/attachments?name=unsent.txt`, { method: 'POST', body: new Uint8Array(4).fill(1) })).json() as { id: string };
-        const sent = await (await h.fetch(`/v1/projects/${ project.id }/attachments?name=sent.txt`, { method: 'POST', body: new Uint8Array(4).fill(2) })).json() as { id: string };
-        const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'Simplify the booking flow so users book in two steps', attachmentIds: [sent.id] });
+        const unsent = (await (
+            await h.fetch(`/v1/projects/${project.id}/attachments?name=unsent.txt`, {
+                method: 'POST',
+                body: new Uint8Array(4).fill(1),
+            })
+        ).json()) as { id: string };
+        const sent = (await (
+            await h.fetch(`/v1/projects/${project.id}/attachments?name=sent.txt`, {
+                method: 'POST',
+                body: new Uint8Array(4).fill(2),
+            })
+        ).json()) as { id: string };
+        const { runId } = h.ok('chat.send', {
+            chatId: chat.id,
+            text: 'Simplify the booking flow so users book in two steps',
+            attachmentIds: [sent.id],
+        });
 
         await waitFor(() => h.run(runId).status === 'succeeded', 'the orchestrator to succeed', 8000);
 
         const first = h.ok('task.create', { projectId: project.id, title: 'First' }).task;
-        const second = h.ok('task.create', { projectId: project.id, title: 'Second', dependsOn: [first.id], chatId: chat.id }).task;
-        const childId = (h.store.db.query('SELECT id FROM runs WHERE parent_run_id = ? LIMIT 1').get(runId) as { id: string }).id;
+        const second = h.ok('task.create', {
+            projectId: project.id,
+            title: 'Second',
+            dependsOn: [first.id],
+            chatId: chat.id,
+        }).task;
+        const childId = (
+            h.store.db.query('SELECT id FROM runs WHERE parent_run_id = ? LIMIT 1').get(runId) as { id: string }
+        ).id;
 
-        h.store.db.query('INSERT INTO artifacts (id, project_id, run_id, task_id, kind, title, ref, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(`art_${ name }`, project.id, childId, first.id, 'file', 'Notes', 'notes.md', 1);
+        h.store.db
+            .query(
+                'INSERT INTO artifacts (id, project_id, run_id, task_id, kind, title, ref, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+            )
+            .run(`art_${name}`, project.id, childId, first.id, 'file', 'Notes', 'notes.md', 1);
 
         return { project, chat, runId, files: [unsent.id, sent.id], tasks: [first.id, second.id] };
     }
@@ -331,11 +422,26 @@ describe('project.delete', () => {
         const before = rowsOf(h, doomed.project.id);
 
         expect(Object.entries(before).filter(([, rows]) => rows === 0)).toEqual([]);
-        expect((h.store.db.query('SELECT COUNT(*) AS n FROM runs WHERE parent_run_id IS NOT NULL AND project_id = ?').get(doomed.project.id) as { n: number }).n).toBeGreaterThan(0);
-        expect((h.store.db.query('SELECT COUNT(*) AS n FROM runs WHERE chat_id IS NOT NULL AND project_id = ?').get(doomed.project.id) as { n: number }).n).toBeGreaterThan(0);
+        expect(
+            (
+                h.store.db
+                    .query('SELECT COUNT(*) AS n FROM runs WHERE parent_run_id IS NOT NULL AND project_id = ?')
+                    .get(doomed.project.id) as { n: number }
+            ).n
+        ).toBeGreaterThan(0);
+        expect(
+            (
+                h.store.db
+                    .query('SELECT COUNT(*) AS n FROM runs WHERE chat_id IS NOT NULL AND project_id = ?')
+                    .get(doomed.project.id) as { n: number }
+            ).n
+        ).toBeGreaterThan(0);
         doomed.files.forEach(id => expect(existsSync(join(attachmentsRoot, id))).toBe(true));
 
-        const otherBefore = { rows: rowsOf(h, other.project.id), snapshot: JSON.stringify({ ...projectSnapshot(h.store, other.project.id), cursor: 0 }) };
+        const otherBefore = {
+            rows: rowsOf(h, other.project.id),
+            snapshot: JSON.stringify({ ...projectSnapshot(h.store, other.project.id), cursor: 0 }),
+        };
         const cursor = h.store.headCursor();
 
         expect(h.ok('project.delete', { projectId: doomed.project.id })).toEqual({ projectId: doomed.project.id });
@@ -359,8 +465,10 @@ describe('project.delete', () => {
         expect(git(doomed.project.path, 'rev-parse', '--show-toplevel')).toBe(doomed.project.path);
 
         // One event, for that project.
-        expect(h.events(cursor).map(event => [event.projectId, event.data])).toEqual([[doomed.project.id, { type: 'project.deleted' }]]);
-        expect((await h.fetch(`/v1/projects/${ doomed.project.id }/snapshot`)).status).toBe(404);
+        expect(h.events(cursor).map(event => [event.projectId, event.data])).toEqual([
+            [doomed.project.id, { type: 'project.deleted' }],
+        ]);
+        expect((await h.fetch(`/v1/projects/${doomed.project.id}/snapshot`)).status).toBe(404);
         expect(failure(h.send('project.delete', { projectId: doomed.project.id })).code).toBe('not_found');
     });
 
@@ -381,7 +489,10 @@ describe('project.delete', () => {
         const h = await setup();
         const cursor = h.store.headCursor();
 
-        expect(failure(h.send('project.delete', { projectId: h.personal.id }))).toMatchObject({ code: 'conflict', message: expect.stringContaining('personal') });
+        expect(failure(h.send('project.delete', { projectId: h.personal.id }))).toMatchObject({
+            code: 'conflict',
+            message: expect.stringContaining('personal'),
+        });
         expect(h.personal).toBeTruthy();
         expect(h.store.headCursor()).toBe(cursor);
     });
@@ -390,7 +501,10 @@ describe('project.delete', () => {
         const { h, gate, project, task } = await busyProject('busy');
         const cursor = h.store.headCursor();
 
-        expect(failure(h.send('project.delete', { projectId: project.id }))).toMatchObject({ code: 'conflict', message: 'The agents of this project are still working. Stop them first.' });
+        expect(failure(h.send('project.delete', { projectId: project.id }))).toMatchObject({
+            code: 'conflict',
+            message: 'The agents of this project are still working. Stop them first.',
+        });
         expect(projectsOf(h).map(candidate => candidate.id)).toContain(project.id);
         expect(h.events(cursor).some(event => event.data.type === 'project.deleted')).toBe(false);
 
@@ -404,7 +518,7 @@ describe('project.delete', () => {
         const h = await setup();
         const project = h.openRepo('watched');
 
-        await h.fetch(`/v1/skills?projectId=${ project.id }`);
+        await h.fetch(`/v1/skills?projectId=${project.id}`);
 
         const cursor = h.store.headCursor();
 
@@ -412,7 +526,11 @@ describe('project.delete', () => {
         await Bun.sleep(100);
 
         expect(h.events(cursor).map(event => event.data.type)).toEqual(['project.deleted']);
-        expect((h.daemon.services.skills as unknown as { projectFingerprints: Map<string, string> }).projectFingerprints.has(project.id)).toBe(false);
+        expect(
+            (
+                h.daemon.services.skills as unknown as { projectFingerprints: Map<string, string> }
+            ).projectFingerprints.has(project.id)
+        ).toBe(false);
     });
 });
 
@@ -423,14 +541,30 @@ describe('project.update', () => {
         const elsewhere = makeRepo(h.config.projectsDir, 'elsewhere');
 
         expect(failure(h.send('project.update', { projectId: id, name: 'Mine' })).code).toBe('conflict');
-        expect(failure(h.send('project.update', { projectId: id, folders: [{ path: elsewhere }] })).code).toBe('conflict');
-        expect(failure(h.send('project.update', { projectId: id, folders: [{ id: folders[0].id }, { path: elsewhere }] })).code).toBe('conflict');
+        expect(failure(h.send('project.update', { projectId: id, folders: [{ path: elsewhere }] })).code).toBe(
+            'conflict'
+        );
+        expect(
+            failure(h.send('project.update', { projectId: id, folders: [{ id: folders[0].id }, { path: elsewhere }] }))
+                .code
+        ).toBe('conflict');
         expect(h.personal).toMatchObject({ name: 'Personal', folders });
 
         // Saying what it already is does no harm, and the settings are the person's.
-        const updated = h.ok('project.update', { projectId: id, name: 'Personal', folders: [{ id: folders[0].id }], settings: { engine: 'claude', chatMode: 'semi' } }).project as Project;
+        const updated = h.ok('project.update', {
+            projectId: id,
+            name: 'Personal',
+            folders: [{ id: folders[0].id }],
+            settings: { engine: 'claude', chatMode: 'semi' },
+        }).project as Project;
 
-        expect(updated).toMatchObject({ name: 'Personal', folders, personal: true, position: 0, settings: { engine: 'claude', chatMode: 'semi' } });
+        expect(updated).toMatchObject({
+            name: 'Personal',
+            folders,
+            personal: true,
+            position: 0,
+            settings: { engine: 'claude', chatMode: 'semi' },
+        });
     });
 
     test('renames and keeps its place in the order', async () => {
@@ -439,32 +573,50 @@ describe('project.update', () => {
 
         h.ok('project.reorder', { projectIds: [b, a] });
         h.ok('project.update', { projectId: a, name: 'Renamed' });
-        expect(projectsOf(h).map(project => [project.name, project.position])).toEqual([['Personal', 0], ['b', 1], ['Renamed', 2]]);
+        expect(projectsOf(h).map(project => [project.name, project.position])).toEqual([
+            ['Personal', 0],
+            ['b', 1],
+            ['Renamed', 2],
+        ]);
     });
 
     test('a settings field set to null is cleared, the others stay, and a missing one is left alone', async () => {
         const h = await setup();
         const { id } = h.openRepo();
 
-        h.ok('project.update', { projectId: id, settings: { maxParallelRuns: 3, engine: 'fake', chatMode: 'semi', targetBranch: 'develop', model: 'big' } });
+        h.ok('project.update', {
+            projectId: id,
+            settings: { maxParallelRuns: 3, engine: 'fake', chatMode: 'semi', targetBranch: 'develop', model: 'big' },
+        });
 
-        const cleared = h.ok('project.update', { projectId: id, settings: { engine: null, chatMode: null, model: null, targetBranch: null, maxParallelRuns: undefined } }).project as Project;
+        const cleared = h.ok('project.update', {
+            projectId: id,
+            settings: { engine: null, chatMode: null, model: null, targetBranch: null, maxParallelRuns: undefined },
+        }).project as Project;
 
         expect(cleared.settings).toEqual({ maxParallelRuns: 3 });
         expect(Object.keys(cleared.settings)).toEqual(['maxParallelRuns']);
         expect(projectsOf(h).find(project => project.id === id)?.settings).toEqual({ maxParallelRuns: 3 });
 
         // Clearing what is not there is fine too.
-        expect(h.ok('project.update', { projectId: id, settings: { engine: null } }).project.settings).toEqual({ maxParallelRuns: 3 });
+        expect(h.ok('project.update', { projectId: id, settings: { engine: null } }).project.settings).toEqual({
+            maxParallelRuns: 3,
+        });
     });
 
     test('over HTTP the schema accepts null for every settings field', async () => {
         const h = await setup();
         const { id } = h.openRepo();
 
-        h.ok('project.update', { projectId: id, settings: { maxParallelRuns: 2, engine: 'fake', chatMode: 'semi', targetBranch: 'x', model: 'y' } });
+        h.ok('project.update', {
+            projectId: id,
+            settings: { maxParallelRuns: 2, engine: 'fake', chatMode: 'semi', targetBranch: 'x', model: 'y' },
+        });
 
-        const body = command('project.update', { projectId: id, settings: { maxParallelRuns: null, engine: null, chatMode: null, targetBranch: null, model: null } });
+        const body = command('project.update', {
+            projectId: id,
+            settings: { maxParallelRuns: null, engine: null, chatMode: null, targetBranch: null, model: null },
+        });
         const response = await h.fetch('/v1/commands', { method: 'POST', body: JSON.stringify(body) });
 
         expect(await response.json()).toMatchObject({ ok: true, data: { project: { id, settings: {} } } });
@@ -479,26 +631,37 @@ describe('project.update', () => {
 
         mkdirSync(notes);
 
-        const added = h.ok('project.update', { projectId: project.id, folders: [{ id: main.id }, { path: api }] }).project as Project;
+        const added = h.ok('project.update', { projectId: project.id, folders: [{ id: main.id }, { path: api }] })
+            .project as Project;
 
         expect(added.folders[0]).toEqual(main);
         expect(added.folders[1]).toEqual({ id: expect.stringMatching(/^fld_/), path: api });
 
         // A folder that is not a repository is welcome, and a path the project has already keeps its folder.
-        const grown = h.ok('project.update', { projectId: project.id, folders: [{ id: main.id }, { path: notes }, { path: api }] }).project as Project;
+        const grown = h.ok('project.update', {
+            projectId: project.id,
+            folders: [{ id: main.id }, { path: notes }, { path: api }],
+        }).project as Project;
 
-        expect(grown.folders.map(folder => folder.id)).toEqual([main.id, expect.stringMatching(/^fld_/), added.folders[1].id]);
+        expect(grown.folders.map(folder => folder.id)).toEqual([
+            main.id,
+            expect.stringMatching(/^fld_/),
+            added.folders[1].id,
+        ]);
         expect(pathsOf(grown)).toEqual([project.path, realpathSync.native(notes), api]);
         expect(existsSync(join(notes, '.git'))).toBe(false);
 
         // Removing a folder other than the main one.
-        const shrunk = h.ok('project.update', { projectId: project.id, folders: [{ id: main.id }, { id: added.folders[1].id }] }).project as Project;
+        const shrunk = h.ok('project.update', {
+            projectId: project.id,
+            folders: [{ id: main.id }, { id: added.folders[1].id }],
+        }).project as Project;
 
         expect(pathsOf(shrunk)).toEqual([project.path, api]);
         expect(pathsOf(projectSnapshot(h.store, project.id).project)).toEqual([project.path, api]);
     });
 
-    test('new folders are checked like the ones of project.add, and another project\'s folder is fine', async () => {
+    test("new folders are checked like the ones of project.add, and another project's folder is fine", async () => {
         const h = await setup();
         const project = h.openRepo('home');
         const other = h.openRepo('other');
@@ -507,16 +670,42 @@ describe('project.update', () => {
 
         mkdirSync(join(project.path, 'src'));
 
-        expect(failure(h.send('project.update', { projectId: project.id, folders: [{ id: main.id }, { path: join(project.path, 'src') }] })).message).toContain('inside');
-        expect(failure(h.send('project.update', { projectId: project.id, folders: [{ id: main.id }, { id: main.id }] })).message).toContain('twice');
-        expect(failure(h.send('project.update', { projectId: project.id, folders: [{ id: main.id }, { path: join(project.path, 'missing') }] })).code).toBe('invalid');
-        expect(failure(h.send('project.update', { projectId: project.id, folders: [{ path: 'relative/path' }] })).code).toBe('invalid');
-        expect(failure(h.send('project.update', { projectId: project.id, folders: [{ id: 'fld_nope' }] })).message).toContain('not one of the project');
+        expect(
+            failure(
+                h.send('project.update', {
+                    projectId: project.id,
+                    folders: [{ id: main.id }, { path: join(project.path, 'src') }],
+                })
+            ).message
+        ).toContain('inside');
+        expect(
+            failure(h.send('project.update', { projectId: project.id, folders: [{ id: main.id }, { id: main.id }] }))
+                .message
+        ).toContain('twice');
+        expect(
+            failure(
+                h.send('project.update', {
+                    projectId: project.id,
+                    folders: [{ id: main.id }, { path: join(project.path, 'missing') }],
+                })
+            ).code
+        ).toBe('invalid');
+        expect(
+            failure(h.send('project.update', { projectId: project.id, folders: [{ path: 'relative/path' }] })).code
+        ).toBe('invalid');
+        expect(
+            failure(h.send('project.update', { projectId: project.id, folders: [{ id: 'fld_nope' }] })).message
+        ).toContain('not one of the project');
         expect(failure(h.send('project.update', { projectId: project.id, folders: [] })).code).toBe('invalid');
         expect(projectOf(h, project.id).folders).toEqual([main]);
         expect(h.store.headCursor()).toBe(cursor);
 
-        expect(pathsOf(h.ok('project.update', { projectId: project.id, folders: [{ id: main.id }, { path: other.path }] }).project)).toEqual([project.path, other.path]);
+        expect(
+            pathsOf(
+                h.ok('project.update', { projectId: project.id, folders: [{ id: main.id }, { path: other.path }] })
+                    .project
+            )
+        ).toEqual([project.path, other.path]);
     });
 
     test('refuses to give a project exactly the folders another project has, in any order', async () => {
@@ -525,17 +714,33 @@ describe('project.update', () => {
         const api = h.openRepo('api');
         const both = h.ok('project.add', { folders: [shop.path, api.path], name: 'Both' }).project as Project;
 
-        expect(failure(h.send('project.update', { projectId: api.id, folders: [{ path: api.path }, { path: shop.path }] }))).toMatchObject({ code: 'conflict', message: 'Both has these folders already' });
-        expect(failure(h.send('project.update', { projectId: shop.id, folders: [{ path: api.path }] }))).toMatchObject({ code: 'conflict', message: 'api has these folders already' });
+        expect(
+            failure(h.send('project.update', { projectId: api.id, folders: [{ path: api.path }, { path: shop.path }] }))
+        ).toMatchObject({ code: 'conflict', message: 'Both has these folders already' });
+        expect(failure(h.send('project.update', { projectId: shop.id, folders: [{ path: api.path }] }))).toMatchObject({
+            code: 'conflict',
+            message: 'api has these folders already',
+        });
         // Its own set, reordered, is no clash.
-        expect(pathsOf(h.ok('project.update', { projectId: both.id, folders: [{ id: both.folders[1].id }, { id: both.folders[0].id }] }).project)).toEqual([api.path, shop.path]);
+        expect(
+            pathsOf(
+                h.ok('project.update', {
+                    projectId: both.id,
+                    folders: [{ id: both.folders[1].id }, { id: both.folders[0].id }],
+                }).project
+            )
+        ).toEqual([api.path, shop.path]);
     });
 
     test('over HTTP an entry is a folder to keep, a path to add, or a folder with its new path, and nothing else', async () => {
         const h = await setup();
         const project = h.openRepo('both');
         const main = projectOf(h, project.id).folders[0];
-        const send = (entry: object) => h.fetch('/v1/commands', { method: 'POST', body: JSON.stringify(command('project.update', { projectId: project.id, folders: [entry] })) });
+        const send = (entry: object) =>
+            h.fetch('/v1/commands', {
+                method: 'POST',
+                body: JSON.stringify(command('project.update', { projectId: project.id, folders: [entry] })),
+            });
 
         for (const entry of [{}, { id: main.id, path: project.path, extra: true }, { id: main.id, path: '' }]) {
             const response = await send(entry);
@@ -552,28 +757,40 @@ describe('project.update', () => {
         const project = h.openRepo('web');
         const main = projectOf(h, project.id).folders[0];
         const api = realpathSync.native(makeRepo(h.config.projectsDir, 'api'));
-        const { project: two } = h.ok('project.update', { projectId: project.id, folders: [{ id: main.id }, { path: api }] });
+        const { project: two } = h.ok('project.update', {
+            projectId: project.id,
+            folders: [{ id: main.id }, { path: api }],
+        });
         const second = two.folders[1];
         const next = realpathSync.native(makeRepo(h.config.projectsDir, 'api-next'));
         const cursor = h.store.headCursor();
 
-        const moved = h.ok('project.update', { projectId: project.id, folders: [{ id: main.id }, { id: second.id, path: next }] }).project as Project;
+        const moved = h.ok('project.update', {
+            projectId: project.id,
+            folders: [{ id: main.id }, { id: second.id, path: next }],
+        }).project as Project;
 
         expect(moved.folders).toEqual([main, { id: second.id, path: next }]);
         expect(pathsOf(projectOf(h, project.id))).toEqual([project.path, next]);
-        expect(upserted(h.events(cursor)).map(event => pathsOf((event.data as { project: Project }).project))).toEqual([[project.path, next]]);
+        expect(upserted(h.events(cursor)).map(event => pathsOf((event.data as { project: Project }).project))).toEqual([
+            [project.path, next],
+        ]);
 
         // The checks of a new folder: it exists, is a folder, and neither repeats nor lies inside (or around) another folder of the project.
         mkdirSync(join(project.path, 'src'));
         writeFileSync(join(tempDir(), 'file'), '');
 
-        const move = (path: string) => h.send('project.update', { projectId: project.id, folders: [{ id: main.id }, { id: second.id, path }] });
+        const move = (path: string) =>
+            h.send('project.update', { projectId: project.id, folders: [{ id: main.id }, { id: second.id, path }] });
 
         expect(failure(move(join(project.path, 'src'))).message).toContain('inside');
         expect(failure(move(project.path)).message).toContain('twice');
         expect(failure(move(join(next, 'missing'))).code).toBe('invalid');
         expect(failure(move('relative/path')).code).toBe('invalid');
-        expect(failure(h.send('project.update', { projectId: project.id, folders: [{ id: 'fld_nope', path: next }] })).message).toContain('not one of the project');
+        expect(
+            failure(h.send('project.update', { projectId: project.id, folders: [{ id: 'fld_nope', path: next }] }))
+                .message
+        ).toContain('not one of the project');
         expect(pathsOf(projectOf(h, project.id))).toEqual([project.path, next]);
     });
 
@@ -584,13 +801,30 @@ describe('project.update', () => {
         const apiNext = realpathSync.native(makeRepo(h.config.projectsDir, 'api-next'));
         const mainNext = realpathSync.native(makeRepo(h.config.projectsDir, 'busy-next'));
         const working = { code: 'conflict', message: 'The agents of this project are still working. Stop them first.' };
-        const { project: grown } = h.ok('project.update', { projectId: project.id, folders: [{ id: main.id }, { path: api }] });
+        const { project: grown } = h.ok('project.update', {
+            projectId: project.id,
+            folders: [{ id: main.id }, { path: api }],
+        });
         const second = grown.folders[1].id;
 
-        expect(failure(h.send('project.update', { projectId: project.id, folders: [{ id: main.id, path: mainNext }, { id: second }] }))).toMatchObject(working);
+        expect(
+            failure(
+                h.send('project.update', {
+                    projectId: project.id,
+                    folders: [{ id: main.id, path: mainNext }, { id: second }],
+                })
+            )
+        ).toMatchObject(working);
         expect(pathsOf(projectOf(h, project.id))).toEqual([project.path, api]);
 
-        expect(pathsOf(h.ok('project.update', { projectId: project.id, folders: [{ id: main.id }, { id: second, path: apiNext }] }).project)).toEqual([project.path, apiNext]);
+        expect(
+            pathsOf(
+                h.ok('project.update', {
+                    projectId: project.id,
+                    folders: [{ id: main.id }, { id: second, path: apiNext }],
+                }).project
+            )
+        ).toEqual([project.path, apiNext]);
 
         gate.release(task.key);
     });
@@ -601,15 +835,31 @@ describe('project.update', () => {
         const next = realpathSync.native(makeRepo(h.config.projectsDir, 'next'));
         const working = { code: 'conflict', message: 'The agents of this project are still working. Stop them first.' };
 
-        const { project: grown } = h.ok('project.update', { projectId: project.id, folders: [{ id: main.id }, { path: next }] });
+        const { project: grown } = h.ok('project.update', {
+            projectId: project.id,
+            folders: [{ id: main.id }, { path: next }],
+        });
         const second = grown.folders[1].id;
 
-        expect(failure(h.send('project.update', { projectId: project.id, folders: [{ id: second }, { id: main.id }] }))).toMatchObject(working);
-        expect(failure(h.send('project.update', { projectId: project.id, folders: [{ id: second }] }))).toMatchObject(working);
-        expect(failure(h.send('project.update', { projectId: project.id, folders: [{ path: makeRepo(h.config.projectsDir, 'third') }] }))).toMatchObject(working);
+        expect(
+            failure(h.send('project.update', { projectId: project.id, folders: [{ id: second }, { id: main.id }] }))
+        ).toMatchObject(working);
+        expect(failure(h.send('project.update', { projectId: project.id, folders: [{ id: second }] }))).toMatchObject(
+            working
+        );
+        expect(
+            failure(
+                h.send('project.update', {
+                    projectId: project.id,
+                    folders: [{ path: makeRepo(h.config.projectsDir, 'third') }],
+                })
+            )
+        ).toMatchObject(working);
         expect(pathsOf(projectOf(h, project.id))).toEqual([project.path, next]);
 
-        expect(h.ok('project.update', { projectId: project.id, folders: [{ id: main.id }], name: 'Busy' }).project).toMatchObject({ name: 'Busy', folders: [main] });
+        expect(
+            h.ok('project.update', { projectId: project.id, folders: [{ id: main.id }], name: 'Busy' }).project
+        ).toMatchObject({ name: 'Busy', folders: [main] });
 
         gate.release(task.key);
     });
@@ -626,15 +876,22 @@ describe('project.update', () => {
         writeFileSync(join(oldDocs, 'old.md'), '# Old');
         writeFileSync(join(newDocs, 'new.md'), '# New');
 
-        const tree = async () => JSON.stringify(await (await h.fetch(`/v1/projects/${ project.id }/docs`)).json());
+        const tree = async () => JSON.stringify(await (await h.fetch(`/v1/projects/${project.id}/docs`)).json());
 
         expect(await tree()).toContain('old.md');
 
         const cursor = h.store.headCursor();
         const { project: moved } = h.ok('project.update', { projectId: project.id, folders: [{ path: next }] });
 
-        expect(moved).toMatchObject({ id: project.id, name: 'before', folders: [{ path: realpathSync.native(next) }], position: 1 });
-        expect(upserted(h.events(cursor)).map(event => pathsOf((event.data as { project: Project }).project))).toEqual([[realpathSync.native(next)]]);
+        expect(moved).toMatchObject({
+            id: project.id,
+            name: 'before',
+            folders: [{ path: realpathSync.native(next) }],
+            position: 1,
+        });
+        expect(upserted(h.events(cursor)).map(event => pathsOf((event.data as { project: Project }).project))).toEqual([
+            [realpathSync.native(next)],
+        ]);
         expect(await tree()).toContain('new.md');
         expect(await tree()).not.toContain('old.md');
         expect(pathsOf(projectSnapshot(h.store, project.id).project)).toEqual([realpathSync.native(next)]);
@@ -665,46 +922,70 @@ describe('project.updateFolder', () => {
         const h = await setup();
         const web = h.openRepo('web');
         const infra = h.openRepo('infra');
-        const { project } = h.ok('project.add', { folders: [web.path, infra.path], name: 'Both' }) as { project: Project };
+        const { project } = h.ok('project.add', { folders: [web.path, infra.path], name: 'Both' }) as {
+            project: Project;
+        };
 
         return { h, project, web: project.folders[0], infra: project.folders[1] };
     }
 
-    const update = (h: Harness, projectId: string, folderId: string, settings: unknown) => h.send('project.updateFolder', { projectId, folderId, settings });
-    const settingsOf = (h: Harness, projectId: string, folderId: string) => projectOf(h, projectId).folders.find(folder => folder.id === folderId)?.settings;
+    const update = (h: Harness, projectId: string, folderId: string, settings: unknown) =>
+        h.send('project.updateFolder', { projectId, folderId, settings });
+    const settingsOf = (h: Harness, projectId: string, folderId: string) =>
+        projectOf(h, projectId).folders.find(folder => folder.id === folderId)?.settings;
 
     test('sets the base branch and the setup of one folder, answers the project and publishes it', async () => {
         const { h, project, web, infra } = await twoFolders();
         const cursor = h.store.headCursor();
         const settings = { baseBranch: 'origin/next', setup: { files: ['.env', '.env.*'], command: 'bun install' } };
-        const answer = h.ok('project.updateFolder', { projectId: project.id, folderId: web.id, settings }).project as Project;
+        const answer = h.ok('project.updateFolder', { projectId: project.id, folderId: web.id, settings })
+            .project as Project;
 
         expect(answer.folders).toEqual([{ ...web, settings }, infra]);
         expect(projectOf(h, project.id).folders).toEqual([{ ...web, settings }, infra]);
         expect(projectSnapshot(h.store, project.id).project.folders[0]).toEqual({ ...web, settings });
-        expect(upserted(h.events(cursor)).map(event => (event.data as { project: Project }).project.folders[0]?.settings)).toEqual([settings]);
+        expect(
+            upserted(h.events(cursor)).map(event => (event.data as { project: Project }).project.folders[0]?.settings)
+        ).toEqual([settings]);
     });
 
     test('a field that is left out stays, one set to null is cleared, and a folder with none left has no settings at all', async () => {
         const { h, project, web } = await twoFolders();
 
-        h.ok('project.updateFolder', { projectId: project.id, folderId: web.id, settings: { baseBranch: 'develop', setup: { files: ['.env'], command: 'make' } } });
+        h.ok('project.updateFolder', {
+            projectId: project.id,
+            folderId: web.id,
+            settings: { baseBranch: 'develop', setup: { files: ['.env'], command: 'make' } },
+        });
 
         h.ok('project.updateFolder', { projectId: project.id, folderId: web.id, settings: { baseBranch: 'main' } });
-        expect(settingsOf(h, project.id, web.id)).toEqual({ baseBranch: 'main', setup: { files: ['.env'], command: 'make' } });
+        expect(settingsOf(h, project.id, web.id)).toEqual({
+            baseBranch: 'main',
+            setup: { files: ['.env'], command: 'make' },
+        });
 
-        h.ok('project.updateFolder', { projectId: project.id, folderId: web.id, settings: { setup: { files: ['.npmrc'] } } });
+        h.ok('project.updateFolder', {
+            projectId: project.id,
+            folderId: web.id,
+            settings: { setup: { files: ['.npmrc'] } },
+        });
         expect(settingsOf(h, project.id, web.id)).toEqual({ baseBranch: 'main', setup: { files: ['.npmrc'] } });
 
         h.ok('project.updateFolder', { projectId: project.id, folderId: web.id, settings: { baseBranch: null } });
         expect(settingsOf(h, project.id, web.id)).toEqual({ setup: { files: ['.npmrc'] } });
 
-        const cleared = h.ok('project.updateFolder', { projectId: project.id, folderId: web.id, settings: { setup: null } }).project as Project;
+        const cleared = h.ok('project.updateFolder', {
+            projectId: project.id,
+            folderId: web.id,
+            settings: { setup: null },
+        }).project as Project;
 
         expect(cleared.folders[0]).toEqual({ id: web.id, path: web.path });
         expect(cleared.folders[0]).not.toHaveProperty('settings');
         expect(projectOf(h, project.id).folders[0]).not.toHaveProperty('settings');
-        expect(h.store.db.query('SELECT settings FROM project_folders WHERE id = ?').get(web.id)).toEqual({ settings: null });
+        expect(h.store.db.query('SELECT settings FROM project_folders WHERE id = ?').get(web.id)).toEqual({
+            settings: null,
+        });
 
         // Clearing what is not there, and saying nothing, are fine.
         expect(update(h, project.id, web.id, { baseBranch: null, setup: null }).ok).toBe(true);
@@ -714,14 +995,35 @@ describe('project.updateFolder', () => {
     test('keeps a setup as it is read: the lines trimmed and listed once, and a setup with no files and no command is none', async () => {
         const { h, project, web } = await twoFolders();
 
-        h.ok('project.updateFolder', { projectId: project.id, folderId: web.id, settings: { baseBranch: '  next  ', setup: { files: ['  .env ', '.env', 'apps/web/.env*'], command: '\n  bun install\nbun run build  \n' } } });
-        expect(settingsOf(h, project.id, web.id)).toEqual({ baseBranch: 'next', setup: { files: ['.env', 'apps/web/.env*'], command: 'bun install\nbun run build' } });
+        h.ok('project.updateFolder', {
+            projectId: project.id,
+            folderId: web.id,
+            settings: {
+                baseBranch: '  next  ',
+                setup: { files: ['  .env ', '.env', 'apps/web/.env*'], command: '\n  bun install\nbun run build  \n' },
+            },
+        });
+        expect(settingsOf(h, project.id, web.id)).toEqual({
+            baseBranch: 'next',
+            setup: { files: ['.env', 'apps/web/.env*'], command: 'bun install\nbun run build' },
+        });
 
-        h.ok('project.updateFolder', { projectId: project.id, folderId: web.id, settings: { setup: { files: [], command: '   ' } } });
+        h.ok('project.updateFolder', {
+            projectId: project.id,
+            folderId: web.id,
+            settings: { setup: { files: [], command: '   ' } },
+        });
         expect(settingsOf(h, project.id, web.id)).toEqual({ baseBranch: 'next' });
 
-        h.ok('project.updateFolder', { projectId: project.id, folderId: web.id, settings: { setup: { files: [], command: 'touch ready' } } });
-        expect(settingsOf(h, project.id, web.id)).toEqual({ baseBranch: 'next', setup: { files: [], command: 'touch ready' } });
+        h.ok('project.updateFolder', {
+            projectId: project.id,
+            folderId: web.id,
+            settings: { setup: { files: [], command: 'touch ready' } },
+        });
+        expect(settingsOf(h, project.id, web.id)).toEqual({
+            baseBranch: 'next',
+            setup: { files: [], command: 'touch ready' },
+        });
     });
 
     test('refuses a file outside the folder, however a system writes it, and changes nothing', async () => {
@@ -732,38 +1034,108 @@ describe('project.updateFolder', () => {
 
         const cursor = h.store.headCursor();
         const refused = [
-            '/etc/passwd', '/.env', '..', '../secrets', 'a/../../b', 'a/..', './.env', 'a/./b', '.', '...', '.. ', 'a/.. /b',
-            'C:/Users/me/.env', 'C:.env', 'c:\\Users\\.env', '\\\\server\\share\\.env', '\\.env', 'a\\b', '.env:stream',
-            'a//b', 'a/', '/', '*/.env', 'config/*/x', '.env\0', '.env\n.npmrc', ' ', '',
+            '/etc/passwd',
+            '/.env',
+            '..',
+            '../secrets',
+            'a/../../b',
+            'a/..',
+            './.env',
+            'a/./b',
+            '.',
+            '...',
+            '.. ',
+            'a/.. /b',
+            'C:/Users/me/.env',
+            'C:.env',
+            'c:\\Users\\.env',
+            '\\\\server\\share\\.env',
+            '\\.env',
+            'a\\b',
+            '.env:stream',
+            'a//b',
+            'a/',
+            '/',
+            '*/.env',
+            'config/*/x',
+            '.env\0',
+            '.env\n.npmrc',
+            ' ',
+            '',
             // The repository's own entry, however a system spells it; a file in a linked worktree that points at the repository.
-            '.git', '.git/config', '.GIT/hooks/pre-commit', 'a/.git/config', '.Git.', '.git ', '.git/*',
+            '.git',
+            '.git/config',
+            '.GIT/hooks/pre-commit',
+            'a/.git/config',
+            '.Git.',
+            '.git ',
+            '.git/*',
             // What no file is named with: DEL, a C1 control, a line separator, a mark that turns the text round, and a name too long.
-            '.env\u007f', '.env\u0085', '.en\u2028v', '\u202Eexe.txt', 'a'.repeat(501),
+            '.env\u007f',
+            '.env\u0085',
+            '.en\u2028v',
+            '\u202Eexe.txt',
+            'a'.repeat(501),
         ];
 
         for (const file of refused) {
-            expect(failure(update(h, project.id, web.id, { setup: { files: [file] } })), JSON.stringify(file)).toMatchObject({ code: 'invalid' });
+            expect(
+                failure(update(h, project.id, web.id, { setup: { files: [file] } })),
+                JSON.stringify(file)
+            ).toMatchObject({ code: 'invalid' });
         }
 
-        expect(failure(update(h, project.id, web.id, { setup: { files: Array.from({ length: 51 }, (_, index) => `f${ index }`) } })).code).toBe('invalid');
-        expect(failure(update(h, project.id, web.id, { setup: { files: [], command: 'x'.repeat(4001) } })).code).toBe('invalid');
+        expect(
+            failure(
+                update(h, project.id, web.id, {
+                    setup: { files: Array.from({ length: 51 }, (_, index) => `f${index}`) },
+                })
+            ).code
+        ).toBe('invalid');
+        expect(failure(update(h, project.id, web.id, { setup: { files: [], command: 'x'.repeat(4001) } })).code).toBe(
+            'invalid'
+        );
         expect(settingsOf(h, project.id, web.id)).toEqual(before);
         expect(h.store.headCursor()).toBe(cursor);
 
         // What is fine: a name with a dot or a space in it, a nested path, a pattern in the last part, and the limits themselves.
-        const fine = ['.env', '.env.local', '.env*', 'my notes.txt', 'apps/web/.env', 'apps/web/*', 'a..b', '..hidden', '.config/app.json', 'ünï/ф.txt', '*', '.gitignore', '.github/workflows/ci.yml', 'my.git/x', 'a'.repeat(500)];
+        const fine = [
+            '.env',
+            '.env.local',
+            '.env*',
+            'my notes.txt',
+            'apps/web/.env',
+            'apps/web/*',
+            'a..b',
+            '..hidden',
+            '.config/app.json',
+            'ünï/ф.txt',
+            '*',
+            '.gitignore',
+            '.github/workflows/ci.yml',
+            'my.git/x',
+            'a'.repeat(500),
+        ];
 
         expect(update(h, project.id, web.id, { setup: { files: fine } }).ok).toBe(true);
         expect(settingsOf(h, project.id, web.id)?.setup?.files).toEqual(fine);
-        expect(update(h, project.id, web.id, { setup: { files: Array.from({ length: 50 }, (_, index) => `f${ index }`), command: 'x'.repeat(4000) } }).ok).toBe(true);
+        expect(
+            update(h, project.id, web.id, {
+                setup: { files: Array.from({ length: 50 }, (_, index) => `f${index}`), command: 'x'.repeat(4000) },
+            }).ok
+        ).toBe(true);
     });
 
     test('checks the limits on the text as it is kept, and says which limit a refusal is', async () => {
         const { h, project, web } = await twoFolders();
         const message = (settings: unknown) => failure(update(h, project.id, web.id, settings)).message;
 
-        expect(message({ setup: { files: Array.from({ length: 51 }, (_, index) => `f${ index }`) } })).toBe('A setup lists at most 50 files');
-        expect(message({ setup: { files: [], command: 'x'.repeat(4001) } })).toBe('The command is longer than 4000 characters');
+        expect(message({ setup: { files: Array.from({ length: 51 }, (_, index) => `f${index}`) } })).toBe(
+            'A setup lists at most 50 files'
+        );
+        expect(message({ setup: { files: [], command: 'x'.repeat(4001) } })).toBe(
+            'The command is longer than 4000 characters'
+        );
         expect(message({ setup: { files: [], command: 'a\0b' } })).toBe('The command has a NUL character');
         expect(message({ baseBranch: 'b'.repeat(301) })).toBe('The base branch is longer than 300 characters');
         expect(message({ baseBranch: '-x' })).toBe('The base branch cannot start with -');
@@ -773,9 +1145,13 @@ describe('project.updateFolder', () => {
         expect(message({ setup: { files: ['a'.repeat(501)] } })).toContain('is longer than 500 characters');
 
         // 51 lines with one repeated are 50 files, and spaces round a command do not count against its limit.
-        const lines = Array.from({ length: 50 }, (_, index) => `f${ index }`);
+        const lines = Array.from({ length: 50 }, (_, index) => `f${index}`);
 
-        expect(update(h, project.id, web.id, { setup: { files: [...lines, 'f0'], command: `\n  ${ 'x'.repeat(4000) }  \n` } }).ok).toBe(true);
+        expect(
+            update(h, project.id, web.id, {
+                setup: { files: [...lines, 'f0'], command: `\n  ${'x'.repeat(4000)}  \n` },
+            }).ok
+        ).toBe(true);
         expect(settingsOf(h, project.id, web.id)?.setup?.files).toEqual(lines);
         expect(settingsOf(h, project.id, web.id)?.setup?.command).toHaveLength(4000);
     });
@@ -784,7 +1160,9 @@ describe('project.updateFolder', () => {
         const { h, project, web } = await twoFolders();
 
         for (const baseBranch of ['', '   ', 'b'.repeat(301), 'dev\nelop', 'dev\u007f', 'dev\u202E', '-x']) {
-            expect(failure(update(h, project.id, web.id, { baseBranch })), JSON.stringify(baseBranch)).toMatchObject({ code: 'invalid' });
+            expect(failure(update(h, project.id, web.id, { baseBranch })), JSON.stringify(baseBranch)).toMatchObject({
+                code: 'invalid',
+            });
         }
 
         expect(settingsOf(h, project.id, web.id)).toBeUndefined();
@@ -810,7 +1188,7 @@ describe('project.updateFolder', () => {
         expect(settingsOf(h, project.id, web.id)).toBeUndefined();
     });
 
-    test('settings stay through the other changes of a project: a rename, a reorder of folders, a removal and an addition of one, another folder\'s update, a reorder of projects, and a restart', async () => {
+    test("settings stay through the other changes of a project: a rename, a reorder of folders, a removal and an addition of one, another folder's update, a reorder of projects, and a restart", async () => {
         const { h, project, web, infra } = await twoFolders();
         const webSettings = { baseBranch: 'origin/main', setup: { files: ['.env'], command: 'bun install' } };
         const infraSettings = { setup: { files: ['terraform.tfvars'] } };
@@ -820,24 +1198,42 @@ describe('project.updateFolder', () => {
         expect(settingsOf(h, project.id, web.id)).toEqual(webSettings);
 
         h.ok('project.update', { projectId: project.id, name: 'Renamed', settings: { engine: 'fake' } });
-        expect(projectOf(h, project.id).folders).toEqual([{ ...web, settings: webSettings }, { ...infra, settings: infraSettings }]);
+        expect(projectOf(h, project.id).folders).toEqual([
+            { ...web, settings: webSettings },
+            { ...infra, settings: infraSettings },
+        ]);
 
-        const reordered = h.ok('project.update', { projectId: project.id, folders: [{ id: infra.id }, { id: web.id }] }).project as Project;
+        const reordered = h.ok('project.update', { projectId: project.id, folders: [{ id: infra.id }, { id: web.id }] })
+            .project as Project;
 
-        expect(reordered.folders).toEqual([{ ...infra, settings: infraSettings }, { ...web, settings: webSettings }]);
-        expect(projectOf(h, project.id).folders).toEqual([{ ...infra, settings: infraSettings }, { ...web, settings: webSettings }]);
+        expect(reordered.folders).toEqual([
+            { ...infra, settings: infraSettings },
+            { ...web, settings: webSettings },
+        ]);
+        expect(projectOf(h, project.id).folders).toEqual([
+            { ...infra, settings: infraSettings },
+            { ...web, settings: webSettings },
+        ]);
 
         // A path the project has already keeps its folder, so its settings; a new folder has none.
         const notes = realpathSync.native(tempDir());
-        const grown = h.ok('project.update', { projectId: project.id, folders: [{ path: web.path }, { id: infra.id }, { path: notes }] }).project as Project;
+        const grown = h.ok('project.update', {
+            projectId: project.id,
+            folders: [{ path: web.path }, { id: infra.id }, { path: notes }],
+        }).project as Project;
 
         expect(grown.folders.map(folder => folder.settings)).toEqual([webSettings, infraSettings, undefined]);
 
-        h.ok('project.updateFolder', { projectId: project.id, folderId: grown.folders[2].id, settings: { baseBranch: 'trunk' } });
+        h.ok('project.updateFolder', {
+            projectId: project.id,
+            folderId: grown.folders[2].id,
+            settings: { baseBranch: 'trunk' },
+        });
         expect(settingsOf(h, project.id, web.id)).toEqual(webSettings);
         expect(settingsOf(h, project.id, infra.id)).toEqual(infraSettings);
 
-        const shrunk = h.ok('project.update', { projectId: project.id, folders: [{ id: web.id }, { id: infra.id }] }).project as Project;
+        const shrunk = h.ok('project.update', { projectId: project.id, folders: [{ id: web.id }, { id: infra.id }] })
+            .project as Project;
 
         expect(shrunk.folders.map(folder => folder.settings)).toEqual([webSettings, infraSettings]);
 
@@ -851,7 +1247,10 @@ describe('project.updateFolder', () => {
         const second = await restartHarness(h);
 
         harnesses.push(second);
-        expect(projectOf(second, project.id).folders).toEqual([{ ...web, settings: webSettings }, { ...infra, settings: infraSettings }]);
+        expect(projectOf(second, project.id).folders).toEqual([
+            { ...web, settings: webSettings },
+            { ...infra, settings: infraSettings },
+        ]);
     });
 
     test('go with a folder that is moved to another place on the disk: it is the same folder of the project', async () => {
@@ -861,23 +1260,36 @@ describe('project.updateFolder', () => {
 
         h.ok('project.updateFolder', { projectId: project.id, folderId: infra.id, settings });
 
-        const moved = h.ok('project.update', { projectId: project.id, folders: [{ id: web.id }, { id: infra.id, path: elsewhere }] }).project as Project;
+        const moved = h.ok('project.update', {
+            projectId: project.id,
+            folders: [{ id: web.id }, { id: infra.id, path: elsewhere }],
+        }).project as Project;
 
         expect(moved.folders[1]).toEqual({ id: infra.id, path: elsewhere, settings });
         expect(settingsOf(h, project.id, infra.id)).toEqual(settings);
     });
 
-    test('belong to the project\'s row of the folder: the same folder in two projects has two sets, and removing one project leaves the other\'s', async () => {
+    test("belong to the project's row of the folder: the same folder in two projects has two sets, and removing one project leaves the other's", async () => {
         const h = await setup();
         const shared = h.openRepo('shared');
-        const a = h.ok('project.add', { folders: [shared.path, h.openRepo('a-only').path], name: 'A' }).project as Project;
-        const b = h.ok('project.add', { folders: [shared.path, h.openRepo('b-only').path], name: 'B' }).project as Project;
+        const a = h.ok('project.add', { folders: [shared.path, h.openRepo('a-only').path], name: 'A' })
+            .project as Project;
+        const b = h.ok('project.add', { folders: [shared.path, h.openRepo('b-only').path], name: 'B' })
+            .project as Project;
 
         expect([a.folders[0].path, b.folders[0].path]).toEqual([shared.path, shared.path]);
         expect(a.folders[0].id).not.toBe(b.folders[0].id);
 
-        h.ok('project.updateFolder', { projectId: a.id, folderId: a.folders[0].id, settings: { baseBranch: 'develop', setup: { files: ['.env'] } } });
-        h.ok('project.updateFolder', { projectId: b.id, folderId: b.folders[0].id, settings: { baseBranch: 'release' } });
+        h.ok('project.updateFolder', {
+            projectId: a.id,
+            folderId: a.folders[0].id,
+            settings: { baseBranch: 'develop', setup: { files: ['.env'] } },
+        });
+        h.ok('project.updateFolder', {
+            projectId: b.id,
+            folderId: b.folders[0].id,
+            settings: { baseBranch: 'release' },
+        });
 
         expect(settingsOf(h, a.id, a.folders[0].id)).toEqual({ baseBranch: 'develop', setup: { files: ['.env'] } });
         expect(settingsOf(h, b.id, b.folders[0].id)).toEqual({ baseBranch: 'release' });
@@ -888,7 +1300,10 @@ describe('project.updateFolder', () => {
 
         h.ok('project.delete', { projectId: a.id });
         expect(settingsOf(h, b.id, b.folders[0].id)).toEqual({ baseBranch: 'release' });
-        expect(h.ok('project.add', { folders: [shared.path, a.folders[1].path], name: 'A again' }).project.folders[0].settings).toBeUndefined();
+        expect(
+            h.ok('project.add', { folders: [shared.path, a.folders[1].path], name: 'A again' }).project.folders[0]
+                .settings
+        ).toBeUndefined();
     });
 
     test('a project that never had settings reads as it did: its folders have an id and a path only', async () => {
@@ -902,13 +1317,30 @@ describe('project.updateFolder', () => {
     test('over HTTP the schema keeps null, drops what is not a setting, refuses a malformed command, and the limits answer with their own message', async () => {
         const { h, project, web } = await twoFolders();
         const post = async (settings: unknown) => {
-            const response = await h.fetch('/v1/commands', { method: 'POST', body: JSON.stringify(command('project.updateFolder', { projectId: project.id, folderId: web.id, settings })) });
+            const response = await h.fetch('/v1/commands', {
+                method: 'POST',
+                body: JSON.stringify(
+                    command('project.updateFolder', { projectId: project.id, folderId: web.id, settings })
+                ),
+            });
 
             return { status: response.status, body: await response.json() };
         };
 
-        expect((await post({ baseBranch: 'dev', setup: { files: ['.env'], command: 'make' }, engine: 'x' })).body).toMatchObject({ ok: true, data: { project: { folders: [{ settings: { baseBranch: 'dev', setup: { files: ['.env'], command: 'make' } } }, {}] } } });
-        expect((await post({ baseBranch: null, setup: null })).body).toMatchObject({ ok: true, data: { project: { id: project.id } } });
+        expect(
+            (await post({ baseBranch: 'dev', setup: { files: ['.env'], command: 'make' }, engine: 'x' })).body
+        ).toMatchObject({
+            ok: true,
+            data: {
+                project: {
+                    folders: [{ settings: { baseBranch: 'dev', setup: { files: ['.env'], command: 'make' } } }, {}],
+                },
+            },
+        });
+        expect((await post({ baseBranch: null, setup: null })).body).toMatchObject({
+            ok: true,
+            data: { project: { id: project.id } },
+        });
         expect(settingsOf(h, project.id, web.id)).toBeUndefined();
 
         for (const settings of [{ baseBranch: 3 }, { setup: { command: 'x' } }, { setup: { files: 'a' } }, 'main']) {
@@ -922,7 +1354,10 @@ describe('project.updateFolder', () => {
         const refusals: [unknown, string][] = [
             [{ baseBranch: '' }, 'The base branch is empty'],
             [{ setup: { files: ['../x'] } }, 'The file "../x" must not have a . or .. part'],
-            [{ setup: { files: Array.from({ length: 51 }, (_, index) => `f${ index }`) } }, 'A setup lists at most 50 files'],
+            [
+                { setup: { files: Array.from({ length: 51 }, (_, index) => `f${index}`) } },
+                'A setup lists at most 50 files',
+            ],
             [{ setup: { files: [], command: 'x'.repeat(4001) } }, 'The command is longer than 4000 characters'],
         ];
 
@@ -940,8 +1375,8 @@ describe('GET /v1/projects/info', () => {
         const h = await setup();
         const project = h.openRepo();
 
-        expect((await fetch(`${ h.url }/v1/projects/info`)).status).toBe(401);
-        expect((await h.fetch(`/v1/projects/${ project.id }/snapshot`)).status).toBe(200);
+        expect((await fetch(`${h.url}/v1/projects/info`)).status).toBe(401);
+        expect((await h.fetch(`/v1/projects/${project.id}/snapshot`)).status).toBe(200);
     });
 
     test('lists every project in list order with each folder, its remote and branch, and the counts', async () => {
@@ -966,18 +1401,58 @@ describe('GET /v1/projects/info', () => {
         const [bareMain, bareNotes] = folderIds(bare.id);
         const [goneFolder] = folderIds(gone.id);
 
-        expect(projects.map(entry => entry.projectId)).toEqual(rootSnapshot(h.store).projects.map(project => project.id));
-        expect(projects[0]).toEqual({ projectId: h.personal.id, folders: [{ folderId: personalFolder, exists: true, branch: 'main', chats: 0 }], chats: 0, tasks: 0, activeRuns: 0 });
-        expect(projects[1]).toEqual({ projectId: repo.id, folders: [{ folderId: repoFolder, exists: true, remoteUrl: 'git@github.com:acme/app.git', branch: 'main', chats: 0 }], chats: 2, tasks: 1, activeRuns: 0 });
-        expect(projects[2]).toEqual({ projectId: bare.id, folders: [{ folderId: bareMain, exists: true, branch: 'main', chats: 0 }, { folderId: bareNotes, exists: true, chats: 0 }], chats: 0, tasks: 0, activeRuns: 0 });
-        expect(projects[3]).toEqual({ projectId: gone.id, folders: [{ folderId: goneFolder, exists: false, chats: 0 }], chats: 0, tasks: 0, activeRuns: 0 });
+        expect(projects.map(entry => entry.projectId)).toEqual(
+            rootSnapshot(h.store).projects.map(project => project.id)
+        );
+        expect(projects[0]).toEqual({
+            projectId: h.personal.id,
+            folders: [{ folderId: personalFolder, exists: true, branch: 'main', chats: 0 }],
+            chats: 0,
+            tasks: 0,
+            activeRuns: 0,
+        });
+        expect(projects[1]).toEqual({
+            projectId: repo.id,
+            folders: [
+                {
+                    folderId: repoFolder,
+                    exists: true,
+                    remoteUrl: 'git@github.com:acme/app.git',
+                    branch: 'main',
+                    chats: 0,
+                },
+            ],
+            chats: 2,
+            tasks: 1,
+            activeRuns: 0,
+        });
+        expect(projects[2]).toEqual({
+            projectId: bare.id,
+            folders: [
+                { folderId: bareMain, exists: true, branch: 'main', chats: 0 },
+                { folderId: bareNotes, exists: true, chats: 0 },
+            ],
+            chats: 0,
+            tasks: 0,
+            activeRuns: 0,
+        });
+        expect(projects[3]).toEqual({
+            projectId: gone.id,
+            folders: [{ folderId: goneFolder, exists: false, chats: 0 }],
+            chats: 0,
+            tasks: 0,
+            activeRuns: 0,
+        });
     });
 
     test('tells the branch a folder has checked out, and the short hash on a detached HEAD', async () => {
         const h = await setup();
         const project = h.openRepo('branches');
         const folder = projectOf(h, project.id).folders[0].id;
-        const folderInfo = async () => (await info(h)).find(entry => entry.projectId === project.id)?.folders.find(entry => entry.folderId === folder);
+        const folderInfo = async () =>
+            (await info(h))
+                .find(entry => entry.projectId === project.id)
+                ?.folders.find(entry => entry.folderId === folder);
 
         expect(await folderInfo()).toMatchObject({ branch: 'main' });
         expect(await folderInfo()).not.toHaveProperty('detached');
@@ -986,7 +1461,10 @@ describe('GET /v1/projects/info', () => {
         expect(await folderInfo()).toMatchObject({ branch: 'feature/open-menu' });
 
         git(project.path, 'checkout', '-q', '--detach');
-        expect(await folderInfo()).toMatchObject({ branch: git(project.path, 'rev-parse', '--short', 'HEAD'), detached: true });
+        expect(await folderInfo()).toMatchObject({
+            branch: git(project.path, 'rev-parse', '--short', 'HEAD'),
+            detached: true,
+        });
     });
 
     test('has no branch for a folder that is not a repository, or that is gone', async () => {
@@ -1015,7 +1493,7 @@ describe('GET /v1/projects/info', () => {
 
         h.openRepo('second');
 
-        const one = await (await h.fetch(`/v1/projects/info?project=${ first.id }`)).json() as ProjectInfo[];
+        const one = (await (await h.fetch(`/v1/projects/info?project=${first.id}`)).json()) as ProjectInfo[];
 
         expect(one.map(entry => entry.projectId)).toEqual([first.id]);
         expect(one[0].folders[0]).toMatchObject({ exists: true, branch: 'main' });
@@ -1030,45 +1508,59 @@ describe('GET /v1/projects/info', () => {
         rmSync(project.path, { recursive: true, force: true });
         writeFileSync(project.path, 'not a folder');
 
-        expect((await info(h)).find(entry => entry.projectId === project.id)?.folders).toEqual([{ folderId: projectOf(h, project.id).folders[0].id, exists: false, chats: 0 }]);
+        expect((await info(h)).find(entry => entry.projectId === project.id)?.folders).toEqual([
+            { folderId: projectOf(h, project.id).folders[0].id, exists: false, chats: 0 },
+        ]);
     });
 
-    test.skipIf(process.platform === 'win32')('reads the folders without stopping the daemon while git is slow', async () => {
-        const h = await setup();
+    test.skipIf(process.platform === 'win32')(
+        'reads the folders without stopping the daemon while git is slow',
+        async () => {
+            const h = await setup();
 
-        ['a', 'b', 'c'].forEach(name => h.openRepo(name));
+            ['a', 'b', 'c'].forEach(name => h.openRepo(name));
 
-        // A git that takes 0.3 s to answer for the remote: four projects make over a second of waiting, which the daemon must spend on other work.
-        const bin = tempDir('slow-git');
-        const path = process.env.PATH;
+            // A git that takes 0.3 s to answer for the remote: four projects make over a second of waiting, which the daemon must spend on other work.
+            const bin = tempDir('slow-git');
+            const path = process.env.PATH;
 
-        writeFileSync(join(bin, 'git'), `#!/bin/sh\n[ "$1" = remote ] && sleep 0.3\nexec ${ Bun.which('git') } "$@"\n`, { mode: 0o755 });
-        process.env.PATH = `${ bin }:${ path }`;
+            writeFileSync(
+                join(bin, 'git'),
+                `#!/bin/sh\n[ "$1" = remote ] && sleep 0.3\nexec ${Bun.which('git')} "$@"\n`,
+                { mode: 0o755 }
+            );
+            process.env.PATH = `${bin}:${path}`;
 
-        try {
-            let ticks = 0;
-            const timer = setInterval(() => ticks++, 10);
-            const started = Date.now();
-            const projects = await info(h);
+            try {
+                let ticks = 0;
+                const timer = setInterval(() => ticks++, 10);
+                const started = Date.now();
+                const projects = await info(h);
 
-            clearInterval(timer);
-            expect(projects).toHaveLength(4);
-            expect(Date.now() - started).toBeGreaterThan(900);
-            // A daemon held up by git would tick only once the answer was out.
-            expect(ticks).toBeGreaterThan(40);
+                clearInterval(timer);
+                expect(projects).toHaveLength(4);
+                expect(Date.now() - started).toBeGreaterThan(900);
+                // A daemon held up by git would tick only once the answer was out.
+                expect(ticks).toBeGreaterThan(40);
+            } finally {
+                process.env.PATH = path;
+            }
         }
-        finally {
-            process.env.PATH = path;
-        }
-    });
+    );
 
     test('counts the runs that have not finished', async () => {
         const { h, gate, project, task } = await busyProject('busy');
 
-        expect((await info(h)).find(entry => entry.projectId === project.id)).toMatchObject({ tasks: 1, activeRuns: 1 });
+        expect((await info(h)).find(entry => entry.projectId === project.id)).toMatchObject({
+            tasks: 1,
+            activeRuns: 1,
+        });
         gate.release(task.key);
         await waitFor(() => activeRuns(h, project.id) === 0, 'the run to finish');
-        expect((await info(h)).find(entry => entry.projectId === project.id)).toMatchObject({ tasks: 1, activeRuns: 0 });
+        expect((await info(h)).find(entry => entry.projectId === project.id)).toMatchObject({
+            tasks: 1,
+            activeRuns: 0,
+        });
     });
 });
 
@@ -1087,7 +1579,7 @@ async function writeUntil(dir: string, heard: () => boolean, what: string): Prom
 
         if (Date.now() - last >= 50) {
             last = Date.now();
-            writeFileSync(join(dir, `change-${ written++ }.txt`), 'x');
+            writeFileSync(join(dir, `change-${written++}.txt`), 'x');
         }
 
         return false;
@@ -1118,8 +1610,7 @@ describe('FolderWatchers', () => {
 
             // Unwatching what is not watched is harmless.
             watchers.unwatch('key', join(dir, 'nothing'));
-        }
-        finally {
+        } finally {
             watchers.stop();
         }
     });
@@ -1142,8 +1633,7 @@ describe('FolderWatchers', () => {
             await writeUntil(dir, () => calls.two > seen.two, 'the one left to hear the change');
             await Bun.sleep(100);
             expect(calls.one).toBe(seen.one);
-        }
-        finally {
+        } finally {
             watchers.stop();
         }
     });

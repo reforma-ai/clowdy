@@ -14,7 +14,10 @@ const toasts = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn() }));
 
 vi.mock('@clowdy/components/Toast', () => ({ toast: toasts }));
 // A path is a file on the disk unless a test says the disk has nothing there.
-vi.mock('../../features/files/openInFiles', () => ({ openInFiles: vi.fn(async () => true), kindOnDisk: vi.fn(async () => 'file') }));
+vi.mock('../../features/files/openInFiles', () => ({
+    openInFiles: vi.fn(async () => true),
+    kindOnDisk: vi.fn(async () => 'file'),
+}));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -26,27 +29,46 @@ let root: Root;
 let store: RootStore;
 const writeText = vi.fn(() => Promise.resolve());
 
-const settle = () => act(async () => {
-    await new Promise(resolve => setTimeout(resolve, 0));
-});
+const settle = () =>
+    act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 0));
+    });
 const draw = async (path: string) => {
-    act(() => root.render(<RootStoreProvider value={ store }><FileChip path={ path } /></RootStoreProvider>));
+    act(() =>
+        root.render(
+            <RootStoreProvider value={store}>
+                <FileChip path={path} />
+            </RootStoreProvider>
+        )
+    );
     await settle();
 };
 const chip = () => container.querySelector('button')!;
 const press = () => act(async () => chip().click());
-const rightClick = () => act(async () => void chip().dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 12, clientY: 8 })));
+const rightClick = () =>
+    act(
+        async () =>
+            void chip().dispatchEvent(
+                new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 12, clientY: 8 })
+            )
+    );
 const items = () => [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].map(row => row.textContent);
-const item = (text: string) => [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(row => row.textContent === text)!;
+const item = (text: string) =>
+    [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(row => row.textContent === text)!;
 // What leaves the app is in a submenu of the menu, opened by pressing its row.
 const MENU = ['Open in Files', 'Copy path', 'Copy relative path', 'Open in…'];
-const pressRow = (target: HTMLElement) => act(async () => {
-    target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
-    target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
-    target.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
-    target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
-    target.click();
-});
+const pressRow = (target: HTMLElement) =>
+    act(async () => {
+        target.dispatchEvent(
+            new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true })
+        );
+        target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+        target.dispatchEvent(
+            new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true })
+        );
+        target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
+        target.click();
+    });
 const openGitHub = async () => {
     await pressRow(item('Open in…'));
     await pressRow(item('Open in GitHub'));
@@ -76,7 +98,13 @@ afterEach(() => {
 
 describe('FileChip', () => {
     it('shows the name of the file, with the whole path on hover', async () => {
-        act(() => root.render(<RootStoreProvider value={ store }><FileChip path="./src/booking/price.ts" lines="12-20" /></RootStoreProvider>));
+        act(() =>
+            root.render(
+                <RootStoreProvider value={store}>
+                    <FileChip path="./src/booking/price.ts" lines="12-20" />
+                </RootStoreProvider>
+            )
+        );
 
         expect(chip().textContent).toBe('price.ts (12-20)');
         expect(chip().title).toBe('src/booking/price.ts');
@@ -86,7 +114,12 @@ describe('FileChip', () => {
         await draw('./src/booking/price.ts');
         await press();
 
-        expect(openInFiles).toHaveBeenCalledExactlyOnceWith(store, FIXTURE_PROJECT_ID, { folder: FOLDER }, 'src/booking/price.ts');
+        expect(openInFiles).toHaveBeenCalledExactlyOnceWith(
+            store,
+            FIXTURE_PROJECT_ID,
+            { folder: FOLDER },
+            'src/booking/price.ts'
+        );
         expect(items()).toEqual([]);
         expect(writeText).not.toHaveBeenCalled();
     });
@@ -114,7 +147,7 @@ describe('FileChip', () => {
         await press();
         await settle();
 
-        expect(document.body.querySelector('[role="menu"] header')?.textContent).toBe('This file doesn\'t exist');
+        expect(document.body.querySelector('[role="menu"] header')?.textContent).toBe("This file doesn't exist");
         expect(items()).toEqual(['Copy path', 'Copy relative path']);
 
         await act(async () => item('Copy relative path').click());
@@ -122,13 +155,13 @@ describe('FileChip', () => {
         expect(writeText).toHaveBeenCalledExactlyOnceWith('src/gone.ts');
     });
 
-    it('says it of a folder too, and keeps no relative copy for the project\'s own folder', async () => {
+    it("says it of a folder too, and keeps no relative copy for the project's own folder", async () => {
         vi.mocked(kindOnDisk).mockResolvedValue(undefined);
         await draw('src/missing/');
         await rightClick();
         await settle();
 
-        expect(document.body.querySelector('[role="menu"] header')?.textContent).toBe('This folder doesn\'t exist');
+        expect(document.body.querySelector('[role="menu"] header')?.textContent).toBe("This folder doesn't exist");
         expect(items()).toEqual(['Copy path', 'Copy relative path']);
     });
 
@@ -144,7 +177,11 @@ describe('FileChip', () => {
 
         await openGitHub();
 
-        expect(open).toHaveBeenCalledExactlyOnceWith('https://github.com/acme/car-rental/blob/main/src/booking/price.ts', '_blank', 'noopener');
+        expect(open).toHaveBeenCalledExactlyOnceWith(
+            'https://github.com/acme/car-rental/blob/main/src/booking/price.ts',
+            '_blank',
+            'noopener'
+        );
         open.mockRestore();
     });
 
@@ -159,14 +196,38 @@ describe('FileChip', () => {
 
     it('opens the menu on a click with ⌘ or Ctrl held, in place of opening the file', async () => {
         await draw('src/booking/price.ts');
-        await act(async () => void chip().dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, metaKey: true, clientX: 12, clientY: 8, detail: 1 })));
+        await act(
+            async () =>
+                void chip().dispatchEvent(
+                    new MouseEvent('click', {
+                        bubbles: true,
+                        cancelable: true,
+                        metaKey: true,
+                        clientX: 12,
+                        clientY: 8,
+                        detail: 1,
+                    })
+                )
+        );
         await settle();
 
         expect(openInFiles).not.toHaveBeenCalled();
         expect(items()).toEqual(MENU);
 
         await act(async () => item('Copy path').click());
-        await act(async () => void chip().dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ctrlKey: true, clientX: 12, clientY: 8, detail: 1 })));
+        await act(
+            async () =>
+                void chip().dispatchEvent(
+                    new MouseEvent('click', {
+                        bubbles: true,
+                        cancelable: true,
+                        ctrlKey: true,
+                        clientX: 12,
+                        clientY: 8,
+                        detail: 1,
+                    })
+                )
+        );
         await settle();
 
         expect(openInFiles).not.toHaveBeenCalled();
@@ -181,18 +242,24 @@ describe('FileChip', () => {
         vi.useFakeTimers();
 
         try {
-            const touch = (type: string) => act(() => {
-                const event = new Event(type, { bubbles: true, cancelable: true });
+            const touch = (type: string) =>
+                act(() => {
+                    const event = new Event(type, { bubbles: true, cancelable: true });
 
-                Object.assign(event, { pointerType: 'touch', isPrimary: true, pointerId: 1, clientX: 12, clientY: 8 });
-                chip().dispatchEvent(event);
-            });
+                    Object.assign(event, {
+                        pointerType: 'touch',
+                        isPrimary: true,
+                        pointerId: 1,
+                        clientX: 12,
+                        clientY: 8,
+                    });
+                    chip().dispatchEvent(event);
+                });
 
             await touch('pointerdown');
             await act(async () => void vi.advanceTimersByTime(500));
             await touch('pointerup');
-        }
-        finally {
+        } finally {
             vi.useRealTimers();
         }
 
@@ -215,8 +282,17 @@ describe('FileChip', () => {
         await settle();
         await openGitHub();
 
-        expect(kindOnDisk).toHaveBeenCalledExactlyOnceWith(store, FIXTURE_PROJECT_ID, { folder: FOLDER }, 'src/booking');
-        expect(open).toHaveBeenCalledExactlyOnceWith('https://github.com/acme/car-rental/tree/main/src/booking', '_blank', 'noopener');
+        expect(kindOnDisk).toHaveBeenCalledExactlyOnceWith(
+            store,
+            FIXTURE_PROJECT_ID,
+            { folder: FOLDER },
+            'src/booking'
+        );
+        expect(open).toHaveBeenCalledExactlyOnceWith(
+            'https://github.com/acme/car-rental/tree/main/src/booking',
+            '_blank',
+            'noopener'
+        );
         open.mockRestore();
     });
 

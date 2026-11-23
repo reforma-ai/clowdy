@@ -32,6 +32,6 @@ jobs:
             - if: ${{ !cancelled() }}
               run: bunx turbo run test --continue --concurrency=1
             - if: ${{ !cancelled() }}
-              run: bunx eslint scripts
+              run: bun run lint:root
             - if: ${{ !cancelled() }}
               run: bunx tsc --noEmit -p scripts

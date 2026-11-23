@@ -23,7 +23,7 @@ const UNPRINTABLE = /[\p{Cc}\p{Zl}\p{Zp}‪-‮⁦-⁩]/u;
  * repository, not something to copy.
  */
 function setupFileProblem(file: string): string | undefined {
-    if (file.length > MAX_SETUP_FILE_LENGTH) return `is longer than ${ MAX_SETUP_FILE_LENGTH } characters`;
+    if (file.length > MAX_SETUP_FILE_LENGTH) return `is longer than ${MAX_SETUP_FILE_LENGTH} characters`;
 
     if (UNPRINTABLE.test(file)) return 'has a control character';
 
@@ -59,16 +59,17 @@ function cleanSetup(setup: WorkspaceSetup): WorkspaceSetup | undefined {
         const file = entry.trim();
         const problem = file === '' ? 'is empty' : setupFileProblem(file);
 
-        if (problem) throw invalid(`The file ${ JSON.stringify(entry) } ${ problem }`);
+        if (problem) throw invalid(`The file ${JSON.stringify(entry)} ${problem}`);
 
         if (!files.includes(file)) files.push(file);
     }
 
-    if (files.length > MAX_SETUP_FILES) throw invalid(`A setup lists at most ${ MAX_SETUP_FILES } files`);
+    if (files.length > MAX_SETUP_FILES) throw invalid(`A setup lists at most ${MAX_SETUP_FILES} files`);
 
     const command = setup.command?.trim();
 
-    if (command && command.length > MAX_SETUP_COMMAND_LENGTH) throw invalid(`The command is longer than ${ MAX_SETUP_COMMAND_LENGTH } characters`);
+    if (command && command.length > MAX_SETUP_COMMAND_LENGTH)
+        throw invalid(`The command is longer than ${MAX_SETUP_COMMAND_LENGTH} characters`);
 
     // A script is text with newlines in it, but a NUL ends the argument a shell is started with: the step would fail on every try.
     if (command?.includes('\0')) throw invalid('The command has a NUL character');
@@ -81,7 +82,8 @@ function cleanBaseBranch(name: string): string {
 
     if (!branch) throw invalid('The base branch is empty');
 
-    if (branch.length > MAX_BASE_BRANCH_LENGTH) throw invalid(`The base branch is longer than ${ MAX_BASE_BRANCH_LENGTH } characters`);
+    if (branch.length > MAX_BASE_BRANCH_LENGTH)
+        throw invalid(`The base branch is longer than ${MAX_BASE_BRANCH_LENGTH} characters`);
 
     if (UNPRINTABLE.test(branch)) throw invalid('The base branch has a control character');
 
@@ -92,13 +94,15 @@ function cleanBaseBranch(name: string): string {
 }
 
 /** The settings after `patch`, checked: `invalid` for a branch or a setup the daemon refuses. Nothing (not an empty object) when no field is left. */
-export function mergeFolderSettings(current: FolderSettings | undefined, patch: FolderSettingsPatch): FolderSettings | undefined {
+export function mergeFolderSettings(
+    current: FolderSettings | undefined,
+    patch: FolderSettingsPatch
+): FolderSettings | undefined {
     const merged: FolderSettings = { ...current };
 
     if (patch.baseBranch === null) {
         delete merged.baseBranch;
-    }
-    else if (patch.baseBranch !== undefined) {
+    } else if (patch.baseBranch !== undefined) {
         merged.baseBranch = cleanBaseBranch(patch.baseBranch);
     }
 
@@ -107,8 +111,7 @@ export function mergeFolderSettings(current: FolderSettings | undefined, patch: 
 
         if (setup) {
             merged.setup = setup;
-        }
-        else {
+        } else {
             delete merged.setup;
         }
     }

@@ -55,7 +55,9 @@ describe('a repeated request id', () => {
 
         h.send('chat.create', { requestId: 'req-stored-0001', projectId: id });
 
-        const row = h.store.db.query('SELECT result FROM commands WHERE request_id = ?').get('req-stored-0001') as { result: string };
+        const row = h.store.db.query('SELECT result FROM commands WHERE request_id = ?').get('req-stored-0001') as {
+            result: string;
+        };
 
         expect(JSON.parse(row.result)).toMatchObject({ ok: true, requestId: 'req-stored-0001' });
     });
@@ -67,15 +69,31 @@ describe('projects', () => {
         const { project, existing } = h.ok('project.add', { folders: [path] });
         const again = h.ok('project.add', { folders: [path] });
 
-        expect(project).toMatchObject({ name: 'car-rental', taskPrefix: 'CAR', settings: {}, folders: [{ id: expect.stringMatching(/^fld_/), path }] });
+        expect(project).toMatchObject({
+            name: 'car-rental',
+            taskPrefix: 'CAR',
+            settings: {},
+            folders: [{ id: expect.stringMatching(/^fld_/), path }],
+        });
         expect(existing).toBeUndefined();
         expect(again).toMatchObject({ project: { id: project.id }, existing: true });
 
-        const created = h.events().filter(event => event.data.type === 'project.upserted' && event.projectId === project.id);
+        const created = h
+            .events()
+            .filter(event => event.data.type === 'project.upserted' && event.projectId === project.id);
 
         expect(created).toHaveLength(1);
-        expect((created[0].data as { statuses: { name: string; category: string }[] }).statuses.map(status => [status.name, status.category])).toEqual([
-            ['To do', 'todo'], ['In progress', 'active'], ['Review', 'review'], ['Done', 'done'], ['Canceled', 'canceled'],
+        expect(
+            (created[0].data as { statuses: { name: string; category: string }[] }).statuses.map(status => [
+                status.name,
+                status.category,
+            ])
+        ).toEqual([
+            ['To do', 'todo'],
+            ['In progress', 'active'],
+            ['Review', 'review'],
+            ['Done', 'done'],
+            ['Canceled', 'canceled'],
         ]);
     });
 
@@ -86,7 +104,10 @@ describe('projects', () => {
         mkdirSync(plain);
         mkdirSync(join(repo, 'src'));
 
-        expect(h.ok('project.add', { folders: [repo], name: 'Fancy Name' }).project).toMatchObject({ name: 'Fancy Name', taskPrefix: 'FAN' });
+        expect(h.ok('project.add', { folders: [repo], name: 'Fancy Name' }).project).toMatchObject({
+            name: 'Fancy Name',
+            taskPrefix: 'FAN',
+        });
         expect(h.ok('project.add', { folders: [plain] }).project.name).toBe('plain');
         expect(existsSync(join(plain, '.git'))).toBe(false);
         expect(h.ok('project.add', { folders: [join(repo, 'src')] }).project.name).toBe('src');
@@ -104,7 +125,10 @@ describe('projects', () => {
         const { project } = h.ok('project.add', { folders: [web, api], name: 'Shop' });
 
         expect(project.folders.map((folder: { path: string }) => folder.path)).toEqual([web, api]);
-        expect(h.ok('project.add', { folders: [api, web] })).toMatchObject({ project: { id: project.id }, existing: true });
+        expect(h.ok('project.add', { folders: [api, web] })).toMatchObject({
+            project: { id: project.id },
+            existing: true,
+        });
         // A folder can be in several projects.
         expect(h.ok('project.add', { folders: [web] }).project.id).not.toBe(project.id);
 
@@ -148,7 +172,9 @@ describe('projects', () => {
         const { id } = h.openRepo();
 
         expect(failure(h.send('project.update', { projectId: id, name: '  ' })).code).toBe('invalid');
-        expect(failure(h.send('project.add', { folders: [makeRepo(h.config.projectsDir, 'unopened')], name: ' ' })).code).toBe('invalid');
+        expect(
+            failure(h.send('project.add', { folders: [makeRepo(h.config.projectsDir, 'unopened')], name: ' ' })).code
+        ).toBe('invalid');
     });
 
     test('project.update renames and merges settings', () => {
@@ -158,7 +184,10 @@ describe('projects', () => {
 
         const { project } = h.ok('project.update', { projectId: id, settings: { targetBranch: 'develop' } });
 
-        expect(project).toMatchObject({ name: 'Renamed', settings: { maxParallelRuns: 2, engine: 'fake', targetBranch: 'develop' } });
+        expect(project).toMatchObject({
+            name: 'Renamed',
+            settings: { maxParallelRuns: 2, engine: 'fake', targetBranch: 'develop' },
+        });
         expect(failure(h.send('project.update', { projectId: 'prj_nope', name: 'x' })).code).toBe('not_found');
     });
 });
@@ -180,7 +209,11 @@ describe('tasks', () => {
     const setup = () => {
         const { id } = h.openRepo();
 
-        return { projectId: id, create: (title: string, extra: Record<string, unknown> = {}) => h.ok('task.create', { projectId: id, title, ...extra }).task };
+        return {
+            projectId: id,
+            create: (title: string, extra: Record<string, unknown> = {}) =>
+                h.ok('task.create', { projectId: id, title, ...extra }).task,
+        };
     };
 
     test('numbers and keys are per project and start in the todo status', () => {
@@ -204,7 +237,9 @@ describe('tasks', () => {
 
         expect(failure(h.send('task.create', { projectId, title: 'x', statusId: 'sts_nope' })).code).toBe('invalid');
         expect(failure(h.send('task.create', { projectId, title: 'x', chatId: foreignChat.id })).code).toBe('invalid');
-        expect(failure(h.send('task.create', { projectId, title: 'x', dependsOn: [foreignTask.id] })).code).toBe('invalid');
+        expect(failure(h.send('task.create', { projectId, title: 'x', dependsOn: [foreignTask.id] })).code).toBe(
+            'invalid'
+        );
         expect(create('ok').dependsOn).toEqual([]);
     });
 
@@ -222,9 +257,12 @@ describe('tasks', () => {
         const { chat } = h.ok('chat.create', { projectId });
         const task = create('Linked', { chatId: chat.id });
 
-        expect(h.events().filter(event => event.data.type === 'link.chatTask').map(event => event.data)).toEqual([
-            { type: 'link.chatTask', link: { chatId: chat.id, taskId: task.id }, present: true },
-        ]);
+        expect(
+            h
+                .events()
+                .filter(event => event.data.type === 'link.chatTask')
+                .map(event => event.data)
+        ).toEqual([{ type: 'link.chatTask', link: { chatId: chat.id, taskId: task.id }, present: true }]);
     });
 
     test('dependency cycles are rejected, including through other tasks and on itself', () => {
@@ -246,7 +284,9 @@ describe('tasks', () => {
         const done = h.statuses(projectId).find(status => status.category === 'done')!.id;
         const cursor = h.store.headCursor();
 
-        expect(h.ok('task.update', { taskId: task.id, title: 'New', description: 'Body', statusId: done }).task).toMatchObject({ title: 'New', description: 'Body', statusId: done });
+        expect(
+            h.ok('task.update', { taskId: task.id, title: 'New', description: 'Body', statusId: done }).task
+        ).toMatchObject({ title: 'New', description: 'Body', statusId: done });
         expect(h.store.headCursor()).toBe(cursor + 1);
         h.ok('task.update', { taskId: task.id, title: 'New' });
         expect(h.store.headCursor()).toBe(cursor + 1);
@@ -280,10 +320,16 @@ describe('tasks', () => {
         const { chat } = h.ok('chat.create', { projectId });
         const task = create('Detail', { chatId: chat.id });
         const { runId, chatId } = h.ok('task.start', { taskId: task.id });
-        const detail = await (await h.fetch(`/v1/tasks/${ task.id }/detail`)).json() as TaskDetail;
+        const detail = (await (await h.fetch(`/v1/tasks/${task.id}/detail`)).json()) as TaskDetail;
 
         // Starting a task opens its own chat next to the one that discussed it, and the run moves the task, so the task is read as it is now.
-        expect(detail).toEqual({ taskId: task.id, task: getTask(h.store.db, task.id)!, chatIds: [chat.id, chatId], runIds: [runId], artifacts: [] });
+        expect(detail).toEqual({
+            taskId: task.id,
+            task: getTask(h.store.db, task.id)!,
+            chatIds: [chat.id, chatId],
+            runIds: [runId],
+            artifacts: [],
+        });
         expect(detail.task).toMatchObject({ id: task.id, key: task.key, title: 'Detail' });
         expect((await h.fetch('/v1/tasks/tsk_nope/detail')).status).toBe(404);
     });
@@ -297,18 +343,25 @@ describe('tasks', () => {
         h.ok('task.update', { taskId: epic.id, statusId: done });
         h.ok('task.archive', { taskId: epic.id });
 
-        const snapshot = await (await h.fetch(`/v1/projects/${ projectId }/snapshot`)).json() as ProjectSnapshot;
-        const detail = await (await h.fetch(`/v1/tasks/${ stage.id }/detail`)).json() as TaskDetail;
+        const snapshot = (await (await h.fetch(`/v1/projects/${projectId}/snapshot`)).json()) as ProjectSnapshot;
+        const detail = (await (await h.fetch(`/v1/tasks/${stage.id}/detail`)).json()) as TaskDetail;
 
         expect(snapshot.tasks.map(entry => entry.id)).not.toContain(stage.id);
-        expect(detail).toEqual({ taskId: stage.id, task: getTask(h.store.db, stage.id)!, chatIds: [], runIds: [], artifacts: [] });
+        expect(detail).toEqual({
+            taskId: stage.id,
+            task: getTask(h.store.db, stage.id)!,
+            chatIds: [],
+            runIds: [],
+            artifacts: [],
+        });
         expect(detail.task).toMatchObject({ id: stage.id, parentId: epic.id });
         expect(detail.task.archivedAt).toBeGreaterThan(0);
         expect(detail.task.closedAt).toBeGreaterThan(0);
     });
 
     describe('the task detail by key', () => {
-        const byKey = (projectId: string, key: string) => h.fetch(`/v1/projects/${ encodeURIComponent(projectId) }/tasks/${ encodeURIComponent(key) }/detail`);
+        const byKey = (projectId: string, key: string) =>
+            h.fetch(`/v1/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(key)}/detail`);
 
         test('answers what the detail by id does, for a task on the board and for an archived one', async () => {
             const { projectId, create } = setup();
@@ -326,15 +379,21 @@ describe('tasks', () => {
 
             expect(board.status).toBe(200);
 
-            const boardDetail = await board.json() as TaskDetail;
+            const boardDetail = (await board.json()) as TaskDetail;
 
-            expect(boardDetail).toEqual(await (await h.fetch(`/v1/tasks/${ onBoard.id }/detail`)).json());
+            expect(boardDetail).toEqual(await (await h.fetch(`/v1/tasks/${onBoard.id}/detail`)).json());
             expect(boardDetail).toMatchObject({ taskId: onBoard.id, task: { key: onBoard.key }, chatIds: [chat.id] });
             expect(archived.status).toBe(200);
 
-            const detail = await archived.json() as TaskDetail;
+            const detail = (await archived.json()) as TaskDetail;
 
-            expect(detail).toEqual({ taskId: stage.id, task: getTask(h.store.db, stage.id)!, chatIds: [], runIds: [], artifacts: [] });
+            expect(detail).toEqual({
+                taskId: stage.id,
+                task: getTask(h.store.db, stage.id)!,
+                chatIds: [],
+                runIds: [],
+                artifacts: [],
+            });
             expect(detail.task).toMatchObject({ key: stage.key, parentId: epic.id });
             expect(detail.task.archivedAt).toBeGreaterThan(0);
         });
@@ -344,7 +403,11 @@ describe('tasks', () => {
             const task = create('Mixed case');
             const [prefix, number] = task.key.split('-');
 
-            for (const key of [task.key, `${ prefix.toLowerCase() }-${ number }`, `${ prefix[0] }${ prefix.slice(1).toLowerCase() }-${ number }`]) {
+            for (const key of [
+                task.key,
+                `${prefix.toLowerCase()}-${number}`,
+                `${prefix[0]}${prefix.slice(1).toLowerCase()}-${number}`,
+            ]) {
                 const response = await byKey(projectId, key);
 
                 expect(response.status).toBe(200);
@@ -352,7 +415,7 @@ describe('tasks', () => {
             }
         });
 
-        test('is not_found, never invalid, for an unknown number, another project\'s key, a malformed key and an unknown project', async () => {
+        test("is not_found, never invalid, for an unknown number, another project's key, a malformed key and an unknown project", async () => {
             const { projectId, create } = setup();
             const other = h.openRepo('other');
             const mine = create('Mine');
@@ -360,21 +423,21 @@ describe('tasks', () => {
             const [prefix] = mine.key.split('-');
             const keys = [
                 // Nobody has this number, or a number too large to be one.
-                `${ prefix }-999`,
-                `${ prefix }-0`,
-                `${ prefix }-99999999999999999999999`,
+                `${prefix}-999`,
+                `${prefix}-0`,
+                `${prefix}-99999999999999999999999`,
                 // The other project's key, which that project has: a project answers for its own keys only.
                 foreign.key,
                 // Not a key at all.
                 prefix,
-                `${ prefix }-`,
-                `-${ mine.key.split('-')[1] }`,
+                `${prefix}-`,
+                `-${mine.key.split('-')[1]}`,
                 mine.key.split('-')[1],
-                `${ prefix }-abc`,
-                `${ prefix }-1.5`,
-                `${ mine.key } `,
-                `${ mine.key }-2`,
-                `${ prefix }--1`,
+                `${prefix}-abc`,
+                `${prefix}-1.5`,
+                `${mine.key} `,
+                `${mine.key}-2`,
+                `${prefix}--1`,
                 mine.id,
                 '',
                 'x/y',
@@ -384,7 +447,10 @@ describe('tasks', () => {
                 const response = await byKey(projectId, key);
 
                 expect([key, response.status]).toEqual([key, 404]);
-                expect([key, ((await response.json()) as { error: { code: string } }).error.code]).toEqual([key, 'not_found']);
+                expect([key, ((await response.json()) as { error: { code: string } }).error.code]).toEqual([
+                    key,
+                    'not_found',
+                ]);
             }
 
             const project = await byKey('prj_nope', mine.key);

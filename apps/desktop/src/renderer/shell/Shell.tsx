@@ -12,8 +12,8 @@ import { useRootStore } from '../stores';
 import { FindBar } from './FindBar';
 import { NoProject } from './NoProject';
 import styles from './Shell.module.css';
-import { shellCommands } from './shellCommands';
 import { SyncBanner } from './SyncBanner';
+import { shellCommands } from './shellCommands';
 import { TitleBand } from './TitleBand';
 import { Unreachable } from './Unreachable';
 
@@ -29,15 +29,25 @@ export function Shell() {
     useWindowFitsHalf();
     useEffect(() => installDispatcher(hotkeys), []);
     useCommands('app', shellCommands(root));
-    useCommands('app', quickSearchCommands({ available: () => root.showsProjectScreen, open: tab => openQuickSearch(root, tab) }));
+    useCommands(
+        'app',
+        quickSearchCommands({ available: () => root.showsProjectScreen, open: tab => openQuickSearch(root, tab) })
+    );
 
     return (
-        <div className={ styles.shell }>
-            <div className={ styles.window }>
+        <div className={styles.shell}>
+            <div className={styles.window}>
                 <TitleBand />
-                <div className={ styles.body }>
+                <div className={styles.body}>
                     <SidePanelLayout>
-                        <main className={ cn(styles.outlet, root.phase !== 'ready' && styles.bare, panel.open && styles.beside, panel.expanded && styles.covered) }>
+                        <main
+                            className={cn(
+                                styles.outlet,
+                                root.phase !== 'ready' && styles.bare,
+                                panel.open && styles.beside,
+                                panel.expanded && styles.covered
+                            )}
+                        >
                             <Outlet />
                         </main>
                     </SidePanelLayout>
@@ -59,13 +69,19 @@ function Outlet() {
     if (root.phase === 'loading') return <Loading />;
 
     // The desktop shell hands over the daemon's address once, while the page loads: only a reload finds a daemon that started or moved since.
-    if (root.phase === 'unreachable') return <Unreachable message={ root.loadError } onRetry={ () => (window.desktop ? location.reload() : void root.load()) } />;
+    if (root.phase === 'unreachable')
+        return (
+            <Unreachable
+                message={root.loadError}
+                onRetry={() => (window.desktop ? location.reload() : void root.load())}
+            />
+        );
 
     if (!project) return <NoProject />;
 
     if (project.status === 'loading') return <Loading />;
 
-    if (project.status === 'failed') return <Unreachable message={ project.error } onRetry={ () => void project.load() } />;
+    if (project.status === 'failed') return <Unreachable message={project.error} onRetry={() => void project.load()} />;
 
     return <ProjectScreen />;
 }
@@ -76,7 +92,7 @@ function ProjectScreen() {
 
 function Loading() {
     return (
-        <div className={ styles.center }>
+        <div className={styles.center}>
             <Loader size="xs" />
             <Text color="secondary">Loading…</Text>
         </div>

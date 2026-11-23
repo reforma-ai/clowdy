@@ -5,11 +5,23 @@
     white-space: nowrap;
 }
 
-/* The `⋯` keeps its place at rest, so the time does not move when it shows. */
+/* The time and the `⋯` are stacked in one cell, as wide as the wider of them and centred on it. */
 .end {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--spacing-xs);
+    display: inline-grid;
+    place-items: center;
+}
+
+.end > * {
+    grid-area: 1 / 1;
+}
+
+/*
+ * The list's rule takes the time away on hover alone, and the `⋯` also shows for a focused row and one whose menu is open (`data-open`, the pointer is in the menu),
+ * so the time goes in those cases too, and the two are never drawn on each other.
+ */
+[role='row']:focus-within .time,
+[data-open] .time {
+    opacity: 0;
 }
 
 .empty {

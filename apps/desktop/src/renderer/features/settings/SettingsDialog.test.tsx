@@ -16,16 +16,26 @@ let store: RootStore;
 
 // The window draws on the next animation frame, its content mounts a little later, and it opens and closes in 0.2 s and 0.15 s: it is let finish, as a window that is
 // taken down in the middle of that rejects its animation.
-const settle = () => act(async () => {
-    await new Promise(resolve => setTimeout(resolve, 300));
-});
+const settle = () =>
+    act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 300));
+    });
 // The observer plugin of the app does not run under Vitest: the dialog follows `settingsOpen` through a store that is read when the tree renders again.
 const draw = async () => {
-    act(() => root.render(<RootStoreProvider value={ store }><SettingsDialog /></RootStoreProvider>));
+    act(() =>
+        root.render(
+            <RootStoreProvider value={store}>
+                <SettingsDialog />
+            </RootStoreProvider>
+        )
+    );
     await settle();
 };
 const windowEl = () => document.querySelector('[data-modal-window]');
-const pages = () => [...document.querySelectorAll('[data-modal-window] [aria-label="Settings pages"] [role="option"]')].map(item => item.textContent);
+const pages = () =>
+    [...document.querySelectorAll('[data-modal-window] [aria-label="Settings pages"] [role="option"]')].map(
+        item => item.textContent
+    );
 
 beforeEach(async () => {
     store = new RootStore(new FixtureTransport(), { storage: undefined });
@@ -54,7 +64,16 @@ describe('the Settings window', () => {
         await draw();
 
         expect(windowEl()).not.toBeNull();
-        expect(pages()).toEqual(['Appearance', 'Chat', 'Files', 'Shortcuts', 'Projects', 'Providers', 'Skills']);
+        expect(pages()).toEqual([
+            'Appearance',
+            'Chat',
+            'Files',
+            'Shortcuts',
+            'Projects',
+            'Providers',
+            'Skills',
+            'About',
+        ]);
         expect(windowEl()?.querySelector('nav [aria-current="page"]')?.textContent).toBe('Shortcuts');
     });
 
@@ -77,7 +96,11 @@ describe('the Settings window', () => {
 
         // The window keeps the focus on its overlay, which is where the key goes.
         await act(async () => {
-            document.querySelector('[data-modal-overlay]')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true }));
+            document
+                .querySelector('[data-modal-overlay]')!
+                .dispatchEvent(
+                    new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true })
+                );
         });
         await settle();
 

@@ -17,7 +17,23 @@ export interface AppIconProps {
 
 /** A program's own icon, as it has it on this computer; when there is none to show, a folder for a file manager, braces for an editor and a prompt for a terminal. */
 export function AppIcon({ app, kind }: AppIconProps) {
-    if (!app.icon) return kind === 'fileManager' ? <Folder aria-hidden="true" /> : kind === 'terminal' ? <Terminal aria-hidden="true" /> : <CodeBraces aria-hidden="true" />;
+    if (!app.icon)
+        return kind === 'fileManager' ? (
+            <Folder aria-hidden="true" />
+        ) : kind === 'terminal' ? (
+            <Terminal aria-hidden="true" />
+        ) : (
+            <CodeBraces aria-hidden="true" />
+        );
 
-    return <Image className={ styles.picture } src={ app.icon } alt="" width={ PICTURE } height={ PICTURE } style={ { margin: (ICON_ROOM - PICTURE) / 2 } } />;
+    return (
+        <Image
+            className={styles.picture}
+            src={app.icon}
+            alt=""
+            width={PICTURE}
+            height={PICTURE}
+            style={{ margin: (ICON_ROOM - PICTURE) / 2 }}
+        />
+    );
 }

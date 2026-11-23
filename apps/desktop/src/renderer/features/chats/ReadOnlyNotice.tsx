@@ -1,13 +1,13 @@
 import { Button } from '@clowdy/components/Button';
 import { Text } from '@clowdy/components/Text';
 import { Info } from '@clowdy/icons/14';
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 
-import { useProjectUi, useRootStore } from '../../stores';
+import { useRootStore } from '../../stores';
 import { isRunActive } from './chatRun';
 import { perform } from './commands';
-import { startHandoff } from './handoff';
 import styles from './ReadOnlyNotice.module.css';
+import { useHandoff } from './useHandoff';
 
 import type { Chat, Run } from '@clowdy/protocol';
 
@@ -25,26 +25,16 @@ export interface ReadOnlyNoticeProps {
  */
 export function ReadOnlyNotice({ chat, run, message }: ReadOnlyNoticeProps) {
     const root = useRootStore();
-    const ui = useProjectUi();
+    const handOffChat = useHandoff(chat, run);
     const [isHandingOff, setIsHandingOff] = useState(false);
     const [isStopping, setIsStopping] = useState(false);
-    const shown = useRef(false);
-
-    useEffect(() => {
-        shown.current = true;
-
-        return () => {
-            shown.current = false;
-        };
-    }, []);
 
     const handOff = async () => {
         setIsHandingOff(true);
 
         try {
-            await startHandoff({ root, ui, chat, run, stillOpen: () => shown.current });
-        }
-        finally {
+            await handOffChat();
+        } finally {
             setIsHandingOff(false);
         }
     };
@@ -56,28 +46,38 @@ export function ReadOnlyNotice({ chat, run, message }: ReadOnlyNoticeProps) {
 
         try {
             await perform(root, { type: 'run.cancel', runId: run.id });
-        }
-        finally {
+        } finally {
             setIsStopping(false);
         }
     };
 
     return (
-        <section className={ styles.notice } aria-label="This chat is read only">
-            <span aria-hidden className={ styles.icon }><Info /></span>
+        <section className={styles.notice} aria-label="This chat is read only">
+            <span aria-hidden className={styles.icon}>
+                <Info />
+            </span>
 
-            <div className={ styles.body }>
-                <div role="status" className={ styles.message }>
-                    <Text variant="heading-5">{ message }</Text>
+            <div className={styles.body}>
+                <div role="status" className={styles.message}>
+                    <Text variant="heading-5">{message}</Text>
                     <Text variant="sm" color="secondary">
-                        The conversation stays readable here. Continue the work in a new chat on another provider, or open Providers to get this one running again.
+                        The conversation stays readable here. Continue the work in a new chat on another provider, or
+                        open Providers to get this one running again.
                     </Text>
                 </div>
 
-                <div className={ styles.actions }>
-                    <Button color="primary" size="sm" isPending={ isHandingOff } onPress={ () => void handOff() }>Hand off to a new chat</Button>
-                    <Button variant="bordered" size="sm" onPress={ () => root.ui.openSettings('providers') }>Open Providers</Button>
-                    { isRunActive(run) && <Button variant="bordered" size="sm" isPending={ isStopping } onPress={ () => void stop() }>Stop</Button> }
+                <div className={styles.actions}>
+                    <Button color="primary" size="sm" isPending={isHandingOff} onPress={() => void handOff()}>
+                        Hand off to a new chat
+                    </Button>
+                    <Button variant="bordered" size="sm" onPress={() => root.ui.openSettings('providers')}>
+                        Open Providers
+                    </Button>
+                    {isRunActive(run) && (
+                        <Button variant="bordered" size="sm" isPending={isStopping} onPress={() => void stop()}>
+                            Stop
+                        </Button>
+                    )}
                 </div>
             </div>
         </section>

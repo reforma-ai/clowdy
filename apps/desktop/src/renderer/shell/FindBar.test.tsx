@@ -37,7 +37,7 @@ const painted = new Map<string, FakeHighlight>();
 const field = () => container.querySelector<HTMLInputElement>('input[aria-label="Find in page"]');
 const bar = () => container.querySelector('[role="search"]');
 const count = () => container.querySelector('[aria-live="polite"]')?.textContent;
-const button = (label: string) => container.querySelector<HTMLButtonElement>(`button[aria-label="${ label }"]`);
+const button = (label: string) => container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
 /** The text of the hit that is on, as the page paints it. */
 const active = () => painted.get('find-active')?.ranges.map(range => range.toString());
 
@@ -125,8 +125,7 @@ describe('Find in page', () => {
             const typed = press('f', {}, field()!);
 
             expect(typed.defaultPrevented).toBe(false);
-        }
-        finally {
+        } finally {
             composer.remove();
         }
     });
@@ -314,7 +313,8 @@ describe('Find in page', () => {
     it('wears the same buttons as the rest of the app', async () => {
         await open();
 
-        for (const label of ['Previous match', 'Next match', 'Close find']) expect(button(label)?.dataset.variant).toBe('filling');
+        for (const label of ['Previous match', 'Next match', 'Close find'])
+            expect(button(label)?.dataset.variant).toBe('filling');
     });
 
     it('Cmd+G opens a closed bar and starts a search, and moves through one that is open', async () => {
@@ -376,7 +376,7 @@ describe('Find in page', () => {
 });
 
 describe('Find in page with a code editor in focus', () => {
-    it('leaves Find, Find next and Find previous to the editor\'s own search while it has the focus, and has them back once the focus is elsewhere', async () => {
+    it("leaves Find, Find next and Find previous to the editor's own search while it has the focus, and has them back once the focus is elsewhere", async () => {
         await draw();
 
         const host = document.createElement('div');

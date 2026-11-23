@@ -17,7 +17,10 @@ export type WorkspaceRef = Pick<ChatWorkspace, 'id' | 'branch' | 'ready'>;
  * the branch the chat was made with (`ChatWorkspace.branch`) is only the answer while the worktree is not made yet, when it is the branch it will be made on. Once it is made
  * the read is the only source: `undefined` while the read has not answered, or has no word on this worktree, never a name that may be out of date.
  */
-export function workspaceHead(workspace: WorkspaceRef, read: readonly ProjectWorkspaceInfo[] | undefined): WorkspaceHead | undefined {
+export function workspaceHead(
+    workspace: WorkspaceRef,
+    read: readonly ProjectWorkspaceInfo[] | undefined
+): WorkspaceHead | undefined {
     if (!workspace.ready) return workspace.branch === undefined ? {} : { branch: workspace.branch };
 
     const entry = read?.find(candidate => candidate.workspaceId === workspace.id);

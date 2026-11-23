@@ -1,5 +1,5 @@
 import { For } from '@clowdy/components/For';
-import { useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from 'react';
+import { type CSSProperties, type KeyboardEvent, type PointerEvent, useRef, useState } from 'react';
 
 import { levelLabel } from './modelSelection';
 import styles from './ReasoningSlider.module.css';
@@ -62,7 +62,11 @@ export function ReasoningSlider({ levels, value, onChange }: ReasoningSliderProp
     };
 
     const follow = (event: PointerEvent<HTMLDivElement>) => {
-        const progress = progressFromTrackX(event.clientX, event.currentTarget, thumb.current?.getBoundingClientRect().width ?? 0);
+        const progress = progressFromTrackX(
+            event.clientX,
+            event.currentTarget,
+            thumb.current?.getBoundingClientRect().width ?? 0
+        );
 
         setDragProgress(progress);
         select(stopAt(progress, count));
@@ -85,53 +89,55 @@ export function ReasoningSlider({ levels, value, onChange }: ReasoningSliderProp
 
     return (
         <div
-            className={ styles.track }
-            style={ {
-                '--level-anchor-p': anchorProgress * (1 - REASONING_DRAG_PULL),
-                '--level-pointer-p': pointerProgress * REASONING_DRAG_PULL,
-            } as CSSProperties }
-            data-dragging={ dragging || undefined }
+            className={styles.track}
+            style={
+                {
+                    '--level-anchor-p': anchorProgress * (1 - REASONING_DRAG_PULL),
+                    '--level-pointer-p': pointerProgress * REASONING_DRAG_PULL,
+                } as CSSProperties
+            }
+            data-dragging={dragging || undefined}
             role="slider"
-            tabIndex={ 0 }
+            tabIndex={0}
             aria-label="Reasoning effort"
-            aria-valuemin={ 0 }
-            aria-valuemax={ last }
-            aria-valuenow={ index }
-            aria-valuetext={ levels[index] === undefined ? undefined : levelLabel(levels[index]) }
-            onPointerDown={ (event) => {
+            aria-valuemin={0}
+            aria-valuemax={last}
+            aria-valuenow={index}
+            aria-valuetext={levels[index] === undefined ? undefined : levelLabel(levels[index])}
+            onPointerDown={event => {
                 if (event.button !== 0) return;
 
                 reported.current = index;
                 event.currentTarget.setPointerCapture(event.pointerId);
                 follow(event);
-            } }
-            onPointerMove={ (event) => {
+            }}
+            onPointerMove={event => {
                 if (event.currentTarget.hasPointerCapture(event.pointerId)) follow(event);
-            } }
-            onPointerUp={ (event) => {
+            }}
+            onPointerUp={event => {
                 if (event.currentTarget.hasPointerCapture(event.pointerId)) {
                     follow(event);
                     event.currentTarget.releasePointerCapture(event.pointerId);
                 }
 
                 setDragProgress(null);
-            } }
-            onPointerCancel={ () => setDragProgress(null) }
-            onLostPointerCapture={ () => setDragProgress(null) }
-            onKeyDown={ onKeyDown }
+            }}
+            onPointerCancel={() => setDragProgress(null)}
+            onLostPointerCapture={() => setDragProgress(null)}
+            onKeyDown={onKeyDown}
         >
-            <span className={ styles.fill } />
-            <For each={ levels }>
-                { (level, stop) => (
+            <span className={styles.fill} />
+            <For each={levels}>
+                {(level, stop) => (
                     <span
-                        key={ level }
-                        className={ styles.point }
-                        data-hot={ (dragging && stop === index) || undefined }
-                        style={ { '--point-p': stopProgress(stop, count) } as CSSProperties }
+                        key={level}
+                        className={styles.point}
+                        data-hot={(dragging && stop === index) || undefined}
+                        style={{ '--point-p': stopProgress(stop, count) } as CSSProperties}
                     />
-                ) }
+                )}
             </For>
-            <span ref={ thumb } className={ styles.thumb } data-dragging={ dragging || undefined } />
+            <span ref={thumb} className={styles.thumb} data-dragging={dragging || undefined} />
         </div>
     );
 }

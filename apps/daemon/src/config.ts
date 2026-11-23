@@ -1,7 +1,7 @@
-import { daemonDataDir, type EngineId } from '@clowdy/protocol';
 import { randomBytes } from 'node:crypto';
 import { homedir } from 'node:os';
 import { delimiter, isAbsolute, join } from 'node:path';
+import { daemonDataDir, type EngineId } from '@clowdy/protocol';
 
 export interface Config {
     dataDir: string;
@@ -69,13 +69,25 @@ export interface Timings {
     setupMs: number;
 }
 
-export const DEFAULT_TIMINGS: Timings = { killGraceMs: 5000, retryBaseMs: 5000, pauseJitterMs: 30_000, noticeWindowMs: 2000, setupMs: 10 * 60_000 };
+export const DEFAULT_TIMINGS: Timings = {
+    killGraceMs: 5000,
+    retryBaseMs: 5000,
+    pauseJitterMs: 30_000,
+    noticeWindowMs: 2000,
+    setupMs: 10 * 60_000,
+};
 
 export class ConfigError extends Error {}
 
 type Env = Record<string, string | undefined>;
 
-function numberFrom(env: Env, name: string, fallback: number, check: (value: number) => boolean, expected: string): number {
+function numberFrom(
+    env: Env,
+    name: string,
+    fallback: number,
+    check: (value: number) => boolean,
+    expected: string
+): number {
     const raw = env[name];
 
     if (raw === undefined || raw === '') {
@@ -85,7 +97,7 @@ function numberFrom(env: Env, name: string, fallback: number, check: (value: num
     const value = Number(raw);
 
     if (!Number.isFinite(value) || !check(value)) {
-        throw new ConfigError(`${ name } must be ${ expected }, got "${ raw }"`);
+        throw new ConfigError(`${name} must be ${expected}, got "${raw}"`);
     }
 
     return value;
@@ -105,7 +117,7 @@ function ripgrepFrom(env: Env): Config['ripgrep'] {
     }
 
     if (!isAbsolute(raw)) {
-        throw new ConfigError(`CLOWDY_RG must be the absolute path of an rg executable, or off, got "${ raw }"`);
+        throw new ConfigError(`CLOWDY_RG must be the absolute path of an rg executable, or off, got "${raw}"`);
     }
 
     return raw;
@@ -120,9 +132,18 @@ export function loadConfig(env: Env = process.env, platform: NodeJS.Platform = p
         projectsDir: env.CLOWDY_PROJECTS_DIR || join(homedir(), 'Clowdy', 'projects'),
         personalDir: env.CLOWDY_PERSONAL_DIR || join(homedir(), 'Clowdy', 'Personal'),
         workspacesDir: env.CLOWDY_WORKSPACES_DIR || join(homedir(), 'Clowdy', 'workspaces'),
-        port: numberFrom(env, 'CLOWDY_PORT', 0, v => Number.isInteger(v) && v >= 0 && v <= 65535, 'a port between 0 and 65535'),
+        port: numberFrom(
+            env,
+            'CLOWDY_PORT',
+            0,
+            v => Number.isInteger(v) && v >= 0 && v <= 65535,
+            'a port between 0 and 65535'
+        ),
         token: env.CLOWDY_TOKEN || randomBytes(32).toString('hex'),
-        corsOrigins: (env.CLOWDY_CORS_ORIGINS ?? '').split(',').map(origin => origin.trim()).filter(Boolean),
+        corsOrigins: (env.CLOWDY_CORS_ORIGINS ?? '')
+            .split(',')
+            .map(origin => origin.trim())
+            .filter(Boolean),
         engine,
         maxRuns: numberFrom(env, 'CLOWDY_MAX_RUNS', 8, v => Number.isInteger(v) && v >= 1, 'a positive integer'),
         engineCaps: {
@@ -137,11 +158,19 @@ export function loadConfig(env: Env = process.env, platform: NodeJS.Platform = p
         maxThreads: numberFrom(env, 'CLOWDY_MAX_THREADS', 300, isCap, 'a positive integer'),
         timings: {
             ...DEFAULT_TIMINGS,
-            noticeWindowMs: numberFrom(env, 'CLOWDY_THREAD_NOTICE_WINDOW_MS', DEFAULT_TIMINGS.noticeWindowMs, v => Number.isInteger(v) && v >= 0, 'a whole number of milliseconds, 0 or more'),
+            noticeWindowMs: numberFrom(
+                env,
+                'CLOWDY_THREAD_NOTICE_WINDOW_MS',
+                DEFAULT_TIMINGS.noticeWindowMs,
+                v => Number.isInteger(v) && v >= 0,
+                'a whole number of milliseconds, 0 or more'
+            ),
         },
         fakeSpeed: numberFrom(env, 'CLOWDY_FAKE_SPEED', 1, v => v >= 0, 'a number of at least 0'),
         ripgrep: ripgrepFrom(env),
         systemSkillsSource: env.CLOWDY_SYSTEM_SKILLS_DIR || undefined,
-        userSkillRoots: env.CLOWDY_USER_SKILLS_DIRS ? env.CLOWDY_USER_SKILLS_DIRS.split(delimiter).filter(Boolean) : [join(homedir(), '.claude', 'skills'), join(homedir(), '.agents', 'skills')],
+        userSkillRoots: env.CLOWDY_USER_SKILLS_DIRS
+            ? env.CLOWDY_USER_SKILLS_DIRS.split(delimiter).filter(Boolean)
+            : [join(homedir(), '.claude', 'skills'), join(homedir(), '.agents', 'skills')],
     };
 }

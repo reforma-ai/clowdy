@@ -2,7 +2,22 @@ const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 const RANDOM_BITS = 80n;
 const RANDOM_MASK = (1n << RANDOM_BITS) - 1n;
 
-export type IdPrefix = 'prj' | 'cht' | 'tsk' | 'run' | 'itm' | 'sts' | 'qst' | 'art' | 'att' | 'que' | 'fld' | 'cmt' | 'trm' | 'apv' | 'wks';
+export type IdPrefix =
+    | 'prj'
+    | 'cht'
+    | 'tsk'
+    | 'run'
+    | 'itm'
+    | 'sts'
+    | 'qst'
+    | 'art'
+    | 'att'
+    | 'que'
+    | 'fld'
+    | 'cmt'
+    | 'trm'
+    | 'apv'
+    | 'wks';
 
 let lastTime = 0;
 let lastRandom = 0n;
@@ -33,11 +48,10 @@ export function newId(prefix: IdPrefix): string {
 
     if (now === lastTime) {
         lastRandom = (lastRandom + 1n) & RANDOM_MASK;
-    }
-    else {
+    } else {
         lastTime = now;
         lastRandom = randomBits();
     }
 
-    return `${ prefix }_${ encode(BigInt(lastTime), 10) }${ encode(lastRandom, 16) }`;
+    return `${prefix}_${encode(BigInt(lastTime), 10)}${encode(lastRandom, 16)}`;
 }

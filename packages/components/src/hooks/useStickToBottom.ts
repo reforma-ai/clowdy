@@ -204,9 +204,7 @@ function detachListeners(rt: StickRuntime) {
 function isForeignContentEditable(scroll: HTMLElement) {
     const active = document.activeElement;
 
-    return active instanceof HTMLElement
-        && active.isContentEditable
-        && !scroll.contains(active);
+    return active instanceof HTMLElement && active.isContentEditable && !scroll.contains(active);
 }
 
 function attachListeners(rt: StickRuntime, node: HTMLElement) {
@@ -216,89 +214,102 @@ function attachListeners(rt: StickRuntime, node: HTMLElement) {
     const { signal } = controller;
     const passive = { passive: true, signal } as const;
 
-    node.addEventListener('scroll', () => {
-        if (!rt.scroll || rt.programmatic) {
-            return;
-        }
-
-        const el = rt.scroll;
-        const { scrollTop, scrollHeight } = el;
-        const scrollingUp = scrollTop < rt.lastScrollTop - EPS;
-        const scrollingDown = scrollTop > rt.lastScrollTop + EPS;
-        // Browser clamps scrollTop when content shrinks — often before ResizeObserver.
-        // That looks like a user scroll-up and used to unlock stick (chat jumps up; new
-        // layout settles below the viewport).
-        const contentShrunk = scrollHeight < rt.lastScrollHeight - EPS;
-
-        rt.lastScrollTop = scrollTop;
-        rt.lastScrollHeight = scrollHeight;
-
-        const atBottom = distanceFromBottom(el) <= thresholdOf(rt);
-        const settling = performance.now() < rt.ignoreScrollUntil;
-
-        syncUi(rt, atBottom);
-
-        if (!rt.enabled) {
-            rt.stuck = false;
-
-            return;
-        }
-
-        if (contentShrunk) {
-            if (rt.stuck) {
-                rt.ignoreScrollUntil = performance.now() + RESIZE_IGNORE_MS;
-                pin(rt, el, rt.options.resize ?? 'instant');
+    node.addEventListener(
+        'scroll',
+        () => {
+            if (!rt.scroll || rt.programmatic) {
+                return;
             }
 
-            return;
-        }
+            const el = rt.scroll;
+            const { scrollTop, scrollHeight } = el;
+            const scrollingUp = scrollTop < rt.lastScrollTop - EPS;
+            const scrollingDown = scrollTop > rt.lastScrollTop + EPS;
+            // Browser clamps scrollTop when content shrinks — often before ResizeObserver.
+            // That looks like a user scroll-up and used to unlock stick (chat jumps up; new
+            // layout settles below the viewport).
+            const contentShrunk = scrollHeight < rt.lastScrollHeight - EPS;
 
-        // Soft trackpad unlock must not re-lock just because still within threshold.
-        if (rt.stuck && scrollingUp && !settling) {
-            if (isForeignContentEditable(el)) {
-                pin(rt, el, rt.options.resize ?? 'instant');
+            rt.lastScrollTop = scrollTop;
+            rt.lastScrollHeight = scrollHeight;
+
+            const atBottom = distanceFromBottom(el) <= thresholdOf(rt);
+            const settling = performance.now() < rt.ignoreScrollUntil;
+
+            syncUi(rt, atBottom);
+
+            if (!rt.enabled) {
+                rt.stuck = false;
 
                 return;
             }
 
-            rt.stuck = false;
-        }
-        else if (!rt.stuck && scrollingDown && atBottom && !settling) {
-            rt.stuck = true;
-        }
-    }, passive);
+            if (contentShrunk) {
+                if (rt.stuck) {
+                    rt.ignoreScrollUntil = performance.now() + RESIZE_IGNORE_MS;
+                    pin(rt, el, rt.options.resize ?? 'instant');
+                }
 
-    node.addEventListener('wheel', (event) => {
-        if (event.deltaY < 0) {
-            unlock(rt);
-        }
-        else if (event.deltaY > 0) {
-            lock(rt);
-        }
-    }, passive);
+                return;
+            }
 
-    node.addEventListener('touchstart', (event) => {
-        rt.lastTouchY = event.touches[0]?.clientY ?? null;
-    }, passive);
+            // Soft trackpad unlock must not re-lock just because still within threshold.
+            if (rt.stuck && scrollingUp && !settling) {
+                if (isForeignContentEditable(el)) {
+                    pin(rt, el, rt.options.resize ?? 'instant');
 
-    node.addEventListener('touchmove', (event) => {
-        const y = event.touches[0]?.clientY;
+                    return;
+                }
 
-        if (y == null || rt.lastTouchY == null) {
-            return;
-        }
+                rt.stuck = false;
+            } else if (!rt.stuck && scrollingDown && atBottom && !settling) {
+                rt.stuck = true;
+            }
+        },
+        passive
+    );
 
-        const dy = y - rt.lastTouchY;
+    node.addEventListener(
+        'wheel',
+        event => {
+            if (event.deltaY < 0) {
+                unlock(rt);
+            } else if (event.deltaY > 0) {
+                lock(rt);
+            }
+        },
+        passive
+    );
 
-        if (dy > EPS) {
-            unlock(rt);
-        }
-        else if (dy < -EPS) {
-            lock(rt);
-        }
+    node.addEventListener(
+        'touchstart',
+        event => {
+            rt.lastTouchY = event.touches[0]?.clientY ?? null;
+        },
+        passive
+    );
 
-        rt.lastTouchY = y;
-    }, passive);
+    node.addEventListener(
+        'touchmove',
+        event => {
+            const y = event.touches[0]?.clientY;
+
+            if (y == null || rt.lastTouchY == null) {
+                return;
+            }
+
+            const dy = y - rt.lastTouchY;
+
+            if (dy > EPS) {
+                unlock(rt);
+            } else if (dy < -EPS) {
+                lock(rt);
+            }
+
+            rt.lastTouchY = y;
+        },
+        passive
+    );
 
     const clearTouch = () => {
         rt.lastTouchY = null;
@@ -307,14 +318,17 @@ function attachListeners(rt: StickRuntime, node: HTMLElement) {
     node.addEventListener('touchend', clearTouch, passive);
     node.addEventListener('touchcancel', clearTouch, passive);
 
-    node.addEventListener('keydown', (event) => {
-        if (UNLOCK_KEYS.has(event.key)) {
-            unlock(rt);
-        }
-        else if (LOCK_KEYS.has(event.key)) {
-            lock(rt);
-        }
-    }, { signal });
+    node.addEventListener(
+        'keydown',
+        event => {
+            if (UNLOCK_KEYS.has(event.key)) {
+                unlock(rt);
+            } else if (LOCK_KEYS.has(event.key)) {
+                lock(rt);
+            }
+        },
+        { signal }
+    );
 
     rt.listeners = controller;
 }
@@ -419,7 +433,7 @@ export function useStickToBottom(options: StickToBottomOptions = {}): StickToBot
         syncUi(state, distanceFromBottom(state.scroll) <= thresholdOf(state));
     }, []);
 
-    const scrollRef = useCallback<RefCallback<HTMLElement | null>>((node) => {
+    const scrollRef = useCallback<RefCallback<HTMLElement | null>>(node => {
         const state = rtRef.current!;
 
         detachListeners(state);
@@ -444,36 +458,37 @@ export function useStickToBottom(options: StickToBottomOptions = {}): StickToBot
             if (initial !== false && state.enabled) {
                 state.stuck = true;
                 pin(state, node, initial);
-            }
-            else {
+            } else {
                 const atBottom = distanceFromBottom(node) <= thresholdOf(state);
 
                 state.stuck = atBottom;
                 syncUi(state, atBottom);
             }
-        }
-        else {
+        } else {
             syncUi(state, distanceFromBottom(node) <= thresholdOf(state));
         }
 
         bindResizeObserver(state);
     }, []);
 
-    const contentRef = useCallback<RefCallback<HTMLElement | null>>((node) => {
+    const contentRef = useCallback<RefCallback<HTMLElement | null>>(node => {
         const state = rtRef.current!;
 
         state.content = node;
         bindResizeObserver(state);
     }, []);
 
-    useEffect(() => () => {
-        const state = rtRef.current!;
+    useEffect(
+        () => () => {
+            const state = rtRef.current!;
 
-        clearProgrammatic(state);
-        detachListeners(state);
-        state.resizeObserver?.disconnect();
-        state.resizeObserver = null;
-    }, []);
+            clearProgrammatic(state);
+            detachListeners(state);
+            state.resizeObserver?.disconnect();
+            state.resizeObserver = null;
+        },
+        []
+    );
 
     return useMemo(
         () => ({ scrollRef, contentRef, isAtBottom, enabled, setEnabled, scrollToBottom, stopScroll }),

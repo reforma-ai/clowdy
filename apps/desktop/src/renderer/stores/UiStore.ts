@@ -1,32 +1,50 @@
 import { makeAutoObservable, observableRef, reaction } from 'mobx';
 
-import { readStored, removeStored, writeStored, type KeyValueStorage } from './storage';
-import { revealTask, type RevealTasks } from './taskReveal';
+import { type KeyValueStorage, readStored, removeStored, writeStored } from './storage';
+import { type RevealTasks, revealTask } from './taskReveal';
 
-import type { ChatId, ChatWorkspaceChoice, FolderId, ProjectId, RunId, Task, TaskId } from '@clowdy/protocol';
+import type {
+    ChatId,
+    ChatWorkspace,
+    ChatWorkspaceChoice,
+    FolderId,
+    ProjectId,
+    RunId,
+    Task,
+    TaskId,
+} from '@clowdy/protocol';
 
 /** The pages of the global Settings window, in the order they appear in its sidebar. */
-export const SETTINGS_PAGES = ['appearance', 'chat', 'files', 'shortcuts', 'projects', 'providers', 'skills'] as const;
+export const SETTINGS_PAGES = [
+    'appearance',
+    'chat',
+    'files',
+    'shortcuts',
+    'projects',
+    'providers',
+    'skills',
+    'about',
+] as const;
 
-export type SettingsPage = typeof SETTINGS_PAGES[number];
+export type SettingsPage = (typeof SETTINGS_PAGES)[number];
 export type TasksView = 'board' | 'list';
 
 /** The tabs of the side panel's header, in the order they appear there. */
-export const SIDE_PANEL_TABS = ['info', 'files', 'docs', 'terminal', 'tasks'] as const;
+export const SIDE_PANEL_TABS = ['info', 'files', 'docs', 'terminal', 'tasks', 'changes'] as const;
 
-export type SidePanelTab = typeof SIDE_PANEL_TABS[number];
+export type SidePanelTab = (typeof SIDE_PANEL_TABS)[number];
 
 /** The sizes of the side panel the corner button offers: not shown, beside the chat, and in the chat's place. */
 export type SidePanelSize = 'hide' | 'half' | 'wide';
 
-/** Why the panel cannot be beside the chat: the tab is always in the chat's place (Tasks), or the window is too narrow for the tab beside it (Files, Docs). */
+/** Why the panel cannot be beside the chat: the tab is always in the chat's place (Tasks), or the window is too narrow for the tab beside it (Files, Docs, Changes). */
 export type NoHalfReason = 'tab' | 'window';
 
 /** The tabs whose view is always the size of the chat's place, whatever the project chose for the others (`ProjectUi.sidePanelIsFull`). */
 const FULL_TABS: readonly SidePanelTab[] = ['tasks'];
 
-/** The tabs that are a tree beside a view (Files and Docs): they need more room beside the chat than the others, and where the window has none they are in the chat's place (`ProjectUi.sidePanelTabIsFull`). */
-const TREE_TABS: readonly SidePanelTab[] = ['files', 'docs'];
+/** The tabs that are a list beside a view (Files and Docs: the tree and the editor; Changes: the sidebar and the diffs): they need more room beside the chat than the others, and where the window has none they are in the chat's place (`ProjectUi.sidePanelTabIsFull`). */
+const TREE_TABS: readonly SidePanelTab[] = ['files', 'docs', 'changes'];
 
 /** Where a project's window is: the chat or run open in it. History walks these; the view options of the Tasks tab, the side panel and what it shows are not places. */
 export interface ProjectView {
@@ -38,6 +56,8 @@ export interface ProjectView {
     draftFolderId: FolderId | null;
     /** Agents: where the new chat works in its folder, `null` for the folder's own checkout. Meaningful only with `draft`. */
     draftWorkspace: ChatWorkspaceChoice | null;
+    /** Agents: the agent the new chat starts on when the page was opened for one (a hand-off to another agent), `null` for the one the project and the last pick say. Meaningful only with `draft`. */
+    draftEngine: string | null;
 }
 
 interface StoredProjectUi {
@@ -64,12 +84,26 @@ export const COLLAPSED_TASKS_LIMIT = 200;
 /** The most tasks a project holds an unsent comment for: past it, the draft written longest ago goes. */
 export const COMMENT_DRAFTS_LIMIT = 20;
 
-const uiKey = (projectId: ProjectId) => `clowdy:ui:${ projectId }`;
+const uiKey = (projectId: ProjectId) => `clowdy:ui:${projectId}`;
 
 const idOrNull = (value: unknown): string | null => (typeof value === 'string' ? value : null);
 
 /** What a page URL may preselect in fixtures mode, for screenshots and demos: `?panel=open&panelTab=tasks&task=t-24&view=list`. */
-export type InitialProjectUi = Partial<Pick<StoredProjectUi, 'chatId' | 'taskId' | 'runId' | 'expandedChats' | 'groupByFolder' | 'collapsedFolders' | 'agentsFolded' | 'sidePanelOpen' | 'sidePanelTab' | 'tasksView'>>;
+export type InitialProjectUi = Partial<
+    Pick<
+        StoredProjectUi,
+        | 'chatId'
+        | 'taskId'
+        | 'runId'
+        | 'expandedChats'
+        | 'groupByFolder'
+        | 'collapsedFolders'
+        | 'agentsFolded'
+        | 'sidePanelOpen'
+        | 'sidePanelTab'
+        | 'tasksView'
+    >
+>;
 
 export function initialUiFromSearch(search: string): InitialProjectUi {
     const params = new URLSearchParams(search);
@@ -116,6 +150,18 @@ export class ProjectUi {
      * folder changes. Not kept between sessions.
      */
     draftWorkspace: ChatWorkspaceChoice | null = null;
+    /**
+     * Agents: the daemon's row of the worktree `draftWorkspace` names, when it names an existing one (`workspace.open`): what makes the worktree the place of the new-chat page, so
+     * its files, shells and `@` list are the worktree's before the chat exists, and the chat's first message finds the same row. Set by the page once the daemon has answered, and
+     * gone whenever the choice, the folder or the page changes. Not kept between sessions.
+     */
+    draftWorkspaceRow: ChatWorkspace | null = null;
+    /**
+     * Agents: the agent the new-chat page's chat starts on, when the page was opened for one (a hand-off to another agent): the message box starts its picker there, on that
+     * agent's default model, as long as the agent can be used and until the person picks something else. `null` leaves the choice to the project's settings and the last pick.
+     * Not kept between sessions.
+     */
+    draftEngine: string | null = null;
     /** Agents: the chats whose threads the person opened in the list. A chat that is not here is folded, which is how every chat starts. */
     expandedChats: readonly ChatId[] = [];
     /**
@@ -164,7 +210,13 @@ export class ProjectUi {
     /** Tasks: the comment each task's composer holds and has not sent, the one written last at the end. Not kept between sessions, and no place of the history. */
     readonly #commentDrafts = new Map<TaskId, string>();
 
-    constructor(readonly projectId: ProjectId, storage?: KeyValueStorage, initial: InitialProjectUi = {}, tasks?: () => RevealTasks | undefined, windowFitsHalf: () => boolean = () => true) {
+    constructor(
+        readonly projectId: ProjectId,
+        storage?: KeyValueStorage,
+        initial: InitialProjectUi = {},
+        tasks?: () => RevealTasks | undefined,
+        windowFitsHalf: () => boolean = () => true
+    ) {
         const key = uiKey(projectId);
 
         this.#tasks = tasks;
@@ -175,9 +227,13 @@ export class ProjectUi {
             this.chatId = idOrNull(stored.chatId);
             this.taskId = idOrNull(stored.taskId);
             this.runId = idOrNull(stored.runId);
-            this.expandedChats = Array.isArray(stored.expandedChats) ? stored.expandedChats.filter(id => typeof id === 'string') : [];
+            this.expandedChats = Array.isArray(stored.expandedChats)
+                ? stored.expandedChats.filter(id => typeof id === 'string')
+                : [];
             this.groupByFolder = stored.groupByFolder !== false;
-            this.collapsedFolders = Array.isArray(stored.collapsedFolders) ? stored.collapsedFolders.filter(id => typeof id === 'string') : [];
+            this.collapsedFolders = Array.isArray(stored.collapsedFolders)
+                ? stored.collapsedFolders.filter(id => typeof id === 'string')
+                : [];
             this.agentsFolded = stored.agentsFolded === true;
             this.sidePanelOpen = stored.sidePanelOpen === true;
             this.sidePanelTab = SIDE_PANEL_TABS.find(tab => tab === stored.sidePanelTab) ?? this.sidePanelTab;
@@ -186,11 +242,21 @@ export class ProjectUi {
             this.tasksScope = idOrNull(stored.tasksScope);
             this.tasksSubtasks = stored.tasksSubtasks === true;
             this.taskPageView = stored.taskPageView === 'list' ? 'list' : 'board';
-            this.tasksCollapsed = Array.isArray(stored.tasksCollapsed) ? [...new Set(stored.tasksCollapsed.filter(id => typeof id === 'string'))].slice(-COLLAPSED_TASKS_LIMIT) : [];
+            this.tasksCollapsed = Array.isArray(stored.tasksCollapsed)
+                ? [...new Set(stored.tasksCollapsed.filter(id => typeof id === 'string'))].slice(-COLLAPSED_TASKS_LIMIT)
+                : [];
         }
 
         Object.assign(this, initial);
-        makeAutoObservable(this, { projectId: false, pendingFiles: observableRef, draftWorkspace: observableRef, expandedChats: observableRef, collapsedFolders: observableRef, tasksCollapsed: observableRef });
+        makeAutoObservable(this, {
+            projectId: false,
+            pendingFiles: observableRef,
+            draftWorkspace: observableRef,
+            draftWorkspaceRow: observableRef,
+            expandedChats: observableRef,
+            collapsedFolders: observableRef,
+            tasksCollapsed: observableRef,
+        });
         reaction(
             (): StoredProjectUi => ({
                 chatId: this.chatId,
@@ -221,11 +287,12 @@ export class ProjectUi {
             draft: this.draft,
             draftFolderId: this.draftFolderId,
             draftWorkspace: this.draftWorkspace,
+            draftEngine: this.draftEngine,
         };
     }
 
     /** Shows a place kept from `view`, as one change. */
-    show({ chatId, runId, draft, draftFolderId, draftWorkspace }: ProjectView): void {
+    show({ chatId, runId, draft, draftFolderId, draftWorkspace, draftEngine }: ProjectView): void {
         if (chatId !== this.chatId || runId !== this.runId || draft !== this.draft) this.showChat();
 
         this.chatId = chatId;
@@ -233,6 +300,9 @@ export class ProjectUi {
         this.draft = draft;
         this.draftFolderId = draftFolderId;
         this.draftWorkspace = draftWorkspace;
+        this.draftEngine = draftEngine;
+        // The row was the answer for the choice that was on show; the page asks again for the one it is given.
+        this.draftWorkspaceRow = null;
     }
 
     /** Shows the chat; `null` leaves none selected. */
@@ -243,20 +313,29 @@ export class ProjectUi {
         this.draft = false;
         this.draftFolderId = null;
         this.draftWorkspace = null;
+        this.draftWorkspaceRow = null;
+        this.draftEngine = null;
     }
 
     /**
      * Shows the new-chat row: a chat that is only made when its first message is sent. `attach` are files for
      * its message box (a hand-off brings the old conversation this way): the page picks them up with `takePendingFiles`. `folderId` is the folder
      * of the project the chat is made for, `null` for the main folder, and `workspace` where it works in that folder (a hand-off from a chat in a worktree keeps working in it),
-     * `null` for the folder's own checkout.
+     * `null` for the folder's own checkout. `engine` is the agent the chat starts on (a hand-off to another agent names one), `null` for the one the project and the last pick say.
      */
-    openDraft(attach: readonly File[] = [], folderId: FolderId | null = null, workspace: ChatWorkspaceChoice | null = null): void {
+    openDraft(
+        attach: readonly File[] = [],
+        folderId: FolderId | null = null,
+        workspace: ChatWorkspaceChoice | null = null,
+        engine: string | null = null
+    ): void {
         this.showChat();
         this.runId = null;
         this.draft = true;
         this.draftFolderId = folderId;
         this.draftWorkspace = workspace;
+        this.draftWorkspaceRow = null;
+        this.draftEngine = engine;
 
         if (attach.length > 0) this.pendingFiles = [...this.pendingFiles, ...attach];
     }
@@ -268,7 +347,10 @@ export class ProjectUi {
     setDraftFolder(folderId: FolderId | null): void {
         if (!this.draft) return;
 
-        if (folderId !== this.draftFolderId) this.draftWorkspace = null;
+        if (folderId !== this.draftFolderId) {
+            this.draftWorkspace = null;
+            this.draftWorkspaceRow = null;
+        }
 
         this.draftFolderId = folderId;
     }
@@ -277,7 +359,22 @@ export class ProjectUi {
     setDraftWorkspace(choice: ChatWorkspaceChoice | null): void {
         if (!this.draft) return;
 
+        // The row answers for one worktree: it stays only while the choice is that same worktree again.
+        const same =
+            choice?.mode === 'existing' &&
+            this.draftWorkspace?.mode === 'existing' &&
+            choice.path === this.draftWorkspace.path;
+
+        if (!same) this.draftWorkspaceRow = null;
+
         this.draftWorkspace = choice;
+    }
+
+    /** Keeps the daemon's row of the worktree the new-chat page chose (`draftWorkspaceRow`), or drops it with `null`. Only with the new-chat page open. */
+    setDraftWorkspaceRow(row: ChatWorkspace | null): void {
+        if (!this.draft) return;
+
+        this.draftWorkspaceRow = row;
     }
 
     /** The files `openDraft` was given, handed over once: the next call finds none. */
@@ -296,7 +393,10 @@ export class ProjectUi {
      * from its parent, and opening it must not move the screen. `madeIn` is for a task that was just made inside a task (`null`: a root) and may not have reached the
      * project yet, since the daemon's event can come after the reply to the command: the screen is put where the task will show, and not left where it is.
      */
-    openTask(taskId: TaskId | null, { reveal = true, madeIn }: { reveal?: boolean; madeIn?: TaskId | null } = {}): void {
+    openTask(
+        taskId: TaskId | null,
+        { reveal = true, madeIn }: { reveal?: boolean; madeIn?: TaskId | null } = {}
+    ): void {
         this.taskId = taskId;
 
         if (taskId !== null) this.openSidePanelTab('tasks');
@@ -329,11 +429,15 @@ export class ProjectUi {
         this.draft = false;
         this.draftFolderId = null;
         this.draftWorkspace = null;
+        this.draftWorkspaceRow = null;
+        this.draftEngine = null;
     }
 
     /** Opens or folds the threads of a chat in the list. */
     toggleChatExpanded(chatId: ChatId): void {
-        this.expandedChats = this.expandedChats.includes(chatId) ? this.expandedChats.filter(id => id !== chatId) : [...this.expandedChats, chatId];
+        this.expandedChats = this.expandedChats.includes(chatId)
+            ? this.expandedChats.filter(id => id !== chatId)
+            : [...this.expandedChats, chatId];
     }
 
     /** Opens the threads of these chats, for a chat below them that was opened from elsewhere. Nothing changes when all are open already. */
@@ -349,12 +453,15 @@ export class ProjectUi {
 
     /** Folds the group of a folder in the list, or opens it again. */
     toggleFolderCollapsed(folderId: FolderId): void {
-        this.collapsedFolders = this.collapsedFolders.includes(folderId) ? this.collapsedFolders.filter(id => id !== folderId) : [...this.collapsedFolders, folderId];
+        this.collapsedFolders = this.collapsedFolders.includes(folderId)
+            ? this.collapsedFolders.filter(id => id !== folderId)
+            : [...this.collapsedFolders, folderId];
     }
 
     /** Opens the group of a folder, for a chat in it that was opened from elsewhere. Nothing changes when it is open already. */
     expandFolder(folderId: FolderId): void {
-        if (this.collapsedFolders.includes(folderId)) this.collapsedFolders = this.collapsedFolders.filter(id => id !== folderId);
+        if (this.collapsedFolders.includes(folderId))
+            this.collapsedFolders = this.collapsedFolders.filter(id => id !== folderId);
     }
 
     /** Folds the rows of the running-agents strip under its line, or shows them again. */
@@ -384,7 +491,7 @@ export class ProjectUi {
     }
 
     /**
-     * The tab the panel shows is the size of the chat's place, so it has no expanded size to choose: the Tasks tab always is, and a tab with a tree beside a view (Files, Docs) is
+     * The tab the panel shows is the size of the chat's place, so it has no expanded size to choose: the Tasks tab always is, and a tab with a tree beside a view (Files, Docs, Changes) is
      * where the window is too narrow for it beside the chat (`UiStore.windowFitsHalf`). Nothing is kept for it: in a wider window the project's own choice is back.
      */
     get sidePanelTabIsFull(): boolean {
@@ -398,7 +505,7 @@ export class ProjectUi {
         return TREE_TABS.includes(this.sidePanelTab) && !this.#windowFitsHalf() ? 'window' : null;
     }
 
-    /** The tab the panel shows is a tree beside a view, which needs more room than the other tabs do while it is beside the chat. */
+    /** The tab the panel shows is a list beside a view (Files, Docs, Changes), which needs more room than the other tabs do while it is beside the chat. */
     get sidePanelTabHasTree(): boolean {
         return TREE_TABS.includes(this.sidePanelTab);
     }
@@ -442,8 +549,7 @@ export class ProjectUi {
     toggleSidePanelTab(tab: SidePanelTab): void {
         if (this.sidePanelOpen && this.sidePanelTab === tab) {
             this.sidePanelOpen = false;
-        }
-        else {
+        } else {
             this.sidePanelOpen = true;
             this.sidePanelTab = tab;
         }
@@ -488,7 +594,9 @@ export class ProjectUi {
 
     /** Folds the insides of a task in the tree list, or opens them again. */
     toggleTaskCollapsed(taskId: TaskId): void {
-        this.tasksCollapsed = this.tasksCollapsed.includes(taskId) ? this.tasksCollapsed.filter(id => id !== taskId) : [...this.tasksCollapsed, taskId].slice(-COLLAPSED_TASKS_LIMIT);
+        this.tasksCollapsed = this.tasksCollapsed.includes(taskId)
+            ? this.tasksCollapsed.filter(id => id !== taskId)
+            : [...this.tasksCollapsed, taskId].slice(-COLLAPSED_TASKS_LIMIT);
     }
 
     /** The comment the person started on the task and has not sent, `''` when there is none. */
@@ -516,12 +624,14 @@ export class ProjectUi {
 
     /** Opens the insides of these tasks, for a task below them that was opened from elsewhere. Nothing changes when all are open already. */
     expandTasks(taskIds: readonly TaskId[]): void {
-        if (taskIds.some(id => this.tasksCollapsed.includes(id))) this.tasksCollapsed = this.tasksCollapsed.filter(id => !taskIds.includes(id));
+        if (taskIds.some(id => this.tasksCollapsed.includes(id)))
+            this.tasksCollapsed = this.tasksCollapsed.filter(id => !taskIds.includes(id));
     }
 
     /** Lets go of the folds of tasks the project no longer holds (deleted ones, archived ones), so what is kept stays as small as the folds that matter. */
     forgetCollapsedTasks(tasks: ReadonlyMap<TaskId, unknown>): void {
-        if (this.tasksCollapsed.some(id => !tasks.has(id))) this.tasksCollapsed = this.tasksCollapsed.filter(id => tasks.has(id));
+        if (this.tasksCollapsed.some(id => !tasks.has(id)))
+            this.tasksCollapsed = this.tasksCollapsed.filter(id => tasks.has(id));
     }
 }
 
@@ -532,19 +642,33 @@ export class UiStore {
     /** The project whose own page is open inside Settings > Projects; `null` shows the list of projects. */
     settingsProjectId: ProjectId | null = null;
     readonly #projects = new Map<ProjectId, ProjectUi>();
-    /** The window is wide enough for the side panel with a tree (Files, Docs) beside the chat, which the shell reads from the window's width. Wide enough until it says it is not. */
+    /** The window is wide enough for the side panel with a tree (Files, Docs, Changes) beside the chat, which the shell reads from the window's width. Wide enough until it says it is not. */
     windowFitsHalf = true;
 
     /** `tasksOf` gives the tasks a project holds, which `ProjectUi.openTask` needs to reveal a task: the root store hands them over, a test of the window state alone has none. */
-    constructor(private readonly storage?: KeyValueStorage, private readonly initial?: InitialProjectUi, private readonly tasksOf?: (projectId: ProjectId) => RevealTasks | undefined) {
-        makeAutoObservable<UiStore, 'storage' | 'initial' | 'tasksOf'>(this, { storage: false, initial: false, tasksOf: false });
+    constructor(
+        private readonly storage?: KeyValueStorage,
+        private readonly initial?: InitialProjectUi,
+        private readonly tasksOf?: (projectId: ProjectId) => RevealTasks | undefined
+    ) {
+        makeAutoObservable<UiStore, 'storage' | 'initial' | 'tasksOf'>(this, {
+            storage: false,
+            initial: false,
+            tasksOf: false,
+        });
     }
 
     forProject(projectId: ProjectId): ProjectUi {
         let ui = this.#projects.get(projectId);
 
         if (!ui) {
-            ui = new ProjectUi(projectId, this.storage, this.initial, () => this.tasksOf?.(projectId), () => this.windowFitsHalf);
+            ui = new ProjectUi(
+                projectId,
+                this.storage,
+                this.initial,
+                () => this.tasksOf?.(projectId),
+                () => this.windowFitsHalf
+            );
             this.#projects.set(projectId, ui);
         }
 
@@ -557,7 +681,7 @@ export class UiStore {
         this.settingsOpen = false;
     }
 
-    /** Tells whether the window is wide enough for the side panel with a tree beside the chat; the panels of Files and Docs are in the chat's place while it is not. */
+    /** Tells whether the window is wide enough for the side panel with a tree beside the chat; the panels of Files, Docs and Changes are in the chat's place while it is not. */
     setWindowFitsHalf(fits: boolean): void {
         this.windowFitsHalf = fits;
     }

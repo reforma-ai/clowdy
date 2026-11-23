@@ -31,8 +31,8 @@ function Host({ initial }: { initial: string }) {
 
     return (
         <DescriptionField
-            value={ stored }
-            onSave={ async (description) => {
+            value={stored}
+            onSave={async description => {
                 saves.push(description);
 
                 if (isHolding) {
@@ -46,12 +46,12 @@ function Host({ initial }: { initial: string }) {
                 setStoredState(description);
 
                 return true;
-            } }
+            }}
         />
     );
 }
 
-const mount = (initial: string) => act(async () => root.render(<Host initial={ initial } />));
+const mount = (initial: string) => act(async () => root.render(<Host initial={initial} />));
 
 const prose = () => container.querySelector<HTMLElement>('[contenteditable]')!;
 const editor = () => (prose() as HTMLElement & { editor: Editor }).editor;
@@ -63,7 +63,8 @@ const type = (text: string) => act(async () => void editor().chain().focus('end'
 const tick = (index: number) => act(async () => checkboxes()[index].click());
 
 /** Focus leaves the editor for the page: React hears it as `focusout`. */
-const leave = (to: Element | null = null) => act(async () => void prose().dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: to })));
+const leave = (to: Element | null = null) =>
+    act(async () => void prose().dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: to })));
 
 beforeEach(() => {
     saves = [];
@@ -90,7 +91,9 @@ describe('the description field', () => {
     it('says "Add a description" in an empty one, and drops it once something is typed, without writing it into the text', async () => {
         await mount('');
 
-        expect(container.querySelector('p.is-editor-empty')?.getAttribute('data-placeholder')).toBe('Add a description');
+        expect(container.querySelector('p.is-editor-empty')?.getAttribute('data-placeholder')).toBe(
+            'Add a description'
+        );
         expect(editor().getMarkdown()).toBe('');
 
         await type('Steps.');
@@ -172,7 +175,10 @@ describe('the description field', () => {
 
         await act(async () => settle(true));
 
-        expect(saves).toEqual(['Steps:\n\n- [x] one\n- [ ] two\n- [ ] three', 'Steps:\n\n- [x] one\n- [x] two\n- [x] three']);
+        expect(saves).toEqual([
+            'Steps:\n\n- [x] one\n- [ ] two\n- [ ] three',
+            'Steps:\n\n- [x] one\n- [x] two\n- [x] three',
+        ]);
 
         await act(async () => settle(true));
 
@@ -223,13 +229,15 @@ describe('the description field', () => {
 describe('a description the editor cannot write back', () => {
     const HTML = '<div align="center">Logo</div>\n';
 
-    it('shows it read only with the editor\'s reason, and Edit as text swaps in the plain text field', async () => {
+    it("shows it read only with the editor's reason, and Edit as text swaps in the plain text field", async () => {
         await mount(HTML);
 
         expect(prose().getAttribute('contenteditable')).toBe('false');
         expect(container.textContent).toContain('can only be edited in source mode');
 
-        const button = [...container.querySelectorAll('button')].find(candidate => candidate.textContent === 'Edit as text')!;
+        const button = [...container.querySelectorAll('button')].find(
+            candidate => candidate.textContent === 'Edit as text'
+        )!;
 
         await act(async () => button.click());
 
@@ -241,7 +249,10 @@ describe('a description the editor cannot write back', () => {
 
         // It saves the way it did before the editor: on blur, as the field has it.
         await act(async () => {
-            Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(field, '<div>Logo</div>');
+            Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(
+                field,
+                '<div>Logo</div>'
+            );
             field.dispatchEvent(new Event('input', { bubbles: true }));
         });
         await act(async () => void field.dispatchEvent(new FocusEvent('focusout', { bubbles: true })));
@@ -251,7 +262,11 @@ describe('a description the editor cannot write back', () => {
 
     it('does not put the old text back over what was edited as plain text, when the panel goes away', async () => {
         await mount(HTML);
-        await act(async () => [...container.querySelectorAll('button')].find(candidate => candidate.textContent === 'Edit as text')!.click());
+        await act(async () =>
+            [...container.querySelectorAll('button')]
+                .find(candidate => candidate.textContent === 'Edit as text')!
+                .click()
+        );
 
         const field = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Description"]')!;
 
@@ -281,10 +296,16 @@ describe('a description the editor cannot write back', () => {
 
     it('stays plain text once chosen, whatever the text becomes', async () => {
         await mount(HTML);
-        await act(async () => [...container.querySelectorAll('button')].find(candidate => candidate.textContent === 'Edit as text')!.click());
+        await act(async () =>
+            [...container.querySelectorAll('button')]
+                .find(candidate => candidate.textContent === 'Edit as text')!
+                .click()
+        );
         await act(async () => setStored('Plain words now.'));
 
         expect(container.querySelector('[contenteditable]')).toBeNull();
-        expect(container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Description"]')!.value).toBe('Plain words now.');
+        expect(container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Description"]')!.value).toBe(
+            'Plain words now.'
+        );
     });
 });

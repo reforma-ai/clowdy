@@ -2,8 +2,16 @@ import { spawn } from 'node:child_process';
 import { access, readdir, realpath, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { posix, win32 } from 'node:path';
+import { escape, Minimatch } from 'minimatch';
 
-import { EDITORS, FILE_MANAGERS, MAC_APP_FOLDERS, TERMINALS, type FileManagerSpec, type TerminalSpec } from './openWithCatalog';
+import {
+    EDITORS,
+    FILE_MANAGERS,
+    type FileManagerSpec,
+    MAC_APP_FOLDERS,
+    TERMINALS,
+    type TerminalSpec,
+} from './openWithCatalog';
 
 import type { OpenApp, OpenApps, OpenPathApp } from '../shared/bridge';
 
@@ -50,7 +58,18 @@ export interface OpenWith {
     openPath: (path: unknown, app: unknown) => Promise<void>;
 }
 
-const escapeRegExp = (text: string) => text.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+/**
+ * What a folder's name is tried against: only `*` (any run of characters, dot names included) is a wildcard, whatever its case; every other character is itself, so a `(` or a `[` in a
+ * folder's name does not make a pattern of it. The catalog's parts have a star or two, which `minimatch` matches in no time on a folder's name.
+ */
+const wildcardOf = (part: string) =>
+    new Minimatch(
+        part
+            .split('*')
+            .map(piece => escape(piece))
+            .join('*'),
+        { dot: true, nocase: true, nonegate: true, nocomment: true, nobrace: true, noext: true, platform: 'linux' }
+    );
 
 export function createOpenWith(deps: OpenWithDeps): OpenWith {
     const { platform, home, env, list, exists } = deps;
@@ -92,14 +111,14 @@ export function createOpenWith(deps: OpenWithDeps): OpenWith {
     async function walk(parts: readonly string[], base: string): Promise<string | undefined> {
         const [head, ...rest] = parts;
 
-        if (head === undefined) return await exists(base) ? base : undefined;
+        if (head === undefined) return (await exists(base)) ? base : undefined;
 
         if (!head.includes('*')) return walk(rest, win32.join(base, head));
 
-        const pattern = new RegExp(`^${ head.split('*').map(escapeRegExp).join('.*') }$`, 'i');
+        const pattern = wildcardOf(head);
 
         for (const entry of (await list(base)).sort().reverse()) {
-            if (!pattern.test(entry)) continue;
+            if (!pattern.match(entry)) continue;
 
             const found = await walk(rest, win32.join(base, entry));
 
@@ -116,7 +135,7 @@ export function createOpenWith(deps: OpenWithDeps): OpenWith {
 
             if (drive === undefined) continue;
 
-            const found = await walk(parts, `${ drive }\\`);
+            const found = await walk(parts, `${drive}\\`);
 
             if (found) return found;
         }
@@ -134,10 +153,10 @@ export function createOpenWith(deps: OpenWithDeps): OpenWith {
             for (const spec of specs) {
                 const app = spec.mac && apps.find(candidate => spec.mac!.test(candidate.name));
 
-                if (app) found.push({ id: spec.id, name: spec.name, path: app.path, iconPath: app.path, args: spec.args });
+                if (app)
+                    found.push({ id: spec.id, name: spec.name, path: app.path, iconPath: app.path, args: spec.args });
             }
-        }
-        else if (platform === 'win32') {
+        } else if (platform === 'win32') {
             for (const spec of specs) {
                 const path = await windowsProgram(spec.win);
 
@@ -152,7 +171,8 @@ export function createOpenWith(deps: OpenWithDeps): OpenWith {
     const terminals = () => programs(TERMINALS);
 
     async function fileManagers(): Promise<Found[]> {
-        const specs: readonly FileManagerSpec[] = platform === 'darwin' || platform === 'win32' ? FILE_MANAGERS[platform] : [];
+        const specs: readonly FileManagerSpec[] =
+            platform === 'darwin' || platform === 'win32' ? FILE_MANAGERS[platform] : [];
         const apps = platform === 'darwin' ? await macApps() : [];
         const found: Found[] = [];
 
@@ -200,7 +220,11 @@ export function createOpenWith(deps: OpenWithDeps): OpenWith {
     return {
         async listApps() {
             const describeAll = async (found: Promise<Found[]>) => Promise.all((await found).map(describe));
-            const [editorApps, terminalApps, managerApps] = await Promise.all([describeAll(editors()), describeAll(terminals()), describeAll(fileManagers())]);
+            const [editorApps, terminalApps, managerApps] = await Promise.all([
+                describeAll(editors()),
+                describeAll(terminals()),
+                describeAll(fileManagers()),
+            ]);
 
             return { editors: editorApps, terminals: terminalApps, fileManagers: managerApps };
         },
@@ -213,15 +237,17 @@ export function createOpenWith(deps: OpenWithDeps): OpenWith {
 
             const { kind, id } = app as Partial<OpenPathApp>;
 
-            if ((kind !== 'editor' && kind !== 'terminal' && kind !== 'fileManager') || typeof id !== 'string') throw new Error('Unknown app');
+            if ((kind !== 'editor' && kind !== 'terminal' && kind !== 'fileManager') || typeof id !== 'string')
+                throw new Error('Unknown app');
 
             const isFolder = await deps.isFolder(target);
 
-            if (!isFolder && !await exists(target)) throw new Error('That path no longer exists');
+            if (!isFolder && !(await exists(target))) throw new Error('That path no longer exists');
 
             if (!isFolder && kind === 'terminal') throw new Error('A terminal opens a folder');
 
-            const candidates = kind === 'editor' ? await editors() : kind === 'terminal' ? await terminals() : await fileManagers();
+            const candidates =
+                kind === 'editor' ? await editors() : kind === 'terminal' ? await terminals() : await fileManagers();
             const found = candidates.find(candidate => candidate.id === id);
 
             if (!found) throw new Error('That app is not installed');
@@ -229,7 +255,7 @@ export function createOpenWith(deps: OpenWithDeps): OpenWith {
             // The system's own file manager is opened by the system: a folder is opened, a file is shown in its folder. An app bundle on macOS is a folder too, but
             // `shell.openPath` would start the program in it, and a folder of a cloned project is nothing to run: it is shown in its folder, like a file.
             if (found.path === '') {
-                if (!isFolder || await isAppBundle(target)) {
+                if (!isFolder || (await isAppBundle(target))) {
                     deps.showItem(target);
 
                     return;
@@ -248,42 +274,61 @@ export function createOpenWith(deps: OpenWithDeps): OpenWith {
             // A program that is told where to open by its arguments is started as a new instance on macOS, since a running one would not read them.
             const args = found.args?.(path);
 
-            if (platform === 'darwin') await deps.launch('open', args ? ['-n', '-a', found.path, '--args', ...args] : ['-a', found.path, path]);
+            if (platform === 'darwin')
+                await deps.launch(
+                    'open',
+                    args ? ['-n', '-a', found.path, '--args', ...args] : ['-a', found.path, path]
+                );
             else await deps.launch(found.path, args ?? [path]);
         },
     };
 }
 
 /** The real machine: its files, its environment, `openPath` and `showItemInFolder` of Electron's `shell`, and the way Electron reads an icon. */
-export function systemOpenWithDeps(openPath: OpenWithDeps['openPath'], icon: OpenWithDeps['icon'], showItem: OpenWithDeps['showItem']): OpenWithDeps {
+export function systemOpenWithDeps(
+    openPath: OpenWithDeps['openPath'],
+    icon: OpenWithDeps['icon'],
+    showItem: OpenWithDeps['showItem']
+): OpenWithDeps {
     return {
         platform: process.platform,
         home: homedir(),
         env: process.env,
         list: folder => readdir(folder).catch(() => []),
-        exists: path => access(path).then(() => true, () => false),
-        isFolder: path => stat(path).then(info => info.isDirectory(), () => false),
+        exists: path =>
+            access(path).then(
+                () => true,
+                () => false
+            ),
+        isFolder: path =>
+            stat(path).then(
+                info => info.isDirectory(),
+                () => false
+            ),
         realPath: path => realpath(path).catch(() => path),
         openPath,
         showItem,
         icon,
-        launch: (command, args) => new Promise<void>((resolve, reject) => {
-            const child = spawn(command, [...args], { detached: true, stdio: 'ignore' });
+        launch: (command, args) =>
+            new Promise<void>((resolve, reject) => {
+                const child = spawn(command, [...args], { detached: true, stdio: 'ignore' });
 
-            child.once('error', reject);
+                child.once('error', reject);
 
-            // macOS's `open` hands the path to the app and exits at once, and its exit code says whether the app could be started.
-            // Any other program may stay running for as long as the person works in it, so it is enough that it started.
-            if (command === 'open') {
-                child.once('exit', code => (code === 0 ? resolve() : reject(new Error(`open failed with code ${ code }`))));
+                // macOS's `open` hands the path to the app and exits at once, and its exit code says whether the app could be started.
+                // Any other program may stay running for as long as the person works in it, so it is enough that it started.
+                if (command === 'open') {
+                    child.once('exit', code =>
+                        code === 0 ? resolve() : reject(new Error(`open failed with code ${code}`))
+                    );
 
-                return;
-            }
+                    return;
+                }
 
-            child.once('spawn', () => {
-                child.unref();
-                resolve();
-            });
-        }),
+                child.once('spawn', () => {
+                    child.unref();
+                    resolve();
+                });
+            }),
     };
 }

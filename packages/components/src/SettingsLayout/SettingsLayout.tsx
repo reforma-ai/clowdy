@@ -10,7 +10,6 @@ import { Breadcrumb } from '../Breadcrumb';
 import { Button } from '../Button';
 import { For } from '../For';
 import { tooltipWithHotkey } from '../Hotkey';
-import { layerRest, paneTransition, SECTION_RISE, SECTION_START_OPACITY, sectionTransition, SLIDE_IN } from '../LayerStack/motion';
 import { ListBox, ListBoxHeader, ListBoxItem, ListBoxSection } from '../List';
 import { ModalContext } from '../Modal/hooks/useModalProvider';
 import { confirmDiscardChanges } from '../modals/ConfirmModal';
@@ -18,6 +17,7 @@ import { Scrollable } from '../Scrollable';
 import { Show } from '../Show';
 import { Text } from '../Text';
 import { toast } from '../Toast';
+import { layerRest, paneTransition, SLIDE_IN } from './motion';
 import styles from './SettingsLayout.module.css';
 
 import type { ReactNode, RefObject } from 'react';
@@ -77,7 +77,7 @@ function settleLeave(decision: boolean | Promise<boolean>, apply: () => void) {
         return;
     }
 
-    void decision.then((allowed) => {
+    void decision.then(allowed => {
         if (allowed) {
             apply();
         }
@@ -148,9 +148,9 @@ function SettingsLayoutRoot({
     children,
 }: SettingsLayoutProps) {
     const [ownSelectedId, setOwnSelectedId] = useState(defaultSelected ?? items[0]?.id ?? '');
-    const [ownStack, setOwnStack] = useState<readonly SettingsStackItem[]>(() => (
+    const [ownStack, setOwnStack] = useState<readonly SettingsStackItem[]>(() =>
         defaultStack ? [...defaultStack] : []
-    ));
+    );
     const selectedId = selectedIdProp ?? ownSelectedId;
     const stack = stackProp ?? ownStack;
     const leaveGuardRef = useRef<(() => boolean | Promise<boolean>) | null>(null);
@@ -221,9 +221,9 @@ function SettingsLayoutRoot({
     };
 
     return (
-        <SettingsLeaveGuardContext value={ leaveGuardRef }>
+        <SettingsLeaveGuardContext value={leaveGuardRef}>
             <SettingsLayoutContext
-                value={ {
+                value={{
                     items,
                     selectedId,
                     select,
@@ -231,20 +231,18 @@ function SettingsLayoutRoot({
                     push: item => changeStack(current => [...current, item]),
                     rename: (id, label) => {
                         if (latestStack.current.some(item => item.id === id && item.label !== label)) {
-                            changeStack(current => current.map(item => (
-                                item.id === id && item.label !== label
-                                    ? { ...item, label }
-                                    : item
-                            )));
+                            changeStack(current =>
+                                current.map(item =>
+                                    item.id === id && item.label !== label ? { ...item, label } : item
+                                )
+                            );
                         }
                     },
                     pop,
                     reset,
-                } }
+                }}
             >
-                <div className={ cn(styles.root, className) }>
-                    { children }
-                </div>
+                <div className={cn(styles.root, className)}>{children}</div>
             </SettingsLayoutContext>
         </SettingsLeaveGuardContext>
     );
@@ -266,8 +264,7 @@ function navRuns(items: readonly SettingsNavItem[]): Array<{ group?: string; ite
 
         if (last && last.group === item.group) {
             last.items.push(item);
-        }
-        else {
+        } else {
             runs.push({ group: item.group, items: [item] });
         }
     }
@@ -284,46 +281,46 @@ function Sidebar({
     const { items, selectedId, select } = useSettingsLayout();
 
     return (
-        <div className={ cn(styles.sidebar, className) }>
-            <Show when={ title }>
-                <Text variant="sm" color="secondary" className={ styles.sidebarTitle }>
-                    { title }
+        <div className={cn(styles.sidebar, className)}>
+            <Show when={title}>
+                <Text variant="sm" color="secondary" className={styles.sidebarTitle}>
+                    {title}
                 </Text>
             </Show>
             <ListBox
-                aria-label={ ariaLabel }
+                aria-label={ariaLabel}
                 size="md"
                 selectionMode="single"
-                selectedKeys={ [selectedId] }
+                selectedKeys={[selectedId]}
                 disallowEmptySelection
             >
-                <For each={ navRuns(items) }>
-                    { (run, index) => {
+                <For each={navRuns(items)}>
+                    {(run, index) => {
                         const rows = run.items.map(item => (
                             <ListBoxItem
-                                key={ item.id }
-                                id={ item.id }
-                                icon={ item.icon }
-                                textValue={ item.label }
-                                onPress={ () => select(item.id) }
+                                key={item.id}
+                                id={item.id}
+                                icon={item.icon}
+                                textValue={item.label}
+                                onPress={() => select(item.id)}
                             >
-                                { item.label }
+                                {item.label}
                             </ListBoxItem>
                         ));
 
-                        return run.group === undefined
-                            ? rows
-                            : (
-                                <ListBoxSection key={ `${ index }:${ run.group }` }>
-                                    <ListBoxHeader>{ run.group }</ListBoxHeader>
-                                    { rows }
-                                </ListBoxSection>
-                            );
-                    } }
+                        return run.group === undefined ? (
+                            rows
+                        ) : (
+                            <ListBoxSection key={`${index}:${run.group}`}>
+                                <ListBoxHeader>{run.group}</ListBoxHeader>
+                                {rows}
+                            </ListBoxSection>
+                        );
+                    }}
                 </For>
             </ListBox>
-            <Show when={ footer }>
-                <div className={ styles.sidebarFooter }>{ footer }</div>
+            <Show when={footer}>
+                <div className={styles.sidebarFooter}>{footer}</div>
             </Show>
         </div>
     );
@@ -334,25 +331,15 @@ function Title() {
     const rootLabel = items.find(item => item.id === selectedId)?.label ?? '';
 
     return (
-        <Breadcrumb variant="heading-2" className={ styles.title }>
-            { stack.length === 0
-                ? (
-                    <Breadcrumb.Page key="root">
-                        { rootLabel }
-                    </Breadcrumb.Page>
-                )
-                : (
-                    <Breadcrumb.Link key="root" onPress={ reset }>
-                        { rootLabel }
-                    </Breadcrumb.Link>
-                ) }
-            <For each={ stack }>
-                { item => (
-                    <Breadcrumb.Page key={ item.id }>
-                        { item.label }
-                    </Breadcrumb.Page>
-                ) }
-            </For>
+        <Breadcrumb variant="heading-2" className={styles.title}>
+            {stack.length === 0 ? (
+                <Breadcrumb.Page key="root">{rootLabel}</Breadcrumb.Page>
+            ) : (
+                <Breadcrumb.Link key="root" onPress={reset}>
+                    {rootLabel}
+                </Breadcrumb.Link>
+            )}
+            <For each={stack}>{item => <Breadcrumb.Page key={item.id}>{item.label}</Breadcrumb.Page>}</For>
         </Breadcrumb>
     );
 }
@@ -376,25 +363,21 @@ function Pane({ paneKey, className, children }: SettingsLayoutPaneProps) {
     }
 
     return createPortal(
-        <AnimatePresence initial={ false }>
-            { paneKey
-                ? (
-                    <MotionScrollable
-                        key={ paneKey }
-                        className={ cn(styles.overlay, className) }
-                        contentClass={ cn(styles.scrollContent, styles.paneContent) }
-                        initial={ reducedMotion ? false : { opacity: 0, x: SLIDE_IN } }
-                        animate={ layerRest(covered, reducedMotion) }
-                        exit={ reducedMotion ? undefined : { opacity: 0, x: SLIDE_IN, pointerEvents: 'none' } }
-                        transition={ paneTransition(reducedMotion) }
-                        inert={ covered }
-                    >
-                        <SettingsPaneContext value={ paneKey }>
-                            { children }
-                        </SettingsPaneContext>
-                    </MotionScrollable>
-                )
-                : null }
+        <AnimatePresence initial={false}>
+            {paneKey ? (
+                <MotionScrollable
+                    key={paneKey}
+                    className={cn(styles.overlay, className)}
+                    contentClass={cn(styles.scrollContent, styles.paneContent)}
+                    initial={reducedMotion ? false : { opacity: 0, x: SLIDE_IN }}
+                    animate={layerRest(covered, reducedMotion)}
+                    exit={reducedMotion ? undefined : { opacity: 0, x: SLIDE_IN, pointerEvents: 'none' }}
+                    transition={paneTransition(reducedMotion)}
+                    inert={covered}
+                >
+                    <SettingsPaneContext value={paneKey}>{children}</SettingsPaneContext>
+                </MotionScrollable>
+            ) : null}
         </AnimatePresence>,
         overlay
     );
@@ -416,39 +399,33 @@ function Shell({
     const [description, setDescription] = useState<HTMLDivElement | null>(null);
     const reducedMotion = useReducedMotion();
     const covered = stack.length > 0;
-    const animate = useMemo(
-        () => layerRest(covered, reducedMotion),
-        [covered, reducedMotion]
-    );
+    const animate = useMemo(() => layerRest(covered, reducedMotion), [covered, reducedMotion]);
 
     return (
-        <SettingsOverlayContext value={ overlay }>
-            <SettingsDescriptionContext value={ description }>
-                <div className={ cn(styles.content, className) }>
+        <SettingsOverlayContext value={overlay}>
+            <SettingsDescriptionContext value={description}>
+                <div className={cn(styles.content, className)}>
                     {/* The title, what the section is for, and its action are one block that stays put: only what is below it moves. */}
-                    <div className={ styles.header }>
-                        <div className={ styles.headerRow }>
+                    <div className={styles.header}>
+                        <div className={styles.headerRow}>
                             <Title />
-                            { action }
+                            {action}
                         </div>
-                        <div ref={ setDescription } className={ styles.description } />
+                        <div ref={setDescription} className={styles.description} />
                     </div>
-                    <div ref={ setOverlay } className={ styles.viewport }>
+                    <div ref={setOverlay} className={styles.viewport}>
                         <MotionScrollable
-                            key={ selectedId }
-                            className={ styles.scroll }
-                            contentClass={ styles.scrollContent }
-                            initial={ reducedMotion ? false : { opacity: SECTION_START_OPACITY, y: SECTION_RISE } }
-                            animate={ animate }
-                            transition={ covered
-                                ? paneTransition(reducedMotion)
-                                : sectionTransition(reducedMotion) }
-                            inert={ covered }
+                            key={selectedId}
+                            className={styles.scroll}
+                            contentClass={styles.scrollContent}
+                            animate={animate}
+                            transition={paneTransition(reducedMotion)}
+                            inert={covered}
                         >
-                            { children }
+                            {children}
                         </MotionScrollable>
                     </div>
-                    { footer }
+                    {footer}
                 </div>
             </SettingsDescriptionContext>
         </SettingsOverlayContext>
@@ -464,7 +441,11 @@ function Intro({ className, children }: { className?: string; children: ReactNod
     const layout = use(SettingsLayoutContext);
     const slot = use(SettingsDescriptionContext);
     const pane = use(SettingsPaneContext);
-    const text = <Text color="secondary" className={ cn(styles.descriptionText, className) }>{ children }</Text>;
+    const text = (
+        <Text color="secondary" className={cn(styles.descriptionText, className)}>
+            {children}
+        </Text>
+    );
 
     if (!layout) {
         return text;
@@ -479,7 +460,7 @@ function Intro({ className, children }: { className?: string; children: ReactNod
 function Empty({ children }: { children: ReactNode }) {
     return (
         <Box align="center" justify="center" gap="lg" grow fullWidth fullHeight>
-            { children }
+            {children}
         </Box>
     );
 }
@@ -496,21 +477,19 @@ export interface SettingsLayoutContentProps {
 function Content({ headerRight, footer, saveable, className, children }: SettingsLayoutContentProps) {
     if (saveable) {
         return (
-            <SaveableContent headerRight={ headerRight } footer={ footer } className={ className }>
-                { children }
+            <SaveableContent headerRight={headerRight} footer={footer} className={className}>
+                {children}
             </SaveableContent>
         );
     }
 
     return (
         <Shell
-            className={ className }
-            action={ headerRight
-                ? <div className={ styles.headerAction }>{ headerRight }</div>
-                : undefined }
-            footer={ footer }
+            className={className}
+            action={headerRight ? <div className={styles.headerAction}>{headerRight}</div> : undefined}
+            footer={footer}
         >
-            { children }
+            {children}
         </Shell>
     );
 }
@@ -573,53 +552,46 @@ function SaveNotice({
     const label = saveNoticeLabel(state, copy);
 
     return (
-        <div className={ styles.saveEnter }>
-            <div className={ styles.saveClip }>
+        <div className={styles.saveEnter}>
+            <div className={styles.saveClip}>
                 <Alert>
                     <AlertIcon>
                         <AttentionCircle />
                     </AlertIcon>
-                    <AlertTitle>{ label }</AlertTitle>
-                    { state === 'saved'
-                        ? null
-                        : (
-                            <AlertAction>
-                                <Box direction="row" align="center" gap="sm" wrap={ false }>
-                                    <Button
-                                        variant="filling"
-                                        color="secondary"
-                                        size="sm"
-                                        isDisabled={ state === 'saving' }
-                                        onPress={ onDiscard }
-                                    >
-                                        Discard
-                                    </Button>
-                                    <Button
-                                        color="primary"
-                                        size="sm"
-                                        isDisabled={ state === 'saving' }
-                                        tooltip={ state === 'dirty'
-                                            ? tooltipWithHotkey(copy.tooltip, SAVE_HOTKEY)
-                                            : undefined }
-                                        onPress={ onSave }
-                                    >
-                                        { state === 'saving' ? copy.saving : copy.dirty }
-                                    </Button>
-                                </Box>
-                            </AlertAction>
-                        ) }
+                    <AlertTitle>{label}</AlertTitle>
+                    {state === 'saved' ? null : (
+                        <AlertAction>
+                            <Box direction="row" align="center" gap="sm" wrap={false}>
+                                <Button
+                                    variant="filling"
+                                    color="secondary"
+                                    size="sm"
+                                    isDisabled={state === 'saving'}
+                                    onPress={onDiscard}
+                                >
+                                    Discard
+                                </Button>
+                                <Button
+                                    color="primary"
+                                    size="sm"
+                                    isDisabled={state === 'saving'}
+                                    tooltip={
+                                        state === 'dirty' ? tooltipWithHotkey(copy.tooltip, SAVE_HOTKEY) : undefined
+                                    }
+                                    onPress={onSave}
+                                >
+                                    {state === 'saving' ? copy.saving : copy.dirty}
+                                </Button>
+                            </Box>
+                        </AlertAction>
+                    )}
                 </Alert>
             </div>
         </div>
     );
 }
 
-function SaveableContent({
-    headerRight,
-    footer,
-    className,
-    children,
-}: Omit<SettingsLayoutContentProps, 'saveable'>) {
+function SaveableContent({ headerRight, footer, className, children }: Omit<SettingsLayoutContentProps, 'saveable'>) {
     const { selectedId } = useSettingsLayout();
     const leaveGuardRef = use(SettingsLeaveGuardContext);
     const modal = use(ModalContext)?.modal;
@@ -637,7 +609,7 @@ function SaveableContent({
     }
 
     const onDirtyChange = useCallback((dirty: boolean) => {
-        setSaveState((prev) => {
+        setSaveState(prev => {
             if (dirty) {
                 return 'dirty';
             }
@@ -650,7 +622,7 @@ function SaveableContent({
         });
     }, []);
 
-    const handleSave = useCallback(async() => {
+    const handleSave = useCallback(async () => {
         if (!saveRef.current) {
             return;
         }
@@ -662,12 +634,10 @@ function SaveableContent({
 
             if (success) {
                 setSaveState('saved');
-            }
-            else {
+            } else {
                 setSaveState('dirty');
             }
-        }
-        catch {
+        } catch {
             toast.error({ message: 'Something went wrong while saving.' });
             setSaveState('dirty');
         }
@@ -748,24 +718,24 @@ function SaveableContent({
     const copy = saveActionCopy(saveVerb);
 
     return (
-        <SettingsSaveContext value={ ctx }>
+        <SettingsSaveContext value={ctx}>
             <Shell
-                className={ className }
-                footer={ saveState === 'idle'
-                    ? footer
-                    : (
+                className={className}
+                footer={
+                    saveState === 'idle' ? (
+                        footer
+                    ) : (
                         <SaveNotice
-                            state={ saveState }
-                            copy={ copy }
-                            onSave={ () => void handleSave() }
-                            onDiscard={ () => discardRef.current?.() }
+                            state={saveState}
+                            copy={copy}
+                            onSave={() => void handleSave()}
+                            onDiscard={() => discardRef.current?.()}
                         />
-                    ) }
-                action={ headerRight
-                    ? <div className={ styles.headerAction }>{ headerRight }</div>
-                    : undefined }
+                    )
+                }
+                action={headerRight ? <div className={styles.headerAction}>{headerRight}</div> : undefined}
             >
-                { children }
+                {children}
             </Shell>
         </SettingsSaveContext>
     );

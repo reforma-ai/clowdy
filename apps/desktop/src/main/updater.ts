@@ -73,7 +73,7 @@ export function createUpdater(options: UpdaterOptions) {
             }
 
             const restart = await options.ask({
-                message: `Clowdy ${ downloaded } is ready to install`,
+                message: `Clowdy ${downloaded} is ready to install`,
                 detail: 'Restart now, or it installs the next time you quit Clowdy',
                 accept: 'Restart to update',
                 decline: 'Later',
@@ -96,8 +96,8 @@ export function createUpdater(options: UpdaterOptions) {
         offered = version;
 
         const open = await options.ask({
-            message: `Clowdy ${ version } is available`,
-            detail: 'This build can\'t update itself. Download the new version and replace the app with it.',
+            message: `Clowdy ${version} is available`,
+            detail: "This build can't update itself. Download the new version and replace the app with it.",
             accept: 'Download',
             decline: 'Later',
         });
@@ -110,8 +110,7 @@ export function createUpdater(options: UpdaterOptions) {
     async function scheduledCheck(): Promise<void> {
         try {
             await check();
-        }
-        catch (error) {
+        } catch (error) {
             // electron-updater also emits every failure as `error`; the next check tries again.
             console.warn('Shell update check failed:', error instanceof Error ? error.message : error);
         }
@@ -138,8 +137,7 @@ export function createUpdater(options: UpdaterOptions) {
 
         try {
             await Promise.all([updater.downloadUpdate(), verdict]);
-        }
-        finally {
+        } finally {
             squirrel.removeListener('update-downloaded', accept);
             squirrel.removeListener('error', refuse);
         }
@@ -147,7 +145,7 @@ export function createUpdater(options: UpdaterOptions) {
 
     return {
         async start(): Promise<void> {
-            if (options.selfUpdates && !await installedWhereUpdatesWork(options)) return;
+            if (options.selfUpdates && !(await installedWhereUpdatesWork(options))) return;
 
             updater.autoDownload = false;
             started = true;
@@ -181,8 +179,7 @@ async function installedWhereUpdatesWork({ platform, app, ask }: UpdaterOptions)
     if (move) {
         try {
             app.moveToApplicationsFolder();
-        }
-        catch (error) {
+        } catch (error) {
             console.warn('Moving to Applications failed:', error instanceof Error ? error.message : error);
         }
     }

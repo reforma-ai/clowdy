@@ -1,7 +1,7 @@
 import { Modal } from '@clowdy/components/Modal';
 
 import { basename } from '../../paths';
-import { SavePrompt, type SaveAnswer } from './SavePrompt';
+import { type SaveAnswer, SavePrompt } from './SavePrompt';
 
 import type { TextDocument } from '../../documents/TextDocument';
 import type { FileManager } from '../../FileManager';

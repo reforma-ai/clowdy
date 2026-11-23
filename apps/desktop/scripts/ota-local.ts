@@ -23,7 +23,7 @@ const home = path.resolve(import.meta.dir, '../.ota-local');
 /** `./clowdy` at the repository root, which this script is not run from. */
 const launcher = path.resolve(import.meta.dir, '../../../clowdy');
 const NOT_READY_PAGE = '<!doctype html><title>Clowdy</title><p>This renderer never calls ready()</p>';
-const BROKEN_DAEMON = 'console.error(\'This daemon never starts\');\nprocess.exit(1);\n';
+const BROKEN_DAEMON = "console.error('This daemon never starts');\nprocess.exit(1);\n";
 
 const { values } = parseArgs({
     options: {
@@ -40,9 +40,12 @@ async function testKeys(): Promise<{ privateKey: string; publicKey: string; publ
     const publicPath = path.join(home, 'public.pem');
 
     try {
-        return { privateKey: await readFile(privatePath, 'utf8'), publicKey: await readFile(publicPath, 'utf8'), publicPath };
-    }
-    catch {
+        return {
+            privateKey: await readFile(privatePath, 'utf8'),
+            publicKey: await readFile(publicPath, 'utf8'),
+            publicPath,
+        };
+    } catch {
         const keys = generateKeyPairSync('ed25519', {
             privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
             publicKeyEncoding: { type: 'spki', format: 'pem' },
@@ -59,7 +62,8 @@ async function testKeys(): Promise<{ privateKey: string; publicKey: string; publ
 const info = await bundleInfo();
 const version = values.version === undefined ? info.version : Number(values.version);
 
-if (!Number.isSafeInteger(version) || version <= 0) throw new Error(`--version wants a positive whole number, not ${ values.version }`);
+if (!Number.isSafeInteger(version) || version <= 0)
+    throw new Error(`--version wants a positive whole number, not ${values.version}`);
 
 const port = Number(values.port);
 const feed = path.join(home, 'feed');
@@ -82,17 +86,18 @@ Bun.serve({
     fetch(request) {
         const { pathname } = new URL(request.url);
 
-        console.info(`${ request.method } ${ pathname }`);
+        console.info(`${request.method} ${pathname}`);
 
-        if (pathname === `/${ MANIFEST_FILE }`) return new Response(signed, { headers: { 'content-type': 'application/json' } });
+        if (pathname === `/${MANIFEST_FILE}`)
+            return new Response(signed, { headers: { 'content-type': 'application/json' } });
 
-        if (pathname === `/${ manifest.archive.name }`) return new Response(Bun.file(archive));
+        if (pathname === `/${manifest.archive.name}`) return new Response(Bun.file(archive));
 
         return new Response('Not found', { status: 404 });
     },
 });
 
-console.info(`Serving bundle ${ version }${ values['no-ready'] ? ' (never ready)' : '' }${ values['broken-daemon'] ? ' (its daemon never starts)' : '' } on http://127.0.0.1:${ port }. Start the app on it:
+console.info(`Serving bundle ${version}${values['no-ready'] ? ' (never ready)' : ''}${values['broken-daemon'] ? ' (its daemon never starts)' : ''} on http://127.0.0.1:${port}. Start the app on it:
 
-  CLOWDY_UPDATE_FEED=http://127.0.0.1:${ port } CLOWDY_UPDATE_PUBLIC_KEY="$(cat '${ publicPath }')" '${ launcher }' dev
+  CLOWDY_UPDATE_FEED=http://127.0.0.1:${port} CLOWDY_UPDATE_PUBLIC_KEY="$(cat '${publicPath}')" '${launcher}' dev
 `);

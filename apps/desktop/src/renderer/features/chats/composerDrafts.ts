@@ -1,4 +1,4 @@
-import { docToPlainText, emptyComposerDoc, plainTextToDoc, type ComposerDoc } from '@clowdy/components/RichInput';
+import { type ComposerDoc, docToPlainText, emptyComposerDoc, plainTextToDoc } from '@clowdy/components/RichInput';
 
 import { serializeMention } from './composerMentions';
 
@@ -13,7 +13,7 @@ export const NEW_CHAT_DRAFT = '@new-chat';
  * is unique already.
  */
 export function newChatDraftKey(projectId: ProjectId | undefined): string {
-    return `${ NEW_CHAT_DRAFT }:${ projectId ?? '' }`;
+    return `${NEW_CHAT_DRAFT}:${projectId ?? ''}`;
 }
 
 /**
@@ -22,7 +22,7 @@ export function newChatDraftKey(projectId: ProjectId | undefined): string {
  * the chat's draft.
  */
 export function editDraftKey(chatId: ChatId, itemId: string): string {
-    return `edit:${ chatId }:${ itemId }`;
+    return `edit:${chatId}:${itemId}`;
 }
 
 /** What was typed and not sent, so that moving to another chat and back does not lose it. Keyed by a chat's id, `newChatDraftKey` or `editDraftKey`. */
@@ -54,7 +54,11 @@ export function messageOf(doc: ComposerDoc): string {
  * message gives an empty draft.
  */
 export function docOfMessage(text: string): ComposerDoc {
-    const paragraphs = text.replaceAll(/\r\n?/g, '\n').trim().split(/\n(?:[ \t]*\n)+/).filter(paragraph => paragraph !== '');
+    const paragraphs = text
+        .replaceAll(/\r\n?/g, '\n')
+        .trim()
+        .split(/\n(?:[ \t]*\n)+/)
+        .filter(paragraph => paragraph !== '');
 
     if (paragraphs.length === 0) return emptyComposerDoc();
 
@@ -76,18 +80,49 @@ export function withTextFirst(draft: ComposerDoc, text: string): ComposerDoc {
     return { ...draft, content: [...(plainTextToDoc(text).content ?? []), ...(draft.content ?? [])] };
 }
 
+/** For each line, whether it is a part of a fenced code block, its fences included: what a block holds is code, and a blank line in it is a line of the code. */
+function fencedLines(lines: readonly string[]): boolean[] {
+    let open = '';
+
+    return lines.map(line => {
+        const [, fence = '', rest = ''] = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line) ?? [];
+
+        if (!open) {
+            // An info string of a backtick fence holds no backtick: ```a``` is a span of code.
+            if (!fence || (fence.startsWith('`') && rest.includes('`'))) return false;
+
+            open = fence;
+
+            return true;
+        }
+
+        // A fence of the same mark, at least as long, with nothing after it, closes the block.
+        if (fence.startsWith(open[0]!) && fence.length >= open.length && rest.trim() === '') open = '';
+
+        return true;
+    });
+}
+
 /**
  * The quote a piece of text makes: `> ` before every line and a bare `>` for a blank one, with the blank lines between two lines that are quotes
- * already left out, trimmed. Empty when there is nothing to quote.
+ * already left out (not inside a fenced block of code, where they are the code's own), trimmed. Empty when there is nothing to quote.
  */
 function quoteOf(text: string): string {
     const lines = text.replaceAll(/\r\n?/g, '\n').split('\n');
-    const kept = lines.filter((line, index) => !(line.trim() === '' && lines[index - 1]?.startsWith('>') && lines[index + 1]?.startsWith('>')));
+    const fenced = fencedLines(lines);
+    const kept = lines.filter(
+        (line, index) =>
+            fenced[index] ||
+            !(line.trim() === '' && lines[index - 1]?.startsWith('>') && lines[index + 1]?.startsWith('>'))
+    );
     const trimmed = kept.join('\n').trim();
 
     if (trimmed === '') return '';
 
-    return trimmed.split('\n').map(line => (line.trim() === '' ? '>' : `> ${ line }`)).join('\n');
+    return trimmed
+        .split('\n')
+        .map(line => (line.trim() === '' ? '>' : `> ${line}`))
+        .join('\n');
 }
 
 /**
@@ -103,8 +138,11 @@ export function withQuoteLast(draft: ComposerDoc, text: string): ComposerDoc {
 
     if (!quote) return draft;
 
-    const blocks = messageOf(draft) === '' ? [] : draft.content ?? [];
-    const kept = blocks.slice(0, blocks.findLastIndex(block => block.type !== 'paragraph' || block.content?.length) + 1);
+    const blocks = messageOf(draft) === '' ? [] : (draft.content ?? []);
+    const kept = blocks.slice(
+        0,
+        blocks.findLastIndex(block => block.type !== 'paragraph' || block.content?.length) + 1
+    );
 
     return { ...draft, content: [...kept, ...(plainTextToDoc(quote).content ?? []), { type: 'paragraph' }] };
 }
@@ -119,5 +157,5 @@ export function quotedMessage(quoted: string, message: string): string {
 
     if (!quote) return message;
 
-    return message ? `${ quote }\n\n${ message }` : quote;
+    return message ? `${quote}\n\n${message}` : quote;
 }

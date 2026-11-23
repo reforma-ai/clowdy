@@ -15,8 +15,12 @@ function Rows() {
     useListHoverHighlight(ref, true, '[data-row]');
 
     return (
-        <div ref={ ref } data-testid="list">
-            { Object.keys(TOPS).map(id => <div key={ id } id={ id } data-row tabIndex={ -1 }>{ id }</div>) }
+        <div ref={ref} data-testid="list">
+            {Object.keys(TOPS).map(id => (
+                <div key={id} id={id} data-row tabIndex={-1}>
+                    {id}
+                </div>
+            ))}
         </div>
     );
 }
@@ -50,7 +54,8 @@ beforeEach(async () => {
     await act(async () => root.render(<Rows />));
 
     for (const [id, top] of Object.entries(TOPS)) {
-        row(id).getBoundingClientRect = () => ({ top, left: 0, width: 100, height: 30, right: 100, bottom: top + 30 }) as DOMRect;
+        row(id).getBoundingClientRect = () =>
+            ({ top, left: 0, width: 100, height: 30, right: 100, bottom: top + 30 }) as DOMRect;
     }
 });
 
@@ -85,8 +90,7 @@ describe('useListHoverHighlight', () => {
             await frame();
 
             expect(plate()).toEqual({ shown: true, top: '10px' });
-        }
-        finally {
+        } finally {
             document.removeEventListener('keydown', swallow, true);
         }
     });
@@ -135,8 +139,7 @@ describe('useListHoverHighlight', () => {
             await idle();
 
             expect(plate()).toEqual({ shown: true, top: '90px' });
-        }
-        finally {
+        } finally {
             document.elementFromPoint = original;
         }
     });

@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { chatListPreferences } from '../agents/chatListPreferences';
+import { branchPrefix } from '../chats/branchPrefix';
 import { busyEnter } from '../chats/busyEnter';
 import { newChatDefaults } from '../chats/newChatDefaults';
 import { swipeToReply } from '../chats/swipeReplyPreference';
@@ -23,15 +24,25 @@ let store: RootStore;
 
 const LABEL = 'Send a message while the agent is working';
 const SWIPE = 'Swipe a message to reply';
-const swipeSwitch = () => container.querySelector<HTMLInputElement>(`input[aria-label="${ SWIPE }"]`)!;
-const radio = (group: string, label: string) => [...container.querySelectorAll<HTMLElement>(`[aria-label="${ group }"] [role="radio"]`)].find(item => item.textContent === label)!;
-const checked = (group: string) => container.querySelector(`[aria-label="${ group }"] [role="radio"][aria-checked="true"]`)?.textContent;
+const swipeSwitch = () => container.querySelector<HTMLInputElement>(`input[aria-label="${SWIPE}"]`)!;
+const radio = (group: string, label: string) =>
+    [...container.querySelectorAll<HTMLElement>(`[aria-label="${group}"] [role="radio"]`)].find(
+        item => item.textContent === label
+    )!;
+const checked = (group: string) =>
+    container.querySelector(`[aria-label="${group}"] [role="radio"][aria-checked="true"]`)?.textContent;
 const finished = () => container.querySelector<HTMLInputElement>('input[aria-label="Finished threads"]')!;
-const labels = (group: string) => [...container.querySelectorAll<HTMLElement>(`[aria-label="${ group }"] [role="radio"]`)].map(item => item.textContent);
+const prefixField = () => container.querySelector<HTMLInputElement>('input[aria-label="Branch prefix"]')!;
+const prefixNote = () => container.querySelector('[role="alert"]')?.textContent;
+const labels = (group: string) =>
+    [...container.querySelectorAll<HTMLElement>(`[aria-label="${group}"] [role="radio"]`)].map(
+        item => item.textContent
+    );
 
 function reset() {
     busyEnter.setMode('steer');
     swipeToReply.setEnabled(true);
+    branchPrefix.setValue('');
     newChatDefaults.setEngine(undefined);
     newChatDefaults.setMode(undefined);
     chatListPreferences.setSort('activity');
@@ -45,7 +56,13 @@ beforeEach(async () => {
     container = document.createElement('div');
     document.body.append(container);
     root = createRoot(container);
-    act(() => root.render(<RootStoreProvider value={ store }><Page /></RootStoreProvider>));
+    act(() =>
+        root.render(
+            <RootStoreProvider value={store}>
+                <Page />
+            </RootStoreProvider>
+        )
+    );
     await act(async () => {
         await new Promise(resolve => setTimeout(resolve, 0));
     });
@@ -61,7 +78,9 @@ afterEach(() => {
 describe('ChatPage', () => {
     it('offers how a message sent while the agent works goes, steering by default', () => {
         expect(checked(LABEL)).toBe('Steer');
-        expect(container.textContent).toContain('Steer it into the current turn, or queue it for the next one. Press Ctrl+Enter to use the other option.');
+        expect(container.textContent).toContain(
+            'Steer it into the current turn, or queue it for the next one. Press Ctrl+Enter to use the other option.'
+        );
         // The tips of the choices are tooltips, not text under the row.
         expect(container.textContent).not.toContain('Steer sends your message');
     });
@@ -95,13 +114,13 @@ describe('ChatPage', () => {
         expect(localStorage.getItem('clowdy:swipe-to-reply')).toBe('true');
     });
 
-    it('offers the app\'s agent and mode of new chats, with no Default, Last used at first', () => {
+    it("offers the app's agent and mode of new chats, with no Default, Last used at first", () => {
         expect(labels('Agent for new chats')).toEqual(['Last used', 'Claude Code', 'Codex', 'Cursor']);
         expect(labels('Mode for new chats')).toEqual(['Last used', 'Hands-off', 'Hands-on']);
         expect([checked('Agent for new chats'), checked('Mode for new chats')]).toEqual(['Last used', 'Last used']);
     });
 
-    it('keeps the app\'s agent and mode of new chats on this computer, and Last used clears each', () => {
+    it("keeps the app's agent and mode of new chats on this computer, and Last used clears each", () => {
         act(() => radio('Agent for new chats', 'Codex').click());
         act(() => radio('Mode for new chats', 'Hands-on').click());
 
@@ -114,7 +133,72 @@ describe('ChatPage', () => {
         expect([newChatDefaults.engine, newChatDefaults.mode]).toEqual([undefined, undefined]);
     });
 
-    it('offers the order of the chats and the finished threads of the Agents list, as the list\'s own menu does', () => {
+    describe('the branch prefix of a new worktree', () => {
+        const type = (text: string) =>
+            act(() => {
+                prefixField().focus();
+                Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(prefixField(), text);
+                prefixField().dispatchEvent(new Event('input', { bubbles: true }));
+            });
+        const leave = () => act(() => prefixField().blur());
+
+        it('is clowdy at first, with a line that says what it does and no period after it', () => {
+            expect(prefixField().value).toBe('clowdy');
+            expect(container.textContent).toContain('Branches of new worktrees are named like clowdy/ab12cd34');
+            expect(container.textContent).not.toContain('such as clowdy/ab12cd34.');
+            expect(prefixNote()).toBeUndefined();
+        });
+
+        it('keeps a prefix on this computer as it is typed, and shows it in the example', () => {
+            type('max');
+
+            expect(branchPrefix.value).toBe('max');
+            expect(localStorage.getItem('clowdy:branch-prefix')).toBe('"max"');
+            expect(container.textContent).toContain('named like max/ab12cd34');
+            expect(prefixNote()).toBeUndefined();
+
+            type('team/max');
+            leave();
+
+            expect(branchPrefix.value).toBe('team/max');
+            expect(prefixField().value).toBe('team/max');
+        });
+
+        it('says why a prefix is refused, keeps the one that was in force, and shows the box as it was typed until it is fixed', () => {
+            type('max');
+            type('two words');
+
+            expect(prefixNote()).toBe('The branch prefix cannot have a space or a control character');
+            expect(prefixField().getAttribute('aria-invalid')).toBe('true');
+            expect(branchPrefix.value).toBe('max');
+            expect(localStorage.getItem('clowdy:branch-prefix')).toBe('"max"');
+
+            // Leaving the box does not make a refused text the setting, nor throw it away.
+            leave();
+
+            expect(prefixField().value).toBe('two words');
+            expect(prefixNote()).toBeDefined();
+
+            type('two-words');
+
+            expect(prefixNote()).toBeUndefined();
+            expect(branchPrefix.value).toBe('two-words');
+        });
+
+        it('is the default again when the box is emptied, and shows it once the box is left', () => {
+            type('max');
+            type('');
+
+            expect(branchPrefix.value).toBe('clowdy');
+            expect(prefixNote()).toBeUndefined();
+
+            leave();
+
+            expect(prefixField().value).toBe('clowdy');
+        });
+    });
+
+    it("offers the order of the chats and the finished threads of the Agents list, as the list's own menu does", () => {
         expect(labels('Sort chats by')).toEqual(['Last activity', 'Created']);
         expect(checked('Sort chats by')).toBe('Last activity');
         expect(finished().checked).toBe(true);

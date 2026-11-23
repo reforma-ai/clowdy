@@ -8,8 +8,8 @@ import { createPortal } from 'react-dom';
 
 import { basename, dirname, isPathWithin } from '../../paths';
 import styles from './Explorer.module.css';
-import { DRAFT_ID, folderOfNode, hotkeyItem, targetsOf, useExplorer } from './explorerContext';
 import { ExplorerAreaMenu, ExplorerMenu } from './ExplorerMenu';
+import { DRAFT_ID, folderOfNode, hotkeyItem, targetsOf, useExplorer } from './explorerContext';
 
 import type { SyntheticEvent } from 'react';
 import type { DragPreviewProps, NodeApi, NodeRendererProps, RowRendererProps } from 'react-arborist';
@@ -94,10 +94,10 @@ function NameInput({ node, onValueChange }: { node: NodeApi<ExplorerItem>; onVal
     const problem = unchanged
         ? null
         : manager.operations.validateName(
-            draft ? (draftParent ?? '') : dirname(node.id),
-            typed,
-            draft ? undefined : node.id
-        );
+              draft ? (draftParent ?? '') : dirname(node.id),
+              typed,
+              draft ? undefined : node.id
+          );
 
     const finish = (apply: boolean) => {
         if (finished.current) {
@@ -108,8 +108,7 @@ function NameInput({ node, onValueChange }: { node: NodeApi<ExplorerItem>; onVal
 
         if (apply && !unchanged && !problem) {
             node.submit(typed);
-        }
-        else {
+        } else {
             node.reset();
         }
     };
@@ -154,8 +153,7 @@ function NameInput({ node, onValueChange }: { node: NodeApi<ExplorerItem>; onVal
 
                     if (event.key === 'Escape') {
                         finish(false);
-                    }
-                    else if (!problem) {
+                    } else if (!problem) {
                         finish(true);
                     }
                 }}

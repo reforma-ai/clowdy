@@ -71,88 +71,101 @@ export function HexColorEditor({
         setAlphaValue(String(parsed.alpha));
     }, [parsed.color, parsed.alpha]);
 
-    const emitChange = useCallback((nextColor: Color | null, nextAlpha: number) => {
-        const alpha = normalizeAlphaInput(nextAlpha);
-        const color = withAlpha(nextColor, alpha);
-        const nextValue = nextColor
-            ? serializeColorObject(nextColor, alpha, requestedFormat, 'hex')
-            : null;
+    const emitChange = useCallback(
+        (nextColor: Color | null, nextAlpha: number) => {
+            const alpha = normalizeAlphaInput(nextAlpha);
+            const color = withAlpha(nextColor, alpha);
+            const nextValue = nextColor ? serializeColorObject(nextColor, alpha, requestedFormat, 'hex') : null;
 
-        onValueChange(nextValue, {
-            value: nextValue,
-            color,
-            alpha,
-            format: requestedFormat,
-            inputValue: nextValue ?? '',
-        });
-    }, [onValueChange, requestedFormat]);
+            onValueChange(nextValue, {
+                value: nextValue,
+                color,
+                alpha,
+                format: requestedFormat,
+                inputValue: nextValue ?? '',
+            });
+        },
+        [onValueChange, requestedFormat]
+    );
 
-    const commitInputValue = useCallback((nextInputValue = inputValue) => {
-        if (!nextInputValue) {
-            emitChange(null, Number(alphaValue));
+    const commitInputValue = useCallback(
+        (nextInputValue = inputValue) => {
+            if (!nextInputValue) {
+                emitChange(null, Number(alphaValue));
 
-            return;
-        }
-
-        const nextColor = parseHexInput(nextInputValue);
-
-        if (!nextColor) {
-            setInputValue(colorToHexInput(parsed.color));
-
-            return;
-        }
-
-        const normalizedInput = colorToHexInput(nextColor);
-
-        setInputValue(normalizedInput);
-        emitChange(nextColor, Number(alphaValue));
-    }, [alphaValue, emitChange, inputValue, parsed.color]);
-
-    const handleInputChange = useCallback((nextInputValue: string) => {
-        const normalized = normalizeHexInput(nextInputValue);
-
-        if (normalized == null) {
-            return;
-        }
-
-        setInputValue(normalized);
-
-        if (normalized.length === 6) {
-            const nextColor = parseHexInput(normalized);
-
-            if (nextColor) {
-                emitChange(nextColor, Number(alphaValue));
+                return;
             }
-        }
-    }, [alphaValue, emitChange]);
 
-    const handleInputPaste = useCallback((event: ClipboardEvent<HTMLInputElement>) => {
-        const parsedHexAlpha = parseHexAlphaInput(event.clipboardData.getData('text'));
+            const nextColor = parseHexInput(nextInputValue);
 
-        if (!parsedHexAlpha) {
-            return;
-        }
+            if (!nextColor) {
+                setInputValue(colorToHexInput(parsed.color));
 
-        event.preventDefault();
+                return;
+            }
 
-        setInputValue(parsedHexAlpha.inputValue);
-        setAlphaValue(String(parsedHexAlpha.alpha));
-        emitChange(parsedHexAlpha.color, parsedHexAlpha.alpha);
-    }, [emitChange]);
+            const normalizedInput = colorToHexInput(nextColor);
 
-    const handleAlphaChange = useCallback((nextAlphaValue: string) => {
-        if (!/^\d{0,3}$/.test(nextAlphaValue)) {
-            return;
-        }
+            setInputValue(normalizedInput);
+            emitChange(nextColor, Number(alphaValue));
+        },
+        [alphaValue, emitChange, inputValue, parsed.color]
+    );
 
-        setAlphaValue(nextAlphaValue);
+    const handleInputChange = useCallback(
+        (nextInputValue: string) => {
+            const normalized = normalizeHexInput(nextInputValue);
 
-        if (nextAlphaValue === '') {
-            return;
-        }
+            if (normalized == null) {
+                return;
+            }
 
-        emitChange(parsed.color, Number(nextAlphaValue));
-    }, [emitChange, parsed.color]);
+            setInputValue(normalized);
+
+            if (normalized.length === 6) {
+                const nextColor = parseHexInput(normalized);
+
+                if (nextColor) {
+                    emitChange(nextColor, Number(alphaValue));
+                }
+            }
+        },
+        [alphaValue, emitChange]
+    );
+
+    const handleInputPaste = useCallback(
+        (event: ClipboardEvent<HTMLInputElement>) => {
+            const parsedHexAlpha = parseHexAlphaInput(event.clipboardData.getData('text'));
+
+            if (!parsedHexAlpha) {
+                return;
+            }
+
+            event.preventDefault();
+
+            setInputValue(parsedHexAlpha.inputValue);
+            setAlphaValue(String(parsedHexAlpha.alpha));
+            emitChange(parsedHexAlpha.color, parsedHexAlpha.alpha);
+        },
+        [emitChange]
+    );
+
+    const handleAlphaChange = useCallback(
+        (nextAlphaValue: string) => {
+            if (!/^\d{0,3}$/.test(nextAlphaValue)) {
+                return;
+            }
+
+            setAlphaValue(nextAlphaValue);
+
+            if (nextAlphaValue === '') {
+                return;
+            }
+
+            emitChange(parsed.color, Number(nextAlphaValue));
+        },
+        [emitChange, parsed.color]
+    );
 
     const handleAlphaBlur = useCallback(() => {
         const alpha = normalizeAlphaInput(Number(alphaValue));
@@ -161,12 +174,15 @@ export function HexColorEditor({
         emitChange(parsed.color, alpha);
     }, [alphaValue, emitChange, parsed.color]);
 
-    const handleAlphaRunnerChange = useCallback((nextAlpha: number) => {
-        const alpha = normalizeAlphaInput(nextAlpha);
+    const handleAlphaRunnerChange = useCallback(
+        (nextAlpha: number) => {
+            const alpha = normalizeAlphaInput(nextAlpha);
 
-        setAlphaValue(String(alpha));
-        emitChange(parsed.color, alpha);
-    }, [emitChange, parsed.color]);
+            setAlphaValue(String(alpha));
+            emitChange(parsed.color, alpha);
+        },
+        [emitChange, parsed.color]
+    );
 
     useRunner(alphaFieldRef, {
         value: parsed.alpha,
@@ -179,53 +195,58 @@ export function HexColorEditor({
         shouldRun: target => target.closest('[data-scrub-handle]') != null,
     });
 
-    const handleBlur = useCallback((event: FocusEvent<HTMLDivElement>) => {
-        commitInputValue();
-        onBlur?.(event);
-    }, [commitInputValue, onBlur]);
-
-    const handleKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
-        if (event.key === 'Enter') {
+    const handleBlur = useCallback(
+        (event: FocusEvent<HTMLDivElement>) => {
             commitInputValue();
-        }
-        else if (event.key === 'Escape') {
-            setInputValue(colorToHexInput(parsed.color));
-        }
-        else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
-            if (event.target === hexInputRef.current) {
-                event.preventDefault();
+            onBlur?.(event);
+        },
+        [commitInputValue, onBlur]
+    );
 
-                const direction = event.key === 'ArrowUp' ? 1 : -1;
-                const step = event.shiftKey ? 16 : 1;
-                const nextColor = shiftHexColor(parsed.color, direction * step);
+    const handleKeyDown = useCallback(
+        (event: KeyboardEvent<HTMLDivElement>) => {
+            if (event.key === 'Enter') {
+                commitInputValue();
+            } else if (event.key === 'Escape') {
+                setInputValue(colorToHexInput(parsed.color));
+            } else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+                if (event.target === hexInputRef.current) {
+                    event.preventDefault();
 
-                setInputValue(colorToHexInput(nextColor));
-                emitChange(nextColor, Number(alphaValue));
+                    const direction = event.key === 'ArrowUp' ? 1 : -1;
+                    const step = event.shiftKey ? 16 : 1;
+                    const nextColor = shiftHexColor(parsed.color, direction * step);
+
+                    setInputValue(colorToHexInput(nextColor));
+                    emitChange(nextColor, Number(alphaValue));
+                }
             }
-        }
 
-        onKeyDown?.(event);
-    }, [alphaValue, commitInputValue, emitChange, onKeyDown, parsed.color]);
+            onKeyDown?.(event);
+        },
+        [alphaValue, commitInputValue, emitChange, onKeyDown, parsed.color]
+    );
 
     const colorWithAlpha = withAlpha(parsed.color, parsed.alpha);
-    const renderedChildren = typeof children === 'function'
-        ? children({
-            value: serializeColorInputValue(parsed.color, parsed.alpha, requestedFormat),
-            color: colorWithAlpha,
-            alpha: parsed.alpha,
-            format: requestedFormat,
-            inputValue,
-            isInvalid: Boolean(isInvalid || (!parsed.color && inputValue)),
-        } satisfies ColorInputRenderState)
-        : children;
+    const renderedChildren =
+        typeof children === 'function'
+            ? children({
+                  value: serializeColorInputValue(parsed.color, parsed.alpha, requestedFormat),
+                  color: colorWithAlpha,
+                  alpha: parsed.alpha,
+                  format: requestedFormat,
+                  inputValue,
+                  isInvalid: Boolean(isInvalid || (!parsed.color && inputValue)),
+              } satisfies ColorInputRenderState)
+            : children;
     const swatchSlot = filterSlots(
         renderedChildren,
         'swatch',
         <ColorSwatch
             slot="swatch"
-            size={ size }
-            color={ colorWithAlpha }
-            isDisabled={ isDisabled }
+            size={size}
+            color={colorWithAlpha}
+            isDisabled={isDisabled}
             aria-label="Selected color"
         />
     );
@@ -233,75 +254,73 @@ export function HexColorEditor({
     const alphaSlot = filterSlots(
         renderedChildren,
         'alpha',
-        <div ref={ alphaFieldRef } className={ styles.alphaField }>
-            <div className={ styles.alphaScrubHandle } data-scrub-handle />
+        <div ref={alphaFieldRef} className={styles.alphaField}>
+            <div className={styles.alphaScrubHandle} data-scrub-handle />
             <Input
-                className={ styles.alphaInput }
+                className={styles.alphaInput}
                 type="text"
                 variant="inline"
-                size={ size }
+                size={size}
                 inputMode="numeric"
-                value={ alphaValue }
-                isDisabled={ isDisabled }
-                isReadOnly={ isReadOnly }
+                value={alphaValue}
+                isDisabled={isDisabled}
+                isReadOnly={isReadOnly}
                 aria-label="Color opacity"
-                onChange={ handleAlphaChange }
-                onBlur={ handleAlphaBlur }
+                onChange={handleAlphaChange}
+                onBlur={handleAlphaBlur}
             />
-            <span className={ styles.alphaSuffix } aria-hidden>%</span>
+            <span className={styles.alphaSuffix} aria-hidden>
+                %
+            </span>
         </div>
     );
-    const submittedValue = parsed.color
-        ? serializeColorObject(parsed.color, parsed.alpha, requestedFormat, 'hex')
-        : '';
+    const submittedValue = parsed.color ? serializeColorObject(parsed.color, parsed.alpha, requestedFormat, 'hex') : '';
 
     return (
-        <Provider values={ [[SlotContext, { slots: COLOR_INPUT_SLOTS }]] }>
+        <Provider values={[[SlotContext, { slots: COLOR_INPUT_SLOTS }]]}>
             <div
-                ref={ ref }
-                className={ cn(styles.root, className) }
-                data-size={ size }
-                data-variant={ variant }
+                ref={ref}
+                className={cn(styles.root, className)}
+                data-size={size}
+                data-variant={variant}
                 data-editor="hex"
-                data-disabled={ isDisabled || undefined }
-                data-readonly={ isReadOnly || undefined }
-                data-invalid={ isInvalid || undefined }
-                data-active={ isActive || undefined }
-                onBlur={ handleBlur }
-                onKeyDown={ handleKeyDown }
-                { ...props }
+                data-disabled={isDisabled || undefined}
+                data-readonly={isReadOnly || undefined}
+                data-invalid={isInvalid || undefined}
+                data-active={isActive || undefined}
+                onBlur={handleBlur}
+                onKeyDown={handleKeyDown}
+                {...props}
             >
-                <div className={ styles.colorField } data-single={ !showAlpha || undefined }>
+                <div className={styles.colorField} data-single={!showAlpha || undefined}>
                     <Box direction="row" align="center" justify="center" className="flex-shrink-0">
-                        { swatchSlot }
+                        {swatchSlot}
                     </Box>
 
                     <Input
-                        className={ styles.hexInput }
-                        inputRef={ mergedInputRef }
+                        className={styles.hexInput}
+                        inputRef={mergedInputRef}
                         type="text"
                         variant="inline"
-                        size={ size }
-                        value={ inputValue }
-                        placeholder={ placeholder }
-                        isDisabled={ isDisabled }
-                        isReadOnly={ isReadOnly }
-                        isInvalid={ isInvalid }
-                        aria-label={ props['aria-label'] ?? 'Color' }
-                        autoFocus={ autoFocus }
-                        spellCheck={ false }
-                        onChange={ handleInputChange }
-                        onPaste={ handleInputPaste }
+                        size={size}
+                        value={inputValue}
+                        placeholder={placeholder}
+                        isDisabled={isDisabled}
+                        isReadOnly={isReadOnly}
+                        isInvalid={isInvalid}
+                        aria-label={props['aria-label'] ?? 'Color'}
+                        autoFocus={autoFocus}
+                        spellCheck={false}
+                        onChange={handleInputChange}
+                        onPaste={handleInputPaste}
                     />
 
-                    { restSlots }
+                    {restSlots}
                 </div>
 
-                <Show when={ showAlpha }>
-                    { alphaSlot }
-                </Show>
+                <Show when={showAlpha}>{alphaSlot}</Show>
 
-                <HiddenColorInput name={ name } form={ form } value={ submittedValue } isDisabled={ isDisabled } />
+                <HiddenColorInput name={name} form={form} value={submittedValue} isDisabled={isDisabled} />
             </div>
         </Provider>
     );

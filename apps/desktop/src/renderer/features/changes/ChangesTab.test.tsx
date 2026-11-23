@@ -1,0 +1,1447 @@
+// @vitest-environment happy-dom
+import { observer } from 'mobx-react-lite';
+import { act } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import {
+    createFixtureData,
+    FIXTURE_GIT_COMMITS,
+    FIXTURE_PERSONAL_PROJECT_ID,
+    FIXTURE_PROJECT_ID,
+    FIXTURE_WORKSPACE_CHAT_ID,
+    type FixtureData,
+    withFixtureWorkspace,
+} from '../../daemon/fixtureData';
+import { FixtureTransport } from '../../daemon/fixtureTransport';
+import { overrideTransport } from '../../daemon/testing';
+import { type Transport, TransportError } from '../../daemon/transport';
+import { RootStore, RootStoreProvider } from '../../stores';
+import ChangesTab from './ChangesTab';
+import { gitFactsOf } from './gitFacts';
+import { changesSidebarLayout } from './sidebarLayout';
+
+import type { GitChanges, GitFileSides } from '@clowdy/protocol';
+
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+// happy-dom has no layout: the view builds its resizable group once its box has a width, which it is told.
+vi.mock('./useBoxWidth', () => ({ useBoxWidth: () => [() => undefined, 900] }));
+// The diff view has specs of its own (`packages/file-manager/specs`); here it only has to be given the right texts.
+vi.mock('@clowdy/file-manager/react', () => ({
+    DiffView: ({
+        path,
+        original,
+        modified,
+        estimatedLines,
+    }: {
+        path: string;
+        original: string | null;
+        modified: string | null;
+        estimatedLines?: number;
+    }) => (
+        <pre
+            data-diff={path}
+            data-lines={estimatedLines}
+        >{`${original === null ? '(none)' : original}=>${modified === null ? '(none)' : modified}`}</pre>
+    ),
+    // What a card asks for once a message box is mounted (`useAddToChat`).
+    selectionAction: () => [],
+}));
+// The babel plugin that makes the app's components observers does not run under Vitest: the parts of the tab are, to follow the model they read.
+vi.mock('./ChangesView', async importOriginal => ({
+    ...(await importOriginal<typeof import('./ChangesView')>()),
+    ChangesView: observer((await importOriginal<typeof import('./ChangesView')>()).ChangesView),
+}));
+vi.mock('./ChangesList', async importOriginal => ({
+    ChangesList: observer((await importOriginal<typeof import('./ChangesList')>()).ChangesList),
+}));
+vi.mock('./ChangesToolbar', async importOriginal => ({
+    ...(await importOriginal<typeof import('./ChangesToolbar')>()),
+    ChangesToolbar: observer((await importOriginal<typeof import('./ChangesToolbar')>()).ChangesToolbar),
+}));
+vi.mock('./ChangesSidebar', async importOriginal => ({
+    ...(await importOriginal<typeof import('./ChangesSidebar')>()),
+    ChangesSidebar: observer((await importOriginal<typeof import('./ChangesSidebar')>()).ChangesSidebar),
+}));
+vi.mock('./CommitBox', async importOriginal => ({
+    CommitBox: observer((await importOriginal<typeof import('./CommitBox')>()).CommitBox),
+}));
+vi.mock('./DiffCard', async importOriginal => ({
+    DiffCard: observer((await importOriginal<typeof import('./DiffCard')>()).DiffCard),
+}));
+vi.mock('./PullRequestChip', async importOriginal => ({
+    PullRequestChip: observer((await importOriginal<typeof import('./PullRequestChip')>()).PullRequestChip),
+}));
+
+/** What watches elements for the scroller's edge: it says nothing until the test says what came near. */
+const watchers = new Set<{ callback: IntersectionObserverCallback; targets: Set<Element> }>();
+
+class FakeIntersectionObserver {
+    readonly #entry: { callback: IntersectionObserverCallback; targets: Set<Element> };
+
+    constructor(callback: IntersectionObserverCallback) {
+        this.#entry = { callback, targets: new Set() };
+        watchers.add(this.#entry);
+    }
+
+    observe(target: Element) {
+        this.#entry.targets.add(target);
+    }
+
+    disconnect() {
+        watchers.delete(this.#entry);
+    }
+
+    unobserve() {}
+    takeRecords() {
+        return [];
+    }
+}
+
+/** Tells the cards that `select` says that they came near the scroller's edge, or went far from it. */
+const moveCards = (isIntersecting: boolean, select: (card: Element) => boolean) =>
+    act(async () => {
+        for (const { callback, targets } of [...watchers]) {
+            const moved = [...targets].filter(select);
+
+            if (moved.length > 0)
+                callback(
+                    moved.map(target => ({ isIntersecting, target }) as IntersectionObserverEntry),
+                    {} as IntersectionObserver
+                );
+        }
+    });
+
+/** Brings the cards that `select` says are near the scroller's edge into reach. */
+const bringNear = (select: (card: Element) => boolean = () => true) => moveCards(true, select);
+
+/** Takes the cards that `select` says out of reach of the scroller's edge, as a scroll past them does. */
+const sendAway = (select: (card: Element) => boolean) => moveCards(false, select);
+
+let container: HTMLDivElement;
+let root: Root;
+let store: RootStore;
+let transport: Transport;
+let scrolled: HTMLElement[];
+
+const Tab = observer(ChangesTab);
+
+const settle = () =>
+    act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 0));
+    });
+const press = (target: Element) =>
+    act(async () => {
+        target.dispatchEvent(
+            new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true })
+        );
+        target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+        target.dispatchEvent(
+            new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true })
+        );
+        target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
+        (target as HTMLElement).click();
+    });
+
+const cards = () => [...container.querySelectorAll<HTMLElement>('[data-card]')];
+const cardPaths = () => cards().map(card => card.dataset.card);
+const card = (path: string) => cards().find(element => element.dataset.card === path)!;
+const sidebarFiles = () => [...container.querySelectorAll<HTMLButtonElement>('[aria-label="Changed files"] button')];
+const sidebarPaths = () => sidebarFiles().map(row => row.querySelector('[class*="name"]')?.textContent);
+const commitRows = () => [
+    ...container.querySelectorAll<HTMLButtonElement>('[aria-label="Committed on branch"] button'),
+];
+const scopeTrigger = () => container.querySelector<HTMLButtonElement>('button[aria-haspopup="listbox"]')!;
+const options = () => [...document.querySelectorAll('[role="option"]')];
+const filter = () => container.querySelector<HTMLInputElement>('input[aria-label="Filter files"]')!;
+const summary = () => container.querySelector('[aria-label="Summary of the changes"]')?.textContent;
+const button = (label: string) => container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!;
+
+async function type(text: string) {
+    await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(filter(), text);
+        filter().dispatchEvent(new Event('input', { bubbles: true }));
+    });
+}
+
+/** Starts the store on the fixtures, with a chat in a worktree open on the Changes tab, `tweak` having its say about the data first and `wrap` about the transport. */
+async function start({
+    tweak,
+    wrap,
+    chat = FIXTURE_WORKSPACE_CHAT_ID,
+}: {
+    tweak?: (data: FixtureData) => void;
+    wrap?: (base: FixtureTransport) => Transport;
+    chat?: string | null;
+} = {}) {
+    const data = withFixtureWorkspace(createFixtureData());
+
+    tweak?.(data);
+
+    const base = new FixtureTransport({ data });
+
+    transport = wrap ? wrap(base) : base;
+    store = new RootStore(transport);
+    await store.load();
+    store.selectProject(FIXTURE_PROJECT_ID);
+
+    if (chat) store.ui.forProject(FIXTURE_PROJECT_ID).openChat(chat);
+}
+
+async function draw() {
+    act(() =>
+        root.render(
+            <RootStoreProvider value={store}>
+                <Tab />
+            </RootStoreProvider>
+        )
+    );
+    await settle();
+    await settle();
+}
+
+beforeEach(() => {
+    localStorage.clear();
+    watchers.clear();
+    scrolled = [];
+    vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver);
+    HTMLElement.prototype.scrollIntoView = function scrollIntoView(this: HTMLElement) {
+        scrolled.push(this);
+    };
+
+    if (!changesSidebarLayout.open) changesSidebarLayout.toggle();
+
+    container = document.createElement('div');
+    document.body.append(container);
+    root = createRoot(container);
+});
+
+afterEach(() => {
+    act(() => root.unmount());
+    container.remove();
+    store.dispose();
+    vi.unstubAllGlobals();
+    localStorage.clear();
+});
+
+describe('the Changes tab of a chat in a worktree', () => {
+    it('has a card for each file of all the changes, the totals of the list, and the files and commits in the sidebar', async () => {
+        await start();
+        await draw();
+
+        expect(cardPaths()).toEqual([
+            'assets/logo.png',
+            'notes.md',
+            'src/booking/price.test.ts',
+            'src/booking/price.ts',
+            'src/booking/weekend.ts',
+            'src/limits.ts',
+        ]);
+        expect(summary()).toBe('6 files,+112−8');
+        expect(scopeTrigger().textContent).toContain('All changes');
+        expect(sidebarPaths()).toEqual([
+            'logo.png',
+            'notes.md',
+            'price.test.ts',
+            'price.ts',
+            'weekend.ts',
+            'limits.ts',
+        ]);
+        expect(commitRows().map(row => row.textContent)).toEqual([
+            expect.stringContaining('Charge a weekend surcharge'),
+            expect.stringContaining('Price a booking by the day'),
+        ]);
+        expect(container.querySelector('[aria-label="Changes sidebar"]')?.textContent).toContain('clowdy/ab12cd34');
+        expect(container.querySelector('[aria-label="Changes sidebar"]')?.textContent).toContain(
+            '→ origin/main · 2 ahead, 1 behind'
+        );
+        expect(container.querySelector('[aria-label="Pull request"]')?.textContent).toContain('PR #128');
+    });
+
+    it("opens every card, and reads a file's texts only once its card is near the scroller's edge", async () => {
+        await start();
+
+        const read = vi.spyOn(transport, 'getGitFile');
+
+        await draw();
+
+        expect(cards().every(element => element.hasAttribute('data-open'))).toBe(true);
+        expect(read).not.toHaveBeenCalled();
+
+        await bringNear(element => element === card('src/booking/price.ts'));
+        await settle();
+
+        expect(read).toHaveBeenCalledTimes(1);
+        // With the list's own start, which saves the daemon the lookup of the base.
+        expect(read).toHaveBeenCalledWith(
+            FIXTURE_PROJECT_ID,
+            { folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' },
+            'all',
+            'src/booking/price.ts',
+            undefined,
+            '3'.repeat(40)
+        );
+        expect(card('src/booking/price.ts').querySelector('[data-diff]')?.textContent).toContain('=>');
+        expect(card('notes.md').querySelector('[data-diff]')).toBeNull();
+    });
+
+    it("draws a file's diff with the two texts the daemon read, and a box of the lines its list counted before they come", async () => {
+        await start();
+        await draw();
+        await bringNear();
+        await settle();
+
+        const diff = card('src/limits.ts').querySelector<HTMLElement>('[data-diff]')!;
+
+        expect(diff.textContent).toBe('export const MAX_DAYS = 30;\n=>export const MAX_DAYS = 28;\n');
+        // `src/limits.ts` changes one line and removes one: the guess is those two, the context, and never fewer than a dozen.
+        expect(diff.dataset.lines).toBe('12');
+        expect(card('src/booking/weekend.ts').querySelector('[data-diff]')?.textContent?.startsWith('(none)=>')).toBe(
+            true
+        );
+    });
+
+    it('says a binary file is binary, and a file too large to show is, without reading either', async () => {
+        await start({
+            tweak: () => undefined,
+            wrap: base =>
+                overrideTransport(base, {
+                    getGitChanges: async (project, place, scope) => {
+                        const answer = await base.getGitChanges(project, place, scope);
+
+                        if (!answer.isRepository || scope !== 'all') return answer;
+
+                        return {
+                            ...answer,
+                            files: answer.files.map(file =>
+                                file.path === 'src/limits.ts'
+                                    ? { ...file, tooLarge: true as const, additions: 30_000, deletions: 5 }
+                                    : file
+                            ),
+                        };
+                    },
+                }),
+        });
+
+        const read = vi.spyOn(transport, 'getGitFile');
+
+        await draw();
+        await bringNear();
+        await settle();
+
+        expect(card('assets/logo.png').textContent).toContain('Binary file');
+        expect(card('src/limits.ts').textContent).toContain('Too large to show');
+        expect(read.mock.calls.map(call => call[3]).sort()).toEqual([
+            'notes.md',
+            'src/booking/price.test.ts',
+            'src/booking/price.ts',
+            'src/booking/weekend.ts',
+        ]);
+    });
+
+    it('says a file whose text could not be read could not be, and reads it again on a press', async () => {
+        let failures = 1;
+
+        await start({
+            wrap: base =>
+                overrideTransport(base, {
+                    getGitFile: async (project, place, scope, path, oldPath, from) => {
+                        if (path === 'notes.md' && failures-- > 0)
+                            throw new TransportError('The daemon answered 503', 503);
+
+                        return base.getGitFile(project, place, scope, path, oldPath, from);
+                    },
+                }),
+        });
+        await draw();
+        await bringNear();
+        await settle();
+
+        expect(card('notes.md').textContent).toContain("Couldn't read this file");
+
+        const retry = [...card('notes.md').querySelectorAll('button')].find(
+            element => element.textContent === 'Try again'
+        )!;
+
+        await press(retry);
+        await settle();
+
+        expect(card('notes.md').textContent).not.toContain("Couldn't read this file");
+        expect(card('notes.md').querySelector('[data-diff]')?.textContent).toContain('# Notes');
+    });
+
+    it("says a file the daemon takes for binary or too large after its list did not is, with the daemon's word", async () => {
+        await start({
+            wrap: base =>
+                overrideTransport(base, {
+                    getGitFile: async (project, place, scope, path, oldPath, from): Promise<GitFileSides> => {
+                        const sides = await base.getGitFile(project, place, scope, path, oldPath, from);
+
+                        if (path === 'notes.md') return { state: 'binary', revision: sides.revision };
+
+                        return path === 'src/limits.ts' ? { state: 'too_large', revision: sides.revision } : sides;
+                    },
+                }),
+        });
+        await draw();
+        await bringNear();
+        await settle();
+
+        expect(card('notes.md').textContent).toContain('Binary file');
+        expect(card('src/limits.ts').textContent).toContain('Too large to show');
+    });
+
+    it('shows what a file is: added, modified or deleted, with its lines in the colours of the tool cards, and the old path of a rename', async () => {
+        await start({
+            wrap: base =>
+                overrideTransport(base, {
+                    getGitChanges: async (project, place, scope) => {
+                        const answer = await base.getGitChanges(project, place, scope);
+
+                        if (!answer.isRepository || scope !== 'all') return answer;
+
+                        return {
+                            ...answer,
+                            files: [
+                                ...answer.files,
+                                {
+                                    path: 'src/gone.ts',
+                                    kind: 'deleted',
+                                    additions: 0,
+                                    deletions: 9,
+                                    revision: `100644:${'6'.repeat(40)}:000000:${'0'.repeat(40)}`,
+                                },
+                                {
+                                    path: 'src/renamed.ts',
+                                    oldPath: 'src/old-name.ts',
+                                    kind: 'renamed',
+                                    additions: 1,
+                                    deletions: 1,
+                                    revision: `100644:${'7'.repeat(40)}:100644:${'8'.repeat(40)}`,
+                                },
+                            ],
+                        } satisfies GitChanges;
+                    },
+                }),
+        });
+        await draw();
+
+        const kinds = (path: string) => card(path).querySelector('[title]')?.getAttribute('title');
+
+        expect(kinds('notes.md')).toBe('Added');
+        expect(kinds('src/booking/price.ts')).toBe('Modified');
+        expect(kinds('src/gone.ts')).toBe('Deleted');
+        expect(kinds('src/renamed.ts')).toBe('Renamed');
+        expect(card('src/renamed.ts').textContent).toContain('Renamed from src/old-name.ts');
+        expect(card('src/booking/price.ts').textContent).not.toContain('Renamed from');
+        expect(card('src/gone.ts').textContent).toContain('−9');
+        expect(card('src/gone.ts').textContent).toContain('+0');
+
+        const counts = card('src/booking/price.ts').querySelectorAll('[class*="counts"] span');
+
+        expect(counts[0]?.className).toMatch(/success/);
+        expect(counts[1]?.className).toMatch(/danger/);
+    });
+
+    it('sets a path right to left so it is cut at its start, in a run of its own that reads left to right, so dots and brackets stay and a name in an RTL script is not turned round', async () => {
+        await start();
+        await draw();
+
+        const label = card('src/booking/price.ts').querySelector('[dir="rtl"]')!;
+
+        expect(label.textContent).toBe('src/booking/price.ts');
+        expect(label.getAttribute('title')).toBe('src/booking/price.ts');
+        // An isolate, not an override: `bdo` would draw the letters of a Hebrew name backwards.
+        expect([...label.children].map(child => `${child.tagName.toLowerCase()}:${child.getAttribute('dir')}`)).toEqual(
+            ['bdi:ltr']
+        );
+        expect(label.querySelector('bdo')).toBeNull();
+    });
+
+    it('copies the path of a file from its card', async () => {
+        const write = vi.fn().mockResolvedValue(undefined);
+
+        vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText: write } });
+        await start();
+        await draw();
+        await press(button('Copy the path of src/booking/price.ts'));
+
+        expect(write).toHaveBeenCalledExactlyOnceWith('src/booking/price.ts');
+    });
+
+    it('folds a card on a press on its header, and opens it again, and has a button to fold every card and one to open them all', async () => {
+        await start();
+        await draw();
+        await bringNear();
+        await settle();
+
+        await press(button('Fold src/booking/price.ts'));
+        expect(card('src/booking/price.ts').hasAttribute('data-open')).toBe(false);
+        expect(card('src/booking/price.ts').querySelector('[data-diff]')).toBeNull();
+
+        await press(button('Unfold src/booking/price.ts'));
+        expect(card('src/booking/price.ts').hasAttribute('data-open')).toBe(true);
+
+        await press(button('Collapse all files'));
+        expect(cards().some(element => element.hasAttribute('data-open'))).toBe(false);
+        expect(button('Collapse all files').disabled).toBe(true);
+
+        await press(button('Expand all files'));
+        expect(cards().every(element => element.hasAttribute('data-open'))).toBe(true);
+        expect(button('Expand all files').disabled).toBe(true);
+    });
+});
+
+describe('the scope', () => {
+    it('has the entries of the scope menu: all changes, the branch, what is not committed and each commit of the branch, newest first', async () => {
+        await start();
+        await draw();
+        await press(scopeTrigger());
+        await vi.waitFor(() => expect(options().length).toBeGreaterThan(0));
+
+        expect(options().map(option => option.textContent)).toEqual([
+            'All changes',
+            'Branch',
+            'Uncommitted',
+            'b744444 Charge a weekend surcharge',
+            'a155555 Price a booking by the day',
+        ]);
+    });
+
+    it('changes the list with the scope chosen from the menu', async () => {
+        await start();
+        await draw();
+        await press(scopeTrigger());
+        await vi.waitFor(() => expect(options().length).toBeGreaterThan(0));
+        await press(options().find(option => option.textContent === 'Uncommitted')!);
+        await settle();
+
+        expect(scopeTrigger().textContent).toContain('Uncommitted');
+        expect(cardPaths()).toEqual(['notes.md', 'src/booking/price.ts', 'src/limits.ts']);
+        expect(sidebarPaths()).toEqual(['notes.md', 'price.ts', 'limits.ts']);
+        expect(summary()).toBe('3 files,+10−3');
+    });
+
+    it('shows one commit alone when it is pressed in the sidebar, goes back to all changes on a second press on it, and on the row that says so', async () => {
+        await start();
+        await draw();
+
+        const second = FIXTURE_GIT_COMMITS[1]!;
+
+        await press(commitRows()[1]!);
+        await settle();
+
+        expect(scopeTrigger().textContent).toContain(`${second.shortSha} ${second.subject}`);
+        expect(cardPaths()).toEqual(['assets/logo.png', 'src/booking/price.test.ts', 'src/booking/price.ts']);
+        expect(commitRows()[0]!.textContent).toContain('Back to all changes');
+        expect(commitRows()[2]!.getAttribute('aria-pressed')).toBe('true');
+
+        // A second press on the same commit clears it.
+        await press(commitRows()[2]!);
+        await settle();
+        expect(scopeTrigger().textContent).toContain('All changes');
+        expect(cards()).toHaveLength(6);
+        expect(
+            commitRows()
+                .map(row => row.textContent)
+                .join('')
+        ).not.toContain('Back to all changes');
+
+        // And so does the row that goes back.
+        await press(commitRows()[0]!);
+        await settle();
+        expect(cards()).toHaveLength(2);
+        expect(cardPaths()).toEqual(['src/booking/price.ts', 'src/booking/weekend.ts']);
+        expect(commitRows()[0]!.textContent).toContain('Back to all changes');
+
+        await press(commitRows()[0]!);
+        await settle();
+        expect(cards()).toHaveLength(6);
+    });
+
+    it('has the commit box in the sidebar whichever scope is shown, with the uncommitted files read for it and the commit sent from the scope that is not theirs', async () => {
+        await start();
+
+        const read = vi.spyOn(transport, 'getGitChanges');
+        const commit = vi.spyOn(transport, 'commitGit');
+
+        await draw();
+
+        const commitBox = () => container.querySelector('[aria-label="Commit"]');
+        const ticks = () =>
+            [...container.querySelectorAll<HTMLInputElement>('[aria-label="Commit"] input[type="checkbox"]')].map(
+                tick => tick.getAttribute('aria-label')
+            );
+
+        // The scope is all changes, six files, and the box lists the three that are not committed, from a read of its own.
+        expect(cards()).toHaveLength(6);
+        expect(ticks()).toEqual(['Tick every file', 'notes.md', 'src/booking/price.ts', 'src/limits.ts']);
+        expect(read.mock.calls.filter(call => call[2] === 'uncommitted')).toHaveLength(1);
+
+        // Another scope changes the cards and the files above it, and not the box.
+        await act(async () => {
+            scopeTrigger().click();
+        });
+        await act(async () => {
+            options()
+                .find(option => option.textContent === 'Branch')!
+                .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        });
+        await settle();
+        expect(scopeTrigger().textContent).toContain('Branch');
+        expect(ticks()).toEqual(['Tick every file', 'notes.md', 'src/booking/price.ts', 'src/limits.ts']);
+
+        await act(async () => {
+            const text = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Commit message"]')!;
+
+            Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(
+                text,
+                'feat: from the branch scope'
+            );
+            text.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        await press(
+            [...commitBox()!.querySelectorAll('button')].find(candidate => candidate.textContent?.startsWith('Commit'))!
+        );
+        await settle();
+        await settle();
+
+        expect(commit).toHaveBeenCalledWith(
+            FIXTURE_PROJECT_ID,
+            { folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' },
+            ['notes.md', 'src/booking/price.ts', 'src/limits.ts'],
+            'feat: from the branch scope'
+        );
+        expect(commitBox()?.textContent).toContain('Committed c0ffee0');
+    });
+
+    it("reads again only when the facts start a round of reads: a refresh of the store and the window's focus reach it, and nothing else does", async () => {
+        await start();
+
+        const read = vi.spyOn(transport, 'getGitChanges');
+
+        await draw();
+
+        const allReads = () => read.mock.calls.filter(call => call[2] === 'all').length;
+
+        expect(allReads()).toBe(1);
+
+        await settle();
+        await settle();
+        expect(allReads()).toBe(1);
+
+        const facts = gitFactsOf(transport);
+
+        await act(async () => {
+            facts.refresh({ projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' });
+        });
+        await settle();
+
+        expect(allReads()).toBe(2);
+
+        await act(async () => {
+            window.dispatchEvent(new Event('focus'));
+        });
+        await settle();
+
+        expect(allReads()).toBe(3);
+    });
+
+    it("reads a refreshed list's files again only where their revision changed", async () => {
+        let edited = false;
+
+        await start({
+            wrap: base =>
+                overrideTransport(base, {
+                    getGitChanges: async (project, place, scope) => {
+                        const answer = await base.getGitChanges(project, place, scope);
+
+                        if (!edited || !answer.isRepository || scope !== 'all') return answer;
+
+                        return {
+                            ...answer,
+                            files: answer.files.map(file =>
+                                file.path === 'src/limits.ts'
+                                    ? { ...file, revision: `100644:${'d'.repeat(40)}:100644:${'9'.repeat(40)}` }
+                                    : file
+                            ),
+                        };
+                    },
+                }),
+        });
+
+        const read = vi.spyOn(transport, 'getGitFile');
+
+        await draw();
+        await bringNear();
+        await settle();
+
+        expect(read).toHaveBeenCalledTimes(5);
+
+        edited = true;
+        read.mockClear();
+        await act(async () => {
+            gitFactsOf(transport).refresh({
+                projectId: FIXTURE_PROJECT_ID,
+                folderId: 'fld_car_rental',
+                workspaceId: 'wks_ab12cd34',
+            });
+        });
+        await settle();
+        await bringNear();
+        await settle();
+
+        expect(read.mock.calls.map(call => call[3])).toEqual(['src/limits.ts']);
+    });
+});
+
+describe('the filter', () => {
+    it("narrows the cards and the sidebar's files by what is typed, and says how many of the files are shown", async () => {
+        await start();
+        await draw();
+
+        expect(filter().placeholder).toBe('Filter files, e.g. *.md, docs/**, !*.test.ts');
+
+        await type('src/**, !*.test.ts');
+
+        expect(cardPaths()).toEqual(['src/booking/price.ts', 'src/booking/weekend.ts', 'src/limits.ts']);
+        expect(sidebarPaths()).toEqual(['price.ts', 'weekend.ts', 'limits.ts']);
+        expect(summary()).toBe('3 of 6 files,+72−8');
+
+        await type('*.md');
+        expect(cardPaths()).toEqual(['notes.md']);
+
+        await type('');
+        expect(cards()).toHaveLength(6);
+    });
+
+    it('says no file matches, and clears the filter from the button that says so', async () => {
+        await start();
+        await draw();
+        await type('*.rs');
+
+        expect(cards()).toHaveLength(0);
+        expect(container.textContent).toContain('No files match the filter');
+        expect(container.querySelector('[aria-label="Changed files"]')?.textContent).toContain(
+            'No files match the filter'
+        );
+
+        await press(
+            [...container.querySelectorAll('button')].find(element => element.textContent === 'Clear the filter')!
+        );
+
+        expect(cards()).toHaveLength(6);
+    });
+});
+
+describe('the sidebar', () => {
+    it('brings the card of a file to the top and opens it when its row is pressed', async () => {
+        await start();
+        await draw();
+        await press(button('Fold src/booking/price.ts'));
+
+        expect(card('src/booking/price.ts').hasAttribute('data-open')).toBe(false);
+
+        await press(sidebarFiles()[3]!);
+
+        expect(scrolled).toEqual([card('src/booking/price.ts')]);
+        expect(card('src/booking/price.ts').hasAttribute('data-open')).toBe(true);
+    });
+
+    it('has the base, how far the branch is from it and the pull request with its checks, and opens the repository on GitHub', async () => {
+        const open = vi.spyOn(window, 'open').mockReturnValue(null);
+
+        await start();
+        await draw();
+
+        const sidebar = container.querySelector('[aria-label="Changes sidebar"]')!;
+
+        expect(sidebar.querySelector('[aria-label^="Checks"]')).not.toBeNull();
+
+        await press(sidebar.querySelector('button[aria-label="Open the repository on GitHub"]')!);
+
+        expect(open).toHaveBeenCalledExactlyOnceWith('https://github.com/acme/car-rental', '_blank', 'noopener');
+    });
+
+    it('is hidden by a press on its button, which is then in the toolbar of the diffs, and comes back on a second press', async () => {
+        await start();
+        await draw();
+
+        expect(container.querySelector('[aria-label="Changes sidebar"]')).not.toBeNull();
+
+        await press(container.querySelector('[data-sidebar-toggle]')!);
+        await settle();
+
+        expect(container.querySelector('[aria-label="Changes sidebar"]')).toBeNull();
+        expect(container.querySelectorAll('[data-sidebar-toggle]')).toHaveLength(1);
+        expect(changesSidebarLayout.open).toBe(false);
+        expect(JSON.parse(localStorage.getItem('clowdy:changes-sidebar-open') ?? 'null')).toBe(false);
+
+        await press(container.querySelector('[data-sidebar-toggle]')!);
+        await settle();
+
+        expect(container.querySelector('[aria-label="Changes sidebar"]')).not.toBeNull();
+    });
+});
+
+describe('the viewed files', () => {
+    const tickOf = (path: string) => card(path).querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+    const tick = (path: string) =>
+        act(async () => {
+            tickOf(path).click();
+            await new Promise(resolve => setTimeout(resolve, 0));
+        });
+    const sidebarRow = (path: string) =>
+        sidebarFiles().find(row => row.textContent?.includes(path.split('/').at(-1)!))!;
+    const viewedTicks = () =>
+        sidebarFiles()
+            .filter(row => row.querySelector('[aria-label="Viewed"]') !== null)
+            .map(row => row.querySelector('[class*="name"]')?.textContent);
+    const hideViewed = () => button('Hide viewed');
+    /** The fixture's own transport, which holds the marks: the tab is drawn again over it, the way a window is over the daemon. */
+    let shared: FixtureTransport | undefined;
+    const share = (base: FixtureTransport) => {
+        shared = base;
+
+        return overrideTransport(base, {});
+    };
+
+    it('gives every card a Viewed checkbox, and ticking one shuts its card, ticks its row in the sidebar and counts it in the summary', async () => {
+        await start();
+        await draw();
+
+        expect(cards().map(element => tickOf(element.dataset.card!).checked)).toEqual([
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+        ]);
+        expect(cards().every(element => element.textContent?.includes('Viewed'))).toBe(true);
+        // Each checkbox is named by its file as well as by `Viewed`, so a list of them is not fifty of the same name.
+        expect(cards().map(element => tickOf(element.dataset.card!).getAttribute('aria-label'))).toEqual(
+            cards().map(element => `Viewed ${element.dataset.card}`)
+        );
+        expect(summary()).toBe('6 files,+112−8');
+
+        const write = vi.spyOn(transport, 'setGitViewed');
+
+        await tick('notes.md');
+
+        expect(write).toHaveBeenCalledExactlyOnceWith(
+            FIXTURE_PROJECT_ID,
+            { folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' },
+            'all',
+            'notes.md',
+            expect.stringMatching(/^000000:0+:100644:b+$/)
+        );
+        expect(tickOf('notes.md').checked).toBe(true);
+        expect(card('notes.md').hasAttribute('data-open')).toBe(false);
+        expect(card('src/limits.ts').hasAttribute('data-open')).toBe(true);
+        expect(viewedTicks()).toEqual(['notes.md']);
+        expect(summary()).toBe('6 files,+112−81 of 6 viewed');
+    });
+
+    it("opens the card and takes the tick, the row's tick and the count away when the checkbox is unticked", async () => {
+        await start();
+        await draw();
+        await tick('src/limits.ts');
+        await tick('notes.md');
+
+        expect(viewedTicks()).toEqual(['notes.md', 'limits.ts']);
+        expect(summary()).toContain('2 of 6 viewed');
+
+        const clear = vi.spyOn(transport, 'clearGitViewed');
+
+        await tick('notes.md');
+
+        expect(clear).toHaveBeenCalledExactlyOnceWith(
+            FIXTURE_PROJECT_ID,
+            { folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' },
+            'all',
+            'notes.md'
+        );
+        expect(tickOf('notes.md').checked).toBe(false);
+        expect(card('notes.md').hasAttribute('data-open')).toBe(true);
+        expect(viewedTicks()).toEqual(['limits.ts']);
+        expect(summary()).toContain('1 of 6 viewed');
+    });
+
+    it('opens a viewed card again on a press on its header, and a press on its row in the sidebar', async () => {
+        await start();
+        await draw();
+        await tick('notes.md');
+        await tick('src/limits.ts');
+
+        await press(button('Unfold notes.md'));
+        expect(card('notes.md').hasAttribute('data-open')).toBe(true);
+        // Still viewed: opening a card does not take the mark away.
+        expect(tickOf('notes.md').checked).toBe(true);
+
+        await press(button('Fold notes.md'));
+        expect(card('notes.md').hasAttribute('data-open')).toBe(false);
+
+        await press(sidebarRow('src/limits.ts'));
+        expect(card('src/limits.ts').hasAttribute('data-open')).toBe(true);
+        expect(scrolled).toEqual([card('src/limits.ts')]);
+    });
+
+    it('shows the tick and the shut card before the daemon has answered, and takes both back quietly when it refuses', async () => {
+        let refuse: (reason: unknown) => void = () => undefined;
+
+        await start({
+            wrap: base =>
+                overrideTransport(base, {
+                    setGitViewed: () =>
+                        new Promise((_resolve, reject) => {
+                            refuse = reject;
+                        }),
+                }),
+        });
+        await draw();
+        await tick('notes.md');
+
+        expect(tickOf('notes.md').checked).toBe(true);
+        expect(card('notes.md').hasAttribute('data-open')).toBe(false);
+        expect(viewedTicks()).toEqual(['notes.md']);
+        expect(summary()).toContain('1 of 6 viewed');
+
+        await act(async () => {
+            refuse(new TransportError('The worktree is missing', 503));
+            await new Promise(resolve => setTimeout(resolve, 0));
+        });
+
+        expect(tickOf('notes.md').checked).toBe(false);
+        expect(card('notes.md').hasAttribute('data-open')).toBe(true);
+        expect(viewedTicks()).toEqual([]);
+        expect(summary()).not.toMatch(/\d of \d viewed/);
+        // A phrase in the summary line with the daemon's reason on it, no dialog and no toast.
+        expect(summary()).toContain("Couldn't save the viewed mark");
+        expect(container.querySelector('[title="The worktree is missing"]')?.textContent).toBe(
+            "Couldn't save the viewed mark"
+        );
+        expect(document.querySelector('[role="alertdialog"], [role="alert"]')).toBeNull();
+    });
+
+    it('keeps the ticks for the next time the tab is drawn from the daemon, with the viewed cards shut and the rest open', async () => {
+        await start({ wrap: share });
+        await draw();
+        await tick('src/limits.ts');
+        await tick('src/booking/weekend.ts');
+
+        // The window is made again over the same daemon: nothing of the tab's own state is left.
+        act(() => root.unmount());
+        store.dispose();
+        transport = overrideTransport(shared!, {});
+        store = new RootStore(transport);
+        await store.load();
+        store.selectProject(FIXTURE_PROJECT_ID);
+        store.ui.forProject(FIXTURE_PROJECT_ID).openChat(FIXTURE_WORKSPACE_CHAT_ID);
+        root = createRoot(container);
+        await draw();
+
+        expect(viewedTicks()).toEqual(['weekend.ts', 'limits.ts']);
+        expect(tickOf('src/limits.ts').checked).toBe(true);
+        expect(tickOf('notes.md').checked).toBe(false);
+        expect(
+            cards()
+                .filter(element => element.hasAttribute('data-open'))
+                .map(element => element.dataset.card)
+        ).toEqual(['assets/logo.png', 'notes.md', 'src/booking/price.test.ts', 'src/booking/price.ts']);
+        expect(summary()).toContain('2 of 6 viewed');
+    });
+
+    it('keeps the ticks of one scope out of another, and of the files that are in both', async () => {
+        await start();
+        await draw();
+        await tick('src/limits.ts');
+
+        await press(scopeTrigger());
+        await press(options().find(option => option.textContent?.includes('Uncommitted'))!);
+        await settle();
+
+        expect(cardPaths()).toEqual(['notes.md', 'src/booking/price.ts', 'src/limits.ts']);
+        expect(tickOf('src/limits.ts').checked).toBe(false);
+        expect(card('src/limits.ts').hasAttribute('data-open')).toBe(true);
+        expect(summary()).not.toContain('viewed');
+
+        await tick('notes.md');
+        await press(scopeTrigger());
+        await press(options().find(option => option.textContent?.includes('All changes'))!);
+        await settle();
+
+        expect(tickOf('src/limits.ts').checked).toBe(true);
+        expect(tickOf('notes.md').checked).toBe(false);
+    });
+
+    it('shows a file whose mark is not its revision any more as not viewed, with its card open, and no count', async () => {
+        let edited = false;
+
+        await start({
+            wrap: base =>
+                overrideTransport(base, {
+                    getGitChanges: async (project, place, scope) => {
+                        const answer = await base.getGitChanges(project, place, scope);
+
+                        if (!edited || !answer.isRepository || scope !== 'all') return answer;
+
+                        return {
+                            ...answer,
+                            files: answer.files.map(file =>
+                                file.path === 'src/limits.ts'
+                                    ? { ...file, revision: `100644:${'d'.repeat(40)}:100644:${'9'.repeat(40)}` }
+                                    : file
+                            ),
+                        };
+                    },
+                }),
+        });
+        await draw();
+        await tick('src/limits.ts');
+        await tick('notes.md');
+
+        expect(summary()).toContain('2 of 6 viewed');
+
+        edited = true;
+        await act(async () => {
+            gitFactsOf(transport).refresh({
+                projectId: FIXTURE_PROJECT_ID,
+                folderId: 'fld_car_rental',
+                workspaceId: 'wks_ab12cd34',
+            });
+        });
+        await settle();
+
+        expect(tickOf('src/limits.ts').checked).toBe(false);
+        expect(card('src/limits.ts').hasAttribute('data-open')).toBe(true);
+        expect(tickOf('notes.md').checked).toBe(true);
+        expect(viewedTicks()).toEqual(['notes.md']);
+        expect(summary()).toContain('1 of 6 viewed');
+    });
+
+    it('reads the marks again with the next round of the store, so a mark made in another window shows', async () => {
+        await start({ wrap: share });
+        await draw();
+
+        expect(viewedTicks()).toEqual([]);
+
+        const notes = (
+            (await shared!.getGitChanges(
+                FIXTURE_PROJECT_ID,
+                { folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' },
+                'all'
+            )) as { files: Array<{ path: string; revision: string }> }
+        ).files.find(file => file.path === 'notes.md')!;
+
+        await shared!.setGitViewed(
+            FIXTURE_PROJECT_ID,
+            { folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' },
+            'all',
+            'notes.md',
+            notes.revision
+        );
+        await act(async () => {
+            gitFactsOf(transport).refresh({
+                projectId: FIXTURE_PROJECT_ID,
+                folderId: 'fld_car_rental',
+                workspaceId: 'wks_ab12cd34',
+            });
+        });
+        await settle();
+
+        expect(viewedTicks()).toEqual(['notes.md']);
+        expect(card('notes.md').hasAttribute('data-open')).toBe(false);
+    });
+
+    it('has a Hide viewed toggle that is pressed or not, hides the viewed cards and rows, and brings them back', async () => {
+        await start();
+        await draw();
+
+        // Nothing is viewed, so there is nothing to hide.
+        expect(hideViewed().disabled).toBe(true);
+        expect(hideViewed().getAttribute('aria-pressed')).toBe('false');
+
+        await tick('notes.md');
+        await tick('src/limits.ts');
+
+        expect(hideViewed().disabled).toBe(false);
+
+        await press(hideViewed());
+
+        expect(hideViewed().getAttribute('aria-pressed')).toBe('true');
+        expect(cardPaths()).toEqual([
+            'assets/logo.png',
+            'src/booking/price.test.ts',
+            'src/booking/price.ts',
+            'src/booking/weekend.ts',
+        ]);
+        expect(sidebarPaths()).toEqual(['logo.png', 'price.test.ts', 'price.ts', 'weekend.ts']);
+        // The count is of the list, so it says what was read.
+        expect(summary()).toContain('2 of 6 viewed');
+        expect(summary()).toContain('4 of 6 files');
+
+        await press(hideViewed());
+
+        expect(hideViewed().getAttribute('aria-pressed')).toBe('false');
+        expect(cards()).toHaveLength(6);
+        expect(sidebarPaths()).toHaveLength(6);
+    });
+
+    it('takes a card out of the list when it is ticked while viewed files are hidden, and says every file is viewed when none is left', async () => {
+        await start();
+        await draw();
+        await tick('notes.md');
+        await press(hideViewed());
+
+        for (const path of [
+            'assets/logo.png',
+            'src/booking/price.test.ts',
+            'src/booking/price.ts',
+            'src/booking/weekend.ts',
+            'src/limits.ts',
+        ])
+            await tick(path);
+
+        expect(cards()).toHaveLength(0);
+        expect(container.textContent).toContain('Every file is viewed');
+        expect(container.querySelector('[aria-label="Changed files"]')?.textContent).toContain('Every file is viewed');
+        expect(summary()).toContain('6 of 6 viewed');
+
+        await press(
+            [...container.querySelectorAll('button')].find(element => element.textContent === 'Show viewed files')!
+        );
+
+        expect(hideViewed().getAttribute('aria-pressed')).toBe('false');
+        expect(cards()).toHaveLength(6);
+        expect(cards().every(element => !element.hasAttribute('data-open'))).toBe(true);
+    });
+
+    it('opens every card, the viewed ones too, on Expand all, and shuts them on Collapse all', async () => {
+        await start();
+        await draw();
+        await tick('notes.md');
+
+        expect(button('Expand all files').disabled).toBe(false);
+
+        await press(button('Expand all files'));
+        expect(cards().every(element => element.hasAttribute('data-open'))).toBe(true);
+        expect(button('Expand all files').disabled).toBe(true);
+
+        await press(button('Collapse all files'));
+        expect(cards().every(element => !element.hasAttribute('data-open'))).toBe(true);
+        expect(button('Collapse all files').disabled).toBe(true);
+    });
+
+    it('does not read the texts of a file because it was ticked: the state of the tick is out of the cache and the diff', async () => {
+        await start();
+
+        const read = vi.spyOn(transport, 'getGitFile');
+
+        await draw();
+        await bringNear();
+        await settle();
+
+        const reads = read.mock.calls.length;
+
+        await tick('notes.md');
+        await tick('notes.md');
+
+        expect(read.mock.calls.length).toBe(reads);
+    });
+});
+
+describe('the states instead of the cards', () => {
+    it('says a clean checkout has no changes, against what it is clean, and has no totals', async () => {
+        await start({ chat: null });
+        await draw();
+
+        expect(cards()).toHaveLength(0);
+        expect(container.textContent).toContain('No changes');
+        expect(container.textContent).toContain('Nothing differs from origin/main');
+        expect(summary()).toBeUndefined();
+        expect(container.querySelector('[aria-label="Changed files"]')?.textContent).toContain('No changed files');
+    });
+
+    it('says a folder that is no repository is none', async () => {
+        await start({ chat: null });
+        store.selectProject(FIXTURE_PERSONAL_PROJECT_ID);
+        store.ui.forProject(FIXTURE_PERSONAL_PROJECT_ID).showSidePanelTab('changes');
+        await draw();
+
+        expect(container.textContent).toContain('Not a git repository');
+        expect(container.textContent).toContain('Changes show here once the folder is one');
+        expect(cards()).toHaveLength(0);
+    });
+
+    it('says the list could not be read when it cannot, and reads it again on a press', async () => {
+        let fails = true;
+
+        await start({
+            wrap: base =>
+                overrideTransport(base, {
+                    getGitChanges: async (project, place, scope) => {
+                        if (fails && scope === 'all') throw new TransportError('The daemon answered 503', 503);
+
+                        return base.getGitChanges(project, place, scope);
+                    },
+                }),
+        });
+        await draw();
+
+        expect(container.textContent).toContain("Couldn't read the changes");
+        expect(cards()).toHaveLength(0);
+
+        fails = false;
+        await press([...container.querySelectorAll('button')].find(element => element.textContent === 'Try again')!);
+        await settle();
+
+        expect(cards()).toHaveLength(6);
+    });
+
+    it('keeps the cards when a later read fails, and says nothing loud', async () => {
+        let fails = false;
+
+        await start({
+            wrap: base =>
+                overrideTransport(base, {
+                    getGitChanges: async (project, place, scope) => {
+                        if (fails && scope === 'all') throw new TransportError('The daemon answered 503', 503);
+
+                        return base.getGitChanges(project, place, scope);
+                    },
+                }),
+        });
+        await draw();
+
+        fails = true;
+        await act(async () => {
+            gitFactsOf(transport).refresh({
+                projectId: FIXTURE_PROJECT_ID,
+                folderId: 'fld_car_rental',
+                workspaceId: 'wks_ab12cd34',
+            });
+        });
+        await settle();
+
+        expect(cards()).toHaveLength(6);
+        expect(container.textContent).not.toContain("Couldn't read");
+    });
+
+    it('says a branch with no base has nothing to compare with, and that all changes are then what is not committed', async () => {
+        await start({
+            chat: null,
+            wrap: base =>
+                overrideTransport(base, {
+                    getGitStatus: async (project, place) => {
+                        const status = await base.getGitStatus(project, place);
+
+                        return status.isRepository ? { ...status, base: { state: 'no_base' as const } } : status;
+                    },
+                    getGitChanges: async (project, place, scope) => {
+                        const answer = await base.getGitChanges(project, place, scope);
+
+                        return answer.isRepository ? { ...answer, baseState: 'no_base' as const } : answer;
+                    },
+                }),
+        });
+        await draw();
+
+        expect(container.textContent).toContain('No changes');
+        expect(container.textContent).toContain('There is no base branch to compare with yet');
+        expect(container.querySelector('[aria-label="Committed on branch"]')).toBeNull();
+    });
+
+    it('says a worktree that is not made yet is not, and reads nothing of it', async () => {
+        await start({
+            tweak: data => {
+                const chat = data.chats.find(entry => entry.id === FIXTURE_WORKSPACE_CHAT_ID)!;
+
+                chat.workspace = { ...chat.workspace!, ready: false };
+            },
+        });
+
+        const read = vi.spyOn(transport, 'getGitChanges');
+
+        await draw();
+
+        expect(container.textContent).toContain('The worktree is not made yet');
+        expect(read).not.toHaveBeenCalled();
+    });
+
+    it('says the list is cut when the daemon cut it, and keeps the rest working', async () => {
+        await start({
+            wrap: base =>
+                overrideTransport(base, {
+                    getGitChanges: async (project, place, scope) => {
+                        const answer = await base.getGitChanges(project, place, scope);
+
+                        return answer.isRepository && scope === 'all'
+                            ? { ...answer, fileCount: 731, truncated: true as const }
+                            : answer;
+                    },
+                }),
+        });
+        await draw();
+
+        expect(container.textContent).toContain('Showing the first 6 files');
+        expect(summary()).toContain('731 files');
+        expect(cards()).toHaveLength(6);
+    });
+});
+
+describe('the reads of the texts', () => {
+    it('runs at most four at a time, and the rest wait for a place', async () => {
+        let running = 0;
+        let most = 0;
+        const release: Array<() => void> = [];
+        const names: string[] = [];
+
+        await start({
+            wrap: base =>
+                overrideTransport(base, {
+                    getGitChanges: async (project, place, scope) => {
+                        const answer = await base.getGitChanges(project, place, scope);
+
+                        if (!answer.isRepository || scope !== 'all') return answer;
+
+                        return {
+                            ...answer,
+                            files: Array.from({ length: 10 }, (_, index) => ({
+                                path: `src/f${index}.ts`,
+                                kind: 'modified' as const,
+                                additions: 1,
+                                deletions: 1,
+                                revision: `100644:${'a'.repeat(40)}:100644:${String(index).repeat(40)}`,
+                            })),
+                        };
+                    },
+                    getGitFile: async (_project, _place, _scope, path) => {
+                        running++;
+                        most = Math.max(most, running);
+                        names.push(path);
+                        await new Promise<void>(resolve => release.push(resolve));
+                        running--;
+
+                        return { state: 'text', original: 'a\n', modified: 'b\n', revision: 'r' };
+                    },
+                }),
+        });
+        await draw();
+        await bringNear();
+        await settle();
+
+        expect(running).toBe(4);
+        expect(names).toEqual(['src/f0.ts', 'src/f1.ts', 'src/f2.ts', 'src/f3.ts']);
+
+        for (let round = 0; round < 3; round++) {
+            await act(async () => {
+                release.splice(0).forEach(resolve => resolve());
+                await new Promise(resolve => setTimeout(resolve, 0));
+            });
+        }
+
+        expect(names).toHaveLength(10);
+        expect(most).toBe(4);
+    });
+
+    /** Ten files whose reads wait for the test, four of them running and six waiting for a place once every card is near. */
+    async function startWithTenReads() {
+        const release: Array<() => void> = [];
+        const names: string[] = [];
+
+        await start({
+            wrap: base =>
+                overrideTransport(base, {
+                    getGitChanges: async (project, place, scope) => {
+                        const answer = await base.getGitChanges(project, place, scope);
+
+                        if (!answer.isRepository || scope !== 'all') return answer;
+
+                        return {
+                            ...answer,
+                            files: Array.from({ length: 10 }, (_, index) => ({
+                                path: `src/f${index}.ts`,
+                                kind: 'modified' as const,
+                                additions: 1,
+                                deletions: 1,
+                                revision: `100644:${'a'.repeat(40)}:100644:${String(index).repeat(40)}`,
+                            })),
+                        };
+                    },
+                    getGitFile: async (_project, _place, _scope, path) => {
+                        names.push(path);
+                        await new Promise<void>(resolve => release.push(resolve));
+
+                        return { state: 'text', original: 'a\n', modified: 'b\n', revision: 'r' };
+                    },
+                }),
+        });
+        await draw();
+        await bringNear();
+        await settle();
+
+        return {
+            names,
+            finishAll: () =>
+                act(async () => {
+                    release.splice(0).forEach(resolve => resolve());
+                    await new Promise(resolve => setTimeout(resolve, 0));
+                }),
+        };
+    }
+
+    it('does not read the files of the cards that were scrolled past or shut before their turn, and reads them when they are near and open again', async () => {
+        const { names, finishAll } = await startWithTenReads();
+
+        expect(names).toEqual(['src/f0.ts', 'src/f1.ts', 'src/f2.ts', 'src/f3.ts']);
+
+        // A scroll past f6 to f9, and a press that folds f4, while the first four are still on their way.
+        await sendAway(element =>
+            ['src/f6.ts', 'src/f7.ts', 'src/f8.ts', 'src/f9.ts'].includes((element as HTMLElement).dataset.card!)
+        );
+        await press(button('Fold src/f4.ts'));
+        await finishAll();
+        await finishAll();
+
+        expect(names).toEqual(['src/f0.ts', 'src/f1.ts', 'src/f2.ts', 'src/f3.ts', 'src/f5.ts']);
+
+        // They come back: what they need is read, and what is read is not read again.
+        await bringNear(element => (element as HTMLElement).dataset.card === 'src/f6.ts');
+        await press(button('Unfold src/f4.ts'));
+        await finishAll();
+        await finishAll();
+
+        expect(names).toEqual([
+            'src/f0.ts',
+            'src/f1.ts',
+            'src/f2.ts',
+            'src/f3.ts',
+            'src/f5.ts',
+            'src/f6.ts',
+            'src/f4.ts',
+        ]);
+    });
+
+    it('does not read the files that the filter takes out of the list', async () => {
+        const { names, finishAll } = await startWithTenReads();
+
+        await type('f0, f1, f2, f3, f4');
+        await finishAll();
+        await finishAll();
+
+        // f5 to f9 were waiting, and are not in the list any more.
+        expect(names).toEqual(['src/f0.ts', 'src/f1.ts', 'src/f2.ts', 'src/f3.ts', 'src/f4.ts']);
+    });
+
+    it('does not read any file once the tab is gone', async () => {
+        const { names, finishAll } = await startWithTenReads();
+
+        act(() => root.render(null));
+        await finishAll();
+        await finishAll();
+
+        expect(names).toEqual(['src/f0.ts', 'src/f1.ts', 'src/f2.ts', 'src/f3.ts']);
+    });
+});

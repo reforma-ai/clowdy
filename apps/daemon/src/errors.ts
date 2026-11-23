@@ -2,14 +2,18 @@ import type { ErrorCode } from '@clowdy/protocol';
 
 /** A failure the caller caused or can act on. It carries the protocol's error code; anything else is an internal error. */
 export class CommandError extends Error {
-    constructor(readonly code: ErrorCode, message: string, readonly details?: unknown) {
+    constructor(
+        readonly code: ErrorCode,
+        message: string,
+        readonly details?: unknown
+    ) {
         super(message);
         this.name = 'CommandError';
     }
 }
 
 export const invalid = (message: string, details?: unknown) => new CommandError('invalid', message, details);
-export const notFound = (what: string, id: string) => new CommandError('not_found', `${ what } ${ id } does not exist`);
+export const notFound = (what: string, id: string) => new CommandError('not_found', `${what} ${id} does not exist`);
 export const conflict = (message: string, details?: unknown) => new CommandError('conflict', message, details);
 export const unavailable = (message: string) => new CommandError('unavailable', message);
 
@@ -33,7 +37,11 @@ export const HTTP_STATUS: Record<ErrorCode, number> = {
 
 /** Thrown when the engine ends a run with an error event; the run fails with this message, and keeps `code` (the engine's class of the failure) when there is one. */
 export class EngineFailure extends Error {
-    constructor(message: string, readonly retryable = false, readonly code?: string) {
+    constructor(
+        message: string,
+        readonly retryable = false,
+        readonly code?: string
+    ) {
         super(message);
         this.name = 'EngineFailure';
     }

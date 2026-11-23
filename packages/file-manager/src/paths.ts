@@ -96,8 +96,7 @@ const strictUtf8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 export function decodeUtf8(bytes: Uint8Array): string | null {
     try {
         return strictUtf8.decode(bytes);
-    }
-    catch {
+    } catch {
         return null;
     }
 }

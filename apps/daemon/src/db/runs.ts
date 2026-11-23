@@ -2,8 +2,8 @@ import { ACTIVE_RUN_STATUSES } from '@clowdy/protocol';
 
 import { clean, parseJson, toJson } from './json';
 
-import type { BackgroundItem, Run, RunContext, RunOrigin, RunRole, RunTaskLink, RunUsage } from '@clowdy/protocol';
 import type { Database } from 'bun:sqlite';
+import type { BackgroundItem, Run, RunContext, RunOrigin, RunRole, RunTaskLink, RunUsage } from '@clowdy/protocol';
 
 interface RunRow {
     id: string;
@@ -36,38 +36,39 @@ interface RunRow {
     finished_at: number | null;
 }
 
-const toRun = (row: RunRow): Run => clean({
-    id: row.id,
-    projectId: row.project_id,
-    parentRunId: row.parent_run_id,
-    rootRunId: row.root_run_id,
-    chatId: row.chat_id,
-    role: row.role,
-    origin: row.origin,
-    parentToolCallId: row.parent_tool_call_id,
-    canStopAlone: row.can_stop_alone === 1 ? true : null,
-    awaitingUser: row.awaiting_user === 1 ? true : null,
-    name: row.name,
-    summary: row.summary,
-    status: row.status,
-    statusReason: row.status_reason,
-    engine: row.engine,
-    model: row.model,
-    effort: row.effort,
-    sessionId: row.session_id,
-    worktree: parseJson(row.worktree),
-    result: row.result,
-    error: row.error,
-    failureCode: row.failure_code,
-    usage: parseJson<RunUsage>(row.usage),
-    context: parseJson<RunContext>(row.context),
-    background: parseJson<BackgroundItem[]>(row.background),
-    createdAt: row.created_at,
-    startedAt: row.started_at,
-    finishedAt: row.finished_at,
-}) as Run;
+const toRun = (row: RunRow): Run =>
+    clean({
+        id: row.id,
+        projectId: row.project_id,
+        parentRunId: row.parent_run_id,
+        rootRunId: row.root_run_id,
+        chatId: row.chat_id,
+        role: row.role,
+        origin: row.origin,
+        parentToolCallId: row.parent_tool_call_id,
+        canStopAlone: row.can_stop_alone === 1 ? true : null,
+        awaitingUser: row.awaiting_user === 1 ? true : null,
+        name: row.name,
+        summary: row.summary,
+        status: row.status,
+        statusReason: row.status_reason,
+        engine: row.engine,
+        model: row.model,
+        effort: row.effort,
+        sessionId: row.session_id,
+        worktree: parseJson(row.worktree),
+        result: row.result,
+        error: row.error,
+        failureCode: row.failure_code,
+        usage: parseJson<RunUsage>(row.usage),
+        context: parseJson<RunContext>(row.context),
+        background: parseJson<BackgroundItem[]>(row.background),
+        createdAt: row.created_at,
+        startedAt: row.started_at,
+        finishedAt: row.finished_at,
+    }) as Run;
 
-const ACTIVE = ACTIVE_RUN_STATUSES.map(status => `'${ status }'`).join(', ');
+const ACTIVE = ACTIVE_RUN_STATUSES.map(status => `'${status}'`).join(', ');
 
 export function getRun(db: Database, id: string): Run | undefined {
     const row = db.query('SELECT * FROM runs WHERE id = ?').get(id) as RunRow | null;
@@ -76,7 +77,9 @@ export function getRun(db: Database, id: string): Run | undefined {
 }
 
 export function listRuns(db: Database, projectId: string): Run[] {
-    return (db.query('SELECT * FROM runs WHERE project_id = ? ORDER BY created_at, id').all(projectId) as RunRow[]).map(toRun);
+    return (db.query('SELECT * FROM runs WHERE project_id = ? ORDER BY created_at, id').all(projectId) as RunRow[]).map(
+        toRun
+    );
 }
 
 export function upsertRun(db: Database, run: Run): void {
@@ -89,10 +92,34 @@ export function upsertRun(db: Database, run: Run): void {
             error = excluded.error, failure_code = excluded.failure_code, usage = excluded.usage, context = excluded.context, background = excluded.background,
             awaiting_user = excluded.awaiting_user, started_at = excluded.started_at, finished_at = excluded.finished_at
     `).run(
-        run.id, run.projectId, run.parentRunId ?? null, run.rootRunId, run.chatId ?? null, run.role, run.origin ?? null, run.parentToolCallId ?? null, run.canStopAlone ? 1 : null, run.awaitingUser ? 1 : null,
-        run.name, run.summary, run.status, run.statusReason ?? null, run.engine, run.model ?? null, run.effort ?? null, run.sessionId ?? null, toJson(run.worktree),
-        run.result ?? null, run.error ?? null, run.failureCode ?? null, toJson(run.usage), toJson(run.context), toJson(run.background),
-        run.createdAt, run.startedAt ?? null, run.finishedAt ?? null
+        run.id,
+        run.projectId,
+        run.parentRunId ?? null,
+        run.rootRunId,
+        run.chatId ?? null,
+        run.role,
+        run.origin ?? null,
+        run.parentToolCallId ?? null,
+        run.canStopAlone ? 1 : null,
+        run.awaitingUser ? 1 : null,
+        run.name,
+        run.summary,
+        run.status,
+        run.statusReason ?? null,
+        run.engine,
+        run.model ?? null,
+        run.effort ?? null,
+        run.sessionId ?? null,
+        toJson(run.worktree),
+        run.result ?? null,
+        run.error ?? null,
+        run.failureCode ?? null,
+        toJson(run.usage),
+        toJson(run.context),
+        toJson(run.background),
+        run.createdAt,
+        run.startedAt ?? null,
+        run.finishedAt ?? null
     );
 }
 
@@ -112,14 +139,16 @@ export function deleteRuns(db: Database, ids: readonly string[]): void {
  * engine may leave the call out and a sub-agent only starts inside a turn, after the message that began it.
  */
 export function runsStartedAfter(db: Database, runId: string, toolCallIds: readonly string[], since: number): string[] {
-    const rows = db.query(`
+    const rows = db
+        .query(`
         WITH RECURSIVE tree(id) AS (
             SELECT id FROM runs WHERE parent_run_id = ?1 AND (parent_tool_call_id IN (SELECT value FROM json_each(?2)) OR (parent_tool_call_id IS NULL AND created_at >= ?3))
             UNION ALL
             SELECT r.id FROM runs r JOIN tree ON r.parent_run_id = tree.id
         )
         SELECT id FROM tree
-    `).all(runId, JSON.stringify(toolCallIds), since) as { id: string }[];
+    `)
+        .all(runId, JSON.stringify(toolCallIds), since) as { id: string }[];
 
     return rows.map(row => row.id);
 }
@@ -130,62 +159,94 @@ export function clearAwaitingUser(db: Database): void {
 }
 
 export function listActiveRuns(db: Database): Run[] {
-    return (db.query(`SELECT * FROM runs WHERE status IN (${ ACTIVE }) ORDER BY created_at, id`).all() as RunRow[]).map(toRun);
+    return (db.query(`SELECT * FROM runs WHERE status IN (${ACTIVE}) ORDER BY created_at, id`).all() as RunRow[]).map(
+        toRun
+    );
 }
 
 /** The run and its descendants that are still active, deepest first, so children come before their parents. */
 export function activeSubtree(db: Database, runId: string): string[] {
-    const rows = db.query(`
+    const rows = db
+        .query(`
         WITH RECURSIVE tree(id, depth) AS (
             SELECT id, 0 FROM runs WHERE id = ?
             UNION ALL
             SELECT r.id, tree.depth + 1 FROM runs r JOIN tree ON r.parent_run_id = tree.id
         )
-        SELECT runs.id FROM tree JOIN runs ON runs.id = tree.id WHERE runs.status IN (${ ACTIVE }) ORDER BY tree.depth DESC, runs.created_at DESC
-    `).all(runId) as { id: string }[];
+        SELECT runs.id FROM tree JOIN runs ON runs.id = tree.id WHERE runs.status IN (${ACTIVE}) ORDER BY tree.depth DESC, runs.created_at DESC
+    `)
+        .all(runId) as { id: string }[];
 
     return rows.map(row => row.id);
 }
 
 /** Runs holding a slot, by engine and project. Sub-agents inside a session (`native`) never hold one. */
 export function runningCounts(db: Database): { engine: string; projectId: string; count: number }[] {
-    return db.query(`
+    return db
+        .query(`
         SELECT engine, project_id AS projectId, COUNT(*) AS count FROM runs
         WHERE status = 'running' AND origin IS NOT 'native' GROUP BY engine, project_id
-    `).all() as { engine: string; projectId: string; count: number }[];
+    `)
+        .all() as { engine: string; projectId: string; count: number }[];
 }
 
 /** Runs a client would call work in progress; sub-agents inside a session do not count. */
 export function countActiveRuns(db: Database): number {
-    return (db.query(`SELECT COUNT(*) AS n FROM runs WHERE status IN (${ ACTIVE }) AND origin IS NOT 'native'`).get() as { n: number }).n;
+    return (
+        db.query(`SELECT COUNT(*) AS n FROM runs WHERE status IN (${ACTIVE}) AND origin IS NOT 'native'`).get() as {
+            n: number;
+        }
+    ).n;
 }
 
 export function countRunsWithRole(db: Database, projectId: string, role: RunRole): number {
-    return (db.query('SELECT COUNT(*) AS n FROM runs WHERE project_id = ? AND role = ? AND origin IS NOT \'native\'').get(projectId, role) as { n: number }).n;
+    return (
+        db
+            .query("SELECT COUNT(*) AS n FROM runs WHERE project_id = ? AND role = ? AND origin IS NOT 'native'")
+            .get(projectId, role) as { n: number }
+    ).n;
 }
 
 export function listRunTaskLinks(db: Database, projectId: string): RunTaskLink[] {
-    return db.query(`
+    return db
+        .query(`
         SELECT l.run_id AS runId, l.task_id AS taskId, l.relation FROM run_task_links l JOIN runs r ON r.id = l.run_id
         WHERE r.project_id = ? ORDER BY l.rowid
-    `).all(projectId) as RunTaskLink[];
+    `)
+        .all(projectId) as RunTaskLink[];
 }
 
 export function linksOfRun(db: Database, runId: string): RunTaskLink[] {
-    return db.query('SELECT run_id AS runId, task_id AS taskId, relation FROM run_task_links WHERE run_id = ? ORDER BY rowid').all(runId) as RunTaskLink[];
+    return db
+        .query(
+            'SELECT run_id AS runId, task_id AS taskId, relation FROM run_task_links WHERE run_id = ? ORDER BY rowid'
+        )
+        .all(runId) as RunTaskLink[];
 }
 
 export function linksOfTask(db: Database, taskId: string): RunTaskLink[] {
-    return db.query('SELECT run_id AS runId, task_id AS taskId, relation FROM run_task_links WHERE task_id = ? ORDER BY rowid').all(taskId) as RunTaskLink[];
+    return db
+        .query(
+            'SELECT run_id AS runId, task_id AS taskId, relation FROM run_task_links WHERE task_id = ? ORDER BY rowid'
+        )
+        .all(taskId) as RunTaskLink[];
 }
 
 /** Returns false when the link already existed. */
 export function insertRunTaskLink(db: Database, link: RunTaskLink): boolean {
-    return db.query('INSERT OR IGNORE INTO run_task_links (run_id, task_id, relation) VALUES (?, ?, ?)').run(link.runId, link.taskId, link.relation).changes > 0;
+    return (
+        db
+            .query('INSERT OR IGNORE INTO run_task_links (run_id, task_id, relation) VALUES (?, ?, ?)')
+            .run(link.runId, link.taskId, link.relation).changes > 0
+    );
 }
 
 export function runIdsOfTask(db: Database, taskId: string): string[] {
-    return (db.query('SELECT run_id FROM run_task_links WHERE task_id = ? GROUP BY run_id ORDER BY MIN(rowid)').all(taskId) as { run_id: string }[]).map(row => row.run_id);
+    return (
+        db
+            .query('SELECT run_id FROM run_task_links WHERE task_id = ? GROUP BY run_id ORDER BY MIN(rowid)')
+            .all(taskId) as { run_id: string }[]
+    ).map(row => row.run_id);
 }
 
 /* ---------------------- Details the protocol does not show ---------------------- */
@@ -217,7 +278,9 @@ interface WorkRow {
 }
 
 export function getRunWork(db: Database, runId: string): RunWork {
-    const row = db.query('SELECT cwd, next_prompt, pid, pgid, process_started_at, lost_background FROM runs WHERE id = ?').get(runId) as WorkRow | null;
+    const row = db
+        .query('SELECT cwd, next_prompt, pid, pgid, process_started_at, lost_background FROM runs WHERE id = ?')
+        .get(runId) as WorkRow | null;
 
     if (!row) {
         return {};
@@ -226,7 +289,8 @@ export function getRunWork(db: Database, runId: string): RunWork {
     return clean({
         cwd: row.cwd,
         nextPrompt: row.next_prompt,
-        process: row.pid === null ? undefined : clean({ pid: row.pid, pgid: row.pgid, startedAt: row.process_started_at }),
+        process:
+            row.pid === null ? undefined : clean({ pid: row.pid, pgid: row.pgid, startedAt: row.process_started_at }),
         lostBackground: parseJson<BackgroundItem[]>(row.lost_background),
     }) as RunWork;
 }
@@ -237,14 +301,21 @@ type WorkPatch = { [K in keyof RunWork]?: RunWork[K] | null };
 export function setRunWork(db: Database, runId: string, work: WorkPatch): void {
     const columns: [string, string | number | null][] = [];
 
-    for (const [key, column] of [['cwd', 'cwd'], ['nextPrompt', 'next_prompt']] as const) {
+    for (const [key, column] of [
+        ['cwd', 'cwd'],
+        ['nextPrompt', 'next_prompt'],
+    ] as const) {
         if (work[key] !== undefined) {
             columns.push([column, work[key]]);
         }
     }
 
     if (work.process !== undefined) {
-        columns.push(['pid', work.process?.pid ?? null], ['pgid', work.process?.pgid ?? null], ['process_started_at', work.process?.startedAt ?? null]);
+        columns.push(
+            ['pid', work.process?.pid ?? null],
+            ['pgid', work.process?.pgid ?? null],
+            ['process_started_at', work.process?.startedAt ?? null]
+        );
     }
 
     if (work.lostBackground !== undefined) {
@@ -252,15 +323,26 @@ export function setRunWork(db: Database, runId: string, work: WorkPatch): void {
     }
 
     if (columns.length > 0) {
-        db.query(`UPDATE runs SET ${ columns.map(([column]) => `${ column } = ?`).join(', ') } WHERE id = ?`).run(...columns.map(([, value]) => value), runId);
+        db.query(`UPDATE runs SET ${columns.map(([column]) => `${column} = ?`).join(', ')} WHERE id = ?`).run(
+            ...columns.map(([, value]) => value),
+            runId
+        );
     }
 }
 
 /** Runs with a recorded engine process, for cleaning up after a crash. */
 export function listRunsWithProcess(db: Database): { runId: string; process: RunProcess }[] {
-    const rows = db.query('SELECT id, pid, pgid, process_started_at FROM runs WHERE pid IS NOT NULL').all() as { id: string; pid: number; pgid: number | null; process_started_at: number | null }[];
+    const rows = db.query('SELECT id, pid, pgid, process_started_at FROM runs WHERE pid IS NOT NULL').all() as {
+        id: string;
+        pid: number;
+        pgid: number | null;
+        process_started_at: number | null;
+    }[];
 
-    return rows.map(row => ({ runId: row.id, process: clean({ pid: row.pid, pgid: row.pgid, startedAt: row.process_started_at }) as RunProcess }));
+    return rows.map(row => ({
+        runId: row.id,
+        process: clean({ pid: row.pid, pgid: row.pgid, startedAt: row.process_started_at }) as RunProcess,
+    }));
 }
 
 /* ------------------------------- Engine pauses -------------------------------- */
@@ -273,8 +355,9 @@ export function listEnginePauses(db: Database): { engine: string; until: number 
 export function saveEnginePause(db: Database, engine: string, until: number | undefined): void {
     if (until === undefined) {
         db.query('DELETE FROM engine_pauses WHERE engine = ?').run(engine);
-    }
-    else {
-        db.query('INSERT INTO engine_pauses (engine, until) VALUES (?, ?) ON CONFLICT(engine) DO UPDATE SET until = excluded.until').run(engine, until);
+    } else {
+        db.query(
+            'INSERT INTO engine_pauses (engine, until) VALUES (?, ?) ON CONFLICT(engine) DO UPDATE SET until = excluded.until'
+        ).run(engine, until);
     }
 }

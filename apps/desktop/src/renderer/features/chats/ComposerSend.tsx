@@ -32,7 +32,17 @@ export interface ComposerSendProps {
 }
 
 /** The round button at the end of the composer: Send, or Stop while the orchestrator works and nothing is typed. */
-export function ComposerSend({ label = 'Send', canSend, blocked = false, isPending = false, running, waits, isStopping, onSend, onStop }: ComposerSendProps) {
+export function ComposerSend({
+    label = 'Send',
+    canSend,
+    blocked = false,
+    isPending = false,
+    running,
+    waits,
+    isStopping,
+    onSend,
+    onStop,
+}: ComposerSendProps) {
     if (running && !canSend) {
         return (
             <Button
@@ -40,12 +50,12 @@ export function ComposerSend({ label = 'Send', canSend, blocked = false, isPendi
                 size="sm"
                 iconOnly
                 rounded
-                isPending={ isStopping }
+                isPending={isStopping}
                 aria-label="Stop"
                 tooltip="Stop"
-                onPress={ onStop }
+                onPress={onStop}
             >
-                <Spinner size="unset" className={ styles.stopRing } aria-hidden />
+                <Spinner size="unset" className={styles.stopRing} aria-hidden />
                 <StopBold />
             </Button>
         );
@@ -57,11 +67,11 @@ export function ComposerSend({ label = 'Send', canSend, blocked = false, isPendi
             size="sm"
             iconOnly
             rounded
-            isDisabled={ !canSend || blocked }
-            isPending={ isPending }
-            aria-label={ label }
-            tooltip={ tooltipWithHotkey(waits ? WAITS[waits] : label, 'enter') }
-            onPress={ onSend }
+            isDisabled={!canSend || blocked}
+            isPending={isPending}
+            aria-label={label}
+            tooltip={tooltipWithHotkey(waits ? WAITS[waits] : label, 'enter')}
+            onPress={onSend}
         >
             <SendBold />
         </Button>
