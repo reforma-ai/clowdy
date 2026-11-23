@@ -1,4 +1,4 @@
-import type { FolderId, Task, TaskComment } from './domain';
+import type { ChatId, FolderId, Task, TaskComment, WorkspaceId } from './domain';
 
 /** Version of this contract. The daemon refuses clients that send a different major in `x-clowdy-protocol`. */
 export const PROTOCOL_VERSION = 1;
@@ -53,6 +53,11 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  *                                            changes). A folder that is not the root of a repository answers `isRepository: false` and nothing else; `folderId` of no
  *                                            folder of the project is `not_found`, none is `invalid`, and a folder gone from the disk, or a git that does not answer
  *                                            in time, is `unavailable`)
+ * GET  /v1/projects/:id/worktrees        -> FolderWorktrees[] (one entry per folder of the project, in the project's order: whether it is the root of a repository and, if
+ *                                            it is, its own checkout first and then every worktree git lists for it (one Clowdy made, one an agent or a person made, a locked one,
+ *                                            one whose folder is gone), each with the chats that work in it (archived ones too), the number of changed files, whether its work is
+ *                                            in the base as last fetched, and why it cannot be removed. A folder that is not a repository, or is gone from the disk, has an entry
+ *                                            with `isRepository: false` and no worktrees; `not_found` for no such project, `unavailable` for a git that does not answer)
  * GET  /v1/projects/:id/files?query=&limit=&workspaceId= -> ProjectFileMatch[] (files of the project's folders whose path contains every word of `query`,
  *                                            the folder's name counting as part of the path when there are several; best match first,
  *                                            at most `limit` (default 40, most 100); git's tracked and unignored files, or a walk outside
@@ -96,6 +101,7 @@ export const ROUTES = {
     projectArchivedTasks: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/archived-tasks`,
     docsTree: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/docs`,
     projectGit: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/git`,
+    projectWorktrees: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/worktrees`,
     projectFiles: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/files`,
     projectAttachments: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/attachments`,
     projectAttachment: (projectId: string, attachmentId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/attachments/${ encodeURIComponent(attachmentId) }`,
@@ -172,6 +178,61 @@ export type FolderGit = { isRepository: false } | {
     truncated?: true;
     worktrees: GitWorktree[];
 };
+
+/** Why a worktree has no Remove: it is the folder's own checkout, git has it locked, or a chat works in it. The first that holds, in that order. */
+export type WorktreeBlock = 'main' | 'locked' | 'chats';
+
+/** A chat that works in a worktree, as the Manage dialog lists it. */
+export interface WorktreeChat {
+    id: ChatId;
+    title: string;
+    archived: boolean;
+}
+
+/**
+ * One worktree of a folder's repository as `GET /v1/projects/:id/worktrees` describes it: what git lists, whoever made it, with who works in it and how far its work is from
+ * the base. The folder's own checkout is the first row of its group.
+ */
+export interface WorktreeInfo {
+    /** Absolute, written as the machine writes paths (git prints `C:/work` on Windows). */
+    path: string;
+    /** The branch it has checked out; absent on a detached HEAD. */
+    branch?: string;
+    /** The first seven characters of the commit it is on; empty when git did not say. */
+    head: string;
+    /** The worktree is the folder's own checkout. */
+    main: boolean;
+    /** Git lists it but its folder is gone from the disk (`prunable`, or nothing there): only its record can be removed. */
+    missing: boolean;
+    /** Git has it locked, with the reason (empty when none was given). */
+    locked?: string;
+    /** How many files have uncommitted changes, a new file counted; 0 when clean, and for a missing worktree. A status that fails or does not answer in time counts as 1, so a row never says clean on a guess. */
+    changes: number;
+    /** An initialised submodule is checked out in it: `git worktree remove` refuses such a tree without `--force`, whatever `changes` says. */
+    submodules: boolean;
+    /** The commit it is on and its branch are both in `base`, as last fetched; absent for the folder's own checkout and when no base resolves. A squash merge reads as not merged. */
+    merged?: boolean;
+    /** The ref `merged` was checked against (`origin/main`): the base the worktree was made from, else the folder's own. Absent with `merged`. */
+    base?: string;
+    /** The record Clowdy keeps of it (`Chat.workspace.id`), when a chat has worked in it or the new-chat page opened it. */
+    workspaceId?: WorkspaceId;
+    /** Clowdy made it, under its workspaces folder. */
+    managed: boolean;
+    /** The chats that work in it, archived ones too, oldest first. */
+    chats: WorktreeChat[];
+    /** Why it cannot be removed; absent when it can. */
+    blocked?: WorktreeBlock;
+}
+
+/** What `GET /v1/projects/:id/worktrees` says about one folder of the project: no worktrees for a folder that is no repository, else its own checkout first and every worktree git lists. */
+export interface FolderWorktrees {
+    folderId: FolderId;
+    /** The folder's name, as `folderNames` writes it. */
+    name: string;
+    /** The folder is the root of a working tree. False for any other folder, and for one gone from the disk. */
+    isRepository: boolean;
+    worktrees: WorktreeInfo[];
+}
 
 /** A file `GET /v1/projects/:id/files` found: the folder of the project it is in, and its path below that folder with `/` separators. */
 export interface ProjectFileMatch {

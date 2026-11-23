@@ -1,4 +1,4 @@
-import { DOC_SOURCES, PERMISSION_PRESET_NAMES, PERMISSION_PRESETS } from '@clowdy/protocol';
+import { DOC_SOURCES, folderNames, PERMISSION_PRESET_NAMES, PERMISSION_PRESETS } from '@clowdy/protocol';
 
 import type {
     AgentInfo,
@@ -13,6 +13,7 @@ import type {
     DocNode,
     DocsSource,
     FolderGit,
+    FolderWorktrees,
     PermissionPresetId,
     Project,
     ProjectFolder,
@@ -26,6 +27,7 @@ import type {
     Task,
     TaskComment,
     TaskStatus,
+    WorktreeInfo,
 } from '@clowdy/protocol';
 
 /** Everything the fixture daemon holds. Plain data: the transport mutates it and announces the changes. */
@@ -33,6 +35,11 @@ export interface FixtureData {
     projects: Project[];
     /** What `git` says in each folder, by the folder's path: the `origin` address and the branch (a short hash with `detached`); a folder without an entry has neither. */
     git: Record<string, { remoteUrl?: string; branch?: string; detached?: true }>;
+    /**
+     * The worktrees git lists for a folder besides its own checkout and the Clowdy-made one `fixtureFolderGit` lists, by the folder's path: ones found, locked or gone from the
+     * disk, as `GET /v1/projects/:id/worktrees` describes them (`fixtureProjectWorktrees`). A folder that is not listed has none.
+     */
+    worktrees?: Record<string, FixtureWorktree[]>;
     statuses: Record<string, TaskStatus[]>;
     chats: Chat[];
     /** Every task of every project, the archived ones too: the snapshot leaves those out, and `getTaskDetail` and the archive's pages read them. */
@@ -385,6 +392,60 @@ export function fixtureFolderGit(path: string, head: { branch?: string; detached
     };
 }
 
+/** A worktree the fixture's git lists that nobody made through Clowdy: what differs from the defaults (clean, merged into `origin/main`, nobody works in it) is spelled out. */
+export interface FixtureWorktree extends Pick<WorktreeInfo, 'path' | 'head'>, Partial<Pick<WorktreeInfo, 'branch' | 'missing' | 'locked' | 'changes' | 'submodules' | 'merged'>> {}
+
+/** How many files the fixture's changed worktree has changed: `fixtureFolderGit` only says whether there are any. */
+const FIXTURE_CHANGES = 3;
+
+/**
+ * What `GET /v1/projects/:id/worktrees` answers for a fixture project, from the data the other reads use: a group per folder in the project's order, a folder that is no repository
+ * (no `git` entry) with no worktrees, else its own checkout first, then what `fixtureFolderGit` lists (the Clowdy-made worktree, changed and not merged) and `data.worktrees` adds
+ * (found, locked, missing). The chats are the project's whose worktree is at the path, archived ones too; `blocked` is the daemon's order (the folder's own checkout, a lock, chats).
+ */
+export function fixtureProjectWorktrees(project: Pick<Project, 'id' | 'folders'>, data: Pick<FixtureData, 'git' | 'worktrees' | 'chats'>): FolderWorktrees[] {
+    const names = folderNames(project.folders);
+
+    return project.folders.map((folder, index): FolderWorktrees => {
+        const group = { folderId: folder.id, name: names[index] };
+        const repository = fixtureFolderGit(folder.path, data.git[folder.path], folder.settings?.baseBranch);
+
+        if (!repository.isRepository) return { ...group, isRepository: false, worktrees: [] };
+
+        const base = repository.defaultBranch;
+        const listed: FixtureWorktree[] = [
+            ...repository.worktrees.filter(worktree => !worktree.main).map(({ path, branch, head, dirty }) => ({ path, ...(branch !== undefined && { branch }), head, changes: dirty ? FIXTURE_CHANGES : 0, merged: false })),
+            ...data.worktrees?.[folder.path] ?? [],
+        ];
+        const own = repository.worktrees.find(worktree => worktree.main)!;
+        const main: WorktreeInfo = { path: own.path, ...(own.branch !== undefined && { branch: own.branch }), head: own.head, main: true, missing: false, changes: own.dirty ? FIXTURE_CHANGES : 0, submodules: false, managed: false, chats: [], blocked: 'main' };
+
+        const others = listed.map((worktree): WorktreeInfo => {
+            const chats = data.chats.filter(chat => chat.projectId === project.id && chat.workspace?.path === worktree.path);
+            const workspace = chats[0]?.workspace;
+            const locked = worktree.locked;
+
+            return {
+                path: worktree.path,
+                ...(worktree.branch !== undefined && { branch: worktree.branch }),
+                head: worktree.head,
+                main: false,
+                missing: worktree.missing ?? false,
+                ...(locked !== undefined && { locked }),
+                changes: worktree.changes ?? 0,
+                submodules: worktree.submodules ?? false,
+                ...(base !== undefined && { merged: worktree.merged ?? true, base }),
+                ...(workspace && { workspaceId: workspace.id }),
+                managed: workspace?.managed ?? worktree.path.startsWith(`${ FIXTURE_WORKSPACES_ROOT }/`),
+                chats: chats.map(chat => ({ id: chat.id, title: chat.title, archived: chat.archivedAt !== undefined })),
+                ...(locked !== undefined ? { blocked: 'locked' as const } : chats.length > 0 && { blocked: 'chats' as const }),
+            };
+        });
+
+        return { ...group, isRepository: true, worktrees: [main, ...others] };
+    });
+}
+
 /** Where the fixture's Clowdy-made worktrees are: `~/Clowdy/workspaces`, as the daemon lays them out (`<project>/<chat id>/<folder>`). */
 export const FIXTURE_WORKSPACES_ROOT = '/Users/dev/Clowdy/workspaces';
 
@@ -660,6 +721,57 @@ export function withFixtureWorkspace(data: FixtureData, now = Date.now()): Fixtu
         workspace,
         createdAt: ago(30),
         updatedAt: ago(28),
+    });
+
+    return data;
+}
+
+export const FIXTURE_WORKTREE_SECOND_CHAT_ID = 'c-10';
+export const FIXTURE_WORKTREE_SECOND_RUN_ID = 'r-orch-10';
+
+/** The second repository and the plain folder `withFixtureWorktrees` adds to Car Rental. */
+export const FIXTURE_API_FOLDER = { id: 'fld_api', path: '/Users/dev/car-rental-api' } as const;
+export const FIXTURE_NOTES_FOLDER = { id: 'fld_notes', path: '/Users/dev/notes' } as const;
+
+/**
+ * Adds to `data` what the Manage worktrees dialog needs to show every kind of row, and gives it back: Car Rental with a second repository (`car-rental-api`) and a folder that is no
+ * repository (`notes`), and the Clowdy-made worktree of Car Rental (`withFixtureWorkspace`'s) used by two chats, the second an archived one. The found, locked and missing worktrees
+ * are in `createFixtureData`'s `worktrees`. Not in `createFixtureData`, for the reason `withFixtureFork` gives: a folder and two chats more in the car project move the counts and the
+ * order other screens' tests read.
+ */
+export function withFixtureWorktrees(data: FixtureData, now = Date.now()): FixtureData {
+    const ago = (minutes: number) => now - minutes * MINUTE;
+    const first = data.chats.find(chat => chat.id === FIXTURE_WORKSPACE_CHAT_ID) ?? withFixtureWorkspace(data, now).chats.find(chat => chat.id === FIXTURE_WORKSPACE_CHAT_ID) as Chat;
+    const project = data.projects.find(candidate => candidate.id === first.projectId) as Project;
+
+    project.folders.push({ ...FIXTURE_API_FOLDER }, { ...FIXTURE_NOTES_FOLDER });
+    data.runs.push({
+        id: FIXTURE_WORKTREE_SECOND_RUN_ID,
+        projectId: project.id,
+        rootRunId: FIXTURE_WORKTREE_SECOND_RUN_ID,
+        chatId: FIXTURE_WORKTREE_SECOND_CHAT_ID,
+        role: 'orchestrator',
+        name: 'Orchestrator 10',
+        summary: 'Show the weekend surcharge in the form',
+        status: 'succeeded',
+        engine: first.engine ?? 'claude',
+        result: 'The form shows the surcharge as its own line.',
+        createdAt: ago(60 * 24),
+        startedAt: ago(60 * 24),
+        finishedAt: ago(60 * 24 - 3),
+    });
+    data.chats.push({
+        id: FIXTURE_WORKTREE_SECOND_CHAT_ID,
+        projectId: project.id,
+        title: 'Show the weekend surcharge in the form',
+        mode: 'autopilot',
+        ...(first.engine && { engine: first.engine }),
+        ...(first.model && { model: first.model }),
+        orchestratorRunId: FIXTURE_WORKTREE_SECOND_RUN_ID,
+        workspace: structuredClone(first.workspace),
+        archivedAt: ago(60 * 12),
+        createdAt: ago(60 * 24),
+        updatedAt: ago(60 * 24 - 3),
     });
 
     return data;
@@ -1166,6 +1278,17 @@ export function createFixtureData(now = Date.now()): FixtureData {
             '/Users/dev/car-rental': { remoteUrl: 'git@github.com:acme/car-rental.git', branch: 'main' },
             '/Users/dev/clowdy': { remoteUrl: 'https://github.com/acme/clowdy.git', branch: 'next' },
             '/Users/dev/car-rental-api': { remoteUrl: 'git@github.com:acme/car-rental-api.git', branch: 'feature/payments' },
+        },
+        // What git lists for the two repositories besides the folder's own checkout and the Clowdy-made one: a worktree somebody made by hand (changed), a locked one, one whose folder is gone.
+        worktrees: {
+            '/Users/dev/car-rental': [
+                { path: '/Users/dev/orca/car-rental/search-filters', branch: 'search-filters', head: '5c4b3a2', changes: 2, submodules: true, merged: false },
+                { path: '/Users/dev/car-rental-hotfix', branch: 'hotfix/invoice', head: '7e6d5c4', locked: 'on an external drive' },
+                { path: '/Users/dev/car-rental-old', branch: 'old-pricing', head: '1d2c3b4', missing: true },
+            ],
+            '/Users/dev/car-rental-api': [
+                { path: '/Users/dev/orca/car-rental-api/readme', head: '3a2b1c0' },
+            ],
         },
         statuses: { [projectId]: DEFAULT_STATUSES, [FIXTURE_EMPTY_PROJECT_ID]: DEFAULT_STATUSES, [FIXTURE_PERSONAL_PROJECT_ID]: DEFAULT_STATUSES },
         // As the daemon's migration leaves them: a chat that has an orchestrator records the engine and model it runs on.

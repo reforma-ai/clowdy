@@ -16,6 +16,7 @@ import type {
     DocsTree,
     FolderGit,
     FolderId,
+    FolderWorktrees,
     ProjectFileMatch,
     ProjectId,
     ProjectInfo,
@@ -118,6 +119,10 @@ export class HttpTransport implements Transport {
         if (!response.ok) throw await refusal(response, route);
 
         return await response.json() as FolderGit;
+    }
+
+    getProjectWorktrees(projectId: ProjectId): Promise<FolderWorktrees[]> {
+        return this.#get(ROUTES.projectWorktrees(projectId));
     }
 
     getChatWorkspaceRemoval(chatId: ChatId): Promise<ChatWorkspaceRemoval> {
