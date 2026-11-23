@@ -77,7 +77,7 @@ export class GitWrites {
      * Commits the files a client ticked (`POST /v1/projects/:id/git/commit`): `git add -- <paths>`, then `git commit -m <message> -- <paths>`, which takes those files alone and leaves
      * everything else changed or staged in the place as it was. The paths are judged against the place's uncommitted changes as the moment finds them (`selectChanged`), a merge, a
      * cherry-pick or a revert in progress and a file with merge conflicts are refused (a partial commit would settle what the person has not looked at), and git's own refusal is the
-     * error, as one line (`failureLine`). A commit that was refused leaves the paths staged, which is what the next try would do first.
+     * error, as one line (`failureLine`). A commit that was refused takes back what the add staged: a path that was staged before the add stays staged as the person left it.
      */
     async commit(place: Place, request: Pick<GitCommitRequest, 'paths' | 'message'>): Promise<GitCommitResult> {
         const { message } = request;
@@ -96,14 +96,23 @@ export class GitWrites {
 
             const env = await this.environment.of(place.path);
             const run = (args: string[]) => this.#git(place.path, env, args);
-            const toAdd = await this.#addable(place.path, gitPaths);
+            const [toAdd, stagedBefore] = await Promise.all([this.#addable(place.path, gitPaths), this.#staged(place.path, gitPaths)]);
 
-            // Nothing to add when every path is a removal that is staged already (`git rm`, the old side of `git mv`): the commit below takes it from there.
-            if (toAdd.length > 0) this.#check(await run(['add', '--', ...toAdd]));
+            try {
+                // Nothing to add when every path is a removal that is staged already (`git rm`, the old side of `git mv`): the commit below takes it from there.
+                if (toAdd.length > 0) this.#check(await run(['add', '--', ...toAdd]));
 
-            const committed = await run(['commit', '-m', message, '--', ...gitPaths]);
+                this.#check(await run(['commit', '-m', message, '--', ...gitPaths]));
+            }
+            catch (error) {
+                // Takes back what the add staged, which is `git reset` to HEAD for the paths whose entry was HEAD's before; one the person had staged stays as they left it. Best effort: when git
+                // cannot (a commit that timed out is still letting go of its lock) the paths stay staged, which is what the next try does first. If the commit landed after all, HEAD is the new commit and the reset changes nothing.
+                const added = gitPaths.filter(path => !stagedBefore.has(path));
 
-            this.#check(committed);
+                if (added.length > 0) await run(['reset', '-q', '--', ...added]);
+
+                throw error;
+            }
 
             const sha = await gitLine(place.path, ['rev-parse', 'HEAD']);
 
@@ -123,6 +132,13 @@ export class GitWrites {
         const present = await Promise.all(paths.map(async path => known.has(path) || await lstat(join(cwd, path)).then(() => true, () => false)));
 
         return paths.filter((_, index) => present[index]);
+    }
+
+    /** The paths the index already holds differently from HEAD (staged by the person, or by an agent in the place): what a failed commit must leave staged. When git does not say, every path counts as staged. */
+    async #staged(cwd: string, paths: string[]): Promise<Set<string>> {
+        const read = await gitRead(cwd, ['diff', '--cached', '--name-only', '-z', '--no-renames', '--', ...paths.map(path => `:(literal)${ path }`)], { parsed: true });
+
+        return new Set(read.ok ? read.stdout.split('\0').filter(path => path !== '') : paths);
     }
 
     /** A commit of some paths cannot be made in the middle of a merge (git says `cannot do a partial commit during a merge`), and a file with conflicts is not the person's to commit as it is. */

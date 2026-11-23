@@ -165,7 +165,7 @@ export class CommitDraft {
 
     /**
      * Commits the ticked files with the message. On success the box is clear and the place is read again; on failure it stays as it was, with git's own line, since what the person wrote is
-     * theirs to keep. The place is read again either way: a commit that failed may have staged what it was given.
+     * theirs to keep. The place is read again either way: a commit that failed may still have changed it (a hook may edit files).
      */
     async commit(): Promise<void> {
         if (!this.canCommit) return;

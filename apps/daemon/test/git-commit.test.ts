@@ -193,7 +193,7 @@ withScripts('POST /v1/projects/:id/git/commit', () => {
         expect(left(path)).toEqual(['?? src/other.tsx']);
     });
 
-    test('runs the person\'s hooks, and says a hook that failed with its own line and leaves the paths staged and no commit', async () => {
+    test('runs the person\'s hooks, and says a hook that failed with its own line, makes no commit and leaves the index as it found it', async () => {
         const h = await start();
         const path = repository();
         const { commit } = await open(path, h);
@@ -209,13 +209,53 @@ withScripts('POST /v1/projects/:id/git/commit', () => {
         expect(body.error).toMatchObject({ code: 'conflict', message: 'lint: 2 problems in a.txt' });
         expect(body.error.details).toBeUndefined();
         expect(git(path, 'rev-parse', 'HEAD')).toBe(before);
-        // What the add left: the paths that were asked for are staged (the next try does that first), the others are not touched.
-        expect(left(path)).toEqual([' M b.txt', 'M  a.txt']);
+        // What the add staged is taken back, and the other paths are not touched.
+        expect(left(path)).toEqual([' M a.txt', ' M b.txt']);
 
         // A hook that passes lets the commit through, and sees the commit's own files.
         hook(path, 'pre-commit', 'git diff --cached --name-only > "$(git rev-parse --git-dir)/seen"', 'exit 0');
         expect((await commit(['a.txt'], 'Edit a')).status).toBe(200);
         expect(readFileSync(join(path, '.git', 'seen'), 'utf8')).toBe('a.txt\n');
+    });
+
+    test('takes back what it staged when the commit fails, a new file and a deletion too, and leaves what the person had staged as it was', async () => {
+        const h = await start();
+        const path = repository();
+        const { commit } = await open(path, h);
+
+        // a: edited and staged by the person; b: edited, not staged; fresh: new; gone: deleted; c: new and staged by the person.
+        put(path, { 'a.txt': 'a\nstaged\n', 'c.txt': 'c\n' });
+        git(path, 'add', 'a.txt', 'c.txt');
+        put(path, { 'b.txt': 'b\nmore\n', 'fresh.txt': 'fresh\n' });
+        rmSync(join(path, 'gone.txt'));
+        hook(path, 'pre-commit', 'echo "lint failed" >&2', 'exit 1');
+
+        const response = await commit(['a.txt', 'b.txt', 'c.txt', 'fresh.txt', 'gone.txt'], 'Take the lot');
+
+        expect(response.status).toBe(409);
+        expect((await json<Failure>(response)).error.message).toBe('lint failed');
+        // Only the person's own staging is left: a and c as they staged them. The edit of b, the new file and the deletion are where they were before the commit.
+        expect(left(path)).toEqual([' D gone.txt', ' M b.txt', '?? fresh.txt', 'A  c.txt', 'M  a.txt']);
+    });
+
+    test('takes back what it staged in a repository with no commit yet', async () => {
+        const h = await start();
+        const path = makeRepo(tempDir('git-commit'));
+
+        git(path, 'config', 'user.name', 'Test');
+        git(path, 'config', 'user.email', 'test@example.com');
+        git(path, 'config', 'commit.gpgsign', 'false');
+        put(path, { 'first.txt': 'first\n' });
+        hook(path, 'pre-commit', 'exit 1');
+
+        const { commit } = await open(path, h);
+
+        expect((await commit(['first.txt'], 'First')).status).toBe(409);
+        expect(left(path)).toEqual(['?? first.txt']);
+
+        hook(path, 'pre-commit', 'exit 0');
+        expect((await commit(['first.txt'], 'First')).status).toBe(200);
+        expect(left(path)).toEqual([]);
     });
 
     test('commits two requests for one place one after the other', async () => {
