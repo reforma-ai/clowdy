@@ -7,6 +7,7 @@ import type { FsService } from '../fs/service';
 import type { GitWrites } from '../git/commit';
 import type { CommitMessages } from '../git/message';
 import type { PullRequests } from '../git/pullRequest';
+import type { GitRemote } from '../git/remote';
 import type { ModelCatalog } from '../providers/models';
 import type { ProvidersService } from '../providers/service';
 import type { RunDriver } from '../runs/driver';
@@ -41,6 +42,8 @@ export interface Services {
     pullRequests: PullRequests;
     /** What the daemon writes to a person's repository: the commit of the files they ticked. */
     gitWrites: GitWrites;
+    /** What the daemon does between a person's branch and their `origin`: fetch, pull and push. */
+    gitRemote: GitRemote;
     /** The commit message an agent the person chose writes for the files they ticked. */
     commitMessages: CommitMessages;
 }

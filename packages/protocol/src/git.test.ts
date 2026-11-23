@@ -33,4 +33,10 @@ describe('ROUTES git writes', () => {
         expect(ROUTES.projectGitCommit('prj_1')).toBe('/v1/projects/prj_1/git/commit');
         expect(ROUTES.projectGitMessage('a/b?c')).toBe('/v1/projects/a%2Fb%3Fc/git/message');
     });
+
+    test('are one route for each of the three actions that reach origin', () => {
+        expect(ROUTES.projectGitRemote('prj_1', 'fetch')).toBe('/v1/projects/prj_1/git/fetch');
+        expect(ROUTES.projectGitRemote('prj_1', 'pull')).toBe('/v1/projects/prj_1/git/pull');
+        expect(ROUTES.projectGitRemote('a/b?c', 'push')).toBe('/v1/projects/a%2Fb%3Fc/git/push');
+    });
 });

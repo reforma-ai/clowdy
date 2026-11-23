@@ -35,23 +35,36 @@ export interface GitWritesOptions {
     timeoutMs?: number;
 }
 
-/**
- * The first line of what git and its hooks printed that says what went wrong: the line that names the signing key when there is one, else git's own `fatal:` or `error:` line, else
- * the first line of what was printed on its error stream (a hook's), else of its output. One line, cut, without colour codes and without a credential in an address: never the whole of it, since a hook may print anything.
- */
-export function failureLine(stderr: string, stdout: string): string {
+/** The lines of what a program printed that have something in them, without colour codes. */
+export function printedLines(text: string): string[] {
     // eslint-disable-next-line no-control-regex
-    const lines = (text: string) => text.replace(/\u001B\[[0-9;]*[A-Za-z]/g, '').split(/\r?\n/).map(line => line.trim()).filter(line => line !== '');
-    const printed = lines(stderr);
-    // The line that names the signing key comes first: git adds its own `fatal: failed to write commit object` after what the signing program said.
-    const line = printed.find(namesSigningKey) ?? printed.find(candidate => /^(?:fatal|error):/i.test(candidate)) ?? printed[0] ?? lines(stdout)[0] ?? 'git could not make the commit';
-    const plain = line.replace(/\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi, '$1');
+    return text.replace(/\u001B\[[0-9;]*[A-Za-z]/g, '').split(/\r?\n/).map(line => line.trim()).filter(line => line !== '');
+}
+
+/** A line of git's as the person is shown it: without the credential of an address in it (everything before the last `@` of its authority, so a password with an `@` in it goes whole), and cut. */
+export function shownLine(line: string): string {
+    const plain = line.replace(/\b([a-z][a-z0-9+.-]*:\/\/)[^\s/]*@/gi, '$1');
 
     return plain.length > MAX_LINE_CHARS ? `${ plain.slice(0, MAX_LINE_CHARS - 1) }…` : plain;
 }
 
 /**
- * The writes the daemon makes to a person's repository. Only the commit for now (fetch, pull and push come with their stage). Every write runs the person's own `git` in the place,
+ * The first line of what git and its hooks printed that says what went wrong: the line that names the signing key when there is one, else git's own `fatal:` or `error:` line, else
+ * the first line of what was printed on its error stream (a hook's), else of its output. One line, cut, without colour codes and without a credential in an address: never the whole of it, since a hook may print anything.
+ */
+export function failureLine(stderr: string, stdout: string): string {
+    const printed = printedLines(stderr);
+    // The line that names the signing key comes first: git adds its own `fatal: failed to write commit object` after what the signing program said.
+    const line = printed.find(namesSigningKey) ?? printed.find(candidate => /^(?:fatal|error):/i.test(candidate)) ?? printed[0] ?? printedLines(stdout)[0] ?? 'git could not make the commit';
+
+    return shownLine(line);
+}
+
+/** The line of writes that a place has (`exclusive`): everything that changes the place's repository, a commit, a fetch, a pull and a push, waits for the one before it, keyed by the place's real path so two paths to one folder are one line. */
+export const writeLine = (place: Place): string => `git:${ pathKey(placeOf(place.path)) }`;
+
+/**
+ * The commit, the write the daemon makes to a person's repository that stays on their machine (fetch, pull and push are `GitRemote`'s, on the same line of writes). Every write runs the person's own `git` in the place,
  * no shell, with their configuration: their signing, their hooks, their identity; nothing is turned off (`--no-verify`, `commit.gpgsign=false` are never passed), and the environment is
  * `WriteEnvironment`'s. Writes to one place run one after the other (`exclusive`, keyed by the place's real path, so two paths to one folder are one line), since git itself would refuse a
  * second one while the first holds its index lock; reads never wait for them.
@@ -89,7 +102,7 @@ export class GitWrites {
         if (message.includes('\0')) throw invalid('The message has a character that cannot be in a commit');
 
         // Judged and written on one line, so a second commit of the place reads what the first one left.
-        return exclusive(this.#store, `git:${ pathKey(placeOf(place.path)) }`, this.#stopper.signal, async () => {
+        return exclusive(this.#store, writeLine(place), this.#stopper.signal, async () => {
             const { files, gitPaths } = await selectChanged(place, request.paths);
 
             await this.#refuseUnsettled(place, files.map(file => file.path));

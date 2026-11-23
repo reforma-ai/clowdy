@@ -1,6 +1,7 @@
 import { TransportError } from './transport';
 
 import type { GitCommitResult, GitMessage } from '@clowdy/protocol';
+import type { FixtureRemoteScript } from './fixtureGitRemote';
 
 /** How the next commit of the fixture ends: it goes through (`ok`), git says the signing agent could not be reached (`signing`), a hook says no (`hook`), or it takes a while before it goes through (`slow`). */
 export type FixtureCommitScript = 'ok' | 'signing' | 'hook' | 'slow';
@@ -11,6 +12,8 @@ export type FixtureMessageScript = 'ok' | 'failed' | 'slow';
 export interface FixtureGitWritesOptions {
     commit?: FixtureCommitScript;
     message?: FixtureMessageScript;
+    /** How a fetch, a pull and a push end and where the branch stands against its upstream (`fixtureGitRemote.ts`). */
+    remote?: FixtureRemoteScript;
 }
 
 /** How long a `slow` request takes: long enough for a screenshot of its running state. */

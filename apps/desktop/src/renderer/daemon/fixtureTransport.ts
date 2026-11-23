@@ -24,6 +24,7 @@ import {
 } from './fixtureData';
 import { fixtureFileContents } from './fixtureFiles';
 import { applyFolderSettings } from './fixtureFolderSettings';
+import { FixtureGitRemote, type FixtureRemotePlace } from './fixtureGitRemote';
 import { FixtureGitWrites, type FixtureGitWritesOptions } from './fixtureGitWrites';
 import { fail, ok, type Outcome } from './fixtureOutcome';
 import { FixtureTasks } from './fixtureTasks';
@@ -52,6 +53,8 @@ import type {
     GitFileSides,
     GitMessage,
     GitPullRequestInfo,
+    GitRemoteAction,
+    GitRemoteResult,
     GitScope,
     GitStatus,
     GitViewedMark,
@@ -218,11 +221,14 @@ export class FixtureTransport implements Transport {
     readonly #terminals = new FixtureTerminals();
     /** What the commits made here took out of each place's uncommitted files. */
     readonly #gitWrites: FixtureGitWrites;
+    /** Where each place's branch stands against its upstream, which a fetch, a pull, a push and a commit move. */
+    readonly #gitRemote: FixtureGitRemote;
 
     constructor({ data = createFixtureData(), timeline = false, gitWrites }: FixtureTransportOptions = {}) {
         this.#data = data;
         this.#timeline = timeline;
         this.#gitWrites = new FixtureGitWrites(gitWrites);
+        this.#gitRemote = new FixtureGitRemote(gitWrites?.remote);
         this.#tasks = new FixtureTasks(data, { emit: (projectId, event) => this.#emit(projectId, event), id: prefix => this.#id(prefix) });
 
         for (const { projectId, attachment, content } of data.attachments) {
@@ -273,7 +279,37 @@ export class FixtureTransport implements Transport {
     async getGitStatus(projectId: ProjectId, place: PlaceRef): Promise<GitStatus> {
         const { head, workspace } = this.#gitPlace(projectId, place);
 
-        return structuredClone(fixtureGitStatus(head, workspace, this.#gitWrites.committedOf(place.workspaceId ?? '')));
+        const upstream = this.#gitRemote.upstreamOf(this.#remotePlace(head, workspace, place));
+
+        return structuredClone(fixtureGitStatus(head, workspace, this.#gitWrites.committedOf(place.workspaceId ?? ''), { ...(upstream && { upstream }) }));
+    }
+
+    /** The place as the fixture's remote keeps it: a checkout is level with its upstream, a worktree's branch is not published until a push says so. */
+    #remotePlace(head: { branch?: string; detached?: true } | undefined, workspace: Pick<ChatWorkspace, 'branch'> | undefined, place: PlaceRef): FixtureRemotePlace {
+        const branch = head?.detached ? undefined : workspace ? workspace.branch ?? 'clowdy/ab12cd34' : head?.branch;
+
+        return { key: `${ place.folderId }/${ place.workspaceId ?? '' }`, branch, worktree: workspace !== undefined };
+    }
+
+    /** Runs a fetch, a pull or a push in a place, judged as the daemon judges it: a folder that is no repository is `400`. */
+    async #remote(action: GitRemoteAction, projectId: ProjectId, place: PlaceRef): Promise<GitRemoteResult> {
+        const { head, workspace } = this.#gitPlace(projectId, place);
+
+        if (!head?.branch) throw new TransportError('The folder is not the root of a git repository', 400);
+
+        return structuredClone(await this.#gitRemote.run(action, this.#remotePlace(head, workspace, place)));
+    }
+
+    fetchGit(projectId: ProjectId, place: PlaceRef): Promise<GitRemoteResult> {
+        return this.#remote('fetch', projectId, place);
+    }
+
+    pullGit(projectId: ProjectId, place: PlaceRef): Promise<GitRemoteResult> {
+        return this.#remote('pull', projectId, place);
+    }
+
+    pushGit(projectId: ProjectId, place: PlaceRef): Promise<GitRemoteResult> {
+        return this.#remote('push', projectId, place);
     }
 
     async getGitChanges(projectId: ProjectId, place: PlaceRef, scope: GitScope): Promise<GitChanges> {
@@ -348,7 +384,13 @@ export class FixtureTransport implements Transport {
     }
 
     async commitGit(projectId: ProjectId, place: PlaceRef, paths: string[], message: string): Promise<GitCommitResult> {
-        return structuredClone(await this.#gitWrites.commit(place.workspaceId ?? '', this.#uncommitted(projectId, place), paths, message));
+        const committed = structuredClone(await this.#gitWrites.commit(place.workspaceId ?? '', this.#uncommitted(projectId, place), paths, message));
+        const { head, workspace } = this.#gitPlace(projectId, place);
+
+        // A commit puts the branch one ahead of its upstream.
+        this.#gitRemote.committed(this.#remotePlace(head, workspace, place));
+
+        return committed;
     }
 
     async generateGitMessage(projectId: ProjectId, place: PlaceRef, paths: string[]): Promise<GitMessage> {

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { createFixtureData, FIXTURE_EMPTY_PROJECT_ID, FIXTURE_GIT_COMMITS, FIXTURE_PERSONAL_PROJECT_ID, FIXTURE_PROJECT_ID, FIXTURE_WORKTREE_PATH, withFixtureWorkspace, withFixtureWorktrees } from './fixtureData';
 import { FixtureTransport } from './fixtureTransport';
@@ -922,5 +922,147 @@ describe('FixtureTransport git writes', () => {
 
         codex.settings = codex.settings!.map(setting => ({ ...setting, value: false }));
         await expect(new FixtureTransport({ data }).generateGitMessage(FIXTURE_PROJECT_ID, inWorktree, ['notes.md'])).rejects.toMatchObject({ status: 400, message: 'Couldn\'t write the message' });
+    });
+});
+
+describe('HttpTransport git remote actions', () => {
+    /** A transport whose daemon answers `body` with `status`, and what it was sent. */
+    function transportFor(body: unknown, status = 200) {
+        const sent: Array<{ url: string; method?: string; body?: unknown }> = [];
+        const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+            sent.push({ url: String(input), method: init?.method, body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined });
+
+            return new Response(JSON.stringify(body), { status });
+        }) as typeof fetch;
+
+        return { sent, transport: new HttpTransport({ url: 'http://127.0.0.1:4310', token: 't', fetch: fetchImpl }) };
+    }
+
+    it('posts the place to the route of each action, a worktree of its folder included, and gives what the daemon answers', async () => {
+        const done = { state: 'done', action: 'push', published: true, upstream: { name: 'origin/feature', ahead: 0, behind: 0 } };
+        const { sent, transport } = transportFor(done);
+
+        expect(await transport.fetchGit('prj a', { folderId: 'fld/b' })).toEqual(done);
+        expect(await transport.pullGit('prj a', { folderId: 'fld/b', workspaceId: 'wks 1' })).toEqual(done);
+        expect(await transport.pushGit('prj_a', { folderId: 'fld_b' })).toEqual(done);
+        expect(sent.map(request => [request.url, request.method, request.body])).toEqual([
+            ['http://127.0.0.1:4310/v1/projects/prj%20a/git/fetch', 'POST', { folderId: 'fld/b' }],
+            ['http://127.0.0.1:4310/v1/projects/prj%20a/git/pull', 'POST', { folderId: 'fld/b', workspaceId: 'wks 1' }],
+            ['http://127.0.0.1:4310/v1/projects/prj_a/git/push', 'POST', { folderId: 'fld_b' }],
+        ]);
+    });
+
+    it('gives a diverged branch as an answer, not an error', async () => {
+        const diverged = { state: 'diverged', upstream: { name: 'origin/main', ahead: 1, behind: 2 } };
+
+        expect(await transportFor(diverged).transport.pullGit('prj_a', { folderId: 'fld_b' })).toEqual(diverged);
+    });
+
+    it('rejects with git\'s own line, the status and the hint, and sends a push only once', async () => {
+        const body = { ok: false, error: { code: 'conflict', message: 'sign_and_send_pubkey: signing failed: agent refused operation', details: { hint: 'The signing agent couldn\'t be reached' } } };
+        const { sent, transport } = transportFor(body, 409);
+
+        await expect(transport.pushGit('prj_a', { folderId: 'fld_b' })).rejects.toMatchObject({ message: 'sign_and_send_pubkey: signing failed: agent refused operation', status: 409, hint: 'The signing agent couldn\'t be reached' });
+        // A push is not asked for twice, whatever the answer.
+        expect(sent).toHaveLength(1);
+        await expect(transportFor({ error: { code: 'conflict', message: '! [rejected] main -> main (fetch first)' } }, 409).transport.pushGit('prj_a', { folderId: 'fld_b' })).rejects.toMatchObject({ message: '! [rejected] main -> main (fetch first)', hint: undefined });
+        await expect(transportFor({ error: { code: 'unavailable', message: 'The fetch did not finish in time' } }, 503).transport.fetchGit('prj_a', { folderId: 'fld_b' })).rejects.toMatchObject({ message: 'The fetch did not finish in time', status: 503 });
+        await expect(transportFor({ error: { code: 'invalid', message: 'HEAD is detached, switch to a branch to pull' } }, 400).transport.pullGit('prj_a', { folderId: 'fld_b' })).rejects.toMatchObject({ status: 400 });
+    });
+});
+
+describe('FixtureTransport git remote actions', () => {
+    const place = { folderId: 'fld_car_rental' };
+    const inWorktree = { ...place, workspaceId: 'wks_ab12cd34' };
+    const worktree = (remote?: FixtureGitWritesOptions['remote']) => new FixtureTransport({ data: withFixtureWorkspace(createFixtureData()), gitWrites: { remote } });
+    const upstreamOf = async (transport: FixtureTransport, at: { folderId: string; workspaceId?: string } = inWorktree) => (await transport.getGitStatus(FIXTURE_PROJECT_ID, at) as { upstream?: unknown }).upstream;
+
+    it('has the worktree\'s branch unpublished and the folder\'s own checkout level with its upstream, as the fixtures always had them', async () => {
+        const transport = worktree();
+
+        expect(await upstreamOf(transport)).toBeUndefined();
+        expect(await upstreamOf(transport, place)).toEqual({ name: 'origin/main', ahead: 0, behind: 0 });
+    });
+
+    it('publishes the worktree\'s branch with a push, which then tracks origin, and pushes it again as a plain push', async () => {
+        const transport = worktree();
+
+        await expect(transport.pullGit(FIXTURE_PROJECT_ID, inWorktree)).rejects.toMatchObject({ status: 400, message: 'clowdy/ab12cd34 has no upstream to pull from, publish it first' });
+        expect(await transport.pushGit(FIXTURE_PROJECT_ID, inWorktree)).toEqual({ state: 'done', action: 'push', published: true, upstream: { name: 'origin/clowdy/ab12cd34', ahead: 0, behind: 0 } });
+        expect(await upstreamOf(transport)).toEqual({ name: 'origin/clowdy/ab12cd34', ahead: 0, behind: 0 });
+        expect(await transport.pushGit(FIXTURE_PROJECT_ID, inWorktree)).toEqual({ state: 'done', action: 'push', upstream: { name: 'origin/clowdy/ab12cd34', ahead: 0, behind: 0 } });
+    });
+
+    it('puts a commit ahead of a published branch, and a push takes it to origin', async () => {
+        const transport = worktree();
+
+        await transport.pushGit(FIXTURE_PROJECT_ID, inWorktree);
+        await transport.commitGit(FIXTURE_PROJECT_ID, inWorktree, ['notes.md'], 'Add the notes');
+        expect(await upstreamOf(transport)).toMatchObject({ ahead: 1, behind: 0 });
+        await transport.pushGit(FIXTURE_PROJECT_ID, inWorktree);
+        expect(await upstreamOf(transport)).toMatchObject({ ahead: 0, behind: 0 });
+    });
+
+    it('pulls what origin has when the branch is behind, and says nothing came when it is not', async () => {
+        const transport = worktree('behind');
+
+        expect(await upstreamOf(transport)).toEqual({ name: 'origin/clowdy/ab12cd34', ahead: 0, behind: 2 });
+        expect(await transport.pullGit(FIXTURE_PROJECT_ID, inWorktree)).toEqual({ state: 'done', action: 'pull', pulled: 2, upstream: { name: 'origin/clowdy/ab12cd34', ahead: 0, behind: 0 } });
+        expect(await transport.pullGit(FIXTURE_PROJECT_ID, inWorktree)).toMatchObject({ state: 'done', pulled: 0 });
+    });
+
+    it('answers a pull of a diverged branch as diverged and leaves it, and rejects its push as git does', async () => {
+        const transport = worktree('diverged');
+
+        expect(await transport.pullGit(FIXTURE_PROJECT_ID, inWorktree)).toEqual({ state: 'diverged', upstream: { name: 'origin/clowdy/ab12cd34', ahead: 1, behind: 2 } });
+        expect(await upstreamOf(transport)).toEqual({ name: 'origin/clowdy/ab12cd34', ahead: 1, behind: 2 });
+        await expect(transport.pushGit(FIXTURE_PROJECT_ID, inWorktree)).rejects.toMatchObject({ status: 409, message: '! [rejected] clowdy/ab12cd34 -> clowdy/ab12cd34 (fetch first)' });
+    });
+
+    it('ends an action the way its script says', async () => {
+        await expect(worktree('rejected').pushGit(FIXTURE_PROJECT_ID, inWorktree)).rejects.toMatchObject({ status: 409, message: expect.stringContaining('[rejected]') });
+        await expect(worktree('signing').pushGit(FIXTURE_PROJECT_ID, inWorktree)).rejects.toMatchObject({ status: 409, message: expect.stringContaining('No private key found'), hint: 'The signing agent couldn\'t be reached' });
+
+        const offline = worktree('offline');
+
+        for (const act of [offline.fetchGit, offline.pullGit, offline.pushGit]) {
+            await expect(act.call(offline, FIXTURE_PROJECT_ID, inWorktree)).rejects.toMatchObject({ status: 409, message: expect.stringContaining('Could not resolve host') });
+        }
+    });
+
+    it('takes a while when its script is slow, and then goes through', async () => {
+        vi.useFakeTimers();
+
+        try {
+            const pending = worktree('slow').fetchGit(FIXTURE_PROJECT_ID, inWorktree);
+            let settled = false;
+
+            void pending.then(() => {
+                settled = true;
+            });
+            await vi.advanceTimersByTimeAsync(2000);
+            expect(settled).toBe(false);
+            await vi.advanceTimersByTimeAsync(1000);
+            expect(await pending).toEqual({ state: 'done', action: 'fetch' });
+        }
+        finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('judges the place as the daemon does: a folder that is no repository and a detached HEAD are refused, a fetch of a detached HEAD is not', async () => {
+        const transport = worktree();
+
+        await expect(transport.pushGit(FIXTURE_PROJECT_ID, { folderId: 'fld_none' })).rejects.toMatchObject({ status: 404 });
+        await expect(transport.fetchGit(FIXTURE_PROJECT_ID, { ...place, workspaceId: 'wks_none' })).rejects.toMatchObject({ status: 404 });
+
+        const data = withFixtureWorkspace(createFixtureData());
+
+        data.git['/Users/dev/car-rental'] = { ...data.git['/Users/dev/car-rental'], detached: true };
+
+        const detached = new FixtureTransport({ data });
+
+        await expect(detached.pushGit(FIXTURE_PROJECT_ID, place)).rejects.toMatchObject({ status: 400, message: expect.stringContaining('HEAD is detached') });
+        expect(await detached.fetchGit(FIXTURE_PROJECT_ID, place)).toEqual({ state: 'done', action: 'fetch' });
     });
 });

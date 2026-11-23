@@ -13,9 +13,11 @@ import { githubLink } from '../openWith/openTarget';
 import { isCommitScope } from './changeScopes';
 import styles from './ChangesSidebar.module.css';
 import { CommitBox } from './CommitBox';
+import { CreatePullRequest } from './CreatePullRequest';
 import { accessHint, accessHintTitle, aheadBehindCounts, CHANGE_KIND_VIEW, splitPath } from './gitSummary';
 import { LIST_TEXT } from './listState';
 import { PullRequestChip } from './PullRequestChip';
+import { RemoteMenu } from './RemoteMenu';
 
 import type { GitChangedFile, GitCommit, GitStatus } from '@clowdy/protocol';
 import type { ReactNode } from 'react';
@@ -99,7 +101,9 @@ function CommitRow({ commit, current, onPick }: { commit: GitCommit; current: bo
 /**
  * The sidebar of the tab, at the right of the diffs: the branch the place is on with its base and how far it is from it, the pull request, the files of the scope (a press brings
  * their card up, and the filter above the cards narrows this list too) and the commits of the branch (a press shows one commit alone, and a row above them goes back to all
- * changes). The room above the lists is the sidebar's own, for what the person acts with (commit, sync). `toggle` is the button that hides the sidebar, at the end of its header.
+ * changes). The facts at the top are where the person acts on the branch: the base and how far the branch is from it, the row that says how it stands against its upstream and opens the menu
+ * of Fetch, Pull and Push or Publish (`RemoteMenu`), and the pull request as the shared chip, or, while there is none, Create PR (`CreatePullRequest`), which opens GitHub's compare page
+ * once the branch is on origin. `toggle` is the button that hides the sidebar, at the end of its header.
  */
 export function ChangesSidebar({ model, place, projectId, onOpenFile, toggle }: { model: PlaceChanges; place: Place; projectId: string; onOpenFile: (path: string) => void; toggle: ReactNode }) {
     const { facts } = model;
@@ -135,7 +139,7 @@ export function ChangesSidebar({ model, place, projectId, onOpenFile, toggle }: 
             </PanelHeader>
 
             <div className={ styles.body }>
-                { (base || pr || hint) && (
+                { (base || pr || hint || status?.isRepository === true) && (
                     <div className={ styles.facts }>
                         { base && (
                             <Text variant="xs" color="secondary" truncate title={ `${ base.name }, ${ counts }` }>
@@ -143,7 +147,8 @@ export function ChangesSidebar({ model, place, projectId, onOpenFile, toggle }: 
                                 { counts && ` · ${ counts }` }
                             </Text>
                         ) }
-                        { pr && <PullRequestChip pr={ pr } stale={ facts.pullRequest.stale } /> }
+                        <RemoteMenu facts={ facts } />
+                        { pr ? <PullRequestChip pr={ pr } stale={ facts.pullRequest.stale } /> : <CreatePullRequest facts={ facts } git={ git } /> }
                         { hint && <Text variant="xs" color="secondary" truncate title={ accessHintTitle(facts.access, facts.repo) }>{ hint }</Text> }
                     </div>
                 ) }

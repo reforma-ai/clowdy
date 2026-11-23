@@ -103,6 +103,27 @@ export function githubLink(git: FolderGit | undefined, target: Pick<OpenTarget, 
 }
 
 /**
+ * The page on GitHub that starts a pull request for a branch, which is what Create PR opens (as GitHub Desktop does): `<repository>/compare/<base>...<branch>?expand=1`, or
+ * `<repository>/compare/<branch>?expand=1` without a base, where GitHub chooses the repository's own. It is built from the same parse of `origin` as `githubLink`, so the address never
+ * has the credential a remote may carry (`https://user:token@github.com/o/r.git` gives `https://github.com/o/r/compare/...`), and each name is made safe for an address one part at
+ * a time, the slashes inside a branch name kept. The page is GitHub's: `github.com`, and the host `enterpriseHost` names (a GitHub Enterprise server that the person's `gh` is signed in
+ * to; a bare host is more likely GitLab, whose pull requests have another page). Nothing for another host, for a remote that is no web address, and for no remote.
+ */
+export function compareLink(git: FolderGit | undefined, { head, base }: { head: string; base?: string }, enterpriseHost?: string): string | undefined {
+    const repository = remoteLink(git?.remoteUrl)?.href;
+
+    if (!repository || head === '') return undefined;
+
+    const url = new URL(repository);
+    // GitHub's own ssh over port 443 is `ssh.github.com`, a name that has no website.
+    const host = url.host === 'ssh.github.com' ? 'github.com' : url.host;
+
+    if (host !== 'github.com' && host !== enterpriseHost?.toLowerCase()) return undefined;
+
+    return `${ url.protocol }//${ host }${ url.pathname }/compare/${ base ? `${ encodePath(base) }...` : '' }${ encodePath(head) }?expand=1`;
+}
+
+/**
  * The items of the menu for a target, in the order the menu draws them: what the app does itself (Open in Files, Open in Terminal for a folder), the two copies of
  * the path (the second not for the folder itself), then what leaves the app, which the menu keeps in a submenu: the editor, the file manager (shows a file, opens
  * a folder), the terminal program (a folder only) and GitHub. A program that was not found has no item. What needs the disk is off while the folder is gone.

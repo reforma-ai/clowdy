@@ -2,8 +2,8 @@
  * What the daemon reads of a place's git: the status of its working tree, how far its branch is from its base, the files that changed in a scope, the two texts of
  * one of them, and the pull request of its branch. A place is a folder's own checkout or a worktree of it (`resolvePlace`), named by `folderId` and an optional
  * `workspaceId` as the file routes name it. The reads (status, changes, file, pull request) write nothing to a repository and take no index lock, and only the pull request
- * goes to the network, through the person's own `gh` (no token is kept or read by the daemon). The writes (`POST .../git/commit` so far) run the person's own `git` with
- * their configuration, signing included, one at a time for a place.
+ * goes to the network, through the person's own `gh` (no token is kept or read by the daemon). The writes (`POST .../git/commit`, `.../git/fetch`, `.../git/pull` and `.../git/push`) run the
+ * person's own `git` with their configuration, signing included, one at a time for a place; the last three are the only routes that reach `origin`.
  *
  * GET  /v1/projects/:id/git/status?folderId=&workspaceId=
  *                                      -> GitStatus. The branch (or the detached or unborn HEAD), its upstream with ahead and behind, the files that are not
@@ -57,6 +57,19 @@
  *                                         `Couldn't write the message` when no agent is on and signed in, or every one that is fails or does not end in time
  *                                         (`unavailable`, or `invalid` for none on; `details.reason`: `off`, `signed_out`, `failed`, `timed_out`); the paths are judged as
  *                                         the commit judges them.
+ *
+ * POST /v1/projects/:id/git/fetch    -> GitRemoteResult. Body `GitRemoteRequest` (`folderId`, `workspaceId?`). `git fetch --no-recurse-submodules origin` and nothing else: no `--prune` of its own, no other
+ *                                         remote, no submodule's. The answer carries the branch's upstream as it stands after the fetch (`upstream`, with `ahead` and `behind`), when it has one.
+ * POST /v1/projects/:id/git/pull     -> GitRemoteResult. Same body. Fetches `origin`, then takes what the upstream has with `git merge --ff-only`: nothing is merged, rebased, reset or
+ *                                         discarded. A branch that has commits of its own and falls behind its upstream as well has diverged: the answer is `state: 'diverged'` (not an
+ *                                         error) and the branch is left as it was. `pulled` says how many commits came in (0: already up to date).
+ * POST /v1/projects/:id/git/push     -> GitRemoteResult. Same body. Sends the branch to its upstream (`git push origin refs/heads/<branch>:<the upstream's ref>`), and when the branch has none it
+ *                                         publishes it: `git push -u origin refs/heads/<branch>:refs/heads/<branch>`, with `published: true` in the answer. Never forced, never with `--no-verify`, never with a tag.
+ *                                         The three refuse (`invalid`) a place that is not a repository, a repository with no `origin` and, for pull and push, a detached HEAD, a branch with no
+ *                                         commit and a branch whose upstream is not on `origin`. A refusal by git (a push that is rejected, a hook, no permission, no network) is `conflict`
+ *                                         with git's own line as the message (the line that says what went wrong, not the summary that follows it), and a `details.hint` when it names the
+ *                                         signing agent; one that does not end in about two minutes (a fingerprint that is waited for, a network that does not answer) is stopped and
+ *                                         `unavailable`. They run on the place's one line of writes, so a commit and a push never overlap.
  *
  * The first three reads answer `invalid` for no `folderId`, `not_found` for a folder or a workspace that is not the project's, and `unavailable` for a folder or a worktree
  * that is gone from the disk or not made yet and for a git that does not answer in time; the fourth and the viewed routes answer the same.
@@ -371,6 +384,42 @@ export type GitPullRequestInfo = { isRepository: false } | {
     repo?: GitHubRepo;
     pullRequest?: GitPullRequest;
 };
+
+/** The three ways a branch is moved to and from `origin`. Publishing a branch is a `push` of one that has no upstream. */
+export type GitRemoteAction = 'fetch' | 'pull' | 'push';
+
+/** The body of `POST /v1/projects/:id/git/fetch`, `.../pull` and `.../push`: the place. */
+export interface GitRemoteRequest {
+    folderId: string;
+    workspaceId?: string;
+}
+
+/**
+ * What a remote action did, so the client reads what it changed again. `upstream` is the branch's upstream as the action left it, with how far apart the two are (a push leaves 0
+ * and 0); absent when the branch has none (a fetch on a branch that tracks nothing, a detached HEAD).
+ */
+export interface GitRemoteDone {
+    state: 'done';
+    action: GitRemoteAction;
+    upstream?: GitUpstream;
+    /** `pull`: how many commits came in; 0 when the branch was up to date already. */
+    pulled?: number;
+    /** `push`: the branch had no upstream, so it was published and now tracks `origin/<name>`. */
+    published?: true;
+}
+
+/**
+ * A pull that was not made: the branch has commits that its upstream lacks and the upstream has commits that the branch lacks, so taking the upstream would need a merge or a
+ * rebase, which Clowdy does not make. Not an error: `origin` was fetched, and nothing else was touched.
+ */
+export interface GitRemoteDiverged {
+    state: 'diverged';
+    /** The upstream, with both counts above 0. */
+    upstream: GitUpstream;
+}
+
+/** What `POST .../git/fetch`, `.../pull` and `.../push` answer. */
+export type GitRemoteResult = GitRemoteDone | GitRemoteDiverged;
 
 /** The most paths a commit takes: the files `GitChanges.files` lists, which are what the person ticks from. */
 export const MAX_GIT_COMMIT_PATHS = MAX_GIT_CHANGED_FILES;

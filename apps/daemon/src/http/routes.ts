@@ -26,7 +26,7 @@ import { BodyTooLarge, declaredLength, JSON_BODY_LIMIT, readJson, readText } fro
 import { commandResponse, failure, json } from './responses';
 import { eventStream } from './sse';
 
-import type { GitViewedMark, Health, Project, TaskArchivePage, TaskCommentsPage } from '@clowdy/protocol';
+import type { GitRemoteAction, GitViewedMark, Health, Project, TaskArchivePage, TaskCommentsPage } from '@clowdy/protocol';
 import type { Services } from '../commands';
 import type { ViewedPlace } from '../db/viewed';
 import type { Place } from '../domain/places';
@@ -68,6 +68,9 @@ const MAX_FILE_LIMIT = 100;
 /** The bodies of the two git writes: the place (`folderId`, and the worktree when there is one) and the ticked files; what is wrong with them is the route's to say (`selectChanged`). */
 const gitCommitBody = z.object({ folderId: z.string(), workspaceId: z.string().optional(), paths: z.array(z.string()), message: z.string() });
 const gitMessageBody = z.object({ folderId: z.string(), workspaceId: z.string().optional(), paths: z.array(z.string()) });
+
+/** The body of `POST .../git/fetch`, `.../pull` and `.../push` (`GitRemoteRequest`): the place and nothing else, so nothing a client sends changes what is run. */
+const gitRemoteBody = z.object({ folderId: z.string(), workspaceId: z.string().optional() });
 
 function integerParam(raw: string | null, name: string, fallback: number): number {
     if (raw === null) {
@@ -323,6 +326,25 @@ export function createRoutes(context: RouteContext): Route[] {
                 context.keepOpen(request);
 
                 return json(await services.gitWrites.commit(place, body));
+            },
+        },
+        {
+            method: 'POST',
+            pattern: /^\/v1\/projects\/([^/]+)\/git\/(fetch|pull|push)$/,
+            handle: async (request, _url, [id, action]) => {
+                const body = await readJson(request, gitRemoteBody);
+                const place = resolvePlace(store, requireProject(store, id), body.folderId, body.workspaceId);
+
+                // A fetch or a push over SSH may wait for a fingerprint, longer than the connection's idle timeout.
+                context.keepOpen(request);
+
+                try {
+                    return json(await services.gitRemote[action as GitRemoteAction](place));
+                }
+                finally {
+                    // What GitHub says of the branch moves with what was sent (a pull request opened, its checks started): the next read of it asks again, not after the short while it is kept.
+                    await services.pullRequests.forget(place).catch(() => undefined);
+                }
             },
         },
         {

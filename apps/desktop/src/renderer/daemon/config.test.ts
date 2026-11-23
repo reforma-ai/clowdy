@@ -29,6 +29,20 @@ describe('resolveDaemonConfig', () => {
         expect(resolveDaemonConfig('?fixtures=static&commit=other&message=signing')).toEqual({ kind: 'fixtures', timeline: false });
     });
 
+    it('says how a fetch, a pull and a push end in the fixtures, and what GitHub says of the worktree\'s branch, for the words it knows', () => {
+        expect(resolveDaemonConfig('?fixtures=static&worktree&remote=rejected&pr=none')).toEqual({ kind: 'fixtures', timeline: false, worktree: true, remote: 'rejected', pr: 'none' });
+
+        for (const remote of ['slow', 'behind', 'diverged', 'rejected', 'signing', 'offline']) {
+            expect(resolveDaemonConfig(`?fixtures=static&remote=${ remote }`)).toEqual({ kind: 'fixtures', timeline: false, remote });
+        }
+
+        for (const pr of ['none', 'open', 'draft', 'merged', 'closed', 'no_gh', 'not_signed_in', 'no_remote', 'unavailable']) {
+            expect(resolveDaemonConfig(`?fixtures=static&pr=${ pr }`)).toEqual({ kind: 'fixtures', timeline: false, pr });
+        }
+
+        expect(resolveDaemonConfig('?fixtures=static&remote=failed&pr=maybe')).toEqual({ kind: 'fixtures', timeline: false });
+    });
+
     it('has nothing otherwise', () => {
         expect(resolveDaemonConfig('')).toEqual({ kind: 'none' });
         expect(resolveDaemonConfig('?other=1')).toEqual({ kind: 'none' });
@@ -50,10 +64,22 @@ describe('createTransport', () => {
         expect((await createTransport({ kind: 'fixtures', timeline: false }).getProjectSnapshot(project.id)).chats.map(chat => chat.id)).not.toContain('c-9');
     });
 
+    it('says what GitHub says of the worktree\'s branch when the page asks, and how the remote ends', async () => {
+        const place = { folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' };
+        const project = (await createTransport({ kind: 'fixtures', timeline: false }).getRootSnapshot()).projects.find(candidate => candidate.folders.some(folder => folder.id === 'fld_car_rental'))!;
+        const open = createTransport({ kind: 'fixtures', timeline: false, worktree: true });
+        const none = createTransport({ kind: 'fixtures', timeline: false, worktree: true, pr: 'none', remote: 'offline' });
+
+        expect(await open.getGitPullRequest(project.id, place)).toMatchObject({ pullRequest: { number: 128 } });
+        expect((await none.getGitPullRequest(project.id, place) as { pullRequest?: unknown }).pullRequest).toBeUndefined();
+        await expect(none.fetchGit(project.id, place)).rejects.toMatchObject({ status: 409 });
+    });
+
     it('makes a transport that cannot reach anything when there is no config', async () => {
         const transport = createTransport({ kind: 'none' });
 
         await expect(transport.getRootSnapshot()).rejects.toThrow('No daemon is configured');
+        await expect(transport.pushGit('p', { folderId: 'f' })).rejects.toThrow('No daemon is configured');
         await expect(transport.command({ type: 'run.cancel', runId: 'r' })).rejects.toThrow('No daemon is configured');
     });
 });

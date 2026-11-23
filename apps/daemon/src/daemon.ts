@@ -15,6 +15,7 @@ import { FsService } from './fs/service';
 import { GitWrites } from './git/commit';
 import { CommitMessages } from './git/message';
 import { PullRequests } from './git/pullRequest';
+import { GitRemote } from './git/remote';
 import { WriteEnvironment } from './git/writeEnv';
 import { startServer } from './http/server';
 import { acquireLock, writeDaemonInfo } from './instance';
@@ -109,7 +110,9 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
         });
         const files = new FilesService();
         const textGeneration = options.textGeneration ?? new TextGeneration({ target: id => agents.probeTarget(id), dataDir: config.dataDir });
-        const services: Services = { config, store, runs, driver, queue, threads, files, fs: new FsService(files, {}, { ripgrep: config.ripgrep }), attachments, skills, agents, providers, models: options.models ?? new ModelCatalog({ registry: agents }), terminals: options.terminals ?? new TerminalService(), pullRequests: options.pullRequests ?? new PullRequests(), gitWrites: new GitWrites({ store, environment: options.gitEnvironment ?? new WriteEnvironment() }), commitMessages: new CommitMessages({ store, agents, providers, generation: textGeneration }) };
+        // One environment for every write, so the signing agent found for a commit is the one a push uses.
+        const gitEnvironment = options.gitEnvironment ?? new WriteEnvironment();
+        const services: Services = { config, store, runs, driver, queue, threads, files, fs: new FsService(files, {}, { ripgrep: config.ripgrep }), attachments, skills, agents, providers, models: options.models ?? new ModelCatalog({ registry: agents }), terminals: options.terminals ?? new TerminalService(), pullRequests: options.pullRequests ?? new PullRequests(), gitWrites: new GitWrites({ store, environment: gitEnvironment }), gitRemote: new GitRemote({ store, environment: gitEnvironment }), commitMessages: new CommitMessages({ store, agents, providers, generation: textGeneration }) };
 
         await runs.recover();
         attachments.sweep();
@@ -128,6 +131,7 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
             services.terminals.stop();
             services.pullRequests.stop();
             services.gitWrites.stop();
+            services.gitRemote.stop();
             services.commitMessages.stop();
             await driver.stop();
             created?.stop();

@@ -108,12 +108,21 @@
     gap: var(--spacing-6);
 }
 
-/* Commit is the main action and takes what Generate leaves; at the narrowest it goes on a line of its own. */
-.commit[data-size][data-variant] {
-    flex: 1 1 var(--spacing-80);
+/* Commit, with the button of its menu beside it, is the main action and takes what Generate leaves; at the narrowest the two go on a line of their own. */
+.commitGroup {
+    display: flex;
+    flex: 1 1 calc(var(--spacing-80) + var(--spacing-30));
+    gap: var(--spacing-6);
+    min-width: 0;
 }
 
-.generate[data-size][data-variant] {
+.commit[data-size][data-variant] {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+.generate[data-size][data-variant],
+.more[data-size][data-variant] {
     flex: 0 0 auto;
 }
 

@@ -24,6 +24,7 @@ import type {
     GitPullRequestInfo,
     GitScope,
     GitStatus,
+    GitUpstream,
     PermissionPresetId,
     Project,
     ProjectFolder,
@@ -627,14 +628,16 @@ const totalsOf = (files: readonly GitChangedFile[]) => ({ fileCount: files.lengt
 /**
  * What `GET git/status` answers for a fixture folder: no repository when `git` says nothing of it. The folder's own checkout is clean and level with `origin/main`. A worktree
  * (`workspace`) is the dirty one `fixtureFolderGit` lists: two commits ahead of the base and one behind, an edited file, one that is not tracked, and no upstream.
+ * `remote` says what the upstream is when the caller keeps it (`FixtureGitRemote`): `upstream` as it stands, or none; without it a checkout is level with `origin/<branch>`.
  */
-export function fixtureGitStatus(head: { branch?: string; detached?: true } | undefined, workspace: Pick<ChatWorkspace, 'branch'> | undefined, committed: ReadonlySet<string> = new Set()): GitStatus {
+export function fixtureGitStatus(head: { branch?: string; detached?: true } | undefined, workspace: Pick<ChatWorkspace, 'branch'> | undefined, committed: ReadonlySet<string> = new Set(), remote?: { upstream?: GitUpstream }): GitStatus {
     if (!head?.branch) return { isRepository: false };
 
     if (workspace) {
         return {
             isRepository: true,
             head: { kind: 'branch', name: workspace.branch ?? 'clowdy/ab12cd34', commit: FIXTURE_GIT_COMMITS[0]!.sha },
+            ...(remote?.upstream && { upstream: remote.upstream }),
             origin: true,
             entries: [{ path: 'notes.md', untracked: true as const }, { path: 'src/booking/price.ts', unstaged: 'modified' as const }, { path: 'src/limits.ts', unstaged: 'modified' as const }].filter(entry => !committed.has(entry.path)),
             base: { state: 'ready', name: 'origin/main', commit: '2'.repeat(40), mergeBase: FIXTURE_BASE_COMMIT, ahead: FIXTURE_GIT_COMMITS.length, behind: 1, commits: FIXTURE_GIT_COMMITS },
@@ -644,7 +647,7 @@ export function fixtureGitStatus(head: { branch?: string; detached?: true } | un
     return {
         isRepository: true,
         head: head.detached ? { kind: 'detached', commit: FIXTURE_BASE_COMMIT } : { kind: 'branch', name: head.branch, commit: FIXTURE_BASE_COMMIT },
-        ...(!head.detached && { upstream: { name: `origin/${ head.branch }`, ahead: 0, behind: 0 } }),
+        ...(!head.detached && (remote ? remote.upstream && { upstream: remote.upstream } : { upstream: { name: `origin/${ head.branch }`, ahead: 0, behind: 0 } })),
         origin: true,
         entries: [],
         base: { state: 'ready', name: 'origin/main', commit: FIXTURE_BASE_COMMIT, mergeBase: FIXTURE_BASE_COMMIT, ahead: 0, behind: 0, commits: [] },

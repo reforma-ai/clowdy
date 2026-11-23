@@ -17,6 +17,7 @@ import type {
     GitFileSides,
     GitMessage,
     GitPullRequestInfo,
+    GitRemoteResult,
     GitScope,
     GitStatus,
     GitViewedMark,
@@ -132,6 +133,23 @@ export interface Transport {
      * is signed out, its run failed or did not end in time.
      */
     generateGitMessage: (projectId: ProjectId, place: PlaceRef, paths: string[]) => Promise<GitMessage>;
+    /**
+     * `git fetch origin` in a place (`POST git/fetch`, without the submodules' remotes): brings in what origin has, moves no branch and prunes nothing. Answers the branch's upstream as it stands, with how far apart the two are.
+     * Rejects with a `TransportError` carrying git's own line (`conflict`, 409: no network, no permission, a hook) and `hint` when the line names the signing agent, 400 for a place that is no repository or
+     * has no `origin`, 503 for one that did not end in about two minutes (a fingerprint that was waited for). Not retried.
+     */
+    fetchGit: (projectId: ProjectId, place: PlaceRef) => Promise<GitRemoteResult>;
+    /**
+     * Fetches origin and fast-forwards the place's branch to its upstream (`POST git/pull`): never a merge, a rebase or a reset. A branch that has commits of its own and falls behind its upstream too
+     * answers `{ state: 'diverged' }`, which is not an error, and stays as it was. Rejects as `fetchGit` does, and with 400 for a detached HEAD, a branch with no upstream or one that tracks another
+     * remote, and 409 with git's line when an uncommitted change is in the way.
+     */
+    pullGit: (projectId: ProjectId, place: PlaceRef) => Promise<GitRemoteResult>;
+    /**
+     * Sends the place's branch to its upstream on origin (`POST git/push`), or publishes it (`-u`, `published: true`) when it has none. Never forced, never with a tag. Rejects as `pullGit` does, and
+     * with 409 and git's own line for a push that origin rejects (`! [rejected] main -> main (fetch first)`), a hook or no permission.
+     */
+    pushGit: (projectId: ProjectId, place: PlaceRef) => Promise<GitRemoteResult>;
     /**
      * Every worktree of every folder of a project, with the chats that work in each, how many files are changed and whether its work is in the base: what the Manage worktrees
      * dialog lists. One entry per folder in the project's order, a folder that is no repository (or is gone) with no worktrees. Read when asked, never pushed: worktrees change

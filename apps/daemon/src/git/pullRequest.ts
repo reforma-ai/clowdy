@@ -3,7 +3,7 @@ import { statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { gitLine, gitRead } from '../domain/git';
+import { gitAnswer, gitLine, gitRead } from '../domain/git';
 import { unavailable } from '../errors';
 import { runProgram } from '../providers/exec';
 import { parseRemote } from './githubRemote';
@@ -210,18 +210,8 @@ function unanswered(run: RunResult, subject: string): CommandError | undefined {
     return run.error === undefined ? undefined : unavailable('Couldn\'t run gh');
 }
 
-/** A line git printed, nothing when it printed none or said no; a git that cannot answer is `unavailable`. */
-async function lineOf(cwd: string, args: string[]): Promise<string | undefined> {
-    const read = await gitRead(cwd, args);
-
-    if (!read.ok) {
-        if (read.reason === 'unavailable') throw unavailable('git did not answer');
-
-        return undefined;
-    }
-
-    return read.stdout.trim().split('\n')[0] || undefined;
-}
+/** What an answer about a branch is kept by: the repository, the branch and the commit the place is at (a new commit asks again). */
+const answerKey = (repo: GitHubRepo, branch: string, commit: string): string => `${ repo.host }/${ repo.owner }/${ repo.name }#${ branch }@${ commit }`;
 
 /**
  * Whether the place's HEAD has commits that the pull request's branch lacks, so the pull request is about work the branch has left behind. A commit the repository does
@@ -282,18 +272,35 @@ export class PullRequests {
         return hint.branch === await gitLine(place.path, ['branch', '--show-current']) ? hint.base : undefined;
     }
 
+    /**
+     * Forgets the answer kept for the place's branch at the commit it is at, so the next `read` asks GitHub again. A push moves what GitHub says of the branch (a pull request
+     * opened for it, its checks started) without moving HEAD, which is what the answer is kept by; a fetch brings the commit of a merged pull request that `read` judges it by.
+     */
+    async forget(place: Place): Promise<void> {
+        const { branch, commit, repo } = await this.#target(place.path);
+
+        if (repo && branch !== undefined && commit !== undefined) this.#answers.delete(answerKey(repo, branch, commit));
+    }
+
+    /** The branch, the commit and the repository `origin` names, of the place at `cwd`: what an answer is kept by. */
+    async #target(cwd: string): Promise<{ branch: string | undefined; commit: string | undefined; repo?: GitHubRepo }> {
+        const [branch, commit, address] = await Promise.all([
+            gitAnswer(cwd, ['branch', '--show-current']),
+            gitAnswer(cwd, ['rev-parse', '--verify', '--quiet', 'HEAD']),
+            gitAnswer(cwd, ['remote', 'get-url', 'origin']),
+        ]);
+        const repo = address === undefined ? undefined : parseRemote(address);
+
+        return { branch, commit, ...(repo && { repo }) };
+    }
+
     /** What GitHub says of the place's branch (`GET .../git/pull-request`): see `GitPullRequestInfo`. */
     async read(place: Place): Promise<GitPullRequestInfo> {
         const cwd = place.path;
 
         if (!await workingTreeRoot(cwd)) return this.#answer(cwd, { isRepository: false });
 
-        const [branch, commit, address] = await Promise.all([
-            lineOf(cwd, ['branch', '--show-current']),
-            lineOf(cwd, ['rev-parse', '--verify', '--quiet', 'HEAD']),
-            lineOf(cwd, ['remote', 'get-url', 'origin']),
-        ]);
-        const repo = address === undefined ? undefined : parseRemote(address);
+        const { branch, commit, repo } = await this.#target(cwd);
 
         if (!repo) return this.#answer(cwd, { isRepository: true, access: 'no_remote' });
 
@@ -304,7 +311,7 @@ export class PullRequests {
 
         if (access.kind !== 'ready') return this.#answer(cwd, { isRepository: true, access: access.kind, repo });
 
-        const info = await this.#answers.get(`${ repo.host }/${ repo.owner }/${ repo.name }#${ branch }@${ commit }`, async () => {
+        const info = await this.#answers.get(answerKey(repo, branch, commit), async () => {
             const found = await this.#find(access.gh, repo, branch);
 
             // The login is no good any more, whatever was believed a moment ago: ask again next time.
