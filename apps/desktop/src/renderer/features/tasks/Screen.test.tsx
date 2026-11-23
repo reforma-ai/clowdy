@@ -183,7 +183,9 @@ describe('keys that open something', () => {
 
         await act(async () => button.focus());
 
-        const [, options] = (await act(async () => button.click()), vi.mocked(openCreateTask).mock.calls[0]);
+        await act(async () => button.click());
+
+        const [, options] = vi.mocked(openCreateTask).mock.calls[0];
 
         options?.onClose?.();
         await wait();

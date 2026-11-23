@@ -156,7 +156,7 @@ describe('list', () => {
             'pkg/src.ts',
         ]);
         expect(all['.git']).toEqual({ path: '.git', kind: 'directory', hasChildren: true });
-        expect(all['node_modules']).toEqual({ path: 'node_modules', kind: 'directory', hasChildren: true });
+        expect(all.node_modules).toEqual({ path: 'node_modules', kind: 'directory', hasChildren: true });
         expect(all['empty/node_modules']).toEqual({
             path: 'empty/node_modules',
             kind: 'directory',
@@ -245,7 +245,7 @@ describe('list', () => {
             chmodSync(join(dir, 'locked'), 0o000);
 
             try {
-                expect(byPath(await fs.list(project, folderId, ''))['locked']).toEqual({
+                expect(byPath(await fs.list(project, folderId, '')).locked).toEqual({
                     path: 'locked',
                     kind: 'directory',
                     hasChildren: true,

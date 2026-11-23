@@ -45,7 +45,11 @@ describe('ModelsStore', () => {
     it('reads the list of an agent once, however many ask', async () => {
         const reads: string[] = [];
         const store = new ModelsStore({
-            getAgentModels: async (agentId: string) => (reads.push(agentId), answer('opus')),
+            getAgentModels: async (agentId: string) => {
+                reads.push(agentId);
+
+                return answer('opus');
+            },
         } as unknown as Transport);
         const list = store.of('claude');
 

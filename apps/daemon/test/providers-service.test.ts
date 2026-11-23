@@ -247,7 +247,18 @@ describe('ProvidersService', () => {
         let calls = 0;
         const service = new ProvidersService({
             registry: registry(['claude']),
-            providers: [{ ...testSpec('claude'), read: async () => (++calls === 1 ? (await gate, ok(1)) : ok(2)) }],
+            providers: [
+                {
+                    ...testSpec('claude'),
+                    read: async () => {
+                        if (++calls !== 1) return ok(2);
+
+                        await gate;
+
+                        return ok(1);
+                    },
+                },
+            ],
             announce: () => void announced.push(1),
             cwd: '/tmp',
         });
@@ -279,7 +290,18 @@ describe('ProvidersService', () => {
         let calls = 0;
         const service = new ProvidersService({
             registry: registry(['claude']),
-            providers: [{ ...testSpec('claude'), read: async () => (++calls === 1 ? (await gate, signedOut) : ok(8)) }],
+            providers: [
+                {
+                    ...testSpec('claude'),
+                    read: async () => {
+                        if (++calls !== 1) return ok(8);
+
+                        await gate;
+
+                        return signedOut;
+                    },
+                },
+            ],
             announce: () => undefined,
             cwd: '/tmp',
         });
