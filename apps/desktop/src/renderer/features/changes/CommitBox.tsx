@@ -156,11 +156,13 @@ function CommitFileRow({ file, draft }: { file: GitChangedFile; draft: CommitDra
  * The commit of the sidebar: the place's uncommitted files as a checklist (all ticked at first, new files included), the message and the buttons. It is there whichever scope the tab
  * shows, since what is committed is what is not committed yet, and the list inside it is its own: the sidebar's `Changed files` is the scope's list for finding a card, this one is for
  * choosing what goes in. Generate is offered only while an agent that the person turned `Commit messages` on for is signed in (`writesCommitMessages` of the agents the app already
- * knows; the daemon decides again when it is asked), and writes only into an empty box or over what it wrote itself. Commit is the one filled primary action of the place; Cmd or Ctrl and
- * Enter in the box does the same. What git or the agent said is shown as it said it, and the box is as it was. Beside Commit is a menu with **Commit & Push**: it commits as Commit does, then sends the
- * branch (a push, or its publishing when it is not on origin); the commit stands whatever the push comes to, the box is clear, and a push that failed is said with it (`Committed 1a2b3c4, push failed:
- * <git's line>`), the sidebar's menu offering Push again. The entry is off, with the reason under it, where the push after the commit would not be taken (no origin, a detached HEAD, a branch
- * that is behind or has diverged).
+ * knows; the daemon decides again when it is asked), and writes only into an empty box or over what it wrote itself. Commit is the one filled primary action of the place and names what it
+ * does as GitHub Desktop's does (`Commit 3 files to main`), with the tooltips `A commit summary is required to commit` and `Select one or more files to commit` while it is off, and a line under
+ * the box (`Committing to main, the base branch`) when the branch is the one the work is compared with; Cmd or Ctrl and Enter in the box does the same. What git or the agent said is shown as it
+ * said it, and the box is as it was. Beside Commit is a menu with **Commit & Push**: it commits as Commit does, then sends the branch (a push, or its publishing when it is not on origin); the
+ * commit stands whatever the push comes to, the box is clear, and a push that failed is said with it (`Committed 1a2b3c4, push failed: <git's line>`, with a Fetch origin button when origin has
+ * newer commits), the sidebar's sync button then saying what to do. The entry is off, with the reason under it, where the push after the commit would not be taken (no origin, a detached HEAD,
+ * a branch that is behind or has diverged). With nothing to commit the box is `NoLocalChanges`.
  */
 export function CommitBox({ model, place, projectId, git }: CommitBoxProps) {
     const root = useRootStore();
