@@ -5,6 +5,7 @@ import { openConfirmModal } from '@clowdy/components/modals';
 import { Show } from '@clowdy/components/Show';
 import { Badge } from '@clowdy/components/Tag';
 import { Text } from '@clowdy/components/Text';
+import { toast } from '@clowdy/components/Toast';
 import { useId, useState } from 'react';
 
 import { PathText } from '../../shared/PathText';
@@ -99,7 +100,7 @@ function RemoveMessage({ worktree, plan, choice }: RemoveMessageProps) {
  * Asks before a worktree of the Manage dialog is removed, and sends `workspace.remove`. The words follow the worktree: a plain confirm when nothing in it is uncommitted; a red
  * `Discard N changes and remove` (it sends `discard: true`) when something is, a new file or an initialised submodule included; `Remove record` when its folder is gone. The
  * branch is a box of its own (`deleteBranch`), whatever the branch is called, ticked from the start only when its work is in the base. Cancelling sends nothing. The list is
- * read again once the daemon has answered, and a refusal shows the daemon's own reason while the confirmation stays open.
+ * read again once the daemon has answered, and a refusal toasts the daemon's own reason and closes the confirmation, so the next Remove asks about the row as the list now has it.
  */
 export function openRemoveWorktree({ root, projectId, group, worktree, reload }: RemoveWorktreeOptions): void {
     const plan = removalPlan(worktree);
@@ -122,8 +123,9 @@ export function openRemoveWorktree({ root, projectId, group, worktree, reload }:
 
             await reload();
 
-            // The dialog shows a thrown message as an error and stays open.
-            if (!result.ok) throw new Error(result.error.message);
+            // A refusal means the row is not what the confirmation showed. The reason is toasted and the confirmation closes, so the next Remove asks about the row as the list
+            // now has it (a thrown message would keep this stale one open).
+            if (!result.ok) toast.error({ message: result.error.message });
         },
     }, { width: 440 });
 }

@@ -392,7 +392,7 @@ describe('Remove in Manage worktrees', () => {
     });
 
     describe('a refusal', () => {
-        it('shows the daemon\'s own reason, keeps the confirmation open, and reads the list again since the row may have changed', async () => {
+        it('toasts the daemon\'s own reason, reads the list again since the row may have changed, and closes the confirmation', async () => {
             const error = vi.spyOn(toast, 'error').mockReturnValue('' as never);
             const refuse = vi.fn(async (): Promise<CommandResult> => ({ ok: false, requestId: 'r', error: { code: 'conflict', message: 'The chat "Fix the login" works in this worktree' } }));
 
@@ -402,12 +402,13 @@ describe('Remove in Manage worktrees', () => {
 
             expect(refuse).toHaveBeenCalledTimes(1);
             expect(error).toHaveBeenCalledWith({ message: 'The chat "Fix the login" works in this worktree' });
-            expect(isConfirming()).toBe(true);
+            expect(isConfirming()).toBe(false);
+            expect(Modal.opened).toHaveLength(1);
             expect(getProjectWorktrees).toHaveBeenCalledTimes(2);
             expect(row(CLEAN_MERGED)).not.toBeNull();
         });
 
-        it('shows what the daemon says of a folder that changed since the list was read', async () => {
+        it('toasts what the daemon says of a folder that changed since the list was read, and the next Remove asks the red question about the row as it is now', async () => {
             const error = vi.spyOn(toast, 'error').mockReturnValue('' as never);
             const data = dataWithKinds();
 
@@ -418,8 +419,13 @@ describe('Remove in Manage worktrees', () => {
             await confirm('Remove');
 
             expect(error).toHaveBeenCalledWith({ message: 'The worktree has changes that are not committed' });
-            expect(isConfirming()).toBe(true);
+            expect(isConfirming()).toBe(false);
             expect(row(CLEAN_MERGED)!.textContent).toContain('2 changed');
+
+            await askToRemove(CLEAN_MERGED);
+
+            expect(textButton(confirmation(), 'Discard 2 changes and remove')).not.toBeUndefined();
+            expect(removals()).toHaveLength(1);
         });
     });
 
