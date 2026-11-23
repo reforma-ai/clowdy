@@ -74,7 +74,7 @@ describe('runProgram', () => {
         const stopped = async (name: string, body: string) => {
             const ready = join(root, `${ name }-ready`);
             const controller = new AbortController();
-            const running = runProgram(program(name, `${ body }\necho ready > '${ ready }'\nwhile true; do sleep 1; done`), [], { env, cwd: root, timeoutMs: 30_000, stopSignal: 'SIGTERM', signal: controller.signal });
+            const running = runProgram(program(name, `${ body }\necho ready > '${ ready }'\nwhile true; do sleep 1 & wait $!; done`), [], { env, cwd: root, timeoutMs: 30_000, stopSignal: 'SIGTERM', signal: controller.signal });
 
             for (let i = 0; i < 500 && !existsSync(ready); i++) {
                 await new Promise(resolve => setTimeout(resolve, 10));
@@ -90,11 +90,15 @@ describe('runProgram', () => {
         expect(await stopped('polite', `trap 'echo bye > ${ cleaned }; exit 0' TERM`)).toMatchObject({ error: 'stopped' });
 
         // The program saw `SIGTERM` and left in its own way: a `SIGKILL` would have given it no chance to say goodbye.
-        for (let i = 0; i < 100 && !existsSync(cleaned); i++) {
+        // `runProgram` answers as soon as it has sent the signal, not when the program is gone: the trap may run a moment later, and a loaded machine makes it a long one.
+        const said = () => (existsSync(cleaned) ? readFileSync(cleaned, 'utf8') : '');
+
+        // The file exists a moment before its text does, so the text is what is waited for.
+        for (let i = 0; i < 500 && said() === ''; i++) {
             await new Promise(resolve => setTimeout(resolve, 10));
         }
 
-        expect(readFileSync(cleaned, 'utf8')).toBe('bye\n');
+        expect(said()).toBe('bye\n');
 
         expect(await stopped('stubborn', `echo $$ > ${ pidFile }\ntrap '' TERM`)).toMatchObject({ error: 'stopped' });
 
@@ -113,7 +117,7 @@ describe('runProgram', () => {
         // It shrugged the first signal off, and is gone once the grace (2 s) has passed.
         expect(alive()).toBe(true);
 
-        for (let i = 0; i < 400 && alive(); i++) {
+        for (let i = 0; i < 800 && alive(); i++) {
             await new Promise(resolve => setTimeout(resolve, 10));
         }
 
