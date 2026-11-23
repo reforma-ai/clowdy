@@ -81,11 +81,12 @@ async function draw() {
     store.ui.forProject(FIXTURE_PROJECT_ID).openChat(FIXTURE_WORKSPACE_CHAT_ID);
     act(() => root.render(<RootStoreProvider value={ store }><Tab /></RootStoreProvider>));
     await settle();
-    // The cards come near, ask for their texts, and the diff views come near and build their editors.
-    await bringNear();
-    await settle();
-    await bringNear();
-    await settle();
+    // The cards come near and ask for their texts, then the diff views come near and build their editors: each step waits on the daemon's answer or on a language.
+    await vi.waitFor(async () => {
+        await bringNear();
+        await settle();
+        expect(card('src/booking/price.ts').querySelector('.cm-editor')).not.toBeNull();
+    }, { timeout: 5000 });
 }
 
 beforeEach(() => {

@@ -225,7 +225,7 @@ describe('Add to chat over the open file', () => {
 
         await manager.open('src/booking/price.ts');
         await settle();
-        await settle();
+        await vi.waitFor(() => expect(container.querySelector('.cm-editor')).not.toBeNull(), { timeout: 5000 });
     }
 
     it('offers nothing while no message box is mounted', async () => {
