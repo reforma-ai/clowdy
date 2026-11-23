@@ -259,6 +259,29 @@ describe('Add to chat over the open file', () => {
         unregister();
     });
 
+    it('shuts the side panel when it covers the chat, which cannot be typed in out of sight, and leaves a panel beside the chat open', async () => {
+        const unregister = registerComposer(() => undefined);
+
+        ui().sidePanelOpen = true;
+        await openPrice();
+
+        // Beside the chat: left as it is.
+        await select(0, 5);
+        await act(async () => button()!.click());
+        expect(ui().sidePanelOpen).toBe(true);
+
+        // Expanded, in the chat's place: shut, so the box that took the quote is on screen. The choice of the expanded size stays, so it comes back expanded.
+        act(() => {
+            ui().sidePanelExpanded = true;
+        });
+        await select(0, 5);
+        await act(async () => button()!.click());
+        expect(ui().sidePanelOpen).toBe(false);
+        expect(ui().sidePanelExpanded).toBe(true);
+
+        unregister();
+    });
+
     it('takes the button away when the message box goes, and brings it back with the next one', async () => {
         const unregister = registerComposer(() => undefined);
 
