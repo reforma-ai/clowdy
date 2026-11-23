@@ -31,8 +31,9 @@ import type { FolderId } from '@clowdy/protocol';
 export function DraftChat({ missing }: { missing: ReadonlySet<FolderId> }) {
     const project = useProjectState();
     const ui = useProjectUi();
-    // What the project asks a new chat to start with, or the app's choice where it follows the app; what neither names starts where the last chat left off.
-    const defaults = startingChoice(project.project.settings, newChatDefaults);
+    // What the project asks a new chat to start with, or the app's choice where it follows the app; what neither names starts where the last chat left off. A page opened for an
+    // agent (a hand-off to another one, `ui.draftEngine`) starts on it, whatever those say; the person's own pick in the box comes before all of them.
+    const defaults = { ...startingChoice(project.project.settings, newChatDefaults), ...(ui.draftEngine && { engine: ui.draftEngine }) };
     const composer = useRef<ComposerHandle>(null);
     const pending = ui.pendingFiles;
     const { folders } = project.project;

@@ -9,6 +9,7 @@ import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { newChatDraftKey, saveDraft } from '../chats/composerDrafts';
 import { filesOf, setFiles } from '../chats/composerFiles';
+import { newChatDefaults } from '../chats/newChatDefaults';
 import { chatListPreferences } from './chatListPreferences';
 import { Screen } from './Screen';
 
@@ -90,6 +91,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+    newChatDefaults.setEngine(undefined);
     act(() => reactRoot.unmount());
     container.remove();
     store.dispose();
@@ -108,6 +110,19 @@ describe('Fork to another agent', () => {
         expect(field()!.editor.getText()).toBe(`Continue the work from the chat "First version". The conversation so far is attached as ${ FILE_NAME }.`);
         // The page took the file: the window holds none any more.
         expect(ui().pendingFiles).toEqual([]);
+    });
+
+    it('starts on the agent picked even when the app\'s new chats ask for another, and the next page opened asks for that other again', async () => {
+        newChatDefaults.setEngine('claude');
+        await forkTo('Cursor');
+
+        expect(ui().draftEngine).toBe('cursor');
+        expect(modelLabel()).toContain('Auto');
+
+        await act(async () => ui().openDraft());
+        await draw();
+
+        expect(modelLabel()).toContain('Opus');
     });
 
     it('sends the first message to the agent picked, with the file, and that makes the chat', async () => {
