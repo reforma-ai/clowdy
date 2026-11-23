@@ -1,24 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { isSamePlace } from '../sidePanel/currentPlace';
-import { changesLabel, lockTip, mergedMark, removeHint, repositoryGroups, worktreeTarget } from './worktreeView';
+import { changesLabel, lockTip, mergedMark, removeHint, repositoryGroups } from './worktreeView';
 
-import type { FolderWorktrees, ProjectFolder, WorktreeInfo } from '@clowdy/protocol';
-
-const FOLDER: ProjectFolder = { id: 'fld_a', path: '/work/a' };
-
-const worktree = (overrides: Partial<WorktreeInfo> = {}): WorktreeInfo => ({
-    path: '/work/a-feature',
-    branch: 'feature',
-    head: '1a2b3c4',
-    main: false,
-    missing: false,
-    changes: 0,
-    submodules: false,
-    managed: false,
-    chats: [],
-    ...overrides,
-});
+import type { FolderWorktrees, ProjectFolder } from '@clowdy/protocol';
 
 describe('changesLabel', () => {
     it('says a clean tree is clean, and else how many files are changed', () => {
@@ -64,31 +48,6 @@ describe('lockTip', () => {
     it('puts git\'s reason after the lock, when there is one', () => {
         expect(lockTip('')).toBe('Git has it locked');
         expect(lockTip('keep')).toBe('Git has it locked: keep');
-    });
-});
-
-describe('worktreeTarget', () => {
-    it('is the worktree\'s folder on the disk, in the folder it is a checkout of', () => {
-        const target = worktreeTarget('p-1', FOLDER, worktree({ workspaceId: 'wks_1', managed: true }));
-
-        expect(target).toMatchObject({ projectId: 'p-1', folder: FOLDER, path: '/work/a-feature', relative: '', kind: 'directory' });
-        expect(target.workspace).toMatchObject({ folderId: 'fld_a', path: '/work/a-feature', branch: 'feature', managed: true, ready: true });
-    });
-
-    it('is never a place of the window, a worktree with a record or without one and the folder\'s own checkout alike, so the menu has no Open in Files', () => {
-        const place = { folder: FOLDER };
-        const record = { folder: FOLDER, workspace: { id: 'wks_1', folderId: 'fld_a', path: '/work/a-feature', managed: true, ready: true } };
-
-        for (const info of [worktree({ workspaceId: 'wks_1' }), worktree(), worktree({ main: true, path: '/work/a' })]) {
-            const { folder, workspace } = worktreeTarget('p-1', FOLDER, info);
-
-            expect(isSamePlace({ folder, workspace }, place)).toBe(false);
-            expect(isSamePlace({ folder, workspace }, record)).toBe(false);
-        }
-    });
-
-    it('marks a worktree whose folder is gone as not made', () => {
-        expect(worktreeTarget('p-1', FOLDER, worktree({ missing: true })).workspace?.ready).toBe(false);
     });
 });
 

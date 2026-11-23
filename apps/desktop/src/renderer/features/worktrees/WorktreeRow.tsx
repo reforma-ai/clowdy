@@ -12,9 +12,10 @@ import { Unavailable } from '../../shared/Unavailable';
 import { worktreeLabel } from '../agents/workspaceChoice';
 import { canOpenPaths, OpenWithMenu, useFolderGit } from '../openWith';
 import styles from './ManageWorktrees.module.css';
-import { changesLabel, lockTip, mergedMark, removeHint, worktreeTarget } from './worktreeView';
+import { changesLabel, lockTip, mergedMark, removeHint } from './worktreeView';
 
 import type { FolderWorktrees, ProjectFolder, ProjectId, WorktreeChat, WorktreeInfo } from '@clowdy/protocol';
+import type { OpenTarget } from '../openWith';
 
 /** What a row asks its dialog to do: the dialog closes itself for the ones that leave it. */
 export interface WorktreeRowActions {
@@ -25,12 +26,16 @@ export interface WorktreeRowActions {
     onRemove?: (group: FolderWorktrees, worktree: WorktreeInfo) => void;
 }
 
-/** The menu of a row's Open button. It reads the folder's git, for the GitHub link, once it is open, and not for every row on the list. */
+/**
+ * The menu of a row's Open button: the worktree's folder on the disk, in the project's folder it is a checkout of. It reads the folder's git, for the GitHub link, once it is
+ * open, and not for every row on the list. The dialog covers the window's places, so the menu leaves out Open in Files and Open in Terminal, which would act behind it.
+ */
 function WorktreeOpenMenu({ projectId, folder, worktree }: { projectId: ProjectId; folder: ProjectFolder; worktree: WorktreeInfo }) {
     const folderGit = useFolderGit(projectId, folder.id);
     const git = folderGit && { remoteUrl: folderGit.remoteUrl, ...(worktree.branch === undefined ? { detached: true } : { branch: worktree.branch }) };
+    const target: OpenTarget = { projectId, folder, path: worktree.path, relative: '', kind: 'directory' };
 
-    return <OpenWithMenu target={ worktreeTarget(projectId, folder, worktree) } missing={ worktree.missing } git={ git } aria-label="Open worktree" />;
+    return <OpenWithMenu target={ target } missing={ worktree.missing } git={ git } inApp={ false } aria-label="Open worktree" />;
 }
 
 interface WorktreeRowProps extends WorktreeRowActions {

@@ -1,5 +1,4 @@
-import type { ChatWorkspace, FolderWorktrees, ProjectFolder, ProjectId, WorktreeInfo } from '@clowdy/protocol';
-import type { OpenTarget } from '../openWith';
+import type { FolderWorktrees, ProjectFolder, WorktreeInfo } from '@clowdy/protocol';
 
 /** How many files a worktree has changed, in a word: `Clean`, or `3 changed`. */
 export function changesLabel(changes: number): string {
@@ -40,24 +39,6 @@ export function removeHint({ blocked, locked }: Pick<WorktreeInfo, 'blocked' | '
     if (blocked === 'locked') return lockTip(locked ?? '');
 
     return blocked === 'chats' ? 'A chat works in it' : undefined;
-}
-
-/**
- * What the menu of a row opens: the worktree's folder on the disk, in the project's folder it is a checkout of. The dialog covers the window's places, so the target is
- * never the place the Files and Terminal tabs show: it carries a stand-in `workspace` whose id no record has, which leaves Open in Files and Open in Terminal out of the
- * menu, since they would act behind the dialog. The programs of the computer and the copies of the path stay.
- */
-export function worktreeTarget(projectId: ProjectId, folder: ProjectFolder, worktree: WorktreeInfo): OpenTarget {
-    const workspace: ChatWorkspace = {
-        id: `manage-worktrees:${ worktree.path }`,
-        folderId: folder.id,
-        path: worktree.path,
-        ...(worktree.branch !== undefined && { branch: worktree.branch }),
-        managed: worktree.managed,
-        ready: !worktree.missing,
-    };
-
-    return { projectId, folder, path: worktree.path, relative: '', kind: 'directory', workspace };
 }
 
 /** The groups of the project that are repositories and whose folder is still in the project, each with its folder, in the project's order. */
