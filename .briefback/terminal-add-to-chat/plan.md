@@ -36,7 +36,7 @@
 
 **This stage:** The scrollback both sides keep drops to 500 rows, and each listed terminal has a plain-text file of its active buffer. The file is what is drawn: one line per buffer row, trailing spaces cut, trailing empty rows dropped, no header, so line 1 is the first row. It is rewritten after the mirror has parsed a burst of output, and again when the screen is resized, not on every byte and not from the ANSI serializer. The path is on `TerminalInfo` so the client does not invent the data directory. Closing the terminal, the sweep after the 30 minutes, a failed start, and stopping the daemon delete the file. A write that is still waiting when the session goes does not recreate it. A start deletes logs still in the directory: a daemon that was killed never reached `stop()`, and no shell is alive to own them.
 
-- [ ] Complete
+- [x] Complete
   - [x] Scrollback is 500 on the daemon mirror and the renderer's terminal
   - [x] A listed terminal rewrites `<dataDir>/terminals/<projectId>/<terminalId>.log` as the plain rows of the active buffer
   - [x] `TerminalInfo` names that absolute path
@@ -54,7 +54,9 @@
 
 **Done when:** a running or recently exited terminal has a plain-text file of its current buffer at the path its info names, and that file is gone once the session is.
 **Verify:** `bun test --cwd apps/daemon test/terminals.test.ts`
-**Commits:** None yet.
+**Commits:**
+
+- `0fb1cd3` feat(daemon): keep a plain log of each terminal. Review: a failed replace keeps the previous file, a failed write or delete does not stick the session, and a start drops logs a killed daemon left.
 
 ## Stage 2 — The agent can open the logs
 
