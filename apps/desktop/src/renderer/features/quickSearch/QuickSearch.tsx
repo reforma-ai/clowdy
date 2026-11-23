@@ -200,6 +200,7 @@ export const QuickSearch = observer(function QuickSearch({ model, folder }: Quic
                 <Search aria-hidden className={styles.lens} />
                 <input
                     ref={field}
+                    // biome-ignore lint/a11y/noAutofocus: the palette opens to be typed in
                     autoFocus
                     role="combobox"
                     aria-expanded={rows.length > 0}

@@ -69,6 +69,7 @@ export function SidePanelSizes({ size, options, onSelect }: SidePanelSizesProps)
                                 className={cn(styles.option, option === size && styles.current)}
                                 aria-pressed={option === size}
                                 disabled={unavailable !== undefined}
+                                // biome-ignore lint/a11y/noAutofocus: the current size takes the focus when the picker opens
                                 autoFocus={option === size}
                                 onClick={() => onSelect(option)}
                             >
