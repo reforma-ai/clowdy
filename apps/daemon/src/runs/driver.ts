@@ -741,8 +741,6 @@ export class RunDriver {
         }
         finally {
             ended.removeEventListener('abort', onEnded);
-            // A turn that ended with no `done` (a Stop, a failure) is measured here; the daemon's own stop is not waited for.
-            if (!this.stopping.signal.aborted) await live.trees?.end();
             // Whatever the agent and its sub-agents left running ends with the session: a Stop or a failure mid-call would otherwise leave the call shimmering.
             const reason = signal.aborted || live.interrupted ? STOPPED_TOOL : UNFINISHED_TOOL;
 
@@ -761,6 +759,9 @@ export class RunDriver {
             }
 
             runs.setProcess(runId, null);
+            // A turn that ended with no `done` (a Stop, a failure) is measured here, once its agent is gone, so what the agent wrote on its way out is in the tree and the Stop, the
+            // session and the process cap are not held for it; the daemon's own stop is not waited for.
+            if (!this.stopping.signal.aborted) await live.trees?.end();
         }
     }
 
@@ -899,6 +900,12 @@ export class RunDriver {
             return;
         }
 
+        // The message starts a turn of the live session: the tree before the agent hears it. Waited for here, before the session is looked at again and the answer is counted: a
+        // `done` that the agent's own turn ends with meanwhile is then the end of that turn, not read as the answer to a message that has not gone yet.
+        const trees = live.cwd === undefined ? undefined : this.snapshots.begin(runId, live.cwd);
+
+        await trees?.started();
+
         // The session ended while the message waited for its slot: it takes nothing, and the message starts a new one.
         if (!live.lingering) {
             this.refuse(live);
@@ -913,12 +920,9 @@ export class RunDriver {
         this.sessions++;
         live.counted = true;
         live.sent = (live.sent ?? 0) + 1;
+        live.trees = trees;
 
         let accepted = false;
-
-        // The message starts a turn of the live session: the tree before the agent hears it.
-        live.trees = live.cwd === undefined ? undefined : this.snapshots.begin(runId, live.cwd);
-        await live.trees?.started();
 
         try {
             accepted = await session.send(prompt);
