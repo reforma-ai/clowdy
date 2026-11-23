@@ -122,6 +122,19 @@ describe('PickerPopover', () => {
         expect(marked.map(row => row.textContent)).toEqual(['In progress']);
     });
 
+    it('moves the mark when the current option changes while the list is open, though its options are the same', async () => {
+        const marked = () => rows().filter(row => row.querySelector('[aria-label="Current"]')).map(row => row.textContent);
+
+        await open({ selectedIds: ['todo'] });
+        expect(marked()).toEqual(['To do']);
+
+        await act(async () => root.render(<Owner selectedIds={ ['done'] } />));
+        expect(marked()).toEqual(['Done']);
+
+        await act(async () => root.render(<Owner selectedIds={ [] } />));
+        expect(marked()).toEqual([]);
+    });
+
     it('picks the highlighted row on Enter, and closes', async () => {
         await open();
         await press('ArrowDown');

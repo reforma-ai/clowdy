@@ -106,6 +106,8 @@ export function PickerList({ options, selectedIds = [], 'aria-label': ariaLabel,
 
     const current = new Set(selectedIds);
     const groups = useMemo(() => groupsOf(options), [options]);
+    // The rows are built once per option and kept: what a row reads from here (the mark of the current option) has to be said to the list, or it stays as it was.
+    const dependencies = [selectedIds.join('\n')];
 
     return (
         <Autocomplete
@@ -124,13 +126,14 @@ export function PickerList({ options, selectedIds = [], 'aria-label': ariaLabel,
                 className={ styles.list }
                 autoFocus={ false }
                 items={ groups }
+                dependencies={ dependencies }
                 onAction={ key => pick(String(key)) }
                 renderEmptyState={ () => <div className={ styles.empty }>Nothing found</div> }
             >
                 { group => (
                     <ListBoxSection id={ group.id } aria-label={ group.title ?? ariaLabel }>
                         { group.title !== undefined && <ListBoxHeader>{ group.title }</ListBoxHeader> }
-                        <Collection items={ group.items }>
+                        <Collection items={ group.items } dependencies={ dependencies }>
                             { option => (
                                 <ListBoxItem
                                     id={ option.id }
