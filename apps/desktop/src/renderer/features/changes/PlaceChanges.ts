@@ -34,6 +34,8 @@ export class PlaceChanges {
     readonly #lists = new Map<GitScope, Fact<GitChanges>>();
     /** What the last read was for (`<scope>@<generation>`), so the same round of reads is not made twice. */
     #stamp = '';
+    /** The round of reads (`syncUncommitted`) the uncommitted files were last read for. */
+    #uncommittedStamp = '';
 
     constructor(
         readonly facts: PlaceFacts,
@@ -64,6 +66,16 @@ export class PlaceChanges {
     /** The list of the scope that is read, when there is one: it is never the answer of another scope. */
     get changes(): RepositoryChanges | undefined {
         const { value } = this.list;
+
+        return value?.isRepository === true ? value : undefined;
+    }
+
+    /**
+     * The uncommitted files of the place, whichever scope is shown: what the commit box lists and ticks from. It is the list of the `uncommitted` scope, so it is the one
+     * `list` is when that scope is shown. `undefined` until it has been read.
+     */
+    get uncommitted(): RepositoryChanges | undefined {
+        const { value } = this.#listOf('uncommitted');
 
         return value?.isRepository === true ? value : undefined;
     }
@@ -156,6 +168,19 @@ export class PlaceChanges {
         void this.#read(this.effectiveScope);
     }
 
+    /**
+     * Reads the uncommitted files for the commit box, which shows them whatever scope is shown: once for each `generation` of the facts, as `sync` does. The `uncommitted` scope is read by
+     * `sync` itself when it is the one shown, so then there is nothing to do here.
+     */
+    syncUncommitted(generation: number): void {
+        const stamp = String(generation);
+
+        if (this.effectiveScope === 'uncommitted' || stamp === this.#uncommittedStamp) return;
+
+        this.#uncommittedStamp = stamp;
+        void this.#read('uncommitted');
+    }
+
     /** Reads the list of the scope that is read now, whatever was read before: a retry. */
     reload(): void {
         this.#stamp = '';
@@ -174,7 +199,7 @@ export class PlaceChanges {
 
             // The oldest lists go, the one that is read and the one before it never.
             for (const [kept] of [...this.#lists].slice(0, Math.max(0, this.#lists.size - MAX_KEPT_LISTS))) {
-                if (kept !== scope && kept !== this.effectiveScope) this.#lists.delete(kept);
+                if (kept !== scope && kept !== this.effectiveScope && kept !== 'uncommitted') this.#lists.delete(kept);
             }
         }
 

@@ -30,6 +30,7 @@ vi.mock('./ChangesView', async importOriginal => ({ ...await importOriginal<type
 vi.mock('./ChangesList', async importOriginal => ({ ChangesList: observer((await importOriginal<typeof import('./ChangesList')>()).ChangesList) }));
 vi.mock('./ChangesToolbar', async importOriginal => ({ ...await importOriginal<typeof import('./ChangesToolbar')>(), ChangesToolbar: observer((await importOriginal<typeof import('./ChangesToolbar')>()).ChangesToolbar) }));
 vi.mock('./ChangesSidebar', async importOriginal => ({ ...await importOriginal<typeof import('./ChangesSidebar')>(), ChangesSidebar: observer((await importOriginal<typeof import('./ChangesSidebar')>()).ChangesSidebar) }));
+vi.mock('./CommitBox', async importOriginal => ({ CommitBox: observer((await importOriginal<typeof import('./CommitBox')>()).CommitBox) }));
 vi.mock('./DiffCard', async importOriginal => ({ DiffCard: observer((await importOriginal<typeof import('./DiffCard')>()).DiffCard) }));
 vi.mock('./PullRequestChip', async importOriginal => ({ PullRequestChip: observer((await importOriginal<typeof import('./PullRequestChip')>()).PullRequestChip) }));
 
@@ -421,6 +422,47 @@ describe('the scope', () => {
         await press(commitRows()[0]!);
         await settle();
         expect(cards()).toHaveLength(6);
+    });
+
+    it('has the commit box in the sidebar whichever scope is shown, with the uncommitted files read for it and the commit sent from the scope that is not theirs', async () => {
+        await start();
+
+        const read = vi.spyOn(transport, 'getGitChanges');
+        const commit = vi.spyOn(transport, 'commitGit');
+
+        await draw();
+
+        const commitBox = () => container.querySelector('[aria-label="Commit"]');
+        const ticks = () => [...container.querySelectorAll<HTMLInputElement>('[aria-label="Commit"] input[type="checkbox"]')].map(tick => tick.getAttribute('aria-label'));
+
+        // The scope is all changes, six files, and the box lists the three that are not committed, from a read of its own.
+        expect(cards()).toHaveLength(6);
+        expect(ticks()).toEqual(['Tick every file', 'notes.md', 'src/booking/price.ts', 'src/limits.ts']);
+        expect(read.mock.calls.filter(call => call[2] === 'uncommitted')).toHaveLength(1);
+
+        // Another scope changes the cards and the files above it, and not the box.
+        await act(async () => {
+            scopeTrigger().click();
+        });
+        await act(async () => {
+            options().find(option => option.textContent === 'Branch')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        });
+        await settle();
+        expect(scopeTrigger().textContent).toContain('Branch');
+        expect(ticks()).toEqual(['Tick every file', 'notes.md', 'src/booking/price.ts', 'src/limits.ts']);
+
+        await act(async () => {
+            const text = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Commit message"]')!;
+
+            Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(text, 'feat: from the branch scope');
+            text.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        await press([...commitBox()!.querySelectorAll('button')].find(candidate => candidate.textContent === 'Commit')!);
+        await settle();
+        await settle();
+
+        expect(commit).toHaveBeenCalledWith(FIXTURE_PROJECT_ID, { folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' }, ['notes.md', 'src/booking/price.ts', 'src/limits.ts'], 'feat: from the branch scope');
+        expect(commitBox()?.textContent).toBe('Committed c0ffee0');
     });
 
     it('reads again only when the facts start a round of reads: a refresh of the store and the window\'s focus reach it, and nothing else does', async () => {

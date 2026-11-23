@@ -12,6 +12,7 @@ import { openEffects, useFolderGit } from '../openWith';
 import { githubLink } from '../openWith/openTarget';
 import { isCommitScope } from './changeScopes';
 import styles from './ChangesSidebar.module.css';
+import { CommitBox } from './CommitBox';
 import { accessHint, accessHintTitle, aheadBehindCounts, CHANGE_KIND_VIEW, splitPath } from './gitSummary';
 import { PullRequestChip } from './PullRequestChip';
 
@@ -148,6 +149,8 @@ export function ChangesSidebar({ model, place, projectId, onOpenFile, toggle }: 
                         )
                         : <PanelEmptyRow>{ model.changes && model.filter.trim() !== '' && model.changes.files.length > 0 ? 'No files match the filter' : 'No changed files' }</PanelEmptyRow> }
                 </section>
+
+                <CommitBox model={ model } />
 
                 { base && (
                     <section className={ styles.commits } aria-label="Committed on branch">
