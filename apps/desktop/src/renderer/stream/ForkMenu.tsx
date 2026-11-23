@@ -4,7 +4,7 @@ import { Menu, MenuItem, MenuTrigger, SubmenuTrigger } from '@clowdy/components/
 import { Popover } from '@clowdy/components/Popover';
 import { Show } from '@clowdy/components/Show';
 // Fork wears the thread's mark until a Fork icon is drawn: swapping it is this one import.
-import { ArrowRight, Split as ForkIcon, NewChat } from '@clowdy/icons/14';
+import { Split as ForkIcon, NewChat } from '@clowdy/icons/14';
 import { ChevronRight } from '@clowdy/icons/8';
 
 import type { ReactNode } from 'react';
@@ -56,7 +56,7 @@ export function ForkMenu({ onFork, state, onHandoffHere, onHandoff, agents = [] 
                 isPending={ state === 'pending' }
                 isDisabled={ state === 'blocked' }
             >
-                { onFork ? <ForkIcon /> : <ArrowRight /> }
+                { onFork ? <ForkIcon /> : <NewChat /> }
             </Button>
             <Popover placement="bottom start" spacing="xs" width={ 240 }>
                 <Menu aria-label={ label } size="sm" onAction={ key => (key === FORK ? onFork?.() : key === HERE && onHandoffHere?.()) }>
@@ -71,7 +71,7 @@ export function ForkMenu({ onFork, state, onHandoffHere, onHandoff, agents = [] 
                             <SubmenuTrigger>
                                 <MenuItem
                                     id={ OTHER_AGENT }
-                                    icon={ <ArrowRight /> }
+                                    icon={ <NewChat /> }
                                     endAffix={ <ChevronRight /> }
                                     text="Hand off to another agent…"
                                     // With no agent to take it the item says why, under its words.
