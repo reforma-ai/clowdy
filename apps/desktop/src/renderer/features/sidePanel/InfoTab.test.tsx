@@ -4,11 +4,13 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createFixtureData, FIXTURE_PROJECT_ID, FIXTURE_WORKSPACE_CHAT_ID, withFixtureWorkspace } from '../../daemon/fixtureData';
+import { createFixtureData, FIXTURE_PROJECT_ID, FIXTURE_WORKSPACE_CHAT_ID, FIXTURE_WORKTREE_PATH, withFixtureWorkspace } from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { openManageWorktrees } from '../worktrees';
 import { InfoTab } from './InfoTab';
+
+import type { ChatWorkspace } from '@clowdy/protocol';
 
 vi.mock('../worktrees', () => ({ openManageWorktrees: vi.fn() }));
 
@@ -70,6 +72,30 @@ describe('the Info tab', () => {
     it('adds the worktree the open chat works in, and the branch the worktree has now', async () => {
         store.ui.forProject(FIXTURE_PROJECT_ID).openChat(FIXTURE_WORKSPACE_CHAT_ID);
         await draw();
+
+        expect(rows()).toEqual([['Project', 'Car Rental'], ['Folder', '~/car-rental'], ['Worktree', '~/Clowdy/workspaces/car-rental/ab12cd34/car-rental'], ['Branch', 'clowdy/ab12cd34']]);
+    });
+
+    it('adds the worktree a new-chat page chose and its branch once the page has its row, though no chat works in it', async () => {
+        store.dispose();
+        store = new RootStore(new FixtureTransport({ data: createFixtureData() }));
+        await store.load();
+        store.selectProject(FIXTURE_PROJECT_ID);
+
+        const ui = store.ui.forProject(FIXTURE_PROJECT_ID);
+
+        ui.openDraft([], null, { mode: 'existing', path: FIXTURE_WORKTREE_PATH });
+        await draw();
+
+        expect(rows()).toEqual([['Project', 'Car Rental'], ['Folder', '~/car-rental'], ['Branch', 'main']]);
+
+        const opened = await store.command({ type: 'workspace.open', projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental', path: FIXTURE_WORKTREE_PATH });
+
+        if (!opened.ok) throw new Error(opened.error.message);
+
+        act(() => ui.setDraftWorkspaceRow((opened.data as { workspace: ChatWorkspace }).workspace));
+        await settle();
+        await settle();
 
         expect(rows()).toEqual([['Project', 'Car Rental'], ['Folder', '~/car-rental'], ['Worktree', '~/Clowdy/workspaces/car-rental/ab12cd34/car-rental'], ['Branch', 'clowdy/ab12cd34']]);
     });

@@ -4,14 +4,14 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createFixtureData, FIXTURE_PROJECT_ID, FIXTURE_WORKSPACE_CHAT_ID, withFixtureWorkspace } from '../../daemon/fixtureData';
+import { createFixtureData, FIXTURE_PROJECT_ID, FIXTURE_WORKSPACE_CHAT_ID, FIXTURE_WORKTREE_PATH, withFixtureWorkspace } from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { openManageWorktrees } from '../worktrees';
 import FilesTab from './FilesTab';
 import { filesStoreOf } from './useFilesStore';
 
-import type { Chat } from '@clowdy/protocol';
+import type { Chat, ChatWorkspace } from '@clowdy/protocol';
 
 vi.mock('../worktrees', () => ({ openManageWorktrees: vi.fn() }));
 
@@ -139,6 +139,28 @@ describe('the bar that names the place', () => {
         await settle();
 
         expect(bar()?.textContent).toBe('car-rental · mainManage');
+    });
+
+    it('names the branch of the worktree a new-chat page chose once the page has its row, though no chat works in it', async () => {
+        store.dispose();
+        store = new RootStore(new FixtureTransport({ data: createFixtureData() }));
+        await store.load();
+        store.selectProject(FIXTURE_PROJECT_ID);
+        ui().openDraft([], null, { mode: 'existing', path: FIXTURE_WORKTREE_PATH });
+        await draw('files');
+
+        // The page has not asked for the worktree yet: the place is the folder's own checkout.
+        expect(bar()?.textContent).toBe('car-rental · mainManage');
+
+        const opened = await store.command({ type: 'workspace.open', projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental', path: FIXTURE_WORKTREE_PATH });
+
+        if (!opened.ok) throw new Error(opened.error.message);
+
+        act(() => ui().setDraftWorkspaceRow((opened.data as { workspace: ChatWorkspace }).workspace));
+        await settle();
+        await settle();
+
+        expect(bar()?.textContent).toBe('clowdy/ab12cd34Manage');
     });
 
     it('is on the Docs tab too, which is the same place', async () => {
