@@ -178,6 +178,33 @@ describe('the sync button in the sidebar', () => {
         expect(syncButton().textContent).toBe('Fetch originNever fetched');
     });
 
+    it('moves its line on by itself while the window stays open: the clock ticks every 30 s and no new read is made', async () => {
+        // Only the clock and its interval are faked, so the fixtures and the settling that the page waits on keep their own timers.
+        vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+
+        try {
+            await start({ key: CHECKOUT });
+
+            const reads = vi.spyOn(transport, 'getGitStatus');
+
+            expect(syncButton().textContent).toBe('Fetch originLast fetched 3 minutes ago');
+
+            act(() => {
+                vi.advanceTimersByTime(29_000);
+            });
+            expect(syncButton().textContent).toBe('Fetch originLast fetched 3 minutes ago');
+
+            act(() => {
+                vi.advanceTimersByTime(2 * 60_000);
+            });
+            expect(syncButton().textContent).toBe('Fetch originLast fetched 5 minutes ago');
+            expect(reads).not.toHaveBeenCalled();
+        }
+        finally {
+            vi.useRealTimers();
+        }
+    });
+
     it('is Pull origin with the count for a branch that is behind, and a press pulls and reads the place again, so the counts and the pull request are the ones it left', async () => {
         await start({ gitWrites: { remote: 'behind' } });
 
