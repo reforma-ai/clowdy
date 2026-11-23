@@ -115,9 +115,21 @@ function CommitsBar({ count }: { count: number }) {
                     contentClassName={styles.barContent}
                     isDisabled={isDisabled}
                 >
-                    <Text variant="xs" weight="medium" color="secondary" truncate>
-                        {isDisabled ? 'No commits on the branch yet' : `Commits on branch · ${count}`}
-                    </Text>
+                    {isDisabled ? (
+                        <Text variant="xs" weight="medium" color="secondary" truncate>
+                            No commits on the branch yet
+                        </Text>
+                    ) : (
+                        // The words are cut before the count is, as the section headers keep theirs.
+                        <span className={styles.barTitle}>
+                            <Text variant="xs" weight="medium" color="secondary" truncate>
+                                Commits on branch
+                            </Text>
+                            <Text variant="xs" weight="medium" color="secondary" className={styles.barCount}>
+                                {` · ${count}`}
+                            </Text>
+                        </span>
+                    )}
                     <ChevronUp aria-hidden="true" aria-expanded={state.isExpanded} className="chevron" />
                 </Button>
             </CollapsibleTrigger>

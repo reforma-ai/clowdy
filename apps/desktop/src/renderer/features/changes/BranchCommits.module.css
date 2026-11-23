@@ -72,3 +72,14 @@
     min-width: 0;
     gap: var(--spacing-md);
 }
+
+.barTitle {
+    display: flex;
+    min-width: 0;
+}
+
+/* Its words keep their own spaces (` · 3`), so the count stands as far from the words as in the bar's whole line. */
+.barCount {
+    flex-shrink: 0;
+    white-space: pre;
+}
