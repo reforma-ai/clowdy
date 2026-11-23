@@ -148,6 +148,68 @@ describe('HttpTransport git reads', () => {
     });
 });
 
+describe('HttpTransport viewed marks', () => {
+    /** A transport whose daemon answers `body` with `status`, and what it was asked: the method, the url and the body of each request. */
+    function transportFor(body: unknown, status = 200) {
+        const requests: Array<{ method: string; url: string; body?: unknown; headers: Record<string, string> }> = [];
+        const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+            requests.push({ method: init?.method ?? 'GET', url: String(input), ...(typeof init?.body === 'string' && { body: JSON.parse(init.body) }), headers: init?.headers as Record<string, string> });
+
+            return new Response(JSON.stringify(body), { status });
+        }) as typeof fetch;
+
+        return { requests, transport: new HttpTransport({ url: 'http://127.0.0.1:4310', token: 't', fetch: fetchImpl }) };
+    }
+
+    it('asks for the marks of a scope of a place, and gives the daemon\'s list', async () => {
+        const marks = [{ path: 'src/a b.ts', revision: '100644:aa:100644:bb' }];
+        const { requests, transport } = transportFor(marks);
+
+        expect(await transport.getGitViewed('prj a', { folderId: 'fld/b' }, 'branch')).toEqual(marks);
+        await transport.getGitViewed('prj a', { folderId: 'fld/b', workspaceId: 'wks 1' }, 'commit:abc1234');
+        expect(requests.map(request => `${ request.method } ${ request.url }`)).toEqual([
+            'GET http://127.0.0.1:4310/v1/projects/prj%20a/git/viewed?folderId=fld%2Fb&scope=branch',
+            'GET http://127.0.0.1:4310/v1/projects/prj%20a/git/viewed?folderId=fld%2Fb&workspaceId=wks+1&scope=commit%3Aabc1234',
+        ]);
+    });
+
+    it('marks a file with a JSON body that names the place, the scope, the path and the revision, and gives what the daemon kept', async () => {
+        const kept = { path: 'src/a.ts', revision: '100644:aa:100644:bb' };
+        const { requests, transport } = transportFor(kept);
+
+        expect(await transport.setGitViewed('prj_a', { folderId: 'fld_b' }, 'all', 'src/a.ts', kept.revision)).toEqual(kept);
+        await transport.setGitViewed('prj_a', { folderId: 'fld_b', workspaceId: 'wks_c' }, 'uncommitted', 'src/a.ts', kept.revision);
+        expect(requests.map(request => [request.method, request.url, request.body])).toEqual([
+            ['POST', 'http://127.0.0.1:4310/v1/projects/prj_a/git/viewed', { folderId: 'fld_b', scope: 'all', path: 'src/a.ts', revision: kept.revision }],
+            ['POST', 'http://127.0.0.1:4310/v1/projects/prj_a/git/viewed', { folderId: 'fld_b', workspaceId: 'wks_c', scope: 'uncommitted', path: 'src/a.ts', revision: kept.revision }],
+        ]);
+        expect(requests[0]!.headers).toMatchObject({ authorization: 'Bearer t', 'content-type': 'application/json' });
+    });
+
+    it('clears a file\'s mark with a DELETE that names the place, the scope and the path in its address', async () => {
+        const { requests, transport } = transportFor({ ok: true });
+
+        expect(await transport.clearGitViewed('prj_a', { folderId: 'fld_b', workspaceId: 'wks_c' }, 'all', 'src/a b.ts')).toBeUndefined();
+        expect(requests.map(request => `${ request.method } ${ request.url }`)).toEqual(['DELETE http://127.0.0.1:4310/v1/projects/prj_a/git/viewed?folderId=fld_b&workspaceId=wks_c&scope=all&path=src%2Fa+b.ts']);
+        expect(requests[0]!.body).toBeUndefined();
+    });
+
+    it('rejects with the daemon\'s own reason and status, and with the status when it gives none', async () => {
+        const refusing = transportFor({ error: { code: 'invalid', message: 'The folder is not the root of a git repository' } }, 400).transport;
+        const place = { folderId: 'fld_b' };
+
+        await expect(refusing.getGitViewed('prj_a', place, 'all')).rejects.toMatchObject({ message: 'The folder is not the root of a git repository', status: 400 });
+        await expect(refusing.setGitViewed('prj_a', place, 'all', 'a.ts', 'r')).rejects.toMatchObject({ message: 'The folder is not the root of a git repository', status: 400 });
+        await expect(refusing.clearGitViewed('prj_a', place, 'all', 'a.ts')).rejects.toMatchObject({ message: 'The folder is not the root of a git repository', status: 400 });
+
+        const bare = new HttpTransport({ url: 'http://127.0.0.1:4310', token: 't', fetch: (async () => new Response('Bad gateway', { status: 502 })) as unknown as typeof fetch });
+
+        await expect(bare.getGitViewed('prj_a', place, 'all')).rejects.toMatchObject({ message: expect.stringContaining('502'), status: 502 });
+        await expect(bare.setGitViewed('prj_a', place, 'all', 'a.ts', 'r')).rejects.toMatchObject({ message: expect.stringContaining('502'), status: 502 });
+        await expect(bare.clearGitViewed('prj_a', place, 'all', 'a.ts')).rejects.toMatchObject({ message: expect.stringContaining('502'), status: 502 });
+    });
+});
+
 describe('HttpTransport.getProjectWorktrees', () => {
     it('asks for one project, its id escaped, and gives the daemon\'s answer', async () => {
         const urls: string[] = [];
@@ -432,6 +494,78 @@ describe('FixtureTransport git reads', () => {
 
         data.chats.find(chat => chat.workspace)!.workspace!.ready = false;
         await expect(new FixtureTransport({ data }).getGitStatus(FIXTURE_PROJECT_ID, inWorktree)).rejects.toMatchObject({ status: 503 });
+    });
+});
+
+describe('FixtureTransport viewed marks', () => {
+    const place = { folderId: 'fld_car_rental' };
+    const worktree = () => new FixtureTransport({ data: withFixtureWorkspace(createFixtureData()) });
+    const inWorktree = { ...place, workspaceId: 'wks_ab12cd34' };
+
+    it('keeps a mark for the session under its place and scope, replaces it, lists it in path order and clears it', async () => {
+        const transport = worktree();
+
+        expect(await transport.getGitViewed(FIXTURE_PROJECT_ID, inWorktree, 'all')).toEqual([]);
+        expect(await transport.setGitViewed(FIXTURE_PROJECT_ID, inWorktree, 'all', 'src/limits.ts', '100644:aa:100644:bb')).toEqual({ path: 'src/limits.ts', revision: '100644:aa:100644:bb' });
+        await transport.setGitViewed(FIXTURE_PROJECT_ID, inWorktree, 'all', 'notes.md', 'r-notes');
+        await transport.setGitViewed(FIXTURE_PROJECT_ID, inWorktree, 'all', 'src/limits.ts', '100644:aa:100644:cc');
+        expect(await transport.getGitViewed(FIXTURE_PROJECT_ID, inWorktree, 'all')).toEqual([
+            { path: 'notes.md', revision: 'r-notes' },
+            { path: 'src/limits.ts', revision: '100644:aa:100644:cc' },
+        ]);
+
+        await transport.clearGitViewed(FIXTURE_PROJECT_ID, inWorktree, 'all', 'notes.md');
+        await transport.clearGitViewed(FIXTURE_PROJECT_ID, inWorktree, 'all', 'never-marked.ts');
+        expect(await transport.getGitViewed(FIXTURE_PROJECT_ID, inWorktree, 'all')).toEqual([{ path: 'src/limits.ts', revision: '100644:aa:100644:cc' }]);
+    });
+
+    it('keeps the marks of another scope, another place and another transport apart', async () => {
+        const transport = worktree();
+        const [newest] = FIXTURE_GIT_COMMITS;
+
+        await transport.setGitViewed(FIXTURE_PROJECT_ID, inWorktree, 'all', 'src/limits.ts', 'r-all');
+        await transport.setGitViewed(FIXTURE_PROJECT_ID, inWorktree, 'uncommitted', 'src/limits.ts', 'r-uncommitted');
+        await transport.setGitViewed(FIXTURE_PROJECT_ID, place, 'all', 'src/limits.ts', 'r-checkout');
+        await transport.setGitViewed(FIXTURE_PROJECT_ID, inWorktree, `commit:${ newest!.sha }`, 'src/booking/price.ts', 'r-commit');
+
+        expect(await transport.getGitViewed(FIXTURE_PROJECT_ID, inWorktree, 'all')).toEqual([{ path: 'src/limits.ts', revision: 'r-all' }]);
+        expect(await transport.getGitViewed(FIXTURE_PROJECT_ID, inWorktree, 'uncommitted')).toEqual([{ path: 'src/limits.ts', revision: 'r-uncommitted' }]);
+        expect(await transport.getGitViewed(FIXTURE_PROJECT_ID, place, 'all')).toEqual([{ path: 'src/limits.ts', revision: 'r-checkout' }]);
+        expect(await transport.getGitViewed(FIXTURE_PROJECT_ID, inWorktree, 'branch')).toEqual([]);
+        expect(await transport.getGitViewed(FIXTURE_PROJECT_ID, inWorktree, `commit:${ newest!.sha }`)).toEqual([{ path: 'src/booking/price.ts', revision: 'r-commit' }]);
+        expect(await worktree().getGitViewed(FIXTURE_PROJECT_ID, inWorktree, 'all')).toEqual([]);
+    });
+
+    it('does not give the same object twice, so a caller that edits an answer does not change the next', async () => {
+        const transport = worktree();
+
+        await transport.setGitViewed(FIXTURE_PROJECT_ID, inWorktree, 'all', 'notes.md', 'r');
+        (await transport.getGitViewed(FIXTURE_PROJECT_ID, inWorktree, 'all'))[0]!.revision = 'changed';
+        expect(await transport.getGitViewed(FIXTURE_PROJECT_ID, inWorktree, 'all')).toEqual([{ path: 'notes.md', revision: 'r' }]);
+    });
+
+    it('refuses what the daemon refuses: a path or a revision that cannot be one, a commit it does not have, an unknown project, folder or worktree, a folder that is no repository', async () => {
+        const transport = worktree();
+
+        for (const path of ['', '/etc/passwd', '../a.ts', 'a//b', 'dir/', 'x'.repeat(5000)]) {
+            await expect(transport.setGitViewed(FIXTURE_PROJECT_ID, inWorktree, 'all', path, 'r')).rejects.toMatchObject({ status: 400 });
+            await expect(transport.clearGitViewed(FIXTURE_PROJECT_ID, inWorktree, 'all', path)).rejects.toMatchObject({ status: 400 });
+        }
+
+        for (const revision of ['', 'ABC', 'a b', 'a'.repeat(257)]) {
+            await expect(transport.setGitViewed(FIXTURE_PROJECT_ID, inWorktree, 'all', 'a.ts', revision)).rejects.toMatchObject({ status: 400 });
+        }
+
+        await expect(transport.getGitViewed(FIXTURE_PROJECT_ID, inWorktree, 'commit:0123456789abcdef')).rejects.toMatchObject({ status: 404 });
+        await expect(transport.setGitViewed(FIXTURE_PROJECT_ID, inWorktree, 'commit:0123456789abcdef', 'a.ts', 'r')).rejects.toMatchObject({ status: 404 });
+        await expect(transport.getGitViewed('p-none', place, 'all')).rejects.toMatchObject({ status: 404 });
+        await expect(transport.getGitViewed(FIXTURE_PROJECT_ID, { folderId: 'fld_none' }, 'all')).rejects.toMatchObject({ status: 404 });
+        await expect(transport.getGitViewed(FIXTURE_PROJECT_ID, { ...place, workspaceId: 'wks_none' }, 'all')).rejects.toMatchObject({ status: 404 });
+
+        const personal = (await transport.getRootSnapshot()).projects[0]!.folders[0]!;
+
+        await expect(transport.getGitViewed(FIXTURE_PERSONAL_PROJECT_ID, { folderId: personal.id }, 'all')).rejects.toMatchObject({ status: 400 });
+        await expect(transport.setGitViewed(FIXTURE_PERSONAL_PROJECT_ID, { folderId: personal.id }, 'all', 'a.ts', 'r')).rejects.toMatchObject({ status: 400 });
     });
 });
 
