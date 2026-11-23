@@ -121,13 +121,7 @@ export function PanelContent({ className, ...props }: ComponentProps<typeof Scro
     return <Scrollable className={ cn(styles.body, className) } { ...props } />;
 }
 
-/** Remount with `key={tab}` at the call site so the enter animation restarts. */
+/** The body of a tab: fills the space under the header. */
 export function PanelTab({ children }: { children: ReactNode }) {
-    return (
-        <div className={ styles.tab }>
-            <div className={ styles.tabEnter }>
-                { children }
-            </div>
-        </div>
-    );
+    return <div className={ styles.tab }>{ children }</div>;
 }

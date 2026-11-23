@@ -919,8 +919,8 @@ describe('the archive', () => {
         await draw();
     }
 
-    // The rows of the archive's list, which is in a popover beside the screen and not in it.
-    const archiveRows = () => [...document.body.querySelectorAll<HTMLElement>('[role="row"]')].filter(row => !container.contains(row));
+    // The rows of the archive's list, which is in a popover beside the screen and not in it. The title of a group is a row of its own, with no key.
+    const archiveRows = () => [...document.body.querySelectorAll<HTMLElement>('[role="row"][data-key]')].filter(row => !container.contains(row));
     const titles = () => archiveRows().map(row => row.textContent);
     const archiveRow = (title: string) => archiveRows().find(row => row.textContent?.startsWith(title))!;
 
@@ -937,12 +937,35 @@ describe('the archive', () => {
         expect(titles()[0]).toMatch(/now$/);
     });
 
-    it('opens under the heading and is as wide as it, not wider than the column', async () => {
+    it('opens under the heading and is wider than the column, so a title and its time have room', async () => {
         await press(buttonNamed('History'));
 
         const popover = document.body.querySelector<HTMLElement>('[data-modal-clickout-layer]')!;
 
-        expect(popover.style.width).toBe('var(--trigger-width)');
+        expect(popover.style.width).toBe('280px');
+    });
+
+    it('groups the chats by the day they were put away', async () => {
+        await archive('c-2', true);
+        await archive('c-4', true);
+        await press(buttonNamed('History'));
+
+        // Both were put away just now.
+        const groups = [...document.body.querySelectorAll<HTMLElement>('[role="rowgroup"]')].filter(group => !container.contains(group));
+
+        expect(groups.map(group => group.querySelector('[role="rowheader"]')?.textContent)).toEqual(['Today']);
+        expect([...groups[0].querySelectorAll('[role="row"][data-key]')].map(row => row.getAttribute('data-key'))).toEqual(['c-4', 'c-2']);
+    });
+
+    it('draws the time in the room of the `⋯`, which takes its place when the row is hovered', async () => {
+        await archive('c-4', true);
+        await press(buttonNamed('History'));
+
+        const end = archiveRow('New chat').querySelector<HTMLElement>('button[aria-label^="Actions of"]')!.parentElement!;
+        const time = end.querySelector<HTMLElement>('[data-show="item-rest"]')!;
+
+        expect(time.textContent).toBe('now');
+        expect(end.querySelector('button')!.getAttribute('data-show')).toBe('item-both');
     });
 
     it('shows the mark of the provider each chat runs on, as the list does, and the speech bubble for a chat that never started', async () => {
@@ -1214,7 +1237,7 @@ describe('threads', () => {
     });
 
     it('lists a thread put away alone in the archive by its title, and the threads put away with their chat nowhere on their own', async () => {
-        const archiveTitles = () => [...document.body.querySelectorAll<HTMLElement>('[role="row"]')].filter(row => !container.contains(row)).map(row => row.textContent);
+        const archiveTitles = () => [...document.body.querySelectorAll<HTMLElement>('[role="row"][data-key]')].filter(row => !container.contains(row)).map(row => row.textContent);
 
         await store.command({ type: 'chat.setArchived', chatId: 'c-6b', archived: true });
         await vi.waitFor(() => expect(project().chats.get('c-6b')?.archivedAt).toBeDefined());
