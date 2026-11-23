@@ -18,6 +18,7 @@ import { DEFAULT_LIMIT } from '../domain/taskQuery';
 import { workspaceRemoval } from '../domain/workspaceRemoval';
 import { projectWorktrees } from '../domain/worktrees';
 import { CommandError, invalid, notFound } from '../errors';
+import { placeBranches } from '../git/branches';
 import { placeChanges, placeFile } from '../git/changes';
 import { projectFolderGit } from '../git/state';
 import { placeStatus } from '../git/status';
@@ -251,6 +252,15 @@ export function createRoutes(context: RouteContext): Route[] {
                 const place = gitPlaceOf(id, url);
 
                 return json(await placeChanges(place, gitScopeOf(url), await gitBaseOf(place)));
+            },
+        },
+        {
+            method: 'GET',
+            pattern: /^\/v1\/projects\/([^/]+)\/git\/branches$/,
+            handle: async (_request, url, [id]) => {
+                const project = requireProject(store, id);
+
+                return json(await placeBranches(store, project, resolvePlace(store, project, url.searchParams.get('folderId') ?? '', url.searchParams.get('workspaceId') ?? undefined)));
             },
         },
         {
