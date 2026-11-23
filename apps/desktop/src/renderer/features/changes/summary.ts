@@ -13,6 +13,8 @@ export interface ChangesSummary {
     deletions: string;
     /** Some file's lines were not counted, so the numbers are a lower bound. */
     incomplete: boolean;
+    /** `2 of 16 viewed`: how many of the list's files are viewed, said only when some are. */
+    viewed?: string;
     /** What else to say, each a phrase: the list was cut, or the scope has no base to count from. */
     notes: string[];
 }
@@ -20,9 +22,9 @@ export interface ChangesSummary {
 /**
  * The summary line of a list. With the filter on, the numbers are those of the files it shows, against all the files the daemon listed; the totals of the list itself (which count
  * what the daemon cut off too) are shown when nothing is filtered. The notes say that the list holds only the first files of a larger one (`truncated`), and, for the scope that is
- * counted against the base, why there is none when the base is not there.
+ * counted against the base, why there is none when the base is not there. `viewed` is how many of the files of the list are viewed (the ones the filter or the toggle hides too).
  */
-export function summaryOf(changes: RepositoryChanges, shown: readonly GitChangedFile[]): ChangesSummary {
+export function summaryOf(changes: RepositoryChanges, shown: readonly GitChangedFile[], viewed = 0): ChangesSummary {
     const filtered = shown.length !== changes.files.length;
     const additions = filtered ? shown.reduce((sum, file) => sum + (file.additions ?? 0), 0) : changes.additions;
     const deletions = filtered ? shown.reduce((sum, file) => sum + (file.deletions ?? 0), 0) : changes.deletions;
@@ -41,6 +43,7 @@ export function summaryOf(changes: RepositoryChanges, shown: readonly GitChanged
         additions: `+${ additions }`,
         deletions: `−${ deletions }`,
         incomplete: !changes.statsComplete,
+        ...(viewed > 0 && { viewed: `${ viewed } of ${ changes.files.length } viewed` }),
         notes,
     };
 }
