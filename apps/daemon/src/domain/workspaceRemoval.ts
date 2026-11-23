@@ -1,11 +1,11 @@
-import { rmdir, stat } from 'node:fs/promises';
+import { rmdir } from 'node:fs/promises';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 
 import { getChat, listChatDescendants } from '../db/chats';
 import { getProject } from '../db/projects';
 import { chatsOfWorkspace, deleteWorkspace, getWorkspace, listWorkspacesOfProject, updateWorkspace } from '../db/workspaces';
 import { conflict, invalid } from '../errors';
-import { changedFiles, commitOf, hasCheckedOutSubmodules, isMerged, parseWorktrees, repositoryRoot } from '../git/state';
+import { commitOf, countChanges, hasCheckedOutSubmodules, isMerged, isOnDisk, parseWorktrees, repositoryRoot } from '../git/state';
 import { requireChat, stoppedSubtree } from './chats';
 import { gitRead } from './git';
 import { exclusive, mustGit, openWorkspace, pathKey, samePlace, WorkspaceError } from './workspaces';
@@ -52,9 +52,6 @@ type Verdict = Removable | Refused;
 
 const refused = (reason: string, record?: WorkspaceRecord): Refused => ({ removable: false, reason, ...(record && { record }) });
 
-/** Whether something is there at the path. A path that cannot be looked at is not known to be there, and a worktree is not removed on a guess. */
-const isOnDisk = (path: string): Promise<boolean> => stat(path).then(() => true, () => false);
-
 /** The worktree a removal is asked for, and who may work in it. */
 interface Target {
     /** The folder of the project the worktree is a checkout of: git runs there. */
@@ -89,10 +86,16 @@ function busyChat(store: Store, target: Pick<Target, 'record' | 'allowed'>): str
  * What is in the tree that `git worktree remove` would refuse without `--force`, in the words that refuse it; nothing when the tree is clean. Anything uncommitted counts, a new
  * file included (`git status --porcelain --untracked-files=normal --ignore-submodules=none`, which does not report what `.gitignore` hides: build output and `.env` files go with
  * the tree, as `git worktree remove` takes them), and so does an initialised submodule (uninitialised ones are listed with a `-`). A status that fails or does not answer in time
- * counts as a change (`changedFiles`), and git not saying whether there are submodules is no answer either: the removal never takes a tree for clean on a guess.
+ * counts as a change, and git not saying whether there are submodules is no answer either: the removal never takes a tree for clean on a guess.
  */
 async function unsaved(path: string): Promise<string | undefined> {
-    if (await changedFiles(path) > 0) {
+    const changes = await countChanges(path);
+
+    if (changes === undefined) {
+        return 'Git did not say what is changed in the worktree';
+    }
+
+    if (changes > 0) {
         return 'The worktree has changes that are not committed';
     }
 

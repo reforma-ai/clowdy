@@ -1,11 +1,11 @@
 import { folderNames } from '@clowdy/protocol';
 import { stat } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 
 import { getChat } from '../db/chats';
 import { chatsOfWorkspace, listWorkspacesOfProject } from '../db/workspaces';
 import { unavailable } from '../errors';
-import { baseOf, changedFiles, commitOf, hasCheckedOutSubmodules, isMerged, parseWorktrees, placeOf, repositoryRoot, shortHash } from '../git/state';
+import { baseOf, changedFiles, commitOf, hasCheckedOutSubmodules, isMerged, isOnDisk, parseWorktrees, placeOf, repositoryRoot, shortHash } from '../git/state';
 import { gitLine, gitRead } from './git';
 import { pathKey } from './workspaces';
 
@@ -37,12 +37,20 @@ export interface WorktreeOwner {
     chats?: WorktreeChat[];
 }
 
-/** Whether something is there on the disk. */
-const isOnDisk = (path: string): Promise<boolean> => stat(path).then(() => true, () => false);
+/** Whether a folder is there: a file in its place (a folder replaced by a file) is no folder, and git cannot be run in it. */
+const isFolder = (path: string): Promise<boolean> => stat(path).then(entry => entry.isDirectory(), () => false);
 
-/** A path as a key to compare it with another: its real place when it is there, else its name (a worktree whose folder is gone has no real place, and two such must not match). */
+/**
+ * A path as a key to compare it with another, as `samePlace` reads paths: its real place, and for a worktree whose folder is gone the real place of the nearest folder that is
+ * there with the rest of the path after it. A link in the way (`/var` and `/private/var` on a Mac, a drive letter's case) must not part a gone worktree from its record and chats:
+ * git writes the real path, and the record keeps the path as it was configured.
+ */
 async function keyOf(path: string): Promise<string> {
-    return pathKey(await placeOf(path) ?? path);
+    const full = resolve(path);
+    const place = await placeOf(full);
+    const parent = dirname(full);
+
+    return pathKey(place ?? (parent === full ? full : join(await keyOf(parent), basename(full))));
 }
 
 /** The commit of a base ref, read once per name: `refs/heads/<name>`, then `refs/remotes/<name>`. */
@@ -149,14 +157,14 @@ function readWorkspaces(store: Store, projectId: string): { records: WorkspaceRe
 }
 
 /**
- * One folder's group: nothing for a folder gone from the disk or that is no repository (a folder inside one has no worktree of its own), else the folder's own checkout first and
+ * One folder's group: nothing for a folder gone from the disk (or replaced by a file) or that is no repository (a folder inside one has no worktree of its own), else the folder's own checkout first and
  * every worktree git lists after it, git's own order. Git lists the folder's checkout by its real place, so the row carries the folder's path as the project holds it; when the
  * folder is itself a linked worktree, the repository's primary one is among the others, flagged because git never removes it. A git that does not answer is `unavailable` for the
  * whole read, as for `GET /v1/projects/:id/git`.
  */
 async function folderWorktrees(folder: ProjectFolder, name: string, records: readonly WorkspaceRecord[], chatsOf: ReadonlyMap<string, WorktreeChat[]>): Promise<FolderWorktrees> {
     const none: FolderWorktrees = { folderId: folder.id, name, isRepository: false, worktrees: [] };
-    const root = await isOnDisk(folder.path) ? await repositoryRoot(folder.path) : undefined;
+    const root = await isFolder(folder.path) ? await repositoryRoot(folder.path) : undefined;
 
     if (!root) {
         return none;
@@ -172,7 +180,10 @@ async function folderWorktrees(folder: ProjectFolder, name: string, records: rea
     const all = parseWorktrees(read.ok ? read.stdout : '');
     // The first entry git prints is the repository's primary working tree, unless that is a bare repository, which has none.
     const primary = all[0]?.bare ? undefined : all[0];
-    const listed = all.filter(entry => !entry.bare);
+    // A repository that keeps its git directory apart from the checkout (`git init --separate-git-dir`) has that directory named as the first entry: it is there, it holds no files
+    // to work in, and it has no `.git` of its own. A primary tree whose folder is gone is a row, as any worktree whose folder is gone is.
+    const apart = primary !== undefined && await isOnDisk(primary.path) && !await isOnDisk(join(primary.path, '.git'));
+    const listed = all.filter(entry => !entry.bare && !(apart && entry === primary));
     const keys = await Promise.all(listed.map(entry => keyOf(entry.path)));
     const ownIndex = keys.indexOf(rootKey);
     // The checkout of a repository that keeps its git directory apart is not in the list under its own name: it is made from what git says in the folder.
