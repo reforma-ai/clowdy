@@ -1,23 +1,30 @@
 import { toast } from '@clowdy/components/Toast';
 
+import { isPlaceReady, type Place } from '../sidePanel/currentPlace';
 import { terminalsStoreOf } from './useTerminalsStore';
 
-import type { ProjectFolder, ProjectId } from '@clowdy/protocol';
+import type { ProjectId } from '@clowdy/protocol';
 import type { RootStore } from '../../stores';
 
 /**
- * Starts a shell of the Terminal tab in a folder of the project, or in a folder below it (`relative`, empty for the folder itself), and shows the tab with that
- * shell chosen. Always a new shell: the ones the folder has may be busy. Resolves `false`, with a toast that says why and the panel as it was, when no shell
- * could be started (the folder is gone from the disk, the limit of shells is reached). The tab shows the folder the window works in, so a caller offers this only
- * for that folder.
+ * Starts a shell of the Terminal tab in a place of the project (a folder's own checkout, or the worktree of a chat), or in a folder below it (`relative`, empty for the place
+ * itself), and shows the tab with that shell chosen. Always a new shell: the ones the place has may be busy. Resolves `false`, with a toast that says why and the panel as it
+ * was, when no shell could be started (the folder is gone from the disk, the limit of shells is reached, the worktree is not made yet). The tab shows the place the window works
+ * in, so a caller offers this only for that place.
  */
-export async function openInTerminal(root: RootStore, projectId: ProjectId, folder: ProjectFolder, relative: string): Promise<boolean> {
+export async function openInTerminal(root: RootStore, projectId: ProjectId, place: Place, relative: string): Promise<boolean> {
     const store = terminalsStoreOf(root.transport);
+
+    if (!isPlaceReady(place)) {
+        toast.error({ title: 'Couldn’t start a terminal', message: 'The worktree is not made yet' });
+
+        return false;
+    }
 
     // The shells the daemon already runs are read first: a read that comes after the new shell was made would not have it, and forgets what it does not find.
     await store.load(projectId);
 
-    const session = await store.start(projectId, folder.id, relative || undefined);
+    const session = await store.start(projectId, place.folder.id, relative || undefined, place.workspace?.id);
 
     if (!session) {
         toast.error({ title: 'Couldn’t start a terminal', message: store.error || undefined });

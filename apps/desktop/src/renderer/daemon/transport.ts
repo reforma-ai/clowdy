@@ -25,6 +25,7 @@ import type {
     TerminalCreate,
     TerminalId,
     TerminalInfo,
+    WorkspaceId,
 } from '@clowdy/protocol';
 import type { TerminalStream, TerminalStreamHandlers } from './terminalStream';
 
@@ -91,12 +92,21 @@ export interface Transport {
     getTaskComments: (taskId: TaskId, page?: PageQuery) => Promise<TaskCommentsPage>;
     /** A page of the project's archived tasks, the ones the snapshot leaves out, newest archived first. */
     getArchivedTasks: (projectId: ProjectId, page?: PageQuery) => Promise<TaskArchivePage>;
-    /** The project's documents: one entry per folder, in the project's order, with the document sources it has (`.briefback`, `.clowdy/docs`, the roots of Spec Kit, OpenSpec and Kiro), each a Markdown tree; a folder with none has none. */
-    getDocsTree: (projectId: ProjectId) => Promise<DocsTree>;
-    /** Files of the project's folders whose path contains every word of `query`, best match first, each with its folder and its path relative to that folder. */
-    getProjectFiles: (projectId: ProjectId, query: string, limit?: number) => Promise<ProjectFileMatch[]>;
-    /** One folder of the project as a file system, for the file manager to browse and edit; the daemon checks every path against the folder. Nothing is asked until the file system is used. */
-    fileSystem: (projectId: ProjectId, folderId: FolderId) => ProjectFileSystem;
+    /**
+     * The project's documents: one entry per folder, in the project's order, with the document sources it has (`.briefback`, `.clowdy/docs`, the roots of Spec Kit, OpenSpec and Kiro), each a Markdown tree; a folder with none has none.
+     * With a `workspaceId` (a worktree of one of the folders, made) the entry of that worktree's folder lists the worktree's documents in place of the folder's own checkout's.
+     */
+    getDocsTree: (projectId: ProjectId, workspaceId?: WorkspaceId) => Promise<DocsTree>;
+    /**
+     * Files of the project's folders whose path contains every word of `query`, best match first, each with its folder and its path relative to that folder. With a `workspaceId`
+     * (a worktree of one of the folders, made) the worktree's files are listed in place of its folder's own checkout's, the other folders as before.
+     */
+    getProjectFiles: (projectId: ProjectId, query: string, limit?: number, workspaceId?: WorkspaceId) => Promise<ProjectFileMatch[]>;
+    /**
+     * One folder of the project as a file system, for the file manager to browse and edit; the daemon checks every path against the folder. Nothing is asked until the file system is used.
+     * With a `workspaceId` (a worktree of that folder, made) it is the worktree's files, not the folder's own checkout's.
+     */
+    fileSystem: (projectId: ProjectId, folderId: FolderId, workspaceId?: WorkspaceId) => ProjectFileSystem;
     /** Stores a file in the project, to go with the next message of one of its chats. Rejects with a `TransportError` that carries the daemon's reason when it refuses. */
     uploadAttachment: (projectId: ProjectId, file: File) => Promise<Attachment>;
     /** The bytes of an attachment, to show it. */

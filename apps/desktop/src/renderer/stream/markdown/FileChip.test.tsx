@@ -86,7 +86,7 @@ describe('FileChip', () => {
         await draw('./src/booking/price.ts');
         await press();
 
-        expect(openInFiles).toHaveBeenCalledExactlyOnceWith(store, FIXTURE_PROJECT_ID, FOLDER, 'src/booking/price.ts');
+        expect(openInFiles).toHaveBeenCalledExactlyOnceWith(store, FIXTURE_PROJECT_ID, { folder: FOLDER }, 'src/booking/price.ts');
         expect(items()).toEqual([]);
         expect(writeText).not.toHaveBeenCalled();
     });
@@ -95,7 +95,7 @@ describe('FileChip', () => {
         await draw('/Users/dev/car-rental/src/a.ts');
         await press();
 
-        expect(openInFiles).toHaveBeenCalledExactlyOnceWith(store, FIXTURE_PROJECT_ID, FOLDER, 'src/a.ts');
+        expect(openInFiles).toHaveBeenCalledExactlyOnceWith(store, FIXTURE_PROJECT_ID, { folder: FOLDER }, 'src/a.ts');
     });
 
     it('opens the menu of the path where the pointer is when the file is there but cannot be opened', async () => {
@@ -215,7 +215,7 @@ describe('FileChip', () => {
         await settle();
         await openGitHub();
 
-        expect(kindOnDisk).toHaveBeenCalledExactlyOnceWith(store, FIXTURE_PROJECT_ID, FOLDER, 'src/booking');
+        expect(kindOnDisk).toHaveBeenCalledExactlyOnceWith(store, FIXTURE_PROJECT_ID, { folder: FOLDER }, 'src/booking');
         expect(open).toHaveBeenCalledExactlyOnceWith('https://github.com/acme/car-rental/tree/main/src/booking', '_blank', 'noopener');
         open.mockRestore();
     });

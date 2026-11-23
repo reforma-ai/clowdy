@@ -1,6 +1,6 @@
 import { remoteLink } from '../settings/projects/projectView';
 
-import type { ProjectFolder, ProjectId } from '@clowdy/protocol';
+import type { ChatWorkspace, ProjectFolder, ProjectId } from '@clowdy/protocol';
 import type { OpenApp, OpenPathApp } from '../../../shared/bridge';
 
 /**
@@ -14,10 +14,10 @@ export interface OpenTarget {
     relative: string;
     kind: 'file' | 'directory';
     /**
-     * `path` is in a worktree of the folder, not in the folder's own checkout (the worktree a chat works in). The Files and Terminal tabs show the folder's own checkout, so the
-     * menu offers neither for it, until they follow the chat's worktree.
+     * `path` is in this worktree of the folder, not in the folder's own checkout: the worktree a chat works in. The Files and Terminal tabs follow the open chat's worktree, so the
+     * menu offers them for a target there while that chat is open, and not for the folder's own checkout then, nor for another chat's worktree.
      */
-    inWorktree?: true;
+    workspace?: ChatWorkspace;
 }
 
 /** What git says about a folder, or about the worktree a chat works in: the `origin` address, and the branch (a short hash when HEAD is detached). */

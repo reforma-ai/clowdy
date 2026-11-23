@@ -10,7 +10,8 @@ import { Plus } from '@clowdy/icons/16';
 import { useCallback, useEffect, useRef } from 'react';
 
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
-import { currentFolder } from '../sidePanel/currentFolder';
+import { currentPlace, isPlaceReady } from '../sidePanel/currentPlace';
+import { PlaceWaiting } from '../sidePanel/PlaceWaiting';
 import { terminalLabels } from './terminalLabels';
 import styles from './TerminalTab.module.css';
 import { TerminalView } from './TerminalView';
@@ -18,7 +19,7 @@ import { useTerminalsStore } from './useTerminalsStore';
 
 import '@xterm/xterm/css/xterm.css';
 
-import type { FolderId, ProjectId } from '@clowdy/protocol';
+import type { FolderId, ProjectId, WorkspaceId } from '@clowdy/protocol';
 import type { TerminalSession } from './TerminalsStore';
 
 /**
@@ -40,7 +41,7 @@ export function TerminalShell({ session, onEmptied }: { session: TerminalSession
             onGone: () => {
                 store.forget(session);
 
-                if (store.sessionsOf(session.info.projectId, session.info.folderId).length === 0) onEmptied?.();
+                if (store.sessionsOf(session.info.projectId, session.info.folderId, session.info.workspaceId).length === 0) onEmptied?.();
             },
         });
 
@@ -72,25 +73,25 @@ export function TerminalShell({ session, onEmptied }: { session: TerminalSession
             <Show when={ !session.isRunning }>
                 <div className={ styles.banner }>
                     <Text variant="sm" color="secondary">Process exited</Text>
-                    <Button size="xs" variant="filled" color="secondary" onPress={ () => void store.start(session.info.projectId, session.info.folderId) }>New terminal</Button>
+                    <Button size="xs" variant="filled" color="secondary" onPress={ () => void store.start(session.info.projectId, session.info.folderId, undefined, session.info.workspaceId) }>New terminal</Button>
                 </div>
             </Show>
         </>
     );
 }
 
-/** The tabs of the folder's shells; `onEmptied` is told when closing a shell left the folder with none. */
-function TerminalBar({ projectId, folderId, onEmptied }: { projectId: ProjectId; folderId: FolderId; onEmptied: () => void }) {
+/** The tabs of the place's shells; `onEmptied` is told when closing a shell left the place with none. */
+function TerminalBar({ projectId, folderId, workspaceId, onEmptied }: { projectId: ProjectId; folderId: FolderId; workspaceId?: WorkspaceId; onEmptied: () => void }) {
     const store = useTerminalsStore();
-    const sessions = store.sessionsOf(projectId, folderId);
-    const active = store.activeOf(projectId, folderId);
+    const sessions = store.sessionsOf(projectId, folderId, workspaceId);
+    const active = store.activeOf(projectId, folderId, workspaceId);
     const labels = terminalLabels(sessions.map(session => session.info));
 
     return (
         <TabStrip
             aria-label="Terminals"
             end={
-                <Button className={ styles.add } size="sm" variant="filling" color="secondary" iconOnly tooltip="New terminal" tooltipPlacement="bottom" aria-label="New terminal" onPress={ () => void store.start(projectId, folderId) }>
+                <Button className={ styles.add } size="sm" variant="filling" color="secondary" iconOnly tooltip="New terminal" tooltipPlacement="bottom" aria-label="New terminal" onPress={ () => void store.start(projectId, folderId, undefined, workspaceId) }>
                     <Plus aria-hidden="true" />
                 </Button>
             }
@@ -108,7 +109,7 @@ function TerminalBar({ projectId, folderId, onEmptied }: { projectId: ProjectId;
                             // The shell is gone from the list at once; the daemon is told meanwhile.
                             void store.close(session);
 
-                            if (store.sessionsOf(projectId, folderId).length === 0) onEmptied();
+                            if (store.sessionsOf(projectId, folderId, workspaceId).length === 0) onEmptied();
                         } }
                     />
                 ) }
@@ -118,28 +119,35 @@ function TerminalBar({ projectId, folderId, onEmptied }: { projectId: ProjectId;
 }
 
 /**
- * The side panel's Terminal tab: the shells the daemon runs in the folder the window is working in (the same folder the Info and Files tabs name), a tab for each,
- * and the one that is chosen drawn below. The shells belong to the daemon, so they outlive the tab, a reload of the window and, when the daemon is on another
- * machine, the connection. The tab is never open on nothing: looking at a folder that has no shell starts one, and closing the last one shuts the panel. When no
- * shell can be started, a toast says why and the panel shuts.
+ * The side panel's Terminal tab: the shells the daemon runs in the place the window is working in (the folder, or the worktree of the open chat: the same place the Info and
+ * Files tabs name), a tab for each, and the one that is chosen drawn below. The shells belong to the daemon, so they outlive the tab, a reload of the window and, when the
+ * daemon is on another machine, the connection. A worktree's shells are its own, shared by the chats that work in it, and are none of the folder's. The tab is never open on
+ * nothing: looking at a place that has no shell starts one, and closing the last one shuts the panel. When no shell can be started, a toast says why and the panel shuts.
+ * A chat whose worktree is not made yet gets a note, and no shell: there is no place to start one in.
  */
 export default function TerminalTab() {
     const project = useProjectState();
     const ui = useProjectUi();
     const store = useTerminalsStore();
     const projectId = project.project.id;
-    const folder = currentFolder(project, ui);
-    const active = store.activeOf(projectId, folder.id);
+    const place = currentPlace(project, ui);
+    const folderId = place.folder.id;
+    const workspaceId = place.workspace?.id;
+    const ready = isPlaceReady(place);
+    const active = ready ? store.activeOf(projectId, folderId, workspaceId) : undefined;
     const shutIfEmpty = useCallback(() => {
-        if (store.sessionsOf(projectId, folder.id).length === 0) ui.closeSidePanel();
-    }, [store, ui, projectId, folder.id]);
+        if (store.sessionsOf(projectId, folderId, workspaceId).length === 0) ui.closeSidePanel();
+    }, [store, ui, projectId, folderId, workspaceId]);
 
     useEffect(() => {
+        // A worktree that is not made yet has no place to start a shell in; the tab starts one when it is.
+        if (!ready) return undefined;
+
         // A tab that went before the shells were read has nothing to start for.
         let current = true;
 
         void store.load(projectId)
-            .then(() => (current ? store.ensureOne(projectId, folder.id) : undefined))
+            .then(() => (current ? store.ensureOne(projectId, folderId, workspaceId) : undefined))
             .then((session) => {
                 if (!current || session) return;
 
@@ -150,11 +158,13 @@ export default function TerminalTab() {
         return () => {
             current = false;
         };
-    }, [store, ui, projectId, folder.id]);
+    }, [store, ui, projectId, folderId, workspaceId, ready]);
+
+    if (!ready) return <PlaceWaiting />;
 
     return (
         <div className={ styles.root }>
-            <TerminalBar projectId={ projectId } folderId={ folder.id } onEmptied={ shutIfEmpty } />
+            <TerminalBar projectId={ projectId } folderId={ folderId } workspaceId={ workspaceId } onEmptied={ shutIfEmpty } />
             <div className={ styles.stage }>
                 <Show when={ active } fallback={ <PanelLoadingState /> }>
                     { session => <TerminalShell key={ session.id } session={ session } onEmptied={ shutIfEmpty } /> }

@@ -1,4 +1,4 @@
-import type { Project, ProjectId, TerminalCreate, TerminalId, TerminalInfo } from '@clowdy/protocol';
+import type { ChatWorkspace, Project, ProjectId, TerminalCreate, TerminalId, TerminalInfo } from '@clowdy/protocol';
 import type { TerminalStream, TerminalStreamHandlers } from './terminalStream';
 
 const PROMPT = '\x1b[32mdev@clowdy\x1b[0m \x1b[34m~\x1b[0m $ ';
@@ -16,7 +16,7 @@ class FixtureShell {
     readonly #streams = new Set<TerminalStreamHandlers>();
 
     constructor(id: TerminalId, request: TerminalCreate, cwd: string, createdAt: number) {
-        this.info = { id, projectId: request.projectId, folderId: request.folderId, cwd, shell: 'zsh', cols: request.cols, rows: request.rows, state: 'running', createdAt };
+        this.info = { id, projectId: request.projectId, folderId: request.folderId, ...(request.workspaceId !== undefined && { workspaceId: request.workspaceId }), cwd, shell: 'zsh', cols: request.cols, rows: request.rows, state: 'running', createdAt };
     }
 
     open(handlers: TerminalStreamHandlers): TerminalStream {
@@ -92,12 +92,14 @@ export class FixtureTerminals {
         return [...this.#shells.values()].filter(shell => projectId === undefined || shell.info.projectId === projectId).map(shell => structuredClone(shell.info));
     }
 
-    create(project: Project, request: TerminalCreate): TerminalInfo {
+    /** Starts a shell in the folder, or in the worktree of it that `workspace` is (the transport has judged it), or in a folder below either. */
+    create(project: Project, request: TerminalCreate, workspace?: ChatWorkspace): TerminalInfo {
         const folder = project.folders.find(candidate => candidate.id === request.folderId);
 
         if (!folder) throw new Error(`Folder ${ request.folderId } does not exist`);
 
-        const shell = new FixtureShell(`trm_fixture${ ++this.#counter }`, request, request.path ? `${ folder.path }/${ request.path }` : folder.path, Date.now());
+        const root = workspace?.path ?? folder.path;
+        const shell = new FixtureShell(`trm_fixture${ ++this.#counter }`, request, request.path ? `${ root }/${ request.path }` : root, Date.now());
 
         this.#shells.set(shell.info.id, shell);
 

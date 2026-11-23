@@ -8,7 +8,7 @@ import { cn } from '@clowdy/lib';
 import { openInFiles } from '../../features/files/openInFiles';
 import { useKindOnDisk } from '../../features/files/useKindOnDisk';
 import { openEffects, OpenWithMenu, useFolderGit, type OpenTarget } from '../../features/openWith';
-import { currentFolder } from '../../features/sidePanel/currentFolder';
+import { currentPlace, isSamePlace } from '../../features/sidePanel/currentPlace';
 import chipStyles from '../../shared/Chip.module.css';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { chipLabelFromPath, isDirectoryPath, normalizeChipPath } from './chipPath';
@@ -30,8 +30,8 @@ export interface FileChipProps {
  * When the disk says the path is not there, nothing in that menu could work on it, so it gives way to `AbsentMenu`.
  */
 function TargetMenu({ target, onClose }: { target: OpenTarget; onClose: () => void }) {
-    const git = useFolderGit(target.projectId, target.folder.id);
-    const kind = useKindOnDisk(target.projectId, target.folder, target.relative);
+    const git = useFolderGit(target.projectId, target.folder.id, target.workspace);
+    const kind = useKindOnDisk(target.projectId, target.workspace ? { folder: target.folder, workspace: target.workspace } : { folder: target.folder }, target.relative);
 
     if (kind === null) return <AbsentMenu target={ target } onClose={ onClose } />;
 
@@ -91,7 +91,7 @@ export function FileChip({ path, lines, className }: FileChipProps) {
     const contextMenu = useContextMenu();
     const clean = normalizeChipPath(path);
     const label = lines ? `${ chipLabelFromPath(clean) } (${ lines })` : chipLabelFromPath(clean);
-    const current = currentFolder(project, ui);
+    const current = currentPlace(project, ui);
     const target = resolveChipTarget({ path: clean, kind: isDirectoryPath(path) ? 'directory' : 'file' }, project.id, project.project.folders, current);
 
     const open = async (event: MouseEvent<HTMLButtonElement>) => {
@@ -107,8 +107,9 @@ export function FileChip({ path, lines, className }: FileChipProps) {
             return;
         }
 
-        // The tab shows the folder the window works in: a path in another folder of the project is not there to open.
-        const opened = target && target.folder.id === current.id && await openInFiles(root, project.id, target.folder, target.relative);
+        // The tab shows the place the window works in (the folder, or the open chat's worktree): a path in another folder of the project, or in the folder's own checkout
+        // while the chat works in a worktree, is not there to open.
+        const opened = target && isSamePlace(target.workspace ? { folder: target.folder, workspace: target.workspace } : { folder: target.folder }, current) && await openInFiles(root, project.id, current, target.relative);
 
         if (!opened) contextMenu.openAt(x, y);
     };

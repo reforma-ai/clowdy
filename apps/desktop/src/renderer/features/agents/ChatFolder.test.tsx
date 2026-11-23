@@ -61,6 +61,8 @@ async function draw({ bridge, missing = false, project = FIXTURE_PROJECT_ID, fol
 }
 
 beforeEach(async () => {
+    // Which chat is open is kept in the browser's storage and comes back with the store: a test starts with none.
+    localStorage.clear();
     store = new RootStore(new FixtureTransport());
     await store.load();
     container = document.createElement('div');
@@ -260,7 +262,7 @@ describe('the folder of a chat', () => {
         await press(pill()!);
         await press(item('Open in Files'));
 
-        expect(openInFiles).toHaveBeenCalledExactlyOnceWith(store, FIXTURE_PROJECT_ID, FOLDER, '');
+        expect(openInFiles).toHaveBeenCalledExactlyOnceWith(store, FIXTURE_PROJECT_ID, { folder: FOLDER }, '');
     });
 
     it('starts a shell of the Terminal tab in the folder', async () => {
@@ -269,7 +271,7 @@ describe('the folder of a chat', () => {
         await press(pill()!);
         await press(item('Open in Terminal'));
 
-        expect(openInTerminal).toHaveBeenCalledExactlyOnceWith(store, FIXTURE_PROJECT_ID, FOLDER, '');
+        expect(openInTerminal).toHaveBeenCalledExactlyOnceWith(store, FIXTURE_PROJECT_ID, { folder: FOLDER }, '');
     });
 
     it('opens the repository on GitHub, in the browser', async () => {
@@ -320,6 +322,7 @@ describe('the folder of a chat that works in a worktree', () => {
 
     beforeEach(async () => {
         store.dispose();
+        localStorage.clear();
 
         const data = withFixtureWorkspace(createFixtureData());
 
@@ -394,16 +397,13 @@ describe('the folder of a chat that works in a worktree', () => {
         expect(container.textContent).toBe('webWorktree');
     });
 
-    it('opens the menu on the worktree, whose path it copies and opens, and offers neither Files nor the Terminal, which show the main checkout', async () => {
+    it('opens the menu on the worktree, whose path it copies and opens', async () => {
         const openPath = vi.fn(async () => undefined);
         const writeText = vi.fn(async () => undefined);
 
         Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
         await draw({ workspace, bridge: { getOpenApps: async () => APPS, openPath } });
         await press(pill()!);
-
-        expect(items().map(row => row.textContent)).toEqual(['Copy path', 'Open in…']);
-
         await press(item('Copy path'));
 
         expect(writeText).toHaveBeenCalledExactlyOnceWith(workspace.path);
@@ -413,6 +413,40 @@ describe('the folder of a chat that works in a worktree', () => {
         await press(outside('Open in Cursor'));
 
         expect(openPath).toHaveBeenCalledExactlyOnceWith(workspace.path, { kind: 'editor', id: 'cursor' });
+    });
+
+    it('offers Files and the Terminal for the worktree while the chat that works in it is open, since the tabs show it', async () => {
+        vi.mocked(openInFiles).mockClear();
+        vi.mocked(openInTerminal).mockClear();
+        store.ui.forProject(FIXTURE_PROJECT_ID).openChat(FIXTURE_WORKSPACE_CHAT_ID);
+        await draw({ workspace, bridge: { getOpenApps: async () => APPS, openPath: vi.fn(async () => undefined) } });
+        await press(pill()!);
+
+        expect(items().map(row => row.textContent)).toEqual(['Open in Files', 'Open in Terminal', 'Copy path', 'Open in…']);
+
+        await press(item('Open in Files'));
+
+        expect(openInFiles).toHaveBeenCalledExactlyOnceWith(store, FIXTURE_PROJECT_ID, { folder: FOLDER, workspace }, '');
+
+        await press(pill()!);
+        await press(item('Open in Terminal'));
+
+        expect(openInTerminal).toHaveBeenCalledExactlyOnceWith(store, FIXTURE_PROJECT_ID, { folder: FOLDER, workspace }, '');
+    });
+
+    it('offers neither Files nor the Terminal while the tabs show another place: the folder\'s own checkout, or a worktree that is not made yet', async () => {
+        await draw({ workspace, bridge: { getOpenApps: async () => APPS, openPath: vi.fn(async () => undefined) } });
+        await press(pill()!);
+
+        // No chat is open: the tabs show the folder's own checkout, not this worktree.
+        expect(items().map(row => row.textContent)).toEqual(['Copy path', 'Open in…']);
+
+        await press(item('Copy path'));
+        store.ui.forProject(FIXTURE_PROJECT_ID).openChat(FIXTURE_WORKSPACE_CHAT_ID);
+        await draw({ workspace: { ...workspace, ready: false }, bridge: { getOpenApps: async () => APPS, openPath: vi.fn(async () => undefined) } });
+        await press(pill()!);
+
+        expect(items().map(row => row.textContent)).toEqual(['Copy path', 'Open in…']);
     });
 
     it('is read only outside the desktop app, with the worktree\'s path on hover', async () => {

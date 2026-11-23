@@ -8,7 +8,7 @@ import { Github } from '@clowdy/icons/logo';
 
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { openInFiles } from '../files/openInFiles';
-import { currentFolder } from '../sidePanel/currentFolder';
+import { currentPlace, isPlaceReady, isSamePlace } from '../sidePanel/currentPlace';
 import { openInTerminal } from '../terminal/openInTerminal';
 import { AppIcon } from './AppIcon';
 import { chosenPrograms, openEffects, useOpenApps } from './openApps';
@@ -47,7 +47,7 @@ export const actionIcon = (action: OpenAction): ReactNode => {
 
 /**
  * The menu of a file or a folder of the project, to go inside a `Popover`. At the top what the app does itself: Open in Files and Open in Terminal (a folder, when
- * the window shows the target's folder), and the copies of the path. After a separator, `Open in…`, a submenu of what leaves the app: the editor, the file manager,
+ * the window shows the target's place: its folder, or the worktree of the open chat), and the copies of the path. After a separator, `Open in…`, a submenu of what leaves the app: the editor, the file manager,
  * the terminal program, GitHub. One list of items for every place the menu comes from (`openActions`).
  */
 export function OpenWithMenu({ target, missing = false, repair, git, onClose, 'aria-label': label }: OpenWithMenuProps) {
@@ -55,8 +55,10 @@ export function OpenWithMenu({ target, missing = false, repair, git, onClose, 'a
     const project = useProjectState();
     const ui = useProjectUi();
     const apps = useOpenApps();
-    // The Files tab shows the folder the window works in, so a path in another folder of the project cannot be shown there, nor can one in a worktree of it.
-    const isHere = currentFolder(project, ui).id === target.folder.id && !target.inWorktree;
+    // The Files tab shows the place the window works in (the folder, or the open chat's worktree), so a path in another folder of the project cannot be shown there, nor
+    // can one in another worktree of it, nor one in a worktree that is not made yet.
+    const place = { folder: target.folder, ...(target.workspace && { workspace: target.workspace }) };
+    const isHere = isSamePlace(currentPlace(project, ui), place) && isPlaceReady(place);
     const actions = openActions({
         target,
         programs: chosenPrograms(apps),
@@ -64,9 +66,9 @@ export function OpenWithMenu({ target, missing = false, repair, git, onClose, 'a
         missing,
         effects: openEffects,
         inFiles: isHere
-            ? () => void openInFiles(root, target.projectId, target.folder, target.relative).then(opened => !opened && toast.error({ message: 'That path is not on the disk' }))
+            ? () => void openInFiles(root, target.projectId, place, target.relative).then(opened => !opened && toast.error({ message: 'That path is not on the disk' }))
             : undefined,
-        inTerminal: isHere ? () => void openInTerminal(root, target.projectId, target.folder, target.relative) : undefined,
+        inTerminal: isHere ? () => void openInTerminal(root, target.projectId, place, target.relative) : undefined,
     });
     const here = actions.filter(action => action.group !== 'outside');
     const outside = actions.filter(action => action.group === 'outside');

@@ -54,7 +54,7 @@ async function mount(page: Page = { chat }, ...answers: Array<CommandResult | Pr
         getProjectFiles: vi.fn(async () => []),
         getSkills: vi.fn(async () => ({ entries: [], tokens: 0, warnings: [] })),
     };
-    const store = { command, transport, skillsRevision: 0, selectedProject: { project: { id: 'p' }, taskList: [] }, ...await modelStore() };
+    const store = { command, transport, skillsRevision: 0, selectedProject: { project: { id: 'p', folders: [{ id: 'f1', path: '/Users/dev/web' }] }, taskList: [] }, ...await modelStore() };
 
     await act(async () => {
         root.render(

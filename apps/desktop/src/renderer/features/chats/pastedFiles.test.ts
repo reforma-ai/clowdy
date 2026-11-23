@@ -22,6 +22,29 @@ describe('the chips for the files on the clipboard', () => {
         ]);
     });
 
+    it('cite a file of the folder the chat works in from there, and one of the main folder by its absolute path', () => {
+        expect(mentionedFiles([file('/Users/dev/api/src/b.ts'), file('/Users/dev/web/src/a.ts')], folders, { folder: folders[1]! })).toEqual([
+            { id: 'file:f2:src/b.ts', label: 'b.ts', kind: 'file', trigger: '@', data: { path: 'src/b.ts' } },
+            { id: 'file:f1:src/a.ts', label: 'a.ts', kind: 'file', trigger: '@', data: { path: '/Users/dev/web/src/a.ts' } },
+        ]);
+    });
+
+    it('cite a file of the chat\'s worktree, which is under no folder of the project, from the worktree, and leave out one of another worktree', () => {
+        const place = { folder: folders[0]!, workspace: { id: 'wks_1', folderId: 'f1', path: '/Users/dev/Clowdy/workspaces/shop/ab12cd34/web', managed: true, ready: true } };
+
+        expect(mentionedFiles([
+            file('/Users/dev/Clowdy/workspaces/shop/ab12cd34/web/src/a.ts'),
+            file('/Users/dev/Clowdy/workspaces/shop/ab12cd34/web/docs', 'directory'),
+            // The folder's own checkout is another place: an absolute path.
+            file('/Users/dev/web/src/c.ts'),
+            file('/Users/dev/Clowdy/workspaces/shop/ff00ee11/web/src/d.ts'),
+        ], folders, place)).toEqual([
+            { id: 'file:f1:src/a.ts', label: 'a.ts', kind: 'file', trigger: '@', data: { path: 'src/a.ts' } },
+            { id: 'file:f1:docs', label: 'docs', kind: 'file', trigger: '@', data: { path: 'docs', directory: true } },
+            { id: 'file:f1:src/c.ts', label: 'c.ts', kind: 'file', trigger: '@', data: { path: '/Users/dev/web/src/c.ts' } },
+        ]);
+    });
+
     it('leave out what is outside the project, and a folder itself', () => {
         expect(mentionedFiles([file('/Users/dev/Downloads/report.pdf'), file('/Users/dev/website/a.ts'), file('/Users/dev/web', 'directory')], folders)).toEqual([]);
     });

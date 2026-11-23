@@ -1,7 +1,7 @@
 import { Modal } from '@clowdy/components/Modal';
 import { folderNames } from '@clowdy/protocol';
 
-import { currentFolder } from '../sidePanel/currentFolder';
+import { currentPlace } from '../sidePanel/currentPlace';
 import { showQuickSearch } from './QuickSearch';
 import { QuickSearchModel, type QuickSearchTab } from './QuickSearchModel';
 import { quickSearchSource, selectedText } from './quickSearchSource';
@@ -12,7 +12,7 @@ import type { RootStore } from '../../stores';
 let current: QuickSearchModel | null = null;
 
 /**
- * Opens the quick search palette on a tab, for the folder the window is working in (the one the side panel's Files tab shows). Where it is open already it goes
+ * Opens the quick search palette on a tab, for the place the window is working in (the folder, or the worktree of the open chat: the one the side panel's Files tab shows). Where it is open already it goes
  * to that tab, and over another dialog it does not open. The text tab starts with what the open file has selected, when it has a line of it.
  */
 export function openQuickSearch(root: RootStore, tab: QuickSearchTab = 'all'): void {
@@ -31,9 +31,10 @@ export function openQuickSearch(root: RootStore, tab: QuickSearchTab = 'all'): v
     if (!projectId || !project) return;
 
     const ui = root.ui.forProject(projectId);
-    const folder = currentFolder(project, ui);
+    const place = currentPlace(project, ui);
+    const { folder } = place;
     const { folders } = project.project;
-    const model = new QuickSearchModel(quickSearchSource(root, project, folder), tab);
+    const model = new QuickSearchModel(quickSearchSource(root, project, place), tab);
 
     current = model;
     showQuickSearch(
@@ -50,7 +51,7 @@ export function openQuickSearch(root: RootStore, tab: QuickSearchTab = 'all'): v
     );
 
     if (tab === 'text') {
-        void selectedText(root, projectId, folder).then((text) => {
+        void selectedText(root, projectId, place).then((text) => {
             if (text && current === model && model.blank) model.setQuery(text);
         });
     }

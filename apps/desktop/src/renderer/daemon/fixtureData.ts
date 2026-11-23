@@ -46,7 +46,8 @@ export interface FixtureData {
     artifacts: Artifact[];
     /**
      * Markdown files of each folder's `.clowdy/docs`, by the folder's path, then by the path under it. A folder that is not listed has no
-     * docs folder yet. Keyed by folder, as on disk: a folder several projects have shares its documents with all of them.
+     * docs folder yet. Keyed by folder, as on disk: a folder several projects have shares its documents with all of them. A worktree is keyed by its own
+     * path as well (`FIXTURE_WORKTREE_PATH`); one that is not listed has the files of the folder it is a checkout of.
      */
     docs: Record<string, Record<string, string>>;
     /**
@@ -341,6 +342,15 @@ const FIXTURE_FILES = [
     'src/db/schema.ts',
 ];
 
+/** What the fixture's worktree of Car Rental has besides the folder's own files: the chat that works in it added the surcharge's file. */
+const WORKTREE_FILES = [...FIXTURE_FILES, 'src/booking/weekend.ts'];
+
+/** The plan only the worktree has: the chat made it there, so the folder's own checkout does not list it. */
+const WORKTREE_BRIEFBACK: Record<string, string> = {
+    ...BRIEFBACK,
+    'weekend-surcharge/plan.md': '# Weekend surcharge\n\n> Keep this plan current during implementation.\n\n**Goal:** the surcharge is its own line in the price, on a branch of its own.\n\n## Stage 1 \u2014 The line\n\n- [x] Complete\n  - [x] `weekendSurcharge` in `src/booking/weekend.ts`\n  - [ ] show it in `BookingForm.tsx`\n',
+};
+
 const API_FILES = [
     'README.md',
     'package.json',
@@ -377,6 +387,13 @@ export function fixtureFolderGit(path: string, head: { branch?: string; detached
 
 /** Where the fixture's Clowdy-made worktrees are: `~/Clowdy/workspaces`, as the daemon lays them out (`<project>/<chat id>/<folder>`). */
 export const FIXTURE_WORKSPACES_ROOT = '/Users/dev/Clowdy/workspaces';
+
+/**
+ * The worktree of Car Rental that `fixtureFolderGit` lists and `withFixtureWorkspace`'s chat works in. It has files and a plan of its own (`src/booking/weekend.ts`,
+ * `.briefback/weekend-surcharge/plan.md`): what only the worktree has is what the side panel and the palette show for a chat there. A worktree with no entry in the
+ * fixture's `files`, `docs` and `briefback` (a new one a chat made) is a checkout of the same commit, so it has its folder's.
+ */
+export const FIXTURE_WORKTREE_PATH = `${ FIXTURE_WORKSPACES_ROOT }/car-rental/ab12cd34/car-rental`;
 
 const kebab = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 
@@ -604,7 +621,7 @@ export function withFixtureWorkspace(data: FixtureData, now = Date.now()): Fixtu
     const workspace: ChatWorkspace = {
         id: 'wks_ab12cd34',
         folderId: 'fld_car_rental',
-        path: `${ FIXTURE_WORKSPACES_ROOT }/car-rental/ab12cd34/car-rental`,
+        path: FIXTURE_WORKTREE_PATH,
         branch: 'clowdy/ab12cd34',
         managed: true,
         ready: true,
@@ -1166,8 +1183,8 @@ export function createFixtureData(now = Date.now()): FixtureData {
         artifacts,
         // `car-rental-api` belongs to no project yet: add it to Car Rental to see the documents, files and remotes of two folders.
         docs: { '/Users/dev/car-rental': docs, '/Users/dev/car-rental-api': API_DOCS },
-        briefback: { '/Users/dev/car-rental': BRIEFBACK },
-        files: { '/Users/dev/car-rental': FIXTURE_FILES, '/Users/dev/car-rental-api': API_FILES },
+        briefback: { '/Users/dev/car-rental': BRIEFBACK, [FIXTURE_WORKTREE_PATH]: WORKTREE_BRIEFBACK },
+        files: { '/Users/dev/car-rental': FIXTURE_FILES, '/Users/dev/car-rental-api': API_FILES, [FIXTURE_WORKTREE_PATH]: WORKTREE_FILES },
         // Car Rental shows a favicon of its own; Clowdy has none, so it keeps the folder icon until one is uploaded.
         icons: { '/Users/dev/car-rental': CAR_RENTAL_ICON },
         attachments: structuredClone(FIXTURE_ATTACHMENTS),

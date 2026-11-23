@@ -89,6 +89,16 @@ describe('docs', () => {
         expect(docItems(tree, folders, 'pric')[0]?.description).toBe('app/.clowdy/docs/decisions');
     });
 
+    it('cites a document by its path from the folder the chat works in, and another folder\'s by its absolute path', () => {
+        const tree = [
+            { folderId: 'fld_app', sources: [documents({ path: 'a.md', name: 'a.md', kind: 'file' })] },
+            { folderId: 'fld_api', sources: [documents({ path: 'b.md', name: 'b.md', kind: 'file' })] },
+        ];
+
+        expect(docItems(tree, folders, '', 'fld_api').map(item => item.data)).toEqual([{ path: '/work/app/.clowdy/docs/a.md' }, { path: '.clowdy/docs/b.md' }]);
+        expect(docItems(tree, folders, '').map(item => item.data)).toEqual([{ path: '.clowdy/docs/a.md' }, { path: '/work/api/.clowdy/docs/b.md' }]);
+    });
+
     it('offers nothing for a folder with no source', () => {
         expect(docItems([{ folderId: 'fld_app', sources: [] }], folders.slice(0, 1), '')).toEqual([]);
     });
@@ -132,6 +142,14 @@ describe('fileItems', () => {
 
     it('leaves out a file of a folder the project no longer has', () => {
         expect(fileItems([{ folderId: 'fld_gone', path: 'a.ts' }], folders)).toEqual([]);
+    });
+
+    it('cites a file by its path from the folder the chat works in, which is its working directory, and the others by their absolute paths', () => {
+        const matches = [{ folderId: 'fld_api', path: 'src/price.ts' }, { folderId: 'fld_app', path: 'src/booking/price.ts' }];
+
+        // A chat in the second folder: its own files are relative, the main folder's are not.
+        expect(fileItems(matches, folders, 'fld_api').map(item => item.data)).toEqual([{ path: 'src/price.ts' }, { path: '/work/app/src/booking/price.ts' }]);
+        expect(fileItems(matches, folders, 'fld_app').map(item => item.data)).toEqual([{ path: '/work/api/src/price.ts' }, { path: 'src/booking/price.ts' }]);
     });
 });
 

@@ -5,7 +5,7 @@ import { compareDocs } from '../files/docsScope';
 import { mentionIcon } from './MentionChip';
 
 import type { RichInputTriggerItem } from '@clowdy/components/RichInput';
-import type { DocNode, DocsTree, ProjectFileMatch, ProjectFolder, SkillEntry, Task } from '@clowdy/protocol';
+import type { DocNode, DocsTree, FolderId, ProjectFileMatch, ProjectFolder, SkillEntry, Task } from '@clowdy/protocol';
 
 /** How many of each kind the `@` menu lists: it is a pick list, not a search page. */
 export const TASKS_SHOWN = 6;
@@ -58,12 +58,19 @@ function underFolder(folder: string, relative: string): string {
 }
 
 /**
+ * The path an agent reads a file by: relative to the folder it works in (`home`, the main folder when none is named: its cwd, which for a chat in a worktree is the worktree,
+ * and the list the file came from is the worktree's), and the absolute path of the folder's own checkout for a file of another folder, which is not under its cwd.
+ */
+const agentPathOf = (folders: readonly ProjectFolder[], folder: ProjectFolder, home: FolderId | undefined, path: string) => ((home ?? folders[0]?.id) === folder.id ? path : underFolder(folder.path, path));
+
+/**
  * Documents whose path has every word typed, source by source and folder by folder in the order the tree lists them. The path is the document's own in the project
  * folder (`.briefback/acp/plan.md`, `.clowdy/docs/decisions/pricing.md`: the root of its source, then its path), which is what the words are matched in. A document of the
- * main folder reaches the agent by that path, relative to the folder it works in; another folder's by its absolute path, since the agent works in the main folder. With
- * several folders the suggestion names the folder, and the folder's name counts as part of the path when searching.
+ * folder the chat works in (`home`, the main folder for none) reaches the agent by that path, relative to its working directory, which is the worktree when the chat has
+ * one, and the tree is the worktree's (`getDocsTree` with the workspace); another folder's by its absolute path. With several folders the suggestion names the folder,
+ * and the folder's name counts as part of the path when searching.
  */
-export function docItems(tree: DocsTree, folders: readonly ProjectFolder[], query: string): RichInputTriggerItem[] {
+export function docItems(tree: DocsTree, folders: readonly ProjectFolder[], query: string, home?: FolderId): RichInputTriggerItem[] {
     const words = wordsOf(query);
     const names = folderNames(folders);
     const several = tree.length > 1;
@@ -78,7 +85,7 @@ export function docItems(tree: DocsTree, folders: readonly ProjectFolder[], quer
         return sources.flatMap(({ id, root, nodes }) => docPaths(nodes).map((relative) => {
             const path = `${ root }/${ relative }`;
 
-            return { folderId, source: `${ folderId }/${ id }`, path, shown: several ? `${ name }/${ path }` : path, agentPath: index === 0 ? path : underFolder(folder.path, path) };
+            return { folderId, source: `${ folderId }/${ id }`, path, shown: several ? `${ name }/${ path }` : path, agentPath: agentPathOf(folders, folder, home, path) };
         }));
     });
 
@@ -116,10 +123,11 @@ export function docItems(tree: DocsTree, folders: readonly ProjectFolder[], quer
 }
 
 /**
- * The files the daemon found, as it ranked them. A file of the main folder reaches the agent by its path from there, the folder it works in;
- * another folder's by its absolute path. With several folders the suggestion names the folder (`<folder name>/<path>`).
+ * The files the daemon found, as it ranked them. A file of the folder the chat works in (`home`, the main folder for none) reaches the agent by its path from there, its
+ * working directory (the worktree, when the chat has one and the list is the worktree's); another folder's by its absolute path. With several folders the suggestion names
+ * the folder (`<folder name>/<path>`).
  */
-export function fileItems(matches: readonly ProjectFileMatch[], folders: readonly ProjectFolder[]): RichInputTriggerItem[] {
+export function fileItems(matches: readonly ProjectFileMatch[], folders: readonly ProjectFolder[], home?: FolderId): RichInputTriggerItem[] {
     const names = folderNames(folders);
     const several = folders.length > 1;
 
@@ -131,7 +139,7 @@ export function fileItems(matches: readonly ProjectFileMatch[], folders: readonl
         if (!folder) return [];
 
         const shown = several ? `${ names[index] }/${ path }` : path;
-        const data = { path: index === 0 ? path : underFolder(folder.path, path) };
+        const data = { path: agentPathOf(folders, folder, home, path) };
 
         return {
             value: `file:${ folderId }:${ path }`,

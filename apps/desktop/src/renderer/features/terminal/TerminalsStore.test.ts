@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { FIXTURE_PROJECT_ID } from '../../daemon/fixtureData';
+import { createFixtureData, FIXTURE_PROJECT_ID, withFixtureWorkspace } from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { overrideTransport } from '../../daemon/testing';
 import { TransportError } from '../../daemon/transport';
@@ -19,6 +19,77 @@ async function setup() {
 
     return { transport, store: new TerminalsStore(transport), projectId: project.id, folderId: first.id, otherFolderId: second?.id };
 }
+
+describe('TerminalsStore over a worktree', () => {
+    const WORKSPACE = 'wks_ab12cd34';
+    const FOLDER = 'fld_car_rental';
+    const setup = () => {
+        const transport = new FixtureTransport({ data: withFixtureWorkspace(createFixtureData()) });
+
+        return { transport, store: new TerminalsStore(transport) };
+    };
+
+    it('starts a shell in the worktree, with its id, chooses it, and keeps it apart from the folder\'s own shells', async () => {
+        const { store } = setup();
+        const own = await store.start(FIXTURE_PROJECT_ID, FOLDER);
+        const inside = await store.start(FIXTURE_PROJECT_ID, FOLDER, undefined, WORKSPACE);
+
+        expect(inside?.info).toMatchObject({ workspaceId: WORKSPACE, cwd: '/Users/dev/Clowdy/workspaces/car-rental/ab12cd34/car-rental' });
+        expect(store.sessionsOf(FIXTURE_PROJECT_ID, FOLDER)).toEqual([own]);
+        expect(store.sessionsOf(FIXTURE_PROJECT_ID, FOLDER, WORKSPACE)).toEqual([inside]);
+        expect(store.activeOf(FIXTURE_PROJECT_ID, FOLDER)).toBe(own);
+        expect(store.activeOf(FIXTURE_PROJECT_ID, FOLDER, WORKSPACE)).toBe(inside);
+    });
+
+    it('remembers the shell each place chose apart from the other\'s', async () => {
+        const { store } = setup();
+        const first = await store.start(FIXTURE_PROJECT_ID, FOLDER, undefined, WORKSPACE);
+        const second = await store.start(FIXTURE_PROJECT_ID, FOLDER, undefined, WORKSPACE);
+        const own = await store.start(FIXTURE_PROJECT_ID, FOLDER);
+
+        store.select(first!);
+
+        expect(store.activeOf(FIXTURE_PROJECT_ID, FOLDER, WORKSPACE)).toBe(first);
+        expect(store.activeOf(FIXTURE_PROJECT_ID, FOLDER)).toBe(own);
+        expect(second).not.toBe(first);
+    });
+
+    it('gives a worktree with no shell one, and the folder that has some none, and one for two asks at once', async () => {
+        const { transport, store } = setup();
+        const create = vi.spyOn(transport, 'createTerminal');
+        const own = await store.start(FIXTURE_PROJECT_ID, FOLDER);
+
+        create.mockClear();
+
+        const [first, second] = await Promise.all([store.ensureOne(FIXTURE_PROJECT_ID, FOLDER, WORKSPACE), store.ensureOne(FIXTURE_PROJECT_ID, FOLDER, WORKSPACE)]);
+
+        expect(create).toHaveBeenCalledOnce();
+        expect(create).toHaveBeenCalledWith(expect.objectContaining({ folderId: FOLDER, workspaceId: WORKSPACE }));
+        expect(first).toBe(second);
+        expect(first).not.toBe(own);
+        expect(await store.ensureOne(FIXTURE_PROJECT_ID, FOLDER)).toBe(own);
+    });
+
+    it('reads the daemon\'s shells into the place each belongs to', async () => {
+        const { transport, store } = setup();
+        const own = await transport.createTerminal({ projectId: FIXTURE_PROJECT_ID, folderId: FOLDER, cols: 80, rows: 24 });
+        const inside = await transport.createTerminal({ projectId: FIXTURE_PROJECT_ID, folderId: FOLDER, workspaceId: WORKSPACE, cols: 80, rows: 24 });
+
+        await store.load(FIXTURE_PROJECT_ID);
+
+        expect(store.sessionsOf(FIXTURE_PROJECT_ID, FOLDER).map(session => session.id)).toEqual([own.id]);
+        expect(store.sessionsOf(FIXTURE_PROJECT_ID, FOLDER, WORKSPACE).map(session => session.id)).toEqual([inside.id]);
+    });
+
+    it('does not take the shells of one worktree for another\'s', async () => {
+        const { store } = setup();
+
+        await store.start(FIXTURE_PROJECT_ID, FOLDER, undefined, WORKSPACE);
+
+        expect(store.sessionsOf(FIXTURE_PROJECT_ID, FOLDER, 'wks_other')).toEqual([]);
+        expect(store.activeOf(FIXTURE_PROJECT_ID, FOLDER, 'wks_other')).toBeUndefined();
+    });
+});
 
 describe('TerminalsStore', () => {
     it('starts a shell in a folder and chooses it', async () => {

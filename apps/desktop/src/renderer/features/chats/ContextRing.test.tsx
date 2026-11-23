@@ -54,7 +54,7 @@ async function mount(page: Page = {}, options: ModelStoreOptions = {}) {
 
         return (current.answer ?? (() => accepted))(input);
     });
-    const root$ = { command, transport, skillsRevision: 0, selectedProject: { project: { id: 'p' }, taskList: [] }, ...store } as unknown as RootStore;
+    const root$ = { command, transport, skillsRevision: 0, selectedProject: { project: { id: 'p', folders: [{ id: 'f1', path: '/Users/dev/web' }] }, taskList: [] }, ...store } as unknown as RootStore;
     const draw = () => act(async () => {
         root.render(
             <RootStoreProvider value={ root$ }>

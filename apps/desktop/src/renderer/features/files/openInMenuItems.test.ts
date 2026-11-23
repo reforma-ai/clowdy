@@ -16,7 +16,7 @@ const FILE: FileEntry = { path: 'src/index.ts', kind: 'file' };
 const DIRECTORY: FileEntry = { path: 'src', kind: 'directory' };
 
 const effects = (): OpenEffects => ({ openPath: vi.fn(), openUrl: vi.fn(), copy: vi.fn() });
-const itemsOf = (targets: readonly FileEntry[], options: Partial<Parameters<typeof openInMenuItems>[0]> = {}) => openInMenuItems({ projectId: 'p-app', folder: FOLDER, programs: PROGRAMS, git: GIT, effects: effects(), ...options })(targets);
+const itemsOf = (targets: readonly FileEntry[], options: Partial<Parameters<typeof openInMenuItems>[0]> = {}) => openInMenuItems({ projectId: 'p-app', place: { folder: FOLDER }, programs: PROGRAMS, git: GIT, effects: effects(), ...options })(targets);
 const labels = (items: ReturnType<typeof itemsOf>) => items.map(item => [item.label, item.children?.map(child => child.label)]);
 
 describe('what the Files tree\'s row menu is given to open a row in', () => {

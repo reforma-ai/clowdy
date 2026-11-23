@@ -5,7 +5,7 @@ import { PathText } from '../../shared/PathText';
 import { ProjectIcon } from '../../shared/ProjectIcon';
 import { useProjectState, useProjectUi } from '../../stores';
 import { useFolderGit } from '../openWith';
-import { currentFolder } from './currentFolder';
+import { currentPlace } from './currentPlace';
 import styles from './InfoTab.module.css';
 
 import type { ReactNode } from 'react';
@@ -22,12 +22,15 @@ function InfoRow({ icon, label, children }: { icon: ReactNode; label: string; ch
     );
 }
 
-/** The panel's Info tab: what the window is working on, as a short list: the project, its folder and the branch that is checked out in it. */
+/**
+ * The panel's Info tab: what the window is working on, as a short list: the project, its folder, the worktree of the open chat when it works in one, and the branch that is
+ * checked out in the place (the worktree's own, which an agent may have switched).
+ */
 export function InfoTab() {
     const project = useProjectState();
     const ui = useProjectUi();
-    const folder = currentFolder(project, ui);
-    const git = useFolderGit(project.id, folder.id);
+    const { folder, workspace } = currentPlace(project, ui);
+    const git = useFolderGit(project.id, folder.id, workspace);
 
     return (
         <dl className={ styles.info }>
@@ -37,6 +40,11 @@ export function InfoTab() {
             <InfoRow icon={ <Folder aria-hidden="true" /> } label="Folder">
                 <PathText path={ folder.path } />
             </InfoRow>
+            { workspace && (
+                <InfoRow icon={ <Folder aria-hidden="true" /> } label="Worktree">
+                    <PathText path={ workspace.path } />
+                </InfoRow>
+            ) }
             { git?.branch && (
                 <InfoRow icon={ <Version aria-hidden="true" /> } label="Branch">
                     <Text truncate title={ git.detached ? 'Detached HEAD' : undefined }>{ git.branch }</Text>

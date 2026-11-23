@@ -28,6 +28,7 @@ import type {
     ApprovalDecision,
     Attachment,
     Chat,
+    ChatWorkspace,
     ClowdyEvent,
     CommandResult,
     DocsTree,
@@ -57,6 +58,7 @@ import type {
     TerminalId,
     TerminalInfo,
     ThreadNotice,
+    WorkspaceId,
 } from '@clowdy/protocol';
 import type { TerminalStream, TerminalStreamHandlers } from './terminalStream';
 
@@ -317,39 +319,56 @@ export class FixtureTransport implements Transport {
         return this.#tasks.archivedPage(projectId, page);
     }
 
-    async getDocsTree(projectId: ProjectId): Promise<DocsTree> {
-        // Every fixture folder exists; one with no source has none, and reading does not make one.
-        return this.#project(projectId).folders.map(folder => ({ folderId: folder.id, sources: docsSources({ briefback: this.#data.briefback[folder.path], documents: this.#data.docs[folder.path] }) }));
+    async getDocsTree(projectId: ProjectId, workspaceId?: WorkspaceId): Promise<DocsTree> {
+        const project = this.#project(projectId);
+        const workspace = workspaceId === undefined ? undefined : this.#workspaceOf(project, workspaceId);
+
+        // Every fixture folder exists; one with no source has none, and reading does not make one. The worktree's folder lists the worktree's documents.
+        return project.folders.map((folder) => {
+            const root = this.#rootOf(folder, workspace);
+
+            return { folderId: folder.id, sources: docsSources({ briefback: this.#data.briefback[root] ?? this.#data.briefback[folder.path], documents: this.#data.docs[root] ?? this.#data.docs[folder.path] }) };
+        });
     }
 
-    async getProjectFiles(projectId: ProjectId, query: string, limit = 40): Promise<ProjectFileMatch[]> {
+    async getProjectFiles(projectId: ProjectId, query: string, limit = 40, workspaceId?: WorkspaceId): Promise<ProjectFileMatch[]> {
         const words = query.toLowerCase().split(/\s+/).filter(Boolean);
         const project = this.#data.projects.find(candidate => candidate.id === projectId);
 
         if (!project) return [];
 
-        // Like the daemon: every folder's files, the folder's name counting as part of the path when there are several.
+        const workspace = workspaceId === undefined ? undefined : this.#workspaceOf(project, workspaceId);
+
+        // Like the daemon: every folder's files (the worktree's in place of its folder's), the folder's name counting as part of the path when there are several.
         const names = folderNames(project.folders);
         const several = project.folders.length > 1;
-        const found = project.folders.flatMap((folder, index) => (this.#data.files[folder.path] ?? []).map(path => ({ folderId: folder.id, path, searched: several ? `${ names[index] }/${ path }` : path })));
+        const found = project.folders.flatMap((folder, index) => {
+            const root = this.#rootOf(folder, workspace);
+
+            return (this.#data.files[root] ?? this.#data.files[folder.path] ?? []).map(path => ({ folderId: folder.id, path, searched: several ? `${ names[index] }/${ path }` : path }));
+        });
 
         return found.filter(file => words.every(word => file.searched.toLowerCase().includes(word))).slice(0, limit).map(({ folderId, path }) => ({ folderId, path }));
     }
 
-    fileSystem(projectId: ProjectId, folderId: FolderId): ProjectFileSystem {
-        const folder = this.#project(projectId).folders.find(candidate => candidate.id === folderId);
+    fileSystem(projectId: ProjectId, folderId: FolderId, workspaceId?: WorkspaceId): ProjectFileSystem {
+        const project = this.#project(projectId);
+        const folder = project.folders.find(candidate => candidate.id === folderId);
 
         if (!folder) throw new TransportError(`Folder ${ folderId } does not exist`, 404);
 
-        let fileSystem = this.#fileSystems.get(folderId);
+        const workspace = workspaceId === undefined ? undefined : this.#workspaceOf(project, workspaceId, folderId);
+        const key = workspaceId ?? folderId;
+        let fileSystem = this.#fileSystems.get(key);
 
         if (!fileSystem) {
             // The folder's documents are files like the others, below the roots of their sources: `.clowdy/docs`, `.briefback`.
             const below = (root: string, files: Record<string, string> | undefined) => Object.entries(files ?? {}).map(([path, text]) => [`${ root }/${ path }`, text] as const);
-            const documents = Object.fromEntries([...below('.clowdy/docs', this.#data.docs[folder.path]), ...below('.briefback', this.#data.briefback[folder.path])]);
+            const root = this.#rootOf(folder, workspace);
+            const documents = Object.fromEntries([...below('.clowdy/docs', this.#data.docs[root] ?? this.#data.docs[folder.path]), ...below('.briefback', this.#data.briefback[root] ?? this.#data.briefback[folder.path])]);
 
-            fileSystem = new MemoryFileSystem({ ...fixtureFileContents(this.#data.files[folder.path] ?? []), ...documents });
-            this.#fileSystems.set(folderId, fileSystem);
+            fileSystem = new MemoryFileSystem({ ...fixtureFileContents(this.#data.files[root] ?? this.#data.files[folder.path] ?? []), ...documents });
+            this.#fileSystems.set(key, fileSystem);
         }
 
         return fileSystem;
@@ -415,7 +434,9 @@ export class FixtureTransport implements Transport {
 
     async createTerminal(request: TerminalCreate): Promise<TerminalInfo> {
         try {
-            return this.#terminals.create(this.#project(request.projectId), request);
+            const project = this.#project(request.projectId);
+
+            return this.#terminals.create(project, request, request.workspaceId === undefined ? undefined : this.#workspaceOf(project, request.workspaceId, request.folderId));
         }
         catch (error) {
             throw error instanceof TransportError ? error : new TransportError((error as Error).message, 404);
@@ -458,6 +479,25 @@ export class FixtureTransport implements Transport {
         if (!project) throw new TransportError(`No such project: ${ projectId }`, 404);
 
         return project;
+    }
+
+    /**
+     * The worktree a request names, as the daemon judges it: one the project's chats work in, a checkout of a folder of the project (and of `folderId` when the request
+     * names one), and made. `not_found` for the first two, `unavailable` while the chat's first turn has not made it yet.
+     */
+    #workspaceOf(project: Project, workspaceId: WorkspaceId, folderId?: FolderId): ChatWorkspace {
+        const workspace = this.#data.chats.find(chat => chat.projectId === project.id && chat.workspace?.id === workspaceId)?.workspace;
+
+        if (!workspace || !project.folders.some(folder => folder.id === workspace.folderId) || (folderId !== undefined && workspace.folderId !== folderId)) throw new TransportError(`No such workspace: ${ workspaceId }`, 404);
+
+        if (!workspace.ready) throw new TransportError('The worktree is not made yet', 503);
+
+        return workspace;
+    }
+
+    /** Where a folder's files are read: the worktree's path when the request is for a worktree of that folder, else the folder's own. */
+    #rootOf(folder: { id: FolderId; path: string }, workspace: ChatWorkspace | undefined): string {
+        return workspace?.folderId === folder.id ? workspace.path : folder.path;
     }
 
     /** The daemon refuses an agent it does not know when a chat is made or changed; one that is switched off waits for the first message. */

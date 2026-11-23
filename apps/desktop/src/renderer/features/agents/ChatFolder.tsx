@@ -20,8 +20,8 @@ export interface FolderPillProps {
     missing: boolean;
     /** What git says where the pill opens its menu (the link to GitHub names the branch). */
     git: FolderGit | undefined;
-    /** Where the menu acts: the worktree of a chat that works in one. The folder's own path when absent. */
-    worktree?: string;
+    /** Where the menu acts: the worktree of a chat that works in one. The folder's own checkout when absent. */
+    workspace?: ChatWorkspace;
 }
 
 /**
@@ -31,11 +31,11 @@ export interface FolderPillProps {
  * the items are off. Anywhere else, a page in a browser, it is read only: no plate and no chevron, since the folder of a chat never changes and there is nothing to open it in.
  * A chat in a worktree has the menu act on the worktree: its path is what the pill tells and the menu copies or opens.
  */
-export function FolderPill({ name, folder, missing, git, worktree }: FolderPillProps) {
+export function FolderPill({ name, folder, missing, git, workspace }: FolderPillProps) {
     const project = useProjectState();
-    const path = worktree ?? folder.path;
+    const path = workspace?.path ?? folder.path;
     // A worktree that is gone is not what Locate and Remove from project put right: they act on the folder, which is there.
-    const repair = useFolderRepair(folder, missing && worktree === undefined);
+    const repair = useFolderRepair(folder, missing && workspace === undefined);
     const title = missing ? 'This folder no longer exists' : tildePath(path, homeFolder.path);
 
     if (!canOpenPaths()) {
@@ -47,7 +47,7 @@ export function FolderPill({ name, folder, missing, git, worktree }: FolderPillP
         );
     }
 
-    const target: OpenTarget = { projectId: project.id, folder, path, relative: '', kind: 'directory', ...(worktree !== undefined && { inWorktree: true as const }) };
+    const target: OpenTarget = { projectId: project.id, folder, path, relative: '', kind: 'directory', ...(workspace && { workspace }) };
 
     return (
         <MenuTrigger>
@@ -79,7 +79,7 @@ export function ChatFolder({ name, folder, missing, workspace }: ChatFolderProps
 
     return (
         <>
-            <FolderPill name={ name } folder={ folder } missing={ missing || git?.gone === true } git={ git } worktree={ workspace?.path } />
+            <FolderPill name={ name } folder={ folder } missing={ missing || git?.gone === true } git={ git } workspace={ workspace } />
             <WorkspaceLabels worktree={ workspace?.path } git={ git } />
         </>
     );

@@ -1,15 +1,16 @@
 import { Copy, Follow } from '@clowdy/icons/14';
 
 import { absolutePath, actionIcon, openActions, openEffects, type FolderGit, type OpenAction, type OpenEffects, type OpenPrograms, type OpenTarget } from '../openWith';
+import { placePath, type Place } from '../sidePanel/currentPlace';
 
 import type { FileEntry } from '@clowdy/file-manager';
 import type { FileMenuItem } from '@clowdy/file-manager/react';
-import type { ProjectFolder, ProjectId } from '@clowdy/protocol';
+import type { ProjectId } from '@clowdy/protocol';
 
 export interface OpenInMenuInput {
     projectId: ProjectId;
-    /** The folder the tree shows: its path is what a row's own path is inside. */
-    folder: ProjectFolder;
+    /** The place the tree shows, the folder or the worktree of the chat: its path is what a row's own path is inside. */
+    place: Place;
     programs: OpenPrograms;
     git: FolderGit | undefined;
     effects?: OpenEffects;
@@ -26,13 +27,13 @@ const COPY_LABELS: Partial<Record<OpenAction['id'], string>> = { copyPath: 'Abso
  * copy (absolute or relative), and `Open in…`, a submenu of what leaves the app: the editor, the file manager (it shows a file), the terminal program (a folder
  * only) and GitHub. A selection of several rows gets none of them, and `Open in…` is left out when nothing is left to open the row in.
  */
-export function openInMenuItems({ projectId, folder, programs, git, effects = openEffects, inTerminal }: OpenInMenuInput): (targets: readonly FileEntry[]) => FileMenuItem[] {
+export function openInMenuItems({ projectId, place, programs, git, effects = openEffects, inTerminal }: OpenInMenuInput): (targets: readonly FileEntry[]) => FileMenuItem[] {
     return (targets) => {
         const [entry] = targets;
 
         if (targets.length !== 1 || !entry) return [];
 
-        const target: OpenTarget = { projectId, folder, path: absolutePath(folder.path, entry.path), relative: entry.path, kind: entry.kind };
+        const target: OpenTarget = { projectId, folder: place.folder, ...(place.workspace && { workspace: place.workspace }), path: absolutePath(placePath(place), entry.path), relative: entry.path, kind: entry.kind };
         const items = (group: OpenAction['group']): FileMenuItem[] => openActions({ target, programs, git, effects, inTerminal: inTerminal && (() => inTerminal(entry.path)) })
             .filter(action => action.group === group)
             .map(action => ({ id: action.id, label: COPY_LABELS[action.id] ?? action.label, icon: group === 'copy' ? undefined : actionIcon(action), onAction: action.run }));

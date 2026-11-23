@@ -28,6 +28,7 @@ import type {
     TerminalCreate,
     TerminalId,
     TerminalInfo,
+    WorkspaceId,
 } from '@clowdy/protocol';
 import type { TerminalStream, TerminalStreamHandlers } from './terminalStream';
 
@@ -143,20 +144,22 @@ export class HttpTransport implements Transport {
         return this.#get(`${ ROUTES.projectArchivedTasks(projectId) }${ pageQuery(page) }`);
     }
 
-    getDocsTree(projectId: ProjectId): Promise<DocsTree> {
-        return this.#get(ROUTES.docsTree(projectId));
+    getDocsTree(projectId: ProjectId, workspaceId?: WorkspaceId): Promise<DocsTree> {
+        return this.#get(workspaceId === undefined ? ROUTES.docsTree(projectId) : `${ ROUTES.docsTree(projectId) }?${ new URLSearchParams({ workspaceId }) }`);
     }
 
-    getProjectFiles(projectId: ProjectId, query: string, limit?: number): Promise<ProjectFileMatch[]> {
+    getProjectFiles(projectId: ProjectId, query: string, limit?: number, workspaceId?: WorkspaceId): Promise<ProjectFileMatch[]> {
         const params = new URLSearchParams({ query });
 
         if (limit !== undefined) params.set('limit', String(limit));
 
+        if (workspaceId !== undefined) params.set('workspaceId', workspaceId);
+
         return this.#get(`${ ROUTES.projectFiles(projectId) }?${ params }`);
     }
 
-    fileSystem(projectId: ProjectId, folderId: FolderId): ProjectFileSystem {
-        return new HttpFileSystem({ target: () => ({ base: this.#base, headers: this.#headers }), fetch: this.#fetch, route: ROUTES.projectFs(projectId), folderId, sleep: this.#sleep });
+    fileSystem(projectId: ProjectId, folderId: FolderId, workspaceId?: WorkspaceId): ProjectFileSystem {
+        return new HttpFileSystem({ target: () => ({ base: this.#base, headers: this.#headers }), fetch: this.#fetch, route: ROUTES.projectFs(projectId), folderId, ...(workspaceId !== undefined && { workspaceId }), sleep: this.#sleep });
     }
 
     async uploadAttachment(projectId: ProjectId, file: File): Promise<Attachment> {

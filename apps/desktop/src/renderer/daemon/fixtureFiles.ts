@@ -8,6 +8,7 @@ const CONTENTS: Record<string, string> = {
     'src/booking/BookingForm.tsx': 'import { useState } from \'react\';\n\nexport function BookingForm() {\n    const [step, setStep] = useState(0);\n    const next = () => setStep(step + 1);\n\n    return <button onClick={ next }>Next</button>;\n}\n',
     'src/booking/price.ts': '/** The weekend surcharge applies from Friday evening to Sunday night. */\nexport const weekendRate = 1.15;\n\nconst round = (value: number) => Math.round(value * 100) / 100;\nconst sum = (values: number[]) => values.reduce((total, value) => total + value, 0);\n\nexport const total = (days: number[]) => round(sum(days));\n',
     'src/booking/price.test.ts': 'import { expect, test } from \'bun:test\';\n\nimport { total } from \'./price\';\n\ntest(\'adds the days up\', () => {\n    expect(total([40, 40, 46])).toBe(126);\n});\n',
+    'src/booking/weekend.ts': '/** The surcharge of a weekend day, as its own line in the price. */\nexport const weekendSurcharge = (day: number, rate: number) => Math.round(day * (rate - 1) * 100) / 100;\n',
     'src/db/schema.ts': 'export const bookings = {\n    id: \'text\',\n    carId: \'text\',\n    from: \'date\',\n    to: \'date\',\n    price: \'integer\',\n};\n',
 };
 

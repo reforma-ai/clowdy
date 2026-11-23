@@ -59,7 +59,7 @@ async function open(tab: Parameters<typeof openQuickSearch>[1]) {
 const manager = (kind: 'files' | 'docs' = 'files') => {
     const project = store.selectedProject!;
 
-    return filesStoreOf(store).managerOf(project.project.id, project.project.folders[0]!.id, kind);
+    return filesStoreOf(store).managerOf(project.project.id, { folder: project.project.folders[0]! }, kind);
 };
 
 beforeEach(async () => {

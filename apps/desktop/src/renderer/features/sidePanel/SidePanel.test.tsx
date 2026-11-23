@@ -10,11 +10,8 @@ import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { defineCommand } from '../../hotkeys';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { SIDE_PANEL_COMMAND, SIDE_PANEL_KEYS } from './commands';
-import { currentFolder } from './currentFolder';
 import { SidePanelLayout } from './SidePanelLayout';
 import { SidePanelRail } from './SidePanelRail';
-
-import type { Chat, ProjectFolder } from '@clowdy/protocol';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -587,32 +584,5 @@ describe('the rail of the side panel', () => {
         expect(settingsItem()).toBeDefined();
         expect([...container.querySelectorAll('button')].map(button => button.textContent)).toEqual(['Settings']);
         expect(settingsItem()!.className).toMatch(/bottom/);
-    });
-});
-
-describe('the folder the Info tab names', () => {
-    const folders: ProjectFolder[] = [{ id: 'f1', path: '/Users/dev/web' }, { id: 'f2', path: '/Users/dev/api' }];
-    const chats = new Map([['c1', { id: 'c1', folderId: 'f2' } as Chat], ['c2', { id: 'c2' } as Chat]]);
-    const project = { chats, project: { folders } as never };
-    const idle = { section: 'agents', chatId: null, draft: false, draftFolderId: null } as const;
-
-    it('is the folder of the open chat, and the main one for a chat that has none', () => {
-        expect(currentFolder(project, { ...idle, chatId: 'c1' }).path).toBe('/Users/dev/api');
-        expect(currentFolder(project, { ...idle, chatId: 'c2' }).path).toBe('/Users/dev/web');
-    });
-
-    it('is the folder of the new chat that is being made', () => {
-        expect(currentFolder(project, { ...idle, draft: true, draftFolderId: 'f2' }).path).toBe('/Users/dev/api');
-        expect(currentFolder(project, { ...idle, draft: true }).path).toBe('/Users/dev/web');
-    });
-
-    // The new-chat page is opened over the chat that was open, which stays remembered under it, so the page's folder is what counts.
-    it('is the folder of the new chat that is being made, not that of the chat that was open when it was started', () => {
-        expect(currentFolder(project, { ...idle, chatId: 'c1', draft: true }).path).toBe('/Users/dev/web');
-        expect(currentFolder(project, { ...idle, chatId: 'c2', draft: true, draftFolderId: 'f2' }).path).toBe('/Users/dev/api');
-    });
-
-    it('is the main folder when no chat is open', () => {
-        expect(currentFolder(project, idle).path).toBe('/Users/dev/web');
     });
 });

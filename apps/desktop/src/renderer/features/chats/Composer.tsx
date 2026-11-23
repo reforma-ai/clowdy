@@ -7,6 +7,8 @@ import { useImperativeHandle, useLayoutEffect, useRef, useState, type MouseEvent
 
 import { Unavailable } from '../../shared/Unavailable';
 import { useAgents, useProjectState, useRootStore } from '../../stores';
+import { folderById } from '../agents/agentTree';
+import { chatPlace } from '../sidePanel/currentPlace';
 import { busyEnter, sendMode } from './busyEnter';
 import { ChatControls } from './ChatControls';
 import { readRememberedMode, startingMode, writeRememberedMode } from './chatModeMemory';
@@ -102,7 +104,6 @@ export function Composer({ chat, run, start, minLines, editMode, controls, ref }
     const root = useRootStore();
     const field = useRef<RichInputHandle>(null);
     const box = useRef<HTMLDivElement>(null);
-    const triggers = useMentionTriggers(box);
     // The words and the files of a message box live under one key: the chat's id, the new-chat page of this project, or the edit session of a message.
     const key = editMode?.draftKey ?? chat?.id ?? newChatDraftKey(start?.projectId);
     // The new-chat page of another project is this same composer drawn again, with words of its own: the state holds the draft last
@@ -126,6 +127,10 @@ export function Composer({ chat, run, start, minLines, editMode, controls, ref }
     const model = useModelChoice({ chat, made, run, preferredEngine: start?.defaults?.engine });
     const attach = useComposerFiles(key, chat?.projectId ?? start?.projectId);
     const { folders } = useProjectState().project;
+    // Where the message is read: the chat's folder and its worktree, or the folder of the new chat (no worktree to name before the chat is made). The `@` menu lists that place's
+    // files and documents, and a path in the message is the one the agent reads from its working directory there.
+    const place = target ? chatPlace(folders, target) : { folder: folderById(folders, start?.folderId) };
+    const triggers = useMentionTriggers(box, place);
     // The message the box replies to, shown as a card above the field. The box of an edit frame has none.
     const replyTo = useReplyQuote(key);
     const { agents } = useAgents();
@@ -171,7 +176,7 @@ export function Composer({ chat, run, start, minLines, editMode, controls, ref }
         field.current?.focus();
     };
 
-    const pasted = (files: readonly File[]) => void pasteFiles(files, { folders, mention: chip => field.current?.insertMention(chip), attach: attach.add });
+    const pasted = (files: readonly File[]) => void pasteFiles(files, { folders, place, mention: chip => field.current?.insertMention(chip), attach: attach.add });
 
     useImperativeHandle(ref, () => ({ addFiles: attach.add, pasteFiles: pasted, reply, quote }), [attach.add, pasted, reply, quote]);
 

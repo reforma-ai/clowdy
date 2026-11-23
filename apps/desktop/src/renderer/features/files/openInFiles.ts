@@ -1,23 +1,25 @@
+import { isPlaceReady, type Place } from '../sidePanel/currentPlace';
 import { isDocumentPath } from './docsScope';
 
 import type { FileEntry, FileKind, FileManager } from '@clowdy/file-manager';
-import type { ProjectFolder, ProjectId } from '@clowdy/protocol';
+import type { ProjectId } from '@clowdy/protocol';
 import type { RootStore } from '../../stores';
 
 /**
- * The file manager of a folder, the Files tab's or the Docs tab's (each has its own tabs), which is loaded when something needs it: the manager and the editor behind it
- * are a chunk of their own, kept out of the window's first load.
+ * The file manager of a place (a folder's own checkout, or the worktree of a chat), the Files tab's or the Docs tab's (each has its own tabs), which is loaded when something
+ * needs it: the manager and the editor behind it are a chunk of their own, kept out of the window's first load. The place has to be ready (`isPlaceReady`): a worktree that
+ * is not made yet has no files, and its manager would keep the failed listing after the worktree is made.
  */
-export async function filesManagerOf(root: RootStore, projectId: ProjectId, folder: ProjectFolder, kind: 'files' | 'docs' = 'files'): Promise<FileManager> {
+export async function filesManagerOf(root: RootStore, projectId: ProjectId, place: Place, kind: 'files' | 'docs' = 'files'): Promise<FileManager> {
     const { filesStoreOf } = await import('./useFilesStore');
 
-    return filesStoreOf(root).startedManagerOf(projectId, folder.id, kind);
+    return filesStoreOf(root).startedManagerOf(projectId, place, kind);
 }
 
 /** The tab a path belongs on: a document is opened in the Docs tab, any other file in the Files tab. */
 export const tabOf = (path: string): 'files' | 'docs' => (isDocumentPath(path) ? 'docs' : 'files');
 
-/** Shows the side panel on its Files tab, or on the Docs tab, which is the same view with the folder's documents for its tree and tabs of its own. The tab shows the folder the window is working in. */
+/** Shows the side panel on its Files tab, or on the Docs tab, which is the same view with the place's documents for its tree and tabs of its own. The tab shows the place the window is working in. */
 export function showFilesTab(root: RootStore, projectId: ProjectId, tab: 'files' | 'docs' = 'files'): void {
     root.ui.forProject(projectId).openSidePanelTab(tab);
 }
@@ -42,20 +44,25 @@ async function entryOf(manager: FileManager, path: string): Promise<FileEntry | 
     }
 }
 
-/** Whether a path inside a folder is a file or a folder on the disk, or nothing when it is not there (or the folder cannot be read). */
-export async function kindOnDisk(root: RootStore, projectId: ProjectId, folder: ProjectFolder, relative: string): Promise<FileKind | undefined> {
+/** Whether a path inside a place is a file or a folder on the disk, or nothing when it is not there (or the place cannot be read, or is a worktree that is not made yet). */
+export async function kindOnDisk(root: RootStore, projectId: ProjectId, place: Place, relative: string): Promise<FileKind | undefined> {
+    if (!isPlaceReady(place)) return undefined;
+
     if (relative === '') return 'directory';
 
-    return (await entryOf(await filesManagerOf(root, projectId, folder), relative))?.kind;
+    return (await entryOf(await filesManagerOf(root, projectId, place), relative))?.kind;
 }
 
 /**
  * Opens a file in a tab of the Files tab, a document in a tab of the Docs tab, or a folder in the Files tree, and shows the panel. `relative` is the path inside the
- * folder, empty for the folder itself (the tab only shows). Resolves `false`, with nothing opened and the panel and the tabs as they were, when the path is not there or the file cannot be read.
+ * place (the folder's own checkout, or the worktree of the chat), empty for the place itself (the tab only shows). Resolves `false`, with nothing opened and the panel and
+ * the tabs as they were, when the path is not there, the file cannot be read or the place is a worktree that is not made yet.
  */
-export async function openInFiles(root: RootStore, projectId: ProjectId, folder: ProjectFolder, relative: string): Promise<boolean> {
+export async function openInFiles(root: RootStore, projectId: ProjectId, place: Place, relative: string): Promise<boolean> {
+    if (!isPlaceReady(place)) return false;
+
     const tab = tabOf(relative);
-    const manager = await filesManagerOf(root, projectId, folder, tab);
+    const manager = await filesManagerOf(root, projectId, place, tab);
 
     // Asked before opening: opening a path that is not there still adds a tab, which takes the focus and, at the most tabs, closes the one used least, before it fails.
     if (relative !== '' && !await entryOf(manager, relative)) return false;

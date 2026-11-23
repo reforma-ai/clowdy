@@ -1,10 +1,15 @@
 // @vitest-environment happy-dom
 import { MemoryFileSystem } from '@clowdy/file-manager/memory';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { createFixtureData, FIXTURE_PROJECT_ID, FIXTURE_WORKSPACE_CHAT_ID, withFixtureWorkspace } from '../../daemon/fixtureData';
+import { FixtureTransport } from '../../daemon/fixtureTransport';
+import { RootStore as Root } from '../../stores';
+import { filesStoreOf } from '../files/useFilesStore';
+import { chatPlace } from '../sidePanel/currentPlace';
 import { matchDocs, mergeFiles, quickSearchSource } from './quickSearchSource';
 
-import type { DocsTree, ProjectFolder, ProjectId } from '@clowdy/protocol';
+import type { ChatWorkspace, DocsTree, ProjectFolder, ProjectId } from '@clowdy/protocol';
 import type { ProjectState, RootStore } from '../../stores';
 
 describe('the files of two lists as one', () => {
@@ -44,7 +49,7 @@ describe('the names the palette looks for', () => {
 
         const project = { id: 'p1' as ProjectId, chats: new Map(), runs: new Map(), project: { folders: [FOLDER] } } as unknown as ProjectState;
 
-        return quickSearchSource(root, project, FOLDER).files;
+        return quickSearchSource(root, project, { folder: FOLDER }).files;
     }
 
     it('are the project\'s files of this folder and the ones in the folder\'s tree, such as a file that git ignores', async () => {
@@ -144,7 +149,7 @@ describe('the documents the palette looks for', () => {
         const root = { transport: { getDocsTree: vi.fn(read) }, projects: [] } as unknown as RootStore;
         const project = { id: 'p1' as ProjectId, chats: new Map(), runs: new Map(), project: { folders: [FOLDER] } } as unknown as ProjectState;
 
-        return { search: quickSearchSource(root, project, FOLDER).docs, getDocsTree: root.transport.getDocsTree };
+        return { search: quickSearchSource(root, project, { folder: FOLDER }).docs, getDocsTree: root.transport.getDocsTree };
     }
 
     it('are the folder\'s own, of every source, each by its own path from the folder, and not the files of another folder of the project', async () => {
@@ -154,12 +159,97 @@ describe('the documents the palette looks for', () => {
         // Where they match alike, the sources keep their order: Briefback first.
         expect(await search('plan')).toEqual(['.briefback/acp/plan.md', '.clowdy/docs/plan.md']);
         expect(await search('briefback')).toEqual(['.briefback/acp/plan.md']);
-        expect(getDocsTree).toHaveBeenCalledWith('p1');
+        expect(getDocsTree).toHaveBeenCalledWith('p1', undefined);
     });
 
     it('are none when the folder has no source, and a failure to read them is the search\'s', async () => {
         expect(await docs(async () => [{ folderId: 'f1', sources: [] }]).search('a')).toEqual([]);
         expect(await docs(async () => [{ folderId: 'f2', sources: [] }]).search('a')).toEqual([]);
         await expect(docs(async () => Promise.reject(new Error('down'))).search('a')).rejects.toThrow('down');
+    });
+});
+
+describe('the palette over a worktree', () => {
+    const FOLDER = { id: 'f1', path: '/Users/dev/web' } as ProjectFolder;
+    const WORKSPACE: ChatWorkspace = { id: 'wks_1', folderId: 'f1', path: '/Users/dev/Clowdy/workspaces/web/ab12cd34/web', branch: 'clowdy/ab12cd34', managed: true, ready: true };
+    const project = { id: 'p1' as ProjectId, chats: new Map(), runs: new Map(), project: { folders: [FOLDER] } } as unknown as ProjectState;
+
+    function over(workspace: ChatWorkspace) {
+        const getProjectFiles = vi.fn(async () => [{ folderId: FOLDER.id, path: 'src/weekend.ts' }]);
+        const getDocsTree = vi.fn(async (): Promise<DocsTree> => [{ folderId: FOLDER.id, sources: [{ id: 'briefback', label: 'Briefback', root: '.briefback', nodes: [{ path: 'surcharge/plan.md', name: 'plan.md', kind: 'file' }] }] }]);
+        const fileSystem = vi.fn(() => new MemoryFileSystem({ 'src/weekend.ts': 'export const surcharge = 1;\n' }));
+        const root = { transport: { getProjectFiles, getDocsTree, fileSystem }, projects: [] } as unknown as RootStore;
+
+        return { source: quickSearchSource(root, project, { folder: FOLDER, workspace }), getProjectFiles, getDocsTree, fileSystem };
+    }
+
+    it('asks for the files and the documents of the worktree, and for the file system of it', async () => {
+        const { source, getProjectFiles, getDocsTree, fileSystem } = over(WORKSPACE);
+
+        expect(await source.files('weekend')).toEqual(['src/weekend.ts']);
+        expect(await source.docs('plan')).toEqual(['.briefback/surcharge/plan.md']);
+        expect(getProjectFiles).toHaveBeenCalledWith('p1', 'weekend', 100, 'wks_1');
+        expect(getDocsTree).toHaveBeenCalledWith('p1', 'wks_1');
+        expect(fileSystem).toHaveBeenCalledWith('p1', 'f1', 'wks_1');
+    });
+
+    it('lists nothing for a worktree that is not made yet, and asks for nothing: it is no reason to show the folder\'s own checkout', async () => {
+        const { source, getProjectFiles, getDocsTree, fileSystem } = over({ ...WORKSPACE, ready: false });
+
+        expect(await source.files('weekend')).toEqual([]);
+        expect(await source.docs('plan')).toEqual([]);
+        expect(await source.text('surcharge')).toEqual({ files: [], truncated: false });
+        expect(getProjectFiles).not.toHaveBeenCalled();
+        expect(getDocsTree).not.toHaveBeenCalled();
+        expect(fileSystem).not.toHaveBeenCalled();
+    });
+});
+
+describe('the palette over the fixture\'s worktree of Car Rental', () => {
+    let store: Root;
+
+    beforeEach(async () => {
+        localStorage.clear();
+        store = new Root(new FixtureTransport({ data: withFixtureWorkspace(createFixtureData()) }));
+        await store.load();
+        store.selectProject(FIXTURE_PROJECT_ID);
+    });
+
+    afterEach(() => {
+        filesStoreOf(store).dispose();
+        store.dispose();
+        localStorage.clear();
+    });
+
+    const sourceOf = (chatId?: string) => {
+        const project = store.selectedProject!;
+        const chat = chatId ? project.chats.get(chatId) : undefined;
+
+        return quickSearchSource(store, project, chat ? chatPlace(project.project.folders, chat) : { folder: project.project.folders[0]! });
+    };
+
+    it('finds a file and a plan that only the worktree has, and not in the folder\'s own checkout', async () => {
+        const worktree = sourceOf(FIXTURE_WORKSPACE_CHAT_ID);
+        const own = sourceOf();
+
+        expect(await worktree.files('weekend')).toEqual(['src/booking/weekend.ts']);
+        expect(await worktree.docs('surcharge')).toEqual(['.briefback/weekend-surcharge/plan.md']);
+        expect(await own.files('weekend')).toEqual([]);
+        expect(await own.docs('surcharge')).toEqual([]);
+
+        // What both have is found in both.
+        expect(await worktree.files('price')).toContain('src/booking/price.ts');
+        expect(await own.files('price')).toContain('src/booking/price.ts');
+    });
+
+    it('searches the text of the worktree\'s files', async () => {
+        const worktree = sourceOf(FIXTURE_WORKSPACE_CHAT_ID);
+        const own = sourceOf();
+
+        expect((await worktree.text('weekendSurcharge')).files.map(file => file.path)).toEqual(['src/booking/weekend.ts']);
+        expect((await own.text('weekendSurcharge')).files).toEqual([]);
+
+        worktree.dispose?.();
+        own.dispose?.();
     });
 });

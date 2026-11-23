@@ -1,7 +1,7 @@
 import { errorMessage } from '@clowdy/lib';
 import { makeAutoObservable, runInAction } from 'mobx';
 
-import type { FolderId, ProjectId, TerminalInfo } from '@clowdy/protocol';
+import type { FolderId, ProjectId, TerminalInfo, WorkspaceId } from '@clowdy/protocol';
 import type { TerminalStreamStatus } from '../../daemon/terminalStream';
 import type { Transport } from '../../daemon/transport';
 
@@ -42,38 +42,42 @@ export class TerminalSession {
     }
 }
 
-const keyOf = (projectId: ProjectId, folderId: FolderId) => `${ projectId }/${ folderId }`;
+/** What a place's shells are kept under: the worktree's id, else the folder's (they never meet), so a worktree has shells of its own and none of the folder's. */
+const keyOf = (projectId: ProjectId, folderId: FolderId, workspaceId?: WorkspaceId) => `${ projectId }/${ workspaceId ?? folderId }`;
 
 /**
- * The terminals the window shows: every shell the daemon runs for the projects it has been asked about, grouped by the folder each runs in. The daemon owns them,
- * so a reloaded window asks (`load`) and finds the same shells with their screens. The store knows nothing of xterm; the view that draws a session is kept with it.
+ * The terminals the window shows: every shell the daemon runs for the projects it has been asked about, grouped by the place each runs in: a folder's own checkout, or a
+ * worktree of it (`workspaceId`, which every method that names a folder takes last). A worktree's shells are its own, shared by the chats that work in it, and are none
+ * of the folder's. The daemon owns the shells, so a reloaded window asks (`load`) and finds the same ones with their screens. The store knows nothing of xterm; the view that
+ * draws a session is kept with it.
  */
 export class TerminalsStore {
     sessions: TerminalSession[] = [];
-    /** The terminal each folder shows, by `projectId/folderId`; the last one made when a folder has not chosen. */
+    /** The terminal each place shows, by `projectId/folderId` or `projectId/workspaceId`; the last one made when a place has not chosen. */
     chosen = new Map<string, string>();
     error = '';
     readonly #loaded = new Map<ProjectId, Promise<void>>();
-    /** The shells being made for a folder with none, by `projectId/folderId`, so two asks at once make one. */
+    /** The shells being made for a place with none, keyed as `chosen` is, so two asks at once make one. */
     readonly #starting = new Map<string, Promise<TerminalSession | undefined>>();
 
     constructor(readonly transport: Pick<Transport, 'listTerminals' | 'createTerminal' | 'closeTerminal' | 'openTerminal'>) {
         makeAutoObservable<TerminalsStore, 'transport'>(this, { transport: false });
     }
 
-    sessionsOf(projectId: ProjectId, folderId: FolderId): TerminalSession[] {
-        return this.sessions.filter(session => session.info.projectId === projectId && session.info.folderId === folderId);
+    /** The shells of a place: those that run in the worktree `workspaceId` names, or, without it, those that run in the folder's own checkout. */
+    sessionsOf(projectId: ProjectId, folderId: FolderId, workspaceId?: WorkspaceId): TerminalSession[] {
+        return this.sessions.filter(session => session.info.projectId === projectId && session.info.folderId === folderId && session.info.workspaceId === workspaceId);
     }
 
-    activeOf(projectId: ProjectId, folderId: FolderId): TerminalSession | undefined {
-        const sessions = this.sessionsOf(projectId, folderId);
-        const chosen = this.chosen.get(keyOf(projectId, folderId));
+    activeOf(projectId: ProjectId, folderId: FolderId, workspaceId?: WorkspaceId): TerminalSession | undefined {
+        const sessions = this.sessionsOf(projectId, folderId, workspaceId);
+        const chosen = this.chosen.get(keyOf(projectId, folderId, workspaceId));
 
         return sessions.find(session => session.id === chosen) ?? sessions[sessions.length - 1];
     }
 
     select(session: TerminalSession): void {
-        this.chosen.set(keyOf(session.info.projectId, session.info.folderId), session.id);
+        this.chosen.set(keyOf(session.info.projectId, session.info.folderId, session.info.workspaceId), session.id);
     }
 
     /** Whether the project's terminals were read from the daemon yet. */
@@ -99,29 +103,29 @@ export class TerminalsStore {
     }
 
     /**
-     * The folder's shell, made when it has none, however it came to have none (the last one was closed, say): opening the tab always gives a prompt, so a tab is
+     * The place's shell, made when it has none, however it came to have none (the last one was closed, say): opening the tab always gives a prompt, so a tab is
      * never shown without a shell. Two asks at once make one. Resolves `undefined` when none could be made (`error` says why).
      */
-    ensureOne(projectId: ProjectId, folderId: FolderId): Promise<TerminalSession | undefined> {
-        const held = this.activeOf(projectId, folderId);
+    ensureOne(projectId: ProjectId, folderId: FolderId, workspaceId?: WorkspaceId): Promise<TerminalSession | undefined> {
+        const held = this.activeOf(projectId, folderId, workspaceId);
 
         if (held) return Promise.resolve(held);
 
-        const key = keyOf(projectId, folderId);
+        const key = keyOf(projectId, folderId, workspaceId);
         let starting = this.#starting.get(key);
 
         if (!starting) {
-            starting = this.start(projectId, folderId).finally(() => this.#starting.delete(key));
+            starting = this.start(projectId, folderId, undefined, workspaceId).finally(() => this.#starting.delete(key));
             this.#starting.set(key, starting);
         }
 
         return starting;
     }
 
-    /** Starts a shell in the folder, or in a folder below it, and chooses it. */
-    async start(projectId: ProjectId, folderId: FolderId, path?: string): Promise<TerminalSession | undefined> {
+    /** Starts a shell in the folder (or in its worktree `workspaceId`), or in a folder below it, and chooses it. */
+    async start(projectId: ProjectId, folderId: FolderId, path?: string, workspaceId?: WorkspaceId): Promise<TerminalSession | undefined> {
         try {
-            const info = await this.transport.createTerminal({ projectId, folderId, ...(path ? { path } : {}), ...FIRST_SIZE });
+            const info = await this.transport.createTerminal({ projectId, folderId, ...(workspaceId !== undefined && { workspaceId }), ...(path ? { path } : {}), ...FIRST_SIZE });
 
             return runInAction(() => {
                 this.error = '';

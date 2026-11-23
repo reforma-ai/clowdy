@@ -489,6 +489,91 @@ describe('FixtureTransport', () => {
             expect((await transport.getProjectSnapshot(FIXTURE_PROJECT_ID)).chats.some(chat => chat.workspace)).toBe(false);
         });
 
+        describe('the places in it', () => {
+            const WORKSPACE = 'wks_ab12cd34';
+            const FOLDER = 'fld_car_rental';
+            const worktree = () => new FixtureTransport({ data: withFixtureWorkspace(createFixtureData()) });
+
+            it('has the worktree\'s own files and plans, which its folder\'s own checkout lacks, in its file system, its file names and its documents', async () => {
+                const transport = worktree();
+                const listed = async (workspaceId?: string) => (await transport.fileSystem(FIXTURE_PROJECT_ID, FOLDER, workspaceId).list('')).map(entry => entry.path);
+
+                expect(await listed(WORKSPACE)).toEqual(expect.arrayContaining(['src', '.briefback/weekend-surcharge/plan.md']));
+                expect(await transport.fileSystem(FIXTURE_PROJECT_ID, FOLDER, WORKSPACE).read('src/booking/weekend.ts')).toMatchObject({ kind: 'text', text: expect.stringContaining('weekendSurcharge') });
+                await expect(transport.fileSystem(FIXTURE_PROJECT_ID, FOLDER).read('src/booking/weekend.ts')).rejects.toMatchObject({ code: 'NotFound' });
+                expect(await listed()).not.toContain('.briefback/weekend-surcharge/plan.md');
+
+                expect(await transport.getProjectFiles(FIXTURE_PROJECT_ID, 'weekend', 40, WORKSPACE)).toEqual([{ folderId: FOLDER, path: 'src/booking/weekend.ts' }]);
+                expect(await transport.getProjectFiles(FIXTURE_PROJECT_ID, 'weekend')).toEqual([]);
+                // What both have is in both lists.
+                expect((await transport.getProjectFiles(FIXTURE_PROJECT_ID, 'price', 40, WORKSPACE)).map(file => file.path)).toEqual((await transport.getProjectFiles(FIXTURE_PROJECT_ID, 'price')).map(file => file.path));
+
+                const plans = async (workspaceId?: string) => (await transport.getDocsTree(FIXTURE_PROJECT_ID, workspaceId))[0].sources.find(source => source.id === 'briefback')!.nodes.map(node => node.path);
+
+                expect(await plans(WORKSPACE)).toEqual(['weekend-pricing', 'weekend-surcharge']);
+                expect(await plans()).toEqual(['weekend-pricing']);
+            });
+
+            it('keeps the edits of a worktree in its own file system, apart from the folder\'s', async () => {
+                const transport = worktree();
+
+                await transport.fileSystem(FIXTURE_PROJECT_ID, FOLDER, WORKSPACE).write('README.md', 'worktree\n');
+
+                expect((await transport.fileSystem(FIXTURE_PROJECT_ID, FOLDER, WORKSPACE).read('README.md'))).toMatchObject({ text: 'worktree\n' });
+                expect((await transport.fileSystem(FIXTURE_PROJECT_ID, FOLDER).read('README.md'))).not.toMatchObject({ text: 'worktree\n' });
+                expect(transport.fileSystem(FIXTURE_PROJECT_ID, FOLDER, WORKSPACE)).toBe(transport.fileSystem(FIXTURE_PROJECT_ID, FOLDER, WORKSPACE));
+            });
+
+            it('starts a terminal in the worktree, which lists its workspace and its path, apart from the folder\'s terminals', async () => {
+                const transport = worktree();
+                const own = await transport.createTerminal({ projectId: FIXTURE_PROJECT_ID, folderId: FOLDER, cols: 80, rows: 24 });
+                const inside = await transport.createTerminal({ projectId: FIXTURE_PROJECT_ID, folderId: FOLDER, workspaceId: WORKSPACE, path: 'src', cols: 80, rows: 24 });
+
+                expect(own).toMatchObject({ cwd: '/Users/dev/car-rental' });
+                expect(own.workspaceId).toBeUndefined();
+                expect(inside).toMatchObject({ workspaceId: WORKSPACE, cwd: '/Users/dev/Clowdy/workspaces/car-rental/ab12cd34/car-rental/src' });
+                expect((await transport.listTerminals(FIXTURE_PROJECT_ID)).map(terminal => terminal.workspaceId)).toEqual([undefined, WORKSPACE]);
+            });
+
+            it('refuses a workspace that no chat of the project has, one of another folder, and one that is not made yet, as the daemon does', async () => {
+                const { transport } = await connected({ data: withFixtureWorkspace(createFixtureData()) });
+                const made = await create(transport, { workspace: { mode: 'new' } });
+
+                if (!made.ok) throw new Error(made.error.message);
+
+                const pending = made.data.chat.workspace!.id;
+
+                expect(made.data.chat.workspace!.ready).toBe(false);
+
+                for (const workspaceId of ['wks_nobody', pending]) {
+                    const status = workspaceId === pending ? 503 : 404;
+
+                    await expect(transport.getDocsTree(FIXTURE_PROJECT_ID, workspaceId)).rejects.toMatchObject({ status });
+                    await expect(transport.getProjectFiles(FIXTURE_PROJECT_ID, '', 40, workspaceId)).rejects.toMatchObject({ status });
+                    await expect(transport.createTerminal({ projectId: FIXTURE_PROJECT_ID, folderId: FOLDER, workspaceId, cols: 80, rows: 24 })).rejects.toMatchObject({ status });
+                    expect(() => transport.fileSystem(FIXTURE_PROJECT_ID, FOLDER, workspaceId)).toThrow(expect.objectContaining({ status }));
+                }
+
+                // A worktree of a folder that is another one than the request's.
+                expect(() => transport.fileSystem(FIXTURE_PROJECT_ID, 'fld_other', WORKSPACE)).toThrow(expect.objectContaining({ status: 404 }));
+            });
+
+            it('gives a worktree that a chat made, once it is made, the files of its folder, since it is a checkout of the same commit', async () => {
+                const { transport } = await connected();
+                const made = await create(transport, { workspace: { mode: 'new' } });
+
+                if (!made.ok) throw new Error(made.error.message);
+
+                await transport.command({ type: 'chat.send', chatId: made.data.chat.id, text: 'Go' });
+                await vi.advanceTimersByTimeAsync(0);
+
+                const paths = (await transport.fileSystem(FIXTURE_PROJECT_ID, FOLDER, made.data.chat.workspace!.id).list('')).map(entry => entry.path);
+
+                expect(paths).toEqual(expect.arrayContaining(['README.md', 'package.json']));
+                expect((await transport.getProjectFiles(FIXTURE_PROJECT_ID, 'price', 40, made.data.chat.workspace!.id)).map(file => file.path)).toContain('src/booking/price.ts');
+            });
+        });
+
         it('has a fixture chat that works in a worktree, which the daemon read lists as made', async () => {
             const transport = new FixtureTransport({ data: withFixtureWorkspace(createFixtureData()) });
             const chat = (await transport.getProjectSnapshot(FIXTURE_PROJECT_ID)).chats.find(candidate => candidate.id === FIXTURE_WORKSPACE_CHAT_ID);
