@@ -181,6 +181,8 @@ export class FixtureTransport implements Transport {
     readonly #turns = new Map<RunId, number>();
     /** The ref each worktree that is not made yet starts from, by the workspace's id: what the step that makes it logs. */
     readonly #bases = new Map<string, string>();
+    /** The worktrees `workspace.open` answered that no chat works in (yet), by the workspace's id: the places read them as they read a chat's. */
+    readonly #opened = new Map<string, { projectId: ProjectId; workspace: ChatWorkspace }>();
     /** How many times an edit rewrote each run's stream: an item written after one gets an id of its own, as the daemon's items do, though it takes the freed number. */
     readonly #rewrites = new Map<RunId, number>();
     /** The daemon's rules for tasks, their archive and their comments. */
@@ -507,11 +509,12 @@ export class FixtureTransport implements Transport {
     }
 
     /**
-     * The worktree a request names, as the daemon judges it: one the project's chats work in, a checkout of a folder of the project (and of `folderId` when the request
-     * names one), and made. `not_found` for the first two, `unavailable` while the chat's first turn has not made it yet.
+     * The worktree a request names, as the daemon judges it: one the project's chats work in or `workspace.open` answered, a checkout of a folder of the project (and of
+     * `folderId` when the request names one), and made. `not_found` for the first two, `unavailable` while the chat's first turn has not made it yet.
      */
     #workspaceOf(project: Project, workspaceId: WorkspaceId, folderId?: FolderId): ChatWorkspace {
-        const workspace = this.#data.chats.find(chat => chat.projectId === project.id && chat.workspace?.id === workspaceId)?.workspace;
+        const opened = this.#opened.get(workspaceId);
+        const workspace = this.#data.chats.find(chat => chat.projectId === project.id && chat.workspace?.id === workspaceId)?.workspace ?? (opened?.projectId === project.id ? opened.workspace : undefined);
 
         if (!workspace || !project.folders.some(folder => folder.id === workspace.folderId) || (folderId !== undefined && workspace.folderId !== folderId)) throw new TransportError(`No such workspace: ${ workspaceId }`, 404);
 
@@ -845,6 +848,28 @@ export class FixtureTransport implements Transport {
                 return ok({ projects: structuredClone(ordered) });
             }
 
+            case 'workspace.open': {
+                const project = data.projects.find(candidate => candidate.id === command.projectId);
+
+                if (!project) return fail('not_found', `Project ${ command.projectId } does not exist`);
+
+                const folder = project.folders.find(candidate => candidate.id === command.folderId) ?? (command.folderId === undefined ? mainFolder(project) : undefined);
+
+                if (!folder) return fail('invalid', `Folder ${ command.folderId } does not belong to project ${ command.projectId }`);
+
+                const known = [...data.chats.flatMap(chat => (chat.workspace ? [chat.workspace] : [])), ...[...this.#opened.values()].map(entry => entry.workspace)];
+                const made = fixtureChatWorkspace({ mode: 'existing', path: command.path }, { projectName: project.name, folder, chatId: '', head: data.git[folder.path], known });
+
+                if ('error' in made) return fail('invalid', made.error);
+
+                const workspace = structuredClone(made.workspace);
+
+                // The row is the same one `chat.create` finds by the path: the id is the worktree's, with or without a chat.
+                if (!this.#opened.has(workspace.id)) this.#opened.set(workspace.id, { projectId: project.id, workspace });
+
+                // Like the daemon: `{ workspace }`.
+                return ok({ workspace });
+            }
             case 'chat.create': {
                 const refused = this.#refuseEngine(command.engine);
 

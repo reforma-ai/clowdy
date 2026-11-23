@@ -489,6 +489,54 @@ describe('FixtureTransport', () => {
             expect((await transport.getProjectSnapshot(FIXTURE_PROJECT_ID)).chats.some(chat => chat.workspace)).toBe(false);
         });
 
+        describe('workspace.open', () => {
+            const path = '/Users/dev/Clowdy/workspaces/car-rental/ab12cd34/car-rental';
+            const open = (transport: FixtureTransport, fields: { projectId?: string; folderId?: string; path: string }) => transport.command({ type: 'workspace.open', projectId: FIXTURE_PROJECT_ID, ...fields });
+
+            it('answers the row of a worktree of the folder, ready, and the same row to every ask and to the chat that has it later', async () => {
+                const { transport } = await connected();
+                const first = await open(transport, { path });
+                const again = await open(transport, { path, folderId: 'fld_car_rental' });
+
+                if (!first.ok || !again.ok) throw new Error('refused');
+
+                expect(first.data).toEqual({ workspace: expect.objectContaining({ folderId: 'fld_car_rental', path, branch: 'clowdy/ab12cd34', ready: true }) });
+                expect(again.data).toEqual(first.data);
+                // No chat uses it yet, so the info does not list it.
+                expect((await transport.getProjectsInfo(FIXTURE_PROJECT_ID))[0].workspaces).toBeUndefined();
+
+                const chat = await create(transport, { workspace: { mode: 'existing', path } });
+
+                if (!chat.ok) throw new Error('refused');
+
+                expect(chat.data.chat.workspace).toEqual((first.data as { workspace: unknown }).workspace);
+                expect((await transport.getProjectsInfo(FIXTURE_PROJECT_ID))[0].workspaces).toHaveLength(1);
+            });
+
+            it('has the places read the worktree through that row before any chat works there', async () => {
+                const { transport } = await connected();
+                const opened = await open(transport, { path });
+
+                if (!opened.ok) throw new Error('refused');
+
+                const { workspace } = opened.data as { workspace: { id: string } };
+                const listed = (await transport.fileSystem(FIXTURE_PROJECT_ID, 'fld_car_rental', workspace.id).list('')).map(entry => entry.path);
+
+                expect(listed).toContain('src');
+                expect((await transport.getProjectFiles(FIXTURE_PROJECT_ID, 'weekend', 40, workspace.id)).map(match => match.path)).toContain('src/booking/weekend.ts');
+                expect((await transport.getProjectFiles(FIXTURE_PROJECT_ID, 'weekend')).map(match => match.path)).not.toContain('src/booking/weekend.ts');
+            });
+
+            it('refuses what the daemon refuses: a path that is no worktree of the folder, the folder itself, a folder or a project that is not there', async () => {
+                const { transport } = await connected();
+
+                expect(await open(transport, { path: '/Users/dev/elsewhere' })).toMatchObject({ ok: false, error: { code: 'invalid' } });
+                expect(await open(transport, { path: '/Users/dev/car-rental' })).toMatchObject({ ok: false, error: { code: 'invalid' } });
+                expect(await open(transport, { path, folderId: 'fld_gone' })).toMatchObject({ ok: false, error: { code: 'invalid' } });
+                expect(await open(transport, { path, projectId: 'p-gone' })).toMatchObject({ ok: false, error: { code: 'not_found' } });
+            });
+        });
+
         describe('the places in it', () => {
             const WORKSPACE = 'wks_ab12cd34';
             const FOLDER = 'fld_car_rental';
