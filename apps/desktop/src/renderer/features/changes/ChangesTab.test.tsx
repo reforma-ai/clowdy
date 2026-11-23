@@ -155,7 +155,7 @@ const press = (target: Element) =>
 const cards = () => [...container.querySelectorAll<HTMLElement>('[data-card]')];
 const cardPaths = () => cards().map(card => card.dataset.card);
 const card = (path: string) => cards().find(element => element.dataset.card === path)!;
-const sidebarFiles = () => [...container.querySelectorAll<HTMLButtonElement>('[aria-label="Changed files"] button')];
+const sidebarFiles = () => [...container.querySelectorAll<HTMLElement>('[aria-label="Changed files"] [role="row"]')];
 const sidebarPaths = () => sidebarFiles().map(row => row.querySelector('[class*="name"]')?.textContent);
 const commitRows = () => [
     ...container.querySelectorAll<HTMLButtonElement>('[aria-label="Committed on branch"] button'),

@@ -64,14 +64,18 @@
     border-top: 1px solid var(--color-surface-border);
 }
 
+/*
+ * The title of a list, as the design system's list headers are (`ListBoxHeader`: small, medium, muted): a row as tall as the list's rows, its words in line with theirs (the list's
+ * inset and a row's own padding).
+ */
 .sectionHeader {
     display: flex;
     flex-shrink: 0;
     align-items: center;
     justify-content: space-between;
-    gap: var(--spacing-8);
+    gap: var(--spacing-md);
     min-height: var(--spacing-30);
-    padding: 0 var(--spacing-12);
+    padding-inline: calc(var(--spacing-xs) + var(--spacing-lg));
 }
 
 .list {
@@ -79,15 +83,12 @@
     min-height: 0;
 }
 
+/* The lists are the design system's (`GridList`): their plates stand off the sidebar's edges by the file tree's inset. */
 .rows {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-2);
-    padding: 0 var(--spacing-6) var(--spacing-6);
+    padding: 0 var(--spacing-xs) var(--spacing-xs);
 }
 
 /* A row is a press that fills the list's width, its content laid out from the start. */
-.row[data-size][data-variant],
 .commit[data-size][data-variant] {
     justify-content: flex-start;
     width: 100%;
@@ -97,7 +98,6 @@
     text-align: start;
 }
 
-.rowContent,
 .commitContent {
     flex: 1;
     justify-content: flex-start;
@@ -105,6 +105,7 @@
     gap: var(--spacing-6);
 }
 
+/* The letter that says what happened to the file, in the row's icon slot: a box of its own, so the names start at one place whichever letter it is. */
 .glyph {
     display: inline-flex;
     flex-shrink: 0;
@@ -113,13 +114,11 @@
     width: var(--spacing-14);
 }
 
-/* The name first, strong, and the folder after it, dimmed: the folder is cut before the name is. */
+/* The row's label: the name first, strong, and the folder after it, dimmed; the folder is cut before the name is. */
 .fileName {
     display: flex;
-    flex: 1;
     align-items: baseline;
-    gap: var(--spacing-6);
-    min-width: 0;
+    gap: var(--spacing-sm);
 }
 
 .name {
@@ -132,10 +131,17 @@
     min-width: 0;
 }
 
+/* The end of a row: the lines, then the tick's place. */
+.rowEnd {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
 .counts {
     display: inline-flex;
     flex-shrink: 0;
-    gap: var(--spacing-4);
+    gap: var(--spacing-xs);
     white-space: nowrap;
 }
 

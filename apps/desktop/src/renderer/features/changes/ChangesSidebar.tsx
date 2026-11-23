@@ -1,5 +1,6 @@
 import { Button } from '@clowdy/components/Button';
 import { For } from '@clowdy/components/For';
+import { GridList, GridListItem } from '@clowdy/components/List';
 import { Panel, PanelEmptyRow, PanelHeader } from '@clowdy/components/Panel';
 import { Scrollable } from '@clowdy/components/Scrollable';
 import { Text } from '@clowdy/components/Text';
@@ -59,50 +60,55 @@ function SectionHeader({ title, count }: { title: string; count?: number }) {
     );
 }
 
-/** One changed file of the scope: what happened to it, its name with its folder dimmed after it, its lines, and a tick when it is viewed. A press brings its card to the top and opens it. */
-function FileRow({ file, viewed, onOpen }: { file: GitChangedFile; viewed: boolean; onOpen: (path: string) => void }) {
+/**
+ * One changed file of the scope, a row of the design system's list: what happened to it, its name with its folder dimmed after it (the whole path on hover), its lines, and a tick when it is
+ * viewed. Its action (a press, or Enter on the row the arrows reached) brings its card to the top and opens it.
+ */
+function FileRow({ file, viewed }: { file: GitChangedFile; viewed: boolean }) {
     const kind = CHANGE_KIND_VIEW[file.kind];
     const { folder, name } = splitPath(file.path);
 
     return (
-        <Button
-            variant="filling"
-            color="secondary"
-            size="xs"
-            className={styles.row}
-            contentClassName={styles.rowContent}
-            tooltip={file.path}
-            tooltipPlacement="left"
-            onPress={() => onOpen(file.path)}
+        <GridListItem
+            id={file.path}
+            textValue={file.path}
+            icon={
+                <Text
+                    variant="sm"
+                    weight="medium"
+                    color={kind.color}
+                    className={styles.glyph}
+                    title={kind.label}
+                    aria-label={kind.label}
+                >
+                    {kind.glyph}
+                </Text>
+            }
+            endAffix={
+                <span className={styles.rowEnd}>
+                    {file.additions !== undefined && file.deletions !== undefined && (
+                        <span className={styles.counts}>
+                            <Text variant="sm" color="success">{`+${file.additions}`}</Text>
+                            <Text variant="sm" color="danger">{`−${file.deletions}`}</Text>
+                        </span>
+                    )}
+                    <span className={styles.tick}>
+                        {viewed && <Check role="img" title="Viewed" aria-label="Viewed" />}
+                    </span>
+                </span>
+            }
         >
-            <Text
-                variant="xs"
-                weight="medium"
-                color={kind.color}
-                className={styles.glyph}
-                title={kind.label}
-                aria-label={kind.label}
-            >
-                {kind.glyph}
-            </Text>
-            <span className={styles.fileName}>
-                <Text variant="xs" weight="medium" truncate className={styles.name}>
+            <Text slot="label" className={styles.fileName} title={file.path}>
+                <Text weight="medium" truncate className={styles.name}>
                     {name}
                 </Text>
                 {folder && (
-                    <Text variant="xs" color="secondary" truncate className={styles.folderHint}>
+                    <Text color="secondary" truncate className={styles.folderHint}>
                         {folder.slice(0, -1)}
                     </Text>
                 )}
-            </span>
-            {file.additions !== undefined && file.deletions !== undefined && (
-                <span className={styles.counts}>
-                    <Text variant="xs" color="success">{`+${file.additions}`}</Text>
-                    <Text variant="xs" color="danger">{`−${file.deletions}`}</Text>
-                </span>
-            )}
-            <span className={styles.tick}>{viewed && <Check role="img" title="Viewed" aria-label="Viewed" />}</span>
-        </Button>
+            </Text>
+        </GridListItem>
     );
 }
 
@@ -232,16 +238,11 @@ export function ChangesSidebar({
                     <SectionHeader title="Changed files" count={model.changes ? files.length : undefined} />
                     {files.length > 0 ? (
                         <Scrollable className={styles.list} contentClass={styles.rows}>
-                            <For each={[...files]}>
-                                {file => (
-                                    <FileRow
-                                        key={file.path}
-                                        file={file}
-                                        viewed={viewed.has(file.path)}
-                                        onOpen={onOpenFile}
-                                    />
-                                )}
-                            </For>
+                            <GridList aria-label="Changed files" size="sm" onAction={key => onOpenFile(String(key))}>
+                                <For each={[...files]}>
+                                    {file => <FileRow key={file.path} file={file} viewed={viewed.has(file.path)} />}
+                                </For>
+                            </GridList>
                         </Scrollable>
                     ) : (
                         <PanelEmptyRow>{emptyFilesWords(model)}</PanelEmptyRow>
