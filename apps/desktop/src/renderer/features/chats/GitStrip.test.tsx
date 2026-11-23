@@ -9,9 +9,11 @@ import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { TransportError } from '../../daemon/transport';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { gitFactsOf } from '../changes/gitFacts';
+import { openEffects } from '../openWith';
 import { GitStrip } from './GitStrip';
 
 import type { GitChanges, GitPullRequestInfo, Run } from '@clowdy/protocol';
+import type { FixtureGitWritesOptions } from '../../daemon/fixtureGitWrites';
 import type { KeyValueStorage } from '../../stores/storage';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -50,11 +52,11 @@ const press = (target: Element) => act(async () => {
 });
 
 /** Starts the store on the fixtures, with `tweak` having its say about them first. */
-async function start(tweak?: (data: FixtureData) => void) {
+async function start(tweak?: (data: FixtureData) => void, gitWrites?: FixtureGitWritesOptions) {
     const data = withFixtureWorkspace(createFixtureData());
 
     tweak?.(data);
-    transport = new FixtureTransport({ data });
+    transport = new FixtureTransport({ data, gitWrites });
     store = new RootStore(transport, { storage: memoryStorage() });
     await store.load();
     store.selectProject(FIXTURE_PROJECT_ID);
@@ -496,6 +498,113 @@ describe('the strip over the message box', () => {
 
             expect(read).toHaveBeenCalledTimes(1);
             stop();
+        });
+    });
+
+    describe('Create PR, for a branch with work and no pull request', () => {
+        /** The worktree's branch has no pull request. */
+        const noPullRequest = (data: FixtureData) => {
+            data.pullRequests[CAR_RENTAL] = { checkout: 'none', worktree: 'none' };
+        };
+        const createButton = (label: string) => [...strip()?.querySelectorAll<HTMLButtonElement>('button') ?? []].find(candidate => candidate.textContent?.trim() === label);
+        let opened: string[];
+
+        beforeEach(() => {
+            opened = [];
+            vi.spyOn(openEffects, 'openUrl').mockImplementation((url) => {
+                opened.push(url);
+            });
+        });
+
+        it('is a quiet Publish first beside the size of the branch, where the branch is not on origin, and publishes it on a press, without opening a page', async () => {
+            await start(noPullRequest);
+            await draw();
+
+            expect(chip()).toBeNull();
+            expect(createButton('Publish first')).toBeDefined();
+            expect(strip()?.textContent).toContain('Files changed4+102−5');
+            expect(createButton('Create PR')).toBeUndefined();
+
+            const push = vi.spyOn(transport, 'pushGit');
+
+            await press(createButton('Publish first')!);
+            await settle();
+            await settle();
+            // A new object for the same run, since the test build draws a changed prop again and nothing more.
+            await render(FIXTURE_WORKSPACE_CHAT_ID, { ...runOf(FIXTURE_WORKSPACE_CHAT_ID)! });
+
+            expect(push).toHaveBeenCalledTimes(1);
+            expect(opened).toEqual([]);
+            // The second step: the branch is on origin now, and the button opens the compare page against the base the Changes tab compares with.
+            expect(createButton('Publish first')).toBeUndefined();
+            expect(createButton('Create PR')?.disabled).toBe(false);
+
+            await press(createButton('Create PR')!);
+            expect(opened).toEqual(['https://github.com/acme/car-rental/compare/main...clowdy/ab12cd34?expand=1']);
+        });
+
+        it('says Push first for commits that are not on origin, and opens the page for a branch that is level', async () => {
+            await start(noPullRequest, { remote: 'signing' });
+            await draw();
+
+            expect(createButton('Push first')).toBeDefined();
+            expect(createButton('Create PR')).toBeUndefined();
+
+            act(() => reactRoot.unmount());
+            store.dispose();
+            reactRoot = createRoot(container);
+            await start(noPullRequest, { remote: 'behind' });
+            await draw();
+
+            await press(createButton('Create PR')!);
+            expect(opened).toHaveLength(1);
+        });
+
+        it('is the pull request chip alone once the branch has a pull request, and is nothing while the pull request has not been read', async () => {
+            await start();
+            await draw();
+
+            expect(chip()).not.toBeNull();
+            expect(createButton('Create PR')).toBeUndefined();
+            expect(createButton('Publish first')).toBeUndefined();
+
+            act(() => reactRoot.unmount());
+            store.dispose();
+            reactRoot = createRoot(container);
+            await start(noPullRequest);
+            vi.spyOn(transport, 'getGitPullRequest').mockImplementation(() => new Promise(() => undefined));
+            await draw();
+
+            expect(createButton('Publish first')).toBeUndefined();
+        });
+
+        it('is not offered on the branch the work is compared with, for a branch that diverged, for a remote that is not GitHub\'s, and with no remote', async () => {
+            // The folder's own checkout is on main, level with origin/main.
+            await start(noPullRequest);
+            await draw(CHECKOUT_CHAT_ID);
+            expect(strip()).toBeNull();
+
+            for (const [tweak, writes] of [
+                [noPullRequest, { remote: 'diverged' }],
+                [(data: FixtureData) => {
+                    data.pullRequests[CAR_RENTAL] = { checkout: 'none', worktree: 'not_signed_in' };
+                    data.git[CAR_RENTAL] = { ...data.git[CAR_RENTAL], remoteUrl: 'git@gitlab.com:acme/app.git' };
+                }, undefined],
+                [(data: FixtureData) => {
+                    noPullRequest(data);
+                    delete data.git[CAR_RENTAL]!.remoteUrl;
+                }, undefined],
+            ] as Array<[(data: FixtureData) => void, FixtureGitWritesOptions | undefined]>) {
+                act(() => reactRoot.unmount());
+                store.dispose();
+                reactRoot = createRoot(container);
+                await start(tweak, writes);
+                await draw();
+
+                expect(createButton('Create PR')).toBeUndefined();
+                expect(createButton('Publish first')).toBeUndefined();
+                expect(createButton('Push first')).toBeUndefined();
+            }
         });
     });
 });

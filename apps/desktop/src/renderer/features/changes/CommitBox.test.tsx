@@ -13,9 +13,11 @@ import { CommitBox } from './CommitBox';
 import { CommitDraft, commitDraftOf } from './CommitDraft';
 import { gitFactsOf, type GitPlaceKey } from './gitFacts';
 import { placeChangesOf } from './PlaceChanges';
+import { remoteActionsOf, type RemoteOutcome } from './RemoteActions';
 
-import type { GitChangedFile } from '@clowdy/protocol';
+import type { GitChangedFile, GitStatus } from '@clowdy/protocol';
 import type { FixtureGitWritesOptions } from '../../daemon/fixtureGitWrites';
+import type { RemoteActionId } from './changesActions';
 import type { PlaceChanges } from './PlaceChanges';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -176,7 +178,7 @@ describe('the commit box', () => {
         expect(message().placeholder).toBe('Writing the message');
 
         // The box is read only while the agent works; a text that gets in by another way is the person's, and stays.
-        act(() => commitDraftOf(model, transport, () => undefined).setMessage('typed meanwhile'));
+        act(() => commitDraftOf(model, transport, () => undefined, remoteActionsOf(model.facts, transport, () => undefined)).setMessage('typed meanwhile'));
         release();
         await settle();
         await draw();
@@ -375,21 +377,134 @@ describe('the commit box', () => {
     });
 });
 
+describe('Commit & Push', () => {
+    const more = () => container.querySelector<HTMLButtonElement>('button[aria-label="More ways to commit"]')!;
+    const entry = () => [...document.querySelectorAll<HTMLElement>('[role="menu"] [role="menuitem"]')].find(item => item.textContent?.includes('Commit & Push'));
+
+    /** Opens the menu beside Commit. */
+    async function openMenu() {
+        await press(more());
+        await settle();
+    }
+
+    it('is an entry of the menu beside Commit, which is off with no message, and commits and then publishes a branch that is not on origin', async () => {
+        await start();
+
+        expect(more().disabled).toBe(true);
+        await type('feat: surcharge');
+        expect(more().disabled).toBe(false);
+
+        const commit = vi.spyOn(transport, 'commitGit');
+        const push = vi.spyOn(transport, 'pushGit');
+
+        await openMenu();
+        expect(entry()?.getAttribute('aria-disabled')).not.toBe('true');
+        await press(entry()!);
+        await settle();
+        await settle();
+
+        expect(commit).toHaveBeenCalledWith(FIXTURE_PROJECT_ID, PLACE, ['notes.md', 'src/booking/price.ts', 'src/limits.ts'], 'feat: surcharge');
+        expect(push).toHaveBeenCalledTimes(1);
+        expect(push).toHaveBeenCalledWith(FIXTURE_PROJECT_ID, PLACE);
+        // Nothing was left to commit, so the box says what was done; the branch is on origin now.
+        expect(box()?.textContent).toBe('Committed c0ffee0 and published');
+        expect(alert()).toBeNull();
+        expect(await transport.getGitStatus(FIXTURE_PROJECT_ID, PLACE)).toMatchObject({ upstream: { name: 'origin/clowdy/ab12cd34', ahead: 0, behind: 0 } });
+    });
+
+    it('pushes, and does not publish, a branch that is on origin', async () => {
+        await start({ gitWrites: { remote: 'signing' } });
+        await type('feat: surcharge');
+
+        const push = vi.spyOn(transport, 'pushGit').mockResolvedValue({ state: 'done', action: 'push' });
+
+        await openMenu();
+        await press(entry()!);
+        await settle();
+        await settle();
+
+        expect(push).toHaveBeenCalledTimes(1);
+        expect(box()?.textContent).toBe('Committed c0ffee0 and pushed');
+    });
+
+    it('says the commit stands when the push fails, with git\'s own line, clears the box and leaves the branch to be pushed again', async () => {
+        await start({ gitWrites: { remote: 'rejected' } });
+        await type('feat: surcharge');
+        await openMenu();
+        await press(entry()!);
+        await settle();
+        await settle();
+
+        expect(alert()?.textContent).toBe('Committed c0ffee0, push failed: ! [rejected] clowdy/ab12cd34 -> clowdy/ab12cd34 (fetch first)');
+        // The commit was made and the box is clear, and the branch has the commit to push.
+        expect(box()?.textContent).not.toContain('Nothing to commit');
+        expect(await transport.getGitStatus(FIXTURE_PROJECT_ID, PLACE)).toMatchObject({ upstream: { ahead: 2, behind: 0 } });
+        expect(gitFactsOf(transport).of(KEY).status.value).toMatchObject({ upstream: { ahead: 2 } });
+    });
+
+    it('shows the hint of the signing agent under the line of a push that failed on it', async () => {
+        await start({ gitWrites: { remote: 'signing' } });
+        await type('feat: surcharge');
+        await openMenu();
+        await press(entry()!);
+        await settle();
+        await settle();
+
+        expect(alert()?.textContent).toContain('Committed c0ffee0, push failed: error: No private key found');
+        expect(alert()?.textContent).toContain('The signing agent couldn\'t be reached');
+    });
+
+    it('is not offered where the push after the commit would not be taken, and says why under the entry', async () => {
+        await start({ gitWrites: { remote: 'diverged' } });
+        await type('feat: surcharge');
+
+        const commit = vi.spyOn(transport, 'commitGit');
+
+        await openMenu();
+        expect(entry()?.getAttribute('aria-disabled')).toBe('true');
+        expect(entry()?.textContent).toContain('Diverged: 1 ahead, 2 behind');
+        await press(entry()!);
+        await settle();
+        expect(commit).not.toHaveBeenCalled();
+    });
+
+    it('commits as Commit does when it is the Commit button that is pressed', async () => {
+        await start();
+        await type('feat: surcharge');
+
+        const push = vi.spyOn(transport, 'pushGit');
+
+        await press(buttonOf('Commit')!);
+        await settle();
+
+        expect(push).not.toHaveBeenCalled();
+        expect(box()?.textContent).toBe('Committed c0ffee0');
+    });
+});
+
 describe('the draft of a commit', () => {
     const file = (path: string): GitChangedFile => ({ path, kind: 'modified', additions: 1, deletions: 0, revision: path });
 
-    /** A draft over a list the test changes, and a transport that records what it is asked. */
-    function draftOver(paths: string[]) {
+    /**
+     * A draft over a list the test changes, and a transport that records what it is asked. The place is on a branch with an upstream, and its moves to origin are a stand-in whose
+     * runs the test can see and make fail.
+     */
+    function draftOver(paths: string[], status: Partial<Extract<GitStatus, { isRepository: true }>> = {}) {
         const listed = observable({ files: paths.map(file) });
-        const fakeModel = { facts: { key: KEY }, get uncommitted() {
+        const repository: GitStatus = { isRepository: true, head: { kind: 'branch', name: 'feature', commit: 'a'.repeat(40) }, origin: true, entries: [], upstream: { name: 'origin/feature', ahead: 0, behind: 0 }, base: { state: 'unborn' }, ...status };
+        const fakeModel = { facts: { key: KEY, status: { value: repository } }, get uncommitted() {
             return { isRepository: true as const, files: listed.files };
         } } as unknown as PlaceChanges;
         const commitGit = vi.fn(async (_project: string, _place: unknown, commitPaths: string[], text: string) => ({ sha: 'a'.repeat(40), shortSha: 'aaaaaaa', subject: text, paths: commitPaths }));
         const generateGitMessage = vi.fn(async () => ({ message: 'feat: written' }));
         const refresh = vi.fn();
-        const draft = new CommitDraft(fakeModel, { commitGit, generateGitMessage } as unknown as Pick<Transport, 'commitGit' | 'generateGitMessage'>, refresh);
+        const remote = {
+            busy: false,
+            run: vi.fn(async (action: RemoteActionId, _options?: { report?: boolean }): Promise<RemoteOutcome> => ({ ok: true, result: { state: 'done', action: action === 'publish' ? 'push' : action } })),
+        };
+        const draft = new CommitDraft(fakeModel, { commitGit, generateGitMessage } as unknown as Pick<Transport, 'commitGit' | 'generateGitMessage'>, refresh, remote);
 
-        return { draft, listed, commitGit, generateGitMessage, refresh };
+        return { draft, listed, commitGit, generateGitMessage, refresh, remote };
     }
 
     it('ticks a file that appears, and forgets an unticked file that goes, so it is ticked again when it comes back', () => {
@@ -427,6 +542,97 @@ describe('the draft of a commit', () => {
         expect(draft.failure).toEqual({ what: 'commit', message: 'lint failed' });
         expect(draft.committed).toBeUndefined();
         expect(refresh).toHaveBeenCalledTimes(2);
+    });
+
+    it('sends the branch after the commit (a push when it is on origin, its publishing when it is not), and says so', async () => {
+        const pushed = draftOver(['a.ts']);
+
+        pushed.draft.setMessage('feat: add');
+        await pushed.draft.commit(true);
+
+        expect(pushed.remote.run).toHaveBeenCalledWith('push', { report: false });
+        expect(pushed.draft.sent).toBe('push');
+        expect(pushed.draft.failure).toBeUndefined();
+        expect(pushed.draft.message).toBe('');
+        expect(pushed.refresh).toHaveBeenCalledTimes(1);
+
+        const published = draftOver(['a.ts'], { upstream: undefined });
+
+        published.draft.setMessage('feat: add');
+        await published.draft.commit(true);
+        expect(published.remote.run).toHaveBeenCalledWith('publish', { report: false });
+        expect(published.draft.sent).toBe('publish');
+
+        // The line is about the last request: it goes with the next thing the person does.
+        published.draft.setMessage('next');
+        expect(published.draft.sent).toBeUndefined();
+        expect(published.draft.committed).toBeUndefined();
+    });
+
+    it('says the commit was made and the push was not, with git\'s own line and its hint, keeps the commit, and refreshes the place', async () => {
+        const { draft, remote, refresh, commitGit } = draftOver(['a.ts']);
+
+        remote.run.mockResolvedValueOnce({ ok: false, failure: { action: 'push', message: '! [rejected] main -> main (fetch first)', hint: 'Pull first' } });
+        draft.setMessage('feat: add');
+        await draft.commit(true);
+
+        expect(commitGit).toHaveBeenCalledTimes(1);
+        expect(draft.failure).toEqual({ what: 'push', message: 'Committed aaaaaaa, push failed: ! [rejected] main -> main (fetch first)', hint: 'Pull first' });
+        expect(draft.committed?.shortSha).toBe('aaaaaaa');
+        expect(draft.sent).toBeUndefined();
+        expect(draft.message).toBe('');
+        expect(draft.busy).toBeUndefined();
+        expect(refresh).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not push a commit that failed, and holds the box while the push is on its way', async () => {
+        const failed = draftOver(['a.ts']);
+
+        failed.commitGit.mockRejectedValueOnce(new TransportError('lint failed', 409));
+        failed.draft.setMessage('feat: add');
+        await failed.draft.commit(true);
+        expect(failed.remote.run).not.toHaveBeenCalled();
+        expect(failed.draft.failure).toEqual({ what: 'commit', message: 'lint failed' });
+
+        const slow = draftOver(['a.ts']);
+        let release: () => void = () => undefined;
+
+        slow.remote.run.mockImplementationOnce(() => new Promise((resolve) => {
+            release = () => resolve({ ok: true, result: { state: 'done', action: 'push' } });
+        }));
+        slow.draft.setMessage('feat: add');
+
+        const running = slow.draft.commit(true);
+
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(slow.draft.busy).toBe('push');
+        expect(slow.draft.writing).toBe(true);
+        release();
+        await running;
+        expect(slow.draft.busy).toBeUndefined();
+    });
+
+    it('does not commit and push where the push would not be taken, and while another action of the place runs', async () => {
+        const behind = draftOver(['a.ts'], { upstream: { name: 'origin/feature', ahead: 0, behind: 2 } });
+
+        behind.draft.setMessage('feat: add');
+        expect(behind.draft.pushBlock).toBe('origin/feature has 2 commits to pull first');
+        await behind.draft.commit(true);
+        expect(behind.commitGit).not.toHaveBeenCalled();
+
+        // A plain commit is still there.
+        await behind.draft.commit();
+        expect(behind.commitGit).toHaveBeenCalledTimes(1);
+
+        const busy = draftOver(['a.ts']);
+
+        busy.draft.setMessage('feat: add');
+        expect(busy.draft.canCommitAndPush).toBe(true);
+        busy.remote.busy = true;
+        expect(busy.draft.pushBlock).toBe('An action is running');
+        await busy.draft.commit(true);
+        expect(busy.commitGit).not.toHaveBeenCalled();
     });
 
     it('does nothing when it may not: no message, nothing ticked, or while something is going on', async () => {

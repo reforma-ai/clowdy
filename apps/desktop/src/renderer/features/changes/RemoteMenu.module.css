@@ -1,0 +1,60 @@
+@reference '@clowdy/styles/rulesets';
+
+/* The row that opens the menu, and under it what the last action did or why it failed: one block of the sidebar's facts, as wide as they are. */
+.root {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-4);
+    width: 100%;
+    min-width: 0;
+}
+
+/* What git and the daemon say is the person's to copy. */
+.root {
+    user-select: text;
+}
+
+/* The row is a press that fills the facts' width, its content laid out from the start, the way the sidebar's other rows are. */
+.trigger[data-size][data-variant] {
+    justify-content: flex-start;
+    width: 100%;
+    min-width: 0;
+    padding-inline: var(--spacing-6);
+    text-align: start;
+}
+
+.content {
+    flex: 1;
+    justify-content: flex-start;
+    min-width: 0;
+    gap: var(--spacing-6);
+}
+
+.icon,
+.chevron {
+    flex-shrink: 0;
+    color: var(--color-secondary-muted-text);
+}
+
+/* The upstream's name is cut before how far apart the two are is. */
+.label {
+    flex: 0 1 auto;
+    min-width: 0;
+}
+
+.detail {
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+/* The chevron stays at the row's end. */
+.chevron {
+    margin-inline-start: auto;
+}
+
+.failure {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+    overflow-wrap: anywhere;
+}

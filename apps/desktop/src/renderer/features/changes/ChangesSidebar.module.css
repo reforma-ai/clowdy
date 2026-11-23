@@ -30,7 +30,7 @@
     min-height: 0;
 }
 
-/* The base, how far the branch is from it, and the pull request. Above these is where the message box and the sync menu will stand. */
+/* The base and how far the branch is from it, the row of the upstream with its menu, and the pull request or Create PR. */
 .facts {
     display: flex;
     flex-direction: column;

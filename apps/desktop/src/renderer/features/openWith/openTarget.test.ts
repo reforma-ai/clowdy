@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { absolutePath, githubLink, openActions, type FolderGit, type OpenEffects, type OpenTarget } from './openTarget';
+import { absolutePath, compareLink, githubLink, openActions, type FolderGit, type OpenEffects, type OpenTarget } from './openTarget';
 
 const GIT: FolderGit = { remoteUrl: 'git@github.com:acme/app.git', branch: 'feature/new-menu' };
 const FOLDER = { id: 'fld_app', path: '/Users/dev/app' };
@@ -47,6 +47,61 @@ describe('the page on GitHub', () => {
         expect(githubLink({ remoteUrl: '/srv/git/app.git', branch: 'main' }, { relative: '', kind: 'directory' })).toBeUndefined();
         expect(githubLink({ branch: 'main' }, { relative: '', kind: 'directory' })).toBeUndefined();
         expect(githubLink(undefined, { relative: '', kind: 'directory' })).toBeUndefined();
+    });
+});
+
+describe('the compare page on GitHub', () => {
+    const PAGE = 'https://github.com/acme/app/compare';
+
+    it('is the branch against its base on the repository of origin, with the page opened to start the pull request', () => {
+        expect(compareLink(GIT, { head: 'feature/new-menu', base: 'main' })).toBe(`${ PAGE }/main...feature/new-menu?expand=1`);
+        expect(compareLink({ remoteUrl: 'https://github.com/acme/app.git' }, { head: 'fix', base: 'main' })).toBe(`${ PAGE }/main...fix?expand=1`);
+        expect(compareLink({ remoteUrl: 'ssh://git@github.com/acme/app.git' }, { head: 'fix', base: 'develop' })).toBe(`${ PAGE }/develop...fix?expand=1`);
+    });
+
+    it('leaves the base to the page when there is none', () => {
+        expect(compareLink(GIT, { head: 'feature/new-menu' })).toBe(`${ PAGE }/feature/new-menu?expand=1`);
+        expect(compareLink(GIT, { head: 'fix', base: '' })).toBe(`${ PAGE }/fix?expand=1`);
+    });
+
+    it('makes each part of a name safe for an address and keeps the slashes inside it', () => {
+        expect(compareLink(GIT, { head: 'dana/fix #12 (50%)?', base: 'release/2.0' })).toBe(`${ PAGE }/release/2.0...dana/fix%20%2312%20(50%25)%3F?expand=1`);
+        expect(compareLink(GIT, { head: 'feat/ünï', base: 'main' })).toBe(`${ PAGE }/main...feat/%C3%BCn%C3%AF?expand=1`);
+        expect(compareLink(GIT, { head: 'a&b=c', base: 'x?y' })).toBe(`${ PAGE }/x%3Fy...a%26b%3Dc?expand=1`);
+    });
+
+    it('never has the credential a remote carries, whatever the form of it', () => {
+        for (const remoteUrl of ['https://octocat:ghp_s3cret@github.com/acme/app.git', 'https://ghp_s3cret@github.com/acme/app', 'ssh://octocat:s3cret@github.com/acme/app.git']) {
+            const link = compareLink({ remoteUrl }, { head: 'fix', base: 'main' });
+
+            expect(link).toBe(`${ PAGE }/main...fix?expand=1`);
+            expect(link).not.toMatch(/s3cret|octocat/);
+        }
+    });
+
+    it('takes GitHub\'s ssh over port 443 for GitHub', () => {
+        expect(compareLink({ remoteUrl: 'ssh://git@ssh.github.com:443/acme/app.git' }, { head: 'fix', base: 'main' })).toBe(`${ PAGE }/main...fix?expand=1`);
+    });
+
+    it('is the page of a GitHub Enterprise server only when the caller says it is one, with its port', () => {
+        const enterprise = { remoteUrl: 'git@ghe.example.com:team/service.git' };
+
+        expect(compareLink(enterprise, { head: 'fix', base: 'main' })).toBeUndefined();
+        expect(compareLink(enterprise, { head: 'fix', base: 'main' }, 'ghe.example.com')).toBe('https://ghe.example.com/team/service/compare/main...fix?expand=1');
+        expect(compareLink(enterprise, { head: 'fix', base: 'main' }, 'GHE.example.com')).toBe('https://ghe.example.com/team/service/compare/main...fix?expand=1');
+        expect(compareLink(enterprise, { head: 'fix', base: 'main' }, 'other.example.com')).toBeUndefined();
+        expect(compareLink({ remoteUrl: 'https://ghe.example.com:8443/team/service.git' }, { head: 'fix', base: 'main' }, 'ghe.example.com:8443')).toBe('https://ghe.example.com:8443/team/service/compare/main...fix?expand=1');
+        // Enterprise at the host is not the host without its port.
+        expect(compareLink({ remoteUrl: 'https://ghe.example.com:8443/team/service.git' }, { head: 'fix', base: 'main' }, 'ghe.example.com')).toBeUndefined();
+    });
+
+    it('is nothing for another site, a remote that is no web address, no remote, and no branch', () => {
+        expect(compareLink({ remoteUrl: 'git@gitlab.com:acme/app.git' }, { head: 'fix', base: 'main' })).toBeUndefined();
+        expect(compareLink({ remoteUrl: '/srv/git/app.git' }, { head: 'fix', base: 'main' })).toBeUndefined();
+        expect(compareLink({ remoteUrl: 'http://octocat:s3cret@github.com/acme/app.git' }, { head: 'fix', base: 'main' })).toBeUndefined();
+        expect(compareLink({ branch: 'main' }, { head: 'fix', base: 'main' })).toBeUndefined();
+        expect(compareLink(undefined, { head: 'fix', base: 'main' })).toBeUndefined();
+        expect(compareLink(GIT, { head: '', base: 'main' })).toBeUndefined();
     });
 });
 
