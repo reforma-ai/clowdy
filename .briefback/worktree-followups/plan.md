@@ -235,11 +235,11 @@ Each stage runs in its own worktree (GITFLOW, Worktrees) and is merged into `nex
 
 **This stage:** the Fork icon on an answer becomes a click menu. `Fork` does what the icon does now. `Fork to another agent…` opens the list of other signed-in agents; a pick opens a new-chat draft on that agent with the conversation up to that answer attached, which is today's hand-off draft with two additions: a cut at an answer and a preset agent. The read-only notice's hand-off keeps working through the same function.
 
-- [ ] Complete
-  - [ ] The Fork icon opens a `Menu` on click, not on hover, with `Fork` and a `SubmenuTrigger` `Fork to another agent…` listing the signed-in agents other than the chat's own; with no other agent the item is disabled with a hint
-  - [ ] `startHandoff` takes the answer's item id and attaches the transcript up to and including it, and the agent to open the draft on; the draft opens with that agent and its default model, the worktree and the folder kept, the text filled in
-  - [ ] Closing the draft leaves no chat behind; the read-only notice's hand-off is unchanged in behaviour
-  - [ ] Tests for the menu, the cut transcript and the preset agent
+- [x] Complete
+  - [x] The Fork icon opens a `Menu` on click, not on hover, with `Fork` and a `SubmenuTrigger` `Fork to another agent…` listing the signed-in agents other than the chat's own; with no other agent the item is disabled with a hint
+  - [x] `startHandoff` takes the answer's item id and attaches the transcript up to and including it, and the agent to open the draft on; the draft opens with that agent and its default model, the worktree and the folder kept, the text filled in
+  - [x] Closing the draft leaves no chat behind; the read-only notice's hand-off is unchanged in behaviour
+  - [x] Tests for the menu, the cut transcript and the preset agent
 
 **Files**
 
@@ -253,4 +253,5 @@ Each stage runs in its own worktree (GITFLOW, Worktrees) and is merged into `nex
 
 **Done when:** a click on the Fork icon shows the two items, `Fork` forks as before, and picking another agent opens a draft on it with the conversation up to that answer attached and the chat's worktree kept.
 **Verify:** `cd apps/desktop && bunx vitest run src/renderer/stream src/renderer/features/chats src/renderer/features/agents && bun run typecheck && bun run lint`
-**Commits:** None yet.
+**Scope changes:** the preset agent is `ProjectUi.draftEngine` (a 4th argument of `openDraft`, part of the page's view, cleared by `openChat`, `openRun` and the next `openDraft`), read by `DraftChat` into the draft's defaults; `startHandoff` takes `itemId` and `engine` and cuts the transcript at that answer by `seq` (`itemsUpTo`); a shared `useHandoff` hook serves the read-only notice and the menu; the menu is `stream/ForkMenu.tsx`, its agents come from `handoffAgents` in `chatProvider.ts` (switched on, installed, not signed out, not the chat's own); the icon's tooltip reads `Fork`. The agent's "default model" is the one last used on it, else its default, as for any new chat. **Left (the owner decides):** the menu is drawn only where the Fork icon was (an answer with `canFork`), so an answer in a chat whose agent cannot cut its session has neither Fork nor the hand-off; widening it takes `StreamView.tsx` `actionsOf`, `MessageActions.tsx`, `ForkMenu.tsx` (`onFork` optional) and tests, and a choice of a grey Fork with a reason or another label; two hand-offs from one chat before sending leave two files with the same name (a fix means moving the file removal out of `useComposerFiles.remove` into `composerFiles.ts`).
+**Commits:** `b49ef2c` feat(desktop): open the new-chat page on an agent named by the caller; `18af2a1` feat(desktop): cut a hand-off at an answer and open it on another agent; `83f5e70` feat(desktop): open a menu from the Fork icon with Fork to another agent; `7135668` docs(desktop): describe the Fork menu and the hand-off to another agent; review: `13b2aa8` refactor: share `useHandoff`, `d05fbab` test: preset model, own pick, keyboard, `09c3853` docs; `b3ed954` refactor(desktop): hand the new-chat page its agent through the draft's defaults; merged into `next` as `27a10a7`.
