@@ -6,8 +6,9 @@ import { startHandoff } from './handoff';
 import type { Chat, Run } from '@clowdy/protocol';
 
 /**
- * Hand-off for a chat's answers: `handOff(itemId, engine)` opens the new-chat page on the agent `engine` with the conversation up to that answer attached
- * (`startHandoff`). A person who has left the chat before the conversation was ready is not taken to the page.
+ * Hand-off for a chat: `handOff()` carries the whole conversation to the new-chat page (the read-only notice), `handOff({ itemId, engine })` the conversation up to an
+ * answer, on the agent `engine` (an answer's Fork menu). Resolves to whether the page was opened (`startHandoff`). A person who has left the chat before the conversation
+ * was ready is not taken to the page.
  */
 export function useHandoff(chat: Chat, run: Run | undefined) {
     const root = useRootStore();
@@ -22,7 +23,5 @@ export function useHandoff(chat: Chat, run: Run | undefined) {
         };
     }, []);
 
-    return (itemId: string, engine: string) => {
-        void startHandoff({ root, ui, chat, run, itemId, engine, stillOpen: () => shown.current });
-    };
+    return (at?: { itemId: string; engine: string }) => startHandoff({ root, ui, chat, run, stillOpen: () => shown.current, ...at });
 }

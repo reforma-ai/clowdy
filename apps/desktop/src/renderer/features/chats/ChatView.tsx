@@ -109,7 +109,7 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
                             swipeToReply: swipeToReply.enabled,
                             onFork: fork,
                             forkingId: forking,
-                            onHandoff: handOff,
+                            onHandoff: (itemId, engine) => void handOff({ itemId, engine }),
                             handoffAgents: handoffTargets,
                             onEdit: edit.begin,
                             editBusy: isRunActive(run),

@@ -1,13 +1,13 @@
 import { Button } from '@clowdy/components/Button';
 import { Text } from '@clowdy/components/Text';
 import { Info } from '@clowdy/icons/14';
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 
-import { useProjectUi, useRootStore } from '../../stores';
+import { useRootStore } from '../../stores';
 import { isRunActive } from './chatRun';
 import { perform } from './commands';
-import { startHandoff } from './handoff';
 import styles from './ReadOnlyNotice.module.css';
+import { useHandoff } from './useHandoff';
 
 import type { Chat, Run } from '@clowdy/protocol';
 
@@ -25,24 +25,15 @@ export interface ReadOnlyNoticeProps {
  */
 export function ReadOnlyNotice({ chat, run, message }: ReadOnlyNoticeProps) {
     const root = useRootStore();
-    const ui = useProjectUi();
+    const handOffChat = useHandoff(chat, run);
     const [isHandingOff, setIsHandingOff] = useState(false);
     const [isStopping, setIsStopping] = useState(false);
-    const shown = useRef(false);
-
-    useEffect(() => {
-        shown.current = true;
-
-        return () => {
-            shown.current = false;
-        };
-    }, []);
 
     const handOff = async () => {
         setIsHandingOff(true);
 
         try {
-            await startHandoff({ root, ui, chat, run, stillOpen: () => shown.current });
+            await handOffChat();
         }
         finally {
             setIsHandingOff(false);
