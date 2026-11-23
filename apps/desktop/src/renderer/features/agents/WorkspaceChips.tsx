@@ -1,21 +1,22 @@
 import { Button } from '@clowdy/components/Button';
-import { Menu, MenuItem, MenuSection, MenuSeparator, MenuTrigger } from '@clowdy/components/List';
+import { Menu, MenuHeader, MenuItem, MenuSection, MenuSeparator, MenuTrigger, SubmenuTrigger } from '@clowdy/components/List';
 import { Popover, PopoverScroll } from '@clowdy/components/Popover';
 import { Text } from '@clowdy/components/Text';
-import { Check, Version } from '@clowdy/icons/14';
+import { Folder, Settings, Version, VersionPlus } from '@clowdy/icons/14';
 import { ChevronRight } from '@clowdy/icons/8';
 import { capitalize } from '@clowdy/lib';
 import { useRef, useState, type KeyboardEvent } from 'react';
+import { OverlayTriggerStateContext, PopoverContext, type PressEvent } from 'react-aria-components';
 
 import { tildePath } from '../../shared/displayPath';
 import { homeFolder } from '../../shared/homeFolder';
-import { PickerPopover, type PickerOption } from '../../shared/PickerPopover';
+import { isInPickerPopover, PickerPopover, type PickerOption } from '../../shared/PickerPopover';
 import { Unavailable } from '../../shared/Unavailable';
 import { ChipTrigger } from './ChipTrigger';
 import styles from './WorkspaceChips.module.css';
 import { chatsUsing, pickableWorktrees, repositoryOf, worktreeLabel, type Repository } from './workspaceChoice';
 
-import type { Chat, ChatId, ChatWorkspaceChoice } from '@clowdy/protocol';
+import type { Chat, ChatId, ChatWorkspaceChoice, GitWorktree } from '@clowdy/protocol';
 import type { FolderGit } from '../openWith';
 import type { FolderRepository } from './useFolderRepository';
 
@@ -62,19 +63,19 @@ function usersLine(chats: readonly Chat[]): string {
     return `${ chats[0].title }, ${ chats[1].title } and ${ chats.length - 2 } more`;
 }
 
-/** The slot at the start of a row of the menu: the check of the row that is on, and room of the same width for the others, so the words line up. */
-function Mark({ checked }: { checked: boolean }) {
-    return <span className={ styles.mark } aria-hidden="true">{ checked && <Check /> }</span>;
-}
-
-/** The ref a new worktree starts from, as a list of the folder's branches (local and remote) with the default one marked. On a detached HEAD the default is the commit, which is no branch of the list. */
+/**
+ * The refs a new worktree may start from, as a list of the folder's branches in two groups, `Local` and `Remote` (one list with no headings when the folder has only the one kind), the
+ * default one marked. On a detached HEAD the default is the commit, which is no branch of the list, and is listed first.
+ */
 function baseOptions(git: Repository): PickerOption[] {
-    const names = git.branches.map(branch => branch.name);
+    const options: PickerOption[] = git.branches.map(branch => ({ id: branch.name, label: branch.name, description: branch.name === git.defaultBranch ? 'Default' : undefined, group: branch.remote ? 'Remote' : 'Local' }));
 
-    return [
-        ...(git.defaultBranch !== undefined && !names.includes(git.defaultBranch) ? [git.defaultBranch] : []),
-        ...names,
-    ].map(name => ({ id: name, label: name, description: name === git.defaultBranch ? 'Default' : undefined }));
+    if (git.defaultBranch !== undefined && !options.some(option => option.id === git.defaultBranch)) options.unshift({ id: git.defaultBranch, label: git.defaultBranch, description: 'Default', group: 'Local' });
+
+    const local = options.filter(option => option.group === 'Local');
+    const remote = options.filter(option => option.group === 'Remote');
+
+    return local.length > 0 && remote.length > 0 ? [...local, ...remote] : options.map(({ group: _group, ...option }) => option);
 }
 
 /** The key of the row of a worktree in the menu: its path, which no other row's key is. */
@@ -96,33 +97,45 @@ interface WorkspaceChipProps {
 /**
  * The one control of the new chat's place: a pill that says where the chat will work and opens a menu to change it. Closed it says the branch alone for the folder's own
  * checkout, `New worktree` and `from <base>` for a worktree to be made, and `Worktree` and the branch for one that exists. The menu has `Main worktree` (the folder itself, with its branch),
- * `New worktree` (pressing the row chooses it, pressing the base at its end opens the searchable list of the folder's branches to start from, as does the right arrow on the
- * row), and, after a separator, one row for each of the folder's other worktrees with the chats that use it by name and a mark when something in it is not committed. A row's
- * check is at its start. `Manage worktrees…` ends the menu behind a separator: it shuts the menu and opens the dialog of the project's worktrees (`onManage`), and chooses nothing. The list of branches is the only popover that follows the menu, and it opens as the menu closes: two at once fight for the focus.
+ * `New worktree` (pressing the row chooses it; the base at its end is a chip of its own whose press, or the right arrow on the row, opens the searchable list of the folder's branches to start from, in
+ * the groups Local and Remote, at the menu's side, with the menu staying open under it), and `Existing worktree`, a submenu that flies the folder's other worktrees out to its side: first those a
+ * chat works in, then, under `Not in use`, the ones no chat works in, each with the chats that use it by name (it has no default to choose, so it is a plain submenu). The rows have an icon each and no
+ * check: the row that is on is the one the menu highlights. `Manage worktrees…` ends the menu behind a separator: it shuts the menu and opens the dialog of the project's worktrees (`onManage`), and chooses
+ * nothing. The list of branches is drawn inside the menu's popover, as its child, so that focus moving into it does not shut the menu; picking a branch chooses a new worktree from it and shuts both.
  */
 function WorkspaceChip({ git, choice, chats, onChoose, onManage }: WorkspaceChipProps) {
-    const [anchor, setAnchor] = useState<HTMLElement | null>(null);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
-    const [isListOpen, setIsListOpen] = useState(false);
+    // The row of a new worktree while the list of its base branches is open beside the menu.
+    const [listAnchor, setListAnchor] = useState<HTMLElement | null>(null);
     const worktrees = pickableWorktrees(git);
+    // The worktrees a chat works in come first, and the ones no chat works in, which are what is left of finished work, after them under a heading.
+    const used = worktrees.filter(worktree => chatsUsing(chats.values(), worktree.path).length > 0);
+    const idle = worktrees.filter(worktree => !used.includes(worktree));
+    const worktreeItem = (worktree: GitWorktree) => (
+        <MenuItem
+            key={ worktree.path }
+            id={ worktreeKey(worktree.path) }
+            shouldCloseOnSelect
+            stacked
+            text={ worktreeLabel(worktree) }
+            description={ usersLine(chatsUsing(chats.values(), worktree.path)) }
+        />
+    );
     const chosen = choice?.mode === 'existing' ? worktrees.find(worktree => worktree.path === choice.path) : undefined;
     const base = choice?.mode === 'new' ? choice.base ?? git.defaultBranch : git.defaultBranch;
     const canMakeOne = git.defaultBranch !== undefined;
     const branch = git.branch;
-    const selected = choice?.mode === 'new' ? 'new' : chosen ? worktreeKey(chosen.path) : 'checkout';
+    const selected = choice?.mode === 'new' ? 'new' : chosen ? 'existing' : 'checkout';
     // The base at the end of the row is pressed, and so is the row under it: react-aria's row takes the release of a press that began on the base as its own and acts. The row's
-    // action then opens the list in place of choosing the new worktree, whichever of the two reaches us (the base's own press may be gone with the menu by then).
+    // action then leaves the choice alone, since the press was the base's, which opens the list itself.
     const baseHeld = useRef(false);
-    const openList = () => {
-        setIsMenuOpen(false);
-        setIsListOpen(true);
-    };
+    const openList = (from: Element | null) => setListAnchor(from?.closest<HTMLElement>('[role^="menuitem"]') ?? null);
     // The right arrow on the row of a new worktree opens the list its base is picked from, as the base at its end does for the pointer.
     const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
         if (event.key !== 'ArrowRight' || !canMakeOne || !(event.target as HTMLElement).closest('[data-new-worktree]')) return;
 
         event.preventDefault();
-        openList();
+        openList(event.target as HTMLElement);
     };
     // What `effectiveChoice` hands over is a worktree the folder lists, so an existing choice always has its row; anything else is the folder's own checkout.
     const trigger = choice?.mode === 'new'
@@ -133,18 +146,23 @@ function WorkspaceChip({ git, choice, chats, onChoose, onManage }: WorkspaceChip
 
     return (
         <>
-            <MenuTrigger isOpen={ isMenuOpen } onOpenChange={ setIsMenuOpen }>
+            <MenuTrigger
+                isOpen={ isMenuOpen }
+                onOpenChange={ (isOpen) => {
+                    setIsMenuOpen(isOpen);
+                    // The list is the menu's child: it goes with it, and is not there when the menu comes back.
+                    if (!isOpen) setListAnchor(null);
+                } }
+            >
                 <ChipTrigger
-                    ref={ setAnchor }
                     icon={ <Version aria-hidden="true" /> }
                     lead={ 'lead' in trigger ? trigger.lead : undefined }
                     label={ trigger.label }
                     trail={ 'trail' in trigger ? trigger.trail : undefined }
                     aria-label={ trigger.ariaLabel }
                     tooltip={ 'tooltip' in trigger ? trigger.tooltip : undefined }
-                    isOpen={ isListOpen || undefined }
                 />
-                <Popover placement="bottom start" spacing="xs" width={ 320 }>
+                <Popover placement="bottom start" spacing="xs" width={ 400 } shouldCloseOnInteractOutside={ element => !isInPickerPopover(element) }>
                     <PopoverScroll maxHeight={ 360 }>
                         {/* The menu has no key handler of its own to give, so the arrow is read on the way up from the focused row; the box itself takes no room. */}
                         <div className={ styles.keys } onKeyDown={ onKeyDown }>
@@ -158,14 +176,18 @@ function WorkspaceChip({ git, choice, chats, onChoose, onManage }: WorkspaceChip
                                     if (key === 'checkout') onChoose(null);
                                     else if (key === MANAGE_KEY) onManage();
                                     else if (key === 'new') {
+                                        // A press that was the base's has its own answer, and leaves the menu as it is.
                                         if (baseHeld.current) {
                                             baseHeld.current = false;
-                                            openList();
+
+                                            return;
                                         }
+
                                         // Pressing the mode it is in keeps its base.
-                                        else if (choice?.mode !== 'new') onChoose({ mode: 'new' });
+                                        if (choice?.mode !== 'new') onChoose({ mode: 'new' });
+
+                                        setIsMenuOpen(false);
                                     }
-                                    else onChoose({ mode: 'existing', path: String(key).slice('worktree:'.length) });
                                 } }
                             >
                                 <MenuItem
@@ -173,7 +195,7 @@ function WorkspaceChip({ git, choice, chats, onChoose, onManage }: WorkspaceChip
                                     // Every item shuts the menu, from the keyboard's Space too, which a single choice list leaves open.
                                     shouldCloseOnSelect
                                     stacked
-                                    icon={ <Mark checked={ selected === 'checkout' } /> }
+                                    icon={ <Folder aria-hidden="true" /> }
                                     text="Main worktree"
                                     description="Work in the folder as it is"
                                     endAffix={ branch ? <Text truncate color="secondary" className={ styles.suffix }>{ branch }</Text> : undefined }
@@ -181,54 +203,82 @@ function WorkspaceChip({ git, choice, chats, onChoose, onManage }: WorkspaceChip
                                 <MenuItem
                                     id="new"
                                     data-new-worktree=""
-                                    shouldCloseOnSelect
-                                    icon={ <Mark checked={ selected === 'new' } /> }
+                                    // The row shuts the menu itself (`onAction`): a press on the base inside it must not.
+                                    shouldCloseOnSelect={ false }
+                                    icon={ <VersionPlus aria-hidden="true" /> }
                                     text="New worktree"
                                     stacked
                                     description={ canMakeOne ? 'A separate checkout on a branch of its own' : 'The repository has no commit yet' }
                                     isDisabled={ !canMakeOne }
-                                    endAffix={ canMakeOne && base !== undefined ? <BaseButton base={ base } held={ baseHeld } onPress={ openList } /> : undefined }
+                                    endAffix={ canMakeOne && base !== undefined ? <BaseButton base={ base } held={ baseHeld } onPress={ event => openList(event.target as Element) } /> : undefined }
                                 />
-                                { worktrees.length > 0 && <MenuSeparator /> }
-                                { worktrees.map(worktree => (
+                                {/* Nothing to choose by default here, so the row is a plain submenu's trigger: it flies the folder's worktrees out to its side. */}
+                                <SubmenuTrigger>
                                     <MenuItem
-                                        key={ worktree.path }
-                                        id={ worktreeKey(worktree.path) }
-                                        shouldCloseOnSelect
+                                        id="existing"
+                                        icon={ <Version aria-hidden="true" /> }
+                                        text="Existing worktree"
                                         stacked
-                                        icon={ <Mark checked={ selected === worktreeKey(worktree.path) } /> }
-                                        text={ worktreeLabel(worktree) }
-                                        description={ usersLine(chatsUsing(chats.values(), worktree.path)) }
-                                        endAffix={ worktree.dirty ? <span className={ styles.changes } title="Something in it is not committed">Changes</span> : undefined }
+                                        description={ worktrees.length === 0 ? 'The folder has no other worktrees' : 'Pick one the folder already has' }
+                                        isDisabled={ worktrees.length === 0 }
+                                        endAffix={ <ChevronRight aria-hidden="true" /> }
                                     />
-                                )) }
+                                    <Popover spacing="xs" width={ 340 }>
+                                        <PopoverScroll maxHeight={ 360 }>
+                                            <Menu
+                                                aria-label="Existing worktrees"
+                                                size="sm"
+                                                selectionMode="single"
+                                                selectedKeys={ chosen ? [worktreeKey(chosen.path)] : [] }
+                                                onAction={ key => onChoose({ mode: 'existing', path: String(key).slice('worktree:'.length) }) }
+                                            >
+                                                { used.length > 0 && <MenuSection aria-label="Worktrees in use">{ used.map(worktreeItem) }</MenuSection> }
+                                                { idle.length > 0 && (
+                                                    <MenuSection aria-label="Worktrees not in use">
+                                                        { used.length > 0 && <MenuHeader>Not in use</MenuHeader> }
+                                                        { idle.map(worktreeItem) }
+                                                    </MenuSection>
+                                                ) }
+                                            </Menu>
+                                        </PopoverScroll>
+                                    </Popover>
+                                </SubmenuTrigger>
                                 <MenuSeparator />
                                 <MenuSection aria-label="Worktrees of the project" selectionMode="none">
-                                    <MenuItem id={ MANAGE_KEY } shouldCloseOnSelect icon={ <Mark checked={ false } /> } text="Manage worktrees…" />
+                                    <MenuItem id={ MANAGE_KEY } shouldCloseOnSelect icon={ <Settings aria-hidden="true" /> } text="Manage worktrees…" />
                                 </MenuSection>
                             </Menu>
                         </div>
                     </PopoverScroll>
+                    {/* A child of the menu's popover, as a submenu is, so that focus moving into it is not the menu losing it; it opens at the menu's side. The contexts the menu's trigger
+                        gives its popover are cleared, or the list would take the menu's anchor and close the menu with itself. */}
+                    { listAnchor && (
+                        <PopoverContext.Provider value={ null }>
+                            <OverlayTriggerStateContext.Provider value={ null }>
+                                <PickerPopover
+                                    anchor={ listAnchor }
+                                    placement="right top"
+                                    options={ baseOptions(git) }
+                                    selectedIds={ base === undefined ? [] : [base] }
+                                    aria-label="Branches"
+                                    placeholder="Search branches"
+                                    onPick={ (picked) => {
+                                        onChoose({ mode: 'new', base: picked });
+                                        setIsMenuOpen(false);
+                                    } }
+                                    onClose={ () => setListAnchor(null) }
+                                />
+                            </OverlayTriggerStateContext.Provider>
+                        </PopoverContext.Provider>
+                    ) }
                 </Popover>
             </MenuTrigger>
-
-            { isListOpen && (
-                <PickerPopover
-                    anchor={ anchor }
-                    options={ baseOptions(git) }
-                    selectedIds={ base === undefined ? [] : [base] }
-                    aria-label="Branches"
-                    placeholder="Search branches"
-                    onPick={ picked => onChoose({ mode: 'new', base: picked }) }
-                    onClose={ () => setIsListOpen(false) }
-                />
-            ) }
         </>
     );
 }
 
-/** The base of the row of a new worktree, a press target of its own at the row's end: it opens the list of branches and leaves the row unpressed. Keyboard users have the right arrow on the row. */
-function BaseButton({ base, held, onPress }: { base: string; held: { current: boolean }; onPress: () => void }) {
+/** The base of the row of a new worktree, a press target of its own at the row's end: it opens the list of branches at the menu's side and leaves the row unpressed. Keyboard users have the right arrow on the row. */
+function BaseButton({ base, held, onPress }: { base: string; held: { current: boolean }; onPress: (event: PressEvent) => void }) {
     return (
         <Button
             size="xs"
