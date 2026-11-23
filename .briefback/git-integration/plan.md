@@ -27,7 +27,7 @@
 - The diff is drawn by `@codemirror/merge` 6.12.3 (MIT, published 2026-10-19), the one new dependency, in `packages/file-manager` beside the editor whose theme and languages it shares. A card reads both sides of the file as text (bb and Orca do the same), mounts its editor when it is near the screen and caps the size it loads.
 - Viewed marks are the person's own, kept in the daemon's database and never sent to GitHub. A mark is keyed by (project, folder, workspace, scope, path) and holds the file's revision `<oldMode>:<oldBlob>:<newMode>:<newBlob>`; a file counts as viewed only while its revision is the one stored, so any later edit clears it.
 - A commit takes only the files ticked in the sidebar (all ticked at first): `git add -- <paths>` then `git commit -m <message> -- <paths>`. The index is not a concept of the UI, and a neighbour chat's files in the same place stay out.
-- The message is made by a separate run without tools or MCP, so the request does not carry an agent's whole toolset. The run is of the provider of the chat open in the window; with no chat, or when it fails, the message is `Update N files`. The mechanism for each provider comes from Stage 0. The Generate button runs it; nothing runs on its own.
+- The commit message is written by a provider the person chose, as bb lets one pick a service or none: a `Commit messages` switch on the provider's card in Settings (an `AgentSettingSpec` that only the daemon reads, as the chat title switch is, off by default), offered by Codex only for now. The Generate button is there only while a provider with the switch on is signed in; otherwise there is no button. The run is separate and carries no tools or MCP, so the request does not take an agent's whole toolset; Stage 0 finds the cheapest such Codex run. Nothing runs on its own, and a failed run leaves the box as it was and says `Couldn't write the message`. There is no template text instead.
 - Create PR opens GitHub's compare page (`/compare/<base>...<branch>?expand=1`) in the browser, as GitHub Desktop does, and `gh pr create` is not used. On a branch that is not published the button says Publish first (`push -u origin HEAD`). On the default branch it is disabled with "Switch to a feature branch".
 - Fetch, Pull (`--ff-only`), Push and Publish are in the sidebar's menu. A branch that diverged from its upstream is shown as Diverged and left alone.
 - Add to chat: a floating button over selected text, `⌘I`, as Reforma's `CodeView` has it (a CodeMirror `showTooltip` extension). It works in the Files editor and in the diff cards and puts a quote with the path, the line range and the selected text into the open chat's composer, as Reply quotes words. The Docs editor (tiptap) is later, and is cut if it is hard.
@@ -51,12 +51,11 @@
 
 **Depends on:** None.
 
-**This stage:** two questions decide how Stage 7 and Stage 8 are built, and nobody has run either. The message must come from a run that carries no tools (Claude has `--tools`, `--strict-mcp-config`, `--disable-slash-commands`, `--no-session-persistence` and `--bare`; for Codex the way to drop the built-in tools is not known). A commit or a push from the daemon must work with the person's SSH signing and agent. The stage runs both on the owner's machine, with the owner's subscriptions and Touch ID, and writes down what works. It writes no production code.
+**This stage:** two questions decide how Stage 7 and Stage 8 are built, and nobody has run either. The commit message comes from Codex, so its cheapest run is needed: one that carries as few tools and MCP servers as `codex exec` allows, so the request is not the 90 tools of a chat (`codex exec` has `-c` overrides, `--ephemeral` and a read-only sandbox; whether its built-in tools can be dropped is not known). A commit or a push from the daemon must work with the person's SSH signing and agent. The stage runs both on the owner's machine, with the owner's subscription and Touch ID, and writes down what works. It writes no production code.
 
 - [ ] Complete
-  - [ ] Claude: a run with every tool and MCP server off answers a commit-message prompt; its command line, latency and token count are recorded
-  - [ ] Codex: the same, or the finding that its tools cannot be dropped and what the smallest run costs
-  - [ ] A commit and a push made by a process started the way the daemon starts (an app opened from Finder, and a daemon started from a terminal) succeed or fail, with `SSH_AUTH_SOCK` seen or not
+  - [ ] Codex: the command line of the cheapest run that answers a commit-message prompt, its latency and token count, what its tools and MCP servers cost in that run, and a comparison with an ephemeral ACP session if the `exec` run cannot drop its tools
+  - [ ] A commit and a read of `origin` over SSH made by a process started the way the daemon starts (an app opened from Finder, and a daemon started from a terminal) succeed or fail, with `SSH_AUTH_SOCK` seen or not
   - [ ] The findings are in `.briefback/git-integration/research/spikes.md` and the plan's Decisions are updated where they change the stages
 
 **Files**
@@ -256,21 +255,23 @@
 
 **Depends on:** Stage 0, Stage 1, Stage 4.
 
-**This stage:** the person commits from the sidebar. The daemon adds and commits exactly the paths sent, one commit at a time per place, with the person's git config (signing included), and a separate run without tools writes the message when Generate is pressed. This is the first stage in which Clowdy changes a repository, so the daemon's rules in `AGENTS.md` change with it.
+**This stage:** the person commits from the sidebar. The daemon adds and commits exactly the paths sent, one commit at a time per place, with the person's git config (signing included), and Codex's tool-free run writes the message when Generate is pressed, if the person turned the `Commit messages` switch on for it and it is signed in. This is the first stage in which Clowdy changes a repository, so the daemon's rules in `AGENTS.md` change with it.
 
 - [ ] Complete
   - [ ] `POST /v1/projects/:id/git/commit` (`folderId`, `workspaceId?`, `paths`, `message`): `git add -- <paths>` then `git commit -m <message> -- <paths>`, one at a time per place (`exclusive`), a long timeout for a signing prompt, the answer carrying the new commit's id, or git's first `fatal:` or hook line as the error
   - [ ] Paths are judged against the place's changes (a renamed file brings both paths; a path outside the place is `invalid`); a commit with no paths or no message is refused
-  - [ ] `POST /v1/projects/:id/git/message`: the run without tools, of the chat's provider as Stage 0 settled, with the file list and an excerpt of the diff (capped), the repository's recent subjects for style, a timeout, and the fallback `Update N files` when it fails or the provider has no such run
-  - [ ] The sidebar: the checklist with ticks (all ticked at first, untracked files included), the message box with Generate, Commit, Commit & Push (Push comes with Stage 8 and the button is added there), an error shown with git's own line, the list refreshed after a commit
+  - [ ] The `Commit messages` switch (`commitMessageSetting`, an `AgentSettingSpec` beside `chatTitleSetting`, off by default) on Codex's card; the daemon says whether a provider with the switch on is signed in, and the sidebar shows Generate only then
+  - [ ] `POST /v1/projects/:id/git/message`: Codex's tool-free run as Stage 0 settled, with the file list and an excerpt of the diff (capped) and the repository's recent subjects for style, bounded in time; a failure is an error the box shows as `Couldn't write the message`, with no template text
+  - [ ] The sidebar: the checklist with ticks (all ticked at first, untracked files included), the message box with Generate (when offered), Commit, Commit & Push (Push comes with Stage 8 and the button is added there), an error shown with git's own line, the list refreshed after a commit
   - [ ] The protocol types and the four transport places with fixtures
-  - [ ] Tests on real repositories: a path-limited commit leaves another file's change in the tree, a new file and a deleted file are committed, a hook failure is reported, two commits in one place run one after the other, the message fallback
+  - [ ] Tests on real repositories: a path-limited commit leaves another file's change in the tree, a new file and a deleted file are committed, a hook failure is reported, two commits in one place run one after the other; the message route refuses when no provider has the switch on
 
 **Files**
 
 - `apps/daemon/src/git/commit.ts` — create: the commit write; `changes.ts` is read-only by design
-- `apps/daemon/src/providers/generate.ts` — create: the no-tools run per provider; `exec.ts` is the provider-agnostic process runner and the catalog describes interactive sessions
-- `apps/daemon/src/git/message.ts` — create: the prompt, the caps and the fallback
+- `apps/daemon/src/engine/acp/catalog.ts` — `commitMessageSetting` beside `chatTitleSetting`, added to Codex's `settings`
+- `apps/daemon/src/providers/generate.ts` — create: Codex's tool-free run; `exec.ts` is the provider-agnostic process runner and the catalog describes interactive sessions
+- `apps/daemon/src/git/message.ts` — create: the prompt and the caps
 - `apps/daemon/src/providers/exec.ts` — `runProgram`: reused
 - `apps/daemon/src/domain/workspaces.ts` — `exclusive`: reused
 - `apps/daemon/src/http/routes.ts` — the two routes
