@@ -89,12 +89,12 @@ Each stage runs in its own worktree (GITFLOW, Worktrees) and is merged into `nex
 
 **This stage:** a worktree is removed by path, not through a chat. `checkRemoval` is built on a chat; this stage pulls the worktree's own rules out of it and adds the command the dialog calls. The rules differ from the chat's: uncommitted changes and unmerged work are no longer refusals but choices (`discard`, `deleteBranch`), while a locked worktree, the folder's own checkout and a worktree a chat works in still refuse. The chat delete dialog's checkbox keeps what it allows today and goes through the same routine.
 
-- [ ] Complete
-  - [ ] `checkWorkspaceRemoval` takes a worktree (a record or a path git lists) and the chat ids that are allowed to use it; `checkRemoval` becomes the strict chat-delete caller of it
-  - [ ] `workspace.remove { projectId, folderId, path, discard?, deleteBranch? }`: finds or opens the row (`openWorkspace`) so a turn is kept out by `markRemoving` as it is for a chat's removal, runs under `exclusive` by path, `git worktree remove` with `--force` only when `discard` is true and the tree is changed, `branch -D` when `deleteBranch` is true and the branch is not checked out in another worktree, `pruneEmptyParents` below `workspacesDir`, deletes the row
-  - [ ] Refusals with a reason: the folder's own checkout, a locked worktree, a worktree a chat (an archived one included) works in, a changed tree without `discard`, a path git does not list for that folder
-  - [ ] A worktree whose folder is gone: the command removes that worktree's record only, and another stale record of the repository is still there afterwards
-  - [ ] The fixture transport answers the command; `chat.delete` with `removeWorkspace` behaves as before
+- [x] Complete
+  - [x] `checkWorkspaceRemoval` takes a worktree (a record or a path git lists) and the chat ids that are allowed to use it; `checkRemoval` becomes the strict chat-delete caller of it
+  - [x] `workspace.remove { projectId, folderId, path, discard?, deleteBranch? }`: finds or opens the row (`openWorkspace`) so a turn is kept out by `markRemoving` as it is for a chat's removal, runs under `exclusive` by path, `git worktree remove` with `--force` only when `discard` is true and the tree is changed, `branch -D` when `deleteBranch` is true and the branch is not checked out in another worktree, `pruneEmptyParents` below `workspacesDir`, deletes the row
+  - [x] Refusals with a reason: the folder's own checkout, a locked worktree, a worktree a chat (an archived one included) works in, a changed tree without `discard`, a path git does not list for that folder
+  - [x] A worktree whose folder is gone: the command removes that worktree's record only, and another stale record of the repository is still there afterwards
+  - [x] The fixture transport answers the command; `chat.delete` with `removeWorkspace` behaves as before
 
 **Files**
 
@@ -108,7 +108,8 @@ Each stage runs in its own worktree (GITFLOW, Worktrees) and is merged into `nex
 
 **Done when:** `workspace.remove` removes a found, clean worktree and keeps its branch, removes the branch too with `deleteBranch`, removes a dirty one only with `discard`, and refuses the folder's own checkout, a locked worktree and one a chat works in; the chat delete tests still pass.
 **Verify:** `cd apps/daemon && bun test test/worktree-removal.test.ts test/chat-workspace-removal.test.ts test/chat-workspaces.test.ts test/worktrees.test.ts`, `cd packages/protocol && bun run test && bun run typecheck`, `cd apps/desktop && bunx vitest run src/renderer/daemon && bun run typecheck`
-**Commits:** None yet.
+**Scope changes:** `workspace.remove` answers `{ path, branchDeleted }`; the shared checker is `checkWorkspaceRemoval(store, target, choices)` and the chat delete's `checkRemoval` is its strict caller (its words for an unreadable status are unchanged); a worktree of another folder of the project, the repository's primary tree and a worktree that has another worktree or a project folder inside it are refused (the route marks a sibling folder's checkout `blocked: 'main'`; the nested case is known only from the command's refusal); `--force` only with `discard` and a changed tree, `branch -D` only with `deleteBranch` and never for a branch another worktree has checked out (refused before anything is removed); empty parents are pruned before the branch is deleted and compared by real place. **Review findings, fixed:** a worktree hidden by `.gitignore` inside the one being removed looked clean and was deleted with its uncommitted work (now refused); the route listed a sibling folder's checkout as removable while the command refused it; the empty folders stayed when `workspacesDir` was written through a link. **Left:** no `blocked` value for the nested case (a fourth `WorktreeBlock` would grey the button up front); `chat.create` and `workspace.open` do not check `isBeingRemoved` (a chat made while git deletes fails its first turn with a clear message); the full daemon `bun test` takes about 8 minutes with long idle stretches (no deadlock found).
+**Commits:** `01432b0` refactor(daemon): split the worktree's own removal rules from the chat delete's; `afa2dc0` feat(daemon): remove a worktree by its path with workspace.remove; `5dc7ef3` feat(desktop): answer workspace.remove in the fixture transport; `ef75a06`, `34f569b`, `7baf034`; review: `c1b9672`, `c29c780`, `3e9a364`, `17b9918`; merged into `next` as `08507ac`.
 
 ## Stage 3 — Branch prefix
 
@@ -171,12 +172,12 @@ Each stage runs in its own worktree (GITFLOW, Worktrees) and is merged into `nex
 
 **This stage:** the destructive half of the dialog. A row's Remove opens a confirmation whose content follows the row: a plain confirm for a clean worktree, a red `Discard N changed files and remove` for a changed one, the `Delete branch N` checkbox with its default and its `not merged` warning, no button while chats work in it (they are listed), and `Remove record` for a missing one.
 
-- [ ] Complete
-  - [ ] The confirmation shows the path and the branch; `Delete branch N` is on when merged and off when not, with the `not merged` label and its tip beside it; a detached HEAD with commits on no branch shows the same warning
-  - [ ] A changed worktree (submodules included) needs the red confirmation and sends `discard: true`; a clean one does not
-  - [ ] A worktree with chats has no Remove and lists them; the main checkout has none; a locked one says why
-  - [ ] `Remove record` for a missing worktree; the list reloads after a removal and a failure shows the daemon's reason
-  - [ ] Tests on the fixture transport for each variant, including that nothing is sent when the person cancels
+- [x] Complete
+  - [x] The confirmation shows the path and the branch; `Delete branch N` is on when merged and off when not, with the `not merged` label and its tip beside it; a detached HEAD with commits on no branch shows the same warning
+  - [x] A changed worktree (submodules included) needs the red confirmation and sends `discard: true`; a clean one does not
+  - [x] A worktree with chats has no Remove and lists them; the main checkout has none; a locked one says why
+  - [x] `Remove record` for a missing worktree; the list reloads after a removal and a failure shows the daemon's reason
+  - [x] Tests on the fixture transport for each variant, including that nothing is sent when the person cancels
 
 **Files**
 
@@ -187,7 +188,8 @@ Each stage runs in its own worktree (GITFLOW, Worktrees) and is merged into `nex
 
 **Done when:** against the fixture, removing a clean merged worktree sends `workspace.remove` with `deleteBranch: true`, a changed one is not sent until the red confirmation, an unmerged one defaults the branch checkbox off with its label, and a worktree with chats cannot be removed.
 **Verify:** `cd apps/desktop && bunx vitest run src/renderer/features/worktrees && bun run typecheck && bun run lint`
-**Commits:** None yet.
+**Scope changes:** the confirmation says `Discard N changes and remove` (git status entries: an untracked folder is one), `Remove with submodules` for a tree that is clean but has an initialised submodule, `Remove record` for a missing one; the seam `onRemove` is gone, the dialog opens `openRemoveWorktree` itself; `Try again` sits beside `Couldn't refresh the list`; a daemon refusal toasts its reason, reloads the list and closes the confirmation. **Review findings, fixed:** a worktree on the base branch itself counted as merged and its `Delete branch` box started ticked (it would delete the local default branch; now off with `It is the base branch itself`); the detached HEAD warning claimed a fact git was not asked (`may be in no branch`); the branch warning is now the box's `aria-describedby`. **Left:** the red count is a snapshot (the daemon still accepts `discard: true` if the tree grew meanwhile; a fix needs an expected-count field); the shared `ConfirmModalContent` autofocuses the destructive button, so Enter confirms at once (as the chat delete does); the dialog tests stub `getClientRects` because happy-dom has no layout.
+**Commits:** `d8384ad` feat(desktop): remove a worktree from Manage worktrees with a confirmation that follows the worktree; `9f26805` docs(desktop): describe the removal confirmation of Manage worktrees; review: `158c53f`, `034570b`, `5f41681`; merged into `next` as `08507ac`.
 
 ## Stage 6 — Entry points: Files, the sidebar, Info
 
@@ -266,10 +268,10 @@ Each stage runs in its own worktree (GITFLOW, Worktrees) and is merged into `nex
 
 **This stage:** found in Stage 6's review. `useFolderGit` reads the live branch of a place through `getProjectsInfo`, whose `workspaces` list only the rows a chat points at (`listWorkspacesInUse`). A new-chat draft in an existing worktree (the page's `workspace.open` row, which "New chat in this worktree" and the picker both make) has no chat yet, so the Files bar, Info's Worktree and Branch rows have no branch until the first message. The rows a draft opens must be reported too, and the renderer must read again when the draft's row appears.
 
-- [ ] Complete
-  - [ ] `projectsInfo` reports every worktree row of the project that is still on disk, not only those a chat points at (a row a draft opened included), without changing what the chats' own rows say
-  - [ ] The renderer reads `getProjectsInfo` again when the draft's row (`ProjectUi.draftWorkspaceRow`) appears or changes, as it does when a chat's worktree gets made
-  - [ ] On a draft in a found worktree, the Files bar and Info show that worktree's branch; the test fails without the daemon change and without the reload
+- [x] Complete
+  - [x] `projectsInfo` reports every worktree row of the project that is still on disk, not only those a chat points at (a row a draft opened included), without changing what the chats' own rows say
+  - [x] The renderer reads `getProjectsInfo` again when the draft's row (`ProjectUi.draftWorkspaceRow`) appears or changes, as it does when a chat's worktree gets made
+  - [x] On a draft in a found worktree, the Files bar and Info show that worktree's branch; the test fails without the daemon change and without the reload
 
 **Files**
 
@@ -281,4 +283,10 @@ Each stage runs in its own worktree (GITFLOW, Worktrees) and is merged into `nex
 
 **Done when:** on a new-chat draft in a worktree no chat works in, the Files place bar and Info's Branch row show that worktree's branch.
 **Verify:** `cd apps/daemon && bun test test/projects.test.ts test/chat-workspaces.test.ts`, `cd apps/desktop && bunx vitest run src/renderer/features/agents src/renderer/features/sidePanel src/renderer/features/files && bun run typecheck && bun run lint`
-**Commits:** None yet.
+**Scope changes:** `projectsInfo` reports every worktree row of the project that is on disk (`listWorkspaceUses` replaces `listWorkspacesInUse`); a chat's row is reported as before (`exists: false` when its worktree is gone), a row no chat points at only while its worktree is on disk and its folder is still one of the project's. The second task is met by `useFolderGit`, which already reads again when the draft's row appears; the `Screen.tsx` reload the plan asked for was dropped in review because nothing read it and it stopped the reload at chat creation from firing (`Screen.tsx` is not in this stage's files). **Left:** the Settings > Projects page polls `getProjectsInfo` every 10 s and now gets a git read per row it never uses (a flag to skip `workspaces` would fix it).
+**Commits:** `330f39b` fix(daemon): report the worktree rows a new-chat page opened in the project info; `4aa7269` fix(desktop): show the branch of a worktree a new-chat page chose before its first message; review: `13bba8a`, `0efebb1`; merged into `next` as `08507ac`.
+
+## Pending after the merge
+
+- **Held back until the git chat commits its files** (`apps/desktop/AGENTS.md` and `apps/desktop/src/renderer/features/sidePanel/InfoTab.test.tsx` are dirty in the shared tree; the merge `08507ac` carries `next`'s version of both): re-add the clauses of Stages 5 and 9 to the long Manage worktrees and Where a chat works bullets of `apps/desktop/AGENTS.md`, and the Stage 9 tests of Info's Worktree and Branch rows in `InfoTab.test.tsx` (they are in the commit `ba60ff4`'s tree on the integration branch `worktree-agent-af104ee74233fc5e5`; `git show ba60ff4:<path>` and `git diff abea436~1 abea436 -- <path>` show them). Merge into the git chat's committed files and keep both sets of tests.
+- **For the owner:** widen the Fork menu to answers without `canFork`; the destructive button's autofocus in `ConfirmModalContent`; the dialog's look (a polish pass after the owner's first look at the real app: sizes and width).
