@@ -159,7 +159,7 @@ describe('the branch of the Changes sidebar, for the folder\'s own checkout', ()
         const held = row('clowdy/ab12cd34');
 
         expect(held.getAttribute('aria-disabled')).toBe('true');
-        expect(held.textContent).toContain('Checked out in ~/Clowdy/workspaces/car-rental/ab12cd34/car-rental');
+        expect(held.textContent).toContain('Checked out in ~/…/ab12cd34/car-rental');
         expect(row('feature/payments').getAttribute('aria-disabled')).toBe('true');
 
         await press(held);

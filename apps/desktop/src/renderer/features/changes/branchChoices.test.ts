@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { BRANCH_GROUPS, branchOptions, canCreate, heldWords, newBranchStarts, START_WORDS, WORKTREE_KEEPS_BRANCH } from './branchChoices';
+import { BRANCH_GROUPS, branchOptions, canCreate, heldRowWords, heldWords, newBranchStarts, START_WORDS, WORKTREE_KEEPS_BRANCH } from './branchChoices';
 
 import type { BranchListing } from './branchChoices';
 
@@ -59,7 +59,7 @@ describe('branchOptions', () => {
 
         expect(held.map(option => [option.id, option.group, option.description])).toEqual([
             ['main', 'Default', 'Checked out in the main worktree'],
-            ['dev', 'Recent', 'Checked out in ~/Clowdy/workspaces/app/ab12cd34/app'],
+            ['dev', 'Recent', 'Checked out in ~/Clowdy/…/ab12cd34/app'],
             ['old/idea', 'Local', 'Checked out in ~/app-idea'],
         ]);
         expect(held.every(option => option.stacked)).toBe(true);
@@ -73,6 +73,16 @@ describe('heldWords', () => {
         expect(heldWords({ path: '/srv/app' }, '/Users/dev')).toBe('Checked out in /srv/app');
         expect(heldWords({ path: '/srv/app' }, undefined)).toBe('Checked out in /srv/app');
         expect(heldWords({ path: '/Users/dev/app', main: true }, '/Users/dev')).toBe('Checked out in the main worktree');
+    });
+});
+
+describe('heldRowWords', () => {
+    it('is heldWords while the path fits, and else keeps the start and the end of the path, which the row would cut at the end', () => {
+        expect(heldRowWords({ path: '/Users/dev/work/app' }, '/Users/dev')).toBe(heldWords({ path: '/Users/dev/work/app' }, '/Users/dev'));
+        expect(heldRowWords({ path: '/Users/dev/app', main: true }, '/Users/dev')).toBe('Checked out in the main worktree');
+        expect(heldRowWords({ path: '/Users/dev/Clowdy/workspaces/car-rental/ab12cd34/car-rental' }, '/Users/dev')).toBe('Checked out in ~/…/ab12cd34/car-rental');
+        // A path that no form shortens enough keeps its last names, the way `PathText` does.
+        expect(heldRowWords({ path: '/a-very-long-name-of-a-folder-that-has-no-end-in-sight/another-one-as-long-as-that' }, undefined)).toBe('Checked out in …/another-one-as-long-as-that');
     });
 });
 

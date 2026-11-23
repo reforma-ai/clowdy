@@ -1,4 +1,4 @@
-import { tildePath } from '../../shared/displayPath';
+import { pathVariants, tildePath } from '../../shared/displayPath';
 
 import type { GitBranches, GitBranchHolder, GitHead, GitSwitchStart } from '@clowdy/protocol';
 import type { PickerOption } from '../../shared/PickerPopover';
@@ -17,8 +17,26 @@ export function holderWords(holder: GitBranchHolder, home: string | undefined): 
     return holder.main ? 'the main worktree' : tildePath(holder.path, home);
 }
 
+/** What comes before where, for a branch that a worktree holds. */
+const HELD = 'Checked out in ';
+
 /** `Checked out in <where>`: why a branch that a worktree holds is not offered. The daemon refuses it with the same words. */
-export const heldWords = (holder: GitBranchHolder, home: string | undefined): string => `Checked out in ${ holderWords(holder, home) }`;
+export const heldWords = (holder: GitBranchHolder, home: string | undefined): string => `${ HELD }${ holderWords(holder, home) }`;
+
+/** How many characters the second line of a row has room for in the 288 px popover, before the list cuts the end of it. */
+const ROW_CHARS = 38;
+
+/**
+ * `heldWords` for the second line of a row, which cuts the end of what does not fit, and the end of a path is what tells which worktree it is: the path loses its middle names by whole
+ * names (`Checked out in ~/Clowdy/…/ab12cd34/app`), as `PathText` does where it can measure. The daemon's own refusal says the whole path.
+ */
+export function heldRowWords(holder: GitBranchHolder, home: string | undefined): string {
+    if (holder.main) return heldWords(holder, home);
+
+    const forms = pathVariants(tildePath(holder.path, home));
+
+    return `${ HELD }${ forms.find(form => HELD.length + form.length <= ROW_CHARS) ?? forms.at(-1) }`;
+}
 
 /**
  * The rows of the list, in groups and each branch in one: the default branch alone under `Default`, the branches HEAD was on lately under `Recent` (the daemon leaves out the current
@@ -32,7 +50,7 @@ export function branchOptions(listing: BranchListing, home?: string): PickerOpti
         if (taken.has(name)) return;
 
         taken.add(name);
-        options.push({ id: name, label: name, group, ...(holder && { isDisabled: true, stacked: true, description: heldWords(holder, home) }) });
+        options.push({ id: name, label: name, group, ...(holder && { isDisabled: true, stacked: true, description: heldRowWords(holder, home) }) });
     };
     const holderOf = (name: string) => listing.local.find(branch => branch.name === name)?.heldBy;
     const defaults = [...listing.local.filter(branch => branch.default).map(branch => branch.name), ...listing.remote.filter(branch => branch.default).map(branch => branch.name)];
