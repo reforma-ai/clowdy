@@ -14,7 +14,9 @@ import type { ProjectFolder } from '@clowdy/protocol';
 
 /**
  * The menu of a group's folder: what is under the message box when a chat works in it (`ChatFolder`), and, when the folder is a git repository, `Manage worktrees` above it. It
- * reads the folder's git once it is open, and not for each heading on the list: a folder with a branch is a repository, so the item comes in with that read, and not for a folder that is gone.
+ * reads the folder's git once it is open, and not for each heading on the list: the item comes in with that read, for a folder that has a branch (an empty repository and a detached
+ * HEAD have one; a plain folder has none) and not for a folder that is gone. A folder inside a larger repository has a branch too, though the dialog has no group for it (it lists
+ * the roots of working trees only): the read says nothing about the root.
  */
 function GroupFolderMenu({ folder, missing }: { folder: ProjectFolder; missing: boolean }) {
     const root = useRootStore();
