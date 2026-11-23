@@ -1,6 +1,6 @@
 import { Button } from '@clowdy/components/Button';
 import { Text } from '@clowdy/components/Text';
-import { GITHUB_URL, LICENSES_URL, RELEASES_URL } from '@clowdy/constants';
+import { GITHUB_URL, LICENSE_URL, LICENSES_URL, RELEASES_URL } from '@clowdy/constants';
 import { ArrowUpRight } from '@clowdy/icons/14';
 import { Github } from '@clowdy/icons/logo';
 import { useEffect, useState } from 'react';
@@ -38,6 +38,9 @@ export function AboutPage() {
                     </SettingsRow>
                     <SettingsRow title="Download" description="The installers of the latest release">
                         <LinkButton href={ RELEASES_URL }>Open releases</LinkButton>
+                    </SettingsRow>
+                    <SettingsRow title="License" description="Clowdy is open source under the Apache License 2.0">
+                        <LinkButton href={ LICENSE_URL }>Apache-2.0</LinkButton>
                     </SettingsRow>
                 </SettingsCard>
             </SettingsSection>

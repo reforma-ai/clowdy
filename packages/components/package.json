@@ -1,6 +1,7 @@
 {
     "name": "@clowdy/components",
     "private": true,
+    "license": "Apache-2.0",
     "description": "Clowdy design system components",
     "type": "module",
     "version": "0.0.0",

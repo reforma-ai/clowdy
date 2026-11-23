@@ -1,6 +1,7 @@
 {
     "name": "@clowdy/system-skills",
     "private": true,
+    "license": "Apache-2.0",
     "description": "Skills that ship with Clowdy and teach agents how to work in it. One Claude-format plugin directory that Claude and Codex both load.",
     "version": "0.1.0",
     "type": "module",

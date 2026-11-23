@@ -89,6 +89,7 @@ export const EXAMPLES: Readonly<Record<string, readonly string[]>> = {
     thread_wait: ['clowdy thread wait <thread> --timeout-seconds 60  # a short wait only'],
     thread_output: ['clowdy thread output <thread>'],
     thread_stop: ['clowdy thread stop <thread>'],
+    worktree_name: ['clowdy worktree name fix-login-redirect   # once, before your first commit: the branch of your worktree is renamed where it stands'],
 };
 
 /** The commands, grouped, one line each, with the common flow, for `clowdy` and `clowdy <group>`. */

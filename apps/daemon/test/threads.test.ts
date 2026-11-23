@@ -1428,6 +1428,153 @@ describe('reading a thread instead of its notice', () => {
     });
 });
 
+describe('worktree_name', () => {
+    const id8 = (chatId: string) => chatId.slice(-8);
+
+    test('renames the branch of the worktree a chat was made with where it stands, once: the folder, the session and the stream of the chat are the same', async () => {
+        const { h, project, store, chatOf, turnOf, exec, root } = await setup();
+        const gate = latch();
+        const parent = await root('Fix the login', gate, { workspace: { mode: 'new' } });
+        const { path, branch: placeholder } = parent.chat.workspace!;
+
+        // The chat is told to name its branch, in the very turn that made the worktree.
+        expect(placeholder).toBe(`clowdy/${ id8(parent.chat.id) }`);
+        expect(turnOf('Fix the login')?.systemPrompt).toContain('clowdy worktree name <two to four English words');
+
+        const named = await exec(parent.run, 'worktree_name', { name: 'Fix login redirect!' });
+
+        expect(named).toMatchObject({ branch: 'clowdy/fix-login-redirect', previous: placeholder });
+        // Git moved the branch under the worktree: nothing else did.
+        expect(git(path, 'branch', '--show-current')).toBe('clowdy/fix-login-redirect');
+        expect(git(project.path, 'branch', '--list', placeholder!)).toBe('');
+        expect(chatOf(parent.chat.id).workspace).toMatchObject({ path, branch: 'clowdy/fix-login-redirect', ready: true });
+        expect(getWorkspace(store.db, parent.chat.workspace!.id)?.branch).toBe('clowdy/fix-login-redirect');
+        expect(h.run(parent.run.id).status).toBe('running');
+
+        // Once: the command is gone for a chat whose branch has a name, and the next turn does not ask for one, and says the new name.
+        await expect(exec(h.run(parent.run.id), 'worktree_name', { name: 'Again' })).rejects.toThrow('has no worktree_name tool');
+        gate.release();
+        await waitFor(() => h.run(parent.run.id).status === 'succeeded', 'the turn to end');
+        h.ok('chat.send', { chatId: parent.chat.id, text: 'Go on' });
+        await waitFor(() => turnOf('Go on'), 'the next turn');
+
+        expect(turnOf('Go on')?.systemPrompt).not.toContain('clowdy worktree name');
+        expect(turnOf('Go on')?.systemPrompt).toContain('on the branch clowdy/fix-login-redirect');
+        expect(turnOf('Go on')?.cwd).toBe(path);
+    });
+
+    test('keeps the worktree\'s removal working on the new name: the branch that goes with the chat is the renamed one', async () => {
+        const { h, project, root, exec } = await setup();
+        const gate = latch();
+        const parent = await root('Fix the login', gate, { workspace: { mode: 'new' } });
+        const { path } = parent.chat.workspace!;
+
+        await exec(parent.run, 'worktree_name', { name: 'cleanup-me' });
+        gate.release();
+        await waitFor(() => h.run(parent.run.id).status === 'succeeded', 'the turn to end');
+        // Nothing is committed in it, so its work is in the base and it may go with the chat.
+        await h.okAsync('chat.delete', { chatId: parent.chat.id, removeWorkspace: true });
+
+        expect(existsSync(path)).toBe(false);
+        expect(git(project.path, 'branch', '--list', 'clowdy/cleanup-me')).toBe('');
+    });
+
+    test('adds the end of the chat\'s id when the name is taken, and refuses words with no letter in English, a branch that was pushed, and a worktree on another branch', async () => {
+        const { project, exec, root } = await setup();
+        const first = await root('Fix the login', latch(), { workspace: { mode: 'new' } });
+        const second = await root('Fix the logout', latch(), { workspace: { mode: 'new' } });
+        const third = await root('Fix the profile', latch(), { workspace: { mode: 'new' } });
+        const fourth = await root('Fix the cart', latch(), { workspace: { mode: 'new' } });
+
+        await exec(first.run, 'worktree_name', { name: 'fix-auth' });
+
+        const taken = await exec(second.run, 'worktree_name', { name: 'fix-auth' });
+
+        expect(taken.branch).toBe(`clowdy/fix-auth-${ id8(second.chat.id).slice(-4).toLowerCase() }`);
+        await expect(exec(third.run, 'worktree_name', { name: 'Починить вход' })).rejects.toMatchObject({ code: 'invalid', message: expect.stringContaining('words in English') });
+
+        // The branch has an upstream: a new name would leave the remote's behind.
+        git(project.path, 'config', `branch.${ third.chat.workspace!.branch }.remote`, 'origin');
+        await expect(exec(third.run, 'worktree_name', { name: 'fix-profile' })).rejects.toMatchObject({ code: 'invalid', message: expect.stringContaining('has an upstream') });
+
+        // The agent moved to a branch of its own: the one the worktree was made with is not what it is on.
+        git(fourth.chat.workspace!.path, 'switch', '-q', '-c', 'mine');
+        await expect(exec(fourth.run, 'worktree_name', { name: 'fix-cart' })).rejects.toMatchObject({ code: 'invalid', message: expect.stringContaining('not on clowdy/') });
+    });
+
+    test('moves the base of a thread\'s own worktree, which was started from the branch that is renamed, so the thread can be merged, removed and made again', async () => {
+        const { h, project, store, chatOf, root, spawn, exec } = await setup();
+        const gate = latch();
+        const parent = await root('Fix the login', gate, { workspace: { mode: 'new' } });
+        const placeholder = parent.chat.workspace!.branch!;
+        const threadGate = latch();
+        const thread = await spawn(parent.run, 'Rework the importer', held(threadGate), { worktree: true });
+        const rowOf = () => getWorkspace(store.db, chatOf(thread.threadId).workspace!.id)!;
+
+        expect(rowOf().base).toBe(placeholder);
+
+        await exec(parent.run, 'worktree_name', { name: 'fix-login' });
+
+        // The thread's row has the renamed branch for its base, and says so in what the parent reads of it.
+        expect(rowOf().base).toBe('clowdy/fix-login');
+        expect(git(thread.worktree!.path, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe(thread.worktree!.branch);
+
+        gate.release();
+        threadGate.release();
+        await waitFor(() => h.run(parent.run.id).status === 'succeeded' && thread.run().status === 'succeeded', 'both turns to end');
+        // Its work is in the base (nothing was committed), so the thread's own worktree may go with it, as it could not when the base was a name that was gone.
+        await h.okAsync('chat.delete', { chatId: thread.threadId, removeWorkspace: true });
+
+        expect(existsSync(thread.worktree!.path)).toBe(false);
+        expect(git(project.path, 'branch', '--list', thread.worktree!.branch)).toBe('');
+    });
+
+    test('goes on when git renames the branch and then fails on its settings, takes a prefix with a slash, and refuses a branch a remote has', async () => {
+        const { project, root, exec } = await setup();
+        const slashed = await root('Fix the login', latch(), { workspace: { mode: 'new', branchPrefix: 'max/threads' } });
+        const locked = await root('Fix the logout', latch(), { workspace: { mode: 'new' } });
+        const pushed = await root('Fix the profile', latch(), { workspace: { mode: 'new' } });
+
+        expect((await exec(slashed.run, 'worktree_name', { name: 'fix-it' })).branch).toBe('max/threads/fix-it');
+
+        // Another git holds the repository's config: the ref is renamed and the command fails after it. The branch is what counts.
+        writeFileSync(join(project.path, '.git', 'config.lock'), '');
+
+        try {
+            expect((await exec(locked.run, 'worktree_name', { name: 'fix-out' })).branch).toBe('clowdy/fix-out');
+            expect(git(locked.chat.workspace!.path, 'branch', '--show-current')).toBe('clowdy/fix-out');
+        }
+        finally {
+            rmSync(join(project.path, '.git', 'config.lock'));
+        }
+
+        // Pushed with no -u: no upstream is set, but the remote's branch is there under the old name.
+        git(project.path, 'update-ref', `refs/remotes/origin/${ pushed.chat.workspace!.branch }`, 'HEAD');
+        await expect(exec(pushed.run, 'worktree_name', { name: 'fix-profile' })).rejects.toMatchObject({ code: 'invalid', message: expect.stringContaining('A remote has a branch called') });
+    });
+
+    test('is for a chat the person started in a worktree Clowdy made for it: not for a chat in the folder itself, a found worktree, a thread, or one that shares its parent\'s', async () => {
+        const { project, exec, root, spawn } = await setup();
+        const plain = await root('Plan the release', latch());
+        const found = join(tempDir('worktree-name'), 'found');
+
+        git(project.path, 'worktree', 'add', '-q', '-b', 'found', found);
+
+        const inFound = await root('Read the importer', latch(), { workspace: { mode: 'existing', path: found } });
+        const own = await root('Fix the login', latch(), { workspace: { mode: 'new' } });
+        const thread = await spawn(own.run, 'Rework the importer', held(latch()), { worktree: true });
+        const sharing = await spawn(own.run, 'Read the parser');
+
+        for (const run of [plain.run, inFound.run, thread.run(), sharing.run()]) {
+            await expect(exec(run, 'worktree_name', { name: 'whatever' })).rejects.toThrow('has no worktree_name tool');
+        }
+
+        // A thread's branch is what its parent was told when it started it, so a name from the thread would leave the parent with one that is gone.
+        expect(thread.worktree?.branch).toBe(`clowdy/${ id8(thread.threadId) }`);
+        await expect(exec(own.run, 'worktree_name', { name: 'fix-login' })).resolves.toMatchObject({ branch: 'clowdy/fix-login' });
+    });
+});
+
 describe('thread_spawn with a worktree', () => {
     /** The part of a chat's id its worktree and branch are named after. */
     const id8 = (chatId: string) => chatId.slice(-8);
