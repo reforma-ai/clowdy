@@ -35,25 +35,6 @@
     gap: var(--spacing-md);
 }
 
-.chip {
-    display: flex;
-    align-items: center;
-    min-width: 0;
-}
-
-.chip[data-stale] {
-    opacity: var(--opacity-inactive);
-}
-
-.pr {
-    gap: var(--spacing-sm);
-    min-width: 0;
-}
-
-.checks {
-    flex-shrink: 0;
-}
-
 .files {
     display: inline-flex;
     align-items: center;

@@ -1,112 +1,20 @@
-import { Button } from '@clowdy/components/Button';
-import { Menu, MenuItem, MenuTrigger } from '@clowdy/components/List';
-import { Popover, PopoverScroll } from '@clowdy/components/Popover';
 import { Text } from '@clowdy/components/Text';
 import { Tooltip } from '@clowdy/components/Tooltip';
 import { isBusyRunStatus } from '@clowdy/protocol';
-import { useEffect, useRef, type RefObject } from 'react';
+import { useEffect, useRef } from 'react';
 
 import { StatusDot } from '../../shared/StatusDot';
 import { useProjectState } from '../../stores';
 import { chatFolder } from '../agents/agentTree';
-import {
-    accessHint,
-    accessHintTitle,
-    additionsWords,
-    CHECK_STATE_VIEW,
-    checksTone,
-    checksWords,
-    deletionsWords,
-    hasBranchFiles,
-    PULL_REQUEST_STATE_LABEL,
-    sortedChecks,
-} from '../changes/gitSummary';
+import { accessHint, accessHintTitle, additionsWords, deletionsWords, hasBranchFiles } from '../changes/gitSummary';
+import { PullRequestChip } from '../changes/PullRequestChip';
 import { useGitFacts, useGitFactsStore } from '../changes/useGitFacts';
-import { openEffects } from '../openWith';
 import { chatPlace } from '../sidePanel/currentPlace';
 import { ComposerBanner } from './ComposerBanner';
 import styles from './GitStrip.module.css';
 
-import type { Chat, GitPullRequest, Run } from '@clowdy/protocol';
+import type { Chat, Run } from '@clowdy/protocol';
 import type { PlaceFacts } from '../changes/gitFacts';
-
-/**
- * The checks of a pull request as a list that opens from the dot, above the whole chip (`anchor`), so it starts where the chip does: each with the colour of its state, its name and its
- * state in words; a press opens the check's own page, when it has one. Read only.
- */
-function ChecksMenu({ pr, anchor }: { pr: GitPullRequest; anchor: RefObject<HTMLElement | null> }) {
-    const { checks } = pr;
-    const items = sortedChecks(checks.items);
-    const words = checksWords(checks);
-
-    return (
-        <MenuTrigger>
-            <Button size="xs" variant="ghost" color="secondary" iconOnly className={ styles.checks } aria-label={ `Checks: ${ words }` } tooltip={ words }>
-                <StatusDot tone={ checksTone(checks) } />
-            </Button>
-            <Popover triggerRef={ anchor } placement="top start" spacing="xs" width={ 320 }>
-                <PopoverScroll maxHeight={ 320 }>
-                    <Menu
-                        aria-label="Checks"
-                        size="sm"
-                        onAction={ (key) => {
-                            const { url } = items[Number(key)] ?? {};
-
-                            if (url) openEffects.openUrl(url);
-                        } }
-                    >
-                        { items.map((check, index) => {
-                            const view = CHECK_STATE_VIEW[check.state];
-
-                            return (
-                                <MenuItem
-                                    // The names are one for each check, but a status and a check run may share one.
-                                    key={ `${ index }:${ check.name }` }
-                                    id={ String(index) }
-                                    textValue={ check.name }
-                                    isDisabled={ !check.url }
-                                    icon={ <StatusDot tone={ view.tone } /> }
-                                    endAffix={ <Text variant="xs" color="secondary">{ view.label }</Text> }
-                                >
-                                    { check.name }
-                                </MenuItem>
-                            );
-                        }) }
-                    </Menu>
-                </PopoverScroll>
-            </Popover>
-        </MenuTrigger>
-    );
-}
-
-/**
- * The pull request of the branch as a chip in two parts: its number and state, whose press opens the pull request on GitHub, and, when it has checks, a dot of what they add
- * up to, which opens their list. An open one has its state in the success colour; draft, merged and closed ones stay in the neutral tone, since the colours are for what needs
- * a look.
- */
-function PullRequestChip({ pr, stale }: { pr: GitPullRequest; stale: boolean }) {
-    const state = PULL_REQUEST_STATE_LABEL[pr.state];
-    const hasChecks = checksTone(pr.checks) !== undefined;
-    const chip = useRef<HTMLDivElement>(null);
-
-    return (
-        <div ref={ chip } role="group" aria-label="Pull request" className={ styles.chip } data-stale={ stale || undefined }>
-            <Button
-                size="xs"
-                variant="ghost"
-                color="secondary"
-                className={ styles.pr }
-                aria-label={ `Open pull request ${ pr.number } on GitHub: ${ state }, ${ pr.title }` }
-                tooltip={ pr.title }
-                onPress={ () => openEffects.openUrl(pr.url) }
-            >
-                <Text variant="xs" weight="medium">{ `PR #${ pr.number }` }</Text>
-                <Text variant="xs" color={ pr.state === 'open' ? 'success' : 'secondary' }>{ state }</Text>
-            </Button>
-            { hasChecks && <ChecksMenu pr={ pr } anchor={ chip } /> }
-        </div>
-    );
-}
 
 /** What the strip says of the files of the branch: `Files changed 13 +104 −38`. */
 function FilesChanged({ files, additions, deletions, complete }: { files: number; additions: string; deletions: string; complete: boolean }) {
