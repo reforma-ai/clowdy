@@ -1,5 +1,5 @@
 import { Button } from '@clowdy/components/Button';
-import { Menu, MenuItem, MenuSeparator, MenuTrigger } from '@clowdy/components/List';
+import { Menu, MenuItem, MenuSection, MenuSeparator, MenuTrigger } from '@clowdy/components/List';
 import { Popover, PopoverScroll } from '@clowdy/components/Popover';
 import { Text } from '@clowdy/components/Text';
 import { Check, Version } from '@clowdy/icons/14';
@@ -80,6 +80,9 @@ function baseOptions(git: Repository): PickerOption[] {
 /** The key of the row of a worktree in the menu: its path, which no other row's key is. */
 const worktreeKey = (path: string) => `worktree:${ path }`;
 
+/** The key of the row that opens the Manage worktrees dialog: it is no place to choose, so it is in a section of its own that selects nothing. */
+const MANAGE_KEY = 'manage';
+
 interface WorkspaceChipProps {
     /** The repository the folder is. */
     git: Repository;
@@ -87,6 +90,7 @@ interface WorkspaceChipProps {
     choice: ChatWorkspaceChoice | undefined;
     chats: ReadonlyMap<ChatId, Chat>;
     onChoose: (choice: ChatWorkspaceChoice | null) => void;
+    onManage: () => void;
 }
 
 /**
@@ -94,9 +98,9 @@ interface WorkspaceChipProps {
  * checkout, `New worktree` and `from <base>` for a worktree to be made, and `Worktree` and the branch for one that exists. The menu has `Current checkout` (with its branch),
  * `New worktree` (pressing the row chooses it, pressing the base at its end opens the searchable list of the folder's branches to start from, as does the right arrow on the
  * row), and, after a separator, one row for each of the folder's other worktrees with the chats that use it by name and a mark when something in it is not committed. A row's
- * check is at its start. The list of branches is the only popover that follows the menu, and it opens as the menu closes: two at once fight for the focus.
+ * check is at its start. `Manage worktrees…` ends the menu behind a separator: it shuts the menu and opens the dialog of the project's worktrees (`onManage`), and chooses nothing. The list of branches is the only popover that follows the menu, and it opens as the menu closes: two at once fight for the focus.
  */
-function WorkspaceChip({ git, choice, chats, onChoose }: WorkspaceChipProps) {
+function WorkspaceChip({ git, choice, chats, onChoose, onManage }: WorkspaceChipProps) {
     const [anchor, setAnchor] = useState<HTMLElement | null>(null);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isListOpen, setIsListOpen] = useState(false);
@@ -152,6 +156,7 @@ function WorkspaceChip({ git, choice, chats, onChoose }: WorkspaceChipProps) {
                                 disallowEmptySelection
                                 onAction={ (key) => {
                                     if (key === 'checkout') onChoose(null);
+                                    else if (key === MANAGE_KEY) onManage();
                                     else if (key === 'new') {
                                         if (baseHeld.current) {
                                             baseHeld.current = false;
@@ -195,6 +200,10 @@ function WorkspaceChip({ git, choice, chats, onChoose }: WorkspaceChipProps) {
                                         endAffix={ worktree.dirty ? <span className={ styles.changes } title="Something in it is not committed">Changes</span> : undefined }
                                     />
                                 )) }
+                                <MenuSeparator />
+                                <MenuSection aria-label="Worktrees of the project" selectionMode="none">
+                                    <MenuItem id={ MANAGE_KEY } shouldCloseOnSelect icon={ <Mark checked={ false } /> } text="Manage worktrees…" />
+                                </MenuSection>
                             </Menu>
                         </div>
                     </PopoverScroll>
@@ -245,6 +254,8 @@ export interface WorkspaceChipsProps {
     /** The project's chats, which the list of worktrees names the users of each by. */
     chats: ReadonlyMap<ChatId, Chat>;
     onChoose: (choice: ChatWorkspaceChoice | null) => void;
+    /** Opens the dialog of the project's worktrees, on this chat's folder; the menu's last row calls it. */
+    onManage: () => void;
 }
 
 /**
@@ -253,10 +264,10 @@ export interface WorkspaceChipsProps {
  * folder that is no repository, or whose read is still on its way, has nothing here, and one that git could not be asked about has a dim `Project checkout` that says why on
  * hover. The lists come from `useFolderRepository`.
  */
-export function WorkspaceChips({ repository, choice, chats, onChoose }: WorkspaceChipsProps) {
+export function WorkspaceChips({ repository, choice, chats, onChoose, onManage }: WorkspaceChipsProps) {
     const git = repositoryOf(repository);
 
-    if (git) return <WorkspaceChip git={ git } choice={ choice } chats={ chats } onChoose={ onChoose } />;
+    if (git) return <WorkspaceChip git={ git } choice={ choice } chats={ chats } onChoose={ onChoose } onManage={ onManage } />;
 
     const why = whyUnread(repository);
 
