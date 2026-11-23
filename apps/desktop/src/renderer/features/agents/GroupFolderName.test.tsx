@@ -39,10 +39,10 @@ const press = async (target: HTMLElement) => act(async () => {
 const name = () => container.querySelector<HTMLButtonElement>('button[aria-label^="Folder:"]')!;
 const items = () => [...document.body.querySelectorAll<HTMLElement>('[role="menu"][aria-label="Open folder"] [role="menuitem"]')];
 
-async function draw(folder: ProjectFolder, project = FIXTURE_PROJECT_ID) {
+async function draw(folder: ProjectFolder, project = FIXTURE_PROJECT_ID, missing = false) {
     window.desktop = { getOpenApps: async () => APPS, openPath: vi.fn(async () => undefined) } as never;
     store.selectProject(project);
-    act(() => root.render(<RootStoreProvider value={ store }><GroupFolderName name={ folder.path.split('/').pop()! } folder={ folder } missing={ false } /></RootStoreProvider>));
+    act(() => root.render(<RootStoreProvider value={ store }><GroupFolderName name={ folder.path.split('/').pop()! } folder={ folder } missing={ missing } /></RootStoreProvider>));
     await settle();
     await press(name());
     await settle();
@@ -90,6 +90,13 @@ describe('the menu of a folder group\'s title', () => {
         await draw({ ...FIXTURE_NOTES_FOLDER });
 
         expect(items().map(row => row.textContent)).toEqual(['Copy path', 'Open in…']);
+    });
+
+    it('has none for a folder that is gone from the disk, whatever the last read of its git said', async () => {
+        await draw(API, FIXTURE_PROJECT_ID, true);
+
+        expect(items().map(row => row.textContent)).not.toContain('Manage worktrees');
+        expect(document.body.textContent).toContain('This folder no longer exists');
     });
 
     it('has none for the personal space, whose folder git does not know', async () => {
