@@ -351,3 +351,18 @@
 
 **Scope changes:** react-aria's menu row takes the release of a press that began on the base button as its own press, so the row's action checks a `baseHeld` flag the button sets and opens the list in place of choosing; a worktree chat whose branch is not known yet shows `Worktree` alone; the dim `Project checkout` of a failed read has no git mark.
 **Commits:** `4fe71a9` feat(desktop): merge the mode and branch chips of where a chat works into one control; `fb4fa98` docs: describe the one control of where a chat works; `434c2d8` fix(desktop): keep the detached HEAD cue in the one control of a chat's place, drop dead code and level the menu rows (the review's fixes: the pill and the label say a detached HEAD again, the dead `modeOf` is gone, the menu rows are one height).
+
+
+## Follow-up — The menu of the one control, as the owner reworked it
+
+**Why:** the owner found the compact rows squeezed and the extra pieces noisy once they used the control with dozens of agent-made worktrees.
+
+- [x] Complete
+  - [x] The folder's own checkout is named `Main worktree` in the control (menu row, label, aria text, hover); the three places to work in are rows of two lines (an icon, the name, what it is), with no check marks: the selected row is the one the menu highlights
+  - [x] `New worktree` stays a row that chooses; the base at its end opens the searchable branch list **beside** the menu, which stays open under it (a child of the menu's popover; `shouldCloseOnInteractOutside` + cleared popover contexts), and a pick shuts both
+  - [x] `Existing worktree` is a plain submenu (no default to choose): flat rows, no icon, no `Changes` mark; the worktrees a chat works in first, the ones none works in after them under `Not in use`
+  - [x] The branch list is in two groups, `Local` and `Remote` (no headings with one kind)
+  - [x] Tests rewritten; checked with a real mouse, touch and keys in Electron (menu stays open under the list, Escape closes the list alone, a pick shuts both)
+
+**Left, for a decision:** the owner would rather see only local branches and have Clowdy fetch and fast-forward by itself. That needs the daemon to resolve a local base name to its remote counterpart when the local branch is equal to it, behind it or missing (fetched first), and the local branch only when it is ahead or diverged, which is the rule the git-integration plan already names for comparisons; the default would then read `main`, not `origin/main`. Until then both kinds are listed, grouped.
+**Commits:** `c5e597c` feat(desktop): name the folder's own checkout Main worktree and give the first two menu rows their descriptions back; `1c284fd` feat(desktop): fly the branches of a new worktree out beside the menu and make Existing worktree a submenu; `163a720` feat(desktop): give the menu of a chat's place icons and no checks, group the branches and the worktrees, and drop the Changes mark.
