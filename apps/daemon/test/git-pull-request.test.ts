@@ -975,6 +975,36 @@ withStandIn('PullRequests', () => {
             expect(gh.reads()).toEqual(['feature', 'feature', 'second']);
         });
 
+        test('forgets the answer of the branch the place is on, and only that one, so a push is seen by the next read', async () => {
+            const { place, path } = repoOn();
+
+            gh.reply('feature', { body: graphql([]) });
+            await pullRequests.read(place);
+            await pullRequests.read(place);
+            expect(gh.reads()).toEqual(['feature']);
+
+            // The pull request was opened on GitHub after the push: HEAD has not moved, and a kept answer would still say there is none.
+            gh.reply('feature', { body: graphql([node()]) });
+            await pullRequests.forget(place);
+            expect((await pullRequestOf(place))?.number).toBe(7);
+            expect(gh.reads()).toEqual(['feature', 'feature']);
+
+            // Another branch's answer is kept.
+            git(path, 'checkout', '-q', '-b', 'second');
+            gh.reply('second', { body: graphql([]) });
+            await pullRequests.read(place);
+            git(path, 'checkout', '-q', 'feature');
+            await pullRequests.forget(place);
+            git(path, 'checkout', '-q', 'second');
+            await pullRequests.read(place);
+            expect(gh.reads()).toEqual(['feature', 'feature', 'second']);
+
+            // A place with no repository, no origin or a detached HEAD has nothing to forget.
+            await pullRequests.forget({ ...place, path: tempDir('no-repository') });
+            git(path, 'checkout', '-q', '--detach');
+            await pullRequests.forget(place);
+        });
+
         test('keeps the answer of a repository apart from another that has a branch of the same name', async () => {
             const first = repoOn('https://github.com/acme/app.git');
             const second = repoOn('https://github.com/acme/other.git');
