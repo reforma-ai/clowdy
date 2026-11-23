@@ -44,7 +44,7 @@ You may start threads of your own while the depth limit allows; `clowdy thread s
 ## Shared files and git
 
 - Documents: write the ones the brief asks for, and decision records your mode calls for. Never edit `.clowdy/docs/index.md`: the chat the person started keeps it, so put the line it needs into your report.
-- Git: as the brief says. When it says nothing, commit nothing in a checkout that others edit and list your changed files in the report. In a worktree of your own, commit your work there and name its branch in your report. It is one your parent made and started you in with `--cwd`, or one the daemon made for you when your parent started you with `--worktree` (your system prompt names your worktree and its branch, started from your parent's). Merging that branch back is your parent's job: do not merge it into another branch, switch your worktree to another branch or remove it.
+- Git: as the brief says. When it says nothing, commit nothing in a checkout that others edit and list your changed files in the report. In a worktree of your own, commit your work there and name its branch in your report. It is one your parent made and started you in with `--cwd`, or one the daemon made for you when your parent started you with `--worktree`: then your system prompt says it was made for you alone, and names its branch, started from your parent's branch or the repository's default one. Merging that branch back is your parent's job: do not merge it into another branch, switch your worktree to another branch or remove it. A worktree your system prompt names without saying that is shared with your parent and its other threads, so treat it as a checkout others edit.
 
 ## Example
 
