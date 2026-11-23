@@ -7,11 +7,12 @@ import { getChat } from '../db/chats';
 import { getProject } from '../db/projects';
 import { chatsOfWorkspace, getWorkspace, insertWorkspace, listWorkspacesOfProject, toChatWorkspace, updateWorkspace } from '../db/workspaces';
 import { invalid, notFound } from '../errors';
-import { parseBranches, parseWorktrees, pickDefaultBranch } from '../git/state';
+import { parseBranches, parseWorktrees, pickBase, pickDefaultBranch } from '../git/state';
 import { newId } from '../ids';
 import { git, gitOutput, gitRead } from './git';
 import { appendItem, updateItem } from './items';
 import { runLines } from './lines';
+import { runSetup } from './workspaceSetup';
 
 import type { ChatWorkspace, ChatWorkspaceChoice, Project, ProjectFolder, StreamItemBody } from '@clowdy/protocol';
 import type { Config } from '../config';
@@ -45,8 +46,15 @@ const RESERVED_NAMES = /^(con|prn|aux|nul|com\d|lpt\d)$/;
 /** What `Prepare workspace` keeps of git's lines in the tool item: the item is rewritten as lines arrive, so it is bounded. */
 const MAX_LOG_LINES = 200;
 
+/** How much of a line the log keeps: every write of the item is an event with the whole log in it, and a setup command may print for ten minutes. */
+const MAX_LOG_LINE_LENGTH = 400;
+
 /** How often the log of the step may be written to the stream while lines arrive. */
 const LOG_THROTTLE_MS = 100;
+
+/** A step that has run this long is a long one (a setup command, not a checkout): its log is written `SLOW_LOG_THROTTLE_MS` apart. */
+const SLOW_STEP_MS = 5000;
+const SLOW_LOG_THROTTLE_MS = 1000;
 
 /** A refusal or a failure of making a chat's worktree, in words the person reads; the turn fails with it and the next message tries again. */
 export class WorkspaceError extends Error {
@@ -176,13 +184,20 @@ function headOf(folder: string): { branch: string; detached?: true; commit: stri
     return short.ok ? { branch: short.stdout, detached: true, commit: commit.stdout } : undefined;
 }
 
-/** The folder's default base, as `defaultBranchOf` says it (`origin/HEAD`, `origin/main`, `main`… the branch checked out), read synchronously. */
-function defaultBaseOf(folder: string): string | undefined {
-    const remoteHead = readGit(folder, ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD']);
-    const refs = readGit(folder, ['for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/remotes']);
-    const head = headOf(folder);
+/**
+ * The folder's base, as `baseOf` says it, read synchronously: its own `settings.baseBranch` when the repository has that branch (`pickBase`, the one rule), else
+ * `defaultBranchOf`'s (`origin/HEAD`, `origin/main`, `main`… the branch checked out). The default is read only when it is needed.
+ */
+function baseOfSync(folder: ProjectFolder): string | undefined {
+    const refs = readGit(folder.path, ['for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/remotes']);
+    const branches = parseBranches(refs.ok ? refs.stdout : '');
 
-    return pickDefaultBranch(remoteHead.ok && remoteHead.stdout ? remoteHead.stdout : undefined, parseBranches(refs.ok ? refs.stdout : ''), head && { branch: head.branch, ...(head.detached && { detached: true as const }) });
+    return pickBase(folder.settings?.baseBranch, branches, () => {
+        const remoteHead = readGit(folder.path, ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD']);
+        const head = headOf(folder.path);
+
+        return pickDefaultBranch(remoteHead.ok && remoteHead.stdout ? remoteHead.stdout : undefined, branches, head && { branch: head.branch, ...(head.detached && { detached: true as const }) });
+    });
 }
 
 /** The refs a base may be, in the order they are tried: a local branch, then a remote's (`origin/main`). Never the bare name: a tag called `main` would make it ambiguous. */
@@ -273,7 +288,7 @@ export function createWorkspace(store: Store, config: Pick<Config, 'workspacesDi
 }
 
 function createNewWorkspace(store: Store, config: Pick<Config, 'workspacesDir'>, project: Project, folder: ProjectFolder, chatId: string, requested: string | undefined): ChatWorkspace {
-    const base = requested ?? defaultBaseOf(folder.path);
+    const base = requested ?? baseOfSync(folder);
 
     if (!base) {
         throw invalid('The repository has no commit to start a worktree from');
@@ -612,6 +627,7 @@ class StepItem {
     private body: ToolBody;
     private timer?: ReturnType<typeof setTimeout>;
     private writtenAt = 0;
+    private startedAt = Date.now();
 
     constructor(private store: Store, private runId: string, workspaceId: string, input: unknown) {
         this.body = { kind: 'tool', toolCallId: `workspace:${ workspaceId }`, name: WORKSPACE_TOOL, input, state: 'running' };
@@ -620,7 +636,7 @@ class StepItem {
     }
 
     log(line: string): void {
-        this.lines.push(line);
+        this.lines.push(line.length > MAX_LOG_LINE_LENGTH ? `${ line.slice(0, MAX_LOG_LINE_LENGTH) }…` : line);
 
         if (this.lines.length > MAX_LOG_LINES) {
             this.lines.splice(0, this.lines.length - MAX_LOG_LINES);
@@ -630,7 +646,7 @@ class StepItem {
             return;
         }
 
-        const wait = this.writtenAt + LOG_THROTTLE_MS - Date.now();
+        const wait = this.writtenAt + (Date.now() - this.startedAt > SLOW_STEP_MS ? SLOW_LOG_THROTTLE_MS : LOG_THROTTLE_MS) - Date.now();
 
         if (wait <= 0) {
             this.write();
@@ -716,9 +732,9 @@ async function exclusive<T>(store: Store, key: string, signal: AbortSignal | und
 }
 
 /** Marks the worktree set up and publishes every chat that works in it, which now say so. */
-function markReady(store: Store, workspaceId: string): void {
+function markReady(store: Store, workspaceId: string, ready = true): void {
     store.tx(() => {
-        updateWorkspace(store.db, workspaceId, { ready: true });
+        updateWorkspace(store.db, workspaceId, { ready });
 
         for (const chatId of chatsOfWorkspace(store.db, workspaceId)) {
             const chat = getChat(store.db, chatId);
@@ -733,15 +749,18 @@ function markReady(store: Store, workspaceId: string): void {
 /** What `prepareWorkspace` writes into and listens to: the stream of the run whose turn it is, and what stops it. */
 export interface PrepareOptions {
     runId: string;
-    /** A Stop of the run or of the daemon: git is killed and the step ends as stopped. */
+    /** A Stop of the run or of the daemon: git and the setup command are killed and the step ends as stopped. */
     signal?: AbortSignal;
+    /** How long the folder's setup command may run (`Timings.setupMs`); ten minutes when absent. */
+    setupTimeoutMs?: number;
 }
 
 /**
- * The first step of a turn whose chat works in a worktree that is not set up (`needsPreparing`): makes sure the worktree is there (`ensureWorktree`), marks it
- * `ready` and publishes the chats that use it. It writes a `tool` item named `workspace` into the run's stream, running while it works, with git's lines as
- * its output as they arrive, and done or error at the end. A failure ends the item as an error and throws a `WorkspaceError` with the reason, which fails the turn;
- * the next message tries again. Two chats that need the same worktree at once do not race: the second waits, finds it set up and writes nothing.
+ * The first step of a turn whose chat works in a worktree that is not set up (`needsPreparing`): makes sure the worktree is there (`ensureWorktree`), sets it up
+ * (`runSetup`, when the folder has a setup and Clowdy made the worktree), marks it `ready` and publishes the chats that use it. It writes a `tool` item named
+ * `workspace` into the run's stream, running while it works, with git's lines and the setup's as its output as they arrive, and done or error at the end. A failure
+ * ends the item as an error and throws a `WorkspaceError` with the reason, which fails the turn; the next message tries again. Two chats that need the same worktree
+ * at once do not race: the second waits, finds it set up and writes nothing.
  */
 export async function prepareWorkspace(store: Store, workspaceId: string, options: PrepareOptions): Promise<void> {
     const first = getWorkspace(store.db, workspaceId);
@@ -773,7 +792,22 @@ export async function prepareWorkspace(store: Store, workspaceId: string, option
             // The worktrees of one repository are added one at a time: the key is the folder's real place, whichever project holds it.
             const serialize = <T>(work: () => Promise<T>) => exclusive(store, `repository:${ pathKey(placeOf(folder.path)) }`, options.signal, work);
 
-            await ensureWorktree({ folder: folder.path, path: record.path, branch: record.branch, base: record.base, managed: record.managed, log: line => item.log(line), signal: options.signal, serialize });
+            const made = await ensureWorktree({ folder: folder.path, path: record.path, branch: record.branch, base: record.base, managed: record.managed, log: line => item.log(line), signal: options.signal, serialize });
+
+            // The folder's setup, for a worktree Clowdy made that is not set up yet: a step that failed here comes back with the worktree there and `ready` still false, so
+            // only this part runs again (a copy never overwrites). A worktree that is ready and still there is never set up again, and one that was found never is. One that was
+            // made again (it went from the disk, with its ignored files: `.env`, the dependencies) is a new tree and is set up again; it stops being ready first, so a setup
+            // that fails is run again by the next turn and not forgotten.
+            const again = record.ready && made === 'made';
+
+            if (record.managed && folder.settings?.setup && (!record.ready || again)) {
+                if (again) {
+                    markReady(store, record.id, false);
+                }
+
+                await runSetup({ root: folder.path, workspace: record.path, branch: record.branch, setup: folder.settings.setup, log: line => item.log(line), signal: options.signal, timeoutMs: options.setupTimeoutMs });
+            }
+
             markReady(store, record.id);
             item.end();
         }

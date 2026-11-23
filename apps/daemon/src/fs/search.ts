@@ -20,8 +20,8 @@ export interface SearchOptions {
     ripgrep?: string | false;
 }
 
-/** The part of a request the search needs: the folder is resolved by the caller. */
-export type SearchQuery = Omit<FsSearchRequest, 'folderId'>;
+/** The part of a request the search needs: the folder and its worktree are resolved by the caller. */
+export type SearchQuery = Omit<FsSearchRequest, 'folderId' | 'workspaceId'>;
 
 /**
  * The search of a folder's file contents (`POST fs/search`): the literal text, case and whole word options, the folders and files that are

@@ -17,15 +17,17 @@ import {
     projectCounts,
     upsertProject,
 } from '../db/projects';
+import { listWorkspacesInUse } from '../db/workspaces';
 import { conflict, invalid, notFound, unavailable } from '../errors';
 import { folderHead } from '../git/state';
 import { newId } from '../ids';
 import { mergeFolderSettings } from './folderSettings';
 import { git, gitLine } from './git';
 
-import type { Project, ProjectFolder, ProjectFolderInfo, ProjectInfo, ProjectSettings, TaskStatus, TaskStatusCategory } from '@clowdy/protocol';
+import type { Project, ProjectFolder, ProjectFolderInfo, ProjectInfo, ProjectSettings, ProjectWorkspaceInfo, TaskStatus, TaskStatusCategory } from '@clowdy/protocol';
 import type { AttachmentsService } from '../attachments/service';
 import type { Config } from '../config';
+import type { WorkspaceRecord } from '../db/workspaces';
 import type { SkillsService } from '../skills/service';
 import type { Store } from '../store';
 import type { FolderSettingsPatch } from './folderSettings';
@@ -505,19 +507,39 @@ async function isFolder(path: string): Promise<boolean> {
     }
 }
 
+/** How many worktrees of a project are read at once: a project whose chats each work in one has dozens, and each read starts a git. */
+const WORKSPACE_READS = 4;
+
+/** Whether a worktree is there and what it has checked out, read like a folder's head (`folderHead`): not there while it is not made (`ready` false) or gone from the disk. */
+async function workspaceInfo(workspace: WorkspaceRecord): Promise<ProjectWorkspaceInfo> {
+    const exists = workspace.ready && await isFolder(workspace.path);
+    const head = exists ? await folderHead(workspace.path) : undefined;
+
+    return { workspaceId: workspace.id, exists, ...head };
+}
+
 /**
- * What the page that manages projects shows besides the snapshot: whether each folder is there and its remote, and what the project holds.
- * The page asks again every few seconds, so nothing here may stop the daemon: the folders are read asynchronously, one project after
- * another, so a long list never starts a crowd of processes. With a `projectId` only that project is read (`notFound` when there is none), for a screen that
- * wants one folder's git facts.
+ * What the page that manages projects shows besides the snapshot: whether each folder is there and its remote, what the project holds, and the head of each worktree
+ * its chats work in (`workspaces`, those a chat points at; absent when it has none). The page asks again every few seconds, so nothing here may stop the daemon: the folders are read
+ * asynchronously, one project after another, and a project's worktrees a few at a time, so a long list never starts a crowd of processes. With a `projectId` only that
+ * project is read (`notFound` when there is none), for a screen that wants one folder's git facts.
  */
 export async function projectsInfo(store: Store, projectId?: string): Promise<ProjectInfo[]> {
     if (projectId !== undefined) requireProject(store, projectId);
 
-    const { projects, counts, chatsIn } = store.read(() => ({ projects: listProjects(store.db), counts: projectCounts(store.db), chatsIn: chatCountsByFolder(store.db) }));
+    const { projects, counts, chatsIn, workspacesOf } = store.read(() => {
+        const wanted = listProjects(store.db).filter(candidate => projectId === undefined || candidate.id === projectId);
+
+        return {
+            projects: wanted,
+            counts: projectCounts(store.db),
+            chatsIn: chatCountsByFolder(store.db),
+            workspacesOf: new Map(wanted.map(project => [project.id, listWorkspacesInUse(store.db, project.id)])),
+        };
+    });
     const info: ProjectInfo[] = [];
 
-    for (const project of projects.filter(candidate => projectId === undefined || candidate.id === projectId)) {
+    for (const project of projects) {
         const folders: ProjectFolderInfo[] = [];
 
         for (const folder of project.folders) {
@@ -528,7 +550,14 @@ export async function projectsInfo(store: Store, projectId?: string): Promise<Pr
             folders.push({ folderId: folder.id, exists, ...(remoteUrl && { remoteUrl }), ...head, chats: chatsIn.get(folder.id) ?? 0 });
         }
 
-        info.push({ projectId: project.id, folders, ...(counts.get(project.id) ?? { chats: 0, tasks: 0, activeRuns: 0 }) });
+        const workspaces: ProjectWorkspaceInfo[] = [];
+        const records = workspacesOf.get(project.id) ?? [];
+
+        for (let start = 0; start < records.length; start += WORKSPACE_READS) {
+            workspaces.push(...await Promise.all(records.slice(start, start + WORKSPACE_READS).map(workspaceInfo)));
+        }
+
+        info.push({ projectId: project.id, folders, ...(counts.get(project.id) ?? { chats: 0, tasks: 0, activeRuns: 0 }), ...(workspaces.length > 0 && { workspaces }) });
     }
 
     return info;
