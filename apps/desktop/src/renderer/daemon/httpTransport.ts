@@ -289,7 +289,8 @@ export class HttpTransport implements Transport {
     }
 
     getHealth(): Promise<Health> {
-        return this.#get(ROUTES.health);
+        // Sent bare, as `main` probes it: a daemon of another protocol major refuses a request that names its own, and then the version of the daemon that most needs reading could not be read.
+        return this.#get(ROUTES.health, {});
     }
 
     getAgents(): Promise<AgentInfo[]> {
@@ -392,8 +393,8 @@ export class HttpTransport implements Transport {
         return await response.json() as T;
     }
 
-    async #get<T>(route: string): Promise<T> {
-        const response = await this.#fetch(this.#base + route, { headers: this.#headers });
+    async #get<T>(route: string, headers: Record<string, string> = this.#headers): Promise<T> {
+        const response = await this.#fetch(this.#base + route, { headers });
 
         if (!response.ok) throw new TransportError(`The daemon answered ${ response.status } for ${ route }`, response.status);
 

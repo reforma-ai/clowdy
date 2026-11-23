@@ -1,4 +1,4 @@
-import { PROTOCOL_VERSION } from '@clowdy/protocol';
+import { PROTOCOL_HEADER, PROTOCOL_VERSION } from '@clowdy/protocol';
 import { describe, expect, it } from 'vitest';
 
 import { createTransport } from './config';
@@ -18,6 +18,20 @@ describe('HttpTransport.getHealth', () => {
 
         expect(await transport.getHealth()).toEqual(health);
         expect(urls).toEqual(['http://127.0.0.1:4310/v1/health']);
+    });
+
+    it('sends no token and no protocol header, so a daemon of another major still answers', async () => {
+        const sent: Array<HeadersInit | undefined> = [];
+        const fetchImpl = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+            sent.push(init?.headers);
+
+            return new Response('{}', { status: 200 });
+        }) as typeof fetch;
+
+        await new HttpTransport({ url: 'http://127.0.0.1:4310', token: 't', fetch: fetchImpl }).getHealth();
+
+        expect(new Headers(sent[0]).has(PROTOCOL_HEADER)).toBe(false);
+        expect(new Headers(sent[0]).has('authorization')).toBe(false);
     });
 
     it('fails when the daemon refuses', async () => {
