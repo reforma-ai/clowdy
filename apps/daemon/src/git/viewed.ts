@@ -1,4 +1,4 @@
-import { GIT_COMMIT_SCOPE_PREFIX, MAX_GIT_REVISION_LENGTH, MAX_GIT_VIEWED_PATH_LENGTH } from '@clowdy/protocol';
+import { GIT_COMMIT_SCOPE_PREFIX, MAX_GIT_REVISION_LENGTH, MAX_GIT_VIEWED_PATH_LENGTH, turnScopeTrees } from '@clowdy/protocol';
 
 import { invalid, notFound } from '../errors';
 import { checkPath } from './changes';
@@ -36,6 +36,9 @@ export async function viewedScopeKey(place: Place, scope: GitScope, options: Bas
     if (!await workingTreeRoot(cwd)) throw invalid('The folder is not the root of a git repository');
 
     if (scope === 'uncommitted') return scope;
+
+    // A run's scope is two trees that no later change can alter, so its own text is its key and no git read is made for it (marks on a pruned run are marks nobody can see).
+    if (turnScopeTrees(scope)) return scope;
 
     if (scope.startsWith(GIT_COMMIT_SCOPE_PREFIX)) {
         const sha = scope.slice(GIT_COMMIT_SCOPE_PREFIX.length);

@@ -75,6 +75,8 @@ export interface GitReadOptions extends GitOptions {
     maxBytes?: number;
     /** Text written to git's standard input, which is then closed (`hash-object --stdin`, `cat-file --batch-check`). */
     input?: string;
+    /** Variables added to the read's environment, over the ones every read sets (`GIT_INDEX_FILE`, for a tree made in an index of its own). */
+    env?: Record<string, string>;
 }
 
 /** What a read of git came to: its stdout, or why there is none (`failed`: git ran and said no, as it does outside a repository; `unavailable`: it could not be run, did not answer in time or printed too much). */
@@ -94,7 +96,7 @@ export async function gitRead(cwd: string, args: string[], options: GitReadOptio
             killSignal: 'SIGKILL',
             windowsHide: true,
             maxBuffer: options.maxBytes ?? MAX_OUTPUT_BYTES,
-            env: readEnvironment(),
+            env: { ...readEnvironment(), ...options.env },
         });
 
         // A git that exits before it reads its input closes the pipe: that is its answer, which the read below reports, not a failure of ours.

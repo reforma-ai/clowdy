@@ -1,4 +1,4 @@
-import { commitScope, MAX_GIT_CHANGED_FILES, MAX_GIT_COMMITS, MAX_GIT_SIDE_BYTES, MAX_GIT_STATUS_ENTRIES } from '@clowdy/protocol';
+import { commitScope, MAX_GIT_CHANGED_FILES, MAX_GIT_COMMITS, MAX_GIT_SIDE_BYTES, MAX_GIT_STATUS_ENTRIES, turnScope } from '@clowdy/protocol';
 import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { chmodSync, mkdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path';
 import { gitRead, gitRecords } from '../src/domain/git';
 import { CommandError } from '../src/errors';
 import { parseDiff, placeChanges, placeFile } from '../src/git/changes';
+import { snapshotTree } from '../src/git/snapshot';
 import { folderGit } from '../src/git/state';
 import { mergeBaseOf, parseStatus, placeStatus, readBase, resolveRef } from '../src/git/status';
 import { cleanTempDirs, git, makeRepo, startHarness, tempDir } from './helpers';
@@ -1092,6 +1093,98 @@ describe('placeFile', () => {
     });
 });
 
+describe('the scope of a run', () => {
+    /** The two trees around a change the callback makes: what a turn's start and end take. */
+    async function around(path: string, act: () => void): Promise<{ start: string; end: string; scope: GitScope }> {
+        const start = await snapshotTree(path);
+
+        act();
+
+        const end = await snapshotTree(path);
+
+        if (!start || !end) throw new Error('No tree was made');
+
+        return { start, end, scope: turnScope(start, end) };
+    }
+
+    test('counts the files between the two trees: edited, renamed, new, deleted and binary ones, and not the committed or the earlier uncommitted work', async () => {
+        const { path } = work();
+        const { scope } = await around(path, () => {
+            writeFileSync(join(path, 'lib.ts'), lines('a', 'B', 'c', 'd', 'e', 'f'));
+            renameSync(join(path, 'renamed.ts'), join(path, 'moved.ts'));
+            rmSync(join(path, 'scratch.txt'));
+            put(path, { 'fresh.md': lines('alpha', 'beta', 'gamma'), 'icon.bin': Buffer.from([0, 9, 0, 9]) });
+        });
+        const answer = await changes(placeAt(path), scope);
+
+        expect(answer).toMatchObject({ scope, fileCount: 5, statsComplete: true });
+        expect(answer.from).toBeUndefined();
+        expect(answer.baseState).toBeUndefined();
+        expect(answer.files.map(file => [file.path, file.kind, file.oldPath, file.additions, file.deletions, file.binary])).toEqual([
+            ['fresh.md', 'added', undefined, 3, 0, undefined],
+            ['icon.bin', 'added', undefined, undefined, undefined, true],
+            ['lib.ts', 'modified', undefined, 1, 0, undefined],
+            ['moved.ts', 'renamed', 'renamed.ts', 0, 0, undefined],
+            ['scratch.txt', 'deleted', undefined, 0, 2, undefined],
+        ]);
+        // The files git does not track yet are files of the trees: none of them is `untracked`, which means "not in the index".
+        expect(answer.files.some(file => file.untracked)).toBe(false);
+        expect(answer.additions).toBe(4);
+        expect(answer.deletions).toBe(2);
+    });
+
+    test('reads a file from the trees whatever `from` and the base are, and costs no base lookup', async () => {
+        const { path } = work();
+        const { scope } = await around(path, () => {
+            writeFileSync(join(path, 'lib.ts'), lines('a', 'B', 'c', 'd', 'e', 'edited by the run'));
+        });
+        const place = placeAt(path);
+        const expected = { state: 'text', original: lines('a', 'B', 'c', 'd', 'e'), modified: lines('a', 'B', 'c', 'd', 'e', 'edited by the run') };
+
+        expect(await placeFile(place, scope, 'lib.ts', undefined)).toMatchObject(expected);
+        // A card sends the `from` of its list, which a run's list does not have; one that is sent anyway is not looked at.
+        expect(await placeFile(place, scope, 'lib.ts', undefined, { from: 'not a hash' })).toMatchObject(expected);
+        expect(await placeFile(place, scope, 'lib.ts', undefined, { base: 'no-such-branch' })).toMatchObject(expected);
+        await expect(placeFile(place, scope, 'README.md', undefined)).rejects.toMatchObject({ code: 'not_found' });
+
+        if (posix) {
+            const processes = await gitProcessesOf(() => placeFile(place, scope, 'lib.ts', undefined));
+
+            expect(processes.some(line => line.includes('merge-base') || line.includes('for-each-ref') || line.includes('symbolic-ref'))).toBe(false);
+        }
+    });
+
+    test('keeps the revision of a file the same for as long as the trees are, so a mark of viewed holds', async () => {
+        const { path } = work();
+        const { scope } = await around(path, () => {
+            writeFileSync(join(path, 'lib.ts'), lines('a', 'run'));
+        });
+        const first = (await changes(placeAt(path), scope)).files[0]!.revision;
+
+        writeFileSync(join(path, 'lib.ts'), lines('somebody else afterwards'));
+        git(path, 'add', '-A');
+        git(path, 'commit', '-q', '-m', 'Later work');
+        expect((await changes(placeAt(path), scope)).files[0]!.revision).toBe(first);
+    });
+
+    test('refuses what is not two trees: an object of another kind, and a pair of ids in a repository that has neither', async () => {
+        const { path } = work();
+        const tree = git(path, 'rev-parse', 'HEAD^{tree}');
+        const blob = git(path, 'rev-parse', 'HEAD:lib.ts');
+        const commitId = git(path, 'rev-parse', 'HEAD');
+        const place = placeAt(path);
+
+        expect((await failure(placeChanges(place, turnScope(tree, blob)))).code).toBe('invalid');
+        expect((await failure(placeChanges(place, turnScope(commitId, tree)))).code).toBe('invalid');
+        expect((await failure(placeChanges(place, turnScope('0'.repeat(40), tree)))).code).toBe('unavailable');
+        expect((await failure(placeChanges(place, turnScope(tree, 'f'.repeat(40))))).code).toBe('unavailable');
+        expect((await failure(placeFile(place, turnScope('0'.repeat(40), tree), 'lib.ts', undefined))).code).toBe('unavailable');
+        expect(await changes(place, turnScope(tree, tree))).toMatchObject({ fileCount: 0, files: [] });
+        // Another repository does not have the trees of this one.
+        expect((await failure(placeChanges(placeAt(makeRepo(tempDir('git-changes'), 'other')), turnScope(tree, git(path, 'rev-parse', 'HEAD~1^{tree}'))))).code).toBe('unavailable');
+    });
+});
+
 describe('over HTTP', () => {
     let h: Harness;
 
@@ -1148,6 +1241,32 @@ describe('over HTTP', () => {
 
         rmSync(path, { recursive: true });
         expect((await h.fetch(`${ base }/status${ query() }`)).status).toBe(503);
+    });
+
+    test('answers a run\'s scope by its two trees, and says what is wrong with a scope that is none', async () => {
+        const { path } = work();
+        const start = await snapshotTree(path);
+
+        put(path, { 'run-made.ts': lines('made by the run', 'in two lines') });
+
+        const end = await snapshotTree(path);
+        const { project } = h.ok('project.add', { folders: [path] });
+        const base = `/v1/projects/${ project.id }/git`;
+        const query = (scope: string, extra = '') => `?folderId=${ project.folders[0].id }&scope=${ scope }${ extra }`;
+        const scope = turnScope(start as string, end as string);
+
+        expect(await json<GitChanges>(await h.fetch(`${ base }/changes${ query(scope) }`))).toMatchObject({ isRepository: true, scope, fileCount: 1, additions: 2, files: [{ path: 'run-made.ts', kind: 'added' }] });
+        expect(await json<GitFileSides>(await h.fetch(`${ base }/file${ query(scope, '&path=run-made.ts') }`))).toMatchObject({ state: 'text', original: null, modified: lines('made by the run', 'in two lines') });
+        // The ids are made lower case, as a commit's are.
+        expect((await h.fetch(`${ base }/changes${ query(scope.toUpperCase().replace('TURN:', 'turn:')) }`)).status).toBe(200);
+
+        for (const bad of ['turn:abc', `turn:${ start }`, `turn:${ start }:${ 'a'.repeat(64) }`, `turn:main:${ end }`, 'turn:']) {
+            expect((await h.fetch(`${ base }/changes${ query(bad) }`)).status).toBe(400);
+        }
+
+        // A tree git does not have, and one that is no tree.
+        expect((await h.fetch(`${ base }/changes${ query(turnScope(start as string, 'e'.repeat(40))) }`)).status).toBe(503);
+        expect((await h.fetch(`${ base }/changes${ query(turnScope(start as string, git(path, 'rev-parse', 'HEAD:lib.ts'))) }`)).status).toBe(400);
     });
 
     test('says a folder that is no repository is none', async () => {

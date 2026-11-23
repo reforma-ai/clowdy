@@ -11,6 +11,7 @@ import { appendItem, markRewindPoint } from '../domain/items';
 import { isBeingRemoved } from '../domain/workspaceRemoval';
 import { needsPreparing, ownsWorktree, prepareWorkspace } from '../domain/workspaces';
 import { EngineFailure, errorMessage } from '../errors';
+import { TurnSnapshots, type TurnTrees } from '../git/snapshot';
 import { conversationRecord } from './history';
 import { backoffDelay, engineName, formatMoment, parseLimit, sleep } from './limits';
 import { NativeAgents } from './native';
@@ -54,6 +55,9 @@ interface LiveRun {
     writer?: TurnWriter;
     /** Aborts this turn's session without cancelling the run. */
     turn?: AbortController;
+    /** The folder the running turn works in, and the trees taken around the turn (`Chat.lastRun`): none for a run that is not a chat's own orchestrator. */
+    cwd?: string;
+    trees?: TurnTrees;
     /** The turn was ended on purpose (`interrupt`): it is not a failure, and the run is left at rest for the message that asked for it. */
     interrupted?: boolean;
     /** Set when the engine is at its subscription limit: the turn stops and the run waits for the reset. */
@@ -204,6 +208,8 @@ export class RunDriver {
      */
     onTurnEnd: (run: Run, text: string | undefined) => void = () => undefined;
     private live = new Map<string, LiveRun>();
+    /** What each turn of a chat's orchestrator changed in the chat's place (`Chat.lastRun`). */
+    private snapshots: TurnSnapshots;
     /** The last flight of each run. A new one starts behind it, so a run never has two turns at once. */
     private flights = new Map<string, Promise<void>>();
     /** Engine sessions started and not yet closed. */
@@ -212,6 +218,7 @@ export class RunDriver {
     private stopping = new AbortController();
 
     constructor(private deps: DriverDeps) {
+        this.snapshots = new TurnSnapshots(deps.store);
         deps.runs.stopNative = (child, reason) => this.stopSubagent(child, reason);
         deps.runs.stopCommand = (runId, itemId) => this.stopCommand(runId, itemId);
     }
@@ -606,6 +613,7 @@ export class RunDriver {
 
         // Before anything that counts a session: the step waits for git, and no session is open yet.
         await this.prepareWorkspace(runId, signal);
+        await this.measureStart(runId, live);
 
         const deadline = Date.now() + 2 * config.timings.killGraceMs;
 
@@ -733,6 +741,8 @@ export class RunDriver {
         }
         finally {
             ended.removeEventListener('abort', onEnded);
+            // A turn that ended with no `done` (a Stop, a failure) is measured here; the daemon's own stop is not waited for.
+            if (!this.stopping.signal.aborted) await live.trees?.end();
             // Whatever the agent and its sub-agents left running ends with the session: a Stop or a failure mid-call would otherwise leave the call shimmering.
             const reason = signal.aborted || live.interrupted ? STOPPED_TOOL : UNFINISHED_TOOL;
 
@@ -773,6 +783,20 @@ export class RunDriver {
             // A Stop that came while nothing was running git (the wait for another chat, the reads) must not start a session.
             stopped.throwIfAborted();
         }
+    }
+
+    /**
+     * The tree of the folder the turn works in before the agent can touch it, which the tree at the turn's end is compared with (`Chat.lastRun`). Only the orchestrator of a chat is
+     * measured (`TurnSnapshots.begin`). It waits for the tree for a second at most, so a very large project does not hold the turn back.
+     */
+    private async measureStart(runId: string, live: LiveRun): Promise<void> {
+        const { store, runs } = this.deps;
+        const run = runs.require(runId);
+        const cwd = workingFolder(runs.projectOf(run), run.chatId ? getChat(store.db, run.chatId) : undefined, getRunWork(store.db, runId).cwd);
+
+        live.cwd = cwd;
+        live.trees = this.snapshots.begin(runId, cwd);
+        await live.trees?.started();
     }
 
     /**
@@ -883,6 +907,10 @@ export class RunDriver {
 
         let accepted = false;
 
+        // The message starts a turn of the live session: the tree before the agent hears it.
+        live.trees = live.cwd === undefined ? undefined : this.snapshots.begin(runId, live.cwd);
+        await live.trees?.started();
+
         try {
             accepted = await session.send(prompt);
         }
@@ -892,6 +920,7 @@ export class RunDriver {
 
         if (!accepted) {
             live.sent--;
+            live.trees = undefined;
             this.refuse(live);
 
             return;
@@ -1142,6 +1171,8 @@ export class RunDriver {
     private async onDone(run: Run, live: LiveRun, session: EngineSession, writer: TurnWriter, native: NativeAgents, result: string | undefined): Promise<boolean> {
         writer.end();
         this.markPoint(run, live, writer);
+        // Before the run's status changes, so the chat has what the turn changed by the time the app sees the run at rest.
+        if (!this.stopping.signal.aborted) await live.trees?.end();
 
         if (live.lingering && !live.sent) {
             writer.finish(undefined, this.openTasks(live));
