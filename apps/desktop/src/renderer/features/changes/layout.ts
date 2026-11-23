@@ -14,15 +14,20 @@ export const CHANGES_MIN_WIDTH = CHANGES_READING_MIN_WIDTH + CHANGES_SIDEBAR_MIN
 
 /**
  * The commits of the branch at the foot of the sidebar, a list that is shut until it is opened and as tall as the person drags it. A row is the design system's two-line option
- * (`ListBoxItem` stacked: 8px above and below two 16px lines with 1px between), 2px apart, and the list stands 4px inside its box at the top and the bottom.
+ * (`ListBoxItem` stacked: 8px above and below two 16px lines with 1px between), 2px apart, and the list stands 4px inside its box at the top and the bottom, under the box's 1px
+ * top border.
  */
 export const CHANGES_COMMIT_ROW_HEIGHT = 49;
 const COMMIT_ROWS_GAP = 2;
 const COMMIT_LIST_PADDING = 8;
+const COMMIT_BOX_BORDER = 1;
 
-/** The height of the commits' box that shows `rows` rows whole. */
+/** The height of the commits' box that shows `rows` rows whole, with no scroll. */
 export const commitListHeight = (rows: number): number =>
-    rows * CHANGES_COMMIT_ROW_HEIGHT + Math.max(0, rows - 1) * COMMIT_ROWS_GAP + COMMIT_LIST_PADDING;
+    rows * CHANGES_COMMIT_ROW_HEIGHT +
+    Math.max(0, rows - 1) * COMMIT_ROWS_GAP +
+    COMMIT_LIST_PADDING +
+    COMMIT_BOX_BORDER;
 
 /** The least the commits' box can be dragged to: two rows. */
 export const CHANGES_COMMITS_MIN_HEIGHT = commitListHeight(2);

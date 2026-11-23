@@ -103,7 +103,9 @@ describe('defaultCommitsHeight', () => {
         expect(defaultCommitsHeight(1, 0)).toBe(commitListHeight(2));
         expect(defaultCommitsHeight(3, 0)).toBe(commitListHeight(3));
         expect(defaultCommitsHeight(100, 0)).toBe(commitListHeight(5));
-        expect(commitListHeight(5)).toBe(5 * 49 + 4 * 2 + 8);
+        // Five rows, the gaps between them, the list's inset and the box's top border.
+        expect(commitListHeight(5)).toBe(5 * 49 + 4 * 2 + 8 + 1);
+        expect(CHANGES_COMMITS_MIN_HEIGHT).toBe(109);
     });
 
     it('is never more than 40% of the column, nor less than two rows', () => {
