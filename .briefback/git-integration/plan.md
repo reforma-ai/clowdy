@@ -362,3 +362,7 @@
 **Done when:** after a turn that edits two files, the Last turn scope lists those two files and not the ones changed before the turn began.
 **Verify:** `cd apps/daemon && bun test test/git-snapshot.test.ts test/git-changes.test.ts`, `cd packages/protocol && bun run test && bun run typecheck`, `bun run --cwd apps/desktop typecheck`
 **Commits:** None yet.
+
+## After Stage 8: can Clowdy replace GitHub Desktop? (owner's request of 2026-11-23, not started)
+
+The owner uses GitHub Desktop for one flow: change branch, commit, pull, push, Create PR, and wants Clowdy to make opening it unnecessary. To do after Stage 8 is in `next` (and Stage 9 is decided): a Research run (`.briefback/git-integration/research/github-desktop.md`) of GitHub Desktop's own docs and source (read-only clone in the scratchpad, as bb's was), ending in a table of what it does that Clowdy does not (named by GitHub Desktop's terms), what each missing piece would cost here, and what Clowdy's shared tree rule (`GITFLOW.md`: no branch switching in a tree other agents work in) means for "change branch"; then a Grill with the owner on which pieces to take and a plan if they are worth stages. Known gap before any research: nothing in Stages 1 to 9 switches or creates a branch.
