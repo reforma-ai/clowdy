@@ -33,6 +33,8 @@ export interface WorktreeOwner {
     main: boolean;
     /** The repository's primary working tree, which git itself never removes (the folder's own checkout is it, unless the folder is a linked worktree). */
     primary?: boolean;
+    /** Another folder of the project: a place the project works in, which a removal refuses even when it is a worktree of this folder's repository. */
+    sibling?: boolean;
     record?: WorkspaceRecord;
     chats?: WorktreeChat[];
 }
@@ -97,11 +99,11 @@ async function isInBase(folder: string, entry: ListedWorktree, base: string): Pr
 }
 
 /**
- * Why Remove is not offered, the first that holds: the folder's own checkout and the repository's primary one (git never removes them), a lock, and chats that work in the worktree
- * (an archived one included, since it may be picked up again).
+ * Why Remove is not offered, the first that holds: the folder's own checkout, another folder of the project and the repository's primary working tree (the last git never removes), a
+ * lock, and chats that work in the worktree (an archived one included, since it may be picked up again). `workspace.remove` refuses the same worktrees for the same reasons.
  */
 function blockOf(owner: WorktreeOwner, locked: boolean, chats: readonly WorktreeChat[]): WorktreeBlock | undefined {
-    if (owner.main || owner.primary) return 'main';
+    if (owner.main || owner.primary || owner.sibling) return 'main';
     if (locked) return 'locked';
 
     return chats.length > 0 ? 'chats' : undefined;
@@ -159,10 +161,10 @@ function readWorkspaces(store: Store, projectId: string): { records: WorkspaceRe
 /**
  * One folder's group: nothing for a folder gone from the disk (or replaced by a file) or that is no repository (a folder inside one has no worktree of its own), else the folder's own checkout first and
  * every worktree git lists after it, git's own order. Git lists the folder's checkout by its real place, so the row carries the folder's path as the project holds it; when the
- * folder is itself a linked worktree, the repository's primary one is among the others, flagged because git never removes it. A git that does not answer is `unavailable` for the
- * whole read, as for `GET /v1/projects/:id/git`.
+ * folder is itself a linked worktree, the repository's primary one is among the others, flagged because git never removes it, and so is the checkout of another folder of the
+ * project (`siblings`), which the project works in. A git that does not answer is `unavailable` for the whole read, as for `GET /v1/projects/:id/git`.
  */
-async function folderWorktrees(folder: ProjectFolder, name: string, records: readonly WorkspaceRecord[], chatsOf: ReadonlyMap<string, WorktreeChat[]>): Promise<FolderWorktrees> {
+async function folderWorktrees(folder: ProjectFolder, name: string, siblings: readonly string[], records: readonly WorkspaceRecord[], chatsOf: ReadonlyMap<string, WorktreeChat[]>): Promise<FolderWorktrees> {
     const none: FolderWorktrees = { folderId: folder.id, name, isRepository: false, worktrees: [] };
     const root = await isFolder(folder.path) ? await repositoryRoot(folder.path) : undefined;
 
@@ -199,15 +201,16 @@ async function folderWorktrees(folder: ProjectFolder, name: string, records: rea
     const context: WorktreeContext = { folder: folder.path, ...(defaultBase !== undefined && { defaultBase }), commitOfBase: baseCommits(folder.path) };
     const recordKeys = await Promise.all(records.filter(record => record.folderId === folder.id).map(async record => [await keyOf(record.path), record] as const));
     const recordAt = new Map(recordKeys);
-    const others = listed.flatMap((entry, index) => index === ownIndex ? [] : [{ entry, key: keys[index], primary: entry === primary }]);
+    const siblingKeys = new Set(await Promise.all(siblings.map(keyOf)));
+    const others = listed.flatMap((entry, index) => index === ownIndex ? [] : [{ entry, key: keys[index], primary: entry === primary, sibling: siblingKeys.has(keys[index]) }]);
     // The folder's own checkout is the first row, with no record and no chats: it is where chats work when they have no worktree.
     const worktrees: WorktreeInfo[] = [await inspectWorktree(context, { ...own, path: resolve(folder.path) }, { main: true })];
 
     for (let start = 0; start < others.length; start += INSPECTIONS) {
-        worktrees.push(...await Promise.all(others.slice(start, start + INSPECTIONS).map(({ entry, key, primary }) => {
+        worktrees.push(...await Promise.all(others.slice(start, start + INSPECTIONS).map(({ entry, key, primary, sibling }) => {
             const record = recordAt.get(key);
 
-            return inspectWorktree(context, entry, { main: false, primary, ...(record && { record, chats: chatsOf.get(record.id) }) });
+            return inspectWorktree(context, entry, { main: false, primary, sibling, ...(record && { record, chats: chatsOf.get(record.id) }) });
         })));
     }
 
@@ -225,7 +228,7 @@ export async function projectWorktrees(store: Store, project: Project): Promise<
     const groups: FolderWorktrees[] = [];
 
     for (const [index, folder] of project.folders.entries()) {
-        groups.push(await folderWorktrees(folder, names[index], records, chatsOf));
+        groups.push(await folderWorktrees(folder, names[index], project.folders.filter(other => other.id !== folder.id).map(other => other.path), records, chatsOf));
     }
 
     return groups;

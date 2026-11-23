@@ -475,6 +475,26 @@ describe('GET /v1/projects/:id/worktrees', () => {
         expect(group.worktrees[1]).toMatchObject({ path: real(primary), branch: 'main', main: false, blocked: 'main' });
     });
 
+    test('blocks the checkout of another folder of the project like the folder\'s own, though it is only a worktree of the same repository, and leaves a spare one free', async () => {
+        const root = tempDir('worktrees-folders');
+        const primary = makeRepo(root, 'primary');
+        const second = join(root, 'second');
+        const third = join(root, 'third');
+        const spare = join(root, 'spare');
+
+        for (const [name, path] of [['second', second], ['third', third], ['spare', spare]]) {
+            git(primary, 'worktree', 'add', '-q', '-b', name, path);
+        }
+
+        const { worktrees } = await setup([second, third]);
+        const [, group, other] = await worktrees();
+        const blocked = (rows: WorktreeInfo[]) => Object.fromEntries(rows.map(row => [basename(row.path), row.blocked ?? null]));
+
+        expect(blocked(group.worktrees)).toEqual({ second: 'main', primary: 'main', third: 'main', spare: null });
+        expect(blocked(other.worktrees)).toEqual({ third: 'main', primary: 'main', second: 'main', spare: null });
+        expect(group.worktrees.find(row => row.path === real(third))?.main).toBe(false);
+    });
+
     test('lists every worktree of a repository with many, in the order git lists them, though they are read a few at a time', async () => {
         const { rows, found, repo } = await setup();
         const names = Array.from({ length: 9 }, (_, index) => `many-${ index }`);
