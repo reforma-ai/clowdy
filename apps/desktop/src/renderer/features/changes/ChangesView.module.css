@@ -1,0 +1,23 @@
+/* The diffs in what is left, and the sidebar at its width at the right: the file manager's layout. */
+.root {
+    display: flex;
+    flex: 1;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    color: var(--color-text);
+}
+
+/* The panel library puts these on the element inside its panel, which is a block: make it a column that the parts fill. */
+.reading,
+.side {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+
+/* The icon of the 14 pack has its narrow part at the left; the sidebar is at the right. */
+.toggleIcon {
+    scale: -1 1;
+}

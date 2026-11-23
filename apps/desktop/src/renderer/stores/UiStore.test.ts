@@ -792,14 +792,35 @@ describe('UiStore', () => {
         expect([ui.sidePanelOpen, ui.sidePanelExpanded]).toEqual([false, false]);
     });
 
-    it('knows that Files and Docs are a tree beside a view', () => {
+    it('knows that Files, Docs and Changes are a list beside a view', () => {
         const ui = new UiStore(memoryStorage()).forProject('p1');
 
-        expect((['files', 'docs', 'terminal', 'info', 'tasks'] as const).map((tab) => {
+        expect((['files', 'docs', 'terminal', 'info', 'tasks', 'changes'] as const).map((tab) => {
             ui.showSidePanelTab(tab);
 
             return ui.sidePanelTabHasTree;
-        })).toEqual([true, true, false, false, false]);
+        })).toEqual([true, true, false, false, false, true]);
+    });
+
+    it('puts Changes beside the chat while the window fits it, and in the chat\'s place while it does not, as Files is', () => {
+        const store = new UiStore(memoryStorage());
+        const ui = store.forProject('p1');
+
+        ui.showSidePanelTab('changes');
+        ui.toggleSidePanel();
+        expect([ui.sidePanelNoHalf, ui.sidePanelTabIsFull, ui.sidePanelCoversChat]).toEqual([null, false, false]);
+
+        store.setWindowFitsHalf(false);
+        expect([ui.sidePanelNoHalf, ui.sidePanelTabIsFull, ui.sidePanelCoversChat]).toEqual(['window', true, true]);
+
+        // Nothing is kept for it: in a wider window the project's own choice is back.
+        store.setWindowFitsHalf(true);
+        expect([ui.sidePanelNoHalf, ui.sidePanelCoversChat, ui.sidePanelExpanded]).toEqual([null, false, false]);
+
+        // The tabs that do not have a tree stay beside the chat in a narrow window.
+        store.setWindowFitsHalf(false);
+        ui.showSidePanelTab('terminal');
+        expect([ui.sidePanelNoHalf, ui.sidePanelCoversChat]).toEqual([null, false]);
     });
 
     it('covers the chat on the Tasks tab whatever the expanded choice, and only while the panel is open', () => {
@@ -869,10 +890,13 @@ describe('UiStore', () => {
         expect(initialUiFromSearch('?panelTab=terminal')).toEqual({ sidePanelTab: 'terminal' });
         expect(initialUiFromSearch('?panelTab=docs')).toEqual({ sidePanelTab: 'docs' });
         expect(initialUiFromSearch('?panelTab=tasks')).toEqual({ sidePanelTab: 'tasks' });
+        expect(initialUiFromSearch('?panelTab=changes')).toEqual({ sidePanelTab: 'changes' });
         expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"sidePanelTab":"docs"}' })).forProject('p1').sidePanelTab).toBe('docs');
-        expect(initialUiFromSearch('?panelTab=changes')).toEqual({});
+        expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"sidePanelTab":"changes"}' })).forProject('p1').sidePanelTab).toBe('changes');
+        expect(initialUiFromSearch('?panelTab=checks')).toEqual({});
         expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"sidePanelTab":"terminal"}' })).forProject('p1').sidePanelTab).toBe('terminal');
-        expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"sidePanelTab":"changes"}' })).forProject('p1').sidePanelTab).toBe('info');
+        // A stored tab that is none (one a later version had, or damage) falls back to Info.
+        expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"sidePanelTab":"checks"}' })).forProject('p1').sidePanelTab).toBe('info');
     });
 
     it('reads the fold of the strip from the page URL, and drops what is damaged in storage', () => {

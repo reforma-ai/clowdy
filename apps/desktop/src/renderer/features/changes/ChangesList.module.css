@@ -1,0 +1,12 @@
+/* The cards fill what the toolbar leaves and scroll in it. The scroller is not set to stick to its end, so the browser keeps what is on screen where it is while a diff above it is built. */
+.list {
+    flex: 1;
+    min-height: 0;
+}
+
+.cards {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-8);
+    padding: var(--spacing-8);
+}

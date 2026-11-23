@@ -1,4 +1,4 @@
-import { Checkbox, Terminal } from '@clowdy/icons/14';
+import { Checkbox, Commit, Terminal } from '@clowdy/icons/14';
 import { File, Folder, Info, Settings } from '@clowdy/icons/16';
 
 import { commandTooltip } from '../../hotkeys';
@@ -15,6 +15,7 @@ import type { SidePanelTab } from '../../stores';
 /** The tabs of the rail, in order: the tools from the top, and Info at the bottom beside Settings. Each icon is drawn at its own size: the 16 pack where it has the glyph, else the 14 pack, never scaled. */
 const TABS: ReadonlyArray<{ tab: SidePanelTab; icon: typeof Info; size: number }> = [
     { tab: 'files', icon: Folder, size: 16 },
+    { tab: 'changes', icon: Commit, size: 14 },
     { tab: 'docs', icon: File, size: 16 },
     { tab: 'terminal', icon: Terminal, size: 14 },
     { tab: 'tasks', icon: Checkbox, size: 14 },
