@@ -186,10 +186,15 @@ withScripts('POST /v1/projects/:id/git/commit', () => {
         const path = repository();
         const { commit } = await open(path, h);
 
-        put(path, { 'src/[id].tsx': '1\n', 'star*.txt': '2\n', 'a b.txt': '3\n', 'src/other.tsx': '4\n', ':colon.txt': '5\n', 'it\'s.txt': '6\n', 'ünï.txt': '7\n' });
+        put(path, { 'src/[id].tsx': '1\n', 'star*.txt': '2\n', 'a b.txt': '3\n', 'src/other.tsx': '4\n', ':colon.txt': '5\n', 'it\'s.txt': '6\n', 'ünï.txt': '7\n', '--amend.txt': '8\n', '-p': '9\n' });
 
-        expect((await commit(['src/[id].tsx', 'star*.txt', 'a b.txt', ':colon.txt', 'it\'s.txt', 'ünï.txt'], 'Add odd names')).status).toBe(200);
-        expect(changedBy(path).map(line => line.split('\t')[1]).sort()).toEqual([':colon.txt', 'a b.txt', 'it\'s.txt', 'src/[id].tsx', 'star*.txt', 'ünï.txt'].sort());
+        const count = Number(git(path, 'rev-list', '--count', 'HEAD'));
+
+        // A name that starts with a dash is a path after `--`, and a message that starts with one is the value of `-m`: neither is an option.
+        expect((await commit(['src/[id].tsx', 'star*.txt', 'a b.txt', ':colon.txt', 'it\'s.txt', 'ünï.txt', '--amend.txt', '-p'], '--amend the odd names')).status).toBe(200);
+        expect(changedBy(path).map(line => line.split('\t')[1]).sort()).toEqual(['--amend.txt', ':colon.txt', '-p', 'a b.txt', 'it\'s.txt', 'src/[id].tsx', 'star*.txt', 'ünï.txt'].sort());
+        expect(git(path, 'log', '-1', '--format=%s')).toBe('--amend the odd names');
+        expect(Number(git(path, 'rev-list', '--count', 'HEAD'))).toBe(count + 1);
         expect(left(path)).toEqual(['?? src/other.tsx']);
     });
 
