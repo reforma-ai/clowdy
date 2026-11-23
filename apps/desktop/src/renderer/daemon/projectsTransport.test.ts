@@ -5,6 +5,7 @@ import { FixtureTransport } from './fixtureTransport';
 import { HttpTransport } from './httpTransport';
 
 import type { ClowdyEvent } from '@clowdy/protocol';
+import type { FixturePullRequestScript } from './fixtureData';
 
 describe('HttpTransport.getProjectsInfo', () => {
     it('asks for the information of every project', async () => {
@@ -109,16 +110,30 @@ describe('HttpTransport git reads', () => {
         ]);
     });
 
+    it('asks for the pull request of a place, a worktree of its folder included, and gives the daemon\'s answer', async () => {
+        const answer = { isRepository: true, access: 'ready', repo: { host: 'github.com', owner: 'acme', name: 'app' } };
+        const { urls, transport } = transportFor(answer);
+
+        expect(await transport.getGitPullRequest('prj a', { folderId: 'fld/b' })).toEqual(answer);
+        await transport.getGitPullRequest('prj a', { folderId: 'fld/b', workspaceId: 'wks 1' });
+        expect(urls).toEqual([
+            'http://127.0.0.1:4310/v1/projects/prj%20a/git/pull-request?folderId=fld%2Fb',
+            'http://127.0.0.1:4310/v1/projects/prj%20a/git/pull-request?folderId=fld%2Fb&workspaceId=wks+1',
+        ]);
+    });
+
     it('rejects with the daemon\'s own reason and status, for the strip to say why, and with the status when it gives none', async () => {
         const gone = transportFor({ error: { code: 'unavailable', message: 'The worktree /w/app is missing' } }, 503).transport;
 
         await expect(gone.getGitStatus('prj_a', { folderId: 'fld_b', workspaceId: 'wks_c' })).rejects.toMatchObject({ message: 'The worktree /w/app is missing', status: 503 });
         await expect(gone.getGitChanges('prj_a', { folderId: 'fld_b' }, 'all')).rejects.toMatchObject({ status: 503 });
         await expect(gone.getGitFile('prj_a', { folderId: 'fld_b' }, 'all', 'a.ts')).rejects.toMatchObject({ status: 503 });
+        await expect(gone.getGitPullRequest('prj_a', { folderId: 'fld_b' })).rejects.toMatchObject({ message: 'The worktree /w/app is missing', status: 503 });
 
         const bare = new HttpTransport({ url: 'http://127.0.0.1:4310', token: 't', fetch: (async () => new Response('Bad gateway', { status: 502 })) as unknown as typeof fetch });
 
         await expect(bare.getGitStatus('prj_a', { folderId: 'fld_b' })).rejects.toMatchObject({ message: expect.stringContaining('502'), status: 502 });
+        await expect(bare.getGitPullRequest('prj_a', { folderId: 'fld_b' })).rejects.toMatchObject({ message: expect.stringContaining('502'), status: 502 });
     });
 });
 
@@ -324,6 +339,101 @@ describe('FixtureTransport git reads', () => {
 
         data.chats.find(chat => chat.workspace)!.workspace!.ready = false;
         await expect(new FixtureTransport({ data }).getGitStatus(FIXTURE_PROJECT_ID, inWorktree)).rejects.toMatchObject({ status: 503 });
+    });
+});
+
+describe('FixtureTransport pull request reads', () => {
+    const place = { folderId: 'fld_car_rental' };
+    const inWorktree = { ...place, workspaceId: 'wks_ab12cd34' };
+    const worktree = () => new FixtureTransport({ data: withFixtureWorkspace(createFixtureData()) });
+    const repo = { host: 'github.com', owner: 'acme', name: 'car-rental' };
+
+    /** A fixture whose Car Rental checkout is scripted as `script`. */
+    function scripted(script: FixturePullRequestScript) {
+        const data = createFixtureData();
+
+        data.pullRequests['/Users/dev/car-rental'] = { checkout: script };
+
+        return new FixtureTransport({ data });
+    }
+
+    it('says the checkout on the default branch has no pull request, with gh ready', async () => {
+        expect(await new FixtureTransport().getGitPullRequest(FIXTURE_PROJECT_ID, place)).toEqual({ isRepository: true, access: 'ready', repo });
+    });
+
+    it('gives a chat\'s worktree an open pull request with a failing, a pending and a passing check, counted and listed worst first', async () => {
+        const info = await worktree().getGitPullRequest(FIXTURE_PROJECT_ID, inWorktree);
+
+        expect(info).toMatchObject({
+            isRepository: true,
+            access: 'ready',
+            repo,
+            pullRequest: {
+                number: 128,
+                state: 'open',
+                url: 'https://github.com/acme/car-rental/pull/128',
+                base: 'main',
+                head: 'clowdy/ab12cd34',
+                headCommit: FIXTURE_GIT_COMMITS[0]!.sha,
+                reviewDecision: 'review_required',
+                mergeability: 'blocked',
+                checks: { state: 'failing', passing: 3, failing: 1, pending: 2, skipped: 1 },
+            },
+        });
+
+        const { items } = (info as { pullRequest: { checks: { items: Array<{ name: string; state: string }> } } }).pullRequest.checks;
+
+        expect(items.map(item => item.state)).toEqual(['failing', 'pending', 'pending', 'passing', 'passing', 'passing', 'skipped']);
+        expect(items.every(item => item.state === 'skipped' || (item as { url?: string }).url !== undefined)).toBe(true);
+    });
+
+    it('scripts the other places: a merged pull request on Clowdy\'s branch, a draft on the API\'s, and a closed one on request', async () => {
+        const transport = new FixtureTransport();
+
+        expect(await transport.getGitPullRequest(FIXTURE_EMPTY_PROJECT_ID, { folderId: 'fld_clowdy' })).toMatchObject({
+            access: 'ready',
+            repo: { host: 'github.com', owner: 'acme', name: 'clowdy' },
+            pullRequest: { number: 31, state: 'merged', head: 'next', checks: { state: 'passing', failing: 0, pending: 0 } },
+        });
+        expect((await scripted('draft').getGitPullRequest(FIXTURE_PROJECT_ID, place) as { pullRequest: unknown }).pullRequest).toMatchObject({ number: 54, state: 'draft', head: 'main', checks: { state: 'pending', pending: 1 } });
+        expect((await scripted('closed').getGitPullRequest(FIXTURE_PROJECT_ID, place) as { pullRequest: unknown }).pullRequest).toMatchObject({ number: 19, state: 'closed', checks: { state: 'failing' } });
+        expect((await scripted('merged').getGitPullRequest(FIXTURE_PROJECT_ID, place) as { pullRequest: { mergeability?: unknown } }).pullRequest.mergeability).toBeUndefined();
+    });
+
+    it('says what a machine without gh, one not signed in, and a folder with no remote look like, and that a folder that is no repository is none', async () => {
+        expect(await scripted('no_gh').getGitPullRequest(FIXTURE_PROJECT_ID, place)).toEqual({ isRepository: true, access: 'no_gh', repo });
+        expect(await scripted('not_signed_in').getGitPullRequest(FIXTURE_PROJECT_ID, place)).toEqual({ isRepository: true, access: 'not_signed_in', repo });
+        expect(await scripted('no_remote').getGitPullRequest(FIXTURE_PROJECT_ID, place)).toEqual({ isRepository: true, access: 'no_remote' });
+
+        const transport = new FixtureTransport();
+        const [personal] = (await transport.getRootSnapshot()).projects[0]!.folders;
+
+        expect(await transport.getGitPullRequest(FIXTURE_PERSONAL_PROJECT_ID, { folderId: personal!.id })).toEqual({ isRepository: false });
+    });
+
+    it('rejects as the daemon does when gh cannot read, with its reason and 503', async () => {
+        await expect(scripted('unavailable').getGitPullRequest(FIXTURE_PROJECT_ID, place)).rejects.toMatchObject({ message: 'GitHub didn\'t answer', status: 503 });
+    });
+
+    it('refuses what the daemon refuses: an unknown project, folder or worktree, and a worktree that is not made yet', async () => {
+        const transport = worktree();
+
+        await expect(transport.getGitPullRequest('p-none', place)).rejects.toMatchObject({ status: 404 });
+        await expect(transport.getGitPullRequest(FIXTURE_PROJECT_ID, { folderId: 'fld_none' })).rejects.toMatchObject({ status: 404 });
+        await expect(transport.getGitPullRequest(FIXTURE_PROJECT_ID, { ...place, workspaceId: 'wks_none' })).rejects.toMatchObject({ status: 404 });
+
+        const data = withFixtureWorkspace(createFixtureData());
+
+        data.chats.find(chat => chat.workspace)!.workspace!.ready = false;
+        await expect(new FixtureTransport({ data }).getGitPullRequest(FIXTURE_PROJECT_ID, inWorktree)).rejects.toMatchObject({ status: 503 });
+    });
+
+    it('does not give the same object twice, so a caller that edits an answer does not change the next', async () => {
+        const transport = worktree();
+        const first = await transport.getGitPullRequest(FIXTURE_PROJECT_ID, inWorktree) as { pullRequest: { checks: { items: unknown[] } } };
+
+        first.pullRequest.checks.items.length = 0;
+        expect((await transport.getGitPullRequest(FIXTURE_PROJECT_ID, inWorktree) as { pullRequest: { checks: { items: unknown[] } } }).pullRequest.checks.items).toHaveLength(7);
     });
 });
 

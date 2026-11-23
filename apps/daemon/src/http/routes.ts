@@ -25,6 +25,8 @@ import { eventStream } from './sse';
 
 import type { Health, Project, TaskArchivePage, TaskCommentsPage } from '@clowdy/protocol';
 import type { Services } from '../commands';
+import type { Place } from '../domain/places';
+import type { BaseOptions } from '../git/status';
 
 export interface RouteContext {
     services: Services;
@@ -81,6 +83,12 @@ export function createRoutes(context: RouteContext): Route[] {
 
     /** The place a request of the git reads names: the folder's own checkout, or its worktree (`workspaceId`), judged by `resolvePlace` as the file routes' are. */
     const gitPlaceOf = (projectId: string, url: URL) => resolvePlace(store, requireProject(store, projectId), url.searchParams.get('folderId') ?? '', url.searchParams.get('workspaceId') ?? undefined);
+    /** The base of the place's pull request, when `GET .../git/pull-request` found one lately, for the reads that compare a place with its base: they never ask GitHub themselves. */
+    const gitBaseOf = async (place: Place): Promise<BaseOptions> => {
+        const base = await services.pullRequests.baseHint(place);
+
+        return base === undefined ? {} : { base };
+    };
     /** The scope a request of the changes asks for: `all` when it names none. */
     const gitScopeOf = (url: URL) => {
         const scope = parseGitScope(url.searchParams.get('scope') ?? 'all');
@@ -211,14 +219,35 @@ export function createRoutes(context: RouteContext): Route[] {
             },
         },
         { method: 'GET', pattern: /^\/v1\/projects\/([^/]+)\/git$/, handle: async (_request, url, [id]) => json(await projectFolderGit(requireProject(store, id), url.searchParams.get('folderId') ?? '')) },
-        { method: 'GET', pattern: /^\/v1\/projects\/([^/]+)\/git\/status$/, handle: async (_request, url, [id]) => json(await placeStatus(gitPlaceOf(id, url))) },
-        { method: 'GET', pattern: /^\/v1\/projects\/([^/]+)\/git\/changes$/, handle: async (_request, url, [id]) => json(await placeChanges(gitPlaceOf(id, url), gitScopeOf(url))) },
+        {
+            method: 'GET',
+            pattern: /^\/v1\/projects\/([^/]+)\/git\/status$/,
+            handle: async (_request, url, [id]) => {
+                const place = gitPlaceOf(id, url);
+
+                return json(await placeStatus(place, await gitBaseOf(place)));
+            },
+        },
+        {
+            method: 'GET',
+            pattern: /^\/v1\/projects\/([^/]+)\/git\/changes$/,
+            handle: async (_request, url, [id]) => {
+                const place = gitPlaceOf(id, url);
+
+                return json(await placeChanges(place, gitScopeOf(url), await gitBaseOf(place)));
+            },
+        },
         {
             method: 'GET',
             pattern: /^\/v1\/projects\/([^/]+)\/git\/file$/,
-            handle: async (_request, url, [id]) => json(await placeFile(gitPlaceOf(id, url), gitScopeOf(url), url.searchParams.get('path') ?? '', url.searchParams.get('oldPath') ?? undefined)),
+            handle: async (_request, url, [id]) => {
+                const place = gitPlaceOf(id, url);
+
+                return json(await placeFile(place, gitScopeOf(url), url.searchParams.get('path') ?? '', url.searchParams.get('oldPath') ?? undefined, await gitBaseOf(place)));
+            },
         },
         { method: 'GET', pattern: /^\/v1\/projects\/([^/]+)\/worktrees$/, handle: async (_request, _url, [id]) => json(await projectWorktrees(store, requireProject(store, id))) },
+        { method: 'GET', pattern: /^\/v1\/projects\/([^/]+)\/git\/pull-request$/, handle: async (_request, url, [id]) => json(await services.pullRequests.read(gitPlaceOf(id, url))) },
         {
             method: 'GET',
             pattern: /^\/v1\/projects\/([^/]+)\/docs$/,

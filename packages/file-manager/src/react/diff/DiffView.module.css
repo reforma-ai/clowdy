@@ -1,0 +1,116 @@
+/*
+ * The diff on the editor's chrome (CodeEditor.module.css), with the tints of added and removed lines on Clowdy's tokens. The merge
+ * extension paints its own colors through a theme that is stronger than a class, so what it sets is overridden with !important, as the
+ * editor's styles do for the rest of CodeMirror.
+ */
+
+.root {
+    --diff-edge: 3px;
+
+    min-width: 0;
+    color: var(--color-text);
+    font-family: 'Menlo', ui-monospace, monospace;
+    font-size: var(--text-md);
+    line-height: var(--leading-md);
+}
+
+.content {
+    min-width: 0;
+}
+
+.content :global(.cm-editor) {
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    outline: none !important;
+}
+
+.content :global(.cm-scroller) {
+    font: inherit;
+    line-height: var(--leading-md);
+    /* Native bars hidden: ScrollChrome paints the thumb. */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.content :global(.cm-scroller)::-webkit-scrollbar {
+    display: none;
+}
+
+.content :global(.cm-content) {
+    padding-block: var(--spacing-8);
+}
+
+.content :global(.cm-line) {
+    padding-inline: var(--spacing-8) var(--spacing-16);
+}
+
+/* drawSelection paints this layer and hides the native ::selection. */
+.content :global(.cm-selectionBackground) {
+    background-color: color-mix(in srgb, var(--color-primary) 28%, transparent) !important;
+}
+
+/* Opaque, the host's surface: the gutter sticks while a long line scrolls under it. */
+.content :global(.cm-gutters) {
+    background-color: var(--color-surface) !important;
+    border: none !important;
+    color: var(--color-secondary-muted-text);
+    user-select: none;
+}
+
+.content :global(.cm-gutter) {
+    background-color: transparent !important;
+}
+
+.content :global(.cm-lineNumbers .cm-gutterElement) {
+    min-width: var(--spacing-24);
+    padding: 0 var(--spacing-6) 0 var(--spacing-12);
+}
+
+/* An added line: the tint, and an edge that takes from the padding what it takes in width, so the text stays in its column. */
+.content :global(.cm-changedLine) {
+    padding-inline-start: calc(var(--spacing-8) - var(--diff-edge)) !important;
+    border-inline-start: var(--diff-edge) solid var(--color-success);
+    background-color: var(--color-success-muted-light) !important;
+}
+
+/* A word the change touched inside an added line. */
+.content :global(.cm-changedText) {
+    background: var(--color-success-muted) !important;
+}
+
+/* Removed lines, drawn above the ones that replace them: the same edge and column, in the danger tint. */
+.content :global(.cm-deletedChunk) {
+    padding-block: 0 !important;
+    padding-inline: calc(var(--spacing-8) - var(--diff-edge)) var(--spacing-16) !important;
+    border-inline-start: var(--diff-edge) solid var(--color-danger);
+    background-color: var(--color-danger-muted-light) !important;
+}
+
+.content :global(.cm-deletedChunk .cm-deletedText) {
+    background: var(--color-danger-muted) !important;
+}
+
+/* The row that stands for unchanged lines; a click opens them. */
+.content :global(.cm-collapsedLines) {
+    padding-block: var(--spacing-4) !important;
+    background: var(--color-secondary-muted-light) !important;
+    color: var(--color-secondary-muted-text) !important;
+}
+
+.content :global(.cm-collapsedLines:hover) {
+    background: var(--color-secondary-muted) !important;
+}
+
+.content :global(.cm-collapsedLines::before),
+.content :global(.cm-collapsedLines::after) {
+    content: none !important;
+}
+
+/* A host's extension may show a tooltip (Add to chat); it is drawn inside the editor, so it takes the editor's look. */
+.content :global(.cm-tooltip) {
+    border: 1px solid var(--color-surface-border) !important;
+    border-radius: var(--radius-md);
+    background-color: var(--color-surface-float) !important;
+    color: var(--color-text) !important;
+}

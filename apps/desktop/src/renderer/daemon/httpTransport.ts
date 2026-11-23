@@ -19,6 +19,7 @@ import type {
     FolderWorktrees,
     GitChanges,
     GitFileSides,
+    GitPullRequestInfo,
     GitScope,
     GitStatus,
     ProjectFileMatch,
@@ -139,6 +140,10 @@ export class HttpTransport implements Transport {
 
     getProjectWorktrees(projectId: ProjectId): Promise<FolderWorktrees[]> {
         return this.#get(ROUTES.projectWorktrees(projectId));
+    }
+
+    getGitPullRequest(projectId: ProjectId, place: PlaceRef): Promise<GitPullRequestInfo> {
+        return this.#read(`${ ROUTES.projectGitPullRequest(projectId) }?${ placeQuery(place) }`);
     }
 
     getChatWorkspaceRemoval(chatId: ChatId): Promise<ChatWorkspaceRemoval> {

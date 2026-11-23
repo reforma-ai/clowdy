@@ -1,7 +1,8 @@
 /**
- * What the daemon reads of a place's git: the status of its working tree, how far its branch is from its base, the files that changed in a scope and the two texts of
- * one of them. A place is a folder's own checkout or a worktree of it (`resolvePlace`), named by `folderId` and an optional `workspaceId` as the file routes name it.
- * Every route is a read: nothing here writes to a repository, takes its index lock or goes to the network.
+ * What the daemon reads of a place's git: the status of its working tree, how far its branch is from its base, the files that changed in a scope, the two texts of
+ * one of them, and the pull request of its branch. A place is a folder's own checkout or a worktree of it (`resolvePlace`), named by `folderId` and an optional
+ * `workspaceId` as the file routes name it. Every route is a read: nothing here writes to a repository or takes its index lock, and only the pull request goes to the
+ * network, through the person's own `gh` (no token is kept or read by the daemon).
  *
  * GET  /v1/projects/:id/git/status?folderId=&workspaceId=
  *                                      -> GitStatus. The branch (or the detached or unborn HEAD), its upstream with ahead and behind, the files that are not
@@ -16,9 +17,15 @@
  *                                         after the change and `oldPath` the one it had before when the change renamed it (`GitChangedFile.oldPath`). A path
  *                                         that did not change in the scope is `not_found`; a path that is none (empty, absolute, with `.`, `..` or an empty part,
  *                                         or ending in `/`) and a folder that is not the root of a working tree are `invalid`.
+ * GET  /v1/projects/:id/git/pull-request?folderId=&workspaceId=
+ *                                      -> GitPullRequestInfo. Whether GitHub can be asked about the place (`gh` found and signed in for the host of `origin`) and
+ *                                         the pull request of the branch checked out, with its checks. Read by one `gh` call per branch and kept for a few
+ *                                         seconds, so several windows asking at once cost one. A branch with no pull request is `access: 'ready'` and no
+ *                                         `pullRequest`; a `gh` call that fails (it timed out, GitHub is out of reach or answers an error, the rate limit)
+ *                                         is `unavailable` with a short reason, never an empty answer.
  *
- * All three answer `invalid` for no `folderId`, `not_found` for a folder or a workspace that is not the project's, and `unavailable` for a folder or a worktree
- * that is gone from the disk or not made yet and for a git that does not answer in time.
+ * The first three answer `invalid` for no `folderId`, `not_found` for a folder or a workspace that is not the project's, and `unavailable` for a folder or a worktree
+ * that is gone from the disk or not made yet and for a git that does not answer in time; the fourth answers the same.
  */
 
 /**
@@ -215,3 +222,86 @@ export type GitFileSides =
     | { state: 'binary'; revision: string }
     /** A side is over `MAX_GIT_SIDE_BYTES`, or the file changes more than `MAX_GIT_DIFF_LINES` lines: no text. */
     | { state: 'too_large'; revision: string };
+
+/** Whether GitHub can be asked about a place: `gh` is found and signed in for the host of the place's `origin` (`ready`), is not installed (`no_gh`), has no login for the host (`not_signed_in`), or the place has no `origin` that names a repository as `host/owner/repo` (`no_remote`). */
+export type GitHubAccess = 'ready' | 'no_gh' | 'not_signed_in' | 'no_remote';
+
+/** The repository a place's `origin` names, as `host/owner/name`: nothing else of the remote's address (a credential in it, a port of ssh) is kept. */
+export interface GitHubRepo {
+    /** `github.com`, or a GitHub Enterprise server's name (with its port when a web address of `origin` has one); lower case. */
+    host: string;
+    owner: string;
+    name: string;
+}
+
+/** Where a pull request stands: `draft` is an open one not ready for review. */
+export type GitPullRequestState = 'open' | 'draft' | 'merged' | 'closed';
+
+/** How one check ended: `skipped` is a check that was not run on purpose (it does not count against the pull request); an unfinished one, or one that GitHub has not said how it ended, is `pending`. */
+export type GitCheckState = 'passing' | 'failing' | 'pending' | 'skipped';
+
+/** One check of the pull request's head commit: a check run or a commit status. */
+export interface GitCheck {
+    /** The check run's name, or the status's context. */
+    name: string;
+    state: GitCheckState;
+    /** Where the check's own page is. */
+    url?: string;
+}
+
+/** The checks of a pull request's head commit, one for each name (the latest run of it), and what they add up to. */
+export interface GitChecks {
+    /** `none` when no check ran, `failing` when one failed, else `pending` when one is not finished, else `passing`. */
+    state: 'none' | 'passing' | 'failing' | 'pending';
+    /** How many checks there are in each state. */
+    passing: number;
+    failing: number;
+    pending: number;
+    skipped: number;
+    /** Failing first, then pending, passing and skipped; by name within a state. At most `MAX_GIT_CHECKS` (the first that GitHub lists). */
+    items: GitCheck[];
+    /** GitHub has more checks than `MAX_GIT_CHECKS`: `items` and the counts cover the first ones, and `state` is the worse of what they say and what GitHub says of all of them. */
+    truncated?: true;
+}
+
+/** The most checks `GitChecks` lists: GitHub's first page of them. */
+export const MAX_GIT_CHECKS = 100;
+
+/** What reviewers have decided, when the repository asks for a review. */
+export type GitReviewDecision = 'approved' | 'changes_requested' | 'review_required';
+
+/** Whether an open pull request can be merged as it stands: `conflicts` with its base, `blocked` by a rule (a review, a check, a branch that is behind), else `mergeable`. Absent for a merged or closed one and while GitHub has not worked it out. */
+export type GitMergeability = 'mergeable' | 'blocked' | 'conflicts';
+
+/** The pull request of the place's branch, as far as the app shows it. */
+export interface GitPullRequest {
+    number: number;
+    title: string;
+    /** Its page on GitHub. */
+    url: string;
+    state: GitPullRequestState;
+    /** The branch it is to be merged into (`main`), as GitHub names it, not a ref of the place's repository. */
+    base: string;
+    /** The branch it comes from, which is the branch the place has checked out. */
+    head: string;
+    /** The commit its branch is at on GitHub. */
+    headCommit: string;
+    /** When GitHub last changed it, in milliseconds. */
+    updatedAt: number;
+    reviewDecision?: GitReviewDecision;
+    mergeability?: GitMergeability;
+    checks: GitChecks;
+}
+
+/**
+ * What `GET /v1/projects/:id/git/pull-request` says of a place: that it is no repository, or whether GitHub can be asked and the pull request of its branch. `repo` is there
+ * whenever `origin` names one, also when `access` says `gh` is missing or not signed in (the app tells the person which host to sign in to). A branch with no pull request,
+ * or with a merged or closed one that its HEAD has moved past, has none: `pullRequest` is absent. A detached HEAD and a branch with no commit have nothing to look up, so
+ * `gh` is not run for them: `access` is `ready` (nothing known is in the way) and there is no `pullRequest`.
+ */
+export type GitPullRequestInfo = { isRepository: false } | {
+    isRepository: true;
+    access: GitHubAccess;
+    repo?: GitHubRepo;
+    pullRequest?: GitPullRequest;
+};

@@ -16,8 +16,12 @@ import type {
     FolderWorktrees,
     GitChangedFile,
     GitChanges,
+    GitCheck,
     GitCommit,
     GitFileSides,
+    GitHubRepo,
+    GitPullRequest,
+    GitPullRequestInfo,
     GitScope,
     GitStatus,
     PermissionPresetId,
@@ -46,6 +50,11 @@ export interface FixtureData {
      * disk, as `GET /v1/projects/:id/worktrees` describes them (`fixtureProjectWorktrees`). A folder that is not listed has none.
      */
     worktrees?: Record<string, FixtureWorktree[]>;
+    /**
+     * What `GET git/pull-request` says of each folder, by the folder's path: of its own checkout (`checkout`, `none` when it is left out) and of the worktrees a chat works in
+     * (`worktree`, `open` when it is left out). See `fixtureGitPullRequest`.
+     */
+    pullRequests: Record<string, { checkout?: FixturePullRequestScript; worktree?: FixturePullRequestScript }>;
     statuses: Record<string, TaskStatus[]>;
     chats: Chat[];
     /** Every task of every project, the archived ones too: the snapshot leaves those out, and `getTaskDetail` and the archive's pages read them. */
@@ -461,6 +470,85 @@ export const FIXTURE_WORKSPACES_ROOT = '/Users/dev/Clowdy/workspaces';
  * fixture's `files`, `docs` and `briefback` (a new one a chat made) is a checkout of the same commit, so it has its folder's.
  */
 export const FIXTURE_WORKTREE_PATH = `${ FIXTURE_WORKSPACES_ROOT }/car-rental/ab12cd34/car-rental`;
+
+/**
+ * What `GET git/pull-request` says of a place of the fixture, scripted by place: an open pull request with a failing, a pending and a passing check, a draft, a merged and a
+ * closed one, a branch with none, a machine without `gh`, one that is not signed in, a folder whose `origin` names no repository, and a `gh` that cannot read (the daemon's 503).
+ */
+export type FixturePullRequestScript = 'none' | 'open' | 'draft' | 'merged' | 'closed' | 'no_gh' | 'not_signed_in' | 'no_remote' | 'unavailable';
+
+/** What the daemon says when `gh` cannot read a pull request, which the fixture's `unavailable` script answers with its status. */
+export const FIXTURE_PULL_REQUEST_UNAVAILABLE = 'GitHub didn\'t answer';
+
+/** The repository an `origin` address of the fixture names (`git@github.com:acme/car-rental.git`, `https://github.com/acme/clowdy.git`), nothing for a folder that has none. */
+function fixtureRepoOf(remoteUrl: string | undefined): GitHubRepo | undefined {
+    const found = remoteUrl && /^(?:[^@/]+@)?(?:https:\/\/)?([^/:]+)[:/]([^/]+)\/([^/]+?)(?:\.git)?$/.exec(remoteUrl);
+
+    return found ? { host: found[1]!, owner: found[2]!, name: found[3]! } : undefined;
+}
+
+/** The checks of the fixture's open pull request: one that failed, two that are running, some that passed and one that was skipped, as a commit status and check runs. */
+const FIXTURE_CHECKS: GitCheck[] = [
+    { name: 'unit (windows)', state: 'failing', url: 'https://github.com/acme/car-rental/actions/runs/101/job/2' },
+    { name: 'e2e', state: 'pending', url: 'https://github.com/acme/car-rental/actions/runs/101/job/4' },
+    { name: 'unit (ubuntu)', state: 'pending', url: 'https://github.com/acme/car-rental/actions/runs/101/job/3' },
+    { name: 'ci/deploy-preview', state: 'passing', url: 'https://preview.car-rental.example/pr-128' },
+    { name: 'lint', state: 'passing', url: 'https://github.com/acme/car-rental/actions/runs/101/job/1' },
+    { name: 'typecheck', state: 'passing', url: 'https://github.com/acme/car-rental/actions/runs/101/job/5' },
+    { name: 'docs', state: 'skipped' },
+];
+
+/** The checks of a pull request that has them all in one state (counted, and listed by name). */
+function fixtureChecksOf(items: GitCheck[]): GitPullRequest['checks'] {
+    const count = (state: GitCheck['state']) => items.filter(item => item.state === state).length;
+    const [passing, failing, pending, skipped] = [count('passing'), count('failing'), count('pending'), count('skipped')];
+
+    return { state: items.length === 0 ? 'none' : failing > 0 ? 'failing' : pending > 0 ? 'pending' : 'passing', passing, failing, pending, skipped, items: structuredClone(items) };
+}
+
+/**
+ * What `GET git/pull-request` answers for a place of the fixture, by the script the folder gives it (`FixtureData.pullRequests`): no repository when `git` says nothing of the
+ * folder, else the access the script names and, for a pull request, one of the four below, each of the branch the place has. `undefined` for the script that stands for a
+ * `gh` that cannot read, which the daemon answers `unavailable`.
+ *
+ * - `open`: #128, review required, blocked by it, with the checks above (one failing, two pending, three passing, one skipped);
+ * - `draft`: #54, whose only check is running;
+ * - `merged`: #31, whose checks passed, with the branch at the pull request's head (a branch that went on has none);
+ * - `closed`: #19, with a failing check.
+ */
+export function fixtureGitPullRequest(head: FixtureData['git'][string] | undefined, scripts: FixtureData['pullRequests'][string] | undefined, workspace: Pick<ChatWorkspace, 'branch'> | undefined): GitPullRequestInfo | undefined {
+    if (!head?.branch) return { isRepository: false };
+
+    const script = workspace ? scripts?.worktree ?? 'open' : scripts?.checkout ?? 'none';
+    const repo = fixtureRepoOf(head.remoteUrl);
+    const branch = workspace ? workspace.branch ?? 'clowdy/ab12cd34' : head.branch;
+    const headCommit = workspace ? FIXTURE_GIT_COMMITS[0]!.sha : FIXTURE_BASE_COMMIT;
+
+    if (script === 'unavailable') return undefined;
+
+    if (script === 'no_remote' || !repo) return { isRepository: true, access: 'no_remote' };
+
+    if (script === 'no_gh' || script === 'not_signed_in') return { isRepository: true, access: script, repo };
+
+    const pullRequest = (number: number, title: string, fields: Partial<GitPullRequest> & Pick<GitPullRequest, 'state' | 'checks'>): GitPullRequest => ({
+        number,
+        title,
+        url: `https://${ repo.host }/${ repo.owner }/${ repo.name }/pull/${ number }`,
+        base: 'main',
+        head: branch,
+        headCommit,
+        updatedAt: Date.UTC(2026, 10, 22, 9, 30),
+        ...fields,
+    });
+    const found: Record<Exclude<FixturePullRequestScript, 'none' | 'no_gh' | 'not_signed_in' | 'no_remote' | 'unavailable'>, GitPullRequest> = {
+        open: pullRequest(128, 'Charge a weekend surcharge', { state: 'open', reviewDecision: 'review_required', mergeability: 'blocked', checks: fixtureChecksOf(FIXTURE_CHECKS) }),
+        draft: pullRequest(54, 'Take payments with Stripe', { state: 'draft', checks: fixtureChecksOf([{ name: 'unit', state: 'pending', url: 'https://github.com/acme/car-rental-api/actions/runs/77/job/1' }]) }),
+        merged: pullRequest(31, 'Release the booking form', { state: 'merged', reviewDecision: 'approved', checks: fixtureChecksOf(FIXTURE_CHECKS.filter(check => check.state === 'passing')) }),
+        closed: pullRequest(19, 'Try a three-step booking form', { state: 'closed', checks: fixtureChecksOf([{ name: 'unit (ubuntu)', state: 'failing', url: 'https://github.com/acme/car-rental/actions/runs/58/job/1' }]) }),
+    };
+
+    return { isRepository: true, access: 'ready', repo, ...(script !== 'none' && { pullRequest: structuredClone(found[script]) }) };
+}
 
 /** The commit the fixture's `origin/main` is at, and the one the worktree's branch started from: 40 hexadecimal digits of one digit, which is all a fixture needs of an id. */
 const FIXTURE_BASE_COMMIT = '3'.repeat(40);
@@ -1451,6 +1539,8 @@ export function createFixtureData(now = Date.now()): FixtureData {
                 { path: '/Users/dev/orca/car-rental-api/readme', head: '3a2b1c0' },
             ],
         },
+        // Car Rental's own checkout is on `main` and has no pull request, the worktree of its chat has an open one; Clowdy's `next` has one that merged, and the API's branch a draft.
+        pullRequests: { '/Users/dev/car-rental': { checkout: 'none', worktree: 'open' }, '/Users/dev/clowdy': { checkout: 'merged' }, '/Users/dev/car-rental-api': { checkout: 'draft' } },
         statuses: { [projectId]: DEFAULT_STATUSES, [FIXTURE_EMPTY_PROJECT_ID]: DEFAULT_STATUSES, [FIXTURE_PERSONAL_PROJECT_ID]: DEFAULT_STATUSES },
         // As the daemon's migration leaves them: a chat that has an orchestrator records the engine and model it runs on.
         chats: chats.map((chat) => {
