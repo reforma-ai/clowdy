@@ -5,7 +5,12 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--spacing-lg);
-    padding: var(--spacing-xl) var(--spacing-xxl) var(--spacing-lg);
+    /*
+     * The title is one line, so the toolbar's buttons, which are taller, set the row's height and the title is centred on them, as the title of the list of chats is on its buttons
+     * (`AgentList.module.css`). Below, the room is what the list of chats has under its heading (the margin of 12, the list's own 8) and half the difference between its 36px
+     * row and the 20px heading of a column of the board: the heads of the columns stand level with the New chat row, their middle at its middle.
+     */
+    padding: var(--spacing-lg) var(--spacing-lg) calc(var(--spacing-xxl) + var(--spacing-md));
 }
 
 .titles {

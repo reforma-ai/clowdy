@@ -11,7 +11,7 @@ import { requireChat } from './chats';
 import { requireProject, requireStatus, statusOfCategory } from './projects';
 import { TaskTree } from './taskTree';
 
-import type { Actor, ChatTaskLink, RunTaskLink, Task, TaskStatusCategory } from '@clowdy/protocol';
+import type { Actor, ChatTaskLink, Project, RunTaskLink, Task, TaskStatusCategory } from '@clowdy/protocol';
 import type { Store } from '../store';
 
 export function requireTask(store: Store, taskId: string): Task {
@@ -43,15 +43,23 @@ export function resolveTask(store: Store, projectId: string, reference: string):
         return byId;
     }
 
-    const project = requireProject(store, projectId);
-    const match = /^(.+)-(\d+)$/.exec(reference);
-    const byKey = match && match[1].toUpperCase() === project.taskPrefix ? getTaskByNumber(store.db, projectId, Number(match[2])) : undefined;
+    const byKey = findTaskByKey(store, requireProject(store, projectId), reference);
 
     if (!byKey) {
         throw notFound('Task', reference);
     }
 
     return byKey;
+}
+
+/**
+ * The task of `project` that `key` names: `<taskPrefix>-<number>`, the prefix in any case, the task archived or not. `undefined` for anything else (another
+ * project's prefix, no number, a number nobody has), so a caller decides what that means.
+ */
+export function findTaskByKey(store: Store, project: Project, key: string): Task | undefined {
+    const match = /^(.+)-(\d+)$/.exec(key);
+
+    return match && match[1].toUpperCase() === project.taskPrefix ? getTaskByNumber(store.db, project.id, Number(match[2])) : undefined;
 }
 
 /** Whether `taskId` already depends on any of `dependencies`, directly or through other tasks. */

@@ -4,6 +4,7 @@ import { ContentColumn } from '@clowdy/components/ContentColumn';
 import { Loader } from '@clowdy/components/Loader';
 import { Text } from '@clowdy/components/Text';
 import { AttentionCircle, Split } from '@clowdy/icons/14';
+import { shownRunStatus } from '@clowdy/protocol';
 import { useMemo, useRef } from 'react';
 
 import { useAgents, useChatStream, useProjectState, useProjectUi, useRootStore } from '../../stores';
@@ -83,7 +84,7 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
 
             { stream && (stream.status === 'idle' || stream.status === 'loading') && (
                 <div className={ styles.center }>
-                    <Loader size="xxl" />
+                    <Loader size="xs" />
                     <Text color="secondary">Loading messages…</Text>
                 </div>
             ) }
@@ -92,7 +93,7 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
                 <StreamView
                     items={ items }
                     active={ isRunActive(run) }
-                    working={ isRunActive(run) && liveLine(run.status) }
+                    working={ isRunActive(run) && liveLine(shownRunStatus(run)) }
                     links={ links }
                     // Reply puts a message in the message box as a card, or quotes selected words into the draft; a fork is a conversation to go on in, and an edit sends the
                     // message again: a chat that is read only has none of them. The chat is rewritten from a message only at rest, so while the agent works Edit is not drawn.
@@ -122,6 +123,12 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
                     onAnswer={ run?.status === 'waiting_user'
                         ? async (questionId, answer) => {
                             await perform(root, { type: 'run.answer', runId: run.id, questionId, answer });
+                        }
+                        : undefined }
+                    // A request for permission is decided while its own item is open, whatever the run is doing, so the card gates itself and the handler only needs a run to name.
+                    onDecide={ run
+                        ? async (approvalId, decision) => {
+                            await perform(root, { type: 'run.decide', runId: run.id, approvalId, decision });
                         }
                         : undefined }
                 />

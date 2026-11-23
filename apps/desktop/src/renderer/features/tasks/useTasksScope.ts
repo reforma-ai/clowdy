@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { scopeContent, taskNotes, tasksMode } from './scopeView';
-import { openScope, settledUi, settleScope } from './tasksScope';
+import { taskNav } from './taskNav';
 import { keepAmong, TaskTree } from './taskTree';
 import { filterTasks, isFiltering } from './taskView';
 
@@ -21,8 +21,7 @@ export interface UseTasksScopeOptions {
 /**
  * What the Tasks screen shows and how it moves: the scope (a task, or the project's roots), the view it is drawn in, the content of that view with the filter in it,
  * and the cursor's grid, which follows the content. The view is the project's own at the roots and the task page's inside a task, and the sub-tasks toggle is one for both.
- * The actions that make a place in the history settle a scope that is gone first (`settleScope`). While the archive is shown the scope is still the same (it comes back
- * when the archive is left), but the cursor walks nothing.
+ * While the archive is shown the scope is still the same (it comes back when the archive is left), but the cursor walks nothing.
  */
 export function useTasksScope({ cursor, filter, runsOfTask }: UseTasksScopeOptions) {
     const root = useRootStore();
@@ -58,7 +57,7 @@ export function useTasksScope({ cursor, filter, runsOfTask }: UseTasksScopeOptio
     const open = (taskId: TaskId | null) => {
         if (taskId !== scopeId) left.current = scopeId;
 
-        openScope(root, project, ui, taskId);
+        ui.setTasksScope(taskId);
     };
 
     const setView = (next: TasksView) => (scopeId === null ? ui.setTasksView(next) : ui.setTaskPageView(next));
@@ -100,9 +99,7 @@ export function useTasksScope({ cursor, filter, runsOfTask }: UseTasksScopeOptio
         open,
         setView,
         commandDeps,
-        /** Settles a scope that is gone, before the person's next step makes a place in the history. */
-        settle: () => settleScope(root, project, ui),
         /** The store as the screen's own clicks and keys navigate with it: the tasks they open are drawn already, so nothing moves to show them. */
-        nav: settledUi(root, project, ui, { reveal: false }),
+        nav: taskNav(root, project, ui, { reveal: false }),
     };
 }

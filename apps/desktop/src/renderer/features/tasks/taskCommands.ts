@@ -46,7 +46,7 @@ export function focusZoneOf(active: Element | null, region: Element | null): Foc
 
 export interface TaskCommandDeps {
     cursor: ListCursor;
-    ui: Pick<ProjectUi, 'taskId' | 'openTask' | 'openDoc'>;
+    ui: Pick<ProjectUi, 'taskId' | 'openTask'> & { openDoc: (path: string) => void };
     /** Shows a chat in the Agents section, bringing it out of the archive first when it is in it. */
     openChat: (chatId: ChatId) => void;
     /** Whether the task still exists. The open task can be one that is gone, and then there is no panel to follow with. */
@@ -114,8 +114,6 @@ export interface TaskCommandDeps {
     copy: (text: string, message: string) => void;
     /** Shows a short message to the person. */
     notify: (message: string, tone?: 'info' | 'error') => void;
-    /** Runs a change of what the window shows so that it overwrites the current history entry instead of adding one. See `NavHistory.replacing`. */
-    replacing: (change: () => void) => void;
 }
 
 /**
@@ -136,14 +134,11 @@ function onTargets(deps: TaskCommandDeps, act: () => void) {
     else deps.revealCursor();
 }
 
-/**
- * After the cursor moved: an open panel follows it, and the item shows.
- * The following replaces the history entry, so holding `J` does not fill Back with every task it passed. Opening a task on purpose (`Enter`, a click) is an entry.
- */
-function settle({ cursor, ui, hasTask, revealCursor, replacing }: TaskCommandDeps) {
+/** After the cursor moved: an open panel follows it, and the item shows. */
+function settle({ cursor, ui, hasTask, revealCursor }: TaskCommandDeps) {
     const { cursorId } = cursor;
 
-    if (cursorId !== null && ui.taskId !== null && hasTask(ui.taskId)) replacing(() => ui.openTask(cursorId));
+    if (cursorId !== null && ui.taskId !== null && hasTask(ui.taskId)) ui.openTask(cursorId);
 
     revealCursor();
 }
@@ -571,7 +566,7 @@ function cursorTask({ cursor, tasks }: TaskCommandDeps): Task | undefined {
     return cursor.cursorId === null ? undefined : tasks().find(task => task.id === cursor.cursorId);
 }
 
-/** Opens the task's newest document in Documents, or says why it cannot. Asking the daemon takes a moment, so the task is the one the key was pressed on. */
+/** Opens the task's newest document on the Docs tab, or says why it cannot. Asking the daemon takes a moment, so the task is the one the key was pressed on. */
 async function openLatestDoc({ ui, docPathOf, notify }: TaskCommandDeps, task: Task): Promise<void> {
     try {
         const path = await docPathOf(task.id);

@@ -10,6 +10,8 @@ import { ListCursor } from '../../hotkeys/listCursor';
 import { createRegistry } from '../../hotkeys/registry';
 import { createUndoStack, type UndoStack } from '../../hotkeys/undo';
 import { RootStore } from '../../stores';
+import { openDocument } from '../files/openDocument';
+import { filesStoreOf } from '../files/useFilesStore';
 import { archiveTasks } from './archiveActions';
 import { startTask } from './commands';
 import { taskCommands, TASKS_SCOPE, type TaskCommandDeps } from './taskCommands';
@@ -105,9 +107,17 @@ async function mount(refuse: (input: CommandInput) => string | undefined = () =>
     // `Screen` gives the cursor the grid again whenever the tasks change.
     stopFollowing = reaction(() => taskGrid('list', project().taskList, project().statuses), grid => cursor.setGrid(grid));
 
+    // The window's state the commands navigate with: the real task selection, and a document opened where the real window opens it.
+    const taskUi: TaskCommandDeps['ui'] = {
+        get taskId() {
+            return ui().taskId;
+        },
+        openTask: (...args) => ui().openTask(...args),
+        openDoc: path => void openDocument(root, project(), path),
+    };
     const deps: TaskCommandDeps = {
         cursor,
-        ui: ui(),
+        ui: taskUi,
         hasTask: id => project().tasks.has(id),
         view: () => 'list',
         setView: view => ui().setTasksView(view),
@@ -139,7 +149,6 @@ async function mount(refuse: (input: CommandInput) => string | undefined = () =>
         docPathOf: async id => newestDocPath((await root.transport.getTaskDetail(id)).artifacts),
         copy: (text, message) => copied.push({ text, message }),
         notify: (message, tone) => notices.push({ message, tone }),
-        replacing: change => root.history.replacing(change),
     };
     const registry = createRegistry('darwin');
 
@@ -175,6 +184,7 @@ beforeEach(() => {
 afterEach(() => {
     uninstall();
     stopFollowing();
+    filesStoreOf(root).dispose();
     root.dispose();
     vi.useRealTimers();
 });
@@ -503,11 +513,10 @@ describe('Open the linked chat', () => {
         press('c');
 
         expect(project().chatsOfTask('t-28').map(chat => chat.id).sort()).toEqual(['c-2', 'c-4']);
-        expect(ui().section).toBe('agents');
         expect(ui().chatId).toBe('c-4');
     });
 
-    it('says so for a task no chat discusses, and stays on the Tasks screen', async () => {
+    it('says so for a task no chat discusses, and leaves the window as it was', async () => {
         await mount();
         ui().openTask(null);
         goTo('t-30');
@@ -515,13 +524,16 @@ describe('Open the linked chat', () => {
         press('c');
 
         expect(project().chatsOfTask('t-30')).toEqual([]);
-        expect(ui().section).toBe('tasks');
+        expect(ui().chatId).toBeNull();
         expect(notices).toEqual([{ message: 'CAR-30 has no chat yet', tone: undefined }]);
     });
 });
 
 describe('Open the latest document', () => {
-    it('opens the newest document the daemon lists for the task, in Documents', async () => {
+    /** The paths open in the tabs of the main folder's file manager, which the Files and Docs tabs share. */
+    const tabsOfFolder = (kind: 'files' | 'docs' = 'docs') => filesStoreOf(root).managerOf(FIXTURE_PROJECT_ID, { folder: project().project.folders[0] }, kind).tabs.documents.map(document => document.path);
+
+    it('opens the newest document the daemon lists for the task, on the Docs tab', async () => {
         await mount();
         artifactsOf['t-23'] = [docArtifact('old', 'notes/old.md', 1), docArtifact('new', 'decisions/pricing.md', 9)];
         goTo('t-23');
@@ -529,8 +541,8 @@ describe('Open the latest document', () => {
         press('d');
         await settle();
 
-        expect(ui().section).toBe('docs');
-        expect(ui().docPath).toBe('decisions/pricing.md');
+        expect([ui().sidePanelOpen, ui().sidePanelTab]).toEqual([true, 'docs']);
+        expect(tabsOfFolder()).toEqual(['.clowdy/docs/decisions/pricing.md']);
         expect(notices).toEqual([]);
     });
 
@@ -541,7 +553,7 @@ describe('Open the latest document', () => {
         press('d');
         await settle();
 
-        expect(ui().docPath).toBeNull();
+        expect(ui().sidePanelOpen).toBe(false);
         expect(notices).toEqual([{ message: 'CAR-23 has no document yet', tone: undefined }]);
     });
 
@@ -553,7 +565,7 @@ describe('Open the latest document', () => {
         press('d');
         await settle();
 
-        expect(ui().docPath).toBeNull();
+        expect(ui().sidePanelOpen).toBe(false);
         expect(notices).toEqual([{ message: 'Could not load the results of CAR-23: The daemon is not answering', tone: 'error' }]);
     });
 
@@ -566,26 +578,13 @@ describe('Open the latest document', () => {
         goTo('t-24');
         await settle();
 
-        expect(ui().docPath).toBe('decisions/pricing.md');
+        expect(tabsOfFolder()).toEqual(['.clowdy/docs/decisions/pricing.md']);
     });
 });
 
-describe('Back and forward', () => {
-    /** How many steps Back can take from here. */
-    function stepsBack(): number {
-        let steps = 0;
-
-        while (root.history.canGoBack) {
-            root.history.back();
-            steps++;
-        }
-
-        return steps;
-    }
-
-    it('records the open panel following the cursor as one entry, however far the cursor goes', async () => {
+describe('The open task and the cursor', () => {
+    it('follows the cursor while a task is open, however far the cursor goes', async () => {
         await mount();
-        root.ui.showSection(ui(), 'tasks');
         ui().openTask('t-20');
         goTo('t-20');
         press('j');
@@ -594,19 +593,10 @@ describe('Back and forward', () => {
         press('End');
 
         expect(ui().taskId).toBe('t-37');
-        // Agents, the Tasks screen and the open task: the tasks the cursor passed are not stops.
-        expect(stepsBack()).toBe(2);
-        expect(ui().section).toBe('agents');
-
-        root.history.forward();
-        root.history.forward();
-
-        expect(ui().taskId).toBe('t-37');
     });
 
-    it('records Enter as an entry of its own, and the following of the cursor after it as no more', async () => {
+    it('opens the task under the cursor on Enter, and the following of the cursor goes on from there', async () => {
         await mount();
-        root.ui.showSection(ui(), 'tasks');
         press('Enter');
 
         expect(ui().taskId).toBe('t-20');
@@ -615,11 +605,6 @@ describe('Back and forward', () => {
         press('j');
 
         expect(ui().taskId).toBe('t-22');
-
-        root.history.back();
-
-        expect(ui().section).toBe('tasks');
-        expect(ui().taskId).toBeNull();
     });
 });
 

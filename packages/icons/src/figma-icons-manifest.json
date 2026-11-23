@@ -2723,6 +2723,24 @@
                     "fingerprint": "986de09bbb460f69dcfd9b39e43754f90396e08139b432e97593a14c77c47619",
                     "name": "add-folder",
                     "sourceHash": "359be41615cf058d034169492cbd0c78f91a50079c2d00735897ec378f90f8ce"
+                },
+                "16554:129132": {
+                    "file": "small-panel.svg",
+                    "fingerprint": "0c34fb60cdf63cb82c848295263ed32f742c8b203a07f90eaa9c7ef9490181d8",
+                    "name": "small-panel",
+                    "sourceHash": "7169e5585b893da16d7d1ac1f4c82899ab16bdbf8fefab0deb6654c26e781125"
+                },
+                "16554:129138": {
+                    "file": "large-panel.svg",
+                    "fingerprint": "9e3a9190823c60d101dd206270e28e14660488a703c067fb4c3ea5cb56b84f9e",
+                    "name": "large-panel",
+                    "sourceHash": "d085b1482586270647817504dbc46443e1bc94051d4cdb101fbfccd250cfc9af"
+                },
+                "16555:129142": {
+                    "file": "no-panel.svg",
+                    "fingerprint": "e8af934c71e4f970ea4fb1a25a68937be86c64671938dcdc347772758996102d",
+                    "name": "no-panel",
+                    "sourceHash": "26b89b07a4ae9ebe60414f7737385597d7074bd91fc3deef58f1331fd7e32a4b"
                 }
             },
             "nodeId": "12522:118247"

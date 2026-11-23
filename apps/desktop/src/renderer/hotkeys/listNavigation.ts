@@ -12,11 +12,11 @@ export type ListFocus =
     | { zone: 'idle' }
     | { zone: 'other' };
 
-/** The shell's navigation, which sits beside the screen. A `nav` inside the screen (a breadcrumb) is the screen's own control. */
+/** The shell's navigation, which sits beside the screen. A `nav` inside the screen or the side panel (a breadcrumb) is that part's own control. */
 function isRail(element: Element): boolean {
     const nav = element.closest('nav');
 
-    return nav !== null && nav.closest('main') === null;
+    return nav !== null && nav.closest('main, aside') === null;
 }
 
 /**

@@ -223,8 +223,9 @@ export const EditorArea = observer(function EditorArea({ manager, editorExtensio
                 when={manager.tabs.documents.length > 0}
                 fallback={
                     <PanelEmptyState
-                        icon={<Page width={24} height={24} className={styles.emptyLogo} />}
-                        title="Open a file to edit it"
+                        icon={<Page width={24} height={24} className={styles.emptyIcon} />}
+                        title="Open file"
+                        description="Select a file from the tree"
                     />
                 }
             >

@@ -1,306 +1,20 @@
 import { homedir, tmpdir } from 'node:os';
 
-import { RpcError, RpcTimeout, withAppServer } from './appserver';
-import { jsonObject } from './claude';
-import { runProgram } from './exec';
+import { PROVIDERS } from './builtin';
 
-import type { AgentModel, AgentModels } from '@clowdy/protocol';
+import type { AgentModels } from '@clowdy/protocol';
 import type { AgentRegistry } from '../engine/acp/registry';
-import type { ProbeContext } from './types';
+import type { ProbeContext, Provider } from './types';
 
-const CLAUDE_TIMEOUT_MS = 30_000;
-const CODEX_TIMEOUT_MS = 30_000;
-const CURSOR_TIMEOUT_MS = 30_000;
 /** The list moves with the account and the program's version, not by the minute. */
 const FRESH_MS = 10 * 60_000;
-const MAX_PAGES = 10;
-
-const text = (value: unknown): string | undefined => typeof value === 'string' && value.trim() ? value.trim() : undefined;
-
-/* ---------------------------------- Claude Code --------------------------------- */
-
-/**
- * The picker of Claude Code without a chat: `claude -p --input-format stream-json` answers a `list_models` control request
- * from the program itself (no API turn, nothing saved). The rows follow the account, the provider and the settings.
- */
-const CLAUDE_REQUEST = `${ JSON.stringify({ type: 'control_request', request_id: 'clowdy-models', request: { subtype: 'list_models' } }) }\n`;
-const CLAUDE_ARGS = ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--no-session-persistence', '--settings', '{"disableAllHooks":true}'];
-
-/** The `models` of the `control_response` line. A row is Claude's own `ModelInfo`: `value` is an alias the program takes for `--model`, `resolvedModel` the versioned id it stands for. */
-export function parseClaudeModels(stdout: string): AgentModel[] | undefined {
-    for (const line of stdout.split('\n')) {
-        const object = line.trim().startsWith('{') ? jsonObject(line) : undefined;
-        const response = object?.type === 'control_response' ? object.response as { subtype?: unknown; response?: { models?: unknown } } | undefined : undefined;
-
-        if (response?.subtype !== 'success' || !Array.isArray(response.response?.models)) {
-            continue;
-        }
-
-        const models: AgentModel[] = [];
-
-        for (const row of response.response.models as Array<Record<string, unknown>>) {
-            const id = text(row?.value);
-
-            // A disabled row is a placeholder (an update is needed): it must not reach `--model`.
-            if (!id || row.disabled === true) {
-                continue;
-            }
-
-            const resolved = text(row.resolvedModel);
-            const efforts = row.supportsEffort === true && Array.isArray(row.supportedEffortLevels) ? row.supportedEffortLevels.filter((level): level is string => typeof level === 'string') : [];
-
-            models.push({
-                id,
-                name: text(row.displayName) ?? id,
-                ...(text(row.description) && { description: text(row.description) }),
-                ...(id === 'default' && { isDefault: true }),
-                ...(resolved && resolved !== id && { resolvedId: resolved, featured: true }),
-                ...(efforts.length > 0 && { efforts }),
-                ...(row.supportsFastMode === true && { supportsFast: true }),
-            });
-        }
-
-        return models;
-    }
-
-    return undefined;
-}
-
-/** What Claude Code answered to the request when it did not list models: the text of its `control_response` error. */
-export function claudeModelsError(stdout: string): string | undefined {
-    for (const line of stdout.split('\n')) {
-        const object = line.trim().startsWith('{') ? jsonObject(line) : undefined;
-        const response = object?.type === 'control_response' ? object.response as { subtype?: unknown; error?: unknown } | undefined : undefined;
-
-        if (response?.subtype === 'error' && text(response.error)) {
-            return text(response.error);
-        }
-    }
-
-    return undefined;
-}
-
-/** Why no models came back, in the program's own words, and for a Claude Code that does not know the request, which one it is and that it needs an update. */
-function claudeModelsFailure(run: { stdout: string; stderr: string }, program: string): string {
-    const said = claudeModelsError(run.stdout);
-
-    // An older Claude Code answers an unknown request with an error and exit code 0.
-    if (said && /unsupported control request/i.test(said)) {
-        return `Claude Code at ${ program } is too old to list its models. Update it, then try again`;
-    }
-
-    const reason = said ?? run.stderr.trim().split('\n')[0]?.slice(0, 160);
-
-    return reason ? `Claude Code could not list its models: ${ reason }` : 'Claude Code listed no models';
-}
-
-async function claudeModels(context: ProbeContext): Promise<AgentModels> {
-    const run = await runProgram(context.program, CLAUDE_ARGS, { env: context.env, cwd: context.cwd, timeoutMs: CLAUDE_TIMEOUT_MS, input: CLAUDE_REQUEST, signal: context.signal });
-
-    if (run.error || run.timedOut) {
-        return { state: 'error', models: [], detail: run.error ? `Could not start Claude Code: ${ run.error }` : 'Claude Code did not list its models in time' };
-    }
-
-    const models = parseClaudeModels(run.stdout);
-
-    return models && models.length > 0
-        ? { state: 'ok', models, fetchedAt: context.now() }
-        : { state: 'error', models: [], detail: claudeModelsFailure(run, context.program) };
-}
-
-/* ------------------------------------- Codex ------------------------------------ */
-
-interface CodexModel {
-    id?: unknown;
-    model?: unknown;
-    displayName?: unknown;
-    description?: unknown;
-    hidden?: unknown;
-    isDefault?: unknown;
-    defaultReasoningEffort?: unknown;
-    supportedReasoningEfforts?: Array<{ reasoningEffort?: unknown }> | null;
-    serviceTiers?: Array<{ id?: unknown }> | null;
-}
-
-/** A row of `model/list`: `id` is the catalog id a turn takes, the efforts are open strings (`low` to `ultra`), a `priority` service tier is the fast mode. */
-export function codexModel(row: CodexModel): AgentModel | undefined {
-    const id = text(row.id) ?? text(row.model);
-
-    if (!id || row.hidden === true) {
-        return undefined;
-    }
-
-    const efforts = (row.supportedReasoningEfforts ?? []).map(effort => text(effort.reasoningEffort)).filter((effort): effort is string => effort !== undefined);
-
-    return {
-        id,
-        name: text(row.displayName) ?? id,
-        ...(text(row.description) && { description: text(row.description) }),
-        ...(row.isDefault === true && { isDefault: true }),
-        ...(efforts.length > 0 && { efforts }),
-        ...(text(row.defaultReasoningEffort) && { defaultEffort: text(row.defaultReasoningEffort) }),
-        ...((row.serviceTiers ?? []).some(tier => tier.id === 'priority') && { supportsFast: true }),
-    };
-}
-
-async function codexModels(context: ProbeContext): Promise<AgentModels> {
-    try {
-        const models = await withAppServer(context, async (rpc) => {
-            await rpc.call('initialize', { clientInfo: { name: 'clowdy', title: 'Clowdy', version: '0' }, capabilities: null });
-            rpc.notify('initialized');
-
-            const listed: AgentModel[] = [];
-            let cursor: string | null = null;
-
-            for (let page = 0; page < MAX_PAGES; page++) {
-                const answer = await rpc.call('model/list', { limit: 100, includeHidden: false, ...(cursor && { cursor }) }) as { data?: CodexModel[]; nextCursor?: string | null };
-
-                listed.push(...(answer.data ?? []).map(codexModel).filter((model): model is AgentModel => model !== undefined));
-                cursor = answer.nextCursor ?? null;
-
-                if (!cursor) {
-                    break;
-                }
-            }
-
-            return listed;
-        }, CODEX_TIMEOUT_MS);
-
-        return models.length > 0 ? { state: 'ok', models, fetchedAt: context.now() } : { state: 'error', models: [], detail: 'Codex listed no models' };
-    }
-    catch (error) {
-        return { state: 'error', models: [], detail: `Codex did not list its models: ${ error instanceof Error ? error.message : String(error) }` };
-    }
-}
-
-/* ------------------------------------- Cursor ----------------------------------- */
-
-/** `cursor-agent --list-models`: a header, then `<id> - <Name>` per line, the default marked `(current, default)`, then a tip. An id is a variant that encodes effort, speed and thinking. */
-export function parseCursorModels(output: string): AgentModel[] {
-    const models: AgentModel[] = [];
-
-    for (const line of output.split('\n')) {
-        const match = /^(\S+) - (.+)$/.exec(line.trim());
-
-        if (!match) {
-            continue;
-        }
-
-        const marker = /\s*\(([^)]*)\)\s*$/.exec(match[2]!);
-        const marks = marker ? marker[1]!.split(',').map(mark => mark.trim()) : [];
-        const known = marks.length > 0 && marks.every(mark => mark === 'current' || mark === 'default');
-        const name = (known ? match[2]!.slice(0, marker!.index) : match[2]!).trim();
-
-        models.push({ id: match[1]!, name, ...(known && marks.includes('default') && { isDefault: true }) });
-    }
-
-    return models;
-}
-
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
-
-/** The values a select option offers, groups flattened and repeats dropped. Whatever is not a record with a text `value` is left out. */
-function choicesOf(option: Record<string, unknown>): string[] {
-    const choices = (Array.isArray(option.options) ? option.options : []).flatMap((choice: unknown) => (isRecord(choice) && Array.isArray(choice.options) ? choice.options as unknown[] : [choice]));
-
-    return [...new Set(choices.flatMap(choice => (isRecord(choice) && text(choice.value) ? [text(choice.value)!] : [])))];
-}
-
-/**
- * The answer of `cursor/list_available_models`: one entry per model family, in Cursor's own order (Auto, its own models, then the
- * rest), each with typed options. The effort is the first option of category `thought_level` that offers levels (`thinking` is a switch
- * with `true` and `false`); its id differs per family (`effort`, `reasoning_effort`, `reasoning`), which a run does not need to know: it finds the option by the level.
- * Whatever has an odd shape is left out, never thrown over: a family that repeats an id is kept once (the first).
- */
-export function parseCursorFamilies(answer: unknown): AgentModel[] {
-    const rows = isRecord(answer) && Array.isArray(answer.models) ? answer.models as unknown[] : [];
-    const models = new Map<string, AgentModel>();
-
-    for (const row of rows) {
-        const id = isRecord(row) ? text(row.value) : undefined;
-
-        if (!isRecord(row) || !id || models.has(id)) {
-            continue;
-        }
-
-        const options = (Array.isArray(row.configOptions) ? row.configOptions : []).filter(isRecord);
-        const effort = options.flatMap(option => (option.category === 'thought_level' && option.type === 'select' ? [{ option, levels: choicesOf(option) }] : []))
-            .find(({ levels }) => levels.length > 0 && !levels.includes('true') && !levels.includes('false'));
-        const fallback = text(effort?.option.currentValue);
-
-        models.set(id, {
-            id,
-            name: text(row.name) ?? id,
-            ...(id === 'default' && { isDefault: true }),
-            ...(effort && { efforts: effort.levels, ...(fallback && effort.levels.includes(fallback) && { defaultEffort: fallback }) }),
-            ...(options.some(option => option.id === 'fast') && { supportsFast: true }),
-        });
-    }
-
-    return [...models.values()];
-}
-
-/** ACP's JSON-RPC code for "authentication required", and the words of a program that says it without one. */
-const AUTH_REQUIRED = -32000;
-const NOT_SIGNED_IN = /authentication required|not (?:logged|signed) in|log ?in first/i;
-
-/** Cursor's own list over ACP: `initialize`, then the vendor method. Rejects with what failed (`RpcError`, `RpcTimeout`, or the program ending). */
-async function cursorFamilies(context: ProbeContext, timeoutMs: number): Promise<AgentModel[]> {
-    return await withAppServer(context, async (rpc) => {
-        await rpc.call('initialize', { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false }, clientInfo: { name: 'clowdy', title: 'Clowdy', version: '0' } });
-
-        return parseCursorFamilies(await rpc.call('cursor/list_available_models'));
-    }, timeoutMs, ['acp']);
-}
-
-/**
- * Cursor's models: the families of `cursor/list_available_models` over ACP; a Cursor that cannot (it ends on `acp`, refuses the method, or
- * lists nothing) is read with `--list-models`. Two answers end the read at once, because the old list would only repeat them after a second
- * process: a Cursor that is signed out says so, and one that did not answer in time is as slow for the old list (one deadline, not two).
- */
-export async function cursorModels(context: ProbeContext, timeoutMs = CURSOR_TIMEOUT_MS): Promise<AgentModels> {
-    try {
-        const families = await cursorFamilies(context, timeoutMs);
-
-        if (families.length > 0) {
-            return { state: 'ok', models: families, fetchedAt: context.now() };
-        }
-    }
-    catch (error) {
-        if (error instanceof RpcError && (error.code === AUTH_REQUIRED || NOT_SIGNED_IN.test(error.message))) {
-            return { state: 'error', models: [], detail: 'Cursor is not signed in. Sign in on the Providers page, then try again.' };
-        }
-
-        if (error instanceof RpcTimeout) {
-            return { state: 'error', models: [], detail: 'Cursor did not list its models in time' };
-        }
-    }
-
-    const run = await runProgram(context.program, ['--list-models'], { env: context.env, cwd: context.cwd, timeoutMs, signal: context.signal });
-
-    if (run.error || run.timedOut) {
-        return { state: 'error', models: [], detail: run.error ? `Could not start Cursor: ${ run.error }` : 'Cursor did not list its models in time' };
-    }
-
-    const models = parseCursorModels(run.stdout);
-
-    return models.length > 0
-        ? { state: 'ok', models, fetchedAt: context.now() }
-        : { state: 'error', models: [], detail: (run.stderr || run.stdout).trim().split('\n')[0]?.slice(0, 160) || 'Cursor did not list its models (is it signed in?)' };
-}
 
 /* ------------------------------------ the catalog ------------------------------- */
 
-/** How each agent lists its models. An agent without a route has no list Clowdy can read. */
-export const MODEL_ROUTES: Readonly<Record<string, (context: ProbeContext) => Promise<AgentModels>>> = {
-    claude: claudeModels,
-    codex: codexModels,
-    cursor: cursorModels,
-};
-
 export interface ModelCatalogOptions {
     registry: AgentRegistry;
-    routes?: typeof MODEL_ROUTES;
+    /** The providers whose `models` method lists an agent's models: the built-in ones when absent. An agent whose provider has none has no list Clowdy can read. */
+    providers?: readonly Provider[];
     now?: () => number;
     freshMs?: number;
     cwd?: string;
@@ -321,17 +35,19 @@ interface Cached {
 export class ModelCatalog {
     private cache = new Map<string, Cached>();
     private now: () => number;
+    private providers: ReadonlyMap<string, Provider>;
     /** Fires in `stop`, so the programs of a read under way end with the daemon. */
     private stopper = new AbortController();
 
     constructor(private options: ModelCatalogOptions) {
         this.now = options.now ?? Date.now;
+        this.providers = new Map((options.providers ?? PROVIDERS).map(provider => [provider.spec.id, provider]));
     }
 
     async get(id: string): Promise<AgentModels> {
-        const route = (this.options.routes ?? MODEL_ROUTES)[id];
+        const provider = this.providers.get(id);
 
-        if (!route) {
+        if (!provider?.models) {
             return { state: 'unavailable', models: [], detail: `Clowdy cannot list the models of ${ this.options.registry.nameOf(id) } yet` };
         }
 
@@ -342,7 +58,7 @@ export class ModelCatalog {
         }
 
         // Kept before the first wait, so callers that ask together share one read.
-        const entry = { at: this.now(), models: this.read(id, route) };
+        const entry = { at: this.now(), models: this.read(id, provider.models.bind(provider)) };
 
         this.cache.set(id, entry);
 

@@ -5,7 +5,7 @@
     @ruleset typography-text-md;
 
     position: absolute;
-    inset-inline: var(--spacing-xxl);
+    inset-inline: var(--spacing-lg);
     bottom: var(--spacing-lg);
     z-index: 1;
     display: flex;

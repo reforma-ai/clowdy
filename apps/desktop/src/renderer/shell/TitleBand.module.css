@@ -3,9 +3,13 @@
     flex-shrink: 0;
     align-items: center;
     gap: var(--spacing-md);
-    height: var(--spacing-48);
+    height: var(--title-band-height);
     padding-left: calc(var(--titlebar-inset) + var(--spacing-lg));
-    padding-right: calc(var(--titlebar-inset-end) + var(--spacing-lg));
+    /*
+     * The band stops where the rail begins, so on macOS the usage status ends in line with the right edge of the plate below. The Windows caption buttons are wider than the
+     * rail and cover a part of the band as well: it keeps clear of that part, with a gap (`sign` is 1 where the buttons are and 0 where they are not).
+     */
+    padding-right: max(0px, calc(var(--titlebar-inset-end) - var(--side-rail-width) + var(--spacing-lg) * sign(var(--titlebar-inset-end))));
 }
 
 .history {
@@ -14,16 +18,10 @@
     align-items: center;
 }
 
-/* With the side panel open the window's right edge, and the Windows caption buttons, belong to the panel's header. */
-.beside {
-    padding-right: var(--spacing-lg);
-}
-
-/* What sits at the right edge: the usage badges, then the side panel's toggle. The band's own right padding keeps it clear of the Windows caption buttons. */
+/* What sits at the right edge: the usage badges. */
 .end {
     display: flex;
     flex-shrink: 0;
     align-items: center;
-    gap: var(--spacing-md);
     margin-left: auto;
 }

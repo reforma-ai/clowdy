@@ -1,4 +1,4 @@
-import type { BackgroundItem, EngineId, ToolState } from '@clowdy/protocol';
+import type { ApprovalDecision, ApprovalSubject, BackgroundItem, EngineId, ToolState } from '@clowdy/protocol';
 import type { z } from 'zod';
 
 /**
@@ -55,6 +55,21 @@ export interface EngineRegistry {
     has(id: EngineId): boolean;
 }
 
+/** A permission request of an agent, classified, for the run to put to the person. */
+export interface ApprovalRequest {
+    toolCallId?: string;
+    /** The agent's own title for the call. */
+    title: string;
+    subject: ApprovalSubject;
+    /** The answers the agent's options allow, by kind. */
+    decisions: ApprovalDecision[];
+    /** What a grant is keyed by: the same key is the same thing asked again. */
+    key: string;
+}
+
+/** Puts a request to the person and answers with the decision; `undefined` when it was withdrawn (the agent is told `cancelled`). Rejects never; `signal` ends the wait. */
+export type Approver = (request: ApprovalRequest, signal: AbortSignal) => Promise<ApprovalDecision | undefined>;
+
 export interface EngineStartOptions {
     /** Working directory of the agent. */
     cwd: string;
@@ -81,6 +96,8 @@ export interface EngineStartOptions {
     title?: SessionTitle;
     /** Tools the runtime executes itself. The engine exposes them to the model and calls `execute`. */
     tools: ToolDefinition[];
+    /** Where an agent's permission request goes when the agent's preset asks (`ResolvedAgent.permission.answer`); without it a request that must be asked is refused. */
+    approve?: Approver;
     /** Aborted when the run is cancelled or the daemon stops. The session must end promptly. */
     signal: AbortSignal;
 }

@@ -1,4 +1,4 @@
-import type { FolderId, ProjectId } from './domain';
+import type { FolderId, ProjectId, WorkspaceId } from './domain';
 
 /**
  * Terminals: shells the daemon runs on a pseudo-terminal in one of a project's folders. The shell belongs to the daemon, not to the window: a reload, a second
@@ -6,9 +6,12 @@ import type { FolderId, ProjectId } from './domain';
  * one that spawns it, the same routes work when the daemon runs on another machine.
  *
  * GET    /v1/terminals?projectId=      -> TerminalInfo[] (running ones and recently exited ones, oldest first; `projectId` limits them to one project)
- * POST   /v1/terminals                 -> TerminalInfo. Body `TerminalCreate`. The shell starts in the folder (or in `path` below it) with the given size.
- *                                         `not_found` for a project or folder that is not there, `unavailable` when the folder is missing on the disk or
- *                                         the machine has no shell to run, `conflict` (`details.reason: 'limit'`) past `MAX_TERMINALS` running ones.
+ * POST   /v1/terminals                 -> TerminalInfo. Body `TerminalCreate`. The shell starts in the folder (or in `path` below it) with the given size; with
+ *                                         `workspaceId` it starts in that worktree of the folder in place of the folder's own checkout, and `TerminalInfo` says so,
+ *                                         so a project's terminals are told apart by `folderId` and `workspaceId`. `not_found` for a project or folder that is not
+ *                                         there and for a workspace that is not the folder's (or the project's), `unavailable` when the folder, or the worktree, is
+ *                                         not made yet or is missing on the disk, or the machine has no shell to run, `conflict` (`details.reason: 'limit'`) past
+ *                                         `MAX_TERMINALS` running ones.
  * DELETE /v1/terminals/:id             -> { ok: true }. Ends the shell (hang-up, then kill) and forgets the terminal; one that is not there is `not_found`.
  *                                         The streams still open on it are closed with code 1001: a client that connects again finds the terminal `not_found`.
  * GET    /v1/terminals/:id/stream      -> a WebSocket (see `TerminalServerMessage`), for as long as the client keeps it. Closing it leaves the shell running.
@@ -49,6 +52,8 @@ export interface TerminalInfo {
     id: TerminalId;
     projectId: ProjectId;
     folderId: FolderId;
+    /** Set when the shell runs in a worktree of the folder (`ChatWorkspace`) in place of the folder's own checkout. */
+    workspaceId?: WorkspaceId;
     /** Absolute path the shell started in. */
     cwd: string;
     /** The shell program's name, `zsh`, `bash`, `pwsh`: what a tab can be called. */
@@ -64,7 +69,9 @@ export interface TerminalInfo {
 export interface TerminalCreate {
     projectId: ProjectId;
     folderId: FolderId;
-    /** A folder below the project folder, `/` separators, `''` or absent for the folder itself. */
+    /** A worktree of the folder to start in, in place of the folder's own checkout; refused when it is not a workspace of that folder, or is not made yet. */
+    workspaceId?: WorkspaceId;
+    /** A folder below the project folder (or the worktree), `/` separators, `''` or absent for the folder itself. */
     path?: string;
     cols: number;
     rows: number;

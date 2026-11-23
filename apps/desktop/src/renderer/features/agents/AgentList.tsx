@@ -1,14 +1,15 @@
 import { Button } from '@clowdy/components/Button';
 import { Input } from '@clowdy/components/Input';
-import { GridList, GridListItem, listBoxItemDataShow, Menu, MenuHeader, MenuItem, MenuSection, MenuSeparator, useCellEditMode } from '@clowdy/components/List';
+import { GridList, GridListItem, listBoxItemDataShow, Menu, MenuHeader, MenuItem, MenuSection, useCellEditMode } from '@clowdy/components/List';
 import { Panel, PanelContent } from '@clowdy/components/Panel';
 import { Popover, PopoverScroll, PopoverTrigger, useContextMenu } from '@clowdy/components/Popover';
 import { Show } from '@clowdy/components/Show';
-import { Archive, Check, ChevronDown, ChevronRight, Message, More, NewChat, Plus } from '@clowdy/icons/14';
+import { Archive, Check, ChevronDown, ChevronRight, Message, More, NewChat, Version } from '@clowdy/icons/14';
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode, type SyntheticEvent } from 'react';
 
 import { CommandHotkey, useCommands, useHotkeyScope } from '../../hotkeys';
 import { SidebarHeading } from '../../shared';
+import { ProjectSelect } from '../../shell/ProjectSelect';
 import { NEW_CHAT_COMMAND } from '../../shell/shellCommands';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { archiveChat } from '../chats/archiveChat';
@@ -17,14 +18,16 @@ import { isRunActive } from '../chats/chatRun';
 import { perform } from '../chats/commands';
 import { deleteChat } from '../chats/deleteChat';
 import { threadsAtWork } from '../chats/runningAgentRows';
+import { workspaceHead } from '../openWith';
 import { agentCommands, AGENTS_SCOPE } from './agentCommands';
 import styles from './AgentList.module.css';
-import { agentGroups, agentRows, ancestorChats, groupFolderOf, isActiveThread, orchestratorOf, type AgentGroup, type AgentRow, type AgentSelection } from './agentTree';
+import { agentGroups, agentRows, ancestorChats, asksThePerson, groupFolderOf, isActiveThread, orchestratorOf, type AgentGroup, type AgentRow, type AgentSelection } from './agentTree';
 import { ArchiveButton } from './ArchiveButton';
 import { ChatIcon } from './ChatIcon';
 import { chatListPreferences } from './chatListPreferences';
+import { GroupFolderName } from './GroupFolderName';
 
-import type { Chat, ChatId, FolderId } from '@clowdy/protocol';
+import type { Chat, ChatId, ChatWorkspace, FolderId, ProjectWorkspaceInfo } from '@clowdy/protocol';
 
 /** The id of the first row, the one that starts a chat. Chat ids never look like it. */
 export const NEW_CHAT_ROW = '@new-chat';
@@ -65,9 +68,18 @@ interface ChatActions {
  * The project's agents: the row that starts a chat, then the chats in use (in the order the menu of the heading's `⋯` asks for), each with the
  * threads its agents started below it, folded until the person opens them. Archived chats are not here, they are in the archive's list (the button
  * in the heading, beside the filters), and take their threads with them. `missing` are the folders gone from the disk (`Screen` reads them once for the list and the new-chat page): their group is marked and its button is off. With the menu's Group chats by folder on (it is, until the person turns it off), in a project of several folders, the
- * chats stand in a group for the folder they work in, under a heading that folds the group and has a button for a chat in that folder.
+ * chats stand in a group for the folder they work in, under a heading that folds the group, has a button for a chat in that folder, and opens the folder's menu (`GroupFolderName`) from a press on its name, which also shows the new-chat page for that folder.
+ * A chat that works in a worktree has a branch mark after its title, with its branch in the mark's title: the one the tree has checked out, from `workspaces` (`ProjectInfo.workspaces`, which `Screen` reads).
  */
-export function AgentList({ selection, chats, missing }: { selection: AgentSelection; chats: readonly Chat[]; missing: ReadonlySet<FolderId> }) {
+export function AgentList({ selection, chats, missing, workspaces, isCovered }: {
+    selection: AgentSelection;
+    chats: readonly Chat[];
+    missing: ReadonlySet<FolderId>;
+    /** What the daemon last read of the project's worktrees: the branch each has now. */
+    workspaces?: readonly ProjectWorkspaceInfo[];
+    /** The side panel is in the place of the chat, so the list is a plate of its own. */
+    isCovered: boolean;
+}) {
     const root = useRootStore();
     const project = useProjectState();
     const ui = useProjectUi();
@@ -166,6 +178,9 @@ export function AgentList({ selection, chats, missing }: { selection: AgentSelec
 
         if (!(target instanceof HTMLElement) || target.getAttribute('role') !== 'row') return;
 
+        // Enter or Space on the row of the chat that is open selects nothing new, and the list reports no selection: the chat is still wanted on screen.
+        if ((event.key === 'Enter' || event.key === ' ') && target.dataset.key === selectedId) ui.showChat();
+
         const folded = foldOf(target.dataset.key);
 
         if (!folded) return;
@@ -175,6 +190,13 @@ export function AgentList({ selection, chats, missing }: { selection: AgentSelec
             event.preventDefault();
             event.stopPropagation();
         }
+    };
+
+    // A press on the row of the chat that is open, and not on a control of the row: the same as above, for the pointer. Read in the capture phase: a row stops the click it takes.
+    const onClick = (event: MouseEvent) => {
+        const target = event.target as Element;
+
+        if (!target.closest('button') && target.closest('[role="row"]')?.getAttribute('data-key') === selectedId) ui.showChat();
     };
 
     const select = (id: string) => {
@@ -216,7 +238,15 @@ export function AgentList({ selection, chats, missing }: { selection: AgentSelec
                 data-missing={ isMissing || undefined }
             >
                 <span className={ styles.groupTitle }>
-                    <span className={ styles.title }>{ group.name }</span>
+                    <span className={ styles.groupNameBox } { ...ownEvents }>
+                        {/* The press also shows the new-chat page for the folder, so the window works in it and the menu can open it in Files and the terminal. A folder gone from the disk has no chat to start. */}
+                        <GroupFolderName
+                            name={ group.name }
+                            folder={ group.folder }
+                            missing={ isMissing }
+                            onOpen={ isMissing ? undefined : () => ui.openDraft([], group.isMain ? null : group.folder.id) }
+                        />
+                    </span>
                     {/* The way to fold the group. On a folded group it is always there, which says it is folded; on an open one it comes with the pointer or the keyboard. */}
                     <span className={ styles.groupFold } { ...ownEvents }>
                         <Button
@@ -255,9 +285,12 @@ export function AgentList({ selection, chats, missing }: { selection: AgentSelec
 
     const renderRow = (row: AgentRow) => {
         const { chat } = row;
-        // The same threads the strip above its message box lists.
-        const threadsWorking = threadsAtWork(project.threadsOf(chat.id), project.runs).length > 0;
-        const icon = <ChatIcon chat={ chat } run={ runOf(chat) } threadsWorking={ threadsWorking } />;
+        // A thread below the chat, at any depth, that waits for the person: its row is listed under a folded chat too, and the chat's dot says so. Else the
+        // same threads the strip above the message box lists, when they work.
+        const threads = project.threadsBelow(chat.id).some(thread => thread.archivedAt === undefined && asksThePerson(thread, project.runs))
+            ? 'asking' as const
+            : threadsAtWork(project.threadsOf(chat.id), project.runs).length > 0 ? 'working' as const : undefined;
+        const icon = <ChatIcon chat={ chat } run={ runOf(chat) } threads={ threads } />;
 
         return (
             <GridListItem
@@ -275,20 +308,25 @@ export function AgentList({ selection, chats, missing }: { selection: AgentSelec
             >
                 { renamingId === chat.id
                     ? <RenameField chat={ chat } onDone={ () => setRenamingId(null) } />
-                    : <span className={ styles.title } onDoubleClick={ () => setRenamingId(chat.id) }>{ chat.title }</span> }
+                    : (
+                        <span className={ styles.titleLine }>
+                            <span className={ styles.title } onDoubleClick={ () => setRenamingId(chat.id) }>{ chat.title }</span>
+                            { chat.workspace && <WorktreeMark workspace={ chat.workspace } read={ workspaces } /> }
+                        </span>
+                    ) }
             </GridListItem>
         );
     };
 
     return (
-        <Panel side="left">
-            <SidebarHeading ref={ heading } title="Agents" className={ styles.heading }>
+        <Panel side="left" className={ isCovered ? styles.covered : undefined }>
+            <SidebarHeading ref={ heading } title={ <ProjectSelect /> } className={ styles.heading }>
                 <ArchiveButton anchor={ heading } />
                 <FilterMenu />
             </SidebarHeading>
 
             <PanelContent contentClass={ styles.content }>
-                <div ref={ list } onContextMenu={ openContextMenu } onKeyDownCapture={ onKeyDownCapture }>
+                <div ref={ list } onClickCapture={ onClick } onContextMenu={ openContextMenu } onKeyDownCapture={ onKeyDownCapture }>
                     <GridList
                         aria-label="Agents"
                         size="md"
@@ -304,7 +342,7 @@ export function AgentList({ selection, chats, missing }: { selection: AgentSelec
                         <GridListItem
                             id={ NEW_CHAT_ROW }
                             text="New chat"
-                            icon={ <Plus /> }
+                            icon={ <NewChat /> }
                             className={ styles.newChat }
                             // The shortcut is a hint for the pointer on its way to the row, not a label the row wears at rest.
                             endAffix={ (
@@ -346,7 +384,8 @@ function FilterMenu() {
     const project = useProjectState();
     const { sort, showFinishedThreads } = chatListPreferences;
     const [isOpen, setIsOpen] = useState(false);
-    const shown = showFinishedThreads ? ['finished'] : [];
+    const hasFolders = project.project.folders.length > 1;
+    const shown = [...(showFinishedThreads ? ['finished'] : []), ...(hasFolders && ui.groupByFolder ? ['folders'] : [])];
 
     return (
         <PopoverTrigger isOpen={ isOpen } onOpenChange={ setIsOpen }>
@@ -360,24 +399,18 @@ function FilterMenu() {
                             aria-label="Show"
                             selectionMode="multiple"
                             selectedKeys={ shown }
-                            onSelectionChange={ keys => chatListPreferences.setShowFinishedThreads(keys === 'all' || keys.has('finished')) }
+                            onSelectionChange={ (keys) => {
+                                const on = (key: string) => keys === 'all' || keys.has(key);
+
+                                if (on('finished') !== showFinishedThreads) chatListPreferences.setShowFinishedThreads(!showFinishedThreads);
+                                if (hasFolders && on('folders') !== ui.groupByFolder) ui.setGroupByFolder(!ui.groupByFolder);
+                            } }
                         >
                             <MenuItem id="finished" textValue="Show finished sub-threads" endAffix={ showFinishedThreads ? <Check /> : undefined }>Show finished sub-threads</MenuItem>
+                            { hasFolders && (
+                                <MenuItem id="folders" textValue="Group chats by folder" endAffix={ ui.groupByFolder ? <Check /> : undefined }>Group chats by folder</MenuItem>
+                            ) }
                         </MenuSection>
-                        <MenuSeparator />
-                        { project.project.folders.length > 1 && (
-                            <>
-                                <MenuSection
-                                    aria-label="Group"
-                                    selectionMode="multiple"
-                                    selectedKeys={ ui.groupByFolder ? ['folders'] : [] }
-                                    onSelectionChange={ keys => ui.setGroupByFolder(keys === 'all' || keys.has('folders')) }
-                                >
-                                    <MenuItem id="folders" textValue="Group chats by folder" endAffix={ ui.groupByFolder ? <Check /> : undefined }>Group chats by folder</MenuItem>
-                                </MenuSection>
-                                <MenuSeparator />
-                            </>
-                        ) }
                         <MenuSection
                             selectionMode="single"
                             disallowEmptySelection
@@ -396,6 +429,22 @@ function FilterMenu() {
                 </PopoverScroll>
             </Popover>
         </PopoverTrigger>
+    );
+}
+
+/**
+ * The mark of a chat that works in a worktree: a branch icon after its title, whose own title names the branch. The branch is the one the worktree has now when the daemon's
+ * read has it (an agent may have switched), else the one it was made with, which only a list that has not heard of the worktree yet can still show.
+ */
+function WorktreeMark({ workspace, read }: { workspace: ChatWorkspace; read: readonly ProjectWorkspaceInfo[] | undefined }) {
+    const head = workspaceHead(workspace, read);
+    const branch = head?.branch ?? workspace.branch;
+    const title = head?.gone ? 'The worktree no longer exists' : branch ? `Works in a worktree on ${ branch }` : 'Works in a worktree';
+
+    return (
+        <span className={ styles.worktree } role="img" aria-label={ title } title={ title } data-gone={ head?.gone || undefined }>
+            <Version aria-hidden="true" />
+        </span>
     );
 }
 

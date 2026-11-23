@@ -1,4 +1,4 @@
-export type ToolIcon = 'file' | 'search' | 'code' | 'terminal' | 'tool';
+export type ToolIcon = 'file' | 'search' | 'code' | 'terminal' | 'tool' | 'workspace';
 
 export interface ToolView {
     icon: ToolIcon;
@@ -7,6 +7,17 @@ export interface ToolView {
     /** The path, pattern or command it works on, shown as a code chip. */
     target?: string;
     diff?: { added: number; removed: number };
+    /** What the call shows when opened is a log, which the card labels as one, and the input says nothing that the verb and the chip do not. */
+    log?: true;
+}
+
+/** The name of the step the daemon runs, as a tool call of the chat's stream, to make the worktree a chat works in (`Prepare workspace`). Its output is git's own log. */
+export const WORKSPACE_TOOL = 'workspace';
+
+/** What of a call decides how it reads: whether it is still going, and why it failed. */
+export interface ToolStatus {
+    state: 'running' | 'done' | 'error';
+    error?: string;
 }
 
 export const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -71,9 +82,17 @@ function commandTitle(input: unknown, command?: string): string {
 /**
  * How a tool call reads in the stream. The daemon passes the engine's tool names and inputs through, so this
  * recognises the common shapes (Claude Code's `Read`, `Edit`, `Write`, `Bash`, `Grep`, `Glob`, and close
- * relatives) and falls back to the humanized tool name and its first short text argument.
+ * relatives) and falls back to the humanized tool name and its first short text argument. The daemon's own `workspace` step reads
+ * `Preparing workspace` while it runs and `Prepared workspace` once it is over (`Prepare workspace`, struck through, when it failed, which is why `status` is asked), with the branch it
+ * makes the worktree on as its chip.
  */
-export function describeTool(name: string, input: unknown, output?: unknown): ToolView {
+export function describeTool(name: string, input: unknown, output?: unknown, status?: ToolStatus): ToolView {
+    if (name === WORKSPACE_TOOL) {
+        const verb = status?.state === 'running' ? 'Preparing workspace' : status?.state === 'error' ? 'Prepare workspace' : 'Prepared workspace';
+
+        return { icon: 'workspace', verb, target: firstString(input, ['branch']), log: true };
+    }
+
     const key = toolKey(name);
 
     if (READ_TOOLS.includes(key)) return { icon: 'file', verb: 'Reading file', target: firstString(input, PATH_KEYS) };

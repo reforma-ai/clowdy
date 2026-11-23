@@ -53,3 +53,48 @@
     flex: 1;
     min-width: 0;
 }
+
+/* The presets stand under their title and hint, one radio each, the radio at the top line of its text. */
+.permissions {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-lg);
+}
+
+.presets {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-lg);
+}
+
+.permissions[aria-busy] .presets {
+    opacity: 0.6;
+}
+
+.preset {
+    align-items: flex-start;
+}
+
+.presetText {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+    min-width: 0;
+}
+
+.presetName {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+/* The provider's default, named quietly: it is not a recommendation. */
+.defaultTag {
+    @ruleset typography-text-xs;
+
+    padding: var(--spacing-2) var(--spacing-md);
+    border-radius: var(--radius-full);
+    background-color: var(--color-secondary-muted-light);
+    color: var(--color-secondary-muted-text);
+    font-weight: 500;
+}

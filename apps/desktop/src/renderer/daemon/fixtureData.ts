@@ -1,12 +1,21 @@
+import { DOC_SOURCES, PERMISSION_PRESET_NAMES, PERMISSION_PRESETS } from '@clowdy/protocol';
+
 import type {
     AgentInfo,
     AgentModels,
+    AgentPermissions,
     Artifact,
     Attachment,
     Chat,
     ChatTaskLink,
+    ChatWorkspace,
+    ChatWorkspaceChoice,
     DocNode,
+    DocsSource,
+    FolderGit,
+    PermissionPresetId,
     Project,
+    ProjectFolder,
     ProjectId,
     Run,
     RunTaskLink,
@@ -37,9 +46,15 @@ export interface FixtureData {
     artifacts: Artifact[];
     /**
      * Markdown files of each folder's `.clowdy/docs`, by the folder's path, then by the path under it. A folder that is not listed has no
-     * docs folder yet. Keyed by folder, as on disk: a folder several projects have shares its documents with all of them.
+     * docs folder yet. Keyed by folder, as on disk: a folder several projects have shares its documents with all of them. A worktree is keyed by its own
+     * path as well (`FIXTURE_WORKTREE_PATH`); one that is not listed has the files of the folder it is a checkout of.
      */
     docs: Record<string, Record<string, string>>;
+    /**
+     * Markdown files of each folder's `.briefback`, by the folder's path, then by the path under it: the plans, research pages and handoffs the work is done from. A
+     * folder that is not listed has no `.briefback`.
+     */
+    briefback: Record<string, Record<string, string>>;
     /** Paths of the files of each folder, by the folder's path, relative to it, as the file search would list them. */
     files: Record<string, string[]>;
     /** The icon the daemon finds in each folder, by the folder's path: an SVG drawing. A folder that is not listed has none. */
@@ -168,6 +183,22 @@ function fixtureAgentModels(now: number): Record<string, AgentModels> {
     };
 }
 
+/** The presets of an agent whose provider has modes of its own, in the words of the real Claude Code and Codex providers; none chosen, `auto` is the default. */
+function modePresets(descriptions: Record<PermissionPresetId, string>): AgentPermissions {
+    return { presets: PERMISSION_PRESETS.map(id => ({ id, name: PERMISSION_PRESET_NAMES[id], description: descriptions[id] })), default: 'auto' };
+}
+
+/** The pair of an agent whose provider declares none: Clowdy asks, or allows everything; `full` is the default, as such an agent has always run. */
+function clientPresets(): AgentPermissions {
+    return {
+        presets: [
+            { id: 'ask', name: PERMISSION_PRESET_NAMES.ask, description: 'Clowdy asks you before the agent does anything it asks permission for' },
+            { id: 'full', name: PERMISSION_PRESET_NAMES.full, description: 'Clowdy allows everything the agent asks permission for' },
+        ],
+        default: 'full',
+    };
+}
+
 /** The three built-in agents as a daemon on a developer's machine would list them: installed, signed in, with their plan limits. */
 function fixtureAgents(now: number): AgentInfo[] {
     const inMinutes = (minutes: number) => now + minutes * MINUTE;
@@ -203,6 +234,12 @@ function fixtureAgents(now: number): AgentInfo[] {
                 { id: 'subagents', label: 'Claude Code sub-agents', description: 'Let Claude Code start sub-agents of its own. Clowdy\'s agents are the better way to delegate work.', value: true, default: true },
                 { id: 'longContext', label: '1M context window', description: 'Use the 1M-token context window on the models that have one', value: true, default: true },
             ],
+            permissions: modePresets({
+                'ask': 'Asks before every edit and command',
+                'accept-edits': 'Applies file edits, asks before commands and anything else',
+                'auto': 'Approves what its own check finds safe, asks about the rest',
+                'full': 'Never asks, edits any file and runs any command',
+            }),
         },
         {
             id: 'codex',
@@ -227,6 +264,12 @@ function fixtureAgents(now: number): AgentInfo[] {
                 ],
             },
             settings: [],
+            permissions: modePresets({
+                'ask': 'Asks before editing files or using the network',
+                'accept-edits': 'Edits workspace files, asks before going outside them or using the network',
+                'auto': 'Reviews risky actions itself, asks about the rest',
+                'full': 'No sandbox, never asks',
+            }),
         },
         {
             id: 'cursor',
@@ -246,6 +289,7 @@ function fixtureAgents(now: number): AgentInfo[] {
                 windows: [{ id: 'plan', label: 'Plan usage', usedPercent: 5, resetsAt: inMinutes(26 * 24 * 60) }],
             },
             settings: [],
+            permissions: clientPresets(),
         },
     ];
 }
@@ -258,14 +302,6 @@ export const DEFAULT_STATUSES: TaskStatus[] = [
     { id: 'done', name: 'Done', category: 'done' },
     { id: 'canceled', name: 'Canceled', category: 'canceled' },
 ];
-
-export function docHash(content: string): string {
-    let hash = 5381;
-
-    for (let index = 0; index < content.length; index++) hash = ((hash * 33) ^ content.charCodeAt(index)) >>> 0;
-
-    return `fx-${ hash.toString(16) }`;
-}
 
 const BOOKING_SKETCH = '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200" viewBox="0 0 320 200"><rect width="320" height="200" fill="#f3efe9"/><rect x="24" y="24" width="272" height="34" rx="8" fill="#fff" stroke="#d8d0c4"/><rect x="24" y="72" width="132" height="34" rx="8" fill="#fff" stroke="#d8d0c4"/><rect x="164" y="72" width="132" height="34" rx="8" fill="#fff" stroke="#d8d0c4"/><rect x="24" y="130" width="272" height="44" rx="10" fill="#fa8854"/></svg>';
 const BOOKING_LOG = 'TypeError: Cannot read properties of undefined (reading \'price\')\n    at BookingForm (src/booking/BookingForm.tsx:42:18)\n';
@@ -280,6 +316,13 @@ const CURRENCY_ANSWER = 'Every currency in the table has two decimals except JPY
 const REFUND_ANSWER = 'The refund tests are in `src/payments/refund.test.ts`: 14 cases, all passing.';
 const MIGRATION_FAILURE = 'The migration stopped: the column amount_cents already exists in staging';
 const LOAD_ANSWER = 'The short run held 120 requests a second with no errors. The long run is still going.';
+
+/** The `.briefback` of Car Rental: one feature that has all three kinds of page, a plan, a handoff and a research page. */
+const BRIEFBACK: Record<string, string> = {
+    'weekend-pricing/plan.md': '# Weekend pricing\n\n> Keep this plan current during implementation.\n\n**Goal:** Weekend days cost 15% more, and the person sees it before they commit.\n\n## Stage 1 \u2014 The rate\n\n- [x] Complete\n  - [x] `weekendRate` in `src/booking/price.ts`\n  - [x] tests for a booking that spans a month end\n\n## Stage 2 \u2014 The form\n\n- [ ] Complete\n  - [ ] show the surcharge as its own line\n',
+    'weekend-pricing/handoff.md': '# Handoff: weekend pricing\n\nStage 1 is committed. Next: Stage 2, the surcharge line in `BookingForm.tsx`. The rate is a constant, not a setting.\n',
+    'weekend-pricing/research/competitors.md': '# How others show a weekend surcharge\n\nTwo of the five rental sites show it as a separate line; the others fold it into the daily rate.\n',
+};
 
 /** The docs folder of a folder that is in no fixture project, for a project of several folders. */
 const API_DOCS: Record<string, string> = {
@@ -299,6 +342,15 @@ const FIXTURE_FILES = [
     'src/db/schema.ts',
 ];
 
+/** What the fixture's worktree of Car Rental has besides the folder's own files: the chat that works in it added the surcharge's file. */
+const WORKTREE_FILES = [...FIXTURE_FILES, 'src/booking/weekend.ts'];
+
+/** The plan only the worktree has: the chat made it there, so the folder's own checkout does not list it. */
+const WORKTREE_BRIEFBACK: Record<string, string> = {
+    ...BRIEFBACK,
+    'weekend-surcharge/plan.md': '# Weekend surcharge\n\n> Keep this plan current during implementation.\n\n**Goal:** the surcharge is its own line in the price, on a branch of its own.\n\n## Stage 1 \u2014 The line\n\n- [x] Complete\n  - [x] `weekendSurcharge` in `src/booking/weekend.ts`\n  - [ ] show it in `BookingForm.tsx`\n',
+};
+
 const API_FILES = [
     'README.md',
     'package.json',
@@ -307,6 +359,94 @@ const API_FILES = [
     'src/booking/price.ts',
     'src/limits.ts',
 ];
+
+/**
+ * What `GET git` answers for a fixture folder: no repository when `git` says nothing of it, else the branch it has checked out, a few more branches (local and
+ * `origin`'s), `origin/main` as the default one, and two worktrees: the folder itself and one Clowdy made for a chat, with changes in it. The folder's own
+ * `baseBranch` is the default one when the repository has it, as the daemon answers.
+ */
+export function fixtureFolderGit(path: string, head: { branch?: string; detached?: true } | undefined, baseBranch?: string): FolderGit {
+    if (!head?.branch) return { isRepository: false };
+
+    const name = path.split('/').filter(Boolean).at(-1) ?? 'folder';
+    const locals = [...new Set([...(head.detached ? [] : [head.branch]), 'main', 'dev', 'feature/payments'])];
+    const branches = [...locals.map(branch => ({ name: branch, remote: false })), ...['origin/main', 'origin/dev'].map(branch => ({ name: branch, remote: true }))];
+
+    return {
+        isRepository: true,
+        branch: head.branch,
+        ...(head.detached && { detached: true as const }),
+        defaultBranch: baseBranch !== undefined && branches.some(branch => branch.name === baseBranch) ? baseBranch : 'origin/main',
+        branches,
+        worktrees: [
+            { path, ...(!head.detached && { branch: head.branch }), head: 'a1b2c3d', main: true, dirty: false },
+            { path: `/Users/dev/Clowdy/workspaces/${ name }/ab12cd34/${ name }`, branch: 'clowdy/ab12cd34', head: '9f8e7d6', main: false, dirty: true },
+        ],
+    };
+}
+
+/** Where the fixture's Clowdy-made worktrees are: `~/Clowdy/workspaces`, as the daemon lays them out (`<project>/<chat id>/<folder>`). */
+export const FIXTURE_WORKSPACES_ROOT = '/Users/dev/Clowdy/workspaces';
+
+/**
+ * The worktree of Car Rental that `fixtureFolderGit` lists and `withFixtureWorkspace`'s chat works in. It has files and a plan of its own (`src/booking/weekend.ts`,
+ * `.briefback/weekend-surcharge/plan.md`): what only the worktree has is what the side panel and the palette show for a chat there. A worktree with no entry in the
+ * fixture's `files`, `docs` and `briefback` (a new one a chat made) is a checkout of the same commit, so it has its folder's.
+ */
+export const FIXTURE_WORKTREE_PATH = `${ FIXTURE_WORKSPACES_ROOT }/car-rental/ab12cd34/car-rental`;
+
+const kebab = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+/**
+ * What `chat.create` makes of a workspace choice, as the daemon does (the refusals are its `invalid`): a worktree of a folder that is no repository, a base that is no ref of it
+ * and a path that is no worktree of it are refused. A new worktree gets the daemon's layout and branch (`<root>/<project>/<chat id's end>/<folder>`, `clowdy/<chat id's end>`) and is
+ * not made yet (`ready` false: the chat's first turn makes it); an existing one is ready, and a chat that has it already shares its row.
+ */
+export function fixtureChatWorkspace(
+    choice: ChatWorkspaceChoice,
+    { projectName, folder, chatId, head, known }: { projectName: string; folder: ProjectFolder; chatId: string; head: FixtureData['git'][string] | undefined; known: readonly ChatWorkspace[] }
+): { workspace: ChatWorkspace } | { error: string } {
+    const repository = fixtureFolderGit(folder.path, head);
+
+    if (!repository.isRepository) return { error: `${ folder.path } is not a git repository` };
+
+    if (choice.mode === 'new') {
+        if (choice.base !== undefined && choice.base !== repository.defaultBranch && !repository.branches.some(branch => branch.name === choice.base)) return { error: `${ choice.base } is not a branch of ${ folder.path }` };
+
+        const end = chatId.slice(-8);
+        const name = folder.path.split('/').filter(Boolean).at(-1) ?? 'folder';
+
+        return { workspace: { id: `wks_${ end }`, folderId: folder.id, path: `${ FIXTURE_WORKSPACES_ROOT }/${ kebab(projectName) }/${ end }/${ name }`, branch: `clowdy/${ end }`, managed: true, ready: false } };
+    }
+
+    const worktree = repository.worktrees.find(candidate => !candidate.main && candidate.path === choice.path);
+
+    if (!worktree) return { error: `${ choice.path } is not a worktree of ${ folder.path }` };
+
+    return {
+        workspace: known.find(workspace => workspace.path === worktree.path)
+            ?? { id: `wks_${ worktree.head }`, folderId: folder.id, path: worktree.path, ...(worktree.branch && { branch: worktree.branch }), managed: worktree.path.startsWith(`${ FIXTURE_WORKSPACES_ROOT }/`), ready: true },
+    };
+}
+
+/** The lines `Prepare workspace` logs while it makes a worktree: the fetch of the base and what the checkout says, in the tool's own words. */
+export const fixtureWorkspaceLog = (workspace: Pick<ChatWorkspace, 'branch'>, base: string) => [
+    `Fetching ${ base }`,
+    `Preparing worktree (new branch '${ workspace.branch }')`,
+    'HEAD is now at 3f2a9c1 Price a booking by the day',
+].join('\n');
+
+/**
+ * The document sources of a folder as the daemon lists them: those of the registry that have files here, in its order, each with its tree. `files` is by the id of the
+ * source, then by the path under its root.
+ */
+export function docsSources(files: Record<string, Record<string, string> | undefined>): DocsSource[] {
+    return DOC_SOURCES.flatMap(({ id, label, root }) => {
+        const paths = Object.keys(files[id] ?? {});
+
+        return paths.length > 0 ? [{ id, label, root, nodes: docsTree(paths) }] : [];
+    });
+}
 
 /** The docs tree as the daemon builds it: directories first, then files, each by name. */
 export function docsTree(paths: string[]): DocNode[] {
@@ -397,6 +537,129 @@ export function withFixtureFork(data: FixtureData, now = Date.now()): FixtureDat
         forkedFrom: { chatId: 'c-2', atSeq: 6 },
         createdAt: ago(60 * 24 * 3 + 1),
         updatedAt: ago(60 * 24 * 3 - 5),
+    });
+
+    return data;
+}
+
+export const FIXTURE_APPROVALS_CHAT_ID = 'c-8';
+export const FIXTURE_APPROVALS_RUN_ID = 'r-orch-8';
+
+/**
+ * Adds to `data` a chat whose agent waits for the person's permission, and gives it back: one request already answered ("for the session"), then three that
+ * are open, a command long enough to be cut, a change to files and a tool, so every body of the approval card has a place on the screen. Not in
+ * `createFixtureData`, for the reason `withFixtureFork` gives: a chat more in the car project moves the counts and the order other screens' tests read.
+ */
+export function withFixtureApprovals(data: FixtureData, now = Date.now()): FixtureData {
+    const ago = (minutes: number) => now - minutes * MINUTE;
+    const orchestrator = data.runs.find(run => run.id === 'r-orch-3') as Run;
+    const approval = (id: number, fields: Pick<Extract<StreamItemBody, { kind: 'approval' }>, 'title' | 'subject'> & Partial<Extract<StreamItemBody, { kind: 'approval' }>>): StreamItemBody => ({
+        kind: 'approval',
+        approvalId: `apv-${ id }`,
+        decisions: ['allow_once', 'allow_always', 'reject'],
+        state: 'open',
+        ...fields,
+    });
+    const checks = 'set -e\ncd src/booking\nbun run test -- --coverage\nbun run typecheck\ngit diff --stat\necho "all checks passed"';
+    const paths = ['src/booking/price.ts', 'src/booking/steps/confirmation/summary.tsx', 'src/booking/__tests__/price.test.ts'];
+    const entries: Array<[number, StreamItemBody]> = [
+        [20, { kind: 'user', text: 'Run the booking tests and the type check, then update the price helper and publish the rules.' }],
+        [19, { kind: 'assistant', done: true, text: 'I will ask before anything that changes your files or leaves this machine.' }],
+        // A call comes first, as the daemon writes it, and the request about it after it; the call of an open request is still running.
+        [18, { kind: 'tool', toolCallId: 'tc-o8-1', name: 'Bash', state: 'done', input: { command: 'bun run test src/booking' }, output: '12 pass, 0 fail' }],
+        [18, approval(1, { toolCallId: 'tc-o8-1', title: 'bun run test src/booking', subject: { kind: 'command', command: 'bun run test src/booking' }, state: 'decided', decision: 'allow_always' })],
+        [5, { kind: 'tool', toolCallId: 'tc-o8-2', name: 'Bash', state: 'running', input: { command: checks } }],
+        [5, approval(2, { toolCallId: 'tc-o8-2', title: 'Run the checks', subject: { kind: 'command', command: checks, cwd: '/Users/dev/car-rental' } })],
+        [4, { kind: 'tool', toolCallId: 'tc-o8-3', name: 'Edit', state: 'running', input: { file_path: paths[0], old_string: 'const SURCHARGE = 0.1', new_string: 'const SURCHARGE = 0.15' } }],
+        [4, approval(3, { toolCallId: 'tc-o8-3', title: 'Edit src/booking/price.ts', subject: { kind: 'file_change', paths } })],
+        [3, { kind: 'tool', toolCallId: 'tc-o8-4', name: 'mcp__docs__publish', state: 'running', input: { title: 'Booking rules' } }],
+        [3, approval(4, { toolCallId: 'tc-o8-4', title: 'Publish the booking rules', subject: { kind: 'tool_use', tool: 'mcp__docs__publish', detail: 'Publish "Booking rules" to the shared docs' }, decisions: ['allow_once', 'reject'] })],
+    ];
+
+    data.items[FIXTURE_APPROVALS_RUN_ID] = entries.map(([minutes, body], index): StreamItem => ({ id: `${ FIXTURE_APPROVALS_RUN_ID }-${ index + 1 }`, runId: FIXTURE_APPROVALS_RUN_ID, seq: index + 1, at: ago(minutes), body }));
+    data.runs.push({
+        id: FIXTURE_APPROVALS_RUN_ID,
+        projectId: orchestrator.projectId,
+        rootRunId: FIXTURE_APPROVALS_RUN_ID,
+        chatId: FIXTURE_APPROVALS_CHAT_ID,
+        role: 'orchestrator',
+        name: 'Orchestrator 08',
+        summary: 'Run the booking checks',
+        status: 'waiting_user',
+        statusReason: 'Waiting for your approval',
+        engine: orchestrator.engine,
+        ...(orchestrator.model && { model: orchestrator.model }),
+        createdAt: ago(20),
+        startedAt: ago(20),
+    });
+    data.chats.push({
+        id: FIXTURE_APPROVALS_CHAT_ID,
+        projectId: orchestrator.projectId,
+        title: 'Run the booking checks',
+        mode: 'autopilot',
+        engine: orchestrator.engine,
+        ...(orchestrator.model && { model: orchestrator.model }),
+        orchestratorRunId: FIXTURE_APPROVALS_RUN_ID,
+        createdAt: ago(20),
+        updatedAt: ago(3),
+    });
+
+    return data;
+}
+
+export const FIXTURE_WORKSPACE_CHAT_ID = 'c-9';
+export const FIXTURE_WORKSPACE_RUN_ID = 'r-orch-9';
+
+/**
+ * Adds to `data` a chat that works in a worktree and gives it back: Clowdy made it for the chat (the one `fixtureFolderGit` lists as a second worktree of Car Rental, with
+ * changes in it), so the chat's stream starts with the `Prepare workspace` step and its log. Not in `createFixtureData`, for the reason `withFixtureFork` gives: a chat more in the car
+ * project moves the counts and the order other screens' tests read.
+ */
+export function withFixtureWorkspace(data: FixtureData, now = Date.now()): FixtureData {
+    const ago = (minutes: number) => now - minutes * MINUTE;
+    const orchestrator = data.runs.find(run => run.id === 'r-orch-3') as Run;
+    const workspace: ChatWorkspace = {
+        id: 'wks_ab12cd34',
+        folderId: 'fld_car_rental',
+        path: FIXTURE_WORKTREE_PATH,
+        branch: 'clowdy/ab12cd34',
+        managed: true,
+        ready: true,
+    };
+    const entries: Array<[number, StreamItemBody]> = [
+        [30, { kind: 'user', text: 'Add the weekend surcharge to the price, on a branch of its own.' }],
+        [29, { kind: 'tool', toolCallId: 'tc-o9-ws', name: 'workspace', state: 'done', input: { path: workspace.path, branch: workspace.branch, base: 'origin/main' }, output: fixtureWorkspaceLog(workspace, 'origin/main') }],
+        [28, { kind: 'assistant', done: true, text: 'The surcharge is in `src/booking/price.ts`, committed on `clowdy/ab12cd34`.' }],
+    ];
+
+    data.items[FIXTURE_WORKSPACE_RUN_ID] = entries.map(([minutes, body], index): StreamItem => ({ id: `${ FIXTURE_WORKSPACE_RUN_ID }-${ index + 1 }`, runId: FIXTURE_WORKSPACE_RUN_ID, seq: index + 1, at: ago(minutes), body }));
+    data.runs.push({
+        id: FIXTURE_WORKSPACE_RUN_ID,
+        projectId: orchestrator.projectId,
+        rootRunId: FIXTURE_WORKSPACE_RUN_ID,
+        chatId: FIXTURE_WORKSPACE_CHAT_ID,
+        role: 'orchestrator',
+        name: 'Orchestrator 09',
+        summary: 'Weekend surcharge in a worktree',
+        status: 'succeeded',
+        engine: orchestrator.engine,
+        ...(orchestrator.model && { model: orchestrator.model }),
+        result: 'The surcharge is in `src/booking/price.ts`, committed on `clowdy/ab12cd34`.',
+        createdAt: ago(30),
+        startedAt: ago(30),
+        finishedAt: ago(28),
+    });
+    data.chats.push({
+        id: FIXTURE_WORKSPACE_CHAT_ID,
+        projectId: orchestrator.projectId,
+        title: 'Weekend surcharge in a worktree',
+        mode: 'autopilot',
+        engine: orchestrator.engine,
+        ...(orchestrator.model && { model: orchestrator.model }),
+        orchestratorRunId: FIXTURE_WORKSPACE_RUN_ID,
+        workspace,
+        createdAt: ago(30),
+        updatedAt: ago(28),
     });
 
     return data;
@@ -920,7 +1183,8 @@ export function createFixtureData(now = Date.now()): FixtureData {
         artifacts,
         // `car-rental-api` belongs to no project yet: add it to Car Rental to see the documents, files and remotes of two folders.
         docs: { '/Users/dev/car-rental': docs, '/Users/dev/car-rental-api': API_DOCS },
-        files: { '/Users/dev/car-rental': FIXTURE_FILES, '/Users/dev/car-rental-api': API_FILES },
+        briefback: { '/Users/dev/car-rental': BRIEFBACK, [FIXTURE_WORKTREE_PATH]: WORKTREE_BRIEFBACK },
+        files: { '/Users/dev/car-rental': FIXTURE_FILES, '/Users/dev/car-rental-api': API_FILES, [FIXTURE_WORKTREE_PATH]: WORKTREE_FILES },
         // Car Rental shows a favicon of its own; Clowdy has none, so it keeps the folder icon until one is uploaded.
         icons: { '/Users/dev/car-rental': CAR_RENTAL_ICON },
         attachments: structuredClone(FIXTURE_ATTACHMENTS),

@@ -4,56 +4,50 @@ import { cn } from '@clowdy/lib';
 import { useEffect } from 'react';
 
 import { Screen as AgentsScreen } from '../features/agents';
-import { Screen as DocsScreen } from '../features/docs';
 import { openQuickSearch, quickSearchCommands } from '../features/quickSearch';
-import { Screen as SettingsScreen } from '../features/settings';
-import { SidePanelLayout } from '../features/sidePanel';
-import { Screen as TasksScreen } from '../features/tasks';
+import { SettingsDialog } from '../features/settings';
+import { SidePanelLayout, SidePanelRail, useSidePanel, useWindowFitsHalf } from '../features/sidePanel';
 import { ChordHud, hotkeys, installDispatcher, useCommands } from '../hotkeys';
-import { useProjectUi, useRootStore } from '../stores';
+import { useRootStore } from '../stores';
 import { FindBar } from './FindBar';
 import { NoProject } from './NoProject';
-import { Rail } from './Rail';
 import styles from './Shell.module.css';
 import { shellCommands } from './shellCommands';
 import { SyncBanner } from './SyncBanner';
 import { TitleBand } from './TitleBand';
 import { Unreachable } from './Unreachable';
 
-import type { ComponentType } from 'react';
-import type { Section } from '../stores';
-
-const SCREENS: Record<Section, ComponentType> = {
-    agents: AgentsScreen,
-    tasks: TasksScreen,
-    docs: DocsScreen,
-};
-
 /**
- * The window: title band on top, rail on the left, the selected section's screen beside it, and, while a project's side panel is open, the panel at the
- * right, from the top edge to the bottom, with all of the rest beside it.
+ * The window: the rail at the right edge, as tall as the window (the panel's button, its tabs, Info and Settings), which is there whether the panel is open or not, and the rest
+ * of the window beside it: the title band across the top and under it the Agents screen (the list of chats and the chat beside it) with the side panel beside it while a
+ * project's panel is open. Settings is a window over all this.
  */
 export function Shell() {
     const root = useRootStore();
+    const panel = useSidePanel();
 
+    useWindowFitsHalf();
     useEffect(() => installDispatcher(hotkeys), []);
     useCommands('app', shellCommands(root));
     useCommands('app', quickSearchCommands({ available: () => root.showsProjectScreen, open: tab => openQuickSearch(root, tab) }));
 
     return (
         <div className={ styles.shell }>
-            <SidePanelLayout>
+            <div className={ styles.window }>
                 <TitleBand />
                 <div className={ styles.body }>
-                    { root.phase === 'ready' && <Rail /> }
-                    <main className={ cn(styles.outlet, root.phase !== 'ready' && styles.bare) }>
-                        <Outlet />
-                    </main>
+                    <SidePanelLayout>
+                        <main className={ cn(styles.outlet, root.phase !== 'ready' && styles.bare, panel.open && styles.beside, panel.expanded && styles.covered) }>
+                            <Outlet />
+                        </main>
+                    </SidePanelLayout>
                 </div>
-                <SyncBanner />
-            </SidePanelLayout>
+            </div>
+            <SidePanelRail />
+            <SyncBanner />
             <ChordHud />
             <FindBar />
+            <SettingsDialog />
         </div>
     );
 }
@@ -67,8 +61,6 @@ function Outlet() {
     // The desktop shell hands over the daemon's address once, while the page loads: only a reload finds a daemon that started or moved since.
     if (root.phase === 'unreachable') return <Unreachable message={ root.loadError } onRetry={ () => (window.desktop ? location.reload() : void root.load()) } />;
 
-    if (root.ui.settingsOpen) return <SettingsScreen />;
-
     if (!project) return <NoProject />;
 
     if (project.status === 'loading') return <Loading />;
@@ -79,15 +71,13 @@ function Outlet() {
 }
 
 function ProjectScreen() {
-    const Screen = SCREENS[useProjectUi().section];
-
-    return <Screen />;
+    return <AgentsScreen />;
 }
 
 function Loading() {
     return (
         <div className={ styles.center }>
-            <Loader className={ styles.loader } />
+            <Loader size="xs" />
             <Text color="secondary">Loading…</Text>
         </div>
     );

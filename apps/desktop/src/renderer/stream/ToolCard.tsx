@@ -2,7 +2,7 @@ import { Collapsible, CollapsibleMotionContent, CollapsibleTrigger, useCollapsib
 import { Shimmer } from '@clowdy/components/Shimmer';
 import { Text } from '@clowdy/components/Text';
 import { Tooltip } from '@clowdy/components/Tooltip';
-import { CodeBraces, Page, Search, Terminal, Tool } from '@clowdy/icons/14';
+import { CodeBraces, Page, Search, Terminal, Tool, Version } from '@clowdy/icons/14';
 import { ChevronDown } from '@clowdy/icons/8';
 import { cn } from '@clowdy/lib';
 
@@ -20,6 +20,7 @@ const ICONS: Record<ToolIcon, ComponentType<SVGProps<SVGSVGElement>>> = {
     code: CodeBraces,
     terminal: Terminal,
     tool: Tool,
+    workspace: Version,
 };
 
 /** Beyond this a payload is cut: a stream should stay light, and nobody reads past it in a card. */
@@ -62,7 +63,7 @@ function Title({ verb, state, reason, shrinks }: { verb: string; state: ToolBody
 
 function Header({ call }: { call: ToolBody }) {
     const { state } = useCollapsible();
-    const view = describeTool(call.name, call.input, call.output);
+    const view = describeTool(call.name, call.input, call.output, call);
     const Icon = ICONS[view.icon];
 
     return (
@@ -91,14 +92,16 @@ export interface ToolCardProps {
  */
 export function ToolCard({ call }: ToolCardProps) {
     const hasOutput = call.output !== undefined && call.output !== '';
+    // The step that makes a chat's worktree has a log to show and nothing to ask of its input.
+    const { log } = describeTool(call.name, call.input, call.output, call);
 
     return (
         <Collapsible className={ styles.root } data-state={ call.state }>
             <Header call={ call } />
             <CollapsibleMotionContent className={ styles.collapse }>
                 <div className={ styles.content }>
-                    <Section label="Input" text={ payloadText(call.input) } />
-                    { hasOutput && <Section label="Output" text={ payloadText(call.output) } /> }
+                    { !log && <Section label="Input" text={ payloadText(call.input) } /> }
+                    { hasOutput && <Section label={ log ? 'Log' : 'Output' } text={ payloadText(call.output) } /> }
                     { call.error && <Section label="Error" text={ call.error } danger /> }
                 </div>
             </CollapsibleMotionContent>

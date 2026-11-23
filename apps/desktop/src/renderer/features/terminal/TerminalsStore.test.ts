@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { FIXTURE_PROJECT_ID } from '../../daemon/fixtureData';
+import { createFixtureData, FIXTURE_PROJECT_ID, withFixtureWorkspace } from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { overrideTransport } from '../../daemon/testing';
 import { TransportError } from '../../daemon/transport';
@@ -19,6 +19,77 @@ async function setup() {
 
     return { transport, store: new TerminalsStore(transport), projectId: project.id, folderId: first.id, otherFolderId: second?.id };
 }
+
+describe('TerminalsStore over a worktree', () => {
+    const WORKSPACE = 'wks_ab12cd34';
+    const FOLDER = 'fld_car_rental';
+    const setup = () => {
+        const transport = new FixtureTransport({ data: withFixtureWorkspace(createFixtureData()) });
+
+        return { transport, store: new TerminalsStore(transport) };
+    };
+
+    it('starts a shell in the worktree, with its id, chooses it, and keeps it apart from the folder\'s own shells', async () => {
+        const { store } = setup();
+        const own = await store.start(FIXTURE_PROJECT_ID, FOLDER);
+        const inside = await store.start(FIXTURE_PROJECT_ID, FOLDER, undefined, WORKSPACE);
+
+        expect(inside?.info).toMatchObject({ workspaceId: WORKSPACE, cwd: '/Users/dev/Clowdy/workspaces/car-rental/ab12cd34/car-rental' });
+        expect(store.sessionsOf(FIXTURE_PROJECT_ID, FOLDER)).toEqual([own]);
+        expect(store.sessionsOf(FIXTURE_PROJECT_ID, FOLDER, WORKSPACE)).toEqual([inside]);
+        expect(store.activeOf(FIXTURE_PROJECT_ID, FOLDER)).toBe(own);
+        expect(store.activeOf(FIXTURE_PROJECT_ID, FOLDER, WORKSPACE)).toBe(inside);
+    });
+
+    it('remembers the shell each place chose apart from the other\'s', async () => {
+        const { store } = setup();
+        const first = await store.start(FIXTURE_PROJECT_ID, FOLDER, undefined, WORKSPACE);
+        const second = await store.start(FIXTURE_PROJECT_ID, FOLDER, undefined, WORKSPACE);
+        const own = await store.start(FIXTURE_PROJECT_ID, FOLDER);
+
+        store.select(first!);
+
+        expect(store.activeOf(FIXTURE_PROJECT_ID, FOLDER, WORKSPACE)).toBe(first);
+        expect(store.activeOf(FIXTURE_PROJECT_ID, FOLDER)).toBe(own);
+        expect(second).not.toBe(first);
+    });
+
+    it('gives a worktree with no shell one, and the folder that has some none, and one for two asks at once', async () => {
+        const { transport, store } = setup();
+        const create = vi.spyOn(transport, 'createTerminal');
+        const own = await store.start(FIXTURE_PROJECT_ID, FOLDER);
+
+        create.mockClear();
+
+        const [first, second] = await Promise.all([store.ensureOne(FIXTURE_PROJECT_ID, FOLDER, WORKSPACE), store.ensureOne(FIXTURE_PROJECT_ID, FOLDER, WORKSPACE)]);
+
+        expect(create).toHaveBeenCalledOnce();
+        expect(create).toHaveBeenCalledWith(expect.objectContaining({ folderId: FOLDER, workspaceId: WORKSPACE }));
+        expect(first).toBe(second);
+        expect(first).not.toBe(own);
+        expect(await store.ensureOne(FIXTURE_PROJECT_ID, FOLDER)).toBe(own);
+    });
+
+    it('reads the daemon\'s shells into the place each belongs to', async () => {
+        const { transport, store } = setup();
+        const own = await transport.createTerminal({ projectId: FIXTURE_PROJECT_ID, folderId: FOLDER, cols: 80, rows: 24 });
+        const inside = await transport.createTerminal({ projectId: FIXTURE_PROJECT_ID, folderId: FOLDER, workspaceId: WORKSPACE, cols: 80, rows: 24 });
+
+        await store.load(FIXTURE_PROJECT_ID);
+
+        expect(store.sessionsOf(FIXTURE_PROJECT_ID, FOLDER).map(session => session.id)).toEqual([own.id]);
+        expect(store.sessionsOf(FIXTURE_PROJECT_ID, FOLDER, WORKSPACE).map(session => session.id)).toEqual([inside.id]);
+    });
+
+    it('does not take the shells of one worktree for another\'s', async () => {
+        const { store } = setup();
+
+        await store.start(FIXTURE_PROJECT_ID, FOLDER, undefined, WORKSPACE);
+
+        expect(store.sessionsOf(FIXTURE_PROJECT_ID, FOLDER, 'wks_other')).toEqual([]);
+        expect(store.activeOf(FIXTURE_PROJECT_ID, FOLDER, 'wks_other')).toBeUndefined();
+    });
+});
 
 describe('TerminalsStore', () => {
     it('starts a shell in a folder and chooses it', async () => {
@@ -74,18 +145,38 @@ describe('TerminalsStore', () => {
         expect(session.view).toBeUndefined();
     });
 
-    it('gives an empty folder its first shell once, and does not start another when the last is closed', async () => {
+    it('gives a folder with no shell one whenever it is asked, the folder whose last shell was closed too, and one for two asks at once', async () => {
         const { transport, store, projectId, folderId } = await setup();
         const create = vi.spyOn(transport, 'createTerminal');
 
-        await store.ensureOne(projectId, folderId);
-        await store.ensureOne(projectId, folderId);
+        const [first, second] = await Promise.all([store.ensureOne(projectId, folderId), store.ensureOne(projectId, folderId)]);
+
+        expect(create).toHaveBeenCalledOnce();
+        expect(first).toBe(second);
+        expect(store.sessionsOf(projectId, folderId)).toHaveLength(1);
+
+        // Asked again while it has one: the same shell, none made.
+        expect(await store.ensureOne(projectId, folderId)).toBe(first);
         expect(create).toHaveBeenCalledOnce();
 
-        await store.close(store.sessionsOf(projectId, folderId)[0]);
-        await store.ensureOne(projectId, folderId);
-        expect(create).toHaveBeenCalledOnce();
+        await store.close(first!);
         expect(store.sessionsOf(projectId, folderId)).toEqual([]);
+
+        const again = await store.ensureOne(projectId, folderId);
+
+        expect(create).toHaveBeenCalledTimes(2);
+        expect(again).toBeDefined();
+        expect(again).not.toBe(first);
+        expect(store.sessionsOf(projectId, folderId)).toEqual([again]);
+    });
+
+    it('resolves nothing, and keeps the reason, when no shell can be made, and asks again the next time', async () => {
+        const { transport, projectId, folderId } = await setup();
+        const refusing = new TerminalsStore(overrideTransport(transport, { createTerminal: () => Promise.reject(new TransportError('The folder /p is missing', 503)) }));
+
+        expect(await refusing.ensureOne(projectId, folderId)).toBeUndefined();
+        expect(refusing.error).toBe('The folder /p is missing');
+        expect(await refusing.ensureOne(projectId, folderId)).toBeUndefined();
     });
 
     it('does not start one in a folder that already has some', async () => {
@@ -227,14 +318,22 @@ describe('isAppShortcut', () => {
         expect(isAppShortcut(key({ code: 'Escape', metaKey: true }), 'darwin')).toBe(true);
     });
 
-    it('lets the panel\'s tabs through where Ctrl is the app\'s modifier: Ctrl+0, 1 and 2', () => {
-        for (const code of ['Digit0', 'Digit1', 'Digit2', 'Numpad1']) {
+    it('lets the expanded panel\'s key through off a Mac, where Ctrl is the app\'s modifier', () => {
+        expect(isAppShortcut(key({ code: 'Enter', ctrlKey: true, shiftKey: true }), 'win32')).toBe(true);
+        // On a Mac it is Cmd, which xterm never takes, and the shell keeps Ctrl+Shift+Enter.
+        expect(isAppShortcut(key({ code: 'Enter', ctrlKey: true, shiftKey: true }), 'darwin')).toBe(false);
+        expect(isAppShortcut(key({ code: 'Enter', ctrlKey: true }), 'win32')).toBe(false);
+        expect(isAppShortcut(key({ code: 'Enter', shiftKey: true }), 'win32')).toBe(false);
+    });
+
+    it('lets the panel\'s tabs through where Ctrl is the app\'s modifier: Ctrl+0 to 4', () => {
+        for (const code of ['Digit0', 'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Numpad1']) {
             expect(isAppShortcut(key({ code, ctrlKey: true }), 'win32')).toBe(true);
             // On a Mac the shell keeps Ctrl+digit, and the tabs are on Cmd, which xterm never takes.
             expect(isAppShortcut(key({ code, ctrlKey: true }), 'darwin')).toBe(false);
         }
 
-        expect(isAppShortcut(key({ code: 'Digit3', ctrlKey: true }), 'win32')).toBe(false);
+        expect(isAppShortcut(key({ code: 'Digit5', ctrlKey: true }), 'win32')).toBe(false);
         expect(isAppShortcut(key({ code: 'Digit1', ctrlKey: true, shiftKey: true }), 'win32')).toBe(false);
         expect(isAppShortcut(key({ code: 'Digit1', ctrlKey: true, altKey: true }), 'win32')).toBe(false);
         expect(isAppShortcut(key({ code: 'Digit1' }), 'win32')).toBe(false);

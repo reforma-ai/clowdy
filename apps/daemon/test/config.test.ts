@@ -24,6 +24,11 @@ describe('config', () => {
         expect(loadConfig({ CLOWDY_PERSONAL_DIR: '/mine' }, 'linux').personalDir).toBe('/mine');
     });
 
+    test('the worktrees of chats go under ~/Clowdy/workspaces, or CLOWDY_WORKSPACES_DIR', () => {
+        expect(loadConfig({}, 'linux').workspacesDir).toBe(join(homedir(), 'Clowdy', 'workspaces'));
+        expect(loadConfig({ CLOWDY_WORKSPACES_DIR: '/trees' }, 'linux').workspacesDir).toBe('/trees');
+    });
+
     test('the data dir comes from the shared protocol function, so the desktop app finds the same folder', () => {
         for (const platform of ['darwin', 'win32', 'linux'] as const) {
             for (const env of [{}, { CLOWDY_PROFILE: 'dev' }, { LOCALAPPDATA: 'D:\\Local' }]) {
@@ -41,7 +46,7 @@ describe('config', () => {
     });
 
     test('a parent hears of its threads that stopped 2 s after the first one, unless the environment says otherwise; the other timings keep their defaults', () => {
-        expect(loadConfig({}, 'linux').timings).toEqual({ killGraceMs: 5000, retryBaseMs: 5000, pauseJitterMs: 30_000, noticeWindowMs: 2000 });
+        expect(loadConfig({}, 'linux').timings).toEqual({ killGraceMs: 5000, retryBaseMs: 5000, pauseJitterMs: 30_000, noticeWindowMs: 2000, setupMs: 600_000 });
         expect(loadConfig({ CLOWDY_THREAD_NOTICE_WINDOW_MS: '0' }, 'linux').timings.noticeWindowMs).toBe(0);
         expect(loadConfig({ CLOWDY_THREAD_NOTICE_WINDOW_MS: '500' }, 'linux').timings).toMatchObject({ noticeWindowMs: 500, killGraceMs: 5000 });
         expect(() => loadConfig({ CLOWDY_THREAD_NOTICE_WINDOW_MS: '-1' })).toThrow(/CLOWDY_THREAD_NOTICE_WINDOW_MS/);

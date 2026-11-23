@@ -2,6 +2,7 @@ import { Minimatch } from 'minimatch';
 import { action, computed, observable, observableShallow, runInAction } from 'mobx';
 
 import { basename, dirname, normalizePath } from '../paths';
+import { FileSystemError } from '../provider';
 
 import type { FileChange, FileEntry, FileSystemProvider } from '../provider';
 
@@ -97,6 +98,10 @@ export class FileTree {
     #rootDepth = 0;
     /** Folders opened past the root window. A resync lists these again, not the rest of the project. */
     #opened = new Set<string>();
+    /** Folders `loadDeep` listed whole: a resync lists each of them once, whole, and not every folder below it one by one. */
+    readonly #deep = new Set<string>();
+    /** Folders `loadDeep` was asked for while a refresh was in flight: that refresh's listing knows nothing of them, so they are listed again once it has committed. */
+    readonly #deepRetry = new Set<string>();
     /** Creates under a folder this tab has not listed. They are not rows; they give that folder a chevron. */
     #below = new Set<string>();
 
@@ -110,6 +115,32 @@ export class FileTree {
                     continue;
                 }
 
+                const parent = dirname(entry.path);
+                const siblings = byParent.get(parent);
+
+                if (siblings) {
+                    siblings.push(entry);
+                }
+                else {
+                    byParent.set(parent, [entry]);
+                }
+            }
+
+            for (const siblings of byParent.values()) {
+                siblings.sort(compareEntries);
+            }
+
+            return byParent;
+        },
+        { keepAlive: true }
+    );
+
+    /** Every entry by parent, sorted, with no rule of hiding or excluding: for a view of the tree that has rules of its own. */
+    readonly #allByParent = computed(
+        () => {
+            const byParent = new Map<string, FileEntry[]>();
+
+            for (const entry of this.entries.values()) {
                 const parent = dirname(entry.path);
                 const siblings = byParent.get(parent);
 
@@ -145,6 +176,14 @@ export class FileTree {
         return this.#byParent.get().get(path) ?? [];
     }
 
+    /**
+     * The listed children of a folder (`''` is the root), whatever the hidden and excluded globs say, folders first, then natural name order. For a view that draws a
+     * part of the tree by rules of its own, such as a folder of documents inside a hidden one.
+     */
+    entriesOf(path = ''): readonly FileEntry[] {
+        return this.#allByParent.get().get(path) ?? [];
+    }
+
     /** The path and every folder above it are shown. */
     isVisible(path: string): boolean {
         for (let current = normalizePath(path); current !== ''; current = dirname(current)) {
@@ -154,6 +193,17 @@ export class FileTree {
         }
 
         return true;
+    }
+
+    /** The path, or a folder above it, matches the hidden globs: a row the tree draws only while `showHidden` is on. */
+    isHidden(path: string): boolean {
+        for (let current = normalizePath(path); current !== ''; current = dirname(current)) {
+            if (this.#visibilityOf(current) === 'hidden') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** Globs of the paths it does not show: the excluded ones, and the hidden ones unless `showHidden`. */
@@ -184,18 +234,22 @@ export class FileTree {
             const listed: FileEntry[] = [];
             const covered = new Set<string>();
 
-            // A folder opened while this listing is in flight is listed before the tree is replaced.
+            const deepRoots = [...this.#deep];
+            const belowDeep = (dir: string) => deepRoots.some(root => dir === root || dir.startsWith(`${ root }/`));
+
+            // A folder opened while this listing is in flight is listed before the tree is replaced. The folders below a deep one are in its own listing.
             for (;;) {
-                const extra = [...this.#opened].filter(dir => !covered.has(dir));
+                const extra = [...this.#opened].filter(dir => !covered.has(dir) && !belowDeep(dir));
 
                 if (covered.size > 0 && extra.length === 0) {
                     break;
                 }
 
                 const includeRoot = covered.size === 0;
-                const [root, nested] = await Promise.all([
+                const [root, nested, deep] = await Promise.all([
                     includeRoot ? this.#provider.list('', INITIAL_DEPTH) : Promise.resolve([]),
-                    Promise.all(extra.map(dir => this.#provider.list(dir, 1))).then(groups => groups.flat()),
+                    Promise.all(extra.map(dir => this.#listOpened(dir))).then(groups => groups.flat()),
+                    includeRoot ? Promise.all(deepRoots.map(dir => this.#listDeepAgain(dir))).then(groups => groups.flat()) : Promise.resolve([]),
                 ]);
 
                 if (generation !== this.#generation) {
@@ -207,7 +261,7 @@ export class FileTree {
                 for (const dir of extra) {
                     covered.add(dir);
                 }
-                listed.push(...root, ...nested);
+                listed.push(...root, ...nested, ...deep);
             }
 
             runInAction(() => {
@@ -230,6 +284,8 @@ export class FileTree {
 
                 this.status = 'ready';
             });
+
+            await this.#retryDeep();
         }
         catch (error) {
             if (generation === this.#generation) {
@@ -302,6 +358,110 @@ export class FileTree {
 
             throw error;
         }
+    }
+
+    /**
+     * Lists a folder and everything below it, for a view that needs the whole of a small part of the tree (a folder of documents), and counts every folder it
+     * listed as opened, so a resync lists them again and the changes below them show. A folder that is not there lists nothing. Not while a refresh is in
+     * flight: its listing replaces the entries and knows nothing of this folder, so the folder is listed again once the refresh has committed.
+     */
+    async loadDeep(path: string): Promise<void> {
+        const dir = normalizePath(path);
+
+        if (this.#pending) {
+            this.#deepRetry.add(dir);
+
+            return;
+        }
+
+        const generation = this.#generation;
+        let listed: FileEntry[];
+
+        try {
+            listed = await this.#provider.list(dir);
+        }
+        catch (error) {
+            if (FileSystemError.is(error, 'NotFound')) {
+                return;
+            }
+
+            throw error;
+        }
+
+        if (generation !== this.#generation || this.#pending) {
+            this.#deepRetry.add(dir);
+
+            // A refresh that began and committed while the folder was being listed has nobody left to ask again.
+            if (!this.#pending) {
+                await this.#retryDeep();
+            }
+
+            return;
+        }
+
+        runInAction(() => {
+            for (const entry of listed) {
+                addEntry(this.entries, entry);
+
+                if (entry.kind === 'directory') {
+                    this.#opened.add(entry.path);
+                }
+            }
+
+            if (dir !== '') {
+                this.#opened.add(dir);
+                this.#deep.add(dir);
+            }
+        });
+    }
+
+    /**
+     * An opened folder's entries for a resync. A folder that is gone since it was opened (a resync that came with no delete events says nothing of it, as after a branch
+     * was checked out) lists nothing and is forgotten: one folder that is not there must not fail the listing of the rest, again and again.
+     */
+    async #listOpened(dir: string): Promise<FileEntry[]> {
+        try {
+            return await this.#provider.list(dir, 1);
+        }
+        catch (error) {
+            if (FileSystemError.is(error, 'NotFound')) {
+                this.#opened.delete(dir);
+
+                return [];
+            }
+
+            throw error;
+        }
+    }
+
+    /** A deep folder's entries, whole, for a resync. One that is gone is forgotten with the folders opened below it. */
+    async #listDeepAgain(dir: string): Promise<FileEntry[]> {
+        try {
+            return await this.#provider.list(dir);
+        }
+        catch (error) {
+            if (FileSystemError.is(error, 'NotFound')) {
+                this.#deep.delete(dir);
+
+                for (const opened of [...this.#opened]) {
+                    if (opened === dir || opened.startsWith(`${ dir }/`)) {
+                        this.#opened.delete(opened);
+                    }
+                }
+
+                return [];
+            }
+
+            throw error;
+        }
+    }
+
+    /** Lists again the folders `loadDeep` could not list while a refresh was in flight. A folder that fails stays as the refresh left it: its top level. */
+    async #retryDeep(): Promise<void> {
+        const roots = [...this.#deepRetry];
+
+        this.#deepRetry.clear();
+        await Promise.all(roots.map(root => this.loadDeep(root).catch(() => undefined)));
     }
 
     @action
@@ -399,7 +559,7 @@ export class FileTree {
         }
     }
 
-    #shows(path: string): boolean {
+    #visibilityOf(path: string): Visibility {
         let visibility = this.#visibility.get(path);
 
         if (visibility === undefined) {
@@ -410,6 +570,12 @@ export class FileTree {
                     : 'shown';
             this.#visibility.set(path, visibility);
         }
+
+        return visibility;
+    }
+
+    #shows(path: string): boolean {
+        const visibility = this.#visibilityOf(path);
 
         return visibility === 'shown' || (visibility === 'hidden' && this.showHidden);
     }

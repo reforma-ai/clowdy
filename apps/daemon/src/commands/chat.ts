@@ -2,6 +2,7 @@ import { projectChatMode } from '@clowdy/protocol';
 
 import { createChat, deleteChat, renameChat, requireChat, setChatArchived, setChatMode, setChatModel } from '../domain/chats';
 import { requireProject } from '../domain/projects';
+import { removeChatWorkspace } from '../domain/workspaceRemoval';
 import { invalid } from '../errors';
 import { prepareEdit } from '../runs/edit';
 import { prepareFork } from '../runs/fork';
@@ -14,7 +15,8 @@ type ChatCommand = 'chat.create' | 'chat.rename' | 'chat.setMode' | 'chat.setMod
     | 'chat.removeQueued' | 'chat.moveQueued' | 'chat.sendQueued';
 
 export const chatHandlers: Pick<Handlers, ChatCommand> = {
-    'chat.create': ({ store, runs }, command) => {
+    /** A `workspace` is checked here and its row made; the worktree itself is made by the chat's first turn (`prepareWorkspace`). */
+    'chat.create': ({ store, runs, config }, command) => {
         const project = requireProject(store, command.projectId);
 
         // An unknown agent is refused here; one that is switched off waits for the first message, which says so.
@@ -22,7 +24,7 @@ export const chatHandlers: Pick<Handlers, ChatCommand> = {
             runs.resolveEngine(project, command.engine);
         }
 
-        return { chat: createChat(store, { ...command, mode: command.mode ?? projectChatMode(project.settings) }) };
+        return { chat: createChat(store, { ...command, mode: command.mode ?? projectChatMode(project.settings) }, config) };
     },
 
     'chat.rename': ({ store }, command) => ({ chat: renameChat(store, command.chatId, command.title) }),
@@ -72,7 +74,7 @@ export const chatHandlers: Pick<Handlers, ChatCommand> = {
     /** Archiving takes the chat's threads along; bringing it back brings only the chat (`setChatArchived`). */
     'chat.setArchived': ({ store }, command) => ({ chat: setChatArchived(store, command.chatId, command.archived) }),
 
-    /** The chat goes with every thread below it, each announced on its own (`deleteChat`). */
+    /** The chat goes with every thread below it, each announced on its own (`deleteChat`). The worktree and its branch stay; one that is to go is `chatAsyncHandlers`'s. */
     'chat.delete': ({ store, attachments }, command) => {
         deleteChat(store, command.chatId, attachments);
 
@@ -103,9 +105,23 @@ export const chatHandlers: Pick<Handlers, ChatCommand> = {
     },
 };
 
-/** `chat.fork` and `chat.edit` ask the agent to copy its session first, so they are the chat commands that wait: see `prepareFork` and `prepareEdit`. */
-export const chatAsyncHandlers: Pick<AsyncHandlers, 'chat.fork' | 'chat.edit'> = {
+/**
+ * `chat.fork` and `chat.edit` ask the agent to copy its session first, so they are the chat commands that wait: see `prepareFork` and `prepareEdit`. `chat.delete` waits
+ * only with `removeWorkspace`, for git to remove the worktree and its branch (`removeChatWorkspace`, which refuses with a `conflict` that says why when it must): the
+ * chat is deleted after it, in the transaction, and nothing is deleted when the removal fails.
+ */
+export const chatAsyncHandlers: Pick<AsyncHandlers, 'chat.fork' | 'chat.edit' | 'chat.delete'> = {
     'chat.fork': (services, command) => prepareFork(services, command.chatId, command.itemId),
 
     'chat.edit': (services, command) => prepareEdit(services, command.chatId, command.itemId, { text: command.text, attachmentIds: command.attachmentIds }),
+
+    'chat.delete': async ({ store, config, attachments }, command) => {
+        await removeChatWorkspace(store, config, command.chatId);
+
+        return () => {
+            deleteChat(store, command.chatId, attachments);
+
+            return { chatId: command.chatId };
+        };
+    },
 };

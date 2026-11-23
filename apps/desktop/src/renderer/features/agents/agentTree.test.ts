@@ -188,6 +188,14 @@ describe('chatDotTone', () => {
         expect(chatDotTone(run('r', 'failed'))).toBe('danger');
     });
 
+    it('is blue for a run that rests for its background work while a card is open to the person, and green again once it is decided', () => {
+        expect(chatDotTone(run('r', 'waiting_background', { awaitingUser: true }))).toBe('accent');
+        expect(chatDotTone(run('r', 'running', { awaitingUser: true }))).toBe('accent');
+        expect(chatDotTone(run('r', 'waiting_background'))).toBe('success');
+        // A run that is over has no mark worth showing, whatever a stale snapshot says.
+        expect(chatDotTone(run('r', 'cancelled', { awaitingUser: true }))).toBeUndefined();
+    });
+
     it('keeps the usual tone of a run that is blocked or queued', () => {
         expect(chatDotTone(run('r', 'blocked'))).toBe('warning');
         expect(chatDotTone(run('r', 'queued'))).toBe('neutral');
@@ -200,11 +208,19 @@ describe('chatDotTone', () => {
     });
 
     it('is green for a chat at rest whose threads work, and keeps the tone of a run that has one of its own', () => {
-        for (const status of ['succeeded', 'cancelled', 'interrupted'] as const) expect(chatDotTone(run('r', status), true)).toBe('success');
+        for (const status of ['succeeded', 'cancelled', 'interrupted'] as const) expect(chatDotTone(run('r', status), 'working')).toBe('success');
 
-        expect(chatDotTone(run('r', 'failed'), true)).toBe('danger');
-        expect(chatDotTone(run('r', 'waiting_user'), true)).toBe('accent');
-        expect(chatDotTone(run('r', 'succeeded'), false)).toBeUndefined();
+        expect(chatDotTone(run('r', 'failed'), 'working')).toBe('danger');
+        expect(chatDotTone(run('r', 'waiting_user'), 'working')).toBe('accent');
+        expect(chatDotTone(run('r', 'succeeded'), undefined)).toBeUndefined();
+    });
+
+    it('is blue for a chat whose thread waits for the person, over green and over no dot, and keeps a failure or a block', () => {
+        for (const status of ['succeeded', 'cancelled', 'interrupted', 'running', 'waiting_background'] as const) expect(chatDotTone(run('r', status), 'asking')).toBe('accent');
+
+        expect(chatDotTone(undefined, 'asking')).toBe('accent');
+        expect(chatDotTone(run('r', 'failed'), 'asking')).toBe('danger');
+        expect(chatDotTone(run('r', 'blocked'), 'asking')).toBe('warning');
     });
 });
 
@@ -250,6 +266,33 @@ describe('agentRows', () => {
     it('lists the threads of an expanded chat below it, one level in, in the order they were made', () => {
         expect(shape({ expanded: new Set(['root']) })).toEqual(['root -', '  t1 +', '  t2 +', 'root2']);
         expect(shape({ expanded: new Set(['root', 't1', 't2']) })).toEqual(['root -', '  t1 -', '    t11', '    t12', '  t2 -', '    t21', 'root2']);
+    });
+
+    describe('a thread that waits for the person', () => {
+        const asking = (...ids: string[]): ReadonlyMap<string, Run> => new Map([...treeRuns].map(([id, candidate]) => [id, ids.includes(id.replace('run-', '')) ? { ...candidate, status: 'waiting_user' as const, statusReason: 'Waiting for your approval' } : candidate]));
+
+        it('is listed under a folded chat, with the chats between, while the threads that do not ask stay folded away', () => {
+            expect(shape({ runs: asking('t1') })).toEqual(['root +', '  t1 +', 'root2']);
+            expect(shape({ runs: asking('t11') })).toEqual(['root +', '  t1 +', '    t11', 'root2']);
+            expect(shape({ runs: asking('t11', 't21') })).toEqual(['root +', '  t1 +', '    t11', '  t2 +', '    t21', 'root2']);
+        });
+
+        it('reads a thread that rests for its background work with a card open as asking, as the daemon does', () => {
+            const resting = new Map(treeRuns).set('run-t2', { ...run('run-t2', 'waiting_background'), awaitingUser: true });
+
+            expect(shape({ runs: resting })).toEqual(['root +', '  t2 +', 'root2']);
+        });
+
+        it('leaves the fold as it was: the chat still counts every thread and reads folded, and expanding it lists them all', () => {
+            expect(rows({ runs: asking('t1') })[0]).toMatchObject({ id: 'root', childCount: 2, isExpanded: false });
+            expect(shape({ runs: asking('t1'), expanded: new Set(['root']) })).toEqual(['root -', '  t1 +', '  t2 +', 'root2']);
+        });
+
+        it('is not listed when archived, or when the chat above it is gone from the list by the filter', () => {
+            const archived = tree.map(candidate => (candidate.id === 't1' ? { ...candidate, archivedAt: 9 } : candidate));
+
+            expect(shape({ runs: asking('t1') }, archived)).toEqual(['root +', 'root2']);
+        });
     });
 
     it('hides what is below a folded thread even when a chat further down is expanded', () => {

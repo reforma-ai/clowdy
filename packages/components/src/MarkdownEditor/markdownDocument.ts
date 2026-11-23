@@ -36,9 +36,13 @@ export function markdownExtensions(resolveImageSrc?: ResolveImageSrc): Extension
 const QUOTE_KEY = 'Mod-Shift-.';
 const TIPTAP_QUOTE_KEY = 'Mod-Shift-b';
 
+/** A Mac, where the desktop app's side panel is on `Cmd+Esc`: `Cmd+Shift+B` is the editor's. Elsewhere `Ctrl+Shift+B` is the panel's. */
+const onMac = () => typeof navigator !== 'undefined' && /Mac|iP(hone|[oa]d)/.test(navigator.platform);
+
 /**
- * Quote on `Cmd+Shift+.` (`Ctrl+Shift+.`), as GitHub's editor has it. TipTap's own `Cmd+Shift+B` is the desktop app's key for its side panel, so the
- * editor gives it up: it is taken here, before Blockquote's own binding, and does nothing, so a window that does not claim the key does not make a quote either.
+ * Quote on `Cmd+Shift+.` (`Ctrl+Shift+.`), as GitHub's editor has it, and on a Mac on TipTap's own `Cmd+Shift+B` too. Off a Mac `Ctrl+Shift+B` is the desktop app's key
+ * for its side panel, so the editor gives it up there: it is taken here, before Blockquote's own binding, and does nothing, so a window that does not claim the key
+ * does not make a quote either.
  */
 const QuoteShortcut = Extension.create({
     name: 'quoteShortcut',
@@ -46,7 +50,7 @@ const QuoteShortcut = Extension.create({
     addKeyboardShortcuts() {
         return {
             [QUOTE_KEY]: ({ editor }) => editor.commands.toggleBlockquote(),
-            [TIPTAP_QUOTE_KEY]: () => true,
+            ...(onMac() ? {} : { [TIPTAP_QUOTE_KEY]: () => true }),
         };
     },
 });

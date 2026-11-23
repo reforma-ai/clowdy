@@ -15,7 +15,7 @@ import { ChatIcon } from '../agents/ChatIcon';
 import { Marked, visiblePreview, wordRanges } from './preview';
 import styles from './QuickSearch.module.css';
 import { TAB_COMMANDS } from './quickSearchCommands';
-import { QUICK_SEARCH_TABS, type Found, type FoundChat, type FoundFile, type FoundLine, type QuickSearchModel, type QuickSearchTab } from './QuickSearchModel';
+import { QUICK_SEARCH_TABS, type Found, type FoundChat, type FoundDoc, type FoundFile, type FoundLine, type QuickSearchModel, type QuickSearchTab } from './QuickSearchModel';
 
 export interface QuickSearchProps {
     model: QuickSearchModel;
@@ -24,17 +24,19 @@ export interface QuickSearchProps {
 }
 
 const PLACEHOLDERS: Record<QuickSearchTab, string> = {
-    all: 'Search chats, files and the text in them',
+    all: 'Search chats, files, documents and the text in them',
     chats: 'Search chats by title',
     files: 'Search files by name',
+    docs: 'Search documents by name',
     text: 'Search the text in files',
 };
 
 /** What an empty list says while nothing is typed: the chats tabs list the latest chats, so they say so only when there are none. */
 const HINTS: Record<QuickSearchTab, string> = {
-    all: 'Find a chat by its title, a file by its name, or a line by its words',
+    all: 'Find a chat by its title, a file or a document by its name, or a line by its words',
     chats: 'No chats yet',
     files: 'Type the name of a file, or a part of its path',
+    docs: 'Type the name of a document, or a part of its path',
     text: 'Type the words to find in your files',
 };
 
@@ -42,6 +44,7 @@ const EMPTY: Record<QuickSearchTab, string> = {
     all: 'Nothing found',
     chats: 'No chats found',
     files: 'No files found',
+    docs: 'No documents found',
     text: 'No matches',
 };
 
@@ -74,7 +77,7 @@ function ChatRow({ found: { chat, run, note }, query }: { found: FoundChat; quer
     );
 }
 
-function FileRow({ found: { path }, query }: { found: FoundFile; query: string }) {
+function FileRow({ found: { path }, query }: { found: FoundFile | FoundDoc; query: string }) {
     const folder = dirname(path);
     const name = basename(path);
 

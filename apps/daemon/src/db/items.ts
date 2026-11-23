@@ -68,6 +68,18 @@ export function findQuestion(db: Database, runId: string, questionId: string): S
     return row ? toItem(row, false) : undefined;
 }
 
+export function findApproval(db: Database, runId: string, approvalId: string): StreamItem | undefined {
+    const row = db.query('SELECT * FROM stream_items WHERE run_id = ? AND json_extract(body, \'$.approvalId\') = ?').get(runId, approvalId) as ItemRow | null;
+
+    return row ? toItem(row, false) : undefined;
+}
+
+/** The approvals of a run whose item still says they wait for the person, which only a crash or a restart leaves behind. */
+export function listOpenApprovals(db: Database, runId: string): StreamItem[] {
+    return (db.query('SELECT * FROM stream_items WHERE run_id = ? AND json_extract(body, \'$.kind\') = \'approval\' AND json_extract(body, \'$.state\') = \'open\' ORDER BY seq')
+        .all(runId) as ItemRow[]).map(row => toItem(row, false));
+}
+
 /** The tool calls of a run whose item still says they run. */
 export function listRunningTools(db: Database, runId: string): StreamItem[] {
     return (db.query('SELECT * FROM stream_items WHERE run_id = ? AND json_extract(body, \'$.kind\') = \'tool\' AND json_extract(body, \'$.state\') = \'running\' ORDER BY seq')

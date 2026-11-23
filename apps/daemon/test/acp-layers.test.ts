@@ -3,13 +3,15 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { KNOWN_AGENTS } from '../src/engine/acp/catalog';
 import { Discovery } from '../src/engine/acp/discovery';
 import { AgentRegistry } from '../src/engine/acp/registry';
+import { PROVIDERS } from '../src/providers/builtin';
 import { alive, collect, FAKE_AGENT, rig, textOf, tool, types, until } from './acp-helpers';
 
 import type { EngineEvent } from '../src/engine/types';
 import type { Rig } from './acp-helpers';
+
+const SPECS = PROVIDERS.map(provider => provider.spec);
 
 let root: string;
 let bin: string;
@@ -46,7 +48,7 @@ afterEach(() => {
 describe('the protocol of an agent', () => {
     test('a built-in agent resolves with the protocol its catalog entry names, and v1 when it names none', async () => {
         const reg = registry();
-        const [spec] = KNOWN_AGENTS;
+        const [spec] = SPECS;
         const named = spec.protocol;
 
         program(spec.programs[0]);
@@ -76,7 +78,7 @@ describe('the protocol of an agent', () => {
 
     test('a built-in agent resolves with the wake flag its catalog entry names, and without one when it names none', async () => {
         const reg = registry();
-        const [spec] = KNOWN_AGENTS;
+        const [spec] = SPECS;
         const named = spec.wakesOnBackgroundEnd;
 
         program(spec.programs[0]);
@@ -105,20 +107,20 @@ describe('the protocol of an agent', () => {
     });
 
     test('Claude Code reports finished background work by itself, so the runtime does not tell it', () => {
-        expect(KNOWN_AGENTS.find(spec => spec.id === 'claude')?.wakesOnBackgroundEnd).toBeUndefined();
+        expect(SPECS.find(spec => spec.id === 'claude')?.wakesOnBackgroundEnd).toBeUndefined();
     });
 
     test('Claude Code and Codex are on v2, and every other built-in agent stays on v1', () => {
-        expect(KNOWN_AGENTS.filter(spec => spec.protocol === 'v2').map(spec => spec.id)).toEqual(['claude', 'codex']);
-        expect(KNOWN_AGENTS.find(spec => spec.id === 'cursor')?.protocol).toBeUndefined();
+        expect(SPECS.filter(spec => spec.protocol === 'v2').map(spec => spec.id)).toEqual(['claude', 'codex']);
+        expect(SPECS.find(spec => spec.id === 'cursor')?.protocol).toBeUndefined();
     });
 
     test('Codex starts no turn to report background work that ended, so the runtime tells it, and Claude Code does start one', () => {
-        expect(KNOWN_AGENTS.filter(spec => spec.wakesOnBackgroundEnd).map(spec => spec.id)).toEqual(['codex']);
+        expect(SPECS.filter(spec => spec.wakesOnBackgroundEnd).map(spec => spec.id)).toEqual(['codex']);
     });
 
     test('Codex is pinned to an adapter that reports background work on v2', () => {
-        const launch = KNOWN_AGENTS.find(spec => spec.id === 'codex')?.launch;
+        const launch = SPECS.find(spec => spec.id === 'codex')?.launch;
 
         expect(launch).toMatchObject({ kind: 'package', package: '@agentclientprotocol/codex-acp@2.8.0' });
     });

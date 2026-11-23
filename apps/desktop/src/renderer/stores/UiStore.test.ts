@@ -11,29 +11,24 @@ function memoryStorage(initial: Record<string, string> = {}): KeyValueStorage & 
 }
 
 describe('UiStore', () => {
-    it('opens a section of a project from elsewhere: a task, a run, a chat, a document', () => {
+    it('opens a place of a project from elsewhere: a task (in the side panel), a run, a chat', () => {
         const ui = new UiStore().forProject('p1');
 
         ui.openTask('t1');
-        expect([ui.section, ui.taskId]).toEqual(['tasks', 't1']);
+        expect([ui.taskId, ui.sidePanelOpen, ui.sidePanelTab]).toEqual(['t1', true, 'tasks']);
+        ui.openTask(null);
+        expect([ui.taskId, ui.sidePanelOpen, ui.sidePanelTab]).toEqual([null, true, 'tasks']);
         ui.openRun('r1');
-        expect([ui.section, ui.runId]).toEqual(['agents', 'r1']);
+        expect([ui.runId]).toEqual(['r1']);
         ui.openChat('c1');
-        expect([ui.section, ui.chatId, ui.runId]).toEqual(['agents', 'c1', null]);
-        ui.openDoc('decisions/pricing.md');
-        expect([ui.section, ui.docPath]).toEqual(['docs', 'decisions/pricing.md']);
+        expect([ui.chatId, ui.runId]).toEqual(['c1', null]);
     });
 
-    it('keeps the folder of the open document, the main one when none is named, across a restart', () => {
-        const storage = memoryStorage();
+    it('forgets what an older version kept of the open document, and the Docs section', () => {
+        const storage = memoryStorage({ 'clowdy:ui:p1': '{"section":"docs","docPath":"decisions/pricing.md","docFolderId":"fld_api"}' });
         const ui = new UiStore(storage).forProject('p1');
-
-        ui.openDoc('endpoints.md', 'fld_api');
-        expect([ui.docPath, ui.docFolderId, ui.view.docFolderId]).toEqual(['endpoints.md', 'fld_api', 'fld_api']);
-        expect(new UiStore(storage).forProject('p1')).toMatchObject({ docPath: 'endpoints.md', docFolderId: 'fld_api' });
-
-        ui.openDoc('decisions/pricing.md');
-        expect([ui.docPath, ui.docFolderId]).toEqual(['decisions/pricing.md', null]);
+        expect(ui).not.toHaveProperty('docPath');
+        expect(Object.keys(ui.view)).not.toContain('docPath');
     });
 
     it('keeps a chat and one of its runs apart: opening one clears the other, and so does the new-chat row', () => {
@@ -44,7 +39,7 @@ describe('UiStore', () => {
         expect([ui.chatId, ui.runId, ui.draft]).toEqual(['c1', 'r1', false]);
 
         ui.openDraft();
-        expect([ui.section, ui.runId, ui.draft]).toEqual(['agents', null, true]);
+        expect([ui.runId, ui.draft]).toEqual([null, true]);
 
         ui.openRun('r1');
         expect(ui.draft).toBe(false);
@@ -98,9 +93,9 @@ describe('UiStore', () => {
 
         const second = new UiStore(storage);
 
-        expect(second.forProject('p1')).toMatchObject({ section: 'tasks', taskId: 't7', tasksView: 'list' });
-        expect(second.forProject('p2')).toMatchObject({ section: 'agents', chatId: 'c3', tasksView: 'board' });
-        expect(second.forProject('p3').section).toBe('agents');
+        expect(second.forProject('p1')).toMatchObject({ taskId: 't7', tasksView: 'list', sidePanelOpen: true, sidePanelTab: 'tasks' });
+        expect(second.forProject('p2')).toMatchObject({ chatId: 'c3', tasksView: 'board' });
+        expect(second.forProject('p3').chatId).toBeNull();
     });
 
     describe('the scope of the Tasks screen and its options', () => {
@@ -133,7 +128,8 @@ describe('UiStore', () => {
         it('reads a project stored before they existed: the defaults, and the rest as it was', () => {
             const ui = new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"section":"tasks","taskId":"t7","tasksView":"list"}' })).forProject('p1');
 
-            expect(ui).toMatchObject({ section: 'tasks', taskId: 't7', tasksView: 'list', tasksScope: null, tasksSubtasks: false, taskPageView: 'board', tasksCollapsed: [] });
+            // The section an older version stored is ignored: there is one screen.
+            expect(ui).toMatchObject({ taskId: 't7', tasksView: 'list', tasksScope: null, tasksSubtasks: false, taskPageView: 'board', tasksCollapsed: [] });
         });
 
         it('takes what it can from a stored value of a shape it does not know, and the defaults for the rest', () => {
@@ -159,22 +155,15 @@ describe('UiStore', () => {
             expect(ui.tasksCollapsed).not.toContain('t-50');
         });
 
-        it('is a place of the window: the scope is in the view and a restored view brings it back; the options are not', () => {
+        it('is not a place of the window: the view has no scope and no open task', () => {
             const ui = new UiStore().forProject('p1');
 
             ui.setTasksScope('t-31');
-            ui.setTasksSubtasks(true);
+            ui.openTask('t-33');
 
-            const view = ui.view;
-
-            expect(view.tasksScope).toBe('t-31');
-            expect(view).not.toHaveProperty('tasksSubtasks');
-
-            ui.setTasksScope(null);
-            ui.setTasksSubtasks(false);
-            ui.show(view);
-
-            expect([ui.tasksScope, ui.tasksSubtasks]).toEqual(['t-31', false]);
+            expect(ui.view).not.toHaveProperty('tasksScope');
+            expect(ui.view).not.toHaveProperty('taskId');
+            expect(ui.view).not.toHaveProperty('tasksSubtasks');
         });
 
         it('sets the scope without moving the window or closing the open task', () => {
@@ -183,11 +172,11 @@ describe('UiStore', () => {
             ui.openChat('c1');
             ui.setTasksScope('t-31');
 
-            expect([ui.section, ui.chatId, ui.taskId]).toEqual(['agents', 'c1', null]);
+            expect([ui.chatId, ui.taskId]).toEqual(['c1', null]);
 
             ui.openTask('t-33');
             ui.setTasksScope('t-32');
-            expect([ui.section, ui.taskId, ui.tasksScope]).toEqual(['tasks', 't-33', 't-32']);
+            expect([ui.taskId, ui.tasksScope]).toEqual(['t-33', 't-32']);
 
             ui.openTask('t-24');
             expect(ui.tasksScope).toBe('t-32');
@@ -337,7 +326,7 @@ describe('UiStore', () => {
             ui.setTasksSubtasks(true);
             ui.openTask('t-33');
 
-            expect([ui.section, ui.taskId, ui.tasksScope]).toEqual(['tasks', 't-33', 't-31']);
+            expect([ui.taskId, ui.tasksScope]).toEqual(['t-33', 't-31']);
             expect(ui.tasksCollapsed).toEqual(['t-35']);
         });
 
@@ -427,7 +416,7 @@ describe('UiStore', () => {
 
             ui.openTask('t-33', { reveal: false });
 
-            expect([ui.taskId, ui.tasksScope, ui.section]).toEqual(['t-33', null, 'tasks']);
+            expect([ui.taskId, ui.tasksScope]).toEqual(['t-33', null]);
         });
 
         it('leaves the scope alone for a task the project does not hold, and for the one that closes the panel', () => {
@@ -490,8 +479,8 @@ describe('UiStore', () => {
     it('starts from defaults when the stored value is damaged', () => {
         const ui = new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"section":"nope","taskId":5,"tasksView":"cards"}' })).forProject('p1');
 
-        expect(ui).toMatchObject({ section: 'agents', taskId: null, tasksView: 'board' });
-        expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': 'not json' })).forProject('p1').section).toBe('agents');
+        expect(ui).toMatchObject({ taskId: null, tasksView: 'board' });
+        expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': 'not json' })).forProject('p1').chatId).toBeNull();
     });
 
     it('keeps working when storage throws', () => {
@@ -509,14 +498,14 @@ describe('UiStore', () => {
         expect(ui.taskId).toBe('t1');
     });
 
-    it('leaves Settings when a section is chosen', () => {
+    it('shuts Settings when a place is shown, as back and forward show one: Settings is a window over a place, not a place', () => {
         const store = new UiStore();
         const ui = store.forProject('p1');
 
-        store.openSettings();
-        expect(store.settingsOpen).toBe(true);
-        store.showSection(ui, 'docs');
-        expect([store.settingsOpen, ui.section]).toEqual([false, 'docs']);
+        store.openSettings('skills');
+        store.restore(ui, { ...ui.view, chatId: 'c1' });
+
+        expect([store.settingsOpen, store.settingsPage, ui.chatId]).toEqual([false, 'skills', 'c1']);
     });
 
     it('keeps the Settings page it was left on, and opens on another when asked', () => {
@@ -531,17 +520,17 @@ describe('UiStore', () => {
         expect([store.settingsOpen, store.settingsPage]).toEqual([true, 'providers']);
     });
 
-    it('shows the Agents section for a section an older version stored under the name Chats', () => {
+    it('ignores a section an older version stored under the name Chats, and keeps the chat', () => {
         const ui = new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"section":"chats","chatId":"c-1"}' })).forProject('p1');
 
-        expect(ui).toMatchObject({ section: 'agents', chatId: 'c-1' });
+        expect(ui).toMatchObject({ chatId: 'c-1' });
     });
 
     it('starts from what the page URL preselects, ahead of the stored state', () => {
-        const initial = initialUiFromSearch('?fixtures=1&section=tasks&task=t-24&view=list&chat=c-1&run=r-1&doc=a.md&docFolder=fld-2');
-        const ui = new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"section":"docs","tasksView":"board"}' }), initial).forProject('p1');
+        const initial = initialUiFromSearch('?fixtures=1&panel=open&panelTab=tasks&task=t-24&view=list&chat=c-1&run=r-1');
+        const ui = new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"section":"agents","tasksView":"board"}' }), initial).forProject('p1');
 
-        expect(ui).toMatchObject({ section: 'tasks', taskId: 't-24', tasksView: 'list', chatId: 'c-1', runId: 'r-1', docPath: 'a.md', docFolderId: 'fld-2' });
+        expect(ui).toMatchObject({ taskId: 't-24', tasksView: 'list', chatId: 'c-1', runId: 'r-1', sidePanelOpen: true, sidePanelTab: 'tasks' });
     });
 
     it('folds every chat until its threads are opened, and keeps what the person opened per project across a restart', () => {
@@ -630,7 +619,94 @@ describe('UiStore', () => {
         expect(new UiStore(storage).forProject('p1').sidePanelTab).toBe('files');
     });
 
-    it('opens the side panel on a tab and keeps it open on a second pick of the same tab', () => {
+    it('shuts the side panel, and does nothing to a shut one', () => {
+        const ui = new UiStore(memoryStorage()).forProject('p1');
+
+        ui.closeSidePanel();
+        expect(ui.sidePanelOpen).toBe(false);
+
+        ui.toggleSidePanel();
+        ui.closeSidePanel();
+        expect(ui.sidePanelOpen).toBe(false);
+    });
+
+    it('keeps the side panel expanded apart from whether it is open, per project and between sessions', () => {
+        const storage = memoryStorage();
+        const store = new UiStore(storage);
+        const ui = store.forProject('p1');
+
+        expect(ui.sidePanelExpanded).toBe(false);
+
+        ui.toggleSidePanel();
+        ui.toggleSidePanelExpanded();
+        expect(ui.sidePanelExpanded).toBe(true);
+
+        // A shut panel keeps the choice, and comes back expanded.
+        ui.toggleSidePanel();
+        expect(ui.sidePanelExpanded).toBe(true);
+        ui.toggleSidePanelTab('terminal');
+        expect([ui.sidePanelOpen, ui.sidePanelExpanded]).toEqual([true, true]);
+
+        expect(store.forProject('p2').sidePanelExpanded).toBe(false);
+        expect(new UiStore(storage).forProject('p1').sidePanelExpanded).toBe(true);
+
+        ui.toggleSidePanelExpanded();
+        expect(new UiStore(storage).forProject('p1').sidePanelExpanded).toBe(false);
+    });
+
+    it('shuts a panel that covers the chat when a chat is chosen, and leaves the choice of the expanded size', () => {
+        const ui = new UiStore(memoryStorage()).forProject('p1');
+        const choose = [
+            ['a chat', () => ui.openChat('c1')],
+            ['the chat that is open already', () => ui.openChat(ui.chatId)],
+            ['a run', () => ui.openRun('r1')],
+            ['the new-chat row', () => ui.openDraft()],
+        ] as const;
+
+        for (const [, open] of choose) {
+            ui.sidePanelOpen = true;
+            ui.sidePanelExpanded = true;
+            open();
+            expect([ui.sidePanelOpen, ui.sidePanelExpanded]).toEqual([false, true]);
+        }
+
+        // The panel comes back where the chat has not moved, expanded as it was left.
+        ui.toggleSidePanel();
+        expect([ui.sidePanelOpen, ui.sidePanelExpanded]).toEqual([true, true]);
+    });
+
+    it('leaves a panel beside the chat, and a shut one, as they are when a chat is chosen', () => {
+        const ui = new UiStore(memoryStorage()).forProject('p1');
+
+        ui.sidePanelOpen = true;
+        ui.openChat('c1');
+        ui.openRun('r1');
+        ui.openDraft();
+        expect([ui.sidePanelOpen, ui.sidePanelExpanded]).toEqual([true, false]);
+
+        ui.sidePanelOpen = false;
+        ui.sidePanelExpanded = true;
+        ui.openChat('c2');
+        ui.openRun('r2');
+        ui.openDraft();
+        expect([ui.sidePanelOpen, ui.sidePanelExpanded]).toEqual([false, true]);
+    });
+
+    it('shuts a panel that covers the chat when history shows another chat, and not when it shows the same one', () => {
+        const ui = new UiStore(memoryStorage()).forProject('p1');
+
+        ui.openChat('c1');
+        ui.sidePanelOpen = true;
+        ui.sidePanelExpanded = true;
+
+        ui.show({ ...ui.view });
+        expect([ui.sidePanelOpen, ui.sidePanelExpanded]).toEqual([true, true]);
+
+        ui.show({ ...ui.view, chatId: 'c2' });
+        expect([ui.sidePanelOpen, ui.sidePanelExpanded]).toEqual([false, true]);
+    });
+
+    it('opens the side panel on a tab from a shut panel or another tab, and never shuts it', () => {
         const ui = new UiStore(memoryStorage()).forProject('p1');
 
         ui.openSidePanelTab('files');
@@ -643,8 +719,132 @@ describe('UiStore', () => {
         expect([ui.sidePanelOpen, ui.sidePanelTab]).toEqual([true, 'terminal']);
 
         ui.toggleSidePanel();
-        ui.openSidePanelTab('info');
-        expect([ui.sidePanelOpen, ui.sidePanelTab]).toEqual([true, 'info']);
+        ui.openSidePanelTab('terminal');
+        expect([ui.sidePanelOpen, ui.sidePanelTab]).toEqual([true, 'terminal']);
+    });
+
+    it('sets the side panel to one of its three sizes: beside the chat, in the chat\'s place, or hidden', () => {
+        const ui = new UiStore(memoryStorage()).forProject('p1');
+        const state = () => [ui.sidePanelOpen, ui.sidePanelExpanded];
+
+        expect(state()).toEqual([false, false]);
+
+        ui.setSidePanelSize('wide');
+        expect(state()).toEqual([true, true]);
+
+        ui.setSidePanelSize('half');
+        expect(state()).toEqual([true, false]);
+
+        ui.setSidePanelSize('hide');
+        expect(state()).toEqual([false, false]);
+
+        ui.setSidePanelSize('half');
+        ui.setSidePanelSize('half');
+        expect(state()).toEqual([true, false]);
+    });
+
+    it('keeps the choice of the expanded size when the panel is hidden, so it comes back in it by the keys', () => {
+        const ui = new UiStore(memoryStorage()).forProject('p1');
+
+        ui.setSidePanelSize('wide');
+        ui.setSidePanelSize('hide');
+        expect([ui.sidePanelOpen, ui.sidePanelExpanded]).toEqual([false, true]);
+
+        ui.toggleSidePanel();
+        expect([ui.sidePanelOpen, ui.sidePanelExpanded]).toEqual([true, true]);
+    });
+
+    it('puts Files and Docs in the chat\'s place while the window is too narrow for them beside it, and leaves the other tabs and the choice alone', () => {
+        const store = new UiStore(memoryStorage());
+        const ui = store.forProject('p1');
+
+        ui.openSidePanelTab('files');
+        expect([ui.sidePanelTabIsFull, ui.sidePanelCoversChat]).toEqual([false, false]);
+
+        store.setWindowFitsHalf(false);
+        expect([ui.sidePanelTabIsFull, ui.sidePanelCoversChat, ui.sidePanelExpanded]).toEqual([true, true, false]);
+
+        ui.showSidePanelTab('docs');
+        expect(ui.sidePanelCoversChat).toBe(true);
+
+        for (const tab of ['terminal', 'info'] as const) {
+            ui.showSidePanelTab(tab);
+            expect([ui.sidePanelTabIsFull, ui.sidePanelCoversChat]).toEqual([false, false]);
+        }
+
+        // Wider again, the project's own choice is back: nothing was kept.
+        ui.showSidePanelTab('files');
+        store.setWindowFitsHalf(true);
+        expect([ui.sidePanelTabIsFull, ui.sidePanelCoversChat, ui.sidePanelExpanded]).toEqual([false, false, false]);
+    });
+
+    it('sets the size of a panel that is full for the width of the window as it does for Tasks: shown or hidden, and the choice as it was', () => {
+        const store = new UiStore(memoryStorage());
+        const ui = store.forProject('p1');
+
+        ui.showSidePanelTab('files');
+        store.setWindowFitsHalf(false);
+
+        ui.setSidePanelSize('half');
+        expect([ui.sidePanelOpen, ui.sidePanelExpanded, ui.sidePanelCoversChat]).toEqual([true, false, true]);
+
+        ui.setSidePanelSize('hide');
+        expect([ui.sidePanelOpen, ui.sidePanelExpanded]).toEqual([false, false]);
+    });
+
+    it('knows that Files and Docs are a tree beside a view', () => {
+        const ui = new UiStore(memoryStorage()).forProject('p1');
+
+        expect((['files', 'docs', 'terminal', 'info', 'tasks'] as const).map((tab) => {
+            ui.showSidePanelTab(tab);
+
+            return ui.sidePanelTabHasTree;
+        })).toEqual([true, true, false, false, false]);
+    });
+
+    it('covers the chat on the Tasks tab whatever the expanded choice, and only while the panel is open', () => {
+        const ui = new UiStore(memoryStorage()).forProject('p1');
+
+        ui.showSidePanelTab('tasks');
+        expect(ui.sidePanelCoversChat).toBe(false);
+
+        ui.toggleSidePanel();
+        expect([ui.sidePanelCoversChat, ui.sidePanelExpanded]).toEqual([true, false]);
+
+        ui.showSidePanelTab('files');
+        expect(ui.sidePanelCoversChat).toBe(false);
+
+        ui.toggleSidePanelExpanded();
+        expect(ui.sidePanelCoversChat).toBe(true);
+    });
+
+    it('shuts a panel that shows the Tasks tab when a chat is chosen, and leaves the expanded choice as it was', () => {
+        const ui = new UiStore(memoryStorage()).forProject('p1');
+
+        ui.openSidePanelTab('tasks');
+        ui.openChat('c1');
+        expect([ui.sidePanelOpen, ui.sidePanelTab, ui.sidePanelExpanded]).toEqual([false, 'tasks', false]);
+
+        // Another tab, beside the chat, is left alone by a chat choice.
+        ui.openSidePanelTab('files');
+        ui.openChat('c2');
+        expect([ui.sidePanelOpen, ui.sidePanelTab]).toEqual([true, 'files']);
+    });
+
+    it('shows the Tasks tab for any size but hidden, and leaves the expanded choice as it was', () => {
+        const ui = new UiStore(memoryStorage()).forProject('p1');
+
+        ui.showSidePanelTab('tasks');
+        ui.setSidePanelSize('half');
+        expect([ui.sidePanelOpen, ui.sidePanelExpanded, ui.sidePanelCoversChat]).toEqual([true, false, true]);
+
+        ui.setSidePanelSize('hide');
+        expect([ui.sidePanelOpen, ui.sidePanelExpanded]).toEqual([false, false]);
+
+        ui.toggleSidePanelExpanded();
+        ui.setSidePanelSize('wide');
+        ui.setSidePanelSize('hide');
+        expect([ui.sidePanelOpen, ui.sidePanelExpanded]).toEqual([false, true]);
     });
 
     it('opens the side panel on a tab, and shuts it when that tab is already shown', () => {
@@ -667,6 +867,9 @@ describe('UiStore', () => {
     it('reads the side panel tab from the page URL, and drops a tab that is not one', () => {
         expect(initialUiFromSearch('?panel=open&panelTab=files')).toEqual({ sidePanelOpen: true, sidePanelTab: 'files' });
         expect(initialUiFromSearch('?panelTab=terminal')).toEqual({ sidePanelTab: 'terminal' });
+        expect(initialUiFromSearch('?panelTab=docs')).toEqual({ sidePanelTab: 'docs' });
+        expect(initialUiFromSearch('?panelTab=tasks')).toEqual({ sidePanelTab: 'tasks' });
+        expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"sidePanelTab":"docs"}' })).forProject('p1').sidePanelTab).toBe('docs');
         expect(initialUiFromSearch('?panelTab=changes')).toEqual({});
         expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"sidePanelTab":"terminal"}' })).forProject('p1').sidePanelTab).toBe('terminal');
         expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"sidePanelTab":"changes"}' })).forProject('p1').sidePanelTab).toBe('info');
@@ -762,8 +965,67 @@ describe('UiStore', () => {
         expect([ui.draft, ui.draftFolderId]).toEqual([false, null]);
     });
 
-    it('ignores URL values that name no section or view', () => {
-        expect(initialUiFromSearch('?section=nope&view=cards')).toEqual({});
+    describe('where the new chat works in its folder', () => {
+        it('starts in the folder\'s own checkout, whatever the page was before, and is part of the place (`view`)', () => {
+            const ui = new UiStore().forProject('p1');
+
+            ui.openDraft();
+            expect(ui.draftWorkspace).toBeNull();
+
+            ui.setDraftWorkspace({ mode: 'new', base: 'origin/dev' });
+            expect(ui.view).toMatchObject({ draft: true, draftWorkspace: { mode: 'new', base: 'origin/dev' } });
+
+            // Opening the page again, for a folder or not, starts it over.
+            ui.openDraft([], 'fld-api');
+            expect(ui.draftWorkspace).toBeNull();
+        });
+
+        it('is forgotten once a chat or a run opens, and brought back with the page by back and forward', () => {
+            const ui = new UiStore().forProject('p1');
+
+            ui.openDraft([], 'fld-api');
+            ui.setDraftWorkspace({ mode: 'existing', path: '/work/api-fix' });
+
+            const view = ui.view;
+
+            ui.openChat('c1');
+            expect(ui.draftWorkspace).toBeNull();
+
+            ui.show(view);
+            expect([ui.draft, ui.draftFolderId, ui.draftWorkspace]).toEqual([true, 'fld-api', { mode: 'existing', path: '/work/api-fix' }]);
+
+            ui.openRun('r1');
+            expect(ui.draftWorkspace).toBeNull();
+        });
+
+        it('goes back to Project checkout when the folder changes, and stays when the same folder is picked again', () => {
+            const ui = new UiStore().forProject('p1');
+
+            ui.openDraft([], 'fld-api');
+            ui.setDraftWorkspace({ mode: 'new' });
+            ui.setDraftFolder('fld-api');
+            expect(ui.draftWorkspace).toEqual({ mode: 'new' });
+
+            // A worktree or a base belongs to the repository it was chosen for.
+            ui.setDraftFolder('fld-notes');
+            expect(ui.draftWorkspace).toBeNull();
+
+            ui.setDraftWorkspace({ mode: 'new', base: 'main' });
+            ui.setDraftFolder(null);
+            expect(ui.draftWorkspace).toBeNull();
+        });
+
+        it('is kept only with the new-chat page open', () => {
+            const ui = new UiStore().forProject('p1');
+
+            ui.openChat('c1');
+            ui.setDraftWorkspace({ mode: 'new' });
+            expect(ui.draftWorkspace).toBeNull();
+        });
+    });
+
+    it('ignores URL values that name no view, and a section, which is gone', () => {
+        expect(initialUiFromSearch('?section=tasks&view=cards')).toEqual({});
         expect(initialUiFromSearch('')).toEqual({});
     });
 
@@ -782,16 +1044,27 @@ describe('UiStore', () => {
         expect(ui.settingsProjectId).toBeNull();
     });
 
+    it('shows the page of a project over Settings > Projects, or the list again, without changing the page of Settings', () => {
+        const ui = new UiStore();
+
+        ui.openSettings('providers');
+        ui.setSettingsProject('p1');
+        expect([ui.settingsPage, ui.settingsProjectId]).toEqual(['providers', 'p1']);
+
+        ui.setSettingsProject(null);
+        expect([ui.settingsPage, ui.settingsProjectId]).toEqual(['providers', null]);
+    });
+
     it('forgets a removed project: its window state, its stored copy, and its page in Settings', () => {
-        const storage = memoryStorage({ 'clowdy:ui:p1': JSON.stringify({ section: 'tasks' }) });
+        const storage = memoryStorage({ 'clowdy:ui:p1': JSON.stringify({ chatId: 'c1' }) });
         const ui = new UiStore(storage as KeyValueStorage);
 
-        expect(ui.forProject('p1').section).toBe('tasks');
+        expect(ui.forProject('p1').chatId).toBe('c1');
         ui.openProjectSettings('p1');
         ui.forgetProject('p1');
 
         expect(ui.settingsProjectId).toBeNull();
         expect(storage.data['clowdy:ui:p1']).toBeUndefined();
-        expect(ui.forProject('p1').section).toBe('agents');
+        expect(ui.forProject('p1').chatId).toBeNull();
     });
 });

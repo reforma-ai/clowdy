@@ -1,0 +1,129 @@
+# Docs into the side panel
+
+> Keep this plan current during implementation.
+> Check off tasks as their outcomes are completed.
+> Check a stage only after done-when, verification, review, and commit
+> (or staging per project rules).
+> Record scope changes before leaving the stage.
+> Record landed commits under the stage they implement.
+
+**Goal:** Documents stop being a screen of their own with a second editor shell. Docs becomes a tab of the side panel's right rail that shows the same file manager as Files (the same tabs, the same editor area, the same buffers and conflicts), with a different sidebar tree: the project folder's `.clowdy/docs`, as a tree drawn like the file tree. The old Docs code is deleted.
+
+**Approach:** One `FileManager` per project folder, as today. The Files tab and the Docs tab both draw `FileManagerView` over that manager; only the sidebar differs. The explorer gets a `scope` (a root path and a filter) so it can draw the manager's own entries below `.clowdy/docs`, Markdown files and their folders only, whatever the hidden globs say. The host keeps one component mounted for both tabs, so switching between them moves nothing in the editor. What the daemon's docs service did that `fs` already does (atomic writes, versions, watching) goes with it; the listing the composer's `@doc` mentions and Cmd+K need stays.
+
+**Research:** `a812b789c3baa10e8`'s report (this session): both screens use `packages/components` `MarkdownEditor`; the daemon's Docs service duplicates `fs`; nothing about documents is in the database; the daemon never writes task doc artifacts; agents write documents straight to the files, there is no `clowdy docs` command.
+
+**Decisions** (the owner's, from the chat)
+
+- Docs is a tab of the side panel (rail item **Docs**), no longer a section of the left rail. Opening a document reuses the Files UI (the same view: the tab strip, the editor area), over tabs of its own.
+- **Changed by the owner after Stage 4:** the Docs tab has its own file manager for the folder, so its open tabs are its own (the first decision, one manager and one set of tabs for both, left a TypeScript file open in the Docs tab and made a click on a tab there change nothing). The same file open in both is two buffers of one file on the disk, each seeing the other's save as an outside change (Reload / Overwrite on a conflict, as Files has it).
+- The docs tree is the file tree's own rows (the same explorer, not a custom layout), with a structure close to the file system: `.clowdy/docs`, Markdown files and the folders that hold them. A custom navigation (research and plans in groups, whatever the folders say) comes later; nothing is done for it now.
+- The panel shows one folder, as Files and Terminal do (`currentFolder`): the all-folders view of the old Docs screen goes. Accepted.
+- Not needed now, though Files has them already or the old Docs had them: rename, delete, move (Files' row menu has them), the three-way conflict view with a line diff, the read-only Preview.
+- `@doc` mentions stay. Cmd+K has a **Docs** tab, and the documents come before the files in it (the owner's order): the files tab keeps leaving out `.clowdy`, the docs tab returns what is hidden in it (done: `35c935a`).
+- The old Docs code is deleted: the screen, its store, the left rail item and its chord, the history and UI state of a document, the daemon's docs read, write, watch, command, route and event, the task doc artifacts that nothing writes, their tests.
+
+**Defaults I took** (the owner may change them)
+
+- The rail order is Info, Files, Docs, Terminal. The key of Docs is `Cmd+3` (`Ctrl+3`), and Terminal keeps `Cmd+2`.
+- New document is an item of the docs tree's menus: an inline row, `.md` added when the name has none, in the folder under the row (or the docs root).
+- The docs tree's filter field filters the tree's own rows by name (not through the daemon, whose search leaves `.clowdy` out).
+- A path chip in a message that points below `.clowdy/docs` opens in the Docs tab, any other path in Files.
+
+## Out of scope
+
+- A custom docs navigation, a folder switch for the docs of another folder of the project, text search in documents.
+- The look of the docs tree beyond what the file tree has.
+- Anything about the agents' documents skill beyond its wording where it names "the Documents screen".
+
+## Stage 1 — The explorer draws a scope
+
+**Depends on:** None.
+
+**This stage:** `FileTree` can say the children of a path without the hidden and excluded rules (`entriesOf`), and the explorer takes a `scope` (`root`, `include`) that makes its rows the entries below `root` that pass `include`, with creating, pasting and dropping defaulting to the root. `FileManagerView` takes the same `scope` for its sidebar, with the filter's placeholder and the empty state as props, and filters the scoped rows by name itself.
+
+- [x] Complete
+  - [x] `FileTree.entriesOf(parent)`: every entry whose parent is `parent`, sorted as `children` is, hidden or not (and `loadDeep`, which lists a scope whole)
+  - [x] `Explorer` `scope`: rows from `entriesOf(scope.root)` filtered by `scope.include`, folders kept, and the root in place of `''` for a new row, a paste and a drop
+  - [x] `FileManagerView` `scope`, `filterPlaceholder` and `emptyText`: the scoped filter by name, the empty state of a root with no entries
+  - [x] tests: the tree's `entriesOf` and `loadDeep`, and a view over `.clowdy/docs/a.md`, `.clowdy/docs/plans/b.md`, `.clowdy/docs/x.png` and `src/a.ts` that shows the two documents, filters its own rows and opens in the manager's tabs (creating below the root is not driven by a test: the explorer's draft row has none)
+
+**Done when:** a test renders `FileManagerView` with a docs scope and finds exactly the two Markdown files under a root that the hidden globs would hide, a new row creates `.clowdy/docs/<name>.md` territory (below the root), and the unscoped view still lists everything.
+**Verify:** `cd packages/file-manager && bun run test && bun run typecheck && bunx eslint src specs`; `cd apps/desktop && bunx vitest run src/renderer/features/files`
+**Commits:** `359881d` feat(file-manager): draw a part of the tree by rules of its own, with a filter of its own
+
+## Stage 2 — The Docs tab
+
+**Depends on:** Stage 1.
+
+**This stage:** the side panel gets a Docs tab on its rail. `FilesTab` takes a `variant` (`files` or `docs`) and draws the same `FileManagerView` over the same manager, with the docs scope for `docs`, so switching tabs moves no editor. A New document item, the `Cmd+3` key and the fixtures' documents (in the fixture file system, under `.clowdy/docs`) come with it. The old Docs section stays until Stage 4, so both exist for now.
+
+- [x] Complete
+  - [x] `SIDE_PANEL_TABS` and its label, key and command for `docs`; `UiStore` keeps and restores it; the rail item, with the `File` icon, after Files
+  - [x] `SidePanel` keeps one `FilesTab` mounted for `files` and `docs`
+  - [x] the docs tree's New file item and the `.md` rule (the tree's own New file, with `scope.fileName`)
+  - [x] the fixtures' documents are also files below `.clowdy/docs` in the fixture file system (`getDocsTree` still reads the old fixture data until the old code goes)
+  - [x] tests for the tab, the key, the shared view that stays built, the scope and the stored tab
+
+**Done when:** in the fixtures page the Docs tab shows the fixture documents as a tree beside the same editor and tabs as Files, a document opened there is still open when the Files tab is chosen, and `Cmd+3` toggles the tab.
+**Verify:** `cd apps/desktop && bunx vitest run src/renderer/features/sidePanel src/renderer/features/files src/renderer/shell src/renderer/stores && bun run typecheck`, and a screenshot of the Docs tab.
+**Commits:** `0e7e8e9` feat(desktop): add a Docs tab to the side panel that is the Files view over a folder of documents; `674359b` fix(desktop): let the Docs tab's plate fill the panel as Files' does (the plate's rule named only `files` and `terminal`, so the height collapsed once the tree was hidden)
+
+## Stage 3 — Chips, mentions and Cmd+K reach the Docs tab
+
+**Depends on:** Stage 2.
+
+**This stage:** a path chip below `.clowdy/docs` opens in the Docs tab; `@doc` mentions read the daemon's docs listing as they do now, and Cmd+K gets a Docs tab (names from the same listing, opening a document in the Docs tab).
+
+- [x] Complete
+  - [x] `openInFiles` picks the tab by the path; the chip, the row menu and the palette's results follow (`showFilesTab` takes the tab)
+  - [x] the palette's Docs tab, its model, source, keys and tests (`Cmd+Shift+D`; the owner asked for it after Stage 4, documents before files on the All tab and in the footer)
+  - [x] `@doc` mentions keep working: they read the daemon's docs listing, which stays
+
+**Done when:** a chip to `.clowdy/docs/decisions/pricing.md` opens the document in the Docs tab, Cmd+K's Docs tab finds a document by its name, and `@` still offers documents.
+**Verify:** `cd apps/desktop && bunx vitest run src/renderer/features/quickSearch src/renderer/features/chats src/renderer/features/files src/renderer/stream`
+**Commits:** `35c935a` feat(desktop): add a Docs tab to the quick search, before the files; `6f4501f` feat(desktop): open a document from a chip or the palette on the Docs tab
+
+## Stage 4 — Delete the old Docs
+
+**Depends on:** Stage 3.
+
+**This stage:** everything the inventory lists goes.
+
+- [x] Complete
+  - [x] renderer: `features/docs/`, the left rail item and `Shell`'s screen, `nav.docs` and the `g d` chord, `SECTIONS` 'docs', `docPath`, `docFolderId`, `openDoc`, `NavHistory` and `ProjectState.lastDocsChange` (commit `163a1b3`)
+  - [x] renderer, with the protocol: `getDocFile` in the transports, the fixture's `docs.write`, the `docs.changed` case of `ProjectState`, and their tests
+  - [x] tasks: kept, not deleted (scope change): a doc result and `O D` open the document on the Docs tab (`openDocument`), so the task model's own feature is not touched
+  - [x] daemon and protocol: the `docs.write` command, `GET docs/file`, the docs read, write, announce and watcher code, `docs.changed`, `DocFile`, `ROUTES.docsFile`, `foldersAtPath`. `DocsService` shrank to `docsTree(project)` in `docs/tree.ts` (its `root` rule kept: a missing main folder or a docs folder that is not a folder is `unavailable`, one that leads out `invalid`, another folder's failure leaves it out); `docs/paths.ts` keeps `DOCS_DIR`, `isDocFile` and `realPathBelow` (the project icon uses it); `ProjectWatchers` and `Services` lost `docs`; `GET docs` calls the function; `test/docs.test.ts` keeps the tree cases, the docs parts of `projects.test.ts` and `http.test.ts` went. A stale `docs.changed` row in the event log reaches an app whose `applyEvent` has no case for it, which skips it
+  - [x] the tests of all of it, the skill's and prompts' wording, the README, both `AGENTS.md`
+  - [x] stored state: a stored `section: 'docs'` falls back to Agents (already covered); `clowdy:sidebar-width:docs` is left alone
+
+**Done when:** no reference to the removed names is left (`grep`), the daemon's tests and the app's pass, and a project with documents shows them in the Docs tab.
+**Verify:** `bunx turbo run build lint typecheck test --affected`
+**Commits:** `163a1b3` refactor(desktop): remove the Docs screen, now that Docs is a tab of the side panel; `1f2c4c7` refactor: remove the daemon's document read, write and watch now that Docs is a tab of the file manager (daemon `bun test`: 1669 pass; the app's typecheck stayed red only on another agent's Settings work in progress)
+
+## Stage 6 — The Docs tab's own tabs (the owner's change, after Stage 5)
+
+**Depends on:** Stage 4.
+
+**This stage:** a folder gets a second file manager for its documents (`FilesStore.managerOf(project, folder, 'docs')`, its tabs stored under `clowdy:docs:...`), the Docs tab draws the same view over it, and whatever opens a path picks the manager by `isDocumentPath` (`tabOf`): `openInFiles`, the palette's results, the selected text of the palette's Text tab.
+
+- [x] Complete
+  - [x] `FilesStore` keeps a manager and a stored tab list for each of `files` and `docs`
+  - [x] `FilesTab` takes its manager by `variant` and makes the view again when the tab changes
+  - [x] `openInFiles`, `openFound`, `selectedText` and the task actions' tests follow
+  - [x] tests: the store (two managers, two keys, both restored), `openInFiles` (a document is a tab of the Docs manager only, a file of the Files manager only), the palette
+
+**Done when:** a document opened on the Docs tab is not a tab of the Files tab and a file opened in the Files tab is not one of the Docs tab, and each comes back with its own after a restart.
+**Cost left:** the Docs manager lists the folder as the Files manager does (a second listing and a second watch stream of the same folder); a provider rooted at `.clowdy/docs` would list only the documents.
+
+## Stage 5 — Review and docs
+
+**Depends on:** Stage 4.
+
+- [x] Complete
+  - [x] `briefback review` of the whole change (an independent read-only reviewer; its findings and what became of them below)
+  - [x] `apps/desktop/AGENTS.md` and `packages/file-manager/AGENTS.md` describe the scope and the Docs tab, and the Docs bullet is gone
+
+**Review findings, fixed:** a `loadDeep` asked for while a refresh was in flight was dropped, and the watch stream's first resync does exactly that on a first mount, so only the top level of `.clowdy/docs` showed (`FileTree` now remembers the folder and lists it again once the refresh has committed); `No documents yet` showed while the tree was still being listed (shown only once the tree is ready); the active tab was not revealed after switching between Files and Docs (the explorer shows again when its scope changes); a document's name was completed with `.md` only on create, not checked before it and not on rename (the row's name input checks and applies the completed name); stale wording in the docs skill and `AGENTS.md`; the test for a `.clowdy` that links out of its folder is back.
+**Review findings, left:** a file dropped from outside or pasted into the docs tree that is not Markdown is created and then not shown there (it is in Files); a link inside the docs folder that points at another file of the project is listed and edited through by `fs`, and `docsTree` for `@` mentions still skips links; the docs tab has no error line or Retry when listing fails (Files has none either; the error is a toast).

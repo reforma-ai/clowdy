@@ -60,14 +60,13 @@ describe('HttpTransport requests', () => {
     });
 
     it('builds the routes for items, a chat, a task and documents', async () => {
-        const { fetchImpl, calls } = scriptedFetch(Array.from({ length: 6 }, () => json([])));
+        const { fetchImpl, calls } = scriptedFetch(Array.from({ length: 5 }, () => json([])));
         const transport = new HttpTransport({ url: 'http://d', token: 't', fetch: fetchImpl });
 
         await transport.getItems({ runId: 'r 1' }, 12);
         await transport.getItems({ chatId: 'c1' });
         await transport.getTaskDetail('t1');
         await transport.getDocsTree('p1');
-        await transport.getDocFile('p1', 'fld 1', 'decisions/a b.md');
         await transport.getProjectSnapshot('p/1');
 
         expect(calls.map(call => call.url)).toEqual([
@@ -75,9 +74,26 @@ describe('HttpTransport requests', () => {
             'http://d/v1/chats/c1/items?after=0',
             'http://d/v1/tasks/t1/detail',
             'http://d/v1/projects/p1/docs',
-            'http://d/v1/projects/p1/docs/file?folderId=fld%201&path=decisions%2Fa%20b.md',
             'http://d/v1/projects/p%2F1/snapshot',
         ]);
+    });
+
+    it('reads a task by its key from its project\'s route, with both ids made safe for a path', async () => {
+        const detail = { taskId: 't1', task: { id: 't1', key: 'CAR-12' }, chatIds: [], runIds: [], artifacts: [] };
+        const { fetchImpl, calls } = scriptedFetch([json(detail), json(detail)]);
+        const transport = new HttpTransport({ url: 'http://d', token: 't', fetch: fetchImpl });
+
+        expect(await transport.getTaskDetailByKey('p1', 'CAR-12')).toEqual(detail);
+        await transport.getTaskDetailByKey('p/1', 'a b?');
+
+        expect(calls.map(call => call.url)).toEqual(['http://d/v1/projects/p1/tasks/CAR-12/detail', 'http://d/v1/projects/p%2F1/tasks/a%20b%3F/detail']);
+    });
+
+    it('rejects a key the daemon has no task for with the 404 the store reads as no such task', async () => {
+        const { fetchImpl } = scriptedFetch([json({ ok: false, error: { code: 'not_found', message: 'No such task' } }, 404)]);
+        const transport = new HttpTransport({ url: 'http://d', token: 't', fetch: fetchImpl });
+
+        await expect(transport.getTaskDetailByKey('p1', 'CAR-999')).rejects.toMatchObject({ name: 'TransportError', status: 404 });
     });
 
     it('throws a TransportError with the status when the daemon refuses', async () => {

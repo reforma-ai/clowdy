@@ -7,12 +7,15 @@ import { Spinner } from '@clowdy/components/Spinner';
 import { Folder } from '@clowdy/icons/14';
 import { cn } from '@clowdy/lib';
 import { observer } from 'mobx-react-lite';
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
+import useResizeObserver from 'use-resize-observer';
 
 import { closeTab } from './editor/closeTab';
 import { EditorArea } from './editor/EditorArea';
 import { Explorer } from './explorer/Explorer';
+import { scopeFilter } from './explorer/scopeFilter';
 import styles from './FileManagerView.module.css';
+import { EDITOR_MIN_WIDTH, SIDEBAR_MIN_WIDTH } from './layout';
 import { isMac } from './platform';
 
 import type { Extension } from '@codemirror/state';
@@ -20,6 +23,7 @@ import type { KeyboardEvent, ReactNode } from 'react';
 import type { FileManager } from '../FileManager';
 import type { FileEntry } from '../provider';
 import type { ExplorerHandle, ExplorerProps } from './explorer/Explorer';
+import type { ExplorerScope } from './explorer/explorerContext';
 import type { FileMenuItem } from './explorer/ExplorerMenu';
 
 export interface FileManagerViewProps {
@@ -28,11 +32,17 @@ export interface FileManagerViewProps {
     menuItems?: (targets: readonly FileEntry[]) => FileMenuItem[];
     /** CodeMirror extensions added to every text document while it is shown (host keys, a language server). Keep the value stable: a new one reconfigures the editor. */
     editorExtensions?: Extension;
+    /** Draws a part of the tree in the sidebar (a folder of documents) in place of all of it, with a name filter of its own. Keep the value stable. */
+    scope?: ExplorerScope;
+    /** What the sidebar's filter field says while it is empty. */
+    filterPlaceholder?: string;
+    /** What the sidebar says while its scope has no rows and nothing is typed. */
+    emptyText?: string;
     /** The react-dnd manager the host's other trees use, so they share one HTML5 backend. Without it the explorer makes its own. */
     dndManager?: ExplorerProps['dndManager'];
-    /** The sidebar (the file tree) is shown. It is built each time it opens, at `sidebarWidth`. */
+    /** The sidebar (the file tree) is shown, unless no file is open: then it is shown whatever this says (and has no button to hide it). It is built each time it opens, at `sidebarWidth`. */
     sidebarOpen?: boolean;
-    /** Shows or hides the sidebar: the button at the end of the editor's tab strip, which is there while no file is open too. Without it the view has no such button. */
+    /** Shows or hides the sidebar: the button at the end of the editor's tab strip while a file is open. Without it the view has no such button. */
     onSidebarToggle?: () => void;
     /** The width in pixels the sidebar opens at. */
     sidebarWidth?: number;
@@ -41,9 +51,6 @@ export interface FileManagerViewProps {
     className?: string;
 }
 
-/** The narrowest the sidebar and the editor can be dragged to. */
-const SIDEBAR_MIN_WIDTH = 160;
-const EDITOR_MIN_WIDTH = 100;
 const SIDEBAR_DEFAULT_WIDTH = 240;
 
 /**
@@ -55,6 +62,9 @@ export const FileManagerView = observer(function FileManagerView({
     manager,
     menuItems,
     editorExtensions,
+    scope,
+    filterPlaceholder = 'Filter files',
+    emptyText,
     dndManager,
     sidebarOpen = true,
     sidebarWidth = SIDEBAR_DEFAULT_WIDTH,
@@ -65,6 +75,39 @@ export const FileManagerView = observer(function FileManagerView({
     const sidebar = usePanelRef();
     const explorer = useRef<ExplorerHandle>(null);
     const id = useId();
+    const { ref: rootRef, width: rootWidth = 0 } = useResizeObserver<HTMLDivElement>();
+    // A group built in a box that has no width yet (a host that mounts the view in the same pass that sizes its column, as the side panel does when it opens
+    // again) lays itself out at that width, which squeezes the sidebar to its narrowest and leaves it there once the box grows. So the group is built when the
+    // box has a width, and stays built.
+    const [sized, setSized] = useState(false);
+    // A scope is drawn from the tree's own entries, and its folders below the first level are not listed until they are opened: list every root of the scope whole,
+    // once the tree has, and again (all of them, which a tree that holds them already lists once more) when the set of roots changes. The roots are read here, so that the view
+    // (an observer) follows a scope whose list changes.
+    const ready = manager.tree.status === 'ready';
+    // With no file open the editor has nothing to show, and a tree hidden then leaves an empty panel: the tree is shown whatever the host asked for, and the button that
+    // would hide it is not there. The host's choice is not changed: it applies again as soon as a file is open, which is how a single file can be edited with the tree away.
+    const nothingOpen = manager.tabs.documents.length === 0;
+    const shown = sidebarOpen || nothingOpen;
+    const toggle = nothingOpen ? undefined : onSidebarToggle;
+    const rootsKey = scope ? scope.roots.map(({ root }) => root).join('\n') : '';
+
+    useEffect(() => {
+        if (scope && ready) {
+            for (const root of rootsKey === '' ? [] : rootsKey.split('\n')) {
+                manager.tree.loadDeep(root).catch((error: unknown) => manager.notify('Couldn’t list the folder', error));
+            }
+        }
+    }, [manager, scope, ready, rootsKey]);
+
+    // A scope has a filter of its own: the manager's goes through the provider, whose search can leave the scope's folders out.
+    const [scopeQuery, setScopeQuery] = useState('');
+    const scoped = scope ? scopeFilter(manager.tree, scope, scopeQuery) : undefined;
+
+    useEffect(() => {
+        if (rootWidth > 0) {
+            setSized(true);
+        }
+    }, [rootWidth]);
 
     // ⌘ on macOS and Ctrl elsewhere, by physical key like the app's hotkeys.
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -90,71 +133,91 @@ export const FileManagerView = observer(function FileManagerView({
     };
 
     return (
-        <div className={cn(styles.root, className)} onKeyDown={handleKeyDown}>
-            <ResizablePanelGroup
-                orientation="horizontal"
-                // Only the person's own drag is kept: a window that is resized, or a width the range had to correct, changes the layout too.
-                onLayoutChanged={(_layout, meta) => {
-                    if (!meta.isUserInteraction) {
-                        return;
-                    }
-
-                    // After the layout has landed: a key press announces its change a step before the panel's size shows it.
-                    requestAnimationFrame(() => {
-                        if (sidebar.current) {
-                            onSidebarWidthChange?.(sidebar.current.getSize().inPixels);
+        <div ref={rootRef} className={cn(styles.root, className)} onKeyDown={handleKeyDown}>
+            <Show when={sized}>
+                <ResizablePanelGroup
+                    orientation="horizontal"
+                    // Only the person's own drag is kept: a window that is resized, or a width the range had to correct, changes the layout too.
+                    onLayoutChanged={(_layout, meta) => {
+                        if (!meta.isUserInteraction) {
+                            return;
                         }
-                    });
-                }}
-            >
-                <ResizablePanel id={`${id}-editor`} className={styles.editor} minSize={EDITOR_MIN_WIDTH}>
-                    <EditorArea
-                        manager={manager}
-                        editorExtensions={editorExtensions}
-                        toolbar={!sidebarOpen && onSidebarToggle && <SidebarToggle open={false} onPress={onSidebarToggle} />}
-                    />
-                </ResizablePanel>
 
-                <Show when={sidebarOpen}>
-                    <Sidebar panelRef={sidebar} width={sidebarWidth}>
-                        <Panel side="right" className={styles.sidebar}>
-                            <PanelHeader>
-                                <FilterField manager={manager} onSubmit={() => explorer.current?.openFirstMatch()} />
-                                <PanelHeader.Actions>
-                                    {onSidebarToggle && <SidebarToggle open onPress={onSidebarToggle} />}
-                                </PanelHeader.Actions>
-                            </PanelHeader>
-                            <PanelTab>
-                                <Explorer ref={explorer} manager={manager} menuItems={menuItems} dndManager={dndManager} />
-                            </PanelTab>
-                        </Panel>
-                    </Sidebar>
-                </Show>
-            </ResizablePanelGroup>
+                        // After the layout has landed: a key press announces its change a step before the panel's size shows it.
+                        requestAnimationFrame(() => {
+                            if (sidebar.current) {
+                                onSidebarWidthChange?.(sidebar.current.getSize().inPixels);
+                            }
+                        });
+                    }}
+                >
+                    <ResizablePanel id={`${id}-editor`} className={styles.editor} minSize={EDITOR_MIN_WIDTH}>
+                        <EditorArea
+                            manager={manager}
+                            editorExtensions={editorExtensions}
+                            toolbar={!shown && toggle && <SidebarToggle open={false} onPress={toggle} />}
+                        />
+                    </ResizablePanel>
+
+                    <Show when={shown}>
+                        <Sidebar panelRef={sidebar} width={sidebarWidth}>
+                            <Panel side="right" className={styles.sidebar}>
+                                <PanelHeader>
+                                    <FilterField
+                                        manager={manager}
+                                        placeholder={filterPlaceholder}
+                                        scoped={scope ? { query: scopeQuery, onChange: setScopeQuery } : undefined}
+                                        onSubmit={() => explorer.current?.openFirstMatch()}
+                                    />
+                                    <PanelHeader.Actions>
+                                        {toggle && <SidebarToggle open onPress={toggle} />}
+                                    </PanelHeader.Actions>
+                                </PanelHeader>
+                                <PanelTab>
+                                    <Explorer
+                                        ref={explorer}
+                                        manager={manager}
+                                        menuItems={menuItems}
+                                        dndManager={dndManager}
+                                        scope={scope}
+                                        filter={scope ? (scoped ?? null) : undefined}
+                                        emptyText={ready ? emptyText : undefined}
+                                    />
+                                </PanelTab>
+                            </Panel>
+                        </Sidebar>
+                    </Show>
+                </ResizablePanelGroup>
+            </Show>
         </div>
     );
 });
 
-/** The filter of the tree: the files whose name has what is typed, with the folders above them. Enter opens the first. It takes the place a title would have in the header. */
-const FilterField = observer(function FilterField({ manager, onSubmit }: { manager: FileManager; onSubmit: () => void }) {
+/**
+ * The filter of the tree: the files whose name has what is typed, with the folders above them. Enter opens the first. It takes the place a title would have in the
+ * header. A scope keeps its query in the view (`scoped`), and the manager's goes through the provider.
+ */
+const FilterField = observer(function FilterField({ manager, placeholder, scoped, onSubmit }: { manager: FileManager; placeholder: string; scoped?: { query: string; onChange: (query: string) => void }; onSubmit: () => void }) {
     const { filterQuery, filterResult } = manager;
+    const query = scoped ? scoped.query : filterQuery;
+    const pending = !scoped && filterQuery.trim() !== '' && filterResult?.query !== filterQuery;
 
     return (
         <SearchInput
             size="sm"
             variant="inline"
             className={styles.filter}
-            placeholder="Filter files"
-            aria-label="Filter files"
-            value={filterQuery}
-            onChange={(query: string) => void manager.filter(query)}
+            placeholder={placeholder}
+            aria-label={placeholder}
+            value={query}
+            onChange={(next: string) => (scoped ? scoped.onChange(next) : void manager.filter(next))}
             onKeyDown={(event) => {
                 if (event.key === 'Enter') {
                     onSubmit();
                 }
             }}
         >
-            {filterQuery.trim() !== '' && filterResult?.query !== filterQuery ? <Spinner slot="suffix" size="xs" aria-label="Searching" /> : null}
+            {pending ? <Spinner slot="suffix" size="xs" aria-label="Searching" /> : null}
         </SearchInput>
     );
 });

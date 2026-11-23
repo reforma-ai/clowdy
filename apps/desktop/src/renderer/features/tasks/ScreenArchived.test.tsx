@@ -323,8 +323,6 @@ describe('the panel of an archived task', () => {
         expect(link.textContent).toBe('Orchestrator 01');
 
         await click(link);
-
-        expect(ui().section).toBe('agents');
         expect(ui().runId).toBe('r-orch-1');
     });
 
@@ -556,7 +554,7 @@ describe('a dependency on an archived task', () => {
         expect(dependencies().textContent).not.toContain('Removed task');
     });
 
-    it('opens the archived task in the panel when it is pressed, and Back and Forward bring the two panels back', async () => {
+    it('opens the archived task in the panel when it is pressed', async () => {
         await archivedDependency();
         await click(dependencyRow('CAR-21'));
         await wait(0);
@@ -565,32 +563,6 @@ describe('a dependency on an archived task', () => {
         expect(ui().taskId).toBe('t-21');
         expect(panel('CAR-21')!.hasAttribute('data-archived')).toBe(true);
         expect(panel('CAR-26')).toBeNull();
-
-        await act(async () => page.store.history.back());
-        await draw();
-
-        expect(ui().taskId).toBe('t-26');
-        expect(panel('CAR-26')).not.toBeNull();
-
-        await act(async () => page.store.history.forward());
-        await wait(0);
-        await draw();
-
-        expect(ui().taskId).toBe('t-21');
-        expect(panel('CAR-21')!.hasAttribute('data-archived')).toBe(true);
-    });
-
-    it('is a place Back can return to only while the window knows the task: one never read is skipped', async () => {
-        await mountScreen({ prepare: window => window.openTask('t-26') });
-        // The window never read CAR-38: an entry that names it cannot be told from a task that is gone.
-        ui().openTask('t-38');
-        ui().openTask('t-24');
-
-        expect(page.store.history.canGoBack).toBe(true);
-
-        page.store.history.back();
-
-        expect(ui().taskId).toBe('t-26');
     });
 
     it('shows the dependencies of an archived task in its own panel, read only and resolved the same way', async () => {

@@ -1,0 +1,8 @@
+/* The top of the rail: as tall as the window's title band, with the button in the middle of the rail's column, as it was when it sat in the band. */
+.corner {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    height: var(--title-band-height);
+}

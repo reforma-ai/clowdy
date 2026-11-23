@@ -23,7 +23,7 @@ import { ParentRow } from './ParentRow';
 import { StatusIcon } from './status';
 import { SubtasksSection } from './SubtasksSection';
 import { ChecklistChip } from './TaskChips';
-import { settledUi, settleScope } from './tasksScope';
+import { taskNav } from './taskNav';
 import { checklistOf, parentCandidates, type TaskTree } from './taskTree';
 import { sendWithUndo } from './taskUndo';
 import { activeExecutors, dependencyCandidates, externalLink, startBlockedReason, taskActivity } from './taskView';
@@ -56,8 +56,7 @@ export function DetailPanel({ task, taskRuns, titleRef, onOpenSubtasks, tree, on
     const root = useRootStore();
     const project = useProjectState();
     const ui = useProjectUi();
-    // What the panel opens makes a place in the history, which must not carry a scope that is gone.
-    const nav = settledUi(root, project, ui, { reveal: true });
+    const nav = taskNav(root, project, ui, { reveal: true });
     const [isStarting, setIsStarting] = useState(false);
     // A dependency that is archived is not on the board: it is read, and shown as one that is done.
     const { readings: dependencies } = useTaskReadings(task.dependsOn);
@@ -76,10 +75,7 @@ export function DetailPanel({ task, taskRuns, titleRef, onOpenSubtasks, tree, on
         setIsStarting(false);
     };
 
-    const openRun = (runId: string) => {
-        settleScope(root, project, ui);
-        void openRunInAgents(root, project, ui, runId);
-    };
+    const openRun = (runId: string) => void openRunInAgents(root, project, ui, runId);
 
     // A closed task goes to the archive with everything inside it; one with open work asks first, and says how many open tasks it cancels.
     const { action: archiveLabel } = archiveWording([task], openWork(task, tree, project.statuses).length > 0);
@@ -176,10 +172,7 @@ export function DetailPanel({ task, taskRuns, titleRef, onOpenSubtasks, tree, on
 
                 <RelatedChats
                     chats={ project.chatsOfTask(task.id) }
-                    onOpen={ (chatId) => {
-                        settleScope(root, project, ui);
-                        void openChat(root, project, ui, chatId);
-                    } }
+                    onOpen={ chatId => void openChat(root, project, ui, chatId) }
                 />
 
                 <Results taskId={ task.id } expectChecks={ activeExecutors(taskRuns).length > 0 } onOpenDoc={ path => nav.openDoc(path) } />

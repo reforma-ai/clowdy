@@ -22,6 +22,30 @@ describe('HttpTransport.getProjectFiles', () => {
             'http://127.0.0.1:4310/v1/projects/prj%201/files?query=',
         ]);
     });
+
+    it('names the worktree when the files are those of a chat\'s worktree, and the documents and the file system of it', async () => {
+        const urls: string[] = [];
+        const fetchImpl = (async (input: RequestInfo | URL) => {
+            urls.push(String(input));
+
+            return new Response('[]', { status: 200 });
+        }) as typeof fetch;
+        const transport = new HttpTransport({ url: 'http://127.0.0.1:4310', token: 't', fetch: fetchImpl });
+
+        await transport.getProjectFiles('prj 1', 'a', 20, 'wks 1');
+        await transport.getProjectFiles('prj 1', 'a', undefined, 'wks_1');
+        await transport.getDocsTree('prj 1', 'wks 1');
+        await transport.getDocsTree('prj 1');
+        await transport.fileSystem('prj 1', 'fld_1', 'wks_1').list('src');
+
+        expect(urls).toEqual([
+            'http://127.0.0.1:4310/v1/projects/prj%201/files?query=a&limit=20&workspaceId=wks+1',
+            'http://127.0.0.1:4310/v1/projects/prj%201/files?query=a&workspaceId=wks_1',
+            'http://127.0.0.1:4310/v1/projects/prj%201/docs?workspaceId=wks+1',
+            'http://127.0.0.1:4310/v1/projects/prj%201/docs',
+            'http://127.0.0.1:4310/v1/projects/prj%201/fs/list?folderId=fld_1&workspaceId=wks_1&path=src',
+        ]);
+    });
 });
 
 describe('FixtureTransport.getProjectFiles', () => {

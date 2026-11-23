@@ -1,7 +1,6 @@
 import type { Command, CommandType } from '@clowdy/protocol';
 import type { AttachmentsService } from '../attachments/service';
 import type { Config } from '../config';
-import type { DocsService } from '../docs/service';
 import type { AgentRegistry } from '../engine/acp/registry';
 import type { FilesService } from '../files/service';
 import type { FsService } from '../fs/service';
@@ -25,7 +24,6 @@ export interface Services {
     queue: ChatQueue;
     /** Threads: chats an agent of another chat starts and drives with its `thread_*` tools. */
     threads: ThreadService;
-    docs: DocsService;
     files: FilesService;
     /** The files of a project's folders for the file manager. */
     fs: FsService;
@@ -44,14 +42,20 @@ export type CommandOf<T extends CommandType> = Extract<Command, { type: T }>;
 export type AsyncCommandType = 'chat.fork' | 'chat.edit';
 
 /**
+ * The commands that wait only when they ask for something that needs it (a delete that also removes the chat's worktree waits for git): they have a `Handlers` entry for
+ * the ordinary case and an `AsyncHandlers` one for the other, which `waitsWhen` (`commands/index.ts`) tells apart.
+ */
+export type SometimesAsyncCommandType = 'chat.delete';
+
+/**
  * One handler per command type, run inside the transaction that also stores the command's result. Handlers are
  * synchronous and publish their events through the domain functions; the returned value is the result's `data`.
  */
 export type Handlers = { [T in Exclude<CommandType, AsyncCommandType>]: (services: Services, command: CommandOf<T>) => unknown };
 
 /**
- * The handlers of the commands that wait for an agent. One does its waiting first, outside any transaction, and refuses with a `CommandError` when it must;
+ * The handlers of the commands that wait (for an agent, or for git). One does its waiting first, outside any transaction, and refuses with a `CommandError` when it must;
  * what it gives back is the part that changes the store, synchronous like any handler and run in the transaction that also stores the result
  * (`executeCommandAsync`), so everything that waited has happened before anything is written.
  */
-export type AsyncHandlers = { [T in AsyncCommandType]: (services: Services, command: CommandOf<T>) => Promise<() => unknown> };
+export type AsyncHandlers = { [T in AsyncCommandType | SometimesAsyncCommandType]: (services: Services, command: CommandOf<T>) => Promise<() => unknown> };

@@ -1,6 +1,7 @@
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
 import { getProject } from '../src/db/projects';
+import { upsertRun } from '../src/db/runs';
 import { getTask } from '../src/db/tasks';
 import { taskCommentsPage } from '../src/domain/taskComments';
 import { ToolBridge } from '../src/engine/acp/bridge';
@@ -143,6 +144,13 @@ describe('the tool vocabulary', () => {
 
         await waitFor(() => h.run(started.runId).status === 'running', 'the task\'s chat to start');
         expect((await exec(orchestrator, 'task_get', { taskId: first.key })).task.activeRuns).toEqual([{ runId: started.runId, name: 'Orchestrator 02', role: 'orchestrator', status: 'running' }]);
+
+        // A run with a request open to the person reads waiting_user to the agent that asks, whatever its own status.
+        const working = h.run(started.runId);
+
+        upsertRun(h.store.db, { ...working, awaitingUser: true });
+        expect((await exec(orchestrator, 'task_get', { taskId: first.key })).task.activeRuns).toEqual([{ runId: started.runId, name: 'Orchestrator 02', role: 'orchestrator', status: 'waiting_user' }]);
+        upsertRun(h.store.db, working);
 
         // Filters
         expect((await exec(orchestrator, 'task_list', { query: 'BUILD' })).tasks.map((item: { key: string }) => item.key)).toEqual(['REP-2']);

@@ -16,7 +16,7 @@ import type {
     WatchEvent,
     WriteOptions,
 } from '@clowdy/file-manager/provider';
-import type { FolderId } from '@clowdy/protocol';
+import type { FolderId, WorkspaceId } from '@clowdy/protocol';
 
 export interface HttpFileSystemOptions {
     /** The daemon's address and the headers that go with every request, asked for each request: the daemon may be replaced while the app runs. */
@@ -25,6 +25,8 @@ export interface HttpFileSystemOptions {
     /** `/v1/projects/:id/fs`. */
     route: string;
     folderId: FolderId;
+    /** The worktree of the folder to read and write, in place of the folder's own checkout: sent with every request beside the folder. */
+    workspaceId?: WorkspaceId;
     /** For tests: how long a reconnect of the watch waits. */
     sleep?: (ms: number) => Promise<void>;
 }
@@ -148,15 +150,22 @@ export class HttpFileSystem implements FileSystemProvider {
         return this.#request(action, undefined, path, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ folderId: this.#options.folderId, ...body }),
+            body: JSON.stringify({ ...this.#place(), ...body }),
             signal,
         });
     }
 
-    /** A request to one route: `query` goes in the address with the folder (a read, a write, the lists), without it the body names the folder. */
+    /** What names the folder, and the worktree of it when there is one: in the address of a read, a write, a list or the watch, in the body of the other writes. */
+    #place(): Record<string, string> {
+        const { folderId, workspaceId } = this.#options;
+
+        return { folderId, ...(workspaceId !== undefined && { workspaceId }) };
+    }
+
+    /** A request to one route: `query` goes in the address with the place (a read, a write, the lists), without it the body names the place. */
     async #request(action: string, query: Record<string, string> | undefined, path: string, init: RequestInit = {}): Promise<Response> {
         const { base, headers } = this.#options.target();
-        const search = query ? `?${ new URLSearchParams({ folderId: this.#options.folderId, ...query }) }` : '';
+        const search = query ? `?${ new URLSearchParams({ ...this.#place(), ...query }) }` : '';
         let response: Response;
 
         try {
@@ -185,7 +194,7 @@ export class HttpFileSystem implements FileSystemProvider {
         while (!signal.aborted) {
             try {
                 const { base, headers } = this.#options.target();
-                const response = await this.#options.fetch(`${ base }${ this.#options.route }/watch?${ new URLSearchParams({ folderId: this.#options.folderId }) }`, {
+                const response = await this.#options.fetch(`${ base }${ this.#options.route }/watch?${ new URLSearchParams(this.#place()) }`, {
                     headers: { ...headers, accept: 'text/event-stream' },
                     signal,
                 });

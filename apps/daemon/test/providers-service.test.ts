@@ -1,6 +1,7 @@
 import { describe, expect, spyOn, test } from 'bun:test';
 
 import { ProvidersService } from '../src/providers/service';
+import { testSpec } from './helpers';
 
 import type { AgentInfo } from '@clowdy/protocol';
 import type { AgentRegistry } from '../src/engine/acp/registry';
@@ -27,7 +28,7 @@ function rig(reads: ProviderRead[], { login = true }: { login?: boolean } = {}) 
     let calls = 0;
     const announced: number[] = [];
     const provider: Provider = {
-        id: 'claude',
+        ...testSpec('claude'),
         ...(login && { login: { args: ['auth', 'login'] } }),
         read: async () => reads[Math.min(calls++, reads.length - 1)]!,
     };
@@ -39,10 +40,19 @@ function rig(reads: ProviderRead[], { login = true }: { login?: boolean } = {}) 
 const settle = () => new Promise(resolve => setTimeout(resolve, 20));
 
 describe('ProvidersService', () => {
+    test('keeps the permission presets the registry listed, for an agent with an account and for one with none to read', async () => {
+        const { service } = rig([ok(8)]);
+        const permissions = { presets: [{ id: 'ask' as const, name: 'Ask for approval', description: 'x' }], default: 'ask' as const };
+        const plain = { ...testSpec('plain') };
+
+        expect(service.decorate([{ ...info('claude'), permissions }])[0]?.permissions).toEqual(permissions);
+        expect(new ProvidersService({ registry: registry(['plain']), providers: [plain], announce: () => undefined, cwd: '/tmp' }).decorate([{ ...info('plain'), permissions }])[0]?.permissions).toEqual(permissions);
+    });
+
     test('reuses a read as long as its provider says, not as long as the default', async () => {
         let time = 1_000_000;
         let calls = 0;
-        const provider: Provider = { id: 'claude', freshMs: 300_000, read: async () => {
+        const provider: Provider = { ...testSpec('claude'), freshMs: 300_000, read: async () => {
             calls++; return ok(8);
         } };
         const service = new ProvidersService({ registry: registry(['claude']), providers: [provider], announce: () => undefined, now: () => time, freshMs: 60_000, cwd: '/tmp' });
@@ -60,6 +70,20 @@ describe('ProvidersService', () => {
         await settle();
 
         expect(calls).toBe(2);
+    });
+
+    test('leaves an agent whose provider is only a spec as the registry found it, and reads nothing for it', async () => {
+        let probed = 0;
+        const plain = { ...registry(['plain']), probeTarget: async () => void probed++, nameOf: () => 'Plain' } as unknown as AgentRegistry;
+        const service = new ProvidersService({ registry: plain, providers: [testSpec('plain')], announce: () => undefined, cwd: '/tmp' });
+
+        expect(service.decorate([info('plain')])).toEqual([info('plain')]);
+        expect(() => service.signIn('plain')).toThrow('cannot sign in');
+
+        service.refresh();
+        await settle();
+
+        expect(probed).toBe(0);
     });
 
     test('answers at once without the account, reads it in the background, and announces what it found', async () => {
@@ -162,7 +186,7 @@ describe('ProvidersService', () => {
         let calls = 0;
         const service = new ProvidersService({
             registry: registry(['claude']),
-            providers: [{ id: 'claude', read: async () => (++calls === 1 ? (await gate, ok(1)) : ok(2)) }],
+            providers: [{ ...testSpec('claude'), read: async () => (++calls === 1 ? (await gate, ok(1)) : ok(2)) }],
             announce: () => void announced.push(1),
             cwd: '/tmp',
         });
@@ -191,7 +215,7 @@ describe('ProvidersService', () => {
         let calls = 0;
         const service = new ProvidersService({
             registry: registry(['claude']),
-            providers: [{ id: 'claude', read: async () => (++calls === 1 ? (await gate, signedOut) : ok(8)) }],
+            providers: [{ ...testSpec('claude'), read: async () => (++calls === 1 ? (await gate, signedOut) : ok(8)) }],
             announce: () => undefined,
             cwd: '/tmp',
         });
@@ -218,7 +242,7 @@ describe('ProvidersService', () => {
             const service = new ProvidersService({
                 registry: registry(['claude']),
                 providers: [{
-                    id: 'claude',
+                    ...testSpec('claude'),
                     read: async () => {
                         if (++calls === 1) {
                             throw new Error('the reader is broken');
@@ -261,7 +285,7 @@ describe('ProvidersService', () => {
         const service = new ProvidersService({
             registry: registry(['claude']),
             providers: [{
-                id: 'claude',
+                ...testSpec('claude'),
                 read: async (context) => {
                     calls++;
                     signal = context.signal;

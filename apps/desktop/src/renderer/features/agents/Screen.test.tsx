@@ -1,15 +1,17 @@
 // @vitest-environment happy-dom
+import { openConfirmModal } from '@clowdy/components/modals';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createFixtureData, FIXTURE_EMPTY_PROJECT_ID, FIXTURE_PROJECT_ID, type FixtureData } from '../../daemon/fixtureData';
+import { createFixtureData, FIXTURE_EMPTY_PROJECT_ID, FIXTURE_PROJECT_ID, FIXTURE_WORKSPACE_CHAT_ID, withFixtureWorkspace, type FixtureData } from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { hotkeys, installDispatcher } from '../../hotkeys';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { chatListPreferences } from './chatListPreferences';
 import { Screen } from './Screen';
 
+import type { ProjectInfo } from '@clowdy/protocol';
 import type { Editor } from '@tiptap/core';
 import type { ReactNode } from 'react';
 import type { KeyValueStorage } from '../../stores/storage';
@@ -192,6 +194,64 @@ describe('what is open', () => {
     });
 });
 
+describe('a side panel that covers the chat', () => {
+    const cover = async (open: () => void) => {
+        await draw(() => {
+            open();
+            ui().openSidePanelTab('tasks');
+        });
+
+        expect(ui().sidePanelCoversChat).toBe(true);
+    };
+    const covering = () => ui().sidePanelCoversChat;
+
+    it('is shut by a press on the row of the chat that is open already, which the list does not report as a selection', async () => {
+        await cover(() => ui().openChat('c-3'));
+        await press(rowOf('c-3'));
+
+        expect(covering()).toBe(false);
+        expect(ui().sidePanelOpen).toBe(false);
+        expect(ui().chatId).toBe('c-3');
+    });
+
+    it('is shut by Enter or Space on that row, and by a press on the new-chat row while the new chat is open', async () => {
+        await cover(() => ui().openChat('c-3'));
+        await act(async () => rowOf('c-3').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })));
+
+        expect(covering()).toBe(false);
+
+        await cover(() => ui().openDraft());
+        await press(rowOf('@new-chat'));
+
+        expect(covering()).toBe(false);
+    });
+
+    it('is shut by a press on another chat', async () => {
+        await cover(() => ui().openChat('c-3'));
+        await press(rowOf('c-5'));
+
+        expect(covering()).toBe(false);
+        expect(ui().chatId).toBe('c-5');
+    });
+
+    it('stays when a control of the open chat\'s row is pressed, which is not a press on the chat', async () => {
+        await cover(() => ui().openChat('c-3'));
+        await press(rowOf('c-3').querySelector<HTMLElement>('button[aria-label="Chat actions"]')!);
+
+        expect(covering()).toBe(true);
+    });
+
+    it('leaves a panel beside the chat alone when the open chat\'s row is pressed', async () => {
+        await draw(() => {
+            ui().openChat('c-3');
+            ui().openSidePanelTab('files');
+        });
+        await press(rowOf('c-3'));
+
+        expect([ui().sidePanelOpen, ui().sidePanelTab]).toEqual([true, 'files']);
+    });
+});
+
 describe('the new-chat row', () => {
     const field = () => container.querySelector<HTMLElement>('[contenteditable="true"]');
     const editor = () => (field() as HTMLElement & { editor: Editor }).editor;
@@ -344,6 +404,82 @@ describe('grouped by folder', () => {
 
         expect(rowKeys()).toEqual(['@new-chat', head(MAIN), 'c-1', 'c-4', 'c-6', 'c-5', 'c-3', 'c-2', head(API.id), `@empty:${ API.id }`]);
         expect(rowOf(`@empty:${ API.id }`).textContent).toBe('No chats');
+    });
+
+    it('opens the menu of the folder from a press on the name of its group, with the new-chat page of that folder shown, in the desktop app only', async () => {
+        const name = (folderId: string) => rowOf(head(folderId)).querySelector<HTMLButtonElement>('button[aria-label^="Folder:"]');
+        const menuItems = () => [...document.body.querySelectorAll('[role="menu"][aria-label="Open folder"] [role="menuitem"]')].map(row => row.textContent);
+
+        // With no desktop bridge there is nothing to open a folder in: the name is a label.
+        await restart();
+        expect(name(MAIN)).toBeNull();
+
+        window.desktop = { getOpenApps: async () => ({ editors: [], terminals: [], fileManagers: [] }), openPath: vi.fn(async () => undefined) } as never;
+
+        try {
+            await restart();
+            expect(name(MAIN)?.textContent).toBe('car-rental');
+            await draw(() => ui().openChat('c-1'));
+
+            // The press shows the new chat of the folder, which is then the folder the window works in: the menu can open it in the Files tab and the terminal.
+            await press(name(API.id)!);
+            expect([ui().draft, ui().draftFolderId]).toEqual([true, API.id]);
+            expect(menuItems()).toEqual(['Open in Files', 'Open in Terminal', 'Copy path', 'Open in…']);
+
+            // The main folder's new chat has no folder of its own. The menu holds the page while it is open: this one is a fresh start.
+            await restart();
+            await draw(() => ui().openChat('c-2'));
+            await press(name(MAIN)!);
+            expect([ui().draft, ui().draftFolderId]).toEqual([true, null]);
+            expect(menuItems()).toEqual(['Open in Files', 'Open in Terminal', 'Copy path', 'Open in…']);
+            // It folds nothing.
+            expect(ui().collapsedFolders).toEqual([]);
+        }
+        finally {
+            window.desktop = undefined;
+        }
+    });
+
+    it('puts right a folder that is gone from the disk from the menu of its group: Locate… moves the folder, Remove from project takes it out', async () => {
+        const transport = new FixtureTransport({ data: twoFolders() });
+        const info = await transport.getProjectsInfo();
+        const choose = vi.fn(async () => ['/Users/dev/api-moved']);
+
+        vi.spyOn(transport, 'getProjectsInfo').mockResolvedValue(info.map(entry => (entry.projectId === FIXTURE_PROJECT_ID ? { ...entry, folders: entry.folders.map(folder => ({ ...folder, exists: folder.folderId !== API.id })) } : entry)));
+        window.desktop = { getOpenApps: async () => ({ editors: [], terminals: [], fileManagers: [] }), openPath: vi.fn(async () => undefined), chooseDirectories: choose } as never;
+
+        try {
+            const name = (folderId: string) => rowOf(head(folderId)).querySelector<HTMLButtonElement>('button[aria-label^="Folder:"]')!;
+            const menuItems = () => [...document.body.querySelectorAll('[role="menu"][aria-label="Open folder"] [role="menuitem"]')].map(row => row.textContent);
+            const item = (text: string) => [...document.body.querySelectorAll<HTMLElement>('[role="menu"][aria-label="Open folder"] [role="menuitem"]')].find(row => row.textContent === text)!;
+
+            await restart({ transport });
+            await press(name(API.id));
+
+            // The folder is there, and the page is not taken from the chat: nothing to start in a folder that is gone.
+            expect(ui().draft).toBe(false);
+            expect(menuItems()).toEqual(['Locate…', 'Remove from project', 'Copy path', 'Open in…']);
+
+            await press(item('Locate…'));
+            await vi.waitFor(() => expect(store.projects.find(project => project.id === FIXTURE_PROJECT_ID)?.folders[1]).toEqual({ id: API.id, path: '/Users/dev/api-moved' }));
+            expect(store.projects.find(project => project.id === FIXTURE_PROJECT_ID)?.folders[0].id).toBe(MAIN);
+
+            // A chat works in the folder, so taking it out asks first (it is named by its new place now).
+            await restart({ transport });
+            await press(name(API.id));
+            await press(item('Remove from project'));
+
+            expect(openConfirmModal).toHaveBeenCalledWith(expect.objectContaining({ title: 'Remove api-moved?', message: expect.stringContaining('1 chat works in api-moved') }), expect.anything());
+
+            // A folder that is there has none of it.
+            await restart();
+            await press(name(API.id));
+
+            expect(menuItems()).not.toContain('Locate…');
+        }
+        finally {
+            window.desktop = undefined;
+        }
     });
 
     it('folds a group by the chevron after its name and by the arrows, not by a press on the heading, and remembers it', async () => {
@@ -1044,6 +1180,28 @@ describe('threads', () => {
         expect(rowOf('c-6e').querySelector('[data-provider]')?.getAttribute('data-provider')).toBe('codex');
     });
 
+    it('lists a thread that waits for the person under its folded chat, with the dot on both, and the other threads stay folded away', async () => {
+        // The thread rests for its background work while its agent asks: its card is the only sign (`Run.awaitingUser`).
+        await draw(() => project().runs.set('r-orch-6e', { ...project().runs.get('r-orch-6e')!, awaitingUser: true }));
+
+        expect(rowKeys()).toEqual(['@new-chat', 'c-1', 'c-4', 'c-6', 'c-6e', 'c-5', 'c-3', 'c-2']);
+        expect(['c-6', 'c-6e'].map(depthOf)).toEqual(['0', '1']);
+        expect(foldOf('c-6')?.getAttribute('aria-expanded')).toBe('false');
+        expect(dotOf('c-6')).toBe('A thread is waiting for you');
+        expect(dotOf('c-6e')).toBe('Waiting');
+
+        // Opening the fold lists every thread, the asking one in its place.
+        await act(async () => foldOf('c-6')!.click());
+        await draw();
+        expect(rowKeys()).toEqual(['@new-chat', 'c-1', 'c-4', 'c-6', 'c-6a', 'c-6b', 'c-6c', 'c-6e', 'c-5', 'c-3', 'c-2']);
+
+        // Decided: the thread goes back behind the fold, and the chat's dot to its threads working.
+        await act(async () => foldOf('c-6')!.click());
+        await draw(() => project().runs.set('r-orch-6e', { ...project().runs.get('r-orch-6e')!, awaitingUser: undefined }));
+        expect(rowKeys()).not.toContain('c-6e');
+        expect(dotOf('c-6')).toBe('Threads working');
+    });
+
     it('offers no Archive on a chat whose threads work, and offers it on a finished thread', async () => {
         await draw(() => ui().toggleChatExpanded('c-6'));
 
@@ -1084,6 +1242,122 @@ describe('threads', () => {
         await press(rowOf('c-6').querySelector<HTMLElement>('button[aria-label="Chat actions"]')!);
         await press(menuItem('Delete'));
 
-        expect(openConfirmModal).toHaveBeenCalledWith(expect.objectContaining({ message: '"Ship the checkout", its 5 threads and the runs of their agents are deleted for good. The tasks they made stay.' }));
+        // The message is an element (the dialog may add a checkbox for the chat's worktree) that carries the words the confirmation says.
+        expect(openConfirmModal).toHaveBeenCalledWith(expect.objectContaining({ message: expect.objectContaining({ props: expect.objectContaining({ text: '"Ship the checkout", its 5 threads and the runs of their agents are deleted for good. The tasks they made stay.' }) }) }));
+    });
+});
+
+describe('a chat that works in a worktree', () => {
+    const mark = (key: string) => rowOf(key).querySelector<HTMLElement>('[role="img"][aria-label*="worktree"]');
+
+    async function restart(transport = new FixtureTransport({ data: withFixtureWorkspace(createFixtureData()) })) {
+        act(() => reactRoot.unmount());
+        store.dispose();
+        reactRoot = createRoot(container);
+        store = new RootStore(transport, { storage: memoryStorage() });
+        await store.load();
+        await draw();
+    }
+
+    /** The fixture daemon with a chat in a worktree, and what it reads of the project's worktrees as `set` last said (`undefined`: nothing). */
+    function reading(workspaces: ProjectInfo['workspaces'], change?: (data: FixtureData) => void) {
+        const data = withFixtureWorkspace(createFixtureData());
+
+        change?.(data);
+
+        const transport = new FixtureTransport({ data });
+        const read = vi.spyOn(transport, 'getProjectsInfo');
+        let current = workspaces;
+
+        read.mockImplementation(async projectId => (await FixtureTransport.prototype.getProjectsInfo.call(transport, projectId)).map(entry => (entry.projectId === FIXTURE_PROJECT_ID ? { ...entry, workspaces: current } : entry)));
+
+        return { transport, read, set: (next: ProjectInfo['workspaces']) => void (current = next) };
+    }
+
+    it('has a branch mark after its title, with its branch in the mark\'s title, and no other row has one', async () => {
+        await restart();
+
+        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.title).toBe('Works in a worktree on clowdy/ab12cd34');
+        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.querySelector('svg')).not.toBeNull();
+        expect(rowKeys().filter(key => key && mark(key))).toEqual([FIXTURE_WORKSPACE_CHAT_ID]);
+        // The title stays what the row is called, with the mark after it.
+        expect(rowOf(FIXTURE_WORKSPACE_CHAT_ID).textContent).toContain('Weekend surcharge in a worktree');
+        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.previousElementSibling?.textContent).toBe('Weekend surcharge in a worktree');
+    });
+
+    it('says the branch the worktree has now, as the daemon read it, and not the one it was made with', async () => {
+        await restart(reading([{ workspaceId: 'wks_ab12cd34', exists: true, branch: 'feature/other' }]).transport);
+
+        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.title).toBe('Works in a worktree on feature/other');
+    });
+
+    it('reads what the daemon knows again when the window gets focus, for the branch an agent switched to meanwhile', async () => {
+        const { transport, read, set } = reading([{ workspaceId: 'wks_ab12cd34', exists: true, branch: 'feature/other' }]);
+
+        await restart(transport);
+
+        const everything = () => read.mock.calls.filter(([projectId]) => projectId === undefined).length;
+        const reads = everything();
+
+        set([{ workspaceId: 'wks_ab12cd34', exists: true, branch: 'hotfix' }]);
+        await act(async () => {
+            window.dispatchEvent(new Event('focus'));
+        });
+        await draw();
+
+        expect(everything()).toBeGreaterThan(reads);
+        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.title).toBe('Works in a worktree on hotfix');
+    });
+
+    it('says the worktree is gone when the daemon says it is no longer on the disk', async () => {
+        await restart(reading([{ workspaceId: 'wks_ab12cd34', exists: false }]).transport);
+
+        expect(rowOf(FIXTURE_WORKSPACE_CHAT_ID).querySelector('[role="img"]')?.getAttribute('title')).toBe('The worktree no longer exists');
+    });
+
+    it('reads again when a worktree gets made, so a read taken while it was being made does not make the row call it gone', async () => {
+        await restart(new FixtureTransport({ data: createFixtureData() }));
+
+        const created = await store.command({ type: 'chat.create', projectId: FIXTURE_PROJECT_ID, workspace: { mode: 'new' } });
+        const { chat } = (created as { data: { chat: { id: string } } }).data;
+
+        await vi.waitFor(() => expect(project().chats.get(chat.id)?.workspace?.ready).toBe(false));
+        await draw();
+
+        // The window gets focus while the worktree is being made: the read says there is none yet, and the row, which names the branch it will be made on, is not wrong.
+        await act(async () => {
+            window.dispatchEvent(new Event('focus'));
+        });
+        await draw();
+        expect(mark(chat.id)?.title).toBe(`Works in a worktree on clowdy/${ chat.id.slice(-8) }`);
+
+        await store.command({ type: 'chat.send', chatId: chat.id, text: 'Go' });
+        await vi.waitFor(() => expect(project().chats.get(chat.id)?.workspace?.ready).toBe(true));
+        await draw();
+        await vi.waitFor(() => expect(mark(chat.id)?.title).toBe(`Works in a worktree on clowdy/${ chat.id.slice(-8) }`));
+        expect(mark(chat.id)?.hasAttribute('data-gone')).toBe(false);
+    });
+
+    it('falls back to the branch it was made with when the read has no word on the worktree, and to a plain line when it was made with none', async () => {
+        await restart(reading(undefined).transport);
+
+        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.title).toBe('Works in a worktree on clowdy/ab12cd34');
+
+        await restart(reading(undefined, data => void delete data.chats.find(chat => chat.id === FIXTURE_WORKSPACE_CHAT_ID)!.workspace!.branch).transport);
+
+        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.title).toBe('Works in a worktree');
+    });
+
+    it('shows the chat\'s folder, where it works and the branch read only under its message box, from the chat\'s own workspace', async () => {
+        await restart();
+        await draw(() => ui().openChat(FIXTURE_WORKSPACE_CHAT_ID));
+
+        expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe(FIXTURE_WORKSPACE_CHAT_ID);
+        expect(container.querySelector('[aria-label="Where it runs: Worktree"]')?.textContent).toBe('Worktree');
+        await vi.waitFor(() => expect(container.querySelector('[aria-label="Branch: clowdy/ab12cd34"]')).not.toBeNull());
+
+        await draw(() => ui().openChat('c-1'));
+
+        expect(container.querySelector('[aria-label="Where it runs: Project checkout"]')?.textContent).toBe('Project checkout');
     });
 });

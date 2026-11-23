@@ -13,6 +13,10 @@ export interface PickerOption {
     icon?: ReactNode;
     /** Smaller text after the label. It is not searched, so put whatever should be findable in the label. */
     description?: ReactNode;
+    /** The description is a line under the label, not after it: for rows that have a name and then a sentence of facts. */
+    stacked?: boolean;
+    /** A marker at the row's end, before the check of the current option. */
+    trailing?: ReactNode;
 }
 
 export interface PickerPopoverProps {
@@ -113,7 +117,15 @@ export function PickerPopover({ anchor, options, selectedIds = [], 'aria-label':
                                 text={ option.label }
                                 icon={ option.icon }
                                 description={ option.description }
-                                endAffix={ current.has(option.id) ? <Check className={ styles.current } aria-label="Current" /> : undefined }
+                                stacked={ option.stacked }
+                                endAffix={ option.trailing || current.has(option.id)
+                                    ? (
+                                        <>
+                                            { option.trailing }
+                                            { current.has(option.id) && <Check className={ styles.current } aria-label="Current" /> }
+                                        </>
+                                    )
+                                    : undefined }
                             />
                         ) }
                     </ListBox>

@@ -47,7 +47,7 @@ async function mount(options: { editMode?: Partial<EditMode> | false; status?: R
 
         return accepted;
     });
-    const store = { command, transport, skillsRevision: 0, selectedProject: { project: { id: 'p' }, taskList: [] }, ...await modelStore() };
+    const store = { command, transport, skillsRevision: 0, selectedProject: { project: { id: 'p', folders: [{ id: 'f1', path: '/Users/dev/web' }] }, taskList: [] }, ...await modelStore() };
     const target = options.chat ?? chat;
     const run = options.status ? { id: 'r-1', status: options.status } as Run : undefined;
 

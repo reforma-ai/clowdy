@@ -3,20 +3,24 @@ import { commandSchema, mainFolder, MAX_ATTACHMENT_BYTES, PROTOCOL_VERSION } fro
 import { contentDisposition, servedMediaType } from '../attachments/names';
 import { executeCommandAsync, waitsForAgent } from '../commands';
 import { getRun } from '../db/runs';
+import { docsTree } from '../docs/tree';
 import { requireChat } from '../domain/chats';
 import { streamItems } from '../domain/items';
+import { resolveWorkspacePlace } from '../domain/places';
 import { findProjectIcon } from '../domain/projectIcon';
 import { projectsInfo, requireProject } from '../domain/projects';
-import { projectSnapshot, rootSnapshot, taskDetail } from '../domain/snapshots';
+import { projectSnapshot, rootSnapshot, taskDetail, taskDetailByKey } from '../domain/snapshots';
 import { archivedTasksPage } from '../domain/taskArchive';
 import { taskCommentsPage } from '../domain/taskComments';
 import { DEFAULT_LIMIT } from '../domain/taskQuery';
+import { workspaceRemoval } from '../domain/workspaceRemoval';
 import { CommandError, invalid, notFound } from '../errors';
+import { projectFolderGit } from '../git/state';
 import { BodyTooLarge, declaredLength, JSON_BODY_LIMIT, readText } from './body';
 import { commandResponse, failure, json } from './responses';
 import { eventStream } from './sse';
 
-import type { Health, TaskArchivePage, TaskCommentsPage } from '@clowdy/protocol';
+import type { Health, Project, TaskArchivePage, TaskCommentsPage } from '@clowdy/protocol';
 import type { Services } from '../commands';
 
 export interface RouteContext {
@@ -64,7 +68,13 @@ function integerParam(raw: string | null, name: string, fallback: number): numbe
 
 export function createRoutes(context: RouteContext): Route[] {
     const { services } = context;
-    const { store, docs, files, skills, attachments } = services;
+    const { store, files, skills, attachments } = services;
+    /** The worktree a request of the documents or the file names asks for (`workspaceId`), in place of its folder's own checkout; none when it names no workspace. */
+    const workspacePlaceOf = (project: Project, url: URL) => {
+        const workspaceId = url.searchParams.get('workspaceId');
+
+        return workspaceId ? resolveWorkspacePlace(store, project, workspaceId) : undefined;
+    };
 
     return [
         {
@@ -128,7 +138,7 @@ export function createRoutes(context: RouteContext): Route[] {
                     return failure('invalid', 'The command is not valid', parsed.error.issues.map(issue => ({ path: issue.path.join('.'), message: issue.message })), requestId);
                 }
 
-                // A fork or an edit waits for the agent's process, which may outlast the idle timeout of a connection that sends nothing meanwhile.
+                // A fork or an edit waits for the agent's process, and a delete that removes a worktree for git: either may outlast the idle timeout of a connection that sends nothing meanwhile.
                 if (waitsForAgent(parsed.data)) {
                     context.keepOpen(request);
                 }
@@ -156,7 +166,10 @@ export function createRoutes(context: RouteContext): Route[] {
                 return json(runId ? streamItems(store, runId, integerParam(url.searchParams.get('after'), 'after', 0)) : []);
             },
         },
+        { method: 'GET', pattern: /^\/v1\/chats\/([^/]+)\/workspace$/, handle: async (_request, _url, [id]) => json(await workspaceRemoval(store, id)) },
         { method: 'GET', pattern: /^\/v1\/tasks\/([^/]+)\/detail$/, handle: (_request, _url, [id]) => json(taskDetail(store, id)) },
+        // The same answer by a task's key within a project; the key segment is escaped by the client like any other.
+        { method: 'GET', pattern: /^\/v1\/projects\/([^/]+)\/tasks\/([^/]+)\/detail$/, handle: (_request, _url, [id, key]) => json(taskDetailByKey(store, id, key)) },
         {
             method: 'GET',
             pattern: /^\/v1\/tasks\/([^/]+)\/comments$/,
@@ -181,11 +194,15 @@ export function createRoutes(context: RouteContext): Route[] {
                 return json({ tasks, total, ...(nextCursor !== undefined && { nextCursor }) } satisfies TaskArchivePage);
             },
         },
-        { method: 'GET', pattern: /^\/v1\/projects\/([^/]+)\/docs$/, handle: (_request, _url, [id]) => json(docs.tree(requireProject(store, id))) },
+        { method: 'GET', pattern: /^\/v1\/projects\/([^/]+)\/git$/, handle: async (_request, url, [id]) => json(await projectFolderGit(requireProject(store, id), url.searchParams.get('folderId') ?? '')) },
         {
             method: 'GET',
-            pattern: /^\/v1\/projects\/([^/]+)\/docs\/file$/,
-            handle: (_request, url, [id]) => json(docs.read(requireProject(store, id), url.searchParams.get('folderId') ?? '', url.searchParams.get('path') ?? '')),
+            pattern: /^\/v1\/projects\/([^/]+)\/docs$/,
+            handle: (_request, url, [id]) => {
+                const project = requireProject(store, id);
+
+                return json(docsTree(project, workspacePlaceOf(project, url)));
+            },
         },
         {
             method: 'GET',
@@ -193,7 +210,9 @@ export function createRoutes(context: RouteContext): Route[] {
             handle: async (_request, url, [id]) => {
                 const limit = Math.min(Math.max(integerParam(url.searchParams.get('limit'), 'limit', DEFAULT_FILE_LIMIT), 1), MAX_FILE_LIMIT);
 
-                return json(await files.search(requireProject(store, id), url.searchParams.get('query') ?? '', limit));
+                const project = requireProject(store, id);
+
+                return json(await files.search(project, url.searchParams.get('query') ?? '', limit, workspacePlaceOf(project, url)));
             },
         },
         {

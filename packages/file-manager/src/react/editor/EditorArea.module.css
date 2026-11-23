@@ -44,8 +44,8 @@
     border: none;
 }
 
-/* A faint watermark over the empty editor. */
-.emptyLogo {
-    margin-bottom: var(--spacing-16);
-    color: var(--color-secondary-muted);
+/* The icon of the empty editor, in the caption's color so the two read as one block. */
+.emptyIcon {
+    margin-bottom: var(--spacing-12);
+    color: var(--color-secondary-muted-text);
 }

@@ -40,6 +40,8 @@ export interface AgentInfo {
     signInSession?: AgentSignInSession;
     /** The agent's own settings Clowdy can control, with their current values. Empty or absent when there are none. */
     settings?: AgentSetting[];
+    /** The permission presets the agent's provider offers and the person's choice among them. Every agent has them (an agent with no declaration of its own offers `ask` and `full`). */
+    permissions?: AgentPermissions;
     /** What the person changed about how the agent starts: a program they chose, variables they added. Absent when nothing was changed. */
     overrides?: AgentOverrides;
 }
@@ -111,6 +113,39 @@ export interface AgentSignInSession {
     message?: string;
     /** Epoch milliseconds the session started. */
     startedAt: number;
+}
+
+/**
+ * The permission presets a person picks from: a closed vocabulary, so the settings read the same for every agent. A provider offers the subset
+ * it can honour and writes its own description of each; a fifth preset is one more entry here.
+ */
+export const PERMISSION_PRESETS = ['ask', 'accept-edits', 'auto', 'full'] as const;
+
+export type PermissionPresetId = typeof PERMISSION_PRESETS[number];
+
+/** What a preset is called, whichever agent offers it. */
+export const PERMISSION_PRESET_NAMES: Record<PermissionPresetId, string> = {
+    'ask': 'Ask for approval',
+    'accept-edits': 'Accept edits',
+    'auto': 'Approve for me',
+    'full': 'Full access',
+};
+
+/** One preset an agent offers, with the agent's own description of what it does there. */
+export interface AgentPermissionPreset {
+    id: PermissionPresetId;
+    name: string;
+    description: string;
+}
+
+/** The permission presets of an agent, as its provider declares them. */
+export interface AgentPermissions {
+    /** In menu order. */
+    presets: AgentPermissionPreset[];
+    /** The person's choice. Absent when they have not chosen. */
+    value?: PermissionPresetId;
+    /** What the agent's provider starts it on when the person has not chosen. */
+    default: PermissionPresetId;
 }
 
 /** A setting of an agent that Clowdy can turn on or off by itself (an environment variable or a session option). */

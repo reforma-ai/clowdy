@@ -10,7 +10,7 @@ import type { HotkeyRegistry } from './registry';
 
 const itemId = (element: Element) => (element as HTMLElement).dataset.id ?? null;
 
-/** A list of three focusable items with a control inside the first, an input beside it, a rail, and a page of its own. */
+/** A list of three focusable items with a control inside the first, an input beside it, a rail, a page of its own, and a side panel with a breadcrumb. */
 function mount() {
     document.body.innerHTML = `
         <nav><button id="rail">Chats</button></nav>
@@ -23,7 +23,8 @@ function mount() {
                 <div id="c" data-id="c" tabindex="-1"></div>
             </div>
             <textarea id="composer"></textarea>
-        </main>`;
+        </main>
+        <aside><nav><button id="panelCrumb">Tasks</button></nav></aside>`;
 
     return { region: document.getElementById('region')!, element: (id: string) => document.getElementById(id)! };
 }
@@ -90,8 +91,9 @@ describe('listFocusOf', () => {
         expect(zoneOn('search')).toEqual({ zone: 'other' });
         expect(zoneOn('composer')).toEqual({ zone: 'other' });
         expect(zoneOn('rail')).toEqual({ zone: 'idle' });
-        // A breadcrumb is a `nav` too, but it belongs to the screen and keeps its keys.
+        // A breadcrumb is a `nav` too, but it belongs to the screen and keeps its keys, in the side panel as on the page.
         expect(zoneOn('crumb')).toEqual({ zone: 'other' });
+        expect(zoneOn('panelCrumb')).toEqual({ zone: 'other' });
     });
 
     it('is idle or other without a region, by where the focus is', () => {

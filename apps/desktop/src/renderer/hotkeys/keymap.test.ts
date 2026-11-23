@@ -26,19 +26,19 @@ describe('the whole keymap', () => {
         const commands = wholeKeymap();
 
         expect(new Set(commands.map(({ id }) => id)).size).toBe(commands.length);
-        expect(new Set(commands.map(({ scope }) => scope))).toEqual(new Set(['app', 'tasks', 'agents', 'docs', 'files']));
+        expect(new Set(commands.map(({ scope }) => scope))).toEqual(new Set(['app', 'tasks', 'agents', 'files']));
     });
 
     it('holds the commands the shell, the find bar and the quick search register in the app scope, with the ones of every section', () => {
         const ids = wholeKeymap().map(({ id }) => id);
 
-        expect(ids).toEqual(expect.arrayContaining(['help.open', 'chats.new', 'sidePanel.toggle', 'find.open', 'tasks.create', 'agents.cursor.down', 'docs.cursor.down', 'docs.search', 'docs.save', 'files.showHidden', 'search.open', 'search.chats', 'search.files', 'search.text']));
+        expect(ids).toEqual(expect.arrayContaining(['help.open', 'chats.new', 'sidePanel.toggle', 'find.open', 'tasks.create', 'agents.cursor.down', 'files.showHidden', 'search.open', 'search.chats', 'search.files', 'search.docs', 'search.text']));
     });
 
     it('has J in every section, so the no-collision check above is what lets them share it', () => {
         const keysOf = (scope: string) => wholeKeymap().filter(command => command.scope === scope).flatMap(({ keys }) => (typeof keys === 'string' ? [keys] : Array.isArray(keys) ? keys : []));
 
-        for (const scope of ['tasks', 'agents', 'docs']) expect(keysOf(scope)).toContain('j');
+        for (const scope of ['tasks', 'agents']) expect(keysOf(scope)).toContain('j');
     });
 
     it('does reject an app command that takes a key of a section', () => {
@@ -47,7 +47,7 @@ describe('the whole keymap', () => {
 
         expect(conflicts.length).toBeGreaterThan(0);
         expect(conflicts.every(({ a, b }) => a.id === 'app.j' || b.id === 'app.j')).toBe(true);
-        expect(new Set(conflicts.flatMap(({ a, b }) => [a.scope, b.scope]))).toEqual(new Set(['app', 'tasks', 'agents', 'docs']));
+        expect(new Set(conflicts.flatMap(({ a, b }) => [a.scope, b.scope]))).toEqual(new Set(['app', 'tasks', 'agents']));
     });
 });
 
@@ -63,7 +63,8 @@ describe('the shortcuts page entries', () => {
         const names = groupHelpEntries(shortcutEntries('darwin')).map(({ name }) => name);
 
         expect(names.slice(0, 2)).toEqual(['General', 'Navigation']);
-        expect(names).toEqual(expect.arrayContaining(['Agents', 'Tasks', 'Documents']));
+        expect(names).toEqual(expect.arrayContaining(['Agents', 'Tasks']));
+        expect(names).not.toContain('Documents');
     });
 
     it.each([

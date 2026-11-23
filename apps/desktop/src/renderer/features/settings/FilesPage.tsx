@@ -45,7 +45,7 @@ export function FilesPage() {
     const apps = useOpenApps();
 
     return (
-        <SettingsPage title="Files" description="Choose how files are shown, and the programs that open your folders">
+        <SettingsPage description="Choose how files are shown, and the programs that open your folders">
             <SettingsSection title="File tree">
                 <SettingsCard>
                     <SettingsRow title={ HIDDEN_LABEL } description="Files that start with a dot, and node_modules">

@@ -5,6 +5,7 @@ import type { QuickSearchTab } from './QuickSearchModel';
 export const QUICK_SEARCH_COMMAND = 'search.open';
 export const QUICK_SEARCH_CHATS_COMMAND = 'search.chats';
 export const QUICK_SEARCH_FILES_COMMAND = 'search.files';
+export const QUICK_SEARCH_DOCS_COMMAND = 'search.docs';
 export const QUICK_SEARCH_TEXT_COMMAND = 'search.text';
 
 /** The command that opens each tab. */
@@ -12,6 +13,7 @@ export const TAB_COMMANDS: Record<QuickSearchTab, string> = {
     all: QUICK_SEARCH_COMMAND,
     chats: QUICK_SEARCH_CHATS_COMMAND,
     files: QUICK_SEARCH_FILES_COMMAND,
+    docs: QUICK_SEARCH_DOCS_COMMAND,
     text: QUICK_SEARCH_TEXT_COMMAND,
 };
 
@@ -22,7 +24,7 @@ export interface QuickSearchCommandsDeps {
 }
 
 /**
- * The commands that open the quick search palette, for the `app` scope: `Cmd+K` on every tab, `Cmd+Shift+K` on the chats, `Cmd+P` on the one of file names, and `Cmd+Shift+F` on the one of the
+ * The commands that open the quick search palette, for the `app` scope: `Cmd+K` on every tab, `Cmd+Shift+K` on the chats, `Cmd+P` on the one of file names, `Cmd+Shift+D` on the one of documents (the files of `.clowdy/docs`, which the file names leave out), and `Cmd+Shift+F` on the one of the
  * text in files (starting with what the open file has selected, as a code editor's does). They work from a text field too: the message box and the editor are where
  * they are wanted, and with the palette open, where each goes to its tab (the tabs of the palette show these keys). A dialog that is open is in the way of opening it: see `openQuickSearch`.
  */
@@ -31,6 +33,7 @@ export function quickSearchCommands({ open, available }: QuickSearchCommandsDeps
         { id: QUICK_SEARCH_COMMAND, title: 'Search', group: 'General', keys: '$mod+k', inInputs: true, inOverlays: true, when: available, handler: () => open('all') },
         { id: QUICK_SEARCH_CHATS_COMMAND, title: 'Search chats', group: 'General', keys: '$mod+Shift+k', inInputs: true, inOverlays: true, when: available, handler: () => open('chats') },
         { id: QUICK_SEARCH_FILES_COMMAND, title: 'Search files by name', group: 'General', keys: '$mod+p', inInputs: true, inOverlays: true, when: available, handler: () => open('files') },
+        { id: QUICK_SEARCH_DOCS_COMMAND, title: 'Search documents', group: 'General', keys: '$mod+Shift+d', inInputs: true, inOverlays: true, when: available, handler: () => open('docs') },
         { id: QUICK_SEARCH_TEXT_COMMAND, title: 'Search text in files', group: 'General', keys: '$mod+Shift+f', inInputs: true, inOverlays: true, when: available, handler: () => open('text') },
     ];
 }

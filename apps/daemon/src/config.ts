@@ -9,6 +9,8 @@ export interface Config {
     projectsDir: string;
     /** The folder of the personal space: `~/Clowdy/Personal`. */
     personalDir: string;
+    /** Parent folder of the worktrees Clowdy makes for chats: `~/Clowdy/workspaces`, below it `<project-slug>/<chat-id8>/<folder-name>`. */
+    workspacesDir: string;
     /** 0 picks a random free port. */
     port: number;
     token: string;
@@ -30,8 +32,6 @@ export interface Config {
     /** Threads one chat may start over its life (its direct ones), finished ones included. */
     maxThreads: number;
     timings: Timings;
-    /** How the daemon answers an agent's permission requests: nobody is at a terminal, so it decides, the same for every agent. */
-    agentPermissions: 'allow' | 'reject';
     /** Multiplier of the fake engine's delays; 0 removes them (tests). */
     fakeSpeed: number;
     /**
@@ -65,9 +65,11 @@ export interface Timings {
     pauseJitterMs: number;
     /** A parent is told of its threads that stopped this long after the first of them: those that stop meanwhile join the same message. */
     noticeWindowMs: number;
+    /** The setup command of a new worktree (`Prepare workspace`) is stopped, with everything it started, after this long. */
+    setupMs: number;
 }
 
-export const DEFAULT_TIMINGS: Timings = { killGraceMs: 5000, retryBaseMs: 5000, pauseJitterMs: 30_000, noticeWindowMs: 2000 };
+export const DEFAULT_TIMINGS: Timings = { killGraceMs: 5000, retryBaseMs: 5000, pauseJitterMs: 30_000, noticeWindowMs: 2000, setupMs: 10 * 60_000 };
 
 export class ConfigError extends Error {}
 
@@ -90,16 +92,6 @@ function numberFrom(env: Env, name: string, fallback: number, check: (value: num
 }
 
 const isCap = (value: number) => Number.isInteger(value) && value >= 1;
-
-function permissions(env: Env): Config['agentPermissions'] {
-    const raw = env.CLOWDY_AGENT_PERMISSIONS || 'allow';
-
-    if (raw !== 'allow' && raw !== 'reject') {
-        throw new ConfigError(`CLOWDY_AGENT_PERMISSIONS must be allow or reject, got "${ raw }"`);
-    }
-
-    return raw;
-}
 
 function ripgrepFrom(env: Env): Config['ripgrep'] {
     const raw = env.CLOWDY_RG?.trim();
@@ -127,6 +119,7 @@ export function loadConfig(env: Env = process.env, platform: NodeJS.Platform = p
         dataDir: daemonDataDir({ platform, home: homedir(), env }),
         projectsDir: env.CLOWDY_PROJECTS_DIR || join(homedir(), 'Clowdy', 'projects'),
         personalDir: env.CLOWDY_PERSONAL_DIR || join(homedir(), 'Clowdy', 'Personal'),
+        workspacesDir: env.CLOWDY_WORKSPACES_DIR || join(homedir(), 'Clowdy', 'workspaces'),
         port: numberFrom(env, 'CLOWDY_PORT', 0, v => Number.isInteger(v) && v >= 0 && v <= 65535, 'a port between 0 and 65535'),
         token: env.CLOWDY_TOKEN || randomBytes(32).toString('hex'),
         corsOrigins: (env.CLOWDY_CORS_ORIGINS ?? '').split(',').map(origin => origin.trim()).filter(Boolean),
@@ -146,7 +139,6 @@ export function loadConfig(env: Env = process.env, platform: NodeJS.Platform = p
             ...DEFAULT_TIMINGS,
             noticeWindowMs: numberFrom(env, 'CLOWDY_THREAD_NOTICE_WINDOW_MS', DEFAULT_TIMINGS.noticeWindowMs, v => Number.isInteger(v) && v >= 0, 'a whole number of milliseconds, 0 or more'),
         },
-        agentPermissions: permissions(env),
         fakeSpeed: numberFrom(env, 'CLOWDY_FAKE_SPEED', 1, v => v >= 0, 'a number of at least 0'),
         ripgrep: ripgrepFrom(env),
         systemSkillsSource: env.CLOWDY_SYSTEM_SKILLS_DIR || undefined,

@@ -1,6 +1,7 @@
 import { useMemo, useRef, type RefObject } from 'react';
 
 import { useProjectState, useRootStore } from '../../stores';
+import { isPlaceReady, type Place } from '../sidePanel/currentPlace';
 import { MENTION_TRIGGER, SKILL_TRIGGER } from './composerMentions';
 import { docItems, fileItems, FILES_SHOWN, skillItems, taskItems } from './mentionItems';
 
@@ -12,11 +13,17 @@ const orNothing = <T>(promise: Promise<T[]>): Promise<T[]> => promise.catch(() =
 
 /**
  * The two pick lists of the message box. `@` offers the project's tasks, documents and files, `/` its skills. Both
- * open above the whole box, as wide as it is, and are searched as the person types.
+ * open above the whole box, as wide as it is, and are searched as the person types. The documents and files are those of the box's `place`, the ones the Files and Docs tabs show
+ * for it: the worktree's for a chat that works in one (and none while the worktree is not made yet: it has no files), the folder's own checkout's otherwise. A path that is picked
+ * is the one the agent reads from its working directory: relative for the place's own folder, absolute for another folder of the project.
  */
-export function useMentionTriggers(box: RefObject<HTMLElement | null>): readonly RichInputTrigger[] {
+export function useMentionTriggers(box: RefObject<HTMLElement | null>, place: Place): readonly RichInputTrigger[] {
     const root = useRootStore();
     const project = useProjectState();
+    // The ids and the state of the place, not the object, which is made again on every draw of the box.
+    const folderId = place.folder.id;
+    const workspaceId = place.workspace?.id;
+    const ready = isPlaceReady(place);
     // The catalog is read from disk by the daemon: once per change to the skills, not once per key.
     const skills = useRef<{ revision: number; entries: Promise<SkillEntry[]> } | null>(null);
 
@@ -45,10 +52,13 @@ export function useMentionTriggers(box: RefObject<HTMLElement | null>): readonly
             ...menu,
             onSearch: async (query): Promise<RichInputTriggerItem[]> => {
                 const { folders } = project.project;
-                const [docs, files] = await Promise.all([
-                    orNothing(root.transport.getDocsTree(projectId).then(tree => docItems(tree, folders, query))),
-                    orNothing(root.transport.getProjectFiles(projectId, query, FILES_SHOWN).then(found => fileItems(found, folders))),
-                ]);
+                // A worktree that is not made yet has no files and no documents to list, and the folder's own checkout is not what the chat works in.
+                const [docs, files] = ready
+                    ? await Promise.all([
+                        orNothing(root.transport.getDocsTree(projectId, workspaceId).then(tree => docItems(tree, folders, query, folderId))),
+                        orNothing(root.transport.getProjectFiles(projectId, query, FILES_SHOWN, workspaceId).then(found => fileItems(found, folders, folderId))),
+                    ])
+                    : [[], []];
 
                 return [...taskItems(project.taskList, query), ...docs, ...files];
             },
@@ -63,5 +73,5 @@ export function useMentionTriggers(box: RefObject<HTMLElement | null>): readonly
         };
 
         return [mention, skill];
-    }, [root, project, box]);
+    }, [root, project, box, folderId, workspaceId, ready]);
 }

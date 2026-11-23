@@ -1,0 +1,26 @@
+@reference '@clowdy/styles/rulesets';
+
+.form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xxl);
+    padding: var(--spacing-20);
+}
+
+.heading {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xxs);
+    min-width: 0;
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+}
+
+/* A script and a list of paths read better in the code face. */
+.code {
+    @ruleset typography-text-code-sm;
+}

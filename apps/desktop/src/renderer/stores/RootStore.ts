@@ -7,7 +7,7 @@ import { ProjectIconsStore } from './ProjectIconsStore';
 import { ProjectState } from './ProjectState';
 import { browserStorage, readStored, writeStored, type KeyValueStorage } from './storage';
 import { StreamStore } from './StreamStore';
-import { UiStore, type InitialProjectUi } from './UiStore';
+import { UiStore, type InitialProjectUi, type ProjectUi } from './UiStore';
 
 import type { AgentInfo, ClowdyEvent, CommandResult, Project, ProjectId } from '@clowdy/protocol';
 import type { CommandInput, FeedStatus, Transport } from '../daemon/transport';
@@ -40,7 +40,7 @@ export interface RootStoreOptions {
     storage?: KeyValueStorage;
     /** Shows a daemon notice to the person. */
     notify?: (notice: Notice) => void;
-    /** Section and selections every project's window starts with (fixtures mode reads them from the page URL). */
+    /** Selections every project's window starts with (fixtures mode reads them from the page URL). */
     initialUi?: InitialProjectUi;
 }
 
@@ -96,9 +96,19 @@ export class RootStore {
         return this.selectedProjectId ? this.#states.get(this.selectedProjectId) : undefined;
     }
 
-    /** A project's own screen is on show: the projects are loaded, Settings is shut, and the selected project has arrived. */
+    /** The window's state of the selected project, `undefined` while none is selected. */
+    get selectedProjectUi(): ProjectUi | undefined {
+        return this.selectedProjectId ? this.ui.forProject(this.selectedProjectId) : undefined;
+    }
+
+    /** A project's own screen can be drawn, with its side panel: the projects are loaded and the selected project has arrived. Settings is a window over it and does not end that. */
+    get projectScreenReady(): boolean {
+        return this.phase === 'ready' && this.selectedProject?.status === 'ready';
+    }
+
+    /** A project's own screen is the one in use: it is ready, and Settings is shut, so the keys of the screen and of its panel act. */
     get showsProjectScreen(): boolean {
-        return this.phase === 'ready' && !this.ui.settingsOpen && this.selectedProject?.status === 'ready';
+        return this.projectScreenReady && !this.ui.settingsOpen;
     }
 
     /** A project's state, once the project was selected. */

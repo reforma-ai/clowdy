@@ -4,9 +4,10 @@ import { describe, expect, it } from 'vitest';
 import { createFixtureData, FIXTURE_PROJECT_ID } from '../daemon/fixtureData';
 import { FixtureTransport } from '../daemon/fixtureTransport';
 import { overrideTransport } from '../daemon/testing';
-import { ARCHIVED_MEMORY_LIMIT, ProjectState } from './ProjectState';
+import { ARCHIVED_MEMORY_LIMIT, KEY_READS_AT_ONCE, ProjectState, UNRESOLVED_KEYS_LIMIT } from './ProjectState';
 
 import type { ClowdyEvent, EventData, Run, Task, TaskComment } from '@clowdy/protocol';
+import type { Transport } from '../daemon/transport';
 
 async function loadedProject() {
     const data = createFixtureData();
@@ -325,6 +326,294 @@ describe('ProjectState', () => {
                 expect((await state.readTask('t-38'))?.key).toBe('CAR-38');
             });
         });
+
+        describe('a key the window does not know', () => {
+            /** A project over the fixture daemon, which counts the keys it is asked for; CAR-38 to CAR-40 are archived there, and the window has not seen them. */
+            async function readingKeys(overrides: Partial<Transport> = {}) {
+                const data = createFixtureData();
+                const transport = new FixtureTransport({ data });
+                const reads: string[] = [];
+                const counted = overrideTransport(transport, {
+                    getTaskDetailByKey: (projectId, key) => {
+                        reads.push(key);
+
+                        return transport.getTaskDetailByKey(projectId, key);
+                    },
+                    ...overrides,
+                });
+                const state = new ProjectState(counted, data.projects[0]);
+
+                await state.load();
+
+                return { data, transport, state, reads };
+            }
+
+            const settle = () => new Promise<void>(resolve => setTimeout(resolve, 0));
+
+            it('answers nothing at once, reads the archived task from the daemon, remembers it, and lets an observer see it', async () => {
+                const { state, reads } = await readingKeys();
+                const seen: (string | undefined)[] = [];
+                const stop = reaction(() => state.taskOfKey('CAR-38')?.key, key => seen.push(key));
+
+                expect(state.taskOfKey('CAR-38')).toBeUndefined();
+                expect(reads).toEqual(['CAR-38']);
+                expect(seen).toEqual([]);
+
+                await settle();
+
+                expect(seen).toEqual(['CAR-38']);
+                expect(state.taskOfKey('CAR-38')).toMatchObject({ id: 't-38', archivedAt: expect.any(Number) });
+                expect(state.archivedKnown.has('t-38')).toBe(true);
+                // The task is known now: nothing more is asked.
+                expect(reads).toEqual(['CAR-38']);
+                stop();
+            });
+
+            it('makes one read for a key however many times it is asked while the read is on its way', async () => {
+                const { state, reads } = await readingKeys();
+
+                for (let call = 0; call < 5; call++) state.taskOfKey('CAR-39');
+
+                state.taskOfKey('CAR-40');
+
+                expect(reads).toEqual(['CAR-39', 'CAR-40']);
+
+                await settle();
+
+                expect(state.taskOfKey('CAR-39')?.id).toBe('t-39');
+                expect(state.taskOfKey('CAR-40')?.id).toBe('t-40');
+                expect(reads).toEqual(['CAR-39', 'CAR-40']);
+            });
+
+            it('asks nothing for a key the window has, or for text that is not a key of this project', async () => {
+                const { state, reads } = await readingKeys();
+
+                expect(state.taskOfKey('CAR-24')?.id).toBe('t-24');
+
+                // Another project's prefix, no number, a number with a leading zero or none, a longer key, a path, a sentence, nothing.
+                const text = ['CLW-1', 'XYZ-12', 'CAR', 'CAR-', '-38', '38', 'CAR-abc', 'CAR-038', 'CAR-0', 'CAR-1-2', 'CAR-1.5', ' CAR-38', 'src/a.ts', 'npm run build', 'a-b-1', '', '-'];
+
+                for (const key of text) expect(state.taskOfKey(key), key).toBeUndefined();
+
+                expect(reads).toEqual([]);
+            });
+
+            it('asks nothing before the project is loaded, when the board is not known yet', async () => {
+                const data = createFixtureData();
+                const transport = new FixtureTransport({ data });
+                const reads: string[] = [];
+                const state = new ProjectState(overrideTransport(transport, { getTaskDetailByKey: (_projectId, key) => {
+                    reads.push(key);
+
+                    return Promise.reject(new Error('asked too early'));
+                } }), data.projects[0]);
+
+                expect(state.taskOfKey('CAR-38')).toBeUndefined();
+                expect(reads).toEqual([]);
+            });
+
+            it('takes the prefix in any case, and asks once for a key in another case than the task\'s, which stays text', async () => {
+                const { state, reads } = await readingKeys();
+
+                expect(state.taskOfKey('car-38')).toBeUndefined();
+                await settle();
+
+                // The daemon knows the task, so it is remembered for the key it has; the key as written is not it, and is not asked again.
+                expect(reads).toEqual(['car-38']);
+                expect(state.archivedKnown.has('t-38')).toBe(true);
+                expect(state.taskOfKey('car-38')).toBeUndefined();
+                expect(reads).toEqual(['car-38']);
+            });
+
+            it('asks once for a key nobody has, and again only after a snapshot is taken in', async () => {
+                const { state, transport, reads } = await readingKeys();
+
+                expect(state.taskOfKey('CAR-999')).toBeUndefined();
+                await settle();
+                expect(state.taskOfKey('CAR-999')).toBeUndefined();
+                expect(reads).toEqual(['CAR-999']);
+
+                state.applySnapshot(await transport.getProjectSnapshot(state.id));
+
+                expect(state.taskOfKey('CAR-999')).toBeUndefined();
+                expect(reads).toEqual(['CAR-999', 'CAR-999']);
+            });
+
+            it('forgets the keys it asked in vain once the daemon has the task, so a restart of the feed finds it', async () => {
+                const { data, state, transport, reads } = await readingKeys();
+                const later: Task = { ...data.tasks.find(task => task.id === 't-38')!, id: 't-90', key: 'CAR-90', number: 90 };
+
+                state.taskOfKey('CAR-90');
+                await settle();
+                expect(state.taskOfKey('CAR-90')).toBeUndefined();
+
+                data.tasks.push(later);
+                state.applySnapshot(await transport.getProjectSnapshot(state.id));
+                state.taskOfKey('CAR-90');
+                await settle();
+
+                expect(reads).toEqual(['CAR-90', 'CAR-90']);
+                expect(state.taskOfKey('CAR-90')?.id).toBe('t-90');
+            });
+
+            it('does not throw or reject when the daemon cannot be reached, asks once, and asks again after a snapshot', async () => {
+                const failures: unknown[] = [];
+                const onRejection = (reason: unknown) => failures.push(reason);
+                let throwing = false;
+                const { state, transport, reads } = await readingKeys({
+                    getTaskDetailByKey: (_projectId, key) => {
+                        reads.push(key);
+
+                        if (throwing) throw new Error('thrown at once');
+
+                        return Promise.reject(new Error('offline'));
+                    },
+                });
+
+                process.on('unhandledRejection', onRejection);
+
+                try {
+                    expect(() => state.taskOfKey('CAR-38')).not.toThrow();
+                    await settle();
+                    expect(state.taskOfKey('CAR-38')).toBeUndefined();
+                    expect(reads).toEqual(['CAR-38']);
+
+                    // A transport that throws before it returns a promise is a failed read as well.
+                    throwing = true;
+                    state.applySnapshot(await transport.getProjectSnapshot(state.id));
+                    expect(() => state.taskOfKey('CAR-38')).not.toThrow();
+                    await settle();
+                    expect(state.taskOfKey('CAR-38')).toBeUndefined();
+                    expect(reads).toEqual(['CAR-38', 'CAR-38']);
+                    await settle();
+                    expect(failures).toEqual([]);
+                }
+                finally {
+                    process.off('unhandledRejection', onRejection);
+                }
+            });
+
+            it('leaves a task that is not archived to the board, which its event brings in, and does not ask for it again', async () => {
+                const { data, state, reads } = await readingKeys();
+                const made: Task = { ...data.tasks.find(task => task.id === 't-24')!, id: 't-91', key: 'CAR-91', number: 91 };
+
+                data.tasks.push(made);
+
+                expect(state.taskOfKey('CAR-91')).toBeUndefined();
+                await settle();
+
+                expect(state.archivedKnown.size).toBe(0);
+                expect(state.taskOfKey('CAR-91')).toBeUndefined();
+                expect(reads).toEqual(['CAR-91']);
+
+                state.applyEvent(event(1001, { type: 'task.upserted', task: made }));
+
+                expect(state.taskOfKey('CAR-91')?.id).toBe('t-91');
+                expect(state.archivedKnown.size).toBe(0);
+            });
+
+            it('does not remember a task of another project', async () => {
+                const { data, state, reads } = await readingKeys({
+                    getTaskDetailByKey: async (_projectId, key) => {
+                        const task = { ...data.tasks.find(candidate => candidate.id === 't-38')!, projectId: 'p-other' };
+
+                        reads.push(key);
+
+                        return { taskId: task.id, task, chatIds: [], runIds: [], artifacts: [] };
+                    },
+                });
+
+                state.taskOfKey('CAR-38');
+                await settle();
+
+                expect(state.archivedKnown.size).toBe(0);
+                expect(state.taskOfKey('CAR-38')).toBeUndefined();
+                expect(reads).toEqual(['CAR-38']);
+            });
+
+            it('reads at most KEY_READS_AT_ONCE keys at a time, the rest in the order they were asked, each once', async () => {
+                const replies: (() => void)[] = [];
+                const { state, reads, transport } = await readingKeys({
+                    getTaskDetailByKey: (projectId, key) => new Promise((resolve, reject) => {
+                        reads.push(key);
+                        replies.push(() => void transport.getTaskDetailByKey(projectId, key).then(resolve, reject));
+                    }),
+                });
+                const keys = Array.from({ length: KEY_READS_AT_ONCE * 2 + 1 }, (_, index) => `CAR-${ 2000 + index }`);
+
+                // A long chat draws all of its keys, more than once.
+                for (let draw = 0; draw < 3; draw++) keys.forEach(key => state.taskOfKey(key));
+
+                expect(reads).toEqual(keys.slice(0, KEY_READS_AT_ONCE));
+
+                // A place is free as soon as a read is over, and goes to the key that has waited longest.
+                replies.splice(0, 1).forEach(reply => reply());
+                await settle();
+                expect(reads).toEqual(keys.slice(0, KEY_READS_AT_ONCE + 1));
+
+                while (replies.length > 0) {
+                    replies.splice(0).forEach(reply => reply());
+                    await settle();
+                }
+
+                expect(reads).toEqual(keys);
+                // Every one of them was answered with a 404, so none is asked again.
+                keys.forEach(key => state.taskOfKey(key));
+                expect(reads).toEqual(keys);
+            });
+
+            it('reads a key again when the read that failed began before a snapshot was taken in, and holds a read that began after it against the key', async () => {
+                let offline = true;
+                const { state, transport, reads } = await readingKeys({
+                    getTaskDetailByKey: async (projectId, key) => {
+                        // Whether the daemon can be reached is what it is when the read begins.
+                        const failing = offline;
+
+                        reads.push(key);
+                        await settle();
+
+                        if (failing) throw new Error('offline');
+
+                        return transport.getTaskDetailByKey(projectId, key);
+                    },
+                });
+
+                state.taskOfKey('CAR-38');
+                // The snapshot comes in while the read is on its way, and the daemon is back when it is asked again.
+                state.applySnapshot(await transport.getProjectSnapshot(state.id));
+                offline = false;
+                await settle();
+                await settle();
+
+                expect(reads).toEqual(['CAR-38', 'CAR-38']);
+                expect(state.taskOfKey('CAR-38')?.id).toBe('t-38');
+
+                // A read that begins after the snapshot and fails is held against its key, as before.
+                offline = true;
+                state.taskOfKey('CAR-39');
+                await settle();
+                state.taskOfKey('CAR-39');
+                expect(reads).toEqual(['CAR-38', 'CAR-38', 'CAR-39']);
+            });
+
+            it('remembers at most UNRESOLVED_KEYS_LIMIT keys it asked in vain, the ones asked longest ago going first', async () => {
+                const { state, reads } = await readingKeys();
+                const keys = Array.from({ length: UNRESOLVED_KEYS_LIMIT + 1 }, (_, index) => `CAR-${ 1000 + index }`);
+
+                keys.forEach(key => state.taskOfKey(key));
+                await settle();
+                expect(reads).toHaveLength(keys.length);
+
+                // The newest are held back, the first of them has been let go and is asked once more.
+                state.taskOfKey(keys.at(-1)!);
+                state.taskOfKey(keys[1]);
+                expect(reads).toHaveLength(keys.length);
+
+                state.taskOfKey(keys[0]);
+                expect(reads).toHaveLength(keys.length + 1);
+                expect(reads.at(-1)).toBe(keys[0]);
+            });
+        });
     });
 
     describe('comment revisions', () => {
@@ -496,13 +785,12 @@ describe('ProjectState', () => {
         expect(state.runs.get('r-na-03')?.status).toBe('succeeded');
     });
 
-    it('notes docs changes and artifacts for the screens that show them', async () => {
+    it('notes artifacts for the screens that show them', async () => {
         const { state } = await loadedProject();
 
-        state.applyEvent(event(1001, { type: 'docs.changed', folderId: 'fld_car_rental', path: 'decisions/pricing.md', change: 'modified' }));
         state.applyEvent(event(1002, { type: 'artifact.added', artifact: { id: 'a', projectId: FIXTURE_PROJECT_ID, kind: 'diff', title: 'Diff', ref: {}, createdAt: 0 } }));
 
-        expect(state.lastDocsChange).toEqual({ folderId: 'fld_car_rental', path: 'decisions/pricing.md', change: 'modified', cursor: 1001 });
+        expect(state.cursor).toBe(1002);
         expect(state.artifactsRevision).toBe(1);
     });
 

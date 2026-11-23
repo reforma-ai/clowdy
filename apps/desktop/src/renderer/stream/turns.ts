@@ -1,5 +1,6 @@
 import { COMPACT_TOOL } from './compaction';
 import { isSubagentTool } from './subagents';
+import { WORKSPACE_TOOL } from './toolView';
 
 import type { StreamItem } from '@clowdy/protocol';
 
@@ -44,8 +45,8 @@ const isAnswer = (item: StreamItem) => item.body.kind === 'assistant' && item.bo
 
 const isThought = (item: StreamItem) => item.body.kind === 'reasoning';
 
-/** What the person must see even in a turn that is over: a failure, and a question put to them. */
-const needsAttention = (item: StreamItem) => item.body.kind === 'error' || item.body.kind === 'question';
+/** What the person must see even in a turn that is over: a failure, a question put to them, and a request for permission that still waits (an answered one is work like any call). */
+const needsAttention = (item: StreamItem) => item.body.kind === 'error' || item.body.kind === 'question' || (item.body.kind === 'approval' && item.body.state === 'open');
 
 function plain(turn: StreamItem[], answer?: StreamItem): StreamBlock[] {
     return turn.map(item => (item === answer ? { kind: 'item', item, answer: true } : { kind: 'item', item }));
@@ -53,7 +54,7 @@ function plain(turn: StreamItem[], answer?: StreamItem): StreamBlock[] {
 
 /**
  * A turn that is over keeps what the person said and the answer, and folds the work between them (tool calls,
- * notes and messages on the way) under one "Worked for" line. Errors and questions stay out of the fold. A thought that comes after the answer was
+ * notes and messages on the way) under one "Worked for" line. Errors, questions and open requests for permission stay out of the fold. A thought that comes after the answer was
  * thought before it, as far as the person can tell, so it joins the work in the fold and is no loose line under the answer.
  */
 function foldTurn(turn: StreamItem[], answered: boolean): StreamBlock[] {
@@ -121,8 +122,8 @@ export function foldFinishedWork(items: readonly StreamItem[], active: boolean):
     });
 }
 
-/** What a group may hold: a call that is not a sub-agent's card or a compaction (lines of their own), and what the agent thought. */
-const isRunItem = (item: StreamItem) => item.body.kind === 'reasoning' || (item.body.kind === 'tool' && item.body.name !== COMPACT_TOOL && !isSubagentTool(item.body.name));
+/** What a group may hold: a call that is not a sub-agent's card, a compaction or the step that makes the chat's worktree (lines of their own), and what the agent thought. */
+const isRunItem = (item: StreamItem) => item.body.kind === 'reasoning' || (item.body.kind === 'tool' && item.body.name !== COMPACT_TOOL && item.body.name !== WORKSPACE_TOOL && !isSubagentTool(item.body.name));
 
 /**
  * Puts tool calls that follow one another under one block, with the thoughts of the agent before, between and after them (thoughts that follow one another

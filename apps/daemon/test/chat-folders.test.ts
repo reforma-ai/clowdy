@@ -1,5 +1,5 @@
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, rmSync } from 'node:fs';
+import { mkdirSync, realpathSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { getChat } from '../src/db/chats';
@@ -125,6 +125,29 @@ describe('a chat and its folder', () => {
         expect(h.run(chatOf(inApi.id).orchestratorRunId as string).error).toBe(`The folder ${ api.path } no longer exists`);
         expect(engine.turns).toHaveLength(0);
         expect((await say(make(), 'Fix the page')).cwd).toBe(web.path);
+    });
+
+    test('a folder that moved keeps its id when it is told its new place, and its chats stay with it and work there', async () => {
+        const { h, project, chatOf, info, make, say, web, api, notes } = await setup();
+        const inApi = make(api.id);
+        const moved = join(tempDir(), 'api-moved');
+        const place = () => (project.folders.map(folder => folder.id) as string[]).map(id => ({ id }));
+
+        mkdirSync(moved);
+        rmSync(api.path, { recursive: true });
+        expect((await info()).folders.find(folder => folder.folderId === api.id)).toMatchObject({ exists: false, chats: 1 });
+
+        const cursor = h.store.headCursor();
+        const entries = place().map(entry => (entry.id === api.id ? { id: api.id, path: moved } : entry));
+        const { project: updated } = h.ok('project.update', { projectId: project.id, folders: entries }) as { project: Project };
+        const there = realpathSync.native(moved);
+
+        expect(updated.folders).toEqual([web, { id: api.id, path: there }, notes]);
+        expect((await info()).folders.find(folder => folder.folderId === api.id)).toMatchObject({ exists: true, chats: 1 });
+        // The chat is not touched: it is still the folder's, and no event says otherwise.
+        expect(chatOf(inApi.id).folderId).toBe(api.id);
+        expect(h.events(cursor).some(event => event.data.type === 'chat.upserted')).toBe(false);
+        expect(await say(inApi, 'Fix the endpoint')).toMatchObject({ cwd: there, additionalDirectories: [web.path, notes.path] });
     });
 
     test('the project info counts the chats of each folder', async () => {

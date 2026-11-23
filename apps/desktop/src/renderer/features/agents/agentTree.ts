@@ -1,4 +1,4 @@
-import { folderNames, isTerminalRunStatus, mainFolder, type Chat, type ChatId, type FolderId, type ProjectFolder, type Run, type RunId } from '@clowdy/protocol';
+import { folderNames, isTerminalRunStatus, mainFolder, shownRunStatus, type Chat, type ChatId, type FolderId, type ProjectFolder, type Run, type RunId } from '@clowdy/protocol';
 
 import { isRunActive } from '../chats/chatRun';
 
@@ -41,6 +41,13 @@ export function isFinishedThread(chat: Chat, runs: ReadonlyMap<RunId, Run>): boo
     return run !== undefined && isTerminalRunStatus(run.status);
 }
 
+/** A chat whose orchestrator waits for the person: a question or a request for permission is open (`shownRunStatus`, so also while it rests for its background work). */
+export function asksThePerson(chat: Chat, runs: ReadonlyMap<RunId, Run>): boolean {
+    const run = orchestratorOf(chat, runs);
+
+    return run !== undefined && shownRunStatus(run) === 'waiting_user';
+}
+
 /** A thread works while its orchestrator is queued, running, blocked, waits for the person or for its background work. */
 export function isActiveThread(chat: Chat, runs: ReadonlyMap<RunId, Run>): boolean {
     return isRunActive(orchestratorOf(chat, runs));
@@ -48,7 +55,8 @@ export function isActiveThread(chat: Chat, runs: ReadonlyMap<RunId, Run>): boole
 
 /**
  * The list as rows, top to bottom: each root chat, followed by its threads (and theirs, at any depth) in the order they were made when it is
- * expanded. Archived threads are not rows. Without `showFinished`, a finished thread is left out unless a thread below it is listed (it still
+ * expanded. A folded chat still lists the threads that wait for the person (and the chats between), so a question is never behind a fold: the
+ * row keeps its fold, closed, and a thread that does not ask stays out until the chat is expanded. Archived threads are not rows. Without `showFinished`, a finished thread is left out unless a thread below it is listed (it still
  * works, or it is the open chat) or it is the open chat itself; a row's fold counts only the threads that are listed.
  */
 export function agentRows({ roots, threadsOf, runs, expanded, showFinished, openChatId }: AgentRowsInput): AgentRow[] {
@@ -78,6 +86,9 @@ export function agentRows({ roots, threadsOf, runs, expanded, showFinished, open
         return kept;
     };
 
+    // A thread asks, or one of the listed threads below it does.
+    const asksBelow = (chat: Chat): boolean => asksThePerson(chat, runs) || listedThreads(chat.id).some(asksBelow);
+
     const rows: AgentRow[] = [];
     const walk = (chat: Chat, depth: number) => {
         const threads = listedThreads(chat.id);
@@ -85,7 +96,7 @@ export function agentRows({ roots, threadsOf, runs, expanded, showFinished, open
 
         rows.push({ id: chat.id, chat, depth, childCount: threads.length, isExpanded });
 
-        if (isExpanded) threads.forEach(thread => walk(thread, depth + 1));
+        (isExpanded ? threads : threads.filter(asksBelow)).forEach(thread => walk(thread, depth + 1));
     };
 
     roots.forEach(root => walk(root, 0));
@@ -226,12 +237,23 @@ export function resolveSelection(chats: ReadonlyMap<ChatId, Chat>, chatList: rea
 
 /**
  * The dot on the icon of a chat's row, from what its orchestrator is doing: green while it works (or waits for its own background work),
- * blue when it has asked the person something, red when it failed. A run that is blocked or queued shows its usual tone.
- * A chat at rest whose own threads work (`threadsWorking`) is green too: its work goes on in them.
+ * blue when it has asked the person something (also while the run rests for its background work and a card is open: `shownRunStatus`), red when it failed.
+ * A run that is blocked or queued shows its usual tone.
+ * A chat at rest whose own threads work (`threads` `working`) is green too: its work goes on in them. A thread below it that waits for the person
+ * (`asking`) makes the dot blue whenever the chat's own would be green or none: the question is in that thread's chat.
  * Nothing for a chat that has not started or whose run is over (done, stopped, interrupted): no news is no dot.
  */
-export function chatDotTone(run: Run | undefined, threadsWorking = false): StatusTone | undefined {
-    switch (run?.status) {
+export function chatDotTone(run: Run | undefined, threads?: ThreadsActivity): StatusTone | undefined {
+    const own = ownDotTone(run, threads === 'working');
+
+    return threads === 'asking' && (own === undefined || own === 'success') ? 'accent' : own;
+}
+
+/** What the threads below a chat are doing that its dot tells: some work, or some wait for the person (which wins). */
+export type ThreadsActivity = 'working' | 'asking';
+
+function ownDotTone(run: Run | undefined, threadsWorking: boolean): StatusTone | undefined {
+    switch (run && shownRunStatus(run)) {
         case 'running':
         case 'waiting_background':
             return 'success';

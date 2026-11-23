@@ -44,7 +44,7 @@ export function ProjectRow({ project, info, onManage, onOpen, onRemove }: Projec
             onPress={ onManage }
             pressProps={ { 'data-project-id': project.id } }
             icon={ <ProjectIcon project={ project } size={ 20 } /> }
-            title={ <Text weight="medium" truncate>{ project.name }</Text> }
+            title={ <Text variant="md" weight="medium" truncate>{ project.name }</Text> }
             marks={ (
                 <>
                     { missing && <Badge size="xs" color="warning" textValue="Folder missing">Folder missing</Badge> }

@@ -13,3 +13,18 @@
     min-width: 0;
     min-height: 0;
 }
+
+/* Where the panel's column is, for the expanded panel to be drawn from its right edge, and from its top and bottom (`SidePanel.module.css`). */
+.side {
+    anchor-name: --side-panel-column;
+}
+
+/* The line of the edge between the plates, which shows while it is hovered or dragged, runs the plates' height: the edge's own is the window's, and reaches into the room under the plates. */
+.edge::after {
+    bottom: var(--plate-inset);
+}
+
+/* The edge between the page and the panel lies under the expanded panel: it is not there to be seen, reached by key or dragged. It keeps its place, so nothing moves. */
+.edgeCovered {
+    visibility: hidden;
+}

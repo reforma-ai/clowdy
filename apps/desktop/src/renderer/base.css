@@ -18,6 +18,8 @@ body {
     /* Windows caption buttons sit past the titlebar area. On macOS this is 0. */
     --titlebar-inset-end: max(0px, 100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw));
     --titlebar-height: env(titlebar-area-height, 0px);
+    /* The Windows caption buttons' height over the top-right corner, which what lies under them (the side panel's rail) starts below: 0 where there are none, as `--titlebar-inset-end` is (`sign` is 1 or 0). */
+    --titlebar-trailing-height: calc(var(--titlebar-height) * sign(var(--titlebar-inset-end)));
     /* The window buttons' height over the top-left corner: macOS only, 0 on Windows. */
     --titlebar-leading-height: 0px;
 }

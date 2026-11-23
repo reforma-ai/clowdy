@@ -4,11 +4,12 @@ import type {
     AgentModels,
     Attachment,
     ChatId,
+    ChatWorkspaceRemoval,
     ClowdyEvent,
     Command,
     CommandResult,
-    DocFile,
     DocsTree,
+    FolderGit,
     FolderId,
     ProjectFileMatch,
     ProjectId,
@@ -25,6 +26,7 @@ import type {
     TerminalCreate,
     TerminalId,
     TerminalInfo,
+    WorkspaceId,
 } from '@clowdy/protocol';
 import type { TerminalStream, TerminalStreamHandlers } from './terminalStream';
 
@@ -68,6 +70,17 @@ export interface Transport {
      * With a project id, that project alone.
      */
     getProjectsInfo: (projectId?: ProjectId) => Promise<ProjectInfo[]>;
+    /**
+     * What git says about one folder of a project: its branches, its default branch and its worktrees, or that the folder is no repository. Read when asked, never
+     * pushed: a folder's branches and worktrees change in a terminal or by an agent. `unavailable` for a folder gone from the disk.
+     */
+    getFolderGit: (projectId: ProjectId, folderId: FolderId) => Promise<FolderGit>;
+    /**
+     * Whether the chat's worktree may be removed together with the chat, which is what `chat.delete`'s `removeWorkspace` asks for: Clowdy made it, no other chat uses it, nothing in it
+     * is uncommitted and its work is merged into its base. Read when the delete dialog opens, never pushed: a tree changes in a terminal or by an agent, and the daemon checks again
+     * when the chat is deleted. `removable` is false for a chat with no worktree; rejects with a `TransportError` of status 404 for a chat the daemon does not have.
+     */
+    getChatWorkspaceRemoval: (chatId: ChatId) => Promise<ChatWorkspaceRemoval>;
     /** Follows the change feed after `cursor`. Returns what ends the subscription. */
     subscribe: (cursor: number, onEvent: (event: ClowdyEvent) => void, onStatus: (status: FeedStatus) => void) => () => void;
     /**
@@ -77,18 +90,30 @@ export interface Transport {
     command: (command: CommandInput) => Promise<CommandResult>;
     getItems: (target: StreamTarget, afterSeq?: number) => Promise<StreamItem[]>;
     getTaskDetail: (taskId: TaskId) => Promise<TaskDetail>;
+    /**
+     * `getTaskDetail` for the task a key such as `CAR-12` names in the project, an archived one too: how a key met in a message is read when the window does not hold the task.
+     * Rejects with a `TransportError` of status 404 for what is not a key of that project (another prefix, no number, a number nobody has, an unknown project).
+     */
+    getTaskDetailByKey: (projectId: ProjectId, key: string) => Promise<TaskDetail>;
     /** A page of the task's comments, oldest first. Comments are not in the snapshot: read them when a task shows them, and again when `ProjectState.commentsRevision` of the task changes. */
     getTaskComments: (taskId: TaskId, page?: PageQuery) => Promise<TaskCommentsPage>;
     /** A page of the project's archived tasks, the ones the snapshot leaves out, newest archived first. */
     getArchivedTasks: (projectId: ProjectId, page?: PageQuery) => Promise<TaskArchivePage>;
-    /** The project's documents: one entry per folder, in the project's order, a folder that has none yet too. */
-    getDocsTree: (projectId: ProjectId) => Promise<DocsTree>;
-    /** A document of one of the project's folders, by its path under that folder's `.clowdy/docs`. */
-    getDocFile: (projectId: ProjectId, folderId: FolderId, path: string) => Promise<DocFile>;
-    /** Files of the project's folders whose path contains every word of `query`, best match first, each with its folder and its path relative to that folder. */
-    getProjectFiles: (projectId: ProjectId, query: string, limit?: number) => Promise<ProjectFileMatch[]>;
-    /** One folder of the project as a file system, for the file manager to browse and edit; the daemon checks every path against the folder. Nothing is asked until the file system is used. */
-    fileSystem: (projectId: ProjectId, folderId: FolderId) => ProjectFileSystem;
+    /**
+     * The project's documents: one entry per folder, in the project's order, with the document sources it has (`.briefback`, `.clowdy/docs`, the roots of Spec Kit, OpenSpec and Kiro), each a Markdown tree; a folder with none has none.
+     * With a `workspaceId` (a worktree of one of the folders, made) the entry of that worktree's folder lists the worktree's documents in place of the folder's own checkout's.
+     */
+    getDocsTree: (projectId: ProjectId, workspaceId?: WorkspaceId) => Promise<DocsTree>;
+    /**
+     * Files of the project's folders whose path contains every word of `query`, best match first, each with its folder and its path relative to that folder. With a `workspaceId`
+     * (a worktree of one of the folders, made) the worktree's files are listed in place of its folder's own checkout's, the other folders as before.
+     */
+    getProjectFiles: (projectId: ProjectId, query: string, limit?: number, workspaceId?: WorkspaceId) => Promise<ProjectFileMatch[]>;
+    /**
+     * One folder of the project as a file system, for the file manager to browse and edit; the daemon checks every path against the folder. Nothing is asked until the file system is used.
+     * With a `workspaceId` (a worktree of that folder, made) it is the worktree's files, not the folder's own checkout's.
+     */
+    fileSystem: (projectId: ProjectId, folderId: FolderId, workspaceId?: WorkspaceId) => ProjectFileSystem;
     /** Stores a file in the project, to go with the next message of one of its chats. Rejects with a `TransportError` that carries the daemon's reason when it refuses. */
     uploadAttachment: (projectId: ProjectId, file: File) => Promise<Attachment>;
     /** The bytes of an attachment, to show it. */

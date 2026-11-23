@@ -5,6 +5,7 @@
 
 export type ProjectId = string;
 export type FolderId = string;
+export type WorkspaceId = string;
 export type ChatId = string;
 export type TaskId = string;
 export type RunId = string;
@@ -40,6 +41,24 @@ export interface ProjectFolder {
     id: FolderId;
     /** Absolute, with symbolic links resolved. */
     path: string;
+    /** What the worktrees made from this folder need: the branch they start from and a setup. Belongs to this folder of this project (the same path in another project has its own). Absent when none is set. */
+    settings?: FolderSettings;
+}
+
+/** The settings of one folder of a project, for the worktrees chats make from it. */
+export interface FolderSettings {
+    /** The branch a new worktree starts from (`main`, `origin/next`), in place of the folder's default branch; one the repository does not have is skipped. */
+    baseBranch?: string;
+    /** What makes a new worktree ready to run. */
+    setup?: WorkspaceSetup;
+}
+
+/** Run by `Prepare workspace` after a worktree is checked out: files copied from the folder's main checkout, then one command. */
+export interface WorkspaceSetup {
+    /** Relative paths below the folder, or with a `*` in the last segment (`.env*`), copied when they exist in the main checkout and not in the worktree. */
+    files: string[];
+    /** A script for the system's shell (`sh -c`, `cmd /c` on Windows), run in the worktree. */
+    command?: string;
 }
 
 /** The main folder of a project: the first of its folders, where its agents work. */
@@ -80,6 +99,8 @@ export interface ProjectInfo {
     tasks: number;
     /** Runs that are not finished. Removing the project or choosing another main folder waits until there are none. */
     activeRuns: number;
+    /** The workspaces of the project's chats, read as the folders are. Absent when no chat has one. */
+    workspaces?: ProjectWorkspaceInfo[];
 }
 
 export interface ProjectFolderInfo {
@@ -100,6 +121,16 @@ export interface ProjectFolderInfo {
     detached?: true;
     /** How many chats work in this folder by choice (`Chat.folderId`): they go back to the main folder when the folder leaves the project. */
     chats: number;
+}
+
+/** What `GET /v1/projects/info` reads of one workspace (a worktree a chat works in): whether it is there and the branch it has checked out now. */
+export interface ProjectWorkspaceInfo {
+    workspaceId: WorkspaceId;
+    /** False when the worktree's folder is gone from the disk, or was not made yet. */
+    exists: boolean;
+    /** The branch checked out in it, or on a detached HEAD the short hash of the commit (with `detached`); absent when it does not exist or is no repository. */
+    branch?: string;
+    detached?: true;
 }
 
 export interface ProjectSettings {
@@ -176,6 +207,11 @@ export interface Chat {
      */
     folderId?: FolderId;
     /**
+     * The worktree the chat works in, in place of the folder's own checkout (`ChatWorkspace`): chosen when the chat is made and never changed after, shared with
+     * the threads below the chat and with its forks. Absent for a chat that works in the folder itself.
+     */
+    workspace?: ChatWorkspace;
+    /**
      * Set on a chat made by `chat.fork`: where its conversation was taken from. `atSeq` is the `seq` of the last item the new chat's stream has from the
      * source (the answer the fork was made at), so what comes after it is the fork's own; the copied items keep the `seq` they had in the source. A fork is no
      * thread (`parentChatId` stays empty) and no child: it lives on when the source is archived or deleted, which leaves `chatId` naming a chat that is gone.
@@ -195,6 +231,27 @@ export interface Chat {
     createdAt: number;
     updatedAt: number;
 }
+
+/**
+ * The worktree a chat works in: a checkout of the chat's folder (`Chat.folderId`, else the main folder) on a branch of its own or one that was there already.
+ * Several chats may share one. The git worktree itself is made at the chat's first turn (`Prepare workspace`), so `ready` is false until then.
+ */
+export interface ChatWorkspace {
+    id: WorkspaceId;
+    /** The folder of the project it is a checkout of. */
+    folderId: FolderId;
+    /** Absolute: where the agent's working directory is. */
+    path: string;
+    /** The branch it was made or picked with, which the agent may since have switched (the branch it has now is `ProjectWorkspaceInfo.branch`). Absent for a worktree on a detached HEAD. */
+    branch?: string;
+    /** Clowdy made it (under the workspaces folder), so Clowdy may remove it; false for a worktree it merely found. */
+    managed: boolean;
+    /** The worktree exists and is set up; false until the first turn made it. */
+    ready: boolean;
+}
+
+/** Where a new chat works when it is not in the folder itself: in a new worktree started from `base` (the folder's default branch when absent), or in a worktree that exists. */
+export type ChatWorkspaceChoice = { mode: 'new'; base?: string } | { mode: 'existing'; path: string };
 
 /** How a thread ended its turn, as its parent is told. */
 export type ThreadOutcome = 'finished' | 'failed' | 'interrupted';
@@ -368,6 +425,22 @@ export function isBusyRunStatus(status: RunStatus): boolean {
     return !isTerminalRunStatus(status) && status !== 'waiting_background';
 }
 
+/**
+ * The status a person reads a run by. It is the run's own, except that a run with a question or a request for permission open to the person
+ * (`Run.awaitingUser`) reads `waiting_user` while it works or rests for its background work: its session goes on, so the status stays what it was
+ * (`waiting_background` leads to no `waiting_user`), and the card is all that says it needs the person. Every place that tells a run that waits for
+ * the person from one that does not (a chat's dot, a thread's row, a thread as its parent reads it) goes by this, and logic (what takes a message, what
+ * can be stopped) by `status`.
+ */
+export function shownRunStatus(run: Pick<Run, 'status' | 'awaitingUser'>): RunStatus {
+    return run.awaitingUser === true && (run.status === 'running' || run.status === 'waiting_background') ? 'waiting_user' : run.status;
+}
+
+/** Why the run waits, as it reads beside `shownRunStatus`: its own reason, except where the card open to the person overrides a status that says otherwise. */
+export function shownRunReason(run: Pick<Run, 'status' | 'awaitingUser' | 'statusReason'>): string | undefined {
+    return shownRunStatus(run) === run.status ? run.statusReason : 'Waiting for you';
+}
+
 export interface Run {
     id: RunId;
     projectId: ProjectId;
@@ -425,6 +498,13 @@ export interface Run {
      * list. Absent when nothing is open, which is how most runs stay.
      */
     background?: BackgroundItem[];
+    /**
+     * Set while a question or a request for permission of the run is open to the person, whatever the run's status: a run that works is parked in
+     * `waiting_user` for it, but one whose agent asks while the session rests for its background work (a turn the agent started by itself, a sub-agent
+     * that goes on) keeps `waiting_background`, and its card is the only sign. Absent when nothing is open, and once the run is over. Read it through
+     * `shownRunStatus`.
+     */
+    awaitingUser?: boolean;
     createdAt: number;
     startedAt?: number;
     finishedAt?: number;
@@ -523,7 +603,24 @@ export type StreamItemBody =
     | { kind: 'note'; text: string }
     /** A question the run is waiting on (semi-manual mode); `answer` is set once the user replied. */
     | { kind: 'question'; questionId: string; text: string; options: QuestionOption[]; recommended?: string; answer?: string }
+    /**
+     * A request of the agent for permission to do something, put to the person (an agent on a preset that asks). The run waits in `waiting_user` while any
+     * is `open`. `decisions` are the answers the agent's options allow, by kind; `decision` is set once the person answered (`run.decide`) or Clowdy
+     * answered from a grant. `cancelled`: the agent withdrew it or the run was stopped; `expired`: the daemon restarted and the agent is gone.
+     */
+    | { kind: 'approval'; approvalId: string; toolCallId?: string; title: string; subject: ApprovalSubject; decisions: ApprovalDecision[]; state: ApprovalState; decision?: ApprovalDecision }
     | { kind: 'error'; text: string };
+
+/** What an agent asks to do: a command, a change to files, or any other tool. The daemon classifies the request, so a client draws it with no knowledge of the agent. */
+export type ApprovalSubject =
+    | { kind: 'command'; command: string; cwd?: string }
+    | { kind: 'file_change'; paths: string[] }
+    | { kind: 'tool_use'; tool: string; detail?: string };
+
+/** The three answers: once (`allow_once`), for the rest of the run (`allow_always`: Clowdy remembers the request and answers the agent with its one-time allow, so no lasting rule of the agent's is written), no (`reject`, for the agent's `reject_once` and `reject_always`). */
+export type ApprovalDecision = 'allow_once' | 'allow_always' | 'reject';
+
+export type ApprovalState = 'open' | 'decided' | 'cancelled' | 'expired';
 
 export type ToolState = 'running' | 'done' | 'error';
 
@@ -555,7 +652,7 @@ export interface Artifact {
 /* -------------------------------- Documents ------------------------------- */
 
 export interface DocNode {
-    /** Path relative to the docs folder, `/`-separated. */
+    /** Path relative to the root of its source (`.briefback`, `.clowdy/docs`), `/`-separated. */
     path: string;
     name: string;
     kind: 'file' | 'dir';
@@ -563,17 +660,23 @@ export interface DocNode {
 }
 
 /**
- * The documents of one folder of a project: Markdown files under its `.clowdy/docs`. A folder whose docs folder does not exist yet has no nodes;
- * the first document written there makes it.
+ * One source of documents in a folder of a project (see `DOC_SOURCES`): the Markdown files below a root of the folder, as a tree. `nodes` are relative to `root`, so a
+ * document's path in the project folder is `${ root }/${ node.path }`.
  */
-export interface DocsFolder {
-    folderId: FolderId;
+export interface DocsSource {
+    /** The registry's id for the root. */
+    id: string;
+    label: string;
+    /** The root, relative to the project folder, with `/` separators. */
+    root: string;
     nodes: DocNode[];
 }
 
-export interface DocFile {
-    path: string;
-    content: string;
-    /** SHA-256 of the content on disk; send it back as `baseHash` when saving. */
-    hash: string;
+/**
+ * The documents of one folder of a project: the sources it has, in the registry's order, each with its Markdown files. A source with no Markdown file is left out, and a
+ * folder with none has no sources.
+ */
+export interface DocsFolder {
+    folderId: FolderId;
+    sources: DocsSource[];
 }

@@ -54,7 +54,7 @@ describe('auth', () => {
     });
 
     test('everything else needs the bearer token', async () => {
-        const paths = ['/v1/snapshot', '/v1/projects/p/snapshot', '/v1/events', '/v1/runs/r/items', '/v1/chats/c/items', '/v1/tasks/t/detail', '/v1/tasks/t/comments', '/v1/projects/p/docs', '/v1/projects/p/docs/file?path=a.md'];
+        const paths = ['/v1/snapshot', '/v1/projects/p/snapshot', '/v1/events', '/v1/runs/r/items', '/v1/chats/c/items', '/v1/tasks/t/detail', '/v1/projects/p/tasks/CAR-1/detail', '/v1/tasks/t/comments', '/v1/projects/p/docs'];
 
         for (const path of paths) {
             for (const headers of [{}, { authorization: 'Bearer wrong' }, { authorization: 'test-token' }, { authorization: 'Basic dGVzdC10b2tlbg==' }] as Record<string, string>[]) {

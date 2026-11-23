@@ -47,7 +47,7 @@ export function OpeningTask({ reading, onRetry, onClose }: OpeningTaskProps) {
                 { reading.status === 'loading'
                     ? (
                         <div className={ styles.waiting } role="status">
-                            <Loader size="lg" />
+                            <Loader size="xs" />
                             <Text color="secondary">Loading the task…</Text>
                         </div>
                     )

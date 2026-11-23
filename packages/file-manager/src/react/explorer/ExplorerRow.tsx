@@ -8,8 +8,8 @@ import { createPortal } from 'react-dom';
 
 import { basename, dirname, isPathWithin } from '../../paths';
 import styles from './Explorer.module.css';
-import { DRAFT_ID, folderOf, hotkeyItem, targetsOf, useExplorer } from './explorerContext';
-import { ExplorerMenu } from './ExplorerMenu';
+import { DRAFT_ID, folderOfNode, hotkeyItem, targetsOf, useExplorer } from './explorerContext';
+import { ExplorerAreaMenu, ExplorerMenu } from './ExplorerMenu';
 
 import type { SyntheticEvent } from 'react';
 import type { DragPreviewProps, NodeApi, NodeRendererProps, RowRendererProps } from 'react-arborist';
@@ -29,12 +29,28 @@ function stopPropagation(event: SyntheticEvent) {
 export function ExplorerRowFrame({ node, attrs, innerRef, children }: RowRendererProps<ExplorerItem>) {
     const { draftParent } = useExplorer();
 
+    // A label row is not an item of the tree: no role, no selection, no click that selects it. Files dropped on it go in the root it heads.
+    if (node.data.heading !== undefined) {
+        return (
+            <div
+                ref={innerRef}
+                role="presentation"
+                style={{ ...attrs.style, minWidth: 0, width: '100%' }}
+                data-heading=""
+                data-folder={node.data.heading}
+                onFocus={stopPropagation}
+            >
+                {children}
+            </div>
+        );
+    }
+
     return (
         <div
             {...attrs}
             ref={innerRef}
             style={{ ...attrs.style, minWidth: 0, width: '100%' }}
-            data-folder={node.id === DRAFT_ID ? draftParent : folderOf(node.id, node.data.kind)}
+            data-folder={node.id === DRAFT_ID ? draftParent : folderOfNode(node)}
             onFocus={stopPropagation}
             onClick={node.handleClick}
         >
@@ -65,19 +81,21 @@ export function ExplorerDragPreview({ mouse, id, dragIds, isDragging }: DragPrev
 
 /** The inline name input of a rename or a new row. Enter or leaving it applies a valid name; Escape cancels. */
 function NameInput({ node, onValueChange }: { node: NodeApi<ExplorerItem>; onValueChange?: (value: string) => void }) {
-    const { manager, draftParent } = useExplorer();
+    const { manager, draftParent, fileName } = useExplorer();
     const { kind, name } = node.data;
     const draft = node.id === DRAFT_ID;
     const [value, setValue] = useState(name);
     const finished = useRef(false);
     const input = useRef<HTMLInputElement>(null);
     const field = useRef<HTMLSpanElement>(null);
-    const unchanged = value.trim() === '' || (!draft && value.trim() === name);
+    // A scope can complete a file's name (`.md` for a document): the name is checked, and applied, as it will be.
+    const typed = kind === 'file' && fileName && value.trim() !== '' ? fileName(value.trim()) : value.trim();
+    const unchanged = typed === '' || (!draft && typed === name);
     const problem = unchanged
         ? null
         : manager.operations.validateName(
             draft ? (draftParent ?? '') : dirname(node.id),
-            value,
+            typed,
             draft ? undefined : node.id
         );
 
@@ -89,7 +107,7 @@ function NameInput({ node, onValueChange }: { node: NodeApi<ExplorerItem>; onVal
         finished.current = true;
 
         if (apply && !unchanged && !problem) {
-            node.submit(value.trim());
+            node.submit(typed);
         }
         else {
             node.reset();
@@ -155,13 +173,44 @@ function NameInput({ node, onValueChange }: { node: NodeApi<ExplorerItem>; onVal
     );
 }
 
-/** One explorer row: chevron, icon, name or its input, and the ⋯ menu shown on hover. */
-export function ExplorerRow({ node, dragHandle }: NodeRendererProps<ExplorerItem>) {
+/** The gray label that heads a root of a scope. Its right-click menu makes new items and pastes in the root it heads. */
+function ExplorerHeading({ name, folder }: { name: string; folder: string }) {
+    const contextMenu = useContextMenu();
+    const { manager } = useExplorer();
+
+    return (
+        <div
+            className={styles.heading}
+            onContextMenu={event => {
+                if (!manager.readonly) {
+                    contextMenu.areaProps.onContextMenu(event);
+                }
+            }}
+        >
+            <span className={styles.headingName}>{name}</span>
+            <Show when={contextMenu.isOpen}>
+                <ExplorerAreaMenu contextMenu={contextMenu} folder={folder} />
+            </Show>
+        </div>
+    );
+}
+
+/** One explorer row: a label row of a scope, or a row of the tree. */
+export function ExplorerRow(props: NodeRendererProps<ExplorerItem>) {
+    const { heading, name } = props.node.data;
+
+    return heading === undefined ? <ExplorerEntryRow {...props} /> : <ExplorerHeading name={name} folder={heading} />;
+}
+
+/** One row of the tree: chevron, icon, name or its input, and the ⋯ menu shown on hover. */
+function ExplorerEntryRow({ node, dragHandle }: NodeRendererProps<ExplorerItem>) {
     const [menuOpen, setMenuOpen] = useState(false);
     const contextMenu = useContextMenu();
-    const { dropFolder, menuItems } = useExplorer();
+    const { manager, root, dropFolder, menuItems } = useExplorer();
     const { kind, name } = node.data;
     const draft = node.id === DRAFT_ID;
+    // The tree shows a hidden path only while "Show hidden files" is on, and draws it fainter so it still reads as one. A scope's rows are shown by its own rules.
+    const hidden = !draft && root === '' && manager.tree.isHidden(node.id);
     // A new row has no path yet, so its icon follows the name being typed.
     const [draftName, setDraftName] = useState('');
     const iconPath = draft ? draftName.trim() || node.id : node.id;
@@ -185,6 +234,7 @@ export function ExplorerRow({ node, dragHandle }: NodeRendererProps<ExplorerItem
             data-selected={node.isSelected || undefined}
             data-sole-selected={(node.isSelected && node.tree.hasOneSelection) || undefined}
             data-editing={node.isEditing || undefined}
+            data-hidden={hidden || undefined}
             data-drop-target={ownFill === 'drop' || undefined}
             data-joined-start={(ownFill && fill(node.prev) === ownFill) || undefined}
             data-joined-end={(ownFill && fill(node.next) === ownFill) || undefined}

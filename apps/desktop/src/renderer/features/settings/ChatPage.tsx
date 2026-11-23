@@ -38,7 +38,7 @@ const FINISHED_LABEL = 'Finished threads';
  */
 export function ChatPage() {
     return (
-        <SettingsPage title="Chat" description="Choose how chats look and behave">
+        <SettingsPage description="Choose how chats look and behave">
             <SettingsSection title="Messages">
                 <SettingsCard>
                     <SettingsRow title={ LABEL } description={ `Steer it into the current turn, or queue it for the next one. Press ${ OTHER_KEY } to use the other option.` }>

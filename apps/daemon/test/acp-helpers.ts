@@ -7,7 +7,7 @@ import { AgentRegistry } from '../src/engine/acp/registry';
 
 import type { Shim } from '../src/cli/shim';
 import type { AgentProtocol } from '../src/engine/acp/catalog';
-import type { PermissionPolicy } from '../src/engine/acp/session';
+import type { ResolvedAgent } from '../src/engine/acp/registry';
 import type { EngineEvent, EngineSession, EngineStartOptions, ToolDefinition } from '../src/engine/types';
 
 export const FAKE_AGENT = new URL('./fake-acp-agent.ts', import.meta.url).pathname;
@@ -35,7 +35,6 @@ export interface RigOptions {
     agentEnv?: Record<string, string>;
     /** The daemon's environment, from which the agent's is built. */
     env?: Record<string, string | undefined>;
-    permissions?: PermissionPolicy;
     command?: string;
     args?: string[];
     initializeTimeoutMs?: number;
@@ -53,6 +52,8 @@ export interface RigOptions {
     sessionMeta?: Record<string, unknown>;
     /** What the agent is told it can do in `initialize`, as the built-in catalog gives it to Cursor. */
     clientMeta?: Record<string, unknown>;
+    /** The permission preset the agent runs on (`ResolvedAgent.permission`): what its permission requests are answered with, and the mode sent. Without it the agent runs on Full access, and every request it makes is allowed. */
+    permission?: ResolvedAgent['permission'];
     /** Where the `clowdy` command is, as `installShim` wrote it: a session with shell commands gives its agent the command. */
     shim?: Shim;
 }
@@ -62,19 +63,22 @@ export function rig(options: RigOptions = {}): Rig {
     const registry = new AgentRegistry({ discovery: quietDiscovery(env) });
     const bridge = new ToolBridge();
 
-    if (options.sessionMeta || options.clientMeta || options.protocol || options.wakesOnBackgroundEnd) {
-        const resolve = registry.resolve.bind(registry);
+    const resolve = registry.resolve.bind(registry);
 
-        registry.resolve = async (id) => {
-            const found = await resolve(id);
+    registry.resolve = async (id) => {
+        const found = await resolve(id);
 
-            return found.ok ? { ok: true, agent: { ...found.agent, ...(options.protocol && { protocol: options.protocol }), ...(options.wakesOnBackgroundEnd && { wakesOnBackgroundEnd: true }), ...(options.sessionMeta && { sessionMeta: options.sessionMeta }), ...(options.clientMeta && { clientMeta: options.clientMeta }) } } : found;
-        };
-    }
+        if (!found.ok) {
+            return found;
+        }
+
+        // The registry gives the custom agent the generic pair's default, Full access, so every request is allowed; a test may name the preset to run on instead.
+        return { ok: true, agent: { ...found.agent, ...(options.protocol && { protocol: options.protocol }), ...(options.wakesOnBackgroundEnd && { wakesOnBackgroundEnd: true }), ...(options.sessionMeta && { sessionMeta: options.sessionMeta }), ...(options.clientMeta && { clientMeta: options.clientMeta }), ...(options.permission && { permission: options.permission }) } };
+    };
 
     registry.add({ id: 'fake-acp', name: 'Fake ACP', command: options.command ?? process.execPath, args: options.args ?? [options.protocol === 'v2' ? FAKE_AGENT_V2 : FAKE_AGENT], env: options.agentEnv });
 
-    const engine = new AcpEngine('fake-acp', { registry, bridge, shim: options.shim, env, permissions: options.permissions, initializeTimeoutMs: options.initializeTimeoutMs, forkTimeoutMs: options.forkTimeoutMs, titleWaitMs: options.titleWaitMs, backgroundHandoffMs: options.backgroundHandoffMs ?? 400, backgroundReportMs: options.backgroundReportMs });
+    const engine = new AcpEngine('fake-acp', { registry, bridge, shim: options.shim, env, initializeTimeoutMs: options.initializeTimeoutMs, forkTimeoutMs: options.forkTimeoutMs, titleWaitMs: options.titleWaitMs, backgroundHandoffMs: options.backgroundHandoffMs ?? 400, backgroundReportMs: options.backgroundReportMs });
 
     return {
         engine,

@@ -9,10 +9,12 @@ import type {
     AgentInfo,
     AgentModels,
     Attachment,
+    ChatId,
+    ChatWorkspaceRemoval,
     ClowdyEvent,
     CommandResult,
-    DocFile,
     DocsTree,
+    FolderGit,
     FolderId,
     ProjectFileMatch,
     ProjectId,
@@ -28,6 +30,7 @@ import type {
     TerminalCreate,
     TerminalId,
     TerminalInfo,
+    WorkspaceId,
 } from '@clowdy/protocol';
 import type { TerminalStream, TerminalStreamHandlers } from './terminalStream';
 
@@ -107,6 +110,20 @@ export class HttpTransport implements Transport {
         return this.#get(projectId === undefined ? ROUTES.projectsInfo : `${ ROUTES.projectsInfo }?project=${ encodeURIComponent(projectId) }`);
     }
 
+    async getFolderGit(projectId: ProjectId, folderId: FolderId): Promise<FolderGit> {
+        const route = `${ ROUTES.projectGit(projectId) }?folderId=${ encodeURIComponent(folderId) }`;
+        const response = await this.#fetch(this.#base + route, { headers: this.#headers });
+
+        // The daemon says why it cannot read a folder (git is not there, the folder is gone) and the new-chat page tells the person.
+        if (!response.ok) throw await refusal(response, route);
+
+        return await response.json() as FolderGit;
+    }
+
+    getChatWorkspaceRemoval(chatId: ChatId): Promise<ChatWorkspaceRemoval> {
+        return this.#get(ROUTES.chatWorkspace(chatId));
+    }
+
     getProjectSnapshot(projectId: ProjectId): Promise<ProjectSnapshot> {
         return this.#get(ROUTES.projectSnapshot(projectId));
     }
@@ -121,6 +138,10 @@ export class HttpTransport implements Transport {
         return this.#get(ROUTES.taskDetail(taskId));
     }
 
+    getTaskDetailByKey(projectId: ProjectId, key: string): Promise<TaskDetail> {
+        return this.#get(ROUTES.projectTaskDetail(projectId, key));
+    }
+
     getTaskComments(taskId: TaskId, page?: PageQuery): Promise<TaskCommentsPage> {
         return this.#get(`${ ROUTES.taskComments(taskId) }${ pageQuery(page) }`);
     }
@@ -129,24 +150,22 @@ export class HttpTransport implements Transport {
         return this.#get(`${ ROUTES.projectArchivedTasks(projectId) }${ pageQuery(page) }`);
     }
 
-    getDocsTree(projectId: ProjectId): Promise<DocsTree> {
-        return this.#get(ROUTES.docsTree(projectId));
+    getDocsTree(projectId: ProjectId, workspaceId?: WorkspaceId): Promise<DocsTree> {
+        return this.#get(workspaceId === undefined ? ROUTES.docsTree(projectId) : `${ ROUTES.docsTree(projectId) }?${ new URLSearchParams({ workspaceId }) }`);
     }
 
-    getDocFile(projectId: ProjectId, folderId: FolderId, path: string): Promise<DocFile> {
-        return this.#get(`${ ROUTES.docsFile(projectId) }?folderId=${ encodeURIComponent(folderId) }&path=${ encodeURIComponent(path) }`);
-    }
-
-    getProjectFiles(projectId: ProjectId, query: string, limit?: number): Promise<ProjectFileMatch[]> {
+    getProjectFiles(projectId: ProjectId, query: string, limit?: number, workspaceId?: WorkspaceId): Promise<ProjectFileMatch[]> {
         const params = new URLSearchParams({ query });
 
         if (limit !== undefined) params.set('limit', String(limit));
 
+        if (workspaceId !== undefined) params.set('workspaceId', workspaceId);
+
         return this.#get(`${ ROUTES.projectFiles(projectId) }?${ params }`);
     }
 
-    fileSystem(projectId: ProjectId, folderId: FolderId): ProjectFileSystem {
-        return new HttpFileSystem({ target: () => ({ base: this.#base, headers: this.#headers }), fetch: this.#fetch, route: ROUTES.projectFs(projectId), folderId, sleep: this.#sleep });
+    fileSystem(projectId: ProjectId, folderId: FolderId, workspaceId?: WorkspaceId): ProjectFileSystem {
+        return new HttpFileSystem({ target: () => ({ base: this.#base, headers: this.#headers }), fetch: this.#fetch, route: ROUTES.projectFs(projectId), folderId, ...(workspaceId !== undefined && { workspaceId }), sleep: this.#sleep });
     }
 
     async uploadAttachment(projectId: ProjectId, file: File): Promise<Attachment> {

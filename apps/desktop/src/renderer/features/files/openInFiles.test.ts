@@ -1,22 +1,25 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { FIXTURE_PROJECT_ID } from '../../daemon/fixtureData';
+import { createFixtureData, FIXTURE_PROJECT_ID, FIXTURE_WORKSPACE_CHAT_ID, withFixtureWorkspace } from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore } from '../../stores';
 import { filesManagerOf, kindOnDisk, openInFiles } from './openInFiles';
 import { filesStoreOf } from './useFilesStore';
 
+import type { Place } from '../sidePanel/currentPlace';
+
 // The Car Rental project's only folder, with the fixture's files: README.md, package.json, src/booking/price.ts and the like.
 const FOLDER = { id: 'fld_car_rental', path: '/Users/dev/car-rental' };
+const PLACE: Place = { folder: FOLDER };
 const FILES = ['README.md', 'package.json', 'src/booking/index.tsx', 'src/booking/BookingForm.tsx', 'src/booking/price.ts', 'src/booking/price.test.ts'];
 
 let store: RootStore;
 
 const ui = () => store.ui.forProject(FIXTURE_PROJECT_ID);
-const manager = () => filesManagerOf(store, FIXTURE_PROJECT_ID, FOLDER);
-const open = (path: string) => openInFiles(store, FIXTURE_PROJECT_ID, FOLDER, path);
-const tabs = async () => (await manager()).tabs.documents.map(document => document.path);
+const manager = (kind: 'files' | 'docs' = 'files') => filesManagerOf(store, FIXTURE_PROJECT_ID, PLACE, kind);
+const open = (path: string) => openInFiles(store, FIXTURE_PROJECT_ID, PLACE, path);
+const tabs = async (kind: 'files' | 'docs' = 'files') => (await manager(kind)).tabs.documents.map(document => document.path);
 
 beforeEach(async () => {
     // The tabs of a folder are kept in the browser's storage and come back with it: a test starts with none.
@@ -40,6 +43,29 @@ describe('opening a path in the Files tab', () => {
         expect((await manager()).tabs.active?.path).toBe('src/booking/price.ts');
         expect(ui().sidePanelOpen).toBe(true);
         expect(ui().sidePanelTab).toBe('files');
+    });
+
+    it('shows a document on the Docs tab, in the tabs of that tab, and any other file on the Files tab, in the tabs of that one', async () => {
+        expect(await open('.clowdy/docs/decisions/pricing.md')).toBe(true);
+
+        expect((await manager('docs')).tabs.active?.path).toBe('.clowdy/docs/decisions/pricing.md');
+        expect(ui().sidePanelOpen).toBe(true);
+        expect(ui().sidePanelTab).toBe('docs');
+
+        expect(await open('README.md')).toBe(true);
+        expect(ui().sidePanelTab).toBe('files');
+
+        // Each tab has its own tabs: a document is not a tab of the Files tab, and a file is not one of the Docs tab.
+        expect(await tabs('docs')).toEqual(['.clowdy/docs/decisions/pricing.md']);
+        expect(await tabs('files')).toEqual(['README.md']);
+    });
+
+    it('opens a plan of .briefback on the Docs tab as it does a document, in the tabs of that tab', async () => {
+        expect(await open('.briefback/weekend-pricing/plan.md')).toBe(true);
+
+        expect(ui().sidePanelTab).toBe('docs');
+        expect(await tabs('docs')).toEqual(['.briefback/weekend-pricing/plan.md']);
+        expect(await tabs('files')).toEqual([]);
     });
 
     it('shows a folder of the tree, with no tab for it, and the folder itself by showing the tab', async () => {
@@ -80,7 +106,7 @@ describe('opening a path in the Files tab', () => {
 });
 
 describe('what a path is on the disk', () => {
-    const kind = (path: string) => kindOnDisk(store, FIXTURE_PROJECT_ID, FOLDER, path);
+    const kind = (path: string) => kindOnDisk(store, FIXTURE_PROJECT_ID, PLACE, path);
 
     it('is a file or a folder, as the disk has it, for a path with or without a trailing slash', async () => {
         expect(await kind('src/booking/price.ts')).toBe('file');
@@ -92,5 +118,50 @@ describe('what a path is on the disk', () => {
         expect(await kind('')).toBe('directory');
         expect(await kind('src/gone')).toBeUndefined();
         expect(await kind('gone/deeper/file.ts')).toBeUndefined();
+    });
+});
+
+describe('opening a path in a worktree', () => {
+    let worktree: Place;
+
+    beforeEach(async () => {
+        filesStoreOf(store).dispose();
+        store.dispose();
+        store = new RootStore(new FixtureTransport({ data: withFixtureWorkspace(createFixtureData()) }));
+        await store.load();
+        store.selectProject(FIXTURE_PROJECT_ID);
+        worktree = { folder: FOLDER, workspace: store.selectedProject!.chats.get(FIXTURE_WORKSPACE_CHAT_ID)!.workspace! };
+    });
+
+    it('opens a file that only the worktree has in the worktree\'s tabs, which the folder\'s own checkout does not have', async () => {
+        expect(await openInFiles(store, FIXTURE_PROJECT_ID, PLACE, 'src/booking/weekend.ts')).toBe(false);
+        expect(await openInFiles(store, FIXTURE_PROJECT_ID, worktree, 'src/booking/weekend.ts')).toBe(true);
+
+        expect((await filesManagerOf(store, FIXTURE_PROJECT_ID, worktree)).tabs.active?.path).toBe('src/booking/weekend.ts');
+        expect((await filesManagerOf(store, FIXTURE_PROJECT_ID, PLACE)).tabs.documents).toEqual([]);
+        expect(ui().sidePanelTab).toBe('files');
+    });
+
+    it('opens a plan that only the worktree has on the Docs tab of the worktree', async () => {
+        expect(await openInFiles(store, FIXTURE_PROJECT_ID, PLACE, '.briefback/weekend-surcharge/plan.md')).toBe(false);
+        expect(await openInFiles(store, FIXTURE_PROJECT_ID, worktree, '.briefback/weekend-surcharge/plan.md')).toBe(true);
+
+        expect((await filesManagerOf(store, FIXTURE_PROJECT_ID, worktree, 'docs')).tabs.active?.path).toBe('.briefback/weekend-surcharge/plan.md');
+        expect(ui().sidePanelTab).toBe('docs');
+    });
+
+    it('says what a path is in the worktree', async () => {
+        expect(await kindOnDisk(store, FIXTURE_PROJECT_ID, worktree, 'src/booking/weekend.ts')).toBe('file');
+        expect(await kindOnDisk(store, FIXTURE_PROJECT_ID, PLACE, 'src/booking/weekend.ts')).toBeUndefined();
+        expect(await kindOnDisk(store, FIXTURE_PROJECT_ID, worktree, '')).toBe('directory');
+    });
+
+    it('opens nothing in a worktree that is not made yet, and makes no file manager for it, which would keep the listing that failed', async () => {
+        const waiting = { folder: FOLDER, workspace: { ...worktree.workspace!, ready: false } };
+
+        expect(await openInFiles(store, FIXTURE_PROJECT_ID, waiting, 'README.md')).toBe(false);
+        expect(await openInFiles(store, FIXTURE_PROJECT_ID, waiting, '')).toBe(false);
+        expect(await kindOnDisk(store, FIXTURE_PROJECT_ID, waiting, '')).toBeUndefined();
+        expect(ui().sidePanelOpen).toBe(false);
     });
 });

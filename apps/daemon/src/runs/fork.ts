@@ -142,6 +142,8 @@ export async function prepareFork(services: Services, chatId: string, itemId: st
             orchestratorRunId: runId,
             // The copy's session lives in the folder the source works in, and a later turn resumes it there.
             ...(source.folderId && { folderId: source.folderId }),
+            // Its session was opened in the source's worktree: the same row, so the chats that share the worktree are all known.
+            ...(source.workspace && { workspace: source.workspace }),
             forkedFrom: { chatId: source.id, atSeq: answer.seq },
             createdAt: now,
             updatedAt: now,

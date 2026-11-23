@@ -8,7 +8,7 @@ import type { Task } from '@clowdy/protocol';
 
 export interface TaskChipProps {
     task: Pick<Task, 'id' | 'key' | 'title'>;
-    /** What a press does. By default it opens the task in the Tasks section. */
+    /** What a press does. By default it opens the task in the Tasks tab of the side panel. */
     onPress?: () => void;
     className?: string;
 }

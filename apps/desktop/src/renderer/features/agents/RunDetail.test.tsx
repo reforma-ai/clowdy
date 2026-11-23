@@ -1,14 +1,15 @@
 // @vitest-environment happy-dom
+import { toast } from '@clowdy/components/Toast';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createFixtureData, FIXTURE_PROJECT_ID } from '../../daemon/fixtureData';
+import { createFixtureData, FIXTURE_APPROVALS_RUN_ID, FIXTURE_PROJECT_ID, withFixtureApprovals } from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { RunDetail } from './RunDetail';
 
-import type { Run } from '@clowdy/protocol';
+import type { CommandResult, Run } from '@clowdy/protocol';
 import type { KeyValueStorage } from '../../stores/storage';
 
 vi.mock('@clowdy/components/Toast', () => ({ toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn(), show: vi.fn() } }));
@@ -70,6 +71,32 @@ describe('RunDetail, Stop', () => {
     });
 });
 
+describe('RunDetail, a card open to the person', () => {
+    const resting = (): Run => ({ ...runOf('r-na-02'), status: 'waiting_background', statusReason: 'Waiting for background work' });
+
+    it('reads a run that rests for its background work as Background, with its own reason and the live line of the wait', async () => {
+        await draw(resting());
+        await draw(resting());
+
+        expect(container.querySelector('header')?.textContent).toContain('Background');
+        expect(container.querySelector('header')?.textContent).toContain('Waiting for background work');
+        expect(container.textContent).toContain('Waiting for background work…');
+    });
+
+    it('reads it as Waiting for you while a request is open, with no line that says it waits for background work', async () => {
+        await draw({ ...resting(), awaitingUser: true });
+        await draw({ ...resting(), awaitingUser: true });
+
+        const header = container.querySelector('header')?.textContent;
+
+        expect(header).toContain('Waiting');
+        expect(header).not.toContain('Background');
+        expect(header).toContain('Waiting for you');
+        expect(header).not.toContain('Waiting for background work');
+        expect(container.textContent).not.toContain('Waiting for background work…');
+    });
+});
+
 describe('RunDetail, messages', () => {
     it('reads a finished sub-agent run without a row of actions under its answer', async () => {
         await draw(runOf('r-na-01'));
@@ -78,5 +105,35 @@ describe('RunDetail, messages', () => {
         expect(container.textContent).toContain('Three step components in');
         expect(container.querySelector('time')).toBeNull();
         expect(container.querySelector('[aria-label="Copy message"]')).toBeNull();
+    });
+});
+
+describe('RunDetail, requests for permission', () => {
+    const cardButton = (heading: string, label: string) => {
+        const card = container.querySelector(`[role="group"][aria-label="${ heading }"]`);
+
+        return [...card?.querySelectorAll('button') ?? []].find(button => button.textContent === label);
+    };
+
+    it('decides a request of the run it shows while the item is open, and says so when the daemon refuses', async () => {
+        store.dispose();
+        store = new RootStore(new FixtureTransport({ data: withFixtureApprovals(createFixtureData()) }), { storage: memoryStorage() });
+        await store.load();
+        vi.mocked(toast.error).mockClear();
+
+        await draw(runOf(FIXTURE_APPROVALS_RUN_ID));
+        await draw(runOf(FIXTURE_APPROVALS_RUN_ID));
+
+        const command = vi.spyOn(store, 'command');
+
+        await act(async () => cardButton('Change these files', 'Deny')!.click());
+
+        expect(command).toHaveBeenCalledWith({ type: 'run.decide', runId: FIXTURE_APPROVALS_RUN_ID, approvalId: 'apv-3', decision: 'reject' });
+        expect(toast.error).not.toHaveBeenCalled();
+
+        command.mockResolvedValueOnce({ ok: false, requestId: 'x', error: { code: 'conflict', message: 'The agent is no longer waiting for this approval' } } satisfies CommandResult);
+        await act(async () => cardButton('Use mcp__docs__publish', 'Allow once')!.click());
+
+        expect(toast.error).toHaveBeenCalledWith({ message: 'Could not send the decision: The agent is no longer waiting for this approval' });
     });
 });

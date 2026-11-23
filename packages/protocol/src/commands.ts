@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { PERMISSION_PRESETS } from './agents';
 import { MAX_ATTACHMENTS_PER_MESSAGE, MAX_PROJECT_FOLDERS, MAX_PROJECT_ICON_LENGTH } from './api';
 import { LAST_USED, NO_PROJECT_ICON } from './domain';
 
@@ -12,6 +13,10 @@ const base = { requestId: z.string().min(8).max(100) };
 const chatMode = z.enum(['autopilot', 'semi']);
 const engine = z.string().min(1).max(64);
 const model = z.string().min(1).max(200);
+const chatWorkspaceChoice = z.union([
+    z.object({ mode: z.literal('new'), base: z.string().min(1).max(300).optional() }).strict(),
+    z.object({ mode: z.literal('existing'), path: z.string().min(1) }).strict(),
+]);
 const effort = z.string().min(1).max(64);
 const actor = z.object({ kind: z.literal('user') });
 const queuedMode = z.enum(['steer', 'queue']);
@@ -26,17 +31,19 @@ export const commandSchema = z.discriminatedUnion('type', [
      */
     z.object({ ...base, type: z.literal('project.add'), name: z.string().min(1).optional(), folders: z.array(z.string().min(1)).max(MAX_PROJECT_FOLDERS).optional() }),
     /**
-     * `folders` is the project's whole new list, in order: `{ id }` keeps a folder it has, `{ path }` adds one (the checks of `project.add`).
-     * A new main folder waits until no run of the project is unfinished. `name`, `folders` and an icon are refused for the personal space. A
-     * settings field set to `null` is cleared, so the project follows the daemon's own choice again (and `icon: null` shows the found icon or the
-     * folder icon again; `NO_PROJECT_ICON` shows the folder icon).
+     * `folders` is the project's whole new list, in order: `{ id }` keeps a folder it has, `{ path }` adds one (the checks of `project.add`), and
+     * `{ id, path }` moves a folder it has to another place on the disk (the same checks), for a folder that was moved or renamed outside
+     * Clowdy: the folder keeps its id, so its chats stay with it, and a session that cannot be resumed from the new place starts again from
+     * the record of the conversation. A new main folder, and a move of the main folder, wait until no run of the project is unfinished. `name`,
+     * `folders` and an icon are refused for the personal space. A settings field set to `null` is cleared, so the project follows the daemon's own
+     * choice again (and `icon: null` shows the found icon or the folder icon again; `NO_PROJECT_ICON` shows the folder icon).
      */
     z.object({
         ...base,
         type: z.literal('project.update'),
         projectId: z.string(),
         name: z.string().min(1).optional(),
-        folders: z.array(z.union([z.object({ id: z.string().min(1) }).strict(), z.object({ path: z.string().min(1) }).strict()])).min(1).max(MAX_PROJECT_FOLDERS).optional(),
+        folders: z.array(z.union([z.object({ id: z.string().min(1) }).strict(), z.object({ path: z.string().min(1) }).strict(), z.object({ id: z.string().min(1), path: z.string().min(1) }).strict()])).min(1).max(MAX_PROJECT_FOLDERS).optional(),
         settings: z.object({
             maxParallelRuns: z.number().int().min(1).max(1000).nullable().optional(),
             engine: engine.nullable().optional(),
@@ -45,6 +52,25 @@ export const commandSchema = z.discriminatedUnion('type', [
             targetBranch: z.string().nullable().optional(),
             icon: z.union([z.literal(NO_PROJECT_ICON), z.string().max(MAX_PROJECT_ICON_LENGTH).regex(/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/, 'The icon must be a PNG data URL')]).nullable().optional(),
         }).optional(),
+    }),
+    /**
+     * Sets what the worktrees made from one folder of the project need (`FolderSettings`): the branch they start from and a setup. The settings belong to this folder of this
+     * project, so the same path in another project has its own. A field that is left out stays, one set to `null` is cleared (the folder's default branch and no setup again);
+     * `setup` is replaced whole. `setup.files` are paths below the folder written with `/`, or with a `*` in the last segment (`.env*`): none absolute, with a drive, a `\`,
+     * a `.` or `..` or `.git` segment or an empty one, at most `MAX_SETUP_FILES` of at most 500 characters; a setup with no files and no command is no setup. `command` is at
+     * most `MAX_SETUP_COMMAND_LENGTH` characters, `baseBranch` a name of at most `MAX_BASE_BRANCH_LENGTH` that does not start with `-`. The daemon trims the text and then checks
+     * these limits, so the schema holds the shapes only and the refusal (`invalid`) says which limit it is; `not_found` for a folder the project does not have and `conflict` for
+     * the personal space. Answers `{ project }`.
+     */
+    z.object({
+        ...base,
+        type: z.literal('project.updateFolder'),
+        projectId: z.string(),
+        folderId: z.string().min(1),
+        settings: z.object({
+            baseBranch: z.string().nullable().optional(),
+            setup: z.object({ files: z.array(z.string()), command: z.string().optional() }).nullable().optional(),
+        }),
     }),
     /** Removes the project with its chats, tasks, runs, streams and attachments; its folder and the files in it stay. Refused for the personal space and while any run of the project is unfinished. */
     z.object({ ...base, type: z.literal('project.delete'), projectId: z.string() }),
@@ -55,8 +81,10 @@ export const commandSchema = z.discriminatedUnion('type', [
     /**
      * `engine`, `model` and `effort` bind the chat to an agent, a model and a reasoning level (see `Chat`); left out, the first message takes the project's or the daemon's.
      * `folderId` is a folder of the project the chat works in; left out, the chat works in the main folder. A folder the project does not have is refused.
+     * `workspace` has the chat work in a worktree of that folder (`ChatWorkspaceChoice`): a new one, which the chat's first turn makes, or one `git worktree list` names for
+     * the folder; left out, in the folder itself. Refused for a folder that is not the root of a repository, a base that is not a ref of it, or a path that is not one of its worktrees.
      */
-    z.object({ ...base, type: z.literal('chat.create'), projectId: z.string(), title: z.string().optional(), mode: chatMode.optional(), engine: engine.optional(), model: model.optional(), effort: effort.optional(), folderId: z.string().min(1).optional() }),
+    z.object({ ...base, type: z.literal('chat.create'), projectId: z.string(), title: z.string().optional(), mode: chatMode.optional(), engine: engine.optional(), model: model.optional(), effort: effort.optional(), folderId: z.string().min(1).optional(), workspace: chatWorkspaceChoice.optional() }),
     z.object({ ...base, type: z.literal('chat.rename'), chatId: z.string(), title: z.string().min(1) }),
     z.object({ ...base, type: z.literal('chat.setMode'), chatId: z.string(), mode: chatMode }),
     /**
@@ -73,8 +101,11 @@ export const commandSchema = z.discriminatedUnion('type', [
     z.object({ ...base, type: z.literal('chat.compact'), chatId: z.string() }),
     /** Hides the chat from the lists without deleting anything (refused while any of its runs is active), or brings it back. */
     z.object({ ...base, type: z.literal('chat.setArchived'), chatId: z.string(), archived: z.boolean() }),
-    /** Removes the chat with its orchestrator's conversation and every run below it; the tasks stay. Refused while any of its runs is active. */
-    z.object({ ...base, type: z.literal('chat.delete'), chatId: z.string() }),
+    /**
+     * Removes the chat with its orchestrator's conversation and every run below it; the tasks stay. Refused while any of its runs is active. `removeWorkspace` also removes
+     * the chat's worktree and its branch, which only a worktree that `GET /v1/chats/:id/workspace` calls `removable` allows (`conflict` otherwise, and nothing is deleted).
+     */
+    z.object({ ...base, type: z.literal('chat.delete'), chatId: z.string(), removeWorkspace: z.boolean().optional() }),
     /**
      * `text` may be empty when `attachmentIds` (files uploaded to the chat's project, not sent yet) name at least one file. A chat at rest (no orchestrator yet,
      * a finished one, or one waiting for background work) gets the message at once, whatever `mode` says. A busy orchestrator gets it later: `mode` puts it in the
@@ -192,19 +223,8 @@ export const commandSchema = z.discriminatedUnion('type', [
     z.object({ ...base, type: z.literal('run.stopBackground'), runId: z.string(), itemId: z.string() }),
     /** Answers a `question` stream item of a run in `waiting_user`. */
     z.object({ ...base, type: z.literal('run.answer'), runId: z.string(), questionId: z.string(), answer: z.string() }),
-
-    /* Documents */
-    z.object({
-        ...base,
-        type: z.literal('docs.write'),
-        projectId: z.string(),
-        /** The folder of the project whose `.clowdy/docs` holds the document; the first write there makes that docs folder. */
-        folderId: z.string().min(1),
-        path: z.string().min(1),
-        content: z.string(),
-        /** Hash of the version the edit started from; `null` creates a new file. A mismatch answers `conflict`. */
-        baseHash: z.string().nullable(),
-    }),
+    /** Decides an `approval` stream item that is `open`: the run goes on when none is left. `allow_always` makes Clowdy answer the same request for the rest of the run without asking; the agent itself is told to allow it once. */
+    z.object({ ...base, type: z.literal('run.decide'), runId: z.string(), approvalId: z.string(), decision: z.enum(['allow_once', 'allow_always', 'reject']) }),
 
     /* Agents */
     /** Adds an agent the daemon can run: any command that speaks the Agent Client Protocol on stdio. */
@@ -222,6 +242,8 @@ export const commandSchema = z.discriminatedUnion('type', [
         args: z.array(z.string()).optional(),
         /** Turns the agent's own settings (`AgentInfo.settings`) on or off by id; settings left out keep their value. */
         settings: z.record(z.string(), z.boolean()).optional(),
+        /** Picks one of the agent's permission presets (`AgentInfo.permissions`); `null` goes back to the agent's default. Left out, the choice stays. */
+        permission: z.enum(PERMISSION_PRESETS).nullable().optional(),
     }),
     /** Starts the agent's own login for the person (also to sign in again as someone else). Answers at once; the progress is `AgentInfo.signInSession`. Refused when one is running. */
     z.object({ ...base, type: z.literal('agent.signIn'), id: z.string().min(1) }),

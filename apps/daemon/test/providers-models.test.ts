@@ -4,9 +4,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { startDaemon } from '../src/daemon';
-import { claudeModelsError, codexModel, cursorModels, MODEL_ROUTES, ModelCatalog, parseClaudeModels, parseCursorFamilies, parseCursorModels } from '../src/providers/models';
+import { PROVIDERS } from '../src/providers/builtin';
+import { claudeModelsError, parseClaudeModels } from '../src/providers/claude/models';
+import { codexModel } from '../src/providers/codex/models';
+import { cursorModels, parseCursorFamilies, parseCursorModels } from '../src/providers/cursor/models';
+import { ModelCatalog } from '../src/providers/models';
 import { FAKE_AGENT } from './acp-helpers';
-import { cleanTempDirs, Harness, testAgents, testConfig } from './helpers';
+import { cleanTempDirs, Harness, testAgents, testConfig, testSpec } from './helpers';
 
 import type { AgentModels } from '@clowdy/protocol';
 import type { AgentRegistry } from '../src/engine/acp/registry';
@@ -217,7 +221,7 @@ describe('Cursor models', () => {
                 send({ id: listing, result: ${ JSON.stringify(families) } });
             }
         `);
-        const listed = await new ModelCatalog({ registry: registryOf({ cursor: cursor.path }), cwd: root, routes: { cursor: context => cursorModels(context, 2_000) } }).get('cursor');
+        const listed = await new ModelCatalog({ registry: registryOf({ cursor: cursor.path }), cwd: root, providers: [{ ...testSpec('cursor'), models: context => cursorModels(context, 2_000) }] }).get('cursor');
 
         // Taken for the answer, the request would have given an empty list and sent the read to --list-models.
         expect(listed.models.map(model => model.id)).toEqual(['default', 'grok-4.7', 'composer-2.5', 'claude-opus-4-8', 'claude-sonnet-4', 'gpt-5.5']);
@@ -244,7 +248,7 @@ describe('Cursor models', () => {
     test('a Cursor that does not answer in time ends the read at that deadline, without a second wait on --list-models', async () => {
         const cursor = cursorAgent('/* never answers */');
         const started = Date.now();
-        const listed = await new ModelCatalog({ registry: registryOf({ cursor: cursor.path }), cwd: root, routes: { cursor: context => cursorModels(context, 400) } }).get('cursor');
+        const listed = await new ModelCatalog({ registry: registryOf({ cursor: cursor.path }), cwd: root, providers: [{ ...testSpec('cursor'), models: context => cursorModels(context, 400) }] }).get('cursor');
 
         expect(listed).toEqual({ state: 'error', models: [], detail: 'Cursor did not list its models in time' });
         expect(cursor.notes()).not.toContain('list-models');
@@ -325,9 +329,9 @@ describe('ModelCatalog', () => {
         const catalog = new ModelCatalog({
             registry: registryOf({ claude: '/bin/claude' }),
             now: () => time,
-            routes: { claude: async () => {
+            providers: [{ ...testSpec('claude'), models: async () => {
                 await new Promise(resolve => setTimeout(resolve, 20)); return answers[Math.min(calls++, 1)]!;
-            } },
+            } }],
         });
 
         expect((await Promise.all([catalog.get('claude'), catalog.get('claude')])).map(answer => answer.state)).toEqual(['error', 'error']);
@@ -355,11 +359,11 @@ describe('ModelCatalog', () => {
         let signal: AbortSignal | undefined;
         const catalog = new ModelCatalog({
             registry: registryOf({ claude: '/bin/claude' }),
-            routes: { claude: async (context) => {
+            providers: [{ ...testSpec('claude'), models: async (context) => {
                 signal = context.signal;
 
                 return { state: 'ok', models: [], fetchedAt: 1 };
-            } },
+            } }],
         });
 
         await catalog.get('claude');
@@ -385,12 +389,25 @@ describe('ModelCatalog', () => {
         expect(asked).toBe(2);
     });
 
+    test('lists the models of any provider that has a `models` method, and says it cannot for one that has none, with no change to the catalog', async () => {
+        const catalog = new ModelCatalog({
+            registry: registryOf({ plain: '/bin/plain', quiet: '/bin/quiet' }),
+            providers: [
+                { ...testSpec('plain'), models: async () => ({ state: 'ok', models: [{ id: 'p1', name: 'Plain one' }], fetchedAt: 3 }) },
+                testSpec('quiet'),
+            ],
+        });
+
+        expect(await catalog.get('plain')).toEqual({ state: 'ok', models: [{ id: 'p1', name: 'Plain one' }], fetchedAt: 3 });
+        expect(await catalog.get('quiet')).toMatchObject({ state: 'unavailable', detail: expect.stringContaining('cannot list the models') });
+    });
+
     test('is unavailable for an agent it has no way to read or that is not installed', async () => {
         const catalog = new ModelCatalog({ registry: registryOf({}) });
 
         expect(await catalog.get('opencode')).toMatchObject({ state: 'unavailable', detail: expect.stringContaining('cannot list the models') });
         expect(await catalog.get('claude')).toMatchObject({ state: 'unavailable', detail: expect.stringContaining('not installed') });
-        expect(Object.keys(MODEL_ROUTES)).toEqual(['claude', 'codex', 'cursor']);
+        expect(PROVIDERS.filter(provider => provider.models).map(provider => provider.spec.id)).toEqual(['claude', 'codex', 'cursor']);
     });
 });
 
@@ -400,7 +417,7 @@ describe('GET /v1/agents/:id/models', () => {
     test('answers with the list of an agent, 404 for one that does not exist, and needs the token', async () => {
         const config = testConfig();
         const agents = testAgents(config);
-        const models = new ModelCatalog({ registry: agents, routes: { mine: async () => ({ state: 'ok', models: [{ id: 'm1', name: 'Model one', isDefault: true }], fetchedAt: 5 }) } });
+        const models = new ModelCatalog({ registry: agents, providers: [{ ...testSpec('mine'), models: async () => ({ state: 'ok', models: [{ id: 'm1', name: 'Model one', isDefault: true }], fetchedAt: 5 }) }] });
         const h = new Harness(await startDaemon(config, { agents, models }), config);
 
         harnesses.push(h);

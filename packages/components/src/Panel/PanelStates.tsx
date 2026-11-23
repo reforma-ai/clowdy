@@ -25,8 +25,8 @@ PanelEmptyRow.displayName = 'PanelEmptyRow';
 export function PanelLoadingState() {
     return (
         <Box direction="row" align="center" gap="md" className="m-auto" padding="lg">
-            <Loader size="md" />
-            <Text variant="sm" color="secondary">Loading</Text>
+            <Loader size="xs" />
+            <Text color="secondary">Loading</Text>
         </Box>
     );
 }
@@ -56,11 +56,11 @@ export function PanelEmptyState({
         >
             { icon }
             <Box gap="xs" align="center">
-                <Text variant="heading-5" align="center">
+                <Text variant="heading-4" align="center">
                     { title }
                 </Text>
                 <Show when={ description }>
-                    <Text variant="sm" color="secondary" align="center">
+                    <Text variant="md" color="secondary" align="center">
                         { description }
                     </Text>
                 </Show>

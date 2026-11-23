@@ -1,8 +1,5 @@
 import type { ComposerMentionAttrs } from '@clowdy/components/RichInput';
 
-/** A folder's documents, relative to that folder: what an agent opens a document of the main folder by, the folder it works in. */
-export const DOCS_FOLDER = '.clowdy/docs';
-
 /** Where a mention is typed: `@` for tasks, documents and files, `/` for skills. */
 export const MENTION_TRIGGER = '@';
 export const SKILL_TRIGGER = '/';

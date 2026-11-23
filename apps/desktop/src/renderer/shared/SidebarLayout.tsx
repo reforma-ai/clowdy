@@ -3,12 +3,9 @@ import { useState } from 'react';
 
 import { browserStorage } from '../stores/storage';
 import styles from './SidebarLayout.module.css';
-import { readSidebarWidth, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH, writeSidebarWidth } from './sidebarWidth';
+import { MAIN_MIN_WIDTH, readSidebarWidth, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH, writeSidebarWidth } from './sidebarWidth';
 
 import type { ReactNode } from 'react';
-
-/** What the page beside the column keeps, so a wide column cannot squeeze it out. */
-const MAIN_MIN_WIDTH = 360;
 
 export interface SidebarLayoutProps {
     /** The screen, as the width is remembered per screen: `agents`, `docs`, `settings`. */

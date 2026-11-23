@@ -28,7 +28,6 @@ export function createEngines(config: Config, agents: AgentRegistry, env: Record
         bridge,
         shim,
         env,
-        permissions: config.agentPermissions,
         clientVersion: pkg.version,
         debug: Boolean(env.CLOWDY_DEBUG),
     });

@@ -39,9 +39,9 @@ export function ProvidersPage() {
 
     if (status === 'loading' && agents.length === 0) {
         return (
-            <SettingsPage title="Providers" description={ INTRO }>
+            <SettingsPage description={ INTRO }>
                 <Box direction="row" gap="md" align="center">
-                    <Loader size="md" />
+                    <Loader size="xs" />
                     <Text color="secondary">Looking for agents…</Text>
                 </Box>
             </SettingsPage>
@@ -50,7 +50,7 @@ export function ProvidersPage() {
 
     if (status === 'failed' && agents.length === 0) {
         return (
-            <SettingsPage title="Providers" description={ INTRO }>
+            <SettingsPage description={ INTRO }>
                 <Box gap="md" align="start">
                     <Text color="danger">The agents could not be loaded. { error }</Text>
                     <Button variant="bordered" size="sm" onPress={ () => void refresh() }>Try again</Button>
@@ -60,7 +60,7 @@ export function ProvidersPage() {
     }
 
     return (
-        <SettingsPage title="Providers" description={ INTRO }>
+        <SettingsPage description={ INTRO }>
             { status === 'failed' && (
                 <Alert color="danger">
                     <AlertIcon><AttentionCircle /></AlertIcon>

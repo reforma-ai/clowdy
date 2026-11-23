@@ -1,6 +1,7 @@
 export * from './agents';
 export * from './api';
 export * from './commands';
+export * from './docSources';
 export * from './domain';
 export * from './events';
 export * from './fs';

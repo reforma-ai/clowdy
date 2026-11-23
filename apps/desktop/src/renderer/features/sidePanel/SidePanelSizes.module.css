@@ -1,0 +1,114 @@
+/* The title, the hint under it and the row of sizes: the two lines of text start where the first picture does. */
+.menu {
+    display: flex;
+    flex-direction: column;
+}
+
+.title,
+.hint {
+    padding-inline: var(--spacing-md);
+    cursor: default;
+}
+
+.title {
+    padding-block: var(--spacing-xs) 0;
+    color: var(--color-text);
+    font-size: var(--spacing-14);
+    font-weight: 500;
+    line-height: var(--spacing-20);
+}
+
+.hint {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--spacing-xs);
+    color: var(--color-secondary-muted-text);
+    font-size: var(--spacing-12);
+    line-height: var(--spacing-16);
+}
+
+/* One tile of the row, whole: the stand-in of a grey one (`Unavailable`) is a box around it. */
+.cell {
+    display: flex;
+}
+
+.cell > * {
+    flex: 1;
+}
+
+/* The row stands as far under the text as the menu's edge stands from it at the sides (the popover's own padding). The tiles are as wide as the widest. */
+.sizes {
+    display: grid;
+    grid-auto-columns: 1fr;
+    grid-auto-flow: column;
+    gap: var(--spacing-xs);
+    margin-top: var(--spacing-md);
+}
+
+/* A tile of a picture and a name: quiet until the pointer is over it, and in the primary colour for the size the panel is in, as the rail's current tab is. */
+.option {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md) var(--spacing-md) var(--spacing-sm);
+    border: 0;
+    border-radius: calc(var(--radius-lg) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    background-color: transparent;
+    color: var(--color-secondary-muted-text);
+    font-family: inherit;
+    cursor: pointer;
+    transition: background-color 150ms ease-out;
+}
+
+/* Not on the size the panel is in: it keeps its primary colour under the pointer, and the rule for it below would lose to this one (the more specific). */
+.option:hover:not(:disabled, .current) {
+    background-color: var(--color-secondary-muted-light);
+    color: var(--color-text);
+}
+
+.option.current {
+    background-color: var(--color-primary-muted-light);
+    color: var(--color-primary);
+}
+
+.label {
+    font-size: var(--spacing-12);
+    font-weight: 500;
+    line-height: var(--spacing-16);
+}
+
+/* A size that cannot be chosen: its picture and name are grey. */
+.option:disabled {
+    cursor: default;
+}
+
+.option:disabled .preview,
+.option:disabled .label {
+    opacity: var(--opacity-disabled);
+}
+
+.preview {
+    display: block;
+    flex: none;
+}
+
+/* The picture is drawn in the tile's colour, so it follows the hover and the current size: lines for the window, a quiet fill for what is not the panel, a stronger one for the panel. */
+.frame {
+    fill: none;
+    stroke: currentcolor;
+    stroke-opacity: 0.4;
+}
+
+.chrome {
+    fill: currentcolor;
+    fill-opacity: 0.2;
+}
+
+.panel {
+    fill: currentcolor;
+    fill-opacity: 0.85;
+}

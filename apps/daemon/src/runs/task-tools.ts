@@ -1,5 +1,5 @@
 import { parseChecklist } from '@clowdy/lib/checklist';
-import { MAX_TASK_DEPTH } from '@clowdy/protocol';
+import { MAX_TASK_DEPTH, shownRunStatus } from '@clowdy/protocol';
 import { z } from 'zod';
 
 import { taskIdsOfChat } from '../db/chats';
@@ -122,7 +122,7 @@ export function describeTask({ store, runs }: ToolDeps, task: Task) {
         dependsOn: summaries(task.dependsOn),
         blocks: summaries(dependentsOf(store.db, task.id)),
         ...contents(store, task, statuses),
-        activeRuns: runs.activeRunsOfTask(task.id).map(run => ({ runId: run.id, name: run.name, role: run.role, status: run.status })),
+        activeRuns: runs.activeRunsOfTask(task.id).map(run => ({ runId: run.id, name: run.name, role: run.role, status: shownRunStatus(run) })),
         createdBy: authorOf(task.createdBy),
         createdAt: isoTime(task.createdAt),
         updatedAt: isoTime(task.updatedAt),

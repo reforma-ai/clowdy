@@ -3,6 +3,7 @@ import { spawnInOwnGroup } from '../process';
 import { buildAgentEnv, withCli } from './env';
 import { classifyThrown, failureEvent } from './failure';
 import { wait } from './layer';
+import { classify, optionFor } from './permission';
 import { noFork, V1Layer } from './v1';
 import { V2Layer } from './v2';
 
@@ -12,6 +13,7 @@ import type { EngineEvent, EngineFork, EngineSession, EngineStartOptions } from 
 import type { BridgeAccess, ToolBridge } from './bridge';
 import type { AgentProtocol } from './catalog';
 import type { LayerHost, PromptState, ProtocolLayer } from './layer';
+import type { PermissionParams } from './permission';
 import type { AgentRegistry, ResolvedAgent } from './registry';
 
 /** How long `close()` waits for the agent's process to be gone. */
@@ -28,9 +30,6 @@ const CANCEL_GRACE_MS = 1000;
 
 type Env = Record<string, string | undefined>;
 
-/** How the daemon answers `session/request_permission`: nobody is at a terminal, so it decides for every agent alike. */
-export type PermissionPolicy = 'allow' | 'reject';
-
 export interface SessionDeps {
     agentId: string;
     registry: AgentRegistry;
@@ -42,7 +41,6 @@ export interface SessionDeps {
     shim?: Shim;
     /** The daemon's own environment, which the agent's is built from. */
     env: Env;
-    permissions: PermissionPolicy;
     /** The session's cumulative cost in USD as of its last prompt, kept in memory per session id (the agent reports totals). */
     costs: Map<string, number>;
     clientVersion: string;
@@ -501,7 +499,7 @@ export class AcpSession implements EngineSession {
             deps,
             openBridge: () => this.access,
             offerTitle: title => this.offerTitle(title),
-            pickPermission: choices => this.pickPermission(choices),
+            pickPermission: (request, withdrawn) => this.pickPermission(agent, request, withdrawn),
             promptIs: state => this.promptIs(state),
             promptRunning: () => this.prompt === 'running',
             record: () => this.record(),
@@ -512,18 +510,42 @@ export class AcpSession implements EngineSession {
         return layer;
     }
 
-    /** What the daemon answers when the agent asks for permission: the first option of the kinds its policy takes. */
-    private pickPermission(choices: readonly { optionId: string; kind: string }[]): string | undefined {
-        const wanted = this.deps.permissions === 'allow' ? ['allow_once', 'allow_always'] : ['reject_once', 'reject_always'];
+    /**
+     * What the agent is answered when it asks for permission, by the preset it runs on (`ResolvedAgent.permission.answer`). `allow` is answered with the
+     * agent's one-time allow. `ask` has the request put to the person through the run (`EngineStartOptions.approve`) and is answered with the option of
+     * what they decided; with no `approve` (an engine used without the run runtime) there is nobody to ask, so the request is refused. A request that
+     * comes while the session is ending, or is withdrawn (by the end of the session, or by the agent: `withdrawn`), is answered with nothing, which the
+     * layer turns into `cancelled`.
+     */
+    private async pickPermission(agent: ResolvedAgent, request: PermissionParams, withdrawn: AbortSignal): Promise<string | undefined> {
+        const { approve } = this.options;
 
-        for (const kind of wanted) {
-            const option = choices.find(candidate => candidate.kind === kind);
-
-            if (option) {
-                return option.optionId;
-            }
+        if (agent.permission.answer === 'allow') {
+            return optionFor(request.options, 'allow_once');
         }
 
-        return undefined;
+        if (!approve) {
+            return optionFor(request.options, 'reject');
+        }
+
+        const ended = AbortSignal.any([this.signal, withdrawn]);
+
+        if (ended.aborted) {
+            return undefined;
+        }
+
+        try {
+            const decision = await approve(classify(request), ended);
+
+            // Allow for session is Clowdy's own grant (`RunService.askApproval`), so the agent gets its one-time allow. Its own lasting option writes a rule that
+            // outlives the run: Claude Code's goes to `.claude/settings.local.json` of the project, Codex's to `~/.codex/rules/default.rules` and holds for every project
+            // (checked on 2026-11-22), which "for the session" does not promise. An agent with no one-time allow gets the lasting one, the only way to say yes.
+            return decision && optionFor(request.options, decision === 'allow_always' ? 'allow_once' : decision);
+        }
+        catch (error) {
+            console.warn(`[clowdy] a permission request of ${ agent.name } was not put to the person: ${ errorMessage(error) }`);
+
+            return undefined;
+        }
     }
 }

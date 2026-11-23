@@ -1,5 +1,4 @@
 import { agentCommands } from '../features/agents/agentCommands';
-import { docSaveCommand, docSearchCommand, docTreeCommands } from '../features/docs/docCommands';
 import { filesCommands } from '../features/files/filesCommands';
 import { quickSearchCommands } from '../features/quickSearch/quickSearchCommands';
 import { taskCommands, type TaskCommandDeps } from '../features/tasks/taskCommands';
@@ -22,16 +21,12 @@ export function wholeKeymap(): Command[] {
         ...findCommands({ open: () => undefined, next: () => undefined, previous: () => undefined }),
         ...quickSearchCommands({ open: () => undefined, available: () => true }),
     ].map((command): Command => ({ ...command, scope: 'app' }));
-    const list = { ids: () => [], openId: () => null };
 
     return [
         ...app,
         ...taskCommands(nothing as TaskCommandDeps),
         ...agentCommands({ list: () => null, ids: () => [], openId: () => undefined }),
-        ...docTreeCommands({ tree: () => null, ...list }),
         ...filesCommands({ toggleHidden: () => undefined }),
-        docSearchCommand(() => undefined),
-        docSaveCommand(nothing),
     ];
 }
 

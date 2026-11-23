@@ -104,8 +104,6 @@ interface Harness {
     asked: { created: number; filter: number; search: number };
     copied: { text: string; message: string }[];
     notices: { message: string; tone?: 'info' | 'error' }[];
-    /** The tasks opened inside `replacing`, which overwrites the history entry. */
-    replaced: (string | null)[];
     deps: TaskCommandDeps;
 }
 
@@ -121,14 +119,10 @@ function setup(grid: Grid, view: TasksView = 'board', zoneOf?: () => FocusZone, 
 
     const registry = createRegistry('darwin');
     const cursor = new ListCursor();
-    const replaced: Harness['replaced'] = [];
-    let isReplacing = false;
     const ui: Harness['ui'] = {
         taskId: null,
         openTask: vi.fn<(taskId: string | null) => void>((id) => {
             ui.taskId = id;
-
-            if (isReplacing) replaced.push(id);
         }),
         openChat: vi.fn<(chatId: string | null) => void>(),
         openDoc: vi.fn<(path: string | null) => void>(),
@@ -197,16 +191,6 @@ function setup(grid: Grid, view: TasksView = 'board', zoneOf?: () => FocusZone, 
         },
         copy: (text, message) => copied.push({ text, message }),
         notify: (message, tone) => notices.push({ message, tone }),
-        replacing: (change) => {
-            isReplacing = true;
-
-            try {
-                change();
-            }
-            finally {
-                isReplacing = false;
-            }
-        },
     };
 
     cursor.setGrid(grid);
@@ -216,7 +200,7 @@ function setup(grid: Grid, view: TasksView = 'board', zoneOf?: () => FocusZone, 
 
     uninstall = installDispatcher(registry);
 
-    return { cursor, ui, setView, scoped, folds, reveal, known, state, sent, pickers, confirms, archived, started, titles, registry, undo, asked, copied, notices, replaced, deps };
+    return { cursor, ui, setView, scoped, folds, reveal, known, state, sent, pickers, confirms, archived, started, titles, registry, undo, asked, copied, notices, deps };
 }
 
 /** Returns whether a command took the key (the dispatcher calls `preventDefault`). */
@@ -389,19 +373,20 @@ describe('the open panel', () => {
         expect(ui.taskId).toBe('c1');
     });
 
-    it('follows as a replacement of the history entry, and opens on purpose as a new one', () => {
-        const { ui, replaced } = setup(list, 'list');
+    it('follows the cursor while a task is open, and Enter opens the task on purpose', () => {
+        const { ui } = setup(list, 'list');
 
         ui.taskId = 'a1';
         press('j');
         press('ArrowDown');
 
-        expect(replaced).toEqual(['a2', 'a3']);
+        expect(ui.taskId).toBe('a3');
+        expect(ui.openTask).toHaveBeenCalledTimes(2);
 
         press('Enter');
 
+        expect(ui.openTask).toHaveBeenCalledTimes(3);
         expect(ui.openTask).toHaveBeenLastCalledWith('a3');
-        expect(replaced).toEqual(['a2', 'a3']);
     });
 
     it('does not follow when the open task is gone', () => {

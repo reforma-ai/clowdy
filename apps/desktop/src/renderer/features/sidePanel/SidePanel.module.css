@@ -6,46 +6,41 @@
     min-height: 0;
 }
 
-/* The title band's height, on the window's chrome. The right padding keeps the Windows caption buttons clear, as the title band's does while the panel is shut. */
-.header {
-    display: flex;
-    flex-shrink: 0;
-    align-items: center;
-    gap: var(--spacing-md);
-    height: var(--spacing-48);
-    padding-left: var(--spacing-lg);
-    padding-right: calc(var(--titlebar-inset-end) + var(--spacing-lg));
+/*
+ * Expanded: out of the column, over the Agents screen's chat. It starts at the chat's left edge (`--agents-chat`, set on the chat's section) and keeps the column's right edge,
+ * top and bottom (`--side-panel-column`, set on the column), so the list of chats stays beside it. A page with no chat (the anchor is not there) leaves it in its own column.
+ */
+.panel[data-expanded] {
+    position: fixed;
+    top: anchor(--side-panel-column top);
+    right: anchor(--side-panel-column right);
+    bottom: anchor(--side-panel-column bottom);
+    left: anchor(--agents-chat left, anchor(--side-panel-column left));
 }
 
-.tabs {
-    display: flex;
-    flex: 1;
-    align-items: center;
-    gap: var(--spacing-xs);
-    min-width: 0;
-}
-
-.end {
-    display: flex;
-    flex-shrink: 0;
-    align-items: center;
-    gap: var(--spacing-md);
-    margin-left: auto;
-}
-
-/* The paper plate, drawn as the window's content plate is, with a square corner: it stands against the page's plate, whose corner at that edge is square too. */
+/* The paper plate, drawn as the window's content plate is (`Shell.module.css`): rounded at every corner, with room at the bottom and, beside the page's plate, half the gap between them. Its right edge is the rail's. */
 .plate {
     flex: 1;
     min-height: 0;
-    border-top: 1px solid var(--color-surface-border);
-    border-left: 1px solid var(--color-surface-border);
+    margin-bottom: var(--plate-inset);
+    margin-left: calc(var(--plate-gap) / 2);
+    border: 1px solid var(--color-surface-border);
+    border-radius: var(--plate-radius);
+    corner-shape: superellipse(var(--squircle-value));
     background-color: var(--color-surface);
     overflow: auto;
 }
 
-/* The editor and the file tree scroll for themselves, and fill the plate; so does the terminal. */
+/* Expanded, the list of chats is the island beside it (the page's plate is clear but for the list: `Shell.module.css`), so the whole gap is on this plate, from the list's edge. */
+.panel[data-expanded] .plate {
+    margin-left: var(--plate-gap);
+}
+
+/* The editor and the file tree scroll for themselves, and fill the plate; so do the documents, which are the same view, and the terminal. */
 .plate[data-tab='files'],
-.plate[data-tab='terminal'] {
+.plate[data-tab='docs'],
+.plate[data-tab='terminal'],
+.plate[data-tab='tasks'] {
     display: flex;
     flex-direction: column;
     overflow: hidden;

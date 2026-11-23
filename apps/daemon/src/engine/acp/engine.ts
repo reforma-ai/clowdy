@@ -4,7 +4,7 @@ import type { Shim } from '../../cli/shim';
 import type { AgentEngine, EngineFork, EngineForkOptions, EngineSession, EngineStartOptions } from '../types';
 import type { ToolBridge } from './bridge';
 import type { AgentRegistry } from './registry';
-import type { PermissionPolicy, SessionDeps } from './session';
+import type { SessionDeps } from './session';
 
 export interface AcpEngineDeps {
     registry: AgentRegistry;
@@ -13,7 +13,6 @@ export interface AcpEngineDeps {
     shim?: Shim;
     /** The environment agents are built from; the daemon's own by default. */
     env?: Record<string, string | undefined>;
-    permissions?: PermissionPolicy;
     clientVersion?: string;
     /** How long to wait for an agent's answer to `initialize`; see `SessionDeps`. */
     initializeTimeoutMs?: number;
@@ -69,7 +68,6 @@ export class AcpEngine implements AgentEngine {
             bridge: deps.bridge,
             shim: deps.shim,
             env: deps.env ?? process.env,
-            permissions: deps.permissions ?? 'allow',
             costs: this.costs,
             downgraded: this.downgraded,
             clientVersion: deps.clientVersion ?? '0.0.0',

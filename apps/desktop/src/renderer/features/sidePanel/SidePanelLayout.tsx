@@ -1,21 +1,19 @@
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup, usePanelRef } from '@clowdy/components/Resizable';
+import { cn } from '@clowdy/lib';
 import { useId, useState } from 'react';
 
 import { browserStorage } from '../../stores/storage';
-import { readSidePanelWidth, SIDE_PANEL_MIN_WIDTH, writeSidePanelWidth } from './panelWidth';
+import { readSidePanelWidth, SIDE_PANEL_MIN_WIDTH, TREE_PANEL_MIN_WIDTH, WINDOW_MIN_WIDTH, writeSidePanelWidth } from './panelWidth';
 import { SidePanel } from './SidePanel';
 import styles from './SidePanelLayout.module.css';
 import { useSidePanel } from './useSidePanel';
 
 import type { ReactNode } from 'react';
 
-/** What the window keeps at the left of the panel: the rail, the narrowest left column and the narrowest page (about 640), with a little to spare, so dragging the panel wide cannot squeeze them out. */
-const WINDOW_MIN_WIDTH = 656;
-
 /**
- * The window split in two: everything (title band, rail, the page) on the left, and the side panel on the right while it is open, from the top edge to the
- * bottom. The edge between them can be dragged (or moved with the arrow keys while it has focus), and the width is remembered for the whole window.
- * The left part is the same element whether the panel is open or not, so opening it moves nothing: no page is built again, and no draft or scroll position is lost.
+ * The part of the window between its two rails split in two: the page on the left, and the side panel on the right while it is open. The edge between them
+ * can be dragged (or moved with the arrow keys while it has focus), and the width is remembered for the whole window. The page is the same element whether
+ * the panel is open or not, so opening it moves nothing: no page is built again, and no draft or scroll position is lost.
  */
 export function SidePanelLayout({ children }: { children: ReactNode }) {
     const { open } = useSidePanel();
@@ -52,17 +50,20 @@ export function SidePanelLayout({ children }: { children: ReactNode }) {
 function SideColumn({ panel }: { panel: ReturnType<typeof usePanelRef> }) {
     const [width] = useState(() => readSidePanelWidth(browserStorage()));
     const id = useId();
+    const { expanded, tabHasTree } = useSidePanel();
+    // A tree beside a view needs its own least while it is beside the chat. Where it is in the chat's place the column is only kept, under it, and any window has room for the least of the others.
+    const minSize = tabHasTree && !expanded ? TREE_PANEL_MIN_WIDTH : SIDE_PANEL_MIN_WIDTH;
 
     return (
         <>
-            <ResizableHandle aria-label="Resize the side panel" />
+            <ResizableHandle aria-label="Resize the side panel" className={ cn(styles.edge, expanded && styles.edgeCovered) } />
 
             <ResizablePanel
                 id={ id }
                 panelRef={ panel }
                 className={ styles.side }
                 defaultSize={ width }
-                minSize={ SIDE_PANEL_MIN_WIDTH }
+                minSize={ minSize }
                 groupResizeBehavior="preserve-pixel-size"
             >
                 <SidePanel />

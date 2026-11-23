@@ -200,15 +200,6 @@ export function providerName(provider: string): string {
     return PROVIDER_NAMES[provider] ?? provider.charAt(0).toUpperCase() + provider.slice(1);
 }
 
-/** Where the list comes from: `Internal`, `Internal + Linear` when some tasks are mirrored, `Linear` when all are. */
-export function tasksSource(tasks: readonly Pick<Task, 'external'>[]): string {
-    const providers = [...new Set(tasks.flatMap(task => (task.external ? [providerName(task.external.provider)] : [])))];
-
-    if (providers.length === 0) return 'Internal';
-
-    return (tasks.every(task => task.external) ? providers : ['Internal', ...providers]).join(' + ');
-}
-
 /** The task in its provider, for "Open in Linear". Only web addresses: a provider's link is data, not a command. */
 export function externalLink(external: TaskExternalRef | undefined): { label: string; url: string } | null {
     if (!external?.url || !/^https?:\/\//i.test(external.url)) return null;

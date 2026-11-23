@@ -1,0 +1,19 @@
+/*
+ * The panel inside the frame is a rect whose left edge, width and radius are CSS properties (the geometry of the state comes in as custom properties from `PanelIcon`):
+ * when the state changes, it glides from one to the other.
+ */
+.panel {
+    x: var(--x);
+    width: var(--width);
+    rx: var(--rx);
+    transition:
+        x 260ms var(--ease-in-out),
+        width 260ms var(--ease-in-out),
+        rx 260ms var(--ease-in-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .panel {
+        transition: none;
+    }
+}

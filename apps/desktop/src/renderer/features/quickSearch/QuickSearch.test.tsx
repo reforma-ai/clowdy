@@ -56,10 +56,10 @@ async function open(tab: Parameters<typeof openQuickSearch>[1]) {
     await settle();
 }
 
-const manager = () => {
+const manager = (kind: 'files' | 'docs' = 'files') => {
     const project = store.selectedProject!;
 
-    return filesStoreOf(store).managerOf(project.project.id, project.project.folders[0]!.id);
+    return filesStoreOf(store).managerOf(project.project.id, { folder: project.project.folders[0]! }, kind);
 };
 
 beforeEach(async () => {
@@ -118,7 +118,7 @@ describe('the quick search palette', () => {
 
         const headings = [...document.body.querySelectorAll('[role="listbox"] [role="group"]')].map(group => group.getAttribute('aria-label'));
 
-        expect(headings).toEqual(['Chats', 'Files', 'Text']);
+        expect(headings).toEqual(['Chats', 'Docs', 'Files', 'Text']);
     });
 
     it('lists the latest chats of the project before anything is typed, and finds the ones whose title has the words', async () => {
@@ -161,11 +161,10 @@ describe('the quick search palette', () => {
         expect([...document.body.querySelectorAll('[role="listbox"] [role="group"]')].map(group => group.getAttribute('aria-label'))).toEqual(['Recent chats']);
     });
 
-    it('opens the chat of the row on Enter, in the Agents section, and leaves the side panel as it was', async () => {
+    it('opens the chat of the row on Enter, and leaves the side panel as it was', async () => {
         const ui = store.ui.forProject(FIXTURE_PROJECT_ID);
         const target = [...store.selectedProject!.chats.values()].find(chat => chat.title === 'Architecture questions')!;
 
-        act(() => store.ui.showSection(ui, 'tasks'));
         await open('chats');
         await search('architecture');
         press('Enter');
@@ -173,7 +172,6 @@ describe('the quick search palette', () => {
 
         expect(document.body.querySelector('[role="combobox"]')).toBeNull();
         expect(ui.chatId).toBe(target.id);
-        expect(ui.section).toBe('agents');
         expect(ui.sidePanelOpen).toBe(false);
     });
 
@@ -231,10 +229,16 @@ describe('the quick search palette', () => {
         press('Tab');
         await settle();
 
+        expect(field().placeholder).toBe('Search documents by name');
+
+        press('Tab');
+        await settle();
+
         expect(field().placeholder).toBe('Search files by name');
         expect(document.activeElement).toBe(field());
         expect(document.body.querySelectorAll('[role="listbox"] [role="group"]')).toHaveLength(1);
 
+        press('Tab', { shiftKey: true });
         press('Tab', { shiftKey: true });
         press('Tab', { shiftKey: true });
         press('Tab', { shiftKey: true });
@@ -246,6 +250,71 @@ describe('the quick search palette', () => {
 
         expect(field().placeholder).toBe('Search files by name');
         expect(document.body.querySelectorAll('input[role="combobox"]')).toHaveLength(1);
+    });
+
+    it('finds the documents below .clowdy/docs, which the file names leave out, and opens one in the Docs tab', async () => {
+        await open('files');
+        await search('pricing');
+
+        expect(rows()).toEqual([]);
+
+        await open('docs');
+
+        expect(field().placeholder).toBe('Search documents by name');
+
+        await search('pricing');
+
+        // The name that starts with the word first, then the files of a folder that has it, the shorter name first: each with the folder it is in, from the folder of the project.
+        expect(names()).toEqual(['pricing.md.clowdy/docs/decisions', 'plan.md.briefback/weekend-pricing', 'handoff.md.briefback/weekend-pricing', 'competitors.md.briefback/weekend-pricing/research']);
+        expect(rows()[0]!.querySelector('mark')?.textContent).toBe('pricing');
+
+        const ui = store.ui.forProject(FIXTURE_PROJECT_ID);
+
+        press('Enter');
+        await settle(200);
+
+        expect(document.body.querySelector('[role="combobox"]')).toBeNull();
+        expect(ui.sidePanelOpen).toBe(true);
+        expect(ui.sidePanelTab).toBe('docs');
+        expect(manager('docs').tabs.active?.path).toBe('.clowdy/docs/decisions/pricing.md');
+        expect(manager().tabs.documents.map(document => document.path)).not.toContain('.clowdy/docs/decisions/pricing.md');
+    });
+
+    it('finds the files of .briefback by their path, in the sources in the order of the registry, and nothing of a source the folder does not have', async () => {
+        await open('docs');
+        await search('briefback plan');
+
+        expect(names()).toEqual(['plan.md.briefback/weekend-pricing']);
+
+        await search('openspec');
+
+        expect(rows()).toEqual([]);
+        expect(note()).toBe('No documents found');
+    });
+
+    it('finds a plan of .briefback by its path, typed nearly as written, on the Docs tab and on the All tab before the files, and opens it in the Docs tab', async () => {
+        await open('docs');
+        await search('weekend-pricing/plan');
+
+        expect(names()).toEqual(['plan.md.briefback/weekend-pricing']);
+
+        await open('all');
+        await search('plan');
+
+        const groups = [...document.body.querySelectorAll('[role="listbox"] [role="group"]')].map(group => group.getAttribute('aria-label'));
+
+        expect(groups.indexOf('Docs')).toBeGreaterThanOrEqual(0);
+        expect(groups.indexOf('Docs')).toBeLessThan(groups.includes('Files') ? groups.indexOf('Files') : Infinity);
+
+        await open('docs');
+        await search('weekend-pricing/plan');
+        press('Enter');
+        await settle(200);
+
+        const ui = store.ui.forProject(FIXTURE_PROJECT_ID);
+
+        expect(ui.sidePanelTab).toBe('docs');
+        expect(manager('docs').tabs.active?.path).toBe('.briefback/weekend-pricing/plan.md');
     });
 
     it('finds a file the tree shows although the project\'s list of files leaves it out, as it does one that git ignores', async () => {

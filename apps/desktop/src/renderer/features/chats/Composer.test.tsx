@@ -8,7 +8,7 @@ import { busyEnter } from './busyEnter';
 import { Composer } from './Composer';
 import { modelStore } from './modelTestKit';
 
-import type { Chat, CommandResult, DocsTree, ProjectFolder, Run, SkillEntry, Task } from '@clowdy/protocol';
+import type { Chat, ChatWorkspace, CommandResult, DocsTree, ProjectFolder, Run, SkillEntry, Task } from '@clowdy/protocol';
 import type { Editor } from '@tiptap/core';
 import type { CommandInput } from '../../daemon/transport';
 
@@ -21,7 +21,7 @@ const refused: CommandResult = { ok: false, requestId: 'request-1', error: { cod
 
 const tasks = [{ id: 't-24', number: 24, key: 'CAR-24', title: 'Rebuild the form as one view' }] as Task[];
 const FOLDERS: ProjectFolder[] = [{ id: 'fld_p', path: '/work/p' }];
-const docs: DocsTree = [{ folderId: 'fld_p', nodes: [{ path: 'decisions', name: 'decisions', kind: 'dir', children: [{ path: 'decisions/pricing.md', name: 'pricing.md', kind: 'file' }] }] }];
+const docs: DocsTree = [{ folderId: 'fld_p', sources: [{ id: 'documents', label: 'Documents', root: '.clowdy/docs', nodes: [{ path: 'decisions', name: 'decisions', kind: 'dir', children: [{ path: 'decisions/pricing.md', name: 'pricing.md', kind: 'file' }] }] }] }];
 const skill = (name: string, source: SkillEntry['source']): SkillEntry => ({ id: `${ source }:${ name }`, name, source, description: `${ name } skill`, enabled: true, tokens: 20, engines: [] });
 const skills = [skill('clowdy:orchestrate', 'system'), skill('user:review', 'user')];
 
@@ -263,7 +263,7 @@ describe('Composer', () => {
         });
 
         it('sends a document of another folder by its absolute path, and names the folder in the suggestion', async () => {
-            transport.getDocsTree.mockImplementation(async () => [...docs, { folderId: 'fld_api', nodes: [{ path: 'endpoints.md', name: 'endpoints.md', kind: 'file' }] }]);
+            transport.getDocsTree.mockImplementation(async () => [...docs, { folderId: 'fld_api', sources: [{ id: 'documents', label: 'Documents', root: '.clowdy/docs', nodes: [{ path: 'endpoints.md', name: 'endpoints.md', kind: 'file' }] }] }]);
             await mount(accepted, undefined, [...FOLDERS, { id: 'fld_api', path: '/work/api' }]);
             await open('Read @endpoints');
 
@@ -290,6 +290,62 @@ describe('Composer', () => {
             await press('Enter');
 
             expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Compare @/work/api/src/routes/price.ts and @src/booking/price.ts', mode: 'steer' }]);
+        });
+
+        describe('in a worktree', () => {
+            const worktree = (folderId: string, ready = true): ChatWorkspace => ({ id: 'wks_1', folderId, path: `/Users/dev/Clowdy/workspaces/p/ab12cd34/${ folderId }`, branch: 'clowdy/ab12cd34', managed: true, ready });
+
+            it('lists the files and the documents of the chat\'s worktree, and sends a path from there, which is the agent\'s working directory', async () => {
+                chat = { ...chat, workspace: worktree('fld_p') };
+                transport.getProjectFiles.mockClear();
+                transport.getDocsTree.mockClear();
+                await mount(accepted);
+                await open('Look at @price');
+
+                expect(transport.getProjectFiles).toHaveBeenCalledWith('p', 'price', 20, 'wks_1');
+                expect(transport.getDocsTree).toHaveBeenCalledWith('p', 'wks_1');
+
+                await choose('price.ts');
+                await press('Enter');
+
+                expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Look at @src/booking/price.ts', mode: 'steer' }]);
+            });
+
+            it('lists no file and no document while the worktree is not made yet, whatever the folder\'s own checkout has, and still the tasks', async () => {
+                chat = { ...chat, workspace: worktree('fld_p', false) };
+                transport.getProjectFiles.mockClear();
+                transport.getDocsTree.mockClear();
+                await mount(accepted);
+                await open('Do @');
+
+                expect(optionTexts()).toEqual([expect.stringContaining('CAR-24')]);
+                expect(transport.getProjectFiles).not.toHaveBeenCalled();
+                expect(transport.getDocsTree).not.toHaveBeenCalled();
+            });
+
+            it('asks for the folder\'s own checkout for a chat that has no worktree, with no workspace named', async () => {
+                transport.getProjectFiles.mockClear();
+                transport.getDocsTree.mockClear();
+                await mount(accepted);
+                await open('Look at @price');
+
+                expect(transport.getProjectFiles).toHaveBeenCalledWith('p', 'price', 20, undefined);
+                expect(transport.getDocsTree).toHaveBeenCalledWith('p', undefined);
+            });
+
+            it('cites a file of the folder the chat works in from there, and the main folder\'s by its absolute path, when the chat is in another folder of the project', async () => {
+                chat = { ...chat, folderId: 'fld_api', workspace: worktree('fld_api') };
+                transport.getProjectFiles.mockImplementation(async () => [{ folderId: 'fld_api', path: 'src/routes/price.ts' }, { folderId: 'fld_p', path: 'src/booking/price.ts' }]);
+                await mount(accepted, undefined, [...FOLDERS, { id: 'fld_api', path: '/work/api' }]);
+                await open('Compare @price');
+                await choose('api/src/routes');
+                type('and ');
+                await open('@');
+                await choose('p/src/booking');
+                await press('Enter');
+
+                expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Compare @src/routes/price.ts and @/work/p/src/booking/price.ts', mode: 'steer' }]);
+            });
         });
 
         it('still lists the rest when one source is down', async () => {

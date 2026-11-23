@@ -7,6 +7,7 @@ import { mainFolder } from '@clowdy/protocol';
 
 import { PathText } from '../shared/PathText';
 import { ProjectIcon } from '../shared/ProjectIcon';
+import { SCREEN_TITLE } from '../shared/screenTitle';
 import { useRootStore } from '../stores';
 import { openAddProject } from './projectDialogs';
 import styles from './ProjectSelect.module.css';
@@ -29,7 +30,8 @@ function Where({ project }: { project: Pick<Project, 'folders'> }) {
 }
 
 /**
- * The project switcher in the title band: the personal space on top, then the projects in the person's order, then "Add project…" and
+ * The project switcher, which is the title of the list of chats: the project's icon, its name set as a screen's title is, and a chevron, with a plate only while the
+ * pointer is over it. Its menu has the personal space on top, then the projects in the person's order, then "Add project…" and
  * "Manage projects…", which opens Settings > Projects. The menu only switches; everything else about a project is managed there.
  */
 export function ProjectSelect() {
@@ -41,9 +43,9 @@ export function ProjectSelect() {
 
     return (
         <MenuTrigger>
-            <Button variant="bordered" className={ styles.trigger } aria-label="Project">
+            <Button variant="filling" size="sm" className={ styles.trigger } aria-label="Project">
                 { selected ? <ProjectIcon project={ selected } /> : <Folder /> }
-                <Text weight="medium" truncate>{ selected?.name ?? 'No project' }</Text>
+                <Text variant={ SCREEN_TITLE } truncate>{ selected?.name ?? 'No project' }</Text>
                 <ChevronDown />
             </Button>
             <Popover placement="bottom start" width={ 280 }>

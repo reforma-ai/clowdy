@@ -11,7 +11,7 @@ import { Button } from '../Button';
 import { For } from '../For';
 import { tooltipWithHotkey } from '../Hotkey';
 import { layerRest, paneTransition, SECTION_RISE, SECTION_START_OPACITY, sectionTransition, SLIDE_IN } from '../LayerStack/motion';
-import { ListBox, ListBoxItem } from '../List';
+import { ListBox, ListBoxHeader, ListBoxItem, ListBoxSection } from '../List';
 import { ModalContext } from '../Modal/hooks/useModalProvider';
 import { confirmDiscardChanges } from '../modals/ConfirmModal';
 import { Scrollable } from '../Scrollable';
@@ -38,6 +38,8 @@ export interface SettingsNavItem {
     id: string;
     label: string;
     icon?: ReactNode;
+    /** A heading over the item, shared with the ones after it that name the same group. Items with none stay as a flat list. */
+    group?: string;
 }
 
 export interface SettingsStackItem {
@@ -58,6 +60,10 @@ interface SettingsLayoutContextValue {
 
 const SettingsLayoutContext = createContext<SettingsLayoutContextValue | null>(null);
 const SettingsOverlayContext = createContext<HTMLElement | null>(null);
+/** The line under the title, in the header: what `Intro` draws there, from wherever the page keeps it. */
+const SettingsDescriptionContext = createContext<HTMLElement | null>(null);
+/** The key of the pane whose content is being drawn, so an `Intro` in it knows it belongs to that pane and not to the page under it. */
+const SettingsPaneContext = createContext<string | undefined>(undefined);
 const SettingsLeaveGuardContext = createContext<RefObject<(() => boolean | Promise<boolean>) | null> | null>(null);
 
 function settleLeave(decision: boolean | Promise<boolean>, apply: () => void) {
@@ -120,6 +126,12 @@ export interface SettingsLayoutProps {
     items: readonly SettingsNavItem[];
     defaultSelected?: string;
     defaultStack?: readonly SettingsStackItem[];
+    /** Makes the section the host's to hold: the layout shows this one and asks for a change through `onSelectedChange` (a section left with the leave guard's leave). */
+    selectedId?: string;
+    onSelectedChange?: (id: string) => void;
+    /** Likewise for the nested views over the section, deepest last: `onStackChange` is told the whole stack that a push, a pop, a rename or leaving the section makes. */
+    stack?: readonly SettingsStackItem[];
+    onStackChange?: (stack: readonly SettingsStackItem[]) => void;
     className?: string;
     children: ReactNode;
 }
@@ -128,14 +140,46 @@ function SettingsLayoutRoot({
     items,
     defaultSelected,
     defaultStack,
+    selectedId: selectedIdProp,
+    onSelectedChange,
+    stack: stackProp,
+    onStackChange,
     className,
     children,
 }: SettingsLayoutProps) {
-    const [selectedId, setSelectedId] = useState(defaultSelected ?? items[0]?.id ?? '');
-    const [stack, setStack] = useState<SettingsStackItem[]>(() => (
+    const [ownSelectedId, setOwnSelectedId] = useState(defaultSelected ?? items[0]?.id ?? '');
+    const [ownStack, setOwnStack] = useState<readonly SettingsStackItem[]>(() => (
         defaultStack ? [...defaultStack] : []
     ));
+    const selectedId = selectedIdProp ?? ownSelectedId;
+    const stack = stackProp ?? ownStack;
     const leaveGuardRef = useRef<(() => boolean | Promise<boolean>) | null>(null);
+    // The stack as the last change left it, so two changes in one turn (a push, then a rename of what was pushed) build on each other whoever holds the stack.
+    const latestStack = useRef(stack);
+
+    useEffect(() => {
+        latestStack.current = stack;
+    }, [stack]);
+
+    const setSelectedId = (id: string) => {
+        if (selectedIdProp === undefined) {
+            setOwnSelectedId(id);
+        }
+
+        onSelectedChange?.(id);
+    };
+
+    const changeStack = (update: (current: readonly SettingsStackItem[]) => readonly SettingsStackItem[]) => {
+        const next = update(latestStack.current);
+
+        latestStack.current = next;
+
+        if (stackProp === undefined) {
+            setOwnStack(next);
+        }
+
+        onStackChange?.(next);
+    };
 
     const select = (id: string) => {
         const changeTab = id !== selectedId;
@@ -150,7 +194,9 @@ function SettingsLayoutRoot({
                 setSelectedId(id);
             }
 
-            setStack([]);
+            if (clearStack) {
+                changeStack(() => []);
+            }
         });
     };
 
@@ -160,7 +206,7 @@ function SettingsLayoutRoot({
         }
 
         settleLeave(leaveGuardRef.current?.() ?? true, () => {
-            setStack(current => current.slice(0, -1));
+            changeStack(current => current.slice(0, -1));
         });
     };
 
@@ -170,7 +216,7 @@ function SettingsLayoutRoot({
         }
 
         settleLeave(leaveGuardRef.current?.() ?? true, () => {
-            setStack([]);
+            changeStack(() => []);
         });
     };
 
@@ -182,12 +228,16 @@ function SettingsLayoutRoot({
                     selectedId,
                     select,
                     stack,
-                    push: item => setStack(current => [...current, item]),
-                    rename: (id, label) => setStack(current => current.map(item => (
-                        item.id === id && item.label !== label
-                            ? { ...item, label }
-                            : item
-                    ))),
+                    push: item => changeStack(current => [...current, item]),
+                    rename: (id, label) => {
+                        if (latestStack.current.some(item => item.id === id && item.label !== label)) {
+                            changeStack(current => current.map(item => (
+                                item.id === id && item.label !== label
+                                    ? { ...item, label }
+                                    : item
+                            )));
+                        }
+                    },
                     pop,
                     reset,
                 } }
@@ -205,6 +255,24 @@ export interface SettingsLayoutSidebarProps {
     className?: string;
     'aria-label'?: string;
     footer?: ReactNode;
+}
+
+/** The items in runs that share a group, in order. A run with no group is a flat part of the list. */
+function navRuns(items: readonly SettingsNavItem[]): Array<{ group?: string; items: SettingsNavItem[] }> {
+    const runs: Array<{ group?: string; items: SettingsNavItem[] }> = [];
+
+    for (const item of items) {
+        const last = runs.at(-1);
+
+        if (last && last.group === item.group) {
+            last.items.push(item);
+        }
+        else {
+            runs.push({ group: item.group, items: [item] });
+        }
+    }
+
+    return runs;
 }
 
 function Sidebar({
@@ -229,18 +297,29 @@ function Sidebar({
                 selectedKeys={ [selectedId] }
                 disallowEmptySelection
             >
-                <For each={ items }>
-                    { item => (
-                        <ListBoxItem
-                            key={ item.id }
-                            id={ item.id }
-                            icon={ item.icon }
-                            textValue={ item.label }
-                            onPress={ () => select(item.id) }
-                        >
-                            { item.label }
-                        </ListBoxItem>
-                    ) }
+                <For each={ navRuns(items) }>
+                    { (run, index) => {
+                        const rows = run.items.map(item => (
+                            <ListBoxItem
+                                key={ item.id }
+                                id={ item.id }
+                                icon={ item.icon }
+                                textValue={ item.label }
+                                onPress={ () => select(item.id) }
+                            >
+                                { item.label }
+                            </ListBoxItem>
+                        ));
+
+                        return run.group === undefined
+                            ? rows
+                            : (
+                                <ListBoxSection key={ `${ index }:${ run.group }` }>
+                                    <ListBoxHeader>{ run.group }</ListBoxHeader>
+                                    { rows }
+                                </ListBoxSection>
+                            );
+                    } }
                 </For>
             </ListBox>
             <Show when={ footer }>
@@ -310,7 +389,9 @@ function Pane({ paneKey, className, children }: SettingsLayoutPaneProps) {
                         transition={ paneTransition(reducedMotion) }
                         inert={ covered }
                     >
-                        { children }
+                        <SettingsPaneContext value={ paneKey }>
+                            { children }
+                        </SettingsPaneContext>
                     </MotionScrollable>
                 )
                 : null }
@@ -332,6 +413,7 @@ function Shell({
 }) {
     const { selectedId, stack } = useSettingsLayout();
     const [overlay, setOverlay] = useState<HTMLDivElement | null>(null);
+    const [description, setDescription] = useState<HTMLDivElement | null>(null);
     const reducedMotion = useReducedMotion();
     const covered = stack.length > 0;
     const animate = useMemo(
@@ -341,30 +423,57 @@ function Shell({
 
     return (
         <SettingsOverlayContext value={ overlay }>
-            <div className={ cn(styles.content, className) }>
-                <div className={ styles.header }>
-                    <Title />
-                    { action }
+            <SettingsDescriptionContext value={ description }>
+                <div className={ cn(styles.content, className) }>
+                    {/* The title, what the section is for, and its action are one block that stays put: only what is below it moves. */}
+                    <div className={ styles.header }>
+                        <div className={ styles.headerRow }>
+                            <Title />
+                            { action }
+                        </div>
+                        <div ref={ setDescription } className={ styles.description } />
+                    </div>
+                    <div ref={ setOverlay } className={ styles.viewport }>
+                        <MotionScrollable
+                            key={ selectedId }
+                            className={ styles.scroll }
+                            contentClass={ styles.scrollContent }
+                            initial={ reducedMotion ? false : { opacity: SECTION_START_OPACITY, y: SECTION_RISE } }
+                            animate={ animate }
+                            transition={ covered
+                                ? paneTransition(reducedMotion)
+                                : sectionTransition(reducedMotion) }
+                            inert={ covered }
+                        >
+                            { children }
+                        </MotionScrollable>
+                    </div>
+                    { footer }
                 </div>
-                <div ref={ setOverlay } className={ styles.viewport }>
-                    <MotionScrollable
-                        key={ selectedId }
-                        className={ styles.scroll }
-                        contentClass={ styles.scrollContent }
-                        initial={ reducedMotion ? false : { opacity: SECTION_START_OPACITY, y: SECTION_RISE } }
-                        animate={ animate }
-                        transition={ covered
-                            ? paneTransition(reducedMotion)
-                            : sectionTransition(reducedMotion) }
-                        inert={ covered }
-                    >
-                        { children }
-                    </MotionScrollable>
-                </div>
-                { footer }
-            </div>
+            </SettingsDescriptionContext>
         </SettingsOverlayContext>
     );
+}
+
+/**
+ * What a section or a nested view is for. It is written where the page keeps its content, and drawn in the header under the title, with the title and the action
+ * as one block that does not move when the page changes. Only the top layer's is drawn: the page's while no pane is open over it, and a pane's while that pane is the
+ * last of the stack. Outside a `SettingsLayout` it is a plain line where it stands.
+ */
+function Intro({ className, children }: { className?: string; children: ReactNode }) {
+    const layout = use(SettingsLayoutContext);
+    const slot = use(SettingsDescriptionContext);
+    const pane = use(SettingsPaneContext);
+    const text = <Text color="secondary" className={ cn(styles.descriptionText, className) }>{ children }</Text>;
+
+    if (!layout) {
+        return text;
+    }
+
+    const top = layout.stack.at(-1)?.id;
+    const active = pane === undefined ? layout.stack.length === 0 : pane === top;
+
+    return slot && active ? createPortal(text, slot) : null;
 }
 
 function Empty({ children }: { children: ReactNode }) {
@@ -394,7 +503,13 @@ function Content({ headerRight, footer, saveable, className, children }: Setting
     }
 
     return (
-        <Shell className={ className } action={ headerRight } footer={ footer }>
+        <Shell
+            className={ className }
+            action={ headerRight
+                ? <div className={ styles.headerAction }>{ headerRight }</div>
+                : undefined }
+            footer={ footer }
+        >
             { children }
         </Shell>
     );
@@ -661,6 +776,7 @@ export const SettingsLayout = Object.assign(SettingsLayoutRoot, {
     Content,
     Pane,
     Empty,
+    Intro,
 });
 
 SettingsLayoutRoot.displayName = 'SettingsLayout';

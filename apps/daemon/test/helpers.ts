@@ -12,8 +12,14 @@ import type { ClowdyEvent, Command, CommandResult, EngineId, Project, Run, TaskS
 import type { Config } from '../src/config';
 import type { Daemon, DaemonOptions } from '../src/daemon';
 import type { AgentEngine, EngineEvent, EngineFork, EngineForkOptions, EngineSession, EngineStartOptions } from '../src/engine/types';
+import type { Provider } from '../src/providers/types';
 
 const roots: string[] = [];
+
+/** The `spec` of a provider a test makes up: it names an agent and starts nothing. */
+export function testSpec(id: string): Pick<Provider, 'spec'> {
+    return { spec: { id, name: id, programs: [id], launch: { kind: 'binary', args: [] } } };
+}
 
 /** A fresh empty directory, removed when the test file ends. */
 export function tempDir(label = 'clowdy-test'): string {
@@ -56,7 +62,7 @@ export function makeRepo(parent: string, name = 'repo'): string {
 }
 
 /** Delays of the runtime shrunk for tests. */
-export const SHORT_TIMINGS = { killGraceMs: 150, retryBaseMs: 10, pauseJitterMs: 0, noticeWindowMs: 30 };
+export const SHORT_TIMINGS = { killGraceMs: 150, retryBaseMs: 10, pauseJitterMs: 0, noticeWindowMs: 30, setupMs: 60_000 };
 
 export function testConfig(overrides: Partial<Config> = {}): Config {
     const root = tempDir();
@@ -65,6 +71,7 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
         dataDir: join(root, 'data'),
         projectsDir: join(root, 'projects'),
         personalDir: join(root, 'personal'),
+        workspacesDir: join(root, 'workspaces'),
         port: 0,
         token: 'test-token',
         corsOrigins: [],
@@ -72,7 +79,6 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
         maxRuns: 8,
         engineCaps: { claude: 6, codex: 4, fake: 1000 },
         defaultEngineCap: 4,
-        agentPermissions: 'allow',
         maxProcesses: 24,
         maxThreadDepth: 3,
         maxActiveThreads: 30,

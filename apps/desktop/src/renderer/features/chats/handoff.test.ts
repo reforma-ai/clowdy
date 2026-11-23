@@ -337,7 +337,6 @@ describe('startHandoff', () => {
         expect(await handOff('c-1')).toBe(true);
 
         expect(ui().draft).toBe(true);
-        expect(ui().section).toBe('agents');
 
         const [attached, ...others] = ui().pendingFiles;
 
@@ -371,6 +370,22 @@ describe('startHandoff', () => {
 
         expect(await handOffFrom(chatOf('c-1'))).toBe(true);
         expect(ui().draftFolderId).toBeNull();
+    });
+
+    it('keeps working in the worktree of the chat: the draft picks it as an existing one, and none when it is not made yet', async () => {
+        const run = root.selectedProject!.runs.get(chatOf('c-1').orchestratorRunId ?? '');
+        const handOffFrom = (chat: Chat) => startHandoff({ root, ui: ui(), chat, run });
+        const workspace = { id: 'wks_a', folderId: 'fld_car_rental', path: '/Users/dev/Clowdy/workspaces/car-rental/ab12cd34/car-rental', branch: 'clowdy/ab12cd34', managed: true, ready: true };
+
+        expect(await handOffFrom({ ...chatOf('c-1'), folderId: workspace.folderId, workspace })).toBe(true);
+        expect(ui().draftFolderId).toBe('fld_car_rental');
+        expect(ui().draftWorkspace).toEqual({ mode: 'existing', path: workspace.path });
+
+        expect(await handOffFrom({ ...chatOf('c-1'), workspace: { ...workspace, ready: false } })).toBe(true);
+        expect(ui().draftWorkspace).toBeNull();
+
+        expect(await handOffFrom(chatOf('c-1'))).toBe(true);
+        expect(ui().draftWorkspace).toBeNull();
     });
 
     it('follows words already in the new-chat draft after a blank line, and keeps them', async () => {

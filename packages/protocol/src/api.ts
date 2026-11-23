@@ -14,7 +14,9 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  * GET  /v1/projects/info                  -> ProjectInfo[] (one per project, in the order of the snapshot: whether each of its folders exists, its
  *                                            git remote and branch and how many chats chose it, and how many chats, tasks and unfinished runs the
  *                                            project has; read when asked, never announced); `?project=ID` answers that project alone (404 when
- *                                            there is none)
+ *                                            there is none). `workspaces` has one entry for each worktree of the project's chats (`ChatWorkspace`): whether
+ *                                            it is there (not made yet, or gone from the disk, is not) and the branch it has checked out now, or on a
+ *                                            detached HEAD the short hash with `detached`, read as a folder's is; absent when the project has none)
  * GET  /v1/events?cursor=N                -> text/event-stream of ClowdyEvent (frame name `clowdy`, id = cursor); without a
  *                                            cursor the stream is live only; `Last-Event-ID` also resumes; `&projectId=ID`
  *                                            limits it to one project. 410 when the cursor is ahead of the log (the log is not pruned
@@ -22,23 +24,42 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  * POST /v1/commands                       -> body Command, answers CommandResult
  * GET  /v1/runs/:id/items?after=SEQ       -> StreamItem[] (a run's stream, also an orchestrator's chat)
  * GET  /v1/chats/:id/items?after=SEQ      -> StreamItem[] (the chat's orchestrator stream)
+ * GET  /v1/chats/:id/workspace            -> ChatWorkspaceRemoval (whether the chat's worktree can be removed together with the chat, which is what `chat.delete`'s
+ *                                            `removeWorkspace` asks for; `removable` is false for a chat with no worktree; `not_found` for no such chat)
  * GET  /v1/tasks/:id/detail               -> TaskDetail (the task itself, an archived one too, so a client can open a task its snapshot does not hold,
  *                                            with the ids of its chats and runs and its artifacts; `not_found` for no such task)
+ * GET  /v1/projects/:id/tasks/:key/detail -> TaskDetail (the same answer as `GET /v1/tasks/:id/detail`, for the task a key such as `CAR-12` names in that
+ *                                            project, an archived one too: a client that met a key in a message reads the task without knowing its id. The key
+ *                                            is `<the project's taskPrefix>-<number>`, the prefix in any case. `not_found` for anything that is not a key of that
+ *                                            project (another prefix, no number, a number nobody has) and for a project that does not exist, so a client reads
+ *                                            404 as "no such task")
  * GET  /v1/tasks/:id/comments?limit=&cursor= -> TaskCommentsPage (the task's comments, oldest first; `limit` 1 to 100, default 25; `cursor` is the
  *                                            `nextCursor` of the page before, which is absent on the last page. Comments are not in the snapshot)
  * GET  /v1/projects/:id/archived-tasks?limit=&cursor= -> TaskArchivePage (the project's archived tasks, the ones the snapshot leaves out, newest archived
  *                                            first; `limit` 1 to 100, default 25; `cursor` is the `nextCursor` of the page before, which is absent on the
  *                                            last page)
- * GET  /v1/projects/:id/docs              -> DocsTree (one entry per folder in the project's order, its documents under `.clowdy/docs`; a folder
- *                                            without that docs folder has no nodes and is not given one. A missing main folder is
- *                                            `unavailable`, one whose docs folder leads out of it `invalid`; another folder whose
- *                                            documents cannot be read, missing or leading out, is left out)
- * GET  /v1/projects/:id/docs/file?folderId=&path= -> DocFile (`path` relative to that folder's docs folder; a folder the project does not
- *                                            have is `not_found`)
- * GET  /v1/projects/:id/files?query=&limit= -> ProjectFileMatch[] (files of the project's folders whose path contains every word of `query`,
+ * GET  /v1/projects/:id/docs              -> DocsTree (one entry per folder in the project's order, with the document sources it has: the roots of
+ *                                            `DOC_SOURCES` that are folders (`.briefback`, `.clowdy/docs`, Spec Kit's, OpenSpec's, Kiro's), each with its
+ *                                            Markdown tree; a source with no Markdown file, or that is a link out of the folder, is left out, so a folder
+ *                                            with none has an entry with `sources: []`. A missing main folder is `unavailable`; another folder that is
+ *                                            missing is left out). `?workspaceId=` lists the documents of that worktree in place of those of its folder's
+ *                                            own checkout (a plan an agent wrote there is not in the main checkout), under the folder's id; the other
+ *                                            folders are listed as before. A workspace that is not the project's is `not_found`; one not made yet, or
+ *                                            gone from the disk, is `unavailable`
+ * GET  /v1/projects/:id/git?folderId=    -> FolderGit (what git says about one folder of the project: whether it is the root of a repository, the branch it has
+ *                                            checked out, the folder's default branch (`origin/HEAD`, else `origin/main` or `origin/master`, else a local `main` or
+ *                                            `master`, else the current HEAD; no network), its branches (local, then those of the remotes, at most `MAX_GIT_BRANCHES`)
+ *                                            and its worktrees (`git worktree list`: the working trees only, the folder's own checkout flagged, each with whether it has
+ *                                            changes). A folder that is not the root of a repository answers `isRepository: false` and nothing else; `folderId` of no
+ *                                            folder of the project is `not_found`, none is `invalid`, and a folder gone from the disk, or a git that does not answer
+ *                                            in time, is `unavailable`)
+ * GET  /v1/projects/:id/files?query=&limit=&workspaceId= -> ProjectFileMatch[] (files of the project's folders whose path contains every word of `query`,
  *                                            the folder's name counting as part of the path when there are several; best match first,
  *                                            at most `limit` (default 40, most 100); git's tracked and unignored files, or a walk outside
- *                                            a repository; never a `.clowdy` folder). A missing main folder is `unavailable`; another is skipped
+ *                                            a repository; never a `.clowdy` folder). A missing main folder is `unavailable`; another is skipped.
+ *                                            `workspaceId` (optional) lists the files of that worktree in place of its folder's own checkout (a file only
+ *                                            the worktree has is included, one only the checkout has is not), under the folder's id and name; the other
+ *                                            folders are listed as before. The errors are those of `docs`
  * POST /v1/projects/:id/attachments?name= -> Attachment (the raw request body is the file, `Content-Type` its media type; the daemon keeps
  *                                            it until the message it is sent with is deleted. Refused above `MAX_ATTACHMENT_BYTES`.
  *                                            A file that is never sent is removed after a day)
@@ -47,8 +68,8 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  *                                            512 KB), with its media type; `not_found` when there is none, and for the personal space. The
  *                                            icon the person uploaded is `ProjectSettings.icon`, which the app shows first
  * DELETE /v1/projects/:id/attachments/:attachmentId -> { ok: true }; only for a file that was not sent yet (`conflict` otherwise)
- * /v1/projects/:id/fs/*                  -> the files of one of the project's folders: list, find, read, write, make a folder, move, copy,
- *                                            delete, watch. The routes are described in `fs.ts`
+ * /v1/projects/:id/fs/*                  -> the files of one of the project's folders, or of a worktree of it (`workspaceId` beside `folderId`): list, find,
+ *                                            read, write, make a folder, move, copy, delete, watch, search. The routes are described in `fs.ts`
  * /v1/terminals/*                         -> the shells the daemon runs for the app's terminal: list, create, close, and a WebSocket stream of one. The
  *                                            routes are described in `terminals.ts`
  * POST /v1/shutdown                       -> { ok: true }; stops the daemon gracefully (live engines are aborted, their runs
@@ -68,11 +89,13 @@ export const ROUTES = {
     commands: '/v1/commands',
     runItems: (runId: string) => `/v1/runs/${ encodeURIComponent(runId) }/items`,
     chatItems: (chatId: string) => `/v1/chats/${ encodeURIComponent(chatId) }/items`,
+    chatWorkspace: (chatId: string) => `/v1/chats/${ encodeURIComponent(chatId) }/workspace`,
     taskDetail: (taskId: string) => `/v1/tasks/${ encodeURIComponent(taskId) }/detail`,
+    projectTaskDetail: (projectId: string, key: string) => `/v1/projects/${ encodeURIComponent(projectId) }/tasks/${ encodeURIComponent(key) }/detail`,
     taskComments: (taskId: string) => `/v1/tasks/${ encodeURIComponent(taskId) }/comments`,
     projectArchivedTasks: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/archived-tasks`,
     docsTree: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/docs`,
-    docsFile: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/docs/file`,
+    projectGit: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/git`,
     projectFiles: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/files`,
     projectAttachments: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/attachments`,
     projectAttachment: (projectId: string, attachmentId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/attachments/${ encodeURIComponent(attachmentId) }`,
@@ -90,8 +113,65 @@ export const ROUTES = {
 /** How many folders one project may have. */
 export const MAX_PROJECT_FOLDERS = 50;
 
+/** The limits of a folder's workspace settings (`project.updateFolder`): the branch's name, the files a setup copies, and the setup's command in characters. */
+export const MAX_BASE_BRANCH_LENGTH = 300;
+export const MAX_SETUP_FILES = 50;
+export const MAX_SETUP_COMMAND_LENGTH = 4000;
+
 /** The longest `ProjectSettings.icon`: a 64px PNG the app made is a few kilobytes as a data URL. */
 export const MAX_PROJECT_ICON_LENGTH = 64 * 1024;
+
+/** What `GET /v1/chats/:id/workspace` says: the chat's worktree and whether deleting the chat may remove it (and its branch) too. */
+export interface ChatWorkspaceRemoval {
+    /**
+     * True only for a worktree that Clowdy made, that is on the disk, that no chat outside this chat and the threads below it uses, in which nothing is uncommitted
+     * (a new file counts) and whose branch is contained in the ref it was started from, as last fetched. False when there is no worktree, and for any other reason.
+     */
+    removable: boolean;
+    /** The worktree's path and branch, when the chat has one. */
+    path?: string;
+    branch?: string;
+}
+
+/** The most branches `GET /v1/projects/:id/git` lists: a repository with more is cut, local branches first, and `FolderGit.truncated` says so. */
+export const MAX_GIT_BRANCHES = 1000;
+
+/**
+ * One branch of a folder's repository: `main` for a local one, `origin/main` for one of a remote's (`remote`). The name is short, not always a ref git takes bare (a tag
+ * may be called `main` too): the daemon resolves it as `refs/heads/<name>` for a local branch and `refs/remotes/<name>` for a remote one.
+ */
+export interface GitBranch {
+    name: string;
+    remote: boolean;
+}
+
+/** One worktree of a repository, as `git worktree list` gives it: the main checkout and the linked ones, whoever made them. */
+export interface GitWorktree {
+    /** Absolute, written as the machine writes paths (git prints `C:/work` on Windows). */
+    path: string;
+    /** The branch it has checked out; absent on a detached HEAD. */
+    branch?: string;
+    /** The first seven characters of the commit it is on; empty on a branch with no commit yet. */
+    head: string;
+    /** The worktree is the folder itself, which the project holds (when the folder is a linked worktree, that one). */
+    main: boolean;
+    /** Something in it is not committed, a new file included. Also set when git could not tell in time. */
+    dirty: boolean;
+}
+
+/** What `GET /v1/projects/:id/git` says about a folder: a repository's branches and worktrees, or that the folder is no repository. */
+export type FolderGit = { isRepository: false } | {
+    isRepository: true;
+    /** The branch the folder has checked out, or on a detached HEAD the short hash of its commit (with `detached`); in a repository with no commit yet, the name its first branch will have. */
+    branch?: string;
+    detached?: true;
+    /** The ref a new worktree starts from unless the person picks another (a `GitBranch.name`, or a short hash on a detached HEAD); absent in a repository with no commit yet. */
+    defaultBranch?: string;
+    branches: GitBranch[];
+    /** `branches` was cut at `MAX_GIT_BRANCHES`. */
+    truncated?: true;
+    worktrees: GitWorktree[];
+};
 
 /** A file `GET /v1/projects/:id/files` found: the folder of the project it is in, and its path below that folder with `/` separators. */
 export interface ProjectFileMatch {

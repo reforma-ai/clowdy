@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createFixtureData, docHash, FIXTURE_FORK_CHAT_ID, FIXTURE_LIVE_RUN_ID, FIXTURE_LIVE_TEXT_ID, FIXTURE_LIVE_TOOL_ID, FIXTURE_PROJECT_ID, withFixtureFork } from './fixtureData';
+import { createFixtureData, FIXTURE_FORK_CHAT_ID, FIXTURE_LIVE_RUN_ID, FIXTURE_LIVE_TEXT_ID, FIXTURE_LIVE_TOOL_ID, FIXTURE_PERSONAL_PROJECT_ID, FIXTURE_PROJECT_ID, FIXTURE_WORKSPACE_CHAT_ID, withFixtureApprovals, withFixtureFork, withFixtureWorkspace } from './fixtureData';
 import { FixtureTransport } from './fixtureTransport';
 
-import type { ClowdyEvent } from '@clowdy/protocol';
+import type { Chat, ChatWorkspaceChoice, ClowdyEvent, StreamItemBody } from '@clowdy/protocol';
 
 beforeEach(() => {
     vi.useFakeTimers();
@@ -59,6 +59,31 @@ describe('FixtureTransport', () => {
 
         expect((await transport.getTaskDetail(first.id)).task.title).toBe(first.title);
         await expect(transport.getTaskDetail('t-missing')).rejects.toMatchObject({ status: 404 });
+    });
+
+    it('answers the detail of a task by its key, the archived ones too, and refuses what is not a key of the project like a task it does not have', async () => {
+        const transport = new FixtureTransport();
+        const [first] = (await transport.getProjectSnapshot(FIXTURE_PROJECT_ID)).tasks;
+        const [prefix, number] = first.key.split('-');
+        const archived = (await transport.getArchivedTasks(FIXTURE_PROJECT_ID)).tasks[0];
+
+        expect(archived.archivedAt).toBeGreaterThan(0);
+        expect(await transport.getTaskDetailByKey(FIXTURE_PROJECT_ID, first.key)).toEqual(await transport.getTaskDetail(first.id));
+        expect((await transport.getTaskDetailByKey(FIXTURE_PROJECT_ID, `${ prefix.toLowerCase() }-${ number }`)).taskId).toBe(first.id);
+        expect(await transport.getTaskDetailByKey(FIXTURE_PROJECT_ID, archived.key)).toEqual(await transport.getTaskDetail(archived.id));
+
+        const detail = await transport.getTaskDetailByKey(FIXTURE_PROJECT_ID, first.key);
+
+        detail.task.title = 'Tampered';
+
+        expect((await transport.getTaskDetailByKey(FIXTURE_PROJECT_ID, first.key)).task.title).toBe(first.title);
+
+        // Another project's prefix, no such number, and keys that are not keys.
+        const refused = [`${ prefix }-9999`, 'CLW-1', prefix, `${ prefix }-`, `-${ number }`, number, `${ prefix }-abc`, `${ first.key }-2`, first.id, ''];
+
+        for (const key of refused) await expect(transport.getTaskDetailByKey(FIXTURE_PROJECT_ID, key), key).rejects.toMatchObject({ status: 404 });
+
+        await expect(transport.getTaskDetailByKey('p-missing', first.key)).rejects.toMatchObject({ status: 404 });
     });
 
     it('replays the events after a cursor to a late subscriber', async () => {
@@ -125,6 +150,53 @@ describe('FixtureTransport', () => {
         expect(items.find(item => item.body.kind === 'question')?.body).toMatchObject({ answer: 'SQLite' });
         expect(events.some(event => event.data.type === 'run.upserted' && event.data.run.id === 'r-orch-3' && event.data.run.status === 'running')).toBe(true);
         expect(items.at(-1)?.body).toMatchObject({ kind: 'assistant', done: true });
+    });
+
+    it('decides an approval: the item keeps the decision, a second decision is refused, and the run goes on when no card is left', async () => {
+        const data = createFixtureData();
+        const body: Omit<Extract<StreamItemBody, { kind: 'approval' }>, 'approvalId' | 'state'> = { kind: 'approval', title: 'Run ls', subject: { kind: 'command', command: 'ls' }, decisions: ['allow_once', 'reject'] };
+
+        data.items['r-orch-3'].push(
+            { id: 'r-orch-3-apv-1', runId: 'r-orch-3', seq: 100, at: Date.now(), body: { ...body, approvalId: 'apv-1', state: 'open' } },
+            { id: 'r-orch-3-apv-2', runId: 'r-orch-3', seq: 101, at: Date.now(), body: { ...body, approvalId: 'apv-2', state: 'open' } }
+        );
+
+        const { transport } = await connected({ data });
+        const decide = (approvalId: string, decision: 'allow_once' | 'allow_always' | 'reject') => transport.command({ type: 'run.decide', runId: 'r-orch-3', approvalId, decision });
+        const status = async () => (await transport.getProjectSnapshot(FIXTURE_PROJECT_ID)).runs.find(run => run.id === 'r-orch-3')?.status;
+
+        expect(await decide('apv-missing', 'allow_once')).toMatchObject({ ok: false, error: { code: 'not_found' } });
+        expect(await decide('apv-1', 'allow_always')).toMatchObject({ ok: false, error: { code: 'invalid' } });
+        expect(await decide('apv-1', 'reject')).toMatchObject({ ok: true });
+        expect(await decide('apv-1', 'reject')).toMatchObject({ ok: false, error: { code: 'conflict' } });
+
+        const items = await transport.getItems({ runId: 'r-orch-3' });
+
+        expect(items.find(item => item.id === 'r-orch-3-apv-1')?.body).toMatchObject({ state: 'decided', decision: 'reject' });
+        // One card and the question are still open.
+        expect(await status()).toBe('waiting_user');
+        expect(await decide('apv-2', 'allow_once')).toMatchObject({ ok: true });
+        expect(await status()).toBe('waiting_user');
+        expect(await transport.command({ type: 'run.answer', runId: 'r-orch-3', questionId: 'q-store', answer: 'SQLite' })).toMatchObject({ ok: true });
+    });
+
+    it('keeps a run waiting while a request for permission is open, whichever of the cards is answered last', async () => {
+        const data = withFixtureApprovals(createFixtureData());
+
+        data.items['r-orch-8'].push({ id: 'r-orch-8-q', runId: 'r-orch-8', seq: 100, at: Date.now(), body: { kind: 'question', questionId: 'q-order', text: 'Which order?', options: [{ id: 'a', label: 'A' }] } });
+
+        const { transport } = await connected({ data });
+        const status = async () => (await transport.getProjectSnapshot(FIXTURE_PROJECT_ID)).runs.find(run => run.id === 'r-orch-8')?.status;
+        const decide = (approvalId: string) => transport.command({ type: 'run.decide', runId: 'r-orch-8', approvalId, decision: 'allow_once' });
+
+        // The question is answered first: three requests are still open, so the run does not go on.
+        expect(await transport.command({ type: 'run.answer', runId: 'r-orch-8', questionId: 'q-order', answer: 'A' })).toMatchObject({ ok: true });
+        expect(await status()).toBe('waiting_user');
+        expect(await decide('apv-2')).toMatchObject({ ok: true });
+        expect(await decide('apv-3')).toMatchObject({ ok: true });
+        expect(await status()).toBe('waiting_user');
+        expect(await decide('apv-4')).toMatchObject({ ok: true });
+        expect(await status()).toBe('running');
     });
 
     it('cancels an orchestrator together with the sub-agents below it, and leaves finished ones alone', async () => {
@@ -301,46 +373,216 @@ describe('FixtureTransport', () => {
         });
     });
 
-    it('rejects a document write that started from an old version, and a create over an existing file', async () => {
-        const { transport } = await connected();
-        const path = 'decisions/pricing.md';
-        const write = { type: 'docs.write', projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental', path, content: 'mine' } as const;
-        const file = await transport.getDocFile(FIXTURE_PROJECT_ID, 'fld_car_rental', path);
-
-        expect(await transport.command({ ...write, baseHash: 'fx-old' })).toMatchObject({ ok: false, error: { code: 'conflict' } });
-        expect(await transport.command({ ...write, baseHash: null })).toMatchObject({ ok: false, error: { code: 'conflict' } });
-        expect(await transport.command({ ...write, baseHash: file.hash })).toMatchObject({ ok: true, data: { hash: docHash('mine') } });
-        expect((await transport.getDocFile(FIXTURE_PROJECT_ID, 'fld_car_rental', path)).content).toBe('mine');
-        expect(await transport.command({ ...write, folderId: 'fld_nope', baseHash: null })).toMatchObject({ ok: false, error: { code: 'not_found' } });
-        await expect(transport.getDocFile(FIXTURE_PROJECT_ID, 'fld_nope', path)).rejects.toMatchObject({ status: 404 });
-    });
-
-    it('serves each folder\'s docs as a tree, directories first', async () => {
+    it('serves each folder\'s document sources, in the registry\'s order, each as a tree, directories first', async () => {
         const transport = new FixtureTransport();
         const tree = await transport.getDocsTree(FIXTURE_PROJECT_ID);
 
         expect(tree.map(folder => folder.folderId)).toEqual(['fld_car_rental']);
-        expect(tree[0].nodes.map(node => `${ node.kind }:${ node.path }`)).toEqual(['dir:decisions', 'dir:specs', 'file:README.md']);
-        expect(tree[0].nodes[0].children?.map(node => node.path)).toEqual(['decisions/booking-flow.md', 'decisions/pricing.md']);
+        expect(tree[0].sources.map(({ id, label, root }) => [id, label, root])).toEqual([['briefback', 'Briefback', '.briefback'], ['documents', 'Documents', '.clowdy/docs']]);
+
+        const [briefback, documents] = tree[0].sources;
+
+        expect(briefback.nodes.map(node => `${ node.kind }:${ node.path }`)).toEqual(['dir:weekend-pricing']);
+        expect(briefback.nodes[0].children?.map(node => node.path)).toEqual(['weekend-pricing/research', 'weekend-pricing/handoff.md', 'weekend-pricing/plan.md']);
+        expect(documents.nodes.map(node => `${ node.kind }:${ node.path }`)).toEqual(['dir:decisions', 'dir:specs', 'file:README.md']);
+        expect(documents.nodes[0].children?.map(node => node.path)).toEqual(['decisions/booking-flow.md', 'decisions/pricing.md']);
     });
 
-    it('serves the documents of every folder, an empty one too, and the first write into a folder makes its docs', async () => {
-        const { transport, events } = await connected();
+    it('has the documents of its sources as files below their roots, in the folder\'s file system', async () => {
+        const files = new FixtureTransport().fileSystem(FIXTURE_PROJECT_ID, 'fld_car_rental');
+        const paths = (await files.list('')).map(entry => entry.path);
+
+        expect(paths).toEqual(expect.arrayContaining(['.briefback/weekend-pricing/plan.md', '.briefback/weekend-pricing/research/competitors.md', '.clowdy/docs/decisions/pricing.md']));
+    });
+
+    it('serves the documents of every folder, an empty one too', async () => {
+        const { transport } = await connected();
 
         await transport.command({ type: 'project.update', projectId: FIXTURE_PROJECT_ID, folders: [{ id: 'fld_car_rental' }, { path: '/Users/dev/car-rental-api' }, { path: '/Users/dev/notes' }] });
 
         const tree = await transport.getDocsTree(FIXTURE_PROJECT_ID);
-        const [, api, notes] = tree.map(folder => folder.folderId);
 
-        expect(tree.map(folder => folder.nodes.map(node => node.path))).toEqual([['decisions', 'specs', 'README.md'], ['decisions', 'endpoints.md'], []]);
-        expect((await transport.getDocFile(FIXTURE_PROJECT_ID, api, 'endpoints.md')).content).toContain('# Endpoints');
+        expect(tree.map(folder => folder.sources.map(source => [source.id, source.nodes.map(node => node.path)]))).toEqual([
+            [['briefback', ['weekend-pricing']], ['documents', ['decisions', 'specs', 'README.md']]],
+            [['documents', ['decisions', 'endpoints.md']]],
+            [],
+        ]);
+    });
 
-        events.length = 0;
-        expect(await transport.command({ type: 'docs.write', projectId: FIXTURE_PROJECT_ID, folderId: notes, path: 'plan.md', content: '# Plan', baseHash: null })).toMatchObject({ ok: true });
-        await vi.advanceTimersByTimeAsync(0);
+    describe('chats in a worktree', () => {
+        const create = async (transport: FixtureTransport, fields: { workspace?: ChatWorkspaceChoice; folderId?: string; projectId?: string }) => {
+            const made = await transport.command({ type: 'chat.create', projectId: fields.projectId ?? FIXTURE_PROJECT_ID, ...fields });
 
-        expect((await transport.getDocsTree(FIXTURE_PROJECT_ID))[2].nodes.map(node => node.path)).toEqual(['plan.md']);
-        expect(events.map(event => event.data)).toEqual([{ type: 'docs.changed', folderId: notes, path: 'plan.md', change: 'created' }]);
+            return made as { ok: true; data: { chat: Chat } } | { ok: false; error: { code: string; message: string } };
+        };
+
+        it('keeps the workspace a new worktree makes in the daemon\'s layout, not made yet, and lists it in what the daemon reads of the project only once it is', async () => {
+            const { transport } = await connected();
+            const made = await create(transport, { workspace: { mode: 'new', base: 'dev' } });
+
+            if (!made.ok) throw new Error(made.error.message);
+
+            const { chat } = made.data;
+            const end = chat.id.slice(-8);
+
+            expect(chat.workspace).toEqual({ id: `wks_${ end }`, folderId: 'fld_car_rental', path: `/Users/dev/Clowdy/workspaces/car-rental/${ end }/car-rental`, branch: `clowdy/${ end }`, managed: true, ready: false });
+
+            // A worktree that is not made yet is in the read, and is not there.
+            const [info] = await transport.getProjectsInfo(FIXTURE_PROJECT_ID);
+
+            expect(info.workspaces).toEqual([{ workspaceId: `wks_${ end }`, exists: false }]);
+        });
+
+        it('makes the worktree at the chat\'s first message: a Prepare workspace step with git\'s lines, from the base asked for, and the worktree is ready', async () => {
+            const { transport, events } = await connected();
+            const made = await create(transport, { workspace: { mode: 'new', base: 'dev' } });
+
+            if (!made.ok) throw new Error(made.error.message);
+
+            events.length = 0;
+            await transport.command({ type: 'chat.send', chatId: made.data.chat.id, text: 'Add the surcharge' });
+            await vi.advanceTimersByTimeAsync(0);
+
+            const [, step] = await transport.getItems({ chatId: made.data.chat.id });
+
+            expect(step?.body).toMatchObject({ kind: 'tool', name: 'workspace', state: 'done', input: { branch: made.data.chat.workspace!.branch, base: 'dev' } });
+            expect((step?.body as { output: string }).output).toContain('Fetching dev');
+            expect(events.some(event => event.data.type === 'chat.upserted' && event.data.chat.workspace?.ready === true)).toBe(true);
+
+            const [info] = await transport.getProjectsInfo(FIXTURE_PROJECT_ID);
+
+            expect(info.workspaces).toEqual([{ workspaceId: made.data.chat.workspace!.id, exists: true, branch: made.data.chat.workspace!.branch }]);
+
+            // The second message finds it made: no second step.
+            await vi.advanceTimersByTimeAsync(20_000);
+            await transport.command({ type: 'chat.send', chatId: made.data.chat.id, text: 'And the tests' });
+
+            expect((await transport.getItems({ chatId: made.data.chat.id })).filter(item => item.body.kind === 'tool' && item.body.name === 'workspace')).toHaveLength(1);
+        });
+
+        it('uses an existing worktree of the folder as it is, ready, with no step, and shares its row with a chat that has it', async () => {
+            const { transport } = await connected();
+            const path = '/Users/dev/Clowdy/workspaces/car-rental/ab12cd34/car-rental';
+            const first = await create(transport, { workspace: { mode: 'existing', path } });
+            const second = await create(transport, { workspace: { mode: 'existing', path } });
+
+            if (!first.ok || !second.ok) throw new Error('refused');
+
+            expect(first.data.chat.workspace).toMatchObject({ path, branch: 'clowdy/ab12cd34', managed: true, ready: true });
+            expect(second.data.chat.workspace?.id).toBe(first.data.chat.workspace?.id);
+
+            await transport.command({ type: 'chat.send', chatId: first.data.chat.id, text: 'Go' });
+
+            expect((await transport.getItems({ chatId: first.data.chat.id })).some(item => item.body.kind === 'tool')).toBe(false);
+            expect((await transport.getProjectsInfo(FIXTURE_PROJECT_ID))[0].workspaces).toHaveLength(1);
+        });
+
+        it('refuses what the daemon refuses: a folder that is no repository, a base that is no ref, and a path that is no worktree of the folder, the folder\'s own checkout included', async () => {
+            const { transport } = await connected();
+            const personal = (await transport.getRootSnapshot()).projects.find(project => project.id === FIXTURE_PERSONAL_PROJECT_ID)!;
+
+            expect(await create(transport, { projectId: FIXTURE_PERSONAL_PROJECT_ID, workspace: { mode: 'new' } })).toMatchObject({ ok: false, error: { code: 'invalid', message: `${ personal.folders[0].path } is not a git repository` } });
+            expect(await create(transport, { workspace: { mode: 'new', base: 'nowhere' } })).toMatchObject({ ok: false, error: { code: 'invalid' } });
+            expect(await create(transport, { workspace: { mode: 'existing', path: '/Users/dev/elsewhere' } })).toMatchObject({ ok: false, error: { code: 'invalid' } });
+            expect(await create(transport, { workspace: { mode: 'existing', path: '/Users/dev/car-rental' } })).toMatchObject({ ok: false, error: { code: 'invalid' } });
+            // Nothing was made by the refusals.
+            expect((await transport.getProjectSnapshot(FIXTURE_PROJECT_ID)).chats.some(chat => chat.workspace)).toBe(false);
+        });
+
+        describe('the places in it', () => {
+            const WORKSPACE = 'wks_ab12cd34';
+            const FOLDER = 'fld_car_rental';
+            const worktree = () => new FixtureTransport({ data: withFixtureWorkspace(createFixtureData()) });
+
+            it('has the worktree\'s own files and plans, which its folder\'s own checkout lacks, in its file system, its file names and its documents', async () => {
+                const transport = worktree();
+                const listed = async (workspaceId?: string) => (await transport.fileSystem(FIXTURE_PROJECT_ID, FOLDER, workspaceId).list('')).map(entry => entry.path);
+
+                expect(await listed(WORKSPACE)).toEqual(expect.arrayContaining(['src', '.briefback/weekend-surcharge/plan.md']));
+                expect(await transport.fileSystem(FIXTURE_PROJECT_ID, FOLDER, WORKSPACE).read('src/booking/weekend.ts')).toMatchObject({ kind: 'text', text: expect.stringContaining('weekendSurcharge') });
+                await expect(transport.fileSystem(FIXTURE_PROJECT_ID, FOLDER).read('src/booking/weekend.ts')).rejects.toMatchObject({ code: 'NotFound' });
+                expect(await listed()).not.toContain('.briefback/weekend-surcharge/plan.md');
+
+                expect(await transport.getProjectFiles(FIXTURE_PROJECT_ID, 'weekend', 40, WORKSPACE)).toEqual([{ folderId: FOLDER, path: 'src/booking/weekend.ts' }]);
+                expect(await transport.getProjectFiles(FIXTURE_PROJECT_ID, 'weekend')).toEqual([]);
+                // What both have is in both lists.
+                expect((await transport.getProjectFiles(FIXTURE_PROJECT_ID, 'price', 40, WORKSPACE)).map(file => file.path)).toEqual((await transport.getProjectFiles(FIXTURE_PROJECT_ID, 'price')).map(file => file.path));
+
+                const plans = async (workspaceId?: string) => (await transport.getDocsTree(FIXTURE_PROJECT_ID, workspaceId))[0].sources.find(source => source.id === 'briefback')!.nodes.map(node => node.path);
+
+                expect(await plans(WORKSPACE)).toEqual(['weekend-pricing', 'weekend-surcharge']);
+                expect(await plans()).toEqual(['weekend-pricing']);
+            });
+
+            it('keeps the edits of a worktree in its own file system, apart from the folder\'s', async () => {
+                const transport = worktree();
+
+                await transport.fileSystem(FIXTURE_PROJECT_ID, FOLDER, WORKSPACE).write('README.md', 'worktree\n');
+
+                expect((await transport.fileSystem(FIXTURE_PROJECT_ID, FOLDER, WORKSPACE).read('README.md'))).toMatchObject({ text: 'worktree\n' });
+                expect((await transport.fileSystem(FIXTURE_PROJECT_ID, FOLDER).read('README.md'))).not.toMatchObject({ text: 'worktree\n' });
+                expect(transport.fileSystem(FIXTURE_PROJECT_ID, FOLDER, WORKSPACE)).toBe(transport.fileSystem(FIXTURE_PROJECT_ID, FOLDER, WORKSPACE));
+            });
+
+            it('starts a terminal in the worktree, which lists its workspace and its path, apart from the folder\'s terminals', async () => {
+                const transport = worktree();
+                const own = await transport.createTerminal({ projectId: FIXTURE_PROJECT_ID, folderId: FOLDER, cols: 80, rows: 24 });
+                const inside = await transport.createTerminal({ projectId: FIXTURE_PROJECT_ID, folderId: FOLDER, workspaceId: WORKSPACE, path: 'src', cols: 80, rows: 24 });
+
+                expect(own).toMatchObject({ cwd: '/Users/dev/car-rental' });
+                expect(own.workspaceId).toBeUndefined();
+                expect(inside).toMatchObject({ workspaceId: WORKSPACE, cwd: '/Users/dev/Clowdy/workspaces/car-rental/ab12cd34/car-rental/src' });
+                expect((await transport.listTerminals(FIXTURE_PROJECT_ID)).map(terminal => terminal.workspaceId)).toEqual([undefined, WORKSPACE]);
+            });
+
+            it('refuses a workspace that no chat of the project has, one of another folder, and one that is not made yet, as the daemon does', async () => {
+                const { transport } = await connected({ data: withFixtureWorkspace(createFixtureData()) });
+                const made = await create(transport, { workspace: { mode: 'new' } });
+
+                if (!made.ok) throw new Error(made.error.message);
+
+                const pending = made.data.chat.workspace!.id;
+
+                expect(made.data.chat.workspace!.ready).toBe(false);
+
+                for (const workspaceId of ['wks_nobody', pending]) {
+                    const status = workspaceId === pending ? 503 : 404;
+
+                    await expect(transport.getDocsTree(FIXTURE_PROJECT_ID, workspaceId)).rejects.toMatchObject({ status });
+                    await expect(transport.getProjectFiles(FIXTURE_PROJECT_ID, '', 40, workspaceId)).rejects.toMatchObject({ status });
+                    await expect(transport.createTerminal({ projectId: FIXTURE_PROJECT_ID, folderId: FOLDER, workspaceId, cols: 80, rows: 24 })).rejects.toMatchObject({ status });
+                    expect(() => transport.fileSystem(FIXTURE_PROJECT_ID, FOLDER, workspaceId)).toThrow(expect.objectContaining({ status }));
+                }
+
+                // A worktree of a folder that is another one than the request's.
+                expect(() => transport.fileSystem(FIXTURE_PROJECT_ID, 'fld_other', WORKSPACE)).toThrow(expect.objectContaining({ status: 404 }));
+            });
+
+            it('gives a worktree that a chat made, once it is made, the files of its folder, since it is a checkout of the same commit', async () => {
+                const { transport } = await connected();
+                const made = await create(transport, { workspace: { mode: 'new' } });
+
+                if (!made.ok) throw new Error(made.error.message);
+
+                await transport.command({ type: 'chat.send', chatId: made.data.chat.id, text: 'Go' });
+                await vi.advanceTimersByTimeAsync(0);
+
+                const paths = (await transport.fileSystem(FIXTURE_PROJECT_ID, FOLDER, made.data.chat.workspace!.id).list('')).map(entry => entry.path);
+
+                expect(paths).toEqual(expect.arrayContaining(['README.md', 'package.json']));
+                expect((await transport.getProjectFiles(FIXTURE_PROJECT_ID, 'price', 40, made.data.chat.workspace!.id)).map(file => file.path)).toContain('src/booking/price.ts');
+            });
+        });
+
+        it('has a fixture chat that works in a worktree, which the daemon read lists as made', async () => {
+            const transport = new FixtureTransport({ data: withFixtureWorkspace(createFixtureData()) });
+            const chat = (await transport.getProjectSnapshot(FIXTURE_PROJECT_ID)).chats.find(candidate => candidate.id === FIXTURE_WORKSPACE_CHAT_ID);
+            const items = await transport.getItems({ chatId: FIXTURE_WORKSPACE_CHAT_ID });
+
+            expect(chat?.workspace).toMatchObject({ ready: true, managed: true, branch: 'clowdy/ab12cd34' });
+            expect(items.map(item => item.body.kind === 'tool' ? item.body.name : item.body.kind)).toEqual(['user', 'workspace', 'assistant']);
+            expect((await transport.getProjectsInfo(FIXTURE_PROJECT_ID))[0].workspaces).toEqual([{ workspaceId: 'wks_ab12cd34', exists: true, branch: 'clowdy/ab12cd34' }]);
+        });
     });
 
     it('keeps the folder a chat is made in, refuses one the project does not have, and hands the chats of a removed folder back to the main folder', async () => {
@@ -366,22 +608,31 @@ describe('FixtureTransport', () => {
         expect(events.map(event => event.data.type)).toEqual(['project.upserted', 'chat.upserted', 'skills.changed']);
     });
 
-    it('shares the documents of a folder two projects have, and tells both of a change', async () => {
+    it('moves a folder to another path by its id, and its chats stay with it', async () => {
         const { transport, events } = await connected();
-        const added = await transport.command({ type: 'project.add', folders: ['/Users/dev/web', '/Users/dev/car-rental'] });
-        const other = (added as { data: { project: { id: string; folders: { id: string }[] } } }).data.project;
 
-        expect((await transport.getDocsTree(other.id))[1].nodes.map(node => node.path)).toEqual(['decisions', 'specs', 'README.md']);
+        await transport.command({ type: 'project.update', projectId: FIXTURE_PROJECT_ID, folders: [{ id: 'fld_car_rental' }, { path: '/Users/dev/car-rental-api' }] });
+
+        const [, api] = (await transport.getDocsTree(FIXTURE_PROJECT_ID)).map(folder => folder.folderId);
+        const made = await transport.command({ type: 'chat.create', projectId: FIXTURE_PROJECT_ID, folderId: api });
+        const chat = (made as { data: { chat: { id: string } } }).data.chat;
 
         events.length = 0;
-        await transport.command({ type: 'docs.write', projectId: other.id, folderId: other.folders[1].id, path: 'shared.md', content: '# Shared', baseHash: null });
-        await vi.advanceTimersByTimeAsync(0);
 
-        expect(events.map(event => [event.projectId, event.data])).toEqual([
-            [FIXTURE_PROJECT_ID, { type: 'docs.changed', folderId: 'fld_car_rental', path: 'shared.md', change: 'created' }],
-            [other.id, { type: 'docs.changed', folderId: other.folders[1].id, path: 'shared.md', change: 'created' }],
-        ]);
-        expect((await transport.getDocFile(FIXTURE_PROJECT_ID, 'fld_car_rental', 'shared.md')).content).toBe('# Shared');
+        const moved = await transport.command({ type: 'project.update', projectId: FIXTURE_PROJECT_ID, folders: [{ id: 'fld_car_rental' }, { id: api, path: '/Users/dev/api-moved' }] });
+
+        expect(moved).toMatchObject({ ok: true, data: { project: { folders: [{ id: 'fld_car_rental' }, { id: api, path: '/Users/dev/api-moved' }] } } });
+        expect((await transport.getProjectSnapshot(FIXTURE_PROJECT_ID)).chats.find(candidate => candidate.id === chat.id)).toMatchObject({ folderId: api });
+        expect(events.map(event => event.data.type)).toEqual(['project.upserted', 'skills.changed']);
+        expect(await transport.command({ type: 'project.update', projectId: FIXTURE_PROJECT_ID, folders: [{ id: 'fld_nobody', path: '/Users/dev/x' }] })).toMatchObject({ ok: false, error: { code: 'invalid' } });
+    });
+
+    it('lists the documents of a folder two projects have in both', async () => {
+        const { transport } = await connected();
+        const added = await transport.command({ type: 'project.add', folders: ['/Users/dev/web', '/Users/dev/car-rental'] });
+        const other = (added as { data: { project: { id: string } } }).data.project;
+
+        expect((await transport.getDocsTree(other.id))[1].sources.map(source => source.id)).toEqual(['briefback', 'documents']);
     });
 
     it('plays the timeline once, after the first subscription: a tool finishes and text streams in', async () => {
@@ -505,6 +756,35 @@ describe('FixtureTransport agents', () => {
         expect(settings?.find(setting => setting.id === 'longContext')?.value).toBe(true);
         expect((await transport.command({ type: 'agent.update', id: 'claude', settings: { nope: true } })).ok).toBe(false);
         expect((await transport.command({ type: 'agent.update', id: 'nobody', enabled: true })).ok).toBe(false);
+    });
+
+    it('lists the permission presets of each agent, none chosen, with the default the provider has', async () => {
+        const agents = await agentsOf(new FixtureTransport());
+
+        expect(agents.claude?.permissions?.presets.map(preset => preset.id)).toEqual(['ask', 'accept-edits', 'auto', 'full']);
+        expect(agents.codex?.permissions?.presets.map(preset => preset.name)).toEqual(['Ask for approval', 'Accept edits', 'Approve for me', 'Full access']);
+        expect(agents.cursor?.permissions?.presets.map(preset => preset.id)).toEqual(['ask', 'full']);
+        expect([agents.claude, agents.codex, agents.cursor].map(agent => agent?.permissions?.default)).toEqual(['auto', 'auto', 'full']);
+        expect([agents.claude, agents.codex, agents.cursor].every(agent => agent?.permissions?.value === undefined)).toBe(true);
+    });
+
+    it('takes the permission preset an agent offers, takes it back with null, and refuses one it does not offer', async () => {
+        const { transport, events } = await connected();
+
+        expect((await transport.command({ type: 'agent.update', id: 'claude', permission: 'accept-edits' })).ok).toBe(true);
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(events.some(event => event.data.type === 'agents.changed')).toBe(true);
+        expect((await agentsOf(transport)).claude?.permissions).toMatchObject({ value: 'accept-edits', default: 'auto' });
+
+        expect((await transport.command({ type: 'agent.update', id: 'claude', permission: null })).ok).toBe(true);
+        expect((await agentsOf(transport)).claude?.permissions).not.toHaveProperty('value');
+
+        // Cursor has the pair only; nothing else about the agent changes when a preset is refused.
+        const refused = await transport.command({ type: 'agent.update', id: 'cursor', enabled: false, permission: 'auto' });
+
+        expect(refused).toMatchObject({ ok: false, error: { code: 'invalid', message: 'Cursor has no preset called "auto"' } });
+        expect(await agentsOf(transport)).toMatchObject({ cursor: { enabled: true } });
     });
 
     it('takes a program path, and goes back to the one it found with null', async () => {
@@ -790,6 +1070,24 @@ describe('FixtureTransport forks', () => {
         expect(flags(copied)).toEqual([[1, 'edit'], [6, 'fork'], [7, 'edit'], [8, 'fork']]);
         // It forks like any chat of the daemon: the second answer of the fork is another fork's source.
         expect(await transport.command({ type: 'chat.fork', chatId: FIXTURE_FORK_CHAT_ID, itemId: copied[7].id })).toMatchObject({ ok: true, data: { chat: { title: '(2) First version', forkedFrom: { chatId: FIXTURE_FORK_CHAT_ID, atSeq: 8 } } } });
+    });
+
+    it('forks a chat that works in a worktree into a copy that works in the same one: the same folder, the same worktree', async () => {
+        const data = withFixtureWorkspace(createFixtureData());
+        const transport = new FixtureTransport({ data });
+        const source = data.chats.find(chat => chat.id === FIXTURE_WORKSPACE_CHAT_ID) as Chat;
+        const answer = (await transport.getItems({ chatId: FIXTURE_WORKSPACE_CHAT_ID })).find(item => item.body.kind === 'assistant');
+
+        // The fixture's answer is final but not marked as a fork point; the daemon marks the ones its agent kept a rewind point for.
+        (data.items[source.orchestratorRunId as string].find(item => item.id === answer?.id) as { canFork?: boolean }).canFork = true;
+
+        const result = await transport.command({ type: 'chat.fork', chatId: FIXTURE_WORKSPACE_CHAT_ID, itemId: answer?.id ?? '' });
+        const made = (result as { ok: true; data: { chat: Chat } }).data.chat;
+
+        expect(result).toMatchObject({ ok: true });
+        expect(made.workspace).toEqual(source.workspace);
+        expect(made.workspace).not.toBe(source.workspace);
+        expect(made.folderId).toBe(source.folderId);
     });
 
     it('forks a chat at a final answer: a chat with the history through it, the source untouched, and the new chat and its run announced', async () => {

@@ -5,14 +5,17 @@ import {
     catalogTokens,
     createFixtureData,
     DEFAULT_STATUSES,
-    docHash,
-    docsTree,
+    docsSources,
     FIXTURE_LIVE_RUN_ID,
     FIXTURE_LIVE_TEXT_ID,
     FIXTURE_LIVE_TOOL_ID,
+    fixtureChatWorkspace,
+    fixtureFolderGit,
+    fixtureWorkspaceLog,
     type FixtureData,
 } from './fixtureData';
 import { fixtureFileContents } from './fixtureFiles';
+import { applyFolderSettings } from './fixtureFolderSettings';
 import { fail, ok, type Outcome } from './fixtureOutcome';
 import { FixtureTasks } from './fixtureTasks';
 import { FixtureTerminals } from './fixtureTerminals';
@@ -22,19 +25,24 @@ import type {
     AgentInfo,
     AgentModels,
     AgentOverrides,
+    ApprovalDecision,
     Attachment,
     Chat,
+    ChatId,
+    ChatWorkspace,
+    ChatWorkspaceRemoval,
     ClowdyEvent,
     CommandResult,
-    DocFile,
     DocsTree,
     EventData,
+    FolderGit,
     FolderId,
     Project,
     ProjectFileMatch,
     ProjectId,
     ProjectInfo,
     ProjectSnapshot,
+    ProjectWorkspaceInfo,
     QueuedMessage,
     QueuedMessageMode,
     RootSnapshot,
@@ -52,6 +60,7 @@ import type {
     TerminalId,
     TerminalInfo,
     ThreadNotice,
+    WorkspaceId,
 } from '@clowdy/protocol';
 import type { TerminalStream, TerminalStreamHandlers } from './terminalStream';
 
@@ -170,6 +179,8 @@ export class FixtureTransport implements Transport {
     readonly #fileSystems = new Map<string, MemoryFileSystem>();
     /** The turn each run is on, so the end of an older turn does not end a newer one. */
     readonly #turns = new Map<RunId, number>();
+    /** The ref each worktree that is not made yet starts from, by the workspace's id: what the step that makes it logs. */
+    readonly #bases = new Map<string, string>();
     /** How many times an edit rewrote each run's stream: an item written after one gets an id of its own, as the daemon's items do, though it takes the freed number. */
     readonly #rewrites = new Map<RunId, number>();
     /** The daemon's rules for tasks, their archive and their comments. */
@@ -194,13 +205,54 @@ export class FixtureTransport implements Transport {
     async getProjectsInfo(projectId?: ProjectId): Promise<ProjectInfo[]> {
         const { chats, tasks, git } = this.#data;
 
-        return structuredClone(this.#listed().filter(project => projectId === undefined || project.id === projectId).map(project => ({
-            projectId: project.id,
-            folders: project.folders.map(folder => ({ folderId: folder.id, exists: true, ...git[folder.path], chats: chats.filter(chat => chat.projectId === project.id && chat.folderId === folder.id).length })),
-            chats: chats.filter(chat => chat.projectId === project.id).length,
-            tasks: tasks.filter(task => task.projectId === project.id).length,
-            activeRuns: this.#activeRuns(project.id),
-        })));
+        return structuredClone(this.#listed().filter(project => projectId === undefined || project.id === projectId).map((project) => {
+            // The worktrees the project's chats work in, as the daemon reads them: whether each is made, and the branch it has (the fixture's worktrees keep the branch they were made with).
+            const workspaces = new Map<string, ProjectWorkspaceInfo>();
+
+            for (const { workspace } of chats.filter(chat => chat.projectId === project.id)) {
+                if (workspace) workspaces.set(workspace.id, { workspaceId: workspace.id, exists: workspace.ready, ...(workspace.ready && workspace.branch !== undefined && { branch: workspace.branch }) });
+            }
+
+            return {
+                projectId: project.id,
+                folders: project.folders.map(folder => ({ folderId: folder.id, exists: true, ...git[folder.path], chats: chats.filter(chat => chat.projectId === project.id && chat.folderId === folder.id).length })),
+                chats: chats.filter(chat => chat.projectId === project.id).length,
+                tasks: tasks.filter(task => task.projectId === project.id).length,
+                activeRuns: this.#activeRuns(project.id),
+                ...(workspaces.size > 0 && { workspaces: [...workspaces.values()] }),
+            };
+        }));
+    }
+
+    async getFolderGit(projectId: ProjectId, folderId: FolderId): Promise<FolderGit> {
+        const folder = this.#project(projectId).folders.find(candidate => candidate.id === folderId);
+
+        if (!folder) throw new TransportError(`No such folder: ${ folderId }`, 404);
+
+        return structuredClone(fixtureFolderGit(folder.path, this.#data.git[folder.path], folder.settings?.baseBranch));
+    }
+
+    async getChatWorkspaceRemoval(chatId: ChatId): Promise<ChatWorkspaceRemoval> {
+        const chat = this.#data.chats.find(candidate => candidate.id === chatId);
+
+        if (!chat) throw new TransportError(`No such chat: ${ chatId }`, 404);
+
+        return this.#removal(chat);
+    }
+
+    /**
+     * What the daemon says of a chat's worktree: removable when Clowdy made it and it is on the disk (`ready`), and no chat outside this one and the threads below it (archived ones
+     * count) works in it. The fixtures keep no files, so what the daemon reads from the tree (changes, merged work) is taken as fine.
+     */
+    #removal(chat: Chat): ChatWorkspaceRemoval {
+        const { workspace } = chat;
+
+        if (!workspace) return { removable: false };
+
+        const below = new Set([chat.id, ...this.#threadsBelow(chat).map(thread => thread.id)]);
+        const shared = this.#data.chats.some(other => other.workspace?.id === workspace.id && !below.has(other.id));
+
+        return { removable: workspace.managed && workspace.ready && !shared, path: workspace.path, ...(workspace.branch !== undefined && { branch: workspace.branch }) };
     }
 
     async getProjectSnapshot(projectId: ProjectId): Promise<ProjectSnapshot> {
@@ -271,6 +323,19 @@ export class FixtureTransport implements Transport {
         });
     }
 
+    async getTaskDetailByKey(projectId: ProjectId, key: string): Promise<TaskDetail> {
+        const project = this.#project(projectId);
+        const match = /^(.+)-(\d+)$/.exec(key);
+        // As the daemon reads a key: the project's own prefix in any case and a number it has, the archived tasks included; anything else is a 404.
+        const task = match && match[1].toUpperCase() === project.taskPrefix.toUpperCase()
+            ? this.#data.tasks.find(candidate => candidate.projectId === projectId && candidate.number === Number(match[2]))
+            : undefined;
+
+        if (!task) throw new TransportError(`No such task: ${ key }`, 404);
+
+        return this.getTaskDetail(task.id);
+    }
+
     async getTaskComments(taskId: TaskId, page?: PageQuery): Promise<TaskCommentsPage> {
         return this.#tasks.commentsPage(taskId, page);
     }
@@ -279,47 +344,56 @@ export class FixtureTransport implements Transport {
         return this.#tasks.archivedPage(projectId, page);
     }
 
-    async getDocsTree(projectId: ProjectId): Promise<DocsTree> {
-        // Every fixture folder exists; one without a docs folder has no documents, and reading does not make one.
-        return this.#project(projectId).folders.map(folder => ({ folderId: folder.id, nodes: docsTree(Object.keys(this.#data.docs[folder.path] ?? {})) }));
+    async getDocsTree(projectId: ProjectId, workspaceId?: WorkspaceId): Promise<DocsTree> {
+        const project = this.#project(projectId);
+        const workspace = workspaceId === undefined ? undefined : this.#workspaceOf(project, workspaceId);
+
+        // Every fixture folder exists; one with no source has none, and reading does not make one. The worktree's folder lists the worktree's documents.
+        return project.folders.map((folder) => {
+            const root = this.#rootOf(folder, workspace);
+
+            return { folderId: folder.id, sources: docsSources({ briefback: this.#data.briefback[root] ?? this.#data.briefback[folder.path], documents: this.#data.docs[root] ?? this.#data.docs[folder.path] }) };
+        });
     }
 
-    async getDocFile(projectId: ProjectId, folderId: FolderId, path: string): Promise<DocFile> {
-        const folder = this.#project(projectId).folders.find(candidate => candidate.id === folderId);
-
-        if (!folder) throw new TransportError(`No such folder: ${ folderId }`, 404);
-
-        const content = this.#data.docs[folder.path]?.[path];
-
-        if (content === undefined) throw new TransportError(`No such file: ${ path }`, 404);
-
-        return { path, content, hash: docHash(content) };
-    }
-
-    async getProjectFiles(projectId: ProjectId, query: string, limit = 40): Promise<ProjectFileMatch[]> {
+    async getProjectFiles(projectId: ProjectId, query: string, limit = 40, workspaceId?: WorkspaceId): Promise<ProjectFileMatch[]> {
         const words = query.toLowerCase().split(/\s+/).filter(Boolean);
         const project = this.#data.projects.find(candidate => candidate.id === projectId);
 
         if (!project) return [];
 
-        // Like the daemon: every folder's files, the folder's name counting as part of the path when there are several.
+        const workspace = workspaceId === undefined ? undefined : this.#workspaceOf(project, workspaceId);
+
+        // Like the daemon: every folder's files (the worktree's in place of its folder's), the folder's name counting as part of the path when there are several.
         const names = folderNames(project.folders);
         const several = project.folders.length > 1;
-        const found = project.folders.flatMap((folder, index) => (this.#data.files[folder.path] ?? []).map(path => ({ folderId: folder.id, path, searched: several ? `${ names[index] }/${ path }` : path })));
+        const found = project.folders.flatMap((folder, index) => {
+            const root = this.#rootOf(folder, workspace);
+
+            return (this.#data.files[root] ?? this.#data.files[folder.path] ?? []).map(path => ({ folderId: folder.id, path, searched: several ? `${ names[index] }/${ path }` : path }));
+        });
 
         return found.filter(file => words.every(word => file.searched.toLowerCase().includes(word))).slice(0, limit).map(({ folderId, path }) => ({ folderId, path }));
     }
 
-    fileSystem(projectId: ProjectId, folderId: FolderId): ProjectFileSystem {
-        const folder = this.#project(projectId).folders.find(candidate => candidate.id === folderId);
+    fileSystem(projectId: ProjectId, folderId: FolderId, workspaceId?: WorkspaceId): ProjectFileSystem {
+        const project = this.#project(projectId);
+        const folder = project.folders.find(candidate => candidate.id === folderId);
 
         if (!folder) throw new TransportError(`Folder ${ folderId } does not exist`, 404);
 
-        let fileSystem = this.#fileSystems.get(folderId);
+        const workspace = workspaceId === undefined ? undefined : this.#workspaceOf(project, workspaceId, folderId);
+        const key = workspaceId ?? folderId;
+        let fileSystem = this.#fileSystems.get(key);
 
         if (!fileSystem) {
-            fileSystem = new MemoryFileSystem(fixtureFileContents(this.#data.files[folder.path] ?? []));
-            this.#fileSystems.set(folderId, fileSystem);
+            // The folder's documents are files like the others, below the roots of their sources: `.clowdy/docs`, `.briefback`.
+            const below = (root: string, files: Record<string, string> | undefined) => Object.entries(files ?? {}).map(([path, text]) => [`${ root }/${ path }`, text] as const);
+            const root = this.#rootOf(folder, workspace);
+            const documents = Object.fromEntries([...below('.clowdy/docs', this.#data.docs[root] ?? this.#data.docs[folder.path]), ...below('.briefback', this.#data.briefback[root] ?? this.#data.briefback[folder.path])]);
+
+            fileSystem = new MemoryFileSystem({ ...fixtureFileContents(this.#data.files[root] ?? this.#data.files[folder.path] ?? []), ...documents });
+            this.#fileSystems.set(key, fileSystem);
         }
 
         return fileSystem;
@@ -385,7 +459,9 @@ export class FixtureTransport implements Transport {
 
     async createTerminal(request: TerminalCreate): Promise<TerminalInfo> {
         try {
-            return this.#terminals.create(this.#project(request.projectId), request);
+            const project = this.#project(request.projectId);
+
+            return this.#terminals.create(project, request, request.workspaceId === undefined ? undefined : this.#workspaceOf(project, request.workspaceId, request.folderId));
         }
         catch (error) {
             throw error instanceof TransportError ? error : new TransportError((error as Error).message, 404);
@@ -428,6 +504,25 @@ export class FixtureTransport implements Transport {
         if (!project) throw new TransportError(`No such project: ${ projectId }`, 404);
 
         return project;
+    }
+
+    /**
+     * The worktree a request names, as the daemon judges it: one the project's chats work in, a checkout of a folder of the project (and of `folderId` when the request
+     * names one), and made. `not_found` for the first two, `unavailable` while the chat's first turn has not made it yet.
+     */
+    #workspaceOf(project: Project, workspaceId: WorkspaceId, folderId?: FolderId): ChatWorkspace {
+        const workspace = this.#data.chats.find(chat => chat.projectId === project.id && chat.workspace?.id === workspaceId)?.workspace;
+
+        if (!workspace || !project.folders.some(folder => folder.id === workspace.folderId) || (folderId !== undefined && workspace.folderId !== folderId)) throw new TransportError(`No such workspace: ${ workspaceId }`, 404);
+
+        if (!workspace.ready) throw new TransportError('The worktree is not made yet', 503);
+
+        return workspace;
+    }
+
+    /** Where a folder's files are read: the worktree's path when the request is for a worktree of that folder, else the folder's own. */
+    #rootOf(folder: { id: FolderId; path: string }, workspace: ChatWorkspace | undefined): string {
+        return workspace?.folderId === folder.id ? workspace.path : folder.path;
     }
 
     /** The daemon refuses an agent it does not know when a chat is made or changed; one that is switched off waits for the first message. */
@@ -492,10 +587,13 @@ export class FixtureTransport implements Transport {
         return this.#data.agents.find(agent => agent.id === id);
     }
 
-    #updateAgent({ id, enabled, settings, path, env }: Extract<CommandInput, { type: 'agent.update' }>): Outcome {
+    #updateAgent({ id, enabled, settings, path, env, permission }: Extract<CommandInput, { type: 'agent.update' }>): Outcome {
         const agent = this.#agent(id);
 
         if (!agent) return fail('not_found', `There is no agent called "${ id }"`);
+
+        // A preset the agent does not offer is refused before anything changes, as the daemon does.
+        if (permission && !agent.permissions?.presets.some(preset => preset.id === permission)) return fail('invalid', `${ agent.name } has no preset called "${ permission }"`);
 
         if (enabled !== undefined) {
             agent.enabled = enabled;
@@ -510,6 +608,12 @@ export class FixtureTransport implements Transport {
             if (!setting) return fail('invalid', `${ agent.name } has no setting called "${ settingId }"`);
 
             setting.value = value;
+        }
+
+        // `value` is the person's choice only: `null` takes it back, and the agent runs on its provider's default.
+        if (agent.permissions && permission !== undefined) {
+            if (permission === null) delete agent.permissions.value;
+            else agent.permissions.value = permission;
         }
 
         // What the person changed about how the agent starts, kept as the daemon keeps it: a path they chose (`null` goes
@@ -636,7 +740,14 @@ export class FixtureTransport implements Transport {
 
                 if (command.folders?.length === 0) return fail('invalid', 'A project needs at least one folder');
 
-                const folders = command.folders?.map(entry => ('id' in entry ? project.folders.find(folder => folder.id === entry.id) : (project.folders.find(folder => folder.path === entry.path) ?? { id: this.#id('fld'), path: entry.path })));
+                // `{ id }` keeps a folder, `{ id, path }` keeps it at another place (its chats stay with it), `{ path }` adds one.
+                const folders = command.folders?.map((entry) => {
+                    if (!('id' in entry)) return project.folders.find(folder => folder.path === entry.path) ?? { id: this.#id('fld'), path: entry.path };
+
+                    const kept = project.folders.find(folder => folder.id === entry.id);
+
+                    return kept && 'path' in entry ? { id: kept.id, path: entry.path } : kept;
+                });
 
                 if (folders?.some(folder => folder === undefined)) return fail('invalid', 'A folder is not one of the project\'s');
 
@@ -651,7 +762,7 @@ export class FixtureTransport implements Transport {
 
                 if (project.personal && command.settings?.icon !== undefined) return fail('conflict', 'The personal space has no icon of its own');
 
-                if (mainFolder({ folders: nextFolders }).id !== mainFolder(project).id && this.#activeRuns(project.id) > 0) return fail('conflict', 'The agents of this project are still working. Stop them first.');
+                if ((mainFolder({ folders: nextFolders }).id !== mainFolder(project).id || mainFolder({ folders: nextFolders }).path !== mainFolder(project).path) && this.#activeRuns(project.id) > 0) return fail('conflict', 'The agents of this project are still working. Stop them first.');
 
                 const settings: Project['settings'] = { ...project.settings };
 
@@ -678,6 +789,14 @@ export class FixtureTransport implements Transport {
 
                 // Like the daemon: `{ project }`.
                 return ok({ project: structuredClone(project) });
+            }
+            case 'project.updateFolder': {
+                const project = data.projects.find(candidate => candidate.id === command.projectId);
+                const outcome = applyFolderSettings(project, command.folderId, command.settings);
+
+                if (project && outcome.ok) this.#emit(project.id, { type: 'project.upserted', project, statuses: data.statuses[project.id] ?? DEFAULT_STATUSES });
+
+                return outcome;
             }
             case 'project.delete': {
                 const project = data.projects.find(candidate => candidate.id === command.projectId);
@@ -736,9 +855,31 @@ export class FixtureTransport implements Transport {
                     return fail('invalid', `Folder ${ command.folderId } does not belong to project ${ command.projectId }`);
                 }
 
+                const project = data.projects.find(candidate => candidate.id === command.projectId);
+                const id = this.#id('c');
+                let workspace: Chat['workspace'];
+
+                // Like the daemon: a worktree of the chat's folder (the main one when none is named), refused where the folder is no repository, the base is no ref or the path is no worktree.
+                if (command.workspace && project) {
+                    const folder = project.folders.find(candidate => candidate.id === command.folderId) ?? mainFolder(project);
+                    const made = fixtureChatWorkspace(command.workspace, {
+                        projectName: project.name,
+                        folder,
+                        chatId: id,
+                        head: data.git[folder.path],
+                        known: data.chats.flatMap(chat => (chat.workspace ? [chat.workspace] : [])),
+                    });
+
+                    if ('error' in made) return fail('invalid', made.error);
+
+                    workspace = structuredClone(made.workspace);
+
+                    if (command.workspace.mode === 'new') this.#bases.set(workspace.id, command.workspace.base ?? 'origin/main');
+                }
+
                 const now = Date.now();
                 const chat: Chat = {
-                    id: this.#id('c'),
+                    id,
                     projectId: command.projectId,
                     title: command.title ?? 'New chat',
                     mode: command.mode ?? 'autopilot',
@@ -746,6 +887,7 @@ export class FixtureTransport implements Transport {
                     ...(command.model && { model: command.model }),
                     ...(command.effort && { effort: command.effort }),
                     ...(command.folderId && { folderId: command.folderId }),
+                    ...(workspace && { workspace }),
                     createdAt: now,
                     updatedAt: now,
                 };
@@ -881,6 +1023,8 @@ export class FixtureTransport implements Transport {
 
                 if (!chat) return fail('not_found', 'No such chat');
 
+                if (command.removeWorkspace === true && !this.#removal(chat).removable) return fail('conflict', 'The worktree cannot be removed');
+
                 // Like the daemon: the threads below go with it, archived ones too, once no agent of any of them works.
                 const gone = [...this.#threadsBelow(chat).reverse(), chat];
 
@@ -940,6 +1084,9 @@ export class FixtureTransport implements Transport {
             case 'run.answer':
                 return this.#answerQuestion(command.runId, command.questionId, command.answer);
 
+            case 'run.decide':
+                return this.#decideApproval(command.runId, command.approvalId, command.decision);
+
             case 'skills.setEnabled': {
                 const skill = data.skills.find(candidate => candidate.name === command.name);
 
@@ -975,34 +1122,6 @@ export class FixtureTransport implements Transport {
                 this.#agentsChanged();
 
                 return ok();
-            }
-            case 'docs.write': {
-                const folder = data.projects.find(project => project.id === command.projectId)?.folders.find(candidate => candidate.id === command.folderId);
-
-                if (!folder) return fail('not_found', `Folder ${ command.folderId } does not exist`);
-
-                // The first document of a folder makes its docs folder.
-                const files = data.docs[folder.path] ??= {};
-                const existing = files[command.path];
-
-                if (command.baseHash === null && existing !== undefined) return fail('conflict', 'The file already exists', { hash: docHash(existing), content: existing });
-
-                if (command.baseHash !== null) {
-                    if (existing === undefined) return fail('not_found', 'No such file');
-
-                    if (docHash(existing) !== command.baseHash) return fail('conflict', 'The file changed on disk', { hash: docHash(existing), content: existing });
-                }
-
-                files[command.path] = command.content;
-
-                // Like the daemon: every project that has the folder hears of it, with the id the folder has there.
-                for (const project of data.projects) {
-                    const shared = project.folders.find(candidate => candidate.path === folder.path);
-
-                    if (shared) this.#emit(project.id, { type: 'docs.changed', folderId: shared.id, path: command.path, change: existing === undefined ? 'created' : 'modified' });
-                }
-
-                return ok({ hash: docHash(command.content) });
             }
         }
     }
@@ -1239,6 +1358,9 @@ export class FixtureTransport implements Transport {
             ...(source.engine && { engine: source.engine }),
             ...(source.model && { model: source.model }),
             ...(source.effort && { effort: source.effort }),
+            // The copy works where its source does: the same folder and the same worktree.
+            ...(chat.folderId && { folderId: chat.folderId }),
+            ...(chat.workspace && { workspace: structuredClone(chat.workspace) }),
             orchestratorRunId: runId,
             forkedFrom: { chatId: chat.id, atSeq: answer.seq },
             createdAt: now,
@@ -1346,12 +1468,36 @@ export class FixtureTransport implements Transport {
         }
 
         this.#appendItem(run, body);
+        this.#prepareWorkspace(chat, run);
         this.#later(400, () => this.#streamReply(run, reply));
         this.#later(TURN_MS, () => {
             if (this.#turns.get(run.id) !== turn || run.status !== 'running') return;
 
             this.#endTurn(chat, run);
         });
+    }
+
+    /**
+     * The first turn of a chat that works in a worktree makes it, as the daemon's `Prepare workspace` does: a step of the chat's stream with git's lines as its log, and the
+     * worktree is ready once it is over. At once here: the fixture has no time for a step that takes seconds. Nothing for a worktree that is made, or a chat in the folder itself.
+     */
+    #prepareWorkspace(chat: Chat, run: Run): void {
+        const { workspace } = chat;
+
+        if (!workspace || workspace.ready) return;
+
+        const base = this.#bases.get(workspace.id) ?? 'origin/main';
+
+        this.#appendItem(run, {
+            kind: 'tool',
+            toolCallId: this.#id('tc-workspace'),
+            name: 'workspace',
+            state: 'done',
+            input: { path: workspace.path, ...(workspace.branch && { branch: workspace.branch }), base },
+            output: fixtureWorkspaceLog(workspace, base),
+        });
+        workspace.ready = true;
+        this.#emit(chat.projectId, { type: 'chat.upserted', chat });
     }
 
     /**
@@ -1728,11 +1874,43 @@ export class FixtureTransport implements Transport {
         if (!run || !item || item.body.kind !== 'question') return fail('not_found', 'No such question');
 
         this.#saveItem(run, { ...item, body: { ...item.body, answer } });
-        run.status = 'running';
-        run.statusReason = undefined;
-        this.#saveRun(run);
-        this.#later(500, () => this.#streamReply(run, `Thanks. I will go with "${ answer }" and continue.`));
+
+        // The run goes on only when no card is left to answer: a request for permission that still waits keeps it waiting, as it does in the daemon, which counts both.
+        if (!this.#hasOpenCard(runId)) {
+            run.status = 'running';
+            run.statusReason = undefined;
+            this.#saveRun(run);
+            this.#later(500, () => this.#streamReply(run, `Thanks. I will go with "${ answer }" and continue.`));
+        }
 
         return ok();
+    }
+
+    /** A question without an answer, or a request for permission that is open: what keeps a run in `waiting_user`. */
+    #hasOpenCard(runId: RunId): boolean {
+        return (this.#data.items[runId] ?? []).some(candidate => (candidate.body.kind === 'approval' && candidate.body.state === 'open') || (candidate.body.kind === 'question' && candidate.body.answer === undefined));
+    }
+
+    #decideApproval(runId: RunId, approvalId: string, decision: ApprovalDecision): Outcome {
+        const run = this.#data.runs.find(candidate => candidate.id === runId);
+        const items = this.#data.items[runId] ?? [];
+        const item = items.find(candidate => candidate.body.kind === 'approval' && candidate.body.approvalId === approvalId);
+
+        if (!run || !item || item.body.kind !== 'approval') return fail('not_found', 'No such approval');
+
+        if (item.body.state !== 'open') return fail('conflict', 'This approval has already been decided or withdrawn');
+
+        if (!item.body.decisions.includes(decision)) return fail('invalid', 'The agent did not offer that answer');
+
+        this.#saveItem(run, { ...item, body: { ...item.body, state: 'decided', decision } });
+
+        // The run goes back to work when no card is left to answer, a question's included.
+        if (run.status === 'waiting_user' && !this.#hasOpenCard(runId)) {
+            run.status = 'running';
+            run.statusReason = undefined;
+            this.#saveRun(run);
+        }
+
+        return ok({ runId });
     }
 }

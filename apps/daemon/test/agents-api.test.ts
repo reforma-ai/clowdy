@@ -3,18 +3,20 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { startDaemon } from '../src/daemon';
-import { KNOWN_AGENTS } from '../src/engine/acp/catalog';
 import { announceAgentsChanged } from '../src/providers/announce';
+import { PROVIDERS } from '../src/providers/builtin';
 import { ProvidersService } from '../src/providers/service';
 import { FAKE_AGENT } from './acp-helpers';
-import { cleanTempDirs, Harness, restartHarness, startHarness, testAgents, testConfig, waitFor } from './helpers';
+import { cleanTempDirs, Harness, restartHarness, startHarness, testAgents, testConfig, testSpec, waitFor } from './helpers';
 
 import type { AgentInfo } from '@clowdy/protocol';
+
+const SPECS = PROVIDERS.map(provider => provider.spec);
 
 afterAll(cleanTempDirs);
 
 const harnesses: Harness[] = [];
-const codexLaunch = KNOWN_AGENTS.find(agent => agent.id === 'codex')?.launch;
+const codexLaunch = SPECS.find(agent => agent.id === 'codex')?.launch;
 const codexPackage = codexLaunch?.kind === 'package' ? codexLaunch.package : undefined;
 
 afterEach(async () => {
@@ -94,6 +96,35 @@ describe('agent commands', () => {
         expect((await list()).find(agent => agent.id === 'opencode')).toMatchObject({ status: 'disabled', enabled: false, path: process.execPath });
     });
 
+    test('a permission preset is picked, listed as the choice, cleared with null, and refused when the agent does not offer it', async () => {
+        const { h, list, add } = await setup();
+        const presets = async (id: string) => (await list()).find(agent => agent.id === id)?.permissions;
+
+        add();
+
+        expect(await presets('claude')).toMatchObject({ default: 'auto' });
+        expect((await presets('claude'))?.value).toBeUndefined();
+        expect((await presets('mine'))?.presets.map(preset => preset.id)).toEqual(['ask', 'full']);
+
+        h.ok('agent.update', { id: 'claude', permission: 'full' });
+        h.ok('agent.update', { id: 'mine', permission: 'ask' });
+
+        expect((await presets('claude'))?.value).toBe('full');
+        expect((await presets('mine'))?.value).toBe('ask');
+
+        // The choice is kept when something else changes, and cleared by `null`.
+        h.ok('agent.update', { id: 'claude', enabled: true });
+        expect((await presets('claude'))?.value).toBe('full');
+
+        h.ok('agent.update', { id: 'claude', permission: null });
+        expect((await presets('claude'))?.value).toBeUndefined();
+
+        const refused = h.send('agent.update', { id: 'opencode', permission: 'auto' });
+
+        expect(refused.ok ? 'ok' : refused.error.code).toBe('invalid');
+        expect(h.send('agent.update', { id: 'claude', permission: 'sandbox' as 'auto' }).ok).toBe(false);
+    });
+
     test('refusals are command errors: a bad id, a clash, an unknown agent, a built-in one removed', async () => {
         const { h, add } = await setup();
 
@@ -166,7 +197,7 @@ describe('accounts, usage and sign-in over the API', () => {
             announce: () => announce(),
             cwd: config.dataDir,
             providers: [{
-                id: 'mine',
+                ...testSpec('mine'),
                 login: { args: [login] },
                 read: async () => await Bun.file(marker).exists()
                     ? { signIn: { status: 'signed-in', account: { email: 'ada@example.com', plan: 'Max', method: 'subscription' } }, usage: { state: 'ok', windows: [{ id: 'session', label: 'Session', usedPercent: 8 }], fetchedAt: 1 } }

@@ -68,7 +68,7 @@ async function mount(page: Page = {}, options: ModelStoreOptions = {}) {
 
         return (current.answer ?? ((next: CommandInput) => (next.type === 'chat.create' ? accepted({ chat: madeFrom(next) }) : accepted())))(input);
     });
-    const root$ = { command, transport, skillsRevision: 0, selectedProject: { project: { id: 'p' }, taskList: [] }, ...store } as unknown as RootStore;
+    const root$ = { command, transport, skillsRevision: 0, selectedProject: { project: { id: 'p', folders: [{ id: 'f1', path: '/Users/dev/web' }] }, taskList: [] }, ...store } as unknown as RootStore;
 
     draw = () => act(async () => {
         root.render(

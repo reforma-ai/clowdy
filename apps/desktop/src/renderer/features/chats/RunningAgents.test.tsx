@@ -465,6 +465,30 @@ describe('RunningAgents, threads', () => {
         expect(buttons(header())).toEqual(['Stop all', 'Hide agents']);
     });
 
+    it('puts a thread that waits for the person first, also when it rests for its background work and its card is the only sign', async () => {
+        put({ ...runs().get('r-orch-6e')!, awaitingUser: true });
+        await draw('c-6');
+
+        expect(rows().map(row => buttons(row))).toEqual([
+            ['Load test the checkout · Waiting for you', 'Stop'],
+            ['Fix the price rounding · Running bun test src/checkout', 'Stop'],
+        ]);
+    });
+
+    it('keeps a thread that waits for the person on the folded line, and folds the thread that works away', async () => {
+        put({ ...runs().get('r-orch-6e')!, awaitingUser: true });
+        ui().toggleAgentsFolded();
+        await draw('c-6');
+
+        expect(rows().map(row => buttons(row))).toEqual([['Load test the checkout · Waiting for you', 'Stop']]);
+        expect(header()!.textContent).toBe('Agents running · 2Stop all');
+
+        // Once it is decided nothing is left to show on the folded line.
+        put({ ...runs().get('r-orch-6e')!, awaitingUser: undefined });
+        await draw('c-6');
+        expect(lines()).toEqual([header()]);
+    });
+
     it('opens the thread\'s chat from its row', async () => {
         await draw('c-6');
         await act(async () => rows()[1].querySelector('button')!.click());

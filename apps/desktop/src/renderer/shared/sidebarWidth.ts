@@ -4,6 +4,9 @@ import { readStored, writeStored, type KeyValueStorage } from '../stores/storage
 export const SIDEBAR_MIN_WIDTH = 220;
 export const SIDEBAR_MAX_WIDTH = 480;
 
+/** What the page beside the column keeps (the chat), so a wide column cannot squeeze it out. */
+export const MAIN_MIN_WIDTH = 350;
+
 const storageKey = (screen: string) => `clowdy:sidebar-width:${ screen }`;
 
 const clamp = (width: number) => Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, width));

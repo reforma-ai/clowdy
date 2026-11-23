@@ -35,7 +35,7 @@ let chat: Chat;
 let chatNumber = 0;
 
 async function mount(props: { chat?: Chat; projectId?: string } = { chat }) {
-    const store = { command: vi.fn(async () => ({ ok: true, requestId: 'request-1', data: {} })), transport, skillsRevision: 0, selectedProject: { project: { id: 'p' }, taskList: [] }, ...await modelStore() };
+    const store = { command: vi.fn(async () => ({ ok: true, requestId: 'request-1', data: {} })), transport, skillsRevision: 0, selectedProject: { project: { id: 'p', folders: [{ id: 'f1', path: '/Users/dev/web' }] }, taskList: [] }, ...await modelStore() };
 
     await act(async () => {
         root.render(

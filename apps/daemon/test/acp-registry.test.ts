@@ -3,17 +3,24 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, st
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { KNOWN_AGENTS } from '../src/engine/acp/catalog';
 import { Discovery, parseVersion, readLoginPath } from '../src/engine/acp/discovery';
 import { buildAgentEnv } from '../src/engine/acp/env';
 import { AgentRegistry, AgentRegistryError } from '../src/engine/acp/registry';
+import { PROVIDERS } from '../src/providers/builtin';
+
+import type { AgentPermissions } from '@clowdy/protocol';
+
+const SPECS = PROVIDERS.map(provider => provider.spec);
+
+/** What `AgentInfo.permissions` says for an agent whose provider declares none: the client's pair, `full` by default. */
+const GENERIC_PERMISSIONS: AgentPermissions = { presets: [{ id: 'ask', name: 'Ask for approval', description: expect.any(String) }, { id: 'full', name: 'Full access', description: expect.any(String) }], default: 'full' };
 
 let root: string;
 let bin: string;
 
 /** The package an adapter agent is fetched as, from the catalog, so a new pin touches no test. */
 function pinned(id: string): string {
-    const launch = KNOWN_AGENTS.find(agent => agent.id === id)?.launch;
+    const launch = SPECS.find(agent => agent.id === id)?.launch;
 
     if (launch?.kind !== 'package') throw new Error(`${ id } is not run from a package`);
 
@@ -43,7 +50,7 @@ afterEach(() => rmSync(root, { recursive: true, force: true }));
 
 describe('the catalog', () => {
     test('fetches each adapter at one exact, stable version, never a range, a tag or a preview', () => {
-        const packages = KNOWN_AGENTS.flatMap(agent => agent.launch.kind === 'package' ? [agent.launch.package] : []);
+        const packages = SPECS.flatMap(agent => agent.launch.kind === 'package' ? [agent.launch.package] : []);
 
         expect(packages.length).toBeGreaterThan(0);
 
@@ -141,8 +148,19 @@ describe('AgentRegistry', () => {
         const path = program('cursor-agent', 'cursor 2026.09.01');
         const reg = registry();
 
-        expect(await byId(reg, 'cursor')).toEqual({ id: 'cursor', name: 'Cursor', custom: false, enabled: true, status: 'ready', path, version: '2026.09.01', launch: 'cursor-agent acp', login: 'cursor-agent login' });
+        expect(await byId(reg, 'cursor')).toEqual({ id: 'cursor', name: 'Cursor', custom: false, enabled: true, status: 'ready', path, version: '2026.09.01', launch: 'cursor-agent acp', login: 'cursor-agent login', permissions: GENERIC_PERMISSIONS });
         expect(await byId(reg, 'opencode')).toMatchObject({ status: 'missing', detail: expect.stringContaining('no `opencode` command was found'), launch: 'opencode acp' });
+    });
+
+    test('a provider that is only a spec is a working agent: found, started and kept apart from the others, with no change to the registry', async () => {
+        const path = program('plain-agent', 'plain 1.0.0');
+        const reg = new AgentRegistry({ discovery: discovery(), providers: [{ spec: { id: 'plain', name: 'Plain', programs: ['plain-agent'], launch: { kind: 'binary', args: ['--acp'] }, login: 'plain-agent login' } }] });
+
+        expect(await reg.list()).toEqual([{ id: 'plain', name: 'Plain', custom: false, enabled: true, status: 'ready', path, version: '1.0.0', launch: 'plain-agent --acp', login: 'plain-agent login', permissions: GENERIC_PERMISSIONS }]);
+        expect(await reg.resolve('plain')).toMatchObject({ ok: true, agent: { id: 'plain', command: path, args: ['--acp'], protocol: 'v1' } });
+        expect(reg.has('plain')).toBe(true);
+        expect(reg.has('cursor')).toBe(false);
+        expect(() => reg.add({ id: 'plain', name: 'Again', command: 'x', args: [] })).toThrow(AgentRegistryError);
     });
 
     test('the task tools reach an agent through the shell unless its spec says it uses MCP; a custom agent says it in agents.json', () => {
@@ -151,7 +169,7 @@ describe('AgentRegistry', () => {
         reg.add({ id: 'mine', name: 'Mine', command: 'my-agent', args: [] });
         reg.add({ id: 'sandboxed', name: 'Sandboxed', command: 'my-other-agent', args: [], taskTools: 'mcp' });
 
-        for (const spec of KNOWN_AGENTS) {
+        for (const spec of SPECS) {
             expect(reg.taskChannel(spec.id)).toBe(spec.taskTools ?? 'cli');
         }
 
@@ -257,14 +275,16 @@ describe('AgentRegistry', () => {
         const claude = program('claude', '2.1.325 (Claude Code)');
         const reg = registry();
 
-        expect(await byId(reg, 'claude')).toEqual({ id: 'claude', name: 'Claude Code', custom: false, enabled: true, status: 'ready', path: claude, version: '2.1.325', launch: `bun x --bun ${ pinned('claude') }`, fetches: pinned('claude'), login: 'claude auth login', canCompact: true, settings: expect.any(Array) });
+        expect(await byId(reg, 'claude')).toEqual({ id: 'claude', name: 'Claude Code', custom: false, enabled: true, status: 'ready', path: claude, version: '2.1.325', launch: `bun x --bun ${ pinned('claude') }`, fetches: pinned('claude'), login: 'claude auth login', canCompact: true, settings: expect.any(Array), permissions: expect.any(Object) });
 
         const resolved = await reg.resolve('claude');
 
         expect(resolved).toMatchObject({ ok: true, agent: { command: process.execPath, args: ['x', '--bun', pinned('claude')] } });
         expect(resolved.ok && resolved.agent.env).toMatchObject({ CLAUDE_CODE_EXECUTABLE: claude, ENABLE_CLAUDEAI_MCP_SERVERS: 'false', CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1' });
         expect(resolved.ok && resolved.agent.scrub.some(pattern => pattern.test('ANTHROPIC_API_KEY'))).toBe(true);
-        expect(resolved.ok && resolved.agent.sessionMeta).toEqual({ claudeCode: { options: { disallowedTools: ['AskUserQuestion', 'ExitPlanMode'] } } });
+        // Its provider's default preset (Approve for me) asks, so Clowdy's own command is let through.
+        expect(resolved.ok && resolved.agent.sessionMeta).toEqual({ claudeCode: { options: { disallowedTools: ['AskUserQuestion', 'ExitPlanMode'], allowedTools: ['Bash(clowdy:*)'] } } });
+        expect(resolved.ok && resolved.agent.permission).toEqual({ preset: 'auto', mode: 'auto', answer: 'ask' });
     });
 
     describe('settings', () => {
@@ -294,7 +314,7 @@ describe('AgentRegistry', () => {
             expect(agent.env).not.toHaveProperty('CLAUDE_CODE_DISABLE_1M_CONTEXT');
             expect(agent.env).toMatchObject({ CLAUDE_CODE_ARTIFACT: '0' });
             expect(agent.env).not.toHaveProperty('CODEX_CONFIG');
-            expect(agent.sessionMeta).toEqual({ claudeCode: { options: { disallowedTools: ['AskUserQuestion', 'ExitPlanMode'] } } });
+            expect(agent.sessionMeta).toEqual({ claudeCode: { options: { disallowedTools: ['AskUserQuestion', 'ExitPlanMode'], allowedTools: ['Bash(clowdy:*)'] } } });
         });
 
         test('a setting turned on or off changes the environment and the tools the agent starts with', async () => {
@@ -311,7 +331,7 @@ describe('AgentRegistry', () => {
             expect(agent.env).not.toHaveProperty('CLAUDE_CODE_DISABLE_AUTO_MEMORY');
             expect(agent.env).not.toHaveProperty('ENABLE_CLAUDEAI_MCP_SERVERS');
             expect(agent.env).toMatchObject({ CLAUDE_CODE_DISABLE_1M_CONTEXT: '1', CLAUDE_CODE_ARTIFACT: '1', CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH: '3' });
-            expect(agent.sessionMeta).toEqual({ claudeCode: { options: { disallowedTools: ['AskUserQuestion', 'ExitPlanMode', 'Agent', 'Task', 'ListAgents', 'Workflow'] } } });
+            expect(agent.sessionMeta).toEqual({ claudeCode: { options: { disallowedTools: ['AskUserQuestion', 'ExitPlanMode', 'Agent', 'Task', 'ListAgents', 'Workflow'], allowedTools: ['Bash(clowdy:*)'] } } });
 
             // A change names only what it changes.
             reg.update('claude', { settings: { memory: false } });
@@ -389,6 +409,196 @@ describe('AgentRegistry', () => {
             expect((await start(registry(dir))).env).toMatchObject({ ENABLE_CLAUDEAI_MCP_SERVERS: 'true' });
             expect((await byId(registry(dir), 'claude'))?.overrides).toEqual({ env: { ENABLE_CLAUDEAI_MCP_SERVERS: 'true' } });
             expect((await byId(reg, 'cursor'))?.settings).toBeUndefined();
+        });
+    });
+
+    describe('permission presets', () => {
+        const start = async (reg: AgentRegistry, id: string) => {
+            const resolved = await reg.resolve(id);
+
+            if (!resolved.ok) {
+                throw new Error(resolved.message);
+            }
+
+            return resolved.agent;
+        };
+        const names = (permissions: { presets: { id: string }[] } | undefined) => permissions?.presets.map(preset => preset.id);
+
+        test('every agent lists the presets its provider declares, in the same names; an agent with no declaration, a custom one included, has the client\'s pair', async () => {
+            program('claude', '2.1.325 (Claude Code)');
+            program('codex', 'codex-cli 0.166.0');
+
+            const reg = registry();
+
+            reg.add({ id: 'mine', name: 'Mine', command: 'my-agent', args: [] });
+
+            const claude = (await byId(reg, 'claude'))?.permissions;
+
+            expect(names(claude)).toEqual(['ask', 'accept-edits', 'auto', 'full']);
+            expect(claude?.presets.map(preset => preset.name)).toEqual(['Ask for approval', 'Accept edits', 'Approve for me', 'Full access']);
+            expect(claude).toMatchObject({ default: 'auto' });
+            expect(claude?.value).toBeUndefined();
+            expect(names((await byId(reg, 'codex'))?.permissions)).toEqual(['ask', 'accept-edits', 'auto', 'full']);
+            expect((await byId(reg, 'codex'))?.permissions?.default).toBe('auto');
+            expect((await byId(reg, 'cursor'))?.permissions).toEqual(GENERIC_PERMISSIONS);
+            expect((await byId(reg, 'mine'))?.permissions).toEqual(GENERIC_PERMISSIONS);
+        });
+
+        test('with no choice an agent runs on its provider\'s default: Approve for me with its mode on Claude and Codex, the client\'s Full access on an agent with none of its own', async () => {
+            program('claude', '2.1.325 (Claude Code)');
+            program('codex', 'codex-cli 0.166.0');
+
+            const reg = registry();
+
+            reg.add({ id: 'mine', name: 'Mine', command: program('my-agent', 'mine 1.0'), args: [] });
+
+            const claude = await start(reg, 'claude');
+
+            expect(claude.permission).toEqual({ preset: 'auto', mode: 'auto', answer: 'ask' });
+            expect(claude.sessionMeta).toEqual({ claudeCode: { options: { disallowedTools: ['AskUserQuestion', 'ExitPlanMode'], allowedTools: ['Bash(clowdy:*)'] } } });
+            expect((await start(reg, 'codex')).permission).toEqual({ preset: 'auto', mode: 'agent', answer: 'ask' });
+            // No mode to send, and Clowdy allows what the agent asks: what such an agent has always done.
+            expect((await start(reg, 'mine')).permission).toEqual({ preset: 'full', answer: 'allow' });
+            // The person's choice is what `AgentInfo` reports; the default is the provider's.
+            expect((await byId(reg, 'claude'))?.permissions).toMatchObject({ default: 'auto' });
+            expect((await byId(reg, 'claude'))?.permissions?.value).toBeUndefined();
+        });
+
+        test('a chosen preset gives the start the mode and the answer of the provider\'s plan; Claude\'s presets that ask let Clowdy\'s own command through', async () => {
+            program('claude', '2.1.325 (Claude Code)');
+            program('codex', 'codex-cli 0.166.0');
+
+            const reg = registry();
+
+            reg.update('claude', { permission: 'auto' });
+            reg.update('codex', { permission: 'full' });
+
+            const claude = await start(reg, 'claude');
+
+            expect(claude.permission).toEqual({ preset: 'auto', mode: 'auto', answer: 'ask' });
+            expect(claude.sessionMeta).toEqual({ claudeCode: { options: { disallowedTools: ['AskUserQuestion', 'ExitPlanMode'], allowedTools: ['Bash(clowdy:*)'] } } });
+            expect((await byId(reg, 'claude'))?.permissions?.value).toBe('auto');
+            expect((await start(reg, 'codex')).permission).toEqual({ preset: 'full', mode: 'agent-full-access', answer: 'allow' });
+
+            reg.update('claude', { permission: 'full' });
+
+            const full = await start(reg, 'claude');
+
+            expect(full.permission).toEqual({ preset: 'full', mode: 'bypassPermissions', answer: 'allow' });
+            expect(full.sessionMeta).toEqual({ claudeCode: { options: { disallowedTools: ['AskUserQuestion', 'ExitPlanMode'] } } });
+        });
+
+        test('a custom agent on the client\'s pair is answered by Clowdy and sent no mode', async () => {
+            const reg = registry();
+
+            reg.add({ id: 'mine', name: 'Mine', command: program('my-agent', 'mine 1.0'), args: [] });
+            reg.update('mine', { permission: 'ask' });
+
+            expect((await start(reg, 'mine')).permission).toEqual({ preset: 'ask', answer: 'ask' });
+        });
+
+        test('a preset the agent does not offer is refused, `null` goes back to the default, and a change of something else keeps the choice', async () => {
+            program('claude', '2.1.325 (Claude Code)');
+
+            const reg = registry();
+
+            expect(() => reg.update('cursor', { permission: 'auto' })).toThrow('Cursor has no preset called "auto"');
+            expect(() => reg.update('nobody', { permission: 'ask' })).toThrow(AgentRegistryError);
+
+            reg.update('claude', { permission: 'accept-edits' });
+            reg.update('claude', { settings: { memory: true } });
+
+            expect((await byId(reg, 'claude'))?.permissions?.value).toBe('accept-edits');
+
+            reg.update('claude', { permission: null });
+
+            expect((await byId(reg, 'claude'))?.permissions?.value).toBeUndefined();
+            expect((await start(reg, 'claude')).permission).toEqual({ preset: 'auto', mode: 'auto', answer: 'ask' });
+        });
+
+        test('are kept in agents.json; a value that is not a preset, or that the agent no longer offers, is ignored', async () => {
+            program('claude', '2.1.325 (Claude Code)');
+
+            const dir = mkdtempSync(join(root, 'data-'));
+
+            registry(dir).update('claude', { permission: 'accept-edits' });
+
+            expect((await byId(registry(dir), 'claude'))?.permissions?.value).toBe('accept-edits');
+
+            program('cursor-agent', '2026.11.13');
+
+            writeFileSync(join(dir, 'agents.json'), JSON.stringify({ overrides: { claude: { permission: 'sandbox' }, cursor: { permission: 'auto' } } }));
+
+            const reloaded = registry(dir);
+
+            expect((await byId(reloaded, 'claude'))?.permissions?.value).toBeUndefined();
+            // Written by hand, or left from a provider that offered more: shown as unchosen and not applied.
+            expect((await byId(reloaded, 'cursor'))?.permissions?.value).toBeUndefined();
+            expect((await start(reloaded, 'claude')).permission).toEqual({ preset: 'auto', mode: 'auto', answer: 'ask' });
+            expect((await start(reloaded, 'cursor')).permission).toEqual({ preset: 'full', answer: 'allow' });
+        });
+
+        test('a provider declares its own presets and what they do, and the registry, the engine and the protocol need no change for it', async () => {
+            const path = program('stub-agent', 'stub 1.0.0');
+            const reg = new AgentRegistry({
+                discovery: discovery(),
+                providers: [{
+                    spec: { id: 'stub', name: 'Stub', programs: ['stub-agent'], launch: { kind: 'binary', args: ['--acp'] } },
+                    permissions: {
+                        presets: [{ id: 'accept-edits', description: 'Stub edits files' }, { id: 'auto', description: 'Stub decides' }],
+                        default: 'accept-edits',
+                        apply: preset => ({ mode: preset === 'auto' ? 'smart' : 'files', effect: { env: { STUB_PERMISSIONS: preset } }, answer: 'ask' }),
+                    },
+                }],
+            });
+
+            expect((await reg.list())[0]?.permissions).toEqual({ presets: [{ id: 'accept-edits', name: 'Accept edits', description: 'Stub edits files' }, { id: 'auto', name: 'Approve for me', description: 'Stub decides' }], default: 'accept-edits' });
+            expect(() => reg.update('stub', { permission: 'full' })).toThrow('Stub has no preset called "full"');
+
+            // No choice: the provider's own default, with its mode and environment, though the client's pair would have said `full`.
+            const untouched = await start(reg, 'stub');
+
+            expect(untouched.permission).toEqual({ preset: 'accept-edits', mode: 'files', answer: 'ask' });
+            expect(untouched.env).toMatchObject({ STUB_PERMISSIONS: 'accept-edits' });
+
+            reg.update('stub', { permission: 'auto' });
+
+            const agent = await start(reg, 'stub');
+
+            expect(agent.permission).toEqual({ preset: 'auto', mode: 'smart', answer: 'ask' });
+            expect(agent.env).toMatchObject({ STUB_PERMISSIONS: 'auto' });
+            expect(agent.command).toBe(path);
+        });
+
+        test('the variables the person set win over what a preset sets', async () => {
+            program('codex', 'codex-cli 0.166.0');
+
+            const reg = new AgentRegistry({
+                discovery: discovery(),
+                providers: [{
+                    spec: { id: 'stub', name: 'Stub', programs: ['codex'], launch: { kind: 'binary', args: [] } },
+                    permissions: { presets: [{ id: 'ask', description: 'x' }], default: 'ask', apply: () => ({ effect: { env: { STUB_MODE: 'preset' } }, answer: 'ask' }) },
+                }],
+            });
+
+            reg.update('stub', { permission: 'ask', env: { STUB_MODE: 'person' } });
+
+            expect((await start(reg, 'stub')).env).toMatchObject({ STUB_MODE: 'person' });
+        });
+
+        test('what a preset sets wins over what a setting sets, and the default preset sets it too', async () => {
+            program('codex', 'codex-cli 0.166.0');
+
+            const reg = new AgentRegistry({
+                discovery: discovery(),
+                providers: [{
+                    spec: { id: 'stub', name: 'Stub', programs: ['codex'], launch: { kind: 'binary', args: [] }, settings: [{ id: 'on', label: 'On', description: 'x', default: true, effect: () => ({ env: { STUB_MODE: 'setting', STUB_SETTING: '1' } }) }] },
+                    permissions: { presets: [{ id: 'ask', description: 'x' }], default: 'ask', apply: () => ({ effect: { env: { STUB_MODE: 'preset' } }, answer: 'ask' }) },
+                }],
+            });
+
+            // Nothing chosen: the default preset's effect comes after the setting's, and the setting's other variables stay.
+            expect((await start(reg, 'stub')).env).toMatchObject({ STUB_MODE: 'preset', STUB_SETTING: '1' });
         });
     });
 

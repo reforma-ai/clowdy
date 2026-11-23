@@ -2,13 +2,14 @@
 import { observable, runInAction } from 'mobx';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { SIDE_PANEL_KEYS, SIDE_PANEL_TAB_KEYS } from '../features/sidePanel';
+import { SETTINGS_COMMAND, SETTINGS_KEYS } from '../features/settings/commands';
+import { SIDE_PANEL_EXPAND_KEYS, SIDE_PANEL_KEYS, SIDE_PANEL_TAB_KEYS } from '../features/sidePanel';
 import { installDispatcher } from '../hotkeys/dispatcher';
 import { commandHint } from '../hotkeys/react';
 import { commandPresses, createRegistry, type HotkeyRegistry } from '../hotkeys/registry';
 import { UiStore } from '../stores';
 import { findCommands } from './findCommands';
-import { navCommandId, NEW_CHAT_COMMAND, shellCommands, type ShellCommandsRoot } from './shellCommands';
+import { NEW_CHAT_COMMAND, shellCommands, type ShellCommandsRoot } from './shellCommands';
 
 let registry: HotkeyRegistry;
 let uninstall: () => void;
@@ -27,7 +28,6 @@ const press = (init: KeyboardEventInit & { key: string }, target: EventTarget = 
 
     return event;
 };
-const sectionOf = () => ui.forProject('p').section;
 
 beforeEach(() => {
     registry = createRegistry('darwin');
@@ -42,6 +42,9 @@ beforeEach(() => {
             return loading.phase;
         },
         selectedProjectId: 'p' as string | null,
+        get selectedProjectUi() {
+            return this.selectedProjectId ? ui.forProject(this.selectedProjectId) : undefined;
+        },
         get showsProjectScreen() {
             return screen.shown;
         },
@@ -58,111 +61,17 @@ afterEach(() => {
     uninstall();
 });
 
-describe('section chords', () => {
-    it.each([
-        ['a', 'agents'],
-        ['t', 'tasks'],
-        ['d', 'docs'],
-    ] as const)('G then %s shows the %s section of the selected project', (second, section) => {
-        ui.forProject('p').section = section === 'agents' ? 'tasks' : 'agents';
-
-        press({ key: 'g' });
-        press({ key: second });
-
-        expect(sectionOf()).toBe(section);
-        expect(registry.pending).toBeNull();
-    });
-
-    it('does nothing after a G alone, and leaves a chord after its timeout', () => {
-        vi.useFakeTimers();
-
-        try {
-            press({ key: 'g' });
-
-            expect(registry.pending?.candidates.map(({ command }) => command.id).sort()).toEqual(['nav.agents', 'nav.docs', 'nav.tasks']);
-            expect(sectionOf()).toBe('agents');
-
-            vi.advanceTimersByTime(1000);
-
-            expect(registry.pending).toBeNull();
-
-            press({ key: 't' });
-
-            expect(sectionOf()).toBe('agents');
-        }
-        finally {
-            vi.useRealTimers();
-        }
-    });
-
-    it('is cancelled by Escape', () => {
-        press({ key: 'g' });
-        press({ key: 'Escape' });
-        press({ key: 't' });
-
-        expect(registry.pending).toBeNull();
-        expect(sectionOf()).toBe('agents');
-    });
-
-    it('also leaves Settings', () => {
-        ui.openSettings('providers');
-
-        press({ key: 'g' });
-        press({ key: 'd' });
-
-        expect(ui.settingsOpen).toBe(false);
-        expect(sectionOf()).toBe('docs');
-    });
-
-    it('needs a selected project, and does not even start the chord without one', () => {
-        runInAction(() => {
-            root.selectedProjectId = null;
-        });
-
+describe('the keys that went with the sections', () => {
+    it('has no G chord: Tasks is a tab of the side panel with Cmd+4, and there is one screen to go to', () => {
         const event = press({ key: 'g' });
 
         expect(registry.pending).toBeNull();
         expect(event.defaultPrevented).toBe(false);
 
         press({ key: 't' });
+        press({ key: 'a' });
 
-        expect(sectionOf()).toBe('agents');
-    });
-
-    it('is a plain letter while a text field has focus', () => {
-        const input = document.createElement('input');
-
-        document.body.append(input);
-
-        try {
-            const first = press({ key: 'g' }, input);
-
-            press({ key: 't' }, input);
-
-            expect(first.defaultPrevented).toBe(false);
-            expect(registry.pending).toBeNull();
-            expect(sectionOf()).toBe('agents');
-        }
-        finally {
-            input.remove();
-        }
-    });
-
-    it('stays off while a dialog is open', () => {
-        const overlay = document.createElement('div');
-
-        overlay.dataset.modalOverlay = '';
-        document.body.append(overlay);
-
-        try {
-            press({ key: 'g' });
-            press({ key: 't' });
-
-            expect(sectionOf()).toBe('agents');
-        }
-        finally {
-            overlay.remove();
-        }
+        expect(ui.forProject('p').sidePanelOpen).toBe(false);
     });
 });
 
@@ -222,6 +131,69 @@ describe('help.open', () => {
 
         expect(ui.settingsOpen).toBe(false);
         expect(event.defaultPrevented).toBe(false);
+    });
+});
+
+describe('settings.open', () => {
+    it('opens Settings on Cmd+, on the page it was left on, from a text field too', () => {
+        const event = press({ key: ',', code: 'Comma', metaKey: true });
+
+        expect([ui.settingsOpen, ui.settingsPage]).toEqual([true, 'appearance']);
+        expect(event.defaultPrevented).toBe(true);
+
+        ui.closeSettings();
+        ui.showSettingsPage('skills');
+
+        const input = document.createElement('input');
+
+        document.body.append(input);
+
+        try {
+            press({ key: ',', code: 'Comma', metaKey: true }, input);
+
+            expect([ui.settingsOpen, ui.settingsPage]).toEqual([true, 'skills']);
+        }
+        finally {
+            input.remove();
+        }
+    });
+
+    it('does not open on Ctrl+, on macOS, or on a bare comma, and stays shut until the window has loaded', () => {
+        press({ key: ',', code: 'Comma', ctrlKey: true });
+        press({ key: ',', code: 'Comma' });
+
+        expect(ui.settingsOpen).toBe(false);
+
+        runInAction(() => {
+            loading.phase = 'unreachable';
+        });
+
+        const event = press({ key: ',', code: 'Comma', metaKey: true });
+
+        expect(ui.settingsOpen).toBe(false);
+        expect(event.defaultPrevented).toBe(false);
+    });
+
+    it('waits while a window is open over the page, as every command does, so Settings is shut with Esc', () => {
+        const overlay = document.createElement('div');
+
+        overlay.setAttribute('data-modal-overlay', '');
+        document.body.append(overlay);
+
+        try {
+            press({ key: ',', code: 'Comma', metaKey: true });
+
+            expect(ui.settingsOpen).toBe(false);
+        }
+        finally {
+            overlay.remove();
+        }
+    });
+
+    it('has Cmd+, on a Mac and Ctrl+, elsewhere, and shows it as the hint of the Settings item', () => {
+        expect(commandPresses({ keys: SETTINGS_KEYS }, 'darwin')).toEqual([['meta', ',']]);
+        expect(commandPresses({ keys: SETTINGS_KEYS }, 'win32')).toEqual([['ctrl', ',']]);
+        expect(commandHint(SETTINGS_COMMAND, registry)).toEqual([['meta', ',']]);
     });
 });
 
@@ -323,18 +295,13 @@ describe('the keymap', () => {
         for (const command of findCommands({ open() {}, next() {}, previous() {} })) probe.defineCommand({ ...command, scope: 'app' });
 
         expect(() => probe.assertNoConflicts()).not.toThrow();
-        expect(probe.entries.map(({ command }) => command.id)).toEqual(['help.open', 'nav.agents', 'nav.tasks', 'nav.docs', 'chats.new', 'sidePanel.toggle', 'sidePanel.terminal', 'sidePanel.show.info', 'sidePanel.show.files', 'sidePanel.show.terminal', 'nav.back', 'nav.forward', 'find.open', 'find.next', 'find.previous']);
-        expect(navCommandId('tasks')).toBe('nav.tasks');
+        expect(probe.entries.map(({ command }) => command.id)).toEqual(['help.open', 'settings.open', 'chats.new', 'sidePanel.toggle', 'sidePanel.expand', 'sidePanel.terminal', 'sidePanel.tab.info', 'sidePanel.tab.files', 'sidePanel.tab.docs', 'sidePanel.tab.terminal', 'sidePanel.tab.tasks', 'nav.back', 'nav.forward', 'find.open', 'find.next', 'find.previous']);
     });
 });
 
 describe('new chat', () => {
-    it('shows the new-chat page of the Agents section on Cmd+N, from any section', () => {
-        ui.forProject('p').section = 'tasks';
-
+    it('shows the new-chat page of the Agents section on Cmd+N', () => {
         const event = press({ key: 'n', code: 'KeyN', metaKey: true });
-
-        expect(sectionOf()).toBe('agents');
         expect(ui.forProject('p').draft).toBe(true);
         expect(event.defaultPrevented).toBe(true);
     });
@@ -521,11 +488,72 @@ describe('the side panel', () => {
     });
 });
 
+describe('the expanded side panel', () => {
+    const expanded = () => ui.forProject('p').sidePanelExpanded;
+    const expand = (target?: EventTarget) => press({ key: 'Enter', code: 'Enter', metaKey: true, shiftKey: true }, target);
+
+    it('has Cmd+Shift+Enter on a Mac and Ctrl+Shift+Enter elsewhere', () => {
+        expect(commandPresses({ keys: SIDE_PANEL_EXPAND_KEYS }, 'darwin')).toEqual([['shift', 'meta', 'enter']]);
+        expect(commandPresses({ keys: SIDE_PANEL_EXPAND_KEYS }, 'win32')).toEqual([['ctrl', 'shift', 'enter']]);
+    });
+
+    it('expands the open panel and gives the chat its place back on a second press, from a text field too', () => {
+        ui.forProject('p').toggleSidePanel();
+
+        const first = expand();
+
+        expect(expanded()).toBe(true);
+        expect(first.defaultPrevented).toBe(true);
+
+        const input = document.createElement('input');
+
+        document.body.append(input);
+
+        try {
+            expand(input);
+            expect(expanded()).toBe(false);
+        }
+        finally {
+            input.remove();
+        }
+    });
+
+    it('does nothing on the Tasks tab, which is full already, and leaves the key to the page', () => {
+        ui.forProject('p').openSidePanelTab('tasks');
+
+        const event = expand();
+
+        expect(expanded()).toBe(false);
+        expect(event.defaultPrevented).toBe(false);
+        expect(commandHint('sidePanel.expand', registry)).toBeUndefined();
+    });
+
+    it('does nothing, and leaves the key to the page, while the panel is shut or the window shows no project', () => {
+        const shut = expand();
+
+        expect(expanded()).toBe(false);
+        expect(shut.defaultPrevented).toBe(false);
+        expect(commandHint('sidePanel.expand', registry)).toBeUndefined();
+
+        ui.forProject('p').toggleSidePanel();
+        expect(commandHint('sidePanel.expand', registry)).toEqual([['shift', 'meta', 'enter']]);
+
+        runInAction(() => {
+            screen.shown = false;
+        });
+
+        const away = expand();
+
+        expect(expanded()).toBe(false);
+        expect(away.defaultPrevented).toBe(false);
+    });
+});
+
 describe('the tabs of the side panel', () => {
     const state = () => ({ open: ui.forProject('p').sidePanelOpen, tab: ui.forProject('p').sidePanelTab });
     const digit = (value: string, extra: KeyboardEventInit = {}, target?: EventTarget) => press({ key: value, code: `Digit${ value }`, metaKey: true, ...extra }, target);
 
-    it('shows Info on Cmd+0, Files on Cmd+1 and Terminal on Cmd+2, opening the panel when it is shut', () => {
+    it('shows Info on Cmd+0, Files on Cmd+1, Terminal on Cmd+2, Docs on Cmd+3 and Tasks on Cmd+4, opening the panel when it is shut', () => {
         const first = digit('1');
 
         expect(state()).toEqual({ open: true, tab: 'files' });
@@ -537,19 +565,33 @@ describe('the tabs of the side panel', () => {
         digit('0');
         expect(state()).toEqual({ open: true, tab: 'info' });
 
+        digit('3');
+        expect(state()).toEqual({ open: true, tab: 'docs' });
+
+        digit('4');
+        expect(state()).toEqual({ open: true, tab: 'tasks' });
+
         runInAction(() => ui.forProject('p').toggleSidePanel());
-        expect(state()).toEqual({ open: false, tab: 'info' });
+        expect(state()).toEqual({ open: false, tab: 'tasks' });
 
         digit('2');
         expect(state()).toEqual({ open: true, tab: 'terminal' });
         expect(ui.forProject('other').sidePanelOpen).toBe(false);
     });
 
-    it('keeps the panel open when the tab that is shown is picked again', () => {
+    it('shuts the panel when the tab that is shown is picked again, and opens it on that tab with the next press', () => {
         digit('1');
         digit('1');
 
+        expect(state()).toEqual({ open: false, tab: 'files' });
+
+        digit('1');
+
         expect(state()).toEqual({ open: true, tab: 'files' });
+
+        // Another tab's key only changes the tab.
+        digit('2');
+        expect(state()).toEqual({ open: true, tab: 'terminal' });
     });
 
     it('works from a text field', () => {
@@ -582,7 +624,7 @@ describe('the tabs of the side panel', () => {
         runInAction(() => {
             screen.shown = true;
         });
-        digit('3');
+        digit('5');
         digit('1', { shiftKey: true });
         digit('1', { metaKey: false });
         digit('1', { altKey: true });
@@ -593,12 +635,13 @@ describe('the tabs of the side panel', () => {
     it('has Cmd on a Mac and Ctrl elsewhere, and shows the key as the hint of the tab', () => {
         expect(commandPresses({ keys: SIDE_PANEL_TAB_KEYS.info }, 'darwin')).toEqual([['meta', '0']]);
         expect(commandPresses({ keys: SIDE_PANEL_TAB_KEYS.terminal }, 'win32')).toEqual([['ctrl', '2']]);
-        expect(commandHint('sidePanel.show.files', registry)).toEqual([['meta', '1']]);
+        expect(commandPresses({ keys: SIDE_PANEL_TAB_KEYS.tasks }, 'win32')).toEqual([['ctrl', '4']]);
+        expect(commandHint('sidePanel.tab.files', registry)).toEqual([['meta', '1']]);
 
         runInAction(() => {
             screen.shown = false;
         });
 
-        expect(commandHint('sidePanel.show.files', registry)).toBeUndefined();
+        expect(commandHint('sidePanel.tab.files', registry)).toBeUndefined();
     });
 });

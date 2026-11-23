@@ -30,9 +30,9 @@ function SkillsBody({ projectId, projectName }: { projectId?: string; projectNam
 
     if (state.status === 'loading') {
         return (
-            <SettingsPage title="Skills" description={ INTRO }>
+            <SettingsPage description={ INTRO }>
                 <Box direction="row" gap="md" align="center">
-                    <Loader size="md" />
+                    <Loader size="xs" />
                     <Text color="secondary">Loading skills…</Text>
                 </Box>
             </SettingsPage>
@@ -41,7 +41,7 @@ function SkillsBody({ projectId, projectName }: { projectId?: string; projectNam
 
     if (state.status === 'failed') {
         return (
-            <SettingsPage title="Skills" description={ INTRO }>
+            <SettingsPage description={ INTRO }>
                 <Box gap="md" align="start">
                     <Text color="danger">Skills could not be loaded. { state.message }</Text>
                     <Button variant="bordered" size="sm" onPress={ reload }>Try again</Button>
@@ -54,7 +54,6 @@ function SkillsBody({ projectId, projectName }: { projectId?: string; projectNam
 
     return (
         <SettingsPage
-            title="Skills"
             description={ (
                 <>
                     { INTRO }

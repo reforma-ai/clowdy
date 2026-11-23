@@ -183,7 +183,7 @@ describe('MarkdownEditor', () => {
         expect(onChange).toHaveBeenLastCalledWith('## **Title**');
     });
 
-    it('should make a quote on Cmd+Shift+. and leave Cmd+Shift+B alone, which the desktop app keeps for its side panel', async() => {
+    it('should make a quote on Cmd+Shift+., and on Cmd+Shift+B on a Mac, where the desktop app keeps Ctrl+Shift+B off a Mac for its side panel', async() => {
         const onChange = vi.fn();
 
         await render({ value: 'quoted', onChange });
@@ -203,8 +203,15 @@ describe('MarkdownEditor', () => {
             key({ key: 'B', code: 'KeyB', keyCode: 66 });
         });
 
+        // TipTap's own key makes the quote on a Mac, and is the app's off it, where the editor leaves it alone.
+        expect(editor.isActive('blockquote')).toBe(mac);
+        expect(onChange).toHaveBeenCalledTimes(mac ? 1 : 0);
+
+        await act(async() => {
+            key({ key: 'B', code: 'KeyB', keyCode: 66 });
+        });
+
         expect(editor.isActive('blockquote')).toBe(false);
-        expect(onChange).not.toHaveBeenCalled();
 
         await act(async() => {
             key({ key: '>', code: 'Period', keyCode: 190 });
@@ -366,15 +373,15 @@ describe('MarkdownEditor', () => {
     });
 
     it.each([
-        ['YAML', '---\ntitle: Guide\ntags: [a, b]\n---\n\n', 'Intro\n'],
-        ['empty YAML', '---\n---\n', ''],
-        ['TOML', '+++\ntitle = "Guide"\n+++\n', 'Intro\n'],
-    ])('should show %s front matter read-only and emit it unchanged', async(_name, frontMatter, body) => {
+        ['YAML', '---\ntitle: Guide\ntags: [a, b]\n---\n\n', 'Intro\n', 'title: Guide\ntags: [a, b]'],
+        ['empty YAML', '---\n---\n', '', undefined],
+        ['TOML', '+++\ntitle = "Guide"\n+++\n', 'Intro\n', 'title = "Guide"'],
+    ])('should show %s front matter read-only, without its delimiters, and emit it unchanged', async(_name, frontMatter, body, shown) => {
         const onChange = vi.fn();
 
         await render({ value: frontMatter + body, onChange });
 
-        expect(host.querySelector('figure pre')?.textContent).toBe(frontMatter.trimEnd());
+        expect(host.querySelector('figure pre')?.textContent).toBe(shown);
         expect(mountedEditor().getMarkdown()).toBe(body.trimEnd());
 
         await typeAtEnd('.');

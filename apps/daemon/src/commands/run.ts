@@ -1,6 +1,6 @@
 import type { Handlers } from './context';
 
-export const runHandlers: Pick<Handlers, 'run.cancel' | 'run.stopAgents' | 'run.stopBackground' | 'run.answer'> = {
+export const runHandlers: Pick<Handlers, 'run.cancel' | 'run.stopAgents' | 'run.stopBackground' | 'run.answer' | 'run.decide'> = {
     /** Stopping a chat's orchestrator holds its queue: what the person wrote for the stopped work waits until they send it. */
     'run.cancel': ({ runs, queue }, command) => {
         const cancelled = runs.cancel(command.runId);
@@ -21,6 +21,13 @@ export const runHandlers: Pick<Handlers, 'run.cancel' | 'run.stopAgents' | 'run.
 
     'run.answer': ({ runs }, command) => {
         runs.answerQuestion(command.runId, command.questionId, command.answer);
+
+        return { runId: command.runId };
+    },
+
+    /** Decides an approval of the run (`RunService.decide`); the agent's request goes on as the decision says. */
+    'run.decide': ({ runs }, command) => {
+        runs.decide(command.runId, command.approvalId, command.decision);
 
         return { runId: command.runId };
     },

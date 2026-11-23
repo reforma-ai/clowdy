@@ -2,12 +2,15 @@ import { isTerminalRunStatus } from '@clowdy/protocol';
 
 import { deleteChatAndRuns, getChat, listChatDescendants, runsOfChat, upsertChat } from '../db/chats';
 import { getRun } from '../db/runs';
+import { chatsOfWorkspace, deleteWorkspace, getWorkspace, toChatWorkspace } from '../db/workspaces';
 import { conflict, invalid, notFound } from '../errors';
 import { newId } from '../ids';
 import { requireProject } from './projects';
+import { createWorkspace, inheritWorkspace } from './workspaces';
 
-import type { Chat, ChatMode, EngineId, Run } from '@clowdy/protocol';
+import type { Chat, ChatMode, ChatWorkspace, ChatWorkspaceChoice, EngineId, Run } from '@clowdy/protocol';
 import type { AttachmentsService } from '../attachments/service';
+import type { Config } from '../config';
 import type { Store } from '../store';
 
 export const DEFAULT_CHAT_TITLE = 'New chat';
@@ -39,12 +42,18 @@ export function requireChat(store: Store, chatId: string): Chat {
     return chat;
 }
 
-/** Writes the chat and publishes it. */
+/**
+ * Writes the chat and publishes it. A chat that works in a worktree is published with the worktree as it is now: the copy the caller holds may be older than
+ * the turn that made the worktree ready.
+ */
 export function saveChat(store: Store, chat: Chat): Chat {
-    upsertChat(store.db, chat);
-    store.emit(chat.projectId, { type: 'chat.upserted', chat });
+    const record = chat.workspace && getWorkspace(store.db, chat.workspace.id);
+    const saved: Chat = record ? { ...chat, workspace: toChatWorkspace(record) } : chat;
 
-    return chat;
+    upsertChat(store.db, saved);
+    store.emit(saved.projectId, { type: 'chat.upserted', chat: saved });
+
+    return saved;
 }
 
 export interface ChatChoice {
@@ -58,11 +67,30 @@ export function choiceOf(run: Run): ChatChoice {
     return { engine: run.engine, ...(run.model && { model: run.model }), ...(run.effort && { effort: run.effort }) };
 }
 
+/** What a new chat may be given beyond its title, mode and agent. */
+export interface NewChat extends ChatChoice {
+    projectId: string;
+    title?: string;
+    mode?: ChatMode;
+    /** Makes the chat a thread of that chat (an agent of it started this one), which the caller has checked. */
+    parentChatId?: string;
+    /** The folder of the project the chat works in, which must be one of its folders; without it the chat follows the main folder. */
+    folderId?: string;
+    /**
+     * The worktree the chat works in (`createWorkspace`): a new one its first turn makes, or one that exists. It needs `workspaces` too, for the folder of the
+     * worktree to be made into a path. The chat then has the folder the worktree is a checkout of, the main folder's own id when none was named, so it stays
+     * with it whichever folder the project makes main later.
+     */
+    workspace?: ChatWorkspaceChoice;
+    /** The worktree of another chat, taken as it is (the same row): a thread's, a fork's. */
+    workspaceId?: string;
+}
+
 /**
- * A new chat; `parentChatId` makes it a thread of that chat (an agent of it started this one), which the caller has checked. `folderId` is the folder of
- * the project the chat works in, and must be one of its folders; without it the chat follows the main folder.
+ * A new chat. A chat that is given a worktree is checked against the repository with a few synchronous reads of git, and nothing is made on the disk: the
+ * worktree is made by its first turn.
  */
-export function createChat(store: Store, input: { projectId: string; title?: string; mode?: ChatMode; parentChatId?: string; folderId?: string } & ChatChoice): Chat {
+export function createChat(store: Store, input: NewChat, workspaces?: Pick<Config, 'workspacesDir'>): Chat {
     return store.tx(() => {
         const project = requireProject(store, input.projectId);
 
@@ -70,10 +98,29 @@ export function createChat(store: Store, input: { projectId: string; title?: str
             throw invalid(`Folder ${ input.folderId } does not belong to project ${ project.id }`);
         }
 
+        if (input.workspace && input.workspaceId) {
+            throw invalid('A chat is given a new worktree or the worktree of another chat, not both');
+        }
+
+        if (input.workspace && !workspaces) {
+            throw new Error('createChat needs the workspaces folder to make a worktree');
+        }
+
+        const id = newId('cht');
+        let workspace: ChatWorkspace | undefined;
+
+        if (input.workspace && workspaces) {
+            workspace = createWorkspace(store, workspaces, { project, chatId: id, folderId: input.folderId, choice: input.workspace });
+        }
+        else if (input.workspaceId) {
+            workspace = inheritWorkspace(store, project, input.workspaceId, input.folderId);
+        }
+
+        const folderId = workspace?.folderId ?? input.folderId;
         const now = Date.now();
 
         return saveChat(store, {
-            id: newId('cht'),
+            id,
             projectId: input.projectId,
             title: input.title?.trim() || DEFAULT_CHAT_TITLE,
             mode: input.mode ?? 'autopilot',
@@ -81,7 +128,8 @@ export function createChat(store: Store, input: { projectId: string; title?: str
             ...(input.model && { model: input.model }),
             ...(input.effort && { effort: input.effort }),
             ...(input.parentChatId && { parentChatId: input.parentChatId }),
-            ...(input.folderId && { folderId: input.folderId }),
+            ...(folderId && { folderId }),
+            ...(workspace && { workspace }),
             createdAt: now,
             updatedAt: now,
         });
@@ -138,7 +186,7 @@ export function inSameTree(store: Store, a: Chat, b: Chat): boolean {
  * The chat and every chat below it, a parent before its threads, once every run of them is over (one in `waiting_background` is not): refuses otherwise,
  * naming the thread at work when it is not `chat` itself, the one the person acts on.
  */
-function stoppedSubtree(store: Store, chat: Chat): Chat[] {
+export function stoppedSubtree(store: Store, chat: Chat): Chat[] {
     const chats = [chat, ...listChatDescendants(store.db, chat.id).map(entry => entry.chat)];
     const busy = chats.find(candidate => runsOfChat(store.db, candidate.id).some(run => !isTerminalRunStatus(run.status)));
 
@@ -157,20 +205,31 @@ function stoppedSubtree(store: Store, chat: Chat): Chat[] {
  * Removes the chat with every thread below it, their runs, and the files sent in them. Their agents must have stopped: a live run would be left without
  * its row, so one at work anywhere in the tree refuses the whole delete. Each chat is announced on its own (`chat.deleted`, the deepest first), so a client
  * drops them all. The files' folders go once the transaction commits. Returns the ids of every run removed.
+ *
+ * A worktree's row goes with the last chat that points at it; the worktree on the disk and its branch are not touched here
+ * (a delete that removes them does it first: `removeChatWorkspace`), and a worktree that stays is listed by git as any other.
  */
 export function deleteChat(store: Store, chatId: string, attachments: AttachmentsService): string[] {
     return store.tx(() => {
         const chats = stoppedSubtree(store, requireChat(store, chatId));
-
-        return chats.reverse().flatMap((each) => {
-            const runIds = runsOfChat(store.db, each.id).map(run => run.id);
+        const workspaceIds = new Set(chats.flatMap(each => (each.workspace ? [each.workspace.id] : [])));
+        const runIds = chats.reverse().flatMap((each) => {
+            const runIdsOfChat = runsOfChat(store.db, each.id).map(run => run.id);
 
             attachments.removeOfChat(each.id);
             deleteChatAndRuns(store.db, each.id);
-            store.emit(each.projectId, { type: 'chat.deleted', chatId: each.id, runIds });
+            store.emit(each.projectId, { type: 'chat.deleted', chatId: each.id, runIds: runIdsOfChat });
 
-            return runIds;
+            return runIdsOfChat;
         });
+
+        for (const workspaceId of workspaceIds) {
+            if (chatsOfWorkspace(store.db, workspaceId).length === 0) {
+                deleteWorkspace(store.db, workspaceId);
+            }
+        }
+
+        return runIds;
     });
 }
 

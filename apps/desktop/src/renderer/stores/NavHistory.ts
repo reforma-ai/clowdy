@@ -1,21 +1,19 @@
-import { compareStructural, makeAutoObservable, observableShallow, reaction, runInAction, when } from 'mobx';
+import { compareStructural, makeAutoObservable, observableShallow, reaction, when } from 'mobx';
 
 import type { Project, ProjectId } from '@clowdy/protocol';
 import type { ProjectState } from './ProjectState';
-import type { ProjectView, SettingsPage, UiStore } from './UiStore';
+import type { ProjectView, UiStore } from './UiStore';
 
 /** The oldest entries fall off past this many. */
 export const HISTORY_LIMIT = 100;
 
 /**
- * Everything the window shows, as one history entry: the selected project, its place (section and what is open in it, the scope of the Tasks screen
- * among it) and Settings. The options of a section (the Tasks view and its sub-tasks toggle, finished runs, filters, the cursor and the selection) are not part of it.
+ * Everything the window shows, as one history entry: the selected project and its place (section and the chat or run open in it). Settings is a window over a
+ * place, not a place, so it is not part of it, and neither is the side panel with what it shows (the open task and the scope of the Tasks tab among it). The
+ * options of a section (finished runs, filters, the cursor and the selection) are not part of it either.
  */
 interface NavSnapshot extends ProjectView {
     projectId: ProjectId;
-    settingsOpen: boolean;
-    /** `null` while Settings is closed: the page does not show then, and two entries that differ only there would look the same. */
-    settingsPage: SettingsPage | null;
 }
 
 /** What the history needs of the root store. */
@@ -34,20 +32,17 @@ interface NavHost {
  * One reaction watches the navigation state, so every action that changes what the window shows is an entry without its call site knowing:
  * a new one drops the entries ahead of the current one. Going back or forward applies the entry and moves the position, in one action. When the reaction
  * then looks, the state equals the current entry and records nothing, so applying needs no flag of its own. That holds as long as nothing else changes
- * the state in response: a screen that picks another selection when it mounts (a screen that finds its remembered selection gone) does it in
- * `replacing`, or the pick would be a new entry and drop the way forward.
+ * the state in response: a screen that picks another selection when it mounts would make a new entry and drop the way forward.
  * Recording starts at the first selected project, so loading the app does not leave a pile of entries.
  */
 export class NavHistory {
     private entries: NavSnapshot[] = [];
     /** The entry the window is on; `-1` before recording starts. */
     private index = -1;
-    #replace = false;
     #disposers: Array<() => void> = [];
 
     constructor(private readonly host: NavHost) {
-        // `replacing` must stay a plain function: as an action it would hold the reaction back until after its flag is reset.
-        makeAutoObservable<NavHistory, 'host' | 'entries'>(this, { host: false, entries: observableShallow, replacing: false });
+        makeAutoObservable<NavHistory, 'host' | 'entries'>(this, { host: false, entries: observableShallow });
         this.#disposers.push(when(() => host.selectedProjectId !== null, () => this.#start()));
     }
 
@@ -65,22 +60,6 @@ export class NavHistory {
 
     forward(): void {
         this.#go(1);
-    }
-
-    /**
-     * Runs `change`, which changes the navigation state, and lets that change overwrite the current entry instead of adding one:
-     * for a change that follows another (the open task following the Tasks cursor), so that holding a key does not fill the history.
-     * The next change after it is recorded as usual. Called inside another action the overwrite is lost, and the change is an entry.
-     */
-    replacing(change: () => void): void {
-        this.#replace = true;
-
-        try {
-            runInAction(change);
-        }
-        finally {
-            this.#replace = false;
-        }
     }
 
     dispose(): void {
@@ -101,9 +80,7 @@ export class NavHistory {
 
         if (selectedProjectId === null) return undefined;
 
-        const { open, page } = ui.settingsView;
-
-        return { projectId: selectedProjectId, ...ui.forProject(selectedProjectId).view, settingsOpen: open, settingsPage: page };
+        return { projectId: selectedProjectId, ...ui.forProject(selectedProjectId).view };
     }
 
     #record(snapshot: NavSnapshot): void {
@@ -112,27 +89,8 @@ export class NavHistory {
         // Going back or forward just made this the current entry.
         if (current && compareStructural(current, snapshot)) return;
 
-        if (this.#replace && current) {
-            this.entries[this.index] = snapshot;
-
-            return;
-        }
-
-        // The window is leaving this place. Whatever caused it (the rail, a shortcut) may not have settled a scope that is gone, and Back skips an entry whose
-        // scope is gone, so the place is kept as the roots the screen was showing.
-        if (current) this.entries[this.index] = this.#withoutGoneScope(current);
-
         this.entries.splice(this.index + 1);
         this.#push(snapshot);
-    }
-
-    /** The entry with the roots of the Tasks screen in place of a scope that has left the board; the entry itself when the scope is there, or the entry is not a Tasks one. */
-    #withoutGoneScope(entry: NavSnapshot): NavSnapshot {
-        if (entry.section !== 'tasks' || entry.tasksScope === null || entry.settingsOpen) return entry;
-
-        const state = this.host.projectState(entry.projectId);
-
-        return state?.status === 'ready' && !state.tasks.has(entry.tasksScope) ? { ...entry, tasksScope: null } : entry;
     }
 
     #push(snapshot: NavSnapshot): void {
@@ -156,25 +114,16 @@ export class NavHistory {
         return undefined;
     }
 
-    /**
-     * Whether what the entry shows is still there: its project, and the chat, task or run of its section, and for the Tasks screen the task whose insides it
-     * showed (a scope that is gone or archived is not a place to go back to), and a task it had open, which may be an archived one the window has read
-     * (`ProjectState.archivedKnown`, bounded: one let go of is no longer a place). Documents are always there, the tree may list them again.
-     */
-    #exists({ projectId, section, chatId, taskId, runId, tasksScope, settingsOpen }: NavSnapshot): boolean {
+    /** Whether what the entry shows is still there: its project, and the chat or run it had open. */
+    #exists({ projectId, chatId, runId }: NavSnapshot): boolean {
         if (!this.host.projects.some(project => project.id === projectId)) return false;
 
         const state = this.host.projectState(projectId);
 
-        // Settings covers the section, and a project that has not delivered its snapshot yet cannot say what it holds.
-        if (settingsOpen || state?.status !== 'ready') return true;
+        // A project that has not delivered its snapshot yet cannot say what it holds.
+        if (state?.status !== 'ready') return true;
 
-        switch (section) {
-            case 'agents': return (chatId === null || state.chats.has(chatId)) && (runId === null || state.runs.has(runId));
-            // An archived task the window has read is a place too, and a scope is never one (the screen shows the roots for it).
-            case 'tasks': return (taskId === null || state.tasks.has(taskId) || state.archivedKnown.has(taskId)) && (tasksScope === null || state.tasks.has(tasksScope));
-            case 'docs': return true;
-        }
+        return (chatId === null || state.chats.has(chatId)) && (runId === null || state.runs.has(runId));
     }
 
     #go(direction: -1 | 1): void {
@@ -189,6 +138,6 @@ export class NavHistory {
 
         if (host.selectedProjectId !== entry.projectId) host.selectProject(entry.projectId);
 
-        host.ui.restore(host.ui.forProject(entry.projectId), entry, { open: entry.settingsOpen, page: entry.settingsPage });
+        host.ui.restore(host.ui.forProject(entry.projectId), entry);
     }
 }

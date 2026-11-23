@@ -4,11 +4,12 @@ import { makeAutoObservable, runInAction } from 'mobx';
 import type { SearchResult } from '@clowdy/file-manager/provider';
 import type { Chat, ChatId, Run } from '@clowdy/protocol';
 
-export type QuickSearchTab = 'all' | 'chats' | 'files' | 'text';
+export type QuickSearchTab = 'all' | 'chats' | 'files' | 'docs' | 'text';
 
 export const QUICK_SEARCH_TABS: ReadonlyArray<{ value: QuickSearchTab; label: string }> = [
     { value: 'all', label: 'All' },
     { value: 'chats', label: 'Chats' },
+    { value: 'docs', label: 'Docs' },
     { value: 'files', label: 'Files' },
     { value: 'text', label: 'Text' },
 ];
@@ -32,6 +33,13 @@ export interface FoundFile {
     path: string;
 }
 
+/** A document whose path matches: `path` is its own in the project folder, below the root of a source (`.briefback`, `.clowdy/docs`), which the files tab does not look in. */
+export interface FoundDoc {
+    kind: 'doc';
+    id: string;
+    path: string;
+}
+
 /** A line of a file's content that matches: `line` and `column` are 1-based, `ranges` are offsets into `preview`. */
 export interface FoundLine {
     kind: 'line';
@@ -43,10 +51,10 @@ export interface FoundLine {
     ranges: ReadonlyArray<{ start: number; end: number }>;
 }
 
-export type Found = FoundChat | FoundFile | FoundLine;
+export type Found = FoundChat | FoundFile | FoundDoc | FoundLine;
 
 export interface FoundSection {
-    id: 'chats' | 'archived' | 'files' | 'text';
+    id: 'chats' | 'archived' | 'files' | 'docs' | 'text';
     title: string;
     items: Found[];
 }
@@ -60,6 +68,8 @@ export interface QuickSearchSource {
     chats: (query: string) => FoundChat[];
     /** The paths of the files whose name or folder matches `query`, the best match first. */
     files: (query: string) => Promise<string[]>;
+    /** The paths, from the project folder, of the documents whose path has `query`, the best match first. */
+    docs: (query: string) => Promise<string[]>;
     /** The lines of the files' content that have `query`. */
     text: (query: string) => Promise<SearchResult>;
     open: (found: Found) => void;
@@ -69,15 +79,17 @@ export interface QuickSearchSource {
 
 /** Typing searches once it pauses this long. */
 export const TYPING_DELAY = 150;
-/** The rows of each list: the tab of one kind lists up to its own, the All tab a few of each. */
+/** The rows of each list: the tab of one kind lists up to its own, the All tab a few of each. Documents come before files: they are what the project's work is written down in. */
 export const CHAT_ROWS = 50;
 export const FILE_ROWS = 50;
+export const DOC_ROWS = 50;
 export const LINE_ROWS = 200;
 export const ALL_CHAT_ROWS = 4;
 export const ALL_ARCHIVED_ROWS = 3;
 /** With nothing typed the All tab lists the latest chats and nothing else, so it has room for more of them. */
 export const ALL_RECENT_CHAT_ROWS = 8;
 export const ALL_FILE_ROWS = 6;
+export const ALL_DOC_ROWS = 4;
 export const ALL_LINE_ROWS = 12;
 
 interface Done<T> {
@@ -94,15 +106,19 @@ export class QuickSearchModel {
     tab: QuickSearchTab;
     /** What the latest finished searches found, with the query each was for. */
     files: Done<string[]> | null = null;
+    docs: Done<string[]> | null = null;
     lines: Done<SearchResult> | null = null;
     filesError: string | null = null;
+    docsError: string | null = null;
     linesError: string | null = null;
     filesPending = false;
+    docsPending = false;
     linesPending = false;
     /** The id of the row the keys moved to; `null` while they have not. */
     activeId: string | null = null;
     #typing: ReturnType<typeof setTimeout> | undefined;
     #filesRun = 0;
+    #docsRun = 0;
     #linesRun = 0;
 
     constructor(private readonly source: QuickSearchSource, tab: QuickSearchTab = 'all', query = '') {
@@ -119,19 +135,19 @@ export class QuickSearchModel {
 
     /** Some search for the tab is still running. */
     get pending(): boolean {
-        return (this.#wantsFiles && this.filesPending) || (this.#wantsLines && this.linesPending);
+        return (this.#wantsFiles && this.filesPending) || (this.#wantsDocs && this.docsPending) || (this.#wantsLines && this.linesPending);
     }
 
     /** Every search the tab needs has answered for the query as it is now: an empty list is then an empty answer, and not one still to come. */
     get answered(): boolean {
-        return (!this.#wantsFiles || this.files?.query === this.query) && (!this.#wantsLines || this.lines?.query === this.query);
+        return (!this.#wantsFiles || this.files?.query === this.query) && (!this.#wantsDocs || this.docs?.query === this.query) && (!this.#wantsLines || this.lines?.query === this.query);
     }
 
     /** The reason the tab has nothing to list, when a search it needs failed: a list that came is shown, and the failure of the other kind is not in its way. */
     get error(): string | null {
         if (this.rows.length > 0) return null;
 
-        return (this.#wantsFiles && this.filesError) || (this.#wantsLines && this.linesError) || null;
+        return (this.#wantsFiles && this.filesError) || (this.#wantsDocs && this.docsError) || (this.#wantsLines && this.linesError) || null;
     }
 
     /** The lists the tab shows, with what each found. */
@@ -148,6 +164,12 @@ export class QuickSearchModel {
             if (chats.length > 0) sections.push({ id: 'chats', title: this.blank ? 'Recent chats' : 'Chats', items: chats });
 
             if (archived.length > 0) sections.push({ id: 'archived', title: 'Archived chats', items: archived });
+        }
+
+        if (this.#wantsDocs && this.docs) {
+            const paths = this.docs.value.slice(0, all ? ALL_DOC_ROWS : DOC_ROWS);
+
+            if (paths.length > 0) sections.push({ id: 'docs', title: 'Docs', items: paths.map((path): Found => ({ kind: 'doc', id: `doc:${ path }`, path })) });
         }
 
         if (this.#wantsFiles && this.files) {
@@ -242,6 +264,7 @@ export class QuickSearchModel {
     dispose(): void {
         clearTimeout(this.#typing);
         this.#filesRun++;
+        this.#docsRun++;
         this.#linesRun++;
         this.source.dispose?.();
     }
@@ -254,18 +277,26 @@ export class QuickSearchModel {
         return this.tab === 'all' || this.tab === 'files';
     }
 
+    get #wantsDocs(): boolean {
+        return this.tab === 'all' || this.tab === 'docs';
+    }
+
     get #wantsLines(): boolean {
         return this.tab === 'all' || this.tab === 'text';
     }
 
     #clear(): void {
         this.#filesRun++;
+        this.#docsRun++;
         this.#linesRun++;
         this.files = null;
+        this.docs = null;
         this.lines = null;
         this.filesError = null;
+        this.docsError = null;
         this.linesError = null;
         this.filesPending = false;
+        this.docsPending = false;
         this.linesPending = false;
         this.activeId = null;
     }
@@ -275,6 +306,8 @@ export class QuickSearchModel {
         const { query } = this;
 
         if (this.#wantsFiles && this.files?.query !== query) void this.#searchFiles(query);
+
+        if (this.#wantsDocs && this.docs?.query !== query) void this.#searchDocs(query);
 
         if (this.#wantsLines && this.lines?.query !== query) void this.#searchLines(query);
     }
@@ -297,6 +330,28 @@ export class QuickSearchModel {
                 this.files = null;
                 this.filesError = errorMessage(error);
                 this.filesPending = false;
+            })
+        );
+    }
+
+    async #searchDocs(query: string): Promise<void> {
+        const run = ++this.#docsRun;
+
+        runInAction(() => {
+            this.docsPending = true;
+        });
+
+        await this.source.docs(query).then(
+            value => run === this.#docsRun && runInAction(() => {
+                this.docs = { query, value };
+                this.docsError = null;
+                this.docsPending = false;
+                this.activeId = null;
+            }),
+            (error: unknown) => run === this.#docsRun && runInAction(() => {
+                this.docs = null;
+                this.docsError = errorMessage(error);
+                this.docsPending = false;
             })
         );
     }

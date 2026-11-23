@@ -3,7 +3,7 @@ import { WINDOW_MATERIAL_ARGUMENT } from '../shared/bridge';
 import type { BrowserWindowConstructorOptions, CustomScheme, Session, WebContents } from 'electron';
 
 /** The page's top band, in CSS pixels. Windows centers its caption buttons in an overlay of this height. */
-const TITLE_BAR_HEIGHT = 48;
+const TITLE_BAR_HEIGHT = 44;
 
 /** First Windows build whose Desktop Window Manager draws Mica for `backgroundMaterial`. */
 const WINDOWS_MICA_BUILD = 22621;
@@ -40,8 +40,8 @@ export function windowChrome(platform: NodeJS.Platform, build: number, dark = fa
         return {
             titleBarStyle: 'hidden',
             titleBarOverlay: true,
-            // Centered in the page's 48px top band. The overlay's `titlebar-area-*` variables describe it to the page.
-            trafficLightPosition: { x: 17, y: 17 },
+            // Centered in the page's 44px top band: the lights are 14px tall, so 15px above and below. The overlay's `titlebar-area-*` variables describe it to the page.
+            trafficLightPosition: { x: 17, y: 15 },
             vibrancy: 'under-window',
             visualEffectState: 'active',
             backgroundColor: '#00000000',

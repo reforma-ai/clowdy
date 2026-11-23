@@ -16,8 +16,12 @@ interface Call {
     body: unknown;
 }
 
-/** A file system whose daemon answers each request with the next of `answers`, and keeps what it was asked. */
+/** A file system whose daemon answers each request with the next of `answers`, and keeps what it was asked. With `workspaceId` it is the worktree of the folder. */
 function system(...answers: Array<Response | (() => Response)>) {
+    return systemOf(undefined, ...answers);
+}
+
+function systemOf(workspaceId: string | undefined, ...answers: Array<Response | (() => Response)>) {
     const calls: Call[] = [];
     const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
         calls.push({ url: String(input), method: init?.method ?? 'GET', headers: init?.headers as Record<string, string>, body: init?.body });
@@ -29,7 +33,7 @@ function system(...answers: Array<Response | (() => Response)>) {
         return typeof answer === 'function' ? answer() : answer;
     }) as typeof fetch;
 
-    return { calls, files: new HttpFileSystem({ target: () => TARGET, fetch: fetchImpl, route: ROUTE, folderId: 'fld 1', sleep: () => Promise.resolve() }) };
+    return { calls, files: new HttpFileSystem({ target: () => TARGET, fetch: fetchImpl, route: ROUTE, folderId: 'fld 1', ...(workspaceId !== undefined && { workspaceId }), sleep: () => Promise.resolve() }) };
 }
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
@@ -287,5 +291,68 @@ describe('HttpFileSystem watch', () => {
         stop();
 
         expect(calls).toHaveLength(1);
+    });
+});
+
+describe('HttpFileSystem over a worktree', () => {
+    const ok = () => json({ ok: true });
+    const stream = () => new Response(new ReadableStream({ start: controller => controller.close() }), { headers: { 'content-type': 'text/event-stream' } });
+
+    it('names the worktree beside the folder in the address of a read, a write and the lists', async () => {
+        const { calls, files } = systemOf('wks 1', json([]), json([]), new Response('hi', { headers: { [FS_VERSION_HEADER]: '1-1' } }), json({ version: '2-2' }));
+
+        await files.list('app', 3);
+        await files.findFiles('a');
+        await files.read('a.txt');
+        await files.write('a.txt', 'hi', { expectedVersion: '1-1' });
+
+        expect(calls.map(call => [call.method, call.url.slice(TARGET.base.length)])).toEqual([
+            ['GET', `${ ROUTE }/list?folderId=fld+1&workspaceId=wks+1&path=app&depth=3`],
+            ['GET', `${ ROUTE }/find?folderId=fld+1&workspaceId=wks+1&query=a`],
+            ['GET', `${ ROUTE }/file?folderId=fld+1&workspaceId=wks+1&path=a.txt`],
+            ['PUT', `${ ROUTE }/file?folderId=fld+1&workspaceId=wks+1&path=a.txt`],
+        ]);
+    });
+
+    it('names the worktree in the body of a folder, a move, a copy, a delete and a search', async () => {
+        const { calls, files } = systemOf('wks_1', ok, ok, ok, ok, json({ files: [], truncated: false }));
+
+        await files.createDirectory('docs/new');
+        await files.move([{ from: 'a', to: 'b' }]);
+        await files.copy([{ from: 'a', to: 'c' }]);
+        await files.delete(['x']);
+        await files.search!({ query: 'needle', matchCase: false, wholeWord: false }, new AbortController().signal);
+
+        expect(calls.map(call => [call.url.slice(TARGET.base.length), (JSON.parse(call.body as string) as Record<string, unknown>).workspaceId, (JSON.parse(call.body as string) as Record<string, unknown>).folderId])).toEqual([
+            [`${ ROUTE }/folder`, 'wks_1', 'fld 1'],
+            [`${ ROUTE }/move`, 'wks_1', 'fld 1'],
+            [`${ ROUTE }/copy`, 'wks_1', 'fld 1'],
+            [`${ ROUTE }/delete`, 'wks_1', 'fld 1'],
+            [`${ ROUTE }/search`, 'wks_1', 'fld 1'],
+        ]);
+    });
+
+    it('watches the worktree, not the folder', async () => {
+        const { calls, files } = systemOf('wks_1', stream());
+        const done = new Promise<void>((resolve) => {
+            const stop = files.watch(() => {
+                stop();
+                resolve();
+            });
+        });
+
+        await done;
+
+        expect(calls[0]!.url).toBe(`${ TARGET.base }${ ROUTE }/watch?folderId=fld+1&workspaceId=wks_1`);
+    });
+
+    it('sends no workspace for the folder\'s own checkout', async () => {
+        const { calls, files } = system(json([]), ok);
+
+        await files.list('');
+        await files.createDirectory('d');
+
+        expect(calls[0]!.url).not.toContain('workspaceId');
+        expect(calls[1]!.body).toBe(JSON.stringify({ folderId: 'fld 1', path: 'd' }));
     });
 });

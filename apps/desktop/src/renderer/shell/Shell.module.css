@@ -1,7 +1,24 @@
 .shell {
+    /* The plates float on the window's chrome, as Reforma's do: this far from the window's left edge and bottom, and this far from each other. */
+    --plate-inset: var(--spacing-6);
+    --plate-gap: var(--spacing-4);
+    --plate-radius: calc(var(--radius-xl) * var(--squircle-radius-factor));
+    /* The title band across the top: its height is the one the window's chrome reports (`TITLE_BAR_HEIGHT` and the traffic lights' place in `src/main/security.ts`). */
+    --title-band-height: var(--spacing-44);
+    /* The rail at the window's right edge (`SidePanelRail`), which the title band stops short of. */
+    --side-rail-width: 56px;
+
     display: flex;
     height: 100vh;
     color: var(--color-text);
+}
+
+/* Everything but the rail, which is as tall as the window: the title band across the top and the body under it. */
+.window {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
 }
 
 .body {
@@ -10,30 +27,46 @@
     min-height: 0;
 }
 
-/* The content plate: paper over the window's translucent chrome. */
+/* The content plate: paper over the window's translucent chrome, rounded at every corner, with room at the window's left edge and bottom. Its right edge is the rail's. */
 .outlet {
     display: flex;
     flex: 1;
     flex-direction: column;
     min-width: 0;
     min-height: 0;
-    border-top: 1px solid var(--color-surface-border);
-    border-left: 1px solid var(--color-surface-border);
-    border-top-left-radius: calc(var(--radius-xl) * var(--squircle-radius-factor));
+    margin-bottom: var(--plate-inset);
+    margin-left: var(--plate-inset);
+    border: 1px solid var(--color-surface-border);
+    border-radius: var(--plate-radius);
     corner-shape: superellipse(var(--squircle-value));
     background-color: var(--color-surface);
     overflow: hidden;
 }
 
-/* Without the rail there is no edge for the plate to round off against. */
-.bare {
-    border: 0;
-    border-radius: 0;
+/* The side panel's plate is beside it: the edge between them to drag is in the middle of the gap, half of it on each plate. */
+.beside {
+    margin-right: calc(var(--plate-gap) / 2);
 }
 
-/* The window waits: the brand mark, bigger than a panel's. */
-.loader {
-    --loader-size: var(--spacing-56);
+/*
+ * Expanded, the page's plate is the list of chats alone, an island of its own (`AgentList.module.css` draws it), and the panel's plate is the other, with the gap between.
+ * What is left of the page's plate is clear, so the window shows through the gap.
+ */
+.covered {
+    border-width: 0;
+    background-color: transparent;
+}
+
+/* The edge between the list and the chat is at the list's right side now, and the gap to the panel's plate is to the right of it: its line is moved to the middle of that gap. */
+.covered [data-slot='resizable-handle']::after {
+    left: calc(50% + var(--plate-gap) / 2);
+}
+
+/* Before the projects are loaded there is no rail and no plate to draw: the message fills the window. */
+.bare {
+    margin: 0;
+    border: 0;
+    border-radius: 0;
 }
 
 .center {

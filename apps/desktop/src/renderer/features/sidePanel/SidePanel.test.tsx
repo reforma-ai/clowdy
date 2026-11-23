@@ -5,31 +5,50 @@ import { act, useEffect } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { createFixtureData } from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
+import { defineCommand } from '../../hotkeys';
 import { RootStore, RootStoreProvider } from '../../stores';
-import { currentFolder } from './currentFolder';
+import { SIDE_PANEL_COMMAND, SIDE_PANEL_KEYS } from './commands';
 import { SidePanelLayout } from './SidePanelLayout';
-import { SidePanelToggle } from './SidePanelToggle';
-import { useSidePanel } from './useSidePanel';
-
-import type { Chat, ProjectFolder } from '@clowdy/protocol';
+import { SidePanelRail } from './SidePanelRail';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 // The editor and the file tree have tests of their own; here the panel only has to show the tab.
-vi.mock('../files/FilesTab', () => ({ default: () => <p>The files</p> }));
+// It is told which of its two tabs it draws, and says when it is built: the two tabs are one component, which stays built when the panel moves between them (the view inside it is made again for the file manager of the tab on show).
+const built = vi.hoisted(() => vi.fn());
+
+vi.mock('../files/FilesTab', async () => {
+    const { useEffect } = await import('react');
+
+    return {
+        default: ({ variant }: { variant?: string }) => {
+            useEffect(() => {
+                built();
+            }, []);
+
+            return <p>{ variant === 'docs' ? 'The docs' : 'The files' }</p>;
+        },
+    };
+});
 // So has the terminal.
 vi.mock('../terminal/TerminalTab', () => ({ default: () => <p>The terminal</p> }));
+// And the tasks.
+vi.mock('../tasks', () => ({ Screen: () => <p>The tasks</p> }));
 // The babel plugin that makes the app's components observers does not run under Vitest: the panel is one, to follow the tab that is chosen.
 vi.mock('./SidePanel', async (importOriginal) => ({ SidePanel: observer((await importOriginal<typeof import('./SidePanel')>()).SidePanel) }));
 
 // The babel plugin that makes the app's components observers does not run under Vitest.
 const Layout = observer(SidePanelLayout);
-const Toggle = observer(SidePanelToggle);
-// The title band's place for the button: it is there while the panel is shut, and the panel's header has it while the panel is open.
-const Band = observer(function Band() {
-    return useSidePanel().open ? null : <Toggle />;
-});
+const Rail = observer(SidePanelRail);
+/** The page with its side panel, and the rail at the window's right edge. */
+const Frame = () => (
+    <>
+        <Layout><p>The page</p></Layout>
+        <Rail />
+    </>
+);
 
 const memory = () => {
     const data = new Map<string, string>();
@@ -51,17 +70,25 @@ const press = (target: HTMLElement) => act(async () => {
     target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
     target.click();
 });
-const pressKey = (target: HTMLElement, key: string) => act(async () => {
-    target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
-    target.dispatchEvent(new KeyboardEvent('keyup', { key, bubbles: true, cancelable: true }));
-});
-const nextFrame = () => act(async () => {
-    await new Promise(resolve => requestAnimationFrame(resolve));
+/** The two clicks of a double click: the browser counts them in `detail`. */
+const doubleClick = (target: HTMLElement) => act(async () => {
+    for (const detail of [1, 2]) target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail }));
 });
 const panel = () => container.querySelector<HTMLElement>('aside[aria-label="Panel"]');
-const toggle = () => container.querySelector<HTMLButtonElement>('button[aria-label="Side panel"]');
-const tab = (name: string) => [...(panel()?.querySelectorAll<HTMLButtonElement>('header button') ?? [])].find(button => button.textContent === name);
+const rail = () => container.querySelector<HTMLElement>('nav[aria-label="Panel tabs"]');
+const tab = (name: string) => [...(rail()?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find(button => button.textContent === name);
 const ui = () => store.ui.forProject(store.selectedProjectId!);
+const expandButton = () => container.querySelector<HTMLButtonElement>('button[aria-label="Side panel"]');
+const settingsItem = () => [...container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Settings');
+
+/** A window with no project on show: the projects are loaded and there are none. */
+async function withoutProjects() {
+    const empty = new RootStore(new FixtureTransport({ data: { ...createFixtureData(), projects: [] } }), { storage: memory() });
+
+    await empty.load();
+    store.dispose();
+    store = empty;
+}
 
 async function draw(element: React.ReactElement) {
     act(() => root.render(<RootStoreProvider value={ store }>{ element }</RootStoreProvider>));
@@ -82,6 +109,188 @@ afterEach(() => {
     act(() => root.unmount());
     container.remove();
     store.dispose();
+});
+
+describe('the corner at the top of the rail', () => {
+    // The icon is one, drawn for the state the panel is in.
+    const icon = () => expandButton()?.querySelector('svg')?.getAttribute('data-state');
+    const pressed = () => expandButton()?.getAttribute('aria-pressed');
+    // The menu is in the overlay layer of the page, outside the container.
+    const sizes = () => document.querySelector('[role="group"][aria-label="Side panel size"]');
+    const sizeButtons = () => [...(sizes()?.querySelectorAll<HTMLButtonElement>('button') ?? [])];
+    const size = (name: string) => sizeButtons().find(button => button.textContent?.startsWith(name))!;
+    const current = () => sizeButtons().filter(button => button.getAttribute('aria-pressed') === 'true').map(button => button.textContent);
+    const pause = (ms: number) => act(async () => {
+        await new Promise(resolve => setTimeout(resolve, ms));
+    });
+
+    it('opens a menu of the sizes with a press, and a choice sets the panel to that size and shuts the menu', async () => {
+        await draw(<><Layout><p>The page</p></Layout><Rail /></>);
+
+        expect(sizes()).toBeNull();
+        expect(pressed()).toBe('false');
+        expect(icon()).toBe('none');
+
+        await press(expandButton()!);
+
+        expect(sizeButtons().map(button => button.textContent)).toEqual(['Wide', 'Half', 'Hide']);
+        expect(current()).toEqual(['Hide']);
+
+        await press(size('Half'));
+
+        expect(sizes()).toBeNull();
+        expect([ui().sidePanelOpen, ui().sidePanelExpanded]).toEqual([true, false]);
+        expect(panel()?.hasAttribute('data-expanded')).toBe(false);
+        expect(pressed()).toBe('true');
+        expect(icon()).toBe('small');
+
+        await press(expandButton()!);
+        expect(current()).toEqual(['Half']);
+
+        await press(size('Wide'));
+
+        expect(ui().sidePanelExpanded).toBe(true);
+        expect(panel()?.hasAttribute('data-expanded')).toBe(true);
+        expect(pressed()).toBe('true');
+        expect(icon()).toBe('large');
+        // The edge between the page and the panel lies under the expanded panel.
+        expect(container.querySelector<HTMLElement>('[role="separator"]')?.className).toMatch(/edgeCovered/);
+
+        await press(expandButton()!);
+        expect(current()).toEqual(['Wide']);
+
+        await press(size('Hide'));
+
+        expect([ui().sidePanelOpen, ui().sidePanelExpanded]).toEqual([false, true]);
+        expect(panel()).toBeNull();
+        expect(pressed()).toBe('false');
+        expect(icon()).toBe('none');
+    });
+
+    it('titles the menu as the side panel, and tells the key that toggles the panel only while there is one', async () => {
+        await draw(<><Layout><p>The page</p></Layout><Rail /></>);
+        await press(expandButton()!);
+
+        const menu = () => sizes()?.parentElement?.textContent;
+
+        expect(menu()).toMatch(/^Side panel/);
+        expect(menu()).not.toContain('to toggle the panel');
+
+        const remove = defineCommand({ id: SIDE_PANEL_COMMAND, title: 'Toggle side panel', group: 'General', keys: SIDE_PANEL_KEYS, scope: 'app', handler: () => undefined });
+
+        try {
+            await settle();
+
+            expect(menu()).toMatch(/^Side panelUse .+ to toggle the panelWide/);
+        }
+        finally {
+            remove();
+        }
+    });
+
+    it('shows a panel that was shut while expanded as hidden, and brings it back in the size that is chosen', async () => {
+        act(() => ui().toggleSidePanel());
+        await draw(<><Layout><p>The page</p></Layout><Rail /></>);
+
+        act(() => ui().toggleSidePanelExpanded());
+        act(() => ui().toggleSidePanel());
+        await settle();
+
+        expect(panel()).toBeNull();
+        expect(icon()).toBe('none');
+
+        await press(expandButton()!);
+        expect(current()).toEqual(['Hide']);
+
+        await press(size('Half'));
+
+        expect(panel()?.hasAttribute('data-expanded')).toBe(false);
+        expect(icon()).toBe('small');
+    });
+
+    it('keeps Half in the menu, grey and saying why, where the panel cannot be beside the chat: the Tasks tab, and a window too narrow for Files', async () => {
+        act(() => ui().showSidePanelTab('tasks'));
+        await draw(<><Layout><p>The page</p></Layout><Rail /></>);
+
+        await press(expandButton()!);
+
+        expect(sizeButtons().map(button => button.textContent)).toEqual(['Wide', 'Half', 'Hide']);
+        expect(size('Half').disabled).toBe(true);
+        // A disabled button gets no pointer, so a focusable stand-in carries the tooltip that says why.
+        expect(size('Half').parentElement?.getAttribute('aria-label')).toBe('Half');
+
+        await press(size('Wide'));
+
+        expect(panel()?.hasAttribute('data-expanded')).toBe(true);
+        expect(icon()).toBe('large');
+
+        await press(expandButton()!);
+        expect(current()).toEqual(['Wide']);
+
+        await press(size('Hide'));
+
+        expect([ui().sidePanelOpen, ui().sidePanelExpanded]).toEqual([false, false]);
+        expect(panel()).toBeNull();
+
+        act(() => {
+            ui().showSidePanelTab('files');
+            store.ui.setWindowFitsHalf(false);
+        });
+        await settle();
+        await press(expandButton()!);
+
+        expect(sizeButtons().map(button => button.textContent)).toEqual(['Wide', 'Half', 'Hide']);
+        expect(size('Half').disabled).toBe(true);
+    });
+
+    it('shuts the menu with Escape, and the button is its trigger again', async () => {
+        await draw(<><Layout><p>The page</p></Layout><Rail /></>);
+
+        await press(expandButton()!);
+        expect(sizes()).not.toBeNull();
+        expect(expandButton()?.getAttribute('aria-expanded')).toBe('true');
+
+        await act(async () => {
+            (document.activeElement ?? sizes())?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        });
+        await pause(100);
+
+        expect(sizes()).toBeNull();
+        expect(expandButton()?.getAttribute('aria-expanded')).toBe('false');
+        expect(ui().sidePanelOpen).toBe(false);
+    });
+
+    it('does not open the menu when the pointer rests on the button: only a press does', async () => {
+        await draw(<><Layout><p>The page</p></Layout><Rail /></>);
+
+        const button = expandButton()!;
+
+        await act(async () => {
+            button.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, relatedTarget: document.body }));
+        });
+        await pause(400);
+
+        expect(sizes()).toBeNull();
+        expect(button.getAttribute('aria-expanded')).toBe('false');
+
+        await press(button);
+
+        expect(sizes()).not.toBeNull();
+        expect(button.getAttribute('aria-expanded')).toBe('true');
+    });
+
+    it('is the first item of the rail, and the rail keeps its top empty when there is no project, with no button there', async () => {
+        await draw(<Rail />);
+
+        expect(container.firstElementChild?.firstElementChild?.className).toMatch(/corner/);
+        expect(container.firstElementChild?.firstElementChild?.contains(expandButton())).toBe(true);
+
+        await withoutProjects();
+        await draw(<Rail />);
+
+        expect(container.firstElementChild?.firstElementChild?.className).toMatch(/corner/);
+        expect(expandButton()).toBeNull();
+    });
 });
 
 describe('the side panel of the window', () => {
@@ -126,17 +335,25 @@ describe('the side panel of the window', () => {
         expect(unmounted).not.toHaveBeenCalled();
     });
 
-    it('is drawn only while the window shows a project, and comes back with Settings shut', async () => {
+    it('stays where it is while Settings is open over it, which is a window and not a screen in its place', async () => {
         act(() => ui().toggleSidePanel());
         store.ui.openSettings();
         await draw(<Layout><p>The page</p></Layout>);
 
-        expect(panel()).toBeNull();
+        expect(panel()).not.toBeNull();
 
         act(() => store.ui.closeSettings());
         await settle();
 
         expect(panel()).not.toBeNull();
+    });
+
+    it('is drawn only while the window shows a project', async () => {
+        await withoutProjects();
+        await draw(<Layout><p>The page</p></Layout>);
+
+        expect(store.selectedProjectId).toBeNull();
+        expect(panel()).toBeNull();
     });
 
     it('is open for the project it was opened in, and not for another', async () => {
@@ -153,14 +370,14 @@ describe('the side panel of the window', () => {
         expect(panel()).toBeNull();
     });
 
-    it('opens on the Info tab, with the project and the folder the window is working in, and has the button that shuts it', async () => {
+    it('opens on the Info tab, with the project and the folder the window is working in', async () => {
         act(() => ui().toggleSidePanel());
-        await draw(<Layout><p>The page</p></Layout>);
+        await draw(<Frame />);
 
         const project = store.selectedProject!.project;
 
-        expect(tab('Info')?.getAttribute('aria-pressed')).toBe('true');
-        expect(tab('Files')?.getAttribute('aria-pressed')).toBe('false');
+        expect(tab('Info')?.getAttribute('aria-current')).toBe('page');
+        expect(tab('Files')?.getAttribute('aria-current')).toBeNull();
         expect(panel()?.querySelector('[aria-label="Info"][class*="plate"]')).not.toBeNull();
         expect(panel()?.textContent).toContain('Project');
         expect(panel()?.textContent).toContain(project.name);
@@ -170,21 +387,18 @@ describe('the side panel of the window', () => {
         // The branch checked out in the folder, read from the daemon (the fixture's git has Car Rental on main).
         expect(panel()?.textContent).toContain('Branch');
         expect(panel()?.textContent).toContain('main');
-        await press(panel()!.querySelector<HTMLButtonElement>('button[aria-label="Side panel"]')!);
-
-        expect(ui().sidePanelOpen).toBe(false);
     });
 
     it('shows the Files tab when it is chosen, and goes back to Info', async () => {
         act(() => ui().toggleSidePanel());
-        await draw(<Layout><p>The page</p></Layout>);
+        await draw(<Frame />);
 
         await press(tab('Files')!);
         await settle();
 
         expect(ui().sidePanelTab).toBe('files');
-        expect(tab('Files')?.getAttribute('aria-pressed')).toBe('true');
-        expect(tab('Info')?.getAttribute('aria-pressed')).toBe('false');
+        expect(tab('Files')?.getAttribute('aria-current')).toBe('page');
+        expect(tab('Info')?.getAttribute('aria-current')).toBeNull();
         expect(panel()?.querySelector('[aria-label="Files"][class*="plate"]')?.textContent).toBe('The files');
 
         await press(tab('Info')!);
@@ -193,29 +407,71 @@ describe('the side panel of the window', () => {
         expect(panel()?.textContent).not.toContain('The files');
     });
 
-    it('has a Terminal tab after Files, which shows the terminal', async () => {
-        await draw(<Layout><p>The page</p></Layout>);
+    it('has a Docs tab, which is the Files view for the documents: the panel keeps the one component built when it moves between the two', async () => {
+        built.mockClear();
+        act(() => ui().toggleSidePanel());
+        await draw(<Frame />);
+
+        await press(tab('Files')!);
+        await settle();
+
+        expect(panel()?.querySelector('[aria-label="Files"][class*="plate"]')?.textContent).toBe('The files');
+
+        await press(tab('Docs')!);
+        await settle();
+
+        expect(ui().sidePanelTab).toBe('docs');
+        expect(panel()?.querySelector('[aria-label="Docs"][class*="plate"]')?.textContent).toBe('The docs');
+        expect(tab('Docs')?.getAttribute('aria-current')).toBe('page');
+
+        await press(tab('Files')!);
+        await settle();
+
+        expect(panel()?.textContent).toContain('The files');
+        expect(built).toHaveBeenCalledOnce();
+    });
+
+    it('has a Terminal tab after Docs, which shows the terminal', async () => {
+        await draw(<Frame />);
 
         act(() => ui().toggleSidePanel());
         await settle();
 
-        const names = [...(panel()?.querySelectorAll<HTMLButtonElement>('header [role="group"] button') ?? [])].map(button => button.textContent);
+        const names = [...(rail()?.querySelectorAll<HTMLButtonElement>('button') ?? [])].map(button => button.textContent);
 
-        expect(names).toEqual(['Info', 'Files', 'Terminal']);
+        expect(names).toEqual(['Files', 'Docs', 'Terminal', 'Tasks', 'Info']);
 
         await press(tab('Terminal')!);
         await settle();
 
         expect(ui().sidePanelTab).toBe('terminal');
-        expect(tab('Terminal')?.getAttribute('aria-pressed')).toBe('true');
+        expect(tab('Terminal')?.getAttribute('aria-current')).toBe('page');
         expect(panel()?.querySelector('[aria-label="Terminal"][class*="plate"]')?.textContent).toBe('The terminal');
         expect(panel()?.textContent).not.toContain('The files');
+    });
+
+    it('has a Tasks tab after Terminal, which shows the tasks over the chat and leaves the expanded choice as it was', async () => {
+        await draw(<Frame />);
+
+        await press(tab('Tasks')!);
+        await settle();
+
+        expect(ui().sidePanelTab).toBe('tasks');
+        expect(tab('Tasks')?.getAttribute('aria-current')).toBe('page');
+        expect(panel()?.querySelector('[aria-label="Tasks"][class*="plate"]')?.textContent).toBe('The tasks');
+        expect(panel()?.hasAttribute('data-expanded')).toBe(true);
+        expect(ui().sidePanelExpanded).toBe(false);
+
+        await press(tab('Files')!);
+        await settle();
+
+        expect(panel()?.hasAttribute('data-expanded')).toBe(false);
     });
 
     it('keeps the chosen tab for the project, and starts another project on Info', async () => {
         act(() => ui().toggleSidePanel());
         act(() => ui().showSidePanelTab('files'));
-        await draw(<Layout><p>The page</p></Layout>);
+        await draw(<Frame />);
         await settle();
 
         expect(panel()?.textContent).toContain('The files');
@@ -226,66 +482,107 @@ describe('the side panel of the window', () => {
         act(() => ui().toggleSidePanel());
         await settle();
 
-        expect(tab('Info')?.getAttribute('aria-pressed')).toBe('true');
+        expect(tab('Info')?.getAttribute('aria-current')).toBe('page');
     });
 });
 
-describe('the button of the side panel', () => {
-    it('is pressed while the panel is open, and a press flips it', async () => {
-        await draw(<Toggle />);
-
-        expect(toggle()?.getAttribute('aria-pressed')).toBe('false');
-
-        await press(toggle()!);
-
-        expect(ui().sidePanelOpen).toBe(true);
-        expect(toggle()?.getAttribute('aria-pressed')).toBe('true');
-    });
-
-    it('is not drawn where the window shows no project', async () => {
-        store.ui.openSettings();
-        await draw(<Toggle />);
-
-        expect(toggle()).toBeNull();
-    });
-
-    it('hands the focus to the button that takes its place when a key press flips the panel, in both directions', async () => {
-        await draw(<Layout><Band /></Layout>);
-
-        toggle()!.focus();
-        await pressKey(toggle()!, 'Enter');
-        await nextFrame();
-
-        expect(panel()).not.toBeNull();
-        expect(document.activeElement).toBe(panel()!.querySelector('button[aria-label="Side panel"]'));
-
-        await pressKey(document.activeElement as HTMLElement, ' ');
-        await nextFrame();
+describe('the rail of the side panel', () => {
+    it('is there whether the panel is open or not, with an item for each tab, and none is current while the panel is shut', async () => {
+        await draw(<Frame />);
 
         expect(panel()).toBeNull();
-        expect(document.activeElement).toBe(toggle());
-    });
-});
+        expect([...rail()!.querySelectorAll('button')].map(button => button.textContent)).toEqual(['Files', 'Docs', 'Terminal', 'Tasks', 'Info']);
+        expect(rail()!.querySelector('[aria-current]')).toBeNull();
 
-describe('the folder the Info tab names', () => {
-    const folders: ProjectFolder[] = [{ id: 'f1', path: '/Users/dev/web' }, { id: 'f2', path: '/Users/dev/api' }];
-    const chats = new Map([['c1', { id: 'c1', folderId: 'f2' } as Chat], ['c2', { id: 'c2' } as Chat]]);
-    const project = { chats, project: { folders } as never };
-    const idle = { section: 'agents', chatId: null, draft: false, draftFolderId: null } as const;
+        act(() => ui().toggleSidePanel());
+        await settle();
 
-    it('is the folder of the open chat, and the main one for a chat that has none', () => {
-        expect(currentFolder(project, { ...idle, chatId: 'c1' }).path).toBe('/Users/dev/api');
-        expect(currentFolder(project, { ...idle, chatId: 'c2' }).path).toBe('/Users/dev/web');
+        expect(rail()!.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
+        expect(tab('Info')?.getAttribute('aria-current')).toBe('page');
     });
 
-    it('is the folder of the new chat that is being made', () => {
-        expect(currentFolder(project, { ...idle, draft: true, draftFolderId: 'f2' }).path).toBe('/Users/dev/api');
-        expect(currentFolder(project, { ...idle, draft: true }).path).toBe('/Users/dev/web');
+    it('opens a shut panel on the tab that is clicked, changes the tab of an open one, and shuts it when the tab that is shown is clicked', async () => {
+        await draw(<Frame />);
+
+        await press(tab('Files')!);
+        await settle();
+
+        expect(ui().sidePanelOpen).toBe(true);
+        expect(ui().sidePanelTab).toBe('files');
+
+        await press(tab('Terminal')!);
+        await settle();
+
+        expect(ui().sidePanelOpen).toBe(true);
+        expect(ui().sidePanelTab).toBe('terminal');
+
+        await press(tab('Terminal')!);
+        await settle();
+
+        expect(ui().sidePanelOpen).toBe(false);
+        expect(panel()).toBeNull();
+        expect(rail()!.querySelector('[aria-current]')).toBeNull();
+
+        await press(tab('Terminal')!);
+        await settle();
+
+        expect(ui().sidePanelOpen).toBe(true);
     });
 
-    it('is the main folder when no chat is open, and in the sections that belong to the project and not to a folder', () => {
-        expect(currentFolder(project, idle).path).toBe('/Users/dev/web');
-        expect(currentFolder(project, { ...idle, section: 'tasks', chatId: 'c1' }).path).toBe('/Users/dev/web');
-        expect(currentFolder(project, { ...idle, section: 'docs', draft: true, draftFolderId: 'f2' }).path).toBe('/Users/dev/web');
+    it('toggles on every click, however fast they come after one another at one place, so a double click is two toggles', async () => {
+        await draw(<Frame />);
+
+        // The browser counts such clicks in `detail`, and every one of them counts.
+        for (const detail of [1, 2, 3]) {
+            await act(async () => void tab('Files')!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail })));
+        }
+
+        // Opened, shut, opened.
+        expect(ui().sidePanelOpen).toBe(true);
+
+        await doubleClick(tab('Files')!);
+
+        expect(ui().sidePanelOpen).toBe(true);
+    });
+
+    it('has the panel\'s button first, then Info at the bottom beside Settings, and Settings under it', async () => {
+        await draw(<Frame />);
+
+        const items = [...container.querySelectorAll<HTMLButtonElement>('button')];
+
+        expect(items[0]).toBe(expandButton());
+        expect(items.slice(1).map(button => button.textContent)).toEqual(['Files', 'Docs', 'Terminal', 'Tasks', 'Info', 'Settings']);
+        // Info is the one tab that is pushed to the bottom of the column, so that it sits above Settings.
+        expect(tab('Info')!.className).toMatch(/bottom/);
+        expect(tab('Files')!.className).not.toMatch(/bottom/);
+    });
+
+    it('opens the Settings window with its item, which is current while it is open and does not touch the panel', async () => {
+        await draw(<Frame />);
+
+        expect(settingsItem()!.getAttribute('aria-current')).toBeNull();
+
+        await press(settingsItem()!);
+
+        expect(store.ui.settingsOpen).toBe(true);
+        expect(settingsItem()!.getAttribute('aria-current')).toBe('page');
+        expect(ui().sidePanelOpen).toBe(false);
+        // The rail stays whole under the window.
+        expect(rail()).not.toBeNull();
+
+        act(() => store.ui.closeSettings());
+        await settle();
+
+        expect(settingsItem()!.getAttribute('aria-current')).toBeNull();
+    });
+
+    it('is drawn where the window shows no project too, with Settings alone: the window has settings and a project has the tabs', async () => {
+        await withoutProjects();
+        await draw(<Frame />);
+
+        expect(rail()).toBeNull();
+        expect(settingsItem()).toBeDefined();
+        expect([...container.querySelectorAll('button')].map(button => button.textContent)).toEqual(['Settings']);
+        expect(settingsItem()!.className).toMatch(/bottom/);
     });
 });

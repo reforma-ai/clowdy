@@ -7,7 +7,8 @@ import styles from './SidebarHeading.module.css';
 import type { ReactNode, Ref } from 'react';
 
 export interface SidebarHeadingProps {
-    title: string;
+    /** The title's words, set as a screen's title is, or a control that is the title (the project select). */
+    title: ReactNode;
     /** Buttons at the right edge. */
     children?: ReactNode;
     /** The column's own padding goes here, so the heading lines up with what is below it. */
@@ -16,11 +17,11 @@ export interface SidebarHeadingProps {
     ref?: Ref<HTMLDivElement>;
 }
 
-/** The title of a screen's left column (Agents, Documents, Settings), with its buttons at the right edge: the title of Tasks' header, without the toolbar. */
+/** The title of a screen's left column (the project select above the chats), with its buttons at the right edge: the title of Tasks' header, without the toolbar. */
 export function SidebarHeading({ title, children, className, ref }: SidebarHeadingProps) {
     return (
         <div ref={ ref } className={ cn(styles.heading, className) }>
-            <Text variant={ SCREEN_TITLE }>{ title }</Text>
+            { typeof title === 'string' ? <Text variant={ SCREEN_TITLE }>{ title }</Text> : title }
             { children && <div className={ styles.actions }>{ children }</div> }
         </div>
     );

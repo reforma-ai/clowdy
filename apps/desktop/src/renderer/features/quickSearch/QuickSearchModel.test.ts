@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ALL_ARCHIVED_ROWS, ALL_CHAT_ROWS, ALL_FILE_ROWS, ALL_LINE_ROWS, ALL_RECENT_CHAT_ROWS, CHAT_ROWS, FILE_ROWS, QuickSearchModel, TYPING_DELAY, type Found, type FoundChat, type QuickSearchSource } from './QuickSearchModel';
+import { ALL_ARCHIVED_ROWS, ALL_CHAT_ROWS, ALL_DOC_ROWS, ALL_FILE_ROWS, ALL_LINE_ROWS, ALL_RECENT_CHAT_ROWS, CHAT_ROWS, DOC_ROWS, FILE_ROWS, QuickSearchModel, TYPING_DELAY, type Found, type FoundChat, type QuickSearchSource } from './QuickSearchModel';
 
 import type { SearchResult } from '@clowdy/file-manager/provider';
 
@@ -30,6 +30,7 @@ function source(overrides: Partial<QuickSearchSource> = {}) {
     const found = {
         chats: vi.fn((_query: string): FoundChat[] => []),
         files: vi.fn(async (query: string) => [`${ query }.ts`, 'docs/guide.md']),
+        docs: vi.fn(async (_query: string): Promise<string[]> => []),
         text: vi.fn(async () => result(['src/a.ts', [3, 9]], ['src/b.ts', [1]])),
         open: vi.fn<(found: Found) => void>(),
         dispose: vi.fn(),
@@ -202,6 +203,8 @@ describe('the tabs', () => {
         model.stepTab(1);
         expect(model.tab).toBe('chats');
         model.stepTab(1);
+        expect(model.tab).toBe('docs');
+        model.stepTab(1);
         expect(model.tab).toBe('files');
         model.stepTab(1);
         expect(model.tab).toBe('text');
@@ -227,6 +230,74 @@ describe('the tabs', () => {
 
         model.setTab('text');
         expect(model.rows).toHaveLength(200);
+    });
+});
+
+describe('the documents', () => {
+    it('are a list of their own on the Docs tab, which searches nothing else', async () => {
+        const quick = source({ docs: vi.fn(async () => ['decisions/pricing.md', 'plan.md']) });
+        const model = new QuickSearchModel(quick, 'docs');
+
+        model.setQuery('p');
+        await settle();
+
+        expect(quick.docs).toHaveBeenCalledExactlyOnceWith('p');
+        expect(quick.files).not.toHaveBeenCalled();
+        expect(quick.text).not.toHaveBeenCalled();
+        expect(model.sections).toEqual([{ id: 'docs', title: 'Docs', items: [{ kind: 'doc', id: 'doc:decisions/pricing.md', path: 'decisions/pricing.md' }, { kind: 'doc', id: 'doc:plan.md', path: 'plan.md' }] }]);
+        expect(model.answered).toBe(true);
+    });
+
+    it('come before the files on the All tab, a few of them, and all they have on their own', async () => {
+        const many = Array.from({ length: 80 }, (_, index) => `d${ index }.md`);
+        const model = new QuickSearchModel(source({ docs: async () => many }));
+
+        model.setQuery('d');
+        await settle();
+
+        expect(model.sections.map(({ id }) => id)).toEqual(['docs', 'files', 'text']);
+        expect(model.sections[0]!.items).toHaveLength(ALL_DOC_ROWS);
+
+        model.setTab('docs');
+        expect(model.rows).toHaveLength(DOC_ROWS);
+        expect(model.active?.id).toBe('doc:d0.md');
+    });
+
+    it('say why they could not be found, and leave the lists that came', async () => {
+        const model = new QuickSearchModel(source({ docs: async () => Promise.reject(new Error('the folder is missing')) }));
+
+        model.setQuery('a');
+        await settle();
+
+        expect(model.docsError).toBe('the folder is missing');
+        expect(model.sections.map(({ id }) => id)).toEqual(['files', 'text']);
+        expect(model.error).toBeNull();
+
+        model.setTab('docs');
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(model.rows).toEqual([]);
+        expect(model.error).toBe('the folder is missing');
+    });
+
+    it('are searched again by the Docs tab only for a query the All tab has not answered, and a late answer for an old query is dropped', async () => {
+        const first = deferred<string[]>();
+        const quick = source({ docs: vi.fn(async (query: string) => (query === 'a' ? first.promise : ['b.md'])) });
+        const model = new QuickSearchModel(quick, 'docs');
+
+        model.setQuery('a');
+        await settle();
+        model.setQuery('b');
+        await settle();
+        first.resolve(['a.md']);
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(model.rows.map(row => row.kind === 'doc' && row.path)).toEqual(['b.md']);
+
+        model.setTab('all');
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(quick.docs).toHaveBeenCalledTimes(2);
     });
 });
 

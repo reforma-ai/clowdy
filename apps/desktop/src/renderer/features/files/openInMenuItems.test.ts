@@ -16,7 +16,7 @@ const FILE: FileEntry = { path: 'src/index.ts', kind: 'file' };
 const DIRECTORY: FileEntry = { path: 'src', kind: 'directory' };
 
 const effects = (): OpenEffects => ({ openPath: vi.fn(), openUrl: vi.fn(), copy: vi.fn() });
-const itemsOf = (targets: readonly FileEntry[], options: Partial<Parameters<typeof openInMenuItems>[0]> = {}) => openInMenuItems({ projectId: 'p-app', folder: FOLDER, programs: PROGRAMS, git: GIT, effects: effects(), ...options })(targets);
+const itemsOf = (targets: readonly FileEntry[], options: Partial<Parameters<typeof openInMenuItems>[0]> = {}) => openInMenuItems({ projectId: 'p-app', place: { folder: FOLDER }, programs: PROGRAMS, git: GIT, effects: effects(), ...options })(targets);
 const labels = (items: ReturnType<typeof itemsOf>) => items.map(item => [item.label, item.children?.map(child => child.label)]);
 
 describe('what the Files tree\'s row menu is given to open a row in', () => {
@@ -31,6 +31,26 @@ describe('what the Files tree\'s row menu is given to open a row in', () => {
         expect(labels(itemsOf([DIRECTORY]))).toEqual([
             ['Copy path', ['Absolute path', 'Relative path']],
             ['Open in…', ['Open in Cursor', 'Open in Finder', 'Open in Ghostty', 'Open in GitHub']],
+        ]);
+    });
+
+    it('starts a shell of the Terminal tab for a folder row, before the copies, and for no file row', () => {
+        const inTerminal = vi.fn();
+        const [terminal, ...rest] = itemsOf([DIRECTORY], { inTerminal });
+
+        expect(labels([terminal!, ...rest])).toEqual([
+            ['Open in Terminal', undefined],
+            ['Copy path', ['Absolute path', 'Relative path']],
+            ['Open in…', ['Open in Cursor', 'Open in Finder', 'Open in Ghostty', 'Open in GitHub']],
+        ]);
+        expect(terminal!.icon).not.toBeUndefined();
+
+        terminal!.onAction();
+
+        expect(inTerminal).toHaveBeenCalledExactlyOnceWith('src');
+        expect(labels(itemsOf([FILE], { inTerminal }))).toEqual([
+            ['Copy path', ['Absolute path', 'Relative path']],
+            ['Open in…', ['Open in Cursor', 'Show in Finder', 'Open in GitHub']],
         ]);
     });
 

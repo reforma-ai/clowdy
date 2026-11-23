@@ -39,7 +39,7 @@ async function mount(answer: (input: CommandInput) => CommandResult | Promise<Co
 
         return answer(input);
     });
-    const store = { command, transport, skillsRevision: 0, selectedProject: { project: { id: 'p' }, taskList: [] }, ...await modelStore() };
+    const store = { command, transport, skillsRevision: 0, selectedProject: { project: { id: 'p', folders: [{ id: 'f1', path: '/Users/dev/web' }] }, taskList: [] }, ...await modelStore() };
 
     await act(async () => {
         root.render(
