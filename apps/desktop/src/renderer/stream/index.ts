@@ -2,6 +2,7 @@ export { AgentAvatar, type AgentAvatarProps } from './AgentAvatar';
 export { ApprovalCard, type ApprovalCardProps } from './ApprovalCard';
 export { AssistantMessage, type AssistantMessageProps } from './AssistantMessage';
 export { ErrorLine } from './ErrorLine';
+export { type ForkAgent } from './ForkMenu';
 export { Markdown } from './Markdown';
 export { NoteLine, type NoteLineProps } from './NoteLine';
 export { QuestionCard, type QuestionCardProps } from './QuestionCard';

@@ -39,7 +39,7 @@ import type { MessageActionsConfig, ReplyMessage } from './MessageActions';
  * What `StreamView` is given for the row under a message: `MessageActionsConfig`, except that a reply names who wrote the message and a fork and an edit are told
  * by the item they are made at.
  */
-export interface StreamMessageActions extends Omit<MessageActionsConfig, 'show' | 'onReply' | 'onFork' | 'forkState' | 'onEdit'> {
+export interface StreamMessageActions extends Omit<MessageActionsConfig, 'show' | 'onReply' | 'onFork' | 'forkState' | 'onHandoff' | 'onEdit'> {
     /** Reply to a whole message, from its row or by swiping it: called with who wrote it and its source Markdown. */
     onReply?: (message: ReplyMessage) => void;
     /** Quote the words selected inside one message (the floating Reply button of `SelectionReply`): called with them as they are drawn. Not drawn without it. */
@@ -48,6 +48,8 @@ export interface StreamMessageActions extends Omit<MessageActionsConfig, 'show' 
     onFork?: (itemId: string) => void;
     /** The answer a fork is being made at: its button spins and the others of the stream wait. */
     forkingId?: string;
+    /** Hand the conversation up to an answer (the id of its item) to another agent (the id of the one picked): the second item of the Fork menu, drawn beside `onFork` with `handoffAgents`. */
+    onHandoff?: (itemId: string, agentId: string) => void;
     /** Edit a message of the person's (the id of its item): drawn under one that the daemon marked `canEdit`, and under none while a message is being edited (`StreamView` `editing`). */
     onEdit?: (itemId: string) => void;
     /** The agent is working: Edit is not drawn at all, since the chat can be rewritten only at rest. */
@@ -152,7 +154,7 @@ export function StreamView({ items, active = false, working, onAnswer, onDecide,
     const actionsOf = (block: StreamBlock): MessageActionsConfig | undefined => {
         if (!messageActions || !hasMessageActions(block)) return undefined;
 
-        const { onFork, forkingId, onEdit, editBusy, onReply, onQuote: _onQuote, ...shared } = messageActions;
+        const { onFork, forkingId, onHandoff, onEdit, editBusy, onReply, onQuote: _onQuote, ...shared } = messageActions;
         const { id, canFork, canEdit, body } = block.item;
         const actions: MessageActionsConfig = { ...shared, show: id === lastWithActions ? 'always' : 'hover' };
 
@@ -161,6 +163,8 @@ export function StreamView({ items, active = false, working, onAnswer, onDecide,
 
         if (onFork && canFork && block.answer) {
             actions.onFork = () => onFork(id);
+
+            if (onHandoff) actions.onHandoff = agentId => onHandoff(id, agentId);
 
             if (forkingId !== undefined) actions.forkState = forkingId === id ? 'pending' : 'blocked';
         }

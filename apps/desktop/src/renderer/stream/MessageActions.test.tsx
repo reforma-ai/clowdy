@@ -154,37 +154,116 @@ describe('MessageActions', () => {
     });
 
     describe('Fork', () => {
-        const forkButton = () => container.querySelector<HTMLButtonElement>('button[aria-label="Fork into new chat"]');
+        const forkButton = () => container.querySelector<HTMLButtonElement>('button[aria-label="Fork"]');
         const order = () => [...container.querySelectorAll('time, button')].map(node => (node.tagName === 'TIME' ? 'time' : node.getAttribute('aria-label')));
+        const menu = () => document.body.querySelector('[role="menu"][aria-label="Fork"]');
+        const items = () => [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+        const itemNamed = (name: string) => items().find(item => item.textContent?.startsWith(name))!;
+        const agents = [{ id: 'codex', name: 'Codex' }, { id: 'cursor', name: 'Cursor' }];
 
-        it('is drawn only where a handler is given, and calls it when pressed', async () => {
-            const onFork = vi.fn();
+        /** A press with a mouse: what React Aria opens a menu on and picks an item with. */
+        const press = (target: HTMLElement) => act(async () => {
+            target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
+            target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+            target.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
+            target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
+            target.click();
+        });
 
+        it('is drawn only where a handler is given', async () => {
             await act(async () => root.render(<AssistantMessage text="Done." at={ at } actions={ { show: 'hover' } } />));
 
             expect(forkButton()).toBeNull();
 
+            await act(async () => root.render(<AssistantMessage text="Done." at={ at } actions={ { show: 'hover', onFork: vi.fn() } } />));
+
+            expect(forkButton()).not.toBeNull();
+        });
+
+        it('opens a menu on a press and not on hover, and Fork in it calls the handler once', async () => {
+            const onFork = vi.fn();
+
             await act(async () => root.render(<AssistantMessage text="Done." at={ at } actions={ { show: 'hover', onFork } } />));
-            await act(async () => forkButton()!.click());
+            await act(async () => {
+                forkButton()!.dispatchEvent(new PointerEvent('pointerenter', { bubbles: true, pointerType: 'mouse' }));
+                forkButton()!.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+            });
+
+            expect(menu()).toBeNull();
+            expect(onFork).not.toHaveBeenCalled();
+
+            await press(forkButton()!);
+
+            expect(menu()).not.toBeNull();
+            expect(onFork).not.toHaveBeenCalled();
+
+            await press(itemNamed('Fork'));
 
             expect(onFork).toHaveBeenCalledOnce();
+            expect(menu()).toBeNull();
+        });
+
+        it('has the one item where there is no hand-off, and a second where there is', async () => {
+            await act(async () => root.render(<MessageActions text="Done." at={ at } align="start" actions={ { show: 'hover', onFork: vi.fn() } } />));
+            await press(forkButton()!);
+
+            expect(items().map(item => item.textContent)).toEqual(['Fork']);
+
+            await act(async () => root.render(<MessageActions text="Done." at={ at } align="start" actions={ { show: 'hover', onFork: vi.fn(), onHandoff: vi.fn(), handoffAgents: agents } } />));
+
+            expect(items().map(item => item.textContent)).toEqual(['Fork', 'Fork to another agent…']);
+        });
+
+        it('lists the other agents under Fork to another agent… and hands the conversation to the one picked', async () => {
+            const onFork = vi.fn();
+            const onHandoff = vi.fn();
+
+            await act(async () => root.render(<MessageActions text="Done." at={ at } align="start" actions={ { show: 'hover', onFork, onHandoff, handoffAgents: agents } } />));
+            await press(forkButton()!);
+            await press(itemNamed('Fork to another agent'));
+
+            expect(document.body.querySelector('[role="menu"][aria-label="Fork to another agent"]')).not.toBeNull();
+            expect([...document.body.querySelectorAll('[role="menu"][aria-label="Fork to another agent"] [role="menuitem"]')].map(item => item.textContent)).toEqual(['Codex', 'Cursor']);
+
+            await press(itemNamed('Cursor'));
+
+            expect(onHandoff).toHaveBeenCalledExactlyOnceWith('cursor');
+            expect(onFork).not.toHaveBeenCalled();
+            // The whole menu goes once an agent is picked.
+            expect(items()).toEqual([]);
+        });
+
+        it('turns Fork to another agent… off, and says why under it, when there is no other agent', async () => {
+            const onHandoff = vi.fn();
+
+            await act(async () => root.render(<MessageActions text="Done." at={ at } align="start" actions={ { show: 'hover', onFork: vi.fn(), onHandoff, handoffAgents: [] } } />));
+            await press(forkButton()!);
+
+            expect(itemNamed('Fork to another agent').getAttribute('aria-disabled')).toBe('true');
+            expect(itemNamed('Fork to another agent').textContent).toContain('No other agent is ready');
+
+            await press(itemNamed('Fork to another agent'));
+
+            expect(document.body.querySelector('[role="menu"][aria-label="Fork to another agent"]')).toBeNull();
+            expect(onHandoff).not.toHaveBeenCalled();
         });
 
         it('sits after Copy and before the time on an answer, so the tab order is the reading order', async () => {
             await act(async () => root.render(<MessageActions text="Done." at={ at } align="start" actions={ { show: 'hover', onReply: vi.fn(), onFork: vi.fn() } } />));
 
-            expect(order()).toEqual(['Reply', 'Copy message', 'Fork into new chat', 'time']);
+            expect(order()).toEqual(['Reply', 'Copy message', 'Fork', 'time']);
         });
 
-        it('spins and takes no press while its fork is being made', async () => {
+        it('spins and opens no menu while its fork is being made', async () => {
             const onFork = vi.fn();
 
             await act(async () => root.render(<MessageActions text="Done." at={ at } align="start" actions={ { show: 'hover', onFork, forkState: 'pending' } } />));
 
             expect(forkButton()?.hasAttribute('data-pending')).toBe(true);
 
-            await act(async () => forkButton()!.click());
+            await press(forkButton()!);
 
+            expect(menu()).toBeNull();
             expect(onFork).not.toHaveBeenCalled();
         });
 
@@ -196,8 +275,9 @@ describe('MessageActions', () => {
             expect(forkButton()?.disabled).toBe(true);
             expect(forkButton()?.hasAttribute('data-pending')).toBe(false);
 
-            await act(async () => forkButton()!.click());
+            await press(forkButton()!);
 
+            expect(menu()).toBeNull();
             expect(onFork).not.toHaveBeenCalled();
         });
 
