@@ -1,3 +1,5 @@
+@reference '@clowdy/styles/rulesets';
+
 .form {
     display: flex;
     flex-direction: column;
