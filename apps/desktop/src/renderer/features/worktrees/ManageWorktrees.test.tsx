@@ -631,13 +631,24 @@ describe('Manage worktrees', () => {
         expect(dialog()!.textContent).toContain('No folder of this project is a git repository');
     });
 
-    it('closes when the project it is for is not the one the window shows', async () => {
+    it('stays open when the window shows another project, as it does when it is opened from Settings for a project the window does not show', async () => {
         await open();
-        expect(isOpen()).toBe(true);
-
         await act(async () => store.selectProject(FIXTURE_EMPTY_PROJECT_ID));
         await settle();
 
+        expect(isOpen()).toBe(true);
+        expect(groups()).toHaveLength(2);
+    });
+
+    it('takes the person to the project with Settings shut when a new chat or a chat is chosen, though the window showed another project with Settings open', async () => {
+        await open();
+        await act(async () => store.selectProject(FIXTURE_EMPTY_PROJECT_ID));
+        act(() => store.ui.openProjectSettings(FIXTURE_PROJECT_ID));
+        await click(buttonIn(row(FOUND_WORKTREE), 'New chat in this worktree: search-filters')!);
+
+        expect(store.selectedProjectId).toBe(FIXTURE_PROJECT_ID);
+        expect(store.ui.settingsOpen).toBe(false);
+        expect(store.ui.forProject(FIXTURE_PROJECT_ID).draft).toBe(true);
         expect(isOpen()).toBe(false);
     });
 });

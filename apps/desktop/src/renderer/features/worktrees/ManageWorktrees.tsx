@@ -3,7 +3,7 @@ import { For } from '@clowdy/components/For';
 import { Modal, useModalContext } from '@clowdy/components/Modal';
 import { Text } from '@clowdy/components/Text';
 import { mainFolder } from '@clowdy/protocol';
-import { reaction } from 'mobx';
+import { reaction, runInAction } from 'mobx';
 import { useEffect, useMemo, useRef } from 'react';
 
 import { RootStoreProvider, useRootStore } from '../../stores';
@@ -55,10 +55,10 @@ function ManageWorktrees({ projectId, folderId }: Omit<ManageWorktreesProps, 'ro
     const list = useRef<HTMLDivElement>(null);
     const scrolled = useRef(false);
 
-    // The window belongs to one project: when the person is elsewhere (another project is shown, or this one was removed) there is nothing here to manage, and the menus
-    // of the rows read the selected project.
+    // The window belongs to one project, which it can be opened for from Settings without the window showing it: it only closes when that project is removed, and there is
+    // nothing here to manage then. Its rows read the project by its id, not the window's selected one.
     useEffect(() => reaction(
-        () => root.selectedProjectId === projectId && root.projects.some(candidate => candidate.id === projectId),
+        () => root.projects.some(candidate => candidate.id === projectId),
         (isHere) => {
             if (!isHere) modal.cancel();
         },
@@ -78,14 +78,22 @@ function ManageWorktrees({ projectId, folderId }: Omit<ManageWorktreesProps, 'ro
     // The two actions that close the window take the person to a chat or to the new-chat page, whose message box takes the focus: the window must not hand it back, after its
     // closing animation, to the button that opened it.
     const leave = () => void modal.cancel({ restoreFocus: false });
+    // Opened from Settings, the window may be for a project the app does not show: the person is taken to it first, with Settings shut, in one step of the history.
+    const show = () => runInAction(() => {
+        root.selectProject(projectId);
+        root.ui.closeSettings();
+    });
 
     const actions: WorktreeRowActions = {
         onNewChat: (folder, worktree) => {
+            show();
             // The main folder's chat has no folder of its own: it follows the main folder, as the sidebar's New chat does. The folder's own checkout is no worktree to choose.
             root.ui.forProject(projectId).openDraft([], folder.id === mainFolder(project).id ? null : folder.id, worktree.main ? null : { mode: 'existing', path: worktree.path });
             leave();
         },
         onOpenChat: (chat: WorktreeChat) => {
+            show();
+
             const state = root.projectState(projectId);
 
             if (state) void openChat(root, state, root.ui.forProject(projectId), chat.id);
