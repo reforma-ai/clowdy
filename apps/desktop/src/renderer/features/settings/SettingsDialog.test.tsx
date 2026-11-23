@@ -54,7 +54,7 @@ describe('the Settings window', () => {
         await draw();
 
         expect(windowEl()).not.toBeNull();
-        expect(pages()).toEqual(['Appearance', 'Chat', 'Files', 'Shortcuts', 'Projects', 'Providers', 'Skills']);
+        expect(pages()).toEqual(['Appearance', 'Chat', 'Files', 'Shortcuts', 'Projects', 'Providers', 'Skills', 'About']);
         expect(windowEl()?.querySelector('nav [aria-current="page"]')?.textContent).toBe('Shortcuts');
     });
 

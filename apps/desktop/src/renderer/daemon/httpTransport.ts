@@ -27,6 +27,7 @@ import type {
     GitStatus,
     GitViewedMark,
     GitViewedSet,
+    Health,
     ProjectFileMatch,
     ProjectId,
     ProjectInfo,
@@ -271,6 +272,10 @@ export class HttpTransport implements Transport {
 
     getSkills(projectId?: ProjectId): Promise<SkillCatalog> {
         return this.#get(projectId === undefined ? ROUTES.skills : `${ ROUTES.skills }?projectId=${ encodeURIComponent(projectId) }`);
+    }
+
+    getHealth(): Promise<Health> {
+        return this.#get(ROUTES.health);
     }
 
     getAgents(): Promise<AgentInfo[]> {

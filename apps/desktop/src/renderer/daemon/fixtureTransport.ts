@@ -1,5 +1,5 @@
 import { MemoryFileSystem } from '@clowdy/file-manager/memory';
-import { folderNames, isBusyRunStatus, isTerminalRunStatus, mainFolder, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_BYTES_PER_MESSAGE, STOPPED_TOOL, writesCommitMessages } from '@clowdy/protocol';
+import { folderNames, isBusyRunStatus, isTerminalRunStatus, mainFolder, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_BYTES_PER_MESSAGE, PROTOCOL_VERSION, STOPPED_TOOL, writesCommitMessages } from '@clowdy/protocol';
 
 import {
     catalogTokens,
@@ -55,6 +55,7 @@ import type {
     GitScope,
     GitStatus,
     GitViewedMark,
+    Health,
     Project,
     ProjectFileMatch,
     ProjectId,
@@ -123,6 +124,9 @@ const COMPACT_TEXT = 'Compact the conversation';
 
 const isCompact = (item: QueuedMessage) => item.command === 'compact';
 
+/** The bundle version the fixture daemon says it runs. */
+const FIXTURE_DAEMON_VERSION = 'fixtures';
+
 /** The agents whose chats offer Fork and Edit, as the daemon's catalog flags them (`AgentSpec.fork`): Claude Code only. */
 const FORKABLE_ENGINES: ReadonlySet<string> = new Set(['claude']);
 const REPLY = 'Got it. I will split this into tasks, start the independent ones in parallel, and report back here.';
@@ -189,6 +193,7 @@ const named = <T>(change: T | null | undefined, kept: T | undefined): T | undefi
 export class FixtureTransport implements Transport {
     readonly #data: FixtureData;
     readonly #timeline: boolean;
+    readonly #startedAt = Date.now();
     readonly #log: ClowdyEvent[] = [];
     readonly #subscribers = new Set<(event: ClowdyEvent) => void>();
     #cursor = 1000;
@@ -643,6 +648,10 @@ export class FixtureTransport implements Transport {
         const entries = this.#data.skills.filter(skill => skill.projectId === undefined || skill.projectId === projectId).map(({ projectId: _projectId, ...entry }) => entry);
 
         return structuredClone({ entries, tokens: catalogTokens(entries), warnings: this.#data.skillWarnings });
+    }
+
+    async getHealth(): Promise<Health> {
+        return { ok: true, protocol: PROTOCOL_VERSION, version: FIXTURE_DAEMON_VERSION, pid: 0, startedAt: this.#startedAt };
     }
 
     async getAgents(): Promise<AgentInfo[]> {

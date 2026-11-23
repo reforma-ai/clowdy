@@ -20,6 +20,7 @@ import type {
     GitScope,
     GitStatus,
     GitViewedMark,
+    Health,
     ProjectFileMatch,
     ProjectId,
     ProjectInfo,
@@ -193,6 +194,8 @@ export interface Transport {
     getProjectIcon: (projectId: ProjectId) => Promise<Blob | undefined>;
     /** The skills agents get: system and user ones, and with a project also that project's. */
     getSkills: (projectId?: ProjectId) => Promise<SkillCatalog>;
+    /** What the daemon says about itself: the bundle version it runs, its protocol and since when it has been running. It asks for no token. */
+    getHealth: () => Promise<Health>;
     /** Every agent the daemon knows, with who is signed in to it, its usage and its settings. */
     getAgents: () => Promise<AgentInfo[]>;
     /** The models an agent offers, with the reasoning levels of each. The daemon reads them from the agent's own program and keeps them for ten minutes. */

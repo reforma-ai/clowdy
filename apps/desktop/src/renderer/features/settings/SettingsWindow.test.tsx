@@ -46,7 +46,7 @@ describe('Settings', () => {
     it('has a sidebar entry for every page the store can show, in the order SETTINGS_PAGES names, under the headings of their groups', async () => {
         await draw();
 
-        expect(sidebarPages()).toEqual(['Appearance', 'Chat', 'Files', 'Shortcuts', 'Projects', 'Providers', 'Skills']);
+        expect(sidebarPages()).toEqual(['Appearance', 'Chat', 'Files', 'Shortcuts', 'Projects', 'Providers', 'Skills', 'About']);
         expect(sidebarPages()).toHaveLength(SETTINGS_PAGES.length);
 
         const text = container.querySelector('[aria-label="Settings pages"]')!.textContent!;
@@ -55,6 +55,9 @@ describe('Settings', () => {
         expect(text.indexOf('General')).toBeLessThan(text.indexOf('Appearance'));
         expect(text.indexOf('Workspace')).toBeLessThan(text.indexOf('Projects'));
         expect(text.indexOf('Agents')).toBeLessThan(text.indexOf('Providers'));
+        // About has a group of its own, after the last page of Agents.
+        expect(text.indexOf('Skills')).toBeLessThan(text.indexOf('Clowdy'));
+        expect(text.indexOf('Clowdy')).toBeLessThan(text.indexOf('About'));
     });
 
     it('shows the Shortcuts page, titled in the path, when the store points at it, as `?` does', async () => {

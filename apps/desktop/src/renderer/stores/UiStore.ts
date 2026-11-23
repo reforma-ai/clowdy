@@ -6,7 +6,7 @@ import { revealTask, type RevealTasks } from './taskReveal';
 import type { ChatId, ChatWorkspace, ChatWorkspaceChoice, FolderId, ProjectId, RunId, Task, TaskId } from '@clowdy/protocol';
 
 /** The pages of the global Settings window, in the order they appear in its sidebar. */
-export const SETTINGS_PAGES = ['appearance', 'chat', 'files', 'shortcuts', 'projects', 'providers', 'skills'] as const;
+export const SETTINGS_PAGES = ['appearance', 'chat', 'files', 'shortcuts', 'projects', 'providers', 'skills', 'about'] as const;
 
 export type SettingsPage = typeof SETTINGS_PAGES[number];
 export type TasksView = 'board' | 'list';
