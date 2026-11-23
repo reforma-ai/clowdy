@@ -1,0 +1,121 @@
+@reference '@clowdy/styles/rulesets';
+
+/*
+ * The plate itself is `ComposerBanner`'s, which clips what leaves it (it is a rounded plate under the message box): everything here stays inside it, and a focus ring is drawn
+ * inside the row it is for, as the plate's other pressable rows draw theirs.
+ */
+
+/* `Last run · 7 files` with the lines of the whole run at the end. */
+.header {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    min-height: calc(var(--spacing-26) + var(--spacing-2) * 2);
+    padding: var(--spacing-2) var(--spacing-lg);
+}
+
+.icon {
+    display: flex;
+    flex-shrink: 0;
+    color: var(--color-secondary-muted-text);
+}
+
+.title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.counts {
+    display: inline-flex;
+    flex-shrink: 0;
+    gap: var(--spacing-4);
+    margin-inline-start: auto;
+    white-space: nowrap;
+}
+
+/* The first files: as many as they are, none of them cut. Unfolded, the rest is in a box that scrolls, so a run of hundreds of files does not push the chat off the screen. */
+.rows {
+    display: flex;
+    flex-direction: column;
+}
+
+.unfolded {
+    display: flex;
+    flex-direction: column;
+    max-height: 40vh;
+    overflow-y: auto;
+}
+
+/* A row is one press over its whole width: the letter, the path, the lines. Hover paints a plate inside it, and focus a ring inside that, so neither reaches the plate's clipped edge. */
+.row,
+.more {
+    position: relative;
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: var(--spacing-sm);
+    width: 100%;
+    min-height: calc(var(--spacing-26) + var(--spacing-2) * 2);
+    margin: 0;
+    padding: var(--spacing-2) var(--spacing-lg);
+    border: none;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: start;
+    outline: none;
+    cursor: pointer;
+    isolation: isolate;
+}
+
+.row::after,
+.more::after {
+    content: '';
+    position: absolute;
+    inset: var(--spacing-2) var(--spacing-xs);
+    z-index: -1;
+    border-radius: calc(var(--radius-sm) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    transition: background-color var(--transition-duration-fast);
+}
+
+.row:hover::after,
+.more:hover::after {
+    background-color: var(--color-secondary-muted-light);
+}
+
+.row:focus-visible::after,
+.more:focus-visible::after {
+    outline: var(--spacing-4) solid var(--color-primary-muted-border);
+    outline-offset: calc(var(--spacing-4) * -1);
+}
+
+.glyph {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: var(--spacing-14);
+}
+
+/*
+ * The path is cut at its start, which is why it is set right to left: the ellipsis goes where the text is cut, and the name at the end stays. The `bdi` inside is its own left to
+ * right run, so a path that starts or ends with a dot, a bracket or a slash keeps them where they are, as the Changes tab's cards have it.
+ */
+.path {
+    display: block;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* The chevron row at the bottom: the count of what is behind it, and the way to fold it away again. */
+.more {
+    justify-content: flex-start;
+}
