@@ -812,7 +812,7 @@ describe('the setup of a new worktree', () => {
         expect(chatOf(chat.id).workspace?.ready).toBe(true);
     });
 
-    test('leaves a file the worktree has already as it is, one of git\'s own included, and a link there too', async () => {
+    test('leaves a file the worktree has already as it is, and git\'s own `.git` file of it, when the folder lists them', async () => {
         const { repo, make, send, stepOf, configure } = await setup();
 
         writeFileSync(join(repo, 'config.json'), 'committed\n');
@@ -854,7 +854,7 @@ describe('the setup of a new worktree', () => {
         const treeOutside = join(root, 'tree-outside');
         const lines: string[] = [];
 
-        for (const dir of [main, tree, outside, treeOutside, join(main, '.git'), join(main, 'dir'), join(main, 'ext')]) {
+        for (const dir of [main, tree, outside, treeOutside, join(main, '.git'), join(main, 'dir'), join(main, 'ext'), join(main, 'config'), join(main, 'dang')]) {
             mkdirSync(dir, { recursive: true });
         }
 
@@ -873,17 +873,27 @@ describe('the setup of a new worktree', () => {
         symlinkSync(join(root, 'gone.txt'), join(main, 'dangling.txt'));
         // A link of the worktree to a place outside it, where `ext/.env` would be written.
         symlinkSync(treeOutside, join(tree, 'ext'), 'dir');
+        // What the worktree has on the way or in the place: a file where a folder is wanted, a link with nothing behind it, and a link at the file itself.
+        writeFileSync(join(main, 'config', '.env'), 'for a file in the worktree\n');
+        writeFileSync(join(main, 'dang', '.env'), 'for a dangling link in the worktree\n');
+        writeFileSync(join(main, 'kept.txt'), 'for a link in the worktree\n');
+        writeFileSync(join(tree, 'config'), 'a file, tracked\n');
+        symlinkSync(join(root, 'nowhere'), join(tree, 'dang'), 'dir');
+        symlinkSync(join(root, 'nowhere-file'), join(tree, 'kept.txt'));
+        // A link of the folder that loops: only a `*` matches it, and that is no reason to stop.
+        symlinkSync('loop-b', join(main, 'loop-a'));
+        symlinkSync('loop-a', join(main, 'loop-b'));
 
         await copySetupFiles({
             root: main,
             workspace: tree,
             files: ['../outside/secret.txt', '../above.txt', join(outside, 'secret.txt'), 'sub/../../outside/secret.txt', '.git/config', '.GIT/HEAD', '.git./HEAD', 'git~1/HEAD', 'a\\b', 'C:/x', 'link-out.txt', 'link-git.txt',
-                'linkdir/secret.txt', 'linkdir/*', 'dir', 'dir/*', 'in-link.txt', 'dangling.txt', 'ext/.env', 'a.txt', '.*', '*'],
+                'linkdir/secret.txt', 'linkdir/*', 'dir', 'dir/*', 'in-link.txt', 'dangling.txt', 'ext/.env', 'config/.env', 'dang/.env', 'kept.txt', 'a.txt', '.*', '*'],
             log: line => lines.push(line),
         });
 
         // Only what lies inside the folder, as a plain file: a link to a file inside it is copied as the file it leads to.
-        expect(readdirSync(tree).sort()).toEqual(['a.txt', 'dir', 'ext', 'in-link.txt']);
+        expect(readdirSync(tree).sort()).toEqual(['a.txt', 'config', 'dang', 'dir', 'ext', 'in-link.txt', 'kept.txt']);
         expect(readFileSync(join(tree, 'a.txt'), 'utf8')).toBe('a\n');
         expect(readFileSync(join(tree, 'dir', 'f.txt'), 'utf8')).toBe('in a folder\n');
         expect(lstatSync(join(tree, 'in-link.txt')).isFile()).toBe(true);
@@ -892,12 +902,48 @@ describe('the setup of a new worktree', () => {
         expect(readdirSync(treeOutside)).toEqual([]);
         expect(readdirSync(outside)).toEqual(['secret.txt']);
         expect(readdirSync(root).sort()).toEqual(['above.txt', 'main', 'outside', 'tree', 'tree-outside']);
+        // The worktree's own file, link and dangling link are as they were, and nothing was made through them.
+        expect(readFileSync(join(tree, 'config'), 'utf8')).toBe('a file, tracked\n');
+        expect(lstatSync(join(tree, 'dang')).isSymbolicLink()).toBe(true);
+        expect(lstatSync(join(tree, 'kept.txt')).isSymbolicLink()).toBe(true);
+        expect(existsSync(join(root, 'nowhere'))).toBe(false);
+        expect(existsSync(join(root, 'nowhere-file'))).toBe(false);
         expect(readFileSync(join(main, '.git', 'config'), 'utf8')).toBe('the repository\n');
         expect(lines.filter(line => line.startsWith('Copied '))).toEqual(['Copied dir/f.txt', 'Copied in-link.txt', 'Copied a.txt']);
         expect(lines.join('\n')).toContain('Skipped ../outside/secret.txt: it is not a path inside the folder');
         expect(lines.join('\n')).toContain('Skipped .git/config: it is in .git');
         expect(lines.join('\n')).toContain('Skipped link-out.txt: it leads out of the folder');
         expect(lines.join('\n')).toContain('Skipped ext/.env: the worktree has a link on its way that leads out of it');
+        expect(lines.join('\n')).toContain('Skipped config/.env: the worktree has something else on its way');
+        expect(lines.join('\n')).toContain('Skipped dang/.env: the worktree has something else on its way');
+        expect(lines.join('\n')).toContain('Kept kept.txt: the worktree has it already');
+        expect(lines.join('\n')).toContain('Skipped loop-a: couldn\'t copy it (ELOOP)');
+    });
+
+    test.skipIf(!posix)('fails the step with the errno for a file the entry names and cannot be read, and takes a pattern\'s misses as lines; a pattern of many stars is quick', async () => {
+        const root = tempDir('chat-workspaces-copy-errors');
+        const main = join(root, 'main');
+        const tree = join(root, 'tree');
+        const lines: string[] = [];
+
+        mkdirSync(main);
+        mkdirSync(tree);
+        symlinkSync('loop-b', join(main, 'loop-a'));
+        symlinkSync('loop-a', join(main, 'loop-b'));
+        writeFileSync(join(main, 'a'.repeat(40)), 'a long name\n');
+
+        // An entry that names a link that loops is the person's mistake, which the step says.
+        await expect(copySetupFiles({ root: main, workspace: tree, files: ['loop-a'], log: line => lines.push(line) })).rejects.toThrow('Couldn\'t copy loop-a: ELOOP');
+
+        // Backtracking over a long name made a regular expression of the same pattern take about half a second, and more with every star.
+        const startedAt = Date.now();
+
+        await copySetupFiles({ root: main, workspace: tree, files: ['*a*a*a*a*a*a*a*a*a*a*b'], log: line => lines.push(line) });
+        expect(Date.now() - startedAt).toBeLessThan(200);
+        expect(readdirSync(tree)).toEqual([]);
+
+        await copySetupFiles({ root: main, workspace: tree, files: ['a*a*a*', '*aaa', 'a**a'], log: line => lines.push(line) });
+        expect(readdirSync(tree)).toEqual(['a'.repeat(40)]);
     });
 
     test.skipIf(!posix)('runs the command in the worktree after the copy, with the paths and the branch in its environment, and its output in the log', async () => {
@@ -946,6 +992,20 @@ describe('the setup of a new worktree', () => {
         expect(chatOf(chat.id).workspace?.ready).toBe(true);
         expect(engine.turns.map(turn => turn.cwd)).toEqual([path]);
         expect(h.run(chatOf(chat.id).orchestratorRunId as string).status).toBe('succeeded');
+    });
+
+    test.skipIf(!posix)('keeps the start of a line that is very long, so the log that is written again and again stays small', async () => {
+        const { make, send, stepOf, configure } = await setup();
+        const chat = make({ mode: 'new' });
+
+        configure({ setup: { command: 'head -c 5000 /dev/zero | tr "\\0" x; echo\necho after' } });
+        await send(chat, 'Start');
+
+        const lines = logOf(stepOf(chat)[0]).split('\n');
+        const long = lines.find(line => line.startsWith('xxxx'))!;
+
+        expect(long).toBe(`${ 'x'.repeat(400) }…`);
+        expect(lines.at(-1)).toBe('after');
     });
 
     test.skipIf(!posix)('fails the turn with the reason when the command fails, keeps the worktree and its files, and the next message runs only the setup again', async () => {
@@ -1082,12 +1142,12 @@ describe('the setup of a new worktree', () => {
         const { make, send, stepOf, configure } = await setup();
         const chat = make({ mode: 'new' });
 
-        configure({ setup: { command: 'echo bye\nsleep 3 &' } });
+        configure({ setup: { command: 'echo bye\nsleep 8 &' } });
 
         const startedAt = Date.now();
 
         await send(chat, 'Start');
-        expect(Date.now() - startedAt).toBeLessThan(3000);
+        expect(Date.now() - startedAt).toBeLessThan(5000);
         expect(logOf(stepOf(chat)[0])).toContain('bye');
     });
 

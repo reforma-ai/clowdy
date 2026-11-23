@@ -46,8 +46,15 @@ const RESERVED_NAMES = /^(con|prn|aux|nul|com\d|lpt\d)$/;
 /** What `Prepare workspace` keeps of git's lines in the tool item: the item is rewritten as lines arrive, so it is bounded. */
 const MAX_LOG_LINES = 200;
 
+/** How much of a line the log keeps: every write of the item is an event with the whole log in it, and a setup command may print for ten minutes. */
+const MAX_LOG_LINE_LENGTH = 400;
+
 /** How often the log of the step may be written to the stream while lines arrive. */
 const LOG_THROTTLE_MS = 100;
+
+/** A step that has run this long is a long one (a setup command, not a checkout): its log is written `SLOW_LOG_THROTTLE_MS` apart. */
+const SLOW_STEP_MS = 5000;
+const SLOW_LOG_THROTTLE_MS = 1000;
 
 /** A refusal or a failure of making a chat's worktree, in words the person reads; the turn fails with it and the next message tries again. */
 export class WorkspaceError extends Error {
@@ -573,6 +580,7 @@ class StepItem {
     private body: ToolBody;
     private timer?: ReturnType<typeof setTimeout>;
     private writtenAt = 0;
+    private startedAt = Date.now();
 
     constructor(private store: Store, private runId: string, workspaceId: string, input: unknown) {
         this.body = { kind: 'tool', toolCallId: `workspace:${ workspaceId }`, name: WORKSPACE_TOOL, input, state: 'running' };
@@ -581,7 +589,7 @@ class StepItem {
     }
 
     log(line: string): void {
-        this.lines.push(line);
+        this.lines.push(line.length > MAX_LOG_LINE_LENGTH ? `${ line.slice(0, MAX_LOG_LINE_LENGTH) }…` : line);
 
         if (this.lines.length > MAX_LOG_LINES) {
             this.lines.splice(0, this.lines.length - MAX_LOG_LINES);
@@ -591,7 +599,7 @@ class StepItem {
             return;
         }
 
-        const wait = this.writtenAt + LOG_THROTTLE_MS - Date.now();
+        const wait = this.writtenAt + (Date.now() - this.startedAt > SLOW_STEP_MS ? SLOW_LOG_THROTTLE_MS : LOG_THROTTLE_MS) - Date.now();
 
         if (wait <= 0) {
             this.write();

@@ -3,13 +3,11 @@ import { constants } from 'node:fs';
 import { copyFile, lstat, mkdir, readdir, realpath, stat } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, sep } from 'node:path';
 
+import { DEFAULT_TIMINGS } from '../config';
 import { NEVER_INHERITED } from '../engine/acp/env';
 import { runLines } from './lines';
 
 import type { WorkspaceSetup } from '@clowdy/protocol';
-
-/** What a new worktree's setup is stopped after: a `bun install` of a large repository takes minutes, and this only ends a command that has hung. */
-export const SETUP_TIMEOUT_MS = 10 * 60_000;
 
 /** A refusal or a failure of the setup, in words the person reads; `prepareWorkspace` turns it into the reason the turn fails with. */
 export class SetupError extends Error {
@@ -32,7 +30,7 @@ export interface SetupRun {
     log(line: string): void;
     /** A Stop: the command is killed with everything it started, and the step ends as stopped. */
     signal?: AbortSignal;
-    /** How long the command may run; `SETUP_TIMEOUT_MS` when absent. */
+    /** How long the command may run: a `bun install` of a large repository takes minutes, and this only ends one that has hung; `DEFAULT_TIMINGS.setupMs` when absent. */
     timeoutMs?: number;
 }
 
@@ -87,12 +85,45 @@ async function nearestReal(path: string): Promise<string> {
     return parent === path ? path : nearestReal(parent);
 }
 
-/** A `*` in an entry's last part as the names it matches: any run of characters, a leading dot too (`.env*` is `.env`, `.env.local`), case ignored where Windows ignores it. */
+/**
+ * A `*` in an entry's last part as the names it matches: any run of characters, a leading dot too (`.env*` is `.env`, `.env.local`), case ignored where Windows ignores
+ * it. Not a regular expression: a pattern of many stars would make one backtrack for seconds on a long name, and this takes at most the product of their lengths.
+ */
 function matcherOf(pattern: string): (name: string) => boolean {
-    const source = pattern.split('*').map(part => part.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*');
-    const expression = new RegExp(`^${ source }$`, process.platform === 'win32' ? 'i' : '');
+    const fold = process.platform === 'win32' ? (text: string) => text.toLowerCase() : (text: string) => text;
+    const glob = fold(pattern);
 
-    return name => expression.test(name);
+    return name => {
+        const text = fold(name);
+        let at = 0;
+        let from = 0;
+        let star = -1;
+        let resume = 0;
+
+        while (from < text.length) {
+            if (glob[at] === '*') {
+                star = at++;
+                resume = from;
+            }
+            else if (at < glob.length && glob[at] === text[from]) {
+                at++;
+                from++;
+            }
+            else if (star >= 0) {
+                at = star + 1;
+                from = ++resume;
+            }
+            else {
+                return false;
+            }
+        }
+
+        while (glob[at] === '*') {
+            at++;
+        }
+
+        return at === glob.length;
+    };
 }
 
 class Copier {
@@ -157,11 +188,35 @@ class Copier {
     }
 
     /**
+     * Copies one file (`transfer`). A file that cannot be read or written fails the step with its errno when the entry named it (`Couldn't copy .env: EACCES`: the
+     * command that follows may need it), and is skipped with a line when only a `*` matched it (a link that loops, a file nobody may read).
+     */
+    private async copyOne(parts: string[], matched: boolean): Promise<void> {
+        try {
+            await this.transfer(parts, matched);
+        }
+        catch (error) {
+            if (error instanceof SetupError) {
+                throw error;
+            }
+
+            const { code } = error as { code?: string };
+            const reason = code ?? (error instanceof Error ? error.message : String(error));
+
+            if (!matched) {
+                throw new SetupError(`Couldn't copy ${ parts.join('/') }: ${ reason }`);
+            }
+
+            this.log(`Skipped ${ parts.join('/') }: couldn't copy it (${ reason })`);
+        }
+    }
+
+    /**
      * Copies one file of the main checkout to the same place in the worktree. Only a file that is there is copied, never a folder or anything else that is not a
      * file, never one that is in `.git`, and never one whose real place (a link followed) is outside the folder. A file the worktree has already, a link or a
      * link with nothing behind it included, is left as it is. `matched` says the file came from a `*`, whose misses are not worth a line.
      */
-    private async copyOne(parts: string[], matched: boolean): Promise<void> {
+    private async transfer(parts: string[], matched: boolean): Promise<void> {
         if (this.signal?.aborted) {
             throw new SetupError(STOPPED_TOOL);
         }
@@ -210,28 +265,40 @@ class Copier {
             return;
         }
 
+        const blocked = `Skipped ${ name }: the worktree has something else on its way`;
+
         try {
             await mkdir(dirname(to), { recursive: true });
-
-            if (leavesFolder(this.workspace, await realpath(dirname(to)))) {
-                this.log(outOfTree);
+        }
+        catch (error) {
+            // A file where the folder should be, or a link with nothing behind it: the worktree's own, left as it is.
+            if (['EEXIST', 'ENOTDIR', 'ENOENT'].includes((error as { code?: string }).code ?? '')) {
+                this.log(blocked);
 
                 return;
             }
 
+            throw error;
+        }
+
+        if (leavesFolder(this.workspace, await realpath(dirname(to)))) {
+            this.log(outOfTree);
+
+            return;
+        }
+
+        try {
             // Never over a file: the flag fails where something appeared at the path meanwhile.
             await copyFile(source, to, constants.COPYFILE_EXCL);
         }
         catch (error) {
-            const { code } = error as { code?: string };
-
-            if (code === 'EEXIST' && await look(to, lstat)) {
+            if ((error as { code?: string }).code === 'EEXIST') {
                 this.log(`Kept ${ name }: the worktree has it already`);
 
                 return;
             }
 
-            throw new SetupError(`Couldn't copy ${ name }: ${ code ?? (error instanceof Error ? error.message : String(error)) }`);
+            throw error;
         }
 
         this.log(`Copied ${ name }`);
@@ -298,7 +365,7 @@ function lasting(ms: number): string {
 
 async function runCommand(run: SetupRun, command: string): Promise<void> {
     const shell = setupShell(command);
-    const timeoutMs = run.timeoutMs ?? SETUP_TIMEOUT_MS;
+    const timeoutMs = run.timeoutMs ?? DEFAULT_TIMINGS.setupMs;
 
     run.log('Running the setup command');
 
