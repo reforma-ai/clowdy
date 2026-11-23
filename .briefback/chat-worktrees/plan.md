@@ -338,3 +338,16 @@
 **Left, for a decision:** a page held open for more than a day with a worktree chosen loses its row (the next `workspace.open` of any page sweeps it): its places answer `not_found` until the page asks again (a new choice or reopening); a worktree git lists but that is not on disk is refused at the chat's creation as before; the page and the places match the row to the choice by `samePath`, so a workspaces folder under a symlink (the row records `join(workspacesDir, …)`, git lists the real path) leaves the page in the folder's own checkout, as `chatsUsing` already does for the list of users; a repeated `workspace.open` does not renew a row's age; `workspace.open` reads git synchronously as `chat.create` does.
 **Commits:** `e16040f` feat(daemon): answer the row of an existing worktree before a chat works there with workspace.open; `b749b16` feat(desktop): answer workspace.open in the fixture daemon; `93febd8` feat(desktop): show the worktree a new chat chose in the side panel, the palette and the @ list before the chat exists; and a docs commit for `AGENTS.md` and this section.
 
+
+## Follow-up — The mode chip and the branch chip become one control
+
+**Why:** the owner found two chips (mode, branch) ugly, read only above all. One control in the new-chat page and one label in a started chat replace them (this supersedes the three-chip line of the decisions and of Stage 6; the behaviour of the choices is unchanged).
+
+- [x] Complete
+  - [x] Read only (`WorkspaceLabel`, used by `ChatFolder`): the git mark and the branch, `Worktree` in a dimmer tone before the branch for a chat in a worktree (its path on hover); no word for the folder's own checkout
+  - [x] New-chat page (`WorkspaceChips`): one `ChipTrigger` (new dim `lead`/`trail`) and one menu: `Current checkout` (branch at the end), `New worktree` with its base as a button at the end of the row (opens the branch list; the row chooses; the right arrow on the row does the same as the base), a separator when there are other worktrees, then one row per worktree (branch, users, `Changes`); the check at the start of the row
+  - [x] Nothing for a folder that is no repository or whose read is on its way; a dim `Project checkout` with the reason on hover when git could not be asked
+  - [x] Tests rewritten (`WorkspaceChips`, `ChatFolder`, `Screen`), `apps/desktop/AGENTS.md` updated
+
+**Scope changes:** react-aria's menu row takes the release of a press that began on the base button as its own press, so the row's action checks a `baseHeld` flag the button sets and opens the list in place of choosing; a worktree chat whose branch is not known yet shows `Worktree` alone; the dim `Project checkout` of a failed read has no git mark.
+
