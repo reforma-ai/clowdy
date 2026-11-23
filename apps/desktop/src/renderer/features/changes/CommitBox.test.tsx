@@ -588,7 +588,7 @@ describe('Commit & Push', () => {
 
         await openMenu();
         expect(entry()?.getAttribute('aria-disabled')).toBe('true');
-        expect(entry()?.textContent).toContain('Diverged: 1 ahead, 2 behind');
+        expect(entry()?.textContent).toContain('Pull first');
         await press(entry()!);
         await settle();
         expect(commit).not.toHaveBeenCalled();
@@ -762,7 +762,7 @@ describe('the empty box, No local changes', () => {
         expect(opened).toEqual(['https://github.com/acme/car-rental/compare/main...clowdy/ab12cd34?expand=1']);
     });
 
-    it('has no step for a branch that has a pull request, one that diverged, and the base branch itself', async () => {
+    it('has no step for a branch that has a pull request and for the base branch itself, and pulls one that diverged', async () => {
         await start({ gitWrites: { clean: true, remote: 'level' } });
         expect(stepButton()).toBeNull();
 
@@ -771,7 +771,7 @@ describe('the empty box, No local changes', () => {
         store.dispose();
         root = createRoot(container);
         await start({ tweak: noPullRequest, gitWrites: { clean: true, remote: 'diverged' } });
-        expect(stepButton()).toBeNull();
+        expect(stepButton()?.textContent).toBe('Pull 2 commits from the origin remote');
 
         act(() => root.unmount());
         stop();

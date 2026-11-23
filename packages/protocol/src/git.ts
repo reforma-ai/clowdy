@@ -51,7 +51,7 @@
  *                                         (a renamed file brings both its paths), so what else is changed or staged in the place is left as it is. The person's git
  *                                         configuration applies (signing, hooks: nothing is skipped). A message that is empty or over `MAX_GIT_MESSAGE_CHARS`, no paths,
  *                                         a path that is not a changed file of the place and a folder that is not a repository are `invalid`; a merge, a cherry-pick or a revert
- *                                         in progress, a file with merge conflicts and a commit git refuses (a hook that fails, no signature, no identity) are `conflict`
+ *                                         in progress (unless `conclude` finishes a merge that has no conflict left), a file with merge conflicts and a commit git refuses (a hook that fails, no signature, no identity) are `conflict`
  *                                         with git's first `fatal:`, `error:` or hook line as the message and, for a signing key that cannot be used, `details.hint`
  *                                         (`GitErrorDetails`); a commit that did not end in time is `unavailable`.
  * POST /v1/projects/:id/git/message   -> GitMessage. Body `GitMessageRequest`: the ticked `paths`. The first line of a Conventional Commits message for them, written by
@@ -72,10 +72,14 @@
  *
  * POST /v1/projects/:id/git/fetch    -> GitRemoteResult. Body `GitRemoteRequest` (`folderId`, `workspaceId?`). `git fetch --no-recurse-submodules origin` and nothing else: no `--prune` of its own, no other
  *                                         remote, no submodule's. The answer carries the branch's upstream as it stands after the fetch (`upstream`, with `ahead` and `behind`), when it has one.
- * POST /v1/projects/:id/git/pull     -> GitRemoteResult. Same body. Fetches `origin`, then takes what the upstream has with `git merge --ff-only` (only for a branch whose upstream is the branch of its own
- *                                         name: one that tracks another, as `git switch -c feat origin/main` does, is `invalid`, since it is not published): nothing is merged, rebased, reset or
- *                                         discarded. A branch that has commits of its own and falls behind its upstream as well has diverged: the answer is `state: 'diverged'` (not an
- *                                         error) and the branch is left as it was. `pulled` says how many commits came in (0: already up to date).
+ * POST /v1/projects/:id/git/pull     -> GitRemoteResult. Same body. Fetches `origin`, then takes what the upstream has with `git merge --no-edit @{upstream}` (only for a branch whose upstream is the
+ *                                         branch of its own name: one that tracks another, as `git switch -c feat origin/main` does, is `invalid`, since it is not published). A fast-forward when the
+ *                                         branch has nothing of its own, a merge commit when it does (`merged`). A merge that stops on conflicts answers `state: 'conflicts'` (not an error): the merge
+ *                                         has started and is left for the person. Nothing is rebased, reset or discarded. `pulled` says how many commits came in (0: already up to date).
+ * POST /v1/projects/:id/git/update   -> GitRemoteResult. Same body. Fetches `origin`, then merges the place's base (`git merge --no-edit <base>`, the same base a comparison uses) into the branch.
+ *                                         Refused when HEAD is that base branch, is detached or has no commit, and when there is no base. Already containing the base answers `pulled: 0`. Conflicts are
+ *                                         `state: 'conflicts'`, as a pull's are.
+ * POST /v1/projects/:id/git/abort    -> GitRemoteResult. Same body. `git merge --abort`, and only while a merge is in progress (`invalid` otherwise). Nothing else is touched.
  * POST /v1/projects/:id/git/push     -> GitRemoteResult. Same body. Sends the branch to the branch of its own name (`git push origin refs/heads/<branch>:refs/heads/<branch>`) when that is its upstream, and
  *                                         publishes it in every other case, when it has no upstream, its upstream is gone or its upstream is a branch of another name (`feat` made from `origin/main`
  *                                         is never sent to `main`): `git push -u origin refs/heads/<branch>:refs/heads/<branch>`, with `published: true` in the answer. Never forced, never with `--no-verify`, never with a tag.
@@ -271,6 +275,11 @@ export type GitStatus =
           entries: GitStatusEntry[];
           /** `entries` was cut: the tree has more uncommitted paths than are listed. */
           truncated?: true;
+          /**
+           * A merge is in progress (`MERGE_HEAD`). `conflicts` is how many paths are still unmerged (0: they are resolved, and the merge can be committed). `subject` is the first line of the
+           * message git prepared.
+           */
+          merging?: { conflicts: number; subject?: string };
           base: GitBase;
       };
 
@@ -454,10 +463,13 @@ export type GitPullRequestInfo =
           pullRequest?: GitPullRequest;
       };
 
-/** The three ways a branch is moved to and from `origin`. Publishing a branch is a `push` of one that is not on origin under its own name. */
-export type GitRemoteAction = 'fetch' | 'pull' | 'push';
+/**
+ * How a branch is moved. `fetch`, `pull` and `push` go to and from `origin` (publishing is a `push` of a branch that is not on origin under its own name). `update` merges the place's base into
+ * the branch. `abort` undoes a merge that is in progress.
+ */
+export type GitRemoteAction = 'fetch' | 'pull' | 'push' | 'update' | 'abort';
 
-/** The body of `POST /v1/projects/:id/git/fetch`, `.../pull` and `.../push`: the place. */
+/** The body of `POST /v1/projects/:id/git/fetch`, `.../pull`, `.../push`, `.../update` and `.../abort`: the place. */
 export interface GitRemoteRequest {
     folderId: string;
     workspaceId?: string;
@@ -471,24 +483,26 @@ export interface GitRemoteDone {
     state: 'done';
     action: GitRemoteAction;
     upstream?: GitUpstream;
-    /** `pull`: how many commits came in; 0 when the branch was up to date already. */
+    /** `pull` and `update`: how many commits came in; 0 when the branch already had them. */
     pulled?: number;
+    /** `pull` and `update`: a merge commit was made, because the branch had commits of its own. Absent for a fast-forward. */
+    merged?: true;
     /** `push`: the branch was not on origin under its own name (no upstream, a gone one, or another branch's), so it was published and now tracks `origin/<name>`. */
     published?: true;
 }
 
 /**
- * A pull that was not made: the branch has commits that its upstream lacks and the upstream has commits that the branch lacks, so taking the upstream would need a merge or a
- * rebase, which Clowdy does not make. Not an error: `origin` was fetched, and nothing else was touched.
+ * A pull or an update whose merge stopped on conflicts. Not an error: the merge has started (`MERGE_HEAD` is there) and is left for the person, who resolves the paths, commits the merge or
+ * aborts it. `conflicts` is how many paths are still unmerged.
  */
-export interface GitRemoteDiverged {
-    state: 'diverged';
-    /** The upstream, with both counts above 0. */
-    upstream: GitUpstream;
+export interface GitRemoteConflicts {
+    state: 'conflicts';
+    action: 'pull' | 'update';
+    conflicts: number;
 }
 
-/** What `POST .../git/fetch`, `.../pull` and `.../push` answer. */
-export type GitRemoteResult = GitRemoteDone | GitRemoteDiverged;
+/** What `POST .../git/fetch`, `.../pull`, `.../push`, `.../update` and `.../abort` answer. */
+export type GitRemoteResult = GitRemoteDone | GitRemoteConflicts;
 
 /** The most entries each list of `GitBranches` (the local branches, the remote ones) holds: a repository with more is cut at the newest, and `truncated` says so. */
 export const MAX_GIT_BRANCH_ENTRIES = 300;
@@ -587,10 +601,12 @@ export const MAX_GIT_MESSAGE_CHARS = 10_000;
 export interface GitCommitRequest {
     folderId: string;
     workspaceId?: string;
-    /** The files to commit, as `GitChangedFile.path` writes them: at most `MAX_GIT_COMMIT_PATHS`, each a changed file of the place's uncommitted changes. */
+    /** The files to commit, as `GitChangedFile.path` writes them: at most `MAX_GIT_COMMIT_PATHS`, each a changed file of the place's uncommitted changes. Ignored when `conclude` is set. */
     paths: string[];
     /** The whole message; its first line is the subject. At most `MAX_GIT_MESSAGE_CHARS`. */
     message: string;
+    /** Finish the merge that is in progress, once no path is still unmerged. The commit is not limited to `paths`. */
+    conclude?: true;
 }
 
 /** The commit that was made. */

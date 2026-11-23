@@ -146,8 +146,29 @@ export class CommitDraft {
             : undefined;
     }
 
+    /** A merge is in progress and every conflict is resolved: the commit finishes the merge, and no file has to be ticked. */
+    get concluding(): boolean {
+        const status = this.model.facts.status.value;
+
+        return status?.isRepository === true && status.merging !== undefined && status.merging.conflicts === 0;
+    }
+
+    /** The message git prepared for the merge, when one is in progress and resolved. */
+    get mergeSubject(): string | undefined {
+        const status = this.model.facts.status.value;
+
+        return status?.isRepository === true && status.merging?.conflicts === 0 ? status.merging.subject : undefined;
+    }
+
+    /** Puts git's merge message in the box when the person has not written one. */
+    prefill(subject: string): void {
+        if (this.message.trim() !== '') return;
+
+        this.message = subject;
+    }
+
     get canCommit(): boolean {
-        return this.busy === undefined && !this.noneTicked && this.message.trim() !== '';
+        return this.busy === undefined && this.message.trim() !== '' && (this.concluding || !this.noneTicked);
     }
 
     /**
@@ -155,7 +176,16 @@ export class CommitDraft {
      * while the box is busy, since the button then says it is working and not that it is missing something.
      */
     get commitReason(): string | undefined {
-        return this.busy === undefined ? commitBlock(this.message, this.ticked.length) : undefined;
+        if (this.busy !== undefined) return undefined;
+
+        const status = this.model.facts.status.value;
+
+        if (status?.isRepository === true && status.merging && status.merging.conflicts > 0)
+            return 'Resolve the conflicts first';
+
+        if (this.concluding) return this.message.trim() === '' ? 'A commit summary is required to commit' : undefined;
+
+        return commitBlock(this.message, this.ticked.length);
     }
 
     /** Why Commit & Push is not offered right now, for its menu entry; nothing when it is. Another action running holds it, and so does a branch the push after the commit would not take. */
@@ -228,12 +258,17 @@ export class CommitDraft {
 
         const { key } = this.model.facts;
         const paths = this.ticked.map(file => file.path);
+        const conclude = this.concluding;
 
         this.busy = 'commit';
         this.#touched();
 
         try {
-            const result = await this.transport.commitGit(key.projectId, placeRef(key), paths, this.message);
+            const result = conclude
+                ? await this.transport.commitGit(key.projectId, placeRef(key), paths, this.message, {
+                      conclude: true,
+                  })
+                : await this.transport.commitGit(key.projectId, placeRef(key), paths, this.message);
 
             runInAction(() => {
                 this.message = '';

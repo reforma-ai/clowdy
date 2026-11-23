@@ -216,8 +216,19 @@ export class HttpTransport implements Transport {
         if (!response.ok) throw await refusal(response, route);
     }
 
-    commitGit(projectId: ProjectId, place: PlaceRef, paths: string[], message: string): Promise<GitCommitResult> {
-        return this.#write(ROUTES.projectGitCommit(projectId), { ...place, paths, message });
+    commitGit(
+        projectId: ProjectId,
+        place: PlaceRef,
+        paths: string[],
+        message: string,
+        options?: { conclude?: true }
+    ): Promise<GitCommitResult> {
+        return this.#write(ROUTES.projectGitCommit(projectId), {
+            ...place,
+            paths,
+            message,
+            ...(options?.conclude && { conclude: true as const }),
+        });
     }
 
     generateGitMessage(projectId: ProjectId, place: PlaceRef, paths: string[]): Promise<GitMessage> {
@@ -238,6 +249,14 @@ export class HttpTransport implements Transport {
 
     pushGit(projectId: ProjectId, place: PlaceRef): Promise<GitRemoteResult> {
         return this.#write(ROUTES.projectGitRemote(projectId, 'push'), { ...place } satisfies GitRemoteRequest);
+    }
+
+    updateGit(projectId: ProjectId, place: PlaceRef): Promise<GitRemoteResult> {
+        return this.#write(ROUTES.projectGitRemote(projectId, 'update'), { ...place } satisfies GitRemoteRequest);
+    }
+
+    abortGit(projectId: ProjectId, place: PlaceRef): Promise<GitRemoteResult> {
+        return this.#write(ROUTES.projectGitRemote(projectId, 'abort'), { ...place } satisfies GitRemoteRequest);
     }
 
     getGitBranches(projectId: ProjectId, place: PlaceRef): Promise<GitBranches> {

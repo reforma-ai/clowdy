@@ -11,6 +11,7 @@ import {
     isDiverged,
     isFetchFirst,
     lastFetchedWords,
+    mergeBanner,
     middleCut,
     nextStep,
     pushOrPublish,
@@ -19,6 +20,7 @@ import {
     remoteCall,
     remoteNotice,
     syncButton,
+    updateFromBase,
 } from './changesActions';
 
 import type { GitBase, GitStatus, GitUpstream } from '@clowdy/protocol';
@@ -78,11 +80,11 @@ describe('remoteActions', () => {
         ]);
     });
 
-    it('turns Pull and Push off for a branch that diverged, and says it, with how far', () => {
+    it('pulls a branch that diverged, which merges, and holds the push until that pull', () => {
         expect(reasons(status({}, { ahead: 1, behind: 2 }))).toEqual([
             ['fetch', null, null],
-            ['pull', 'Diverged: 1 ahead, 2 behind', 2],
-            ['push', 'Diverged: 1 ahead, 2 behind', 1],
+            ['pull', null, 2],
+            ['push', 'Pull first', 1],
         ]);
         expect(isDiverged({ name: 'origin/feature', ahead: 1, behind: 2 })).toBe(true);
         expect(isDiverged({ name: 'origin/feature', ahead: 1, behind: 0 })).toBe(false);
@@ -299,21 +301,18 @@ describe('syncButton', () => {
         expect(sync(status({}, { ahead: 4 }))?.behind).toBeUndefined();
     });
 
-    it('is a Diverged button that cannot be pressed for a branch with commits on both sides, and says what to do about it, and with how far', () => {
+    it('is Pull origin for a branch with commits on both sides, which merges, and shows how far', () => {
         const view = sync(status({ lastFetchedAt: FETCHED }, { ahead: 1, behind: 2 }));
 
         expect(view).toMatchObject({
-            kind: 'diverged',
-            label: 'Diverged',
+            kind: 'pull',
+            label: 'Pull origin',
             ahead: 1,
             behind: 2,
-            reason: 'Diverged: 1 ahead, 2 behind',
-            line: 'Merge or rebase in a terminal',
-            tone: 'warning',
+            action: 'pull',
+            line: 'Last fetched 3 minutes ago',
         });
-        expect(view?.action).toBeUndefined();
-        expect(view?.title).toContain('merge or rebase it in a terminal');
-        // Neither Pull origin nor Force push origin is offered here: the app has no merge and no force.
+        expect(view?.title).toContain('Pull origin merges what origin/feature has.');
         expect(JSON.stringify(view)).not.toMatch(/Force push/);
     });
 
@@ -354,7 +353,7 @@ describe('syncButton', () => {
         });
     });
 
-    it("goes down GitHub Desktop's order: running, no origin, no branch, not published, not on origin, diverged, behind, ahead, level", () => {
+    it("goes down GitHub Desktop's order: running, no origin, no branch, not published, not on origin, behind (a diverged branch too), ahead, level", () => {
         const order = (value: GitStatus, running?: Parameters<typeof syncButton>[1]) => sync(value, running)?.kind;
 
         expect(order(status({ origin: false }, null), 'fetch')).toBe('running');
@@ -363,7 +362,7 @@ describe('syncButton', () => {
         );
         expect(order(status({ head: { kind: 'detached', commit: 'a'.repeat(40) } }, { ahead: 1 }))).toBe('blocked');
         expect(order(status({}, { name: 'upstream/x', ahead: 1, behind: 1 }))).toBe('fetch');
-        expect(order(status({}, { ahead: 1, behind: 1 }))).toBe('diverged');
+        expect(order(status({}, { ahead: 1, behind: 1 }))).toBe('pull');
         expect(order(status({}, { ahead: 1, behind: 1, gone: true }))).toBe('publish');
         expect(order(status({}, { ahead: 3 }))).toBe('push');
         expect(order(status({}, { behind: 3 }))).toBe('pull');
@@ -408,7 +407,7 @@ describe('the words of the sidebar', () => {
             for (const text of [step?.title, step?.description, commitAndPushBlock(value)]) if (text) texts.add(text);
         }
 
-        // At least the long tooltip of the diverged state has two sentences, so the check is not about nothing.
+        // At least the tooltip of a pull that merges has two sentences, so the check is not about nothing.
         expect([...texts].some(text => /\. [A-Z]/.test(text))).toBe(true);
 
         for (const text of texts) expect(/\. [A-Z]/.test(text) ? text.endsWith('.') : !text.endsWith('.')).toBe(true);
@@ -460,8 +459,11 @@ describe('nextStep', () => {
         expect(nextStep(status(), undefined)).toBeUndefined();
     });
 
-    it('is nothing for a branch that diverged, one that tracks another remote, no origin, a HEAD on no branch, a branch with no commit and a place that is no repository', () => {
-        expect(nextStep(status({}, { ahead: 1, behind: 1 }), ready)).toBeUndefined();
+    it('pulls a branch that diverged, and is nothing for one that tracks another remote, no origin, a HEAD on no branch, a branch with no commit and a place that is no repository', () => {
+        expect(nextStep(status({}, { ahead: 1, behind: 1 }), ready)).toMatchObject({
+            kind: 'pull',
+            description: 'feature and origin each have commits the other lacks',
+        });
         expect(nextStep(status({}, { name: 'upstream/main', behind: 1 }), ready)).toBeUndefined();
         expect(nextStep(status({}, { name: 'upstream/main', gone: true }), ready)).toBeUndefined();
         expect(nextStep(status({ origin: false }, null), ready)).toBeUndefined();
@@ -581,11 +583,47 @@ describe('remoteNotice', () => {
         });
     });
 
-    it('says a diverged branch was left as it was, as a warning, and with no period', () => {
-        expect(remoteNotice({ state: 'diverged', upstream: { name: 'origin/main', ahead: 1, behind: 2 } })).toEqual({
-            words: 'Diverged: 1 ahead, 2 behind, left as it was',
+    it('says a merge that stopped, and a merge that went through, with no period', () => {
+        expect(remoteNotice({ state: 'conflicts', action: 'pull', conflicts: 2 })).toEqual({
+            words: '2 conflicts',
             tone: 'warning',
         });
+        expect(remoteNotice({ state: 'conflicts', action: 'update', conflicts: 1 })).toEqual({
+            words: '1 conflict',
+            tone: 'warning',
+        });
+        expect(remoteNotice({ state: 'done', action: 'pull', pulled: 2, merged: true })).toEqual({
+            words: 'Merged 2 commits',
+        });
+        expect(remoteNotice({ state: 'done', action: 'update', pulled: 1 })).toEqual({
+            words: 'Updated with 1 commit',
+        });
+        expect(remoteNotice({ state: 'done', action: 'abort' })).toEqual({ words: 'Aborted the merge' });
+    });
+});
+
+describe('update from the base and the merge banner', () => {
+    it('offers Update from main when the branch is behind the base and is not the base', () => {
+        expect(updateFromBase(status({ base: { ...READY, behind: 2 } }))).toEqual({ label: 'Update from main' });
+        expect(updateFromBase(status())).toBeUndefined();
+        expect(
+            updateFromBase(
+                status({
+                    head: { kind: 'branch', name: 'main', commit: 'a'.repeat(40) },
+                    base: { ...READY, name: 'origin/main', behind: 2 },
+                })
+            )
+        ).toBeUndefined();
+        expect(updateFromBase(status({ merging: { conflicts: 1 }, base: { ...READY, behind: 2 } }))).toBeUndefined();
+    });
+
+    it('says how a merge stands, and asks the agent only while a conflict is left', () => {
+        expect(mergeBanner(status({ merging: { conflicts: 3 } }))).toEqual({ words: '3 conflicts', ask: true });
+        expect(mergeBanner(status({ merging: { conflicts: 0, subject: 'Merge branch main' } }))).toEqual({
+            words: 'Conflicts resolved, commit the merge',
+            ask: false,
+        });
+        expect(mergeBanner(status())).toBeUndefined();
     });
 });
 
@@ -741,7 +779,7 @@ describe('createPullRequest', () => {
         expect(state(status({}, { ahead: 1, behind: 1 }))).toEqual({
             kind: 'blocked',
             label: 'Create PR',
-            reason: 'Diverged: 1 ahead, 1 behind',
+            reason: 'Pull first',
         });
         expect(state(status({}, { name: 'upstream/feature' }))).toEqual({
             kind: 'blocked',
@@ -798,7 +836,8 @@ describe('commitAndPushBlock', () => {
         );
         expect(commitAndPushBlock(status({}, { behind: 1 }))).toBe('1 commit to pull first');
         expect(commitAndPushBlock(status({}, { behind: 2 }))).toBe('2 commits to pull first');
-        expect(commitAndPushBlock(status({}, { ahead: 1, behind: 2 }))).toBe('Diverged: 1 ahead, 2 behind');
+        expect(commitAndPushBlock(status({}, { ahead: 1, behind: 2 }))).toBe('Pull first');
+        expect(commitAndPushBlock(status({ merging: { conflicts: 1 } }))).toBe('A merge is in progress');
         expect(commitAndPushBlock({ isRepository: false })).toBe('Not a repository');
         expect(commitAndPushBlock(undefined)).toBe('Not a repository');
     });

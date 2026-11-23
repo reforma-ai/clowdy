@@ -412,6 +412,14 @@ export class FixtureTransport implements Transport {
         return this.#remote('push', projectId, place);
     }
 
+    updateGit(projectId: ProjectId, place: PlaceRef): Promise<GitRemoteResult> {
+        return this.#remote('update', projectId, place);
+    }
+
+    abortGit(projectId: ProjectId, place: PlaceRef): Promise<GitRemoteResult> {
+        return this.#remote('abort', projectId, place);
+    }
+
     /** The place as the fixture's branches keep it: the folder's head, or the worktree's branch. */
     #branchPlace(
         head: { branch?: string; detached?: true } | undefined,
@@ -566,7 +574,20 @@ export class FixtureTransport implements Transport {
         return kept;
     }
 
-    async commitGit(projectId: ProjectId, place: PlaceRef, paths: string[], message: string): Promise<GitCommitResult> {
+    async commitGit(
+        projectId: ProjectId,
+        place: PlaceRef,
+        paths: string[],
+        message: string,
+        options?: { conclude?: true }
+    ): Promise<GitCommitResult> {
+        if (options?.conclude) {
+            if (message.trim() === '') throw new TransportError('Write a message for the commit', 400);
+
+            const subject = message.trim().split('\n')[0]!.trim();
+
+            return { sha: 'a'.repeat(40), shortSha: 'aaaaaaa', subject };
+        }
         const committed = structuredClone(
             await this.#gitWrites.commit(place.workspaceId ?? '', this.#uncommitted(projectId, place), paths, message)
         );

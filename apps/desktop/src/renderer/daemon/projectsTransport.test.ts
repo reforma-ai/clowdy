@@ -1977,10 +1977,10 @@ describe('HttpTransport git remote actions', () => {
         ]);
     });
 
-    it('gives a diverged branch as an answer, not an error', async () => {
-        const diverged = { state: 'diverged', upstream: { name: 'origin/main', ahead: 1, behind: 2 } };
+    it('gives a merge that stopped on conflicts as an answer, not an error', async () => {
+        const conflicts = { state: 'conflicts', action: 'pull', conflicts: 2 };
 
-        expect(await transportFor(diverged).transport.pullGit('prj_a', { folderId: 'fld_b' })).toEqual(diverged);
+        expect(await transportFor(conflicts).transport.pullGit('prj_a', { folderId: 'fld_b' })).toEqual(conflicts);
     });
 
     it("rejects with git's own line, the status and the hint, and sends a push only once", async () => {
@@ -2083,17 +2083,20 @@ describe('FixtureTransport git remote actions', () => {
         expect(await transport.pullGit(FIXTURE_PROJECT_ID, inWorktree)).toMatchObject({ state: 'done', pulled: 0 });
     });
 
-    it('answers a pull of a diverged branch as diverged and leaves it, and rejects its push as git does', async () => {
+    it('merges a pull of a diverged branch, after which the push is of the merge', async () => {
         const transport = worktree('diverged');
 
         expect(await transport.pullGit(FIXTURE_PROJECT_ID, inWorktree)).toEqual({
-            state: 'diverged',
-            upstream: { name: 'origin/clowdy/ab12cd34', ahead: 1, behind: 2 },
+            state: 'done',
+            action: 'pull',
+            pulled: 2,
+            merged: true,
+            upstream: { name: 'origin/clowdy/ab12cd34', ahead: 2, behind: 0 },
         });
-        expect(await upstreamOf(transport)).toEqual({ name: 'origin/clowdy/ab12cd34', ahead: 1, behind: 2 });
-        await expect(transport.pushGit(FIXTURE_PROJECT_ID, inWorktree)).rejects.toMatchObject({
-            status: 409,
-            message: '! [rejected] clowdy/ab12cd34 -> clowdy/ab12cd34 (fetch first)',
+        expect(await upstreamOf(transport)).toEqual({ name: 'origin/clowdy/ab12cd34', ahead: 2, behind: 0 });
+        expect(await transport.pushGit(FIXTURE_PROJECT_ID, inWorktree)).toMatchObject({
+            state: 'done',
+            action: 'push',
         });
     });
 
@@ -2206,7 +2209,7 @@ describe('the time of the last fetch in the transports', () => {
         const diverged = worktree('diverged');
         const was = (await statusOf(diverged)).lastFetchedAt!;
 
-        expect(await diverged.pullGit(FIXTURE_PROJECT_ID, inWorktree)).toMatchObject({ state: 'diverged' });
+        expect(await diverged.pullGit(FIXTURE_PROJECT_ID, inWorktree)).toMatchObject({ state: 'done', merged: true });
         expect((await statusOf(diverged)).lastFetchedAt!).toBeGreaterThan(was);
     });
 

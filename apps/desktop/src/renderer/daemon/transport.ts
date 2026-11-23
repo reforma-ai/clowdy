@@ -143,7 +143,13 @@ export interface Transport {
      * the daemon's reason (git's own `fatal:`, `error:` or hook line, and `hint` when the line names the signing key): 400 for no paths, no message or a path that is not a changed file,
      * 409 for a merge in progress or a commit git refused, 503 for one that did not end in time. Not retried: a commit is not asked for twice.
      */
-    commitGit: (projectId: ProjectId, place: PlaceRef, paths: string[], message: string) => Promise<GitCommitResult>;
+    commitGit: (
+        projectId: ProjectId,
+        place: PlaceRef,
+        paths: string[],
+        message: string,
+        options?: { conclude?: true }
+    ) => Promise<GitCommitResult>;
     /**
      * A commit message for the files of a place that the person ticked (`POST git/message`), written by the agent they turned `Commit messages` on for: one Conventional Commits subject.
      * Runs only when asked. Rejects with a `TransportError`: 400 for paths that are not changed files or when no agent has the switch on, 503 with `Couldn't write the message` when the agent
@@ -165,11 +171,20 @@ export interface Transport {
      */
     fetchGit: (projectId: ProjectId, place: PlaceRef) => Promise<GitRemoteResult>;
     /**
-     * Fetches origin and fast-forwards the place's branch to its upstream (`POST git/pull`): never a merge, a rebase or a reset. A branch that has commits of its own and falls behind its upstream too
-     * answers `{ state: 'diverged' }`, which is not an error, and stays as it was. Rejects as `fetchGit` does, and with 400 for a detached HEAD, a branch with no upstream or one that tracks another
-     * remote, and 409 with git's line when an uncommitted change is in the way.
+     * Fetches origin and merges the place's branch with its upstream (`POST git/pull`): a fast-forward when the branch has nothing of its own, a merge commit when it does (`merged`). A merge that
+     * stops on conflicts answers `{ state: 'conflicts' }`, which is not an error: the merge has started. Rejects as `fetchGit` does, and with 400 for a detached HEAD, a branch with no upstream or
+     * one that tracks another remote, and 409 with git's line when an uncommitted change is in the way (nothing was started).
      */
     pullGit: (projectId: ProjectId, place: PlaceRef) => Promise<GitRemoteResult>;
+    /**
+     * Fetches origin and merges the place's base into the branch (`POST git/update`), the same base the Changes tab compares with. Already being that branch is 400. A merge that stops on
+     * conflicts answers `{ state: 'conflicts' }`, as a pull's does. Rejects as `pullGit` does.
+     */
+    updateGit: (projectId: ProjectId, place: PlaceRef) => Promise<GitRemoteResult>;
+    /**
+     * Undoes a merge that is in progress (`POST git/abort`, `git merge --abort`). 400 when no merge is. Rejects as `fetchGit` does when git refuses.
+     */
+    abortGit: (projectId: ProjectId, place: PlaceRef) => Promise<GitRemoteResult>;
     /**
      * Sends the place's branch to its upstream on origin (`POST git/push`), or publishes it (`-u`, `published: true`) when it has none. Never forced, never with a tag. Rejects as `pullGit` does, and
      * with 409 and git's own line for a push that origin rejects (`! [rejected] main -> main (fetch first)`), a hook or no permission.

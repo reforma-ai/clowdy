@@ -17,6 +17,7 @@ import { DiscardButton } from './DiscardButton';
 import { accessHint, accessHintTitle, aheadBehindCounts, CHANGE_KIND_VIEW, splitPath } from './gitSummary';
 import { CHANGES_FILES_MIN_HEIGHT } from './layout';
 import { LIST_TEXT } from './listState';
+import { MergeBanner, UpdateFromBase } from './MergeBanner';
 import { PullRequestChip } from './PullRequestChip';
 import { RemoteMenu } from './RemoteMenu';
 import { useBoxHeight } from './useBoxWidth';
@@ -214,6 +215,8 @@ export function ChangesSidebar({
                                 {counts && ` · ${counts}`}
                             </Text>
                         )}
+                        <UpdateFromBase facts={facts} />
+                        <MergeBanner facts={facts} />
                         <RemoteMenu facts={facts} />
                         {pr ? (
                             <PullRequestChip pr={pr} stale={facts.pullRequest.stale} />

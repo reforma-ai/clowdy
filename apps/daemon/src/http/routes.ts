@@ -85,6 +85,7 @@ const gitCommitBody = z.object({
     workspaceId: z.string().optional(),
     paths: z.array(z.string()),
     message: z.string(),
+    conclude: z.literal(true).optional(),
 });
 const gitMessageBody = z.object({
     folderId: z.string(),
@@ -502,7 +503,7 @@ export function createRoutes(context: RouteContext): Route[] {
         },
         {
             method: 'POST',
-            pattern: /^\/v1\/projects\/([^/]+)\/git\/(fetch|pull|push)$/,
+            pattern: /^\/v1\/projects\/([^/]+)\/git\/(fetch|pull|push|update|abort)$/,
             handle: async (request, _url, [id, action]) => {
                 const body = await readJson(request, gitRemoteBody);
                 const place = resolvePlace(store, requireProject(store, id), body.folderId, body.workspaceId);

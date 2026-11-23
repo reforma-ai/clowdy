@@ -505,6 +505,49 @@ withScripts('POST /v1/projects/:id/git/commit', () => {
         expect((await json<Failure>(refused)).error.message).toMatch(/a\.txt has merge conflicts/);
         expect(git(path, 'ls-files', '-u')).not.toBe('');
     });
+
+    test('concludes a merge once the conflicts are resolved, and not while one remains', async () => {
+        const h = await start();
+        const path = repository();
+        const { folderId, url } = await open(path, h);
+        const conclude = (message: string) =>
+            h.fetch(url, {
+                method: 'POST',
+                body: JSON.stringify({ folderId, paths: [], message, conclude: true }),
+            });
+
+        git(path, 'switch', '-q', '-c', 'side');
+        put(path, { 'a.txt': 'side\n' });
+        git(path, 'commit', '-q', '-am', 'Side edit');
+        git(path, 'switch', '-q', 'main');
+        put(path, { 'a.txt': 'main\n' });
+        git(path, 'commit', '-q', '-am', 'Main edit');
+        expect(Bun.spawnSync(['git', 'merge', 'side'], { cwd: path, stdout: 'pipe', stderr: 'pipe' }).exitCode).toBe(1);
+
+        const early = await conclude('Too soon');
+
+        expect(early.status).toBe(409);
+        expect((await json<Failure>(early)).error.message).toBe('Resolve the conflicts first');
+        expect(existsSync(join(path, '.git', 'MERGE_HEAD'))).toBe(true);
+
+        put(path, { 'a.txt': 'resolved\n' });
+        git(path, 'add', 'a.txt');
+
+        const response = await conclude('Merge side');
+        const result = await json<GitCommitResult>(response);
+
+        expect(response.status).toBe(200);
+        expect(result.subject).toBe('Merge side');
+        expect(git(path, 'rev-parse', 'HEAD')).toBe(result.sha);
+        expect(git(path, 'rev-parse', 'HEAD^2')).toBe(git(path, 'rev-parse', 'side'));
+        expect(existsSync(join(path, '.git', 'MERGE_HEAD'))).toBe(false);
+        expect(readFileSync(join(path, 'a.txt'), 'utf8')).toBe('resolved\n');
+
+        const none = await conclude('Again');
+
+        expect(none.status).toBe(400);
+        expect((await json<Failure>(none)).error.message).toBe('No merge to commit');
+    });
 });
 
 withScripts('GitWrites', () => {

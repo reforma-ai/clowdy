@@ -143,19 +143,16 @@ describe('the moves of a place to and from origin', () => {
         expect(await actions.run('push')).toMatchObject({ ok: true });
     });
 
-    it('says a diverged branch as a warning that is not a failure', async () => {
+    it('says a merge that stopped as a warning that is not a failure', async () => {
         const { actions, transport } = setup();
 
-        transport.pullGit.mockResolvedValueOnce({
-            state: 'diverged',
-            upstream: { name: 'origin/main', ahead: 1, behind: 2 },
-        });
+        transport.pullGit.mockResolvedValueOnce({ state: 'conflicts', action: 'pull', conflicts: 2 });
 
         const outcome = await actions.run('pull');
 
         expect(outcome.ok).toBe(true);
         expect(actions.failure).toBeUndefined();
-        expect(actions.notice).toEqual({ words: 'Diverged: 1 ahead, 2 behind, left as it was', tone: 'warning' });
+        expect(actions.notice).toEqual({ words: '2 conflicts', tone: 'warning' });
     });
 
     it('keeps its say to the caller that asked for it, and still reads the place again', async () => {

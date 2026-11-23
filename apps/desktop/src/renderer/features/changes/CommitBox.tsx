@@ -281,6 +281,12 @@ export function CommitBox({ model, place, projectId, git }: CommitBoxProps) {
     useEffect(() => model.syncUncommitted(generation), [model, generation, scope]);
     // Files that went are forgotten, so one that comes back is ticked again.
     useEffect(() => draft.reconcile(), [draft, names]);
+    // A resolved merge commits with the message git prepared, unless the person has written one.
+    const mergeSubject = draft.mergeSubject;
+
+    useEffect(() => {
+        if (mergeSubject) draft.prefill(mergeSubject);
+    }, [draft, mergeSubject]);
 
     if (model.isRepository === false || !draft.known) return null;
 
@@ -288,8 +294,8 @@ export function CommitBox({ model, place, projectId, git }: CommitBoxProps) {
     const ticked = draft.ticked.length;
     const busy = draft.busy !== undefined;
 
-    // Nothing is uncommitted: the commit that was made, or why the push after it failed, and the next step of the branch.
-    if (files.length === 0)
+    // Nothing is uncommitted: the commit that was made, or why the push after it failed, and the next step of the branch. A resolved merge still has its commit to make.
+    if (files.length === 0 && !draft.concluding)
         return (
             <NoLocalChanges
                 model={model}
@@ -371,7 +377,7 @@ export function CommitBox({ model, place, projectId, git }: CommitBoxProps) {
                 )}
                 {/* Commit and its menu wrap together, so the menu's button is never left alone on a line. */}
                 <div className={styles.commitGroup}>
-                    <Unavailable label={commitLabel(ticked, target?.name)} hint={reason} className={styles.commitHost}>
+                    <Unavailable label={draft.concluding ? 'Commit merge' : commitLabel(ticked, target?.name)} hint={reason} className={styles.commitHost}>
                         <Button
                             color="primary"
                             size="sm"
@@ -383,7 +389,9 @@ export function CommitBox({ model, place, projectId, git }: CommitBoxProps) {
                             tooltipPlacement="top"
                             onPress={() => void draft.commit()}
                         >
-                            <span className={styles.commitText}>{breakable(commitLabel(ticked, target?.name))}</span>
+                            <span className={styles.commitText}>
+                                {breakable(draft.concluding ? 'Commit merge' : commitLabel(ticked, target?.name))}
+                            </span>
                         </Button>
                     </Unavailable>
                     <MenuTrigger>

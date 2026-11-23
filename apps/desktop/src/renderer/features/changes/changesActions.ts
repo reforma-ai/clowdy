@@ -6,15 +6,18 @@ type RepositoryStatus = Extract<GitStatus, { isRepository: true }>;
 /** The only remote the app moves commits to and from. */
 const ORIGIN = 'origin';
 
-/** The four things the sidebar's menu offers. Publishing is pushing a branch that has no upstream yet, so it is one call of the transport (`remoteCall`). */
-export type RemoteActionId = 'fetch' | 'pull' | 'push' | 'publish';
+/**
+ * What the sidebar can run. The menu offers the first four (publishing is pushing a branch that has no upstream yet, so it is one call of the transport, `remoteCall`). `update` merges the base
+ * into the branch, and `abort` undoes a merge that stopped.
+ */
+export type RemoteActionId = 'fetch' | 'pull' | 'push' | 'publish' | 'update' | 'abort';
 
 /** The transport call an action makes. */
 export const remoteCall = (id: RemoteActionId): GitRemoteAction => (id === 'publish' ? 'push' : id);
 
 /** One entry of the menu: what it is called, how many commits it moves, and why it cannot run right now. */
 export interface RemoteActionView {
-    id: RemoteActionId;
+    id: Exclude<RemoteActionId, 'update' | 'abort'>;
     label: string;
     /** `Pull`: the commits the upstream has that the branch lacks; `Push`: the commits the branch has that the upstream lacks. */
     count?: number;
@@ -55,11 +58,9 @@ function trackingOf(status: RepositoryStatus): Tracking {
 
 const foreignWords = (upstream: GitUpstream): string => `Tracks ${upstream.name}, not ${ORIGIN}`;
 
-/** Whether the branch and its upstream each have commits the other lacks, so neither a pull nor a push can settle it. */
+/** Whether the branch and its upstream each have commits the other lacks, so a pull merges and a push waits for it. */
 export const isDiverged = (upstream: GitUpstream | undefined): boolean =>
     upstream !== undefined && !upstream.gone && upstream.ahead > 0 && upstream.behind > 0;
-
-const divergedWords = (upstream: GitUpstream): string => `Diverged: ${upstream.ahead} ahead, ${upstream.behind} behind`;
 
 /** Why a branch that is not published has nothing to pull from, in a few words. */
 const unpublishedWords = (tracking: Tracking): string =>
@@ -89,9 +90,9 @@ function branchBlock(status: RepositoryStatus, tracking: Tracking): string | und
 
 /**
  * The menu of the sidebar for a place: Fetch, Pull and, last, Publish while the branch is not published (no upstream, one that is gone from origin, or one under another name than the
- * branch's) and Push once it is. Each action is listed with the reason it cannot run (no origin, an action running, a detached HEAD, nothing to pull, nothing to push, not published,
- * diverged), so a person sees why and not only that it is off. Nothing for a place that is not a repository. The commit counts are those of the last fetch: Fetch is how they are
- * brought up to date.
+ * branch's) and Push once it is. Each action is listed with the reason it cannot run (no origin, an action running, a detached HEAD, nothing to pull, nothing to push, not published, pull
+ * first), so a person sees why and not only that it is off. A branch that diverged can be pulled: the pull merges. Nothing for a place that is not a repository. The commit counts are those
+ * of the last fetch: Fetch is how they are brought up to date.
  */
 export function remoteActions(status: GitStatus | undefined, busy: boolean): RemoteActionView[] {
     if (status?.isRepository !== true) return [];
@@ -119,12 +120,15 @@ export function remoteActions(status: GitStatus | undefined, busy: boolean): Rem
     }
 
     const published = live;
-    const pullReason =
-        moves ??
-        (isDiverged(published) ? divergedWords(published) : published.behind === 0 ? 'Nothing to pull' : undefined);
+    const pullReason = moves ?? (published.behind === 0 ? 'Nothing to pull' : undefined);
+    // A push of a branch that is also behind is rejected: the pull (which merges, when the branch has commits of its own) comes first.
     const pushReason =
         moves ??
-        (isDiverged(published) ? divergedWords(published) : published.ahead === 0 ? 'Nothing to push' : undefined);
+        (published.behind > 0 && published.ahead > 0
+            ? 'Pull first'
+            : published.ahead === 0
+              ? 'Nothing to push'
+              : undefined);
 
     return [
         fetch,
@@ -187,15 +191,13 @@ export type SyncKind =
     | 'pull'
     /** The branch has commits origin lacks. */
     | 'push'
-    /** Each side has commits the other lacks: the app leaves it alone, so nothing can be pressed. */
-    | 'diverged'
     /** Nothing to move: look for what is new. */
     | 'fetch';
 
 /** What the sync button says and does for a place. */
 export interface SyncView {
     kind: SyncKind;
-    /** The next action in GitHub Desktop's words (`Publish branch`, `Pull origin`, `Push origin`, `Fetch origin`), `Diverged`, or what is running (`Pulling origin`). */
+    /** The next action in GitHub Desktop's words (`Publish branch`, `Pull origin`, `Push origin`, `Fetch origin`), or what is running (`Pulling origin`). */
     label: string;
     /** The line under the label: when the last fetch was, or the one thing to know about the state. */
     line?: string;
@@ -219,10 +221,10 @@ const lowered = (text: string): string => text.charAt(0).toLowerCase() + text.sl
 /**
  * The one button of the sidebar that moves the branch, in GitHub Desktop's order: **running** (the action's progress, and it cannot be pressed), **no origin** (nothing to sync with),
  * **detached HEAD** or a **branch with no commit** (`Publish branch`, off with the reason), **no upstream**, one that is gone or one **under another name than the branch's** (`Publish branch`;
- * the last says `Tracks origin/main`, since a push would go there), **an upstream that is not on origin** (`Fetch origin` is all that works), **diverged** (`Diverged`, off: the app does not
- * merge, so neither Pull nor Push is taken, and the line says to merge or rebase elsewhere), **behind** (`Pull origin` with the count), **ahead** (`Push origin` with the count) and last,
- * level, **`Fetch origin`**. The line under the label says when the last fetch was where the counts are as old as it, and what else there is to know where they are not. The dropdown beside
- * it keeps every action with its reason (`remoteActions`). Nothing for a place that is not a repository.
+ * the last says `Tracks origin/main`, since a push would go there), **an upstream that is not on origin** (`Fetch origin` is all that works), **behind** (`Pull origin` with the count, which
+ * merges when the branch also has commits of its own), **ahead** (`Push origin` with the count) and last, level, **`Fetch origin`**. The line under the label says when the last fetch was
+ * where the counts are as old as it, and what else there is to know where they are not. The dropdown beside it keeps every action with its reason (`remoteActions`). Nothing for a place
+ * that is not a repository.
  */
 export function syncButton(
     status: GitStatus | undefined,
@@ -312,27 +314,18 @@ export function syncButton(
 
     const { upstream: published } = tracking;
 
-    if (isDiverged(published)) {
-        return {
-            kind: 'diverged',
-            label: 'Diverged',
-            line: 'Merge or rebase in a terminal',
-            ahead: published.ahead,
-            behind: published.behind,
-            reason: divergedWords(published),
-            tone: 'warning',
-            title: `Diverged from ${published.name}: ${published.ahead} ahead, ${published.behind} behind. The app does not merge, so Pull and Push are off: merge or rebase it in a terminal, or ask the agent to do it.`,
-        };
-    }
-
     if (published.behind > 0)
         return {
             kind: 'pull',
             label: 'Pull origin',
             line: fetched,
             behind: published.behind,
+            ...(published.ahead > 0 && { ahead: published.ahead }),
             action: 'pull',
-            title: `Pull origin: ${commitsWords(published.behind)} to take from ${published.name}, ${lowered(fetched)}`,
+            title:
+                published.ahead > 0
+                    ? `Pull origin merges what ${published.name} has. This branch keeps its own, ${lowered(fetched)}.`
+                    : `Pull origin: ${commitsWords(published.behind)} to take from ${published.name}, ${lowered(fetched)}`,
         };
 
     if (published.ahead > 0)
@@ -356,22 +349,46 @@ export function syncButton(
 
 /** What an action that ended says, as a quiet line: what came in or went out, or that the branch was left as it was. */
 export function remoteNotice(result: GitRemoteResult): { words: string; tone?: 'warning' } {
-    if (result.state === 'diverged')
-        return { words: `${divergedWords(result.upstream)}, left as it was`, tone: 'warning' };
+    if (result.state === 'conflicts') {
+        const { conflicts } = result;
+
+        return {
+            words:
+                conflicts === 0
+                    ? 'Conflicts resolved, commit the merge'
+                    : conflicts === 1
+                      ? '1 conflict'
+                      : `${conflicts} conflicts`,
+            tone: 'warning',
+        };
+    }
 
     switch (result.action) {
         case 'fetch':
             return { words: 'Fetched origin' };
         case 'pull':
-            return { words: result.pulled ? `Pulled ${commitsWords(result.pulled)}` : 'Already up to date' };
+            return {
+                words: result.merged
+                    ? `Merged ${commitsWords(result.pulled ?? 0)}`
+                    : result.pulled
+                      ? `Pulled ${commitsWords(result.pulled)}`
+                      : 'Already up to date',
+            };
+        case 'update':
+            return {
+                words: result.pulled ? `Updated with ${commitsWords(result.pulled)}` : 'Already up to date',
+            };
+        case 'abort':
+            return { words: 'Aborted the merge' };
         default:
             return { words: result.published ? 'Published to origin' : 'Pushed to origin' };
     }
 }
 
 /**
- * Why Commit & Push is not offered, as a few words; nothing when it is: there is no `origin`, HEAD is on no branch, the branch tracks something that is not on `origin`, or its upstream has
- * commits that it lacks (the push after the commit would be rejected, so it is pulled first) or has diverged. A branch with no commit yet is fine: the commit is its first, and publishing it comes after.
+ * Why Commit & Push is not offered, as a few words; nothing when it is: there is no `origin`, HEAD is on no branch, a merge is in progress, the branch tracks something that is not on `origin`,
+ * or its upstream has commits that it lacks (the push after the commit would be rejected, so it is pulled first). A branch with no commit yet is fine: the commit is its first, and publishing
+ * it comes after.
  */
 export function commitAndPushBlock(status: GitStatus | undefined): string | undefined {
     if (status?.isRepository !== true) return 'Not a repository';
@@ -379,6 +396,8 @@ export function commitAndPushBlock(status: GitStatus | undefined): string | unde
     if (!status.origin) return 'No origin';
 
     if (status.head.kind === 'detached') return 'HEAD is detached';
+
+    if (status.merging) return 'A merge is in progress';
 
     const tracking = trackingOf(status);
 
@@ -389,7 +408,7 @@ export function commitAndPushBlock(status: GitStatus | undefined): string | unde
 
     const { upstream: published } = tracking;
 
-    if (isDiverged(published)) return divergedWords(published);
+    if (isDiverged(published)) return 'Pull first';
 
     return published.behind > 0 ? `${commitsWords(published.behind)} to pull first` : undefined;
 }
@@ -404,6 +423,8 @@ export const RUNNING_WORDS: Record<RemoteActionId, string> = {
     pull: 'Pulling origin',
     push: 'Pushing origin',
     publish: 'Publishing branch',
+    update: 'Updating',
+    abort: 'Aborting merge',
 };
 
 /**
@@ -416,6 +437,38 @@ export function githubBaseName(base: GitBase | undefined): string | undefined {
     const name = base.name.startsWith(`${ORIGIN}/`) ? base.name.slice(ORIGIN.length + 1) : base.name;
 
     return /^[0-9a-f]{7,40}$/i.test(name) ? undefined : name;
+}
+
+/**
+ * Update from the base, when the branch is behind the branch it is compared with and is not that branch. Nothing while a merge is in progress (the banner owns that), on a detached HEAD,
+ * and when the base is not behind.
+ */
+export function updateFromBase(status: GitStatus | undefined): { label: string } | undefined {
+    if (status?.isRepository !== true || status.merging || status.head.kind !== 'branch') return undefined;
+
+    const name = githubBaseName(status.base);
+
+    if (status.base.state !== 'ready' || status.base.behind === 0 || name === undefined || name === status.head.name)
+        return undefined;
+
+    return { label: `Update from ${name}` };
+}
+
+/** What the banner says while a merge is in progress. `ask` is offered while paths are still conflicted. Nothing when no merge is. */
+export function mergeBanner(status: GitStatus | undefined): { words: string; ask: boolean } | undefined {
+    if (status?.isRepository !== true || !status.merging) return undefined;
+
+    const { conflicts } = status.merging;
+
+    return {
+        ask: conflicts > 0,
+        words:
+            conflicts === 0
+                ? 'Conflicts resolved, commit the merge'
+                : conflicts === 1
+                  ? '1 conflict'
+                  : `${conflicts} conflicts`,
+    };
 }
 
 /** What Create PR is, for a place and its branch. */
@@ -440,7 +493,7 @@ export interface CreatePullRequestInput {
 /**
  * Whether Create PR is offered for a place, and in what state. Nothing (no button) for a place that is not a repository, one with no `origin` or a remote that is not on GitHub, a HEAD on no
  * branch, and a branch that has a pull request already. Otherwise: **blocked** on the branch the work is compared with (`Switch to a feature branch`), on one with no commits ahead of it, on
- * one that diverged from its upstream and on one that tracks another remote; **publish first** for a branch that is not on origin; **push first** for one with commits that are not; else **ready**.
+ * one that diverged from its upstream (it is pulled first, which merges) and on one that tracks another remote; **publish first** for a branch that is not on origin; **push first** for one with commits that are not; else **ready**.
  * The compare page is never offered for a branch GitHub does not have.
  */
 export function createPullRequest({
@@ -472,7 +525,7 @@ export function createPullRequest({
 
     const { upstream: published } = tracking;
 
-    if (isDiverged(published)) return { kind: 'blocked', label: 'Create PR', reason: divergedWords(published) };
+    if (isDiverged(published)) return { kind: 'blocked', label: 'Create PR', reason: 'Pull first' };
 
     return published.ahead > 0 ? { kind: 'push', label: 'Push first' } : { kind: 'ready', label: 'Create PR' };
 }
@@ -491,7 +544,7 @@ export interface NextStep {
 /**
  * The one step the empty state of the commit box suggests, as GitHub Desktop's `No local changes` does and in its order: **publish** a branch that is not on origin (or whose upstream is
  * gone, or is another branch's), **pull** the commits origin has, **push** the commits the branch has, and **create a pull request** from a branch that is published and level and has none. Nothing when none
- * applies: no `origin`, a HEAD on no branch or a branch with no commit, an upstream that is not on origin, a branch that diverged (the sync button says so), and a branch that is level and
+ * applies: no `origin`, a HEAD on no branch or a branch with no commit, an upstream that is not on origin, and a branch that is level and
  * is the base or has a pull request. `pullRequest` is the state of Create PR for the place (`createPullRequest`): the last step is its `ready` state and no other, so it is offered
  * exactly where that button would open the compare page.
  */
@@ -523,13 +576,14 @@ export function nextStep(
 
     const { upstream: published } = tracking;
 
-    if (isDiverged(published)) return undefined;
-
     if (published.behind > 0)
         return {
             kind: 'pull',
             title: `Pull ${commitsWords(published.behind)} from the ${ORIGIN} remote`,
-            description: `${ORIGIN} has ${published.behind === 1 ? 'a commit' : 'commits'} that ${branch} lacks`,
+            description:
+                published.ahead > 0
+                    ? `${branch} and ${ORIGIN} each have commits the other lacks`
+                    : `${ORIGIN} has ${published.behind === 1 ? 'a commit' : 'commits'} that ${branch} lacks`,
         };
 
     if (published.ahead > 0)

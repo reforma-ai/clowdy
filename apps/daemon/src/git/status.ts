@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { isAbsolute, join } from 'node:path';
 import { MAX_GIT_COMMITS, MAX_GIT_STATUS_ENTRIES } from '@clowdy/protocol';
 
 import { gitLine, gitRead, gitRecords } from '../domain/git';
@@ -326,7 +328,7 @@ export async function placeStatus(place: Place, options: BaseOptions = {}): Prom
 
     if (!(await workingTreeRoot(cwd))) return { isRepository: false };
 
-    const [status, origin, base, fetched] = await Promise.all([
+    const [status, origin, base, fetched, merging] = await Promise.all([
         gitRecords(cwd, ['status', '--porcelain=v2', '--branch', '-z', '--untracked-files=all', '--ahead-behind'], {
             maxRecords: STATUS_RECORDS,
             timeoutMs: STATUS_TIMEOUT_MS,
@@ -335,6 +337,7 @@ export async function placeStatus(place: Place, options: BaseOptions = {}): Prom
         hasOrigin(cwd),
         readBase(place, options),
         lastFetchedAt(cwd),
+        mergeUnderWay(cwd),
     ]);
 
     if (!status.ok) throw unavailable('git did not answer');
@@ -357,6 +360,37 @@ export async function placeStatus(place: Place, options: BaseOptions = {}): Prom
         ...(origin && fetched !== undefined && { lastFetchedAt: fetched }),
         entries: entries.slice(0, MAX_GIT_STATUS_ENTRIES),
         ...(truncated && { truncated: true as const }),
+        ...(merging && { merging }),
         base,
     };
+}
+
+/** A merge that is in progress, with how many paths are still unmerged and the first line of the message git prepared. Nothing when no merge is. */
+async function mergeUnderWay(cwd: string): Promise<{ conflicts: number; subject?: string } | undefined> {
+    const head = await gitRead(cwd, ['rev-parse', '-q', '--verify', 'MERGE_HEAD']);
+
+    if (!head.ok || head.stdout.trim() === '') return undefined;
+
+    const [unmerged, message] = await Promise.all([
+        gitRead(cwd, ['diff', '--name-only', '--diff-filter=U', '-z'], { parsed: true }),
+        gitRead(cwd, ['rev-parse', '--git-path', 'MERGE_MSG']),
+    ]);
+    const conflicts = unmerged.ok ? unmerged.stdout.split('\0').filter(path => path !== '').length : 0;
+    const subject = message.ok ? mergeSubject(cwd, message.stdout.trim()) : undefined;
+
+    return { conflicts, ...(subject && { subject }) };
+}
+
+/** The first line of `MERGE_MSG` that is a line of the message, not a comment git leaves in it. Nothing when the file cannot be read. */
+function mergeSubject(cwd: string, gitPath: string): string | undefined {
+    if (gitPath === '') return undefined;
+
+    try {
+        const text = readFileSync(isAbsolute(gitPath) ? gitPath : join(cwd, gitPath), 'utf8');
+        const line = text.split('\n').find(candidate => candidate.trim() !== '' && !candidate.startsWith('#'));
+
+        return line === undefined ? undefined : line.trim().slice(0, 240);
+    } catch {
+        return undefined;
+    }
 }
