@@ -1064,6 +1064,12 @@ describe('the retention of the copies', () => {
         mkdirSync(join(cut, 'files'), { recursive: true });
         utimesSync(cut, new Date(Date.now() - 9 * 24 * 3600 * 1000), new Date(Date.now() - 9 * 24 * 3600 * 1000));
         writeFileSync(join(dataDir, 'discarded', 'stray.txt'), 'not a project folder\n');
+        // A folder that is not named as a copy is not one, however old it is.
+        const foreign = join(dataDir, 'discarded', 'prj_x', 'my-notes');
+
+        mkdirSync(foreign, { recursive: true });
+        writeFileSync(join(foreign, 'notes.txt'), 'somebody elses\n');
+        utimesSync(foreign, new Date(Date.now() - 30 * 24 * 3600 * 1000), new Date(Date.now() - 30 * 24 * 3600 * 1000));
 
         const h = await startHarness({ dataDir }, { gitEnvironment: isolated() });
 
@@ -1073,6 +1079,7 @@ describe('the retention of the copies', () => {
         expect(existsSync(fresh)).toBe(true);
         expect(readFileSync(join(fresh, 'files', 'a.txt'), 'utf8')).toBe('fresh\n');
         expect(existsSync(join(dataDir, 'discarded', 'stray.txt'))).toBe(true);
+        expect(readFileSync(join(foreign, 'notes.txt'), 'utf8')).toBe('somebody elses\n');
         // The project folder of the last copy it held is gone with it.
         expect(existsSync(join(dataDir, 'discarded', 'prj_y'))).toBe(false);
         expect(existsSync(join(dataDir, 'discarded', 'prj_x'))).toBe(true);

@@ -111,6 +111,9 @@ interface Manifest {
 const folderName = (at: number) =>
     `${new Date(at).toISOString().replace(/[-:]/g, '').replace('.', '')}-${randomBytes(3).toString('hex')}`;
 
+/** The name `folderName` makes: only a folder that looks like this is one of the copies, so a folder somebody else put there is never removed for being old. */
+const COPY_FOLDER = /^\d{8}T\d{9}Z-[0-9a-f]{6}$/;
+
 /** What a name of the project may be as a folder: its id is the daemon's own, but nothing that could leave the folder is let through. */
 const segment = (name: string) => name.replace(/[^A-Za-z0-9_-]/g, '_') || '_';
 
@@ -262,6 +265,8 @@ export class DiscardCopies implements CopyStore {
             if (!info?.isDirectory()) continue;
 
             for (const name of await readdir(directory).catch(() => [] as string[])) {
+                if (!COPY_FOLDER.test(name)) continue;
+
                 const folder = join(directory, name);
                 const found = await this.#read(folder);
 
