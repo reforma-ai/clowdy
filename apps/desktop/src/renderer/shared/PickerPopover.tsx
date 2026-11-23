@@ -6,6 +6,8 @@ import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type Re
 
 import styles from './PickerPopover.module.css';
 
+import type { PopoverProps } from '@clowdy/components/Popover';
+
 export interface PickerOption {
     id: string;
     /** What the row says, and what typing filters on. */
@@ -29,11 +31,19 @@ export interface PickerPopoverProps {
     'aria-label': string;
     /** The hint in the search field. */
     placeholder?: string;
+    /** Where the popover opens against its anchor; below it, at its start, when the caller does not say (below the window's top when there is no anchor). */
+    placement?: PopoverProps['placement'];
     /** The person chose an option. The popover closes right after. */
     onPick: (id: string) => void;
     /** The popover closed: after a pick, `Esc`, or a press outside. The owner stops rendering it. */
     onClose: () => void;
 }
+
+/**
+ * Whether an element is in a picker's popover. A popover that holds a picker, and shuts when focus or a press goes outside it, says (`shouldCloseOnInteractOutside`) that the picker
+ * is not outside: the picker is drawn as its child and sits in another place of the page.
+ */
+export const isInPickerPopover = (element: Element): boolean => element.closest('[data-picker-popover]') !== null;
 
 /** What a caller says to open a picker: everything but the place it opens and what happens when it closes, which the screen that renders it supplies. */
 export type PickerRequest = Omit<PickerPopoverProps, 'anchor' | 'onClose'>;
@@ -48,7 +58,7 @@ const matches = (label: string, query: string) => query.toLowerCase().split(/\s+
  * card that moved to another column, nothing has focus and the owner has to put it somewhere.
  * The popover is a modal layer for the hotkey dispatcher (`data-modal-clickout-layer`), so no command of the page behind it runs while it is open.
  */
-export function PickerPopover({ anchor, options, selectedIds = [], 'aria-label': ariaLabel, placeholder, onPick, onClose }: PickerPopoverProps) {
+export function PickerPopover({ anchor, options, selectedIds = [], 'aria-label': ariaLabel, placeholder, placement, onPick, onClose }: PickerPopoverProps) {
     const [query, setQuery] = useState('');
     const fallback = useRef<HTMLSpanElement>(null);
     const list = useRef<HTMLDivElement>(null);
@@ -89,8 +99,9 @@ export function PickerPopover({ anchor, options, selectedIds = [], 'aria-label':
                 onOpenChange={ (isOpen) => {
                     if (!isOpen) onClose();
                 } }
-                placement={ anchor ? 'bottom start' : 'bottom' }
+                placement={ placement ?? (anchor ? 'bottom start' : 'bottom') }
                 className={ styles.popover }
+                data-picker-popover=""
             >
                 <Autocomplete
                     inputValue={ query }
