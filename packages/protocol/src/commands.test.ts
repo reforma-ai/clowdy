@@ -106,6 +106,30 @@ describe('workspace.open', () => {
     });
 });
 
+describe('workspace.remove', () => {
+    const remove = (fields: Record<string, unknown>) => ({ ...base, type: 'workspace.remove', projectId: 'p1', folderId: 'f1', path: '/work/shop-tree', ...fields });
+
+    test('takes the project, the folder and the path of a worktree, and the two choices that are the person\'s', () => {
+        expect(commandSchema.safeParse(remove({})).success).toBe(true);
+        expect(commandSchema.parse(remove({ discard: true, deleteBranch: false }))).toMatchObject({ discard: true, deleteBranch: false });
+    });
+
+    test('needs all three, unlike workspace.open the folder too, and none of them empty', () => {
+        for (const field of ['projectId', 'folderId', 'path']) {
+            expect(commandSchema.safeParse(remove({ [field]: undefined })).success).toBe(false);
+        }
+
+        expect(commandSchema.safeParse(remove({ folderId: '' })).success).toBe(false);
+        expect(commandSchema.safeParse(remove({ path: '' })).success).toBe(false);
+    });
+
+    test('takes booleans for the choices and drops what is not part of the command', () => {
+        expect(commandSchema.safeParse(remove({ discard: 'yes' })).success).toBe(false);
+        expect(commandSchema.safeParse(remove({ deleteBranch: 1 })).success).toBe(false);
+        expect(commandSchema.parse(remove({ force: true }))).not.toHaveProperty('force');
+    });
+});
+
 describe('project.updateFolder', () => {
     const update = (settings: unknown) => ({ ...base, type: 'project.updateFolder', projectId: 'p1', folderId: 'f1', settings });
 

@@ -40,6 +40,8 @@ export interface FixtureData {
      * disk, as `GET /v1/projects/:id/worktrees` describes them (`fixtureProjectWorktrees`). A folder that is not listed has none.
      */
     worktrees?: Record<string, FixtureWorktree[]>;
+    /** What `workspace.remove` took out of each folder's git, by the folder's path (`FixtureRemovals`): the reads answer as if git no longer had it. A folder that is not listed lost nothing. */
+    removed?: Record<string, FixtureRemovals>;
     statuses: Record<string, TaskStatus[]>;
     chats: Chat[];
     /** Every task of every project, the archived ones too: the snapshot leaves those out, and `getTaskDetail` and the archive's pages read them. */
@@ -368,15 +370,26 @@ const API_FILES = [
 ];
 
 /**
+ * What `workspace.remove` took out of a fixture folder's git. `fixtureFolderGit` is a function of the folder, so the removals are kept beside it and applied to what it lists:
+ * the paths of the worktrees that are gone, the local branches that were deleted with them, and the branches that stay now that their worktree is gone (a branch git lists as a
+ * local one once no worktree holds it).
+ */
+export interface FixtureRemovals {
+    worktrees: string[];
+    deleted: string[];
+    kept: string[];
+}
+
+/**
  * What `GET git` answers for a fixture folder: no repository when `git` says nothing of it, else the branch it has checked out, a few more branches (local and
  * `origin`'s), `origin/main` as the default one, and two worktrees: the folder itself and one Clowdy made for a chat, with changes in it. The folder's own
- * `baseBranch` is the default one when the repository has it, as the daemon answers.
+ * `baseBranch` is the default one when the repository has it, as the daemon answers. `removals` are what `workspace.remove` took out since.
  */
-export function fixtureFolderGit(path: string, head: { branch?: string; detached?: true } | undefined, baseBranch?: string): FolderGit {
+export function fixtureFolderGit(path: string, head: { branch?: string; detached?: true } | undefined, baseBranch?: string, removals?: FixtureRemovals): FolderGit {
     if (!head?.branch) return { isRepository: false };
 
     const name = path.split('/').filter(Boolean).at(-1) ?? 'folder';
-    const locals = [...new Set([...(head.detached ? [] : [head.branch]), 'main', 'dev', 'feature/payments'])];
+    const locals = [...new Set([...(head.detached ? [] : [head.branch]), 'main', 'dev', 'feature/payments', ...removals?.kept ?? []])].filter(branch => !removals?.deleted.includes(branch));
     const branches = [...locals.map(branch => ({ name: branch, remote: false })), ...['origin/main', 'origin/dev'].map(branch => ({ name: branch, remote: true }))];
 
     return {
@@ -388,7 +401,7 @@ export function fixtureFolderGit(path: string, head: { branch?: string; detached
         worktrees: [
             { path, ...(!head.detached && { branch: head.branch }), head: 'a1b2c3d', main: true, dirty: false },
             { path: `/Users/dev/Clowdy/workspaces/${ name }/ab12cd34/${ name }`, branch: 'clowdy/ab12cd34', head: '9f8e7d6', main: false, dirty: true },
-        ],
+        ].filter(worktree => !removals?.worktrees.includes(worktree.path)),
     };
 }
 
@@ -403,19 +416,20 @@ const FIXTURE_CHANGES = 3;
  * (no `git` entry) with no worktrees, else its own checkout first, then what `fixtureFolderGit` lists (the Clowdy-made worktree, changed and not merged) and `data.worktrees` adds
  * (found, locked, missing). The chats are the project's whose worktree is at the path, archived ones too; `blocked` is the daemon's order (the folder's own checkout, a lock, chats).
  */
-export function fixtureProjectWorktrees(project: Pick<Project, 'id' | 'folders'>, data: Pick<FixtureData, 'git' | 'worktrees' | 'chats'>): FolderWorktrees[] {
+export function fixtureProjectWorktrees(project: Pick<Project, 'id' | 'folders'>, data: Pick<FixtureData, 'git' | 'worktrees' | 'removed' | 'chats'>): FolderWorktrees[] {
     const names = folderNames(project.folders);
 
     return project.folders.map((folder, index): FolderWorktrees => {
         const group = { folderId: folder.id, name: names[index] };
-        const repository = fixtureFolderGit(folder.path, data.git[folder.path], folder.settings?.baseBranch);
+        const removals = data.removed?.[folder.path];
+        const repository = fixtureFolderGit(folder.path, data.git[folder.path], folder.settings?.baseBranch, removals);
 
         if (!repository.isRepository) return { ...group, isRepository: false, worktrees: [] };
 
         const base = repository.defaultBranch;
         const listed: FixtureWorktree[] = [
             ...repository.worktrees.filter(worktree => !worktree.main).map(({ path, branch, head, dirty }) => ({ path, ...(branch !== undefined && { branch }), head, changes: dirty ? FIXTURE_CHANGES : 0, merged: false })),
-            ...data.worktrees?.[folder.path] ?? [],
+            ...(data.worktrees?.[folder.path] ?? []).filter(worktree => !removals?.worktrees.includes(worktree.path)),
         ];
         const own = repository.worktrees.find(worktree => worktree.main)!;
         const main: WorktreeInfo = { path: own.path, ...(own.branch !== undefined && { branch: own.branch }), head: own.head, main: true, missing: false, changes: own.dirty ? FIXTURE_CHANGES : 0, submodules: false, managed: false, chats: [], blocked: 'main' };
@@ -465,9 +479,9 @@ const kebab = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').r
  */
 export function fixtureChatWorkspace(
     choice: ChatWorkspaceChoice,
-    { projectName, folder, chatId, head, known }: { projectName: string; folder: ProjectFolder; chatId: string; head: FixtureData['git'][string] | undefined; known: readonly ChatWorkspace[] }
+    { projectName, folder, chatId, head, known, removed }: { projectName: string; folder: ProjectFolder; chatId: string; head: FixtureData['git'][string] | undefined; known: readonly ChatWorkspace[]; removed?: FixtureRemovals }
 ): { workspace: ChatWorkspace } | { error: string } {
-    const repository = fixtureFolderGit(folder.path, head);
+    const repository = fixtureFolderGit(folder.path, head, undefined, removed);
 
     if (!repository.isRepository) return { error: `${ folder.path } is not a git repository` };
 

@@ -129,6 +129,78 @@ describe('FixtureTransport.getProjectWorktrees', () => {
     });
 });
 
+describe('FixtureTransport workspace.remove', () => {
+    const FOUND = '/Users/dev/orca/car-rental/search-filters';
+    const LOCKED = '/Users/dev/car-rental-hotfix';
+    const MISSING = '/Users/dev/car-rental-old';
+    const remove = (transport: FixtureTransport, fields: { path: string; projectId?: string; folderId?: string; discard?: boolean; deleteBranch?: boolean }) => transport.command({ type: 'workspace.remove', projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental', ...fields });
+    const paths = async (transport: FixtureTransport) => (await transport.getProjectWorktrees(FIXTURE_PROJECT_ID))[0].worktrees.map(worktree => worktree.path);
+    const gitOf = async (transport: FixtureTransport) => {
+        const git = await transport.getFolderGit(FIXTURE_PROJECT_ID, 'fld_car_rental');
+
+        if (!git.isRepository) throw new Error('Not a repository');
+
+        return git;
+    };
+    const branches = async (transport: FixtureTransport) => (await gitOf(transport)).branches.filter(branch => !branch.remote).map(branch => branch.name);
+
+    it('takes a worktree out of the list and keeps its branch as a local one, or deletes the branch with deleteBranch', async () => {
+        const transport = new FixtureTransport();
+
+        expect(await paths(transport)).toContain(FOUND);
+        expect(await branches(transport)).not.toContain('search-filters');
+
+        // The tree is changed, which is the person's to say yes to.
+        expect(await remove(transport, { path: FOUND })).toMatchObject({ ok: false, error: { code: 'conflict', message: 'The worktree has changes that are not committed' } });
+        expect(await paths(transport)).toContain(FOUND);
+
+        expect(await remove(transport, { path: FOUND, discard: true })).toMatchObject({ ok: true, data: { path: FOUND, branchDeleted: false } });
+        expect(await paths(transport)).not.toContain(FOUND);
+        expect(await branches(transport)).toContain('search-filters');
+        expect((await gitOf(transport)).worktrees.map(worktree => worktree.path)).not.toContain(FOUND);
+
+        // Gone from the disk: only its record, and the branch with it when asked.
+        expect(await remove(transport, { path: MISSING, deleteBranch: true })).toMatchObject({ ok: true, data: { path: MISSING, branchDeleted: true } });
+        expect(await paths(transport)).not.toContain(MISSING);
+        expect(await branches(transport)).not.toContain('old-pricing');
+        // Nothing else went.
+        expect(await paths(transport)).toEqual(['/Users/dev/car-rental', FIXTURE_WORKTREE_PATH, LOCKED]);
+    });
+
+    it('removes the worktree a chat was made for once no chat works in it, and the branch it was made on goes when it is asked to', async () => {
+        const transport = new FixtureTransport();
+
+        expect(await remove(transport, { path: FIXTURE_WORKTREE_PATH, discard: true, deleteBranch: true })).toMatchObject({ ok: true, data: { branchDeleted: true } });
+        expect(await paths(transport)).not.toContain(FIXTURE_WORKTREE_PATH);
+        expect(await branches(transport)).not.toContain('clowdy/ab12cd34');
+    });
+
+    it('refuses what the daemon refuses, and removes nothing', async () => {
+        const transport = new FixtureTransport({ data: withFixtureWorktrees(createFixtureData()) });
+        const before = await paths(transport);
+
+        expect(await remove(transport, { path: '/Users/dev/car-rental', discard: true })).toMatchObject({ ok: false, error: { code: 'conflict', message: 'That is the folder\'s own checkout' } });
+        expect(await remove(transport, { path: LOCKED, discard: true })).toMatchObject({ ok: false, error: { code: 'conflict', message: 'The worktree is locked' } });
+        expect(await remove(transport, { path: FIXTURE_WORKTREE_PATH, discard: true })).toMatchObject({ ok: false, error: { code: 'conflict', message: expect.stringContaining('works in this worktree') as unknown as string } });
+        expect(await remove(transport, { path: '/Users/dev/elsewhere' })).toMatchObject({ ok: false, error: { code: 'conflict', message: 'Git does not list it as a worktree of the folder' } });
+        expect(await remove(transport, { path: 'search-filters' })).toMatchObject({ ok: false, error: { code: 'invalid' } });
+        expect(await remove(transport, { path: FOUND, folderId: 'fld_none' })).toMatchObject({ ok: false, error: { code: 'invalid' } });
+        expect(await remove(transport, { path: FOUND, folderId: 'fld_notes' })).toMatchObject({ ok: false, error: { code: 'invalid' } });
+        expect(await remove(transport, { path: FOUND, projectId: 'p-none' })).toMatchObject({ ok: false, error: { code: 'not_found' } });
+        expect(await paths(transport)).toEqual(before);
+    });
+
+    it('takes the row workspace.open answered for the worktree with it, and a chat can no longer be made there', async () => {
+        const transport = new FixtureTransport();
+        const opened = await transport.command({ type: 'workspace.open', projectId: FIXTURE_PROJECT_ID, path: FIXTURE_WORKTREE_PATH });
+
+        expect(opened.ok).toBe(true);
+        expect(await remove(transport, { path: FIXTURE_WORKTREE_PATH, discard: true })).toMatchObject({ ok: true });
+        expect(await transport.command({ type: 'workspace.open', projectId: FIXTURE_PROJECT_ID, path: FIXTURE_WORKTREE_PATH })).toMatchObject({ ok: false, error: { code: 'invalid' } });
+        expect(await transport.command({ type: 'chat.create', projectId: FIXTURE_PROJECT_ID, workspace: { mode: 'existing', path: FIXTURE_WORKTREE_PATH } })).toMatchObject({ ok: false, error: { code: 'invalid' } });
+    });
+});
+
 describe('HttpTransport.getChatWorkspaceRemoval', () => {
     it('asks for one chat, its id escaped, and gives the daemon\'s answer', async () => {
         const urls: string[] = [];

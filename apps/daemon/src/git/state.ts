@@ -58,7 +58,7 @@ export function parseWorktrees(output: string): ListedWorktree[] {
 }
 
 /** The real place of a path, for two paths to be compared (a link, a drive letter's case, `/var` and `/private/var`); nothing when it is not there. */
-async function placeOf(path: string): Promise<string | undefined> {
+export async function placeOf(path: string): Promise<string | undefined> {
     try {
         return await realpath(path);
     }
@@ -172,11 +172,45 @@ async function isThere(path: string): Promise<boolean> {
 }
 
 /**
- * Whether a worktree has anything uncommitted, a new file or a changed submodule too, whatever the person's git configuration says of untracked files and of
- * submodules. A `status` that fails, is cut short or does not answer in time is "yes": the answer is a reason to keep a tree, so it errs that way.
+ * How many files of a worktree have uncommitted changes, a new file or a changed submodule too, whatever the person's git configuration says of untracked files and of
+ * submodules (a renamed file is one). A `status` that fails, is cut short or does not answer in time counts as one: the answer is a reason to keep a tree, so it errs
+ * toward "changed" and never says clean on a guess.
  */
+export async function changedFiles(path: string): Promise<number> {
+    const output = await gitOutput(path, ['-c', 'core.longpaths=true', 'status', '--porcelain', '--untracked-files=normal', '--ignore-submodules=none']);
+
+    return output === undefined ? 1 : output.split('\n').filter(line => line !== '').length;
+}
+
+/** Whether a worktree has anything uncommitted (`changedFiles`). */
 async function isDirty(path: string): Promise<boolean> {
-    return await gitOutput(path, ['status', '--porcelain', '--untracked-files=normal', '--ignore-submodules=none']) !== '';
+    return await changedFiles(path) > 0;
+}
+
+/**
+ * Whether an initialised submodule is checked out in the worktree (`git submodule status` lists the uninitialised ones with a `-`): `git worktree remove` refuses such a tree
+ * without `--force`. Nothing when git did not say, which a caller that removes things reads as "do not".
+ */
+export async function hasCheckedOutSubmodules(path: string): Promise<boolean | undefined> {
+    const output = await gitOutput(path, ['submodule', 'status']);
+
+    return output === undefined ? undefined : output.split('\n').some(line => line !== '' && !line.startsWith('-'));
+}
+
+/** The commit a ref names: `null` when the repository has no such ref, `undefined` when git could not be asked (a caller that would remove too much on a guess refuses on it). */
+export async function commitOf(folder: string, ref: string): Promise<string | undefined | null> {
+    const read = await gitRead(folder, ['show-ref', '--verify', '--hash', ref]);
+
+    if (read.ok) {
+        return read.stdout.trim() || null;
+    }
+
+    return read.reason === 'unavailable' ? undefined : null;
+}
+
+/** Whether `commit` is contained in `base`: the work of a branch is merged when its tip is an ancestor of the base's (`merge-base --is-ancestor`, which says no with exit code 1). */
+export async function isMerged(cwd: string, commit: string, base: string): Promise<boolean> {
+    return (await gitRead(cwd, ['merge-base', '--is-ancestor', commit, base])).ok;
 }
 
 /**
@@ -217,8 +251,21 @@ async function worktreesOf(folder: string, root: string, head: Awaited<ReturnTyp
 }
 
 /** The first characters of a commit's hash; none for the all-zero hash git gives a branch with no commit yet. */
-function shortHash(hash: string): string {
+export function shortHash(hash: string): string {
     return /^0*$/.test(hash) ? '' : hash.slice(0, SHORT_HASH_LENGTH);
+}
+
+/**
+ * The real place of a folder when it is the root of a working tree, nothing for any other folder (no repository, or a folder inside one, which has no worktree of its own). A
+ * git that does not answer is `unavailable`, never "no repository", which a caller would take for the truth.
+ */
+export async function repositoryRoot(folder: string): Promise<string | undefined> {
+    const root = await placeOf(folder);
+    const top = await gitRead(folder, ['rev-parse', '--show-toplevel']);
+
+    if (!top.ok && top.reason === 'unavailable') throw unavailable('git did not answer');
+
+    return !top.ok || !root || await placeOf(top.stdout.trim()) !== root ? undefined : root;
 }
 
 /**
@@ -228,12 +275,9 @@ function shortHash(hash: string): string {
  * `baseBranch` is the folder's configured base (`pickBase`): `defaultBranch` is that branch when the repository has it.
  */
 export async function folderGit(folder: string, baseBranch?: string): Promise<FolderGit> {
-    const root = await placeOf(folder);
-    const top = await gitRead(folder, ['rev-parse', '--show-toplevel']);
+    const root = await repositoryRoot(folder);
 
-    if (!top.ok && top.reason === 'unavailable') throw unavailable('git did not answer');
-
-    if (!top.ok || !root || await placeOf(top.stdout.trim()) !== root) return { isRepository: false };
+    if (!root) return { isRepository: false };
 
     const [head, remoteHead, all] = await Promise.all([folderHead(folder), originHead(folder), readBranches(folder)]);
     const defaultBranch = pickBase(baseBranch, all, () => pickDefaultBranch(remoteHead, all, head));
