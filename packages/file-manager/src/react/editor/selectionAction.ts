@@ -1,15 +1,15 @@
 import { Button } from '@clowdy/components/Button';
 import { Hotkey } from '@clowdy/components/Hotkey';
 import { Message } from '@clowdy/icons/14';
-import { Prec, StateField } from '@codemirror/state';
-import { keymap, showTooltip } from '@codemirror/view';
+import { Prec, StateEffect, StateField } from '@codemirror/state';
+import { EditorView, keymap, showTooltip } from '@codemirror/view';
 import { createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import styles from './selectionAction.module.css';
 
 import type { EditorState, Extension } from '@codemirror/state';
-import type { EditorView, Tooltip, TooltipView } from '@codemirror/view';
+import type { Tooltip, TooltipView } from '@codemirror/view';
 
 /** What the person selected, as the lines of the text the editor shows: 1-based, the last one included, and the words as they are written. */
 export interface SelectedLines {
@@ -27,6 +27,15 @@ export interface SelectionActionOptions {
      */
     onAction?: (selection: SelectedLines) => void;
 }
+
+/** A rectangle in the page's coordinates, as the editor measures a position. */
+type Rect = ReturnType<NonNullable<TooltipView['getCoords']>>;
+
+/** Where the editor is told a position is when it is not drawn: far outside any window, so the tooltip is hidden. */
+const OUT_OF_SIGHT: Rect = { left: -1e5, right: -1e5, top: -1e5, bottom: -1e5 };
+
+/** The gap kept between the button and the edge of the lines' box when the end of a long line is brought back into it. */
+const EDGE_GAP = 8;
 
 /** The key that runs the action, and the hint the button wears. `Mod` is ⌘ on a Mac and Ctrl elsewhere. */
 const KEY = 'Mod-i';
@@ -59,6 +68,15 @@ function readSelection(state: EditorState): { selected: SelectedLines; end: numb
 /** The lines the selection of `state` covers and their text, or `undefined` while nothing is selected (see `selectionAction`). */
 export function selectedLines(state: EditorState): SelectedLines | undefined {
     return readSelection(state)?.selected;
+}
+
+/** The primary mouse button goes down in the editor, or comes up: the selection is being dragged out, and is not final. */
+const mouseHeld = StateEffect.define<boolean>();
+
+/** The tooltip the selection of the state calls for, and whether the mouse is held down: the button waits for the mouse to be let go, as the Reply button over a message does. */
+interface Offer {
+    tooltip: Tooltip | null;
+    held: boolean;
 }
 
 /** Hands the selection to the host and leaves nothing selected; false when there is nothing to hand over, so the key goes on to what it did before. */
@@ -115,6 +133,19 @@ export function selectionAction({ label, onAction }: SelectionActionOptions): Ex
 
         return {
             dom,
+            // Lines do not wrap, and the editor hides a tooltip whose position is outside the box the lines scroll in: the end of a long line is. The button stands
+            // under the part of the line that shows instead, against the box's right edge, so it is there whatever the selection and the scroll.
+            getCoords: (pos) => {
+                const rect = view.coordsAtPos(pos);
+
+                if (!rect) return OUT_OF_SIGHT;
+
+                const box = view.scrollDOM.getBoundingClientRect();
+                const left = Math.max(box.left, Math.min(rect.left, box.right - dom.getBoundingClientRect().width - EDGE_GAP));
+
+                // The editor's rectangles are DOMRects, whose sides are not own properties a spread would copy.
+                return { left, right: left, top: rect.top, bottom: rect.bottom };
+            },
             // The tooltip goes while the editor updates, which may be inside a React commit, where a root cannot be unmounted.
             destroy: () => queueMicrotask(() => root.unmount()),
         };
@@ -124,14 +155,36 @@ export function selectionAction({ label, onAction }: SelectionActionOptions): Ex
 
         return read ? { pos: read.end, above: false, create } : null;
     };
-    const tooltip = StateField.define<Tooltip | null>({
-        create: tooltipOf,
-        update: (value, transaction) => (transaction.docChanged || transaction.selection ? tooltipOf(transaction.state) : value),
-        provide: field => showTooltip.from(field),
+    const offer = StateField.define<Offer>({
+        create: state => ({ tooltip: tooltipOf(state), held: false }),
+        update(value, transaction) {
+            const held = transaction.effects.findLast(effect => effect.is(mouseHeld))?.value ?? value.held;
+            const tooltip = transaction.docChanged || transaction.selection ? tooltipOf(transaction.state) : value.tooltip;
+
+            return held === value.held && tooltip === value.tooltip ? value : { tooltip, held };
+        },
+        provide: field => showTooltip.from(field, ({ tooltip, held }) => (held ? null : tooltip)),
+    });
+    // A drag selects on and on: the button would follow the pointer and stand under it. It comes when the button is let go, wherever that is.
+    const tracking = EditorView.domEventHandlers({
+        mousedown(event, view) {
+            if (event.button !== 0) return false;
+
+            // After the editor's own handlers of the same event have made the selection what it ends as.
+            const release = () => setTimeout(() => {
+                if (view.dom.isConnected) view.dispatch({ effects: mouseHeld.of(false) });
+            });
+
+            view.dispatch({ effects: mouseHeld.of(true) });
+            view.dom.ownerDocument.addEventListener('mouseup', release, { once: true, capture: true });
+
+            return false;
+        },
     });
 
     return [
-        tooltip,
+        offer,
+        tracking,
         Prec.high(keymap.of([{ key: KEY, run: view => run(view, onAction) }])),
     ];
 }

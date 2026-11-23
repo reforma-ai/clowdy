@@ -230,6 +230,77 @@ describe('selectionAction', () => {
     });
 });
 
+describe('selectionAction while the mouse selects', () => {
+    it('goes while the mouse button is down in the editor, and comes back under the selection that is there once it is let go', async () => {
+        const view = stand(selectionAction({ label: 'Add to chat', onAction: vi.fn() }));
+
+        await select(view, 2, 8);
+        expect(button()).not.toBeNull();
+
+        // The editor takes the focus on a press, and happy-dom reports the selection that makes in the middle of the editor's own update, as no browser does.
+        vi.spyOn(view, 'focus').mockImplementation(() => undefined);
+        await act(async () => {
+            view.contentDOM.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+        });
+        expect(host.querySelector('.cm-tooltip')).toBeNull();
+
+        await act(async () => {
+            document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }));
+            await new Promise(resolve => setTimeout(resolve, 0));
+        });
+
+        expect(button()).not.toBeNull();
+    });
+
+    it('is not held back by another mouse button', async () => {
+        const view = stand(selectionAction({ label: 'Add to chat', onAction: vi.fn() }));
+
+        await select(view, 2, 8);
+        await act(async () => {
+            view.contentDOM.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 2 }));
+        });
+
+        expect(button()).not.toBeNull();
+    });
+});
+
+describe('selectionAction where the button stands', () => {
+    /** The tooltip's own view for the selection, with the editor's measures told: the box the lines scroll in, the end of the selection, the button's width. */
+    async function measured(end: DOMRect | null, box = { left: 796, right: 1134 }, width = 144) {
+        const view = stand(selectionAction({ label: 'Add to chat', onAction: vi.fn() }));
+
+        await select(view, 2, 8);
+
+        const tooltip = view.state.facet(showTooltip).find(candidate => candidate !== null)!;
+        const tooltipView = tooltip.create(view);
+
+        vi.spyOn(view, 'coordsAtPos').mockReturnValue(end);
+        vi.spyOn(view.scrollDOM, 'getBoundingClientRect').mockReturnValue({ ...box, top: 292, bottom: 380 } as DOMRect);
+        vi.spyOn(tooltipView.dom, 'getBoundingClientRect').mockReturnValue({ width } as DOMRect);
+
+        return tooltipView.getCoords!(8);
+    }
+
+    it('is the end of the selection where that shows', async () => {
+        expect(await measured(new DOMRect(900, 337.5, 0, 15))).toEqual({ left: 900, right: 900, top: 337.5, bottom: 352.5 });
+    });
+
+    it('is brought back inside the box the lines scroll in when the end of a long line is past its edge, which would hide the button', async () => {
+        // 1134 (the edge) less the button's 144 and a gap of 8.
+        expect(await measured(new DOMRect(1150, 337.5, 0, 15))).toEqual({ left: 982, right: 982, top: 337.5, bottom: 352.5 });
+    });
+
+    it('is brought back inside the box when the end of the selection is scrolled out at the left', async () => {
+        expect(await measured(new DOMRect(700, 337.5, 0, 15))).toMatchObject({ left: 796, right: 796 });
+    });
+
+    it('is nowhere while the editor has not drawn the position, so the editor hides the button', async () => {
+        const coords = await measured(null);
+
+        expect(coords.bottom).toBeLessThan(0);
+    });
+});
+
 describe('selectionAction in a diff card', () => {
     let root: Root;
 
