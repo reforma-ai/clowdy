@@ -82,7 +82,7 @@
  *                                         HEAD or from the default branch (`create`). **Only the folder's own checkout**: a chat's worktree keeps its branch (`invalid`). It is refused, and
  *                                         nothing is changed, while the tree has a change of any kind (tracked, staged or untracked), a merge, rebase, cherry-pick, revert or bisect is under
  *                                         way, a run is working in the place, or another worktree has the branch checked out; the person's hooks run as ever (a `post-checkout` that fails
- *                                         leaves the branch switched and is told as `warning`). A name that is no branch name, a branch that does not exist, one that is there already
+ *                                         or hangs leaves the branch switched and is told as `warning`, as are the commits a detached HEAD left on no branch). A name that is no branch name, a branch that does not exist, one that is there already
  *                                         (`create`) and a folder that is not a repository are `invalid`; a refusal that is the repository's state and a switch git refused are `conflict`
  *                                         with a short reason as the message (and, for a change count or a way out, `details.hint`); one that did not end in time is `unavailable`.
  *
@@ -514,7 +514,10 @@ export interface GitSwitchResult {
     upstream?: GitUpstream;
     /** The branch was made by this switch (a new one, or a local one made for a branch of `origin`). */
     created?: true;
-    /** What the person's `post-checkout` hook said when it failed after the switch: git reports its exit status as the switch's, though the branch has changed. */
+    /**
+     * What the person is told of a switch that was made: what their `post-checkout` hook said when it failed after the switch (git reports its exit status as the switch's, though the branch has
+     * changed) or that it did not finish in time, and the commits a detached HEAD left on no branch. Several are joined with `; `.
+     */
     warning?: string;
 }
 

@@ -40,11 +40,15 @@ const UNDER_WAY: Array<{ file: string; name: string }> = [
     { file: 'BISECT_LOG', name: 'A bisect' },
 ];
 
-/** What a switch is going to run, once the request is judged against the repository: the arguments of `git`, the branch that has to be checked out when it is done, and whether the branch is new. */
+/**
+ * What a switch is going to run, once the request is judged against the repository: the arguments of `git`, the branch that has to be checked out when it is done, whether the branch is
+ * new, and, for a switch away from a detached HEAD, the commit it was at (what the switch may leave on no branch).
+ */
 interface Plan {
     args: string[];
     branch: string;
     created: boolean;
+    leaving?: string;
 }
 
 /**
@@ -107,10 +111,13 @@ export class GitSwitch {
 
             if (plan === undefined) return await this.#where(cwd);
 
+            // Found before the checks, so nothing but the checks themselves stands between the last of them and git.
+            const env = await this.environment.of(cwd);
+
             // Right before git runs, not before the line was taken: a commit in front of this one may have made the tree clean, or an agent may have written to it.
             await this.#refuseWhileUnsettled(project, place);
 
-            return await this.#run(place, plan);
+            return await this.#run(cwd, plan, env);
         });
     }
 
@@ -148,7 +155,7 @@ export class GitSwitch {
 
             if (remote) throw invalid(`${ ORIGIN } has a branch called ${ name } already`);
 
-            return { args: ['switch', '--no-track', '-c', name, await startCommit(place, start, head)], branch: name, created: true };
+            return { args: ['switch', '--no-track', '-c', name, await startCommit(place, start, head)], branch: name, created: true, ...(current === undefined && { leaving: head }) };
         }
 
         if (local) {
@@ -158,26 +165,28 @@ export class GitSwitch {
 
             if (holder !== undefined) throw conflict(`Checked out in ${ holder }`);
 
-            return { args: ['switch', '--no-guess', '--', name], branch: name, created: false };
+            return { args: ['switch', '--no-guess', '--', name], branch: name, created: false, ...(current === undefined && { leaving: head }) };
         }
 
-        if (remote) return { args: ['switch', '--track', '-c', name, `refs/remotes/${ ORIGIN }/${ name }`], branch: name, created: true };
+        if (remote) return { args: ['switch', '--track', '-c', name, `refs/remotes/${ ORIGIN }/${ name }`], branch: name, created: true, ...(current === undefined && { leaving: head }) };
 
         throw invalid(`There is no branch called ${ name }`);
     }
 
-    /** Why the place is no place to switch in right now, the first that holds: a run working in it, an operation under way, a change in the tree. Throws it; returns when none holds. */
+    /**
+     * Why the place is no place to switch in right now, the first that holds: a run working in it, an operation under way, a change in the tree. Throws it; returns when none holds.
+     * The runs are read **last** (the reasons are still told in this order: a chat that is working is what leaves the tree changed, and is the better thing to say), since a message
+     * that starts a run while git looks at the tree is the one thing nothing else holds back; nothing is awaited between this read and the start of git.
+     */
     async #refuseWhileUnsettled(project: Project, place: Place): Promise<void> {
         const cwd = place.path;
+        const underWay = await operationUnderWay(cwd);
+        const changes = await countChanges(cwd);
         const working = chatsWorkingIn(this.#store, project, cwd);
 
         if (working > 0) throw conflict(`${ working } ${ working === 1 ? 'chat is' : 'chats are' } working here`, { hint: 'Stop them or wait until they finish' } satisfies GitErrorDetails);
 
-        const underWay = await operationUnderWay(cwd);
-
         if (underWay !== undefined) throw conflict(`${ underWay } is in progress`, { hint: 'Finish or abort it first' } satisfies GitErrorDetails);
-
-        const changes = await countChanges(cwd);
 
         if (changes === undefined) throw unavailable('git did not answer');
 
@@ -185,25 +194,42 @@ export class GitSwitch {
     }
 
     /** Runs the switch and tells where HEAD is after it. */
-    async #run(place: Place, plan: Plan): Promise<GitSwitchResult> {
-        const cwd = place.path;
-        const env = await this.environment.of(cwd);
+    async #run(cwd: string, plan: Plan, env: Record<string, string>): Promise<GitSwitchResult> {
         const run = await runProgram('git', plan.args, { env, cwd, timeoutMs: this.#timeoutMs, maxChars: MAX_PRINTED_CHARS, signal: this.#stopper.signal, stopSignal: 'SIGTERM' });
 
         if (run.error === 'stopped') throw unavailable('The daemon is stopping');
 
-        if (run.timedOut) throw unavailable('The switch did not finish in time');
+        // HEAD moves once the files are checked out and before the `post-checkout` hook runs, so a switch that was cut off with HEAD on the branch was cut off in the hook.
+        if (run.timedOut) {
+            if (await this.#isOn(cwd, plan.branch)) return await this.#made(cwd, plan, 'The post-checkout hook did not finish in time');
+
+            throw unavailable('The switch did not finish in time');
+        }
 
         if (run.error !== undefined) throw unavailable('git is not installed or not on PATH');
 
-        const created = plan.created ? { created: true as const } : {};
-
-        if (run.code === 0) return { ...await this.#where(cwd), ...created };
+        if (run.code === 0) return await this.#made(cwd, plan);
 
         // The exit status of the switch is the `post-checkout` hook's: the branch has changed all the same, which HEAD shows.
-        if (await gitAnswer(cwd, ['symbolic-ref', '--quiet', '--short', 'HEAD']) === plan.branch) return { ...await this.#where(cwd), ...created, warning: hookLine(run.stderr, run.stdout) };
+        if (await this.#isOn(cwd, plan.branch)) return await this.#made(cwd, plan, hookLine(run.stderr, run.stdout));
 
         throw conflict(failureLine(run.stderr, run.stdout));
+    }
+
+    /** HEAD is on the branch. */
+    async #isOn(cwd: string, branch: string): Promise<boolean> {
+        return await gitAnswer(cwd, ['symbolic-ref', '--quiet', '--short', 'HEAD']) === branch;
+    }
+
+    /**
+     * The answer of a switch that was made: where HEAD is, whether the branch is new, and what the person is told besides, the hook's line when it failed and the commits a detached HEAD
+     * left on no branch (git says so on stderr, which nothing shows, and a commit nobody can name is gone to most people).
+     */
+    async #made(cwd: string, plan: Plan, hook?: string): Promise<GitSwitchResult> {
+        const left = plan.leaving === undefined ? undefined : await commitsLeftBehind(cwd, plan.leaving);
+        const warning = [hook, left].filter(line => line !== undefined).join('; ');
+
+        return { ...await this.#where(cwd), ...(plan.created && { created: true as const }), ...(warning !== '' && { warning }) };
     }
 
     /** Where HEAD is now, and the upstream of the branch it is on. */
@@ -257,6 +283,21 @@ async function startCommit(place: Place, start: GitSwitchStart, head: string): P
     if (!resolved) throw invalid('The repository has no default branch to start from');
 
     return resolved.commit;
+}
+
+/**
+ * What a switch away from a detached HEAD left on no branch, in words, or nothing when every commit of it is on a branch, a tag or `origin` (git's own count for its "you are leaving N commits
+ * behind": the commits `commit` has that no ref reaches, asked after the switch, so a new branch made from the detached HEAD has them). A git that does not answer says nothing.
+ */
+async function commitsLeftBehind(cwd: string, commit: string): Promise<string | undefined> {
+    const read = await gitRead(cwd, ['rev-list', '--count', commit, '--not', '--glob=refs/*']);
+    const count = read.ok ? Number(read.stdout.trim()) : 0;
+
+    if (!(count > 0)) return undefined;
+
+    const short = commit.slice(0, 7);
+
+    return count === 1 ? `The commit ${ short } is on no branch now` : `${ short } and ${ count - 1 } earlier ${ count === 2 ? 'commit are' : 'commits are' } on no branch now`;
 }
 
 /** Whether the repository has a ref. A git that cannot be asked is `unavailable`, never "no". */

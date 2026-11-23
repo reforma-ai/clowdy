@@ -138,8 +138,39 @@ describe('POST /v1/projects/:id/git/switch: switching', () => {
         git(path, 'switch', '-q', '--detach');
         expect(branchOf(path)).toBe('');
 
-        expect(await result('other')).toMatchObject({ head: { kind: 'branch', name: 'other' } });
+        const answer = await result('other');
+
+        expect(answer).toMatchObject({ head: { kind: 'branch', name: 'other' } });
+        // Its commit is on `main`, so nothing is left behind.
+        expect(answer).not.toHaveProperty('warning');
         expect(branchOf(path)).toBe('other');
+    });
+
+    test('says when leaving a detached HEAD leaves commits on no branch, and not when a branch made from it keeps them', async () => {
+        const h = await start();
+        const { path } = withOther();
+        const { result } = await open(path, h);
+
+        git(path, 'switch', '-q', '--detach');
+
+        const first = commitFile(path, 'lonely-1.txt');
+
+        expect(await result('other')).toMatchObject({ head: { name: 'other' }, warning: `The commit ${ first.slice(0, 7) } is on no branch now` });
+
+        git(path, 'switch', '-q', '--detach', first);
+
+        const second = commitFile(path, 'lonely-2.txt');
+
+        expect((await result('main')).warning).toBe(`${ second.slice(0, 7) } and 1 earlier commit are on no branch now`);
+
+        // A new branch from the detached HEAD is where its commits are kept.
+        git(path, 'switch', '-q', '--detach', second);
+        expect(await result('keeps-them', { create: { start: 'current' } })).not.toHaveProperty('warning');
+        expect(git(path, 'rev-parse', 'keeps-them')).toBe(second);
+
+        // A branch that has the commit keeps it, even when the person leaves by another way.
+        git(path, 'switch', '-q', '--detach', second);
+        expect(await result('main')).not.toHaveProperty('warning');
     });
 
     test('takes a branch that only origin has as a local branch that tracks it, and never guesses from a name', async () => {
@@ -288,6 +319,15 @@ describe('POST /v1/projects/:id/git/switch: refusals', () => {
             'a staged rename': (path) => {
                 git(path, 'mv', 'README.md', 'MOVED.md');
             },
+            'a new folder with a file in it': (path) => {
+                mkdirSync(join(path, 'fresh', 'deep'), { recursive: true });
+                writeFileSync(join(path, 'fresh', 'deep', 'file.txt'), 'new\n');
+            },
+            'a submodule that has a file of its own that is not tracked': (path) => {
+                git(path, '-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', makeRepo(tempDir('git-switch'), 'sub'), 'sm');
+                git(path, 'commit', '-q', '-m', 'Add a submodule');
+                writeFileSync(join(path, 'sm', 'loose.txt'), 'x\n');
+            },
         };
 
         for (const [what, change] of Object.entries(changes)) {
@@ -305,6 +345,30 @@ describe('POST /v1/projects/:id/git/switch: refusals', () => {
             expect({ what, ...snapshot(path) }).toEqual({ what, ...before });
             expect(branchOf(path)).toBe('main');
         }
+    });
+
+    test('leaves a file git was told to look away from to git, which refuses to overwrite it: nothing changes and the person is told git\'s line', async () => {
+        const h = await start();
+        const { path } = repository();
+        const { failure } = await open(path, h);
+
+        git(path, 'switch', '-q', '-c', 'other');
+        commitFile(path, 'tracked.txt', 'other\n');
+        git(path, 'switch', '-q', 'main');
+        commitFile(path, 'tracked.txt', 'main\n');
+        writeFileSync(join(path, 'tracked.txt'), 'mine\n');
+        // `status` does not list it, so the tree reads as clean; git's own check of the files it would overwrite is what stands in the way.
+        git(path, 'update-index', '--assume-unchanged', 'tracked.txt');
+        expect(left(path)).toEqual([]);
+
+        const before = snapshot(path);
+        const error = await failure(409, 'other');
+
+        expect(error.code).toBe('conflict');
+        expect(error.message).toMatch(/would be overwritten by checkout/);
+        expect(snapshot(path)).toEqual(before);
+        expect(readFileSync(join(path, 'tracked.txt'), 'utf8')).toBe('mine\n');
+        expect(branchOf(path)).toBe('main');
     });
 
     test('counts the files in the reason: one file and many', async () => {
@@ -599,6 +663,30 @@ describe('POST /v1/projects/:id/git/switch: runs working in the place', () => {
         expect(branchOf(path)).toBe('other');
     });
 
+    test('reads the runs after it has looked at the tree, so a message that starts a run while git reads the tree is not missed', async () => {
+        const { h, gate, path, project, failure } = await working();
+        const ready = join(tempDir('git-switch'), 'status-ready');
+        const stall = join(tempDir('git-switch'), 'stall.sh');
+
+        // A `git status` that takes a couple of seconds (the hook runs when git asks what changed), long enough for a message to come in.
+        writeFileSync(stall, ['#!/bin/sh', `touch '${ ready }'`, 'sleep 1', 'exit 1'].join('\n'));
+        chmodSync(stall, 0o755);
+        git(path, 'config', 'core.fsmonitor', stall);
+
+        const refused = failure(409, 'other');
+
+        await waitFor(() => existsSync(ready) || undefined, 'git to read the tree');
+
+        const chat = h.ok('chat.create', { projectId: project.id }).chat.id as string;
+
+        h.ok('chat.send', { chatId: chat, text: 'starts meanwhile' });
+        await waitFor(() => gate.isStarted('starts meanwhile'), 'the run');
+
+        expect(await refused).toMatchObject({ code: 'conflict', message: '1 chat is working here' });
+        expect(branchOf(path)).toBe('main');
+        gate.release('starts meanwhile');
+    });
+
     test('is not stopped by a chat that works in a worktree, or in another folder of the project', async () => {
         const gate = new GateEngine();
         const h = await start({ engines: gateEngines(gate) });
@@ -696,12 +784,11 @@ describe('POST /v1/projects/:id/git/switch: the line of writes', () => {
         const started = Date.now();
         const late = await slow.switch(project, place, { branch: 'other' }).catch((caught: unknown) => caught);
 
-        expect(late).toMatchObject({ code: 'unavailable', message: 'The switch did not finish in time' });
+        // HEAD had moved to the branch before the hook that did not end, so the switch was made and the hook is what is told.
+        expect(late).toMatchObject({ head: { kind: 'branch', name: 'other' }, warning: 'The post-checkout hook did not finish in time' });
         expect(Date.now() - started).toBeLessThan(6000);
         await Bun.sleep(300);
         expect(existsSync(join(path, '.git', 'index.lock'))).toBe(false);
-
-        // The branch changed before the hook that did not end; the hook is gone for the person's own switch back.
         expect(branchOf(path)).toBe('other');
         hook(path, 'post-checkout', 'exit 0');
         git(path, 'switch', '-q', 'main');
