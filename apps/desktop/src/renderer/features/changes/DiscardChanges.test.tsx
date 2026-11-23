@@ -510,6 +510,29 @@ describe('the confirmation', () => {
         expect(cardPaths()).not.toContain('src/limits.ts');
     });
 
+    it('closes and says in a toast where the copy of what it discarded is kept', async () => {
+        await start();
+
+        const success = vi.spyOn(toast, 'success').mockImplementation(() => 'toast');
+
+        try {
+            await press(rowButton('src/limits.ts'));
+            await settleDialog();
+            await press(dialogButton('Discard changes'));
+            await settleDialog();
+            await settle();
+            await untilClosed();
+
+            expect(success).toHaveBeenCalledExactlyOnceWith({
+                title: 'Changes discarded',
+                message: expect.stringMatching(/^A copy is in \//),
+                timeout: 8000,
+            });
+        } finally {
+            success.mockRestore();
+        }
+    });
+
     it("closes and tells the line of the person's hook in a toast when the file was discarded and a post-checkout hook failed after it", async () => {
         await start({ gitWrites: { discard: 'hook' } });
 

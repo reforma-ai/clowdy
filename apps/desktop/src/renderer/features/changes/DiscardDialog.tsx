@@ -72,11 +72,18 @@ export function openDiscardDialog({ file, working, discard }: DiscardDialogOptio
             initialFocus: 'cancel',
             errorIn: 'dialog',
             onConfirm: async () => {
-                const { warning } = await discard();
+                const { warning, copy } = await discard();
 
                 // The file is discarded all the same: only the person's own hook said no after it, which the dialog's failure line would have called a failure.
                 if (warning !== undefined)
                     toast.warning({ title: 'Changes discarded', message: warning, timeout: 8000 });
+                // The dialog promised a copy, so it says where it is: a file with nothing on the disk (a deleted one) has none to point to.
+                else if (copy.files > 0)
+                    toast.success({
+                        title: 'Changes discarded',
+                        message: `A copy is in ${copy.folder}`,
+                        timeout: 8000,
+                    });
             },
         },
         { width: 420 }
