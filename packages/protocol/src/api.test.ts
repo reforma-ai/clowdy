@@ -24,3 +24,10 @@ describe('ROUTES.projectArchivedTasks', () => {
         expect(ROUTES.projectArchivedTasks('a/b?c')).toBe('/v1/projects/a%2Fb%3Fc/archived-tasks');
     });
 });
+
+describe('ROUTES.projectWorktrees', () => {
+    test('the worktrees of a project are read from beside its git route, with the id made safe for a path', () => {
+        expect(ROUTES.projectWorktrees('prj_1')).toBe('/v1/projects/prj_1/worktrees');
+        expect(ROUTES.projectWorktrees('a/b?c')).toBe('/v1/projects/a%2Fb%3Fc/worktrees');
+    });
+});

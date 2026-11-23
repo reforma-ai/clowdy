@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { createFixtureData, FIXTURE_EMPTY_PROJECT_ID, FIXTURE_GIT_COMMITS, FIXTURE_PERSONAL_PROJECT_ID, FIXTURE_PROJECT_ID, withFixtureWorkspace } from './fixtureData';
+import { createFixtureData, FIXTURE_EMPTY_PROJECT_ID, FIXTURE_GIT_COMMITS, FIXTURE_PERSONAL_PROJECT_ID, FIXTURE_PROJECT_ID, FIXTURE_WORKTREE_PATH, withFixtureWorkspace, withFixtureWorktrees } from './fixtureData';
 import { FixtureTransport } from './fixtureTransport';
 import { HttpTransport } from './httpTransport';
 
@@ -134,6 +134,72 @@ describe('HttpTransport git reads', () => {
 
         await expect(bare.getGitStatus('prj_a', { folderId: 'fld_b' })).rejects.toMatchObject({ message: expect.stringContaining('502'), status: 502 });
         await expect(bare.getGitPullRequest('prj_a', { folderId: 'fld_b' })).rejects.toMatchObject({ message: expect.stringContaining('502'), status: 502 });
+    });
+});
+
+describe('HttpTransport.getProjectWorktrees', () => {
+    it('asks for one project, its id escaped, and gives the daemon\'s answer', async () => {
+        const urls: string[] = [];
+        const answer = [{ folderId: 'fld_b', name: 'app', isRepository: false, worktrees: [] }];
+        const fetchImpl = (async (input: RequestInfo | URL) => {
+            urls.push(String(input));
+
+            return new Response(JSON.stringify(answer), { status: 200 });
+        }) as typeof fetch;
+        const transport = new HttpTransport({ url: 'http://127.0.0.1:4310', token: 't', fetch: fetchImpl });
+
+        expect(await transport.getProjectWorktrees('prj a/b')).toEqual(answer);
+        expect(urls).toEqual(['http://127.0.0.1:4310/v1/projects/prj%20a%2Fb/worktrees']);
+    });
+
+    it('rejects with the status for a project the daemon does not have', async () => {
+        const fetchImpl = (async () => new Response(JSON.stringify({ error: { code: 'not_found', message: 'Project prj_x does not exist' } }), { status: 404 })) as unknown as typeof fetch;
+        const transport = new HttpTransport({ url: 'http://127.0.0.1:4310', token: 't', fetch: fetchImpl });
+
+        await expect(transport.getProjectWorktrees('prj_x')).rejects.toMatchObject({ status: 404 });
+    });
+});
+
+describe('FixtureTransport.getProjectWorktrees', () => {
+    it('lists a group per folder with its own checkout first, and no worktrees for a folder that is no repository', async () => {
+        const transport = new FixtureTransport({ data: withFixtureWorktrees(createFixtureData()) });
+        const groups = await transport.getProjectWorktrees(FIXTURE_PROJECT_ID);
+
+        expect(groups.map(group => [group.name, group.isRepository])).toEqual([['car-rental', true], ['car-rental-api', true], ['notes', false]]);
+        expect(groups[0].worktrees[0]).toMatchObject({ path: '/Users/dev/car-rental', branch: 'main', main: true, changes: 0, blocked: 'main', chats: [] });
+        expect(groups[0].worktrees.slice(1).every(worktree => !worktree.main)).toBe(true);
+        expect(groups[2].worktrees).toEqual([]);
+    });
+
+    it('describes a Clowdy-made worktree with its two chats, a found changed one, a locked one and one gone from the disk', async () => {
+        const transport = new FixtureTransport({ data: withFixtureWorktrees(createFixtureData()) });
+        const [carRental] = await transport.getProjectWorktrees(FIXTURE_PROJECT_ID);
+        const byPath = (path: string) => carRental.worktrees.find(worktree => worktree.path === path);
+
+        expect(byPath(FIXTURE_WORKTREE_PATH)).toMatchObject({
+            branch: 'clowdy/ab12cd34',
+            managed: true,
+            workspaceId: 'wks_ab12cd34',
+            changes: 3,
+            merged: false,
+            base: 'origin/main',
+            blocked: 'chats',
+            chats: [{ id: 'c-9', archived: false }, { id: 'c-10', archived: true }],
+        });
+        expect(byPath('/Users/dev/orca/car-rental/search-filters')).toMatchObject({ managed: false, changes: 2, submodules: true, merged: false, chats: [] });
+        expect(byPath('/Users/dev/orca/car-rental/search-filters')?.blocked).toBeUndefined();
+        expect(byPath('/Users/dev/car-rental-hotfix')).toMatchObject({ locked: 'on an external drive', blocked: 'locked' });
+        expect(byPath('/Users/dev/car-rental-old')).toMatchObject({ missing: true, changes: 0 });
+    });
+
+    it('lists the worktrees of the fixture project that nobody works in with no chats, and refuses a project it does not have', async () => {
+        const transport = new FixtureTransport();
+        const [carRental] = await transport.getProjectWorktrees(FIXTURE_PROJECT_ID);
+
+        expect(carRental.worktrees.find(worktree => worktree.path === FIXTURE_WORKTREE_PATH)).toMatchObject({ chats: [], managed: true });
+        expect(carRental.worktrees.find(worktree => worktree.path === FIXTURE_WORKTREE_PATH)?.blocked).toBeUndefined();
+        await expect(transport.getProjectWorktrees(FIXTURE_PERSONAL_PROJECT_ID)).resolves.toMatchObject([{ isRepository: false, worktrees: [] }]);
+        await expect(transport.getProjectWorktrees('p-none')).rejects.toMatchObject({ status: 404 });
     });
 });
 

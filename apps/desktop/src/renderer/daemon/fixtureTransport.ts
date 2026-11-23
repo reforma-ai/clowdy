@@ -16,6 +16,7 @@ import {
     fixtureGitFile,
     fixtureGitPullRequest,
     fixtureGitStatus,
+    fixtureProjectWorktrees,
     fixtureWorkspaceLog,
     type FixtureData,
 } from './fixtureData';
@@ -42,6 +43,7 @@ import type {
     EventData,
     FolderGit,
     FolderId,
+    FolderWorktrees,
     GitChanges,
     GitFileSides,
     GitPullRequestInfo,
@@ -242,6 +244,10 @@ export class FixtureTransport implements Transport {
         if (!folder) throw new TransportError(`No such folder: ${ folderId }`, 404);
 
         return structuredClone(fixtureFolderGit(folder.path, this.#data.git[folder.path], folder.settings?.baseBranch));
+    }
+
+    async getProjectWorktrees(projectId: ProjectId): Promise<FolderWorktrees[]> {
+        return structuredClone(fixtureProjectWorktrees(this.#project(projectId), this.#data));
     }
 
     async getGitStatus(projectId: ProjectId, place: PlaceRef): Promise<GitStatus> {

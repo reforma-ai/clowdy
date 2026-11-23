@@ -2,7 +2,7 @@ import { For } from '@clowdy/components/For';
 import { Menu, MenuHeader, MenuItem, MenuSection, MenuSeparator, SubmenuTrigger } from '@clowdy/components/List';
 import { Popover, PopoverScroll } from '@clowdy/components/Popover';
 import { toast } from '@clowdy/components/Toast';
-import { Close, Copy, Folder, Follow, Search, Terminal } from '@clowdy/icons/14';
+import { Close, Copy, Folder, Follow, Search, Terminal, Version } from '@clowdy/icons/14';
 import { ChevronRight } from '@clowdy/icons/8';
 import { Github } from '@clowdy/icons/logo';
 
@@ -24,6 +24,13 @@ export interface OpenWithMenuProps {
     /** For a folder that is gone: Locate… and Remove from project, under the note (`useFolderRepair`). */
     repair?: FolderRepair;
     git: FolderGit | undefined;
+    /**
+     * Whether Open in Files and Open in Terminal may be offered, which they are when the window shows the target's place. A menu in a dialog that covers the window (Manage
+     * worktrees) is no place of it: they would act behind the dialog, so it passes `false` and keeps the programs of the computer and the copies of the path.
+     */
+    inApp?: boolean;
+    /** For a folder that is a git repository: a first item, `Manage worktrees`, runs this (it opens the dialog of the project's worktrees). Without it there is no such item. */
+    onManageWorktrees?: () => void;
     /** Called when an item is pressed, before it runs: a menu that is not in a `MenuTrigger` shuts itself here. */
     onClose?: () => void;
     'aria-label': string;
@@ -48,9 +55,10 @@ export const actionIcon = (action: OpenAction): ReactNode => {
 /**
  * The menu of a file or a folder of the project, to go inside a `Popover`. At the top what the app does itself: Open in Files and Open in Terminal (a folder, when
  * the window shows the target's place: its folder, or the worktree of the open chat), and the copies of the path. After a separator, `Open in…`, a submenu of what leaves the app: the editor, the file manager,
- * the terminal program, GitHub. One list of items for every place the menu comes from (`openActions`).
+ * the terminal program, GitHub. One list of items for every place the menu comes from (`openActions`). A folder that is a repository has `Manage worktrees` above them all
+ * (`onManageWorktrees`), which is not an action on a path and so is not in `openActions`.
  */
-export function OpenWithMenu({ target, missing = false, repair, git, onClose, 'aria-label': label }: OpenWithMenuProps) {
+export function OpenWithMenu({ target, missing = false, repair, git, inApp = true, onManageWorktrees, onClose, 'aria-label': label }: OpenWithMenuProps) {
     const root = useRootStore();
     const project = useProjectState();
     const ui = useProjectUi();
@@ -58,7 +66,7 @@ export function OpenWithMenu({ target, missing = false, repair, git, onClose, 'a
     // The Files tab shows the place the window works in (the folder, or the open chat's worktree), so a path in another folder of the project cannot be shown there, nor
     // can one in another worktree of it, nor one in a worktree that is not made yet.
     const place = placeOf(target);
-    const isHere = isSamePlace(currentPlace(project, ui), place) && isPlaceReady(place);
+    const isHere = inApp && isSamePlace(currentPlace(project, ui), place) && isPlaceReady(place);
     const actions = openActions({
         target,
         programs: chosenPrograms(apps),
@@ -75,7 +83,8 @@ export function OpenWithMenu({ target, missing = false, repair, git, onClose, 'a
     const run = (key: string) => {
         onClose?.();
 
-        if (key === 'locate') repair?.locate();
+        if (key === 'manage') onManageWorktrees?.();
+        else if (key === 'locate') repair?.locate();
         else if (key === 'remove') repair?.remove?.();
         else actions.find(action => action.id === key)?.run();
     };
@@ -86,6 +95,14 @@ export function OpenWithMenu({ target, missing = false, repair, git, onClose, 'a
     return (
         <PopoverScroll>
             <Menu aria-label={ label } size="sm" onAction={ key => run(String(key)) }>
+                { onManageWorktrees && (
+                    <>
+                        <MenuSection aria-label="Worktrees">
+                            <MenuItem id="manage" icon={ <Version aria-hidden="true" /> } textValue="Manage worktrees">Manage worktrees</MenuItem>
+                        </MenuSection>
+                        <MenuSeparator />
+                    </>
+                ) }
                 <MenuSection aria-label="Open">
                     { missing && <MenuHeader>This folder no longer exists</MenuHeader> }
                     { repair && <MenuItem id="locate" icon={ <Search aria-hidden="true" /> } textValue="Locate…">Locate…</MenuItem> }

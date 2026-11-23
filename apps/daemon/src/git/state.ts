@@ -58,7 +58,7 @@ export function parseWorktrees(output: string): ListedWorktree[] {
 }
 
 /** The real place of a path, for two paths to be compared (a link, a drive letter's case, `/var` and `/private/var`); nothing when it is not there. */
-async function placeOf(path: string): Promise<string | undefined> {
+export async function placeOf(path: string): Promise<string | undefined> {
     try {
         return await realpath(path);
     }
@@ -159,8 +159,8 @@ export async function baseOf(folder: ProjectFolder): Promise<string | undefined>
     return pickBase(folder.settings?.baseBranch, branches, () => pickDefaultBranch(remoteHead, branches, head));
 }
 
-/** Whether something is there on the disk, a folder or a file. */
-async function isThere(path: string): Promise<boolean> {
+/** Whether something is there on the disk, a folder or a file. A path that cannot be looked at is not known to be there, and nothing is removed on a guess. */
+export async function isOnDisk(path: string): Promise<boolean> {
     try {
         await stat(path);
 
@@ -172,11 +172,49 @@ async function isThere(path: string): Promise<boolean> {
 }
 
 /**
- * Whether a worktree has anything uncommitted, a new file or a changed submodule too, whatever the person's git configuration says of untracked files and of
- * submodules. A `status` that fails, is cut short or does not answer in time is "yes": the answer is a reason to keep a tree, so it errs that way.
+ * How many files of a worktree have uncommitted changes, a new file or a changed submodule too, whatever the person's git configuration says of untracked files and of
+ * submodules (a renamed file is one, and a new folder is one: `--untracked-files=normal`). Nothing when the `status` fails, is cut short or does not answer in time.
  */
+export async function countChanges(path: string): Promise<number | undefined> {
+    const output = await gitOutput(path, ['-c', 'core.longpaths=true', 'status', '--porcelain', '--untracked-files=normal', '--ignore-submodules=none']);
+
+    return output?.split('\n').filter(line => line !== '').length;
+}
+
+/** `countChanges`, where a `status` git could not give counts as one: the answer is a reason to keep a tree, so it errs toward "changed" and never says clean on a guess. */
+export async function changedFiles(path: string): Promise<number> {
+    return await countChanges(path) ?? 1;
+}
+
+/** Whether a worktree has anything uncommitted (`changedFiles`). */
 async function isDirty(path: string): Promise<boolean> {
-    return await gitOutput(path, ['status', '--porcelain', '--untracked-files=normal', '--ignore-submodules=none']) !== '';
+    return await changedFiles(path) > 0;
+}
+
+/**
+ * Whether an initialised submodule is checked out in the worktree (`git submodule status` lists the uninitialised ones with a `-`): `git worktree remove` refuses such a tree
+ * without `--force`. Nothing when git did not say, which a caller that removes things reads as "do not".
+ */
+export async function hasCheckedOutSubmodules(path: string): Promise<boolean | undefined> {
+    const output = await gitOutput(path, ['submodule', 'status']);
+
+    return output === undefined ? undefined : output.split('\n').some(line => line !== '' && !line.startsWith('-'));
+}
+
+/** The commit a ref names: `null` when the repository has no such ref, `undefined` when git could not be asked (a caller that would remove too much on a guess refuses on it). */
+export async function commitOf(folder: string, ref: string): Promise<string | undefined | null> {
+    const read = await gitRead(folder, ['show-ref', '--verify', '--hash', ref]);
+
+    if (read.ok) {
+        return read.stdout.trim() || null;
+    }
+
+    return read.reason === 'unavailable' ? undefined : null;
+}
+
+/** Whether `commit` is contained in `base`: the work of a branch is merged when its tip is an ancestor of the base's (`merge-base --is-ancestor`, which says no with exit code 1). */
+export async function isMerged(cwd: string, commit: string, base: string): Promise<boolean> {
+    return (await gitRead(cwd, ['merge-base', '--is-ancestor', commit, base])).ok;
 }
 
 /**
@@ -195,7 +233,7 @@ async function worktreesOf(folder: string, root: string, head: Awaited<ReturnTyp
     for (const entry of parseWorktrees(read.ok ? read.stdout : '')) {
         const place = entry.bare || entry.prunable ? undefined : await placeOf(entry.path);
 
-        if (place && await isThere(join(place, '.git'))) {
+        if (place && await isOnDisk(join(place, '.git'))) {
             worktrees.push({
                 // Git prints `C:/work/app` on Windows; the project's folders and the app's paths are written as the machine writes them.
                 path: resolve(entry.path),
@@ -217,7 +255,7 @@ async function worktreesOf(folder: string, root: string, head: Awaited<ReturnTyp
 }
 
 /** The first characters of a commit's hash; none for the all-zero hash git gives a branch with no commit yet. */
-function shortHash(hash: string): string {
+export function shortHash(hash: string): string {
     return /^0*$/.test(hash) ? '' : hash.slice(0, SHORT_HASH_LENGTH);
 }
 

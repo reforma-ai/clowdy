@@ -45,3 +45,9 @@
 .value > * {
     min-width: 0;
 }
+
+/* The Manage button keeps its size beside a long path, which gives way to it. */
+.value > .manage {
+    flex: none;
+    margin-inline-start: var(--spacing-sm);
+}

@@ -3,11 +3,12 @@ import { Text } from '@clowdy/components/Text';
 import { mainFolder } from '@clowdy/protocol';
 import { useEffect, useRef } from 'react';
 
-import { useProjectState, useProjectUi } from '../../stores';
+import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { ChatDropZone } from '../chats/ChatDropZone';
 import { Composer, type ComposerHandle } from '../chats/Composer';
 import { newChatDefaults, startingChoice } from '../chats/newChatDefaults';
 import { currentPlace } from '../sidePanel/currentPlace';
+import { openManageWorktrees } from '../worktrees';
 import { draftTarget } from './agentTree';
 import { DraftFolder } from './ChatFolder';
 import styles from './DraftChat.module.css';
@@ -29,6 +30,7 @@ import type { FolderId } from '@clowdy/protocol';
  * picked. The chat this page makes keeps the line, with the folder and the place read only (`ChatFolder`).
  */
 export function DraftChat({ missing }: { missing: ReadonlySet<FolderId> }) {
+    const root = useRootStore();
     const project = useProjectState();
     const ui = useProjectUi();
     // What the project asks a new chat to start with, or the app's choice where it follows the app; what neither names starts where the last chat left off. A page opened for an
@@ -90,7 +92,13 @@ export function DraftChat({ missing }: { missing: ReadonlySet<FolderId> }) {
                                         )
                                         // A project of one folder has nothing to pick: the line says where the chat will work, as the chat's own does.
                                         : <DraftFolder name={ target.name } folder={ target.folder } missing={ missing.has(target.folder.id) } /> }
-                                    <WorkspaceChips repository={ repository } choice={ workspace } chats={ project.chats } onChoose={ choice => ui.setDraftWorkspace(choice) } />
+                                    <WorkspaceChips
+                                        repository={ repository }
+                                        choice={ workspace }
+                                        chats={ project.chats }
+                                        onChoose={ choice => ui.setDraftWorkspace(choice) }
+                                        onManage={ () => openManageWorktrees({ root, projectId: project.id, folderId: target.folder.id }) }
+                                    />
                                 </>
                             ) }
                         />

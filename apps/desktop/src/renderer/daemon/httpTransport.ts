@@ -16,6 +16,7 @@ import type {
     DocsTree,
     FolderGit,
     FolderId,
+    FolderWorktrees,
     GitChanges,
     GitFileSides,
     GitPullRequestInfo,
@@ -135,6 +136,10 @@ export class HttpTransport implements Transport {
 
     getGitFile(projectId: ProjectId, place: PlaceRef, scope: GitScope, path: string, oldPath?: string): Promise<GitFileSides> {
         return this.#read(`${ ROUTES.projectGitFile(projectId) }?${ placeQuery(place, { scope, path, oldPath }) }`);
+    }
+
+    getProjectWorktrees(projectId: ProjectId): Promise<FolderWorktrees[]> {
+        return this.#get(ROUTES.projectWorktrees(projectId));
     }
 
     getGitPullRequest(projectId: ProjectId, place: PlaceRef): Promise<GitPullRequestInfo> {

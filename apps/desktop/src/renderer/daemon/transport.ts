@@ -11,6 +11,7 @@ import type {
     DocsTree,
     FolderGit,
     FolderId,
+    FolderWorktrees,
     GitChanges,
     GitFileSides,
     GitPullRequestInfo,
@@ -102,6 +103,12 @@ export interface Transport {
      * draw answers its state and no text. Rejects as `getGitChanges` does, and with 404 for a path that did not change in the scope.
      */
     getGitFile: (projectId: ProjectId, place: PlaceRef, scope: GitScope, path: string, oldPath?: string) => Promise<GitFileSides>;
+    /**
+     * Every worktree of every folder of a project, with the chats that work in each, how many files are changed and whether its work is in the base: what the Manage worktrees
+     * dialog lists. One entry per folder in the project's order, a folder that is no repository (or is gone) with no worktrees. Read when asked, never pushed: worktrees change
+     * in a terminal or by an agent. Rejects with a `TransportError` of status 404 for a project the daemon does not have.
+     */
+    getProjectWorktrees: (projectId: ProjectId) => Promise<FolderWorktrees[]>;
     /**
      * Whether GitHub can be asked about a place (the person's `gh` found and signed in for the host of the place's `origin`: `access`) and the pull request of its branch with the
      * state of its checks, or none. Read when asked, never pushed: the daemon asks `gh` once per branch and keeps the answer for a few seconds, so several windows cost one call.
