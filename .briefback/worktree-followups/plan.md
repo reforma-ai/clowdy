@@ -255,3 +255,26 @@ Each stage runs in its own worktree (GITFLOW, Worktrees) and is merged into `nex
 **Verify:** `cd apps/desktop && bunx vitest run src/renderer/stream src/renderer/features/chats src/renderer/features/agents && bun run typecheck && bun run lint`
 **Scope changes:** the preset agent is `ProjectUi.draftEngine` (a 4th argument of `openDraft`, part of the page's view, cleared by `openChat`, `openRun` and the next `openDraft`), read by `DraftChat` into the draft's defaults; `startHandoff` takes `itemId` and `engine` and cuts the transcript at that answer by `seq` (`itemsUpTo`); a shared `useHandoff` hook serves the read-only notice and the menu; the menu is `stream/ForkMenu.tsx`, its agents come from `handoffAgents` in `chatProvider.ts` (switched on, installed, not signed out, not the chat's own); the icon's tooltip reads `Fork`. The agent's "default model" is the one last used on it, else its default, as for any new chat. **Left (the owner decides):** the menu is drawn only where the Fork icon was (an answer with `canFork`), so an answer in a chat whose agent cannot cut its session has neither Fork nor the hand-off; widening it takes `StreamView.tsx` `actionsOf`, `MessageActions.tsx`, `ForkMenu.tsx` (`onFork` optional) and tests, and a choice of a grey Fork with a reason or another label; two hand-offs from one chat before sending leave two files with the same name (a fix means moving the file removal out of `useComposerFiles.remove` into `composerFiles.ts`).
 **Commits:** `b49ef2c` feat(desktop): open the new-chat page on an agent named by the caller; `18af2a1` feat(desktop): cut a hand-off at an answer and open it on another agent; `83f5e70` feat(desktop): open a menu from the Fork icon with Fork to another agent; `7135668` docs(desktop): describe the Fork menu and the hand-off to another agent; review: `13b2aa8` refactor: share `useHandoff`, `d05fbab` test: preset model, own pick, keyboard, `09c3853` docs; `b3ed954` refactor(desktop): hand the new-chat page its agent through the draft's defaults; merged into `next` as `27a10a7`.
+
+## Stage 9 — A draft in an existing worktree shows its branch
+
+**Depends on:** Stage 6.
+
+**This stage:** found in Stage 6's review. `useFolderGit` reads the live branch of a place through `getProjectsInfo`, whose `workspaces` list only the rows a chat points at (`listWorkspacesInUse`). A new-chat draft in an existing worktree (the page's `workspace.open` row, which "New chat in this worktree" and the picker both make) has no chat yet, so the Files bar, Info's Worktree and Branch rows have no branch until the first message. The rows a draft opens must be reported too, and the renderer must read again when the draft's row appears.
+
+- [ ] Complete
+  - [ ] `projectsInfo` reports every worktree row of the project that is still on disk, not only those a chat points at (a row a draft opened included), without changing what the chats' own rows say
+  - [ ] The renderer reads `getProjectsInfo` again when the draft's row (`ProjectUi.draftWorkspaceRow`) appears or changes, as it does when a chat's worktree gets made
+  - [ ] On a draft in a found worktree, the Files bar and Info show that worktree's branch; the test fails without the daemon change and without the reload
+
+**Files**
+
+- `apps/daemon/src/domain/projects.ts` — `projectsInfo`: the workspaces it reports (`listWorkspacesInUse` → the project's rows)
+- `apps/daemon/src/db/workspaces.ts` — `listWorkspacesInUse`, `listWorkspacesOfProject`
+- `apps/desktop/src/renderer/features/agents/Screen.tsx` — the `reloadKey` of `useProjectsInfo` also follows the draft's row
+- `apps/daemon/test/projects.test.ts` (or the nearest existing test of `projectsInfo`) and `apps/desktop/src/renderer/features/agents/Screen.test.tsx`
+- `apps/daemon/AGENTS.md`, `apps/desktop/AGENTS.md` — what `workspaces` of the info holds
+
+**Done when:** on a new-chat draft in a worktree no chat works in, the Files place bar and Info's Branch row show that worktree's branch.
+**Verify:** `cd apps/daemon && bun test test/projects.test.ts test/chat-workspaces.test.ts`, `cd apps/desktop && bunx vitest run src/renderer/features/agents src/renderer/features/sidePanel src/renderer/features/files && bun run typecheck && bun run lint`
+**Commits:** None yet.
