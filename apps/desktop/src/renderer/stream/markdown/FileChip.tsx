@@ -7,7 +7,7 @@ import { cn } from '@clowdy/lib';
 
 import { openInFiles } from '../../features/files/openInFiles';
 import { useKindOnDisk } from '../../features/files/useKindOnDisk';
-import { openEffects, OpenWithMenu, useFolderGit, type OpenTarget } from '../../features/openWith';
+import { type OpenTarget, OpenWithMenu, openEffects, useFolderGit } from '../../features/openWith';
 import { currentPlace, isSamePlace, placeOf } from '../../features/sidePanel/currentPlace';
 import chipStyles from '../../shared/Chip.module.css';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
@@ -33,9 +33,16 @@ function TargetMenu({ target, onClose }: { target: OpenTarget; onClose: () => vo
     const git = useFolderGit(target.projectId, target.folder.id, target.workspace);
     const kind = useKindOnDisk(target.projectId, target, target.relative);
 
-    if (kind === null) return <AbsentMenu target={ target } onClose={ onClose } />;
+    if (kind === null) return <AbsentMenu target={target} onClose={onClose} />;
 
-    return <OpenWithMenu target={ kind ? { ...target, kind } : target } git={ git } onClose={ onClose } aria-label="File actions" />;
+    return (
+        <OpenWithMenu
+            target={kind ? { ...target, kind } : target}
+            git={git}
+            onClose={onClose}
+            aria-label="File actions"
+        />
+    );
 }
 
 /** The menu of a path that is not on the disk (an agent named a file it has not made, or one that was moved): it says so, and keeps the copies of the path, the one thing that still works. */
@@ -45,15 +52,21 @@ function AbsentMenu({ target, onClose }: { target: OpenTarget; onClose: () => vo
             <Menu
                 aria-label="File actions"
                 size="sm"
-                onAction={ (key) => {
+                onAction={key => {
                     onClose();
                     openEffects.copy(key === 'copyRelative' ? target.relative : target.path);
-                } }
+                }}
             >
                 <MenuSection aria-label="Path">
-                    <MenuHeader>{ `This ${ target.kind === 'directory' ? 'folder' : 'file' } doesn't exist` }</MenuHeader>
-                    <MenuItem id="copyPath" icon={ <Copy aria-hidden="true" /> } textValue="Copy path">Copy path</MenuItem>
-                    { target.relative !== '' && <MenuItem id="copyRelative" icon={ <Copy aria-hidden="true" /> } textValue="Copy relative path">Copy relative path</MenuItem> }
+                    <MenuHeader>{`This ${target.kind === 'directory' ? 'folder' : 'file'} doesn't exist`}</MenuHeader>
+                    <MenuItem id="copyPath" icon={<Copy aria-hidden="true" />} textValue="Copy path">
+                        Copy path
+                    </MenuItem>
+                    {target.relative !== '' && (
+                        <MenuItem id="copyRelative" icon={<Copy aria-hidden="true" />} textValue="Copy relative path">
+                            Copy relative path
+                        </MenuItem>
+                    )}
                 </MenuSection>
             </Menu>
         </PopoverScroll>
@@ -67,12 +80,14 @@ function OutsideMenu({ path, onClose }: { path: string; onClose: () => void }) {
             <Menu
                 aria-label="File actions"
                 size="sm"
-                onAction={ () => {
+                onAction={() => {
                     onClose();
                     openEffects.copy(path);
-                } }
+                }}
             >
-                <MenuItem id="copyPath" icon={ <Copy aria-hidden="true" /> } textValue="Copy path">Copy path</MenuItem>
+                <MenuItem id="copyPath" icon={<Copy aria-hidden="true" />} textValue="Copy path">
+                    Copy path
+                </MenuItem>
             </Menu>
         </PopoverScroll>
     );
@@ -90,9 +105,14 @@ export function FileChip({ path, lines, className }: FileChipProps) {
     const ui = useProjectUi();
     const contextMenu = useContextMenu();
     const clean = normalizeChipPath(path);
-    const label = lines ? `${ chipLabelFromPath(clean) } (${ lines })` : chipLabelFromPath(clean);
+    const label = lines ? `${chipLabelFromPath(clean)} (${lines})` : chipLabelFromPath(clean);
     const current = currentPlace(project, ui);
-    const target = resolveChipTarget({ path: clean, kind: isDirectoryPath(path) ? 'directory' : 'file' }, project.id, project.project.folders, current);
+    const target = resolveChipTarget(
+        { path: clean, kind: isDirectoryPath(path) ? 'directory' : 'file' },
+        project.id,
+        project.project.folders,
+        current
+    );
 
     const open = async (event: MouseEvent<HTMLButtonElement>) => {
         // Where the menu opens if there is nothing to open: at the pointer, or under the chip for a press from the keyboard (which has no pointer). Read before waiting,
@@ -109,7 +129,8 @@ export function FileChip({ path, lines, className }: FileChipProps) {
 
         // The tab shows the place the window works in (the folder, or the open chat's worktree): a path in another folder of the project, or in the folder's own checkout
         // while the chat works in a worktree, is not there to open.
-        const opened = target && isSamePlace(target, current) && await openInFiles(root, project.id, current, target.relative);
+        const opened =
+            target && isSamePlace(target, current) && (await openInFiles(root, project.id, current, target.relative));
 
         if (!opened) contextMenu.openAt(x, y);
     };
@@ -118,20 +139,24 @@ export function FileChip({ path, lines, className }: FileChipProps) {
         <>
             <button
                 type="button"
-                className={ cn(chipStyles.chip, className) }
-                title={ clean }
-                aria-label={ `Open ${ clean || 'workspace' }` }
-                onClick={ event => void open(event) }
-                { ...contextMenu.areaProps }
+                className={cn(chipStyles.chip, className)}
+                title={clean}
+                aria-label={`Open ${clean || 'workspace'}`}
+                onClick={event => void open(event)}
+                {...contextMenu.areaProps}
             >
-                <span className={ chipStyles.icon }><FileIcon path={ clean } kind={ isDirectoryPath(path) ? 'directory' : 'file' } /></span>
-                <span className={ chipStyles.label }>{ label }</span>
+                <span className={chipStyles.icon}>
+                    <FileIcon path={clean} kind={isDirectoryPath(path) ? 'directory' : 'file'} />
+                </span>
+                <span className={chipStyles.label}>{label}</span>
             </button>
-            <Show when={ contextMenu.isOpen }>
-                <Popover { ...contextMenu.popoverProps } placement="bottom start" spacing="xs">
-                    { target
-                        ? <TargetMenu target={ target } onClose={ contextMenu.close } />
-                        : <OutsideMenu path={ clean } onClose={ contextMenu.close } /> }
+            <Show when={contextMenu.isOpen}>
+                <Popover {...contextMenu.popoverProps} placement="bottom start" spacing="xs">
+                    {target ? (
+                        <TargetMenu target={target} onClose={contextMenu.close} />
+                    ) : (
+                        <OutsideMenu path={clean} onClose={contextMenu.close} />
+                    )}
                 </Popover>
             </Show>
         </>

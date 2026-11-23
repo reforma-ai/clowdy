@@ -34,7 +34,10 @@ export class AcpEngine implements AgentEngine {
     /** The launches that were asked for ACP v2 and speak v1; every session of this agent shares it (see `SessionDeps.downgraded`). */
     private downgraded = new Set<string>();
 
-    constructor(readonly id: string, private deps: AcpEngineDeps) {}
+    constructor(
+        readonly id: string,
+        private deps: AcpEngineDeps
+    ) {}
 
     /** The agent's catalog flag (`AgentSpec.fork`): read each time, since the registry is what knows an agent, and a custom one has none. */
     get canFork(): boolean {
@@ -50,8 +53,27 @@ export class AcpEngine implements AgentEngine {
      * The copy is a session the agent counts the cost of from zero (checked on Claude Code: the first prompt of a fork reports its own cost as the session's
      * total, the source's cost is not carried over), so its baseline is seeded as `session/new` seeds one, and the first turn of a fork reports its cost.
      */
-    async fork({ sessionId, ref, cwd, additionalDirectories, systemPrompt, tools, signal }: EngineForkOptions): Promise<EngineFork> {
-        const session = new AcpSession({ cwd, additionalDirectories, prompt: '', systemPrompt, resumeSessionId: sessionId, tools: tools ?? [], signal: signal ?? new AbortController().signal }, this.sessionDeps());
+    async fork({
+        sessionId,
+        ref,
+        cwd,
+        additionalDirectories,
+        systemPrompt,
+        tools,
+        signal,
+    }: EngineForkOptions): Promise<EngineFork> {
+        const session = new AcpSession(
+            {
+                cwd,
+                additionalDirectories,
+                prompt: '',
+                systemPrompt,
+                resumeSessionId: sessionId,
+                tools: tools ?? [],
+                signal: signal ?? new AbortController().signal,
+            },
+            this.sessionDeps()
+        );
         const forked = await session.fork(sessionId, ref);
 
         this.costs.set(forked.sessionId, 0);
@@ -76,7 +98,7 @@ export class AcpEngine implements AgentEngine {
             titleWaitMs: deps.titleWaitMs,
             backgroundHandoffMs: deps.backgroundHandoffMs,
             backgroundReportMs: deps.backgroundReportMs,
-            log: deps.debug ? line => console.debug(`[clowdy] ${ this.id }: ${ line }`) : undefined,
+            log: deps.debug ? line => console.debug(`[clowdy] ${this.id}: ${line}`) : undefined,
         };
     }
 }

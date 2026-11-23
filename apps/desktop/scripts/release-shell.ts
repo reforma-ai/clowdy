@@ -8,12 +8,13 @@
  * (a new dependency, say) releases nothing; a manual run releases the current version if it is not out yet. A version
  * is released once: a bad release is replaced by a higher version, never rewritten.
  */
-import { isVersionAheadOf } from '@clowdy/lib/semver';
+
 import { execFile } from 'node:child_process';
 import { appendFile, readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { isVersionAheadOf } from '@clowdy/lib/semver';
 
 import { createRelease, deleteDraft, listReleases, publishAsLatest, type Release } from './github';
 
@@ -34,57 +35,64 @@ export interface ShellDecisionInput {
     releases: readonly Release[];
 }
 
-export const shellTag = (version: string) => `v${ version }`;
+export const shellTag = (version: string) => `v${version}`;
 
 /** A published shell release: not a draft or a prerelease (the `ota` one is), tagged `v<major.minor.patch>`. */
-const isShellRelease = (release: Release) => !release.isDraft && !release.isPrerelease && /^v\d+\.\d+\.\d+$/.test(release.tagName);
+const isShellRelease = (release: Release) =>
+    !release.isDraft && !release.isPrerelease && /^v\d+\.\d+\.\d+$/.test(release.tagName);
 
 /** The newest published shell version; null before the first release. */
 export function newestShell(releases: readonly Release[]): string | null {
     return releases
         .filter(isShellRelease)
         .map(release => release.tagName.slice(1))
-        .reduce<string | null>((best, version) => (best === null || isVersionAheadOf(version, best) ? version : best), null);
+        .reduce<string | null>(
+            (best, version) => (best === null || isVersionAheadOf(version, best) ? version : best),
+            null
+        );
 }
 
 export function decideShell({ version, previous, releases }: ShellDecisionInput): ShellDecision {
     const verdict = (decision: ShellDecision['decision'], reason: string): ShellDecision => ({ decision, reason });
 
     if (!/^\d+\.\d+\.\d+$/.test(version)) {
-        return verdict('fail', `The shell version ${ version } is not major.minor.patch: electron-builder would write a channel feed for it`);
+        return verdict(
+            'fail',
+            `The shell version ${version} is not major.minor.patch: electron-builder would write a channel feed for it`
+        );
     }
 
-    if (previous !== undefined && previous === version) return verdict('skip', `The shell version stays ${ version }`);
+    if (previous !== undefined && previous === version) return verdict('skip', `The shell version stays ${version}`);
 
-    if (releases.some(release => isShellRelease(release) && release.tagName === shellTag(version))) return verdict('skip', `Clowdy ${ version } is out already`);
+    if (releases.some(release => isShellRelease(release) && release.tagName === shellTag(version)))
+        return verdict('skip', `Clowdy ${version} is out already`);
 
     const newest = newestShell(releases);
 
     if (newest !== null && !isVersionAheadOf(version, newest)) {
-        return verdict('fail', `The shell version ${ version } is not above the newest release, ${ newest }`);
+        return verdict('fail', `The shell version ${version} is not above the newest release, ${newest}`);
     }
 
-    return verdict('build', `Releasing Clowdy ${ version }`);
+    return verdict('build', `Releasing Clowdy ${version}`);
 }
 
 /** `version` in apps/desktop/package.json, in the checkout or at a commit; null when that commit does not have it. */
 async function packageVersion(ref?: string): Promise<string | null> {
     try {
         const text = ref
-            ? (await run('git', ['show', `${ ref }:apps/desktop/package.json`], { cwd: repoRoot })).stdout
+            ? (await run('git', ['show', `${ref}:apps/desktop/package.json`], { cwd: repoRoot })).stdout
             : await readFile(path.join(desktopRoot, 'package.json'), 'utf8');
 
         return (JSON.parse(text) as { version: string }).version;
-    }
-    catch {
+    } catch {
         return null;
     }
 }
 
 /** A line for the step's outputs (`$GITHUB_OUTPUT`), or the console outside a workflow. */
 async function output(name: string, value: string): Promise<void> {
-    if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, `${ name }=${ value }\n`);
-    else console.log(`${ name }=${ value }`);
+    if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, `${name}=${value}\n`);
+    else console.log(`${name}=${value}`);
 }
 
 async function decide(): Promise<void> {
@@ -133,15 +141,15 @@ async function publish(): Promise<void> {
 
     await createRelease({
         tag,
-        title: `Clowdy ${ version }`,
-        notes: `Clowdy ${ version }. Download the .dmg for your Mac (arm64 for Apple silicon) or Clowdy-Setup.exe for Windows.`,
+        title: `Clowdy ${version}`,
+        notes: `Clowdy ${version}. Download the .dmg for your Mac (arm64 for Apple silicon) or Clowdy-Setup.exe for Windows.`,
         target: process.env.GITHUB_SHA ?? (await run('git', ['rev-parse', 'HEAD'], { cwd: repoRoot })).stdout.trim(),
         draft: true,
         files,
     });
     // Published last, so the updater never sees a Latest release without its files.
     await publishAsLatest(tag);
-    console.log(`Published Clowdy ${ version } with ${ files.length } files`);
+    console.log(`Published Clowdy ${version} with ${files.length} files`);
 }
 
 if (import.meta.main) {

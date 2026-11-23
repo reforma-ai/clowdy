@@ -146,4 +146,4 @@ The marks of Claude, OpenAI, Cursor and GitHub appear in the app as icons that s
 
 ## Reforma
 
-Clowdy contains design-system code, icon packs, a file manager and an animation that were adapted from Reforma. Reforma, Inc. licenses them to Clowdy and its users under the same Apache License 2.0 as the rest of Clowdy; `NOTICE` says so. The lint configuration in `packages/eslint-config` is MIT licensed, Copyright (c) 2026 Reforma, Inc., and keeps its own `LICENSE`.
+Clowdy contains design-system code, icon packs, a file manager, an animation and a Biome configuration that were adapted from Reforma. Reforma, Inc. licenses them to Clowdy and its users under the same Apache License 2.0 as the rest of Clowdy; `NOTICE` says so.

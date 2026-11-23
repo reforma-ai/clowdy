@@ -1,7 +1,15 @@
 import { THEMES, type Theme } from '@clowdy/constants';
 import { BrowserWindow, dialog } from 'electron';
 
-import { IPC_CHANNELS, type ClipboardFile, type DesktopBridge, type FindOptions, type FindRect, type FindResult, type OpenApps } from '../shared/bridge';
+import {
+    type ClipboardFile,
+    type DesktopBridge,
+    type FindOptions,
+    type FindRect,
+    type FindResult,
+    IPC_CHANNELS,
+    type OpenApps,
+} from '../shared/bridge';
 import { isTrustedUrl } from './security';
 
 import type { IpcMain, IpcMainInvokeEvent } from 'electron';
@@ -42,7 +50,17 @@ export interface IpcActions {
 export function registerIpc(
     ipcMain: Pick<IpcMain, 'handle' | 'on'>,
     trustedOrigin: string,
-    { setThemeSource, getDaemon, ready, restartToUpdate, listOpenApps, openPath, readClipboardFiles, writeClipboardFiles, pasteClipboardFiles }: IpcActions
+    {
+        setThemeSource,
+        getDaemon,
+        ready,
+        restartToUpdate,
+        listOpenApps,
+        openPath,
+        readClipboardFiles,
+        writeClipboardFiles,
+        pasteClipboardFiles,
+    }: IpcActions
 ): void {
     // The preload asks while the page loads and cannot wait for a promise, so this one is synchronous for it.
     // The reply may come later: the renderer blocks until `returnValue` is set. Anyone else gets `null`.
@@ -53,9 +71,11 @@ export function registerIpc(
             return;
         }
 
-        void getDaemon().catch(() => undefined).then(daemon => {
-            event.returnValue = daemon ?? null;
-        });
+        void getDaemon()
+            .catch(() => undefined)
+            .then(daemon => {
+                event.returnValue = daemon ?? null;
+            });
     });
 
     ipcMain.handle(IPC_CHANNELS.setThemeSource, (event, theme: unknown) => {
@@ -68,12 +88,12 @@ export function registerIpc(
         setThemeSource(theme as Theme);
     });
 
-    ipcMain.handle(IPC_CHANNELS.ready, async (event) => {
+    ipcMain.handle(IPC_CHANNELS.ready, async event => {
         assertTrustedSender(event, trustedOrigin);
         await ready();
     });
 
-    ipcMain.handle(IPC_CHANNELS.restartToUpdate, (event) => {
+    ipcMain.handle(IPC_CHANNELS.restartToUpdate, event => {
         assertTrustedSender(event, trustedOrigin);
         restartToUpdate();
     });
@@ -83,13 +103,15 @@ export function registerIpc(
 
         // The dialog belongs to the window that asked, so it opens as a sheet over it.
         const window = BrowserWindow.fromWebContents(event.sender);
-        const options = { properties: ['openDirectory' as const, 'createDirectory' as const, 'multiSelections' as const] };
+        const options = {
+            properties: ['openDirectory' as const, 'createDirectory' as const, 'multiSelections' as const],
+        };
         const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
 
         return result.canceled ? [] : result.filePaths;
     });
 
-    ipcMain.handle(IPC_CHANNELS.openApps, (event) => {
+    ipcMain.handle(IPC_CHANNELS.openApps, event => {
         assertTrustedSender(event, trustedOrigin);
 
         return listOpenApps();
@@ -101,7 +123,7 @@ export function registerIpc(
         return openPath(path, app);
     });
 
-    ipcMain.handle(IPC_CHANNELS.clipboardFiles, (event) => {
+    ipcMain.handle(IPC_CHANNELS.clipboardFiles, event => {
         assertTrustedSender(event, trustedOrigin);
 
         return readClipboardFiles();
@@ -125,7 +147,7 @@ export function registerIpc(
         return findInPage(event.sender, text, options);
     });
 
-    ipcMain.handle(IPC_CHANNELS.stopFind, (event) => {
+    ipcMain.handle(IPC_CHANNELS.stopFind, event => {
         assertTrustedSender(event, trustedOrigin);
         event.sender.stopFindInPage('clearSelection');
     });
@@ -155,7 +177,8 @@ function selectionArea(value: Partial<FindRect> | undefined): FindRect | undefin
 
     const { x, y, width, height } = value;
 
-    if (typeof x !== 'number' || typeof y !== 'number' || typeof width !== 'number' || typeof height !== 'number') return undefined;
+    if (typeof x !== 'number' || typeof y !== 'number' || typeof width !== 'number' || typeof height !== 'number')
+        return undefined;
 
     if (![x, y, width, height].every(Number.isFinite)) return undefined;
 
@@ -182,7 +205,7 @@ function findInPage(contents: FindTarget, text: unknown, options: unknown): Prom
     const parsed = findOptions(options);
     const requestId = contents.findInPage(text, parsed);
 
-    return new Promise((resolve) => {
+    return new Promise(resolve => {
         let settled = false;
         const finish = (result: FindResult) => {
             if (settled) return;

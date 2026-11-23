@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from 'react';
 
 import { For } from '../For';
+import styles from './AngleControl.module.css';
 import {
     applyPresetDegrees,
     clampAngle,
@@ -9,7 +10,6 @@ import {
     fromDegrees,
     getPointOnCircle,
 } from './angle';
-import styles from './AngleControl.module.css';
 
 import type { AnglePoint, AnglePrecision, AnglePresetBehavior, AngleUnit, AngleValueRange } from './angle';
 
@@ -53,23 +53,25 @@ export function AnglePresets({
     onPreviewChange,
     onSelect,
 }: AnglePresetsProps) {
-    const items = useMemo<readonly AnglePresetItem[]>(() => (
-        presets.map((preset) => {
-            const appliedDegrees = clampAngle(
-                applyPresetDegrees(currentDegrees, preset, valueRange, presetBehavior),
-                minDegrees,
-                maxDegrees
-            );
-            const appliedValue = fromDegrees(appliedDegrees, unit);
+    const items = useMemo<readonly AnglePresetItem[]>(
+        () =>
+            presets.map(preset => {
+                const appliedDegrees = clampAngle(
+                    applyPresetDegrees(currentDegrees, preset, valueRange, presetBehavior),
+                    minDegrees,
+                    maxDegrees
+                );
+                const appliedValue = fromDegrees(appliedDegrees, unit);
 
-            return {
-                value: preset,
-                point: getPointOnCircle(preset, radius, center),
-                label: formatAngleDisplay(appliedValue, { precision }),
-                previewValue: formatAngleDisplayNumber(appliedValue, { precision }),
-            };
-        })
-    ), [center, currentDegrees, maxDegrees, minDegrees, precision, presetBehavior, presets, radius, unit, valueRange]);
+                return {
+                    value: preset,
+                    point: getPointOnCircle(preset, radius, center),
+                    label: formatAngleDisplay(appliedValue, { precision }),
+                    previewValue: formatAngleDisplayNumber(appliedValue, { precision }),
+                };
+            }),
+        [center, currentDegrees, maxDegrees, minDegrees, precision, presetBehavior, presets, radius, unit, valueRange]
+    );
     const disablePresetPreview = isDisabled || isDragging;
 
     useEffect(() => {
@@ -79,39 +81,39 @@ export function AnglePresets({
     }, [disablePresetPreview, onPreviewChange]);
 
     return (
-        <For each={ items }>
-            { (preset) => {
+        <For each={items}>
+            {preset => {
                 return (
                     <button
-                        key={ preset.value }
+                        key={preset.value}
                         type="button"
-                        tabIndex={ -1 }
-                        className={ styles.preset }
-                        style={ {
+                        tabIndex={-1}
+                        className={styles.preset}
+                        style={{
                             left: preset.point.x,
                             top: preset.point.y,
-                        } }
-                        disabled={ isDisabled }
-                        aria-label={ `Set ${ preset.label }` }
-                        onPointerEnter={ () => {
+                        }}
+                        disabled={isDisabled}
+                        aria-label={`Set ${preset.label}`}
+                        onPointerEnter={() => {
                             if (!disablePresetPreview) {
                                 onPreviewChange?.(preset.previewValue);
                             }
-                        } }
-                        onPointerLeave={ () => {
+                        }}
+                        onPointerLeave={() => {
                             onPreviewChange?.(null);
-                        } }
-                        onPointerCancel={ () => {
+                        }}
+                        onPointerCancel={() => {
                             onPreviewChange?.(null);
-                        } }
-                        onClick={ (event) => {
+                        }}
+                        onClick={event => {
                             event.stopPropagation();
                             onSelect(preset.value);
                             onPreviewChange?.(null);
-                        } }
+                        }}
                     />
                 );
-            } }
+            }}
         </For>
     );
 }

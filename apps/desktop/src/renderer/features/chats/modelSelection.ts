@@ -1,4 +1,4 @@
-import { browserStorage, readStored, writeStored, type KeyValueStorage } from '../../stores/storage';
+import { browserStorage, type KeyValueStorage, readStored, writeStored } from '../../stores/storage';
 
 import type { AgentModel } from '@clowdy/protocol';
 
@@ -21,28 +21,38 @@ export interface RememberedChoice {
 
 const STORAGE_KEY = 'clowdy:model-choice';
 
-const levelKey = (engine: string, model: string) => `${ engine }/${ model }`;
+const levelKey = (engine: string, model: string) => `${engine}/${model}`;
 
 /** An own entry of a stored record: a provider named `constructor` or `toString` must not find what every object inherits. */
-const own = (record: Record<string, string>, key: string): string | undefined => (Object.hasOwn(record, key) ? record[key] : undefined);
+const own = (record: Record<string, string>, key: string): string | undefined =>
+    Object.hasOwn(record, key) ? record[key] : undefined;
 
-const lastEffort = (remembered: RememberedChoice, engine: string, model: string) => own(remembered.efforts, levelKey(engine, model));
+const lastEffort = (remembered: RememberedChoice, engine: string, model: string) =>
+    own(remembered.efforts, levelKey(engine, model));
 
-const strings = (value: unknown): Record<string, string> => (
+const strings = (value: unknown): Record<string, string> =>
     typeof value === 'object' && value !== null && !Array.isArray(value)
-        ? Object.fromEntries(Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === 'string'))
-        : {}
-);
+        ? Object.fromEntries(
+              Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === 'string')
+          )
+        : {};
 
 /** What was stored, or nothing remembered when there is none or it is not what we wrote. */
 export function readRemembered(storage: KeyValueStorage | undefined = browserStorage()): RememberedChoice {
     const stored = readStored(storage, STORAGE_KEY);
-    const record = typeof stored === 'object' && stored !== null ? stored as Record<string, unknown> : {};
+    const record = typeof stored === 'object' && stored !== null ? (stored as Record<string, unknown>) : {};
 
-    return { ...(typeof record.engine === 'string' && { engine: record.engine }), models: strings(record.models), efforts: strings(record.efforts) };
+    return {
+        ...(typeof record.engine === 'string' && { engine: record.engine }),
+        models: strings(record.models),
+        efforts: strings(record.efforts),
+    };
 }
 
-export function writeRemembered(remembered: RememberedChoice, storage: KeyValueStorage | undefined = browserStorage()): void {
+export function writeRemembered(
+    remembered: RememberedChoice,
+    storage: KeyValueStorage | undefined = browserStorage()
+): void {
     writeStored(storage, STORAGE_KEY, remembered);
 }
 
@@ -53,7 +63,8 @@ export function remember(remembered: RememberedChoice, choice: ModelChoice): Rem
     return {
         engine: choice.engine,
         models: model ? { ...remembered.models, [choice.engine]: model } : remembered.models,
-        efforts: model && effort ? { ...remembered.efforts, [levelKey(choice.engine, model)]: effort } : remembered.efforts,
+        efforts:
+            model && effort ? { ...remembered.efforts, [levelKey(choice.engine, model)]: effort } : remembered.efforts,
     };
 }
 
@@ -80,7 +91,12 @@ export function pickableModels(models: readonly AgentModel[]): AgentModel[] {
         if (!model.isDefault || !resolvedId) continue;
 
         // A row that is itself a duplicate is not what another one stands for: two defaults that name the same model leave one.
-        const named = models.find(other => other !== model && !duplicates.has(other) && (other.resolvedId === resolvedId || other.id === resolvedId));
+        const named = models.find(
+            other =>
+                other !== model &&
+                !duplicates.has(other) &&
+                (other.resolvedId === resolvedId || other.id === resolvedId)
+        );
 
         if (named) duplicates.set(model, named);
     }
@@ -89,7 +105,9 @@ export function pickableModels(models: readonly AgentModel[]): AgentModel[] {
 
     const stood = new Set(duplicates.values());
 
-    return models.flatMap(model => (duplicates.has(model) ? [] : [stood.has(model) ? { ...model, isDefault: true } : model]));
+    return models.flatMap(model =>
+        duplicates.has(model) ? [] : [stood.has(model) ? { ...model, isDefault: true } : model]
+    );
 }
 
 /** How many models a list shows before "More models" (the agent's `featured` rows are shown whatever their number). */
@@ -127,7 +145,9 @@ export function modelRow(models: readonly AgentModel[], id: string): AgentModel 
 
     const resolved = models.find(candidate => candidate.id === id)?.resolvedId;
 
-    return resolved ? rows.find(candidate => candidate.id === resolved || candidate.resolvedId === resolved) : undefined;
+    return resolved
+        ? rows.find(candidate => candidate.id === resolved || candidate.resolvedId === resolved)
+        : undefined;
 }
 
 /** The model a new chat starts on when nothing was picked: the one the agent marks as its default, else the first. */
@@ -153,9 +173,17 @@ export function legalEffort(model: AgentModel, effort: string | undefined): stri
  * What the picker holds after the person picked `model` of `engine`: the level they last used on it, else the one they had if the model
  * offers it, else the model's own default. A model with no levels has none.
  */
-export function choiceForModel(engine: string, model: AgentModel, current: string | undefined, remembered: RememberedChoice): ModelChoice {
+export function choiceForModel(
+    engine: string,
+    model: AgentModel,
+    current: string | undefined,
+    remembered: RememberedChoice
+): ModelChoice {
     const levels = model.efforts ?? [];
-    const effort = legalEffort(model, [lastEffort(remembered, engine, model.id), current].find(level => level !== undefined && levels.includes(level)));
+    const effort = legalEffort(
+        model,
+        [lastEffort(remembered, engine, model.id), current].find(level => level !== undefined && levels.includes(level))
+    );
 
     return { engine, model: model.id, ...(effort && { effort }) };
 }
@@ -164,7 +192,11 @@ export function choiceForModel(engine: string, model: AgentModel, current: strin
  * Where a new chat starts, given the models of its provider: the model the person last used there if the agent still offers it, else the
  * agent's default, with the level of `choiceForModel`. With no list to choose from (still loading, or the agent cannot list) the memory is returned as it is.
  */
-export function startingChoice(engine: string, models: readonly AgentModel[], remembered: RememberedChoice): ModelChoice {
+export function startingChoice(
+    engine: string,
+    models: readonly AgentModel[],
+    remembered: RememberedChoice
+): ModelChoice {
     const list = pickableModels(models);
     const last = own(remembered.models, engine);
     const model = list.find(candidate => candidate.id === last) ?? defaultModel(list);
@@ -179,7 +211,11 @@ export function startingChoice(engine: string, models: readonly AgentModel[], re
 }
 
 /** The provider a new chat starts on: the one its project asks for if it can be used, else the one last picked if it still can, else the first that can. */
-export function startingEngine(usable: readonly string[], remembered: RememberedChoice, preferred?: string): string | undefined {
+export function startingEngine(
+    usable: readonly string[],
+    remembered: RememberedChoice,
+    preferred?: string
+): string | undefined {
     if (preferred && usable.includes(preferred)) return preferred;
 
     return remembered.engine && usable.includes(remembered.engine) ? remembered.engine : usable[0];

@@ -4,8 +4,8 @@ import { Text } from '@clowdy/components/Text';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
-import { scrollStreamToTurn, TURN_RAIL_MIN, type TurnMark } from './turnMarks';
 import styles from './TurnRail.module.css';
+import { scrollStreamToTurn, TURN_RAIL_MIN, type TurnMark } from './turnMarks';
 
 import type { PointerEvent, RefObject } from 'react';
 
@@ -84,8 +84,8 @@ function placeCard(card: HTMLElement, frame: HTMLElement, tick: HTMLElement, sli
 
     if (instant) card.style.transition = 'none';
 
-    card.style.top = `${ top }px`;
-    card.style.right = `${ Math.max(CARD_GAP, window.innerWidth - frameBox.left + CARD_GAP) }px`;
+    card.style.top = `${top}px`;
+    card.style.right = `${Math.max(CARD_GAP, window.innerWidth - frameBox.left + CARD_GAP)}px`;
 
     if (instant) {
         card.getBoundingClientRect();
@@ -123,7 +123,7 @@ export function TurnRail({ marks, scroller }: TurnRailProps) {
 
         if (!card || !frame || !cardMark) return;
 
-        const tick = frame.querySelector<HTMLElement>(`[data-tick="${ CSS.escape(cardMark.id) }"]`);
+        const tick = frame.querySelector<HTMLElement>(`[data-tick="${CSS.escape(cardMark.id)}"]`);
 
         if (!tick) return;
 
@@ -144,7 +144,7 @@ export function TurnRail({ marks, scroller }: TurnRailProps) {
             let next = list[0]?.id ?? null;
 
             for (const mark of list) {
-                const message = scroll.querySelector<HTMLElement>(`[data-turn="${ CSS.escape(mark.id) }"]`);
+                const message = scroll.querySelector<HTMLElement>(`[data-turn="${CSS.escape(mark.id)}"]`);
 
                 if (!message) continue;
 
@@ -155,7 +155,12 @@ export function TurnRail({ marks, scroller }: TurnRailProps) {
             // A stream scrolled to its end shows the last turn, even when that turn is too short to have reached the top.
             const isScrollable = scroll.scrollHeight > scroll.clientHeight;
 
-            if (isScrollable && scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight <= AT_END && list.length > 0) next = list[list.length - 1].id;
+            if (
+                isScrollable &&
+                scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight <= AT_END &&
+                list.length > 0
+            )
+                next = list[list.length - 1].id;
 
             setActiveId(current => (current === next ? current : next));
         };
@@ -178,7 +183,7 @@ export function TurnRail({ marks, scroller }: TurnRailProps) {
 
         if (!rail || !lane || activeId == null || rail.matches(':hover')) return;
 
-        const tick = rail.querySelector<HTMLElement>(`[data-tick="${ CSS.escape(activeId) }"]`);
+        const tick = rail.querySelector<HTMLElement>(`[data-tick="${CSS.escape(activeId)}"]`);
 
         if (!tick) return;
 
@@ -231,61 +236,61 @@ export function TurnRail({ marks, scroller }: TurnRailProps) {
 
         if (!card || !id) return;
 
-        const tick = frame.querySelector<HTMLElement>(`[data-tick="${ CSS.escape(id) }"]`);
+        const tick = frame.querySelector<HTMLElement>(`[data-tick="${CSS.escape(id)}"]`);
 
         if (tick) placeCard(card, frame, tick, false);
     };
 
     return (
-        <div
-            ref={ railRef }
-            className={ styles.frame }
-            onPointerMove={ move }
-            onPointerLeave={ rest }
-        >
+        <div ref={railRef} className={styles.frame} onPointerMove={move} onPointerLeave={rest}>
             <Scrollable
                 role="navigation"
                 aria-label="Messages"
-                scrollbar={ false }
+                scrollbar={false}
                 edgeFade
                 vertical
-                className={ styles.rail }
-                containerClass={ styles.lane }
-                contentClass={ styles.ticks }
-                containerRef={ laneRef }
-                onScroll={ follow }
+                className={styles.rail}
+                containerClass={styles.lane}
+                contentClass={styles.ticks}
+                containerRef={laneRef}
+                onScroll={follow}
             >
-                { marks.map(mark => (
+                {marks.map(mark => (
                     <button
-                        key={ mark.id }
+                        key={mark.id}
                         type="button"
-                        className={ styles.tick }
-                        data-tick={ mark.id }
-                        data-current={ mark.id === activeId || undefined }
-                        aria-current={ mark.id === activeId || undefined }
-                        aria-label={ mark.title || 'Message' }
-                        tabIndex={ -1 }
-                        onClick={ () => {
+                        className={styles.tick}
+                        data-tick={mark.id}
+                        data-current={mark.id === activeId || undefined}
+                        aria-current={mark.id === activeId || undefined}
+                        aria-label={mark.title || 'Message'}
+                        tabIndex={-1}
+                        onClick={() => {
                             const scroll = scroller.current;
 
                             if (scroll) scrollStreamToTurn(scroll, mark.id);
-                        } }
+                        }}
                     >
-                        <span className={ styles.mark } data-mark="" />
+                        <span className={styles.mark} data-mark="" />
                     </button>
-                )) }
+                ))}
             </Scrollable>
-            { cardMark && createPortal(
-                <div ref={ cardRef } className={ styles.card } data-turn-card="" aria-hidden="true">
-                    <Show when={ cardMark.title !== '' }>
-                        <Text as="p" variant="sm" weight="medium" className={ styles.title }>{ cardMark.title }</Text>
-                    </Show>
-                    <Show when={ cardMark.reply !== '' }>
-                        <Text as="p" variant="sm" color="secondary" className={ styles.reply }>{ cardMark.reply }</Text>
-                    </Show>
-                </div>,
-                document.body
-            ) }
+            {cardMark &&
+                createPortal(
+                    <div ref={cardRef} className={styles.card} data-turn-card="" aria-hidden="true">
+                        <Show when={cardMark.title !== ''}>
+                            <Text as="p" variant="sm" weight="medium" className={styles.title}>
+                                {cardMark.title}
+                            </Text>
+                        </Show>
+                        <Show when={cardMark.reply !== ''}>
+                            <Text as="p" variant="sm" color="secondary" className={styles.reply}>
+                                {cardMark.reply}
+                            </Text>
+                        </Show>
+                    </div>,
+                    document.body
+                )}
         </div>
     );
 }

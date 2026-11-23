@@ -1,10 +1,24 @@
 import type { TextColor } from '@clowdy/components/Text';
-import type { GitBase, GitChangeKind, GitCheck, GitChecks, GitCheckState, GitHubAccess, GitHubRepo, GitPullRequestState } from '@clowdy/protocol';
+import type {
+    GitBase,
+    GitChangeKind,
+    GitCheck,
+    GitCheckState,
+    GitChecks,
+    GitHubAccess,
+    GitHubRepo,
+    GitPullRequestState,
+} from '@clowdy/protocol';
 import type { StatusTone } from '../../shared/runStatus';
 import type { BranchSummary } from './gitFacts';
 
 /** How a pull request's state is worded. */
-export const PULL_REQUEST_STATE_LABEL: Record<GitPullRequestState, string> = { open: 'Open', draft: 'Draft', merged: 'Merged', closed: 'Closed' };
+export const PULL_REQUEST_STATE_LABEL: Record<GitPullRequestState, string> = {
+    open: 'Open',
+    draft: 'Draft',
+    merged: 'Merged',
+    closed: 'Closed',
+};
 
 /** How a check's state is worded, and the tone of its dot. A check that was left out on purpose has no colour. */
 export const CHECK_STATE_VIEW: Record<GitCheckState, { label: string; tone: StatusTone }> = {
@@ -18,7 +32,8 @@ export const CHECK_STATE_VIEW: Record<GitCheckState, { label: string; tone: Stat
 const CHECK_ORDER: readonly GitCheckState[] = ['failing', 'pending', 'passing', 'skipped'];
 
 /** The checks as the list shows them: failing first. The daemon sorts them already; this keeps the rule here too, so the list never depends on it. */
-export const sortedChecks = (items: readonly GitCheck[]): GitCheck[] => [...items].sort((a, b) => CHECK_ORDER.indexOf(a.state) - CHECK_ORDER.indexOf(b.state));
+export const sortedChecks = (items: readonly GitCheck[]): GitCheck[] =>
+    [...items].sort((a, b) => CHECK_ORDER.indexOf(a.state) - CHECK_ORDER.indexOf(b.state));
 
 /** What the dot of the checks says: `none` has no dot. The `skipped` checks do not count. */
 export const checksTone = (checks: GitChecks): StatusTone | undefined => {
@@ -36,9 +51,17 @@ export const checksTone = (checks: GitChecks): StatusTone | undefined => {
 
 /** The checks in words, the ones that are not zero: `1 failing, 2 pending, 3 passing`. */
 export function checksWords(checks: GitChecks): string {
-    const parts = [[checks.failing, 'failing'], [checks.pending, 'pending'], [checks.passing, 'passing'], [checks.skipped, 'skipped']] as const;
+    const parts = [
+        [checks.failing, 'failing'],
+        [checks.pending, 'pending'],
+        [checks.passing, 'passing'],
+        [checks.skipped, 'skipped'],
+    ] as const;
 
-    return parts.filter(([count]) => count > 0).map(([count, word]) => `${ count } ${ word }`).join(', ');
+    return parts
+        .filter(([count]) => count > 0)
+        .map(([count, word]) => `${count} ${word}`)
+        .join(', ');
 }
 
 /** How far the branch is from its base, in words: `3 ahead, 1 behind origin/main`, `2 ahead of origin/main`, `1 behind origin/main`, `Even with origin/main`. Nothing when there is no base to compare with. */
@@ -47,13 +70,13 @@ export function aheadBehindWords(base: GitBase | undefined): string | undefined 
 
     const { ahead, behind, name } = base;
 
-    if (ahead > 0 && behind > 0) return `${ ahead } ahead, ${ behind } behind ${ name }`;
+    if (ahead > 0 && behind > 0) return `${ahead} ahead, ${behind} behind ${name}`;
 
-    if (ahead > 0) return `${ ahead } ahead of ${ name }`;
+    if (ahead > 0) return `${ahead} ahead of ${name}`;
 
-    if (behind > 0) return `${ behind } behind ${ name }`;
+    if (behind > 0) return `${behind} behind ${name}`;
 
-    return `Even with ${ name }`;
+    return `Even with ${name}`;
 }
 
 /** How far the branch is from its base without naming it: `3 ahead, 1 behind`, `2 ahead`, `1 behind`, `Even`. Nothing when there is no base to compare with. */
@@ -62,11 +85,11 @@ export function aheadBehindCounts(base: GitBase | undefined): string | undefined
 
     const { ahead, behind } = base;
 
-    if (ahead > 0 && behind > 0) return `${ ahead } ahead, ${ behind } behind`;
+    if (ahead > 0 && behind > 0) return `${ahead} ahead, ${behind} behind`;
 
-    if (ahead > 0) return `${ ahead } ahead`;
+    if (ahead > 0) return `${ahead} ahead`;
 
-    if (behind > 0) return `${ behind } behind`;
+    if (behind > 0) return `${behind} behind`;
 
     return 'Even';
 }
@@ -90,14 +113,15 @@ export function splitPath(path: string): { folder: string; name: string } {
 }
 
 /** Whether the branch has files to show against its base: there is a base to count from, and something changed. */
-export const hasBranchFiles = (summary: BranchSummary | undefined): summary is BranchSummary => summary !== undefined && summary.baseState === 'ready' && summary.files > 0;
+export const hasBranchFiles = (summary: BranchSummary | undefined): summary is BranchSummary =>
+    summary !== undefined && summary.baseState === 'ready' && summary.files > 0;
 
 /** The branch's totals as the signs `+104 −38` write them (a real minus sign, as the tool cards have it). */
-export const additionsWords = (summary: BranchSummary) => `+${ summary.additions }`;
-export const deletionsWords = (summary: BranchSummary) => `−${ summary.deletions }`;
+export const additionsWords = (summary: BranchSummary) => `+${summary.additions}`;
+export const deletionsWords = (summary: BranchSummary) => `−${summary.deletions}`;
 
 /** `13 files`, `1 file`. */
-export const filesWords = (count: number) => `${ count } ${ count === 1 ? 'file' : 'files' }`;
+export const filesWords = (count: number) => `${count} ${count === 1 ? 'file' : 'files'}`;
 
 /**
  * What the sidebar says when GitHub cannot be asked. `gh` is the person's own program, so the words name it: it is not signed in (for GitHub, the one thing to do; for another host,
@@ -109,7 +133,8 @@ export function accessHint(access: GitHubAccess | undefined, repo: GitHubRepo | 
 
     if (access === 'no_gh') return 'Install gh to see pull requests';
 
-    if (access === 'not_signed_in') return repo.host === 'github.com' ? 'Sign in with gh' : `gh isn't signed in to ${ repo.host }`;
+    if (access === 'not_signed_in')
+        return repo.host === 'github.com' ? 'Sign in with gh' : `gh isn't signed in to ${repo.host}`;
 
     return undefined;
 }
@@ -120,7 +145,8 @@ export function accessHintTitle(access: GitHubAccess | undefined, repo: GitHubRe
 
     if (access === 'no_gh') return 'Pull requests come from the GitHub command line tool, gh';
 
-    if (access === 'not_signed_in') return `Run gh auth login --hostname ${ repo.host } in a terminal to see pull requests`;
+    if (access === 'not_signed_in')
+        return `Run gh auth login --hostname ${repo.host} in a terminal to see pull requests`;
 
     return undefined;
 }

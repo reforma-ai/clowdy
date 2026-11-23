@@ -1,5 +1,5 @@
 import { cn } from '@clowdy/lib';
-import { Streamdown, type AnimateOptions } from 'streamdown';
+import { type AnimateOptions, Streamdown } from 'streamdown';
 
 import styles from './Markdown.module.css';
 import { PERSON_REHYPE_PLUGINS, STREAMDOWN_OPTIONS } from './markdown/options';
@@ -19,19 +19,19 @@ export interface MarkdownProps {
 /** A message's text as Markdown, rendered into elements (never injected as HTML) by Streamdown, tuned for streaming. */
 export function Markdown({ text, streaming = false, fromPerson = false }: MarkdownProps) {
     return (
-        <div className={ cn(styles.text, fromPerson && styles.person) }>
+        <div className={cn(styles.text, fromPerson && styles.person)}>
             <Streamdown
-                { ...STREAMDOWN_OPTIONS }
+                {...STREAMDOWN_OPTIONS}
                 // Streamdown's own utility classes get this prefix, so they never clash with the app's.
                 prefix="streamdown"
                 className="root"
-                rehypePlugins={ fromPerson ? PERSON_REHYPE_PLUGINS : STREAMDOWN_OPTIONS.rehypePlugins }
-                disallowedElements={ [] }
-                mode={ streaming ? 'streaming' : 'static' }
-                animated={ streaming ? STREAM_FADE : false }
-                isAnimating={ streaming }
+                rehypePlugins={fromPerson ? PERSON_REHYPE_PLUGINS : STREAMDOWN_OPTIONS.rehypePlugins}
+                disallowedElements={[]}
+                mode={streaming ? 'streaming' : 'static'}
+                animated={streaming ? STREAM_FADE : false}
+                isAnimating={streaming}
             >
-                { text }
+                {text}
             </Streamdown>
         </div>
     );

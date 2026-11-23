@@ -1,7 +1,7 @@
-import { MAX_FS_SEARCH_LINES_PER_FILE } from '@clowdy/protocol';
 import { constants } from 'node:fs';
 import { open } from 'node:fs/promises';
 import { join } from 'node:path';
+import { MAX_FS_SEARCH_LINES_PER_FILE } from '@clowdy/protocol';
 
 import { listProjectFiles } from '../files/list';
 import { byPath } from './search-collect';
@@ -29,18 +29,16 @@ function textOf(bytes: Uint8Array): string | undefined {
 
     try {
         return UTF8.decode(body);
-    }
-    catch {
+    } catch {
         const lines: string[] = [];
 
-        for (let from = 0; ;) {
+        for (let from = 0; ; ) {
             const newline = body.indexOf(10, from);
             const to = newline === -1 ? body.length : newline;
 
             try {
                 lines.push(UTF8.decode(body.subarray(from, to)));
-            }
-            catch {
+            } catch {
                 lines.push('');
             }
 
@@ -91,12 +89,19 @@ export function* matchingLines(text: string, matcher: RegExp): Generator<Hit> {
     const hit = (found: Pending): Hit => {
         const raw = text.slice(found.start, found.end);
 
-        return { line: found.line, ranges: found.ranges, text: found.end < text.length && raw.endsWith('\r') ? raw.slice(0, -1) : raw };
+        return {
+            line: found.line,
+            ranges: found.ranges,
+            text: found.end < text.length && raw.endsWith('\r') ? raw.slice(0, -1) : raw,
+        };
     };
 
     for (let match = matcher.exec(text); match; match = matcher.exec(text)) {
         if (current && match.index < current.end) {
-            current.ranges.push({ start: match.index - current.start, end: match.index - current.start + match[0].length });
+            current.ranges.push({
+                start: match.index - current.start,
+                end: match.index - current.start + match[0].length,
+            });
 
             continue;
         }
@@ -110,7 +115,12 @@ export function* matchingLines(text: string, matcher: RegExp): Generator<Hit> {
 
         line += countLines(text, counted, start);
         counted = start;
-        current = { line, start, end: newline === -1 ? text.length : newline, ranges: [{ start: match.index - start, end: match.index - start + match[0].length }] };
+        current = {
+            line,
+            start,
+            end: newline === -1 ? text.length : newline,
+            ranges: [{ start: match.index - start, end: match.index - start + match[0].length }],
+        };
     }
 
     if (current) {
@@ -137,12 +147,10 @@ async function readSearchable(path: string): Promise<string | typeof FOLDER | un
             }
 
             return info.isFile() && info.size <= MAX_SEARCHED_BYTES ? textOf(await handle.readFile()) : undefined;
-        }
-        finally {
+        } finally {
             await handle.close();
         }
-    }
-    catch {
+    } catch {
         return undefined;
     }
 }
@@ -150,11 +158,16 @@ async function readSearchable(path: string): Promise<string | typeof FOLDER | un
 /** The files of a folder nested in the searched one that git lists as a single entry. */
 async function nestedFiles(root: string, folder: string): Promise<string[]> {
     try {
-        const { items } = await walkTree({ root, start: folder, startReal: join(root, folder), depth: Number.POSITIVE_INFINITY, cap: NESTED_CAP });
+        const { items } = await walkTree({
+            root,
+            start: folder,
+            startReal: join(root, folder),
+            depth: Number.POSITIVE_INFINITY,
+            cap: NESTED_CAP,
+        });
 
         return items.filter(item => item.entry.kind === 'file').map(item => item.entry.path);
-    }
-    catch {
+    } catch {
         return [];
     }
 }
@@ -165,7 +178,13 @@ async function nestedFiles(root: string, folder: string): Promise<string[]> {
  * one after the other, so the event loop gets its turn at every file. Files that are links, over 1 MB, binary or not UTF-8 are skipped.
  * It stops, keeping what it has, when the collector is full or the signal fires.
  */
-export async function scanSearch(root: string, matcher: RegExp, filter: PathFilter, collector: Collector, signal: AbortSignal): Promise<void> {
+export async function scanSearch(
+    root: string,
+    matcher: RegExp,
+    filter: PathFilter,
+    collector: Collector,
+    signal: AbortSignal
+): Promise<void> {
     const queue = (await listProjectFiles(root)).filter(path => !filter.excludes(path)).sort(byPath);
 
     for (let index = 0; index < queue.length; index++) {
@@ -178,7 +197,11 @@ export async function scanSearch(root: string, matcher: RegExp, filter: PathFilt
 
         if (text === FOLDER) {
             // The files of a repository inside the folder come next in the queue.
-            queue.splice(index + 1, 0, ...(await nestedFiles(root, path)).filter(file => !filter.excludes(file)).sort(byPath));
+            queue.splice(
+                index + 1,
+                0,
+                ...(await nestedFiles(root, path)).filter(file => !filter.excludes(file)).sort(byPath)
+            );
 
             continue;
         }

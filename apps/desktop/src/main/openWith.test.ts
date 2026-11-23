@@ -3,10 +3,19 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
-import { createOpenWith, systemOpenWithDeps, type OpenWithDeps } from './openWith';
+import { createOpenWith, type OpenWithDeps, systemOpenWithDeps } from './openWith';
 
 /** A machine of folders and files named by plain strings; `launch` and `openPath` only record what they were asked. */
-function machine({ platform, folders = {}, directories = [], links = {}, files = [], env = {}, home = '/Users/dev', icons = {} }: {
+function machine({
+    platform,
+    folders = {},
+    directories = [],
+    links = {},
+    files = [],
+    env = {},
+    home = '/Users/dev',
+    icons = {},
+}: {
     platform: NodeJS.Platform;
     folders?: Record<string, string[]>;
     /** Folders there are besides `web` in the home folder, which every machine has. */
@@ -30,7 +39,8 @@ function machine({ platform, folders = {}, directories = [], links = {}, files =
         env,
         list: async folder => folders[folder] ?? [],
         exists: async path => files.includes(path),
-        isFolder: async path => path === '/Users/dev/web' || path === 'C:\\Users\\dev\\web' || directories.includes(path),
+        isFolder: async path =>
+            path === '/Users/dev/web' || path === 'C:\\Users\\dev\\web' || directories.includes(path),
         realPath: async path => links[path] ?? path,
         openPath,
         showItem,
@@ -44,7 +54,15 @@ function machine({ platform, folders = {}, directories = [], links = {}, files =
 const MAC: Parameters<typeof machine>[0] = {
     platform: 'darwin',
     folders: {
-        '/Applications': ['Safari.app', 'Visual Studio Code.app', 'Cursor.app', 'IntelliJ IDEA CE.app', 'Path Finder.app', 'Ghostty.app', 'notes.txt'],
+        '/Applications': [
+            'Safari.app',
+            'Visual Studio Code.app',
+            'Cursor.app',
+            'IntelliJ IDEA CE.app',
+            'Path Finder.app',
+            'Ghostty.app',
+            'notes.txt',
+        ],
         '/System/Applications/Utilities': ['Terminal.app', 'Activity Monitor.app'],
         '/Users/dev/Applications': ['WebStorm.app', 'Cursor.app'],
         '/Users/dev/Applications/JetBrains Toolbox': ['PyCharm.app'],
@@ -52,7 +70,7 @@ const MAC: Parameters<typeof machine>[0] = {
 };
 
 describe('what a Mac has', () => {
-    test('lists the editors in the order of the catalog, and the system\'s file manager before the others found', async () => {
+    test("lists the editors in the order of the catalog, and the system's file manager before the others found", async () => {
         const { open } = machine(MAC);
 
         expect(await open.listApps()).toEqual({
@@ -63,21 +81,42 @@ describe('what a Mac has', () => {
                 { id: 'webstorm', name: 'WebStorm' },
                 { id: 'pycharm', name: 'PyCharm' },
             ],
-            terminals: [{ id: 'ghostty', name: 'Ghostty' }, { id: 'terminal', name: 'Terminal' }],
-            fileManagers: [{ id: 'finder', name: 'Finder' }, { id: 'path-finder', name: 'Path Finder' }],
+            terminals: [
+                { id: 'ghostty', name: 'Ghostty' },
+                { id: 'terminal', name: 'Terminal' },
+            ],
+            fileManagers: [
+                { id: 'finder', name: 'Finder' },
+                { id: 'path-finder', name: 'Path Finder' },
+            ],
         });
     });
 
     test('finds a program by the name of its app, whatever edition or channel the name goes on with, and skips what is not an app', async () => {
-        const { open } = machine({ platform: 'darwin', folders: { '/Applications': ['Zed Preview.app', 'Visual Studio Code - Insiders.app', 'Windsurf Next.app', 'zed.app', 'Nova.txt'] } });
+        const { open } = machine({
+            platform: 'darwin',
+            folders: {
+                '/Applications': [
+                    'Zed Preview.app',
+                    'Visual Studio Code - Insiders.app',
+                    'Windsurf Next.app',
+                    'zed.app',
+                    'Nova.txt',
+                ],
+            },
+        });
 
         expect((await open.listApps()).editors.map(app => app.id)).toEqual(['windsurf', 'zed', 'vscode-insiders']);
     });
 
-    test('has only the system\'s file manager when nothing else is installed', async () => {
+    test("has only the system's file manager when nothing else is installed", async () => {
         const { open } = machine({ platform: 'darwin' });
 
-        expect(await open.listApps()).toEqual({ editors: [], terminals: [], fileManagers: [{ id: 'finder', name: 'Finder' }] });
+        expect(await open.listApps()).toEqual({
+            editors: [],
+            terminals: [],
+            fileManagers: [{ id: 'finder', name: 'Finder' }],
+        });
     });
 });
 
@@ -91,17 +130,23 @@ describe('opening a folder on a Mac', () => {
         expect(launch).not.toHaveBeenCalled();
     });
 
-    test('tells the system\'s refusal', async () => {
+    test("tells the system's refusal", async () => {
         const { open, openPath } = machine(MAC);
 
         openPath.mockResolvedValueOnce('Failed to open path');
 
-        await expect(open.openPath('/Users/dev/web', { kind: 'fileManager', id: 'finder' })).rejects.toThrow('Failed to open path');
+        await expect(open.openPath('/Users/dev/web', { kind: 'fileManager', id: 'finder' })).rejects.toThrow(
+            'Failed to open path'
+        );
     });
 
     test('has the system show an app bundle in its folder, and not open it: that would start the program', async () => {
         const bundle = '/Users/dev/web/Evil.app';
-        const { open, launch, openPath, showItem } = machine({ ...MAC, directories: [bundle, '/Users/dev/web/docs'], links: { '/Users/dev/web/docs': bundle } });
+        const { open, launch, openPath, showItem } = machine({
+            ...MAC,
+            directories: [bundle, '/Users/dev/web/docs'],
+            links: { '/Users/dev/web/docs': bundle },
+        });
 
         await open.openPath(bundle, { kind: 'fileManager', id: 'finder' });
         // A link in the folder that goes to the bundle is no way round it.
@@ -112,8 +157,11 @@ describe('opening a folder on a Mac', () => {
         expect(launch).not.toHaveBeenCalled();
     });
 
-    test('opens a folder with a name like an app\'s on Windows, which the system does not run', async () => {
-        const { open, openPath, showItem } = machine({ platform: 'win32', directories: ['C:\\Users\\dev\\web\\Evil.app'] });
+    test("opens a folder with a name like an app's on Windows, which the system does not run", async () => {
+        const { open, openPath, showItem } = machine({
+            platform: 'win32',
+            directories: ['C:\\Users\\dev\\web\\Evil.app'],
+        });
 
         await open.openPath('C:\\Users\\dev\\web\\Evil.app', { kind: 'fileManager', id: 'explorer' });
 
@@ -140,11 +188,19 @@ describe('opening a folder on a Mac', () => {
         await expect(send('/Users/dev/web', undefined)).rejects.toThrow('Unknown app');
         await expect(send('/Users/dev/web', { kind: 'shell', id: 'cursor' })).rejects.toThrow('Unknown app');
         await expect(send('/Users/dev/web', { kind: 'editor', id: 7 })).rejects.toThrow('Unknown app');
-        await expect(send('/Users/dev/gone', { kind: 'editor', id: 'cursor' })).rejects.toThrow('That path no longer exists');
+        await expect(send('/Users/dev/gone', { kind: 'editor', id: 'cursor' })).rejects.toThrow(
+            'That path no longer exists'
+        );
         // A program of the catalog that is not here, a program that is not in it, and a file manager asked for as an editor.
-        await expect(send('/Users/dev/web', { kind: 'editor', id: 'zed' })).rejects.toThrow('That app is not installed');
-        await expect(send('/Users/dev/web', { kind: 'editor', id: '/bin/sh' })).rejects.toThrow('That app is not installed');
-        await expect(send('/Users/dev/web', { kind: 'editor', id: 'finder' })).rejects.toThrow('That app is not installed');
+        await expect(send('/Users/dev/web', { kind: 'editor', id: 'zed' })).rejects.toThrow(
+            'That app is not installed'
+        );
+        await expect(send('/Users/dev/web', { kind: 'editor', id: '/bin/sh' })).rejects.toThrow(
+            'That app is not installed'
+        );
+        await expect(send('/Users/dev/web', { kind: 'editor', id: 'finder' })).rejects.toThrow(
+            'That app is not installed'
+        );
         expect(launch).not.toHaveBeenCalled();
         expect(openPath).not.toHaveBeenCalled();
     });
@@ -177,21 +233,31 @@ describe('opening a file', () => {
 
         await open.openPath(FILE, { kind: 'fileManager', id: 'path-finder' });
 
-        expect(launch).toHaveBeenCalledExactlyOnceWith('open', ['-a', '/Applications/Path Finder.app', '/Users/dev/web/src']);
+        expect(launch).toHaveBeenCalledExactlyOnceWith('open', [
+            '-a',
+            '/Applications/Path Finder.app',
+            '/Users/dev/web/src',
+        ]);
     });
 
     test('is refused by a terminal, which opens folders', async () => {
         const { open, launch } = machine(withFile);
 
-        await expect(open.openPath(FILE, { kind: 'terminal', id: 'ghostty' })).rejects.toThrow('A terminal opens a folder');
+        await expect(open.openPath(FILE, { kind: 'terminal', id: 'ghostty' })).rejects.toThrow(
+            'A terminal opens a folder'
+        );
         expect(launch).not.toHaveBeenCalled();
     });
 
     test('is refused when the file is not there', async () => {
         const { open, launch, showItem } = machine(MAC);
 
-        await expect(open.openPath(FILE, { kind: 'editor', id: 'cursor' })).rejects.toThrow('That path no longer exists');
-        await expect(open.openPath(FILE, { kind: 'fileManager', id: 'finder' })).rejects.toThrow('That path no longer exists');
+        await expect(open.openPath(FILE, { kind: 'editor', id: 'cursor' })).rejects.toThrow(
+            'That path no longer exists'
+        );
+        await expect(open.openPath(FILE, { kind: 'fileManager', id: 'finder' })).rejects.toThrow(
+            'That path no longer exists'
+        );
         expect(launch).not.toHaveBeenCalled();
         expect(showItem).not.toHaveBeenCalled();
     });
@@ -199,7 +265,11 @@ describe('opening a file', () => {
     test('has an editor open a file on Windows, and File Explorer show it', async () => {
         const file = 'C:\\Users\\dev\\web\\index.ts';
         const cursor = 'C:\\Users\\dev\\AppData\\Local\\Programs\\cursor\\Cursor.exe';
-        const { open, launch, showItem } = machine({ platform: 'win32', env: { LOCALAPPDATA: 'C:\\Users\\dev\\AppData\\Local' }, files: [file, cursor] });
+        const { open, launch, showItem } = machine({
+            platform: 'win32',
+            env: { LOCALAPPDATA: 'C:\\Users\\dev\\AppData\\Local' },
+            files: [file, cursor],
+        });
 
         await open.openPath(file, { kind: 'editor', id: 'cursor' });
         await open.openPath(file, { kind: 'fileManager', id: 'explorer' });
@@ -210,9 +280,13 @@ describe('opening a file', () => {
 });
 
 describe('opening a folder in a terminal', () => {
-    const machineWith = (applications: string[]) => machine({ platform: 'darwin', folders: { '/Applications': applications, '/System/Applications/Utilities': ['Terminal.app'] } });
+    const machineWith = (applications: string[]) =>
+        machine({
+            platform: 'darwin',
+            folders: { '/Applications': applications, '/System/Applications/Utilities': ['Terminal.app'] },
+        });
 
-    test('puts a person\'s own terminal before the system\'s, so installing one is enough to make it the default', async () => {
+    test("puts a person's own terminal before the system's, so installing one is enough to make it the default", async () => {
         const { open } = machineWith(['kitty.app', 'iTerm.app', 'Warp.app']);
 
         expect((await open.listApps()).terminals.map(app => app.id)).toEqual(['iterm', 'warp', 'kitty', 'terminal']);
@@ -225,7 +299,11 @@ describe('opening a folder in a terminal', () => {
         await open.openPath('/Users/dev/web', { kind: 'terminal', id: 'terminal' });
 
         expect(launch).toHaveBeenNthCalledWith(1, 'open', ['-a', '/Applications/Ghostty.app', '/Users/dev/web']);
-        expect(launch).toHaveBeenNthCalledWith(2, 'open', ['-a', '/System/Applications/Utilities/Terminal.app', '/Users/dev/web']);
+        expect(launch).toHaveBeenNthCalledWith(2, 'open', [
+            '-a',
+            '/System/Applications/Utilities/Terminal.app',
+            '/Users/dev/web',
+        ]);
     });
 
     test('starts a terminal that has to be told where to open as a new instance, with the folder as one argument of its own', async () => {
@@ -244,7 +322,11 @@ describe('opening a folder in a terminal', () => {
 
     test('hands a folder whose name has spaces, quotes or shell characters over as one argument', async () => {
         const folder = '/Users/dev/my "web" --x; $(id) `id`';
-        const { open, launch } = machine({ platform: 'darwin', directories: [folder], folders: { '/Applications': ['Ghostty.app', 'Alacritty.app'] } });
+        const { open, launch } = machine({
+            platform: 'darwin',
+            directories: [folder],
+            folders: { '/Applications': ['Ghostty.app', 'Alacritty.app'] },
+        });
 
         await open.openPath(folder, { kind: 'terminal', id: 'ghostty' });
         await open.openPath(folder, { kind: 'terminal', id: 'alacritty' });
@@ -258,8 +340,12 @@ describe('opening a folder in a terminal', () => {
     test('is a kind of its own: an editor is not asked for as a terminal, nor a terminal as an editor', async () => {
         const { open, launch } = machineWith(['Ghostty.app', 'Cursor.app']);
 
-        await expect(open.openPath('/Users/dev/web', { kind: 'terminal', id: 'cursor' })).rejects.toThrow('That app is not installed');
-        await expect(open.openPath('/Users/dev/web', { kind: 'editor', id: 'ghostty' })).rejects.toThrow('That app is not installed');
+        await expect(open.openPath('/Users/dev/web', { kind: 'terminal', id: 'cursor' })).rejects.toThrow(
+            'That app is not installed'
+        );
+        await expect(open.openPath('/Users/dev/web', { kind: 'editor', id: 'ghostty' })).rejects.toThrow(
+            'That app is not installed'
+        );
         expect(launch).not.toHaveBeenCalled();
     });
 });
@@ -280,7 +366,10 @@ describe('what a Windows machine has', () => {
         });
 
         expect(await open.listApps()).toEqual({
-            editors: [{ id: 'cursor', name: 'Cursor' }, { id: 'webstorm', name: 'WebStorm' }],
+            editors: [
+                { id: 'cursor', name: 'Cursor' },
+                { id: 'webstorm', name: 'WebStorm' },
+            ],
             terminals: [],
             fileManagers: [{ id: 'explorer', name: 'File Explorer' }],
         });
@@ -291,13 +380,19 @@ describe('what a Windows machine has', () => {
             platform: 'win32',
             env,
             folders: { 'C:\\Program Files\\JetBrains': ['WebStorm 2025.1', 'WebStorm 2025.2'] },
-            files: ['C:\\Program Files\\JetBrains\\WebStorm 2025.1\\bin\\webstorm64.exe', 'C:\\Program Files\\JetBrains\\WebStorm 2025.2\\bin\\webstorm64.exe'],
+            files: [
+                'C:\\Program Files\\JetBrains\\WebStorm 2025.1\\bin\\webstorm64.exe',
+                'C:\\Program Files\\JetBrains\\WebStorm 2025.2\\bin\\webstorm64.exe',
+            ],
         });
 
         await open.openPath('C:\\Users\\dev\\web', { kind: 'editor', id: 'webstorm' });
         await open.openPath('C:\\Users\\dev\\web', { kind: 'fileManager', id: 'explorer' });
 
-        expect(launch).toHaveBeenCalledExactlyOnceWith('C:\\Program Files\\JetBrains\\WebStorm 2025.2\\bin\\webstorm64.exe', ['C:\\Users\\dev\\web']);
+        expect(launch).toHaveBeenCalledExactlyOnceWith(
+            'C:\\Program Files\\JetBrains\\WebStorm 2025.2\\bin\\webstorm64.exe',
+            ['C:\\Users\\dev\\web']
+        );
         expect(openPath).toHaveBeenCalledWith('C:\\Users\\dev\\web');
     });
 
@@ -313,7 +408,11 @@ describe('what a Windows machine has', () => {
     });
 
     test('skips a place that names an environment variable the machine does not have', async () => {
-        const { open } = machine({ platform: 'win32', env: { ProgramFiles: 'C:\\Program Files' }, files: ['C:\\Users\\dev\\AppData\\Local\\Programs\\cursor\\Cursor.exe'] });
+        const { open } = machine({
+            platform: 'win32',
+            env: { ProgramFiles: 'C:\\Program Files' },
+            files: ['C:\\Users\\dev\\AppData\\Local\\Programs\\cursor\\Cursor.exe'],
+        });
 
         expect((await open.listApps()).editors).toEqual([]);
     });
@@ -323,7 +422,10 @@ describe('what a Windows machine has', () => {
         const bash = 'C:\\Program Files\\Git\\git-bash.exe';
         const { open, launch } = machine({ platform: 'win32', env, files: [wt, bash] });
 
-        expect((await open.listApps()).terminals).toEqual([{ id: 'windows-terminal', name: 'Windows Terminal' }, { id: 'git-bash', name: 'Git Bash' }]);
+        expect((await open.listApps()).terminals).toEqual([
+            { id: 'windows-terminal', name: 'Windows Terminal' },
+            { id: 'git-bash', name: 'Git Bash' },
+        ]);
 
         await open.openPath('C:\\Users\\dev\\web', { kind: 'terminal', id: 'windows-terminal' });
         await open.openPath('C:\\Users\\dev\\web', { kind: 'terminal', id: 'git-bash' });
@@ -337,7 +439,7 @@ describe('what a Windows machine has', () => {
     test('hands a folder with spaces or quotes to Windows Terminal and Git Bash as one argument, and refuses Windows Terminal one with a semicolon', async () => {
         const wt = 'C:\\Users\\dev\\AppData\\Local\\Microsoft\\WindowsApps\\wt.exe';
         const bash = 'C:\\Program Files\\Git\\git-bash.exe';
-        const folder = 'C:\\Users\\dev\\my web & \'x\'';
+        const folder = "C:\\Users\\dev\\my web & 'x'";
         const odd = 'C:\\Users\\dev\\web;powershell -c calc';
         const { open, launch } = machine({ platform: 'win32', env, files: [wt, bash], directories: [folder, odd] });
 
@@ -348,8 +450,8 @@ describe('what a Windows machine has', () => {
 
         expect(launch.mock.calls).toEqual([
             [wt, ['-d', folder]],
-            [bash, [`--cd=${ folder }`]],
-            [bash, [`--cd=${ odd }`]],
+            [bash, [`--cd=${folder}`]],
+            [bash, [`--cd=${odd}`]],
         ]);
     });
 
@@ -361,7 +463,7 @@ describe('what a Windows machine has', () => {
 });
 
 describe('the icons of the programs', () => {
-    test('tells each program\'s icon, read from its app, and the system\'s file manager\'s from its own place', async () => {
+    test("tells each program's icon, read from its app, and the system's file manager's from its own place", async () => {
         const { open } = machine({
             ...MAC,
             icons: {
@@ -373,7 +475,11 @@ describe('the icons of the programs', () => {
 
         const { editors, fileManagers } = await open.listApps();
 
-        expect(editors.find(app => app.id === 'cursor')).toEqual({ id: 'cursor', name: 'Cursor', icon: 'data:image/png;base64,cursor' });
+        expect(editors.find(app => app.id === 'cursor')).toEqual({
+            id: 'cursor',
+            name: 'Cursor',
+            icon: 'data:image/png;base64,cursor',
+        });
         expect(fileManagers).toEqual([
             { id: 'finder', name: 'Finder', icon: 'data:image/png;base64,finder' },
             { id: 'path-finder', name: 'Path Finder', icon: 'data:image/png;base64,path-finder' },
@@ -385,11 +491,17 @@ describe('the icons of the programs', () => {
         const { editors, fileManagers } = await open.listApps();
         const apps = [...editors, ...fileManagers];
 
-        expect(apps.map(app => Object.keys(app).sort().join())).toEqual(apps.map(app => app.id === 'cursor' ? 'icon,id,name' : 'id,name'));
+        expect(apps.map(app => Object.keys(app).sort().join())).toEqual(
+            apps.map(app => (app.id === 'cursor' ? 'icon,id,name' : 'id,name'))
+        );
     });
 
     test('reads an icon once while it is read, and tries again one that could not be read', async () => {
-        const { open, icon } = machine({ platform: 'darwin', folders: { '/Applications': ['Cursor.app', 'Zed.app'] }, icons: { '/Applications/Cursor.app': 'data:image/png;base64,cursor' } });
+        const { open, icon } = machine({
+            platform: 'darwin',
+            folders: { '/Applications': ['Cursor.app', 'Zed.app'] },
+            icons: { '/Applications/Cursor.app': 'data:image/png;base64,cursor' },
+        });
 
         await open.listApps();
         await open.listApps();
@@ -406,7 +518,10 @@ describe('the icons of the programs', () => {
             platform: 'win32',
             env: { LOCALAPPDATA: 'C:\\Users\\dev\\AppData\\Local', SystemRoot: 'C:\\Windows' },
             files: [executable],
-            icons: { [executable]: 'data:image/png;base64,cursor', 'C:\\Windows\\explorer.exe': 'data:image/png;base64,explorer' },
+            icons: {
+                [executable]: 'data:image/png;base64,cursor',
+                'C:\\Windows\\explorer.exe': 'data:image/png;base64,explorer',
+            },
         });
 
         expect(await open.listApps()).toEqual({
@@ -417,7 +532,11 @@ describe('the icons of the programs', () => {
 
         const bare = machine({ platform: 'win32', env: {} });
 
-        expect(await bare.open.listApps()).toEqual({ editors: [], terminals: [], fileManagers: [{ id: 'explorer', name: 'File Explorer' }] });
+        expect(await bare.open.listApps()).toEqual({
+            editors: [],
+            terminals: [],
+            fileManagers: [{ id: 'explorer', name: 'File Explorer' }],
+        });
         expect(bare.icon).not.toHaveBeenCalled();
         expect(icon).toHaveBeenCalledTimes(2);
     });
@@ -427,7 +546,9 @@ test('has no program on a system the app does not run on', async () => {
     const { open } = machine({ platform: 'linux', folders: { '/Applications': ['Cursor.app'] } });
 
     expect(await open.listApps()).toEqual({ editors: [], terminals: [], fileManagers: [] });
-    await expect(open.openPath('/Users/dev/web', { kind: 'editor', id: 'cursor' })).rejects.toThrow('That app is not installed');
+    await expect(open.openPath('/Users/dev/web', { kind: 'editor', id: 'cursor' })).rejects.toThrow(
+        'That app is not installed'
+    );
 });
 
 describe('the real machine', () => {
@@ -445,7 +566,11 @@ describe('the real machine', () => {
     });
 
     test('tells a folder from a file and from nothing, and lists a folder it cannot read as empty', async () => {
-        const deps = systemOpenWithDeps(async () => '', async () => undefined, () => undefined);
+        const deps = systemOpenWithDeps(
+            async () => '',
+            async () => undefined,
+            () => undefined
+        );
         const root = await scratch();
 
         await mkdir(join(root, 'web'));
@@ -463,7 +588,11 @@ describe('the real machine', () => {
     });
 
     test.runIf(process.platform !== 'win32')('follows a link to where a path really is', async () => {
-        const deps = systemOpenWithDeps(async () => '', async () => undefined, () => undefined);
+        const deps = systemOpenWithDeps(
+            async () => '',
+            async () => undefined,
+            () => undefined
+        );
         const root = await scratch();
 
         await mkdir(join(root, 'Real.app'));
@@ -473,25 +602,44 @@ describe('the real machine', () => {
     });
 
     test('starts a program with each argument as it is, and no shell reads them', async () => {
-        const deps = systemOpenWithDeps(async () => '', async () => undefined, () => undefined);
+        const deps = systemOpenWithDeps(
+            async () => '',
+            async () => undefined,
+            () => undefined
+        );
         const root = await scratch();
         const out = join(root, 'argv.json');
         const folder = 'my web; $(touch pwned) "q" \'s\' -x';
 
-        await deps.launch(process.execPath, ['-e', 'require("fs").writeFileSync(process.argv[1], JSON.stringify(process.argv.slice(2)))', out, folder]);
+        await deps.launch(process.execPath, [
+            '-e',
+            'require("fs").writeFileSync(process.argv[1], JSON.stringify(process.argv.slice(2)))',
+            out,
+            folder,
+        ]);
 
-        await vi.waitFor(async () => expect(JSON.parse(await readFile(out, 'utf8'))).toEqual([folder]), { timeout: 10_000 });
+        await vi.waitFor(async () => expect(JSON.parse(await readFile(out, 'utf8'))).toEqual([folder]), {
+            timeout: 10_000,
+        });
     });
 
     test.runIf(process.platform === 'darwin')('rejects when `open` cannot start the app it is told to', async () => {
-        const deps = systemOpenWithDeps(async () => '', async () => undefined, () => undefined);
+        const deps = systemOpenWithDeps(
+            async () => '',
+            async () => undefined,
+            () => undefined
+        );
         const root = await scratch();
 
         await expect(deps.launch('open', ['-a', join(root, 'Missing.app'), root])).rejects.toThrow('open failed');
     });
 
     test('rejects when the program cannot be started', async () => {
-        const deps = systemOpenWithDeps(async () => '', async () => undefined, () => undefined);
+        const deps = systemOpenWithDeps(
+            async () => '',
+            async () => undefined,
+            () => undefined
+        );
         const root = await scratch();
 
         await expect(deps.launch(join(root, 'no-such-program'), [root])).rejects.toThrow();

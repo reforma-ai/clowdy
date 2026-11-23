@@ -18,7 +18,11 @@ const PATHS = [
 ];
 
 /** The paths a filter text lets through, in order. */
-const shown = (text: string) => filterChanged(PATHS.map(path => ({ path })), text).map(item => item.path);
+const shown = (text: string) =>
+    filterChanged(
+        PATHS.map(path => ({ path })),
+        text
+    ).map(item => item.path);
 
 describe('the filter text', () => {
     it('shows every file when nothing is typed, or only separators and spaces', () => {
@@ -44,7 +48,12 @@ describe('the filter text', () => {
     });
 
     it('matches a glob with no slash against the name of the file, wherever the file is', () => {
-        expect(shown('*.md')).toEqual(['README.md', 'docs/guide.md', 'docs/api/Reference.MD', 'packages/docs/readme.md']);
+        expect(shown('*.md')).toEqual([
+            'README.md',
+            'docs/guide.md',
+            'docs/api/Reference.MD',
+            'packages/docs/readme.md',
+        ]);
         expect(shown('*.test.ts')).toEqual(['src/booking/price.test.ts', 'src/index.test.ts']);
         expect(shown('price.*')).toEqual(['src/booking/price.ts', 'src/booking/price.test.ts']);
         expect(shown('price.?s')).toEqual(['src/booking/price.ts']);
@@ -70,7 +79,12 @@ describe('the filter text', () => {
         expect(shown('src/***/price.ts')).toEqual(['src/booking/price.ts']);
         // A `**` that shares its part of the path with other characters is a `*`, as in every glob: it does not cross a slash.
         expect(shown('src/**.ts')).toEqual(['src/index.test.ts']);
-        expect(shown('src/**/**.ts')).toEqual(['src/booking/price.ts', 'src/booking/price.test.ts', 'src/booking/weekend.ts', 'src/index.test.ts']);
+        expect(shown('src/**/**.ts')).toEqual([
+            'src/booking/price.ts',
+            'src/booking/price.test.ts',
+            'src/booking/weekend.ts',
+            'src/index.test.ts',
+        ]);
     });
 
     it('includes the files whose names start with a dot, and does not mind the case of a glob', () => {
@@ -78,30 +92,47 @@ describe('the filter text', () => {
         expect(shown('.github/**')).toEqual(['.github/workflows/ci.yml']);
         expect(shown('*.example')).toEqual(['.env.example']);
         expect(shown('*.md')).toContain('docs/api/Reference.MD');
-        expect(shown('SRC/BOOKING/*.TS')).toEqual(['src/booking/price.ts', 'src/booking/price.test.ts', 'src/booking/weekend.ts']);
+        expect(shown('SRC/BOOKING/*.TS')).toEqual([
+            'src/booking/price.ts',
+            'src/booking/price.test.ts',
+            'src/booking/weekend.ts',
+        ]);
     });
 
     it('reads a set of characters, a negated one, and a backslash', () => {
-        expect(shown('*.[tj]s')).toEqual(['src/booking/price.ts', 'src/booking/price.test.ts', 'src/booking/weekend.ts', 'src/index.test.ts']);
+        expect(shown('*.[tj]s')).toEqual([
+            'src/booking/price.ts',
+            'src/booking/price.test.ts',
+            'src/booking/weekend.ts',
+            'src/index.test.ts',
+        ]);
         expect(shown('*.[!t]s*')).toEqual([]);
         expect(shown('[a-p]rice.ts')).toEqual(['src/booking/price.ts']);
         expect(shown('[!a-o]rice.ts')).toEqual(['src/booking/price.ts']);
         expect(shown('price\\.t?')).toEqual(['src/booking/price.ts']);
         expect(shown('\\*.md')).toEqual([]);
         // An escaped star or question mark is that character, and not a run of the one before it.
-        expect(filterChanged([{ path: 'a/x*.txt' }, { path: 'a/x.txt' }, { path: 'a/xx.txt' }], 'x\\*.txt').map(item => item.path)).toEqual(['a/x*.txt']);
-        expect(filterChanged([{ path: 'a/x?.txt' }, { path: 'a/xy.txt' }], 'x\\?.txt').map(item => item.path)).toEqual(['a/x?.txt']);
+        expect(
+            filterChanged([{ path: 'a/x*.txt' }, { path: 'a/x.txt' }, { path: 'a/xx.txt' }], 'x\\*.txt').map(
+                item => item.path
+            )
+        ).toEqual(['a/x*.txt']);
+        expect(filterChanged([{ path: 'a/x?.txt' }, { path: 'a/xy.txt' }], 'x\\?.txt').map(item => item.path)).toEqual([
+            'a/x?.txt',
+        ]);
         // A `[` that nothing closes is a bracket.
         expect(shown('[x*')).toEqual([]);
-        expect(filterChanged([{ path: 'a/[x.txt' }, { path: 'a/x.txt' }], '*[x*').map(item => item.path)).toEqual(['a/[x.txt']);
+        expect(filterChanged([{ path: 'a/[x.txt' }, { path: 'a/x.txt' }], '*[x*').map(item => item.path)).toEqual([
+            'a/[x.txt',
+        ]);
     });
 
     it('takes every character that is not a glob character as itself, and keeps a slash between folders', () => {
         const matches = (glob: string, path: string) => compileChangeFilter(glob).matches(path);
 
         for (const special of ['.', '+', '^', '$', '{', '}', '(', ')', '|', ']', '-', '/']) {
-            expect(matches(`a${ special }*`, `a${ special }b`)).toBe(true);
-            expect(matches(`a${ special }*`, `ax${ special }b`)).toBe(false);
+            expect(matches(`a${special}*`, `a${special}b`)).toBe(true);
+            expect(matches(`a${special}*`, `ax${special}b`)).toBe(false);
         }
 
         expect(matches('src/*', 'src/a/b.ts')).toBe(false);
@@ -116,7 +147,17 @@ describe('the filter text', () => {
     });
 
     it('reads no braces, no extended patterns and no leading `!` or `#` of a glob: they are their own characters', () => {
-        const names = (text: string) => filterChanged([{ path: 'a/{x,y}.ts' }, { path: 'a/x.ts' }, { path: 'a/+(x|y).ts' }, { path: 'a/#x.ts' }, { path: 'a/!x.ts' }], text).map(item => item.path);
+        const names = (text: string) =>
+            filterChanged(
+                [
+                    { path: 'a/{x,y}.ts' },
+                    { path: 'a/x.ts' },
+                    { path: 'a/+(x|y).ts' },
+                    { path: 'a/#x.ts' },
+                    { path: 'a/!x.ts' },
+                ],
+                text
+            ).map(item => item.path);
 
         expect(names('{x,y}.*')).toEqual(['a/{x,y}.ts']);
         expect(names('+(x|y).*')).toEqual(['a/+(x|y).ts']);
@@ -127,17 +168,21 @@ describe('the filter text', () => {
     });
 
     it('takes a glob that is a character set that cannot match as a set that matches nothing', () => {
-        expect(filterChanged([{ path: 'a/[z-a].txt' }, { path: 'a/z.txt' }], '[z-a]').map(item => item.path)).toEqual([]);
-        expect(filterChanged([{ path: 'a/[z-a].txt' }, { path: 'a/z.txt' }], '*[z-a].txt').map(item => item.path)).toEqual([]);
+        expect(filterChanged([{ path: 'a/[z-a].txt' }, { path: 'a/z.txt' }], '[z-a]').map(item => item.path)).toEqual(
+            []
+        );
+        expect(
+            filterChanged([{ path: 'a/[z-a].txt' }, { path: 'a/z.txt' }], '*[z-a].txt').map(item => item.path)
+        ).toEqual([]);
     });
 
     describe('answers in good time whatever is typed and however long the path is, so the window does not stop', () => {
         // The longest name a file system has, and a path of folders of that length, 2049 characters in all.
         const longName = 'a'.repeat(255);
-        const longPath = `${ `${ longName }/`.repeat(8) }x`;
+        const longPath = `${`${longName}/`.repeat(8)}x`;
         const flat = 'a'.repeat(2000);
-        const deep = `${ 'a/'.repeat(1000) }x`;
-        const alternating = `${ 'a/c/'.repeat(500) }b`;
+        const deep = `${'a/'.repeat(1000)}x`;
+        const alternating = `${'a/c/'.repeat(500)}b`;
         // Each of these made the regular expression of the first version take seconds to minutes (`*a*a*a*a*a*b` on 100 characters: 4.6 s; `a*a*a*a*b` on 2000: over 8 s;
         // `**/**/**/*b` on 2000 characters of folders: 1.6 s); the automaton after it took 1 to 8 ms; `minimatch` alone takes 2 s for the first and more than a minute for the second.
         const cases: Array<[text: string, path: string, matches: boolean]> = [
@@ -148,7 +193,7 @@ describe('the filter text', () => {
             ['**a**a**a**a**b', flat, false],
             ['a*a*a*a*a', flat, false],
             ['a*a*a*a*a*a*a*a*a*b', flat, false],
-            ['a/*a*a*a*a*b', `a/${ longName }`, false],
+            ['a/*a*a*a*a*b', `a/${longName}`, false],
             // Three runs of stars or fewer, on the longest name a file system has, and two on a name that no file system has.
             ['a*a*a*b', longName, false],
             ['*a*a*b', longName, false],
@@ -178,7 +223,11 @@ describe('the filter text', () => {
         });
 
         it('reads a glob with more than three runs of stars in a part of the path as a piece of the path', () => {
-            const names = (text: string) => filterChanged([{ path: 'src/a*b*c*d*e.ts' }, { path: 'src/abcde.ts' }, { path: 'src/ABCDE.ts' }], text).map(item => item.path);
+            const names = (text: string) =>
+                filterChanged(
+                    [{ path: 'src/a*b*c*d*e.ts' }, { path: 'src/abcde.ts' }, { path: 'src/ABCDE.ts' }],
+                    text
+                ).map(item => item.path);
 
             // Four runs: the text itself, stars and all.
             expect(names('a*b*c*d*e')).toEqual(['src/a*b*c*d*e.ts']);
@@ -189,7 +238,10 @@ describe('the filter text', () => {
         });
 
         it('counts the runs of stars of each part of the path alone', () => {
-            const found = (text: string) => filterChanged([{ path: 'src/abc/x.ts' }, { path: 'src/ac/x.ts' }, { path: 'lib/abc/y.js' }], text).map(item => item.path);
+            const found = (text: string) =>
+                filterChanged([{ path: 'src/abc/x.ts' }, { path: 'src/ac/x.ts' }, { path: 'lib/abc/y.js' }], text).map(
+                    item => item.path
+                );
 
             expect(found('src/*b*c*/*.ts')).toEqual(['src/abc/x.ts']);
             expect(found('*/*b*c*/*.*')).toEqual(['src/abc/x.ts', 'lib/abc/y.js']);
@@ -204,8 +256,18 @@ describe('the filter text', () => {
     });
 
     it('takes some pattern to include and every bang to leave out', () => {
-        expect(shown('src/**, !*.test.ts')).toEqual(['src/booking/price.ts', 'src/booking/weekend.ts', 'src/ui/Button.tsx']);
-        expect(shown('*.md, *.png')).toEqual(['README.md', 'docs/guide.md', 'docs/api/Reference.MD', 'packages/docs/readme.md', 'assets/logo.png']);
+        expect(shown('src/**, !*.test.ts')).toEqual([
+            'src/booking/price.ts',
+            'src/booking/weekend.ts',
+            'src/ui/Button.tsx',
+        ]);
+        expect(shown('*.md, *.png')).toEqual([
+            'README.md',
+            'docs/guide.md',
+            'docs/api/Reference.MD',
+            'packages/docs/readme.md',
+            'assets/logo.png',
+        ]);
         expect(shown('*.md, !docs/**, !packages/**')).toEqual(['README.md']);
         // A bang names what it leaves out whatever its place in the list.
         expect(shown('!*.test.ts, src/**')).toEqual(shown('src/**, !*.test.ts'));
@@ -219,9 +281,16 @@ describe('the filter text', () => {
     });
 
     it('is a filter of paths only, and keeps the order and the other fields of what it gets', () => {
-        const files = [{ path: 'b.md', kind: 'added' }, { path: 'a.ts', kind: 'modified' }, { path: 'c.md', kind: 'deleted' }];
+        const files = [
+            { path: 'b.md', kind: 'added' },
+            { path: 'a.ts', kind: 'modified' },
+            { path: 'c.md', kind: 'deleted' },
+        ];
 
-        expect(filterChanged(files, '*.md')).toEqual([{ path: 'b.md', kind: 'added' }, { path: 'c.md', kind: 'deleted' }]);
+        expect(filterChanged(files, '*.md')).toEqual([
+            { path: 'b.md', kind: 'added' },
+            { path: 'c.md', kind: 'deleted' },
+        ]);
     });
 
     it('says whether a path passes, for a filter built once', () => {

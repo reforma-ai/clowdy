@@ -21,8 +21,18 @@ export function ProjectWorktrees({ project }: { project: Project }) {
     return (
         <SettingsSection title="Worktrees">
             <SettingsCard>
-                <SettingsRow title="Worktrees" description="Every worktree of the project's folders, and the chats that work in each">
-                    <Button variant="filling" color="secondary" size="sm" onPress={ () => openManageWorktrees({ root, projectId: project.id }) }>Manage worktrees</Button>
+                <SettingsRow
+                    title="Worktrees"
+                    description="Every worktree of the project's folders, and the chats that work in each"
+                >
+                    <Button
+                        variant="filling"
+                        color="secondary"
+                        size="sm"
+                        onPress={() => openManageWorktrees({ root, projectId: project.id })}
+                    >
+                        Manage worktrees
+                    </Button>
                 </SettingsRow>
             </SettingsCard>
         </SettingsSection>

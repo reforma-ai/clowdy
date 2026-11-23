@@ -1,7 +1,7 @@
 import { Button } from '@clowdy/components/Button';
 import { Text } from '@clowdy/components/Text';
 import { Completed, Error as ErrorMark, Split, TaskCanceled } from '@clowdy/icons/14';
-import { use, type ReactNode } from 'react';
+import { type ReactNode, use } from 'react';
 
 import { Clamp } from './Clamp';
 import { Markdown } from './Markdown';
@@ -26,9 +26,13 @@ const OUTCOME_ICONS: Record<ThreadOutcome, ReactNode> = {
 function ChatName({ chatId, title }: { chatId: ChatId; title: string }) {
     const { hasChat, onOpenChat } = use(StreamLinksContext);
 
-    if (!onOpenChat || hasChat?.(chatId) === false) return <span>{ title }</span>;
+    if (!onOpenChat || hasChat?.(chatId) === false) return <span>{title}</span>;
 
-    return <Button variant="inline" className={ styles.link } onPress={ () => onOpenChat(chatId) }>{ title }</Button>;
+    return (
+        <Button variant="inline" className={styles.link} onPress={() => onOpenChat(chatId)}>
+            {title}
+        </Button>
+    );
 }
 
 export interface ThreadMessageCardProps {
@@ -47,17 +51,19 @@ export interface ThreadMessageCardProps {
  */
 export function ThreadMessageCard({ chatId, title, text, turn }: ThreadMessageCardProps) {
     return (
-        <div className={ styles.card } data-slot="thread-message" data-turn={ turn }>
-            <span className={ styles.icon } aria-hidden><Split /></span>
-            <div className={ styles.body }>
-                <span className={ styles.title }>
-                    Message from <ChatName chatId={ chatId } title={ title } />
+        <div className={styles.card} data-slot="thread-message" data-turn={turn}>
+            <span className={styles.icon} aria-hidden>
+                <Split />
+            </span>
+            <div className={styles.body}>
+                <span className={styles.title}>
+                    Message from <ChatName chatId={chatId} title={title} />
                 </span>
-                { text.trim() !== '' && (
-                    <Clamp lines={ MESSAGE_LINES } moreLabel="Show full message" align="start">
-                        <Markdown text={ text } />
+                {text.trim() !== '' && (
+                    <Clamp lines={MESSAGE_LINES} moreLabel="Show full message" align="start">
+                        <Markdown text={text} />
                     </Clamp>
-                ) }
+                )}
             </div>
         </div>
     );
@@ -69,19 +75,31 @@ function NoticeCard({ notice }: { notice: ThreadNotice }) {
     const text = notice.text?.trim() ?? '';
 
     return (
-        <div className={ styles.card } data-slot="thread-notice" data-outcome={ notice.outcome }>
-            <span className={ styles.icon } aria-hidden>{ OUTCOME_ICONS[notice.outcome] }</span>
-            <div className={ styles.body }>
-                <span className={ styles.title }>
-                    <ChatName chatId={ notice.chatId } title={ notice.title } /> { OUTCOME_WORDS[notice.outcome] }
+        <div className={styles.card} data-slot="thread-notice" data-outcome={notice.outcome}>
+            <span className={styles.icon} aria-hidden>
+                {OUTCOME_ICONS[notice.outcome]}
+            </span>
+            <div className={styles.body}>
+                <span className={styles.title}>
+                    <ChatName chatId={notice.chatId} title={notice.title} /> {OUTCOME_WORDS[notice.outcome]}
                 </span>
-                { text !== '' && open.length > 0 && <Text variant="xs" color="secondary">Not the final result</Text> }
-                { text !== '' && (
-                    <Clamp lines={ NOTICE_LINES } moreLabel="Show more" align="start">
-                        <Markdown text={ text } />
+                {text !== '' && open.length > 0 && (
+                    <Text variant="xs" color="secondary">
+                        Not the final result
+                    </Text>
+                )}
+                {text !== '' && (
+                    <Clamp lines={NOTICE_LINES} moreLabel="Show more" align="start">
+                        <Markdown text={text} />
                     </Clamp>
-                ) }
-                { open.length > 0 && <Text variant="sm" color="secondary" className={ styles.open }>{ `Still running: ${ open.join(', ') }` }</Text> }
+                )}
+                {open.length > 0 && (
+                    <Text
+                        variant="sm"
+                        color="secondary"
+                        className={styles.open}
+                    >{`Still running: ${open.join(', ')}`}</Text>
+                )}
             </div>
         </div>
     );
@@ -97,8 +115,10 @@ export interface ThreadNoticeCardsProps {
 /** What a chat is told when threads below it stop: a card per thread, together as one group in the stream. */
 export function ThreadNoticeCards({ threads, turn }: ThreadNoticeCardsProps) {
     return (
-        <div role="group" aria-label="Threads that stopped" className={ styles.group } data-turn={ turn }>
-            { threads.map(notice => <NoticeCard key={ notice.chatId } notice={ notice } />) }
+        <div role="group" aria-label="Threads that stopped" className={styles.group} data-turn={turn}>
+            {threads.map(notice => (
+                <NoticeCard key={notice.chatId} notice={notice} />
+            ))}
         </div>
     );
 }

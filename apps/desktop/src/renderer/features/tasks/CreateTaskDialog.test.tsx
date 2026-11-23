@@ -12,7 +12,10 @@ import { lateTaskEvents, memoryStorage } from './screenHarness';
 
 import type { CommandInput } from '../../daemon/transport';
 
-const modal = vi.hoisted(() => ({ create: vi.fn<(options: { component: unknown }) => void>(), cancel: vi.fn<() => void>() }));
+const modal = vi.hoisted(() => ({
+    create: vi.fn<(options: { component: unknown }) => void>(),
+    cancel: vi.fn<() => void>(),
+}));
 
 // `Modal` itself cannot load under the desktop's Vitest (decorators): the dialog's form is drawn from the options it was given.
 vi.mock('@clowdy/components/Modal', () => ({
@@ -37,13 +40,16 @@ beforeEach(async () => {
 
     const base = new FixtureTransport();
 
-    root = new RootStore(overrideTransport(late.wrap(base), {
-        command: async (input) => {
-            sent.push(input);
+    root = new RootStore(
+        overrideTransport(late.wrap(base), {
+            command: async input => {
+                sent.push(input);
 
-            return base.command(input);
-        },
-    }), { storage: memoryStorage() });
+                return base.command(input);
+            },
+        }),
+        { storage: memoryStorage() }
+    );
     await root.load();
 });
 
@@ -92,7 +98,12 @@ describe('the New task dialog', () => {
         await submit('Retry a failed payment');
 
         expect(sent).toHaveLength(1);
-        expect(sent[0]).toMatchObject({ type: 'task.create', projectId: FIXTURE_PROJECT_ID, title: 'Retry a failed payment', parentId: 't-31' });
+        expect(sent[0]).toMatchObject({
+            type: 'task.create',
+            projectId: FIXTURE_PROJECT_ID,
+            title: 'Retry a failed payment',
+            parentId: 't-31',
+        });
 
         const created = root.selectedProject!.taskList.find(task => task.title === 'Retry a failed payment')!;
 
@@ -108,7 +119,9 @@ describe('the New task dialog', () => {
         expect(container.querySelector('form')!.firstElementChild!.textContent).toBe('New task');
         expect(sent[0]).toMatchObject({ type: 'task.create', title: 'A task of the roots' });
         expect(sent[0]).not.toHaveProperty('parentId', expect.anything());
-        expect(root.selectedProject!.taskList.find(task => task.title === 'A task of the roots')?.parentId).toBeUndefined();
+        expect(
+            root.selectedProject!.taskList.find(task => task.title === 'A task of the roots')?.parentId
+        ).toBeUndefined();
     });
 
     it('shows what the daemon refused and stays open, for a parent that is gone', async () => {
@@ -138,7 +151,7 @@ describe('the New task dialog', () => {
         expect(window.taskId).toBe(root.selectedProject!.taskList.find(task => task.title === 'Outside the scope')!.id);
     });
 
-    describe('when the daemon\'s event comes after the reply, so the project does not hold the new task yet', () => {
+    describe("when the daemon's event comes after the reply, so the project does not hold the new task yet", () => {
         const made = (title: string) => root.selectedProject!.taskList.find(task => task.title === title);
 
         it('keeps the scope for a task made inside it, opens the task, and shows it once the event is in', async () => {
@@ -195,20 +208,32 @@ describe('the New task dialog', () => {
 });
 
 describe('the Parent field of the New task dialog', () => {
-    const pointer = { bubbles: true, cancelable: true, pointerId: 1, pointerType: 'mouse', button: 0, width: 1, height: 1, pressure: 0.5, detail: 1 };
+    const pointer = {
+        bubbles: true,
+        cancelable: true,
+        pointerId: 1,
+        pointerType: 'mouse',
+        button: 0,
+        width: 1,
+        height: 1,
+        pressure: 0.5,
+        detail: 1,
+    };
 
     /** A press on a control of the page, as React Aria listens for it. */
-    const press = (element: Element) => act(async () => {
-        element.dispatchEvent(new PointerEvent('pointerdown', pointer));
-        element.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
-        element.dispatchEvent(new PointerEvent('pointerup', pointer));
-        element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
-        element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, detail: 1 }));
-    });
+    const press = (element: Element) =>
+        act(async () => {
+            element.dispatchEvent(new PointerEvent('pointerdown', pointer));
+            element.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+            element.dispatchEvent(new PointerEvent('pointerup', pointer));
+            element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
+            element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, detail: 1 }));
+        });
 
-    const settle = () => act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 60));
-    });
+    const settle = () =>
+        act(async () => {
+            await new Promise(resolve => setTimeout(resolve, 60));
+        });
     const field = () => container.querySelector<HTMLButtonElement>('button[aria-label="Parent"]')!;
     const options = () => [...document.querySelectorAll<HTMLElement>('[role="option"]')];
     const option = (name: string) => options().find(candidate => candidate.textContent?.includes(name))!;
@@ -222,7 +247,9 @@ describe('the Parent field of the New task dialog', () => {
     }
 
     afterEach(() => {
-        document.body.querySelectorAll('[data-modal-clickout-layer], [role="listbox"]').forEach(layer => layer.remove());
+        document.body
+            .querySelectorAll('[data-modal-clickout-layer], [role="listbox"]')
+            .forEach(layer => layer.remove());
     });
 
     it('starts on the parent the dialog was opened for, and on "No parent" for a task of the roots', async () => {
@@ -253,7 +280,12 @@ describe('the Parent field of the New task dialog', () => {
         let parentId = 't-33';
 
         for (let level = 4; level <= 8; level++) {
-            const result = await root.command({ type: 'task.create', projectId: FIXTURE_PROJECT_ID, title: `Level ${ level }`, parentId });
+            const result = await root.command({
+                type: 'task.create',
+                projectId: FIXTURE_PROJECT_ID,
+                title: `Level ${level}`,
+                parentId,
+            });
 
             parentId = (result as { ok: true; data: { task: { id: string } } }).data.task.id;
         }

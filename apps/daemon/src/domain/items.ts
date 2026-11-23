@@ -1,4 +1,14 @@
-import { deleteItemsFrom, getItem, insertItem, itemSeqOf, lastStorySeq, listItems, nextSeq, setItemRef, updateItemBody } from '../db/items';
+import {
+    deleteItemsFrom,
+    getItem,
+    insertItem,
+    itemSeqOf,
+    lastStorySeq,
+    listItems,
+    nextSeq,
+    setItemRef,
+    updateItemBody,
+} from '../db/items';
 import { deleteRuns, getRun, runsStartedAfter } from '../db/runs';
 import { notFound } from '../errors';
 import { newId } from '../ids';
@@ -32,7 +42,12 @@ export function streamItem(store: Store, run: Run, itemId: string): StreamItem |
  * Copies stored items (`listItemsWithRefs`) into another run's stream as new rows: new ids, the same `seq`, time and rewind point, and `rewrite` says what
  * each body becomes. The copies are not published: the run is new, and a client reads its stream when it opens it. Call it inside a transaction.
  */
-export function copyItems(store: Store, items: readonly { item: StreamItem; ref?: string }[], toRunId: string, rewrite: (body: StreamItemBody) => StreamItemBody): void {
+export function copyItems(
+    store: Store,
+    items: readonly { item: StreamItem; ref?: string }[],
+    toRunId: string,
+    rewrite: (body: StreamItemBody) => StreamItemBody
+): void {
     for (const { item, ref } of items) {
         insertItem(store.db, { ...item, id: newId('itm'), runId: toRunId, body: rewrite(item.body) }, ref);
     }
@@ -47,7 +62,7 @@ export function copyItems(store: Store, items: readonly { item: StreamItem; ref?
 export function cutStream(store: Store, run: Run, fromSeq: number): StreamItem[] {
     return store.tx(() => {
         const items = listItems(store.db, run.id, fromSeq - 1);
-        const calls = items.flatMap(item => item.body.kind === 'tool' ? [item.body.toolCallId] : []);
+        const calls = items.flatMap(item => (item.body.kind === 'tool' ? [item.body.toolCallId] : []));
         const removedRunIds = items.length > 0 ? runsStartedAfter(store.db, run.id, calls, items[0].at) : [];
 
         deleteItemsFrom(store.db, run.id, fromSeq);
@@ -87,7 +102,7 @@ export function updateItem(store: Store, runId: string, seq: number, body: Strea
         const existing = run && getItem(store.db, runId, seq, offersRewind(store, run));
 
         if (!run || !existing) {
-            throw notFound('Stream item', `${ runId }#${ seq }`);
+            throw notFound('Stream item', `${runId}#${seq}`);
         }
 
         updateItemBody(store.db, runId, seq, body);

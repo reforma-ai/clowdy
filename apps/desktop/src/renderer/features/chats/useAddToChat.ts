@@ -29,7 +29,7 @@ export function useAddToChat(pathOf: () => string | undefined): EditorExtension 
 
         return selectionAction({
             label: 'Add to chat',
-            onAction: (selected) => {
+            onAction: selected => {
                 const path = latest.current();
 
                 if (path !== undefined && quoteIntoComposer(codeQuote(path, selected))) ui.showChat();

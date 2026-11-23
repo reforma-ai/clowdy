@@ -1,4 +1,4 @@
-import { useRootStore, type NoHalfReason, type SidePanelSize, type SidePanelTab } from '../../stores';
+import { type NoHalfReason, type SidePanelSize, type SidePanelTab, useRootStore } from '../../stores';
 
 export interface SidePanelControl {
     /** The window shows a project's screen (Settings may be open over it), so the panel and the project's tabs of the rail can be there. */
@@ -25,7 +25,19 @@ export interface SidePanelControl {
 /** The side panel of the selected project: whether it can be drawn, whether it is open and expanded, and how to flip it. */
 export function useSidePanel(): SidePanelControl {
     const root = useRootStore();
-    const ui = root.projectScreenReady && root.selectedProjectId ? root.ui.forProject(root.selectedProjectId) : undefined;
+    const ui =
+        root.projectScreenReady && root.selectedProjectId ? root.ui.forProject(root.selectedProjectId) : undefined;
 
-    return { available: ui !== undefined, railShown: root.phase === 'ready', open: ui?.sidePanelOpen === true, tab: ui?.sidePanelTab ?? 'info', expanded: ui?.sidePanelCoversChat === true, noHalf: ui?.sidePanelNoHalf ?? null, tabHasTree: ui?.sidePanelTabHasTree === true, toggle: () => ui?.toggleSidePanel(), setSize: size => ui?.setSidePanelSize(size), toggleTab: tab => ui?.toggleSidePanelTab(tab) };
+    return {
+        available: ui !== undefined,
+        railShown: root.phase === 'ready',
+        open: ui?.sidePanelOpen === true,
+        tab: ui?.sidePanelTab ?? 'info',
+        expanded: ui?.sidePanelCoversChat === true,
+        noHalf: ui?.sidePanelNoHalf ?? null,
+        tabHasTree: ui?.sidePanelTabHasTree === true,
+        toggle: () => ui?.toggleSidePanel(),
+        setSize: size => ui?.setSidePanelSize(size),
+        toggleTab: tab => ui?.toggleSidePanelTab(tab),
+    };
 }

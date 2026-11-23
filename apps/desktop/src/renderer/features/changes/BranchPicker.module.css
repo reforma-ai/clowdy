@@ -1,0 +1,133 @@
+@reference '@clowdy/styles/rulesets';
+
+/* The button is the header's title: the branch the place is on, which gives way to the buttons at the header's end, and a chevron that says it opens. */
+.trigger[data-size][data-variant] {
+    flex: 0 1 auto;
+    justify-content: flex-start;
+    min-width: 0;
+    max-width: 100%;
+    padding-inline: var(--spacing-6);
+}
+
+/* The off button is in a stand-in that carries its tooltip: the stand-in gives way to the header's buttons as the button does, or the name would push them out of the sidebar. */
+.off {
+    display: flex;
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.off > * {
+    min-width: 0;
+    max-width: 100%;
+}
+
+.content {
+    min-width: 0;
+    gap: var(--spacing-6);
+}
+
+.icon,
+.chevron {
+    flex-shrink: 0;
+    color: var(--color-secondary-muted-text);
+}
+
+.label {
+    min-width: 0;
+}
+
+/* At the sidebar's narrowest the name needs the room: the mark before it goes, and the chevron and the tooltip say the rest. */
+@container (max-width: 200px) {
+    .trigger[data-size][data-variant] {
+        padding-inline: var(--spacing-4);
+    }
+
+    .icon {
+        display: none;
+    }
+}
+
+/* The popover of the branches, and its form of a new one: one column, as wide as the popover is. */
+.body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-6);
+    min-width: 0;
+}
+
+.title {
+    padding: var(--spacing-4) var(--spacing-6) 0;
+}
+
+/* What the daemon says is the person's to copy: why a switch was refused, git's own line, the hook's. */
+.reason {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+    padding: var(--spacing-4) var(--spacing-6);
+    overflow-wrap: anywhere;
+    user-select: text;
+}
+
+.status {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-6);
+    padding: var(--spacing-4) var(--spacing-6);
+}
+
+.footer {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-4);
+}
+
+.action[data-size][data-variant] {
+    justify-content: flex-start;
+}
+
+/* The form of a new branch. */
+.form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-8);
+    min-width: 0;
+    padding: var(--spacing-2) var(--spacing-6) var(--spacing-6);
+}
+
+.formHeader {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-4);
+    margin-inline-start: calc(var(--spacing-4) * -1);
+}
+
+.choices {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-8);
+}
+
+/* The form's own padding is the content's edge: a reason in it has none of its own. */
+.form .reason {
+    padding-inline: 0;
+}
+
+/* The mark of a choice sits at the first line of its name, not in the middle of the sentence under it. */
+.radio[data-size] {
+    align-items: flex-start;
+}
+
+/* A choice is its name and, under it, what it is for. */
+.choice {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+    min-width: 0;
+}
+
+.actions {
+    display: flex;
+    justify-content: flex-end;
+}

@@ -3,7 +3,16 @@ import { PROTOCOL_HEADER, PROTOCOL_VERSION, ROUTES, SSE_EVENT } from '@clowdy/pr
 import { HttpFileSystem } from './httpFileSystem';
 import { SseParser } from './sse';
 import { TerminalSocket } from './terminalStream';
-import { TransportError, type CommandInput, type FeedStatus, type PageQuery, type PlaceRef, type ProjectFileSystem, type StreamTarget, type Transport } from './transport';
+import {
+    type CommandInput,
+    type FeedStatus,
+    type PageQuery,
+    type PlaceRef,
+    type ProjectFileSystem,
+    type StreamTarget,
+    type Transport,
+    TransportError,
+} from './transport';
 
 import type {
     AgentInfo,
@@ -17,6 +26,7 @@ import type {
     FolderGit,
     FolderId,
     FolderWorktrees,
+    GitBranches,
     GitChanges,
     GitCommitResult,
     GitDiscardRequest,
@@ -29,6 +39,8 @@ import type {
     GitRemoteResult,
     GitScope,
     GitStatus,
+    GitSwitchRequest,
+    GitSwitchResult,
     GitViewedMark,
     GitViewedSet,
     Health,
@@ -67,7 +79,10 @@ const COMMAND_RETRY_MS = 500;
 
 const sleepFor = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
-const headersFor = (token: string): Record<string, string> => ({ authorization: `Bearer ${ token }`, [PROTOCOL_HEADER]: String(PROTOCOL_VERSION) });
+const headersFor = (token: string): Record<string, string> => ({
+    authorization: `Bearer ${token}`,
+    [PROTOCOL_HEADER]: String(PROTOCOL_VERSION),
+});
 
 function isCommandResult(value: unknown): value is CommandResult {
     return typeof value === 'object' && value !== null && 'ok' in value && 'requestId' in value;
@@ -81,21 +96,27 @@ function pageQuery({ limit, cursor }: PageQuery = {}): string {
 
     if (cursor !== undefined) params.set('cursor', cursor);
 
-    return params.size > 0 ? `?${ params }` : '';
+    return params.size > 0 ? `?${params}` : '';
 }
 
 /** The query a read of a place's git is asked with: the folder, the worktree when there is one, and what else the read takes (`undefined` values are left out). */
 function placeQuery({ folderId, workspaceId }: PlaceRef, more: Record<string, string | undefined> = {}): string {
-    return new URLSearchParams(Object.entries({ folderId, workspaceId, ...more }).flatMap(([name, value]) => (value === undefined ? [] : [[name, value]]))).toString();
+    return new URLSearchParams(
+        Object.entries({ folderId, workspaceId, ...more }).flatMap(([name, value]) =>
+            value === undefined ? [] : [[name, value]]
+        )
+    ).toString();
 }
 
 /** A refused request as an error: the daemon's own reason when it gave one, else its status. */
 async function refusal(response: Response, route: string): Promise<TransportError> {
-    const body = await response.json().catch(() => undefined) as { error?: { message?: unknown; details?: GitErrorDetails } } | undefined;
+    const body = (await response.json().catch(() => undefined)) as
+        | { error?: { message?: unknown; details?: GitErrorDetails } }
+        | undefined;
     const reason = typeof body?.error?.message === 'string' ? body.error.message : undefined;
     const hint = typeof body?.error?.details?.hint === 'string' ? body.error.details.hint : undefined;
 
-    return new TransportError(reason ?? `The daemon answered ${ response.status } for ${ route }`, response.status, hint);
+    return new TransportError(reason ?? `The daemon answered ${response.status} for ${route}`, response.status, hint);
 }
 
 /** The daemon's HTTP + SSE API, as described by `@clowdy/protocol`. */
@@ -106,7 +127,12 @@ export class HttpTransport implements Transport {
     readonly #fetch: typeof fetch;
     readonly #sleep: (ms: number) => Promise<void>;
 
-    constructor({ url, token, fetch: fetchImpl = (...args) => fetch(...args), sleep = sleepFor }: HttpTransportOptions) {
+    constructor({
+        url,
+        token,
+        fetch: fetchImpl = (...args) => fetch(...args),
+        sleep = sleepFor,
+    }: HttpTransportOptions) {
         this.#base = url.replace(/\/+$/, '');
         this.#token = token;
         this.#headers = headersFor(token);
@@ -129,31 +155,48 @@ export class HttpTransport implements Transport {
     }
 
     getProjectsInfo(projectId?: ProjectId): Promise<ProjectInfo[]> {
-        return this.#get(projectId === undefined ? ROUTES.projectsInfo : `${ ROUTES.projectsInfo }?project=${ encodeURIComponent(projectId) }`);
+        return this.#get(
+            projectId === undefined
+                ? ROUTES.projectsInfo
+                : `${ROUTES.projectsInfo}?project=${encodeURIComponent(projectId)}`
+        );
     }
 
     getFolderGit(projectId: ProjectId, folderId: FolderId): Promise<FolderGit> {
         // The daemon says why it cannot read a folder (git is not there, the folder is gone) and the new-chat page tells the person.
-        return this.#read(`${ ROUTES.projectGit(projectId) }?folderId=${ encodeURIComponent(folderId) }`);
+        return this.#read(`${ROUTES.projectGit(projectId)}?folderId=${encodeURIComponent(folderId)}`);
     }
 
     getGitStatus(projectId: ProjectId, place: PlaceRef): Promise<GitStatus> {
-        return this.#read(`${ ROUTES.projectGitStatus(projectId) }?${ placeQuery(place) }`);
+        return this.#read(`${ROUTES.projectGitStatus(projectId)}?${placeQuery(place)}`);
     }
 
     getGitChanges(projectId: ProjectId, place: PlaceRef, scope: GitScope): Promise<GitChanges> {
-        return this.#read(`${ ROUTES.projectGitChanges(projectId) }?${ placeQuery(place, { scope }) }`);
+        return this.#read(`${ROUTES.projectGitChanges(projectId)}?${placeQuery(place, { scope })}`);
     }
 
-    getGitFile(projectId: ProjectId, place: PlaceRef, scope: GitScope, path: string, oldPath?: string, from?: string): Promise<GitFileSides> {
-        return this.#read(`${ ROUTES.projectGitFile(projectId) }?${ placeQuery(place, { scope, path, oldPath, from }) }`);
+    getGitFile(
+        projectId: ProjectId,
+        place: PlaceRef,
+        scope: GitScope,
+        path: string,
+        oldPath?: string,
+        from?: string
+    ): Promise<GitFileSides> {
+        return this.#read(`${ROUTES.projectGitFile(projectId)}?${placeQuery(place, { scope, path, oldPath, from })}`);
     }
 
     getGitViewed(projectId: ProjectId, place: PlaceRef, scope: GitScope): Promise<GitViewedMark[]> {
-        return this.#read(`${ ROUTES.projectGitViewed(projectId) }?${ placeQuery(place, { scope }) }`);
+        return this.#read(`${ROUTES.projectGitViewed(projectId)}?${placeQuery(place, { scope })}`);
     }
 
-    async setGitViewed(projectId: ProjectId, place: PlaceRef, scope: GitScope, path: string, revision: string): Promise<GitViewedMark> {
+    async setGitViewed(
+        projectId: ProjectId,
+        place: PlaceRef,
+        scope: GitScope,
+        path: string,
+        revision: string
+    ): Promise<GitViewedMark> {
         const route = ROUTES.projectGitViewed(projectId);
         const response = await this.#fetch(this.#base + route, {
             method: 'POST',
@@ -163,11 +206,11 @@ export class HttpTransport implements Transport {
 
         if (!response.ok) throw await refusal(response, route);
 
-        return await response.json() as GitViewedMark;
+        return (await response.json()) as GitViewedMark;
     }
 
     async clearGitViewed(projectId: ProjectId, place: PlaceRef, scope: GitScope, path: string): Promise<void> {
-        const route = `${ ROUTES.projectGitViewed(projectId) }?${ placeQuery(place, { scope, path }) }`;
+        const route = `${ROUTES.projectGitViewed(projectId)}?${placeQuery(place, { scope, path })}`;
         const response = await this.#fetch(this.#base + route, { method: 'DELETE', headers: this.#headers });
 
         if (!response.ok) throw await refusal(response, route);
@@ -197,12 +240,29 @@ export class HttpTransport implements Transport {
         return this.#write(ROUTES.projectGitRemote(projectId, 'push'), { ...place } satisfies GitRemoteRequest);
     }
 
+    getGitBranches(projectId: ProjectId, place: PlaceRef): Promise<GitBranches> {
+        return this.#read(`${ROUTES.projectGitBranches(projectId)}?${placeQuery(place)}`);
+    }
+
+    switchGitBranch(
+        projectId: ProjectId,
+        place: PlaceRef,
+        branch: string,
+        create?: GitSwitchRequest['create']
+    ): Promise<GitSwitchResult> {
+        return this.#write(ROUTES.projectGitSwitch(projectId), {
+            ...place,
+            branch,
+            ...(create && { create }),
+        } satisfies GitSwitchRequest);
+    }
+
     getProjectWorktrees(projectId: ProjectId): Promise<FolderWorktrees[]> {
         return this.#get(ROUTES.projectWorktrees(projectId));
     }
 
     getGitPullRequest(projectId: ProjectId, place: PlaceRef): Promise<GitPullRequestInfo> {
-        return this.#read(`${ ROUTES.projectGitPullRequest(projectId) }?${ placeQuery(place) }`);
+        return this.#read(`${ROUTES.projectGitPullRequest(projectId)}?${placeQuery(place)}`);
     }
 
     getChatWorkspaceRemoval(chatId: ChatId): Promise<ChatWorkspaceRemoval> {
@@ -216,7 +276,7 @@ export class HttpTransport implements Transport {
     getItems(target: StreamTarget, afterSeq = 0): Promise<StreamItem[]> {
         const route = 'runId' in target ? ROUTES.runItems(target.runId) : ROUTES.chatItems(target.chatId);
 
-        return this.#get(`${ route }?after=${ afterSeq }`);
+        return this.#get(`${route}?after=${afterSeq}`);
     }
 
     getTaskDetail(taskId: TaskId): Promise<TaskDetail> {
@@ -228,38 +288,58 @@ export class HttpTransport implements Transport {
     }
 
     getTaskComments(taskId: TaskId, page?: PageQuery): Promise<TaskCommentsPage> {
-        return this.#get(`${ ROUTES.taskComments(taskId) }${ pageQuery(page) }`);
+        return this.#get(`${ROUTES.taskComments(taskId)}${pageQuery(page)}`);
     }
 
     getArchivedTasks(projectId: ProjectId, page?: PageQuery): Promise<TaskArchivePage> {
-        return this.#get(`${ ROUTES.projectArchivedTasks(projectId) }${ pageQuery(page) }`);
+        return this.#get(`${ROUTES.projectArchivedTasks(projectId)}${pageQuery(page)}`);
     }
 
     getDocsTree(projectId: ProjectId, workspaceId?: WorkspaceId): Promise<DocsTree> {
-        return this.#get(workspaceId === undefined ? ROUTES.docsTree(projectId) : `${ ROUTES.docsTree(projectId) }?${ new URLSearchParams({ workspaceId }) }`);
+        return this.#get(
+            workspaceId === undefined
+                ? ROUTES.docsTree(projectId)
+                : `${ROUTES.docsTree(projectId)}?${new URLSearchParams({ workspaceId })}`
+        );
     }
 
-    getProjectFiles(projectId: ProjectId, query: string, limit?: number, workspaceId?: WorkspaceId): Promise<ProjectFileMatch[]> {
+    getProjectFiles(
+        projectId: ProjectId,
+        query: string,
+        limit?: number,
+        workspaceId?: WorkspaceId
+    ): Promise<ProjectFileMatch[]> {
         const params = new URLSearchParams({ query });
 
         if (limit !== undefined) params.set('limit', String(limit));
 
         if (workspaceId !== undefined) params.set('workspaceId', workspaceId);
 
-        return this.#get(`${ ROUTES.projectFiles(projectId) }?${ params }`);
+        return this.#get(`${ROUTES.projectFiles(projectId)}?${params}`);
     }
 
     fileSystem(projectId: ProjectId, folderId: FolderId, workspaceId?: WorkspaceId): ProjectFileSystem {
-        return new HttpFileSystem({ target: () => ({ base: this.#base, headers: this.#headers }), fetch: this.#fetch, route: ROUTES.projectFs(projectId), folderId, ...(workspaceId !== undefined && { workspaceId }), sleep: this.#sleep });
+        return new HttpFileSystem({
+            target: () => ({ base: this.#base, headers: this.#headers }),
+            fetch: this.#fetch,
+            route: ROUTES.projectFs(projectId),
+            folderId,
+            ...(workspaceId !== undefined && { workspaceId }),
+            sleep: this.#sleep,
+        });
     }
 
     async uploadAttachment(projectId: ProjectId, file: File): Promise<Attachment> {
-        const route = `${ ROUTES.projectAttachments(projectId) }?name=${ encodeURIComponent(file.name) }`;
-        const response = await this.#fetch(this.#base + route, { method: 'POST', headers: { ...this.#headers, 'content-type': file.type || 'application/octet-stream' }, body: file });
+        const route = `${ROUTES.projectAttachments(projectId)}?name=${encodeURIComponent(file.name)}`;
+        const response = await this.#fetch(this.#base + route, {
+            method: 'POST',
+            headers: { ...this.#headers, 'content-type': file.type || 'application/octet-stream' },
+            body: file,
+        });
 
         if (!response.ok) throw await refusal(response, route);
 
-        return await response.json() as Attachment;
+        return (await response.json()) as Attachment;
     }
 
     async getAttachment(projectId: ProjectId, attachmentId: string): Promise<Blob> {
@@ -291,7 +371,9 @@ export class HttpTransport implements Transport {
     }
 
     getSkills(projectId?: ProjectId): Promise<SkillCatalog> {
-        return this.#get(projectId === undefined ? ROUTES.skills : `${ ROUTES.skills }?projectId=${ encodeURIComponent(projectId) }`);
+        return this.#get(
+            projectId === undefined ? ROUTES.skills : `${ROUTES.skills}?projectId=${encodeURIComponent(projectId)}`
+        );
     }
 
     getHealth(): Promise<Health> {
@@ -308,15 +390,23 @@ export class HttpTransport implements Transport {
     }
 
     listTerminals(projectId?: ProjectId): Promise<TerminalInfo[]> {
-        return this.#get(projectId === undefined ? ROUTES.terminals : `${ ROUTES.terminals }?projectId=${ encodeURIComponent(projectId) }`);
+        return this.#get(
+            projectId === undefined
+                ? ROUTES.terminals
+                : `${ROUTES.terminals}?projectId=${encodeURIComponent(projectId)}`
+        );
     }
 
     async createTerminal(request: TerminalCreate): Promise<TerminalInfo> {
-        const response = await this.#fetch(this.#base + ROUTES.terminals, { method: 'POST', headers: { ...this.#headers, 'content-type': 'application/json' }, body: JSON.stringify(request) });
+        const response = await this.#fetch(this.#base + ROUTES.terminals, {
+            method: 'POST',
+            headers: { ...this.#headers, 'content-type': 'application/json' },
+            body: JSON.stringify(request),
+        });
 
         if (!response.ok) throw await refusal(response, ROUTES.terminals);
 
-        return await response.json() as TerminalInfo;
+        return (await response.json()) as TerminalInfo;
     }
 
     async closeTerminal(terminalId: TerminalId): Promise<void> {
@@ -330,14 +420,18 @@ export class HttpTransport implements Transport {
     openTerminal(terminalId: TerminalId, handlers: TerminalStreamHandlers): TerminalStream {
         return new TerminalSocket({
             handlers,
-            address: () => ({ url: `${ this.#base.replace(/^http/, 'ws') }${ ROUTES.terminalStream(terminalId) }`, token: this.#token }),
+            address: () => ({
+                url: `${this.#base.replace(/^http/, 'ws')}${ROUTES.terminalStream(terminalId)}`,
+                token: this.#token,
+            }),
             exists: async () => {
                 try {
                     const response = await this.#fetch(this.#base + ROUTES.terminals, { headers: this.#headers });
 
-                    return response.ok ? (await response.json() as TerminalInfo[]).some(terminal => terminal.id === terminalId) : undefined;
-                }
-                catch {
+                    return response.ok
+                        ? ((await response.json()) as TerminalInfo[]).some(terminal => terminal.id === terminalId)
+                        : undefined;
+                } catch {
                     return undefined;
                 }
             },
@@ -363,9 +457,8 @@ export class HttpTransport implements Transport {
                 // The daemon refused the command (400, 404, 409 ...) with a result; that is an answer, not a failure.
                 if (isCommandResult(result)) return result;
 
-                failure = new TransportError(`The daemon answered ${ response.status }`, response.status);
-            }
-            catch (error) {
+                failure = new TransportError(`The daemon answered ${response.status}`, response.status);
+            } catch (error) {
                 failure = error;
             }
         }
@@ -373,7 +466,11 @@ export class HttpTransport implements Transport {
         throw failure;
     }
 
-    subscribe(cursor: number, onEvent: (event: ClowdyEvent) => void, onStatus: (status: FeedStatus) => void): () => void {
+    subscribe(
+        cursor: number,
+        onEvent: (event: ClowdyEvent) => void,
+        onStatus: (status: FeedStatus) => void
+    ): () => void {
         const controller = new AbortController();
 
         void this.#follow(cursor, onEvent, onStatus, controller.signal);
@@ -387,38 +484,52 @@ export class HttpTransport implements Transport {
 
         if (!response.ok) throw await refusal(response, route);
 
-        return await response.json() as T;
+        return (await response.json()) as T;
     }
 
     /** A write the daemon makes for a person (a commit, a fetch, a pull, a push) or a run it makes for one (a message), as JSON. Sent once, never retried: the daemon's reason is the error. */
     async #write<T>(route: string, body: unknown): Promise<T> {
-        const response = await this.#fetch(this.#base + route, { method: 'POST', headers: { ...this.#headers, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+        const response = await this.#fetch(this.#base + route, {
+            method: 'POST',
+            headers: { ...this.#headers, 'content-type': 'application/json' },
+            body: JSON.stringify(body),
+        });
 
         if (!response.ok) throw await refusal(response, route);
 
-        return await response.json() as T;
+        return (await response.json()) as T;
     }
 
     async #get<T>(route: string, headers: Record<string, string> = this.#headers): Promise<T> {
         const response = await this.#fetch(this.#base + route, { headers });
 
-        if (!response.ok) throw new TransportError(`The daemon answered ${ response.status } for ${ route }`, response.status);
+        if (!response.ok)
+            throw new TransportError(`The daemon answered ${response.status} for ${route}`, response.status);
 
-        return await response.json() as T;
+        return (await response.json()) as T;
     }
 
-    async #follow(cursor: number, onEvent: (event: ClowdyEvent) => void, onStatus: (status: FeedStatus) => void, signal: AbortSignal): Promise<void> {
+    async #follow(
+        cursor: number,
+        onEvent: (event: ClowdyEvent) => void,
+        onStatus: (status: FeedStatus) => void,
+        signal: AbortSignal
+    ): Promise<void> {
         let backoff = RECONNECT_MIN_MS;
 
         while (!signal.aborted) {
             try {
-                const response = await this.#fetch(`${ this.#base }${ ROUTES.events }?cursor=${ cursor }`, {
+                const response = await this.#fetch(`${this.#base}${ROUTES.events}?cursor=${cursor}`, {
                     headers: { ...this.#headers, accept: 'text/event-stream' },
                     signal,
                 });
 
                 if (response.status === 410) return onStatus('resync');
-                if (!response.ok || !response.body) throw new TransportError(`The daemon answered ${ response.status } for the event feed`, response.status);
+                if (!response.ok || !response.body)
+                    throw new TransportError(
+                        `The daemon answered ${response.status} for the event feed`,
+                        response.status
+                    );
 
                 onStatus('connected');
                 backoff = RECONNECT_MIN_MS;
@@ -437,8 +548,7 @@ export class HttpTransport implements Transport {
                         onEvent(event);
                     }
                 }
-            }
-            catch {
+            } catch {
                 // Dropped or refused: fall through to the retry below.
             }
 

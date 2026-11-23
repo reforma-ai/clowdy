@@ -20,12 +20,14 @@ export function TaskChip({ task, onPress, className }: TaskChipProps) {
     return (
         <button
             type="button"
-            className={ cn(styles.chip, className) }
-            title={ task.title }
-            onClick={ onPress ?? (() => ui.openTask(task.id)) }
+            className={cn(styles.chip, className)}
+            title={task.title}
+            onClick={onPress ?? (() => ui.openTask(task.id))}
         >
-            <span className={ styles.icon }><Box width={ 12 } height={ 12 } /></span>
-            <span className={ styles.label }>{ task.key }</span>
+            <span className={styles.icon}>
+                <Box width={12} height={12} />
+            </span>
+            <span className={styles.label}>{task.key}</span>
         </button>
     );
 }

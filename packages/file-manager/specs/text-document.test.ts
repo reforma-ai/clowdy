@@ -128,7 +128,7 @@ describe('TextDocument', () => {
         expect(document.conflict).toBe(false);
     });
 
-    it('should keep the file\'s CRLF line breaks', async () => {
+    it("should keep the file's CRLF line breaks", async () => {
         const { fs, manager } = await setup({ 'win.txt': 'a\r\nb\r\n' });
         const document = await open(manager, 'win.txt');
 

@@ -50,7 +50,8 @@ export type ControlGroupInputProps = InputProps & {
     variant?: ControlGroupVariant;
 };
 
-export interface ControlGroupSelectProps<T extends object = object> extends Omit<SelectProps<T>, 'size' | 'variant' | 'className' | 'triggerClassName' | 'children'> {
+export interface ControlGroupSelectProps<T extends object = object>
+    extends Omit<SelectProps<T>, 'size' | 'variant' | 'className' | 'triggerClassName' | 'children'> {
     size?: ControlGroupSize;
     variant?: ControlGroupVariant;
     className?: string;
@@ -69,41 +70,41 @@ export function ControlGroup({
     ...props
 }: ControlGroupProps) {
     const contextValue = useMemo(() => ({ size, variant }), [size, variant]);
-    const groupStyle = useMemo<ControlGroupStyle>(() => ({
-        ...style,
-        '--clowdy-control-group-columns': templateColumns ?? (columns ? `repeat(${ columns }, minmax(0, 1fr))` : undefined),
-    }), [columns, style, templateColumns]);
+    const groupStyle = useMemo<ControlGroupStyle>(
+        () => ({
+            ...style,
+            '--clowdy-control-group-columns':
+                templateColumns ?? (columns ? `repeat(${columns}, minmax(0, 1fr))` : undefined),
+        }),
+        [columns, style, templateColumns]
+    );
 
     return (
-        <ControlGroupContext value={ contextValue }>
+        <ControlGroupContext value={contextValue}>
             <div
-                { ...props }
-                className={ cn(styles.group, className) }
-                style={ groupStyle }
-                data-size={ size }
-                data-variant={ variant }
+                {...props}
+                className={cn(styles.group, className)}
+                style={groupStyle}
+                data-size={size}
+                data-variant={variant}
             >
-                { children }
+                {children}
             </div>
         </ControlGroupContext>
     );
 }
 
-function ControlGroupFieldRoot({
-    size,
-    className,
-    children,
-}: ControlGroupFieldProps) {
+function ControlGroupFieldRoot({ size, className, children }: ControlGroupFieldProps) {
     const context = use(ControlGroupContext);
 
     return (
         <FormField
-            size={ size ?? context?.size ?? 'sm' }
+            size={size ?? context?.size ?? 'sm'}
             labelPlacement="bottom"
             labelAlign="center"
-            className={ cn(styles.field, className) }
+            className={cn(styles.field, className)}
         >
-            { children }
+            {children}
         </FormField>
     );
 }
@@ -112,33 +113,20 @@ export const ControlGroupField = Object.assign(ControlGroupFieldRoot, {
     Label: FormField.Label,
 });
 
-export function ControlGroupControl({
-    className,
-    children,
-    ...props
-}: ControlGroupControlProps) {
+export function ControlGroupControl({ className, children, ...props }: ControlGroupControlProps) {
     return (
-        <AsChild { ...props } className={ cn(styles.control, className) }>
-            { children }
+        <AsChild {...props} className={cn(styles.control, className)}>
+            {children}
         </AsChild>
     );
 }
 
-export function ControlGroupInput({
-    className,
-    size,
-    variant,
-    ...props
-}: ControlGroupInputProps) {
+export function ControlGroupInput({ className, size, variant, ...props }: ControlGroupInputProps) {
     const context = use(ControlGroupContext);
 
     return (
-        <ControlGroupControl className={ className }>
-            <Input
-                { ...props }
-                size={ size ?? context?.size ?? 'sm' }
-                variant={ variant ?? context?.variant ?? 'filled' }
-            />
+        <ControlGroupControl className={className}>
+            <Input {...props} size={size ?? context?.size ?? 'sm'} variant={variant ?? context?.variant ?? 'filled'} />
         </ControlGroupControl>
     );
 }
@@ -156,13 +144,13 @@ export function ControlGroupSelect<T extends object>({
 
     return (
         <Select
-            { ...props }
-            className={ cn(styles.select, className) }
-            triggerClassName={ cn(styles.control, styles.selectTrigger, triggerClassName) }
-            size={ controlSize }
-            variant={ variant ?? context?.variant ?? 'filled' }
+            {...props}
+            className={cn(styles.select, className)}
+            triggerClassName={cn(styles.control, styles.selectTrigger, triggerClassName)}
+            size={controlSize}
+            variant={variant ?? context?.variant ?? 'filled'}
         >
-            { children }
+            {children}
         </Select>
     );
 }

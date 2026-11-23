@@ -31,28 +31,49 @@ interface AgentCardProps {
 function AgentCard({ title, line, error, running, muted, onOpen }: AgentCardProps) {
     const content = (
         <>
-            <span className={ styles.icon } aria-hidden>{ running ? <ProgressLoader size={ 14 } /> : <Message /> }</span>
-            <span className={ styles.text }>
-                <span className={ styles.titleLine }>
-                    { running
-                        ? <Shimmer as="span" className={ styles.title } duration={ 1 }>{ title }</Shimmer>
-                        : <Text className={ styles.title } color={ muted ? 'secondary' : undefined }>{ title }</Text> }
+            <span className={styles.icon} aria-hidden>
+                {running ? <ProgressLoader size={14} /> : <Message />}
+            </span>
+            <span className={styles.text}>
+                <span className={styles.titleLine}>
+                    {running ? (
+                        <Shimmer as="span" className={styles.title} duration={1}>
+                            {title}
+                        </Shimmer>
+                    ) : (
+                        <Text className={styles.title} color={muted ? 'secondary' : undefined}>
+                            {title}
+                        </Text>
+                    )}
                 </span>
-                { line && <Text variant="sm" color="secondary" truncate>{ line }</Text> }
-                { error && <Text variant="xs" color="danger" className={ styles.error }>{ error }</Text> }
+                {line && (
+                    <Text variant="sm" color="secondary" truncate>
+                        {line}
+                    </Text>
+                )}
+                {error && (
+                    <Text variant="xs" color="danger" className={styles.error}>
+                        {error}
+                    </Text>
+                )}
             </span>
         </>
     );
 
     return (
-        <div className={ styles.card } data-slot="agent-card" aria-busy={ running || undefined }>
-            { onOpen
-                ? (
-                    <button type="button" className={ styles.body } aria-label={ [title, line].filter(Boolean).join('. ') } onClick={ onOpen }>
-                        { content }
-                    </button>
-                )
-                : <div className={ styles.body }>{ content }</div> }
+        <div className={styles.card} data-slot="agent-card" aria-busy={running || undefined}>
+            {onOpen ? (
+                <button
+                    type="button"
+                    className={styles.body}
+                    aria-label={[title, line].filter(Boolean).join('. ')}
+                    onClick={onOpen}
+                >
+                    {content}
+                </button>
+            ) : (
+                <div className={styles.body}>{content}</div>
+            )}
         </div>
     );
 }
@@ -83,12 +104,12 @@ export function SubagentCard({ call, active }: SubagentCardProps) {
 
     return (
         <AgentCard
-            title={ stalled ? 'The agent did not finish' : subagentTitle(label, live) }
-            line={ agentStatusLine({ live, failed, stalled, activity }) }
-            error={ failed ? call.error?.trim() || 'The agent failed' : undefined }
-            running={ live }
-            muted={ stalled }
-            onOpen={ child && (() => ui.openRun(child.id)) }
+            title={stalled ? 'The agent did not finish' : subagentTitle(label, live)}
+            line={agentStatusLine({ live, failed, stalled, activity })}
+            error={failed ? call.error?.trim() || 'The agent failed' : undefined}
+            running={live}
+            muted={stalled}
+            onOpen={child && (() => ui.openRun(child.id))}
         />
     );
 }

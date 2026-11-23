@@ -8,7 +8,13 @@ export function formatTime(at: number): string {
 const stamp = { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' } as const;
 const sameYearStamp = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', ...stamp });
 const otherYearStamp = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', ...stamp });
-const fullStamp = new Intl.DateTimeFormat('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', ...stamp });
+const fullStamp = new Intl.DateTimeFormat('en-GB', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    ...stamp,
+});
 
 /**
  * When a message was written, in the fewest words: the time alone for today (`22:54`), the day too for an earlier day of
@@ -32,13 +38,13 @@ export function formatFullTime(at: number): string {
 export function formatDuration(milliseconds: number): string {
     const seconds = Math.max(0, Math.round(milliseconds / 1000));
 
-    if (seconds < 60) return `${ seconds }s`;
+    if (seconds < 60) return `${seconds}s`;
 
     const minutes = Math.floor(seconds / 60);
 
-    if (minutes < 60) return `${ minutes }m ${ String(seconds % 60).padStart(2, '0') }s`;
+    if (minutes < 60) return `${minutes}m ${String(seconds % 60).padStart(2, '0')}s`;
 
-    return `${ Math.floor(minutes / 60) }h ${ String(minutes % 60).padStart(2, '0') }m`;
+    return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m`;
 }
 
 /**
@@ -50,15 +56,15 @@ export function formatRemaining(milliseconds: number): string {
 
     if (minutes < 1) return 'now';
 
-    if (minutes < 60) return `${ minutes }m`;
+    if (minutes < 60) return `${minutes}m`;
 
     const hours = Math.floor(minutes / 60);
 
-    if (hours < 24) return minutes % 60 === 0 ? `${ hours }h` : `${ hours }h ${ minutes % 60 }m`;
+    if (hours < 24) return minutes % 60 === 0 ? `${hours}h` : `${hours}h ${minutes % 60}m`;
 
     const days = Math.floor(hours / 24);
 
-    return hours % 24 === 0 ? `${ days }d` : `${ days }d ${ hours % 24 }h`;
+    return hours % 24 === 0 ? `${days}d` : `${days}d ${hours % 24}h`;
 }
 
 /** How long ago, in the fewest characters: `now` under a minute, then `28m`, `3h`, `2d`, `5w`, `4mo`, `2y`. Rounded down. */
@@ -67,24 +73,24 @@ export function formatElapsed(milliseconds: number): string {
 
     if (minutes < 1) return 'now';
 
-    if (minutes < 60) return `${ minutes }m`;
+    if (minutes < 60) return `${minutes}m`;
 
     const hours = Math.floor(minutes / 60);
 
-    if (hours < 24) return `${ hours }h`;
+    if (hours < 24) return `${hours}h`;
 
     const days = Math.floor(hours / 24);
 
-    if (days < 7) return `${ days }d`;
+    if (days < 7) return `${days}d`;
 
-    if (days < 30) return `${ Math.floor(days / 7) }w`;
+    if (days < 30) return `${Math.floor(days / 7)}w`;
 
-    if (days < 365) return `${ Math.floor(days / 30) }mo`;
+    if (days < 365) return `${Math.floor(days / 30)}mo`;
 
-    return `${ Math.floor(days / 365) }y`;
+    return `${Math.floor(days / 365)}y`;
 }
 
-const plural = (count: number, unit: string) => `${ count } ${ unit }${ count === 1 ? '' : 's' }`;
+const plural = (count: number, unit: string) => `${count} ${unit}${count === 1 ? '' : 's'}`;
 
 /** What `formatRemaining` says, in words for a screen reader: `less than a minute`, `28 minutes`, `1 hour 32 minutes`, `6 days 2 hours`. */
 export function describeRemaining(milliseconds: number): string {
@@ -96,9 +102,12 @@ export function describeRemaining(milliseconds: number): string {
 
     const hours = Math.floor(minutes / 60);
 
-    if (hours < 24) return minutes % 60 === 0 ? plural(hours, 'hour') : `${ plural(hours, 'hour') } ${ plural(minutes % 60, 'minute') }`;
+    if (hours < 24)
+        return minutes % 60 === 0
+            ? plural(hours, 'hour')
+            : `${plural(hours, 'hour')} ${plural(minutes % 60, 'minute')}`;
 
     const days = Math.floor(hours / 24);
 
-    return hours % 24 === 0 ? plural(days, 'day') : `${ plural(days, 'day') } ${ plural(hours % 24, 'hour') }`;
+    return hours % 24 === 0 ? plural(days, 'day') : `${plural(days, 'day')} ${plural(hours % 24, 'hour')}`;
 }

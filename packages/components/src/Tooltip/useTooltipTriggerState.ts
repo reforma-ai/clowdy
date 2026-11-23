@@ -26,12 +26,10 @@ export interface ClowdyTooltipTriggerStateProps extends TooltipTriggerProps {
  * `warmUp={false}` (default): every hover waits the full `delay`.
  * `warmUp={true}`: shared warmup/cooldown like React Stately (toolbars).
  */
-export function useTooltipTriggerState(
-    props: ClowdyTooltipTriggerStateProps = {}
-): TooltipTriggerState {
+export function useTooltipTriggerState(props: ClowdyTooltipTriggerStateProps = {}): TooltipTriggerState {
     const { delay = 500, closeDelay = 150, warmUp = false } = props;
     const { isOpen, open, close } = useOverlayTriggerState(props);
-    const id = useMemo(() => `${ ++tooltipId }`, []);
+    const id = useMemo(() => `${++tooltipId}`, []);
     const closeTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
     const openTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
     const closeCallback = useRef(close);
@@ -49,8 +47,7 @@ export function useTooltipTriggerState(
             }
 
             closeCallback.current();
-        }
-        else if (!closeTimeout.current) {
+        } else if (!closeTimeout.current) {
             closeTimeout.current = setTimeout(() => {
                 closeTimeout.current = null;
                 closeCallback.current();
@@ -71,11 +68,14 @@ export function useTooltipTriggerState(
                 clearTimeout(globalCooldownTimeout);
             }
 
-            globalCooldownTimeout = setTimeout(() => {
-                delete tooltips[id];
-                globalCooldownTimeout = null;
-                globalWarmedUp = false;
-            }, Math.max(WARMUP_COOLDOWN_MIN, closeDelay));
+            globalCooldownTimeout = setTimeout(
+                () => {
+                    delete tooltips[id];
+                    globalCooldownTimeout = null;
+                    globalWarmedUp = false;
+                },
+                Math.max(WARMUP_COOLDOWN_MIN, closeDelay)
+            );
         }
     };
 
@@ -142,8 +142,7 @@ export function useTooltipTriggerState(
                     globalWarmedUp = true;
                     showTooltip();
                 }, delay);
-            }
-            else {
+            } else {
                 showTooltip();
             }
 
@@ -159,8 +158,7 @@ export function useTooltipTriggerState(
                 openTimeout.current = null;
                 showTooltip();
             }, delay);
-        }
-        else {
+        } else {
             showTooltip();
         }
     };
@@ -191,8 +189,7 @@ export function useTooltipTriggerState(
         open: (immediate?: boolean) => {
             if (!immediate && delay > 0 && !closeTimeout.current) {
                 scheduleShow();
-            }
-            else {
+            } else {
                 showTooltip();
             }
         },

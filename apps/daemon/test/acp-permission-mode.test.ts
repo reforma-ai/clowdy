@@ -18,33 +18,60 @@ const MODES = ['default', 'acceptEdits', 'auto', 'bypassPermissions'];
 
 /** The options a Claude-like agent opens a session with. */
 const options = (mode = 'default'): SelectOption[] => [
-    { id: 'model', category: 'model', currentValue: 'fast', choices: [{ value: 'fast', name: 'Fast' }, { value: 'smart', name: 'Smart' }] },
-    { id: 'effort', category: 'thought_level', currentValue: 'high', choices: ['low', 'high', 'max'].map(value => ({ value, name: value })) },
+    {
+        id: 'model',
+        category: 'model',
+        currentValue: 'fast',
+        choices: [
+            { value: 'fast', name: 'Fast' },
+            { value: 'smart', name: 'Smart' },
+        ],
+    },
+    {
+        id: 'effort',
+        category: 'thought_level',
+        currentValue: 'high',
+        choices: ['low', 'high', 'max'].map(value => ({ value, name: value })),
+    },
     { id: 'mode', category: 'mode', currentValue: mode, choices: MODES.map(value => ({ value, name: value })) },
 ];
 
 /** Runs `applyChoices` on `opened` and says what it sent, in order. */
-async function sent(opened: SelectOption[], choices: { model?: string; effort?: string; mode?: string }): Promise<ConfigChange[]> {
+async function sent(
+    opened: SelectOption[],
+    choices: { model?: string; effort?: string; mode?: string }
+): Promise<ConfigChange[]> {
     const changes: ConfigChange[] = [];
 
-    await applyChoices({ agent: 'Test agent', options: opened, ...choices, set: async (change) => {
-        changes.push(change);
+    await applyChoices({
+        agent: 'Test agent',
+        options: opened,
+        ...choices,
+        set: async change => {
+            changes.push(change);
 
-        return undefined;
-    } });
+            return undefined;
+        },
+    });
 
     return changes;
 }
 
 describe('the permission mode of a preset', () => {
-    test('is set on the agent\'s mode option, after the model and the reasoning level', async () => {
+    test("is set on the agent's mode option, after the model and the reasoning level", async () => {
         const changes = await sent(options(), { model: 'smart', effort: 'max', mode: 'auto' });
 
-        expect(changes.map(change => [change.configId, change.value])).toEqual([['model', 'smart'], ['effort', 'max'], ['mode', 'auto']]);
+        expect(changes.map(change => [change.configId, change.value])).toEqual([
+            ['model', 'smart'],
+            ['effort', 'max'],
+            ['mode', 'auto'],
+        ]);
     });
 
     test('is set alone, and found by the value the agent uses for it', async () => {
-        expect(await sent(options(), { mode: 'bypassPermissions' })).toEqual([{ configId: 'mode', value: 'bypassPermissions', unchanged: false }]);
+        expect(await sent(options(), { mode: 'bypassPermissions' })).toEqual([
+            { configId: 'mode', value: 'bypassPermissions', unchanged: false },
+        ]);
     });
 
     test('is not sent again when the agent is on it already', async () => {
@@ -56,13 +83,19 @@ describe('the permission mode of a preset', () => {
 
         try {
             expect(await sent(options(), { mode: 'plan-ish' })).toEqual([]);
-            expect(warn).toHaveBeenCalledWith(expect.stringContaining('Test agent offers no permission mode called "plan-ish"'));
+            expect(warn).toHaveBeenCalledWith(
+                expect.stringContaining('Test agent offers no permission mode called "plan-ish"')
+            );
 
             // An agent with no mode option at all (Cursor has none that is a permission) is treated the same.
-            expect(await sent(options().filter(option => option.id !== 'mode'), { mode: 'auto' })).toEqual([]);
+            expect(
+                await sent(
+                    options().filter(option => option.id !== 'mode'),
+                    { mode: 'auto' }
+                )
+            ).toEqual([]);
             expect(warn).toHaveBeenCalledTimes(2);
-        }
-        finally {
+        } finally {
             warn.mockRestore();
         }
     });
@@ -72,7 +105,7 @@ describe('the permission mode of a preset', () => {
     });
 });
 
-describe.each(PROTOCOLS)('the permission mode through a session over %s', (protocol) => {
+describe.each(PROTOCOLS)('the permission mode through a session over %s', protocol => {
     let current: Rig | undefined;
 
     afterEach(() => {
@@ -81,12 +114,15 @@ describe.each(PROTOCOLS)('the permission mode through a session over %s', (proto
     });
 
     /** Starts the fake agent as a registry would resolve it for `permission` (undefined: an agent a test builds with no preset at all), and reads what the session ended up on. */
-    async function chosen(permission: ResolvedAgent['permission'], start: Parameters<Rig['start']>[1] = {}): Promise<{ model: string; effort: string; sets: number; mode?: string }> {
+    async function chosen(
+        permission: ResolvedAgent['permission'],
+        start: Parameters<Rig['start']>[1] = {}
+    ): Promise<{ model: string; effort: string; sets: number; mode?: string }> {
         current = rig({ protocol, agentEnv: { FAKE_ACP_MODES: '1' } });
 
         const resolve = current.registry.resolve.bind(current.registry);
 
-        current.registry.resolve = async (id) => {
+        current.registry.resolve = async id => {
             const found = await resolve(id);
 
             return found.ok ? { ok: true, agent: { ...found.agent, permission } } : found;
@@ -101,11 +137,16 @@ describe.each(PROTOCOLS)('the permission mode through a session over %s', (proto
     }
 
     test('reaches the agent as its mode', async () => {
-        expect(await chosen({ preset: 'accept-edits', mode: 'acceptEdits', answer: 'ask' })).toMatchObject({ mode: 'acceptEdits', sets: 1 });
+        expect(await chosen({ preset: 'accept-edits', mode: 'acceptEdits', answer: 'ask' })).toMatchObject({
+            mode: 'acceptEdits',
+            sets: 1,
+        });
     });
 
     test('is sent again on a session that resumes, since each turn is a new agent process', async () => {
-        expect(await chosen({ preset: 'auto', mode: 'auto', answer: 'ask' }, { resumeSessionId: 'earlier-7' })).toMatchObject({ mode: 'auto', sets: 1 });
+        expect(
+            await chosen({ preset: 'auto', mode: 'auto', answer: 'ask' }, { resumeSessionId: 'earlier-7' })
+        ).toMatchObject({ mode: 'auto', sets: 1 });
     });
 
     test('is not sent for a preset that sets none', async () => {
@@ -113,7 +154,7 @@ describe.each(PROTOCOLS)('the permission mode through a session over %s', (proto
     });
 });
 
-describe.each(PROTOCOLS)('an agent the person has not chosen a preset for, through a session over %s', (protocol) => {
+describe.each(PROTOCOLS)('an agent the person has not chosen a preset for, through a session over %s', protocol => {
     let bridge: ToolBridge | undefined;
 
     afterEach(() => {
@@ -122,10 +163,23 @@ describe.each(PROTOCOLS)('an agent the person has not chosen a preset for, throu
     });
 
     /** The real provider's `permissions` (or none) on the fake agent, which offers the modes of Claude's adapter; the registry resolves it as it does for a run. */
-    function agentOn(provider: Pick<Provider, 'permissions'>): { registry: AgentRegistry; run: (prompt: string) => Promise<{ text: string; asked: ApprovalRequest[] }> } {
+    function agentOn(provider: Pick<Provider, 'permissions'>): {
+        registry: AgentRegistry;
+        run: (prompt: string) => Promise<{ text: string; asked: ApprovalRequest[] }>;
+    } {
         const registry = new AgentRegistry({
             discovery: quietDiscovery(),
-            providers: [{ ...provider, spec: { ...testSpec('stub').spec, launch: { kind: 'binary', args: [protocol === 'v2' ? FAKE_AGENT_V2 : FAKE_AGENT] }, env: { FAKE_ACP_MODES: '1' }, protocol } }],
+            providers: [
+                {
+                    ...provider,
+                    spec: {
+                        ...testSpec('stub').spec,
+                        launch: { kind: 'binary', args: [protocol === 'v2' ? FAKE_AGENT_V2 : FAKE_AGENT] },
+                        env: { FAKE_ACP_MODES: '1' },
+                        protocol,
+                    },
+                },
+            ],
         });
 
         registry.update('stub', { path: process.execPath });
@@ -138,11 +192,17 @@ describe.each(PROTOCOLS)('an agent the person has not chosen a preset for, throu
             async run(prompt) {
                 const asked: ApprovalRequest[] = [];
                 const { signal } = new AbortController();
-                const session = engine.start({ cwd: process.cwd(), prompt, tools: [], signal, approve: async (request) => {
-                    asked.push(request);
+                const session = engine.start({
+                    cwd: process.cwd(),
+                    prompt,
+                    tools: [],
+                    signal,
+                    approve: async request => {
+                        asked.push(request);
 
-                    return 'allow_once';
-                } });
+                        return 'allow_once';
+                    },
+                });
                 const events = await collect(session);
 
                 await session.close();
@@ -165,11 +225,14 @@ describe.each(PROTOCOLS)('an agent the person has not chosen a preset for, throu
         const { run } = agentOn({ permissions: claude.permissions });
         const { text, asked } = await run(REQUEST);
 
-        expect(read(text)).toEqual({ choice: { model: 'fast', effort: 'high', sets: 1, mode: 'auto' }, answer: 'permission: once' });
+        expect(read(text)).toEqual({
+            choice: { model: 'fast', effort: 'high', sets: 1, mode: 'auto' },
+            answer: 'permission: once',
+        });
         expect(asked).toHaveLength(1);
     });
 
-    test('an agent whose provider declares none starts on the client\'s Full access: no mode, every request allowed, nobody asked', async () => {
+    test("an agent whose provider declares none starts on the client's Full access: no mode, every request allowed, nobody asked", async () => {
         const { run } = agentOn({});
         const { text, asked } = await run(REQUEST);
 
@@ -177,14 +240,17 @@ describe.each(PROTOCOLS)('an agent the person has not chosen a preset for, throu
         expect(asked).toEqual([]);
     });
 
-    test('the person\'s choice wins over the default', async () => {
+    test("the person's choice wins over the default", async () => {
         const full = agentOn({ permissions: claude.permissions });
 
         full.registry.update('stub', { permission: 'full' });
 
         const { text, asked } = await full.run(REQUEST);
 
-        expect(read(text)).toEqual({ choice: { model: 'fast', effort: 'high', sets: 1, mode: 'bypassPermissions' }, answer: 'permission: once' });
+        expect(read(text)).toEqual({
+            choice: { model: 'fast', effort: 'high', sets: 1, mode: 'bypassPermissions' },
+            answer: 'permission: once',
+        });
         expect(asked).toEqual([]);
     });
 });

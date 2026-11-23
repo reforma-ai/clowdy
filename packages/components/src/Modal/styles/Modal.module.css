@@ -73,9 +73,15 @@
 .root.overlay {
     margin: auto;
     width: 100%;
-    max-width: min(var(--modal-overlay-max-width, 100%), calc(100% - 2 * var(--modal-overlay-inset, var(--spacing-xxl))));
+    max-width: min(
+        var(--modal-overlay-max-width, 100%),
+        calc(100% - 2 * var(--modal-overlay-inset, var(--spacing-xxl)))
+    );
     height: 100%;
-    max-height: min(var(--modal-overlay-max-height, 100%), calc(100% - 2 * var(--modal-overlay-inset, var(--spacing-xxl))));
+    max-height: min(
+        var(--modal-overlay-max-height, 100%),
+        calc(100% - 2 * var(--modal-overlay-inset, var(--spacing-xxl)))
+    );
 }
 
 .data {

@@ -3,8 +3,8 @@ import { FileManager, type TabsSnapshot } from '@clowdy/file-manager';
 import { errorMessage } from '@clowdy/lib';
 import { makeAutoObservable, reaction } from 'mobx';
 
-import { readStored, writeStored, type KeyValueStorage } from '../../stores/storage';
-import { placeKey, placePath, type Place } from '../sidePanel/currentPlace';
+import { type KeyValueStorage, readStored, writeStored } from '../../stores/storage';
+import { type Place, placeKey, placePath } from '../sidePanel/currentPlace';
 import { HIDDEN_GLOBS } from './hidden';
 import { clipboardOf } from './systemClipboard';
 
@@ -21,14 +21,18 @@ export type FilesKind = 'files' | 'docs';
 export const MAX_OPEN_PLACES = 3;
 
 /** Where a place's tabs are kept: under the worktree's id for a chat's worktree, the folder's for its own checkout, so the one never shows the other's tabs. */
-const tabsKey = (projectId: ProjectId, place: Place, kind: FilesKind) => `clowdy:${ kind }:${ projectId }:${ placeKey(place) }`;
+const tabsKey = (projectId: ProjectId, place: Place, kind: FilesKind) =>
+    `clowdy:${kind}:${projectId}:${placeKey(place)}`;
 
 function storedTabs(storage: KeyValueStorage | undefined, key: string): TabsSnapshot | undefined {
     const stored = readStored(storage, key) as Partial<TabsSnapshot> | undefined;
 
     if (!stored || !Array.isArray(stored.paths)) return undefined;
 
-    return { paths: stored.paths.filter(path => typeof path === 'string'), active: typeof stored.active === 'string' ? stored.active : null };
+    return {
+        paths: stored.paths.filter(path => typeof path === 'string'),
+        active: typeof stored.active === 'string' ? stored.active : null,
+    };
 }
 
 /**
@@ -51,14 +55,17 @@ export class FilesStore {
     #disposed = false;
 
     /** In the desktop app the tree has the system's clipboard, for the files of the place's own path (the worktree's, for a worktree); in a page that is not the desktop app it has no Copy and no Paste. */
-    constructor(readonly transport: Pick<Transport, 'fileSystem'>, readonly storage?: KeyValueStorage) {
+    constructor(
+        readonly transport: Pick<Transport, 'fileSystem'>,
+        readonly storage?: KeyValueStorage
+    ) {
         makeAutoObservable<FilesStore, 'transport' | 'storage'>(this, { transport: false, storage: false });
     }
 
     /** The file manager of a place of a project, the Files tab's or the Docs tab's. */
     managerOf(projectId: ProjectId, place: Place, kind: FilesKind = 'files'): FileManager {
         const key = tabsKey(projectId, place, kind);
-        const placeId = `${ projectId }/${ placeKey(place) }`;
+        const placeId = `${projectId}/${placeKey(place)}`;
         const keys = this.#places.get(placeId) ?? new Set<string>();
 
         // Asked for now: the place goes to the end of the line.
@@ -107,7 +114,11 @@ export class FilesStore {
         for (const [placeId, keys] of this.#places) {
             if (this.#places.size <= MAX_OPEN_PLACES) return;
 
-            if (placeId === current || [...keys].some(key => this.#managers.get(key)?.tabs.documents.some(document => document.dirty))) continue;
+            if (
+                placeId === current ||
+                [...keys].some(key => this.#managers.get(key)?.tabs.documents.some(document => document.dirty))
+            )
+                continue;
 
             for (const key of keys) {
                 this.#keepers.get(key)?.();
@@ -128,19 +139,32 @@ export class FilesStore {
             search: files.search?.bind(files),
             hidden: HIDDEN_GLOBS,
             clipboard: clipboardOf(placePath(place)),
-            notify: (message, error) => void toast.error({ title: message, message: error === undefined ? undefined : errorMessage(error) }),
+            notify: (message, error) =>
+                void toast.error({ title: message, message: error === undefined ? undefined : errorMessage(error) }),
         });
         const saved = storedTabs(this.storage, key);
 
         // The tabs are kept as they change, from the moment they are reopened: a reopened tab that no longer has a file is dropped from what is kept.
-        const started = manager.start().then(() => (saved ? manager.restore(saved) : undefined)).then(() => {
-            // A store that was disposed, or a place that was closed, while the place was still being listed has nobody left to keep the tabs for.
-            if (this.#disposed || this.#managers.get(key) !== manager) return;
+        const started = manager
+            .start()
+            .then(() => (saved ? manager.restore(saved) : undefined))
+            .then(() => {
+                // A store that was disposed, or a place that was closed, while the place was still being listed has nobody left to keep the tabs for.
+                if (this.#disposed || this.#managers.get(key) !== manager) return;
 
-            this.#keepers.set(key, reaction(() => manager.snapshot(), snapshot => writeStored(this.storage, key, snapshot)));
-        });
+                this.#keepers.set(
+                    key,
+                    reaction(
+                        () => manager.snapshot(),
+                        snapshot => writeStored(this.storage, key, snapshot)
+                    )
+                );
+            });
 
-        this.#started.set(key, started.catch(() => undefined));
+        this.#started.set(
+            key,
+            started.catch(() => undefined)
+        );
         void started;
 
         return manager;

@@ -52,11 +52,11 @@ const sleepFor = (ms: number) => new Promise<void>(resolve => setTimeout(resolve
 export function chunkInput(text: string): string[] {
     const chunks: string[] = [];
 
-    for (let start = 0; start < text.length;) {
+    for (let start = 0; start < text.length; ) {
         let end = Math.min(start + INPUT_CHUNK_UNITS, text.length);
         const last = text.charCodeAt(end - 1);
 
-        if (end < text.length && last >= 0xD800 && last <= 0xDBFF) {
+        if (end < text.length && last >= 0xd800 && last <= 0xdbff) {
             end -= 1;
         }
 
@@ -148,14 +148,13 @@ export class TerminalSocket implements TerminalStream {
         const { address, handlers, WebSocket: Socket = WebSocket } = this.#options;
         const { url, token } = address();
 
-        return new Promise((resolve) => {
+        return new Promise(resolve => {
             let opened = false;
             let socket: WebSocket;
 
             try {
                 socket = new Socket(url, [TERMINAL_SUBPROTOCOL, terminalTokenProtocol(token)]);
-            }
-            catch {
+            } catch {
                 resolve(false);
 
                 return;
@@ -166,7 +165,7 @@ export class TerminalSocket implements TerminalStream {
             socket.onopen = () => {
                 opened = true;
             };
-            socket.onmessage = (event) => {
+            socket.onmessage = event => {
                 if (typeof event.data === 'string') {
                     const message = this.#parse(event.data);
 
@@ -174,12 +173,10 @@ export class TerminalSocket implements TerminalStream {
                         this.#open = true;
                         handlers.onStatus('open');
                         handlers.onScreen(message);
-                    }
-                    else if (message?.type === 'exit') {
+                    } else if (message?.type === 'exit') {
                         handlers.onExit(message.exitCode);
                     }
-                }
-                else {
+                } else {
                     handlers.onOutput(new Uint8Array(event.data as ArrayBuffer));
                 }
             };
@@ -198,8 +195,7 @@ export class TerminalSocket implements TerminalStream {
             const message = JSON.parse(text) as TerminalServerMessage;
 
             return typeof message === 'object' && message !== null ? message : undefined;
-        }
-        catch {
+        } catch {
             return undefined;
         }
     }

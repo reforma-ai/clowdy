@@ -40,7 +40,9 @@ export const isMarkdownFile = (name: string) => /\.(?:md|markdown)$/i.test(name)
  * folder (`.specify`, `.briefback`) and says whether it is a folder; the caller decides what that means (a stat on the disk, an entry of the tree).
  */
 export function docSourcesOf(isDirectory: (path: string) => boolean): DocSourceDef[] {
-    return DOC_SOURCES.filter(source => (source.requires === undefined || isDirectory(source.requires)) && isDirectory(source.root));
+    return DOC_SOURCES.filter(
+        source => (source.requires === undefined || isDirectory(source.requires)) && isDirectory(source.root)
+    );
 }
 
 /**
@@ -48,5 +50,5 @@ export function docSourcesOf(isDirectory: (path: string) => boolean): DocSourceD
  * sent to the Docs tab without asking what the folder has; `specs/x.md` of a folder without `.specify` is one, and the tab opens it though its tree does not draw it.
  */
 export function isDocumentPath(path: string): boolean {
-    return isMarkdownFile(path) && DOC_SOURCES.some(source => path.startsWith(`${ source.root }/`));
+    return isMarkdownFile(path) && DOC_SOURCES.some(source => path.startsWith(`${source.root}/`));
 }

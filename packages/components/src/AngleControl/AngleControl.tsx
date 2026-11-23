@@ -8,10 +8,10 @@ import { createPortal } from 'react-dom';
 import { Button } from '../Button';
 import { useControlledState } from '../hooks';
 import { Show } from '../Show';
-import { ANGLE_PREVIEW_GEOMETRY, DEFAULT_ANGLE_EXPANDED_SIZE } from './angle';
 import styles from './AngleControl.module.css';
 import { AngleDial } from './AngleDial';
 import { AnglePreview } from './AnglePreview';
+import { ANGLE_PREVIEW_GEOMETRY, DEFAULT_ANGLE_EXPANDED_SIZE } from './angle';
 import { useAngleState } from './useAngleState';
 
 import type { CSSProperties, HTMLAttributes } from 'react';
@@ -93,12 +93,10 @@ export function AngleControl({
     const isOverlayVisible = !isInactive && open && hasOverlayGeometry;
     const overlayScale = overlayGeometry?.scale ?? 1;
     const isValidExpandedSize = Number.isFinite(expandedSize) && expandedSize > 0;
-    const resolvedExpandedSize = isValidExpandedSize
-        ? expandedSize
-        : DEFAULT_ANGLE_EXPANDED_SIZE;
+    const resolvedExpandedSize = isValidExpandedSize ? expandedSize : DEFAULT_ANGLE_EXPANDED_SIZE;
     const previewGeometry = ANGLE_PREVIEW_GEOMETRY[size];
     const triggerStyle = {
-        '--clowdy-angle-preview-size': `${ previewGeometry.size }px`,
+        '--clowdy-angle-preview-size': `${previewGeometry.size}px`,
         ...style,
     } as CSSProperties;
 
@@ -124,15 +122,21 @@ export function AngleControl({
 
     const closeOverlay = useCallback(() => setOpen(false), [setOpen]);
 
-    const { overlayProps, underlayProps } = useOverlay({
-        isOpen: isOverlayVisible,
-        isDismissable: true,
-        onClose: closeOverlay,
-    }, overlayRef);
-    const { dialogProps } = useDialog({
-        'aria-label': ariaLabelledBy ? undefined : `${ ariaLabel } picker`,
-        'aria-labelledby': ariaLabelledBy,
-    }, overlayRef);
+    const { overlayProps, underlayProps } = useOverlay(
+        {
+            isOpen: isOverlayVisible,
+            isDismissable: true,
+            onClose: closeOverlay,
+        },
+        overlayRef
+    );
+    const { dialogProps } = useDialog(
+        {
+            'aria-label': ariaLabelledBy ? undefined : `${ariaLabel} picker`,
+            'aria-labelledby': ariaLabelledBy,
+        },
+        overlayRef
+    );
     const floatingDialProps = mergeProps(overlayProps, dialogProps) as HTMLAttributes<HTMLDivElement>;
 
     useEffect(() => {
@@ -160,109 +164,113 @@ export function AngleControl({
     const shouldMorphOverlay = !prefersReducedMotion && hasOverlayGeometry;
     const motionInitial = shouldMorphOverlay
         ? {
-            opacity: 0.92,
-            scale: overlayScale,
-        }
+              opacity: 0.92,
+              scale: overlayScale,
+          }
         : { opacity: 0 };
     const motionExit = shouldMorphOverlay
         ? {
-            opacity: 0,
-            scale: overlayScale,
-        }
+              opacity: 0,
+              scale: overlayScale,
+          }
         : { opacity: 0 };
     const triggerPressHandler = open ? closeOverlay : openOverlay;
 
     return (
         <>
             <Button
-                ref={ mergeRefs(triggerRef, ref) }
+                ref={mergeRefs(triggerRef, ref)}
                 variant="transparent"
                 size="unset"
                 iconOnly
-                className={ cn(styles.trigger, className) }
-                style={ triggerStyle }
-                data-readonly={ isReadOnly || undefined }
-                data-overlay-open={ isOverlayVisible || undefined }
-                isDisabled={ isDisabled }
-                aria-label={ ariaLabel }
-                aria-labelledby={ ariaLabelledBy }
-                aria-disabled={ isReadOnly || undefined }
-                aria-haspopup={ isReadOnly ? undefined : 'dialog' }
-                aria-expanded={ isReadOnly ? undefined : isOverlayVisible }
-                aria-controls={ isOverlayVisible ? overlayId : undefined }
-                tabIndex={ isReadOnly ? -1 : undefined }
-                onPress={ isReadOnly ? undefined : triggerPressHandler }
+                className={cn(styles.trigger, className)}
+                style={triggerStyle}
+                data-readonly={isReadOnly || undefined}
+                data-overlay-open={isOverlayVisible || undefined}
+                isDisabled={isDisabled}
+                aria-label={ariaLabel}
+                aria-labelledby={ariaLabelledBy}
+                aria-disabled={isReadOnly || undefined}
+                aria-haspopup={isReadOnly ? undefined : 'dialog'}
+                aria-expanded={isReadOnly ? undefined : isOverlayVisible}
+                aria-controls={isOverlayVisible ? overlayId : undefined}
+                tabIndex={isReadOnly ? -1 : undefined}
+                onPress={isReadOnly ? undefined : triggerPressHandler}
             >
-                <AnglePreview normalizedDegrees={ angle.normalizedDegrees } size={ size } />
+                <AnglePreview normalizedDegrees={angle.normalizedDegrees} size={size} />
             </Button>
 
-            <Show when={ portalTarget }>
-                { target => createPortal(
-                    <AnimatePresence
-                        initial={ false }
-                        onExitComplete={ () => {
-                            if (!isOverlayVisible) {
-                                setOverlayGeometry(null);
-                            }
-                        } }
-                    >
-                        <Show when={ isOverlayVisible ? overlayGeometry : null }>
-                            { visibleOverlayGeometry => (
-                                <div className={ styles.overlayLayer } data-modal-clickout-layer>
-                                    <motion.div
-                                        className={ styles.overlay }
-                                        initial={ { opacity: 0 } }
-                                        animate={ { opacity: 1 } }
-                                        exit={ { opacity: 0 } }
-                                        transition={ OVERLAY_TRANSITION }
-                                        onPointerDown={ underlayProps.onPointerDown }
-                                    />
-
-                                    <FocusScope contain restoreFocus>
+            <Show when={portalTarget}>
+                {target =>
+                    createPortal(
+                        <AnimatePresence
+                            initial={false}
+                            onExitComplete={() => {
+                                if (!isOverlayVisible) {
+                                    setOverlayGeometry(null);
+                                }
+                            }}
+                        >
+                            <Show when={isOverlayVisible ? overlayGeometry : null}>
+                                {visibleOverlayGeometry => (
+                                    <div className={styles.overlayLayer} data-modal-clickout-layer>
                                         <motion.div
-                                            className={ cn(styles.floatingDial, popoverClassName) }
-                                            style={ {
-                                                '--clowdy-angle-size': `${ resolvedExpandedSize }px`,
-                                                left: visibleOverlayGeometry.left,
-                                                top: visibleOverlayGeometry.top,
-                                            } as CSSProperties }
-                                            initial={ motionInitial }
-                                            animate={ { opacity: 1, scale: 1 } }
-                                            exit={ motionExit }
-                                            transition={ OVERLAY_TRANSITION }
-                                        >
-                                            <div
-                                                { ...floatingDialProps }
-                                                ref={ overlayRef }
-                                                id={ overlayId }
-                                                className={ styles.dialogSurface }
+                                            className={styles.overlay}
+                                            initial={{ opacity: 0 }}
+                                            animate={{ opacity: 1 }}
+                                            exit={{ opacity: 0 }}
+                                            transition={OVERLAY_TRANSITION}
+                                            onPointerDown={underlayProps.onPointerDown}
+                                        />
+
+                                        <FocusScope contain restoreFocus>
+                                            <motion.div
+                                                className={cn(styles.floatingDial, popoverClassName)}
+                                                style={
+                                                    {
+                                                        '--clowdy-angle-size': `${resolvedExpandedSize}px`,
+                                                        left: visibleOverlayGeometry.left,
+                                                        top: visibleOverlayGeometry.top,
+                                                    } as CSSProperties
+                                                }
+                                                initial={motionInitial}
+                                                animate={{ opacity: 1, scale: 1 }}
+                                                exit={motionExit}
+                                                transition={OVERLAY_TRANSITION}
                                             >
-                                                <AngleDial
-                                                    angle={ angle }
-                                                    presets={ presets }
-                                                    snap={ snap }
-                                                    snapThresholdDeg={ snapThresholdDeg }
-                                                    isDisabled={ isDisabled }
-                                                    isReadOnly={ isReadOnly }
-                                                    step={ step }
-                                                    precision={ precision }
-                                                    valueRange={ valueRange }
-                                                    presetBehavior={ presetBehavior }
-                                                    controlSize={ resolvedExpandedSize }
-                                                    showInlineInput={ showInlineInput }
-                                                    ariaLabel={ ariaLabel }
-                                                    ariaLabelledBy={ ariaLabelledBy }
-                                                    autoFocus
-                                                />
-                                            </div>
-                                        </motion.div>
-                                    </FocusScope>
-                                </div>
-                            ) }
-                        </Show>
-                    </AnimatePresence>,
-                    target
-                ) }
+                                                <div
+                                                    {...floatingDialProps}
+                                                    ref={overlayRef}
+                                                    id={overlayId}
+                                                    className={styles.dialogSurface}
+                                                >
+                                                    <AngleDial
+                                                        angle={angle}
+                                                        presets={presets}
+                                                        snap={snap}
+                                                        snapThresholdDeg={snapThresholdDeg}
+                                                        isDisabled={isDisabled}
+                                                        isReadOnly={isReadOnly}
+                                                        step={step}
+                                                        precision={precision}
+                                                        valueRange={valueRange}
+                                                        presetBehavior={presetBehavior}
+                                                        controlSize={resolvedExpandedSize}
+                                                        showInlineInput={showInlineInput}
+                                                        ariaLabel={ariaLabel}
+                                                        ariaLabelledBy={ariaLabelledBy}
+                                                        autoFocus
+                                                    />
+                                                </div>
+                                            </motion.div>
+                                        </FocusScope>
+                                    </div>
+                                )}
+                            </Show>
+                        </AnimatePresence>,
+                        target
+                    )
+                }
             </Show>
         </>
     );

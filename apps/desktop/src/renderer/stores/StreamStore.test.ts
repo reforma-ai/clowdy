@@ -5,8 +5,15 @@ import { StreamStore } from './StreamStore';
 import type { StreamItem } from '@clowdy/protocol';
 import type { StreamTarget, Transport } from '../daemon/transport';
 
-const item = (seq: number, text: string, done = true): StreamItem => ({ id: `i${ seq }`, runId: 'r1', seq, at: seq, body: { kind: 'assistant', text, done } });
-const texts = (items: StreamItem[]) => items.map(entry => (entry.body.kind === 'assistant' ? entry.body.text : entry.body.kind));
+const item = (seq: number, text: string, done = true): StreamItem => ({
+    id: `i${seq}`,
+    runId: 'r1',
+    seq,
+    at: seq,
+    body: { kind: 'assistant', text, done },
+});
+const texts = (items: StreamItem[]) =>
+    items.map(entry => (entry.body.kind === 'assistant' ? entry.body.text : entry.body.kind));
 
 /** A transport whose item fetch the test releases by hand. */
 function slowTransport(fetched: StreamItem[]) {
@@ -27,7 +34,9 @@ function slowTransport(fetched: StreamItem[]) {
 
 describe('StreamStore', () => {
     it('orders fetched items by seq', async () => {
-        const store = new StreamStore({ getItems: async () => [item(3, 'c'), item(1, 'a'), item(2, 'b')] } as unknown as Transport);
+        const store = new StreamStore({
+            getItems: async () => [item(3, 'c'), item(1, 'a'), item(2, 'b')],
+        } as unknown as Transport);
         const stream = store.of('r1');
 
         await stream.load();
@@ -37,7 +46,9 @@ describe('StreamStore', () => {
     });
 
     it('updates an item in place when a live upsert has its id, and appends a new one at its seq', async () => {
-        const store = new StreamStore({ getItems: async () => [item(1, 'a'), item(2, 'partial', false)] } as unknown as Transport);
+        const store = new StreamStore({
+            getItems: async () => [item(1, 'a'), item(2, 'partial', false)],
+        } as unknown as Transport);
         const stream = store.of('r1');
 
         await stream.load();
@@ -116,7 +127,9 @@ describe('StreamStore', () => {
 
     describe('a truncation', () => {
         it('drops the items from its number on and keeps the rest, and the next item may take the freed number under a new id', async () => {
-            const store = new StreamStore({ getItems: async () => [item(1, 'a'), item(2, 'b'), item(3, 'c'), item(4, 'd')] } as unknown as Transport);
+            const store = new StreamStore({
+                getItems: async () => [item(1, 'a'), item(2, 'b'), item(3, 'c'), item(4, 'd')],
+            } as unknown as Transport);
             const stream = store.of('r1');
 
             await stream.load();
@@ -127,12 +140,18 @@ describe('StreamStore', () => {
             store.applyItem({ ...item(3, 'new'), id: 'i3-again' });
             store.applyItem(item(2, 'b, changed'));
 
-            expect(stream.items.map(entry => [entry.seq, entry.id])).toEqual([[1, 'i1'], [2, 'i2'], [3, 'i3-again']]);
+            expect(stream.items.map(entry => [entry.seq, entry.id])).toEqual([
+                [1, 'i1'],
+                [2, 'i2'],
+                [3, 'i3-again'],
+            ]);
             expect(texts(stream.items)).toEqual(['a', 'b, changed', 'new']);
         });
 
         it('cuts nothing when the number is past the end, and everything when it is the first', async () => {
-            const store = new StreamStore({ getItems: async () => [item(1, 'a'), item(2, 'b')] } as unknown as Transport);
+            const store = new StreamStore({
+                getItems: async () => [item(1, 'a'), item(2, 'b')],
+            } as unknown as Transport);
             const stream = store.of('r1');
 
             await stream.load();
@@ -145,7 +164,15 @@ describe('StreamStore', () => {
         });
 
         it('touches only the stream of its run, and none that nobody opened', async () => {
-            const store = new StreamStore({ getItems: async (target: StreamTarget) => ('runId' in target && target.runId === 'r1' ? [item(1, 'a'), item(2, 'b')] : [{ ...item(1, 'other'), runId: 'r2', id: 'x1' }, { ...item(2, 'other 2'), runId: 'r2', id: 'x2' }]) } as unknown as Transport);
+            const store = new StreamStore({
+                getItems: async (target: StreamTarget) =>
+                    'runId' in target && target.runId === 'r1'
+                        ? [item(1, 'a'), item(2, 'b')]
+                        : [
+                              { ...item(1, 'other'), runId: 'r2', id: 'x1' },
+                              { ...item(2, 'other 2'), runId: 'r2', id: 'x2' },
+                          ],
+            } as unknown as Transport);
             const first = store.of('r1');
             const second = store.of('r2');
 
@@ -170,11 +197,18 @@ describe('StreamStore', () => {
             finish();
             await loading;
 
-            expect(stream.items.map(entry => [entry.seq, entry.id])).toEqual([[1, 'i1'], [2, 'i2-again']]);
+            expect(stream.items.map(entry => [entry.seq, entry.id])).toEqual([
+                [1, 'i1'],
+                [2, 'i2-again'],
+            ]);
         });
 
         it('replays a cut over a fetch that was made after it: what came after the cut is re-added by its own events', async () => {
-            const { transport, finish } = slowTransport([item(1, 'a'), { ...item(2, 'new b'), id: 'i2-again' }, { ...item(3, 'new answer'), id: 'i3-again' }]);
+            const { transport, finish } = slowTransport([
+                item(1, 'a'),
+                { ...item(2, 'new b'), id: 'i2-again' },
+                { ...item(3, 'new answer'), id: 'i3-again' },
+            ]);
             const store = new StreamStore(transport);
             const stream = store.of('r1');
             const loading = stream.load();
@@ -189,7 +223,7 @@ describe('StreamStore', () => {
             expect(texts(stream.items)).toEqual(['a', 'new b', 'new answer']);
         });
 
-        it('is gone after a resync that fetches the stream again, which shows the daemon\'s own state', async () => {
+        it("is gone after a resync that fetches the stream again, which shows the daemon's own state", async () => {
             let fetched = [item(1, 'a'), item(2, 'b'), item(3, 'c')];
             const store = new StreamStore({ getItems: async () => fetched } as unknown as Transport);
             const stream = store.of('r1');
@@ -203,7 +237,7 @@ describe('StreamStore', () => {
             expect(texts(stream.items)).toEqual(['a', 'new b']);
         });
 
-        it('is ignored by a stream that failed to load: its next fetch is the daemon\'s state', async () => {
+        it("is ignored by a stream that failed to load: its next fetch is the daemon's state", async () => {
             let failing = true;
             const store = new StreamStore({
                 getItems: async () => {

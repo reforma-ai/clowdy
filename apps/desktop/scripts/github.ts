@@ -23,7 +23,9 @@ async function gh(args: string[]): Promise<string> {
 
 /** Every release, drafts included when the token can push (the newest 200, far more than the repository keeps). */
 export async function listReleases(): Promise<Release[]> {
-    return JSON.parse(await gh(['release', 'list', '--limit', '200', '--json', 'tagName,isDraft,isPrerelease'])) as Release[];
+    return JSON.parse(
+        await gh(['release', 'list', '--limit', '200', '--json', 'tagName,isDraft,isPrerelease'])
+    ) as Release[];
 }
 
 export interface CreateRelease {
@@ -37,7 +39,19 @@ export interface CreateRelease {
 }
 
 export async function createRelease({ tag, title, notes, target, draft, files = [] }: CreateRelease): Promise<void> {
-    await gh(['release', 'create', tag, '--title', title, '--notes', notes, '--target', target, ...draft ? ['--draft'] : [], ...files]);
+    await gh([
+        'release',
+        'create',
+        tag,
+        '--title',
+        title,
+        '--notes',
+        notes,
+        '--target',
+        target,
+        ...(draft ? ['--draft'] : []),
+        ...files,
+    ]);
 }
 
 /** Publishes a draft and marks it Latest. */
@@ -58,9 +72,10 @@ function notFound(error: unknown): boolean {
 /** The names of a release's assets, or undefined when there is no release with that tag. */
 export async function releaseAssets(tag: string): Promise<string[] | undefined> {
     try {
-        return (JSON.parse(await gh(['release', 'view', tag, '--json', 'assets'])) as { assets: Array<{ name: string }> }).assets.map(asset => asset.name);
-    }
-    catch (error) {
+        return (
+            JSON.parse(await gh(['release', 'view', tag, '--json', 'assets'])) as { assets: Array<{ name: string }> }
+        ).assets.map(asset => asset.name);
+    } catch (error) {
         if (notFound(error)) return undefined;
 
         throw error;
@@ -68,13 +83,30 @@ export async function releaseAssets(tag: string): Promise<string[] | undefined> 
 }
 
 /** Creates a prerelease, which never becomes Latest (what the shell updater follows). */
-export async function createPrerelease({ tag, title, notes, target }: Omit<CreateRelease, 'draft' | 'files'>): Promise<void> {
-    await gh(['release', 'create', tag, '--title', title, '--notes', notes, '--target', target, '--prerelease', '--latest=false']);
+export async function createPrerelease({
+    tag,
+    title,
+    notes,
+    target,
+}: Omit<CreateRelease, 'draft' | 'files'>): Promise<void> {
+    await gh([
+        'release',
+        'create',
+        tag,
+        '--title',
+        title,
+        '--notes',
+        notes,
+        '--target',
+        target,
+        '--prerelease',
+        '--latest=false',
+    ]);
 }
 
 /** Uploads files to a release; `clobber` replaces assets of the same name (a delete, then an upload). */
 export async function uploadAssets(tag: string, files: string[], clobber = false): Promise<void> {
-    await gh(['release', 'upload', tag, ...clobber ? ['--clobber'] : [], ...files]);
+    await gh(['release', 'upload', tag, ...(clobber ? ['--clobber'] : []), ...files]);
 }
 
 export async function deleteAsset(tag: string, name: string): Promise<void> {
@@ -85,8 +117,7 @@ export async function deleteAsset(tag: string, name: string): Promise<void> {
 export async function downloadAsset(tag: string, name: string): Promise<string | undefined> {
     try {
         return await gh(['release', 'download', tag, '--pattern', name, '--output', '-']);
-    }
-    catch (error) {
+    } catch (error) {
         if (notFound(error)) return undefined;
 
         throw error;

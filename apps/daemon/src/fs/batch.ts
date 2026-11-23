@@ -22,12 +22,13 @@ type Action =
     | { type: 'folders'; made: string[] }
     | { type: 'aside'; original: string; aside: string };
 
-const into = (mode: Mode, path: string) => conflict(`${ path } can't ${ mode } into itself`, { path });
+const into = (mode: Mode, path: string) => conflict(`${path} can't ${mode} into itself`, { path });
 
 /** Whether two real paths are the same file or one is below the other. */
 const overlaps = (a: string, b: string) => a === b || a.startsWith(b + sep) || b.startsWith(a + sep);
 
-const sameFile = (a: Located, b: Located) => a.stat !== undefined && b.stat !== undefined && a.stat.ino === b.stat.ino && a.stat.dev === b.stat.dev;
+const sameFile = (a: Located, b: Located) =>
+    a.stat !== undefined && b.stat !== undefined && a.stat.ino === b.stat.ino && a.stat.dev === b.stat.dev;
 
 /** Checks the whole batch against what is on disk before anything changes, so a refusal changes nothing. */
 async function check(root: string, mode: Mode, transfers: readonly Transfer[], overwrite: boolean): Promise<void> {
@@ -47,7 +48,7 @@ async function check(root: string, mode: Mode, transfers: readonly Transfer[], o
         }
 
         if (targets.has(to)) {
-            throw exists(to, `Two items go to ${ to }`);
+            throw exists(to, `Two items go to ${to}`);
         }
 
         targets.add(to);
@@ -60,7 +61,7 @@ async function check(root: string, mode: Mode, transfers: readonly Transfer[], o
         }
 
         if (target.blockedBy) {
-            throw exists(target.blockedBy, `A part of ${ to } is a file`);
+            throw exists(target.blockedBy, `A part of ${to} is a file`);
         }
 
         if (overlaps(target.real, source.real) && target.real !== source.real) {
@@ -82,10 +83,12 @@ async function check(root: string, mode: Mode, transfers: readonly Transfer[], o
     // Replacing what another item of the batch comes from or goes into would lose it, whatever order the items run in.
     if (overwrite) {
         for (const [index, { to }] of transfers.entries()) {
-            const clash = transfers.find((other, position) => position !== index && (isWithin(to, other.from) || isWithin(other.from, to)));
+            const clash = transfers.find(
+                (other, position) => position !== index && (isWithin(to, other.from) || isWithin(other.from, to))
+            );
 
             if (clash) {
-                throw conflict(`${ to } is replaced while ${ clash.from } is in the same batch`, { path: to });
+                throw conflict(`${to} is replaced while ${clash.from} is in the same batch`, { path: to });
             }
         }
     }
@@ -97,8 +100,7 @@ async function copyTree(source: string, target: string): Promise<void> {
 
     if (info.isSymbolicLink()) {
         await symlink(await readlink(source), target);
-    }
-    else if (info.isDirectory()) {
+    } else if (info.isDirectory()) {
         await mkdir(target);
 
         for (const name of await readdir(source)) {
@@ -106,8 +108,7 @@ async function copyTree(source: string, target: string): Promise<void> {
         }
 
         await chmod(target, info.mode & 0o7777).catch(() => undefined);
-    }
-    else if (info.isFile()) {
+    } else if (info.isFile()) {
         // A clone where the file system has them; EXCL because nothing may be there (a replaced target was set aside first).
         await copyFile(source, target, constants.COPYFILE_EXCL | constants.COPYFILE_FICLONE);
     }
@@ -118,18 +119,14 @@ async function undo(actions: readonly Action[]): Promise<void> {
         try {
             if (action.type === 'moved') {
                 await rename(action.to, action.from);
-            }
-            else if (action.type === 'copied') {
+            } else if (action.type === 'copied') {
                 await rm(action.to, { recursive: true, force: true });
-            }
-            else if (action.type === 'folders') {
+            } else if (action.type === 'folders') {
                 await removeFolders(action.made);
-            }
-            else {
+            } else {
                 await rename(action.aside, action.original);
             }
-        }
-        catch (error) {
+        } catch (error) {
             console.warn('[clowdy] could not take back a step of a failed batch:', error);
         }
     }
@@ -141,7 +138,12 @@ async function undo(actions: readonly Action[]): Promise<void> {
  * whole batch has worked. A move is a rename, so it keeps what it moves (versions included); a copy makes new files. The caller holds the
  * folder's lock, so no other change of ours lands in between.
  */
-export async function transfer(root: string, mode: Mode, transfers: readonly Transfer[], overwrite: boolean): Promise<void> {
+export async function transfer(
+    root: string,
+    mode: Mode,
+    transfers: readonly Transfer[],
+    overwrite: boolean
+): Promise<void> {
     await check(root, mode, transfers, overwrite);
 
     const actions: Action[] = [];
@@ -163,7 +165,7 @@ export async function transfer(root: string, mode: Mode, transfers: readonly Tra
             const target = await locate(root, to, false);
 
             if (target.blockedBy) {
-                throw exists(target.blockedBy, `A part of ${ to } is a file`);
+                throw exists(target.blockedBy, `A part of ${to} is a file`);
             }
 
             const itself = target.stat && sameFile(source, target);
@@ -193,14 +195,12 @@ export async function transfer(root: string, mode: Mode, transfers: readonly Tra
             if (mode === 'move') {
                 await rename(source.real, target.real);
                 actions.push({ type: 'moved', from: source.real, to: target.real });
-            }
-            else {
+            } else {
                 actions.push({ type: 'copied', to: target.real });
                 await copyTree(source.real, target.real);
             }
         }
-    }
-    catch (error) {
+    } catch (error) {
         await undo(actions);
         throw fsFailure(error, at);
     }
@@ -227,8 +227,7 @@ export async function remove(root: string, paths: readonly string[]): Promise<vo
 
         try {
             await rm(target.real, { recursive: true, force: true });
-        }
-        catch (error) {
+        } catch (error) {
             throw fsFailure(error, path);
         }
     }
@@ -239,12 +238,12 @@ export async function makeFolder(root: string, rel: string): Promise<void> {
     const target = await locate(root, rel, true);
 
     if (target.blockedBy) {
-        throw exists(target.blockedBy, `A part of ${ rel } is a file`);
+        throw exists(target.blockedBy, `A part of ${rel} is a file`);
     }
 
     if (target.stat) {
         if (!target.stat.isDirectory()) {
-            throw exists(rel, `${ rel } is a file`);
+            throw exists(rel, `${rel} is a file`);
         }
 
         return;
@@ -252,8 +251,7 @@ export async function makeFolder(root: string, rel: string): Promise<void> {
 
     try {
         await makeFolders(target.base, target.rest, rel);
-    }
-    catch (error) {
+    } catch (error) {
         throw fsFailure(error, rel);
     }
 }

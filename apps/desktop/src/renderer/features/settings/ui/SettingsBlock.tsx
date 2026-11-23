@@ -17,5 +17,5 @@ export function SettingsBlock({ as: Tag = 'div', className, ...props }: Settings
     // `div` and `li` take the same props here; the union of their element types does not.
     const Element = Tag as ElementType;
 
-    return <Element { ...props } className={ cn(styles.block, className) } />;
+    return <Element {...props} className={cn(styles.block, className)} />;
 }

@@ -18,7 +18,12 @@ const wait = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms
  * until `lastRead()` (the time of the last read, which every read moves, a failed one too) is no longer `before`, `isActive()` says
  * the caller is gone, or 30 s have passed.
  */
-export async function waitForRead(root: RootStore, lastRead: () => number | undefined, before: number | undefined, isActive: () => boolean): Promise<void> {
+export async function waitForRead(
+    root: RootStore,
+    lastRead: () => number | undefined,
+    before: number | undefined,
+    isActive: () => boolean
+): Promise<void> {
     const giveUpAt = Date.now() + READ_GIVE_UP_MS;
 
     while (isActive() && lastRead() === before && Date.now() < giveUpAt) {
@@ -45,34 +50,38 @@ export function useAgentCommands(agentId: string) {
     }, []);
 
     /** Sends `input`; `settle` runs after the agents were fetched and keeps the key pending until it ends. */
-    const send = useCallback(async (key: string, input: CommandInput, settle?: () => Promise<void>): Promise<boolean> => {
-        setPending(keys => new Set(keys).add(key));
+    const send = useCallback(
+        async (key: string, input: CommandInput, settle?: () => Promise<void>): Promise<boolean> => {
+            setPending(keys => new Set(keys).add(key));
 
-        const result = await root.command(input);
+            const result = await root.command(input);
 
-        if (result.ok) {
-            await root.refreshAgents();
-            await settle?.();
-        }
-        else toast.error({ message: result.error.message });
+            if (result.ok) {
+                await root.refreshAgents();
+                await settle?.();
+            } else toast.error({ message: result.error.message });
 
-        setPending((keys) => {
-            const rest = new Set(keys);
+            setPending(keys => {
+                const rest = new Set(keys);
 
-            rest.delete(key);
+                rest.delete(key);
 
-            return rest;
-        });
+                return rest;
+            });
 
-        return result.ok;
-    }, [root]);
+            return result.ok;
+        },
+        [root]
+    );
 
     return {
         pending,
         setEnabled: (enabled: boolean) => send('enabled', { type: 'agent.update', id: agentId, enabled }),
-        setSetting: (settingId: string, value: boolean) => send(`setting:${ settingId }`, { type: 'agent.update', id: agentId, settings: { [settingId]: value } }),
+        setSetting: (settingId: string, value: boolean) =>
+            send(`setting:${settingId}`, { type: 'agent.update', id: agentId, settings: { [settingId]: value } }),
         /** Picks one of the permission presets the agent offers (`AgentInfo.permissions`). */
-        setPermission: (permission: PermissionPresetId) => send('permission', { type: 'agent.update', id: agentId, permission }),
+        setPermission: (permission: PermissionPresetId) =>
+            send('permission', { type: 'agent.update', id: agentId, permission }),
         /** `null` goes back to looking for the program. */
         setPath: (path: string | null) => send('path', { type: 'agent.update', id: agentId, path }),
         /** Replaces the variables saved for the agent. */
@@ -87,7 +96,9 @@ export function useAgentCommands(agentId: string) {
             const lastRead = () => root.agents.find(agent => agent.id === agentId)?.signIn?.checkedAt;
             const before = lastRead();
 
-            return send('refresh', { type: 'agents.refresh' }, () => waitForRead(root, lastRead, before, () => isMounted.current));
+            return send('refresh', { type: 'agents.refresh' }, () =>
+                waitForRead(root, lastRead, before, () => isMounted.current)
+            );
         },
     };
 }

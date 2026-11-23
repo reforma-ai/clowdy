@@ -1,6 +1,6 @@
-import { isTerminalRunStatus, mainFolder, STOPPED_TOOL } from '@clowdy/protocol';
 import { statSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { isTerminalRunStatus, STOPPED_TOOL } from '@clowdy/protocol';
 
 import { getChat } from '../db/chats';
 import { listItems, nextSeq } from '../db/items';
@@ -8,6 +8,7 @@ import { getRun, getRunWork, listActiveRuns, listRunsWithProcess, setRunWork } f
 import { getWorkspace } from '../db/workspaces';
 import { git } from '../domain/git';
 import { appendItem, markRewindPoint } from '../domain/items';
+import { workingFolder } from '../domain/places';
 import { isBeingRemoved } from '../domain/workspaceRemoval';
 import { canNameBranch, needsPreparing, ownsWorktree, prepareWorkspace } from '../domain/workspaces';
 import { EngineFailure, errorMessage } from '../errors';
@@ -15,14 +16,31 @@ import { conversationRecord } from './history';
 import { backoffDelay, engineName, formatMoment, parseLimit, sleep } from './limits';
 import { NativeAgents } from './native';
 import { describeProcess, killSurvivor } from './processes';
-import { backgroundEndedMessage, backgroundNote, backgroundStoppedMessage, CONTINUE_MESSAGE, lostBackgroundMessage, skillPrompt, systemPrompt } from './prompts';
+import {
+    backgroundEndedMessage,
+    backgroundNote,
+    backgroundStoppedMessage,
+    CONTINUE_MESSAGE,
+    lostBackgroundMessage,
+    skillPrompt,
+    systemPrompt,
+} from './prompts';
 import { lastTurnText } from './threads';
 import { sessionTitle } from './titles';
 import { ASK_USER } from './tools';
 import { BACKGROUND_REASON, STOPPED_TO_SEND_REASON } from './transitions';
 import { TurnWriter, UNFINISHED_TOOL } from './writer';
 
-import type { BackgroundItem, Chat, ChatMode, ChatWorkspace, EngineId, Project, Run, RunContext } from '@clowdy/protocol';
+import type {
+    BackgroundItem,
+    Chat,
+    ChatMode,
+    ChatWorkspace,
+    EngineId,
+    Project,
+    Run,
+    RunContext,
+} from '@clowdy/protocol';
 import type { Config } from '../config';
 import type { RunWork } from '../db/runs';
 import type { EngineRegistry, EngineSession, ToolDefinition } from '../engine/types';
@@ -106,8 +124,7 @@ type Retry = Wait | { kind: 'resume' } | { kind: 'stopped' };
 export function isFolder(path: string): boolean {
     try {
         return statSync(path).isDirectory();
-    }
-    catch {
+    } catch {
         return false;
     }
 }
@@ -123,8 +140,7 @@ function commonGitDir(folder: string): string | undefined {
         const dir = read.ok ? resolve(folder, read.stdout) : undefined;
 
         return dir && isFolder(dir) ? dir : undefined;
-    }
-    catch {
+    } catch {
         return undefined;
     }
 }
@@ -137,30 +153,13 @@ function commonGitDir(folder: string): string | undefined {
  */
 function additionalFolders(project: Project, cwd: string, workspace: ChatWorkspace | undefined): string[] {
     const left = workspace?.path === cwd ? workspace.folderId : undefined;
-    const folders = project.folders.flatMap(folder => folder.path !== cwd && folder.id !== left && isFolder(folder.path) ? [folder.path] : []);
+    const folders = project.folders.flatMap(folder =>
+        folder.path !== cwd && folder.id !== left && isFolder(folder.path) ? [folder.path] : []
+    );
     const checkout = left === undefined ? undefined : project.folders.find(folder => folder.id === left);
     const gitDir = checkout && isFolder(checkout.path) ? commonGitDir(checkout.path) : undefined;
 
     return gitDir ? [...folders, gitDir] : folders;
-}
-
-/**
- * The folder a turn works in: the one the run names (a thread's own `cwd`), else the worktree of its chat (`Chat.workspace`), else the folder of the project
- * its chat works in (`Chat.folderId`), else the main folder. A chat whose folder the project no longer has was handed back to the main folder when the folder
- * left (its worktree with it), so a stale id reads as none.
- */
-function workingFolder(project: Project, chat: Chat | undefined, own: string | undefined): string {
-    if (own) {
-        return own;
-    }
-
-    if (chat?.workspace) {
-        return chat.workspace.path;
-    }
-
-    const folder = chat?.folderId === undefined ? undefined : project.folders.find(candidate => candidate.id === chat.folderId);
-
-    return (folder ?? mainFolder(project)).path;
 }
 
 /** What the system prompt says about a run's chat: none for a run without one, the parent's id and title for a thread (`Chat.parentChatId`). */
@@ -171,19 +170,37 @@ function promptChat(store: Store, chat: Chat | undefined): PromptChat | undefine
 
     const parent = chat.parentChatId ? getChat(store.db, chat.parentChatId) : undefined;
     // A thread whose parent had a worktree made for it alone stands in the folder named by the thread's own id (whatever its branch is called); one that shares its parent's stands in the parent's.
-    const own = chat.workspace && ownsWorktree(chat, chat.workspace) ? getWorkspace(store.db, chat.workspace.id)?.base : undefined;
+    const own =
+        chat.workspace && ownsWorktree(chat, chat.workspace)
+            ? getWorkspace(store.db, chat.workspace.id)?.base
+            : undefined;
 
-    return chat.parentChatId ? { parent: { id: chat.parentChatId, title: parent?.title ?? chat.parentChatId, ...(own !== undefined && { worktreeBase: own }) } } : {};
+    return chat.parentChatId
+        ? {
+              parent: {
+                  id: chat.parentChatId,
+                  title: parent?.title ?? chat.parentChatId,
+                  ...(own !== undefined && { worktreeBase: own }),
+              },
+          }
+        : {};
 }
 
-const missingEngine = (engine: EngineId) => new EngineFailure(`The ${ engine } engine is not available in this daemon`);
+const missingEngine = (engine: EngineId) => new EngineFailure(`The ${engine} engine is not available in this daemon`);
 
 /** What the system prompt says of the worktree: only for a turn that works in it, and with the main checkout it was made from. */
 function promptWorkspace(project: Project, chat: Chat | undefined, cwd: string): PromptWorkspace | undefined {
     const workspace = chat?.workspace;
     const folder = workspace && project.folders.find(candidate => candidate.id === workspace.folderId);
 
-    return workspace && folder && workspace.path === cwd ? { path: workspace.path, ...(workspace.branch !== undefined && { branch: workspace.branch }), folder: folder.path, ...(chat && canNameBranch(chat) && { nameable: true as const }) } : undefined;
+    return workspace && folder && workspace.path === cwd
+        ? {
+              path: workspace.path,
+              ...(workspace.branch !== undefined && { branch: workspace.branch }),
+              folder: folder.path,
+              ...(chat && canNameBranch(chat) && { nameable: true as const }),
+          }
+        : undefined;
 }
 
 const firstLine = (text: string) => text.split('\n')[0].trim().slice(0, 300);
@@ -241,7 +258,7 @@ export class RunDriver {
             const previous = this.flights.get(runId) ?? Promise.resolve();
             const flight: Promise<void> = previous
                 .then(() => this.drive(runId, live))
-                .catch(error => console.error(`[clowdy] driving run ${ runId } failed:`, error))
+                .catch(error => console.error(`[clowdy] driving run ${runId} failed:`, error))
                 .finally(() => {
                     if (this.flights.get(runId) === flight) {
                         this.flights.delete(runId);
@@ -281,9 +298,8 @@ export class RunDriver {
 
         try {
             accepted = await session.steer(text);
-        }
-        catch (error) {
-            console.warn(`[clowdy] steering run ${ runId } failed: ${ errorMessage(error) }`);
+        } catch (error) {
+            console.warn(`[clowdy] steering run ${runId} failed: ${errorMessage(error)}`);
         }
 
         if (accepted) {
@@ -305,7 +321,11 @@ export class RunDriver {
         const live = this.live.get(runId);
         const session = live?.session;
 
-        return session !== undefined && !live?.ended?.aborted && (session.steer === undefined || session.canSteer === false);
+        return (
+            session !== undefined &&
+            !live?.ended?.aborted &&
+            (session.steer === undefined || session.canSteer === false)
+        );
     }
 
     /**
@@ -356,12 +376,14 @@ export class RunDriver {
         return () => {
             native.stopped(agentId, reason);
             stopItem(agentId).then(
-                (sent) => {
+                sent => {
                     if (!sent) {
-                        console.warn(`[clowdy] the session that holds sub-agent ${ child.id } did not ask its agent to stop it: the sub-agent or the session has ended, or cannot be stopped alone`);
+                        console.warn(
+                            `[clowdy] the session that holds sub-agent ${child.id} did not ask its agent to stop it: the sub-agent or the session has ended, or cannot be stopped alone`
+                        );
                     }
                 },
-                error => console.warn(`[clowdy] stopping sub-agent ${ child.id } failed: ${ errorMessage(error) }`)
+                error => console.warn(`[clowdy] stopping sub-agent ${child.id} failed: ${errorMessage(error)}`)
             );
         };
     }
@@ -393,24 +415,37 @@ export class RunDriver {
         return () => {
             live.stopped?.set(itemId, item);
             stopItem(itemId).then(
-                (taken) => {
+                taken => {
                     if (taken) {
                         // This line, once in flight, keeps `reportEnd` from telling an agent that starts no turn of its own what finished while the command
                         // ran, if the stopped command is the last item to leave (the list can come after the answer to the request): that goes in the same
                         // prompt. When the list came first, `reportEnd` told it already and nothing is left to add.
-                        const finished = live.session?.wakesOnBackgroundEnd ? [...(live.finishing?.values() ?? [])].filter(done => !live.stopped?.has(done.id)).map(done => ({ item: done, stopped: false })) : [];
+                        const finished = live.session?.wakesOnBackgroundEnd
+                            ? [...(live.finishing?.values() ?? [])]
+                                  .filter(done => !live.stopped?.has(done.id))
+                                  .map(done => ({ item: done, stopped: false }))
+                            : [];
 
-                        this.tell(runId, live, [finished.length > 0 && backgroundEndedMessage(finished), backgroundStoppedMessage(item)].filter(Boolean).join('\n\n'));
-                    }
-                    else {
+                        this.tell(
+                            runId,
+                            live,
+                            [finished.length > 0 && backgroundEndedMessage(finished), backgroundStoppedMessage(item)]
+                                .filter(Boolean)
+                                .join('\n\n')
+                        );
+                    } else {
                         // It ended on its own, or the agent would not: whatever ends it later is not a stop.
                         live.stopped?.delete(itemId);
-                        console.warn(`[clowdy] the agent did not take the request to stop background command ${ itemId } of run ${ runId }: it has ended, or cannot be stopped alone`);
+                        console.warn(
+                            `[clowdy] the agent did not take the request to stop background command ${itemId} of run ${runId}: it has ended, or cannot be stopped alone`
+                        );
                     }
                 },
-                (error) => {
+                error => {
                     live.stopped?.delete(itemId);
-                    console.warn(`[clowdy] stopping background command ${ itemId } of run ${ runId } failed: ${ errorMessage(error) }`);
+                    console.warn(
+                        `[clowdy] stopping background command ${itemId} of run ${runId} failed: ${errorMessage(error)}`
+                    );
                 }
             );
         };
@@ -435,14 +470,14 @@ export class RunDriver {
         };
 
         session.send(text).then(
-            (taken) => {
+            taken => {
                 if (!taken) {
                     refused();
                 }
             },
-            (error) => {
+            error => {
                 refused();
-                console.warn(`[clowdy] run ${ runId }'s session refused a note: ${ errorMessage(error) }`);
+                console.warn(`[clowdy] run ${runId}'s session refused a note: ${errorMessage(error)}`);
             }
         );
     }
@@ -455,7 +490,10 @@ export class RunDriver {
         const { engine } = this.deps.runs.require(runId);
         const live = this.live.get(runId);
 
-        return (live?.session !== undefined && this.isCompactCommand(engine, live.prompt)) || this.isCompactCommand(engine, getRunWork(this.deps.store.db, runId).nextPrompt);
+        return (
+            (live?.session !== undefined && this.isCompactCommand(engine, live.prompt)) ||
+            this.isCompactCommand(engine, getRunWork(this.deps.store.db, runId).nextPrompt)
+        );
     }
 
     /** Whether `prompt` is the engine's compact command, which a turn must be told alone (`chat.compact`). */
@@ -516,13 +554,11 @@ export class RunDriver {
                 failures += retry.kind === 'transient' ? 1 : 0;
                 await this.waitToRetry(runId, live, retry, signal);
             }
-        }
-        catch (error) {
+        } catch (error) {
             if (!signal.aborted) {
                 this.fail(runId, error);
             }
-        }
-        finally {
+        } finally {
             runs.unregister(runId);
 
             if (this.live.get(runId) === live) {
@@ -546,13 +582,18 @@ export class RunDriver {
 
         // An engine told to start in a folder that is gone fails with the spawn's own error, which blames the program; say what is wrong.
         if (!isFolder(cwd)) {
-            throw new EngineFailure(`The folder ${ cwd } no longer exists`);
+            throw new EngineFailure(`The folder ${cwd} no longer exists`);
         }
 
         return {
             cwd,
             additionalDirectories: additionalFolders(project, cwd, ownChat?.workspace),
-            systemPrompt: [systemPrompt(mode, project, cwd, chat && { ...chat, ...(workspace && { workspace }) }), skillPrompt(config.systemSkillsDir, chat?.parent !== undefined)].filter(Boolean).join('\n\n'),
+            systemPrompt: [
+                systemPrompt(mode, project, cwd, chat && { ...chat, ...(workspace && { workspace }) }),
+                skillPrompt(config.systemSkillsDir, chat?.parent !== undefined),
+            ]
+                .filter(Boolean)
+                .join('\n\n'),
             tools: this.deps.tools(run, mode),
         };
     }
@@ -574,7 +615,7 @@ export class RunDriver {
         }
 
         if (!engine?.fork) {
-            throw new EngineFailure(`The ${ run.engine } engine cannot fork a conversation`);
+            throw new EngineFailure(`The ${run.engine} engine cannot fork a conversation`);
         }
 
         const ownChat = run.chatId ? getChat(store.db, run.chatId) : undefined;
@@ -592,7 +633,12 @@ export class RunDriver {
      * One engine session, from its start until it ends: the turn, and for an orchestrator whose agent still has background work open, the wait after it
      * (`consume`). Returns what to wait for when the turn has to be repeated.
      */
-    private async turn(runId: string, live: LiveRun, signal: AbortSignal, failures: number): Promise<Retry | undefined> {
+    private async turn(
+        runId: string,
+        live: LiveRun,
+        signal: AbortSignal,
+        failures: number
+    ): Promise<Retry | undefined> {
         const { store, runs, engines, config } = this.deps;
         // The stream as it is before this turn adds its own lines: what the agent was told so far.
         const told = nextSeq(store.db, runId) - 1;
@@ -613,7 +659,9 @@ export class RunDriver {
         // slots, so a start waits for them before it counts as a runaway. No await between this check and `sessions++`.
         while (this.sessions >= config.maxProcesses) {
             if (Date.now() >= deadline) {
-                throw new EngineFailure(`${ this.sessions } engine processes are alive, the most this daemon allows (CLOWDY_MAX_PROCESSES); the run was not started`);
+                throw new EngineFailure(
+                    `${this.sessions} engine processes are alive, the most this daemon allows (CLOWDY_MAX_PROCESSES); the run was not started`
+                );
             }
 
             await sleep(25, signal);
@@ -660,7 +708,13 @@ export class RunDriver {
             ...surroundings,
             prompt,
             resumeSessionId: run.sessionId,
-            ...(run.sessionId && { history: () => conversationRecord(listItems(store.db, runId, 0).filter(item => item.seq <= told), incoming) }),
+            ...(run.sessionId && {
+                history: () =>
+                    conversationRecord(
+                        listItems(store.db, runId, 0).filter(item => item.seq <= told),
+                        incoming
+                    ),
+            }),
             model: run.model,
             effort: run.effort,
             title: sessionTitle(store, run, this.deps.namesChats(run.engine), prompt),
@@ -669,14 +723,14 @@ export class RunDriver {
         });
         let closing: Promise<void> | undefined;
         // However often it is asked and whoever asks (the end of the turn, a refused message, a Stop of a run that waits), the session is closed once.
-        const close = () => closing ??= (async () => {
-            try {
-                await session.close();
-            }
-            catch {
-                // The session is over either way.
-            }
-        })();
+        const close = () =>
+            (closing ??= (async () => {
+                try {
+                    await session.close();
+                } catch {
+                    // The session is over either way.
+                }
+            })());
         // A session that waits for background work is read from an iterator that blocks until the agent says something: a Stop or a daemon stop must not wait for it.
         const onEnded = () => {
             if (live.lingering) {
@@ -705,8 +759,7 @@ export class RunDriver {
             this.settle(runId, live, result);
 
             return undefined;
-        }
-        catch (error) {
+        } catch (error) {
             await live.delivery;
 
             if (live.restart && !ended.aborted) {
@@ -723,15 +776,23 @@ export class RunDriver {
                 return { kind: 'stopped' };
             }
 
-            if (error instanceof EngineFailure && error.retryable && failures < MAX_TRANSIENT_FAILURES && !signal.aborted) {
+            if (
+                error instanceof EngineFailure &&
+                error.retryable &&
+                failures < MAX_TRANSIENT_FAILURES &&
+                !signal.aborted
+            ) {
                 runs.limits.transientFailure(run.engine);
 
-                return { kind: 'transient', delayMs: backoffDelay(failures + 1, config.timings.retryBaseMs), message: error.message };
+                return {
+                    kind: 'transient',
+                    delayMs: backoffDelay(failures + 1, config.timings.retryBaseMs),
+                    message: error.message,
+                };
             }
 
             throw error;
-        }
-        finally {
+        } finally {
             ended.removeEventListener('abort', onEnded);
             // Whatever the agent and its sub-agents left running ends with the session: a Stop or a failure mid-call would otherwise leave the call shimmering.
             const reason = signal.aborted || live.interrupted ? STOPPED_TOOL : UNFINISHED_TOOL;
@@ -769,7 +830,11 @@ export class RunDriver {
         if (workspace && (needsPreparing(workspace) || isBeingRemoved(store, workspace.id))) {
             const stopped = AbortSignal.any([signal, this.stopping.signal]);
 
-            await prepareWorkspace(store, workspace.id, { runId, signal: stopped, setupTimeoutMs: config.timings.setupMs });
+            await prepareWorkspace(store, workspace.id, {
+                runId,
+                signal: stopped,
+                setupTimeoutMs: config.timings.setupMs,
+            });
             // A Stop that came while nothing was running git (the wait for another chat, the reads) must not start a session.
             stopped.throwIfAborted();
         }
@@ -800,7 +865,9 @@ export class RunDriver {
         // A compact turn is the command alone: work its session lost is told in the turn after it.
         const compact = this.isCompactCommand(engine, work.nextPrompt);
         const lostItems = compact || !work.lostBackground?.length ? undefined : work.lostBackground;
-        const prompt = [work.nextPrompt, lostItems && lostBackgroundMessage(lostItems)].filter(Boolean).join('\n\n') || CONTINUE_MESSAGE;
+        const prompt =
+            [work.nextPrompt, lostItems && lostBackgroundMessage(lostItems)].filter(Boolean).join('\n\n') ||
+            CONTINUE_MESSAGE;
 
         return { prompt, lost: lostItems !== undefined };
     }
@@ -834,8 +901,8 @@ export class RunDriver {
         // The person's message is in the stream already: what the agent says from now on follows it, not the message the agent is in the middle of.
         live.writer?.end();
         live.delivery = this.hand(runId, live)
-            .catch((error) => {
-                console.error(`[clowdy] handing a message to run ${ runId } failed: ${ errorMessage(error) }`);
+            .catch(error => {
+                console.error(`[clowdy] handing a message to run ${runId} failed: ${errorMessage(error)}`);
                 this.refuse(live);
             })
             .finally(() => {
@@ -855,11 +922,10 @@ export class RunDriver {
 
         try {
             await runs.acquireSlot(runId, signal);
-        }
-        catch (error) {
+        } catch (error) {
             // Stopped while it waited for a slot: the flight ends the session. Anything else leaves the message for a new session.
             if (!signal.aborted && !isTerminalRunStatus(runs.require(runId).status)) {
-                console.warn(`[clowdy] run ${ runId } did not get a slot for its message: ${ errorMessage(error) }`);
+                console.warn(`[clowdy] run ${runId} did not get a slot for its message: ${errorMessage(error)}`);
                 this.refuse(live);
             }
 
@@ -885,9 +951,8 @@ export class RunDriver {
 
         try {
             accepted = await session.send(prompt);
-        }
-        catch (error) {
-            console.warn(`[clowdy] run ${ runId }'s session refused a message: ${ errorMessage(error) }`);
+        } catch (error) {
+            console.warn(`[clowdy] run ${runId}'s session refused a message: ${errorMessage(error)}`);
         }
 
         if (!accepted) {
@@ -921,7 +986,12 @@ export class RunDriver {
      * background work open stays, and what it says after that (the work's progress, a turn it starts by itself, the answer to a message `deliver` hands
      * it) is read from the same iterator until it ends.
      */
-    private async consume(run: Run, session: EngineSession, writer: TurnWriter, live: LiveRun): Promise<string | undefined> {
+    private async consume(
+        run: Run,
+        session: EngineSession,
+        writer: TurnWriter,
+        live: LiveRun
+    ): Promise<string | undefined> {
         const { runs } = this.deps;
         const native = live.native as NativeAgents;
         let context: RunContext | undefined;
@@ -936,7 +1006,10 @@ export class RunDriver {
                         writer.heard();
                         break;
                     case 'process':
-                        runs.setProcess(run.id, describeProcess({ pid: event.pid, pgid: event.pgid, startedAt: event.startedAt }));
+                        runs.setProcess(
+                            run.id,
+                            describeProcess({ pid: event.pid, pgid: event.pgid, startedAt: event.startedAt })
+                        );
                         break;
                     case 'text':
                         if (event.agentId === undefined) {
@@ -947,8 +1020,7 @@ export class RunDriver {
                             }
 
                             writer.text(event.delta, event.done, event.messageId);
-                        }
-                        else {
+                        } else {
                             native.stream({ ...event, agentId: event.agentId });
                         }
 
@@ -956,8 +1028,7 @@ export class RunDriver {
                     case 'thought':
                         if (event.agentId === undefined) {
                             writer.reasoning(event.delta, event.done);
-                        }
-                        else {
+                        } else {
                             native.stream({ ...event, agentId: event.agentId });
                         }
 
@@ -975,9 +1046,12 @@ export class RunDriver {
                             }
 
                             // The call of a command the person stopped ends failed with whatever the agent says about the kill: it was stopped, as a Stop of the run reads.
-                            writer.tool(event.state === 'error' && live.stopped?.has(event.toolCallId) ? { ...event, error: STOPPED_TOOL } : event);
-                        }
-                        else {
+                            writer.tool(
+                                event.state === 'error' && live.stopped?.has(event.toolCallId)
+                                    ? { ...event, error: STOPPED_TOOL }
+                                    : event
+                            );
+                        } else {
                             native.stream({ ...event, agentId: event.agentId });
                         }
 
@@ -1008,7 +1082,7 @@ export class RunDriver {
                             runs.setContext(run.id, context, true);
                         }
 
-                        if (!await this.onDone(run, live, session, writer, native, event.result)) {
+                        if (!(await this.onDone(run, live, session, writer, native, event.result))) {
                             return event.result;
                         }
 
@@ -1025,8 +1099,7 @@ export class RunDriver {
             }
 
             throw new EngineFailure('The engine ended without a result');
-        }
-        finally {
+        } finally {
             // However the turn ended (a result, a failure, a cancel, an engine that threw), the number shown afterwards is the last one it reported,
             // whatever the throttle skipped on the way, and what the last list lost is gone for good.
             if (context) {
@@ -1046,7 +1119,14 @@ export class RunDriver {
      * millisecond, and that is the same item, not one that finished twice. Two things do not wait for the agent to do something: a command the person
      * stopped, which nothing can bring back, and, for an agent that starts no turn to report work that ended, the last item leaving (`reportEnd`).
      */
-    private onBackground(run: Run, live: LiveRun, writer: TurnWriter, native: NativeAgents, items: BackgroundItem[], calls?: string[]): void {
+    private onBackground(
+        run: Run,
+        live: LiveRun,
+        writer: TurnWriter,
+        native: NativeAgents,
+        items: BackgroundItem[],
+        calls?: string[]
+    ): void {
         const { store, runs } = this.deps;
         const finishing = live.finishing ?? new Map<string, BackgroundItem>();
 
@@ -1075,7 +1155,13 @@ export class RunDriver {
      * of that note's own. Not while a turn runs or a message of ours is on its way, not after a Stop, and not for what the person stopped alone: the agent
      * heard of that when the person did it.
      */
-    private reportEnd(run: Run, live: LiveRun, writer: TurnWriter, native: NativeAgents, items: BackgroundItem[]): void {
+    private reportEnd(
+        run: Run,
+        live: LiveRun,
+        writer: TurnWriter,
+        native: NativeAgents,
+        items: BackgroundItem[]
+    ): void {
         const lost = [...(live.finishing?.values() ?? [])];
 
         if (lost.length === 0) {
@@ -1088,7 +1174,14 @@ export class RunDriver {
             return;
         }
 
-        if (items.length > 0 || !live.session?.wakesOnBackgroundEnd || !live.lingering || live.sent || live.delivering || live.ended?.aborted) {
+        if (
+            items.length > 0 ||
+            !live.session?.wakesOnBackgroundEnd ||
+            !live.lingering ||
+            live.sent ||
+            live.delivering ||
+            live.ended?.aborted
+        ) {
             return;
         }
 
@@ -1096,7 +1189,9 @@ export class RunDriver {
             return;
         }
 
-        const told = this.settleFinished(run, live, writer, native).filter(({ item, stopped }) => !stopped || item.kind === 'subagent');
+        const told = this.settleFinished(run, live, writer, native).filter(
+            ({ item, stopped }) => !stopped || item.kind === 'subagent'
+        );
 
         if (told.length > 0) {
             this.tell(run.id, live, backgroundEndedMessage(told));
@@ -1108,7 +1203,12 @@ export class RunDriver {
      * a note names each item, after what the agent said so far, and the sub-agents of those items end. What the agent says next is a new message. What a
      * sub-agent says or does is not that: it is the item that may come back. Gives the items it wrote a note for, and whether the person stopped each.
      */
-    private settleFinished(run: Run, live: LiveRun, writer: TurnWriter, native: NativeAgents): { item: BackgroundItem; stopped: boolean }[] {
+    private settleFinished(
+        run: Run,
+        live: LiveRun,
+        writer: TurnWriter,
+        native: NativeAgents
+    ): { item: BackgroundItem; stopped: boolean }[] {
         const { store, runs } = this.deps;
         const finished = [...(live.finishing?.values() ?? [])];
 
@@ -1122,9 +1222,10 @@ export class RunDriver {
         return store.tx(() => {
             writer.end();
 
-            return finished.map((item) => {
+            return finished.map(item => {
                 // An item that the person stopped did not finish.
-                const stopped = live.stopped?.has(item.id) === true || (item.kind === 'subagent' && native.wasStopped(item));
+                const stopped =
+                    live.stopped?.has(item.id) === true || (item.kind === 'subagent' && native.wasStopped(item));
 
                 runs.note(run.id, backgroundNote(item, stopped));
 
@@ -1139,7 +1240,14 @@ export class RunDriver {
      * with its own `done` and leaves the run waiting as it was; the answer to a message sent into the session, like the session's first turn, is what
      * decides between waiting on and settling.
      */
-    private async onDone(run: Run, live: LiveRun, session: EngineSession, writer: TurnWriter, native: NativeAgents, result: string | undefined): Promise<boolean> {
+    private async onDone(
+        run: Run,
+        live: LiveRun,
+        session: EngineSession,
+        writer: TurnWriter,
+        native: NativeAgents,
+        result: string | undefined
+    ): Promise<boolean> {
         writer.end();
         this.markPoint(run, live, writer);
 
@@ -1164,8 +1272,12 @@ export class RunDriver {
         }
 
         // Only a chat's orchestrator waits; a run with no chat ends its session here, as does an agent that cannot take another prompt.
-        const waits = run.role === 'orchestrator' && run.chatId !== undefined && !live.ended?.aborted
-            && typeof session.send === 'function' && (live.background?.length ?? 0) > 0;
+        const waits =
+            run.role === 'orchestrator' &&
+            run.chatId !== undefined &&
+            !live.ended?.aborted &&
+            typeof session.send === 'function' &&
+            (live.background?.length ?? 0) > 0;
 
         if (!waits) {
             return false;
@@ -1209,7 +1321,11 @@ export class RunDriver {
      * command that outlived the turn when the agent keeps it running): they run on after the turn, so the turn's end does not fail them.
      */
     private openTasks(live: LiveRun): ReadonlySet<string> {
-        return new Set([...(live.background ?? []).filter(item => item.kind === 'task').map(item => item.id), ...(live.calls ?? []), ...(live.native?.openCalls() ?? [])]);
+        return new Set([
+            ...(live.background ?? []).filter(item => item.kind === 'task').map(item => item.id),
+            ...(live.calls ?? []),
+            ...(live.native?.openCalls() ?? []),
+        ]);
     }
 
     /* ----------------------------- Limits and retries ---------------------------- */
@@ -1232,11 +1348,13 @@ export class RunDriver {
         if (!wasPaused) {
             const far = until - now > 24 * 3_600_000;
 
-            store.tx(() => store.emit(run.projectId, {
-                type: 'notice',
-                level: far ? 'error' : 'warn',
-                text: `${ engineName(run.engine) } reached its usage limit${ far ? ` and is paused until ${ formatMoment(until, now) }, more than a day from now` : `; its runs continue at ${ formatMoment(until, now) }` }`,
-            }));
+            store.tx(() =>
+                store.emit(run.projectId, {
+                    type: 'notice',
+                    level: far ? 'error' : 'warn',
+                    text: `${engineName(run.engine)} reached its usage limit${far ? ` and is paused until ${formatMoment(until, now)}, more than a day from now` : `; its runs continue at ${formatMoment(until, now)}`}`,
+                })
+            );
         }
 
         for (const [runId, live] of this.live) {
@@ -1261,16 +1379,16 @@ export class RunDriver {
             // Without a session there is nothing to continue: the turn starts again from its own message.
             setRunWork(store.db, runId, { nextPrompt: run.sessionId && !compacting ? CONTINUE_MESSAGE : live.prompt });
             runs.setStatus(runId, 'blocked', {
-                reason: retry.kind === 'limit'
-                    ? `${ engineName(run.engine) } is at its usage limit until ${ formatMoment(retry.until, now) }; this run continues then`
-                    : `${ engineName(run.engine) } is busy (${ firstLine(retry.message) }); trying again in ${ Math.ceil(retry.delayMs / 1000) } s`,
+                reason:
+                    retry.kind === 'limit'
+                        ? `${engineName(run.engine)} is at its usage limit until ${formatMoment(retry.until, now)}; this run continues then`
+                        : `${engineName(run.engine)} is busy (${firstLine(retry.message)}); trying again in ${Math.ceil(retry.delayMs / 1000)} s`,
             });
         });
 
         if (retry.kind === 'limit') {
             await runs.limits.untilResumed(run.engine, signal);
-        }
-        else {
+        } else {
             await sleep(retry.delayMs, signal);
         }
     }
@@ -1292,7 +1410,11 @@ export class RunDriver {
             }
 
             if (lingers) {
-                this.turnEnded(runs.setStatus(runId, 'waiting_background', { reason: BACKGROUND_REASON }), live, result);
+                this.turnEnded(
+                    runs.setStatus(runId, 'waiting_background', { reason: BACKGROUND_REASON }),
+                    live,
+                    result
+                );
 
                 return true;
             }

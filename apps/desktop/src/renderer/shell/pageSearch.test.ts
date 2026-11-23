@@ -78,7 +78,12 @@ describe('findMatches', () => {
 
         expect([before.endContainer.textContent, before.endOffset]).toEqual(['wor', 3]);
         expect([after.startContainer.textContent, after.startOffset]).toEqual(['ld', 0]);
-        expect([across.startContainer.textContent, across.startOffset, across.endContainer.textContent, across.endOffset]).toEqual(['wor', 2, 'ld', 1]);
+        expect([
+            across.startContainer.textContent,
+            across.startOffset,
+            across.endContainer.textContent,
+            across.endOffset,
+        ]).toEqual(['wor', 2, 'ld', 1]);
     });
 
     it('drops the space that starts a line, after a line break or a block, as the page does', () => {
@@ -106,7 +111,7 @@ describe('findMatches', () => {
         expect(texts(findMatches('second'))).toEqual(['second']);
     });
 
-    it('treats a line break inside a paragraph\'s text as a space', () => {
+    it("treats a line break inside a paragraph's text as a space", () => {
         draw('<p>one\n   two</p>');
 
         expect(findMatches('one two')).toHaveLength(1);
@@ -127,7 +132,9 @@ describe('findMatches', () => {
     });
 
     it('leaves out the title, the description and the style of an SVG, which are not drawn as text', () => {
-        draw('<svg width="10" height="10"><title>needle title</title><desc>needle desc</desc><text x="0" y="8">needle drawn</text><style>.needle { fill: red }</style></svg>');
+        draw(
+            '<svg width="10" height="10"><title>needle title</title><desc>needle desc</desc><text x="0" y="8">needle drawn</text><style>.needle { fill: red }</style></svg>'
+        );
 
         expect(findMatches('needle').map(range => range.startContainer.textContent)).toEqual(['needle drawn']);
     });
@@ -197,7 +204,7 @@ describe('stepFrom', () => {
     });
 
     it('finds the neighbour of every hit among many', () => {
-        draw(`<p>${ 'x '.repeat(500) }</p>`);
+        draw(`<p>${'x '.repeat(500)}</p>`);
 
         const found = findMatches('x');
 
@@ -280,9 +287,29 @@ describe('revealMatch', () => {
 
         Object.defineProperty(scroller, 'scrollHeight', { value: 1000, configurable: true });
         Object.defineProperty(scroller, 'clientHeight', { value: 100, configurable: true });
-        scroller.getBoundingClientRect = () => ({ top: 0, bottom: 100, height: 100, left: 0, right: 100, width: 100, x: 0, y: 0, toJSON: () => ({}) });
+        scroller.getBoundingClientRect = () => ({
+            top: 0,
+            bottom: 100,
+            height: 100,
+            left: 0,
+            right: 100,
+            width: 100,
+            x: 0,
+            y: 0,
+            toJSON: () => ({}),
+        });
 
-        const rect = (top: number) => ({ top, bottom: top + 20, height: 20, left: 0, right: 50, width: 50, x: 0, y: top, toJSON: () => ({}) });
+        const rect = (top: number) => ({
+            top,
+            bottom: top + 20,
+            height: 20,
+            left: 0,
+            right: 50,
+            width: 50,
+            x: 0,
+            y: top,
+            toJSON: () => ({}),
+        });
 
         hit.getClientRects = () => [rect(500)] as unknown as DOMRectList;
         revealMatch(hit);

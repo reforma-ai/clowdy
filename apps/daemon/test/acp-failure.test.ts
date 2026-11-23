@@ -25,51 +25,85 @@ describe('classifyFailure', () => {
     });
 
     test('an adapter that bun x refuses for its age is a plain, final failure, not a crash to retry', () => {
-        const stderr = 'Resolving dependencies\nerror: No version matching "2.8.0" found for specifier "@agentclientprotocol/codex-acp" (blocked by minimum-release-age: 259200 seconds)\nerror: @agentclientprotocol/codex-acp@2.8.0 failed to resolve';
+        const stderr =
+            'Resolving dependencies\nerror: No version matching "2.8.0" found for specifier "@agentclientprotocol/codex-acp" (blocked by minimum-release-age: 259200 seconds)\nerror: @agentclientprotocol/codex-acp@2.8.0 failed to resolve';
         const failed = classifyThrown(new Error('ACP connection closed'), agent, stderr);
 
         expect(failed).toMatchObject({ code: 'adapter_unavailable', retryable: false });
-        expect(failed.message).toBe('The Codex adapter (@agentclientprotocol/codex-acp@2.8.0) could not be installed, because Bun\'s minimum release age blocks a version that new. Try again once it is old enough, or lower the setting in ~/.bunfig.toml.');
-        expect(processEnded(agent, 'exited with code 1', stderr)).toMatchObject({ code: 'adapter_unavailable', retryable: false });
+        expect(failed.message).toBe(
+            "The Codex adapter (@agentclientprotocol/codex-acp@2.8.0) could not be installed, because Bun's minimum release age blocks a version that new. Try again once it is old enough, or lower the setting in ~/.bunfig.toml."
+        );
+        expect(processEnded(agent, 'exited with code 1', stderr)).toMatchObject({
+            code: 'adapter_unavailable',
+            retryable: false,
+        });
     });
 
     test('a signed-out agent says which command signs it in', () => {
-        expect(classifyFailure({ ...agent, rpcCode: -32000 }).message).toBe('Codex is not signed in. Run `codex login` in a terminal, then start again.');
-        expect(classifyFailure({ agent: 'Mine', rpcCode: -32000 }).message).toBe('Mine is not signed in. Sign in with its own command, then start again.');
+        expect(classifyFailure({ ...agent, rpcCode: -32000 }).message).toBe(
+            'Codex is not signed in. Run `codex login` in a terminal, then start again.'
+        );
+        expect(classifyFailure({ agent: 'Mine', rpcCode: -32000 }).message).toBe(
+            'Mine is not signed in. Sign in with its own command, then start again.'
+        );
     });
 
     test('the reset time of a usage limit is passed on', () => {
-        expect(classifyFailure({ ...agent, text: 'You have reached your weekly limit. Resets Monday 9am' }).message).toBe('Codex usage limit reached; it resets Monday 9am.');
+        expect(
+            classifyFailure({ ...agent, text: 'You have reached your weekly limit. Resets Monday 9am' }).message
+        ).toBe('Codex usage limit reached; it resets Monday 9am.');
     });
 });
 
 describe('classifyThrown', () => {
     test('a program that cannot be started is engine_missing', () => {
-        expect(classifyThrown(Object.assign(new Error('spawn codex ENOENT'), { code: 'ENOENT' }), agent)).toMatchObject({ code: 'engine_missing' });
+        expect(classifyThrown(Object.assign(new Error('spawn codex ENOENT'), { code: 'ENOENT' }), agent)).toMatchObject(
+            { code: 'engine_missing' }
+        );
     });
 
-    test('the JSON-RPC code and the adapter\'s error kind are read from the error', () => {
-        expect(classifyThrown(Object.assign(new Error('Internal error'), { code: -32603, data: { errorKind: 'rate_limit' } }), agent)).toMatchObject({ code: 'rate_limited', retryable: true });
-        expect(classifyThrown(Object.assign(new Error('Authentication required'), { code: -32000 }), agent)).toMatchObject({ code: 'not_logged_in' });
+    test("the JSON-RPC code and the adapter's error kind are read from the error", () => {
+        expect(
+            classifyThrown(
+                Object.assign(new Error('Internal error'), { code: -32603, data: { errorKind: 'rate_limit' } }),
+                agent
+            )
+        ).toMatchObject({ code: 'rate_limited', retryable: true });
+        expect(
+            classifyThrown(Object.assign(new Error('Authentication required'), { code: -32000 }), agent)
+        ).toMatchObject({ code: 'not_logged_in' });
     });
 
     test('stderr helps classify, and a crash with no known cause quotes it', () => {
-        expect(classifyThrown(new Error('stream closed'), agent, 'Error: not logged in')).toMatchObject({ code: 'not_logged_in' });
-        expect(classifyThrown(new Error('stream closed'), agent, 'segfault')).toMatchObject({ code: 'process_crashed', retryable: true, message: expect.stringContaining('segfault') });
+        expect(classifyThrown(new Error('stream closed'), agent, 'Error: not logged in')).toMatchObject({
+            code: 'not_logged_in',
+        });
+        expect(classifyThrown(new Error('stream closed'), agent, 'segfault')).toMatchObject({
+            code: 'process_crashed',
+            retryable: true,
+            message: expect.stringContaining('segfault'),
+        });
     });
 });
 
 describe('processEnded', () => {
     test('the last words of the process decide', () => {
-        expect(processEnded(agent, 'exit code 1', 'Error: Authentication required')).toMatchObject({ code: 'not_logged_in' });
-        expect(processEnded(agent, 'exit code 3', 'boom')).toMatchObject({ code: 'process_crashed', message: 'Codex stopped unexpectedly (exit code 3). Last output: boom' });
+        expect(processEnded(agent, 'exit code 1', 'Error: Authentication required')).toMatchObject({
+            code: 'not_logged_in',
+        });
+        expect(processEnded(agent, 'exit code 3', 'boom')).toMatchObject({
+            code: 'process_crashed',
+            message: 'Codex stopped unexpectedly (exit code 3). Last output: boom',
+        });
     });
 });
 
 describe('readableMessage', () => {
-    test('unwraps JSON bodies and nested causes, and adds an ACP error\'s details', () => {
+    test("unwraps JSON bodies and nested causes, and adds an ACP error's details", () => {
         expect(readableMessage('API Error: 529 {"error":{"message":"Overloaded"}}')).toBe('API Error: 529 Overloaded');
         expect(readableMessage({ cause: { message: 'inner' } })).toBe('inner');
-        expect(readableMessage({ message: 'Internal error', data: { details: 'Model not found' } })).toBe('Internal error: Model not found');
+        expect(readableMessage({ message: 'Internal error', data: { details: 'Model not found' } })).toBe(
+            'Internal error: Model not found'
+        );
     });
 });

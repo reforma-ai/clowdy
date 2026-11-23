@@ -3,8 +3,8 @@ import { join, sep } from 'node:path';
 
 import { CommandError, conflict, invalid, unavailable } from '../errors';
 
-import type { FsErrorReason } from '@clowdy/protocol';
 import type { BigIntStats } from 'node:fs';
+import type { FsErrorReason } from '@clowdy/protocol';
 
 /** Folders a recursive listing never enters and nothing under which is watched or searched. */
 export const CUTOFF_NAMES: ReadonlySet<string> = new Set(['.git', 'node_modules']);
@@ -15,17 +15,22 @@ const MAX_PATH_LENGTH = 4096;
 /** What the daemon writes next to a file while it is being replaced, and keeps a replaced target under until a batch is done. */
 export const TRANSIENT_NAME = /^\.clowdy-[0-9a-f]{8}\.(tmp|replaced)$/;
 
-export function reasoned(reason: FsErrorReason, extra: Record<string, unknown> = {}): { reason: FsErrorReason } & Record<string, unknown> {
+export function reasoned(
+    reason: FsErrorReason,
+    extra: Record<string, unknown> = {}
+): { reason: FsErrorReason } & Record<string, unknown> {
     return { reason, ...extra };
 }
 
 /** A path that leaves the folder, by its spelling or through a link. */
 export const outside = (message: string) => invalid(message, reasoned('outside'));
 
-export const missing = (path: string) => new CommandError('not_found', `${ path === '' ? 'The folder' : path } does not exist`, { path });
+export const missing = (path: string) =>
+    new CommandError('not_found', `${path === '' ? 'The folder' : path} does not exist`, { path });
 
 /** Something is already there, or a part of the path is a file: `conflict` with `details.reason: 'exists'` and the path that is in the way. */
-export const exists = (path: string, message = `${ path } already exists`) => conflict(message, reasoned('exists', { path }));
+export const exists = (path: string, message = `${path} already exists`) =>
+    conflict(message, reasoned('exists', { path }));
 
 /**
  * Validates a client-supplied path and returns it normalized: `/`-separated, relative, no `.` or empty segments; `''` is the folder itself.
@@ -60,15 +65,21 @@ export const isAddressable = (path: string) => !path.includes('\\') && !/^[A-Za-
 export const isListed = (name: string) => isAddressable(name) && !TRANSIENT_NAME.test(name);
 
 /** Whether `path` is `ancestor`, or inside it; both normalized relative paths, `''` the folder. */
-export const isWithin = (path: string, ancestor: string) => ancestor === '' || path === ancestor || path.startsWith(`${ ancestor }/`);
+export const isWithin = (path: string, ancestor: string) =>
+    ancestor === '' || path === ancestor || path.startsWith(`${ancestor}/`);
 
 /** Whether the absolute path `path` is `root` or below it. */
-export const isInside = (root: string, path: string) => path === root || path.startsWith(root.endsWith(sep) ? root : root + sep);
+export const isInside = (root: string, path: string) =>
+    path === root || path.startsWith(root.endsWith(sep) ? root : root + sep);
 
 /** Whether a path of the folder is one of, or below, a folder that nothing is listed, watched or searched under. */
-export const underCutoff = (path: string) => path.split('/').slice(0, -1).some(name => CUTOFF_NAMES.has(name));
+export const underCutoff = (path: string) =>
+    path
+        .split('/')
+        .slice(0, -1)
+        .some(name => CUTOFF_NAMES.has(name));
 
-export const versionOf = (stat: BigIntStats) => `${ stat.size }:${ stat.mtimeNs }`;
+export const versionOf = (stat: BigIntStats) => `${stat.size}:${stat.mtimeNs}`;
 
 /** Where a client's path leads on disk, found one component at a time so that no link is followed without being checked. */
 export interface Located {
@@ -102,8 +113,7 @@ export async function locate(root: string, rel: string, followLast: boolean): Pr
 
         try {
             info = await lstat(next, { bigint: true });
-        }
-        catch (error) {
+        } catch (error) {
             const { code } = error as NodeJS.ErrnoException;
 
             if (code === 'ENOENT') {
@@ -121,7 +131,13 @@ export async function locate(root: string, rel: string, followLast: boolean): Pr
         }
 
         if (!last && !info.isDirectory()) {
-            return { rel, real: join(base, ...names.slice(index)), base, rest: names.slice(index), blockedBy: names.slice(0, index + 1).join('/') };
+            return {
+                rel,
+                real: join(base, ...names.slice(index)),
+                base,
+                rest: names.slice(index),
+                blockedBy: names.slice(0, index + 1).join('/'),
+            };
         }
 
         if (last) {
@@ -135,24 +151,27 @@ export async function locate(root: string, rel: string, followLast: boolean): Pr
 }
 
 /** The real target of a link and what is there, when it is inside `root`. */
-export async function followLink(root: string, link: string, rel: string): Promise<{ real: string; stat: BigIntStats }> {
+export async function followLink(
+    root: string,
+    link: string,
+    rel: string
+): Promise<{ real: string; stat: BigIntStats }> {
     let real: string;
 
     try {
         real = await realpath(link);
-    }
-    catch (error) {
+    } catch (error) {
         const { code } = error as NodeJS.ErrnoException;
 
         if (code === 'ENOENT' || code === 'ELOOP' || code === 'ENOTDIR') {
-            throw outside(`${ rel } runs through a symbolic link that leads nowhere`);
+            throw outside(`${rel} runs through a symbolic link that leads nowhere`);
         }
 
         throw error;
     }
 
     if (!isInside(root, real)) {
-        throw outside(`${ rel } runs through a symbolic link that leaves the folder`);
+        throw outside(`${rel} runs through a symbolic link that leaves the folder`);
     }
 
     return { real, stat: await lstat(real, { bigint: true }) };
@@ -170,22 +189,22 @@ export function fsFailure(error: unknown, rel: string): unknown {
         case 'EACCES':
         case 'EPERM':
         case 'EROFS':
-            return invalid(`Not allowed to change ${ where }`, reasoned('permission', { path: rel }));
+            return invalid(`Not allowed to change ${where}`, reasoned('permission', { path: rel }));
         case 'ENOENT':
             return missing(rel);
         case 'ENOTDIR':
-            return invalid(`A part of the path of ${ where } is a file`, { path: rel });
+            return invalid(`A part of the path of ${where} is a file`, { path: rel });
         case 'EISDIR':
-            return invalid(`${ where } is a folder`, { path: rel });
+            return invalid(`${where} is a folder`, { path: rel });
         case 'ENAMETOOLONG':
-            return invalid(`A name in ${ where } is too long`, { path: rel });
+            return invalid(`A name in ${where} is too long`, { path: rel });
         case 'ELOOP':
-            return invalid(`${ where } runs through a loop of symbolic links`, { path: rel });
+            return invalid(`${where} runs through a loop of symbolic links`, { path: rel });
         case 'EEXIST':
         case 'ENOTEMPTY':
             return exists(rel);
         case 'EXDEV':
-            return invalid(`${ where } is on another file system`, { path: rel });
+            return invalid(`${where} is on another file system`, { path: rel });
         case 'ENOSPC':
         case 'EDQUOT':
             return unavailable('The disk is full');

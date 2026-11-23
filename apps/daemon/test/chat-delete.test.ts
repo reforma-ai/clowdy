@@ -1,7 +1,7 @@
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
 import { projectSnapshot } from '../src/domain/snapshots';
-import { cleanTempDirs, startHarness, waitFor, type Harness } from './helpers';
+import { cleanTempDirs, type Harness, startHarness, waitFor } from './helpers';
 
 afterAll(cleanTempDirs);
 
@@ -22,7 +22,8 @@ async function setup() {
     return { h, project, chat };
 }
 
-const count = (h: Harness, sql: string, ...params: string[]) => (h.store.db.query(sql).get(...params) as { n: number }).n;
+const count = (h: Harness, sql: string, ...params: string[]) =>
+    (h.store.db.query(sql).get(...params) as { n: number }).n;
 
 describe('chat.delete', () => {
     test('removes an empty chat and announces it', async () => {
@@ -32,12 +33,17 @@ describe('chat.delete', () => {
         h.ok('chat.delete', { chatId: chat.id });
 
         expect(projectSnapshot(h.store, project.id).chats).toEqual([]);
-        expect(h.events(cursor).map(event => event.data)).toEqual([{ type: 'chat.deleted', chatId: chat.id, runIds: [] }]);
+        expect(h.events(cursor).map(event => event.data)).toEqual([
+            { type: 'chat.deleted', chatId: chat.id, runIds: [] },
+        ]);
     });
 
     test('removes a finished chat with its runs, streams and links, and keeps the tasks', async () => {
         const { h, project, chat } = await setup();
-        const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'Simplify the booking flow so users book in two steps' });
+        const { runId } = h.ok('chat.send', {
+            chatId: chat.id,
+            text: 'Simplify the booking flow so users book in two steps',
+        });
 
         await waitFor(() => h.run(runId).status === 'succeeded', 'the orchestrator to succeed', 8000);
 
@@ -74,9 +80,12 @@ describe('chat.delete', () => {
         expect(projectSnapshot(h.store, project.id).chats.map(candidate => candidate.id)).toEqual([other.id]);
     });
 
-    test('is refused while the chat\'s agents are working', async () => {
+    test("is refused while the chat's agents are working", async () => {
         const { h, project, chat } = await setup();
-        const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'Simplify the booking flow so users book in two steps' });
+        const { runId } = h.ok('chat.send', {
+            chatId: chat.id,
+            text: 'Simplify the booking flow so users book in two steps',
+        });
         const result = h.send('chat.delete', { chatId: chat.id });
 
         expect(result.ok).toBe(false);

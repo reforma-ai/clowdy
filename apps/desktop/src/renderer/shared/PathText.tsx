@@ -54,5 +54,15 @@ export function PathText({ path, variant, color, className }: PathTextProps) {
         return () => observer.disconnect();
     }, [forms]);
 
-    return <Text ref={ line } variant={ variant } color={ color } truncate title={ path } aria-label={ path } className={ cn(styles.path, className) } />;
+    return (
+        <Text
+            ref={line}
+            variant={variant}
+            color={color}
+            truncate
+            title={path}
+            aria-label={path}
+            className={cn(styles.path, className)}
+        />
+    );
 }

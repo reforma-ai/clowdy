@@ -241,7 +241,8 @@
                 height: 12px;
                 margin: auto;
                 background-color: var(--color-contrast-content);
-                mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill-rule='evenodd' d='M9.22 2.72a.75.75 0 0 1 1.06 1.06l-5.5 5.5a.753.753 0 0 1-1.061 0l-2-2A.75.75 0 0 1 2.78 6.22l1.47 1.468z'/%3E%3C/svg%3E")
+                mask:
+                    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill-rule='evenodd' d='M9.22 2.72a.75.75 0 0 1 1.06 1.06l-5.5 5.5a.753.753 0 0 1-1.061 0l-2-2A.75.75 0 0 1 2.78 6.22l1.47 1.468z'/%3E%3C/svg%3E")
                     center / contain no-repeat;
                 pointer-events: none;
                 visibility: hidden;

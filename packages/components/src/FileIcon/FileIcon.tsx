@@ -18,5 +18,5 @@ interface FileIconProps {
 export function FileIcon({ path, kind, open, className }: FileIconProps) {
     const url = iconUrl(iconName(path, kind, { open, light: use(FileIconColorScheme) === 'light' }));
 
-    return <img src={ url } alt="" draggable={ false } className={ cn(styles.icon, className) } />;
+    return <img src={url} alt="" draggable={false} className={cn(styles.icon, className)} />;
 }

@@ -54,7 +54,13 @@
     corner-shape: inherit;
     padding: 1px;
     pointer-events: none;
-    background-image: conic-gradient(from var(--border-angle), var(--composer-border-coral), var(--composer-border-blue) 50%, var(--composer-border-pink), var(--composer-border-coral));
+    background-image: conic-gradient(
+        from var(--border-angle),
+        var(--composer-border-coral),
+        var(--composer-border-blue) 50%,
+        var(--composer-border-pink),
+        var(--composer-border-coral)
+    );
     animation: border-angle-spin 6s linear infinite;
     -webkit-mask:
         linear-gradient(#000 0 0) content-box,

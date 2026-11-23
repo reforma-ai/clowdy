@@ -1,10 +1,10 @@
 import { cn, mergeRefs } from '@clowdy/lib';
-import { useEffect, useRef, type ReactNode, type Ref } from 'react';
+import { type ReactNode, type Ref, useEffect, useRef } from 'react';
 import {
     composeRenderProps,
     Button as RACButton,
-    Link as RACLink,
     type ButtonProps as RACButtonProps,
+    Link as RACLink,
     type LinkProps as RACLinkProps,
 } from 'react-aria-components';
 
@@ -15,7 +15,6 @@ import { Tooltip } from '../Tooltip';
 import styles from './Button.module.css';
 
 import type { SemanticColor } from '../types';
-
 
 export type ButtonVariant = 'filled' | 'filling' | 'ghost' | 'bordered' | 'transparent' | 'inline';
 export type ButtonColor = SemanticColor | 'contrast' | 'inherit';
@@ -102,88 +101,83 @@ export function Button(props: ButtonProps) {
         'data-full-width': fullWidth || undefined,
     } as const;
 
-    const content = composeRenderProps(children, (children: ReactNode, { isPending }: { isPending?: boolean }) => (
-        spinnerPlacement === 'start'
-            ? (
-                <span className={ cn(styles.content, contentClassName) }>
-                    <Show when={ isPending }>
-                        <Spinner size="inherit" className={ styles.startSpinner } aria-hidden="true" />
-                    </Show>
+    const content = composeRenderProps(children, (children: ReactNode, { isPending }: { isPending?: boolean }) =>
+        spinnerPlacement === 'start' ? (
+            <span className={cn(styles.content, contentClassName)}>
+                <Show when={isPending}>
+                    <Spinner size="inherit" className={styles.startSpinner} aria-hidden="true" />
+                </Show>
+                {children}
+            </span>
+        ) : (
+            <>
+                <span
+                    className={cn(styles.content, contentClassName)}
+                    data-hidden={(isPending && spinnerPlacement === 'center') || undefined}
+                >
                     {children}
                 </span>
-            )
-            : (
-                <>
-                    <span
-                        className={ cn(styles.content, contentClassName) }
-                        data-hidden={ (isPending && spinnerPlacement === 'center') || undefined }
-                    >
-                        {children}
-                    </span>
 
-                    <Show when={ isPending && spinnerPlacement === 'center' }>
-                        <Spinner size="inherit" className={ styles.spinner } aria-hidden="true" />
-                    </Show>
-                </>
-            )
-    ));
+                <Show when={isPending && spinnerPlacement === 'center'}>
+                    <Spinner size="inherit" className={styles.spinner} aria-hidden="true" />
+                </Show>
+            </>
+        )
+    );
 
     if (href) {
         const link = (
             <RACLink
-                { ...(restProps as RACLinkProps) }
-                slot={ domSlot }
-                ref={ buttonRef as Ref<HTMLAnchorElement> }
-                href={ href }
-                className={ buttonClassName }
-                { ...buttonDataAttrs }
+                {...(restProps as RACLinkProps)}
+                slot={domSlot}
+                ref={buttonRef as Ref<HTMLAnchorElement>}
+                href={href}
+                className={buttonClassName}
+                {...buttonDataAttrs}
             >
-                { children }
+                {children}
             </RACLink>
         );
 
-        return tooltip != null
-            ? (
-                <Tooltip content={ tooltip } placement={ tooltipPlacement } offset={ tooltipOffset }>
-                    { link }
-                </Tooltip>
-            )
-            : (
-                link
-            );
+        return tooltip != null ? (
+            <Tooltip content={tooltip} placement={tooltipPlacement} offset={tooltipOffset}>
+                {link}
+            </Tooltip>
+        ) : (
+            link
+        );
     }
 
     // Controlled isPressed = toggle/open visual; inherit aria-pressed unless caller overrides.
-    const buttonStateProps = isPressed == null
-        ? restProps
-        : {
-            ...restProps,
-            isPressed,
-            'aria-pressed': restProps['aria-pressed'] ?? isPressed,
-        };
+    const buttonStateProps =
+        isPressed == null
+            ? restProps
+            : {
+                  ...restProps,
+                  isPressed,
+                  'aria-pressed': restProps['aria-pressed'] ?? isPressed,
+              };
 
     const racButton = (
         <RACButton
-            { ...(buttonStateProps) }
-            slot={ domSlot }
-            ref={ buttonRef as Ref<HTMLButtonElement> }
-            className={ buttonClassName }
-            excludeFromTabOrder={ tabIndex === -1 || buttonStateProps.excludeFromTabOrder }
-            { ...buttonDataAttrs }
+            {...buttonStateProps}
+            slot={domSlot}
+            ref={buttonRef as Ref<HTMLButtonElement>}
+            className={buttonClassName}
+            excludeFromTabOrder={tabIndex === -1 || buttonStateProps.excludeFromTabOrder}
+            {...buttonDataAttrs}
         >
-            { content }
+            {content}
         </RACButton>
     );
 
-    return tooltip != null
-        ? (
-            <Tooltip content={ tooltip } placement={ tooltipPlacement } offset={ tooltipOffset }>
-                { racButton }
-            </Tooltip>
-        )
-        : (
-            racButton
-        );
+    return tooltip != null ? (
+        <Tooltip content={tooltip} placement={tooltipPlacement} offset={tooltipOffset}>
+            {racButton}
+        </Tooltip>
+    ) : (
+        racButton
+    );
 }
 
 Button.displayName = 'Button';

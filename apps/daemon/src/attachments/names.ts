@@ -9,8 +9,9 @@ const FALLBACK_NAME = 'file';
 
 // Control characters, and the invisible ones that disguise a name (a right-to-left override turns `gpj.exe` into `exe.jpg`) or
 // break its line in the message that lists the file (the line and paragraph separators).
-// eslint-disable-next-line no-control-regex
-const HIDDEN = /[\u0000-\u001F\u007F-\u009F\u00AD\u061C\u180E\u200B-\u200F\u2028-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/g;
+const HIDDEN =
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: the control characters are what it strips
+    /[\u0000-\u001F\u007F-\u009F\u00AD\u061C\u180E\u200B-\u200F\u2028-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/g;
 /** Windows refuses these in a name, and `:` there opens an alternate data stream. */
 const FORBIDDEN = /[<>:"|?*]/g;
 /** `CON`, `CON.txt` and `CON .txt` are all the device, whatever follows the dot. */
@@ -38,9 +39,14 @@ function capLength(name: string): string {
  * at most 120 characters with its extension intact, `file` when nothing is left.
  */
 export function safeFileName(raw: string): string {
-    const segment = raw.split(/[/\\]/).map(part => part.replace(HIDDEN, '').replace(FORBIDDEN, '_').trim()).filter(Boolean).at(-1) ?? '';
+    const segment =
+        raw
+            .split(/[/\\]/)
+            .map(part => part.replace(HIDDEN, '').replace(FORBIDDEN, '_').trim())
+            .filter(Boolean)
+            .at(-1) ?? '';
     const name = segment.replace(/^[.\s]+/, '').replace(/[.\s]+$/, '');
-    const named = WINDOWS_DEVICE.test(name) ? `_${ name }` : name;
+    const named = WINDOWS_DEVICE.test(name) ? `_${name}` : name;
 
     return capLength(named) || FALLBACK_NAME;
 }
@@ -49,7 +55,29 @@ const TYPE_PATTERN = /^[a-z0-9][a-z0-9!#$&^_.+-]{0,126}\/[a-z0-9][a-z0-9!#$&^_.+
 /** What a client sends when it knows nothing about the file; the extension may know better. */
 const UNINFORMATIVE = new Set(['application/octet-stream', 'binary/octet-stream', 'application/x-www-form-urlencoded']);
 
-const TEXT_EXTENSIONS = ['ts', 'tsx', 'jsx', 'py', 'rb', 'go', 'rs', 'java', 'kt', 'swift', 'c', 'h', 'cpp', 'cs', 'php', 'sh', 'sql', 'ini', 'env', 'log', 'txt'];
+const TEXT_EXTENSIONS = [
+    'ts',
+    'tsx',
+    'jsx',
+    'py',
+    'rb',
+    'go',
+    'rs',
+    'java',
+    'kt',
+    'swift',
+    'c',
+    'h',
+    'cpp',
+    'cs',
+    'php',
+    'sh',
+    'sql',
+    'ini',
+    'env',
+    'log',
+    'txt',
+];
 
 const BY_EXTENSION: Record<string, string> = {
     ...Object.fromEntries(TEXT_EXTENSIONS.map(extension => [extension, 'text/plain'])),
@@ -108,7 +136,8 @@ export function mediaTypeOf(declared: string | null, fileName: string): string {
 }
 
 /** Types a browser runs or renders as a page: markup, SVG, XML (stylesheets can script it) and the mail-like containers. */
-const ACTIVE_TYPE = /^(?:text\/(?:html|xml|xsl|cache-manifest)|application\/(?:xhtml\+xml|xml)|image\/svg\+xml|(?:multipart|message)\/.+)$|\+xml$/;
+const ACTIVE_TYPE =
+    /^(?:text\/(?:html|xml|xsl|cache-manifest)|application\/(?:xhtml\+xml|xml)|image\/svg\+xml|(?:multipart|message)\/.+)$|\+xml$/;
 
 /**
  * The type a file is served under. A page must never run from the daemon's origin, so one a browser would treat as active
@@ -120,5 +149,5 @@ export function servedMediaType(mediaType: string): string {
 
 /** `Content-Disposition` that shows a file in place and names it for a save, escaped as RFC 5987 asks (`encodeURIComponent` leaves `' ( ) *`). */
 export function contentDisposition(fileName: string): string {
-    return `inline; filename*=UTF-8''${ encodeURIComponent(fileName).replace(/['()*]/g, character => `%${ character.charCodeAt(0).toString(16).toUpperCase() }`) }`;
+    return `inline; filename*=UTF-8''${encodeURIComponent(fileName).replace(/['()*]/g, character => `%${character.charCodeAt(0).toString(16).toUpperCase()}`)}`;
 }

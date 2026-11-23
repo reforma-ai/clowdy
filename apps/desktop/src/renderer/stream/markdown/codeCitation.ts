@@ -2,9 +2,9 @@ import { isKnownFileExtension } from '@clowdy/lib';
 
 import { isDirectoryPath, isWorkspaceRoot } from './chipPath';
 
-export type CodeFenceInfo
-    = | { kind: 'language'; language: string }
-      | { kind: 'file'; path: string; startLine?: number; endLine?: number };
+export type CodeFenceInfo =
+    | { kind: 'language'; language: string }
+    | { kind: 'file'; path: string; startLine?: number; endLine?: number };
 
 function fenceInfoString(className?: string): string | undefined {
     return className?.match(/language-(.+)/)?.[1];

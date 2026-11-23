@@ -21,14 +21,10 @@ export function AsChild({ children, className: outerClassName, ref: outerRef, ..
 
     return cloneElement(
         child,
-        mergeProps(
-            childProps,
-            rest,
-            {
-                className: cn(childProps.className, outerClassName),
-                ref: mergeRefs(outerRef, childProps.ref),
-            }
-        )
+        mergeProps(childProps, rest, {
+            className: cn(childProps.className, outerClassName),
+            ref: mergeRefs(outerRef, childProps.ref),
+        })
     );
 }
 

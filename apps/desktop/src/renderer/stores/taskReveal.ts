@@ -22,8 +22,15 @@ export interface Reveal {
  * `madeIn` is for a task that was just made, which the project may not hold yet because the daemon's event can come after the reply to the command that made it:
  * the task they will find is inside `madeIn` (`null`: at the roots), and the reveal is the one that task will need once it arrives. A task the project holds is read as it is.
  */
-export function revealTask(tasks: RevealTasks, scope: TaskId | null, taskId: TaskId, { oneLevel, madeIn }: { oneLevel: boolean; madeIn?: TaskId | null }): Reveal | undefined {
-    const task = tasks.get(taskId) ?? (madeIn === undefined ? undefined : { id: taskId, parentId: madeIn ?? undefined, archivedAt: undefined });
+export function revealTask(
+    tasks: RevealTasks,
+    scope: TaskId | null,
+    taskId: TaskId,
+    { oneLevel, madeIn }: { oneLevel: boolean; madeIn?: TaskId | null }
+): Reveal | undefined {
+    const task =
+        tasks.get(taskId) ??
+        (madeIn === undefined ? undefined : { id: taskId, parentId: madeIn ?? undefined, archivedAt: undefined });
 
     if (!task || task.archivedAt !== undefined) return undefined;
 
@@ -31,7 +38,11 @@ export function revealTask(tasks: RevealTasks, scope: TaskId | null, taskId: Tas
     const above: TaskId[] = [];
     const seen = new Set<TaskId>([taskId]);
 
-    for (let parentId = task.parentId; parentId !== undefined && tasks.has(parentId) && !seen.has(parentId); parentId = tasks.get(parentId)?.parentId) {
+    for (
+        let parentId = task.parentId;
+        parentId !== undefined && tasks.has(parentId) && !seen.has(parentId);
+        parentId = tasks.get(parentId)?.parentId
+    ) {
         seen.add(parentId);
         above.push(parentId);
     }

@@ -119,7 +119,7 @@ describe('the turns that messages sent into a live session lead to', () => {
         const turns = new Turns();
 
         for (let n = 0; n < 150; n++) {
-            turns.echo(`m${ n }`);
+            turns.echo(`m${n}`);
         }
 
         expect(turns.echoed('m0')).toBe(false);

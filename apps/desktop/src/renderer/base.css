@@ -50,7 +50,22 @@ html.dark[data-window-material] body {
     background-color: color-mix(in srgb, var(--color-background) 50%, transparent);
 }
 
-:is(a, button, input, select, textarea, label, [contenteditable], [role='button'], [role='link'], [role='menuitem'], [role='option'], [role='tab'], [role='combobox'], [tabindex='0']) {
+:is(
+    a,
+    button,
+    input,
+    select,
+    textarea,
+    label,
+    [contenteditable],
+    [role='button'],
+    [role='link'],
+    [role='menuitem'],
+    [role='option'],
+    [role='tab'],
+    [role='combobox'],
+    [tabindex='0']
+) {
     app-region: no-drag;
 }
 

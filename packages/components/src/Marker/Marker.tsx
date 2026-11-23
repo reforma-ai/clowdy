@@ -23,32 +23,23 @@ export type MarkerContentProps = {
     children?: ReactNode;
 } & Omit<HTMLAttributes<HTMLSpanElement>, 'children' | 'color'>;
 
-export function Marker({
-    variant = 'default',
-    className,
-    children,
-    ...props
-}: MarkerProps) {
+export function Marker({ variant = 'default', className, children, ...props }: MarkerProps) {
     return (
-        <div
-            { ...props }
-            className={ cn(styles.root, className) }
-            data-variant={ variant }
-        >
-            { children }
+        <div {...props} className={cn(styles.root, className)} data-variant={variant}>
+            {children}
         </div>
     );
 }
 
 /** Decorative icon / loader slot. Hidden from assistive tech. */
 export function MarkerIcon({ className, ...props }: MarkerIconProps) {
-    return <span aria-hidden className={ cn(styles.icon, className) } { ...props } />;
+    return <span aria-hidden className={cn(styles.icon, className)} {...props} />;
 }
 
 export function MarkerContent({ shimmer, className, children, ...props }: MarkerContentProps) {
     return (
-        <Text data-inline-links className={ cn(styles.content, className) } { ...props }>
-            { (shimmer && typeof children === 'string') ? <Shimmer>{ children }</Shimmer> : children }
+        <Text data-inline-links className={cn(styles.content, className)} {...props}>
+            {shimmer && typeof children === 'string' ? <Shimmer>{children}</Shimmer> : children}
         </Text>
     );
 }

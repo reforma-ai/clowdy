@@ -8,7 +8,13 @@ export const CHANNEL_NUMBER_FORMAT: Intl.NumberFormatOptions = {
 
 export type EditableColorChannel = 'red' | 'green' | 'blue' | 'hue' | 'saturation' | 'lightness';
 
-export function channelField(key: EditableColorChannel, label: string, value: number, minValue: number, maxValue: number) {
+export function channelField(
+    key: EditableColorChannel,
+    label: string,
+    value: number,
+    minValue: number,
+    maxValue: number
+) {
     return {
         key,
         label,
@@ -27,8 +33,8 @@ export function channelGroupTemplateColumns(columnCount: number): string {
     ].join(' + ');
 
     if (columnCount <= 1) {
-        return `minmax(calc(${ previewInputMinWidth }), 1fr)`;
+        return `minmax(calc(${previewInputMinWidth}), 1fr)`;
     }
 
-    return `minmax(calc(${ previewInputMinWidth }), 1.35fr) repeat(${ columnCount - 1 }, minmax(${ inputMinWidth }, 1fr))`;
+    return `minmax(calc(${previewInputMinWidth}), 1.35fr) repeat(${columnCount - 1}, minmax(${inputMinWidth}, 1fr))`;
 }

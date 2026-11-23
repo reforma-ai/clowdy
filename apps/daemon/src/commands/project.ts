@@ -2,7 +2,10 @@ import { addProject, deleteProject, reorderProjects, updateProject, updateProjec
 
 import type { Handlers } from './context';
 
-export const projectHandlers: Pick<Handlers, 'project.add' | 'project.update' | 'project.updateFolder' | 'project.delete' | 'project.reorder'> = {
+export const projectHandlers: Pick<
+    Handlers,
+    'project.add' | 'project.update' | 'project.updateFolder' | 'project.delete' | 'project.reorder'
+> = {
     'project.add': ({ store, config }, command) => {
         const { project, existing } = addProject(store, config, command);
 
@@ -18,7 +21,9 @@ export const projectHandlers: Pick<Handlers, 'project.add' | 'project.update' | 
         return { project };
     },
 
-    'project.updateFolder': ({ store }, command) => ({ project: updateProjectFolder(store, command.projectId, command.folderId, command.settings) }),
+    'project.updateFolder': ({ store }, command) => ({
+        project: updateProjectFolder(store, command.projectId, command.folderId, command.settings),
+    }),
 
     'project.delete': ({ store, attachments, skills }, command) => {
         deleteProject(store, command.projectId, { attachments, skills });

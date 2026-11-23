@@ -20,26 +20,18 @@ export const ModalData = observer(({ children, className, ref: refProp, containe
     const scrollable = options.scrollable;
     const useScrollable = scrollable === 'window';
 
-    const classNameResolved = clsx(
-        scrollable === 'hidden' && 'overflow-hidden',
-        className
-    );
+    const classNameResolved = clsx(scrollable === 'hidden' && 'overflow-hidden', className);
 
     return (
         <div
-            ref={ mergeRefs(refProp, !useScrollable ? containerRef : null) }
-            className={ classNameResolved }
+            ref={mergeRefs(refProp, !useScrollable ? containerRef : null)}
+            className={classNameResolved}
             data-modal-data
-            data-name={ modal.name }
-            { ...rest }
+            data-name={modal.name}
+            {...rest}
         >
-            <Show
-                when={ useScrollable }
-                fallback={ children }
-            >
-                <Scrollable containerRef={ containerRef ?? undefined }>
-                    { children }
-                </Scrollable>
+            <Show when={useScrollable} fallback={children}>
+                <Scrollable containerRef={containerRef ?? undefined}>{children}</Scrollable>
             </Show>
         </div>
     );

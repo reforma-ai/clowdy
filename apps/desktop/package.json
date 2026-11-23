@@ -14,8 +14,8 @@
         "package:win": "bun scripts/build.ts win32-x64 win32-arm64 && electron-builder --win --dir --x64 --arm64",
         "release:mac": "electron-builder --mac --arm64 --x64 --publish never",
         "release:win": "electron-builder --win --x64 --arm64 --publish never",
-        "lint": "eslint .",
-        "lint:fix": "eslint . --fix",
+        "lint": "biome check",
+        "lint:fix": "biome check --write",
         "test": "vitest run --passWithNoTests",
         "typecheck": "tsc --noEmit && tsc --noEmit -p scripts",
         "clean": "rm -rf node_modules/{*,.*} .turbo dist app bundle runtime release 2>/dev/null || true"
@@ -44,7 +44,6 @@
     },
     "devDependencies": {
         "@clowdy/config-typescript": "workspace:*",
-        "@clowdy/eslint-config": "workspace:*",
         "electron": "45.2.1",
         "electron-builder": "^26.18.0"
     }

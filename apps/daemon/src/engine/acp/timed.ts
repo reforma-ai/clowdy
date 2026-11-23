@@ -55,7 +55,12 @@ function nextRun(now: Date, [minute, hour, day, month]: number[]): Date | undefi
         const at = new Date(year, month - 1, day, hour, minute);
 
         // A day or hour the calendar does not have (the 30th of February, an hour skipped by the clock) rolls over to another time.
-        if (at.getMonth() !== month - 1 || at.getDate() !== day || at.getHours() !== hour || at.getMinutes() !== minute) {
+        if (
+            at.getMonth() !== month - 1 ||
+            at.getDate() !== day ||
+            at.getHours() !== hour ||
+            at.getMinutes() !== minute
+        ) {
             return undefined;
         }
 
@@ -83,7 +88,11 @@ export function timingOf(name: string, input: unknown, output: string | undefine
 
             const asked = numberOf(given.timeout_ms);
 
-            return { label: 'Monitor', what: lineOf(given.description) || lineOf(given.command), ms: Math.min(asked !== undefined && asked >= 0 ? asked : MONITOR_DEFAULT_MS, MONITOR_MAX_MS) };
+            return {
+                label: 'Monitor',
+                what: lineOf(given.description) || lineOf(given.command),
+                ms: Math.min(asked !== undefined && asked >= 0 ? asked : MONITOR_DEFAULT_MS, MONITOR_MAX_MS),
+            };
         }
 
         if (name === 'ScheduleWakeup') {
@@ -92,17 +101,25 @@ export function timingOf(name: string, input: unknown, output: string | undefine
 
             // The tool says when it will wake the agent; when its text is not the one known, the delay asked for plus the minute it is rounded up by.
             if (said) {
-                return { label: 'Wakeup', what: lineOf(given.reason) || lineOf(given.prompt), ms: Number(said[1]) * 1000 };
+                return {
+                    label: 'Wakeup',
+                    what: lineOf(given.reason) || lineOf(given.prompt),
+                    ms: Number(said[1]) * 1000,
+                };
             }
 
-            return given.noop === true || delay === undefined || delay < 0 ? undefined : { label: 'Wakeup', what: lineOf(given.reason) || lineOf(given.prompt), ms: (delay + 60) * 1000 };
+            return given.noop === true || delay === undefined || delay < 0
+                ? undefined
+                : { label: 'Wakeup', what: lineOf(given.reason) || lineOf(given.prompt), ms: (delay + 60) * 1000 };
         }
 
         if (name === 'CronCreate') {
             const found = CRON_ONE_SHOT.exec(output ?? '');
             const at = found && given.recurring !== true ? nextRun(now, found.slice(1).map(Number)) : undefined;
 
-            return at && { label: 'Wakeup', what: lineOf(given.prompt), ms: at.getTime() - now.getTime() + CRON_SLACK_MS };
+            return (
+                at && { label: 'Wakeup', what: lineOf(given.prompt), ms: at.getTime() - now.getTime() + CRON_SLACK_MS }
+            );
         }
 
         return undefined;

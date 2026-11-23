@@ -4,11 +4,27 @@ import { engineLabel, groupSkills, tokenLabel } from './skillView';
 
 import type { SkillEntry } from '@clowdy/protocol';
 
-const entry = (source: SkillEntry['source'], name: string): SkillEntry => ({ id: `${ source }:${ name }`, name, source, description: `About ${ name }`, enabled: true, tokens: 40, engines: ['claude', 'codex'] });
+const entry = (source: SkillEntry['source'], name: string): SkillEntry => ({
+    id: `${source}:${name}`,
+    name,
+    source,
+    description: `About ${name}`,
+    enabled: true,
+    tokens: 40,
+    engines: ['claude', 'codex'],
+});
 
 describe('groupSkills', () => {
     it('puts each skill in the group of its source, keeping the daemon order', () => {
-        const groups = groupSkills([entry('system', 'clowdy:docs'), entry('user', 'user:b'), entry('user', 'user:a'), entry('project', 'review')], 'Car Rental');
+        const groups = groupSkills(
+            [
+                entry('system', 'clowdy:docs'),
+                entry('user', 'user:b'),
+                entry('user', 'user:a'),
+                entry('project', 'review'),
+            ],
+            'Car Rental'
+        );
 
         expect(groups.map(group => [group.source, group.skills.map(skill => skill.name)])).toEqual([
             ['system', ['clowdy:docs']],

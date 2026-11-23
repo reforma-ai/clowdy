@@ -21,10 +21,9 @@ for (const id of ids) {
         const probe = await probeAgent(registry, bridge, id, { cwd: process.cwd() });
 
         console.log(JSON.stringify(probe, null, 2));
-    }
-    catch (error) {
+    } catch (error) {
         failed = true;
-        console.error(`${ id }: ${ errorMessage(error) }`);
+        console.error(`${id}: ${errorMessage(error)}`);
     }
 }
 

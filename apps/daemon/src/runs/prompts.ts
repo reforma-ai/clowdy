@@ -1,6 +1,6 @@
-import { mainFolder } from '@clowdy/protocol';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { mainFolder } from '@clowdy/protocol';
 
 import { clip } from './tool-kit';
 
@@ -15,13 +15,15 @@ const ENTRY_SKILL = 'orchestrate';
 /** The system skill a thread's orchestrator also has in its system prompt: how a thread takes its assignment and reports to its parent. */
 const THREAD_SKILL = 'thread';
 
-const INTRO = 'You are the orchestrator of a Clowdy chat. Follow clowdy:orchestrate; it names the other system skills (clowdy:autopilot, clowdy:semi-manual, clowdy:scaffold, clowdy:docs).';
+const INTRO =
+    'You are the orchestrator of a Clowdy chat. Follow clowdy:orchestrate; it names the other system skills (clowdy:autopilot, clowdy:semi-manual, clowdy:scaffold, clowdy:docs).';
 
 /**
  * What every orchestrator is told about the task tools. Most agents have them as the shell command `clowdy task`; one that uses the MCP door
  * (`AgentSpec.taskTools`) has them as tools of the same names and fields, and this line serves both, so the prompt does not depend on the door.
  */
-const TASKS = 'Tasks: read, change, comment on and archive them with the shell command `clowdy task` (`clowdy task --help`). Where your tool list has `task_get`, `task_list`, `task_create`, `task_update` and the other `task_` tools, those are the same commands, with the flags as camelCase fields. `clowdy task list` shows only the work in flight and pages long answers: never list everything.';
+const TASKS =
+    'Tasks: read, change, comment on and archive them with the shell command `clowdy task` (`clowdy task --help`). Where your tool list has `task_get`, `task_list`, `task_create`, `task_update` and the other `task_` tools, those are the same commands, with the flags as camelCase fields. `clowdy task list` shows only the work in flight and pages long answers: never list everything.';
 
 /** What every chat's orchestrator is told about threads; clowdy:orchestrate says how to delegate. */
 const THREADS = [
@@ -59,21 +61,27 @@ export interface PromptChat {
 /** What an orchestrator is told of the worktree it works in: where it is, its branch, and that the checkout it was made from is not its place. */
 function workspaceFacts({ path, branch, folder, nameable }: PromptWorkspace): string {
     return [
-        `Worktree: you work in a git worktree of ${ folder }, at ${ path }, ${ branch ? `on the branch ${ branch }` : 'on a detached HEAD' }. Read and change files there, run commands there and commit your work there.`,
-        `The main checkout at ${ folder } is the person's and other agents' place: leave its files alone, and use it only to read what the worktree does not have.`,
-        nameable && 'The name of your branch is a placeholder made from the id of this chat. As soon as you know what the work is, and before your first commit, name it once: `clowdy worktree name <two to four English words, lower case, joined with dashes>`, such as `clowdy worktree name fix-login-redirect`. It renames the branch where it stands and nothing else moves, so keep working in the same folder; do not rename it with git yourself.',
-    ].filter(Boolean).join(' ');
+        `Worktree: you work in a git worktree of ${folder}, at ${path}, ${branch ? `on the branch ${branch}` : 'on a detached HEAD'}. Read and change files there, run commands there and commit your work there.`,
+        `The main checkout at ${folder} is the person's and other agents' place: leave its files alone, and use it only to read what the worktree does not have.`,
+        nameable &&
+            'The name of your branch is a placeholder made from the id of this chat. As soon as you know what the work is, and before your first commit, name it once: `clowdy worktree name <two to four English words, lower case, joined with dashes>`, such as `clowdy worktree name fix-login-redirect`. It renames the branch where it stands and nothing else moves, so keep working in the same folder; do not rename it with git yourself.',
+    ]
+        .filter(Boolean)
+        .join(' ');
 }
 
 /** What the orchestrator of a thread is told about its place: who started it, what its report is, and whom it may write to. */
 function threadIntro(parent: PromptParent): string {
     return [
-        `This chat is a thread: the chat "${ parent.title }" (${ parent.id }) started it, and the first message is your assignment from that chat.`,
-        parent.worktreeBase && `It had a git worktree made for you alone, on a branch started from ${ parent.worktreeBase }: commit your work on your own branch and name that branch in your report. Merging it back is your parent's job, so do not merge it or switch to another branch.`,
+        `This chat is a thread: the chat "${parent.title}" (${parent.id}) started it, and the first message is your assignment from that chat.`,
+        parent.worktreeBase &&
+            `It had a git worktree made for you alone, on a branch started from ${parent.worktreeBase}: commit your work on your own branch and name that branch in your report. Merging it back is your parent's job, so do not merge it or switch to another branch.`,
         'Your last message of each turn is your report to it, delivered when you stop: the verdict first (done, partly done, failed or blocked), then the evidence (what you ran and saw), then what is left.',
-        `Ask your parent with \`clowdy thread tell ${ parent.id } "<question>"\` only when you are blocked. Write to no other chat unless your assignment says so. You may start threads of your own while the depth limit allows.`,
+        `Ask your parent with \`clowdy thread tell ${parent.id} "<question>"\` only when you are blocked. Write to no other chat unless your assignment says so. You may start threads of your own while the depth limit allows.`,
         'Follow clowdy:thread as well.',
-    ].filter(Boolean).join(' ');
+    ]
+        .filter(Boolean)
+        .join(' ');
 }
 
 const modeLabel = (mode: ChatMode) => (mode === 'semi' ? 'semi-manual' : 'autopilot');
@@ -84,26 +92,32 @@ const modeLabel = (mode: ChatMode) => (mode === 'semi' ? 'semi-manual' : 'autopi
  * told to. The folder the run works in is marked, which is not the main one for a run whose `cwd` is another folder.
  */
 function projectFacts(project: Project, cwd: string, worktreeOf?: string): string {
-    const keys = `task keys ${ project.taskPrefix }-<number>`;
+    const keys = `task keys ${project.taskPrefix}-<number>`;
 
     if (project.folders.length === 1) {
         const folder = mainFolder(project).path;
-        const where = project.personal ? `the person's personal space, a folder at ${ folder } that belongs to no repository` : `folder at ${ folder }`;
+        const where = project.personal
+            ? `the person's personal space, a folder at ${folder} that belongs to no repository`
+            : `folder at ${folder}`;
 
-        return `Project: ${ project.name }, ${ where }, ${ keys }, project documents in .clowdy/docs/.`;
+        return `Project: ${project.name}, ${where}, ${keys}, project documents in .clowdy/docs/.`;
     }
 
     const folders = project.folders.map(({ path }, index) => {
-        const marks = [index === 0 && 'main', path === cwd && 'you work here', path === worktreeOf && 'you work in a worktree of it'].filter(Boolean);
+        const marks = [
+            index === 0 && 'main',
+            path === cwd && 'you work here',
+            path === worktreeOf && 'you work in a worktree of it',
+        ].filter(Boolean);
 
-        return marks.length > 0 ? `- ${ path } (${ marks.join(', ') })` : `- ${ path }`;
+        return marks.length > 0 ? `- ${path} (${marks.join(', ')})` : `- ${path}`;
     });
 
     return [
-        `Project: ${ project.name }, ${ keys }, folders (use absolute paths outside the folder you work in):`,
+        `Project: ${project.name}, ${keys}, folders (use absolute paths outside the folder you work in):`,
         ...folders,
         'Each folder may have its own AGENTS.md or CLAUDE.md; read it before you change files in that folder.',
-        'Documents: each folder has its own .clowdy/docs/. A document about one folder goes into that folder\'s; one about several folders or the whole project goes into the main folder\'s.',
+        "Documents: each folder has its own .clowdy/docs/. A document about one folder goes into that folder's; one about several folders or the whole project goes into the main folder's.",
     ].join('\n');
 }
 
@@ -111,17 +125,24 @@ function projectFacts(project: Project, cwd: string, worktreeOf?: string): strin
  * The system prompt: where the system skills are, the mode, the facts about the project and, for a run of a chat, a paragraph on threads; a thread's
  * run is also told whose thread it is. Everything else is in the skills. `cwd` is the folder the run works in.
  */
-export function systemPrompt(mode: ChatMode, project: Project, cwd = mainFolder(project).path, chat?: PromptChat): string {
+export function systemPrompt(
+    mode: ChatMode,
+    project: Project,
+    cwd = mainFolder(project).path,
+    chat?: PromptChat
+): string {
     return [
         'Clowdy is a desktop app where a person who manages software work chats with an orchestrator and watches tasks, agents and documents while agents do the engineering.',
         INTRO,
         chat?.parent && threadIntro(chat.parent),
-        `Mode: ${ modeLabel(mode) }.`,
+        `Mode: ${modeLabel(mode)}.`,
         projectFacts(project, cwd, chat?.workspace?.folder),
         chat?.workspace && workspaceFacts(chat.workspace),
         TASKS,
         chat && THREADS,
-    ].filter(Boolean).join('\n');
+    ]
+        .filter(Boolean)
+        .join('\n');
 }
 
 /**
@@ -130,9 +151,10 @@ export function systemPrompt(mode: ChatMode, project: Project, cwd = mainFolder(
  */
 function skillBody(skillsDir: string, name: string): string | undefined {
     try {
-        return readFileSync(join(skillsDir, 'skills', name, 'SKILL.md'), 'utf8').replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '').trim();
-    }
-    catch {
+        return readFileSync(join(skillsDir, 'skills', name, 'SKILL.md'), 'utf8')
+            .replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '')
+            .trim();
+    } catch {
         return undefined;
     }
 }
@@ -146,14 +168,14 @@ export function skillPrompt(skillsDir: string | undefined, thread = false): stri
         return '';
     }
 
-    const blocks = (thread ? [ENTRY_SKILL, THREAD_SKILL] : [ENTRY_SKILL]).flatMap((name) => {
+    const blocks = (thread ? [ENTRY_SKILL, THREAD_SKILL] : [ENTRY_SKILL]).flatMap(name => {
         const body = skillBody(skillsDir, name);
 
-        return body ? [`<skill name="clowdy:${ name }">\n${ body }\n</skill>`] : [];
+        return body ? [`<skill name="clowdy:${name}">\n${body}\n</skill>`] : [];
     });
 
     return [
-        `System skills are plain files: \`clowdy:<name>\` is ${ join(skillsDir, 'skills', '<name>', 'SKILL.md') }, and a skill's references/ folder is beside its SKILL.md. The ${ thread ? 'skills you start from are' : 'skill you start from is' } below; read any other one with your file tool when a skill tells you to follow it.`,
+        `System skills are plain files: \`clowdy:<name>\` is ${join(skillsDir, 'skills', '<name>', 'SKILL.md')}, and a skill's references/ folder is beside its SKILL.md. The ${thread ? 'skills you start from are' : 'skill you start from is'} below; read any other one with your file tool when a skill tells you to follow it.`,
         ...blocks,
     ].join('\n\n');
 }
@@ -163,7 +185,7 @@ export const FIRST_MESSAGE_START = 'Follow clowdy:';
 
 /** The first message of a run: the entry skill, the mode and the content (the user's message, or the task a chat was started from). */
 export function firstMessage(mode: ChatMode, content: string): string {
-    return `${ FIRST_MESSAGE_START }${ ENTRY_SKILL }. Mode: ${ modeLabel(mode) }\n\n${ content }`;
+    return `${FIRST_MESSAGE_START}${ENTRY_SKILL}. Mode: ${modeLabel(mode)}\n\n${content}`;
 }
 
 /** What a task started from the task list says to its new chat's orchestrator. */
@@ -171,20 +193,24 @@ export function taskMessage(task: Task): string {
     const description = task.description.trim();
 
     return [
-        `Complete task ${ task.key }: ${ task.title }`,
-        description && `Description:\n${ description }`,
-        `This chat is bound to ${ task.key }; read it with \`clowdy task get ${ task.key }\`, do the work, and finish with a short report.`,
-    ].filter(Boolean).join('\n\n');
+        `Complete task ${task.key}: ${task.title}`,
+        description && `Description:\n${description}`,
+        `This chat is bound to ${task.key}; read it with \`clowdy task get ${task.key}\`, do the work, and finish with a short report.`,
+    ]
+        .filter(Boolean)
+        .join('\n\n');
 }
 
 /** Sent to a run that was cut off by a subscription limit or a passing engine failure, once it can continue. */
-export const CONTINUE_MESSAGE = 'The previous attempt was interrupted by a temporary problem (a usage limit or an overloaded service). Continue where you left off; do not redo finished work.';
+export const CONTINUE_MESSAGE =
+    'The previous attempt was interrupted by a temporary problem (a usage limit or an overloaded service). Continue where you left off; do not redo finished work.';
 
 /**
  * Put before the message of a turn that stop and send starts (`ChatQueue.dispatch` after `RunDriver.interrupt`): the agent did not stop its last turn,
  * the runtime did, to make room for this message, so whatever it was doing may be unfinished. Only the agent reads it; the person's bubble does not have it.
  */
-export const STOPPED_TURN_MESSAGE = 'Your previous turn was stopped so this message could be sent; what it was doing may be unfinished.';
+export const STOPPED_TURN_MESSAGE =
+    'Your previous turn was stopped so this message could be sent; what it was doing may be unfinished.';
 
 /** What the person reads of a background item's kind, in a line of the stream ("Background command finished: ...") and in the agent's message. */
 export const BACKGROUND_KINDS: Record<BackgroundItem['kind'], string> = {
@@ -211,8 +237,8 @@ export function backgroundNote(item: BackgroundItem, stopped: boolean): string {
     const scheduled = item.kind === 'task' && !stopped ? SCHEDULED_TITLE.exec(item.title) : null;
 
     return scheduled
-        ? `${ scheduled[1] === 'Monitor' ? 'Monitor ended' : 'Wakeup due' }: ${ namedTitle(scheduled[2]) }`
-        : `Background ${ BACKGROUND_KINDS[item.kind] } ${ stopped ? 'stopped' : 'finished' }: ${ namedTitle(item.title) }`;
+        ? `${scheduled[1] === 'Monitor' ? 'Monitor ended' : 'Wakeup due'}: ${namedTitle(scheduled[2])}`
+        : `Background ${BACKGROUND_KINDS[item.kind]} ${stopped ? 'stopped' : 'finished'}: ${namedTitle(item.title)}`;
 }
 
 /**
@@ -222,8 +248,11 @@ export function backgroundNote(item: BackgroundItem, stopped: boolean): string {
  */
 export function backgroundEndedMessage(ended: readonly { item: BackgroundItem; stopped: boolean }[]): string {
     return [
-        ...ended.map(({ item, stopped }) => `Background ${ BACKGROUND_KINDS[item.kind] } ${ stopped ? 'stopped by the user' : 'finished' }: ${ namedTitle(item.title) }`),
-        `Check how ${ ended.length === 1 ? 'it' : 'they' } went and tell the user what came of ${ ended.length === 1 ? 'it' : 'them' }, briefly.`,
+        ...ended.map(
+            ({ item, stopped }) =>
+                `Background ${BACKGROUND_KINDS[item.kind]} ${stopped ? 'stopped by the user' : 'finished'}: ${namedTitle(item.title)}`
+        ),
+        `Check how ${ended.length === 1 ? 'it' : 'they'} went and tell the user what came of ${ended.length === 1 ? 'it' : 'them'}, briefly.`,
     ].join('\n');
 }
 
@@ -232,7 +261,7 @@ export function backgroundEndedMessage(ended: readonly { item: BackgroundItem; s
  * stopped command gives the agent no report of its own (Claude Code starts no turn for it), so nothing would tell it.
  */
 export function backgroundStoppedMessage(item: BackgroundItem): string {
-    return `The user stopped the background ${ BACKGROUND_KINDS[item.kind] }: ${ namedTitle(item.title) }\nIt did not finish, and no result of it will arrive. Carry on without it, and say in one short sentence what that changes for your work.`;
+    return `The user stopped the background ${BACKGROUND_KINDS[item.kind]}: ${namedTitle(item.title)}\nIt did not finish, and no result of it will arrive. Carry on without it, and say in one short sentence what that changes for your work.`;
 }
 
 /**
@@ -242,6 +271,6 @@ export function backgroundStoppedMessage(item: BackgroundItem): string {
 export function lostBackgroundMessage(items: readonly BackgroundItem[]): string {
     return [
         'The background work you had running was lost when your session was cut off (stopped, restarted or failed). It did not finish, and no result of it will arrive. Start it again if it is still needed.',
-        ...items.map(item => `- ${ BACKGROUND_KINDS[item.kind] }: ${ namedTitle(item.title) }`),
+        ...items.map(item => `- ${BACKGROUND_KINDS[item.kind]}: ${namedTitle(item.title)}`),
     ].join('\n');
 }

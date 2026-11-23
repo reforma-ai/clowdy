@@ -5,7 +5,14 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createFixtureData, FIXTURE_EMPTY_PROJECT_ID, FIXTURE_PROJECT_ID, FIXTURE_WORKSPACE_CHAT_ID, withFixtureWorkspace, type FixtureData } from '../../daemon/fixtureData';
+import {
+    createFixtureData,
+    FIXTURE_EMPTY_PROJECT_ID,
+    FIXTURE_PROJECT_ID,
+    FIXTURE_WORKSPACE_CHAT_ID,
+    type FixtureData,
+    withFixtureWorkspace,
+} from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { hotkeys, installDispatcher } from '../../hotkeys';
 import { RootStore, RootStoreProvider } from '../../stores';
@@ -25,12 +32,20 @@ vi.mock('@clowdy/components/modals', () => ({ openConfirmModal: vi.fn() }));
 vi.mock('../chats/ChatView', () => ({
     ChatView: ({ chat, controls }: { chat: { id: string; title: string }; controls?: ReactNode }) => (
         <>
-            <div data-testid="chat" data-chat-id={ chat.id }>{ chat.title }</div>
-            { controls }
+            <div data-testid="chat" data-chat-id={chat.id}>
+                {chat.title}
+            </div>
+            {controls}
         </>
     ),
 }));
-vi.mock('./RunDetail', () => ({ RunDetail: ({ run }: { run: { id: string; name: string } }) => <div data-testid="run" data-run-id={ run.id }>{ run.name }</div> }));
+vi.mock('./RunDetail', () => ({
+    RunDetail: ({ run }: { run: { id: string; name: string } }) => (
+        <div data-testid="run" data-run-id={run.id}>
+            {run.name}
+        </div>
+    ),
+}));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -54,27 +69,40 @@ let store: RootStore;
 const ui = () => store.ui.forProject(FIXTURE_PROJECT_ID);
 const project = () => store.selectedProject!;
 
-const draw = (before?: () => void) => act(async () => {
-    before?.();
-    reactRoot.render(<RootStoreProvider value={ store }><Screen /></RootStoreProvider>);
-});
+const draw = (before?: () => void) =>
+    act(async () => {
+        before?.();
+        reactRoot.render(
+            <RootStoreProvider value={store}>
+                <Screen />
+            </RootStoreProvider>
+        );
+    });
 
 /** The heading of the one folder of the fixture project's group: a list is grouped by folder even for a project of one folder. */
 const MAIN_GROUP = '@folder:fld_car_rental';
 const rowKeys = () => [...container.querySelectorAll('[role="row"]')].map(row => row.getAttribute('data-key'));
-const rowOf = (key: string) => container.querySelector<HTMLElement>(`[role="row"][data-key="${ key }"]`)!;
+const rowOf = (key: string) => container.querySelector<HTMLElement>(`[role="row"][data-key="${key}"]`)!;
 const isSelected = (key: string) => rowOf(key).hasAttribute('data-selected');
-const buttonNamed = (label: string) => container.querySelector<HTMLButtonElement>(`button[aria-label="${ label }"]`)!;
+const buttonNamed = (label: string) => container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!;
 
 /** A press with a mouse: what React Aria opens a menu on, and picks an item with. */
-const press = async (target: HTMLElement) => act(async () => {
-    target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
-    target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
-    target.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
-    target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
-    target.click();
-});
-const menuItem = (name: string) => [...document.body.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find(row => row.textContent?.includes(name))!;
+const press = async (target: HTMLElement) =>
+    act(async () => {
+        target.dispatchEvent(
+            new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true })
+        );
+        target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+        target.dispatchEvent(
+            new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true })
+        );
+        target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
+        target.click();
+    });
+const menuItem = (name: string) =>
+    [...document.body.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find(row =>
+        row.textContent?.includes(name)
+    )!;
 
 beforeEach(async () => {
     chatListPreferences.setSort('activity');
@@ -159,7 +187,9 @@ describe('the list', () => {
         expect(rowOf('c-3').hasAttribute('data-open')).toBe(false);
 
         await act(async () => {
-            document.body.querySelector('[role="menu"]')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+            document.body
+                .querySelector('[role="menu"]')!
+                .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
         });
 
         expect(rowOf('c-4').hasAttribute('data-open')).toBe(false);
@@ -220,7 +250,9 @@ describe('a side panel that covers the chat', () => {
 
     it('is shut by Enter or Space on that row, and by a press on the new-chat row while the new chat is open', async () => {
         await cover(() => ui().openChat('c-3'));
-        await act(async () => rowOf('c-3').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })));
+        await act(async () =>
+            rowOf('c-3').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+        );
 
         expect(covering()).toBe(false);
 
@@ -238,14 +270,14 @@ describe('a side panel that covers the chat', () => {
         expect(ui().chatId).toBe('c-5');
     });
 
-    it('stays when a control of the open chat\'s row is pressed, which is not a press on the chat', async () => {
+    it("stays when a control of the open chat's row is pressed, which is not a press on the chat", async () => {
         await cover(() => ui().openChat('c-3'));
         await press(rowOf('c-3').querySelector<HTMLElement>('button[aria-label="Chat actions"]')!);
 
         expect(covering()).toBe(true);
     });
 
-    it('leaves a panel beside the chat alone when the open chat\'s row is pressed', async () => {
+    it("leaves a panel beside the chat alone when the open chat's row is pressed", async () => {
         await draw(() => {
             ui().openChat('c-3');
             ui().openSidePanelTab('files');
@@ -266,9 +298,10 @@ describe('the new-chat row', () => {
         });
     }
 
-    const pressEnter = () => act(async () => {
-        field()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
-    });
+    const pressEnter = () =>
+        act(async () => {
+            field()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+        });
 
     it('opens a page with a message box, and makes no chat by being opened', async () => {
         const before = project().chats.size;
@@ -334,14 +367,15 @@ describe('grouped by folder', () => {
     const MAIN = 'fld_car_rental';
     /** The name of the one folder of the fixture project. */
     const SINGLE = 'car-rental';
-    const head = (folderId: string) => `@folder:${ folderId }`;
+    const head = (folderId: string) => `@folder:${folderId}`;
     const field = () => container.querySelector<HTMLElement>('[contenteditable="true"]');
     const editor = () => (field() as HTMLElement & { editor: Editor }).editor;
     /** The select under the new-chat page's message box, and the rows of its list. */
     const folderSelect = () => container.querySelector<HTMLButtonElement>('button[aria-label^="Folder:"]');
     /** The read only line of a chat that is made, in the place the select had. */
     const folderLine = () => container.querySelector<HTMLElement>('[role="group"][aria-label="Folder"]');
-    const folderItem = (name: string) => [...document.body.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find(row => row.textContent === name)!;
+    const folderItem = (name: string) =>
+        [...document.body.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find(row => row.textContent === name)!;
     const filtersMenu = async () => {
         await press(container.querySelector<HTMLElement>('button[aria-label="Filters"]')!);
 
@@ -349,7 +383,13 @@ describe('grouped by folder', () => {
     };
 
     /** The fixture project with a second folder, `car-rental-api`, where c-2 works; the switch is on unless `grouping` says otherwise, and `null` keeps no choice. */
-    async function restart({ grouping = true, transport = new FixtureTransport({ data: twoFolders() }) }: { grouping?: boolean | null; transport?: FixtureTransport } = {}) {
+    async function restart({
+        grouping = true,
+        transport = new FixtureTransport({ data: twoFolders() }),
+    }: {
+        grouping?: boolean | null;
+        transport?: FixtureTransport;
+    } = {}) {
         act(() => reactRoot.unmount());
         store.dispose();
         reactRoot = createRoot(container);
@@ -372,13 +412,23 @@ describe('grouped by folder', () => {
 
     it('offers the switch to a project of one folder as well, on until it is turned off', async () => {
         // A project that kept no choice groups, whatever number of folders it has.
-        expect(await filtersMenu()).toEqual(['Show finished sub-threads', 'Group chats by folder', 'Last activity', 'Created']);
+        expect(await filtersMenu()).toEqual([
+            'Show finished sub-threads',
+            'Group chats by folder',
+            'Last activity',
+            'Created',
+        ]);
         expect(menuItem('Group chats by folder').getAttribute('aria-checked')).toBe('true');
         expect(rowKeys()).toContain(MAIN_GROUP);
 
         await restart({ grouping: null });
 
-        expect(await filtersMenu()).toEqual(['Show finished sub-threads', 'Group chats by folder', 'Last activity', 'Created']);
+        expect(await filtersMenu()).toEqual([
+            'Show finished sub-threads',
+            'Group chats by folder',
+            'Last activity',
+            'Created',
+        ]);
         expect(menuItem('Group chats by folder').getAttribute('aria-checked')).toBe('true');
         expect(rowKeys()).toContain(head(MAIN));
 
@@ -410,21 +460,43 @@ describe('grouped by folder', () => {
     });
 
     it('says so under a group with no chat', async () => {
-        await restart({ transport: new FixtureTransport({ data: twoFolders(data => void delete data.chats.find(chat => chat.id === 'c-2')!.folderId) }) });
+        await restart({
+            transport: new FixtureTransport({
+                data: twoFolders(data => void delete data.chats.find(chat => chat.id === 'c-2')!.folderId),
+            }),
+        });
 
-        expect(rowKeys()).toEqual(['@new-chat', head(MAIN), 'c-1', 'c-4', 'c-6', 'c-5', 'c-3', 'c-2', head(API.id), `@empty:${ API.id }`]);
-        expect(rowOf(`@empty:${ API.id }`).textContent).toBe('No chats');
+        expect(rowKeys()).toEqual([
+            '@new-chat',
+            head(MAIN),
+            'c-1',
+            'c-4',
+            'c-6',
+            'c-5',
+            'c-3',
+            'c-2',
+            head(API.id),
+            `@empty:${API.id}`,
+        ]);
+        expect(rowOf(`@empty:${API.id}`).textContent).toBe('No chats');
     });
 
     it('opens the menu of the folder from a press on the name of its group, with the new-chat page of that folder shown, in the desktop app only', async () => {
-        const name = (folderId: string) => rowOf(head(folderId)).querySelector<HTMLButtonElement>('button[aria-label^="Folder:"]');
-        const menuItems = () => [...document.body.querySelectorAll('[role="menu"][aria-label="Open folder"] [role="menuitem"]')].map(row => row.textContent);
+        const name = (folderId: string) =>
+            rowOf(head(folderId)).querySelector<HTMLButtonElement>('button[aria-label^="Folder:"]');
+        const menuItems = () =>
+            [...document.body.querySelectorAll('[role="menu"][aria-label="Open folder"] [role="menuitem"]')].map(
+                row => row.textContent
+            );
 
         // With no desktop bridge there is nothing to open a folder in: the name is a label.
         await restart();
         expect(name(MAIN)).toBeNull();
 
-        window.desktop = { getOpenApps: async () => ({ editors: [], terminals: [], fileManagers: [] }), openPath: vi.fn(async () => undefined) } as never;
+        window.desktop = {
+            getOpenApps: async () => ({ editors: [], terminals: [], fileManagers: [] }),
+            openPath: vi.fn(async () => undefined),
+        } as never;
 
         try {
             await restart();
@@ -435,18 +507,29 @@ describe('grouped by folder', () => {
             await press(name(API.id)!);
             expect([ui().draft, ui().draftFolderId]).toEqual([true, API.id]);
             // Manage worktrees… is the last item, there from the first frame.
-            expect(menuItems()).toEqual(['Open in Files', 'Open in Terminal', 'Copy path', 'Open in…', 'Manage worktrees…']);
+            expect(menuItems()).toEqual([
+                'Open in Files',
+                'Open in Terminal',
+                'Copy path',
+                'Open in…',
+                'Manage worktrees…',
+            ]);
 
             // The main folder's new chat has no folder of its own. The menu holds the page while it is open: this one is a fresh start.
             await restart();
             await draw(() => ui().openChat('c-2'));
             await press(name(MAIN)!);
             expect([ui().draft, ui().draftFolderId]).toEqual([true, null]);
-            expect(menuItems()).toEqual(['Open in Files', 'Open in Terminal', 'Copy path', 'Open in…', 'Manage worktrees…']);
+            expect(menuItems()).toEqual([
+                'Open in Files',
+                'Open in Terminal',
+                'Copy path',
+                'Open in…',
+                'Manage worktrees…',
+            ]);
             // It folds nothing.
             expect(ui().collapsedFolders).toEqual([]);
-        }
-        finally {
+        } finally {
             window.desktop = undefined;
         }
     });
@@ -456,23 +539,56 @@ describe('grouped by folder', () => {
         const info = await transport.getProjectsInfo();
         const choose = vi.fn(async () => ['/Users/dev/api-moved']);
 
-        vi.spyOn(transport, 'getProjectsInfo').mockResolvedValue(info.map(entry => (entry.projectId === FIXTURE_PROJECT_ID ? { ...entry, folders: entry.folders.map(folder => ({ ...folder, exists: folder.folderId !== API.id })) } : entry)));
-        window.desktop = { getOpenApps: async () => ({ editors: [], terminals: [], fileManagers: [] }), openPath: vi.fn(async () => undefined), chooseDirectories: choose } as never;
+        vi.spyOn(transport, 'getProjectsInfo').mockResolvedValue(
+            info.map(entry =>
+                entry.projectId === FIXTURE_PROJECT_ID
+                    ? {
+                          ...entry,
+                          folders: entry.folders.map(folder => ({ ...folder, exists: folder.folderId !== API.id })),
+                      }
+                    : entry
+            )
+        );
+        window.desktop = {
+            getOpenApps: async () => ({ editors: [], terminals: [], fileManagers: [] }),
+            openPath: vi.fn(async () => undefined),
+            chooseDirectories: choose,
+        } as never;
 
         try {
-            const name = (folderId: string) => rowOf(head(folderId)).querySelector<HTMLButtonElement>('button[aria-label^="Folder:"]')!;
-            const menuItems = () => [...document.body.querySelectorAll('[role="menu"][aria-label="Open folder"] [role="menuitem"]')].map(row => row.textContent);
-            const item = (text: string) => [...document.body.querySelectorAll<HTMLElement>('[role="menu"][aria-label="Open folder"] [role="menuitem"]')].find(row => row.textContent === text)!;
+            const name = (folderId: string) =>
+                rowOf(head(folderId)).querySelector<HTMLButtonElement>('button[aria-label^="Folder:"]')!;
+            const menuItems = () =>
+                [...document.body.querySelectorAll('[role="menu"][aria-label="Open folder"] [role="menuitem"]')].map(
+                    row => row.textContent
+                );
+            const item = (text: string) =>
+                [
+                    ...document.body.querySelectorAll<HTMLElement>(
+                        '[role="menu"][aria-label="Open folder"] [role="menuitem"]'
+                    ),
+                ].find(row => row.textContent === text)!;
 
             await restart({ transport });
             await press(name(API.id));
 
             // The folder is there, and the page is not taken from the chat: nothing to start in a folder that is gone.
             expect(ui().draft).toBe(false);
-            expect(menuItems()).toEqual(['Locate…', 'Remove from project', 'Copy path', 'Open in…', 'Manage worktrees…']);
+            expect(menuItems()).toEqual([
+                'Locate…',
+                'Remove from project',
+                'Copy path',
+                'Open in…',
+                'Manage worktrees…',
+            ]);
 
             await press(item('Locate…'));
-            await vi.waitFor(() => expect(store.projects.find(project => project.id === FIXTURE_PROJECT_ID)?.folders[1]).toEqual({ id: API.id, path: '/Users/dev/api-moved' }));
+            await vi.waitFor(() =>
+                expect(store.projects.find(project => project.id === FIXTURE_PROJECT_ID)?.folders[1]).toEqual({
+                    id: API.id,
+                    path: '/Users/dev/api-moved',
+                })
+            );
             expect(store.projects.find(project => project.id === FIXTURE_PROJECT_ID)?.folders[0].id).toBe(MAIN);
 
             // A chat works in the folder, so taking it out asks first (it is named by its new place now).
@@ -480,15 +596,20 @@ describe('grouped by folder', () => {
             await press(name(API.id));
             await press(item('Remove from project'));
 
-            expect(openConfirmModal).toHaveBeenCalledWith(expect.objectContaining({ title: 'Remove api-moved?', message: expect.stringContaining('1 chat works in api-moved') }), expect.anything());
+            expect(openConfirmModal).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    title: 'Remove api-moved?',
+                    message: expect.stringContaining('1 chat works in api-moved'),
+                }),
+                expect.anything()
+            );
 
             // A folder that is there has none of it.
             await restart();
             await press(name(API.id));
 
             expect(menuItems()).not.toContain('Locate…');
-        }
-        finally {
+        } finally {
             window.desktop = undefined;
         }
     });
@@ -514,9 +635,12 @@ describe('grouped by folder', () => {
         await draw();
         expect(rowKeys()).toContain('c-2');
 
-        const key = (name: string) => act(async () => {
-            rowOf(head(MAIN)).dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true }));
-        });
+        const key = (name: string) =>
+            act(async () => {
+                rowOf(head(MAIN)).dispatchEvent(
+                    new KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true })
+                );
+            });
 
         await key('ArrowLeft');
         expect(ui().collapsedFolders).toEqual([MAIN]);
@@ -526,14 +650,20 @@ describe('grouped by folder', () => {
         expect(ui().collapsedFolders).toEqual([]);
     });
 
-    it('steps J and K over the headings as the arrows do, and past a group\'s note of no chats', async () => {
-        await restart({ transport: new FixtureTransport({ data: twoFolders(data => void delete data.chats.find(chat => chat.id === 'c-2')!.folderId) }) });
+    it("steps J and K over the headings as the arrows do, and past a group's note of no chats", async () => {
+        await restart({
+            transport: new FixtureTransport({
+                data: twoFolders(data => void delete data.chats.find(chat => chat.id === 'c-2')!.folderId),
+            }),
+        });
 
         const uninstall = installDispatcher(hotkeys);
         const focused = () => document.activeElement?.getAttribute('data-key');
         const step = async (name: string) => {
             await act(async () => {
-                document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true }));
+                document.activeElement!.dispatchEvent(
+                    new KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true })
+                );
             });
 
             return focused();
@@ -555,8 +685,7 @@ describe('grouped by folder', () => {
             rowOf(head(MAIN)).focus();
 
             expect(await step('k')).toBe('@new-chat');
-        }
-        finally {
+        } finally {
             uninstall();
         }
     });
@@ -595,7 +724,7 @@ describe('grouped by folder', () => {
         expect(folderSelect()?.textContent).toBe('car-rental');
     });
 
-    it('shows the main folder\'s page when the folder the new-chat page was for left the project', async () => {
+    it("shows the main folder's page when the folder the new-chat page was for left the project", async () => {
         await restart();
         await draw(() => ui().openDraft([], 'fld_gone'));
 
@@ -616,7 +745,10 @@ describe('grouped by folder', () => {
             await press(folderSelect()!);
 
             // The names are all of it: no path.
-            expect([...document.body.querySelectorAll('[role^="menuitem"]')].map(row => row.textContent)).toEqual(['car-rental', 'car-rental-api']);
+            expect([...document.body.querySelectorAll('[role^="menuitem"]')].map(row => row.textContent)).toEqual([
+                'car-rental',
+                'car-rental-api',
+            ]);
             // The chosen folder is told to assistive technology, not only drawn as a tick, and the other is not.
             expect(folderItem('car-rental').getAttribute('aria-checked')).toBe('true');
             expect(folderItem('car-rental-api').getAttribute('aria-checked')).toBe('false');
@@ -743,14 +875,25 @@ describe('grouped by folder', () => {
             const transport = new FixtureTransport({ data: twoFolders() });
             const info = await transport.getProjectsInfo();
 
-            vi.spyOn(transport, 'getProjectsInfo').mockResolvedValue(info.map(entry => (entry.projectId === FIXTURE_PROJECT_ID ? { ...entry, folders: entry.folders.map(folder => ({ ...folder, exists: folder.folderId !== API.id })) } : entry)));
+            vi.spyOn(transport, 'getProjectsInfo').mockResolvedValue(
+                info.map(entry =>
+                    entry.projectId === FIXTURE_PROJECT_ID
+                        ? {
+                              ...entry,
+                              folders: entry.folders.map(folder => ({ ...folder, exists: folder.folderId !== API.id })),
+                          }
+                        : entry
+                )
+            );
             await restart({ transport });
             await press(rowOf('@new-chat'));
             await draw();
             await press(folderSelect()!);
 
             // Its line says why it is not to be picked.
-            const gone = [...document.body.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find(row => row.textContent?.startsWith('car-rental-api'))!;
+            const gone = [...document.body.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find(row =>
+                row.textContent?.startsWith('car-rental-api')
+            )!;
 
             expect(gone.textContent).toBe('car-rental-apiThis folder no longer exists');
             expect(gone.getAttribute('aria-disabled')).toBe('true');
@@ -802,7 +945,16 @@ describe('grouped by folder', () => {
             const transport = new FixtureTransport({ data: twoFolders() });
             const info = await transport.getProjectsInfo();
 
-            vi.spyOn(transport, 'getProjectsInfo').mockResolvedValue(info.map(entry => (entry.projectId === FIXTURE_PROJECT_ID ? { ...entry, folders: entry.folders.map(folder => ({ ...folder, exists: folder.folderId !== API.id })) } : entry)));
+            vi.spyOn(transport, 'getProjectsInfo').mockResolvedValue(
+                info.map(entry =>
+                    entry.projectId === FIXTURE_PROJECT_ID
+                        ? {
+                              ...entry,
+                              folders: entry.folders.map(folder => ({ ...folder, exists: folder.folderId !== API.id })),
+                          }
+                        : entry
+                )
+            );
             await restart({ transport });
             await draw(() => ui().openChat('c-2'));
 
@@ -856,8 +1008,7 @@ describe('grouped by folder', () => {
 
             await act(async () => void vi.advanceTimersByTime(60_000));
             expect(allProjects()).toBe(1);
-        }
-        finally {
+        } finally {
             vi.useRealTimers();
         }
     });
@@ -884,7 +1035,16 @@ describe('grouped by folder', () => {
         const transport = new FixtureTransport({ data: twoFolders() });
         const info = await transport.getProjectsInfo();
 
-        vi.spyOn(transport, 'getProjectsInfo').mockResolvedValue(info.map(entry => (entry.projectId === FIXTURE_PROJECT_ID ? { ...entry, folders: entry.folders.map(folder => ({ ...folder, exists: folder.folderId !== API.id })) } : entry)));
+        vi.spyOn(transport, 'getProjectsInfo').mockResolvedValue(
+            info.map(entry =>
+                entry.projectId === FIXTURE_PROJECT_ID
+                    ? {
+                          ...entry,
+                          folders: entry.folders.map(folder => ({ ...folder, exists: folder.folderId !== API.id })),
+                      }
+                    : entry
+            )
+        );
         await restart({ transport });
         await draw();
 
@@ -898,7 +1058,9 @@ describe('grouped by folder', () => {
 describe('the heading', () => {
     it('has the history, as a button, to the left of the filters', () => {
         // The rows have an Archive of their own, as a quick action: the heading's buttons are the ones outside the list.
-        const buttons = [...container.querySelectorAll<HTMLElement>('button[aria-label="History"], button[aria-label="Filters"]')].filter(button => !button.closest('[role="grid"]'));
+        const buttons = [
+            ...container.querySelectorAll<HTMLElement>('button[aria-label="History"], button[aria-label="Filters"]'),
+        ].filter(button => !button.closest('[role="grid"]'));
 
         expect(buttons.map(button => button.getAttribute('aria-label'))).toEqual(['History', 'Filters']);
         expect(buttons[0].parentElement).toBe(buttons[1].parentElement);
@@ -931,7 +1093,10 @@ describe('the archive', () => {
     }
 
     // The rows of the archive's list, which is in a popover beside the screen and not in it. The title of a group is a row of its own, with no key.
-    const archiveRows = () => [...document.body.querySelectorAll<HTMLElement>('[role="row"][data-key]')].filter(row => !container.contains(row));
+    const archiveRows = () =>
+        [...document.body.querySelectorAll<HTMLElement>('[role="row"][data-key]')].filter(
+            row => !container.contains(row)
+        );
     const titles = () => archiveRows().map(row => row.textContent);
     const archiveRow = (title: string) => archiveRows().find(row => row.textContent?.startsWith(title))!;
 
@@ -962,17 +1127,22 @@ describe('the archive', () => {
         await press(buttonNamed('History'));
 
         // Both were put away just now.
-        const groups = [...document.body.querySelectorAll<HTMLElement>('[role="rowgroup"]')].filter(group => !container.contains(group));
+        const groups = [...document.body.querySelectorAll<HTMLElement>('[role="rowgroup"]')].filter(
+            group => !container.contains(group)
+        );
 
         expect(groups.map(group => group.querySelector('[role="rowheader"]')?.textContent)).toEqual(['Today']);
-        expect([...groups[0].querySelectorAll('[role="row"][data-key]')].map(row => row.getAttribute('data-key'))).toEqual(['c-4', 'c-2']);
+        expect(
+            [...groups[0].querySelectorAll('[role="row"][data-key]')].map(row => row.getAttribute('data-key'))
+        ).toEqual(['c-4', 'c-2']);
     });
 
     it('draws the time in the room of the `⋯`, which takes its place when the row is hovered', async () => {
         await archive('c-4', true);
         await press(buttonNamed('History'));
 
-        const end = archiveRow('New chat').querySelector<HTMLElement>('button[aria-label^="Actions of"]')!.parentElement!;
+        const end = archiveRow('New chat').querySelector<HTMLElement>('button[aria-label^="Actions of"]')!
+            .parentElement!;
         const time = end.querySelector<HTMLElement>('[data-show="item-rest"]')!;
 
         expect(time.textContent).toBe('now');
@@ -984,7 +1154,9 @@ describe('the archive', () => {
         await archive('c-4', true);
         await press(buttonNamed('History'));
 
-        expect(archiveRow('First version').querySelector('[data-provider]')?.getAttribute('data-provider')).toBe(project().runs.get('r-orch-2')?.engine);
+        expect(archiveRow('First version').querySelector('[data-provider]')?.getAttribute('data-provider')).toBe(
+            project().runs.get('r-orch-2')?.engine
+        );
         expect(archiveRow('New chat').querySelector('[data-provider]')).toBeNull();
         expect(archiveRow('New chat').querySelector('svg')).not.toBeNull();
     });
@@ -1025,7 +1197,10 @@ describe('the archive', () => {
         await press(buttonNamed('History'));
         await press(archiveRow('New chat').querySelector<HTMLElement>('button[aria-label^="Actions of"]')!);
 
-        expect([...document.body.querySelectorAll('[role="menuitem"]')].map(row => row.textContent)).toEqual(['Unarchive', 'Delete']);
+        expect([...document.body.querySelectorAll('[role="menuitem"]')].map(row => row.textContent)).toEqual([
+            'Unarchive',
+            'Delete',
+        ]);
     });
 
     it('puts a chat back in the list from its menu, without opening it', async () => {
@@ -1099,16 +1274,22 @@ describe('the archive', () => {
 });
 
 describe('threads', () => {
-    const foldOf = (key: string) => rowOf(key).querySelector<HTMLButtonElement>('button[aria-label^="Expand"], button[aria-label^="Collapse"]');
+    const foldOf = (key: string) =>
+        rowOf(key).querySelector<HTMLButtonElement>('button[aria-label^="Expand"], button[aria-label^="Collapse"]');
     const depthOf = (key: string) => rowOf(key).getAttribute('data-depth');
     const dotOf = (key: string) => rowOf(key).querySelector('[role="img"]')?.getAttribute('aria-label');
     const stopThreads = async () => {
         for (const runId of ['r-orch-6a', 'r-orch-6e']) await store.command({ type: 'run.cancel', runId });
 
-        await vi.waitFor(() => expect(['r-orch-6a', 'r-orch-6e'].map(id => project().runs.get(id)?.status)).toEqual(['cancelled', 'cancelled']));
+        await vi.waitFor(() =>
+            expect(['r-orch-6a', 'r-orch-6e'].map(id => project().runs.get(id)?.status)).toEqual([
+                'cancelled',
+                'cancelled',
+            ])
+        );
     };
 
-    it('folds a chat\'s threads until it is opened: the chat has a fold and its threads are not rows', () => {
+    it("folds a chat's threads until it is opened: the chat has a fold and its threads are not rows", () => {
         expect(rowKeys()).not.toContain('c-6a');
         expect(foldOf('c-6')?.getAttribute('aria-label')).toBe('Expand Ship the checkout threads');
         expect(foldOf('c-6')?.getAttribute('aria-expanded')).toBe('false');
@@ -1120,7 +1301,20 @@ describe('threads', () => {
         expect(ui().expandedChats).toEqual(['c-6']);
         await draw();
 
-        expect(rowKeys()).toEqual(['@new-chat', MAIN_GROUP, 'c-1', 'c-4', 'c-6', 'c-6a', 'c-6b', 'c-6c', 'c-6e', 'c-5', 'c-3', 'c-2']);
+        expect(rowKeys()).toEqual([
+            '@new-chat',
+            MAIN_GROUP,
+            'c-1',
+            'c-4',
+            'c-6',
+            'c-6a',
+            'c-6b',
+            'c-6c',
+            'c-6e',
+            'c-5',
+            'c-3',
+            'c-2',
+        ]);
         expect(['c-6', 'c-6a', 'c-6e'].map(depthOf)).toEqual(['0', '1', '1']);
         expect(foldOf('c-6')?.getAttribute('aria-expanded')).toBe('true');
 
@@ -1138,9 +1332,12 @@ describe('threads', () => {
     });
 
     it('opens a fold with the right arrow and closes it with the left one', async () => {
-        const key = (name: string) => act(async () => {
-            rowOf('c-6').dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true }));
-        });
+        const key = (name: string) =>
+            act(async () => {
+                rowOf('c-6').dispatchEvent(
+                    new KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true })
+                );
+            });
 
         await key('ArrowRight');
         expect(ui().expandedChats).toEqual(['c-6']);
@@ -1164,9 +1361,16 @@ describe('threads', () => {
         await press(container.querySelector<HTMLElement>('button[aria-label="Filters"]')!);
 
         expect(menuItem('Show finished sub-threads').getAttribute('aria-checked')).toBe('true');
-        expect([...document.body.querySelectorAll('[role^="menuitem"]')].map(row => row.textContent)).toEqual(['Show finished sub-threads', 'Group chats by folder', 'Last activity', 'Created']);
+        expect([...document.body.querySelectorAll('[role^="menuitem"]')].map(row => row.textContent)).toEqual([
+            'Show finished sub-threads',
+            'Group chats by folder',
+            'Last activity',
+            'Created',
+        ]);
         // A section that holds one check has no header; only the order does.
-        expect([...document.body.querySelectorAll('[role="menu"] header')].map(header => header.textContent)).toEqual(['Sort by']);
+        expect([...document.body.querySelectorAll('[role="menu"] header')].map(header => header.textContent)).toEqual([
+            'Sort by',
+        ]);
 
         await press(menuItem('Show finished sub-threads'));
         expect(chatListPreferences.showFinishedThreads).toBe(false);
@@ -1227,11 +1431,26 @@ describe('threads', () => {
         // Opening the fold lists every thread, the asking one in its place.
         await act(async () => foldOf('c-6')!.click());
         await draw();
-        expect(rowKeys()).toEqual(['@new-chat', MAIN_GROUP, 'c-1', 'c-4', 'c-6', 'c-6a', 'c-6b', 'c-6c', 'c-6e', 'c-5', 'c-3', 'c-2']);
+        expect(rowKeys()).toEqual([
+            '@new-chat',
+            MAIN_GROUP,
+            'c-1',
+            'c-4',
+            'c-6',
+            'c-6a',
+            'c-6b',
+            'c-6c',
+            'c-6e',
+            'c-5',
+            'c-3',
+            'c-2',
+        ]);
 
         // Decided: the thread goes back behind the fold, and the chat's dot to its threads working.
         await act(async () => foldOf('c-6')!.click());
-        await draw(() => project().runs.set('r-orch-6e', { ...project().runs.get('r-orch-6e')!, awaitingUser: undefined }));
+        await draw(() =>
+            project().runs.set('r-orch-6e', { ...project().runs.get('r-orch-6e')!, awaitingUser: undefined })
+        );
         expect(rowKeys()).not.toContain('c-6e');
         expect(dotOf('c-6')).toBe('Threads working');
     });
@@ -1248,7 +1467,10 @@ describe('threads', () => {
     });
 
     it('lists a thread put away alone in the archive by its title, and the threads put away with their chat nowhere on their own', async () => {
-        const archiveTitles = () => [...document.body.querySelectorAll<HTMLElement>('[role="row"][data-key]')].filter(row => !container.contains(row)).map(row => row.textContent);
+        const archiveTitles = () =>
+            [...document.body.querySelectorAll<HTMLElement>('[role="row"][data-key]')]
+                .filter(row => !container.contains(row))
+                .map(row => row.textContent);
 
         await store.command({ type: 'chat.setArchived', chatId: 'c-6b', archived: true });
         await vi.waitFor(() => expect(project().chats.get('c-6b')?.archivedAt).toBeDefined());
@@ -1277,7 +1499,15 @@ describe('threads', () => {
         await press(menuItem('Delete'));
 
         // The message is an element (the dialog may add a checkbox for the chat's worktree) that carries the words the confirmation says.
-        expect(openConfirmModal).toHaveBeenCalledWith(expect.objectContaining({ message: expect.objectContaining({ props: expect.objectContaining({ text: '"Ship the checkout", its 5 threads and the runs of their agents are deleted for good. The tasks they made stay.' }) }) }));
+        expect(openConfirmModal).toHaveBeenCalledWith(
+            expect.objectContaining({
+                message: expect.objectContaining({
+                    props: expect.objectContaining({
+                        text: '"Ship the checkout", its 5 threads and the runs of their agents are deleted for good. The tasks they made stay.',
+                    }),
+                }),
+            })
+        );
     });
 });
 
@@ -1303,12 +1533,16 @@ describe('a chat that works in a worktree', () => {
         const read = vi.spyOn(transport, 'getProjectsInfo');
         let current = workspaces;
 
-        read.mockImplementation(async projectId => (await FixtureTransport.prototype.getProjectsInfo.call(transport, projectId)).map(entry => (entry.projectId === FIXTURE_PROJECT_ID ? { ...entry, workspaces: current } : entry)));
+        read.mockImplementation(async projectId =>
+            (await FixtureTransport.prototype.getProjectsInfo.call(transport, projectId)).map(entry =>
+                entry.projectId === FIXTURE_PROJECT_ID ? { ...entry, workspaces: current } : entry
+            )
+        );
 
         return { transport, read, set: (next: ProjectInfo['workspaces']) => void (current = next) };
     }
 
-    it('has a branch mark after its title, with its branch in the mark\'s title, and no other row has one', async () => {
+    it("has a branch mark after its title, with its branch in the mark's title, and no other row has one", async () => {
         await restart();
 
         expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.title).toBe('Works in a worktree on clowdy/ab12cd34');
@@ -1316,7 +1550,9 @@ describe('a chat that works in a worktree', () => {
         expect(rowKeys().filter(key => key && mark(key))).toEqual([FIXTURE_WORKSPACE_CHAT_ID]);
         // The title stays what the row is called, with the mark after it.
         expect(rowOf(FIXTURE_WORKSPACE_CHAT_ID).textContent).toContain('Weekend surcharge in a worktree');
-        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.previousElementSibling?.textContent).toBe('Weekend surcharge in a worktree');
+        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.previousElementSibling?.textContent).toBe(
+            'Weekend surcharge in a worktree'
+        );
     });
 
     it('says the branch the worktree has now, as the daemon read it, and not the one it was made with', async () => {
@@ -1326,7 +1562,9 @@ describe('a chat that works in a worktree', () => {
     });
 
     it('reads what the daemon knows again when the window gets focus, for the branch an agent switched to meanwhile', async () => {
-        const { transport, read, set } = reading([{ workspaceId: 'wks_ab12cd34', exists: true, branch: 'feature/other' }]);
+        const { transport, read, set } = reading([
+            { workspaceId: 'wks_ab12cd34', exists: true, branch: 'feature/other' },
+        ]);
 
         await restart(transport);
 
@@ -1346,13 +1584,19 @@ describe('a chat that works in a worktree', () => {
     it('says the worktree is gone when the daemon says it is no longer on the disk', async () => {
         await restart(reading([{ workspaceId: 'wks_ab12cd34', exists: false }]).transport);
 
-        expect(rowOf(FIXTURE_WORKSPACE_CHAT_ID).querySelector('[role="img"]')?.getAttribute('title')).toBe('The worktree no longer exists');
+        expect(rowOf(FIXTURE_WORKSPACE_CHAT_ID).querySelector('[role="img"]')?.getAttribute('title')).toBe(
+            'The worktree no longer exists'
+        );
     });
 
     it('reads again when a worktree gets made, so a read taken while it was being made does not make the row call it gone', async () => {
         await restart(new FixtureTransport({ data: createFixtureData() }));
 
-        const created = await store.command({ type: 'chat.create', projectId: FIXTURE_PROJECT_ID, workspace: { mode: 'new' } });
+        const created = await store.command({
+            type: 'chat.create',
+            projectId: FIXTURE_PROJECT_ID,
+            workspace: { mode: 'new' },
+        });
         const { chat } = (created as { data: { chat: { id: string } } }).data;
 
         await vi.waitFor(() => expect(project().chats.get(chat.id)?.workspace?.ready).toBe(false));
@@ -1363,12 +1607,12 @@ describe('a chat that works in a worktree', () => {
             window.dispatchEvent(new Event('focus'));
         });
         await draw();
-        expect(mark(chat.id)?.title).toBe(`Works in a worktree on clowdy/${ chat.id.slice(-8) }`);
+        expect(mark(chat.id)?.title).toBe(`Works in a worktree on clowdy/${chat.id.slice(-8)}`);
 
         await store.command({ type: 'chat.send', chatId: chat.id, text: 'Go' });
         await vi.waitFor(() => expect(project().chats.get(chat.id)?.workspace?.ready).toBe(true));
         await draw();
-        await vi.waitFor(() => expect(mark(chat.id)?.title).toBe(`Works in a worktree on clowdy/${ chat.id.slice(-8) }`));
+        await vi.waitFor(() => expect(mark(chat.id)?.title).toBe(`Works in a worktree on clowdy/${chat.id.slice(-8)}`));
         expect(mark(chat.id)?.hasAttribute('data-gone')).toBe(false);
     });
 
@@ -1377,21 +1621,36 @@ describe('a chat that works in a worktree', () => {
 
         expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.title).toBe('Works in a worktree on clowdy/ab12cd34');
 
-        await restart(reading(undefined, data => void delete data.chats.find(chat => chat.id === FIXTURE_WORKSPACE_CHAT_ID)!.workspace!.branch).transport);
+        await restart(
+            reading(
+                undefined,
+                data => void delete data.chats.find(chat => chat.id === FIXTURE_WORKSPACE_CHAT_ID)!.workspace!.branch
+            ).transport
+        );
 
         expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.title).toBe('Works in a worktree');
     });
 
-    it('shows the chat\'s folder, where it works and the branch read only under its message box, from the chat\'s own workspace', async () => {
+    it("shows the chat's folder, where it works and the branch read only under its message box, from the chat's own workspace", async () => {
         await restart();
         await draw(() => ui().openChat(FIXTURE_WORKSPACE_CHAT_ID));
 
-        expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe(FIXTURE_WORKSPACE_CHAT_ID);
-        await vi.waitFor(() => expect(container.querySelector('[aria-label="Where it runs: Worktree, branch clowdy/ab12cd34"]')?.textContent).toBe('Worktreeclowdy/ab12cd34'));
+        expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe(
+            FIXTURE_WORKSPACE_CHAT_ID
+        );
+        await vi.waitFor(() =>
+            expect(
+                container.querySelector('[aria-label="Where it runs: Worktree, branch clowdy/ab12cd34"]')?.textContent
+            ).toBe('Worktreeclowdy/ab12cd34')
+        );
 
         await draw(() => ui().openChat('c-1'));
 
-        await vi.waitFor(() => expect(container.querySelector('[aria-label="Where it runs: Main worktree, branch main"]')?.textContent).toBe('main'));
+        await vi.waitFor(() =>
+            expect(
+                container.querySelector('[aria-label="Where it runs: Main worktree, branch main"]')?.textContent
+            ).toBe('main')
+        );
     });
 });
 
@@ -1409,7 +1668,10 @@ describe('the Star on GitHub card', () => {
         // The fixture's personal space is twelve days old and its project has six chats.
         expect(card()).not.toBeNull();
         expect(card()!.closest('[role="row"]')).toBeNull();
-        expect(container.querySelector('[aria-label="Agents"]')!.compareDocumentPosition(card()!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(
+            container.querySelector('[aria-label="Agents"]')!.compareDocumentPosition(card()!) &
+                Node.DOCUMENT_POSITION_FOLLOWING
+        ).toBeTruthy();
 
         await draw(() => starCardPreferences.dismiss());
 

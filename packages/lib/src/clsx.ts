@@ -1,4 +1,3 @@
 import clsx from 'clsx';
 
-export { clsx };
-export { clsx as cn };
+export { clsx, clsx as cn };

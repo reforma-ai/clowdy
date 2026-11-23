@@ -99,13 +99,16 @@ export class AcpSession implements EngineSession {
     /** The runtime took a title the agent gave. */
     private titled = false;
     private tookTitle: () => void = () => undefined;
-    private titleTaken = new Promise<void>((resolve) => {
+    private titleTaken = new Promise<void>(resolve => {
         this.tookTitle = resolve;
     });
     /** The turn is over and the agent runs on for its title; `close()` leaves it to leave by itself. */
     private lingering = false;
 
-    constructor(private options: EngineStartOptions, private deps: SessionDeps) {
+    constructor(
+        private options: EngineStartOptions,
+        private deps: SessionDeps
+    ) {
         this.signal = AbortSignal.any([options.signal, this.closing.signal]);
     }
 
@@ -173,7 +176,8 @@ export class AcpSession implements EngineSession {
         }
 
         const { agent } = resolution;
-        const protocol: AgentProtocol = agent.protocol === 'v2' && !this.deps.downgraded.has(launchKey(agent)) ? 'v2' : 'v1';
+        const protocol: AgentProtocol =
+            agent.protocol === 'v2' && !this.deps.downgraded.has(launchKey(agent)) ? 'v2' : 'v1';
 
         if (protocol === 'v1') {
             throw noFork(agent.name);
@@ -185,8 +189,7 @@ export class AcpSession implements EngineSession {
 
         try {
             proc = await this.launch(agent);
-        }
-        catch (error) {
+        } catch (error) {
             this.access?.dispose();
 
             const { message, retryable, code } = classifyThrown(error, { agent: agent.name, login: agent.login });
@@ -211,8 +214,7 @@ export class AcpSession implements EngineSession {
 
         try {
             return await layer.fork(sessionId, ref);
-        }
-        finally {
+        } finally {
             this.signal.removeEventListener('abort', stop);
             this.access?.dispose();
             started.stop();
@@ -262,9 +264,10 @@ export class AcpSession implements EngineSession {
     private record(): string | undefined {
         try {
             return this.options.history?.();
-        }
-        catch (error) {
-            console.warn(`[clowdy] could not write down the earlier conversation for a new session: ${ errorMessage(error) }`);
+        } catch (error) {
+            console.warn(
+                `[clowdy] could not write down the earlier conversation for a new session: ${errorMessage(error)}`
+            );
 
             return undefined;
         }
@@ -297,9 +300,8 @@ export class AcpSession implements EngineSession {
                 this.titled = true;
                 this.tookTitle();
             }
-        }
-        catch (error) {
-            console.warn(`[clowdy] the title ${ JSON.stringify(text) } was not taken: ${ errorMessage(error) }`);
+        } catch (error) {
+            console.warn(`[clowdy] the title ${JSON.stringify(text)} was not taken: ${errorMessage(error)}`);
         }
     }
 
@@ -314,14 +316,13 @@ export class AcpSession implements EngineSession {
     /** Keeps the agent running until the runtime took its title, the time is up, the signal of the turn is aborted (a cancel, the daemon stopping) or the agent leaves; then stops it. */
     private async linger(proc: AgentProcess): Promise<void> {
         const { signal } = this.options;
-        const cancelled = new Promise<void>((resolve) => {
+        const cancelled = new Promise<void>(resolve => {
             signal.addEventListener('abort', () => resolve(), { once: true });
         });
 
         try {
             await Promise.race([this.titleTaken, cancelled, proc.exited, wait(this.deps.titleWaitMs ?? TITLE_WAIT_MS)]);
-        }
-        finally {
+        } finally {
             proc.stop();
         }
     }
@@ -333,8 +334,7 @@ export class AcpSession implements EngineSession {
     private async *run(): AsyncGenerator<EngineEvent> {
         try {
             yield* this.drive();
-        }
-        finally {
+        } finally {
             // However the session ended, a steer that still waits for the prompt waits for nothing.
             this.finish();
         }
@@ -388,18 +388,26 @@ export class AcpSession implements EngineSession {
         }
 
         this.access?.dispose();
-        this.access = this.options.tools.length > 0 ? this.deps.bridge.register(this.options.tools, this.signal) : undefined;
+        this.access =
+            this.options.tools.length > 0 ? this.deps.bridge.register(this.options.tools, this.signal) : undefined;
 
         return spawnInOwnGroup({
             command: agent.command,
             args: agent.args,
             cwd: this.options.cwd,
-            env: withCli(buildAgentEnv({ daemonEnv: this.deps.env, path, scrub: agent.scrub, set: agent.env }), this.access?.cli, this.deps.shim),
+            env: withCli(
+                buildAgentEnv({ daemonEnv: this.deps.env, path, scrub: agent.scrub, set: agent.env }),
+                this.access?.cli,
+                this.deps.shim
+            ),
         });
     }
 
     /** One start of the agent's process and its conversation. Gives back the protocol to start the agent on again, when the handshake showed it speaks another. */
-    private async *attempt(agent: ResolvedAgent, protocol: AgentProtocol): AsyncGenerator<EngineEvent, AgentProtocol | undefined> {
+    private async *attempt(
+        agent: ResolvedAgent,
+        protocol: AgentProtocol
+    ): AsyncGenerator<EngineEvent, AgentProtocol | undefined> {
         let proc: AgentProcess;
 
         try {
@@ -411,8 +419,7 @@ export class AcpSession implements EngineSession {
             }
 
             proc = started;
-        }
-        catch (error) {
+        } catch (error) {
             this.access?.dispose();
             yield failureEvent(classifyThrown(error, { agent: agent.name, login: agent.login }));
 
@@ -436,11 +443,14 @@ export class AcpSession implements EngineSession {
             // The agent may leave by itself as soon as its input closes, and what it started in groups of their own would then belong to nobody.
             proc.watch();
 
-            void layer.cancel().then(() => {
-                proc.child.stdin?.end();
+            void layer
+                .cancel()
+                .then(() => {
+                    proc.child.stdin?.end();
 
-                return Promise.race([proc.exited, wait(CANCEL_GRACE_MS)]);
-            }).then(() => proc.stop());
+                    return Promise.race([proc.exited, wait(CANCEL_GRACE_MS)]);
+                })
+                .then(() => proc.stop());
         };
 
         this.signal.addEventListener('abort', stopAgent, { once: true });
@@ -452,7 +462,12 @@ export class AcpSession implements EngineSession {
 
         try {
             // Inside the `try`: a reader that stops here must not leave the process behind.
-            yield { type: 'process', pid: proc.pid, ...(process.platform !== 'win32' && { pgid: proc.pid }), startedAt: Date.now() };
+            yield {
+                type: 'process',
+                pid: proc.pid,
+                ...(process.platform !== 'win32' && { pgid: proc.pid }),
+                startedAt: Date.now(),
+            };
 
             if (this.signal.aborted) {
                 return;
@@ -460,8 +475,7 @@ export class AcpSession implements EngineSession {
 
             yield* layer.run();
             restart = layer.restartOn;
-        }
-        finally {
+        } finally {
             this.signal.removeEventListener('abort', stopAgent);
             this.access?.dispose();
 
@@ -470,8 +484,7 @@ export class AcpSession implements EngineSession {
                 if (this.awaitsTitle()) {
                     this.lingering = true;
                     void this.linger(proc);
-                }
-                else {
+                } else {
                     proc.stop();
                 }
             }
@@ -517,7 +530,11 @@ export class AcpSession implements EngineSession {
      * comes while the session is ending, or is withdrawn (by the end of the session, or by the agent: `withdrawn`), is answered with nothing, which the
      * layer turns into `cancelled`.
      */
-    private async pickPermission(agent: ResolvedAgent, request: PermissionParams, withdrawn: AbortSignal): Promise<string | undefined> {
+    private async pickPermission(
+        agent: ResolvedAgent,
+        request: PermissionParams,
+        withdrawn: AbortSignal
+    ): Promise<string | undefined> {
         const { approve } = this.options;
 
         if (agent.permission.answer === 'allow') {
@@ -541,9 +558,10 @@ export class AcpSession implements EngineSession {
             // outlives the run: Claude Code's goes to `.claude/settings.local.json` of the project, Codex's to `~/.codex/rules/default.rules` and holds for every project
             // (checked on 2026-11-22), which "for the session" does not promise. An agent with no one-time allow gets the lasting one, the only way to say yes.
             return decision && optionFor(request.options, decision === 'allow_always' ? 'allow_once' : decision);
-        }
-        catch (error) {
-            console.warn(`[clowdy] a permission request of ${ agent.name } was not put to the person: ${ errorMessage(error) }`);
+        } catch (error) {
+            console.warn(
+                `[clowdy] a permission request of ${agent.name} was not put to the person: ${errorMessage(error)}`
+            );
 
             return undefined;
         }

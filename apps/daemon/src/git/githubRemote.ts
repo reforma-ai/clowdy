@@ -16,7 +16,8 @@ function repoAt(host: string, path: string): GitHubRepo | undefined {
     const name = last.replace(/\.git$/i, '');
     const lower = host.toLowerCase();
 
-    if (!HOST.test(lower) || !NAME.test(owner) || !NAME.test(name) || /^\.+$/.test(owner) || /^\.+$/.test(name)) return undefined;
+    if (!HOST.test(lower) || !NAME.test(owner) || !NAME.test(name) || /^\.+$/.test(owner) || /^\.+$/.test(name))
+        return undefined;
 
     return { host: lower === SSH_OVER_HTTPS_HOST ? 'github.com' : lower, owner, name };
 }
@@ -30,7 +31,7 @@ function repoAt(host: string, path: string): GitHubRepo | undefined {
 export function parseRemote(address: string): GitHubRepo | undefined {
     const text = address.trim();
 
-    // eslint-disable-next-line no-control-regex
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: an address with a control character is refused
     if (text === '' || /[\s\x00-\x1f\x7f\\?#]/.test(text)) return undefined;
 
     const url = /^([a-z][a-z0-9+.-]*):\/\/([^/]*)\/(.*)$/i.exec(text);
@@ -48,7 +49,7 @@ export function parseRemote(address: string): GitHubRepo | undefined {
         const web = scheme === 'https' || scheme === 'http';
         const repo = repoAt(hostAndPort[1]!, url[3]!);
 
-        return repo && web && hostAndPort[2] !== undefined ? { ...repo, host: `${ repo.host }:${ hostAndPort[2] }` } : repo;
+        return repo && web && hostAndPort[2] !== undefined ? { ...repo, host: `${repo.host}:${hostAndPort[2]}` } : repo;
     }
 
     // `[user@]host:owner/repo`: the host has no slash, and a single letter before the colon is a drive of Windows.

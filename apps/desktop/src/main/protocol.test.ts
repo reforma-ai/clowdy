@@ -24,13 +24,13 @@ describe('createProtocolHandler', () => {
     });
 
     const get = async (handler: ReturnType<typeof createProtocolHandler>, pathname: string) => {
-        const response = await handler(new Request(`${ APP_ORIGIN }${ pathname }`));
+        const response = await handler(new Request(`${APP_ORIGIN}${pathname}`));
 
         return { status: response.status, body: await response.text() };
     };
     const entry = (text: string) => ({ sha256: sha256(encoder.encode(text)), size: text.length });
 
-    test('serves the app\'s own copy as it is, and an app route its index', async () => {
+    test("serves the app's own copy as it is, and an app route its index", async () => {
         const handler = createProtocolHandler(root);
 
         expect(await get(handler, '/assets/app.js')).toEqual({ status: 200, body: 'app' });
@@ -38,7 +38,7 @@ describe('createProtocolHandler', () => {
         expect((await get(handler, '/missing.js')).status).toBe(404);
     });
 
-    test('serves an installed bundle\'s file only while it matches the manifest', async () => {
+    test("serves an installed bundle's file only while it matches the manifest", async () => {
         const handler = createProtocolHandler(root, { 'index.html': entry('page'), 'assets/app.js': entry('app') });
 
         expect(await get(handler, '/assets/app.js')).toEqual({ status: 200, body: 'app' });
@@ -53,12 +53,12 @@ describe('createProtocolHandler', () => {
 });
 
 describe('CONTENT_SECURITY_POLICY', () => {
-    const directive = (name: string) => CONTENT_SECURITY_POLICY.split('; ').find(part => part.startsWith(`${ name } `));
+    const directive = (name: string) => CONTENT_SECURITY_POLICY.split('; ').find(part => part.startsWith(`${name} `));
 
-    test('lets the page frame a blob (the file manager\'s PDF preview) and nothing from outside the app', () => {
-        expect(directive('frame-src')).toBe('frame-src \'self\' blob:');
-        expect(directive('frame-ancestors')).toBe('frame-ancestors \'none\'');
-        expect(directive('object-src')).toBe('object-src \'none\'');
-        expect(directive('script-src')).toBe('script-src \'self\' \'wasm-unsafe-eval\'');
+    test("lets the page frame a blob (the file manager's PDF preview) and nothing from outside the app", () => {
+        expect(directive('frame-src')).toBe("frame-src 'self' blob:");
+        expect(directive('frame-ancestors')).toBe("frame-ancestors 'none'");
+        expect(directive('object-src')).toBe("object-src 'none'");
+        expect(directive('script-src')).toBe("script-src 'self' 'wasm-unsafe-eval'");
     });
 });

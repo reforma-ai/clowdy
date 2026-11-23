@@ -15,5 +15,13 @@ export default function ChangesTab() {
     const place = currentPlace(project, ui);
 
     // Each place has its own view, so one place's cards are never drawn for another.
-    return isPlaceReady(place) ? <ChangesView key={ `${ project.id }/${ place.workspace?.id ?? place.folder.id }` } projectId={ project.id } place={ place } /> : <PlaceWaiting />;
+    return isPlaceReady(place) ? (
+        <ChangesView
+            key={`${project.id}/${place.workspace?.id ?? place.folder.id}`}
+            projectId={project.id}
+            place={place}
+        />
+    ) : (
+        <PlaceWaiting />
+    );
 }

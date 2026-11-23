@@ -1,4 +1,18 @@
-import type { Artifact, Chat, ChatTaskLink, DocsFolder, Project, Run, RunId, RunTaskLink, StreamItem, Task, TaskComment, TaskId, TaskStatus } from './domain';
+import type {
+    Artifact,
+    Chat,
+    ChatTaskLink,
+    DocsFolder,
+    Project,
+    Run,
+    RunId,
+    RunTaskLink,
+    StreamItem,
+    Task,
+    TaskComment,
+    TaskId,
+    TaskStatus,
+} from './domain';
 
 /**
  * The daemon's change feed. Every event has a strictly increasing `cursor`; a client that stores the cursor of

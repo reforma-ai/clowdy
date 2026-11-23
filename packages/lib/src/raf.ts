@@ -16,9 +16,9 @@ const _rafLoopRunner = (timestamp: number) => {
             return;
         }
 
-        const fps = (typeof meta.fps === 'function') ? meta.fps() : meta.fps;
+        const fps = typeof meta.fps === 'function' ? meta.fps() : meta.fps;
 
-        if (!isFinite(fps) || !fps || (timestamp - meta.last) >= (1000 / fps)) {
+        if (!isFinite(fps) || !fps || timestamp - meta.last >= 1000 / fps) {
             meta.last = timestamp;
             cb(timestamp);
         }
@@ -34,7 +34,10 @@ const _rafLoopRunner = (timestamp: number) => {
  *
  * @return disposer - Function to cancel the loop
  */
-export function requestAnimationFrameLoop(cb: (timestamp: number) => any, fps: number | (() => number) = 0): (() => void) {
+export function requestAnimationFrameLoop(
+    cb: (timestamp: number) => any,
+    fps: number | (() => number) = 0
+): () => void {
     if (!_rafLoopPool) {
         _rafLoopPool = new Map();
     }

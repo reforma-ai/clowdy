@@ -29,13 +29,18 @@ export function parseCursorModels(output: string): AgentModel[] {
     return models;
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null && !Array.isArray(value);
 
 /** The values a select option offers, groups flattened and repeats dropped. Whatever is not a record with a text `value` is left out. */
 function choicesOf(option: Record<string, unknown>): string[] {
-    const choices = (Array.isArray(option.options) ? option.options : []).flatMap((choice: unknown) => (isRecord(choice) && Array.isArray(choice.options) ? choice.options as unknown[] : [choice]));
+    const choices = (Array.isArray(option.options) ? option.options : []).flatMap((choice: unknown) =>
+        isRecord(choice) && Array.isArray(choice.options) ? (choice.options as unknown[]) : [choice]
+    );
 
-    return [...new Set(choices.flatMap(choice => (isRecord(choice) && text(choice.value) ? [text(choice.value)!] : [])))];
+    return [
+        ...new Set(choices.flatMap(choice => (isRecord(choice) && text(choice.value) ? [text(choice.value)!] : []))),
+    ];
 }
 
 /**
@@ -45,7 +50,7 @@ function choicesOf(option: Record<string, unknown>): string[] {
  * Whatever has an odd shape is left out, never thrown over: a family that repeats an id is kept once (the first).
  */
 export function parseCursorFamilies(answer: unknown): AgentModel[] {
-    const rows = isRecord(answer) && Array.isArray(answer.models) ? answer.models as unknown[] : [];
+    const rows = isRecord(answer) && Array.isArray(answer.models) ? (answer.models as unknown[]) : [];
     const models = new Map<string, AgentModel>();
 
     for (const row of rows) {
@@ -56,7 +61,12 @@ export function parseCursorFamilies(answer: unknown): AgentModel[] {
         }
 
         const options = (Array.isArray(row.configOptions) ? row.configOptions : []).filter(isRecord);
-        const effort = options.flatMap(option => (option.category === 'thought_level' && option.type === 'select' ? [{ option, levels: choicesOf(option) }] : []))
+        const effort = options
+            .flatMap(option =>
+                option.category === 'thought_level' && option.type === 'select'
+                    ? [{ option, levels: choicesOf(option) }]
+                    : []
+            )
             .find(({ levels }) => levels.length > 0 && !levels.includes('true') && !levels.includes('false'));
         const fallback = text(effort?.option.currentValue);
 
@@ -64,7 +74,10 @@ export function parseCursorFamilies(answer: unknown): AgentModel[] {
             id,
             name: text(row.name) ?? id,
             ...(id === 'default' && { isDefault: true }),
-            ...(effort && { efforts: effort.levels, ...(fallback && effort.levels.includes(fallback) && { defaultEffort: fallback }) }),
+            ...(effort && {
+                efforts: effort.levels,
+                ...(fallback && effort.levels.includes(fallback) && { defaultEffort: fallback }),
+            }),
             ...(options.some(option => option.id === 'fast') && { supportsFast: true }),
         });
     }
@@ -78,11 +91,20 @@ const NOT_SIGNED_IN = /authentication required|not (?:logged|signed) in|log ?in 
 
 /** Cursor's own list over ACP: `initialize`, then the vendor method. Rejects with what failed (`RpcError`, `RpcTimeout`, or the program ending). */
 async function cursorFamilies(context: ProbeContext, timeoutMs: number): Promise<AgentModel[]> {
-    return await withAppServer(context, async (rpc) => {
-        await rpc.call('initialize', { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false }, clientInfo: { name: 'clowdy', title: 'Clowdy', version: '0' } });
+    return await withAppServer(
+        context,
+        async rpc => {
+            await rpc.call('initialize', {
+                protocolVersion: 1,
+                clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
+                clientInfo: { name: 'clowdy', title: 'Clowdy', version: '0' },
+            });
 
-        return parseCursorFamilies(await rpc.call('cursor/list_available_models'));
-    }, timeoutMs, ['acp']);
+            return parseCursorFamilies(await rpc.call('cursor/list_available_models'));
+        },
+        timeoutMs,
+        ['acp']
+    );
 }
 
 /**
@@ -97,10 +119,13 @@ export async function cursorModels(context: ProbeContext, timeoutMs = CURSOR_TIM
         if (families.length > 0) {
             return { state: 'ok', models: families, fetchedAt: context.now() };
         }
-    }
-    catch (error) {
+    } catch (error) {
         if (error instanceof RpcError && (error.code === AUTH_REQUIRED || NOT_SIGNED_IN.test(error.message))) {
-            return { state: 'error', models: [], detail: 'Cursor is not signed in. Sign in on the Providers page, then try again.' };
+            return {
+                state: 'error',
+                models: [],
+                detail: 'Cursor is not signed in. Sign in on the Providers page, then try again.',
+            };
         }
 
         if (error instanceof RpcTimeout) {
@@ -108,15 +133,30 @@ export async function cursorModels(context: ProbeContext, timeoutMs = CURSOR_TIM
         }
     }
 
-    const run = await runProgram(context.program, ['--list-models'], { env: context.env, cwd: context.cwd, timeoutMs, signal: context.signal });
+    const run = await runProgram(context.program, ['--list-models'], {
+        env: context.env,
+        cwd: context.cwd,
+        timeoutMs,
+        signal: context.signal,
+    });
 
     if (run.error || run.timedOut) {
-        return { state: 'error', models: [], detail: run.error ? `Could not start Cursor: ${ run.error }` : 'Cursor did not list its models in time' };
+        return {
+            state: 'error',
+            models: [],
+            detail: run.error ? `Could not start Cursor: ${run.error}` : 'Cursor did not list its models in time',
+        };
     }
 
     const models = parseCursorModels(run.stdout);
 
     return models.length > 0
         ? { state: 'ok', models, fetchedAt: context.now() }
-        : { state: 'error', models: [], detail: (run.stderr || run.stdout).trim().split('\n')[0]?.slice(0, 160) || 'Cursor did not list its models (is it signed in?)' };
+        : {
+              state: 'error',
+              models: [],
+              detail:
+                  (run.stderr || run.stdout).trim().split('\n')[0]?.slice(0, 160) ||
+                  'Cursor did not list its models (is it signed in?)',
+          };
 }

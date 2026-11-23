@@ -12,13 +12,16 @@ import type { PlaceChanges } from './PlaceChanges';
  * A `Viewed` mark needs no clearing: it holds the revision the file was marked at, and a file that is back at the last commit is not listed any more, or is listed with another revision, so the mark
  * no longer counts.
  */
-export async function discardChanges(model: PlaceChanges, transport: Transport, path: string): Promise<GitDiscardResult> {
+export async function discardChanges(
+    model: PlaceChanges,
+    transport: Transport,
+    path: string
+): Promise<GitDiscardResult> {
     const { key } = model.facts;
 
     try {
         return await transport.discardGit(key.projectId, placeRef(key), [path]);
-    }
-    finally {
+    } finally {
         gitFactsOf(transport).refresh(key);
     }
 }

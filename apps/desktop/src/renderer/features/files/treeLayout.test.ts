@@ -5,7 +5,11 @@ import { TREE_DEFAULT_WIDTH, TREE_MIN_WIDTH, TreeLayout } from './treeLayout';
 const memory = (initial: Record<string, string> = {}) => {
     const data = new Map(Object.entries(initial));
 
-    return { data, getItem: (key: string) => data.get(key) ?? null, setItem: (key: string, value: string) => void data.set(key, value) };
+    return {
+        data,
+        getItem: (key: string) => data.get(key) ?? null,
+        setItem: (key: string, value: string) => void data.set(key, value),
+    };
 };
 
 describe('TreeLayout', () => {
@@ -35,7 +39,9 @@ describe('TreeLayout', () => {
         layout.setWidth(10);
 
         expect(layout.width).toBe(TREE_MIN_WIDTH);
-        expect(new TreeLayout(memory({ 'clowdy:files-tree-width': '"wide"', 'clowdy:files-tree-open': '1' })).width).toBe(TREE_DEFAULT_WIDTH);
+        expect(
+            new TreeLayout(memory({ 'clowdy:files-tree-width': '"wide"', 'clowdy:files-tree-open': '1' })).width
+        ).toBe(TREE_DEFAULT_WIDTH);
         expect(new TreeLayout(undefined).open).toBe(true);
     });
 });

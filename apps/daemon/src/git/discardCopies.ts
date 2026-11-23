@@ -1,9 +1,9 @@
-import { GIT_DISCARD_KEEP_DAYS } from '@clowdy/protocol';
 import { randomBytes } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { lstat, mkdir, readdir, readFile, rm, rmdir, stat, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
+import { GIT_DISCARD_KEEP_DAYS } from '@clowdy/protocol';
 
 import type { GitDiscardedFile } from '@clowdy/protocol';
 
@@ -31,9 +31,7 @@ export interface CopySource {
     path: string;
     action: GitDiscardedFile['action'];
     /** What the file is on the disk now; none for a file that is gone (a deleted file has nothing to keep). */
-    work?:
-        | { kind: 'file'; source: string; size: number }
-        | { kind: 'link'; target: string };
+    work?: { kind: 'file'; source: string; size: number } | { kind: 'link'; target: string };
     /** What the index holds when that is neither HEAD's nor the file's: the staged version, which a discard replaces as well. `read` is called once, when its turn comes. */
     staged?: { size: number; read: () => Promise<Buffer> };
 }
@@ -110,7 +108,8 @@ interface Manifest {
 }
 
 /** A name for a folder of the copies that sorts by time, has no `:` (Windows) and does not clash with another made in the same millisecond. */
-const folderName = (at: number) => `${ new Date(at).toISOString().replace(/[-:]/g, '').replace('.', '') }-${ randomBytes(3).toString('hex') }`;
+const folderName = (at: number) =>
+    `${new Date(at).toISOString().replace(/[-:]/g, '').replace('.', '')}-${randomBytes(3).toString('hex')}`;
 
 /** What a name of the project may be as a folder: its id is the daemon's own, but nothing that could leave the folder is let through. */
 const segment = (name: string) => name.replace(/[^A-Za-z0-9_-]/g, '_') || '_';
@@ -130,7 +129,15 @@ export class DiscardCopies implements CopyStore {
     /** The prunes one after the other: two of them removing the same folder is harmless, but the sizes they add up should be one reading. */
     #pruning: Promise<void> = Promise.resolve();
 
-    constructor(dataDir: string, { keepMs = KEEP_COPIES_MS, maxBytes = MAX_KEPT_BYTES, maxFileBytes = MAX_COPY_FILE_BYTES, now = Date.now }: DiscardCopiesOptions = {}) {
+    constructor(
+        dataDir: string,
+        {
+            keepMs = KEEP_COPIES_MS,
+            maxBytes = MAX_KEPT_BYTES,
+            maxFileBytes = MAX_COPY_FILE_BYTES,
+            now = Date.now,
+        }: DiscardCopiesOptions = {}
+    ) {
         this.root = join(dataDir, 'discarded');
         this.#keepMs = keepMs;
         this.maxBytes = maxBytes;
@@ -168,8 +175,7 @@ export class DiscardCopies implements CopyStore {
                     Object.assign(entry, { copied: 'file', size: file.work.size });
                     manifest.bytes += file.work.size;
                     kept++;
-                }
-                else if (file.work?.kind === 'link') {
+                } else if (file.work?.kind === 'link') {
                     const size = await this.#write(join(folder, 'files', file.path), Buffer.from(file.work.target));
 
                     Object.assign(entry, { copied: 'link', size });
@@ -181,7 +187,8 @@ export class DiscardCopies implements CopyStore {
                     const content = await file.staged.read();
 
                     // The blob git was asked for is the size git said it was: the read is not the one that was measured otherwise.
-                    if (content.length !== file.staged.size) throw new Error(`The staged version of ${ file.path } is not the size git said`);
+                    if (content.length !== file.staged.size)
+                        throw new Error(`The staged version of ${file.path} is not the size git said`);
 
                     entry.stagedSize = await this.#write(join(folder, 'staged', file.path), content);
                     manifest.bytes += entry.stagedSize;
@@ -191,9 +198,8 @@ export class DiscardCopies implements CopyStore {
                 manifest.files.push(entry);
             }
 
-            await writeFile(join(folder, MANIFEST), `${ JSON.stringify(manifest, null, 2) }\n`, { mode: 0o600 });
-        }
-        catch (error) {
+            await writeFile(join(folder, MANIFEST), `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600 });
+        } catch (error) {
             // Half a copy is no copy: nothing is discarded after this, and the folder does not stay to be mistaken for one.
             await rm(folder, { recursive: true, force: true }).catch(() => undefined);
 
@@ -208,9 +214,8 @@ export class DiscardCopies implements CopyStore {
             const path = join(copy.folder, MANIFEST);
             const manifest = JSON.parse(await readFile(path, 'utf8')) as Manifest;
 
-            await writeFile(path, `${ JSON.stringify({ ...manifest, completed: true }, null, 2) }\n`, { mode: 0o600 });
-        }
-        catch {
+            await writeFile(path, `${JSON.stringify({ ...manifest, completed: true }, null, 2)}\n`, { mode: 0o600 });
+        } catch {
             // The copy is there all the same; only its note says "not done".
         }
     }
@@ -228,7 +233,7 @@ export class DiscardCopies implements CopyStore {
 
         const copied = (await stat(destination)).size;
 
-        if (copied !== size) throw new Error(`The copy of ${ source } is ${ copied } bytes, and the file was ${ size }`);
+        if (copied !== size) throw new Error(`The copy of ${source} is ${copied} bytes, and the file was ${size}`);
     }
 
     /** Writes bytes to `destination` (readable by the person alone) and reads its size back. */
@@ -238,7 +243,8 @@ export class DiscardCopies implements CopyStore {
 
         const written = (await stat(destination)).size;
 
-        if (written !== content.length) throw new Error(`The copy at ${ destination } is ${ written } bytes, and it should be ${ content.length }`);
+        if (written !== content.length)
+            throw new Error(`The copy at ${destination} is ${written} bytes, and it should be ${content.length}`);
 
         return written;
     }
@@ -263,8 +269,7 @@ export class DiscardCopies implements CopyStore {
 
                 if (folder !== keep && now - found.at > this.#keepMs) {
                     await rm(folder, { recursive: true, force: true }).catch(() => undefined);
-                }
-                else {
+                } else {
                     left.push({ folder, ...found });
                 }
             }
@@ -294,9 +299,9 @@ export class DiscardCopies implements CopyStore {
         try {
             const manifest = JSON.parse(await readFile(join(folder, MANIFEST), 'utf8')) as Partial<Manifest>;
 
-            if (typeof manifest.at === 'number' && typeof manifest.bytes === 'number') return { at: manifest.at, bytes: manifest.bytes };
-        }
-        catch {
+            if (typeof manifest.at === 'number' && typeof manifest.bytes === 'number')
+                return { at: manifest.at, bytes: manifest.bytes };
+        } catch {
             // Unreadable, or not JSON: it is judged by its time.
         }
 

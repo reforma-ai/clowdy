@@ -16,7 +16,7 @@ function scoreOf(lower: string, first: string | undefined): number {
     }
 
     // A folder whose name starts with it.
-    return lower.includes(`/${ first }`) || lower.startsWith(first) ? 2 : 3;
+    return lower.includes(`/${first}`) || lower.startsWith(first) ? 2 : 3;
 }
 
 /**

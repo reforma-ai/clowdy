@@ -1,7 +1,7 @@
-import cssDeclarationSorter from 'css-declaration-sorter';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
+import cssDeclarationSorter from 'css-declaration-sorter';
 import postcss from 'postcss';
 import postcssPresetEnv from 'postcss-preset-env';
 
@@ -16,16 +16,13 @@ function hashNodes(nodes) {
 
     for (const n of nodes) {
         if (n.type === 'decl') {
-            parts.push(`d:${ n.prop.trim() }:${ String(n.value).trim() }`);
-        }
-        else if (n.type === 'atrule') {
-            parts.push(`a:${ n.name }:${ (n.params ?? '').trim() }`);
-        }
-        else if (n.type === 'rule') {
-            parts.push(`r:${ (n.selector ?? '').trim() }`);
-        }
-        else {
-            parts.push(`t:${ n.type }`);
+            parts.push(`d:${n.prop.trim()}:${String(n.value).trim()}`);
+        } else if (n.type === 'atrule') {
+            parts.push(`a:${n.name}:${(n.params ?? '').trim()}`);
+        } else if (n.type === 'rule') {
+            parts.push(`r:${(n.selector ?? '').trim()}`);
+        } else {
+            parts.push(`t:${n.type}`);
         }
     }
 
@@ -41,16 +38,15 @@ function resolveRef(fromFile, spec) {
 
     try {
         return require.resolve(spec, { paths: [basedir] });
-    }
-    catch {
-        throw new Error(`Cannot resolve @reference "${ spec }" from "${ basedir }"`);
+    } catch {
+        throw new Error(`Cannot resolve @reference "${spec}" from "${basedir}"`);
     }
 }
 
 function extractRulesetsFromRoot(root) {
     const out = new Map();
 
-    root.walkAtRules('layer', (at) => {
+    root.walkAtRules('layer', at => {
         const name = (at.params ?? '').trim();
 
         if (name !== 'rulesets') {
@@ -69,10 +65,9 @@ function extractRulesetsFromRoot(root) {
                 const prev = out.get(key);
 
                 if (hashNodes(prev) !== hashNodes(body)) {
-                    throw at.error(`Duplicate ruleset key "${ key }" inside referenced rulesets layer "rulesets"`);
+                    throw at.error(`Duplicate ruleset key "${key}" inside referenced rulesets layer "rulesets"`);
                 }
-            }
-            else {
+            } else {
                 out.set(key, body);
             }
         }
@@ -94,7 +89,7 @@ function loadRulesetsFromFile(resolvedFile, visitedFiles = new Set()) {
 
     const basedir = path.dirname(resolvedFile);
 
-    root.walkAtRules('import', (at) => {
+    root.walkAtRules('import', at => {
         const params = (at.params ?? '').trim();
         const match = params.match(/['"]([^'"]+)['"]|url\(['"]?([^'"]+)['"]?\)/);
 
@@ -129,7 +124,7 @@ const referenceRulesetsPlugin = {
 
         const refs = [];
 
-        root.walkAtRules('reference', (at) => {
+        root.walkAtRules('reference', at => {
             const raw = (at.params ?? '').trim();
             const spec = raw.replace(/^['"]|['"]$/g, '').trim();
 
@@ -156,10 +151,9 @@ const referenceRulesetsPlugin = {
                     const prev = merged.get(key);
 
                     if (hashNodes(prev) !== hashNodes(body)) {
-                        throw root.error(`Ruleset collision for "${ key }" from "${ ref }"`);
+                        throw root.error(`Ruleset collision for "${key}" from "${ref}"`);
                     }
-                }
-                else {
+                } else {
                     merged.set(key, body);
                 }
             }
@@ -172,15 +166,14 @@ const referenceRulesetsPlugin = {
                 const prev = merged.get(key);
 
                 if (hashNodes(prev) !== hashNodes(body)) {
-                    throw root.error(`Ruleset collision for "${ key }" between @reference and @import`);
+                    throw root.error(`Ruleset collision for "${key}" between @reference and @import`);
                 }
-            }
-            else {
+            } else {
                 merged.set(key, body);
             }
         }
 
-        root.walkAtRules('layer', (at) => {
+        root.walkAtRules('layer', at => {
             const name = (at.params ?? '').trim();
 
             if (name !== 'rulesets') {
@@ -199,16 +192,15 @@ const referenceRulesetsPlugin = {
                     const prev = merged.get(key);
 
                     if (hashNodes(prev) !== hashNodes(body)) {
-                        throw at.error(`Duplicate ruleset key "${ key }" inside referenced rulesets layer "rulesets"`);
+                        throw at.error(`Duplicate ruleset key "${key}" inside referenced rulesets layer "rulesets"`);
                     }
-                }
-                else {
+                } else {
                     merged.set(key, body);
                 }
             }
         });
 
-        root.walkAtRules('ruleset', (at) => {
+        root.walkAtRules('ruleset', at => {
             const params = (at.params ?? '').trim();
             const rawKeys = params.split(/\s+/).filter(Boolean);
 
@@ -227,7 +219,7 @@ const referenceRulesetsPlugin = {
 
                 if (!nodes) {
                     throw at.error(
-                        `Unknown ruleset "${ key }". Add @reference '@clowdy/styles/rulesets' (or correct key).`
+                        `Unknown ruleset "${key}". Add @reference '@clowdy/styles/rulesets' (or correct key).`
                     );
                 }
 
@@ -236,8 +228,7 @@ const referenceRulesetsPlugin = {
 
             if (outNodes.length > 0) {
                 at.replaceWith(outNodes);
-            }
-            else {
+            } else {
                 at.remove();
             }
         });

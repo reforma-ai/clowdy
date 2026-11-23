@@ -31,12 +31,19 @@ function getListeners(instance: object): ListenersMap {
     return list;
 }
 
-function addEventListeners(instance: object, events: string | string[], callback: Callback<any[], any>, once: boolean): void {
+function addEventListeners(
+    instance: object,
+    events: string | string[],
+    callback: Callback<any[], any>,
+    once: boolean
+): void {
     const listeners = getListeners(instance);
     const eventNames = Array.isArray(events) ? events : events.split(' ');
 
-    eventNames.forEach((fullEventName) => {
-        const [eventName, ...namespaceParts] = fullEventName.includes('.') ? fullEventName.split('.') : [fullEventName, defaultNamespace];
+    eventNames.forEach(fullEventName => {
+        const [eventName, ...namespaceParts] = fullEventName.includes('.')
+            ? fullEventName.split('.')
+            : [fullEventName, defaultNamespace];
         const namespace = namespaceParts.join('.') || defaultNamespace;
 
         if (!listeners.has(eventName)) {
@@ -73,23 +80,27 @@ export function makeObservable<T extends object>(instance: T): T & ObservableInt
             const list = getListeners(instance);
             const eventNames = Array.isArray(events) ? events : events.split(' ');
 
-            eventNames.forEach((fullEventName) => {
-                const [eventName, ...namespaceParts] = fullEventName.includes('.') ? fullEventName.split('.') : [fullEventName, defaultNamespace];
+            eventNames.forEach(fullEventName => {
+                const [eventName, ...namespaceParts] = fullEventName.includes('.')
+                    ? fullEventName.split('.')
+                    : [fullEventName, defaultNamespace];
                 const namespace = namespaceParts.join('.') || defaultNamespace;
 
                 const callbacksByEvent = eventName ? [list.get(eventName)] : [...list.values()];
 
-                callbacksByEvent.filter((map): map is Map<Callback<any[], any>, ListenerMeta> => map != null).forEach((callbacksMap) => {
-                    Array.from(callbacksMap.entries()).forEach(([cb, meta]) => {
-                        if ((!callback || callback === cb) && meta.namespace === namespace) {
-                            callbacksMap.delete(cb);
+                callbacksByEvent
+                    .filter((map): map is Map<Callback<any[], any>, ListenerMeta> => map != null)
+                    .forEach(callbacksMap => {
+                        Array.from(callbacksMap.entries()).forEach(([cb, meta]) => {
+                            if ((!callback || callback === cb) && meta.namespace === namespace) {
+                                callbacksMap.delete(cb);
+                            }
+                        });
+
+                        if (callbacksMap.size === 0 && eventName) {
+                            list.delete(eventName);
                         }
                     });
-
-                    if (callbacksMap.size === 0 && eventName) {
-                        list.delete(eventName);
-                    }
-                });
             });
 
             return instance;
@@ -138,7 +149,9 @@ export function makeObservable<T extends object>(instance: T): T & ObservableInt
 /**
  * Extend this when you don't need another base class; otherwise use makeObservable(instance).
  */
-export abstract class Observable<TArgs extends any[] = any[], TReturn = any> implements ObservableInterface<TArgs, TReturn> {
+export abstract class Observable<TArgs extends any[] = any[], TReturn = any>
+    implements ObservableInterface<TArgs, TReturn>
+{
     declare on: ObservableInterface<TArgs, TReturn>['on'];
     declare one: ObservableInterface<TArgs, TReturn>['one'];
     declare off: ObservableInterface<TArgs, TReturn>['off'];

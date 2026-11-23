@@ -8,13 +8,28 @@ import { PlaceFacts } from './gitFacts';
 import { listStateOf } from './listState';
 import { PlaceChanges, placeChangesOf, type RepositoryChanges } from './PlaceChanges';
 
-import type { GitBase, GitChangedFile, GitChanges, GitFileSides, GitScope, GitStatus, GitViewedMark } from '@clowdy/protocol';
+import type {
+    GitBase,
+    GitChangedFile,
+    GitChanges,
+    GitFileSides,
+    GitScope,
+    GitStatus,
+    GitViewedMark,
+} from '@clowdy/protocol';
 
 const KEY = { projectId: 'p1', folderId: 'f1', workspaceId: 'w1' };
 const NEWEST = FIXTURE_GIT_COMMITS[0]!;
 const OLDEST = FIXTURE_GIT_COMMITS[1]!;
 
-const file = (path: string, revision = 'r1', more: Partial<GitChangedFile> = {}): GitChangedFile => ({ path, kind: 'modified', additions: 1, deletions: 1, revision, ...more });
+const file = (path: string, revision = 'r1', more: Partial<GitChangedFile> = {}): GitChangedFile => ({
+    path,
+    kind: 'modified',
+    additions: 1,
+    deletions: 1,
+    revision,
+    ...more,
+});
 
 const list = (scope: GitScope, files: GitChangedFile[], more: Partial<RepositoryChanges> = {}): GitChanges => ({
     isRepository: true,
@@ -29,23 +44,61 @@ const list = (scope: GitScope, files: GitChangedFile[], more: Partial<Repository
     ...more,
 });
 
-const readyBase: GitBase = { state: 'ready', name: 'origin/main', commit: '2'.repeat(40), mergeBase: '3'.repeat(40), ahead: 2, behind: 1, commits: FIXTURE_GIT_COMMITS };
+const readyBase: GitBase = {
+    state: 'ready',
+    name: 'origin/main',
+    commit: '2'.repeat(40),
+    mergeBase: '3'.repeat(40),
+    ahead: 2,
+    behind: 1,
+    commits: FIXTURE_GIT_COMMITS,
+};
 
-const statusOf = (base: GitBase): GitStatus => ({ isRepository: true, head: { kind: 'branch', name: 'feature', commit: '9'.repeat(40) }, origin: true, entries: [], base });
+const statusOf = (base: GitBase): GitStatus => ({
+    isRepository: true,
+    head: { kind: 'branch', name: 'feature', commit: '9'.repeat(40) },
+    origin: true,
+    entries: [],
+    base,
+});
 
 /** A transport whose lists and files the test decides, which counts what it is asked. */
-function transportOf(answers: Partial<Record<GitScope, GitChanges | (() => GitChanges | Promise<GitChanges>)>>, status: GitStatus = statusOf(readyBase)) {
+function transportOf(
+    answers: Partial<Record<GitScope, GitChanges | (() => GitChanges | Promise<GitChanges>)>>,
+    status: GitStatus = statusOf(readyBase)
+) {
     const changes = vi.fn(async (_project: string, _place: unknown, scope: GitScope) => {
         const answer = answers[scope];
 
-        if (answer === undefined) throw new TransportError(`Commit ${ scope } does not exist`, 404);
+        if (answer === undefined) throw new TransportError(`Commit ${scope} does not exist`, 404);
 
         return typeof answer === 'function' ? answer() : answer;
     });
-    const fileRead = vi.fn(async (_project: string, _place: unknown, _scope: GitScope, _path: string, _oldPath?: string, _from?: string): Promise<GitFileSides> => ({ state: 'text', original: 'a\n', modified: 'b\n', revision: 'r' }));
-    const viewedRead = vi.fn(async (_project: string, _place: unknown, _scope: GitScope): Promise<GitViewedMark[]> => []);
-    const viewedSet = vi.fn(async (_project: string, _place: unknown, _scope: GitScope, path: string, revision: string): Promise<GitViewedMark> => ({ path, revision }));
-    const viewedClear = vi.fn(async (_project: string, _place: unknown, _scope: GitScope, _path: string): Promise<void> => undefined);
+    const fileRead = vi.fn(
+        async (
+            _project: string,
+            _place: unknown,
+            _scope: GitScope,
+            _path: string,
+            _oldPath?: string,
+            _from?: string
+        ): Promise<GitFileSides> => ({ state: 'text', original: 'a\n', modified: 'b\n', revision: 'r' })
+    );
+    const viewedRead = vi.fn(
+        async (_project: string, _place: unknown, _scope: GitScope): Promise<GitViewedMark[]> => []
+    );
+    const viewedSet = vi.fn(
+        async (
+            _project: string,
+            _place: unknown,
+            _scope: GitScope,
+            path: string,
+            revision: string
+        ): Promise<GitViewedMark> => ({ path, revision })
+    );
+    const viewedClear = vi.fn(
+        async (_project: string, _place: unknown, _scope: GitScope, _path: string): Promise<void> => undefined
+    );
 
     return {
         getGitStatus: vi.fn(async () => status),
@@ -71,7 +124,10 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 
 describe('the list of the scope', () => {
     it('is read for the scope that was chosen, with the place the facts are of, and is the last good list of that scope', async () => {
-        const transport = transportOf({ all: list('all', [file('a.ts')]), uncommitted: list('uncommitted', [file('b.ts')]) });
+        const transport = transportOf({
+            all: list('all', [file('a.ts')]),
+            uncommitted: list('uncommitted', [file('b.ts')]),
+        });
         const { model } = await modelOf(transport);
 
         expect(model.changes).toBeUndefined();
@@ -94,9 +150,12 @@ describe('the list of the scope', () => {
         // Back to the first, which shows its last list while it is read again.
         let release: (answer: GitChanges) => void = () => undefined;
 
-        transport.getGitChanges.mockImplementationOnce(() => new Promise<GitChanges>((resolve) => {
-            release = resolve;
-        }));
+        transport.getGitChanges.mockImplementationOnce(
+            () =>
+                new Promise<GitChanges>(resolve => {
+                    release = resolve;
+                })
+        );
         model.setScope('all');
         model.sync(1);
 
@@ -131,7 +190,7 @@ describe('the list of the scope', () => {
         expect(transport.getGitChanges).toHaveBeenCalledTimes(4);
     });
 
-    it('follows the facts\' rounds: a refresh of the store reaches it through the generation, with no timer of its own', async () => {
+    it("follows the facts' rounds: a refresh of the store reaches it through the generation, with no timer of its own", async () => {
         const transport = transportOf({ all: list('all', [file('a.ts')]) });
         const { facts, model } = await modelOf(transport);
 
@@ -190,7 +249,10 @@ describe('the list of the scope', () => {
 
 describe('the scope', () => {
     it('shows one commit of the branch alone on a press, and all changes again on a second press on it or on a press on all changes', async () => {
-        const transport = transportOf({ all: list('all', [file('a.ts')]), [commitScope(NEWEST.sha)]: list(commitScope(NEWEST.sha), [file('b.ts')], { from: OLDEST.sha }) });
+        const transport = transportOf({
+            all: list('all', [file('a.ts')]),
+            [commitScope(NEWEST.sha)]: list(commitScope(NEWEST.sha), [file('b.ts')], { from: OLDEST.sha }),
+        });
         const { model } = await modelOf(transport);
 
         model.pickCommit(NEWEST.sha);
@@ -240,9 +302,11 @@ describe('the scope', () => {
     });
 
     it('does not leave a scope it cannot read for a failure that is not a missing commit', async () => {
-        const transport = transportOf({ [commitScope(NEWEST.sha)]: () => {
-            throw new TransportError('The daemon answered 503', 503);
-        } });
+        const transport = transportOf({
+            [commitScope(NEWEST.sha)]: () => {
+                throw new TransportError('The daemon answered 503', 503);
+            },
+        });
         const { model } = await modelOf(transport);
 
         model.pickCommit(NEWEST.sha);
@@ -290,7 +354,11 @@ describe('the filter and the cards', () => {
         expect(model.allFolded).toBe(true);
 
         model.reveal('README.md');
-        expect([model.isFolded('README.md'), model.isFolded('docs/guide.md'), model.allFolded]).toEqual([false, true, false]);
+        expect([model.isFolded('README.md'), model.isFolded('docs/guide.md'), model.allFolded]).toEqual([
+            false,
+            true,
+            false,
+        ]);
 
         model.unfoldAll();
         expect(model.noneFolded).toBe(true);
@@ -311,7 +379,7 @@ describe('the filter and the cards', () => {
         expect(model.folded.size).toBe(0);
     });
 
-    it('asks the cache for a file with the list\'s own start and the file\'s revision, and a refresh reads only the files whose revision changed', async () => {
+    it("asks the cache for a file with the list's own start and the file's revision, and a refresh reads only the files whose revision changed", async () => {
         let current = list('all', files);
         const transport = transportOf({ all: () => current });
         const { model } = await modelOf(transport);
@@ -324,10 +392,20 @@ describe('the filter and the cards', () => {
         await tick();
 
         expect(transport.getGitFile).toHaveBeenCalledTimes(4);
-        expect(transport.getGitFile).toHaveBeenCalledWith('p1', { folderId: 'f1', workspaceId: 'w1' }, 'all', 'docs/guide.md', undefined, 'f'.repeat(40));
+        expect(transport.getGitFile).toHaveBeenCalledWith(
+            'p1',
+            { folderId: 'f1', workspaceId: 'w1' },
+            'all',
+            'docs/guide.md',
+            undefined,
+            'f'.repeat(40)
+        );
 
         // The list is read again: one file was edited.
-        current = list('all', files.map(entry => (entry.path === 'src/a.ts' ? { ...entry, revision: 'r2' } : entry)));
+        current = list(
+            'all',
+            files.map(entry => (entry.path === 'src/a.ts' ? { ...entry, revision: 'r2' } : entry))
+        );
         model.sync(2);
         await tick();
 
@@ -336,12 +414,26 @@ describe('the filter and the cards', () => {
         await tick();
 
         expect(transport.getGitFile).toHaveBeenCalledTimes(5);
-        expect(transport.getGitFile).toHaveBeenLastCalledWith('p1', expect.anything(), 'all', 'src/a.ts', undefined, 'f'.repeat(40));
-        expect(model.files.map(entry => model.sides.entryOf(model.requestOf(entry))?.status)).toEqual(['ready', 'ready', 'ready', 'ready']);
+        expect(transport.getGitFile).toHaveBeenLastCalledWith(
+            'p1',
+            expect.anything(),
+            'all',
+            'src/a.ts',
+            undefined,
+            'f'.repeat(40)
+        );
+        expect(model.files.map(entry => model.sides.entryOf(model.requestOf(entry))?.status)).toEqual([
+            'ready',
+            'ready',
+            'ready',
+            'ready',
+        ]);
     });
 
     it('sends the old path of a renamed file along', async () => {
-        const { model } = await modelOf(transportOf({ all: list('all', [file('b.ts', 'r1', { kind: 'renamed', oldPath: 'a.ts' })]) }));
+        const { model } = await modelOf(
+            transportOf({ all: list('all', [file('b.ts', 'r1', { kind: 'renamed', oldPath: 'a.ts' })]) })
+        );
 
         model.sync(1);
         await tick();
@@ -367,7 +459,8 @@ describe('the model of a place', () => {
         const first = new PlaceFacts(KEY, other);
         const kept = placeChangesOf(other, first);
 
-        for (const name of ['a', 'b', 'c', 'd']) placeChangesOf(other, new PlaceFacts({ ...KEY, folderId: name }, other));
+        for (const name of ['a', 'b', 'c', 'd'])
+            placeChangesOf(other, new PlaceFacts({ ...KEY, folderId: name }, other));
 
         expect(placeChangesOf(other, first)).not.toBe(kept);
     });
@@ -391,7 +484,9 @@ describe('the viewed files', () => {
     async function viewedModel(marks: GitViewedMark[] = [], answers: Partial<Record<GitScope, GitViewedMark[]>> = {}) {
         const transport = transportOf({ all: list('all', files), uncommitted: list('uncommitted', files.slice(0, 2)) });
 
-        transport.getGitViewed.mockImplementation(async (_project, _place, scope) => (scope === 'all' ? marks : answers[scope] ?? []));
+        transport.getGitViewed.mockImplementation(async (_project, _place, scope) =>
+            scope === 'all' ? marks : (answers[scope] ?? [])
+        );
 
         const { model } = await modelOf(transport);
 
@@ -435,7 +530,10 @@ describe('the viewed files', () => {
     });
 
     it('count a file as viewed only while its revision is the one it was marked at', async () => {
-        const { model } = await viewedModel([{ path: 'src/a.ts', revision: 'r1' }, { path: 'src/b.ts', revision: 'old' }]);
+        const { model } = await viewedModel([
+            { path: 'src/a.ts', revision: 'r1' },
+            { path: 'src/b.ts', revision: 'old' },
+        ]);
 
         expect([...model.viewedPaths]).toEqual(['src/a.ts']);
         expect(model.viewedCount).toBe(1);
@@ -464,7 +562,10 @@ describe('the viewed files', () => {
         expect(model.isFolded('src/a.ts')).toBe(true);
 
         // The file is edited, and its list is read again: the mark is stale, so the card is as any card is: open.
-        current = list('all', files.map(entry => (entry.path === 'src/a.ts' ? { ...entry, revision: 'r2' } : entry)));
+        current = list(
+            'all',
+            files.map(entry => (entry.path === 'src/a.ts' ? { ...entry, revision: 'r2' } : entry))
+        );
         model.sync(2);
         await tick();
         expect(model.isViewed('src/a.ts')).toBe(false);
@@ -475,9 +576,12 @@ describe('the viewed files', () => {
         const { model, transport } = await viewedModel([]);
         const answer: Array<() => void> = [];
 
-        transport.setGitViewed.mockImplementationOnce(() => new Promise<GitViewedMark>((resolve) => {
-            answer.push(() => resolve({ path: 'src/a.ts', revision: 'r1' }));
-        }));
+        transport.setGitViewed.mockImplementationOnce(
+            () =>
+                new Promise<GitViewedMark>(resolve => {
+                    answer.push(() => resolve({ path: 'src/a.ts', revision: 'r1' }));
+                })
+        );
 
         const ticking = model.setViewed(files[1]!, true);
 
@@ -522,7 +626,7 @@ describe('the viewed files', () => {
         expect(model.isFolded('src/b.ts')).toBe(false);
     });
 
-    it('send the mark of the scope that is read, with the revision of the file in that scope\'s list', async () => {
+    it("send the mark of the scope that is read, with the revision of the file in that scope's list", async () => {
         const { model, transport } = await viewedModel();
 
         model.setScope('uncommitted');
@@ -534,7 +638,10 @@ describe('the viewed files', () => {
     });
 
     it('leave the files out of the list and the sidebar while they are hidden, and bring them back, the filter counting as before', async () => {
-        const { model } = await viewedModel([{ path: 'src/a.ts', revision: 'r1' }, { path: 'README.md', revision: 'r1' }]);
+        const { model } = await viewedModel([
+            { path: 'src/a.ts', revision: 'r1' },
+            { path: 'README.md', revision: 'r1' },
+        ]);
 
         expect(model.files.map(entry => entry.path)).toEqual(['docs/guide.md', 'src/a.ts', 'src/b.ts', 'README.md']);
 
@@ -596,10 +703,14 @@ describe('the viewed files', () => {
 
         model.toggleFolded('docs/guide.md');
         model.resetFolds();
-        expect([model.isFolded('docs/guide.md'), model.isFolded('src/a.ts'), model.isFolded('src/b.ts')]).toEqual([false, true, false]);
+        expect([model.isFolded('docs/guide.md'), model.isFolded('src/a.ts'), model.isFolded('src/b.ts')]).toEqual([
+            false,
+            true,
+            false,
+        ]);
     });
 
-    it('stay out of the files\' texts: ticking a file reads no file and changes no request of the cache', async () => {
+    it("stay out of the files' texts: ticking a file reads no file and changes no request of the cache", async () => {
         const { model, transport } = await viewedModel();
         const before = model.requestOf(files[1]!);
 
@@ -613,7 +724,11 @@ describe('the viewed files', () => {
 
 describe('the uncommitted files for the commit box', () => {
     it('are read for the box whatever scope is shown, once for each round of reads, and are the shown list itself when the scope is uncommitted', async () => {
-        const transport = transportOf({ all: list('all', [file('a.ts'), file('b.ts')]), uncommitted: list('uncommitted', [file('b.ts')]), branch: list('branch', [file('a.ts')]) });
+        const transport = transportOf({
+            all: list('all', [file('a.ts'), file('b.ts')]),
+            uncommitted: list('uncommitted', [file('b.ts')]),
+            branch: list('branch', [file('a.ts')]),
+        });
         const { model } = await modelOf(transport);
         const reads = (scope: GitScope) => transport.getGitChanges.mock.calls.filter(call => call[2] === scope).length;
 

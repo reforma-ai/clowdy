@@ -1,7 +1,7 @@
-import { MAX_FS_QUERY_LENGTH, MAX_FS_SEARCH_LINES_PER_FILE, MAX_FS_SEARCH_MATCHES } from '@clowdy/protocol';
 import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { chmodSync, existsSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { MAX_FS_QUERY_LENGTH, MAX_FS_SEARCH_LINES_PER_FILE, MAX_FS_SEARCH_MATCHES } from '@clowdy/protocol';
 
 import { loadConfig } from '../src/config';
 import { CommandError } from '../src/errors';
@@ -36,30 +36,42 @@ function folder(files: Record<string, string | Uint8Array> = {}): string {
 function script(body: string): string {
     const path = join(tempDir('fake-rg'), 'rg');
 
-    writeFileSync(path, `#!/bin/sh\n${ body }\n`);
+    writeFileSync(path, `#!/bin/sh\n${body}\n`);
     chmodSync(path, 0o755);
 
     return path;
 }
 
 const SUMMARY = '{"type":"summary","data":{}}';
-const matchEvent = (root: string, path: string, line: number, text: string, submatches: Array<{ start: number; end: number }>) => JSON.stringify({
-    type: 'match',
-    data: { path: { text: join(root, path) }, lines: { text }, line_number: line, absolute_offset: 0, submatches },
-});
+const matchEvent = (
+    root: string,
+    path: string,
+    line: number,
+    text: string,
+    submatches: Array<{ start: number; end: number }>
+) =>
+    JSON.stringify({
+        type: 'match',
+        data: { path: { text: join(root, path) }, lines: { text }, line_number: line, absolute_offset: 0, submatches },
+    });
 
 /** A program that prints these lines of output (one `printf` each, so nothing is read as a format) and exits with `code`. */
-const printing = (lines: string[], code = 0) => script(`${ lines.map(line => `printf '%s\\n' '${ line.replaceAll('\'', '\'\\\'\'') }'`).join('\n') }\nexit ${ code }`);
+const printing = (lines: string[], code = 0) =>
+    script(`${lines.map(line => `printf '%s\\n' '${line.replaceAll("'", "'\\''")}'`).join('\n')}\nexit ${code}`);
 
 async function refused(promise: Promise<unknown>): Promise<CommandError> {
-    const error = await promise.then(() => undefined, (caught: unknown) => caught);
+    const error = await promise.then(
+        () => undefined,
+        (caught: unknown) => caught
+    );
 
     expect(error).toBeInstanceOf(CommandError);
 
     return error as CommandError;
 }
 
-const lineNumbers = (result: FsSearchResult) => result.files.map(file => [file.path, file.matches.map(match => match.line)] as const);
+const lineNumbers = (result: FsSearchResult) =>
+    result.files.map(file => [file.path, file.matches.map(match => match.line)] as const);
 const paths = (result: FsSearchResult) => result.files.map(file => file.path);
 const count = (result: FsSearchResult) => result.files.reduce((total, file) => total + file.matches.length, 0);
 
@@ -85,10 +97,36 @@ function engineSuite(engine: Engine) {
 
         expect(result.truncated).toBe(false);
         // A folder comes before the files whose names it is the start of, as in the listing.
-        expect(lineNumbers(result)).toEqual([['a/b/deep.txt', [1, 3]], ['a/z.txt', [1]], ['a.txt', [3]], ['b.txt', [2]]]);
-        expect(result.files[2]!.matches[0]).toEqual({ line: 3, column: 1, preview: 'needle', ranges: [{ start: 0, end: 6 }] });
-        expect(result.files[0]!.matches[1]).toEqual({ line: 3, column: 1, preview: 'needle needle', ranges: [{ start: 0, end: 6 }, { start: 7, end: 13 }] });
-        expect(result.files[3]!.matches[0]).toEqual({ line: 2, column: 5, preview: 'the Needle and the needle', ranges: [{ start: 4, end: 10 }, { start: 19, end: 25 }] });
+        expect(lineNumbers(result)).toEqual([
+            ['a/b/deep.txt', [1, 3]],
+            ['a/z.txt', [1]],
+            ['a.txt', [3]],
+            ['b.txt', [2]],
+        ]);
+        expect(result.files[2]!.matches[0]).toEqual({
+            line: 3,
+            column: 1,
+            preview: 'needle',
+            ranges: [{ start: 0, end: 6 }],
+        });
+        expect(result.files[0]!.matches[1]).toEqual({
+            line: 3,
+            column: 1,
+            preview: 'needle needle',
+            ranges: [
+                { start: 0, end: 6 },
+                { start: 7, end: 13 },
+            ],
+        });
+        expect(result.files[3]!.matches[0]).toEqual({
+            line: 2,
+            column: 5,
+            preview: 'the Needle and the needle',
+            ranges: [
+                { start: 4, end: 10 },
+                { start: 19, end: 25 },
+            ],
+        });
     });
 
     test('answers nothing for text that is not there, and for a folder with no files', async () => {
@@ -109,12 +147,20 @@ function engineSuite(engine: Engine) {
         const root = folder({ 'a.txt': 'schön ÄÖÜ äöü\nwörlds wörld\nwörld\n' });
         const folded = await find(root, { query: 'äöü' });
 
-        expect(folded.files[0]!.matches[0]!.ranges).toEqual([{ start: 6, end: 9 }, { start: 10, end: 13 }]);
-        expect(await find(root, { query: 'ÄÖÜ', matchCase: true })).toMatchObject({ files: [{ matches: [{ ranges: [{ start: 6, end: 9 }] }] }] });
+        expect(folded.files[0]!.matches[0]!.ranges).toEqual([
+            { start: 6, end: 9 },
+            { start: 10, end: 13 },
+        ]);
+        expect(await find(root, { query: 'ÄÖÜ', matchCase: true })).toMatchObject({
+            files: [{ matches: [{ ranges: [{ start: 6, end: 9 }] }] }],
+        });
 
         const words = await find(root, { query: 'wörld', wholeWord: true });
 
-        expect(words.files[0]!.matches.map(match => [match.line, match.ranges])).toEqual([[2, [{ start: 7, end: 12 }]], [3, [{ start: 0, end: 5 }]]]);
+        expect(words.files[0]!.matches.map(match => [match.line, match.ranges])).toEqual([
+            [2, [{ start: 7, end: 12 }]],
+            [3, [{ start: 0, end: 5 }]],
+        ]);
         // `rld` follows the letter ö, which is a word character here.
         expect(await find(root, { query: 'rld', wholeWord: true })).toEqual({ files: [], truncated: false });
     });
@@ -129,7 +175,8 @@ function engineSuite(engine: Engine) {
 
     test('takes the query literally, special characters included', async () => {
         const root = folder({ 'a.txt': 'a.*(b\nplain\n[x] a|b $5 \\d+ ^start ?\nfoo(bar)\n(\n' });
-        const lines = async (query: string, options: Partial<Query> = {}) => (await find(root, { query, ...options })).files.flatMap(file => file.matches.map(match => match.line));
+        const lines = async (query: string, options: Partial<Query> = {}) =>
+            (await find(root, { query, ...options })).files.flatMap(file => file.matches.map(match => match.line));
 
         expect(await lines('.*(')).toEqual([1]);
         expect(await lines('[x]')).toEqual([3]);
@@ -146,7 +193,8 @@ function engineSuite(engine: Engine) {
 
     test('a query that starts with a dash is text, not a flag', async () => {
         const root = folder({ 'a.txt': 'run --help now\n-x here\n--version\n-e\n' });
-        const lines = async (query: string) => (await find(root, { query })).files.flatMap(file => file.matches.map(match => match.line));
+        const lines = async (query: string) =>
+            (await find(root, { query })).files.flatMap(file => file.matches.map(match => match.line));
 
         expect(await lines('-x')).toEqual([2]);
         expect(await lines('--help')).toEqual([1]);
@@ -156,15 +204,23 @@ function engineSuite(engine: Engine) {
     });
 
     test('keeps a hundred lines of a file and says so when it had more', async () => {
-        const hundred = Array.from({ length: MAX_FS_SEARCH_LINES_PER_FILE }, (_, index) => `needle ${ index + 1 }`).join('\n');
-        const cut = await find(folder({ 'a.txt': `${ hundred }\nneedle 101\nneedle 102\n`, 'b.txt': 'needle\n' }), { query: 'needle' });
+        const hundred = Array.from({ length: MAX_FS_SEARCH_LINES_PER_FILE }, (_, index) => `needle ${index + 1}`).join(
+            '\n'
+        );
+        const cut = await find(folder({ 'a.txt': `${hundred}\nneedle 101\nneedle 102\n`, 'b.txt': 'needle\n' }), {
+            query: 'needle',
+        });
 
         expect(cut.truncated).toBe(true);
         expect(cut.files.map(file => file.matches.length)).toEqual([MAX_FS_SEARCH_LINES_PER_FILE, 1]);
-        expect(cut.files[0]!.matches.map(match => match.line)).toEqual(Array.from({ length: MAX_FS_SEARCH_LINES_PER_FILE }, (_, index) => index + 1));
+        expect(cut.files[0]!.matches.map(match => match.line)).toEqual(
+            Array.from({ length: MAX_FS_SEARCH_LINES_PER_FILE }, (_, index) => index + 1)
+        );
 
         // A file with exactly that many is not cut, and a line with several matches counts once.
-        const exact = await find(folder({ 'a.txt': `${ hundred }\n`, 'b.txt': 'needle needle needle\n' }), { query: 'needle' });
+        const exact = await find(folder({ 'a.txt': `${hundred}\n`, 'b.txt': 'needle needle needle\n' }), {
+            query: 'needle',
+        });
 
         expect(exact.truncated).toBe(false);
         expect(exact.files.map(file => file.matches.length)).toEqual([MAX_FS_SEARCH_LINES_PER_FILE, 1]);
@@ -172,7 +228,10 @@ function engineSuite(engine: Engine) {
 
     test('stops at the cap of matches over all files, keeping the first files, and says so', async () => {
         const full = Array.from({ length: MAX_FS_SEARCH_LINES_PER_FILE }, () => 'needle').join('\n');
-        const files = (many: number) => Object.fromEntries(Array.from({ length: many }, (_, index) => [`f${ String(index + 1).padStart(3, '0') }.txt`, `${ full }\n`]));
+        const files = (many: number) =>
+            Object.fromEntries(
+                Array.from({ length: many }, (_, index) => [`f${String(index + 1).padStart(3, '0')}.txt`, `${full}\n`])
+            );
         const filesFull = MAX_FS_SEARCH_MATCHES / MAX_FS_SEARCH_LINES_PER_FILE;
         const cut = await find(folder(files(filesFull + 1)), { query: 'needle' });
 
@@ -187,20 +246,81 @@ function engineSuite(engine: Engine) {
     });
 
     test('never looks in .git, node_modules, .clowdy, lock files, minified files and source maps; it does in dotfiles', async () => {
-        const root = folder(Object.fromEntries([
-            'a.txt', '.env', '.config/settings', 'app.min.jsx', 'min.js', 'gitx', 'notes.lock',
-            '.git/config', 'node_modules/pkg/index.js', 'src/node_modules/x.js', 'sub/.git/config', '.clowdy/doc.md', '.clowdy/deep/doc.md', 'sub/.clowdy/doc.md',
-            'bun.lock', 'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml', 'npm-shrinkwrap.json', 'sub/yarn.lock', 'app.min.js', 'x/app.min.css', 'app.js.map', 'x/y.css.map',
-        ].map(path => [path, 'a needle\n'])));
+        const root = folder(
+            Object.fromEntries(
+                [
+                    'a.txt',
+                    '.env',
+                    '.config/settings',
+                    'app.min.jsx',
+                    'min.js',
+                    'gitx',
+                    'notes.lock',
+                    '.git/config',
+                    'node_modules/pkg/index.js',
+                    'src/node_modules/x.js',
+                    'sub/.git/config',
+                    '.clowdy/doc.md',
+                    '.clowdy/deep/doc.md',
+                    'sub/.clowdy/doc.md',
+                    'bun.lock',
+                    'package-lock.json',
+                    'yarn.lock',
+                    'pnpm-lock.yaml',
+                    'npm-shrinkwrap.json',
+                    'sub/yarn.lock',
+                    'app.min.js',
+                    'x/app.min.css',
+                    'app.js.map',
+                    'x/y.css.map',
+                ].map(path => [path, 'a needle\n'])
+            )
+        );
 
-        expect(paths(await find(root, { query: 'needle' }))).toEqual(['.config/settings', '.env', 'a.txt', 'app.min.jsx', 'gitx', 'min.js', 'notes.lock']);
+        expect(paths(await find(root, { query: 'needle' }))).toEqual([
+            '.config/settings',
+            '.env',
+            'a.txt',
+            'app.min.jsx',
+            'gitx',
+            'min.js',
+            'notes.lock',
+        ]);
     });
 
-    test('leaves out the request\'s excludes: globs of files and folders, anywhere or from the top', async () => {
-        const root = folder(Object.fromEntries([
-            'src/a.ts', 'src/b.log', 'src/deep/c.ts', 'dist/out.js', 'a/dist/out.js', 'docs/readme.md', 'notes/docs/readme.md', 'keep.txt', 'logs.txt', 'gen/x.ts', 'src/gen/y.ts', 'file/gen',
-        ].map(path => [path, 'needle\n'])));
-        const all = ['a/dist/out.js', 'dist/out.js', 'docs/readme.md', 'file/gen', 'gen/x.ts', 'keep.txt', 'logs.txt', 'notes/docs/readme.md', 'src/a.ts', 'src/b.log', 'src/deep/c.ts', 'src/gen/y.ts'];
+    test("leaves out the request's excludes: globs of files and folders, anywhere or from the top", async () => {
+        const root = folder(
+            Object.fromEntries(
+                [
+                    'src/a.ts',
+                    'src/b.log',
+                    'src/deep/c.ts',
+                    'dist/out.js',
+                    'a/dist/out.js',
+                    'docs/readme.md',
+                    'notes/docs/readme.md',
+                    'keep.txt',
+                    'logs.txt',
+                    'gen/x.ts',
+                    'src/gen/y.ts',
+                    'file/gen',
+                ].map(path => [path, 'needle\n'])
+            )
+        );
+        const all = [
+            'a/dist/out.js',
+            'dist/out.js',
+            'docs/readme.md',
+            'file/gen',
+            'gen/x.ts',
+            'keep.txt',
+            'logs.txt',
+            'notes/docs/readme.md',
+            'src/a.ts',
+            'src/b.log',
+            'src/deep/c.ts',
+            'src/gen/y.ts',
+        ];
         const rest = async (exclude: string[]) => paths(await find(root, { query: 'needle', exclude }));
         const without = (...gone: string[]) => all.filter(path => !gone.includes(path));
 
@@ -216,7 +336,9 @@ function engineSuite(engine: Engine) {
         expect(await rest(['gen/'])).toEqual(without('gen/x.ts', 'src/gen/y.ts'));
         expect(await rest(['{keep,logs}.txt'])).toEqual(without('keep.txt', 'logs.txt'));
         expect(await rest(['READMe.md'])).toEqual(all);
-        expect(await rest(['*.log', 'dist', '/docs', 'gen/'])).toEqual(without('src/b.log', 'dist/out.js', 'a/dist/out.js', 'docs/readme.md', 'gen/x.ts', 'src/gen/y.ts'));
+        expect(await rest(['*.log', 'dist', '/docs', 'gen/'])).toEqual(
+            without('src/b.log', 'dist/out.js', 'a/dist/out.js', 'docs/readme.md', 'gen/x.ts', 'src/gen/y.ts')
+        );
     });
 
     test('reads .gitignore in a repository, and searches what git does not know yet', async () => {
@@ -238,7 +360,12 @@ function engineSuite(engine: Engine) {
     });
 
     test('searches a repository inside the folder, which git lists as one entry', async () => {
-        const root = folder({ 'a.txt': 'needle\n', 'vendor/lib/x.txt': 'needle\n', 'vendor/lib/node_modules/y.txt': 'needle\n', 'vendor/lib/.clowdy/z.txt': 'needle\n' });
+        const root = folder({
+            'a.txt': 'needle\n',
+            'vendor/lib/x.txt': 'needle\n',
+            'vendor/lib/node_modules/y.txt': 'needle\n',
+            'vendor/lib/.clowdy/z.txt': 'needle\n',
+        });
 
         git(root, 'init', '-q');
         git(join(root, 'vendor', 'lib'), 'init', '-q');
@@ -247,22 +374,29 @@ function engineSuite(engine: Engine) {
     });
 
     test('keeps a long line to the part around its first match, with the ranges that fall in it', async () => {
-        const long = `${ 'x'.repeat(500) }NEEDLE${ 'y'.repeat(100) }needle${ 'z'.repeat(600) }needle`;
-        const result = await find(folder({ 'a.txt': `${ long }\n`, 'b.txt': `short NEEDLE and ${ 'q'.repeat(300) }\n` }), { query: 'needle' });
+        const long = `${'x'.repeat(500)}NEEDLE${'y'.repeat(100)}needle${'z'.repeat(600)}needle`;
+        const result = await find(folder({ 'a.txt': `${long}\n`, 'b.txt': `short NEEDLE and ${'q'.repeat(300)}\n` }), {
+            query: 'needle',
+        });
         const [a, b] = result.files.map(file => file.matches[0]!);
 
         expect(a!.column).toBe(501);
         expect(a!.preview).toHaveLength(250);
         expect(a!.preview).toBe(long.slice(460, 710));
         // The second match is in the preview, the third is not.
-        expect(a!.ranges).toEqual([{ start: 40, end: 46 }, { start: 146, end: 152 }]);
+        expect(a!.ranges).toEqual([
+            { start: 40, end: 46 },
+            { start: 146, end: 152 },
+        ]);
         expect(a!.preview.slice(40, 46)).toBe('NEEDLE');
-        expect(b!.preview).toBe(`short NEEDLE and ${ 'q'.repeat(300) }`.slice(0, 250));
+        expect(b!.preview).toBe(`short NEEDLE and ${'q'.repeat(300)}`.slice(0, 250));
         expect(b!.ranges).toEqual([{ start: 6, end: 12 }]);
 
         // A match longer than the preview ends where the preview does.
         const wide = 'w'.repeat(300);
-        const [onWide] = (await find(folder({ 'a.txt': `${ 'p'.repeat(200) }${ wide }${ 'p'.repeat(300) }\n` }), { query: wide })).files[0]!.matches;
+        const [onWide] = (
+            await find(folder({ 'a.txt': `${'p'.repeat(200)}${wide}${'p'.repeat(300)}\n` }), { query: wide })
+        ).files[0]!.matches;
 
         expect(onWide!.column).toBe(201);
         expect(onWide!.ranges).toEqual([{ start: 40, end: 250 }]);
@@ -270,8 +404,8 @@ function engineSuite(engine: Engine) {
 
     test('never cuts a long line inside an emoji', async () => {
         // The first cut would fall between the halves of the first emoji, the second between the halves of the other.
-        const text = `${ 'x'.repeat(59) }😀${ 'y'.repeat(39) }needle${ 'z'.repeat(203) }😀${ 'z'.repeat(100) }`;
-        const [match] = (await find(folder({ 'a.txt': `${ text }\n` }), { query: 'needle' })).files[0]!.matches;
+        const text = `${'x'.repeat(59)}😀${'y'.repeat(39)}needle${'z'.repeat(203)}😀${'z'.repeat(100)}`;
+        const [match] = (await find(folder({ 'a.txt': `${text}\n` }), { query: 'needle' })).files[0]!.matches;
 
         expect(text.charCodeAt(60)).toBeGreaterThanOrEqual(0xdc00);
         expect(text.charCodeAt(309)).toBeLessThan(0xdc00);
@@ -287,7 +421,12 @@ function engineSuite(engine: Engine) {
         const [match] = result.files[0]!.matches;
 
         // The emoji is two UTF-16 units, as a string of the client counts it.
-        expect(match).toEqual({ line: 1, column: 20, preview: 'héllo wörld 日本語 😀 Needle straße', ranges: [{ start: 19, end: 25 }] });
+        expect(match).toEqual({
+            line: 1,
+            column: 20,
+            preview: 'héllo wörld 日本語 😀 Needle straße',
+            ranges: [{ start: 19, end: 25 }],
+        });
         expect(match!.preview.slice(19, 25)).toBe('Needle');
     });
 
@@ -297,24 +436,50 @@ function engineSuite(engine: Engine) {
             'text.txt': 'needle\n',
             'binary.bin': Buffer.from('needle one\nsecond\n\0\nneedle after\n'),
             'nul-first.bin': Buffer.from('\0needle\n'),
-            'mixed.txt': Buffer.concat([Buffer.from('needle ok\nbad '), Buffer.from([0xff, 0xfe]), Buffer.from(' needle\nneedle again\n')]),
-            'exact.txt': `needle${ 'a'.repeat(megabyte - 7) }\n`,
-            'over.txt': `needle${ 'a'.repeat(megabyte - 6) }\n`,
+            'mixed.txt': Buffer.concat([
+                Buffer.from('needle ok\nbad '),
+                Buffer.from([0xff, 0xfe]),
+                Buffer.from(' needle\nneedle again\n'),
+            ]),
+            'exact.txt': `needle${'a'.repeat(megabyte - 7)}\n`,
+            'over.txt': `needle${'a'.repeat(megabyte - 6)}\n`,
         });
         const result = await find(root, { query: 'needle' });
 
-        expect(lineNumbers(result)).toEqual([['exact.txt', [1]], ['mixed.txt', [1, 3]], ['text.txt', [1]]]);
+        expect(lineNumbers(result)).toEqual([
+            ['exact.txt', [1]],
+            ['mixed.txt', [1, 3]],
+            ['text.txt', [1]],
+        ]);
         expect(readFileSync(join(root, 'exact.txt')).length).toBe(megabyte);
     });
 
     test('does not read the line ending, and skips a byte order mark', async () => {
-        const root = folder({ 'crlf.txt': 'needle\r\nsecond needle\r\nlast needle\r', 'bom.txt': Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('needle bom\nneedle\n')]) });
+        const root = folder({
+            'crlf.txt': 'needle\r\nsecond needle\r\nlast needle\r',
+            'bom.txt': Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('needle bom\nneedle\n')]),
+        });
         const result = await find(root, { query: 'needle' });
 
-        expect(result.files.map(file => [file.path, file.matches.map(match => [match.line, match.column, match.preview])])).toEqual([
-            ['bom.txt', [[1, 1, 'needle bom'], [2, 1, 'needle']]],
+        expect(
+            result.files.map(file => [file.path, file.matches.map(match => [match.line, match.column, match.preview])])
+        ).toEqual([
+            [
+                'bom.txt',
+                [
+                    [1, 1, 'needle bom'],
+                    [2, 1, 'needle'],
+                ],
+            ],
             // A last line that has no line break keeps its own carriage return.
-            ['crlf.txt', [[1, 1, 'needle'], [2, 8, 'second needle'], [3, 6, 'last needle\r']]],
+            [
+                'crlf.txt',
+                [
+                    [1, 1, 'needle'],
+                    [2, 8, 'second needle'],
+                    [3, 6, 'last needle\r'],
+                ],
+            ],
         ]);
     });
 
@@ -341,11 +506,15 @@ function engineSuite(engine: Engine) {
     });
 }
 
-describe('content search, the daemon\'s own scan', () => {
+describe("content search, the daemon's own scan", () => {
     engineSuite('scan');
 
     test('stops reading files when the signal fires', async () => {
-        const root = folder(Object.fromEntries(Array.from({ length: 40 }, (_, index) => [`f${ String(index).padStart(2, '0') }.txt`, 'needle\n'])));
+        const root = folder(
+            Object.fromEntries(
+                Array.from({ length: 40 }, (_, index) => [`f${String(index).padStart(2, '0')}.txt`, 'needle\n'])
+            )
+        );
         const collector = new Collector();
         let checks = 0;
         // Fires on the sixth look: the scan looks before every file.
@@ -364,12 +533,19 @@ describe('content search, the daemon\'s own scan', () => {
 
         const search = new ContentSearch({ ripgrep: false });
 
-        expect(await search.search(root, { query: 'needle' }, controller.signal)).toEqual({ files: [], truncated: true });
+        expect(await search.search(root, { query: 'needle' }, controller.signal)).toEqual({
+            files: [],
+            truncated: true,
+        });
         expect(search.active).toBe(0);
     });
 
     test('a search aborted on the way answers what it has found, cut', async () => {
-        const root = folder(Object.fromEntries(Array.from({ length: 300 }, (_, index) => [`f${ String(index).padStart(3, '0') }.txt`, 'needle\n'])));
+        const root = folder(
+            Object.fromEntries(
+                Array.from({ length: 300 }, (_, index) => [`f${String(index).padStart(3, '0')}.txt`, 'needle\n'])
+            )
+        );
         const search = new ContentSearch({ ripgrep: false });
         const controller = new AbortController();
         const running = search.search(root, { query: 'needle' }, controller.signal);
@@ -385,57 +561,68 @@ describe('content search, the daemon\'s own scan', () => {
     });
 });
 
-describe(RG ? 'content search with ripgrep' : 'content search with ripgrep (skipped: there is no rg on the PATH)', () => {
-    if (!RG) {
-        test.skip('needs rg on the PATH', () => undefined);
+describe(
+    RG ? 'content search with ripgrep' : 'content search with ripgrep (skipped: there is no rg on the PATH)',
+    () => {
+        if (!RG) {
+            test.skip('needs rg on the PATH', () => undefined);
 
-        return;
-    }
+            return;
+        }
 
-    engineSuite('ripgrep');
+        engineSuite('ripgrep');
 
-    test('refuses an exclude glob that ripgrep cannot parse', async () => {
-        const search = new ContentSearch();
-        const error = await refused(search.search(folder({ 'a.txt': 'needle' }), { query: 'needle', exclude: ['['] }));
-
-        expect(error.code).toBe('invalid');
-        expect(error.message).toMatch(/glob/);
-        expect(error.message).not.toMatch(/\.$/);
-    });
-
-    test('is not thrown off by a ripgrep configuration file of the person', async () => {
-        const config = join(tempDir('rg-config'), 'rgrc');
-
-        writeFileSync(config, '--case-sensitive\n--no-ignore\n--max-count=1\n');
-        process.env.RIPGREP_CONFIG_PATH = config;
-
-        try {
+        test('refuses an exclude glob that ripgrep cannot parse', async () => {
             const search = new ContentSearch();
-            const result = await search.search(folder({ 'a.txt': 'Needle\nneedle\n' }), { query: 'needle' });
+            const error = await refused(
+                search.search(folder({ 'a.txt': 'needle' }), { query: 'needle', exclude: ['['] })
+            );
 
-            expect(lineNumbers(result)).toEqual([['a.txt', [1, 2]]]);
-        }
-        finally {
-            delete process.env.RIPGREP_CONFIG_PATH;
-        }
-    });
-});
+            expect(error.code).toBe('invalid');
+            expect(error.message).toMatch(/glob/);
+            expect(error.message).not.toMatch(/\.$/);
+        });
+
+        test('is not thrown off by a ripgrep configuration file of the person', async () => {
+            const config = join(tempDir('rg-config'), 'rgrc');
+
+            writeFileSync(config, '--case-sensitive\n--no-ignore\n--max-count=1\n');
+            process.env.RIPGREP_CONFIG_PATH = config;
+
+            try {
+                const search = new ContentSearch();
+                const result = await search.search(folder({ 'a.txt': 'Needle\nneedle\n' }), { query: 'needle' });
+
+                expect(lineNumbers(result)).toEqual([['a.txt', [1, 2]]]);
+            } finally {
+                delete process.env.RIPGREP_CONFIG_PATH;
+            }
+        });
+    }
+);
 
 describe('both engines answer alike', () => {
     test.skipIf(!RG)('on a tree with a bit of everything (ripgrep skipped without rg on the PATH)', async () => {
         const root = folder({
             'a.txt': 'Needle here\nand needle there\nNEEDLEs\n',
             'src/app.ts': 'const needle = 1; // needle\n',
-            'src/deep/er/x.ts': `${ 'n'.repeat(400) } needle\n`,
+            'src/deep/er/x.ts': `${'n'.repeat(400)} needle\n`,
             'docs/ünï.md': 'Ünïcode needle ünï\n',
             '.hidden/h.txt': 'needle\n',
-            'big.txt': `${ Array.from({ length: 150 }, (_, index) => `needle ${ index }`).join('\n') }\n`,
+            'big.txt': `${Array.from({ length: 150 }, (_, index) => `needle ${index}`).join('\n')}\n`,
             'node_modules/x/y.js': 'needle\n',
             'a.min.js': 'needle\n',
             'blob.bin': Buffer.from([0, 1, 2, 110, 101, 101, 100, 108, 101]),
         });
 
-        for (const query of [{ query: 'needle' }, { query: 'needle', matchCase: true }, { query: 'needle', wholeWord: true }, { query: 'ünï' }, { query: 'Ünï', matchCase: true }, { query: 'needle', exclude: ['docs', '*.ts'] }]) {
+        for (const query of [
+            { query: 'needle' },
+            { query: 'needle', matchCase: true },
+            { query: 'needle', wholeWord: true },
+            { query: 'ünï' },
+            { query: 'Ünï', matchCase: true },
+            { query: 'needle', exclude: ['docs', '*.ts'] },
+        ]) {
             const scan = await new ContentSearch({ ripgrep: false }).search(root, query);
             const ripgrep = await new ContentSearch().search(root, query);
 
@@ -453,12 +640,17 @@ describe('content search requests', () => {
     test('are checked: the text is one line, not empty and not over the limit', async () => {
         expect((await refused(search.search(root, { query: '' }))).code).toBe('invalid');
         expect(await problem({ query: '' })).toBe('The search text is empty');
-        expect(await problem({ query: 'a'.repeat(MAX_FS_QUERY_LENGTH + 1) })).toBe(`The search text is over ${ MAX_FS_QUERY_LENGTH } characters`);
+        expect(await problem({ query: 'a'.repeat(MAX_FS_QUERY_LENGTH + 1) })).toBe(
+            `The search text is over ${MAX_FS_QUERY_LENGTH} characters`
+        );
         expect(await problem({ query: 'one\ntwo' })).toBe('The search text must be one line of text');
         expect(await problem({ query: 'one\rtwo' })).toBe('The search text must be one line of text');
         expect(await problem({ query: 'one\0two' })).toBe('The search text must be one line of text');
         expect(paths(await search.search(root, { query: 'n'.repeat(1) }))).toEqual(['a.txt']);
-        expect(await search.search(root, { query: 'a'.repeat(MAX_FS_QUERY_LENGTH) })).toEqual({ files: [], truncated: false });
+        expect(await search.search(root, { query: 'a'.repeat(MAX_FS_QUERY_LENGTH) })).toEqual({
+            files: [],
+            truncated: false,
+        });
         // Spaces are text.
         expect(await search.search(root, { query: ' ' })).toEqual({ files: [], truncated: false });
     });
@@ -467,11 +659,17 @@ describe('content search requests', () => {
         expect((await refused(search.search(root, { query: 'n', exclude: [''] }))).code).toBe('invalid');
         expect(await problem({ query: 'n', exclude: ['ok', ''] })).toBe('An exclude glob is empty');
         expect(await problem({ query: 'n', exclude: ['  '] })).toBe('An exclude glob is empty');
-        expect(await problem({ query: 'n', exclude: ['a'.repeat(501)] })).toBe('An exclude glob is over 500 characters');
+        expect(await problem({ query: 'n', exclude: ['a'.repeat(501)] })).toBe(
+            'An exclude glob is over 500 characters'
+        );
         expect(await problem({ query: 'n', exclude: ['a\0b'] })).toBe('An exclude glob has a NUL character');
         expect(await problem({ query: 'n', exclude: ['!keep'] })).toBe('An exclude glob cannot start with !');
-        expect(await problem({ query: 'n', exclude: Array.from({ length: 201 }, (_, index) => `g${ index }`) })).toBe('At most 200 exclude globs');
-        expect(await problem({ query: 'n', exclude: Array.from({ length: 50 }, () => 'a'.repeat(500)) })).toBe('The exclude globs are over 20000 characters together');
+        expect(await problem({ query: 'n', exclude: Array.from({ length: 201 }, (_, index) => `g${index}`) })).toBe(
+            'At most 200 exclude globs'
+        );
+        expect(await problem({ query: 'n', exclude: Array.from({ length: 50 }, () => 'a'.repeat(500)) })).toBe(
+            'The exclude globs are over 20000 characters together'
+        );
         expect(paths(await search.search(root, { query: 'n', exclude: ['a'.repeat(500), '\\!x'] }))).toEqual(['a.txt']);
     });
 });
@@ -479,7 +677,9 @@ describe('content search requests', () => {
 describe.skipIf(!POSIX)('content search with a ripgrep of its own', () => {
     test('runs the program without a shell: the query follows -e and the folder follows --', async () => {
         const record = join(tempDir('args'), 'args.txt');
-        const program = script(`for a in "$@"; do printf '%s\\n' "$a" >> '${ record }'; done\nprintf '%s\\n' '${ SUMMARY }'`);
+        const program = script(
+            `for a in "$@"; do printf '%s\\n' "$a" >> '${record}'; done\nprintf '%s\\n' '${SUMMARY}'`
+        );
         const root = folder();
         const search = new ContentSearch({ ripgrep: program });
 
@@ -495,9 +695,29 @@ describe.skipIf(!POSIX)('content search with a ripgrep of its own', () => {
         expect(args).toContain('--hidden');
         expect(args).toContain('--json');
         expect(args).toContain('--no-config');
-        expect(args.slice(args.indexOf('--max-filesize'), args.indexOf('--max-filesize') + 2)).toEqual(['--max-filesize', '1M']);
-        expect(args.slice(args.indexOf('--max-count'), args.indexOf('--max-count') + 2)).toEqual(['--max-count', String(MAX_FS_SEARCH_LINES_PER_FILE + 1)]);
-        expect(args.filter((_arg, index) => args[index - 1] === '-g')).toEqual(['!.git', '!node_modules', '!.clowdy', '!bun.lock', '!package-lock.json', '!yarn.lock', '!pnpm-lock.yaml', '!npm-shrinkwrap.json', '!*.min.js', '!*.min.css', '!*.map', '!dist', '!a b']);
+        expect(args.slice(args.indexOf('--max-filesize'), args.indexOf('--max-filesize') + 2)).toEqual([
+            '--max-filesize',
+            '1M',
+        ]);
+        expect(args.slice(args.indexOf('--max-count'), args.indexOf('--max-count') + 2)).toEqual([
+            '--max-count',
+            String(MAX_FS_SEARCH_LINES_PER_FILE + 1),
+        ]);
+        expect(args.filter((_arg, index) => args[index - 1] === '-g')).toEqual([
+            '!.git',
+            '!node_modules',
+            '!.clowdy',
+            '!bun.lock',
+            '!package-lock.json',
+            '!yarn.lock',
+            '!pnpm-lock.yaml',
+            '!npm-shrinkwrap.json',
+            '!*.min.js',
+            '!*.min.css',
+            '!*.map',
+            '!dist',
+            '!a b',
+        ]);
         expect(existsSync(join(process.cwd(), 'pwned'))).toBe(false);
 
         await search.search(root, { query: 'x', matchCase: true });
@@ -511,7 +731,7 @@ describe.skipIf(!POSIX)('content search with a ripgrep of its own', () => {
 
     test('runs where the folder is, so the globs are read from it', async () => {
         const marker = join(tempDir('cwd'), 'cwd.txt');
-        const program = script(`pwd -P > '${ marker }'\nprintf '%s\\n' '${ SUMMARY }'`);
+        const program = script(`pwd -P > '${marker}'\nprintf '%s\\n' '${SUMMARY}'`);
         const root = folder();
 
         await new ContentSearch({ ripgrep: program }).search(root, { query: 'x' });
@@ -522,7 +742,10 @@ describe.skipIf(!POSIX)('content search with a ripgrep of its own', () => {
     test('turns the events it prints into the result: byte offsets into characters, paths relative with / separators', async () => {
         const root = folder();
         const program = printing([
-            matchEvent(root, 'b/y.txt', 2, 'héllo wörld 😀 wörld\n', [{ start: 7, end: 13 }, { start: 19, end: 25 }]),
+            matchEvent(root, 'b/y.txt', 2, 'héllo wörld 😀 wörld\n', [
+                { start: 7, end: 13 },
+                { start: 19, end: 25 },
+            ]),
             matchEvent(root, 'b/y.txt', 5, 'line\r\n', [{ start: 0, end: 4 }]),
             matchEvent(root, 'a.txt', 1, 'first needle', [{ start: 6, end: 12 }]),
             SUMMARY,
@@ -531,11 +754,25 @@ describe.skipIf(!POSIX)('content search with a ripgrep of its own', () => {
 
         expect(result).toEqual({
             files: [
-                { path: 'a.txt', matches: [{ line: 1, column: 7, preview: 'first needle', ranges: [{ start: 6, end: 12 }] }] },
-                { path: 'b/y.txt', matches: [
-                    { line: 2, column: 7, preview: 'héllo wörld 😀 wörld', ranges: [{ start: 6, end: 11 }, { start: 15, end: 20 }] },
-                    { line: 5, column: 1, preview: 'line', ranges: [{ start: 0, end: 4 }] },
-                ] },
+                {
+                    path: 'a.txt',
+                    matches: [{ line: 1, column: 7, preview: 'first needle', ranges: [{ start: 6, end: 12 }] }],
+                },
+                {
+                    path: 'b/y.txt',
+                    matches: [
+                        {
+                            line: 2,
+                            column: 7,
+                            preview: 'héllo wörld 😀 wörld',
+                            ranges: [
+                                { start: 6, end: 11 },
+                                { start: 15, end: 20 },
+                            ],
+                        },
+                        { line: 5, column: 1, preview: 'line', ranges: [{ start: 0, end: 4 }] },
+                    ],
+                },
             ],
             truncated: false,
         });
@@ -543,9 +780,32 @@ describe.skipIf(!POSIX)('content search with a ripgrep of its own', () => {
 
     test('skips lines and paths that ripgrep gives as bytes, and paths outside the folder', async () => {
         const root = folder();
-        const bytes = { type: 'match', data: { path: { text: join(root, 'bytes.txt') }, lines: { bytes: '/w==' }, line_number: 1, submatches: [{ start: 0, end: 1 }] } };
-        const oddPath = { type: 'match', data: { path: { bytes: '/w==' }, lines: { text: 'x\n' }, line_number: 1, submatches: [{ start: 0, end: 1 }] } };
-        const program = printing([JSON.stringify(bytes), JSON.stringify(oddPath), matchEvent('/elsewhere', 'out.txt', 1, 'x\n', [{ start: 0, end: 1 }]), 'not json', matchEvent(root, 'ok.txt', 1, 'x\n', [{ start: 0, end: 1 }]), SUMMARY]);
+        const bytes = {
+            type: 'match',
+            data: {
+                path: { text: join(root, 'bytes.txt') },
+                lines: { bytes: '/w==' },
+                line_number: 1,
+                submatches: [{ start: 0, end: 1 }],
+            },
+        };
+        const oddPath = {
+            type: 'match',
+            data: {
+                path: { bytes: '/w==' },
+                lines: { text: 'x\n' },
+                line_number: 1,
+                submatches: [{ start: 0, end: 1 }],
+            },
+        };
+        const program = printing([
+            JSON.stringify(bytes),
+            JSON.stringify(oddPath),
+            matchEvent('/elsewhere', 'out.txt', 1, 'x\n', [{ start: 0, end: 1 }]),
+            'not json',
+            matchEvent(root, 'ok.txt', 1, 'x\n', [{ start: 0, end: 1 }]),
+            SUMMARY,
+        ]);
 
         expect(paths(await new ContentSearch({ ripgrep: program }).search(root, { query: 'x' }))).toEqual(['ok.txt']);
     });
@@ -554,15 +814,24 @@ describe.skipIf(!POSIX)('content search with a ripgrep of its own', () => {
         const root = folder();
         const program = printing([matchEvent(root, 'a.txt', 1, 'x\n', [{ start: 0, end: 1 }]), SUMMARY], 2);
 
-        expect(await new ContentSearch({ ripgrep: program }).search(root, { query: 'x' })).toEqual({ files: [{ path: 'a.txt', matches: [{ line: 1, column: 1, preview: 'x', ranges: [{ start: 0, end: 1 }] }] }], truncated: false });
+        expect(await new ContentSearch({ ripgrep: program }).search(root, { query: 'x' })).toEqual({
+            files: [{ path: 'a.txt', matches: [{ line: 1, column: 1, preview: 'x', ranges: [{ start: 0, end: 1 }] }] }],
+            truncated: false,
+        });
     });
 
     test('says invalid when ripgrep refuses the request before it printed anything', async () => {
-        const program = script('echo "rg: error parsing glob \'[\': unclosed character class; missing \']\'." >&2\nexit 2');
-        const error = await refused(new ContentSearch({ ripgrep: program }).search(folder(), { query: 'x', exclude: ['['] }));
+        const program = script(
+            "echo \"rg: error parsing glob '[': unclosed character class; missing ']'.\" >&2\nexit 2"
+        );
+        const error = await refused(
+            new ContentSearch({ ripgrep: program }).search(folder(), { query: 'x', exclude: ['['] })
+        );
 
         expect(error.code).toBe('invalid');
-        expect(error.message).toBe('The search was refused: error parsing glob \'[\': unclosed character class; missing \']\'');
+        expect(error.message).toBe(
+            "The search was refused: error parsing glob '[': unclosed character class; missing ']'"
+        );
     });
 
     test('keeps what it found when ripgrep dies on the way, and says unavailable when it died before saying anything', async () => {
@@ -572,7 +841,9 @@ describe.skipIf(!POSIX)('content search with a ripgrep of its own', () => {
 
         expect(paths(result)).toEqual(['a.txt']);
         expect(result.truncated).toBe(true);
-        expect((await refused(new ContentSearch({ ripgrep: script('exit 137') }).search(root, { query: 'x' }))).code).toBe('unavailable');
+        expect(
+            (await refused(new ContentSearch({ ripgrep: script('exit 137') }).search(root, { query: 'x' }))).code
+        ).toBe('unavailable');
     });
 
     test('falls back to its own scan when the program cannot be started, and tries it again the next time', async () => {
@@ -587,7 +858,10 @@ describe.skipIf(!POSIX)('content search with a ripgrep of its own', () => {
         expect(paths(await search.search(root, { query: 'needle' }))).toEqual(['a.txt']);
         expect(search.lastEngine).toBe('scan');
 
-        writeFileSync(program, `#!/bin/sh\nprintf '%s\\n' '${ matchEvent(root, 'a.txt', 1, 'needle\n', [{ start: 0, end: 6 }]) }' '${ SUMMARY }'\n`);
+        writeFileSync(
+            program,
+            `#!/bin/sh\nprintf '%s\\n' '${matchEvent(root, 'a.txt', 1, 'needle\n', [{ start: 0, end: 6 }])}' '${SUMMARY}'\n`
+        );
 
         expect(paths(await search.search(root, { query: 'needle' }))).toEqual(['a.txt']);
         expect(search.lastEngine).toBe('ripgrep');
@@ -638,19 +912,23 @@ describe.skipIf(!POSIX)('content search with a ripgrep of its own', () => {
         const hang = () => {
             const pidFile = join(tempDir('pid'), 'pid.txt');
 
-            return { pidFile, program: script(`echo $$ > '${ pidFile }'\nexec sleep 30`) };
+            return { pidFile, program: script(`echo $$ > '${pidFile}'\nexec sleep 30`) };
         };
         const alive = (pid: number) => {
             try {
                 process.kill(pid, 0);
 
                 return true;
-            }
-            catch {
+            } catch {
                 return false;
             }
         };
-        const pidOf = (file: string) => waitFor(() => existsSync(file) && readFileSync(file, 'utf8').trim() !== '' && Number(readFileSync(file, 'utf8')), 'the program to start');
+        const pidOf = (file: string) =>
+            waitFor(
+                () =>
+                    existsSync(file) && readFileSync(file, 'utf8').trim() !== '' && Number(readFileSync(file, 'utf8')),
+                'the program to start'
+            );
 
         test('is killed when the search is aborted', async () => {
             const { pidFile, program } = hang();
@@ -672,7 +950,9 @@ describe.skipIf(!POSIX)('content search with a ripgrep of its own', () => {
         test('is killed when the time is up, and the search answers what it had, cut', async () => {
             const root = folder();
             const pidFile = join(tempDir('pid'), 'pid.txt');
-            const program = script(`echo $$ > '${ pidFile }'\nprintf '%s\\n' '${ matchEvent(root, 'a.txt', 1, 'x\n', [{ start: 0, end: 1 }]) }'\nexec sleep 30`);
+            const program = script(
+                `echo $$ > '${pidFile}'\nprintf '%s\\n' '${matchEvent(root, 'a.txt', 1, 'x\n', [{ start: 0, end: 1 }])}'\nexec sleep 30`
+            );
             const search = new ContentSearch({ ripgrep: program });
 
             // A program that was just written takes its time to start the first time on some systems.
@@ -701,9 +981,11 @@ describe.skipIf(!POSIX)('content search with a ripgrep of its own', () => {
 
         test('is stopped when the result is full, before it ends by itself', async () => {
             const root = folder();
-            const events = Array.from({ length: MAX_FS_SEARCH_MATCHES + 1 }, (_, index) => matchEvent(root, `f${ String(index).padStart(4, '0') }.txt`, 1, 'x\n', [{ start: 0, end: 1 }]));
+            const events = Array.from({ length: MAX_FS_SEARCH_MATCHES + 1 }, (_, index) =>
+                matchEvent(root, `f${String(index).padStart(4, '0')}.txt`, 1, 'x\n', [{ start: 0, end: 1 }])
+            );
             const pidFile = join(tempDir('pid'), 'pid.txt');
-            const program = script(`echo $$ > '${ pidFile }'\ncat <<'EOF'\n${ events.join('\n') }\nEOF\nexec sleep 30`);
+            const program = script(`echo $$ > '${pidFile}'\ncat <<'EOF'\n${events.join('\n')}\nEOF\nexec sleep 30`);
             const result = await new ContentSearch({ ripgrep: program }).search(root, { query: 'x' });
 
             expect(result.truncated).toBe(true);
@@ -713,7 +995,7 @@ describe.skipIf(!POSIX)('content search with a ripgrep of its own', () => {
     });
 
     describe('the line of searches waiting for a place', () => {
-        const slow = (ms: number) => script(`sleep ${ ms / 1000 }\nprintf '%s\\n' '${ SUMMARY }'`);
+        const slow = (ms: number) => script(`sleep ${ms / 1000}\nprintf '%s\\n' '${SUMMARY}'`);
 
         test('lets a few run at once, queues the next ones and refuses past that', async () => {
             const search = new ContentSearch({ ripgrep: slow(400) });
@@ -790,14 +1072,15 @@ describe('CLOWDY_RG', () => {
 describe('POST fs/search', () => {
     let h: Harness;
 
-    const request = (folderValue: { project: { id: string } }, body: unknown, init: RequestInit = {}) => h.fetch(`/v1/projects/${ folderValue.project.id }/fs/search`, {
-        method: 'POST',
-        body: typeof body === 'string' ? body : JSON.stringify(body),
-        headers: { 'content-type': 'application/json' },
-        ...init,
-    });
+    const request = (folderValue: { project: { id: string } }, body: unknown, init: RequestInit = {}) =>
+        h.fetch(`/v1/projects/${folderValue.project.id}/fs/search`, {
+            method: 'POST',
+            body: typeof body === 'string' ? body : JSON.stringify(body),
+            headers: { 'content-type': 'application/json' },
+            ...init,
+        });
     const failureOf = async (response: Response) => {
-        const body = await response.json() as { ok: false; error: { code: string; message: string } };
+        const body = (await response.json()) as { ok: false; error: { code: string; message: string } };
 
         expect(body.ok).toBe(false);
 
@@ -813,19 +1096,35 @@ describe('POST fs/search', () => {
     });
 
     test('answers the lines of the files that hold the text', async () => {
-        const place = openFolder(h, { 'a.txt': 'one\nNeedle two\n', 'src/b.ts': 'needle\n', 'node_modules/c.js': 'needle\n', 'skip.log': 'needle\n' });
+        const place = openFolder(h, {
+            'a.txt': 'one\nNeedle two\n',
+            'src/b.ts': 'needle\n',
+            'node_modules/c.js': 'needle\n',
+            'skip.log': 'needle\n',
+        });
         const response = await request(place, { folderId: place.folderId, query: 'needle', exclude: ['*.log'] });
 
         expect(response.status).toBe(200);
         expect(await response.json()).toEqual({
             files: [
-                { path: 'a.txt', matches: [{ line: 2, column: 1, preview: 'Needle two', ranges: [{ start: 0, end: 6 }] }] },
-                { path: 'src/b.ts', matches: [{ line: 1, column: 1, preview: 'needle', ranges: [{ start: 0, end: 6 }] }] },
+                {
+                    path: 'a.txt',
+                    matches: [{ line: 2, column: 1, preview: 'Needle two', ranges: [{ start: 0, end: 6 }] }],
+                },
+                {
+                    path: 'src/b.ts',
+                    matches: [{ line: 1, column: 1, preview: 'needle', ranges: [{ start: 0, end: 6 }] }],
+                },
             ],
             truncated: false,
         });
 
-        const exact = await request(place, { folderId: place.folderId, query: 'needle', matchCase: true, wholeWord: true });
+        const exact = await request(place, {
+            folderId: place.folderId,
+            query: 'needle',
+            matchCase: true,
+            wholeWord: true,
+        });
 
         expect(((await exact.json()) as FsSearchResult).files.map(file => file.path)).toEqual(['skip.log', 'src/b.ts']);
     });
@@ -846,7 +1145,11 @@ describe('POST fs/search', () => {
         const place = openFolder(h, { 'a.txt': 'needle' });
 
         for (const headers of [{}, { authorization: 'Bearer wrong' }] as Array<Record<string, string>>) {
-            const response = await fetch(`${ h.url }/v1/projects/${ place.project.id }/fs/search`, { method: 'POST', headers, body: JSON.stringify({ folderId: place.folderId, query: 'needle' }) });
+            const response = await fetch(`${h.url}/v1/projects/${place.project.id}/fs/search`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({ folderId: place.folderId, query: 'needle' }),
+            });
 
             expect(response.status).toBe(401);
         }
@@ -854,7 +1157,7 @@ describe('POST fs/search', () => {
 
     test('is a POST: a GET of the route is 405', async () => {
         const place = openFolder(h);
-        const response = await h.fetch(`/v1/projects/${ place.project.id }/fs/search?folderId=${ place.folderId }&query=x`);
+        const response = await h.fetch(`/v1/projects/${place.project.id}/fs/search?folderId=${place.folderId}&query=x`);
 
         expect(response.status).toBe(405);
         expect(response.headers.get('allow')).toBe('POST');
@@ -871,10 +1174,16 @@ describe('POST fs/search', () => {
             [{ query: 'x' }, 'The request is not valid'],
             [{ folderId: '', query: 'x' }, 'The folder is not given'],
             [{ folderId: place.folderId, query: '' }, 'The search text is empty'],
-            [{ folderId: place.folderId, query: 'a'.repeat(MAX_FS_QUERY_LENGTH + 1) }, `The search text is over ${ MAX_FS_QUERY_LENGTH } characters`],
+            [
+                { folderId: place.folderId, query: 'a'.repeat(MAX_FS_QUERY_LENGTH + 1) },
+                `The search text is over ${MAX_FS_QUERY_LENGTH} characters`,
+            ],
             [{ folderId: place.folderId, query: 'a\nb' }, 'The search text must be one line of text'],
             [{ folderId: place.folderId, query: 'x', exclude: [''] }, 'An exclude glob is empty'],
-            [{ folderId: place.folderId, query: 'x', exclude: ['a'.repeat(501)] }, 'An exclude glob is over 500 characters'],
+            [
+                { folderId: place.folderId, query: 'x', exclude: ['a'.repeat(501)] },
+                'An exclude glob is over 500 characters',
+            ],
             [{ folderId: place.folderId, query: 'x', exclude: ['a\0b'] }, 'An exclude glob has a NUL character'],
         ];
 
@@ -888,7 +1197,10 @@ describe('POST fs/search', () => {
 
     test('answers 404 for a project or a folder that does not exist, and 503 for one that is gone from the disk', async () => {
         const place = openFolder(h, { 'a.txt': 'needle' });
-        const unknownProject = await h.fetch('/v1/projects/prj_nope/fs/search', { method: 'POST', body: JSON.stringify({ folderId: place.folderId, query: 'x' }) });
+        const unknownProject = await h.fetch('/v1/projects/prj_nope/fs/search', {
+            method: 'POST',
+            body: JSON.stringify({ folderId: place.folderId, query: 'x' }),
+        });
 
         expect(unknownProject.status).toBe(404);
         expect((await failureOf(unknownProject)).code).toBe('not_found');
@@ -903,7 +1215,10 @@ describe('POST fs/search', () => {
         const gone = await request(place, { folderId: place.folderId, query: 'x' });
 
         expect(gone.status).toBe(503);
-        expect(await failureOf(gone)).toMatchObject({ code: 'unavailable', message: `The folder ${ place.dir } is missing` });
+        expect(await failureOf(gone)).toMatchObject({
+            code: 'unavailable',
+            message: `The folder ${place.dir} is missing`,
+        });
     });
 
     describe.skipIf(!POSIX)('with a search that does not end', () => {
@@ -911,13 +1226,20 @@ describe('POST fs/search', () => {
             const pidFile = join(tempDir('pid'), 'pid.txt');
 
             await h.stop();
-            h = await startHarness({ ripgrep: script(`echo $$ > '${ pidFile }'\nexec sleep 30`) });
+            h = await startHarness({ ripgrep: script(`echo $$ > '${pidFile}'\nexec sleep 30`) });
 
             const place = openFolder(h, { 'a.txt': 'needle' });
             const search = h.daemon.services.fs.contentSearch;
             const controller = new AbortController();
-            const response = request(place, { folderId: place.folderId, query: 'needle' }, { signal: controller.signal }).catch((error: Error) => error.name);
-            const pid = await waitFor(() => existsSync(pidFile) && Number(readFileSync(pidFile, 'utf8')), 'the search to start');
+            const response = request(
+                place,
+                { folderId: place.folderId, query: 'needle' },
+                { signal: controller.signal }
+            ).catch((error: Error) => error.name);
+            const pid = await waitFor(
+                () => existsSync(pidFile) && Number(readFileSync(pidFile, 'utf8')),
+                'the search to start'
+            );
 
             expect(search.active).toBe(1);
 
@@ -930,8 +1252,7 @@ describe('POST fs/search', () => {
                     process.kill(pid, 0);
 
                     return false;
-                }
-                catch {
+                } catch {
                     return true;
                 }
             }, 'the program to be killed');
@@ -954,7 +1275,10 @@ describe('POST fs/search', () => {
             const second = await request(place, { folderId: place.folderId, query: 'needle' });
 
             expect(second.status).toBe(503);
-            expect(await failureOf(second)).toMatchObject({ code: 'unavailable', message: 'Too many searches are running, try again in a moment' });
+            expect(await failureOf(second)).toMatchObject({
+                code: 'unavailable',
+                message: 'Too many searches are running, try again in a moment',
+            });
             expect((await first).status).toBe(200);
         });
     });

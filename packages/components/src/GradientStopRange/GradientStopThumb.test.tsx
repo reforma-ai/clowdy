@@ -19,23 +19,26 @@ const actions = () => ({
 });
 
 function draw(props: Partial<GradientStopThumbProps> & { actions: GradientStopThumbProps['actions'] }) {
-    act(() => root.render(
-        <GradientStopThumb
-            stop={ { id: 'a', color: '#f00', position: 0.5 } }
-            index={ 0 }
-            ariaLabel="Fill"
-            trackRef={ { current: container } }
-            options={ { min: 0, max: 1, step: 0.01, shiftStep: 0.1 } }
-            { ...props }
-        />
-    ));
+    act(() =>
+        root.render(
+            <GradientStopThumb
+                stop={{ id: 'a', color: '#f00', position: 0.5 }}
+                index={0}
+                ariaLabel="Fill"
+                trackRef={{ current: container }}
+                options={{ min: 0, max: 1, step: 0.01, shiftStep: 0.1 }}
+                {...props}
+            />
+        )
+    );
 
     return container.querySelector<HTMLElement>('[role="slider"]')!;
 }
 
-const press = (thumb: HTMLElement, key: string) => act(() => {
-    thumb.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
-});
+const press = (thumb: HTMLElement, key: string) =>
+    act(() => {
+        thumb.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+    });
 
 beforeEach(() => {
     container = document.createElement('div');

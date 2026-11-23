@@ -17,10 +17,21 @@ const clicked = vi.fn();
 // Whether the handler opens a menu, as the ones of the app do: it prevents the default.
 let handles = true;
 
-const touch = (type: string, init: { x?: number; y?: number; pointerType?: string; isPrimary?: boolean; on?: Element } = {}) => {
+const touch = (
+    type: string,
+    init: { x?: number; y?: number; pointerType?: string; isPrimary?: boolean; on?: Element } = {}
+) => {
     const event = new Event(type, { bubbles: true, cancelable: true });
 
-    Object.assign(event, { pointerType: init.pointerType ?? 'touch', isPrimary: init.isPrimary ?? true, pointerId: 7, clientX: init.x ?? 10, clientY: init.y ?? 10, screenX: 110, screenY: 210 });
+    Object.assign(event, {
+        pointerType: init.pointerType ?? 'touch',
+        isPrimary: init.isPrimary ?? true,
+        pointerId: 7,
+        clientX: init.x ?? 10,
+        clientY: init.y ?? 10,
+        screenX: 110,
+        screenY: 210,
+    });
     (init.on ?? target).dispatchEvent(event);
 };
 const hold = (ms: number) => void vi.advanceTimersByTime(ms);
@@ -45,7 +56,7 @@ beforeEach(() => {
     container.innerHTML = '<div data-target>row <input data-field /></div>';
     document.body.append(container);
     target = container.querySelector<HTMLElement>('[data-target]')!;
-    target.addEventListener('contextmenu', (event) => {
+    target.addEventListener('contextmenu', event => {
         contextmenu(event);
 
         if (handles) event.preventDefault();
@@ -74,7 +85,13 @@ describe('a long press as a right-click', () => {
 
         const [event] = contextmenu.mock.calls[0]!;
 
-        expect([event.clientX, event.clientY, event.button, event.bubbles, Boolean(event.isTrusted)]).toEqual([12, 8, 2, true, false]);
+        expect([event.clientX, event.clientY, event.button, event.bubbles, Boolean(event.isTrusted)]).toEqual([
+            12,
+            8,
+            2,
+            true,
+            false,
+        ]);
     });
 
     it('cancels the pointer and swallows the click of the release, once, when a handler opened a menu', () => {
@@ -163,7 +180,7 @@ describe('a long press as a right-click', () => {
         expect(contextmenu).not.toHaveBeenCalled();
     });
 
-    it('lets the browser\'s own context menu event for a long touch through, and drops its timer', () => {
+    it("lets the browser's own context menu event for a long touch through, and drops its timer", () => {
         touch('pointerdown');
         hold(300);
 
@@ -176,7 +193,7 @@ describe('a long press as a right-click', () => {
         expect(pointercancel).not.toHaveBeenCalled();
     });
 
-    it('takes the browser\'s own event that comes just after ours for the same press, and not one that comes long after', () => {
+    it("takes the browser's own event that comes just after ours for the same press, and not one that comes long after", () => {
         touch('pointerdown');
         hold(500);
 
@@ -209,8 +226,10 @@ describe('with a menu that opens on a right-click', () => {
 
         return (
             <>
-                <div data-row onContextMenu={ menu.areaProps.onContextMenu }>row</div>
-                <output data-open>{ String(menu.isOpen) }</output>
+                <div data-row onContextMenu={menu.areaProps.onContextMenu}>
+                    row
+                </div>
+                <output data-open>{String(menu.isOpen)}</output>
             </>
         );
     }

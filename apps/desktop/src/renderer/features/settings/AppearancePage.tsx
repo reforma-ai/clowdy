@@ -32,8 +32,7 @@ function applyTheme(theme: Theme): void {
 
     try {
         document.startViewTransition(change);
-    }
-    catch {
+    } catch {
         change();
     }
 }
@@ -48,18 +47,18 @@ export function AppearancePage() {
                 <SettingsCard>
                     <SettingsRow title="Color theme" description="Choose your preferred color theme">
                         <Box direction="row" gap="lg" role="group" aria-label="Theme">
-                            { THEME_CARDS.map(({ id, label }) => (
+                            {THEME_CARDS.map(({ id, label }) => (
                                 <ThemeCard
-                                    key={ id }
-                                    theme={ id }
-                                    label={ label }
-                                    isActive={ theme === id }
-                                    onSelect={ () => {
+                                    key={id}
+                                    theme={id}
+                                    label={label}
+                                    isActive={theme === id}
+                                    onSelect={() => {
                                         setThemeState(id);
                                         applyTheme(id);
-                                    } }
+                                    }}
                                 />
-                            )) }
+                            ))}
                         </Box>
                     </SettingsRow>
                 </SettingsCard>
@@ -68,40 +67,54 @@ export function AppearancePage() {
     );
 }
 
-function ThemeCard({ theme, label, isActive, onSelect }: { theme: Theme; label: string; isActive: boolean; onSelect: () => void }) {
+function ThemeCard({
+    theme,
+    label,
+    isActive,
+    onSelect,
+}: {
+    theme: Theme;
+    label: string;
+    isActive: boolean;
+    onSelect: () => void;
+}) {
     return (
         <Box gap="md" align="start">
             <Card
                 variant="bordered"
                 size="sm"
-                isActive={ isActive }
+                isActive={isActive}
                 hoverable
-                className={ styles.themeCard }
-                data-active={ isActive || undefined }
+                className={styles.themeCard}
+                data-active={isActive || undefined}
                 role="button"
-                tabIndex={ 0 }
-                aria-pressed={ isActive }
-                aria-label={ label }
-                onClick={ onSelect }
-                onKeyDown={ (event) => {
+                tabIndex={0}
+                aria-pressed={isActive}
+                aria-label={label}
+                onClick={onSelect}
+                onKeyDown={event => {
                     if (event.key === 'Enter' || event.key === ' ') {
                         event.preventDefault();
                         onSelect();
                     }
-                } }
+                }}
             >
-                <div className={ cn(styles.preview, theme === 'system' && styles.system) }>
-                    { theme === 'system'
-                        ? (
-                            <>
-                                <div className={ styles.systemLight }><ThemePreview theme="light" /></div>
-                                <div className={ styles.systemDark }><ThemePreview theme="dark" /></div>
-                            </>
-                        )
-                        : <ThemePreview theme={ theme } /> }
+                <div className={cn(styles.preview, theme === 'system' && styles.system)}>
+                    {theme === 'system' ? (
+                        <>
+                            <div className={styles.systemLight}>
+                                <ThemePreview theme="light" />
+                            </div>
+                            <div className={styles.systemDark}>
+                                <ThemePreview theme="dark" />
+                            </div>
+                        </>
+                    ) : (
+                        <ThemePreview theme={theme} />
+                    )}
                 </div>
             </Card>
-            <Text variant="sm">{ label }</Text>
+            <Text variant="sm">{label}</Text>
         </Box>
     );
 }

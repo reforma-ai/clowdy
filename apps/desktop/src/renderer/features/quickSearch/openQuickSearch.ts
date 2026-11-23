@@ -38,7 +38,11 @@ export function openQuickSearch(root: RootStore, tab: QuickSearchTab = 'all'): v
 
     current = model;
     showQuickSearch(
-        { model, folder: folders.length > 1 ? folderNames(folders)[folders.findIndex(({ id }) => id === folder.id)] : undefined },
+        {
+            model,
+            folder:
+                folders.length > 1 ? folderNames(folders)[folders.findIndex(({ id }) => id === folder.id)] : undefined,
+        },
         {
             // Asked for on cancel and again on close: the first one ends it.
             onClose: () => {
@@ -51,7 +55,7 @@ export function openQuickSearch(root: RootStore, tab: QuickSearchTab = 'all'): v
     );
 
     if (tab === 'text') {
-        void selectedText(root, projectId, place).then((text) => {
+        void selectedText(root, projectId, place).then(text => {
             if (text && current === model && model.blank) model.setQuery(text);
         });
     }

@@ -43,7 +43,7 @@ export function usageTone(percent: number): UsageTone {
  * limit, `codex:primary` and `codex:secondary`: an id that starts with the agent's own id.
  */
 function isScopedWindow(agent: AgentInfo, window: AgentUsageWindow): boolean {
-    return window.id.includes(':') && !window.id.startsWith(`${ agent.id }:`);
+    return window.id.includes(':') && !window.id.startsWith(`${agent.id}:`);
 }
 
 /**
@@ -156,7 +156,10 @@ export function accountLine(agent: AgentInfo): AccountLine {
 
     if (signIn?.status === 'signed-in') {
         const { account } = signIn;
-        const text = account?.email ?? account?.name ?? (account?.method === 'api-key' ? 'Signed in with an API key' : 'Signed in');
+        const text =
+            account?.email ??
+            account?.name ??
+            (account?.method === 'api-key' ? 'Signed in with an API key' : 'Signed in');
 
         return { text, plan: account?.plan, tone: 'default', detail: signIn.detail };
     }
@@ -177,13 +180,18 @@ export function accountLine(agent: AgentInfo): AccountLine {
 }
 
 /** A sign-in the daemon is still running. */
-export function isSignInRunning(session: AgentSignInSession | undefined): session is AgentSignInSession & { step: 'starting' | 'waiting' } {
+export function isSignInRunning(
+    session: AgentSignInSession | undefined
+): session is AgentSignInSession & { step: 'starting' | 'waiting' } {
     return session?.step === 'starting' || session?.step === 'waiting';
 }
 
 /** The environment as the editor shows it: `KEY=VALUE`, one per line, in key order. */
 export function formatEnv(env: Record<string, string>): string {
-    return Object.entries(env).sort(([a], [b]) => a.localeCompare(b)).map(([key, value]) => `${ key }=${ value }`).join('\n');
+    return Object.entries(env)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, value]) => `${key}=${value}`)
+        .join('\n');
 }
 
 export type ParsedEnv = { ok: true; env: Record<string, string> } | { ok: false; message: string };
@@ -202,7 +210,7 @@ export function parseEnv(text: string): ParsedEnv {
         const key = equals === -1 ? '' : line.slice(0, equals).trim();
 
         if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
-            return { ok: false, message: `Line ${ index + 1 } is not KEY=VALUE` };
+            return { ok: false, message: `Line ${index + 1} is not KEY=VALUE` };
         }
 
         env[key] = line.slice(equals + 1).trim();

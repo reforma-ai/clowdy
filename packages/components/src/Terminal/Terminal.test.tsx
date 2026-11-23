@@ -23,7 +23,7 @@ describe('Terminal', () => {
     it('renders HTML in command output as text', () => {
         const output = '<script>alert(1)</script>\n<img src=x onerror="alert(2)">';
 
-        act(() => root.render(<Terminal output={ output } />));
+        act(() => root.render(<Terminal output={output} />));
 
         const pre = host.querySelector('pre')!;
 
@@ -32,7 +32,7 @@ describe('Terminal', () => {
     });
 
     it('keeps ANSI colors while escaping the colored text', () => {
-        act(() => root.render(<Terminal output={ '\u001b[31m<b onclick="x">red</b>\u001b[0m' } />));
+        act(() => root.render(<Terminal output={'\u001b[31m<b onclick="x">red</b>\u001b[0m'} />));
 
         const colored = host.querySelector('pre span span')!;
 

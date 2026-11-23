@@ -13,22 +13,21 @@ export async function copyText(value: string): Promise<boolean> {
         await navigator.clipboard.writeText(value);
 
         return true;
-    }
-    catch {
+    } catch {
         return false;
     }
 }
 
 /** Copy `value`, then `onCopied` or an error toast. */
 export function copyWithFeedback(value: string, onCopied: () => void) {
-    void copyText(value).then((ok) => {
+    void copyText(value).then(ok => {
         if (ok) {
             onCopied();
 
             return;
         }
 
-        toast.error({ message: 'Couldn\'t copy' });
+        toast.error({ message: "Couldn't copy" });
     });
 }
 
@@ -64,16 +63,14 @@ export function CopyButton({
     const { copied, markCopied } = useCopyFeedback();
     const idleContent = tooltip ?? 'Copy';
     const button = (
-        <Button
-            { ...buttonProps }
-            iconOnly={ iconOnly }
-            onPress={ () => copyWithFeedback(value, markCopied) }
-        >
-            <span className={ styles.icons } data-copied={ copied || undefined } aria-hidden>
-                <span className={ styles.idle }>{ iconOnly ? (children ?? <Copy />) : <Copy /> }</span>
-                <span className={ styles.done }><Check /></span>
+        <Button {...buttonProps} iconOnly={iconOnly} onPress={() => copyWithFeedback(value, markCopied)}>
+            <span className={styles.icons} data-copied={copied || undefined} aria-hidden>
+                <span className={styles.idle}>{iconOnly ? (children ?? <Copy />) : <Copy />}</span>
+                <span className={styles.done}>
+                    <Check />
+                </span>
             </span>
-            { !iconOnly && children }
+            {!iconOnly && children}
         </Button>
     );
 
@@ -83,13 +80,13 @@ export function CopyButton({
 
     return (
         <Tooltip
-            content={ copied ? copiedLabel : idleContent }
-            delay={ copied ? 0 : undefined }
-            isOpen={ copied ? true : undefined }
-            placement={ tooltipPlacement }
-            shouldCloseOnPress={ false }
+            content={copied ? copiedLabel : idleContent}
+            delay={copied ? 0 : undefined}
+            isOpen={copied ? true : undefined}
+            placement={tooltipPlacement}
+            shouldCloseOnPress={false}
         >
-            { button }
+            {button}
         </Tooltip>
     );
 }

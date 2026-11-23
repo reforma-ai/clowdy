@@ -33,12 +33,14 @@ const SLOW_MS = 2500;
 export const FIXTURE_MESSAGE = 'feat(booking): add the weekend surcharge';
 
 /** The lines git says when it fails in the fixture: the daemon's answers carry the line as the message and the signing one carries the hint as well. */
-export const FIXTURE_SIGNING_LINE = 'error: No private key found for public key "/Users/dev/Library/Containers/SecretAgent/PublicKeys/6e1d.pub"?';
-export const FIXTURE_SIGNING_HINT = 'The signing agent couldn\'t be reached';
+export const FIXTURE_SIGNING_LINE =
+    'error: No private key found for public key "/Users/dev/Library/Containers/SecretAgent/PublicKeys/6e1d.pub"?';
+export const FIXTURE_SIGNING_HINT = "The signing agent couldn't be reached";
 export const FIXTURE_HOOK_LINE = 'pre-commit: 2 problems in src/limits.ts';
 /** What the daemon says when a file has merge conflicts, and when the copy it keeps of a discard cannot be made. */
 export const FIXTURE_CONFLICT_LINE = 'Resolve the conflict first';
-export const FIXTURE_COPY_LINE = 'Couldn\'t keep a copy of the files, so nothing was discarded: ENOSPC: no space left on device';
+export const FIXTURE_COPY_LINE =
+    "Couldn't keep a copy of the files, so nothing was discarded: ENOSPC: no space left on device";
 /** Where the fixture's daemon keeps the copies of what a discard removes. */
 const FIXTURE_COPIES = '/Users/dev/Library/Application Support/Clowdy/daemon/discarded';
 
@@ -80,16 +82,22 @@ export class FixtureGitWrites {
      * Discards the changes of `paths` in a place that has `uncommitted` as its uncommitted files, judged as the daemon judges it (none, too many, and a path that is not an uncommitted file are 400;
      * a file that is new is removed and any other restored). The scripts say how else it can end. A file leaves the place's uncommitted list for good, and the answer says where its copy is.
      */
-    async discard(place: string, projectId: string, uncommitted: readonly GitChangedFile[], paths: readonly string[]): Promise<GitDiscardResult> {
+    async discard(
+        place: string,
+        projectId: string,
+        uncommitted: readonly GitChangedFile[],
+        paths: readonly string[]
+    ): Promise<GitDiscardResult> {
         if (paths.length === 0) throw new TransportError('Pick at least one file', 400);
 
-        if (paths.length > MAX_GIT_DISCARD_PATHS) throw new TransportError(`Pick at most ${ MAX_GIT_DISCARD_PATHS } files`, 400);
+        if (paths.length > MAX_GIT_DISCARD_PATHS)
+            throw new TransportError(`Pick at most ${MAX_GIT_DISCARD_PATHS} files`, 400);
 
         const open = uncommitted.filter(file => !this.settledOf(place).has(file.path));
-        const files = paths.map((path) => {
+        const files = paths.map(path => {
             const file = open.find(candidate => candidate.path === path);
 
-            if (!file) throw new TransportError(`${ path } is not a changed file`, 400);
+            if (!file) throw new TransportError(`${path} is not a changed file`, 400);
 
             return file;
         });
@@ -107,7 +115,7 @@ export class FixtureGitWrites {
         return {
             discarded: files.map(file => ({ path: file.path, action: file.untracked ? 'removed' : 'restored' })),
             copy: {
-                folder: `${ FIXTURE_COPIES }/${ projectId }/${ new Date(now).toISOString().replace(/[-:]/g, '').replace('.', '') }-4f2a9c`,
+                folder: `${FIXTURE_COPIES}/${projectId}/${new Date(now).toISOString().replace(/[-:]/g, '').replace('.', '')}-4f2a9c`,
                 keptUntil: now + GIT_DISCARD_KEEP_DAYS * 24 * 60 * 60 * 1000,
                 files: files.filter(file => file.kind !== 'deleted').length,
             },
@@ -115,7 +123,12 @@ export class FixtureGitWrites {
     }
 
     /** Commits `paths` of the place, which has `uncommitted` as its uncommitted files. */
-    async commit(place: string, uncommitted: readonly string[], paths: readonly string[], message: string): Promise<GitCommitResult> {
+    async commit(
+        place: string,
+        uncommitted: readonly string[],
+        paths: readonly string[],
+        message: string
+    ): Promise<GitCommitResult> {
         if (message.trim() === '') throw new TransportError('Write a message for the commit', 400);
 
         if (paths.length === 0) throw new TransportError('Pick at least one file', 400);
@@ -123,17 +136,18 @@ export class FixtureGitWrites {
         const open = uncommitted.filter(path => !this.settledOf(place).has(path));
         const unknown = paths.find(path => !open.includes(path));
 
-        if (unknown !== undefined) throw new TransportError(`${ unknown } is not a changed file`, 400);
+        if (unknown !== undefined) throw new TransportError(`${unknown} is not a changed file`, 400);
 
         if (this.#script.commit === 'slow') await sleep(SLOW_MS);
 
-        if (this.#script.commit === 'signing') throw new TransportError(FIXTURE_SIGNING_LINE, 409, FIXTURE_SIGNING_HINT);
+        if (this.#script.commit === 'signing')
+            throw new TransportError(FIXTURE_SIGNING_LINE, 409, FIXTURE_SIGNING_HINT);
 
         if (this.#script.commit === 'hook') throw new TransportError(FIXTURE_HOOK_LINE, 409);
 
         this.#committed.set(place, new Set([...this.committedOf(place), ...paths]));
 
-        const sha = (0xC0FFEE00 + ++this.#count).toString(16).padEnd(40, '0');
+        const sha = (0xc0ffee00 + ++this.#count).toString(16).padEnd(40, '0');
 
         return { sha, shortSha: sha.slice(0, 7), subject: message.trim().split('\n')[0]!.trim() };
     }
@@ -142,11 +156,12 @@ export class FixtureGitWrites {
     async message(place: string, uncommitted: readonly string[], paths: readonly string[]): Promise<GitMessage> {
         const open = uncommitted.filter(path => !this.settledOf(place).has(path));
 
-        if (paths.length === 0 || paths.some(path => !open.includes(path))) throw new TransportError('Pick at least one changed file', 400);
+        if (paths.length === 0 || paths.some(path => !open.includes(path)))
+            throw new TransportError('Pick at least one changed file', 400);
 
         if (this.#script.message === 'slow') await sleep(SLOW_MS);
 
-        if (this.#script.message === 'failed') throw new TransportError('Couldn\'t write the message', 503);
+        if (this.#script.message === 'failed') throw new TransportError("Couldn't write the message", 503);
 
         return { message: FIXTURE_MESSAGE };
     }

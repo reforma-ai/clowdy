@@ -121,7 +121,11 @@ export class QuickSearchModel {
     #docsRun = 0;
     #linesRun = 0;
 
-    constructor(private readonly source: QuickSearchSource, tab: QuickSearchTab = 'all', query = '') {
+    constructor(
+        private readonly source: QuickSearchSource,
+        tab: QuickSearchTab = 'all',
+        query = ''
+    ) {
         this.tab = tab;
         this.query = query;
         makeAutoObservable<QuickSearchModel, 'source'>(this, { source: false });
@@ -135,19 +139,32 @@ export class QuickSearchModel {
 
     /** Some search for the tab is still running. */
     get pending(): boolean {
-        return (this.#wantsFiles && this.filesPending) || (this.#wantsDocs && this.docsPending) || (this.#wantsLines && this.linesPending);
+        return (
+            (this.#wantsFiles && this.filesPending) ||
+            (this.#wantsDocs && this.docsPending) ||
+            (this.#wantsLines && this.linesPending)
+        );
     }
 
     /** Every search the tab needs has answered for the query as it is now: an empty list is then an empty answer, and not one still to come. */
     get answered(): boolean {
-        return (!this.#wantsFiles || this.files?.query === this.query) && (!this.#wantsDocs || this.docs?.query === this.query) && (!this.#wantsLines || this.lines?.query === this.query);
+        return (
+            (!this.#wantsFiles || this.files?.query === this.query) &&
+            (!this.#wantsDocs || this.docs?.query === this.query) &&
+            (!this.#wantsLines || this.lines?.query === this.query)
+        );
     }
 
     /** The reason the tab has nothing to list, when a search it needs failed: a list that came is shown, and the failure of the other kind is not in its way. */
     get error(): string | null {
         if (this.rows.length > 0) return null;
 
-        return (this.#wantsFiles && this.filesError) || (this.#wantsDocs && this.docsError) || (this.#wantsLines && this.linesError) || null;
+        return (
+            (this.#wantsFiles && this.filesError) ||
+            (this.#wantsDocs && this.docsError) ||
+            (this.#wantsLines && this.linesError) ||
+            null
+        );
     }
 
     /** The lists the tab shows, with what each found. */
@@ -158,10 +175,15 @@ export class QuickSearchModel {
         if (this.#wantsChats) {
             // The archive is a list of its own, after the chats in use.
             const found = this.source.chats(this.query);
-            const chats = found.filter(({ chat }) => chat.archivedAt === undefined).slice(0, all ? (this.blank ? ALL_RECENT_CHAT_ROWS : ALL_CHAT_ROWS) : CHAT_ROWS);
-            const archived = found.filter(({ chat }) => chat.archivedAt !== undefined).slice(0, all ? ALL_ARCHIVED_ROWS : CHAT_ROWS);
+            const chats = found
+                .filter(({ chat }) => chat.archivedAt === undefined)
+                .slice(0, all ? (this.blank ? ALL_RECENT_CHAT_ROWS : ALL_CHAT_ROWS) : CHAT_ROWS);
+            const archived = found
+                .filter(({ chat }) => chat.archivedAt !== undefined)
+                .slice(0, all ? ALL_ARCHIVED_ROWS : CHAT_ROWS);
 
-            if (chats.length > 0) sections.push({ id: 'chats', title: this.blank ? 'Recent chats' : 'Chats', items: chats });
+            if (chats.length > 0)
+                sections.push({ id: 'chats', title: this.blank ? 'Recent chats' : 'Chats', items: chats });
 
             if (archived.length > 0) sections.push({ id: 'archived', title: 'Archived chats', items: archived });
         }
@@ -169,13 +191,23 @@ export class QuickSearchModel {
         if (this.#wantsDocs && this.docs) {
             const paths = this.docs.value.slice(0, all ? ALL_DOC_ROWS : DOC_ROWS);
 
-            if (paths.length > 0) sections.push({ id: 'docs', title: 'Docs', items: paths.map((path): Found => ({ kind: 'doc', id: `doc:${ path }`, path })) });
+            if (paths.length > 0)
+                sections.push({
+                    id: 'docs',
+                    title: 'Docs',
+                    items: paths.map((path): Found => ({ kind: 'doc', id: `doc:${path}`, path })),
+                });
         }
 
         if (this.#wantsFiles && this.files) {
             const paths = this.files.value.slice(0, all ? ALL_FILE_ROWS : FILE_ROWS);
 
-            if (paths.length > 0) sections.push({ id: 'files', title: 'Files', items: paths.map((path): Found => ({ kind: 'file', id: `file:${ path }`, path })) });
+            if (paths.length > 0)
+                sections.push({
+                    id: 'files',
+                    title: 'Files',
+                    items: paths.map((path): Found => ({ kind: 'file', id: `file:${path}`, path })),
+                });
         }
 
         if (this.#wantsLines && this.lines) {
@@ -185,7 +217,7 @@ export class QuickSearchModel {
                 for (const { line, column, preview, ranges } of matches) {
                     if (items.length >= (all ? ALL_LINE_ROWS : LINE_ROWS)) break;
 
-                    items.push({ kind: 'line', id: `line:${ path }:${ line }`, path, line, column, preview, ranges });
+                    items.push({ kind: 'line', id: `line:${path}:${line}`, path, line, column, preview, ranges });
                 }
             }
 
@@ -320,17 +352,21 @@ export class QuickSearchModel {
         });
 
         await this.source.files(query).then(
-            value => run === this.#filesRun && runInAction(() => {
-                this.files = { query, value };
-                this.filesError = null;
-                this.filesPending = false;
-                this.activeId = null;
-            }),
-            (error: unknown) => run === this.#filesRun && runInAction(() => {
-                this.files = null;
-                this.filesError = errorMessage(error);
-                this.filesPending = false;
-            })
+            value =>
+                run === this.#filesRun &&
+                runInAction(() => {
+                    this.files = { query, value };
+                    this.filesError = null;
+                    this.filesPending = false;
+                    this.activeId = null;
+                }),
+            (error: unknown) =>
+                run === this.#filesRun &&
+                runInAction(() => {
+                    this.files = null;
+                    this.filesError = errorMessage(error);
+                    this.filesPending = false;
+                })
         );
     }
 
@@ -342,17 +378,21 @@ export class QuickSearchModel {
         });
 
         await this.source.docs(query).then(
-            value => run === this.#docsRun && runInAction(() => {
-                this.docs = { query, value };
-                this.docsError = null;
-                this.docsPending = false;
-                this.activeId = null;
-            }),
-            (error: unknown) => run === this.#docsRun && runInAction(() => {
-                this.docs = null;
-                this.docsError = errorMessage(error);
-                this.docsPending = false;
-            })
+            value =>
+                run === this.#docsRun &&
+                runInAction(() => {
+                    this.docs = { query, value };
+                    this.docsError = null;
+                    this.docsPending = false;
+                    this.activeId = null;
+                }),
+            (error: unknown) =>
+                run === this.#docsRun &&
+                runInAction(() => {
+                    this.docs = null;
+                    this.docsError = errorMessage(error);
+                    this.docsPending = false;
+                })
         );
     }
 
@@ -364,17 +404,21 @@ export class QuickSearchModel {
         });
 
         await this.source.text(query).then(
-            value => run === this.#linesRun && runInAction(() => {
-                this.lines = { query, value };
-                this.linesError = null;
-                this.linesPending = false;
-                this.activeId = null;
-            }),
-            (error: unknown) => run === this.#linesRun && runInAction(() => {
-                this.lines = null;
-                this.linesError = errorMessage(error);
-                this.linesPending = false;
-            })
+            value =>
+                run === this.#linesRun &&
+                runInAction(() => {
+                    this.lines = { query, value };
+                    this.linesError = null;
+                    this.linesPending = false;
+                    this.activeId = null;
+                }),
+            (error: unknown) =>
+                run === this.#linesRun &&
+                runInAction(() => {
+                    this.lines = null;
+                    this.linesError = errorMessage(error);
+                    this.linesPending = false;
+                })
         );
     }
 }

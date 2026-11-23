@@ -47,7 +47,13 @@ export interface NewTaskComment {
 export function addTaskComment(store: Store, input: NewTaskComment): TaskComment {
     return store.tx(() => {
         const task = requireTask(store, input.taskId);
-        const comment: TaskComment = { id: newId('cmt'), taskId: task.id, author: input.author, body: cleanBody(input.body), createdAt: Date.now() };
+        const comment: TaskComment = {
+            id: newId('cmt'),
+            taskId: task.id,
+            author: input.author,
+            body: cleanBody(input.body),
+            createdAt: Date.now(),
+        };
 
         insertTaskComment(store.db, comment);
         store.emit(task.projectId, { type: 'task.comment.upserted', comment });
@@ -87,13 +93,13 @@ export function deleteTaskComment(store: Store, taskId: string, commentId: strin
 }
 
 /** A cursor names the last comment of a page by its place in the order, so comments added or deleted between pages neither repeat nor shift the rest. */
-const encodeCursor = (comment: TaskComment) => `${ comment.createdAt }.${ comment.id }`;
+const encodeCursor = (comment: TaskComment) => `${comment.createdAt}.${comment.id}`;
 
 function decodeCursor(cursor: string): CommentPosition {
     const match = /^(\d+)\.(cmt_[0-9A-Z]+)$/.exec(cursor);
 
     if (!match) {
-        throw invalid(`"${ cursor }" is not a cursor: pass the nextCursor of the previous page unchanged`);
+        throw invalid(`"${cursor}" is not a cursor: pass the nextCursor of the previous page unchanged`);
     }
 
     return { createdAt: Number(match[1]), id: match[2] };

@@ -1,16 +1,43 @@
-import { client, ContentBlock, IdleStateUpdate, methods, ndJsonStream, PROTOCOL_VERSION, RequestError, SessionConfigOption, SessionUpdate, StateUpdate } from '@agentclientprotocol/sdk/experimental/v2/unstable';
 import { Readable, Writable } from 'node:stream';
+import {
+    ContentBlock,
+    client,
+    IdleStateUpdate,
+    methods,
+    ndJsonStream,
+    PROTOCOL_VERSION,
+    RequestError,
+    SessionConfigOption,
+    SessionUpdate,
+    StateUpdate,
+} from '@agentclientprotocol/sdk/experimental/v2/unstable';
 
 import { EngineFailure, errorMessage } from '../../errors';
 import { answeredInTime, Channel, ProcessEnded, watchEnd } from './connection';
-import { advertisesSteering, applyChoices, isResumeWarning, keepTitle, prefaceOf, STEER_METHOD, steerByExtension, steerRequest, stopFailure } from './conversation';
+import {
+    advertisesSteering,
+    applyChoices,
+    isResumeWarning,
+    keepTitle,
+    prefaceOf,
+    STEER_METHOD,
+    steerByExtension,
+    steerRequest,
+    stopFailure,
+} from './conversation';
 import { classifyThrown, failureEvent, processEnded } from './failure';
 import { BACKGROUND_HANDOFF_MS, BACKGROUND_REPORT_MS } from './layer';
 import { UpdateMapperV2 } from './mapper-v2';
 import { paramsOfV2 } from './permission';
 import { Turns } from './turns';
 
-import type { BackgroundWork, ClientCapabilities, ClientConnection, NewSessionRequest, SessionCapabilities } from '@agentclientprotocol/sdk/experimental/v2/unstable';
+import type {
+    BackgroundWork,
+    ClientCapabilities,
+    ClientConnection,
+    NewSessionRequest,
+    SessionCapabilities,
+} from '@agentclientprotocol/sdk/experimental/v2/unstable';
 import type { BackgroundItem } from '@clowdy/protocol';
 import type { EngineEvent, EngineFork } from '../types';
 import type { AgentProtocol } from './catalog';
@@ -23,23 +50,31 @@ import type { ResolvedAgent } from './registry';
  * What the client tells an agent it can do in `initialize`: nothing. Clowdy offers no file access and no terminal (ACP v2 has neither; an agent's tools
  * are its own, and the runtime's reach it through an MCP server).
  */
-const clientCapabilities = (agent: Pick<ResolvedAgent, 'clientMeta'>): ClientCapabilities => ({ ...(agent.clientMeta && { _meta: agent.clientMeta }) });
+const clientCapabilities = (agent: Pick<ResolvedAgent, 'clientMeta'>): ClientCapabilities => ({
+    ...(agent.clientMeta && { _meta: agent.clientMeta }),
+});
 
 /**
  * What a session of this run is opened with, as the agent's capabilities allow: the working folder, the MCP server of the runtime's tools, the project's other
  * folders, the options its adapter reads, and the system prompt. A resume and a fork send the same.
  */
-function sessionRequest({ agent, options, openBridge }: Pick<LayerHost, 'agent' | 'options' | 'openBridge'>, capabilities: SessionCapabilities): NewSessionRequest {
+function sessionRequest(
+    { agent, options, openBridge }: Pick<LayerHost, 'agent' | 'options' | 'openBridge'>,
+    capabilities: SessionCapabilities
+): NewSessionRequest {
     const access = openBridge();
     // Only an agent that advertises the field gets it, as in v1; the list may differ on a resume while `cwd` stays.
-    const directories = capabilities.additionalDirectories ? options.additionalDirectories ?? [] : [];
+    const directories = capabilities.additionalDirectories ? (options.additionalDirectories ?? []) : [];
 
     return {
         cwd: options.cwd,
         mcpServers: access?.server ? [{ type: 'stdio', ...access.server }] : [],
         ...(directories.length > 0 && { additionalDirectories: directories }),
         ...(agent.sessionMeta && { _meta: agent.sessionMeta }),
-        ...(capabilities.systemPrompt && options.systemPrompt && { systemPrompt: { mode: 'append', content: [{ type: 'text', text: options.systemPrompt }] } }),
+        ...(capabilities.systemPrompt &&
+            options.systemPrompt && {
+                systemPrompt: { mode: 'append', content: [{ type: 'text', text: options.systemPrompt }] },
+            }),
     };
 }
 
@@ -91,14 +126,28 @@ function summed(total: Tokens | undefined, more: Tokens | null | undefined): Tok
 
     const add = (key: keyof Tokens) => (total?.[key] ?? 0) + (more[key] ?? 0);
 
-    return { inputTokens: add('inputTokens'), outputTokens: add('outputTokens'), cachedReadTokens: add('cachedReadTokens'), cachedWriteTokens: add('cachedWriteTokens') };
+    return {
+        inputTokens: add('inputTokens'),
+        outputTokens: add('outputTokens'),
+        cachedReadTokens: add('cachedReadTokens'),
+        cachedWriteTokens: add('cachedWriteTokens'),
+    };
 }
 
 /** The select options among an agent's, each with its choices (the members of its groups included) in one list. */
 function selectsOf(options: SessionConfigOption[] | null | undefined): SelectOption[] {
-    return (options ?? []).flatMap(option => SessionConfigOption.isSelect(option)
-        ? [{ id: option.configId, category: option.category, currentValue: option.currentValue, choices: option.options.flatMap(choice => 'groupId' in choice ? choice.options : [choice]) }]
-        : []);
+    return (options ?? []).flatMap(option =>
+        SessionConfigOption.isSelect(option)
+            ? [
+                  {
+                      id: option.configId,
+                      category: option.category,
+                      currentValue: option.currentValue,
+                      choices: option.options.flatMap(choice => ('groupId' in choice ? choice.options : [choice])),
+                  },
+              ]
+            : []
+    );
 }
 
 /** JSON-RPC's "invalid params" code, which `terminal/cancel` answers for a terminal that is unknown, has exited or cannot be cancelled. */
@@ -112,11 +161,16 @@ const AUTH_REQUIRED = -32000;
  * answers with `agentCapabilities` and no `info`, which the SDK reports as a validation error). Not the loss of the connection, a program that
  * exited, nor silence (a crash or a slow start is no reason to try another protocol), nor a request to sign in.
  */
-const answeredNo = (error: unknown): boolean => error instanceof RequestError ? error.code !== AUTH_REQUIRED : error instanceof Error && error.name === 'ZodError';
+const answeredNo = (error: unknown): boolean =>
+    error instanceof RequestError ? error.code !== AUTH_REQUIRED : error instanceof Error && error.name === 'ZodError';
 
 /** Whether `update` is the warning Codex gives when it resumes a session recorded with another model (see `isResumeWarning`). */
 function isResumeWarningUpdate(update: SessionUpdate): boolean {
-    const block = SessionUpdate.isAgentMessageChunk(update) ? update.content : SessionUpdate.isAgentMessage(update) ? update.content?.[0] : undefined;
+    const block = SessionUpdate.isAgentMessageChunk(update)
+        ? update.content
+        : SessionUpdate.isAgentMessage(update)
+          ? update.content?.[0]
+          : undefined;
 
     return block !== undefined && ContentBlock.isText(block) && isResumeWarning(block.text);
 }
@@ -184,7 +238,7 @@ export class V2Layer implements ProtocolLayer {
 
     /** A promise for the end of the turn that is open, and the call that settles it. */
     private latch(): Promise<false> {
-        return new Promise<false>((resolve) => {
+        return new Promise<false>(resolve => {
             this.markEnded = () => resolve(false);
         });
     }
@@ -211,16 +265,17 @@ export class V2Layer implements ProtocolLayer {
 
         try {
             landed = await Promise.race([
-                connection.agent.request(methods.agent.session.prompt, { sessionId, prompt: [{ type: 'text', text }] }).then(({ messageId }) => {
-                    this.turns.took(entry, messageId);
+                connection.agent
+                    .request(methods.agent.session.prompt, { sessionId, prompt: [{ type: 'text', text }] })
+                    .then(({ messageId }) => {
+                        this.turns.took(entry, messageId);
 
-                    return this.landed(messageId);
-                }),
+                        return this.landed(messageId);
+                    }),
                 this.turnEnded,
             ]);
-        }
-        catch (error) {
-            host.deps.log?.(`${ host.agent.id } refused a steer: ${ errorMessage(error) }`);
+        } catch (error) {
+            host.deps.log?.(`${host.agent.id} refused a steer: ${errorMessage(error)}`);
         }
 
         // A steer that did not land is the runtime's to send again: the agent owes no turn for it.
@@ -236,15 +291,27 @@ export class V2Layer implements ProtocolLayer {
      * runs, which says what it was asked and answers it in the same turn, so there is no other turn to wait for and nothing to count: the answer is the
      * agent's, not an echo to look for. Any other answer (no turn runs, or the agent took it as a turn of its own) leaves the message to the runtime.
      */
-    private async steerThroughExtension(connection: ClientConnection, sessionId: string, text: string): Promise<boolean> {
+    private async steerThroughExtension(
+        connection: ClientConnection,
+        sessionId: string,
+        text: string
+    ): Promise<boolean> {
         const { host } = this;
 
         try {
-            return await steerByExtension(() => this.request(connection.agent.request<SteerResponse, SteerRequest>(STEER_METHOD, steerRequest(sessionId, text))), { running: () => this.open, aborted: () => host.signal.aborted });
-        }
-        catch (error) {
+            return await steerByExtension(
+                () =>
+                    this.request(
+                        connection.agent.request<SteerResponse, SteerRequest>(
+                            STEER_METHOD,
+                            steerRequest(sessionId, text)
+                        )
+                    ),
+                { running: () => this.open, aborted: () => host.signal.aborted }
+            );
+        } catch (error) {
             if (!host.signal.aborted && !(error instanceof ProcessEnded)) {
-                host.deps.log?.(`${ host.agent.id } refused a steer: ${ errorMessage(error) }`);
+                host.deps.log?.(`${host.agent.id} refused a steer: ${errorMessage(error)}`);
             }
 
             return false;
@@ -272,14 +339,15 @@ export class V2Layer implements ProtocolLayer {
         this.nudge();
 
         try {
-            const { messageId } = await this.request(connection.agent.request(methods.agent.session.prompt, { sessionId, prompt: [{ type: 'text', text }] }));
+            const { messageId } = await this.request(
+                connection.agent.request(methods.agent.session.prompt, { sessionId, prompt: [{ type: 'text', text }] })
+            );
 
             this.turns.took(entry, messageId);
             taken = !this.finished;
-        }
-        catch (error) {
+        } catch (error) {
             if (!host.signal.aborted && !(error instanceof ProcessEnded)) {
-                host.deps.log?.(`${ host.agent.id } refused a prompt: ${ errorMessage(error) }`);
+                host.deps.log?.(`${host.agent.id} refused a prompt: ${errorMessage(error)}`);
             }
         }
 
@@ -321,24 +389,28 @@ export class V2Layer implements ProtocolLayer {
             if (command || task) {
                 // Before the answer: the end of the work follows at once, and it is no work whose report the agent owes.
                 this.stopped.add(id);
-                await this.request(command
-                    ? connection.agent.request(methods.agent.terminal.cancel, { sessionId, terminalId: id })
-                    : connection.agent.request(methods.agent.toolCall.cancel, { sessionId, toolCallId: id }));
-            }
-            else {
+                await this.request(
+                    command
+                        ? connection.agent.request(methods.agent.terminal.cancel, { sessionId, terminalId: id })
+                        : connection.agent.request(methods.agent.toolCall.cancel, { sessionId, toolCallId: id })
+                );
+            } else {
                 await this.request(connection.agent.notify(methods.agent.session.cancel, { sessionId: id }));
             }
 
             return true;
-        }
-        catch (error) {
+        } catch (error) {
             if (command || task) {
                 this.stopped.delete(id);
             }
 
             // `-32602`: the terminal is gone already (it ended on its own), which is not a failure to log.
-            if (!host.signal.aborted && !(error instanceof ProcessEnded) && !(error instanceof RequestError && error.code === INVALID_PARAMS)) {
-                host.deps.log?.(`${ host.agent.id } could not be asked to stop ${ id }: ${ errorMessage(error) }`);
+            if (
+                !host.signal.aborted &&
+                !(error instanceof ProcessEnded) &&
+                !(error instanceof RequestError && error.code === INVALID_PARAMS)
+            ) {
+                host.deps.log?.(`${host.agent.id} could not be asked to stop ${id}: ${errorMessage(error)}`);
             }
 
             return false;
@@ -347,9 +419,11 @@ export class V2Layer implements ProtocolLayer {
 
     /** Settles with `true` once the agent has echoed the message `id` back, which `run` sees in the order the agent said things. */
     private landed(id: string): Promise<true> {
-        return this.turns.echoed(id) ? Promise.resolve(true) : new Promise<true>((resolve) => {
-            this.landing.set(id, () => resolve(true));
-        });
+        return this.turns.echoed(id)
+            ? Promise.resolve(true)
+            : new Promise<true>(resolve => {
+                  this.landing.set(id, () => resolve(true));
+              });
     }
 
     /** The open turn is over: the prompt takes no steer any more, and one that has not been echoed will not be. The next turn that begins opens it again. */
@@ -371,7 +445,9 @@ export class V2Layer implements ProtocolLayer {
     private guard(course: Course): number {
         const { backgroundHandoffMs, backgroundReportMs } = this.host.deps;
 
-        return course.owed ? backgroundReportMs ?? backgroundHandoffMs ?? BACKGROUND_REPORT_MS : backgroundHandoffMs ?? BACKGROUND_HANDOFF_MS;
+        return course.owed
+            ? (backgroundReportMs ?? backgroundHandoffMs ?? BACKGROUND_REPORT_MS)
+            : (backgroundHandoffMs ?? BACKGROUND_HANDOFF_MS);
     }
 
     /** Starts the timer `which` for `ms` unless it runs already. */
@@ -432,11 +508,16 @@ export class V2Layer implements ProtocolLayer {
     private initialize(connection: ClientConnection, request: <T>(call: Promise<T>) => Promise<T>) {
         const { host } = this;
 
-        return answeredInTime(request(connection.agent.request(methods.agent.initialize, {
-            protocolVersion: PROTOCOL_VERSION,
-            info: { name: 'clowdy', title: 'Clowdy', version: host.deps.clientVersion },
-            capabilities: clientCapabilities(host.agent),
-        })), host);
+        return answeredInTime(
+            request(
+                connection.agent.request(methods.agent.initialize, {
+                    protocolVersion: PROTOCOL_VERSION,
+                    info: { name: 'clowdy', title: 'Clowdy', version: host.deps.clientVersion },
+                    capabilities: clientCapabilities(host.agent),
+                })
+            ),
+            host
+        );
     }
 
     /**
@@ -451,7 +532,12 @@ export class V2Layer implements ProtocolLayer {
         const { agent, proc, signal } = host;
         const context = { agent: agent.name, login: agent.login };
         const app = client({ name: 'clowdy' }).onNotification(methods.client.session.update, () => undefined);
-        const connection = app.connect(ndJsonStream(Writable.toWeb(proc.child.stdin as Writable) as WritableStream<Uint8Array>, Readable.toWeb(proc.child.stdout as Readable) as ReadableStream<Uint8Array>));
+        const connection = app.connect(
+            ndJsonStream(
+                Writable.toWeb(proc.child.stdin as Writable) as WritableStream<Uint8Array>,
+                Readable.toWeb(proc.child.stdout as Readable) as ReadableStream<Uint8Array>
+            )
+        );
 
         this.connection = connection;
 
@@ -463,42 +549,69 @@ export class V2Layer implements ProtocolLayer {
 
             try {
                 init = await this.initialize(connection, request);
-            }
-            catch (error) {
+            } catch (error) {
                 if (signal.aborted || !answeredNo(error)) {
                     throw error;
                 }
 
-                throw new EngineFailure(`${ agent.name } does not speak ACP v2, which a fork needs`, false, 'invalid_request');
+                throw new EngineFailure(
+                    `${agent.name} does not speak ACP v2, which a fork needs`,
+                    false,
+                    'invalid_request'
+                );
             }
 
             const capabilities = init.capabilities?.session;
 
             if (!capabilities?.fork) {
-                throw new EngineFailure(`${ agent.name } cannot fork a conversation: its adapter offers no session/fork`, false, 'invalid_request');
+                throw new EngineFailure(
+                    `${agent.name} cannot fork a conversation: its adapter offers no session/fork`,
+                    false,
+                    'invalid_request'
+                );
             }
 
             // The handshake has its own limit (`initializeTimeoutMs`, and a program that is slow to start is slow there); this one is for the copy itself.
             const timeoutMs = host.deps.forkTimeoutMs ?? FORK_TIMEOUT_MS;
             const slow = new Promise<never>((_, reject) => {
-                timer = setTimeout(() => reject(new EngineFailure(`${ agent.name } did not finish the fork in ${ Math.max(1, Math.round(timeoutMs / 1000)) } s`, true, 'unknown')), timeoutMs);
+                timer = setTimeout(
+                    () =>
+                        reject(
+                            new EngineFailure(
+                                `${agent.name} did not finish the fork in ${Math.max(1, Math.round(timeoutMs / 1000))} s`,
+                                true,
+                                'unknown'
+                            )
+                        ),
+                    timeoutMs
+                );
             });
 
             slow.catch(() => undefined);
 
             const shared = sessionRequest(host, capabilities);
             const forked = await Promise.race([
-                request(connection.agent.request(methods.agent.session.fork, { sessionId, ...shared, _meta: { ...shared._meta, jetbrains: { air: { fork: { version: 1, messageId: ref } } } } })),
+                request(
+                    connection.agent.request(methods.agent.session.fork, {
+                        sessionId,
+                        ...shared,
+                        _meta: { ...shared._meta, jetbrains: { air: { fork: { version: 1, messageId: ref } } } },
+                    })
+                ),
                 slow,
             ]);
 
             // The copy is on disk and the new session open in the adapter; closing it lets the agent settle what it keeps before its process is stopped. A close
             // that fails loses nothing: the next turn resumes the session from the copy.
-            await Promise.race([request(connection.agent.request(methods.agent.session.close, { sessionId: forked.sessionId })).catch(() => undefined), slow.catch(() => undefined)]);
+            await Promise.race([
+                request(connection.agent.request(methods.agent.session.close, { sessionId: forked.sessionId })).catch(
+                    () => undefined
+                ),
+                slow.catch(() => undefined),
+            ]);
 
             return { sessionId: forked.sessionId };
-        }
-        catch (error) {
+        } catch (error) {
             if (error instanceof EngineFailure) {
                 throw error;
             }
@@ -507,13 +620,13 @@ export class V2Layer implements ProtocolLayer {
                 throw new EngineFailure('The fork was cancelled', false, 'cancelled');
             }
 
-            const { message, retryable, code } = error instanceof ProcessEnded
-                ? processEnded(context, `exit code ${ proc.child.exitCode ?? 'unknown' }`, proc.stderr())
-                : classifyThrown(error, context, proc.stderr());
+            const { message, retryable, code } =
+                error instanceof ProcessEnded
+                    ? processEnded(context, `exit code ${proc.child.exitCode ?? 'unknown'}`, proc.stderr())
+                    : classifyThrown(error, context, proc.stderr());
 
             throw new EngineFailure(message, retryable, code);
-        }
-        finally {
+        } finally {
             clearTimeout(timer);
         }
     }
@@ -522,7 +635,9 @@ export class V2Layer implements ProtocolLayer {
         const { connection, sessionId } = this;
 
         // Before the session exists the connection may not be initialized, and a notification would wait for that.
-        return connection && sessionId ? connection.agent.notify(methods.agent.session.cancel, { sessionId }).catch(() => undefined) : Promise.resolve();
+        return connection && sessionId
+            ? connection.agent.notify(methods.agent.session.cancel, { sessionId }).catch(() => undefined)
+            : Promise.resolve();
     }
 
     disconnect(): void {
@@ -551,7 +666,10 @@ export class V2Layer implements ProtocolLayer {
                         return;
                     }
 
-                    if (params.update.sessionUpdate === 'session_info_update' && typeof params.update.title === 'string') {
+                    if (
+                        params.update.sessionUpdate === 'session_info_update' &&
+                        typeof params.update.title === 'string'
+                    ) {
                         host.offerTitle(params.update.title);
                     }
 
@@ -560,8 +678,7 @@ export class V2Layer implements ProtocolLayer {
                     }
 
                     channel.push({ kind: 'update', update: params.update });
-                }
-                else if (children.has(params.sessionId)) {
+                } else if (children.has(params.sessionId)) {
                     // A sub-agent of a sub-agent is announced on the session of the one that started it.
                     if (SessionUpdate.isSubagentUpdate(params.update)) {
                         children.add(params.update.sessionId);
@@ -573,7 +690,9 @@ export class V2Layer implements ProtocolLayer {
             .onRequest(methods.client.session.requestPermission, async ({ params, signal }) => {
                 const optionId = await host.pickPermission(paramsOfV2(params), signal);
 
-                return { outcome: optionId === undefined ? { outcome: 'cancelled' } : { outcome: 'selected', optionId } };
+                return {
+                    outcome: optionId === undefined ? { outcome: 'cancelled' } : { outcome: 'selected', optionId },
+                };
             });
 
         const input = Readable.toWeb(proc.child.stdout as Readable) as ReadableStream<Uint8Array>;
@@ -592,15 +711,16 @@ export class V2Layer implements ProtocolLayer {
 
             try {
                 init = await this.initialize(connection, request);
-            }
-            catch (error) {
+            } catch (error) {
                 if (signal.aborted || !answeredNo(error)) {
                     throw error;
                 }
 
                 // An agent that speaks v1 only answers with version 1 (a result that is no v2 one) or fails the handshake outright. The start of a
                 // validation error says what in the answer was not v2's, which is all that tells a v2 agent whose answer drifted from the draft.
-                console.warn(`[clowdy] ${ agent.name } does not speak ACP v2 (${ error instanceof RequestError ? error.message : `its answer is not a v2 one: ${ errorMessage(error).slice(0, 300) }` }); starting it again on v1`);
+                console.warn(
+                    `[clowdy] ${agent.name} does not speak ACP v2 (${error instanceof RequestError ? error.message : `its answer is not a v2 one: ${errorMessage(error).slice(0, 300)}`}); starting it again on v1`
+                );
                 this.restartOn = 'v1';
 
                 return;
@@ -611,7 +731,11 @@ export class V2Layer implements ProtocolLayer {
             const capabilities = init.capabilities?.session;
 
             if (!capabilities) {
-                yield { type: 'error', message: `${ agent.name } offers no sessions over ACP v2`, code: 'invalid_request' };
+                yield {
+                    type: 'error',
+                    message: `${agent.name} offers no sessions over ACP v2`,
+                    code: 'invalid_request',
+                };
 
                 return;
             }
@@ -628,15 +752,20 @@ export class V2Layer implements ProtocolLayer {
                 try {
                     // No `replayFrom`: the agent takes the session up where it was without sending its history again, as v1's `session/resume` did.
                     // Whatever it sends before it answers (its current state, a replay if it sends one anyway) is dropped, since nothing listens yet.
-                    configOptions = (await request(connection.agent.request(methods.agent.session.resume, { sessionId: id, ...shared }))).configOptions;
+                    configOptions = (
+                        await request(
+                            connection.agent.request(methods.agent.session.resume, { sessionId: id, ...shared })
+                        )
+                    ).configOptions;
                     resumed = true;
-                }
-                catch (error) {
+                } catch (error) {
                     if (signal.aborted || error instanceof ProcessEnded) {
                         throw error;
                     }
 
-                    console.warn(`[clowdy] ${ agent.name } could not continue session ${ id }; starting a new one: ${ errorMessage(error) }`);
+                    console.warn(
+                        `[clowdy] ${agent.name} could not continue session ${id}; starting a new one: ${errorMessage(error)}`
+                    );
                 }
 
                 if (resumed) {
@@ -665,46 +794,64 @@ export class V2Layer implements ProtocolLayer {
                 effort: options.effort,
                 mode: agent.permission.mode,
                 set: async ({ configId, value }) => {
-                    const answer = await request(connection.agent.request(methods.agent.session.setConfigOption, { sessionId: id, configId, type: 'id', value }));
+                    const answer = await request(
+                        connection.agent.request(methods.agent.session.setConfigOption, {
+                            sessionId: id,
+                            configId,
+                            type: 'id',
+                            value,
+                        })
+                    );
 
                     return selectsOf(answer.configOptions);
                 },
             });
 
-            await keepTitle({ agent: agent.name, signal, title: options.title, naming: this.naming }, keep => request(connection.agent.request(methods.agent.session.setTitle, { sessionId: id, title: keep })));
+            await keepTitle({ agent: agent.name, signal, title: options.title, naming: this.naming }, keep =>
+                request(connection.agent.request(methods.agent.session.setTitle, { sessionId: id, title: keep }))
+            );
 
             // An agent that was to continue a conversation and starts a new one has not seen it: it is told what it said, so the work is not lost.
             const record = options.resumeSessionId && !resumed ? host.record() : undefined;
             const preface = prefaceOf({ systemPrompt: options.systemPrompt, supportsSystemPrompt, resumed, record });
-            const mapper = new UpdateMapperV2({ toolNames: options.tools.map(tool => tool.name), costBefore: deps.costs.get(id), log: deps.log });
+            const mapper = new UpdateMapperV2({
+                toolNames: options.tools.map(tool => tool.name),
+                costBefore: deps.costs.get(id),
+                log: deps.log,
+            });
 
             this.mapper = mapper;
 
             // The answer says the message was inserted, not that the turn is over; only a refusal of it ends the turn here.
             listening = true;
             this.open = true;
-            void connection.agent.request(methods.agent.session.prompt, { sessionId: id, prompt: [{ type: 'text', text: `${ preface }${ options.prompt }` } satisfies ContentBlock] }).then(
-                () => undefined,
-                error => channel.push({ kind: 'failed', error })
-            );
+            void connection.agent
+                .request(methods.agent.session.prompt, {
+                    sessionId: id,
+                    prompt: [{ type: 'text', text: `${preface}${options.prompt}` } satisfies ContentBlock],
+                })
+                .then(
+                    () => undefined,
+                    error => channel.push({ kind: 'failed', error })
+                );
             host.promptIs('running');
 
             yield* this.converse(id, mapper);
-        }
-        catch (error) {
+        } catch (error) {
             if (signal.aborted) {
                 return;
             }
 
             if (error instanceof ProcessEnded) {
-                yield failureEvent(processEnded(context, `exit code ${ proc.child.exitCode ?? 'unknown' }`, proc.stderr()));
+                yield failureEvent(
+                    processEnded(context, `exit code ${proc.child.exitCode ?? 'unknown'}`, proc.stderr())
+                );
 
                 return;
             }
 
             yield failureEvent(classifyThrown(error, context, proc.stderr()));
-        }
-        finally {
+        } finally {
             this.finished = true;
             this.disarm('handoff');
             this.disarm('release');
@@ -718,7 +865,16 @@ export class V2Layer implements ProtocolLayer {
      * cancelled, the process left, or nothing has been open for the length of the handoff guard.
      */
     private async *converse(id: string, mapper: UpdateMapperV2): AsyncGenerator<EngineEvent> {
-        const course: Course = { working: false, held: false, delivered: false, owed: false, items: [], calls: [], listed: [], lapsed: new Set() };
+        const course: Course = {
+            working: false,
+            held: false,
+            delivered: false,
+            owed: false,
+            items: [],
+            calls: [],
+            listed: [],
+            lapsed: new Set(),
+        };
 
         for (;;) {
             const item = await this.channel.next();
@@ -736,8 +892,7 @@ export class V2Layer implements ProtocolLayer {
             // Nothing is open and no turn runs: the session is wound up, unless the agent starts a turn within the guard.
             if (this.quiet(course)) {
                 this.arm('handoff', this.guard(course));
-            }
-            else {
+            } else {
                 this.disarm('handoff');
             }
         }
@@ -773,14 +928,21 @@ export class V2Layer implements ProtocolLayer {
     }
 
     /** One thing the loop was woken for. Gives back whether the conversation is over. */
-    private async *take(item: Item, id: string, course: Course, mapper: UpdateMapperV2): AsyncGenerator<EngineEvent, boolean> {
+    private async *take(
+        item: Item,
+        id: string,
+        course: Course,
+        mapper: UpdateMapperV2
+    ): AsyncGenerator<EngineEvent, boolean> {
         const { host } = this;
         const { agent, proc } = host;
         const context = { agent: agent.name, login: agent.login };
 
         switch (item.kind) {
             case 'update':
-                return item.from === undefined ? yield* this.heard(item.update, id, course, mapper) : yield* this.heardOfChild(item.update, item.from, mapper);
+                return item.from === undefined
+                    ? yield* this.heard(item.update, id, course, mapper)
+                    : yield* this.heardOfChild(item.update, item.from, mapper);
             case 'timer':
                 return yield* this.timed(item, id, course, mapper);
             case 'deadline':
@@ -800,7 +962,9 @@ export class V2Layer implements ProtocolLayer {
 
                 // The agent leaving when nothing was open loses nothing, and the guard would have ended the session about now.
                 if (!this.quiet(course)) {
-                    yield failureEvent(processEnded(context, `exit code ${ proc.child.exitCode ?? 'unknown' }`, proc.stderr()));
+                    yield failureEvent(
+                        processEnded(context, `exit code ${proc.child.exitCode ?? 'unknown'}`, proc.stderr())
+                    );
                 }
 
                 return true;
@@ -816,7 +980,12 @@ export class V2Layer implements ProtocolLayer {
     }
 
     /** One update of the session. Gives back whether the conversation is over. */
-    private async *heard(update: SessionUpdate, id: string, course: Course, mapper: UpdateMapperV2): AsyncGenerator<EngineEvent, boolean> {
+    private async *heard(
+        update: SessionUpdate,
+        id: string,
+        course: Course,
+        mapper: UpdateMapperV2
+    ): AsyncGenerator<EngineEvent, boolean> {
         if (SessionUpdate.isUserMessage(update) || SessionUpdate.isUserMessageChunk(update)) {
             this.turns.echo(update.messageId);
             this.landing.get(update.messageId)?.();
@@ -837,7 +1006,13 @@ export class V2Layer implements ProtocolLayer {
             }
 
             // What names an item (a terminal's command, a sub-agent's title, a call's title) may come after the list that names the item.
-            if (armed.length > 0 || (course.listed.length > 0 && (SessionUpdate.isTerminalUpdate(update) || SessionUpdate.isSubagentUpdate(update) || SessionUpdate.isToolCallUpdate(update)))) {
+            if (
+                armed.length > 0 ||
+                (course.listed.length > 0 &&
+                    (SessionUpdate.isTerminalUpdate(update) ||
+                        SessionUpdate.isSubagentUpdate(update) ||
+                        SessionUpdate.isToolCallUpdate(update)))
+            ) {
                 yield* this.publish(course, mapper);
             }
 
@@ -866,7 +1041,11 @@ export class V2Layer implements ProtocolLayer {
     }
 
     /** One update of a sub-agent's session. What it does is the child's own: the session's turn, its state and its list of background work are not touched by it. */
-    private async *heardOfChild(update: SessionUpdate, from: string, mapper: UpdateMapperV2): AsyncGenerator<EngineEvent, boolean> {
+    private async *heardOfChild(
+        update: SessionUpdate,
+        from: string,
+        mapper: UpdateMapperV2
+    ): AsyncGenerator<EngineEvent, boolean> {
         yield* mapper.update(update, from);
 
         return false;
@@ -897,10 +1076,18 @@ export class V2Layer implements ProtocolLayer {
         const items = mapper.background(course.listed);
         const calls = mapper.openCalls(course.listed);
 
-        if (JSON.stringify(items) !== JSON.stringify(course.items) || JSON.stringify(calls) !== JSON.stringify(course.calls)) {
+        if (
+            JSON.stringify(items) !== JSON.stringify(course.items) ||
+            JSON.stringify(calls) !== JSON.stringify(course.calls)
+        ) {
             // The last work ended between turns: Claude Code reports it with a turn of its own. Not an agent that starts none (the runtime tells it, once
             // this snapshot is read: `wakesOnBackgroundEnd`), and not commands or tasks the client stopped, which give the agent no report.
-            course.owed ||= course.items.length > 0 && items.length === 0 && !course.working && !this.host.agent.wakesOnBackgroundEnd && !course.items.every(item => this.stopped.has(item.id));
+            course.owed ||=
+                course.items.length > 0 &&
+                items.length === 0 &&
+                !course.working &&
+                !this.host.agent.wakesOnBackgroundEnd &&
+                !course.items.every(item => this.stopped.has(item.id));
             course.items = items;
             course.calls = calls;
 
@@ -921,7 +1108,12 @@ export class V2Layer implements ProtocolLayer {
      * (Claude's adapter answers it with a turn of its own, an `idle` and a `running` away) or one the agent has not begun. Gives back whether the
      * conversation is over.
      */
-    private async *ended(update: IdleStateUpdate, id: string, course: Course, mapper: UpdateMapperV2): AsyncGenerator<EngineEvent, boolean> {
+    private async *ended(
+        update: IdleStateUpdate,
+        id: string,
+        course: Course,
+        mapper: UpdateMapperV2
+    ): AsyncGenerator<EngineEvent, boolean> {
         const { agent, proc } = this.host;
 
         course.working = false;
@@ -929,7 +1121,13 @@ export class V2Layer implements ProtocolLayer {
         course.tokens = summed(course.tokens, update.usage);
 
         const failure = IdleStateUpdate.isError(update)
-            ? failureEvent(classifyThrown(update.error ?? new Error(`${ agent.name } stopped with an error`), { agent: agent.name, login: agent.login }, proc.stderr()))
+            ? failureEvent(
+                  classifyThrown(
+                      update.error ?? new Error(`${agent.name} stopped with an error`),
+                      { agent: agent.name, login: agent.login },
+                      proc.stderr()
+                  )
+              )
             : stopFailure(update.stopReason, agent.name);
 
         if (failure) {
@@ -965,7 +1163,12 @@ export class V2Layer implements ProtocolLayer {
      * Says the `done` of the activity that just ended: its usage, summed over its turns, and one `done` for each prompt sent into the session that it
      * answers (a turn the agent started on its own has one too). `fold`: the messages that landed in the last turn were folded into it.
      */
-    private async *deliver(id: string, course: Course, mapper: UpdateMapperV2, fold: boolean): AsyncGenerator<EngineEvent> {
+    private async *deliver(
+        id: string,
+        course: Course,
+        mapper: UpdateMapperV2,
+        fold: boolean
+    ): AsyncGenerator<EngineEvent> {
         const sends = this.turns.release(fold);
 
         yield* mapper.stop(course.tokens);
@@ -993,7 +1196,12 @@ export class V2Layer implements ProtocolLayer {
     }
 
     /** A timer went off. Gives back whether the conversation is over. */
-    private async *timed(item: Extract<Item, { kind: 'timer' }>, id: string, course: Course, mapper: UpdateMapperV2): AsyncGenerator<EngineEvent, boolean> {
+    private async *timed(
+        item: Extract<Item, { kind: 'timer' }>,
+        id: string,
+        course: Course,
+        mapper: UpdateMapperV2
+    ): AsyncGenerator<EngineEvent, boolean> {
         if (!this.fires(item.which, item.id)) {
             return false;
         }

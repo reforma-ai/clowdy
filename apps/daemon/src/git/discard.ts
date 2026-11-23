@@ -1,8 +1,8 @@
-import { MAX_GIT_DISCARD_PATHS } from '@clowdy/protocol';
 import { execFile } from 'node:child_process';
 import { lstat, readlink, realpath, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
+import { MAX_GIT_DISCARD_PATHS } from '@clowdy/protocol';
 
 import { gitLine, gitRead } from '../domain/git';
 import { exclusive } from '../domain/workspaces';
@@ -63,10 +63,12 @@ type Work =
     | { kind: 'link'; target: string; size: number; stamp: string };
 
 /** What tells that a file on the disk is not the one that was copied: its type, size, time and number. */
-const stampOf = (info: { mode: bigint; size: bigint; mtimeNs: bigint; ino: bigint }) => `${ info.mode }:${ info.size }:${ info.mtimeNs }:${ info.ino }`;
+const stampOf = (info: { mode: bigint; size: bigint; mtimeNs: bigint; ino: bigint }) =>
+    `${info.mode}:${info.size}:${info.mtimeNs}:${info.ino}`;
 
 /** A size as a person reads it: whole megabytes from one up, else kilobytes. */
-const readable = (bytes: number) => (bytes >= 1024 * 1024 ? `${ Math.round(bytes / (1024 * 1024)) } MB` : `${ Math.max(1, Math.ceil(bytes / 1024)) } KB`);
+const readable = (bytes: number) =>
+    bytes >= 1024 * 1024 ? `${Math.round(bytes / (1024 * 1024))} MB` : `${Math.max(1, Math.ceil(bytes / 1024))} KB`;
 
 /** The path as the working tree has it, from the real root. */
 const onDisk = (root: string, path: string) => join(root, ...path.split('/'));
@@ -91,7 +93,13 @@ export class GitDiscard {
     readonly #timeoutMs: number;
     readonly #stopper = new AbortController();
 
-    constructor({ store, dataDir, environment = new WriteEnvironment(), timeoutMs = DISCARD_TIMEOUT_MS, copies = new DiscardCopies(dataDir) }: GitDiscardOptions) {
+    constructor({
+        store,
+        dataDir,
+        environment = new WriteEnvironment(),
+        timeoutMs = DISCARD_TIMEOUT_MS,
+        copies = new DiscardCopies(dataDir),
+    }: GitDiscardOptions) {
         this.#store = store;
         this.environment = environment;
         this.#timeoutMs = timeoutMs;
@@ -113,7 +121,9 @@ export class GitDiscard {
      * The answer says what happened to each file and where the copy is.
      */
     async discard(place: Place, request: { projectId: string; paths: unknown }): Promise<GitDiscardResult> {
-        const result = await exclusive(this.#store, writeLine(place), this.#stopper.signal, () => this.#discard(place, request));
+        const result = await exclusive(this.#store, writeLine(place), this.#stopper.signal, () =>
+            this.#discard(place, request)
+        );
 
         // After the line is let go, and not an error of the discard's: the copies of other times are not what the person asked about.
         await this.copies.prune(result.copy.folder).catch(() => undefined);
@@ -136,7 +146,10 @@ export class GitDiscard {
 
         this.#checkSizes(sources);
 
-        const [branch, head] = await Promise.all([gitLine(cwd, ['symbolic-ref', '--short', '-q', 'HEAD']), gitLine(cwd, ['rev-parse', '--verify', '-q', 'HEAD'])]);
+        const [branch, head] = await Promise.all([
+            gitLine(cwd, ['symbolic-ref', '--short', '-q', 'HEAD']),
+            gitLine(cwd, ['rev-parse', '--verify', '-q', 'HEAD']),
+        ]);
         let kept;
 
         try {
@@ -149,9 +162,10 @@ export class GitDiscard {
                 ...(head !== undefined && { head }),
                 files: sources,
             });
-        }
-        catch (error) {
-            throw unavailable(`Couldn't keep a copy of the files, so nothing was discarded${ error instanceof Error && error.message ? `: ${ error.message }` : '' }`);
+        } catch (error) {
+            throw unavailable(
+                `Couldn't keep a copy of the files, so nothing was discarded${error instanceof Error && error.message ? `: ${error.message}` : ''}`
+            );
         }
 
         // Files that were written to while they were being copied have a copy that is not what is about to go: nothing is done, and the next try copies them again.
@@ -162,7 +176,8 @@ export class GitDiscard {
         const toDelete = targets.filter(target => !target.head && target.work.kind !== 'missing');
 
         // The restore comes first: a file git cannot bring back stops the discard with nothing deleted from the disk.
-        if (toRestore.length > 0) this.#check(await git(['restore', '--source=HEAD', '--staged', '--worktree', '--', ...toRestore]));
+        if (toRestore.length > 0)
+            this.#check(await git(['restore', '--source=HEAD', '--staged', '--worktree', '--', ...toRestore]));
 
         if (toUnstage.length > 0) this.#check(await git(['rm', '--cached', '-f', '-q', '--', ...toUnstage]));
 
@@ -171,7 +186,12 @@ export class GitDiscard {
         await this.copies.finish(kept);
 
         return {
-            discarded: files.map((file): GitDiscardedFile => ({ path: file.path, action: targets.some(target => target.file === file && target.head) ? 'restored' : 'removed' })),
+            discarded: files.map(
+                (file): GitDiscardedFile => ({
+                    path: file.path,
+                    action: targets.some(target => target.file === file && target.head) ? 'restored' : 'removed',
+                })
+            ),
             copy: { folder: kept.folder, keptUntil: kept.keptUntil, files: kept.files },
         };
     }
@@ -192,25 +212,32 @@ export class GitDiscard {
 
         for (const path of gitPaths) {
             // The paths the app can name: no backslash or drive letter, and a line break would break the list `git cat-file` is given.
-            if (normalizeFsPath(path) !== path || path.includes('\n')) throw invalid(`${ path } is not a path that can be discarded here`);
+            if (normalizeFsPath(path) !== path || path.includes('\n'))
+                throw invalid(`${path} is not a path that can be discarded here`);
         }
 
         const [heads, indexed] = await Promise.all([this.#headOf(cwd, gitPaths), this.#indexOf(cwd, gitPaths)]);
 
         if (indexed.unmerged.length > 0) throw conflict('Resolve the conflict first');
 
-        return Promise.all(gitPaths.map(async (path, position): Promise<Target> => ({
-            path,
-            file: owner.get(path)!,
-            ...(heads[position] && { head: heads[position] }),
-            ...(indexed.entries.has(path) && { index: indexed.entries.get(path) }),
-            work: await this.#workOf(root, path),
-        })));
+        return Promise.all(
+            gitPaths.map(
+                async (path, position): Promise<Target> => ({
+                    path,
+                    file: owner.get(path)!,
+                    ...(heads[position] && { head: heads[position] }),
+                    ...(indexed.entries.has(path) && { index: indexed.entries.get(path) }),
+                    work: await this.#workOf(root, path),
+                })
+            )
+        );
     }
 
     /** What the last commit has at each path: its id when it is a file, a submodule's commit refused on the spot, and nothing for a path it has not or has as a folder. */
     async #headOf(cwd: string, paths: string[]): Promise<Array<{ oid: string } | undefined>> {
-        const read = await gitRead(cwd, ['cat-file', '--batch-check'], { input: `${ paths.map(path => `HEAD:${ path }`).join('\n') }\n` });
+        const read = await gitRead(cwd, ['cat-file', '--batch-check'], {
+            input: `${paths.map(path => `HEAD:${path}`).join('\n')}\n`,
+        });
 
         if (!read.ok) throw unavailable('git did not answer');
 
@@ -219,15 +246,18 @@ export class GitDiscard {
         return paths.map((path, position) => {
             const [oid = '', type = ''] = lines[position]?.split(' ') ?? [];
 
-            if (type === 'commit') throw invalid('A submodule can\'t be discarded here');
+            if (type === 'commit') throw invalid("A submodule can't be discarded here");
 
             return type === 'blob' ? { oid } : undefined;
         });
     }
 
     /** What the index has at each path: its merged entry (a submodule refused), and the paths it holds unmerged (conflicts). */
-    async #indexOf(cwd: string, paths: string[]): Promise<{ entries: Map<string, { mode: string; oid: string }>; unmerged: string[] }> {
-        const read = await gitRead(cwd, ['ls-files', '--stage', '-z', '--', ...paths.map(path => `:(literal)${ path }`)]);
+    async #indexOf(
+        cwd: string,
+        paths: string[]
+    ): Promise<{ entries: Map<string, { mode: string; oid: string }>; unmerged: string[] }> {
+        const read = await gitRead(cwd, ['ls-files', '--stage', '-z', '--', ...paths.map(path => `:(literal)${path}`)]);
 
         if (!read.ok) throw unavailable('git did not answer');
 
@@ -241,12 +271,11 @@ export class GitDiscard {
 
             const [, mode = '', oid = '', stage = '', path = ''] = found;
 
-            if (mode === SUBMODULE_MODE) throw invalid('A submodule can\'t be discarded here');
+            if (mode === SUBMODULE_MODE) throw invalid("A submodule can't be discarded here");
 
             if (stage === '0') {
                 entries.set(path, { mode, oid });
-            }
-            else {
+            } else {
                 unmerged.push(path);
             }
         }
@@ -260,25 +289,31 @@ export class GitDiscard {
 
         try {
             located = await locate(root, path, false);
-        }
-        catch (error) {
+        } catch (error) {
             throw fsFailure(error, path);
         }
 
-        if (located.blockedBy !== undefined) throw invalid(`${ located.blockedBy } is in the way of ${ path }, discard it first`);
+        if (located.blockedBy !== undefined)
+            throw invalid(`${located.blockedBy} is in the way of ${path}, discard it first`);
 
         // A link on the way is followed by `locate` when it stays inside the place, and what it found is then not the path: git does not write beyond a link, and the link is not ours.
-        if (located.real !== onDisk(root, path)) throw invalid(`${ path } runs through a symbolic link`);
+        if (located.real !== onDisk(root, path)) throw invalid(`${path} runs through a symbolic link`);
 
         const info = located.stat;
 
         if (!info) return { kind: 'missing' };
 
-        if (info.isSymbolicLink()) return { kind: 'link', target: await readlink(located.real), size: Number(info.size), stamp: stampOf(info) };
+        if (info.isSymbolicLink())
+            return {
+                kind: 'link',
+                target: await readlink(located.real),
+                size: Number(info.size),
+                stamp: stampOf(info),
+            };
 
         if (info.isFile()) return { kind: 'file', size: Number(info.size), stamp: stampOf(info) };
 
-        throw invalid(`${ path } is not a file any more`);
+        throw invalid(`${path} is not a file any more`);
     }
 
     /**
@@ -287,8 +322,14 @@ export class GitDiscard {
      */
     async #sources(cwd: string, root: string, env: Record<string, string>, targets: Target[]): Promise<CopySource[]> {
         const staged = targets.filter(target => target.index && target.index.oid !== target.head?.oid);
-        const sizes = await this.#blobSizes(cwd, staged.map(target => target.index!.oid));
-        const hashes = await this.#hashes(cwd, staged.filter(target => target.work.kind === 'file').map(target => target.path));
+        const sizes = await this.#blobSizes(
+            cwd,
+            staged.map(target => target.index!.oid)
+        );
+        const hashes = await this.#hashes(
+            cwd,
+            staged.filter(target => target.work.kind === 'file').map(target => target.path)
+        );
         const entries = new Map<string, CopySource>();
 
         for (const target of targets) {
@@ -297,8 +338,7 @@ export class GitDiscard {
 
             if (target.work.kind === 'file') {
                 source.work = { kind: 'file', source: onDisk(root, target.path), size: target.work.size };
-            }
-            else if (target.work.kind === 'link') {
+            } else if (target.work.kind === 'link') {
                 source.work = { kind: 'link', target: target.work.target };
             }
 
@@ -329,7 +369,8 @@ export class GitDiscard {
 
         for (const source of sources) {
             for (const size of [source.work?.kind === 'file' ? source.work.size : 0, source.staged?.size ?? 0]) {
-                if (size > maxFileBytes) throw invalid(`${ source.path } is over ${ readable(maxFileBytes) }, discard it in a terminal`);
+                if (size > maxFileBytes)
+                    throw invalid(`${source.path} is over ${readable(maxFileBytes)}, discard it in a terminal`);
 
                 total += size;
             }
@@ -344,7 +385,7 @@ export class GitDiscard {
 
         if (ids.length === 0) return sizes;
 
-        const read = await gitRead(cwd, ['cat-file', '--batch-check'], { input: `${ [...new Set(ids)].join('\n') }\n` });
+        const read = await gitRead(cwd, ['cat-file', '--batch-check'], { input: `${[...new Set(ids)].join('\n')}\n` });
 
         if (!read.ok) throw unavailable('git did not answer');
 
@@ -373,7 +414,14 @@ export class GitDiscard {
 
     /** The bytes of a blob, as stored. */
     async #blob(cwd: string, env: Record<string, string>, oid: string, size: number): Promise<Buffer> {
-        const { stdout } = await run('git', ['cat-file', 'blob', oid], { cwd, env, encoding: 'buffer', maxBuffer: size + 1024, timeout: this.#timeoutMs, windowsHide: true });
+        const { stdout } = await run('git', ['cat-file', 'blob', oid], {
+            cwd,
+            env,
+            encoding: 'buffer',
+            maxBuffer: size + 1024,
+            timeout: this.#timeoutMs,
+            windowsHide: true,
+        });
 
         return stdout;
     }
@@ -385,7 +433,8 @@ export class GitDiscard {
 
             const now = await lstat(onDisk(root, target.path), { bigint: true }).catch(() => undefined);
 
-            if (now === undefined || stampOf(now) !== target.work.stamp) throw conflict(`${ target.path } changed while its copy was made, try again`);
+            if (now === undefined || stampOf(now) !== target.work.stamp)
+                throw conflict(`${target.path} changed while its copy was made, try again`);
         }
     }
 
@@ -397,8 +446,7 @@ export class GitDiscard {
 
         try {
             await unlink(onDisk(root, target.path));
-        }
-        catch (error) {
+        } catch (error) {
             throw fsFailure(error, target.path);
         }
     }
@@ -406,7 +454,14 @@ export class GitDiscard {
     /** `git` in the place with the write environment, asked to stop with `SIGTERM` so it removes its lock files when the time is up. */
     #git(cwd: string, env: Record<string, string>, args: string[]): Promise<RunResult> {
         // The paths are plain names, never patterns: `*`, `[` and a leading `:` in a file's name are the file's own.
-        return runProgram('git', ['--literal-pathspecs', ...args], { env, cwd, timeoutMs: this.#timeoutMs, maxChars: MAX_PRINTED_CHARS, signal: this.#stopper.signal, stopSignal: 'SIGTERM' });
+        return runProgram('git', ['--literal-pathspecs', ...args], {
+            env,
+            cwd,
+            timeoutMs: this.#timeoutMs,
+            maxChars: MAX_PRINTED_CHARS,
+            signal: this.#stopper.signal,
+            stopSignal: 'SIGTERM',
+        });
     }
 
     /** Throws what a run that did not succeed came to, in words the person reads; returns when it did. */
@@ -417,6 +472,7 @@ export class GitDiscard {
 
         if (result.error !== undefined) throw unavailable('git is not installed or not on PATH');
 
-        if (result.code !== 0) throw conflict(failureLine(result.stderr, result.stdout, 'git could not discard the files'));
+        if (result.code !== 0)
+            throw conflict(failureLine(result.stderr, result.stdout, 'git could not discard the files'));
     }
 }

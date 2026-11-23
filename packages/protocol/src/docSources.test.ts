@@ -4,7 +4,9 @@ import { DOC_SOURCES, docSourcesOf, isDocumentPath, isMarkdownFile } from './doc
 
 /** A folder that has exactly these folders (and so every folder above them). */
 const has = (...folders: string[]) => {
-    const all = new Set(folders.flatMap(folder => folder.split('/').map((_, index, parts) => parts.slice(0, index + 1).join('/'))));
+    const all = new Set(
+        folders.flatMap(folder => folder.split('/').map((_, index, parts) => parts.slice(0, index + 1).join('/')))
+    );
 
     return (path: string) => all.has(path);
 };
@@ -25,28 +27,34 @@ describe('the document sources of a folder', () => {
         expect(ids('.kiro/specs', '.kiro/hooks')).toEqual(['kiro-specs']);
     });
 
-    it('count Spec Kit\'s specs only beside .specify: a bare specs folder is anybody\'s', () => {
+    it("count Spec Kit's specs only beside .specify: a bare specs folder is anybody's", () => {
         expect(ids('specs')).toEqual([]);
         expect(ids('specs', '.specify')).toEqual(['speckit']);
         expect(ids('.specify/memory', '.specify/templates', '.specify/scripts')).toEqual(['speckit-memory']);
-        expect(ids('.specify/bugs', '.specify/assessments', 'specs')).toEqual(['speckit', 'speckit-bugs', 'speckit-assessments']);
+        expect(ids('.specify/bugs', '.specify/assessments', 'specs')).toEqual([
+            'speckit',
+            'speckit-bugs',
+            'speckit-assessments',
+        ]);
     });
 
-    it('do not count a tool\'s own folder as a source, and not a root that is not there', () => {
+    it("do not count a tool's own folder as a source, and not a root that is not there", () => {
         expect(ids('.specify')).toEqual([]);
         expect(ids('.kiro')).toEqual([]);
         expect(ids('openspec')).toEqual([]);
         expect(ids('.kiro/hooks', '.kiro/settings')).toEqual([]);
     });
 
-    it('come in the registry\'s order, whatever order the folder has them in', () => {
+    it("come in the registry's order, whatever order the folder has them in", () => {
         const all = DOC_SOURCES.map(source => source.root);
 
-        expect(docSourcesOf(has(...[...all, '.specify'].toReversed())).map(source => source.id)).toEqual(DOC_SOURCES.map(source => source.id));
+        expect(docSourcesOf(has(...[...all, '.specify'].toReversed())).map(source => source.id)).toEqual(
+            DOC_SOURCES.map(source => source.id)
+        );
         expect(ids('.kiro/specs', '.clowdy/docs', '.briefback')).toEqual(['briefback', 'documents', 'kiro-specs']);
     });
 
-    it('have an id and a root of their own, and a label that is not another\'s', () => {
+    it("have an id and a root of their own, and a label that is not another's", () => {
         expect(new Set(DOC_SOURCES.map(source => source.id)).size).toBe(DOC_SOURCES.length);
         expect(new Set(DOC_SOURCES.map(source => source.root)).size).toBe(DOC_SOURCES.length);
         expect(new Set(DOC_SOURCES.map(source => source.label)).size).toBe(DOC_SOURCES.length);
@@ -55,13 +63,34 @@ describe('the document sources of a folder', () => {
 
 describe('a document path', () => {
     it('is a Markdown file below the root of a source, of any tool', () => {
-        for (const path of ['.briefback/docs-sources/plan.md', '.clowdy/docs/decisions/pricing.md', 'specs/001-chat/spec.md', '.specify/memory/constitution.md', 'openspec/changes/add-x/proposal.md', '.kiro/steering/product.MD', '.briefback/x/notes.markdown']) {
+        for (const path of [
+            '.briefback/docs-sources/plan.md',
+            '.clowdy/docs/decisions/pricing.md',
+            'specs/001-chat/spec.md',
+            '.specify/memory/constitution.md',
+            'openspec/changes/add-x/proposal.md',
+            '.kiro/steering/product.MD',
+            '.briefback/x/notes.markdown',
+        ]) {
             expect(isDocumentPath(path), path).toBe(true);
         }
     });
 
     it('is not a file that is not Markdown, a file outside the roots, the root itself, or a folder that only starts like one', () => {
-        for (const path of ['.briefback/config.json', '.briefback/x/probe.ts.txt', 'README.md', 'docs/guide.md', '.briefback', '.briefback.md', '.briefbackup/plan.md', '.clowdy/index.md', '.specify/templates/spec-template.md', 'openspec/config.yaml', 'openspec/project.md', '.kiro/hooks/x.md']) {
+        for (const path of [
+            '.briefback/config.json',
+            '.briefback/x/probe.ts.txt',
+            'README.md',
+            'docs/guide.md',
+            '.briefback',
+            '.briefback.md',
+            '.briefbackup/plan.md',
+            '.clowdy/index.md',
+            '.specify/templates/spec-template.md',
+            'openspec/config.yaml',
+            'openspec/project.md',
+            '.kiro/hooks/x.md',
+        ]) {
             expect(isDocumentPath(path), path).toBe(false);
         }
     });

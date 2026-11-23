@@ -7,9 +7,11 @@ import type { ReactNode } from 'react';
 export function ErrorLine({ text, action }: { text: string; action?: ReactNode }) {
     return (
         <Alert color="danger">
-            <AlertIcon><AttentionCircle /></AlertIcon>
-            <AlertDescription>{ text }</AlertDescription>
-            { action && <AlertAction>{ action }</AlertAction> }
+            <AlertIcon>
+                <AttentionCircle />
+            </AlertIcon>
+            <AlertDescription>{text}</AlertDescription>
+            {action && <AlertAction>{action}</AlertAction>}
         </Alert>
     );
 }

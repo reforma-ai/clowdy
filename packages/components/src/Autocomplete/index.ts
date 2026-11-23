@@ -3,6 +3,6 @@ export {
     autocompleteActiveOption,
     autocompleteFirstOption,
     autocompleteOptionKey,
-    useAutocompleteEnterAction,
     type UseAutocompleteEnterActionOptions,
+    useAutocompleteEnterAction,
 } from './useAutocompleteEnterAction';

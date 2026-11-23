@@ -5,10 +5,10 @@ import path from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { describe, expect, test } from 'vitest';
 
-import { readTar, writeTar, type TarEntry } from './tar';
+import { readTar, type TarEntry, writeTar } from './tar';
 
 const text = (value: string) => new TextEncoder().encode(value);
-const LONG = `renderer/${ 'assets/'.repeat(14) }chunk-with-a-long-name-0123456789.js`;
+const LONG = `renderer/${'assets/'.repeat(14)}chunk-with-a-long-name-0123456789.js`;
 const ENTRIES: TarEntry[] = [
     { path: 'renderer/index.html', data: text('<!doctype html>') },
     { path: 'daemon/main.js', data: new Uint8Array(1500).fill(7) },
@@ -33,8 +33,7 @@ describe('tar', () => {
             expect(readFileSync(path.join(dir, 'renderer/index.html'), 'utf8')).toBe('<!doctype html>');
             expect(readFileSync(path.join(dir, LONG), 'utf8')).toBe('long');
             expect(readFileSync(path.join(dir, 'daemon/main.js')).length).toBe(1500);
-        }
-        finally {
+        } finally {
             rmSync(dir, { recursive: true, force: true });
         }
     });
@@ -58,7 +57,16 @@ describe('tar', () => {
         // A symbolic link, with the checksum written again.
         archive[156] = '2'.charCodeAt(0);
         archive.fill(0x20, 148, 156);
-        archive.set(text(`${ archive.subarray(0, 512).reduce((sum, byte) => sum + byte, 0).toString(8).padStart(6, '0') }\0 `), 148);
+        archive.set(
+            text(
+                `${archive
+                    .subarray(0, 512)
+                    .reduce((sum, byte) => sum + byte, 0)
+                    .toString(8)
+                    .padStart(6, '0')}\0 `
+            ),
+            148
+        );
 
         expect(() => readTar(archive)).toThrow('not a regular file');
     });

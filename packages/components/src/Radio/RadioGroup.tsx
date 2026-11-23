@@ -1,9 +1,6 @@
 import { cn } from '@clowdy/lib';
-import { useMemo, type ReactNode } from 'react';
-import {
-    RadioGroup as RACRadioGroup,
-    type RadioGroupProps as RACRadioGroupProps,
-} from 'react-aria-components';
+import { type ReactNode, useMemo } from 'react';
+import { RadioGroup as RACRadioGroup, type RadioGroupProps as RACRadioGroupProps } from 'react-aria-components';
 
 import { Radio } from './Radio';
 import { RadioContext, type RadioSize } from './Radio.types';
@@ -26,23 +23,14 @@ export interface RadioGroupProps extends Omit<RACRadioGroupProps, 'children'> {
 
 function defaultRenderRadio(item: RadioGroupItem) {
     return (
-        <Radio key={ item.value } value={ item.value } isDisabled={ item.isDisabled }>
-            { item.label }
+        <Radio key={item.value} value={item.value} isDisabled={item.isDisabled}>
+            {item.label}
         </Radio>
     );
 }
 
-export function RadioGroup({
-    size = 'md',
-    className,
-    items,
-    children,
-    ...props
-}: RadioGroupProps) {
-    const contextValue = useMemo(
-        () => ({ size }),
-        [size]
-    );
+export function RadioGroup({ size = 'md', className, items, children, ...props }: RadioGroupProps) {
+    const contextValue = useMemo(() => ({ size }), [size]);
 
     const content: ReactNode = ((): ReactNode => {
         if (items == null) {
@@ -56,13 +44,9 @@ export function RadioGroup({
     })();
 
     return (
-        <RadioContext value={ contextValue }>
-            <RACRadioGroup
-                { ...props }
-                className={ cn(styles.root, className) }
-                data-size={ size }
-            >
-                { content }
+        <RadioContext value={contextValue}>
+            <RACRadioGroup {...props} className={cn(styles.root, className)} data-size={size}>
+                {content}
             </RACRadioGroup>
         </RadioContext>
     );

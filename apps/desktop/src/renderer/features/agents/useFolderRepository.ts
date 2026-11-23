@@ -22,7 +22,7 @@ const LOADING: FolderRepository = { status: 'loading' };
  */
 export function useFolderRepository(projectId: ProjectId, folderId: FolderId): FolderRepository {
     const root = useRootStore();
-    const key = `${ projectId }/${ folderId }`;
+    const key = `${projectId}/${folderId}`;
     const [read, setRead] = useState<{ key: string; repository: FolderRepository }>();
 
     useEffect(() => {
@@ -33,7 +33,7 @@ export function useFolderRepository(projectId: ProjectId, folderId: FolderId): F
             const request = ++latest;
 
             root.transport.getFolderGit(projectId, folderId).then(
-                (git) => {
+                git => {
                     if (request === latest) setRead({ key, repository: { status: 'ready', git } });
                 },
                 (error: unknown) => {
@@ -42,7 +42,11 @@ export function useFolderRepository(projectId: ProjectId, folderId: FolderId): F
                     // The daemon says why in a 503 (`unavailable`); any other failure has nothing a person should read.
                     const reason = error instanceof TransportError && error.status === 503 ? error.message : '';
 
-                    setRead(known => (known?.key === key && known.repository.status === 'ready' ? known : { key, repository: { status: 'failed', reason } }));
+                    setRead(known =>
+                        known?.key === key && known.repository.status === 'ready'
+                            ? known
+                            : { key, repository: { status: 'failed', reason } }
+                    );
                 }
             );
         };

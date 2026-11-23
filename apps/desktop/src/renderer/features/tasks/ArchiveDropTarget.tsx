@@ -1,5 +1,5 @@
 import { Archive } from '@clowdy/icons/14';
-import { useState, type DragEvent } from 'react';
+import { type DragEvent, useState } from 'react';
 
 import styles from './ArchiveDropTarget.module.css';
 import { DRAG_TYPE } from './taskDrag';
@@ -22,20 +22,21 @@ export function ArchiveDropTarget({ onDropTask }: ArchiveDropTargetProps) {
 
     return (
         <div
-            className={ styles.target }
+            className={styles.target}
             data-archive-drop
-            data-over={ isOver || undefined }
-            onDragOver={ (event) => {
+            data-over={isOver || undefined}
+            onDragOver={event => {
                 if (!accepts(event)) return;
 
                 event.preventDefault();
                 event.dataTransfer.dropEffect = 'move';
                 setIsOver(true);
-            } }
-            onDragLeave={ (event) => {
-                if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) setIsOver(false);
-            } }
-            onDrop={ (event) => {
+            }}
+            onDragLeave={event => {
+                if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget))
+                    setIsOver(false);
+            }}
+            onDrop={event => {
                 if (!accepts(event)) return;
 
                 event.preventDefault();
@@ -44,7 +45,7 @@ export function ArchiveDropTarget({ onDropTask }: ArchiveDropTargetProps) {
                 const taskId = event.dataTransfer.getData(DRAG_TYPE);
 
                 if (taskId) onDropTask(taskId);
-            } }
+            }}
         >
             <Archive aria-hidden />
             Archive

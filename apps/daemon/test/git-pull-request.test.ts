@@ -31,10 +31,12 @@ describe('parseRemote', () => {
         expect(parseRemote('ssh://git@git.example.com:2222/acme/app.git')).toEqual(repo('git.example.com'));
         expect(parseRemote('git://github.com/acme/app.git')).toEqual(repo('github.com'));
         expect(parseRemote('  https://GitHub.com/Acme/my.app.git\n')).toEqual(repo('github.com', 'Acme', 'my.app'));
-        expect(parseRemote('git@ghe.corp.example:team/service-api.git')).toEqual(repo('ghe.corp.example', 'team', 'service-api'));
+        expect(parseRemote('git@ghe.corp.example:team/service-api.git')).toEqual(
+            repo('ghe.corp.example', 'team', 'service-api')
+        );
     });
 
-    test('keeps the port of a web address, which is the server\'s, and drops the port of ssh', () => {
+    test("keeps the port of a web address, which is the server's, and drops the port of ssh", () => {
         expect(parseRemote('https://ghe.example.com:8443/acme/app.git')).toEqual(repo('ghe.example.com:8443'));
         expect(parseRemote('ssh://git@ghe.example.com:22/acme/app.git')).toEqual(repo('ghe.example.com'));
     });
@@ -86,8 +88,21 @@ describe('parseRemote', () => {
 });
 
 describe('rollupChecks', () => {
-    const run = (name: string, status: string, conclusion: string | null, startedAt?: string, detailsUrl?: string) => ({ __typename: 'CheckRun', name, status, conclusion, startedAt: startedAt ?? null, detailsUrl: detailsUrl ?? null });
-    const context = (name: string, state: string, createdAt?: string, targetUrl?: string) => ({ __typename: 'StatusContext', context: name, state, createdAt: createdAt ?? null, targetUrl: targetUrl ?? null });
+    const run = (name: string, status: string, conclusion: string | null, startedAt?: string, detailsUrl?: string) => ({
+        __typename: 'CheckRun',
+        name,
+        status,
+        conclusion,
+        startedAt: startedAt ?? null,
+        detailsUrl: detailsUrl ?? null,
+    });
+    const context = (name: string, state: string, createdAt?: string, targetUrl?: string) => ({
+        __typename: 'StatusContext',
+        context: name,
+        state,
+        createdAt: createdAt ?? null,
+        targetUrl: targetUrl ?? null,
+    });
 
     test('counts a check by how it ended, and lists failing first, then pending, passing and skipped, by name', () => {
         const checks = rollupChecks([
@@ -107,7 +122,7 @@ describe('rollupChecks', () => {
 
         expect(checks).toMatchObject({ state: 'failing', passing: 3, failing: 4, pending: 4, skipped: 1 });
         expect(checks.truncated).toBeUndefined();
-        expect(checks.items.map(item => `${ item.state }:${ item.name }`)).toEqual([
+        expect(checks.items.map(item => `${item.state}:${item.name}`)).toEqual([
             'failing:approve',
             'failing:build',
             'failing:legacy',
@@ -121,14 +136,24 @@ describe('rollupChecks', () => {
             'passing:typecheck',
             'skipped:docs',
         ]);
-        expect(checks.items.find(item => item.name === 'unit')).toEqual({ name: 'unit', state: 'failing', url: 'https://ci.example/unit' });
-        expect(checks.items.find(item => item.name === 'coverage')).toEqual({ name: 'coverage', state: 'passing', url: 'https://cov.example' });
+        expect(checks.items.find(item => item.name === 'unit')).toEqual({
+            name: 'unit',
+            state: 'failing',
+            url: 'https://ci.example/unit',
+        });
+        expect(checks.items.find(item => item.name === 'coverage')).toEqual({
+            name: 'coverage',
+            state: 'passing',
+            url: 'https://cov.example',
+        });
         expect(checks.items.find(item => item.name === 'build')).toEqual({ name: 'build', state: 'failing' });
     });
 
     test('adds up to pending when nothing failed and something is not done, passing when all are, and none when no check ran', () => {
         expect(rollupChecks([run('a', 'COMPLETED', 'SUCCESS'), run('b', 'QUEUED', null)]).state).toBe('pending');
-        expect(rollupChecks([run('a', 'COMPLETED', 'SUCCESS'), run('b', 'COMPLETED', 'SKIPPED')]).state).toBe('passing');
+        expect(rollupChecks([run('a', 'COMPLETED', 'SUCCESS'), run('b', 'COMPLETED', 'SKIPPED')]).state).toBe(
+            'passing'
+        );
         expect(rollupChecks([run('a', 'COMPLETED', 'SKIPPED')]).state).toBe('passing');
         expect(rollupChecks([])).toEqual({ state: 'none', passing: 0, failing: 0, pending: 0, skipped: 0, items: [] });
     });
@@ -144,7 +169,11 @@ describe('rollupChecks', () => {
             run('plain', 'COMPLETED', 'SUCCESS'),
         ]);
 
-        expect(checks.items).toEqual([{ name: 'build', state: 'passing' }, { name: 'ci/old', state: 'passing' }, { name: 'plain', state: 'passing' }]);
+        expect(checks.items).toEqual([
+            { name: 'build', state: 'passing' },
+            { name: 'ci/old', state: 'passing' },
+            { name: 'plain', state: 'passing' },
+        ]);
         expect(checks.state).toBe('passing');
     });
 
@@ -156,22 +185,40 @@ describe('rollupChecks', () => {
             context('ci/custom', 'SUCCESS', undefined, 'myapp://open?x=1'),
         ]);
 
-        expect(checks.items).toEqual([{ name: 'ci/custom', state: 'passing' }, { name: 'file', state: 'passing' }, { name: 'script', state: 'passing' }, { name: 'web', state: 'passing', url: 'HTTPS://ci.example/web' }]);
+        expect(checks.items).toEqual([
+            { name: 'ci/custom', state: 'passing' },
+            { name: 'file', state: 'passing' },
+            { name: 'script', state: 'passing' },
+            { name: 'web', state: 'passing', url: 'HTTPS://ci.example/web' },
+        ]);
     });
 
     test('ignores a node it cannot read, and a check with no name', () => {
-        const checks = rollupChecks([null, 'text', 4, {}, { __typename: 'CheckRun', status: 'COMPLETED', conclusion: 'SUCCESS' }, run('ok', 'COMPLETED', 'SUCCESS')]);
+        const checks = rollupChecks([
+            null,
+            'text',
+            4,
+            {},
+            { __typename: 'CheckRun', status: 'COMPLETED', conclusion: 'SUCCESS' },
+            run('ok', 'COMPLETED', 'SUCCESS'),
+        ]);
 
         expect(checks.items).toEqual([{ name: 'ok', state: 'passing' }]);
     });
 
-    test('takes the worse of its own state and GitHub\'s when GitHub has more checks than were read', () => {
+    test("takes the worse of its own state and GitHub's when GitHub has more checks than were read", () => {
         const page = [run('a', 'COMPLETED', 'SUCCESS'), run('b', 'COMPLETED', 'SUCCESS')];
 
-        expect(rollupChecks(page, { more: true, state: 'FAILURE' })).toMatchObject({ state: 'failing', truncated: true, passing: 2 });
+        expect(rollupChecks(page, { more: true, state: 'FAILURE' })).toMatchObject({
+            state: 'failing',
+            truncated: true,
+            passing: 2,
+        });
         expect(rollupChecks(page, { more: true, state: 'PENDING' }).state).toBe('pending');
         expect(rollupChecks(page, { more: true, state: 'SUCCESS' }).state).toBe('passing');
-        expect(rollupChecks([run('a', 'COMPLETED', 'FAILURE')], { more: true, state: 'SUCCESS' }).state).toBe('failing');
+        expect(rollupChecks([run('a', 'COMPLETED', 'FAILURE')], { more: true, state: 'SUCCESS' }).state).toBe(
+            'failing'
+        );
         // Without more checks than were read, GitHub's own total is not asked.
         expect(rollupChecks(page, { more: false, state: 'FAILURE' }).state).toBe('passing');
     });
@@ -185,7 +232,7 @@ interface Reply {
 }
 
 /** A shell word for `text`, which no character of it can end. */
-const quoted = (text: string) => `'${ text.replaceAll('\'', '\'\\\'\'') }'`;
+const quoted = (text: string) => `'${text.replaceAll("'", "'\\''")}'`;
 
 /**
  * A `gh` that is a shell script: it answers by its arguments, with nothing of GitHub behind it, using nothing but the shell's own commands (so a `PATH` that has only its
@@ -243,13 +290,13 @@ exit 64
     /** `answers.sh`: a `case` over the branch that prints what `reply` set, and exits with its code. */
     #writeAnswers(): void {
         const cases = [...this.#replies].map(([branch, { body, stderr, code }]) => {
-            const say = stderr ? `printf '%s\\n' ${ quoted(stderr) } >&2; ` : '';
-            const print = body === undefined ? '' : `printf '%s' ${ quoted(JSON.stringify(body)) }; `;
+            const say = stderr ? `printf '%s\\n' ${quoted(stderr)} >&2; ` : '';
+            const print = body === undefined ? '' : `printf '%s' ${quoted(JSON.stringify(body))}; `;
 
-            return `    ${ quoted(branch) }) ${ say }${ print }exit ${ code ?? 0 } ;;`;
+            return `    ${quoted(branch)}) ${say}${print}exit ${code ?? 0} ;;`;
         });
 
-        writeFileSync(join(this.root, 'answers.sh'), `case "$head" in\n${ cases.join('\n') }\nesac\n`);
+        writeFileSync(join(this.root, 'answers.sh'), `case "$head" in\n${cases.join('\n')}\nesac\n`);
     }
 
     signOut(): void {
@@ -279,12 +326,17 @@ exit 64
     calls(): string[][] {
         if (!existsSync(this.log)) return [];
 
-        return readFileSync(this.log, 'utf8').split('---\n').filter(call => call !== '').map(call => call.replace(/\n$/, '').split('\n'));
+        return readFileSync(this.log, 'utf8')
+            .split('---\n')
+            .filter(call => call !== '')
+            .map(call => call.replace(/\n$/, '').split('\n'));
     }
 
     /** The calls that read pull requests, as the branch each asked for. */
     reads(): string[] {
-        return this.calls().filter(call => call[0] === 'api' && call[1] === 'graphql').map(call => call.find(arg => arg.startsWith('head='))!.slice('head='.length));
+        return this.calls()
+            .filter(call => call[0] === 'api' && call[1] === 'graphql')
+            .map(call => call.find(arg => arg.startsWith('head='))!.slice('head='.length));
     }
 
     /** The whole log, for a test that looks for what must not be in it. */
@@ -294,7 +346,12 @@ exit 64
 }
 
 /** A pull request as GitHub's GraphQL answers it. */
-function node(fields: Record<string, unknown> = {}, contexts: unknown[] = [], rollupState: string | null = 'SUCCESS', hasNextPage = false): Record<string, unknown> {
+function node(
+    fields: Record<string, unknown> = {},
+    contexts: unknown[] = [],
+    rollupState: string | null = 'SUCCESS',
+    hasNextPage = false
+): Record<string, unknown> {
     return {
         number: 7,
         title: 'Add the weekend rate',
@@ -310,21 +367,46 @@ function node(fields: Record<string, unknown> = {}, contexts: unknown[] = [], ro
         reviewDecision: null,
         mergeStateStatus: 'CLEAN',
         mergeable: 'MERGEABLE',
-        commits: { nodes: [{ commit: { statusCheckRollup: rollupState === null ? null : { state: rollupState, contexts: { nodes: contexts, pageInfo: { hasNextPage } } } } }] },
+        commits: {
+            nodes: [
+                {
+                    commit: {
+                        statusCheckRollup:
+                            rollupState === null
+                                ? null
+                                : { state: rollupState, contexts: { nodes: contexts, pageInfo: { hasNextPage } } },
+                    },
+                },
+            ],
+        },
         ...fields,
     };
 }
 
 /** What GitHub's GraphQL answers to the read of a branch. */
-const graphql = (nodes: unknown[], defaultBranch = 'main') => ({ data: { repository: { defaultBranchRef: { name: defaultBranch }, pullRequests: { nodes } } } });
+const graphql = (nodes: unknown[], defaultBranch = 'main') => ({
+    data: { repository: { defaultBranchRef: { name: defaultBranch }, pullRequests: { nodes } } },
+});
 
-const checkRun = (name: string, status: string, conclusion: string | null, detailsUrl?: string) => ({ __typename: 'CheckRun', name, status, conclusion, detailsUrl: detailsUrl ?? null, startedAt: '2026-11-20T10:00:00Z' });
+const checkRun = (name: string, status: string, conclusion: string | null, detailsUrl?: string) => ({
+    __typename: 'CheckRun',
+    name,
+    status,
+    conclusion,
+    detailsUrl: detailsUrl ?? null,
+    startedAt: '2026-11-20T10:00:00Z',
+});
 
 /** A place at a checkout, as `resolvePlace` makes one for a folder. */
 const placeAt = (path: string): Place => ({ folder: { id: 'fld_test', path }, path });
 
 /** A repository on the branch `feature`, one commit past `main`, whose `origin` is at `address` (none when it is `null`). */
-function repoOn(address: string | null = 'https://github.com/acme/app.git'): { path: string; place: Place; main: string; head: string } {
+function repoOn(address: string | null = 'https://github.com/acme/app.git'): {
+    path: string;
+    place: Place;
+    main: string;
+    head: string;
+} {
     const path = makeRepo(tempDir('git-pull-request'), 'app');
     const main = git(path, 'rev-parse', 'HEAD');
 
@@ -342,7 +424,7 @@ function repoOn(address: string | null = 'https://github.com/acme/app.git'): { p
 function commitMore(path: string, name = 'more.txt'): string {
     writeFileSync(join(path, name), 'more\n');
     git(path, 'add', '.');
-    git(path, 'commit', '-q', '-m', `Add ${ name }`);
+    git(path, 'commit', '-q', '-m', `Add ${name}`);
 
     return git(path, 'rev-parse', 'HEAD');
 }
@@ -377,15 +459,27 @@ withStandIn('PullRequests', () => {
     describe('access', () => {
         test('says gh is not installed when no gh is on the path or in the usual places, and asks nothing', async () => {
             const { place } = repoOn();
-            const none = new PullRequests({ env: () => ({ PATH: tempDir('empty-path') }), fallbackPaths: [], now: () => now });
+            const none = new PullRequests({
+                env: () => ({ PATH: tempDir('empty-path') }),
+                fallbackPaths: [],
+                now: () => now,
+            });
 
-            expect(await none.read(place)).toEqual({ isRepository: true, access: 'no_gh', repo: { host: 'github.com', owner: 'acme', name: 'app' } });
+            expect(await none.read(place)).toEqual({
+                isRepository: true,
+                access: 'no_gh',
+                repo: { host: 'github.com', owner: 'acme', name: 'app' },
+            });
             expect(gh.calls()).toEqual([]);
         });
 
         test('looks in the usual places after the path, and finds a gh there', async () => {
             const { place } = repoOn();
-            const elsewhere = new PullRequests({ env: () => ({ PATH: tempDir('empty-path') }), fallbackPaths: [join(tempDir('missing'), 'gh'), join(gh.bin, 'gh')], now: () => now });
+            const elsewhere = new PullRequests({
+                env: () => ({ PATH: tempDir('empty-path') }),
+                fallbackPaths: [join(tempDir('missing'), 'gh'), join(gh.bin, 'gh')],
+                now: () => now,
+            });
 
             gh.reply('feature', { body: graphql([]) });
 
@@ -409,8 +503,15 @@ withStandIn('PullRequests', () => {
 
             gh.signOut();
 
-            expect(await pullRequests.read(place)).toEqual({ isRepository: true, access: 'not_signed_in', repo: { host: 'ghe.example.com', owner: 'team', name: 'app' } });
-            expect(gh.calls()).toEqual([['--version'], ['auth', 'status', '--hostname', 'ghe.example.com', '--active']]);
+            expect(await pullRequests.read(place)).toEqual({
+                isRepository: true,
+                access: 'not_signed_in',
+                repo: { host: 'ghe.example.com', owner: 'team', name: 'app' },
+            });
+            expect(gh.calls()).toEqual([
+                ['--version'],
+                ['auth', 'status', '--hostname', 'ghe.example.com', '--active'],
+            ]);
         });
 
         test('asks about the active account alone, so a second account of the host with a bad token does not sign the person out', async () => {
@@ -502,7 +603,11 @@ withStandIn('PullRequests', () => {
 
             gh.reply('feature', { stderr: 'To get started with GitHub CLI, please run:  gh auth login', code: 4 });
 
-            expect(await pullRequests.read(place)).toEqual({ isRepository: true, access: 'not_signed_in', repo: { host: 'github.com', owner: 'acme', name: 'app' } });
+            expect(await pullRequests.read(place)).toEqual({
+                isRepository: true,
+                access: 'not_signed_in',
+                repo: { host: 'github.com', owner: 'acme', name: 'app' },
+            });
             expect(gh.calls().filter(call => call[0] === 'auth')).toHaveLength(1);
 
             // The answer was not kept, and neither was the login: both are asked for again.
@@ -514,19 +619,27 @@ withStandIn('PullRequests', () => {
         test('takes a rejected token from the server (HTTP 401) as a login that is no good', async () => {
             const { place } = repoOn();
 
-            gh.reply('feature', { body: { message: 'Bad credentials', status: '401' }, stderr: 'gh: Bad credentials (HTTP 401)', code: 1 });
+            gh.reply('feature', {
+                body: { message: 'Bad credentials', status: '401' },
+                stderr: 'gh: Bad credentials (HTTP 401)',
+                code: 1,
+            });
 
             expect(ready(await pullRequests.read(place)).access).toBe('not_signed_in');
         });
 
-        test('passes the daemon\'s environment to gh and adds nothing to it', async () => {
+        test("passes the daemon's environment to gh and adds nothing to it", async () => {
             const { place } = repoOn();
             const seen = join(gh.root, 'env.txt');
             const real = join(gh.bin, 'gh');
 
-            writeFileSync(real, `#!/bin/sh\nenv > '${ seen }'\nexit 0\n`);
+            writeFileSync(real, `#!/bin/sh\nenv > '${seen}'\nexit 0\n`);
 
-            const own = new PullRequests({ env: () => ({ PATH: `${ gh.bin }:/usr/bin:/bin`, GH_TOKEN: 'tok-from-the-daemon', MARKER: 'yes' }), fallbackPaths: [], now: () => now });
+            const own = new PullRequests({
+                env: () => ({ PATH: `${gh.bin}:/usr/bin:/bin`, GH_TOKEN: 'tok-from-the-daemon', MARKER: 'yes' }),
+                fallbackPaths: [],
+                now: () => now,
+            });
 
             // The stand-in prints nothing of a pull request this time: the read fails, which is not what is looked at.
             await own.read(place).catch(() => undefined);
@@ -558,7 +671,9 @@ withStandIn('PullRequests', () => {
                 '--method',
                 'POST',
                 '-f',
-                expect.stringMatching(/^query=query\(\$owner: String!, \$name: String!, \$head: String!\) \{ repository\(owner: \$owner, name: \$name\)/),
+                expect.stringMatching(
+                    /^query=query\(\$owner: String!, \$name: String!, \$head: String!\) \{ repository\(owner: \$owner, name: \$name\)/
+                ),
                 '-f',
                 'owner=acme',
                 '-f',
@@ -566,7 +681,9 @@ withStandIn('PullRequests', () => {
                 '-f',
                 'head=feature',
             ]);
-            expect(call![7]).toContain('pullRequests(headRefName: $head, first: 20, orderBy: { field: CREATED_AT, direction: DESC })');
+            expect(call![7]).toContain(
+                'pullRequests(headRefName: $head, first: 20, orderBy: { field: CREATED_AT, direction: DESC })'
+            );
             expect(call![7]).toContain('statusCheckRollup { state contexts(first: 100)');
         });
 
@@ -574,16 +691,24 @@ withStandIn('PullRequests', () => {
             const { place, head } = repoOn();
 
             gh.reply('feature', {
-                body: graphql([node(
-                    { headRefOid: head, reviewDecision: 'REVIEW_REQUIRED', mergeStateStatus: 'BLOCKED' },
-                    [
-                        checkRun('lint', 'COMPLETED', 'SUCCESS', 'https://github.com/acme/app/runs/1'),
-                        checkRun('unit', 'COMPLETED', 'FAILURE', 'https://github.com/acme/app/runs/2'),
-                        checkRun('e2e', 'IN_PROGRESS', null),
-                        { __typename: 'StatusContext', context: 'ci/legacy', state: 'SUCCESS', targetUrl: 'https://ci.example/9', createdAt: '2026-11-20T10:00:00Z' },
-                    ],
-                    'FAILURE'
-                )]),
+                body: graphql([
+                    node(
+                        { headRefOid: head, reviewDecision: 'REVIEW_REQUIRED', mergeStateStatus: 'BLOCKED' },
+                        [
+                            checkRun('lint', 'COMPLETED', 'SUCCESS', 'https://github.com/acme/app/runs/1'),
+                            checkRun('unit', 'COMPLETED', 'FAILURE', 'https://github.com/acme/app/runs/2'),
+                            checkRun('e2e', 'IN_PROGRESS', null),
+                            {
+                                __typename: 'StatusContext',
+                                context: 'ci/legacy',
+                                state: 'SUCCESS',
+                                targetUrl: 'https://ci.example/9',
+                                createdAt: '2026-11-20T10:00:00Z',
+                            },
+                        ],
+                        'FAILURE'
+                    ),
+                ]),
             });
 
             const info = ready(await pullRequests.read(place));
@@ -628,17 +753,32 @@ withStandIn('PullRequests', () => {
             expect((await pullRequestOf(place))?.mergeability).toBeUndefined();
 
             now += 20_000;
-            gh.reply('feature', { body: graphql([node({ isDraft: true, mergeable: 'CONFLICTING', mergeStateStatus: 'DIRTY' })]) });
+            gh.reply('feature', {
+                body: graphql([node({ isDraft: true, mergeable: 'CONFLICTING', mergeStateStatus: 'DIRTY' })]),
+            });
             expect(await pullRequestOf(place)).toMatchObject({ state: 'draft', mergeability: 'conflicts' });
 
             now += 20_000;
-            gh.reply('feature', { body: graphql([node({ mergeable: 'UNKNOWN', mergeStateStatus: 'UNKNOWN', reviewDecision: 'APPROVED' })], 'main') });
+            gh.reply('feature', {
+                body: graphql(
+                    [node({ mergeable: 'UNKNOWN', mergeStateStatus: 'UNKNOWN', reviewDecision: 'APPROVED' })],
+                    'main'
+                ),
+            });
             expect(await pullRequestOf(place)).toMatchObject({ state: 'open', reviewDecision: 'approved' });
             expect((await pullRequestOf(place))?.mergeability).toBeUndefined();
 
             now += 20_000;
-            gh.reply('feature', { body: graphql([node({ mergeable: 'CONFLICTING', mergeStateStatus: 'DIRTY', reviewDecision: 'CHANGES_REQUESTED' })]) });
-            expect(await pullRequestOf(place)).toMatchObject({ state: 'open', mergeability: 'conflicts', reviewDecision: 'changes_requested' });
+            gh.reply('feature', {
+                body: graphql([
+                    node({ mergeable: 'CONFLICTING', mergeStateStatus: 'DIRTY', reviewDecision: 'CHANGES_REQUESTED' }),
+                ]),
+            });
+            expect(await pullRequestOf(place)).toMatchObject({
+                state: 'open',
+                mergeability: 'conflicts',
+                reviewDecision: 'changes_requested',
+            });
 
             now += 20_000;
             gh.reply('feature', { body: graphql([node({ mergeStateStatus: 'CLEAN' })]) });
@@ -650,7 +790,14 @@ withStandIn('PullRequests', () => {
 
             gh.reply('feature', { body: graphql([node({}, [], null)]) });
 
-            expect((await pullRequestOf(place))?.checks).toEqual({ state: 'none', passing: 0, failing: 0, pending: 0, skipped: 0, items: [] });
+            expect((await pullRequestOf(place))?.checks).toEqual({
+                state: 'none',
+                passing: 0,
+                failing: 0,
+                pending: 0,
+                skipped: 0,
+                items: [],
+            });
         });
 
         test('says a branch with no pull request is ready, with none', async () => {
@@ -658,7 +805,11 @@ withStandIn('PullRequests', () => {
 
             gh.reply('feature', { body: graphql([]) });
 
-            expect(await pullRequests.read(place)).toEqual({ isRepository: true, access: 'ready', repo: { host: 'github.com', owner: 'acme', name: 'app' } });
+            expect(await pullRequests.read(place)).toEqual({
+                isRepository: true,
+                access: 'ready',
+                repo: { host: 'github.com', owner: 'acme', name: 'app' },
+            });
         });
 
         test('keeps a merged pull request when the branch has nothing new, and drops it once HEAD has moved past it', async () => {
@@ -671,7 +822,11 @@ withStandIn('PullRequests', () => {
 
             // New work on the branch: the merged pull request is about what was there, and the branch has none.
             commitMore(path);
-            expect(await pullRequests.read(place)).toEqual({ isRepository: true, access: 'ready', repo: { host: 'github.com', owner: 'acme', name: 'app' } });
+            expect(await pullRequests.read(place)).toEqual({
+                isRepository: true,
+                access: 'ready',
+                repo: { host: 'github.com', owner: 'acme', name: 'app' },
+            });
         });
 
         test('picks up a new open pull request on a branch whose old one merged', async () => {
@@ -682,7 +837,12 @@ withStandIn('PullRequests', () => {
 
             const next = commitMore(path);
 
-            gh.reply('feature', { body: graphql([node({ number: 9, url: 'https://github.com/acme/app/pull/9', headRefOid: next }), node({ state: 'MERGED', headRefOid: head })]) });
+            gh.reply('feature', {
+                body: graphql([
+                    node({ number: 9, url: 'https://github.com/acme/app/pull/9', headRefOid: next }),
+                    node({ state: 'MERGED', headRefOid: head }),
+                ]),
+            });
             expect(await pullRequestOf(place)).toMatchObject({ number: 9, state: 'open', headCommit: next });
         });
 
@@ -751,7 +911,13 @@ withStandIn('PullRequests', () => {
         test('takes the newest of those that are not open when none is', async () => {
             const { place, head } = repoOn();
 
-            gh.reply('feature', { body: graphql([node({ number: 4, state: 'CLOSED', headRefOid: head }), node({ number: 9, state: 'MERGED', headRefOid: head }), node({ number: 6, state: 'CLOSED', headRefOid: head })]) });
+            gh.reply('feature', {
+                body: graphql([
+                    node({ number: 4, state: 'CLOSED', headRefOid: head }),
+                    node({ number: 9, state: 'MERGED', headRefOid: head }),
+                    node({ number: 6, state: 'CLOSED', headRefOid: head }),
+                ]),
+            });
 
             expect(await pullRequestOf(place)).toMatchObject({ number: 9, state: 'merged' });
         });
@@ -761,19 +927,34 @@ withStandIn('PullRequests', () => {
 
             gh.reply('feature', {
                 body: graphql([
-                    node({ number: 12, isCrossRepository: true, headRepositoryOwner: { login: 'stranger' }, headRefOid: head }),
-                    node({ number: 11, isCrossRepository: false, headRepositoryOwner: { login: 'Stranger' }, headRefOid: head }),
+                    node({
+                        number: 12,
+                        isCrossRepository: true,
+                        headRepositoryOwner: { login: 'stranger' },
+                        headRefOid: head,
+                    }),
+                    node({
+                        number: 11,
+                        isCrossRepository: false,
+                        headRepositoryOwner: { login: 'Stranger' },
+                        headRefOid: head,
+                    }),
                     node({ number: 10, isCrossRepository: true, headRepositoryOwner: null, headRefOid: head }),
                 ]),
             });
             expect(await pullRequestOf(place)).toBeUndefined();
 
             now += 20_000;
-            gh.reply('feature', { body: graphql([node({ number: 12, isCrossRepository: true, headRepositoryOwner: { login: 'stranger' } }), node({ number: 7, headRepositoryOwner: { login: 'ACME' } })]) });
+            gh.reply('feature', {
+                body: graphql([
+                    node({ number: 12, isCrossRepository: true, headRepositoryOwner: { login: 'stranger' } }),
+                    node({ number: 7, headRepositoryOwner: { login: 'ACME' } }),
+                ]),
+            });
             expect(await pullRequestOf(place)).toMatchObject({ number: 7 });
         });
 
-        test('counts only an open pull request on the repository\'s default branch', async () => {
+        test("counts only an open pull request on the repository's default branch", async () => {
             const { place, path } = repoOn();
 
             git(path, 'checkout', '-q', 'main');
@@ -781,13 +962,23 @@ withStandIn('PullRequests', () => {
             expect(await pullRequestOf(place)).toBeUndefined();
 
             now += 20_000;
-            gh.reply('main', { body: graphql([node({ number: 3, state: 'MERGED', headRefName: 'main' }), node({ number: 4, headRefName: 'main' })], 'main') });
+            gh.reply('main', {
+                body: graphql(
+                    [
+                        node({ number: 3, state: 'MERGED', headRefName: 'main' }),
+                        node({ number: 4, headRefName: 'main' }),
+                    ],
+                    'main'
+                ),
+            });
             expect(await pullRequestOf(place)).toMatchObject({ number: 4 });
 
             // Another branch is not the default one: its merged pull request counts.
             now += 20_000;
             git(path, 'checkout', '-q', 'feature');
-            gh.reply('feature', { body: graphql([node({ state: 'MERGED', headRefOid: git(path, 'rev-parse', 'HEAD') })], 'main') });
+            gh.reply('feature', {
+                body: graphql([node({ state: 'MERGED', headRefOid: git(path, 'rev-parse', 'HEAD') })], 'main'),
+            });
             expect(await pullRequestOf(place)).toMatchObject({ state: 'merged' });
         });
 
@@ -809,7 +1000,12 @@ withStandIn('PullRequests', () => {
 
             expect(await pullRequestOf(place)).toMatchObject({ number: 7, mergeability: 'mergeable' });
             expect(gh.reads()).toEqual(['feature', 'feature']);
-            expect(gh.calls().filter(call => call[0] === 'api').map(call => call[7]!.includes('mergeStateStatus'))).toEqual([true, false]);
+            expect(
+                gh
+                    .calls()
+                    .filter(call => call[0] === 'api')
+                    .map(call => call[7]!.includes('mergeStateStatus'))
+            ).toEqual([true, false]);
 
             git(path, 'checkout', '-q', '-b', 'second');
             gh.reply('second', { body: graphql([]) });
@@ -820,7 +1016,10 @@ withStandIn('PullRequests', () => {
         test('keeps what a read answers when GitHub adds errors to it', async () => {
             const { place } = repoOn();
 
-            gh.reply('feature', { body: { ...graphql([node()]), errors: [{ type: 'FORBIDDEN', message: 'Resource not accessible' }] }, code: 1 });
+            gh.reply('feature', {
+                body: { ...graphql([node()]), errors: [{ type: 'FORBIDDEN', message: 'Resource not accessible' }] },
+                code: 1,
+            });
 
             expect(await pullRequestOf(place)).toMatchObject({ number: 7 });
         });
@@ -828,14 +1027,26 @@ withStandIn('PullRequests', () => {
         test('keeps a pull request whose node lacks its number, address or state out of the choice', async () => {
             const { place } = repoOn();
 
-            gh.reply('feature', { body: graphql([null, 'text', { state: 'OPEN' }, node({ url: undefined }), node({ number: 99, url: 'file:///etc/passwd' }), node({ state: 'DRAFT' }), node({ number: 5 })]) });
+            gh.reply('feature', {
+                body: graphql([
+                    null,
+                    'text',
+                    { state: 'OPEN' },
+                    node({ url: undefined }),
+                    node({ number: 99, url: 'file:///etc/passwd' }),
+                    node({ state: 'DRAFT' }),
+                    node({ number: 5 }),
+                ]),
+            });
 
             expect(await pullRequestOf(place)).toMatchObject({ number: 5 });
         });
 
-        test('reads the first hundred checks and says there are more, taking GitHub\'s own total into account', async () => {
+        test("reads the first hundred checks and says there are more, taking GitHub's own total into account", async () => {
             const { place } = repoOn();
-            const many = Array.from({ length: 100 }, (_, index) => checkRun(`job ${ String(index).padStart(3, '0') }`, 'COMPLETED', 'SUCCESS'));
+            const many = Array.from({ length: 100 }, (_, index) =>
+                checkRun(`job ${String(index).padStart(3, '0')}`, 'COMPLETED', 'SUCCESS')
+            );
 
             gh.reply('feature', { body: graphql([node({}, many, 'PENDING', true)]) });
 
@@ -848,7 +1059,10 @@ withStandIn('PullRequests', () => {
 
     describe('a gh that fails', () => {
         const expectUnavailable = async (read: Promise<unknown>, message: string) => {
-            const error = await read.then(() => undefined, (failure: unknown) => failure);
+            const error = await read.then(
+                () => undefined,
+                (failure: unknown) => failure
+            );
 
             expect(error).toBeInstanceOf(CommandError);
             expect(error).toMatchObject({ code: 'unavailable', message });
@@ -858,46 +1072,77 @@ withStandIn('PullRequests', () => {
             const { place } = repoOn();
 
             gh.reply('feature', { stderr: 'gh: Bad gateway (HTTP 502)', code: 1 });
-            await expectUnavailable(pullRequests.read(place), 'GitHub didn\'t answer');
+            await expectUnavailable(pullRequests.read(place), "GitHub didn't answer");
 
-            gh.reply('feature', { stderr: 'Post "https://api.github.com/graphql": dial tcp: lookup api.github.com: no such host', code: 1 });
-            await expectUnavailable(pullRequests.read(place), 'GitHub didn\'t answer');
+            gh.reply('feature', {
+                stderr: 'Post "https://api.github.com/graphql": dial tcp: lookup api.github.com: no such host',
+                code: 1,
+            });
+            await expectUnavailable(pullRequests.read(place), "GitHub didn't answer");
 
-            gh.reply('feature', { body: { message: 'API rate limit exceeded for user ID 1', status: '403' }, stderr: 'gh: API rate limit exceeded (HTTP 403)', code: 1 });
-            await expectUnavailable(pullRequests.read(place), 'GitHub\'s rate limit is reached');
+            gh.reply('feature', {
+                body: { message: 'API rate limit exceeded for user ID 1', status: '403' },
+                stderr: 'gh: API rate limit exceeded (HTTP 403)',
+                code: 1,
+            });
+            await expectUnavailable(pullRequests.read(place), "GitHub's rate limit is reached");
 
-            gh.reply('feature', { body: { data: { repository: null }, errors: [{ type: 'RATE_LIMITED', message: 'API rate limit exceeded' }] }, code: 1 });
-            await expectUnavailable(pullRequests.read(place), 'GitHub\'s rate limit is reached');
+            gh.reply('feature', {
+                body: {
+                    data: { repository: null },
+                    errors: [{ type: 'RATE_LIMITED', message: 'API rate limit exceeded' }],
+                },
+                code: 1,
+            });
+            await expectUnavailable(pullRequests.read(place), "GitHub's rate limit is reached");
 
             gh.reply('feature', { stderr: 'gh: Forbidden (HTTP 403)', code: 1 });
             await expectUnavailable(pullRequests.read(place), 'GitHub refused the request');
 
             gh.reply('feature', { stderr: 'gh: something nobody expected', code: 1 });
-            await expectUnavailable(pullRequests.read(place), 'Couldn\'t read the pull request');
+            await expectUnavailable(pullRequests.read(place), "Couldn't read the pull request");
         });
 
         test('is unavailable for a repository the account cannot see, and for an answer that cannot be read', async () => {
             const { place } = repoOn();
 
-            gh.reply('feature', { body: { data: { repository: null }, errors: [{ type: 'NOT_FOUND', path: ['repository'], message: 'Could not resolve to a Repository with the name \'acme/app\'.' }] }, code: 1 });
-            await expectUnavailable(pullRequests.read(place), 'GitHub doesn\'t show this repository to the signed-in account');
+            gh.reply('feature', {
+                body: {
+                    data: { repository: null },
+                    errors: [
+                        {
+                            type: 'NOT_FOUND',
+                            path: ['repository'],
+                            message: "Could not resolve to a Repository with the name 'acme/app'.",
+                        },
+                    ],
+                },
+                code: 1,
+            });
+            await expectUnavailable(
+                pullRequests.read(place),
+                "GitHub doesn't show this repository to the signed-in account"
+            );
 
             gh.reply('feature', { stderr: 'gh: Not Found (HTTP 404)', code: 1 });
-            await expectUnavailable(pullRequests.read(place), 'GitHub doesn\'t show this repository to the signed-in account');
+            await expectUnavailable(
+                pullRequests.read(place),
+                "GitHub doesn't show this repository to the signed-in account"
+            );
 
             gh.reply('feature', { body: undefined, code: 0 });
-            await expectUnavailable(pullRequests.read(place), 'GitHub\'s answer couldn\'t be read');
+            await expectUnavailable(pullRequests.read(place), "GitHub's answer couldn't be read");
 
             gh.reply('feature', { body: { data: { repository: { pullRequests: {} } } }, code: 0 });
-            await expectUnavailable(pullRequests.read(place), 'GitHub\'s answer couldn\'t be read');
+            await expectUnavailable(pullRequests.read(place), "GitHub's answer couldn't be read");
         });
 
         test('keeps no failure: the next read asks again, and a read that succeeds is kept', async () => {
             const { place } = repoOn();
 
             gh.reply('feature', { stderr: 'gh: Bad gateway (HTTP 502)', code: 1 });
-            await expectUnavailable(pullRequests.read(place), 'GitHub didn\'t answer');
-            await expectUnavailable(pullRequests.read(place), 'GitHub didn\'t answer');
+            await expectUnavailable(pullRequests.read(place), "GitHub didn't answer");
+            await expectUnavailable(pullRequests.read(place), "GitHub didn't answer");
             expect(gh.reads()).toHaveLength(2);
 
             gh.reply('feature', { body: graphql([node()]) });
@@ -921,7 +1166,11 @@ withStandIn('PullRequests', () => {
 
             git(path, 'checkout', '-q', '--detach');
 
-            expect(await pullRequests.read(place)).toEqual({ isRepository: true, access: 'ready', repo: { host: 'github.com', owner: 'acme', name: 'app' } });
+            expect(await pullRequests.read(place)).toEqual({
+                isRepository: true,
+                access: 'ready',
+                repo: { host: 'github.com', owner: 'acme', name: 'app' },
+            });
             expect(gh.calls()).toEqual([]);
         });
 
@@ -932,7 +1181,11 @@ withStandIn('PullRequests', () => {
             git(path, 'init', '-q', '-b', 'topic');
             git(path, 'remote', 'add', 'origin', 'https://github.com/acme/app.git');
 
-            expect(await pullRequests.read(placeAt(path))).toEqual({ isRepository: true, access: 'ready', repo: { host: 'github.com', owner: 'acme', name: 'app' } });
+            expect(await pullRequests.read(placeAt(path))).toEqual({
+                isRepository: true,
+                access: 'ready',
+                repo: { host: 'github.com', owner: 'acme', name: 'app' },
+            });
             expect(gh.calls()).toEqual([]);
         });
     });
@@ -943,7 +1196,11 @@ withStandIn('PullRequests', () => {
 
             gh.reply('feature', { body: graphql([node()]) });
 
-            const answers = await Promise.all([pullRequests.read(place), pullRequests.read(place), pullRequests.read(place)]);
+            const answers = await Promise.all([
+                pullRequests.read(place),
+                pullRequests.read(place),
+                pullRequests.read(place),
+            ]);
 
             expect(answers[1]).toEqual(answers[0]);
             expect(answers[2]).toEqual(answers[0]);
@@ -1063,7 +1320,9 @@ withStandIn('PullRequests', () => {
 
             // A merged pull request is the branch's own too, while the branch has nothing new.
             now += 20_000;
-            gh.reply('feature', { body: graphql([node({ baseRefName: 'release', state: 'MERGED', headRefOid: head })]) });
+            gh.reply('feature', {
+                body: graphql([node({ baseRefName: 'release', state: 'MERGED', headRefOid: head })]),
+            });
             await pullRequests.read(place);
             expect(await pullRequests.baseHint(place)).toBe('release');
 
@@ -1144,7 +1403,7 @@ withStandIn('PullRequests', () => {
         const token = 'ghp_s3cretT0ken';
 
         test('is nowhere in the answer, in what gh was run with, or in an error', async () => {
-            const { place } = repoOn(`https://octocat:${ token }@github.com/acme/app.git`);
+            const { place } = repoOn(`https://octocat:${token}@github.com/acme/app.git`);
 
             gh.reply('feature', { body: graphql([node()]) });
 
@@ -1157,9 +1416,15 @@ withStandIn('PullRequests', () => {
             expect(gh.text()).not.toContain('octocat');
 
             now += 20_000;
-            gh.reply('feature', { stderr: `gh: Post "https://octocat:${ token }@api.github.com/graphql": no such host`, code: 1 });
+            gh.reply('feature', {
+                stderr: `gh: Post "https://octocat:${token}@api.github.com/graphql": no such host`,
+                code: 1,
+            });
 
-            const failure = await pullRequests.read(place).then(() => undefined, (error: unknown) => error as CommandError);
+            const failure = await pullRequests.read(place).then(
+                () => undefined,
+                (error: unknown) => error as CommandError
+            );
 
             expect(failure).toBeInstanceOf(CommandError);
             expect(JSON.stringify({ message: failure?.message, details: failure?.details })).not.toContain(token);
@@ -1167,7 +1432,7 @@ withStandIn('PullRequests', () => {
         });
 
         test('does not keep a remote that is not a repository from being said to have none, and does not repeat it', async () => {
-            const { place } = repoOn(`https://octocat:${ token }@internal.example/just-one-part`);
+            const { place } = repoOn(`https://octocat:${token}@internal.example/just-one-part`);
 
             const info = await pullRequests.read(place);
 
@@ -1186,16 +1451,19 @@ withStandIn('GET /v1/projects/:id/git/pull-request', () => {
     beforeEach(async () => {
         gh = new StandIn();
         now = 1_000_000;
-        h = await startHarness({}, { pullRequests: new PullRequests({ env: gh.env, fallbackPaths: [], now: () => now }) });
+        h = await startHarness(
+            {},
+            { pullRequests: new PullRequests({ env: gh.env, fallbackPaths: [], now: () => now }) }
+        );
     });
 
     afterEach(async () => {
         await h.stop();
     });
 
-    const json = async <T>(response: Response) => await response.json() as T;
+    const json = async <T>(response: Response) => (await response.json()) as T;
 
-    test('answers the pull request of a folder\'s checkout and of a chat\'s worktree, each for its own branch, behind the token', async () => {
+    test("answers the pull request of a folder's checkout and of a chat's worktree, each for its own branch, behind the token", async () => {
         const { path, head } = repoOn();
         const tree = join(tempDir('git-pull-request'), 'chat-tree');
 
@@ -1204,31 +1472,59 @@ withStandIn('GET /v1/projects/:id/git/pull-request', () => {
         const treeHead = commitMore(tree, 'in-tree.txt');
         const { project } = h.ok('project.add', { folders: [path] });
         const folderId = project.folders[0].id as string;
-        const workspaceId = (h.ok('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: tree } }).chat.workspace as { id: string }).id;
-        const base = `/v1/projects/${ project.id }/git/pull-request`;
+        const workspaceId = (
+            h.ok('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: tree } }).chat
+                .workspace as { id: string }
+        ).id;
+        const base = `/v1/projects/${project.id}/git/pull-request`;
 
-        gh.reply('feature', { body: graphql([node({ headRefOid: head, number: 21, url: 'https://github.com/acme/app/pull/21' })]) });
-        gh.reply('chat-branch', { body: graphql([node({ headRefOid: treeHead, number: 22, state: 'MERGED', headRefName: 'chat-branch', url: 'https://github.com/acme/app/pull/22' })]) });
+        gh.reply('feature', {
+            body: graphql([node({ headRefOid: head, number: 21, url: 'https://github.com/acme/app/pull/21' })]),
+        });
+        gh.reply('chat-branch', {
+            body: graphql([
+                node({
+                    headRefOid: treeHead,
+                    number: 22,
+                    state: 'MERGED',
+                    headRefName: 'chat-branch',
+                    url: 'https://github.com/acme/app/pull/22',
+                }),
+            ]),
+        });
 
-        const own = await json<Extract<GitPullRequestInfo, { isRepository: true }>>(await h.fetch(`${ base }?folderId=${ folderId }`));
-        const inTree = await json<Extract<GitPullRequestInfo, { isRepository: true }>>(await h.fetch(`${ base }?folderId=${ folderId }&workspaceId=${ workspaceId }`));
+        const own = await json<Extract<GitPullRequestInfo, { isRepository: true }>>(
+            await h.fetch(`${base}?folderId=${folderId}`)
+        );
+        const inTree = await json<Extract<GitPullRequestInfo, { isRepository: true }>>(
+            await h.fetch(`${base}?folderId=${folderId}&workspaceId=${workspaceId}`)
+        );
 
-        expect(own).toMatchObject({ isRepository: true, access: 'ready', repo: { host: 'github.com', owner: 'acme', name: 'app' }, pullRequest: { number: 21, state: 'open', head: 'feature' } });
-        expect(inTree).toMatchObject({ isRepository: true, access: 'ready', pullRequest: { number: 22, state: 'merged', head: 'chat-branch' } });
+        expect(own).toMatchObject({
+            isRepository: true,
+            access: 'ready',
+            repo: { host: 'github.com', owner: 'acme', name: 'app' },
+            pullRequest: { number: 21, state: 'open', head: 'feature' },
+        });
+        expect(inTree).toMatchObject({
+            isRepository: true,
+            access: 'ready',
+            pullRequest: { number: 22, state: 'merged', head: 'chat-branch' },
+        });
         expect(gh.reads()).toEqual(['feature', 'chat-branch']);
 
-        expect((await fetch(`${ h.url }${ base }?folderId=${ folderId }`)).status).toBe(401);
+        expect((await fetch(`${h.url}${base}?folderId=${folderId}`)).status).toBe(401);
         expect((await h.fetch(base)).status).toBe(400);
-        expect((await h.fetch(`${ base }?folderId=fld_unknown`)).status).toBe(404);
-        expect((await h.fetch(`/v1/projects/prj_unknown/git/pull-request?folderId=${ folderId }`)).status).toBe(404);
-        expect((await h.fetch(`${ base }?folderId=${ folderId }&workspaceId=wks_unknown`)).status).toBe(404);
+        expect((await h.fetch(`${base}?folderId=fld_unknown`)).status).toBe(404);
+        expect((await h.fetch(`/v1/projects/prj_unknown/git/pull-request?folderId=${folderId}`)).status).toBe(404);
+        expect((await h.fetch(`${base}?folderId=${folderId}&workspaceId=wks_unknown`)).status).toBe(404);
 
         h.store.db.query('UPDATE workspaces SET ready = 0 WHERE id = ?').run(workspaceId);
-        expect((await h.fetch(`${ base }?folderId=${ folderId }&workspaceId=${ workspaceId }`)).status).toBe(503);
+        expect((await h.fetch(`${base}?folderId=${folderId}&workspaceId=${workspaceId}`)).status).toBe(503);
         h.store.db.query('UPDATE workspaces SET ready = 1 WHERE id = ?').run(workspaceId);
 
         rmSync(tree, { recursive: true });
-        expect((await h.fetch(`${ base }?folderId=${ folderId }&workspaceId=${ workspaceId }`)).status).toBe(503);
+        expect((await h.fetch(`${base}?folderId=${folderId}&workspaceId=${workspaceId}`)).status).toBe(503);
     });
 
     test('says a folder that is no repository is none, a machine without gh is no_gh, and a gh that fails is unavailable with its reason', async () => {
@@ -1236,26 +1532,46 @@ withStandIn('GET /v1/projects/:id/git/pull-request', () => {
         const { path } = repoOn();
         const { project } = h.ok('project.add', { folders: [plain, path] });
         const [plainId, repoId] = project.folders.map((folder: { id: string }) => folder.id);
-        const base = `/v1/projects/${ project.id }/git/pull-request`;
+        const base = `/v1/projects/${project.id}/git/pull-request`;
 
-        expect(await json<GitPullRequestInfo>(await h.fetch(`${ base }?folderId=${ plainId }`))).toEqual({ isRepository: false });
+        expect(await json<GitPullRequestInfo>(await h.fetch(`${base}?folderId=${plainId}`))).toEqual({
+            isRepository: false,
+        });
 
         gh.reply('feature', { stderr: 'gh: Bad gateway (HTTP 502)', code: 1 });
 
-        const failed = await h.fetch(`${ base }?folderId=${ repoId }`);
+        const failed = await h.fetch(`${base}?folderId=${repoId}`);
 
         expect(failed.status).toBe(503);
-        expect(await json(failed)).toMatchObject({ ok: false, error: { code: 'unavailable', message: 'GitHub didn\'t answer' } });
+        expect(await json(failed)).toMatchObject({
+            ok: false,
+            error: { code: 'unavailable', message: "GitHub didn't answer" },
+        });
 
         await h.stop();
-        h = await startHarness({}, { pullRequests: new PullRequests({ env: () => ({ PATH: tempDir('empty-path') }), fallbackPaths: [], now: () => now }) });
+        h = await startHarness(
+            {},
+            {
+                pullRequests: new PullRequests({
+                    env: () => ({ PATH: tempDir('empty-path') }),
+                    fallbackPaths: [],
+                    now: () => now,
+                }),
+            }
+        );
 
         const second = h.ok('project.add', { folders: [path] }).project;
 
-        expect(await json<GitPullRequestInfo>(await h.fetch(`/v1/projects/${ second.id }/git/pull-request?folderId=${ second.folders[0].id }`))).toEqual({ isRepository: true, access: 'no_gh', repo: { host: 'github.com', owner: 'acme', name: 'app' } });
+        expect(
+            await json<GitPullRequestInfo>(
+                await h.fetch(`/v1/projects/${second.id}/git/pull-request?folderId=${second.folders[0].id}`)
+            )
+        ).toEqual({ isRepository: true, access: 'no_gh', repo: { host: 'github.com', owner: 'acme', name: 'app' } });
 
         // The routes of the local git answer on this machine all the same.
-        expect((await h.fetch(`/v1/projects/${ second.id }/git/status?folderId=${ second.folders[0].id }`)).status).toBe(200);
+        expect((await h.fetch(`/v1/projects/${second.id}/git/status?folderId=${second.folders[0].id}`)).status).toBe(
+            200
+        );
     });
 
     test('gives the status, the changes and the file reads the base of the pull request that was found, and never asks gh itself', async () => {
@@ -1273,17 +1589,25 @@ withStandIn('GET /v1/projects/:id/git/pull-request', () => {
 
         const { project } = h.ok('project.add', { folders: [path] });
         const folderId = project.folders[0].id as string;
-        const base = `/v1/projects/${ project.id }/git`;
-        const query = `?folderId=${ folderId }`;
-        const baseOf = async () => (await json<Extract<GitStatus, { isRepository: true }>>(await h.fetch(`${ base }/status${ query }`))).base;
-        const changed = async () => (await json<{ files: Array<{ path: string }> }>(await h.fetch(`${ base }/changes${ query }&scope=all`))).files.map(file => file.path);
+        const base = `/v1/projects/${project.id}/git`;
+        const query = `?folderId=${folderId}`;
+        const baseOf = async () =>
+            (await json<Extract<GitStatus, { isRepository: true }>>(await h.fetch(`${base}/status${query}`))).base;
+        const changed = async () =>
+            (
+                await json<{ files: Array<{ path: string }> }>(await h.fetch(`${base}/changes${query}&scope=all`))
+            ).files.map(file => file.path);
 
         // Nothing has asked GitHub: the folder's own base, which is `main`, the default branch of the repository.
         expect(await baseOf()).toMatchObject({ state: 'ready', name: 'main', ahead: 2 });
         expect(await changed()).toEqual(['dev.txt', 'feature.txt']);
 
-        gh.reply('feature', { body: graphql([node({ baseRefName: 'dev', headRefOid: git(path, 'rev-parse', 'HEAD') })]) });
-        expect(await json(await h.fetch(`${ base }/pull-request${ query }`))).toMatchObject({ pullRequest: { number: 7, base: 'dev' } });
+        gh.reply('feature', {
+            body: graphql([node({ baseRefName: 'dev', headRefOid: git(path, 'rev-parse', 'HEAD') })]),
+        });
+        expect(await json(await h.fetch(`${base}/pull-request${query}`))).toMatchObject({
+            pullRequest: { number: 7, base: 'dev' },
+        });
 
         const reads = gh.calls().length;
 
@@ -1297,16 +1621,27 @@ withStandIn('GET /v1/projects/:id/git/pull-request', () => {
         git(path, 'checkout', '-q', 'feature');
         expect(await baseOf()).toMatchObject({ name: 'dev', ahead: 1 });
 
-        expect(await json(await h.fetch(`${ base }/file${ query }&scope=all&path=feature.txt`))).toMatchObject({ state: 'text', modified: 'feature\n' });
-        expect((await h.fetch(`${ base }/file${ query }&scope=all&path=dev.txt`)).status).toBe(404);
+        expect(await json(await h.fetch(`${base}/file${query}&scope=all&path=feature.txt`))).toMatchObject({
+            state: 'text',
+            modified: 'feature\n',
+        });
+        expect((await h.fetch(`${base}/file${query}&scope=all&path=dev.txt`)).status).toBe(404);
         expect(gh.calls()).toHaveLength(reads);
 
         // The pull request merged and the branch went on: no pull request, and the folder's own base again.
-        gh.reply('feature', { body: graphql([node({ baseRefName: 'dev', state: 'MERGED', headRefOid: git(path, 'rev-parse', 'HEAD') })]) });
+        gh.reply('feature', {
+            body: graphql([node({ baseRefName: 'dev', state: 'MERGED', headRefOid: git(path, 'rev-parse', 'HEAD') })]),
+        });
         now += 20_000;
         commitMore(path, 'after.txt');
-        expect(await json<GitPullRequestInfo>(await h.fetch(`${ base }/pull-request${ query }`))).toEqual({ isRepository: true, access: 'ready', repo: { host: 'github.com', owner: 'acme', name: 'app' } });
+        expect(await json<GitPullRequestInfo>(await h.fetch(`${base}/pull-request${query}`))).toEqual({
+            isRepository: true,
+            access: 'ready',
+            repo: { host: 'github.com', owner: 'acme', name: 'app' },
+        });
         expect(await baseOf()).toMatchObject({ name: 'main', ahead: 3 });
-        expect(await json(await h.fetch(`${ base }/file${ query }&scope=all&path=dev.txt`))).toMatchObject({ state: 'text' });
+        expect(await json(await h.fetch(`${base}/file${query}&scope=all&path=dev.txt`))).toMatchObject({
+            state: 'text',
+        });
     });
 });

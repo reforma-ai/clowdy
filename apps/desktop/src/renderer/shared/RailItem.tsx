@@ -24,20 +24,31 @@ export interface RailItemProps {
 }
 
 /** An item of a rail, the column of a glyph tile and a label under it: the window's left rail and the side panel's right one are made of these. */
-export function RailItem({ label, icon: Icon, size, current, accent, disabled, tooltip, tooltipPlacement = 'right', className, onPress }: RailItemProps) {
+export function RailItem({
+    label,
+    icon: Icon,
+    size,
+    current,
+    accent,
+    disabled,
+    tooltip,
+    tooltipPlacement = 'right',
+    className,
+    onPress,
+}: RailItemProps) {
     return (
-        <Tooltip content={ tooltip } placement={ tooltipPlacement }>
+        <Tooltip content={tooltip} placement={tooltipPlacement}>
             <button
                 type="button"
-                className={ cn(styles.item, accent && styles.accent, className) }
-                disabled={ disabled }
-                aria-current={ current ? 'page' : undefined }
-                onClick={ onPress }
+                className={cn(styles.item, accent && styles.accent, className)}
+                disabled={disabled}
+                aria-current={current ? 'page' : undefined}
+                onClick={onPress}
             >
-                <span className={ styles.glyph }>
-                    <Icon width={ size } height={ size } aria-hidden />
+                <span className={styles.glyph}>
+                    <Icon width={size} height={size} aria-hidden />
                 </span>
-                <span className={ styles.label }>{ label }</span>
+                <span className={styles.label}>{label}</span>
             </button>
         </Tooltip>
     );

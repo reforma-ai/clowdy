@@ -131,7 +131,10 @@
         border: 1px solid var(--clowdy-tag-count-border);
         background-color: var(--clowdy-tag-count-bg);
         color: var(--clowdy-tag-count-color);
-        margin-left: calc((var(--clowdy-tag-padding-inline) * -1) + ((var(--clowdy-tag-height) - var(--clowdy-tag-count-size)) / 2));
+        margin-left: calc(
+            (var(--clowdy-tag-padding-inline) * -1) +
+            ((var(--clowdy-tag-height) - var(--clowdy-tag-count-size)) / 2)
+        );
     }
 
     .removeButton {

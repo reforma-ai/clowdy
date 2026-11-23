@@ -14,9 +14,9 @@ export type ModalInstance = Modal<ModalOptions>;
 export type ModalOptionsRaw = Partial<ModalOptions>;
 export type ModalStore = Record<string, any> | Map<any, any>;
 export type ModalComponentProps = Record<string, any>;
-export type ModalComponent<Props extends ModalComponentProps = any>
-    = | ComponentType<Props & { modal: ModalInstance }>
-      | ReactElement;
+export type ModalComponent<Props extends ModalComponentProps = any> =
+    | ComponentType<Props & { modal: ModalInstance }>
+    | ReactElement;
 
 export interface ModalOptions<Props extends ModalComponentProps = any> {
     getOptions?: (modal: ModalInstance) => Partial<ModalOptions>;
@@ -99,11 +99,16 @@ export interface ModalOptions<Props extends ModalComponentProps = any> {
     initialResponsiveMode?: EvaluableValue<ModalResponsiveMode | null>;
 
     // Responsive modes metadata for UI rendering
-    responsiveModes?: Partial<Record<ModalResponsiveMode, {
-        icon: string;
-        iconSize: number;
-        tip: string;
-    }>>;
+    responsiveModes?: Partial<
+        Record<
+            ModalResponsiveMode,
+            {
+                icon: string;
+                iconSize: number;
+                tip: string;
+            }
+        >
+    >;
 
     // Lifecycle callbacks (called in order):
     // onInit - Called once after modal is initialized (DOM created, events bound) but before opening. Use for setup logic.

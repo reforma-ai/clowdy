@@ -42,7 +42,11 @@ export function openManageWorktrees({ root, ...props }: ManageWorktreesProps): v
         closeOnEscape: true,
         closeButton: true,
         handle: false,
-        component: <RootStoreProvider value={ root }><ManageWorktrees { ...props } /></RootStoreProvider>,
+        component: (
+            <RootStoreProvider value={root}>
+                <ManageWorktrees {...props} />
+            </RootStoreProvider>
+        ),
     });
 }
 
@@ -51,26 +55,35 @@ function ManageWorktrees({ projectId, folderId }: Omit<ManageWorktreesProps, 'ro
     const { modal } = useModalContext();
     const { folders, failed, reload } = useProjectWorktrees(projectId);
     const project = root.projects.find(candidate => candidate.id === projectId);
-    const groups = useMemo(() => (folders && project ? repositoryGroups(folders, project.folders) : undefined), [folders, project]);
+    const groups = useMemo(
+        () => (folders && project ? repositoryGroups(folders, project.folders) : undefined),
+        [folders, project]
+    );
     const list = useRef<HTMLDivElement>(null);
     const scrolled = useRef(false);
 
     // The window belongs to one project, which it can be opened for from Settings without the window showing it: it only closes when that project is removed, and there is
     // nothing here to manage then. Its rows read the project by its id, not the window's selected one.
-    useEffect(() => reaction(
-        () => root.projects.some(candidate => candidate.id === projectId),
-        (isHere) => {
-            if (!isHere) modal.cancel();
-        },
-        { fireImmediately: true }
-    ), [root, projectId, modal]);
+    useEffect(
+        () =>
+            reaction(
+                () => root.projects.some(candidate => candidate.id === projectId),
+                isHere => {
+                    if (!isHere) modal.cancel();
+                },
+                { fireImmediately: true }
+            ),
+        [root, projectId, modal]
+    );
 
     // Once, when the list first arrives: the folder the dialog was opened for comes into view. A later read does not move the person's scroll.
     useEffect(() => {
         if (scrolled.current || !groups || folderId === undefined) return;
 
         scrolled.current = true;
-        [...list.current?.querySelectorAll<HTMLElement>('[data-folder-id]') ?? []].find(section => section.dataset.folderId === folderId)?.scrollIntoView({ block: 'start' });
+        [...(list.current?.querySelectorAll<HTMLElement>('[data-folder-id]') ?? [])]
+            .find(section => section.dataset.folderId === folderId)
+            ?.scrollIntoView({ block: 'start' });
     }, [groups, folderId]);
 
     if (!project) return null;
@@ -79,16 +92,23 @@ function ManageWorktrees({ projectId, folderId }: Omit<ManageWorktreesProps, 'ro
     // closing animation, to the button that opened it.
     const leave = () => void modal.cancel({ restoreFocus: false });
     // Opened from Settings, the window may be for a project the app does not show: the person is taken to it first, with Settings shut, in one step of the history.
-    const show = () => runInAction(() => {
-        root.selectProject(projectId);
-        root.ui.closeSettings();
-    });
+    const show = () =>
+        runInAction(() => {
+            root.selectProject(projectId);
+            root.ui.closeSettings();
+        });
 
     const actions: WorktreeRowActions = {
         onNewChat: (folder, worktree) => {
             show();
             // The main folder's chat has no folder of its own: it follows the main folder, as the sidebar's New chat does. The folder's own checkout is no worktree to choose.
-            root.ui.forProject(projectId).openDraft([], folder.id === mainFolder(project).id ? null : folder.id, worktree.main ? null : { mode: 'existing', path: worktree.path });
+            root.ui
+                .forProject(projectId)
+                .openDraft(
+                    [],
+                    folder.id === mainFolder(project).id ? null : folder.id,
+                    worktree.main ? null : { mode: 'existing', path: worktree.path }
+                );
             leave();
         },
         onOpenChat: (chat: WorktreeChat) => {
@@ -100,34 +120,59 @@ function ManageWorktrees({ projectId, folderId }: Omit<ManageWorktreesProps, 'ro
 
             leave();
         },
-        onRemove: (group: FolderWorktrees, worktree: WorktreeInfo) => openRemoveWorktree({ root, projectId, group, worktree, reload }),
+        onRemove: (group: FolderWorktrees, worktree: WorktreeInfo) =>
+            openRemoveWorktree({ root, projectId, group, worktree, reload }),
     };
 
     return (
-        <div className={ styles.dialog }>
-            <div className={ styles.heading }>
-                <Text variant="heading-3" truncate>Manage worktrees</Text>
-                <Text variant="md" color="secondary">Each folder's worktrees and the chats working in them</Text>
+        <div className={styles.dialog}>
+            <div className={styles.heading}>
+                <Text variant="heading-3" truncate>
+                    Manage worktrees
+                </Text>
+                <Text variant="md" color="secondary">
+                    Each folder's worktrees and the chats working in them
+                </Text>
             </div>
 
-            { failed && groups && (
-                <div className={ styles.notice }>
-                    <Text variant="sm" color="warning" role="status">Couldn't refresh the list</Text>
-                    <Button size="xs" onPress={ () => void reload() }>Try again</Button>
+            {failed && groups && (
+                <div className={styles.notice}>
+                    <Text variant="sm" color="warning" role="status">
+                        Couldn't refresh the list
+                    </Text>
+                    <Button size="xs" onPress={() => void reload()}>
+                        Try again
+                    </Button>
                 </div>
-            ) }
+            )}
 
-            <div ref={ list } className={ styles.groups }>
-                { groups === undefined && !failed && <WorktreesSkeleton /> }
-                { groups === undefined && failed && (
-                    <div className={ styles.message }>
-                        <Text color="danger" role="alert">Couldn't load the worktrees</Text>
-                        <Button size="sm" onPress={ () => void reload() }>Try again</Button>
+            <div ref={list} className={styles.groups}>
+                {groups === undefined && !failed && <WorktreesSkeleton />}
+                {groups === undefined && failed && (
+                    <div className={styles.message}>
+                        <Text color="danger" role="alert">
+                            Couldn't load the worktrees
+                        </Text>
+                        <Button size="sm" onPress={() => void reload()}>
+                            Try again
+                        </Button>
                     </div>
-                ) }
-                { groups?.length === 0 && <Text color="secondary" className={ styles.message }>No folder of this project is a git repository</Text> }
-                <For each={ groups ?? [] }>
-                    {({ group, folder }) => <WorktreeGroup key={ group.folderId } projectId={ projectId } group={ group } folder={ folder } { ...actions } />}
+                )}
+                {groups?.length === 0 && (
+                    <Text color="secondary" className={styles.message}>
+                        No folder of this project is a git repository
+                    </Text>
+                )}
+                <For each={groups ?? []}>
+                    {({ group, folder }) => (
+                        <WorktreeGroup
+                            key={group.folderId}
+                            projectId={projectId}
+                            group={group}
+                            folder={folder}
+                            {...actions}
+                        />
+                    )}
                 </For>
             </div>
         </div>

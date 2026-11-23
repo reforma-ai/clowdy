@@ -28,9 +28,9 @@ export interface McpBridgeIo {
 /** Serves MCP until `input` ends. */
 export async function runMcpBridge(io: McpBridgeIo): Promise<void> {
     const base = io.env.CLOWDY_BRIDGE_URL;
-    const headers = { authorization: `Bearer ${ io.env.CLOWDY_BRIDGE_TOKEN }`, 'content-type': 'application/json' };
+    const headers = { authorization: `Bearer ${io.env.CLOWDY_BRIDGE_TOKEN}`, 'content-type': 'application/json' };
     const calls = new Map<number | string, AbortController>();
-    const send = (message: object) => io.write(`${ JSON.stringify({ jsonrpc: '2.0', ...message }) }\n`);
+    const send = (message: object) => io.write(`${JSON.stringify({ jsonrpc: '2.0', ...message })}\n`);
     const reply = (id: number | string, result: object) => send({ id, result });
     const fail = (id: number | string, code: number, message: string) => send({ id, error: { code, message } });
 
@@ -56,7 +56,8 @@ export async function runMcpBridge(io: McpBridgeIo): Promise<void> {
         switch (method) {
             case 'initialize':
                 reply(id, {
-                    protocolVersion: typeof params.protocolVersion === 'string' ? params.protocolVersion : FALLBACK_PROTOCOL,
+                    protocolVersion:
+                        typeof params.protocolVersion === 'string' ? params.protocolVersion : FALLBACK_PROTOCOL,
                     capabilities: { tools: {} },
                     serverInfo: { name: 'clowdy', version: '1' },
                 });
@@ -65,15 +66,15 @@ export async function runMcpBridge(io: McpBridgeIo): Promise<void> {
                 reply(id, {});
                 break;
             case 'tools/list': {
-                const response = await io.fetch(`${ base }/tools`, { headers });
+                const response = await io.fetch(`${base}/tools`, { headers });
 
                 if (!response.ok) {
-                    fail(id, -32603, `The daemon refused the tool list (${ response.status })`);
+                    fail(id, -32603, `The daemon refused the tool list (${response.status})`);
 
                     return;
                 }
 
-                reply(id, await response.json() as object);
+                reply(id, (await response.json()) as object);
                 break;
             }
             case 'tools/call': {
@@ -82,31 +83,40 @@ export async function runMcpBridge(io: McpBridgeIo): Promise<void> {
                 calls.set(id, controller);
 
                 try {
-                    const response = await io.fetch(`${ base }/call`, { method: 'POST', headers, body: JSON.stringify({ name: params.name, arguments: params.arguments }), signal: controller.signal, timeout: false });
+                    const response = await io.fetch(`${base}/call`, {
+                        method: 'POST',
+                        headers,
+                        body: JSON.stringify({ name: params.name, arguments: params.arguments }),
+                        signal: controller.signal,
+                        timeout: false,
+                    });
 
                     if (!response.ok) {
-                        fail(id, -32603, `The daemon refused the call (${ response.status })`);
+                        fail(id, -32603, `The daemon refused the call (${response.status})`);
 
                         return;
                     }
 
-                    const { isError, text } = await response.json() as { isError: boolean; text: string };
+                    const { isError, text } = (await response.json()) as { isError: boolean; text: string };
 
                     reply(id, { content: [{ type: 'text', text }], ...(isError && { isError: true }) });
-                }
-                catch (error) {
+                } catch (error) {
                     if (!controller.signal.aborted) {
-                        reply(id, { content: [{ type: 'text', text: `The daemon could not be reached: ${ (error as Error).message }` }], isError: true });
+                        reply(id, {
+                            content: [
+                                { type: 'text', text: `The daemon could not be reached: ${(error as Error).message}` },
+                            ],
+                            isError: true,
+                        });
                     }
-                }
-                finally {
+                } finally {
                     calls.delete(id);
                 }
 
                 break;
             }
             default:
-                fail(id, -32601, `Method not found: ${ method }`);
+                fail(id, -32601, `Method not found: ${method}`);
         }
     }
 
@@ -130,12 +140,14 @@ export async function runMcpBridge(io: McpBridgeIo): Promise<void> {
 
             try {
                 message = JSON.parse(line) as Message;
-            }
-            catch {
+            } catch {
                 continue;
             }
 
-            const task = handle(message).catch(error => message.id !== undefined && fail(message.id, -32603, (error as Error).message)).then(() => undefined).finally(() => pending.delete(task));
+            const task = handle(message)
+                .catch(error => message.id !== undefined && fail(message.id, -32603, (error as Error).message))
+                .then(() => undefined)
+                .finally(() => pending.delete(task));
 
             pending.add(task);
         }

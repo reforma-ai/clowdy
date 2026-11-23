@@ -1,4 +1,14 @@
-import { branchPrefixOf, branchPrefixProblem, COMMIT_MESSAGE_SETTING_ID, DOC_SOURCES, folderNames, MAX_GIT_REVISION_LENGTH, MAX_GIT_VIEWED_PATH_LENGTH, PERMISSION_PRESET_NAMES, PERMISSION_PRESETS } from '@clowdy/protocol';
+import {
+    branchPrefixOf,
+    branchPrefixProblem,
+    COMMIT_MESSAGE_SETTING_ID,
+    DOC_SOURCES,
+    folderNames,
+    MAX_GIT_REVISION_LENGTH,
+    MAX_GIT_VIEWED_PATH_LENGTH,
+    PERMISSION_PRESET_NAMES,
+    PERMISSION_PRESETS,
+} from '@clowdy/protocol';
 
 import type {
     AgentInfo,
@@ -106,19 +116,31 @@ export interface FixtureAttachment {
 export type FixtureSkill = SkillEntry & { projectId?: ProjectId };
 
 /** The daemon's estimate of what a skill's line costs: `skills/catalog.ts` in the daemon. */
-export const estimateSkillTokens = (name: string, description: string) => 16 + Math.ceil((name.length + description.length) / 4);
+export const estimateSkillTokens = (name: string, description: string) =>
+    16 + Math.ceil((name.length + description.length) / 4);
 
 /** What the engine that sees the most enabled skills pays, as the daemon reports it. */
 export function catalogTokens(entries: SkillEntry[]): number {
     const engines: SkillEngine[] = ['claude', 'codex'];
 
-    return Math.max(...engines.map(engine => entries.filter(entry => entry.enabled && entry.engines.includes(engine)).reduce((sum, entry) => sum + entry.tokens, 0)));
+    return Math.max(
+        ...engines.map(engine =>
+            entries
+                .filter(entry => entry.enabled && entry.engines.includes(engine))
+                .reduce((sum, entry) => sum + entry.tokens, 0)
+        )
+    );
 }
 
 function fixtureSkills(projectId: ProjectId): FixtureSkill[] {
     const both: SkillEngine[] = ['claude', 'codex'];
-    const skill = (source: SkillEntry['source'], name: string, description: string, rest: Partial<FixtureSkill> = {}): FixtureSkill => ({
-        id: `${ source }:${ name }`,
+    const skill = (
+        source: SkillEntry['source'],
+        name: string,
+        description: string,
+        rest: Partial<FixtureSkill> = {}
+    ): FixtureSkill => ({
+        id: `${source}:${name}`,
         name,
         source,
         description,
@@ -129,17 +151,77 @@ function fixtureSkills(projectId: ProjectId): FixtureSkill[] {
     });
 
     return [
-        skill('system', 'clowdy:autopilot', 'How to work without asking the user. Sort every fork, decide significant ones by explicit criteria and record them, and report only true blockers.'),
-        skill('system', 'clowdy:docs', 'The contract for a project\'s documents: layout, file names, facts versus plans, decisions and how to supersede them, and how to edit them safely.'),
-        skill('system', 'clowdy:orchestrate', 'Entry skill of every chat: classify the message, plan a task graph, do the work yourself or with your own sub-agents, verify the result with commands, and report briefly.'),
-        skill('system', 'clowdy:scaffold', 'Start a new application from nothing: product statement, stack, one verified skeleton, then the first task graph.'),
-        skill('system', 'clowdy:semi-manual', 'Involve the user in the decisions that matter through question cards, then build with autopilot discipline.'),
-        skill('user', 'user:deploy', 'Build the app, run every check and push it to the staging server when asked to ship.', { path: '/Users/dev/.claude/skills/deploy' }),
-        skill('user', 'user:release-notes', 'Write release notes in plain words from the merged work since the last release.', { path: '/Users/dev/.agents/skills/release-notes' }),
-        skill('user', 'user:sql-review', 'Review a database migration for locks, missing indexes and data loss before it runs.', { path: '/Users/dev/.claude/skills/sql-review', enabled: false }),
-        skill('user', 'user:brand-voice', 'Keep every message, email and screen text in the company voice: short, warm, no jargon.', { path: '/Users/dev/.agents/skills/brand-voice' }),
-        skill('project', 'booking-rules', 'The pricing and cancellation rules of the booking service, for any change that touches a price.', { id: 'project:.claude/skills/booking-rules', path: '/Users/dev/car-rental/.claude/skills/booking-rules', engines: ['claude'], projectId }),
-        skill('project', 'fleet-import', 'Import the fleet spreadsheet from the partner garage and report the rows it could not read.', { id: 'project:.agents/skills/fleet-import', path: '/Users/dev/car-rental/.agents/skills/fleet-import', engines: ['codex'], projectId }),
+        skill(
+            'system',
+            'clowdy:autopilot',
+            'How to work without asking the user. Sort every fork, decide significant ones by explicit criteria and record them, and report only true blockers.'
+        ),
+        skill(
+            'system',
+            'clowdy:docs',
+            "The contract for a project's documents: layout, file names, facts versus plans, decisions and how to supersede them, and how to edit them safely."
+        ),
+        skill(
+            'system',
+            'clowdy:orchestrate',
+            'Entry skill of every chat: classify the message, plan a task graph, do the work yourself or with your own sub-agents, verify the result with commands, and report briefly.'
+        ),
+        skill(
+            'system',
+            'clowdy:scaffold',
+            'Start a new application from nothing: product statement, stack, one verified skeleton, then the first task graph.'
+        ),
+        skill(
+            'system',
+            'clowdy:semi-manual',
+            'Involve the user in the decisions that matter through question cards, then build with autopilot discipline.'
+        ),
+        skill(
+            'user',
+            'user:deploy',
+            'Build the app, run every check and push it to the staging server when asked to ship.',
+            { path: '/Users/dev/.claude/skills/deploy' }
+        ),
+        skill(
+            'user',
+            'user:release-notes',
+            'Write release notes in plain words from the merged work since the last release.',
+            { path: '/Users/dev/.agents/skills/release-notes' }
+        ),
+        skill(
+            'user',
+            'user:sql-review',
+            'Review a database migration for locks, missing indexes and data loss before it runs.',
+            { path: '/Users/dev/.claude/skills/sql-review', enabled: false }
+        ),
+        skill(
+            'user',
+            'user:brand-voice',
+            'Keep every message, email and screen text in the company voice: short, warm, no jargon.',
+            { path: '/Users/dev/.agents/skills/brand-voice' }
+        ),
+        skill(
+            'project',
+            'booking-rules',
+            'The pricing and cancellation rules of the booking service, for any change that touches a price.',
+            {
+                id: 'project:.claude/skills/booking-rules',
+                path: '/Users/dev/car-rental/.claude/skills/booking-rules',
+                engines: ['claude'],
+                projectId,
+            }
+        ),
+        skill(
+            'project',
+            'fleet-import',
+            'Import the fleet spreadsheet from the partner garage and report the rows it could not read.',
+            {
+                id: 'project:.agents/skills/fleet-import',
+                path: '/Users/dev/car-rental/.agents/skills/fleet-import',
+                engines: ['codex'],
+                projectId,
+            }
+        ),
     ];
 }
 
@@ -166,27 +248,121 @@ function fixtureAgentModels(now: number): Record<string, AgentModels> {
             state: 'ok',
             fetchedAt: now,
             models: [
-                { id: 'default', name: 'Default (recommended)', description: 'Opus 5.5 · Best for complex work', isDefault: true, resolvedId: 'claude-opus-5-5', efforts: CLAUDE_EFFORTS, featured: true },
-                { id: 'opus', name: 'Opus 5.5', description: 'Best for complex work', resolvedId: 'claude-opus-5-5', efforts: CLAUDE_EFFORTS, featured: true },
-                { id: 'fable', name: 'Fable 5.2', description: 'Deep reasoning and writing', resolvedId: 'claude-fable-5-2', efforts: CLAUDE_EFFORTS, featured: true },
-                { id: 'sonnet', name: 'Sonnet 5.5', description: 'Best for everyday tasks', resolvedId: 'claude-sonnet-5-5', efforts: CLAUDE_EFFORTS, featured: true },
-                { id: 'haiku', name: 'Haiku 5.5', description: 'Fastest for quick answers', resolvedId: 'claude-haiku-5-5', efforts: CLAUDE_EFFORTS, featured: true },
-                { id: 'claude-opus-4-6', name: 'Opus 4.6', description: 'Previous generation', efforts: ['low', 'medium', 'high', 'max'] },
-                { id: 'claude-haiku-4-5-20251001', name: 'Haiku 4.5', description: 'Small and quick, with no reasoning control' },
+                {
+                    id: 'default',
+                    name: 'Default (recommended)',
+                    description: 'Opus 5.5 · Best for complex work',
+                    isDefault: true,
+                    resolvedId: 'claude-opus-5-5',
+                    efforts: CLAUDE_EFFORTS,
+                    featured: true,
+                },
+                {
+                    id: 'opus',
+                    name: 'Opus 5.5',
+                    description: 'Best for complex work',
+                    resolvedId: 'claude-opus-5-5',
+                    efforts: CLAUDE_EFFORTS,
+                    featured: true,
+                },
+                {
+                    id: 'fable',
+                    name: 'Fable 5.2',
+                    description: 'Deep reasoning and writing',
+                    resolvedId: 'claude-fable-5-2',
+                    efforts: CLAUDE_EFFORTS,
+                    featured: true,
+                },
+                {
+                    id: 'sonnet',
+                    name: 'Sonnet 5.5',
+                    description: 'Best for everyday tasks',
+                    resolvedId: 'claude-sonnet-5-5',
+                    efforts: CLAUDE_EFFORTS,
+                    featured: true,
+                },
+                {
+                    id: 'haiku',
+                    name: 'Haiku 5.5',
+                    description: 'Fastest for quick answers',
+                    resolvedId: 'claude-haiku-5-5',
+                    efforts: CLAUDE_EFFORTS,
+                    featured: true,
+                },
+                {
+                    id: 'claude-opus-4-6',
+                    name: 'Opus 4.6',
+                    description: 'Previous generation',
+                    efforts: ['low', 'medium', 'high', 'max'],
+                },
+                {
+                    id: 'claude-haiku-4-5-20251001',
+                    name: 'Haiku 4.5',
+                    description: 'Small and quick, with no reasoning control',
+                },
             ],
         },
         codex: {
             state: 'ok',
             fetchedAt: now,
             models: [
-                { id: 'gpt-6.2-sol', name: 'GPT-6.2 Sol', description: 'Frontier model for coding and agentic work', isDefault: true, efforts: CODEX_EFFORTS, defaultEffort: 'low' },
-                { id: 'gpt-6-sol', name: 'GPT-6 Sol', description: 'The previous Sol', efforts: CODEX_EFFORTS, defaultEffort: 'medium' },
-                { id: 'gpt-6-luna', name: 'GPT-6 Luna', description: 'Smaller and faster', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], defaultEffort: 'medium' },
-                { id: 'gpt-6-mini', name: 'GPT-6 Mini', description: 'Quick answers, one reasoning level', efforts: ['medium'], defaultEffort: 'medium' },
-                { id: 'gpt-6-codex', name: 'GPT-6 Codex', description: 'Tuned for long coding sessions', efforts: ['low', 'medium', 'high', 'xhigh'], defaultEffort: 'medium' },
-                { id: 'gpt-5.5', name: 'GPT-5.5', description: 'The generation before GPT-6', efforts: ['low', 'medium', 'high', 'xhigh'], defaultEffort: 'medium' },
-                { id: 'gpt-5.5-mini', name: 'GPT-5.5 Mini', description: 'Quick and light', efforts: ['low', 'medium', 'high'], defaultEffort: 'low' },
-                { id: 'gpt-5.4', name: 'GPT-5.4', description: 'Kept for older work', efforts: ['low', 'medium', 'high'], defaultEffort: 'medium' },
+                {
+                    id: 'gpt-6.2-sol',
+                    name: 'GPT-6.2 Sol',
+                    description: 'Frontier model for coding and agentic work',
+                    isDefault: true,
+                    efforts: CODEX_EFFORTS,
+                    defaultEffort: 'low',
+                },
+                {
+                    id: 'gpt-6-sol',
+                    name: 'GPT-6 Sol',
+                    description: 'The previous Sol',
+                    efforts: CODEX_EFFORTS,
+                    defaultEffort: 'medium',
+                },
+                {
+                    id: 'gpt-6-luna',
+                    name: 'GPT-6 Luna',
+                    description: 'Smaller and faster',
+                    efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+                    defaultEffort: 'medium',
+                },
+                {
+                    id: 'gpt-6-mini',
+                    name: 'GPT-6 Mini',
+                    description: 'Quick answers, one reasoning level',
+                    efforts: ['medium'],
+                    defaultEffort: 'medium',
+                },
+                {
+                    id: 'gpt-6-codex',
+                    name: 'GPT-6 Codex',
+                    description: 'Tuned for long coding sessions',
+                    efforts: ['low', 'medium', 'high', 'xhigh'],
+                    defaultEffort: 'medium',
+                },
+                {
+                    id: 'gpt-5.5',
+                    name: 'GPT-5.5',
+                    description: 'The generation before GPT-6',
+                    efforts: ['low', 'medium', 'high', 'xhigh'],
+                    defaultEffort: 'medium',
+                },
+                {
+                    id: 'gpt-5.5-mini',
+                    name: 'GPT-5.5 Mini',
+                    description: 'Quick and light',
+                    efforts: ['low', 'medium', 'high'],
+                    defaultEffort: 'low',
+                },
+                {
+                    id: 'gpt-5.4',
+                    name: 'GPT-5.4',
+                    description: 'Kept for older work',
+                    efforts: ['low', 'medium', 'high'],
+                    defaultEffort: 'medium',
+                },
             ],
         },
         cursor: {
@@ -194,16 +370,51 @@ function fixtureAgentModels(now: number): Record<string, AgentModels> {
             fetchedAt: now,
             // Cursor's own order, and its models as families: Auto first, each family with the levels of its own option.
             models: [
-                { id: 'default', name: 'Auto', description: 'Cursor picks the model for each request', isDefault: true },
-                { id: 'grok-4.7', name: 'Grok 4.7', efforts: ['low', 'medium', 'high', 'xhigh'], defaultEffort: 'medium' },
-                { id: 'grok-4.6', name: 'Grok 4.6', efforts: ['low', 'medium', 'high', 'xhigh'], defaultEffort: 'medium' },
+                {
+                    id: 'default',
+                    name: 'Auto',
+                    description: 'Cursor picks the model for each request',
+                    isDefault: true,
+                },
+                {
+                    id: 'grok-4.7',
+                    name: 'Grok 4.7',
+                    efforts: ['low', 'medium', 'high', 'xhigh'],
+                    defaultEffort: 'medium',
+                },
+                {
+                    id: 'grok-4.6',
+                    name: 'Grok 4.6',
+                    efforts: ['low', 'medium', 'high', 'xhigh'],
+                    defaultEffort: 'medium',
+                },
                 { id: 'composer-2.5', name: 'Composer 2.5' },
                 { id: 'claude-opus-5-5', name: 'Claude Opus 5.5', efforts: CLAUDE_EFFORTS, defaultEffort: 'medium' },
                 { id: 'claude-opus-5', name: 'Claude Opus 5', efforts: CLAUDE_EFFORTS, defaultEffort: 'medium' },
-                { id: 'claude-opus-4-8', name: 'Claude Opus 4.8', efforts: ['low', 'medium', 'high', 'max'], defaultEffort: 'medium' },
-                { id: 'gemini-4-carbon', name: 'Gemini 4 Carbon', efforts: ['low', 'medium', 'high', 'xhigh'], defaultEffort: 'medium' },
-                { id: 'gpt-5.5', name: 'GPT-5.5', efforts: ['none', 'low', 'medium', 'high', 'extra-high'], defaultEffort: 'medium' },
-                { id: 'muse-wonder-1.0', name: 'Muse Wonder 1.0', efforts: ['low', 'medium', 'high', 'xhigh'], defaultEffort: 'medium' },
+                {
+                    id: 'claude-opus-4-8',
+                    name: 'Claude Opus 4.8',
+                    efforts: ['low', 'medium', 'high', 'max'],
+                    defaultEffort: 'medium',
+                },
+                {
+                    id: 'gemini-4-carbon',
+                    name: 'Gemini 4 Carbon',
+                    efforts: ['low', 'medium', 'high', 'xhigh'],
+                    defaultEffort: 'medium',
+                },
+                {
+                    id: 'gpt-5.5',
+                    name: 'GPT-5.5',
+                    efforts: ['none', 'low', 'medium', 'high', 'extra-high'],
+                    defaultEffort: 'medium',
+                },
+                {
+                    id: 'muse-wonder-1.0',
+                    name: 'Muse Wonder 1.0',
+                    efforts: ['low', 'medium', 'high', 'xhigh'],
+                    defaultEffort: 'medium',
+                },
             ],
         },
     };
@@ -211,15 +422,30 @@ function fixtureAgentModels(now: number): Record<string, AgentModels> {
 
 /** The presets of an agent whose provider has modes of its own, in the words of the real Claude Code and Codex providers; none chosen, `auto` is the default. */
 function modePresets(descriptions: Record<PermissionPresetId, string>): AgentPermissions {
-    return { presets: PERMISSION_PRESETS.map(id => ({ id, name: PERMISSION_PRESET_NAMES[id], description: descriptions[id] })), default: 'auto' };
+    return {
+        presets: PERMISSION_PRESETS.map(id => ({
+            id,
+            name: PERMISSION_PRESET_NAMES[id],
+            description: descriptions[id],
+        })),
+        default: 'auto',
+    };
 }
 
 /** The pair of an agent whose provider declares none: Clowdy asks, or allows everything; `full` is the default, as such an agent has always run. */
 function clientPresets(): AgentPermissions {
     return {
         presets: [
-            { id: 'ask', name: PERMISSION_PRESET_NAMES.ask, description: 'Clowdy asks you before the agent does anything it asks permission for' },
-            { id: 'full', name: PERMISSION_PRESET_NAMES.full, description: 'Clowdy allows everything the agent asks permission for' },
+            {
+                id: 'ask',
+                name: PERMISSION_PRESET_NAMES.ask,
+                description: 'Clowdy asks you before the agent does anything it asks permission for',
+            },
+            {
+                id: 'full',
+                name: PERMISSION_PRESET_NAMES.full,
+                description: 'Clowdy allows everything the agent asks permission for',
+            },
         ],
         default: 'full',
     };
@@ -255,18 +481,49 @@ function fixtureAgents(now: number): AgentInfo[] {
                 ],
             },
             settings: [
-                { id: 'memory', label: 'Memory', description: 'Let Claude Code read and write its own auto-memory in your runs', value: false, default: false },
-                { id: 'connectors', label: 'claude.ai connectors', description: 'Load the connectors of your claude.ai account (Drive, Docs and so on) into every run', value: false, default: false },
-                { id: 'subagents', label: 'Claude Code sub-agents', description: 'Let Claude Code start sub-agents of its own. Clowdy\'s agents are the better way to delegate work.', value: true, default: true },
-                { id: 'longContext', label: '1M context window', description: 'Use the 1M-token context window on the models that have one', value: true, default: true },
+                {
+                    id: 'memory',
+                    label: 'Memory',
+                    description: 'Let Claude Code read and write its own auto-memory in your runs',
+                    value: false,
+                    default: false,
+                },
+                {
+                    id: 'connectors',
+                    label: 'claude.ai connectors',
+                    description: 'Load the connectors of your claude.ai account (Drive, Docs and so on) into every run',
+                    value: false,
+                    default: false,
+                },
+                {
+                    id: 'subagents',
+                    label: 'Claude Code sub-agents',
+                    description:
+                        "Let Claude Code start sub-agents of its own. Clowdy's agents are the better way to delegate work.",
+                    value: true,
+                    default: true,
+                },
+                {
+                    id: 'longContext',
+                    label: '1M context window',
+                    description: 'Use the 1M-token context window on the models that have one',
+                    value: true,
+                    default: true,
+                },
                 // Off, as it is until the person turns it on; Codex's is on in the fixtures, so the Changes tab has its Generate button.
-                { id: COMMIT_MESSAGE_SETTING_ID, label: 'Commit messages', description: 'Send the changed files to Claude Code to write commit messages', value: false, default: false },
+                {
+                    id: COMMIT_MESSAGE_SETTING_ID,
+                    label: 'Commit messages',
+                    description: 'Send the changed files to Claude Code to write commit messages',
+                    value: false,
+                    default: false,
+                },
             ],
             permissions: modePresets({
-                'ask': 'Asks before every edit and command',
+                ask: 'Asks before every edit and command',
                 'accept-edits': 'Applies file edits, asks before commands and anything else',
-                'auto': 'Approves what its own check finds safe, asks about the rest',
-                'full': 'Never asks, edits any file and runs any command',
+                auto: 'Approves what its own check finds safe, asks about the rest',
+                full: 'Never asks, edits any file and runs any command',
             }),
         },
         {
@@ -292,12 +549,20 @@ function fixtureAgents(now: number): AgentInfo[] {
                 ],
             },
             // The only switch the fixture's Codex has: on, so the Changes tab shows its Generate button.
-            settings: [{ id: COMMIT_MESSAGE_SETTING_ID, label: 'Commit messages', description: 'Send the changed files to Codex to write commit messages', value: true, default: false }],
+            settings: [
+                {
+                    id: COMMIT_MESSAGE_SETTING_ID,
+                    label: 'Commit messages',
+                    description: 'Send the changed files to Codex to write commit messages',
+                    value: true,
+                    default: false,
+                },
+            ],
             permissions: modePresets({
-                'ask': 'Asks before editing files or using the network',
+                ask: 'Asks before editing files or using the network',
                 'accept-edits': 'Edits workspace files, asks before going outside them or using the network',
-                'auto': 'Reviews risky actions itself, asks about the rest',
-                'full': 'No sandbox, never asks',
+                auto: 'Reviews risky actions itself, asks about the rest',
+                full: 'No sandbox, never asks',
             }),
         },
         {
@@ -332,12 +597,27 @@ export const DEFAULT_STATUSES: TaskStatus[] = [
     { id: 'canceled', name: 'Canceled', category: 'canceled' },
 ];
 
-const BOOKING_SKETCH = '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200" viewBox="0 0 320 200"><rect width="320" height="200" fill="#f3efe9"/><rect x="24" y="24" width="272" height="34" rx="8" fill="#fff" stroke="#d8d0c4"/><rect x="24" y="72" width="132" height="34" rx="8" fill="#fff" stroke="#d8d0c4"/><rect x="164" y="72" width="132" height="34" rx="8" fill="#fff" stroke="#d8d0c4"/><rect x="24" y="130" width="272" height="44" rx="10" fill="#fa8854"/></svg>';
-const BOOKING_LOG = 'TypeError: Cannot read properties of undefined (reading \'price\')\n    at BookingForm (src/booking/BookingForm.tsx:42:18)\n';
+const BOOKING_SKETCH =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200" viewBox="0 0 320 200"><rect width="320" height="200" fill="#f3efe9"/><rect x="24" y="24" width="272" height="34" rx="8" fill="#fff" stroke="#d8d0c4"/><rect x="24" y="72" width="132" height="34" rx="8" fill="#fff" stroke="#d8d0c4"/><rect x="164" y="72" width="132" height="34" rx="8" fill="#fff" stroke="#d8d0c4"/><rect x="24" y="130" width="272" height="44" rx="10" fill="#fa8854"/></svg>';
+const BOOKING_LOG =
+    "TypeError: Cannot read properties of undefined (reading 'price')\n    at BookingForm (src/booking/BookingForm.tsx:42:18)\n";
 
 const FIXTURE_ATTACHMENTS: FixtureAttachment[] = [
-    { projectId: FIXTURE_PROJECT_ID, attachment: { id: 'a-sketch', name: 'booking-sketch.svg', mediaType: 'image/svg+xml', size: BOOKING_SKETCH.length }, content: BOOKING_SKETCH },
-    { projectId: FIXTURE_PROJECT_ID, attachment: { id: 'a-log', name: 'booking-error.log', mediaType: 'text/plain', size: BOOKING_LOG.length }, content: BOOKING_LOG },
+    {
+        projectId: FIXTURE_PROJECT_ID,
+        attachment: {
+            id: 'a-sketch',
+            name: 'booking-sketch.svg',
+            mediaType: 'image/svg+xml',
+            size: BOOKING_SKETCH.length,
+        },
+        content: BOOKING_SKETCH,
+    },
+    {
+        projectId: FIXTURE_PROJECT_ID,
+        attachment: { id: 'a-log', name: 'booking-error.log', mediaType: 'text/plain', size: BOOKING_LOG.length },
+        content: BOOKING_LOG,
+    },
 ];
 
 /** What the threads of Ship the checkout said last: their streams end with it, and the notices their parents were told carry it. */
@@ -348,15 +628,20 @@ const LOAD_ANSWER = 'The short run held 120 requests a second with no errors. Th
 
 /** The `.briefback` of Car Rental: one feature that has all three kinds of page, a plan, a handoff and a research page. */
 const BRIEFBACK: Record<string, string> = {
-    'weekend-pricing/plan.md': '# Weekend pricing\n\n> Keep this plan current during implementation.\n\n**Goal:** Weekend days cost 15% more, and the person sees it before they commit.\n\n## Stage 1 \u2014 The rate\n\n- [x] Complete\n  - [x] `weekendRate` in `src/booking/price.ts`\n  - [x] tests for a booking that spans a month end\n\n## Stage 2 \u2014 The form\n\n- [ ] Complete\n  - [ ] show the surcharge as its own line\n',
-    'weekend-pricing/handoff.md': '# Handoff: weekend pricing\n\nStage 1 is committed. Next: Stage 2, the surcharge line in `BookingForm.tsx`. The rate is a constant, not a setting.\n',
-    'weekend-pricing/research/competitors.md': '# How others show a weekend surcharge\n\nTwo of the five rental sites show it as a separate line; the others fold it into the daily rate.\n',
+    'weekend-pricing/plan.md':
+        '# Weekend pricing\n\n> Keep this plan current during implementation.\n\n**Goal:** Weekend days cost 15% more, and the person sees it before they commit.\n\n## Stage 1 \u2014 The rate\n\n- [x] Complete\n  - [x] `weekendRate` in `src/booking/price.ts`\n  - [x] tests for a booking that spans a month end\n\n## Stage 2 \u2014 The form\n\n- [ ] Complete\n  - [ ] show the surcharge as its own line\n',
+    'weekend-pricing/handoff.md':
+        '# Handoff: weekend pricing\n\nStage 1 is committed. Next: Stage 2, the surcharge line in `BookingForm.tsx`. The rate is a constant, not a setting.\n',
+    'weekend-pricing/research/competitors.md':
+        '# How others show a weekend surcharge\n\nTwo of the five rental sites show it as a separate line; the others fold it into the daily rate.\n',
 };
 
 /** The docs folder of a folder that is in no fixture project, for a project of several folders. */
 const API_DOCS: Record<string, string> = {
-    'endpoints.md': '# Endpoints\n\n| Method | Path | Does |\n| --- | --- | --- |\n| GET | /availability | free cars in a date range |\n| POST | /bookings | books a car |\n',
-    'decisions/rate-limits.md': '# Rate limits\n\nSixty requests a minute per partner key. A burst over it waits rather than fails.\n',
+    'endpoints.md':
+        '# Endpoints\n\n| Method | Path | Does |\n| --- | --- | --- |\n| GET | /availability | free cars in a date range |\n| POST | /bookings | books a car |\n',
+    'decisions/rate-limits.md':
+        '# Rate limits\n\nSixty requests a minute per partner key. A burst over it waits rather than fails.\n',
 };
 
 const FIXTURE_FILES = [
@@ -377,7 +662,8 @@ const WORKTREE_FILES = [...FIXTURE_FILES, 'src/booking/weekend.ts'];
 /** The plan only the worktree has: the chat made it there, so the folder's own checkout does not list it. */
 const WORKTREE_BRIEFBACK: Record<string, string> = {
     ...BRIEFBACK,
-    'weekend-surcharge/plan.md': '# Weekend surcharge\n\n> Keep this plan current during implementation.\n\n**Goal:** the surcharge is its own line in the price, on a branch of its own.\n\n## Stage 1 \u2014 The line\n\n- [x] Complete\n  - [x] `weekendSurcharge` in `src/booking/weekend.ts`\n  - [ ] show it in `BookingForm.tsx`\n',
+    'weekend-surcharge/plan.md':
+        '# Weekend surcharge\n\n> Keep this plan current during implementation.\n\n**Goal:** the surcharge is its own line in the price, on a branch of its own.\n\n## Stage 1 \u2014 The line\n\n- [x] Complete\n  - [x] `weekendSurcharge` in `src/booking/weekend.ts`\n  - [ ] show it in `BookingForm.tsx`\n',
 };
 
 const API_FILES = [
@@ -405,28 +691,55 @@ export interface FixtureRemovals {
  * `origin`'s), `origin/main` as the default one, and two worktrees: the folder itself and one Clowdy made for a chat, with changes in it. The folder's own
  * `baseBranch` is the default one when the repository has it, as the daemon answers. `removals` are what `workspace.remove` took out since.
  */
-export function fixtureFolderGit(path: string, head: { branch?: string; detached?: true } | undefined, baseBranch?: string, removals?: FixtureRemovals): FolderGit {
+export function fixtureFolderGit(
+    path: string,
+    head: { branch?: string; detached?: true } | undefined,
+    baseBranch?: string,
+    removals?: FixtureRemovals
+): FolderGit {
     if (!head?.branch) return { isRepository: false };
 
     const name = path.split('/').filter(Boolean).at(-1) ?? 'folder';
-    const locals = [...new Set([...(head.detached ? [] : [head.branch]), 'main', 'dev', 'feature/payments', ...removals?.kept ?? []])].filter(branch => !removals?.deleted.includes(branch));
-    const branches = [...locals.map(branch => ({ name: branch, remote: false })), ...['origin/main', 'origin/dev'].map(branch => ({ name: branch, remote: true }))];
+    const locals = [
+        ...new Set([
+            ...(head.detached ? [] : [head.branch]),
+            'main',
+            'dev',
+            'feature/payments',
+            ...(removals?.kept ?? []),
+        ]),
+    ].filter(branch => !removals?.deleted.includes(branch));
+    const branches = [
+        ...locals.map(branch => ({ name: branch, remote: false })),
+        ...['origin/main', 'origin/dev'].map(branch => ({ name: branch, remote: true })),
+    ];
 
     return {
         isRepository: true,
         branch: head.branch,
         ...(head.detached && { detached: true as const }),
-        defaultBranch: baseBranch !== undefined && branches.some(branch => branch.name === baseBranch) ? baseBranch : 'origin/main',
+        defaultBranch:
+            baseBranch !== undefined && branches.some(branch => branch.name === baseBranch)
+                ? baseBranch
+                : 'origin/main',
         branches,
         worktrees: [
             { path, ...(!head.detached && { branch: head.branch }), head: 'a1b2c3d', main: true, dirty: false },
-            { path: `/Users/dev/Clowdy/workspaces/${ name }/ab12cd34/${ name }`, branch: 'clowdy/ab12cd34', head: '9f8e7d6', main: false, dirty: true },
+            {
+                path: `/Users/dev/Clowdy/workspaces/${name}/ab12cd34/${name}`,
+                branch: 'clowdy/ab12cd34',
+                head: '9f8e7d6',
+                main: false,
+                dirty: true,
+            },
         ].filter(worktree => !removals?.worktrees.includes(worktree.path)),
     };
 }
 
 /** A worktree the fixture's git lists that nobody made through Clowdy: what differs from the defaults (clean, merged into `origin/main`, nobody works in it) is spelled out. */
-export interface FixtureWorktree extends Pick<WorktreeInfo, 'path' | 'head'>, Partial<Pick<WorktreeInfo, 'branch' | 'missing' | 'locked' | 'changes' | 'submodules' | 'merged'>> {}
+export interface FixtureWorktree
+    extends Pick<WorktreeInfo, 'path' | 'head'>,
+        Partial<Pick<WorktreeInfo, 'branch' | 'missing' | 'locked' | 'changes' | 'submodules' | 'merged'>> {}
 
 /** How many files the fixture's changed worktree has changed: `fixtureFolderGit` only says whether there are any. */
 const FIXTURE_CHANGES = 3;
@@ -436,7 +749,10 @@ const FIXTURE_CHANGES = 3;
  * (no `git` entry) with no worktrees, else its own checkout first, then what `fixtureFolderGit` lists (the Clowdy-made worktree, changed and not merged) and `data.worktrees` adds
  * (found, locked, missing). The chats are the project's whose worktree is at the path, archived ones too; `blocked` is the daemon's order (the folder's own checkout, a lock, chats).
  */
-export function fixtureProjectWorktrees(project: Pick<Project, 'id' | 'folders'>, data: Pick<FixtureData, 'git' | 'worktrees' | 'removed' | 'chats'>): FolderWorktrees[] {
+export function fixtureProjectWorktrees(
+    project: Pick<Project, 'id' | 'folders'>,
+    data: Pick<FixtureData, 'git' | 'worktrees' | 'removed' | 'chats'>
+): FolderWorktrees[] {
     const names = folderNames(project.folders);
 
     return project.folders.map((folder, index): FolderWorktrees => {
@@ -448,14 +764,35 @@ export function fixtureProjectWorktrees(project: Pick<Project, 'id' | 'folders'>
 
         const base = repository.defaultBranch;
         const listed: FixtureWorktree[] = [
-            ...repository.worktrees.filter(worktree => !worktree.main).map(({ path, branch, head, dirty }) => ({ path, ...(branch !== undefined && { branch }), head, changes: dirty ? FIXTURE_CHANGES : 0, merged: false })),
+            ...repository.worktrees
+                .filter(worktree => !worktree.main)
+                .map(({ path, branch, head, dirty }) => ({
+                    path,
+                    ...(branch !== undefined && { branch }),
+                    head,
+                    changes: dirty ? FIXTURE_CHANGES : 0,
+                    merged: false,
+                })),
             ...(data.worktrees?.[folder.path] ?? []).filter(worktree => !removals?.worktrees.includes(worktree.path)),
         ];
         const own = repository.worktrees.find(worktree => worktree.main)!;
-        const main: WorktreeInfo = { path: own.path, ...(own.branch !== undefined && { branch: own.branch }), head: own.head, main: true, missing: false, changes: own.dirty ? FIXTURE_CHANGES : 0, submodules: false, managed: false, chats: [], blocked: 'main' };
+        const main: WorktreeInfo = {
+            path: own.path,
+            ...(own.branch !== undefined && { branch: own.branch }),
+            head: own.head,
+            main: true,
+            missing: false,
+            changes: own.dirty ? FIXTURE_CHANGES : 0,
+            submodules: false,
+            managed: false,
+            chats: [],
+            blocked: 'main',
+        };
 
         const others = listed.map((worktree): WorktreeInfo => {
-            const chats = data.chats.filter(chat => chat.projectId === project.id && chat.workspace?.path === worktree.path);
+            const chats = data.chats.filter(
+                chat => chat.projectId === project.id && chat.workspace?.path === worktree.path
+            );
             const workspace = chats[0]?.workspace;
             const locked = worktree.locked;
 
@@ -470,9 +807,11 @@ export function fixtureProjectWorktrees(project: Pick<Project, 'id' | 'folders'>
                 submodules: worktree.submodules ?? false,
                 ...(base !== undefined && { merged: worktree.merged ?? true, base }),
                 ...(workspace && { workspaceId: workspace.id }),
-                managed: workspace?.managed ?? worktree.path.startsWith(`${ FIXTURE_WORKSPACES_ROOT }/`),
+                managed: workspace?.managed ?? worktree.path.startsWith(`${FIXTURE_WORKSPACES_ROOT}/`),
                 chats: chats.map(chat => ({ id: chat.id, title: chat.title, archived: chat.archivedAt !== undefined })),
-                ...(locked !== undefined ? { blocked: 'locked' as const } : chats.length > 0 && { blocked: 'chats' as const }),
+                ...(locked !== undefined
+                    ? { blocked: 'locked' as const }
+                    : chats.length > 0 && { blocked: 'chats' as const }),
             };
         });
 
@@ -488,16 +827,25 @@ export const FIXTURE_WORKSPACES_ROOT = '/Users/dev/Clowdy/workspaces';
  * `.briefback/weekend-surcharge/plan.md`): what only the worktree has is what the side panel and the palette show for a chat there. A worktree with no entry in the
  * fixture's `files`, `docs` and `briefback` (a new one a chat made) is a checkout of the same commit, so it has its folder's.
  */
-export const FIXTURE_WORKTREE_PATH = `${ FIXTURE_WORKSPACES_ROOT }/car-rental/ab12cd34/car-rental`;
+export const FIXTURE_WORKTREE_PATH = `${FIXTURE_WORKSPACES_ROOT}/car-rental/ab12cd34/car-rental`;
 
 /**
  * What `GET git/pull-request` says of a place of the fixture, scripted by place: an open pull request with a failing, a pending and a passing check, a draft, a merged and a
  * closed one, a branch with none, a machine without `gh`, one that is not signed in, a folder whose `origin` names no repository, and a `gh` that cannot read (the daemon's 503).
  */
-export type FixturePullRequestScript = 'none' | 'open' | 'draft' | 'merged' | 'closed' | 'no_gh' | 'not_signed_in' | 'no_remote' | 'unavailable';
+export type FixturePullRequestScript =
+    | 'none'
+    | 'open'
+    | 'draft'
+    | 'merged'
+    | 'closed'
+    | 'no_gh'
+    | 'not_signed_in'
+    | 'no_remote'
+    | 'unavailable';
 
 /** What the daemon says when `gh` cannot read a pull request, which the fixture's `unavailable` script answers with its status. */
-export const FIXTURE_PULL_REQUEST_UNAVAILABLE = 'GitHub didn\'t answer';
+export const FIXTURE_PULL_REQUEST_UNAVAILABLE = "GitHub didn't answer";
 
 /** The repository an `origin` address of the fixture names (`git@github.com:acme/car-rental.git`, `https://github.com/acme/clowdy.git`), nothing for a folder that has none. */
 function fixtureRepoOf(remoteUrl: string | undefined): GitHubRepo | undefined {
@@ -520,9 +868,21 @@ const FIXTURE_CHECKS: GitCheck[] = [
 /** The checks of a pull request that has them all in one state (counted, and listed by name). */
 function fixtureChecksOf(items: GitCheck[]): GitPullRequest['checks'] {
     const count = (state: GitCheck['state']) => items.filter(item => item.state === state).length;
-    const [passing, failing, pending, skipped] = [count('passing'), count('failing'), count('pending'), count('skipped')];
+    const [passing, failing, pending, skipped] = [
+        count('passing'),
+        count('failing'),
+        count('pending'),
+        count('skipped'),
+    ];
 
-    return { state: items.length === 0 ? 'none' : failing > 0 ? 'failing' : pending > 0 ? 'pending' : 'passing', passing, failing, pending, skipped, items: structuredClone(items) };
+    return {
+        state: items.length === 0 ? 'none' : failing > 0 ? 'failing' : pending > 0 ? 'pending' : 'passing',
+        passing,
+        failing,
+        pending,
+        skipped,
+        items: structuredClone(items),
+    };
 }
 
 /**
@@ -535,12 +895,16 @@ function fixtureChecksOf(items: GitCheck[]): GitPullRequest['checks'] {
  * - `merged`: #31, whose checks passed, with the branch at the pull request's head (a branch that went on has none);
  * - `closed`: #19, with a failing check.
  */
-export function fixtureGitPullRequest(head: FixtureData['git'][string] | undefined, scripts: FixtureData['pullRequests'][string] | undefined, workspace: Pick<ChatWorkspace, 'branch'> | undefined): GitPullRequestInfo | undefined {
+export function fixtureGitPullRequest(
+    head: FixtureData['git'][string] | undefined,
+    scripts: FixtureData['pullRequests'][string] | undefined,
+    workspace: Pick<ChatWorkspace, 'branch'> | undefined
+): GitPullRequestInfo | undefined {
     if (!head?.branch) return { isRepository: false };
 
-    const script = workspace ? scripts?.worktree ?? 'open' : scripts?.checkout ?? 'none';
+    const script = workspace ? (scripts?.worktree ?? 'open') : (scripts?.checkout ?? 'none');
     const repo = fixtureRepoOf(head.remoteUrl);
-    const branch = workspace ? workspace.branch ?? 'clowdy/ab12cd34' : head.branch;
+    const branch = workspace ? (workspace.branch ?? 'clowdy/ab12cd34') : head.branch;
     const headCommit = workspace ? FIXTURE_GIT_COMMITS[0]!.sha : FIXTURE_BASE_COMMIT;
 
     if (script === 'unavailable') return undefined;
@@ -549,51 +913,107 @@ export function fixtureGitPullRequest(head: FixtureData['git'][string] | undefin
 
     if (script === 'no_gh' || script === 'not_signed_in') return { isRepository: true, access: script, repo };
 
-    const pullRequest = (number: number, title: string, fields: Partial<GitPullRequest> & Pick<GitPullRequest, 'state' | 'checks'>): GitPullRequest => ({
+    const pullRequest = (
+        number: number,
+        title: string,
+        fields: Partial<GitPullRequest> & Pick<GitPullRequest, 'state' | 'checks'>
+    ): GitPullRequest => ({
         number,
         title,
-        url: `https://${ repo.host }/${ repo.owner }/${ repo.name }/pull/${ number }`,
+        url: `https://${repo.host}/${repo.owner}/${repo.name}/pull/${number}`,
         base: 'main',
         head: branch,
         headCommit,
         updatedAt: Date.UTC(2026, 10, 22, 9, 30),
         ...fields,
     });
-    const found: Record<Exclude<FixturePullRequestScript, 'none' | 'no_gh' | 'not_signed_in' | 'no_remote' | 'unavailable'>, GitPullRequest> = {
-        open: pullRequest(128, 'Charge a weekend surcharge', { state: 'open', reviewDecision: 'review_required', mergeability: 'blocked', checks: fixtureChecksOf(FIXTURE_CHECKS) }),
-        draft: pullRequest(54, 'Take payments with Stripe', { state: 'draft', checks: fixtureChecksOf([{ name: 'unit', state: 'pending', url: 'https://github.com/acme/car-rental-api/actions/runs/77/job/1' }]) }),
-        merged: pullRequest(31, 'Release the booking form', { state: 'merged', reviewDecision: 'approved', checks: fixtureChecksOf(FIXTURE_CHECKS.filter(check => check.state === 'passing')) }),
-        closed: pullRequest(19, 'Try a three-step booking form', { state: 'closed', checks: fixtureChecksOf([{ name: 'unit (ubuntu)', state: 'failing', url: 'https://github.com/acme/car-rental/actions/runs/58/job/1' }]) }),
+    const found: Record<
+        Exclude<FixturePullRequestScript, 'none' | 'no_gh' | 'not_signed_in' | 'no_remote' | 'unavailable'>,
+        GitPullRequest
+    > = {
+        open: pullRequest(128, 'Charge a weekend surcharge', {
+            state: 'open',
+            reviewDecision: 'review_required',
+            mergeability: 'blocked',
+            checks: fixtureChecksOf(FIXTURE_CHECKS),
+        }),
+        draft: pullRequest(54, 'Take payments with Stripe', {
+            state: 'draft',
+            checks: fixtureChecksOf([
+                { name: 'unit', state: 'pending', url: 'https://github.com/acme/car-rental-api/actions/runs/77/job/1' },
+            ]),
+        }),
+        merged: pullRequest(31, 'Release the booking form', {
+            state: 'merged',
+            reviewDecision: 'approved',
+            checks: fixtureChecksOf(FIXTURE_CHECKS.filter(check => check.state === 'passing')),
+        }),
+        closed: pullRequest(19, 'Try a three-step booking form', {
+            state: 'closed',
+            checks: fixtureChecksOf([
+                {
+                    name: 'unit (ubuntu)',
+                    state: 'failing',
+                    url: 'https://github.com/acme/car-rental/actions/runs/58/job/1',
+                },
+            ]),
+        }),
     };
 
-    return { isRepository: true, access: 'ready', repo, ...(script !== 'none' && { pullRequest: structuredClone(found[script]) }) };
+    return {
+        isRepository: true,
+        access: 'ready',
+        repo,
+        ...(script !== 'none' && { pullRequest: structuredClone(found[script]) }),
+    };
 }
 
 /** The commit the fixture's `origin/main` is at, and the one the worktree's branch started from: 40 hexadecimal digits of one digit, which is all a fixture needs of an id. */
-const FIXTURE_BASE_COMMIT = '3'.repeat(40);
+export const FIXTURE_BASE_COMMIT = '3'.repeat(40);
 
 /** The commits of the fixture worktree's branch, newest first: what `GitBase.commits` lists, each a `commit:<sha>` scope with the files below. */
 export const FIXTURE_GIT_COMMITS: GitCommit[] = [
-    { sha: `b7${ '4'.repeat(38) }`, shortSha: 'b744444', subject: 'Charge a weekend surcharge', author: 'Dana Reyes', committedAt: Date.UTC(2026, 10, 21, 16, 20) },
-    { sha: `a1${ '5'.repeat(38) }`, shortSha: 'a155555', subject: 'Price a booking by the day', author: 'Dana Reyes', committedAt: Date.UTC(2026, 10, 20, 9, 45) },
+    {
+        sha: `b7${'4'.repeat(38)}`,
+        shortSha: 'b744444',
+        subject: 'Charge a weekend surcharge',
+        author: 'Dana Reyes',
+        committedAt: Date.UTC(2026, 10, 21, 16, 20),
+    },
+    {
+        sha: `a1${'5'.repeat(38)}`,
+        shortSha: 'a155555',
+        subject: 'Price a booking by the day',
+        author: 'Dana Reyes',
+        committedAt: Date.UTC(2026, 10, 20, 9, 45),
+    },
 ];
 
 /** A changed file of the fixture: modes of a plain file, and the two ids made of the digits it is given (a `0` for a side that is not there). */
-function changedFile(path: string, kind: GitChangedFile['kind'], lines: [additions: number, deletions: number] | 'binary', ids: [old: string, now: string], more: Partial<GitChangedFile> = {}): GitChangedFile {
-    const side = (digit: string) => (digit === '0' ? `000000:${ '0'.repeat(40) }` : `100644:${ digit.repeat(40) }`);
+function changedFile(
+    path: string,
+    kind: GitChangedFile['kind'],
+    lines: [additions: number, deletions: number] | 'binary',
+    ids: [old: string, now: string],
+    more: Partial<GitChangedFile> = {}
+): GitChangedFile {
+    const side = (digit: string) => (digit === '0' ? `000000:${'0'.repeat(40)}` : `100644:${digit.repeat(40)}`);
 
     return {
         path,
         kind,
         ...(lines === 'binary' ? { binary: true as const } : { additions: lines[0], deletions: lines[1] }),
         ...more,
-        revision: `${ side(ids[0]) }:${ side(ids[1]) }`,
+        revision: `${side(ids[0])}:${side(ids[1])}`,
     };
 }
 
 /** What each commit of the fixture worktree changed, by the commit's id, and what the whole branch did and what is not committed yet. */
 const FIXTURE_COMMIT_FILES: Record<string, GitChangedFile[]> = {
-    [FIXTURE_GIT_COMMITS[0]!.sha]: [changedFile('src/booking/price.ts', 'modified', [5, 1], ['6', '7']), changedFile('src/booking/weekend.ts', 'added', [42, 0], ['0', '8'])],
+    [FIXTURE_GIT_COMMITS[0]!.sha]: [
+        changedFile('src/booking/price.ts', 'modified', [5, 1], ['6', '7']),
+        changedFile('src/booking/weekend.ts', 'added', [42, 0], ['0', '8']),
+    ],
     [FIXTURE_GIT_COMMITS[1]!.sha]: [
         changedFile('assets/logo.png', 'added', 'binary', ['0', '9']),
         changedFile('src/booking/price.test.ts', 'added', [37, 0], ['0', 'a']),
@@ -627,7 +1047,11 @@ const FIXTURE_ALL_FILES: GitChangedFile[] = [
     FIXTURE_UNCOMMITTED_FILES[2]!,
 ];
 
-const totalsOf = (files: readonly GitChangedFile[]) => ({ fileCount: files.length, additions: files.reduce((sum, file) => sum + (file.additions ?? 0), 0), deletions: files.reduce((sum, file) => sum + (file.deletions ?? 0), 0) });
+const totalsOf = (files: readonly GitChangedFile[]) => ({
+    fileCount: files.length,
+    additions: files.reduce((sum, file) => sum + (file.additions ?? 0), 0),
+    deletions: files.reduce((sum, file) => sum + (file.deletions ?? 0), 0),
+});
 
 /** What the fixture's remote adds to a status (`FixtureGitRemote`): the upstream as it stands, when the repository last fetched, whether it has an `origin`, and a HEAD that a script takes off its branch. */
 export interface FixtureStatusRemote {
@@ -643,13 +1067,23 @@ export interface FixtureStatusRemote {
  * `remote` says what the upstream is when the caller keeps it (`FixtureGitRemote`): `upstream` as it stands, or none; without it a checkout is level with `origin/<branch>`, and what a script of
  * the page puts in the status besides (`FixtureStatusRemote`: when the repository last fetched, no `origin`, a HEAD on no branch or a branch with no commit).
  */
-export function fixtureGitStatus(head: { branch?: string; detached?: true } | undefined, workspace: Pick<ChatWorkspace, 'branch'> | undefined, committed: ReadonlySet<string> = new Set(), remote?: FixtureStatusRemote): GitStatus {
+export function fixtureGitStatus(
+    head: { branch?: string; detached?: true } | undefined,
+    workspace: Pick<ChatWorkspace, 'branch'> | undefined,
+    committed: ReadonlySet<string> = new Set(),
+    remote?: FixtureStatusRemote
+): GitStatus {
     if (!head?.branch) return { isRepository: false };
 
     const origin = remote?.origin !== false;
     // The time of the last fetch is the repository's: a fixture that has none says so by leaving it out.
     const fetched = origin && remote?.lastFetchedAt !== undefined ? { lastFetchedAt: remote.lastFetchedAt } : {};
-    const headOf = (name: string, commit: string): GitHead => (remote?.head === 'detached' ? { kind: 'detached', commit } : remote?.head === 'unborn' ? { kind: 'unborn', name } : { kind: 'branch', name, commit });
+    const headOf = (name: string, commit: string): GitHead =>
+        remote?.head === 'detached'
+            ? { kind: 'detached', commit }
+            : remote?.head === 'unborn'
+              ? { kind: 'unborn', name }
+              : { kind: 'branch', name, commit };
 
     if (workspace) {
         return {
@@ -659,30 +1093,63 @@ export function fixtureGitStatus(head: { branch?: string; detached?: true } | un
             ...(remote?.upstream && !remote.head && { upstream: remote.upstream }),
             origin,
             ...fetched,
-            entries: [{ path: 'notes.md', untracked: true as const }, { path: 'src/booking/price.ts', unstaged: 'modified' as const }, { path: 'src/limits.ts', unstaged: 'modified' as const }].filter(entry => !committed.has(entry.path)),
-            base: { state: 'ready', name: 'origin/main', commit: '2'.repeat(40), mergeBase: FIXTURE_BASE_COMMIT, ahead: FIXTURE_GIT_COMMITS.length, behind: 1, commits: FIXTURE_GIT_COMMITS },
+            entries: [
+                { path: 'notes.md', untracked: true as const },
+                { path: 'src/booking/price.ts', unstaged: 'modified' as const },
+                { path: 'src/limits.ts', unstaged: 'modified' as const },
+            ].filter(entry => !committed.has(entry.path)),
+            base: {
+                state: 'ready',
+                name: 'origin/main',
+                commit: '2'.repeat(40),
+                mergeBase: FIXTURE_BASE_COMMIT,
+                ahead: FIXTURE_GIT_COMMITS.length,
+                behind: 1,
+                commits: FIXTURE_GIT_COMMITS,
+            },
         };
     }
 
     // The checkout is level with its upstream unless the caller keeps the upstream, and a HEAD on no branch and a branch with no commit have none.
-    const upstream = head.detached || remote?.head ? undefined : remote ? remote.upstream : { name: `origin/${ head.branch }`, ahead: 0, behind: 0 };
+    const upstream =
+        head.detached || remote?.head
+            ? undefined
+            : remote
+              ? remote.upstream
+              : { name: `origin/${head.branch}`, ahead: 0, behind: 0 };
 
     return {
         isRepository: true,
-        head: head.detached ? { kind: 'detached', commit: FIXTURE_BASE_COMMIT } : headOf(head.branch, FIXTURE_BASE_COMMIT),
+        head: head.detached
+            ? { kind: 'detached', commit: FIXTURE_BASE_COMMIT }
+            : headOf(head.branch, FIXTURE_BASE_COMMIT),
         ...(upstream && { upstream }),
         origin,
         ...fetched,
         entries: [],
-        base: { state: 'ready', name: 'origin/main', commit: FIXTURE_BASE_COMMIT, mergeBase: FIXTURE_BASE_COMMIT, ahead: 0, behind: 0, commits: [] },
+        base: {
+            state: 'ready',
+            name: 'origin/main',
+            commit: FIXTURE_BASE_COMMIT,
+            mergeBase: FIXTURE_BASE_COMMIT,
+            ahead: 0,
+            behind: 0,
+            commits: [],
+        },
     };
 }
 
 /** Whether the fixture's repository has a commit by this hash (short or whole): the base, the tip of `origin/main` and the branch's own commits. */
-export const fixtureHasCommit = (hash: string): boolean => [FIXTURE_BASE_COMMIT, '2'.repeat(40), ...FIXTURE_GIT_COMMITS.map(commit => commit.sha)].some(sha => sha.startsWith(hash.toLowerCase()));
+export const fixtureHasCommit = (hash: string): boolean =>
+    [FIXTURE_BASE_COMMIT, '2'.repeat(40), ...FIXTURE_GIT_COMMITS.map(commit => commit.sha)].some(sha =>
+        sha.startsWith(hash.toLowerCase())
+    );
 
 /** The commit of the fixture worktree that a `commit:<sha>` scope names (the hash may be short), nothing for one it does not have. */
-const fixtureCommitOf = (scope: GitScope) => (scope.startsWith('commit:') ? FIXTURE_GIT_COMMITS.find(commit => commit.sha.startsWith(scope.slice('commit:'.length))) : undefined);
+const fixtureCommitOf = (scope: GitScope) =>
+    scope.startsWith('commit:')
+        ? FIXTURE_GIT_COMMITS.find(commit => commit.sha.startsWith(scope.slice('commit:'.length)))
+        : undefined;
 
 /** The files of one scope of the fixture worktree, and what each is counted from. */
 function fixtureScopeFiles(scope: GitScope): { files: GitChangedFile[]; from: string } | undefined {
@@ -694,24 +1161,47 @@ function fixtureScopeFiles(scope: GitScope): { files: GitChangedFile[]; from: st
 
     const commit = fixtureCommitOf(scope);
 
-    return commit && { files: FIXTURE_COMMIT_FILES[commit.sha]!, from: commit.sha === FIXTURE_GIT_COMMITS[0]!.sha ? FIXTURE_GIT_COMMITS[1]!.sha : FIXTURE_BASE_COMMIT };
+    return (
+        commit && {
+            files: FIXTURE_COMMIT_FILES[commit.sha]!,
+            from: commit.sha === FIXTURE_GIT_COMMITS[0]!.sha ? FIXTURE_GIT_COMMITS[1]!.sha : FIXTURE_BASE_COMMIT,
+        }
+    );
 }
 
 /**
  * What `GET git/changes` answers for a fixture folder. A checkout that is clean has no changes in any scope; the worktree has the files above. `undefined` for a commit the
  * fixture's repository does not have, which the daemon answers `not_found`.
  */
-export function fixtureGitChanges(head: { branch?: string } | undefined, inWorktree: boolean, scope: GitScope, committed: ReadonlySet<string> = new Set(), discarded: ReadonlySet<string> = new Set()): GitChanges | undefined {
+export function fixtureGitChanges(
+    head: { branch?: string } | undefined,
+    inWorktree: boolean,
+    scope: GitScope,
+    committed: ReadonlySet<string> = new Set(),
+    discarded: ReadonlySet<string> = new Set()
+): GitChanges | undefined {
     if (!head?.branch) return { isRepository: false };
 
-    const scoped = inWorktree ? fixtureScopeFiles(scope) : scope.startsWith('commit:') ? undefined : { files: [], from: FIXTURE_BASE_COMMIT };
+    const scoped = inWorktree
+        ? fixtureScopeFiles(scope)
+        : scope.startsWith('commit:')
+          ? undefined
+          : { files: [], from: FIXTURE_BASE_COMMIT };
     // What a commit made here took out of the uncommitted files (the fixture keeps no repository, so the other scopes stay as they were), and what a discard put back at the last commit
     // is in none of the working-tree scopes any more, but for a file the branch had changed already, which `all` still lists as the branch left it.
-    const found = scoped && scope === 'uncommitted'
-        ? { ...scoped, files: scoped.files.filter(file => !committed.has(file.path) && !discarded.has(file.path)) }
-        : scoped && scope === 'all'
-            ? { ...scoped, files: scoped.files.flatMap(file => (discarded.has(file.path) ? FIXTURE_BRANCH_FILES.filter(branchFile => branchFile.path === file.path) : [file])) }
-            : scoped;
+    const found =
+        scoped && scope === 'uncommitted'
+            ? { ...scoped, files: scoped.files.filter(file => !committed.has(file.path) && !discarded.has(file.path)) }
+            : scoped && scope === 'all'
+              ? {
+                    ...scoped,
+                    files: scoped.files.flatMap(file =>
+                        discarded.has(file.path)
+                            ? FIXTURE_BRANCH_FILES.filter(branchFile => branchFile.path === file.path)
+                            : [file]
+                    ),
+                }
+              : scoped;
 
     if (!found) return undefined;
 
@@ -730,10 +1220,35 @@ export function fixtureGitChanges(head: { branch?: string } | undefined, inWorkt
 const FIXTURE_FILE_TEXT: Record<string, [original: string | null, modified: string | null]> = {
     'src/booking/price.ts': [
         ['export function price(days: number, rate: number): number {', '    return days * rate;', '}', ''].join('\n'),
-        ['export function price(days: number, rate: number, weekend = false): number {', '    const base = days * rate;', '', '    return weekend ? base * 1.15 : base;', '}', ''].join('\n'),
+        [
+            'export function price(days: number, rate: number, weekend = false): number {',
+            '    const base = days * rate;',
+            '',
+            '    return weekend ? base * 1.15 : base;',
+            '}',
+            '',
+        ].join('\n'),
     ],
-    'src/booking/weekend.ts': [null, ['export const WEEKEND_SURCHARGE = 0.15;', '', 'export const isWeekend = (date: Date) => date.getDay() === 0 || date.getDay() === 6;', ''].join('\n')],
-    'src/booking/price.test.ts': [null, ['import { price } from \'./price\';', '', 'test(\'prices a booking by the day\', () => {', '    expect(price(3, 40)).toBe(120);', '});', ''].join('\n')],
+    'src/booking/weekend.ts': [
+        null,
+        [
+            'export const WEEKEND_SURCHARGE = 0.15;',
+            '',
+            'export const isWeekend = (date: Date) => date.getDay() === 0 || date.getDay() === 6;',
+            '',
+        ].join('\n'),
+    ],
+    'src/booking/price.test.ts': [
+        null,
+        [
+            "import { price } from './price';",
+            '',
+            "test('prices a booking by the day', () => {",
+            '    expect(price(3, 40)).toBe(120);',
+            '});',
+            '',
+        ].join('\n'),
+    ],
     'src/limits.ts': [['export const MAX_DAYS = 30;', ''].join('\n'), ['export const MAX_DAYS = 28;', ''].join('\n')],
     'notes.md': [null, ['# Notes', '', '- Ask about the weekend rate for holidays', ''].join('\n')],
 };
@@ -751,7 +1266,9 @@ export function fixtureGitFile(scope: GitScope, path: string): GitFileSides | un
 
     const text = FIXTURE_FILE_TEXT[path];
 
-    return text ? { state: 'text', original: text[0], modified: text[1], revision: file.revision } : { state: 'text', original: null, modified: '', revision: file.revision };
+    return text
+        ? { state: 'text', original: text[0], modified: text[1], revision: file.revision }
+        : { state: 'text', original: null, modified: '', revision: file.revision };
 }
 
 /**
@@ -760,16 +1277,28 @@ export function fixtureGitFile(scope: GitScope, path: string): GitFileSides | un
  * itself (`FixtureTransport`), and judges what it is given as the daemon does.
  */
 export function fixtureViewedProblem(path: string, revision: string): string | undefined {
-    if (path === '' || path.includes('\0') || path.startsWith('/') || path.endsWith('/') || path.split('/').some(part => part === '' || part === '.' || part === '..')) return 'The path is not a path inside the repository';
+    if (
+        path === '' ||
+        path.includes('\0') ||
+        path.startsWith('/') ||
+        path.endsWith('/') ||
+        path.split('/').some(part => part === '' || part === '.' || part === '..')
+    )
+        return 'The path is not a path inside the repository';
 
     if (path.length > MAX_GIT_VIEWED_PATH_LENGTH) return 'The path is too long';
 
-    if (revision.length === 0 || revision.length > MAX_GIT_REVISION_LENGTH || !/^[0-9a-z:-]+$/.test(revision)) return 'The revision is not one of a changed file';
+    if (revision.length === 0 || revision.length > MAX_GIT_REVISION_LENGTH || !/^[0-9a-z:-]+$/.test(revision))
+        return 'The revision is not one of a changed file';
 
     return undefined;
 }
 
-const kebab = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+const kebab = (name: string) =>
+    name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
 
 /**
  * What `chat.create` makes of a workspace choice, as the daemon does (the refusals are its `invalid`): a worktree of a folder that is no repository, a base that is no ref of it
@@ -779,14 +1308,33 @@ const kebab = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').r
  */
 export function fixtureChatWorkspace(
     choice: ChatWorkspaceChoice,
-    { projectName, folder, chatId, head, known, removed }: { projectName: string; folder: ProjectFolder; chatId: string; head: FixtureData['git'][string] | undefined; known: readonly ChatWorkspace[]; removed?: FixtureRemovals }
+    {
+        projectName,
+        folder,
+        chatId,
+        head,
+        known,
+        removed,
+    }: {
+        projectName: string;
+        folder: ProjectFolder;
+        chatId: string;
+        head: FixtureData['git'][string] | undefined;
+        known: readonly ChatWorkspace[];
+        removed?: FixtureRemovals;
+    }
 ): { workspace: ChatWorkspace } | { error: string } {
     const repository = fixtureFolderGit(folder.path, head, undefined, removed);
 
-    if (!repository.isRepository) return { error: `${ folder.path } is not a git repository` };
+    if (!repository.isRepository) return { error: `${folder.path} is not a git repository` };
 
     if (choice.mode === 'new') {
-        if (choice.base !== undefined && choice.base !== repository.defaultBranch && !repository.branches.some(branch => branch.name === choice.base)) return { error: `${ choice.base } is not a branch of ${ folder.path }` };
+        if (
+            choice.base !== undefined &&
+            choice.base !== repository.defaultBranch &&
+            !repository.branches.some(branch => branch.name === choice.base)
+        )
+            return { error: `${choice.base} is not a branch of ${folder.path}` };
 
         const problem = branchPrefixProblem(choice.branchPrefix);
 
@@ -795,25 +1343,41 @@ export function fixtureChatWorkspace(
         const end = chatId.slice(-8);
         const name = folder.path.split('/').filter(Boolean).at(-1) ?? 'folder';
 
-        return { workspace: { id: `wks_${ end }`, folderId: folder.id, path: `${ FIXTURE_WORKSPACES_ROOT }/${ kebab(projectName) }/${ end }/${ name }`, branch: `${ branchPrefixOf(choice.branchPrefix) }/${ end }`, managed: true, ready: false } };
+        return {
+            workspace: {
+                id: `wks_${end}`,
+                folderId: folder.id,
+                path: `${FIXTURE_WORKSPACES_ROOT}/${kebab(projectName)}/${end}/${name}`,
+                branch: `${branchPrefixOf(choice.branchPrefix)}/${end}`,
+                managed: true,
+                ready: false,
+            },
+        };
     }
 
     const worktree = repository.worktrees.find(candidate => !candidate.main && candidate.path === choice.path);
 
-    if (!worktree) return { error: `${ choice.path } is not a worktree of ${ folder.path }` };
+    if (!worktree) return { error: `${choice.path} is not a worktree of ${folder.path}` };
 
     return {
-        workspace: known.find(workspace => workspace.path === worktree.path)
-            ?? { id: `wks_${ worktree.head }`, folderId: folder.id, path: worktree.path, ...(worktree.branch && { branch: worktree.branch }), managed: worktree.path.startsWith(`${ FIXTURE_WORKSPACES_ROOT }/`), ready: true },
+        workspace: known.find(workspace => workspace.path === worktree.path) ?? {
+            id: `wks_${worktree.head}`,
+            folderId: folder.id,
+            path: worktree.path,
+            ...(worktree.branch && { branch: worktree.branch }),
+            managed: worktree.path.startsWith(`${FIXTURE_WORKSPACES_ROOT}/`),
+            ready: true,
+        },
     };
 }
 
 /** The lines `Prepare workspace` logs while it makes a worktree: the fetch of the base and what the checkout says, in the tool's own words. */
-export const fixtureWorkspaceLog = (workspace: Pick<ChatWorkspace, 'branch'>, base: string) => [
-    `Fetching ${ base }`,
-    `Preparing worktree (new branch '${ workspace.branch }')`,
-    'HEAD is now at 3f2a9c1 Price a booking by the day',
-].join('\n');
+export const fixtureWorkspaceLog = (workspace: Pick<ChatWorkspace, 'branch'>, base: string) =>
+    [
+        `Fetching ${base}`,
+        `Preparing worktree (new branch '${workspace.branch}')`,
+        'HEAD is now at 3f2a9c1 Price a booking by the day',
+    ].join('\n');
 
 /**
  * The document sources of a folder as the daemon lists them: those of the registry that have files here, in its order, each with its tree. `files` is by the id of the
@@ -841,7 +1405,9 @@ export function docsTree(paths: string[]): DocNode[] {
             let node = level.find(candidate => candidate.path === nodePath);
 
             if (!node) {
-                node = isFile ? { path: nodePath, name, kind: 'file' } : { path: nodePath, name, kind: 'dir', children: [] };
+                node = isFile
+                    ? { path: nodePath, name, kind: 'file' }
+                    : { path: nodePath, name, kind: 'dir', children: [] };
                 level.push(node);
             }
 
@@ -860,7 +1426,8 @@ export function docsTree(paths: string[]): DocNode[] {
 }
 
 /** The favicon in Car Rental's folder: a car on a blue tile. */
-const CAR_RENTAL_ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#2f6fed"/><path d="M9 14.5 11 10h10l2 4.5h1a1 1 0 0 1 1 1V21h-2.2a2.5 2.5 0 0 1-4.6 0h-4.4a2.5 2.5 0 0 1-4.6 0H7v-5.5a1 1 0 0 1 1-1z" fill="#fff"/></svg>';
+const CAR_RENTAL_ICON =
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#2f6fed"/><path d="M9 14.5 11 10h10l2 4.5h1a1 1 0 0 1 1 1V21h-2.2a2.5 2.5 0 0 1-4.6 0h-4.4a2.5 2.5 0 0 1-4.6 0H7v-5.5a1 1 0 0 1 1-1z" fill="#fff"/></svg>';
 
 export const FIXTURE_FORK_CHAT_ID = 'c-7';
 export const FIXTURE_FORK_RUN_ID = 'r-orch-7';
@@ -876,11 +1443,26 @@ export function withFixtureFork(data: FixtureData, now = Date.now()): FixtureDat
     const source = data.items['r-orch-2'].slice(0, 6);
     const own: Array<[number, StreamItemBody]> = [
         [60 * 24 * 3 - 1, { kind: 'user', text: 'Add the weekend surcharge to the price.' }],
-        [60 * 24 * 3 - 4, { kind: 'assistant', done: true, text: 'The weekend surcharge is in `src/booking/price.ts`.' }],
+        [
+            60 * 24 * 3 - 4,
+            { kind: 'assistant', done: true, text: 'The weekend surcharge is in `src/booking/price.ts`.' },
+        ],
     ];
     const items: StreamItem[] = [
-        ...source.map(item => ({ ...structuredClone(item), id: `${ FIXTURE_FORK_RUN_ID }-${ item.seq }`, runId: FIXTURE_FORK_RUN_ID })),
-        ...own.map(([minutes, body], index): StreamItem => ({ id: `${ FIXTURE_FORK_RUN_ID }-${ source.length + index + 1 }`, runId: FIXTURE_FORK_RUN_ID, seq: source.length + index + 1, at: ago(minutes), body })),
+        ...source.map(item => ({
+            ...structuredClone(item),
+            id: `${FIXTURE_FORK_RUN_ID}-${item.seq}`,
+            runId: FIXTURE_FORK_RUN_ID,
+        })),
+        ...own.map(
+            ([minutes, body], index): StreamItem => ({
+                id: `${FIXTURE_FORK_RUN_ID}-${source.length + index + 1}`,
+                runId: FIXTURE_FORK_RUN_ID,
+                seq: source.length + index + 1,
+                at: ago(minutes),
+                body,
+            })
+        ),
     ];
     const orchestrator = data.runs.find(run => run.id === 'r-orch-2') as Run;
 
@@ -932,30 +1514,127 @@ export const FIXTURE_APPROVALS_RUN_ID = 'r-orch-8';
 export function withFixtureApprovals(data: FixtureData, now = Date.now()): FixtureData {
     const ago = (minutes: number) => now - minutes * MINUTE;
     const orchestrator = data.runs.find(run => run.id === 'r-orch-3') as Run;
-    const approval = (id: number, fields: Pick<Extract<StreamItemBody, { kind: 'approval' }>, 'title' | 'subject'> & Partial<Extract<StreamItemBody, { kind: 'approval' }>>): StreamItemBody => ({
+    const approval = (
+        id: number,
+        fields: Pick<Extract<StreamItemBody, { kind: 'approval' }>, 'title' | 'subject'> &
+            Partial<Extract<StreamItemBody, { kind: 'approval' }>>
+    ): StreamItemBody => ({
         kind: 'approval',
-        approvalId: `apv-${ id }`,
+        approvalId: `apv-${id}`,
         decisions: ['allow_once', 'allow_always', 'reject'],
         state: 'open',
         ...fields,
     });
-    const checks = 'set -e\ncd src/booking\nbun run test -- --coverage\nbun run typecheck\ngit diff --stat\necho "all checks passed"';
-    const paths = ['src/booking/price.ts', 'src/booking/steps/confirmation/summary.tsx', 'src/booking/__tests__/price.test.ts'];
+    const checks =
+        'set -e\ncd src/booking\nbun run test -- --coverage\nbun run typecheck\ngit diff --stat\necho "all checks passed"';
+    const paths = [
+        'src/booking/price.ts',
+        'src/booking/steps/confirmation/summary.tsx',
+        'src/booking/__tests__/price.test.ts',
+    ];
     const entries: Array<[number, StreamItemBody]> = [
-        [20, { kind: 'user', text: 'Run the booking tests and the type check, then update the price helper and publish the rules.' }],
-        [19, { kind: 'assistant', done: true, text: 'I will ask before anything that changes your files or leaves this machine.' }],
+        [
+            20,
+            {
+                kind: 'user',
+                text: 'Run the booking tests and the type check, then update the price helper and publish the rules.',
+            },
+        ],
+        [
+            19,
+            {
+                kind: 'assistant',
+                done: true,
+                text: 'I will ask before anything that changes your files or leaves this machine.',
+            },
+        ],
         // A call comes first, as the daemon writes it, and the request about it after it; the call of an open request is still running.
-        [18, { kind: 'tool', toolCallId: 'tc-o8-1', name: 'Bash', state: 'done', input: { command: 'bun run test src/booking' }, output: '12 pass, 0 fail' }],
-        [18, approval(1, { toolCallId: 'tc-o8-1', title: 'bun run test src/booking', subject: { kind: 'command', command: 'bun run test src/booking' }, state: 'decided', decision: 'allow_always' })],
+        [
+            18,
+            {
+                kind: 'tool',
+                toolCallId: 'tc-o8-1',
+                name: 'Bash',
+                state: 'done',
+                input: { command: 'bun run test src/booking' },
+                output: '12 pass, 0 fail',
+            },
+        ],
+        [
+            18,
+            approval(1, {
+                toolCallId: 'tc-o8-1',
+                title: 'bun run test src/booking',
+                subject: { kind: 'command', command: 'bun run test src/booking' },
+                state: 'decided',
+                decision: 'allow_always',
+            }),
+        ],
         [5, { kind: 'tool', toolCallId: 'tc-o8-2', name: 'Bash', state: 'running', input: { command: checks } }],
-        [5, approval(2, { toolCallId: 'tc-o8-2', title: 'Run the checks', subject: { kind: 'command', command: checks, cwd: '/Users/dev/car-rental' } })],
-        [4, { kind: 'tool', toolCallId: 'tc-o8-3', name: 'Edit', state: 'running', input: { file_path: paths[0], old_string: 'const SURCHARGE = 0.1', new_string: 'const SURCHARGE = 0.15' } }],
-        [4, approval(3, { toolCallId: 'tc-o8-3', title: 'Edit src/booking/price.ts', subject: { kind: 'file_change', paths } })],
-        [3, { kind: 'tool', toolCallId: 'tc-o8-4', name: 'mcp__docs__publish', state: 'running', input: { title: 'Booking rules' } }],
-        [3, approval(4, { toolCallId: 'tc-o8-4', title: 'Publish the booking rules', subject: { kind: 'tool_use', tool: 'mcp__docs__publish', detail: 'Publish "Booking rules" to the shared docs' }, decisions: ['allow_once', 'reject'] })],
+        [
+            5,
+            approval(2, {
+                toolCallId: 'tc-o8-2',
+                title: 'Run the checks',
+                subject: { kind: 'command', command: checks, cwd: '/Users/dev/car-rental' },
+            }),
+        ],
+        [
+            4,
+            {
+                kind: 'tool',
+                toolCallId: 'tc-o8-3',
+                name: 'Edit',
+                state: 'running',
+                input: {
+                    file_path: paths[0],
+                    old_string: 'const SURCHARGE = 0.1',
+                    new_string: 'const SURCHARGE = 0.15',
+                },
+            },
+        ],
+        [
+            4,
+            approval(3, {
+                toolCallId: 'tc-o8-3',
+                title: 'Edit src/booking/price.ts',
+                subject: { kind: 'file_change', paths },
+            }),
+        ],
+        [
+            3,
+            {
+                kind: 'tool',
+                toolCallId: 'tc-o8-4',
+                name: 'mcp__docs__publish',
+                state: 'running',
+                input: { title: 'Booking rules' },
+            },
+        ],
+        [
+            3,
+            approval(4, {
+                toolCallId: 'tc-o8-4',
+                title: 'Publish the booking rules',
+                subject: {
+                    kind: 'tool_use',
+                    tool: 'mcp__docs__publish',
+                    detail: 'Publish "Booking rules" to the shared docs',
+                },
+                decisions: ['allow_once', 'reject'],
+            }),
+        ],
     ];
 
-    data.items[FIXTURE_APPROVALS_RUN_ID] = entries.map(([minutes, body], index): StreamItem => ({ id: `${ FIXTURE_APPROVALS_RUN_ID }-${ index + 1 }`, runId: FIXTURE_APPROVALS_RUN_ID, seq: index + 1, at: ago(minutes), body }));
+    data.items[FIXTURE_APPROVALS_RUN_ID] = entries.map(
+        ([minutes, body], index): StreamItem => ({
+            id: `${FIXTURE_APPROVALS_RUN_ID}-${index + 1}`,
+            runId: FIXTURE_APPROVALS_RUN_ID,
+            seq: index + 1,
+            at: ago(minutes),
+            body,
+        })
+    );
     data.runs.push({
         id: FIXTURE_APPROVALS_RUN_ID,
         projectId: orchestrator.projectId,
@@ -1007,11 +1686,36 @@ export function withFixtureWorkspace(data: FixtureData, now = Date.now()): Fixtu
     };
     const entries: Array<[number, StreamItemBody]> = [
         [30, { kind: 'user', text: 'Add the weekend surcharge to the price, on a branch of its own.' }],
-        [29, { kind: 'tool', toolCallId: 'tc-o9-ws', name: 'workspace', state: 'done', input: { path: workspace.path, branch: workspace.branch, base: 'origin/main' }, output: fixtureWorkspaceLog(workspace, 'origin/main') }],
-        [28, { kind: 'assistant', done: true, text: 'The surcharge is in `src/booking/price.ts`, committed on `clowdy/ab12cd34`.' }],
+        [
+            29,
+            {
+                kind: 'tool',
+                toolCallId: 'tc-o9-ws',
+                name: 'workspace',
+                state: 'done',
+                input: { path: workspace.path, branch: workspace.branch, base: 'origin/main' },
+                output: fixtureWorkspaceLog(workspace, 'origin/main'),
+            },
+        ],
+        [
+            28,
+            {
+                kind: 'assistant',
+                done: true,
+                text: 'The surcharge is in `src/booking/price.ts`, committed on `clowdy/ab12cd34`.',
+            },
+        ],
     ];
 
-    data.items[FIXTURE_WORKSPACE_RUN_ID] = entries.map(([minutes, body], index): StreamItem => ({ id: `${ FIXTURE_WORKSPACE_RUN_ID }-${ index + 1 }`, runId: FIXTURE_WORKSPACE_RUN_ID, seq: index + 1, at: ago(minutes), body }));
+    data.items[FIXTURE_WORKSPACE_RUN_ID] = entries.map(
+        ([minutes, body], index): StreamItem => ({
+            id: `${FIXTURE_WORKSPACE_RUN_ID}-${index + 1}`,
+            runId: FIXTURE_WORKSPACE_RUN_ID,
+            seq: index + 1,
+            at: ago(minutes),
+            body,
+        })
+    );
     data.runs.push({
         id: FIXTURE_WORKSPACE_RUN_ID,
         projectId: orchestrator.projectId,
@@ -1059,7 +1763,9 @@ export const FIXTURE_NOTES_FOLDER = { id: 'fld_notes', path: '/Users/dev/notes' 
  */
 export function withFixtureWorktrees(data: FixtureData, now = Date.now()): FixtureData {
     const ago = (minutes: number) => now - minutes * MINUTE;
-    const first = data.chats.find(chat => chat.id === FIXTURE_WORKSPACE_CHAT_ID) ?? withFixtureWorkspace(data, now).chats.find(chat => chat.id === FIXTURE_WORKSPACE_CHAT_ID) as Chat;
+    const first =
+        data.chats.find(chat => chat.id === FIXTURE_WORKSPACE_CHAT_ID) ??
+        (withFixtureWorkspace(data, now).chats.find(chat => chat.id === FIXTURE_WORKSPACE_CHAT_ID) as Chat);
     const project = data.projects.find(candidate => candidate.id === first.projectId) as Project;
 
     project.folders.push({ ...FIXTURE_API_FOLDER }, { ...FIXTURE_NOTES_FOLDER });
@@ -1133,10 +1839,10 @@ export function createFixtureData(now = Date.now()): FixtureData {
 
     // A closed task has the time it closed, as the daemon's migration gives a task that was already closed (its last change).
     const task = (number: number, title: string, statusId: string, rest: Partial<Task> = {}): Task => ({
-        id: `t-${ number }`,
+        id: `t-${number}`,
         projectId,
         number,
-        key: `CAR-${ number }`,
+        key: `CAR-${number}`,
         title,
         description: '',
         statusId,
@@ -1151,36 +1857,68 @@ export function createFixtureData(now = Date.now()): FixtureData {
     const archivedAt = ago(60 * 24 * 2);
 
     const tasks: Task[] = [
-        task(20, 'Remove the legacy booking page', 'done', { description: 'The old three-step page is replaced by the single form.' }),
+        task(20, 'Remove the legacy booking page', 'done', {
+            description: 'The old three-step page is replaced by the single form.',
+        }),
         task(21, 'Set up the booking schema', 'done', { createdBy: { kind: 'run', runId: 'r-orch-1' } }),
-        task(22, 'Update the availability API', 'done', { dependsOn: ['t-21'], description: 'Return free cars for a date range in one call.' }),
-        task(23, 'Weekend pricing rules', 'review', { dependsOn: ['t-22'], description: 'Weekend days cost 15% more. Cover the edge of a booking that spans a month end.' }),
+        task(22, 'Update the availability API', 'done', {
+            dependsOn: ['t-21'],
+            description: 'Return free cars for a date range in one call.',
+        }),
+        task(23, 'Weekend pricing rules', 'review', {
+            dependsOn: ['t-22'],
+            description: 'Weekend days cost 15% more. Cover the edge of a booking that spans a month end.',
+        }),
         task(24, 'Update the booking form', 'active', {
             dependsOn: ['t-22'],
             createdBy: { kind: 'run', runId: 'r-orch-1' },
-            description: 'One form instead of three steps.\n\n- pick dates and a car\n- show the total price while typing\n- confirm in the same view',
+            description:
+                'One form instead of three steps.\n\n- pick dates and a car\n- show the total price while typing\n- confirm in the same view',
         }),
-        task(25, 'Confirmation email template', 'active', { createdBy: { kind: 'run', runId: 'r-orch-1' }, description: 'A plain, short email with the booking summary.' }),
-        task(26, 'Cancel a booking', 'todo', { dependsOn: ['t-24', 't-25'], description: 'Free until 24 hours before pickup.' }),
+        task(25, 'Confirmation email template', 'active', {
+            createdBy: { kind: 'run', runId: 'r-orch-1' },
+            description: 'A plain, short email with the booking summary.',
+        }),
+        task(26, 'Cancel a booking', 'todo', {
+            dependsOn: ['t-24', 't-25'],
+            description: 'Free until 24 hours before pickup.',
+        }),
         task(27, 'Insurance options', 'todo', { dependsOn: ['t-24'] }),
         task(28, 'Search by location', 'backlog'),
-        task(29, 'Print invoice as PDF', 'canceled', { description: 'Dropped: the email already carries the invoice.' }),
+        task(29, 'Print invoice as PDF', 'canceled', {
+            description: 'Dropped: the email already carries the invoice.',
+        }),
         task(30, 'Admin: fleet table', 'backlog', {
             createdBy: { kind: 'provider', provider: 'linear' },
             external: { provider: 'linear', externalId: 'ENG-412', url: 'https://linear.app/example/issue/ENG-412' },
         }),
         // A tree of tasks, as `task create --parent` makes it: Payments holds four tasks and one of them holds two, over most of the workflow, and the canceled
         // one is left out of the roll-up. Refund flow carries a checklist in its description, Card checkout the comments.
-        task(31, 'Payments', 'active', { description: 'Take card payments at checkout, and give the money back.\n\nThe tasks inside it are the stages.' }),
-        task(32, 'Card checkout', 'active', { parentId: 't-31', createdBy: { kind: 'run', runId: 'r-orch-1' }, description: 'The card form and the payment call.' }),
+        task(31, 'Payments', 'active', {
+            description:
+                'Take card payments at checkout, and give the money back.\n\nThe tasks inside it are the stages.',
+        }),
+        task(32, 'Card checkout', 'active', {
+            parentId: 't-31',
+            createdBy: { kind: 'run', runId: 'r-orch-1' },
+            description: 'The card form and the payment call.',
+        }),
         task(33, 'Tokenize the card in the browser', 'done', { parentId: 't-32' }),
-        task(34, 'Handle a declined card', 'todo', { parentId: 't-32', dependsOn: ['t-33'], description: 'Show the reason and keep what the person typed.' }),
+        task(34, 'Handle a declined card', 'todo', {
+            parentId: 't-32',
+            dependsOn: ['t-33'],
+            description: 'Show the reason and keep what the person typed.',
+        }),
         task(35, 'Refund flow', 'todo', {
             parentId: 't-31',
-            description: 'Steps to cover:\n\n- [x] Refund a whole booking\n- [x] Refund after a cancel\n- [ ] Refund part of a booking\n- [ ] Tell the person by email\n- [ ] Show the refund in the booking list',
+            description:
+                'Steps to cover:\n\n- [x] Refund a whole booking\n- [x] Refund after a cancel\n- [ ] Refund part of a booking\n- [ ] Tell the person by email\n- [ ] Show the refund in the booking list',
         }),
         task(36, 'Payment receipts by email', 'review', { parentId: 't-31' }),
-        task(37, 'Split a payment between two cards', 'canceled', { parentId: 't-31', description: 'Dropped: nobody asked for it.' }),
+        task(37, 'Split a payment between two cards', 'canceled', {
+            parentId: 't-31',
+            description: 'Dropped: nobody asked for it.',
+        }),
         // An archived piece: a finished task with two tasks inside it, archived together. The snapshot leaves them out; the archive's page lists them.
         task(38, 'Clean up the admin pages', 'done', { archivedAt }),
         task(39, 'Remove the old reports page', 'done', { parentId: 't-38', archivedAt }),
@@ -1188,7 +1926,13 @@ export function createFixtureData(now = Date.now()): FixtureData {
     ];
 
     const comments: TaskComment[] = [
-        { id: 'cmt_A001', taskId: 't-32', author: { kind: 'user' }, body: 'Use the sandbox keys until the checkout is reviewed.', createdAt: ago(60 * 5) },
+        {
+            id: 'cmt_A001',
+            taskId: 't-32',
+            author: { kind: 'user' },
+            body: 'Use the sandbox keys until the checkout is reviewed.',
+            createdAt: ago(60 * 5),
+        },
         {
             id: 'cmt_A002',
             taskId: 't-32',
@@ -1196,22 +1940,69 @@ export function createFixtureData(now = Date.now()): FixtureData {
             body: 'The form posts to `/api/pay`.\n\n- the card number never reaches our server\n- a declined card answers `402`\n\nNext: the declined state (`CAR-34`).',
             createdAt: ago(60 * 4),
         },
-        { id: 'cmt_A003', taskId: 't-32', author: { kind: 'user' }, body: 'Looks right. Keep the amount in cents.', createdAt: ago(60 * 3), editedAt: ago(60 * 2) },
+        {
+            id: 'cmt_A003',
+            taskId: 't-32',
+            author: { kind: 'user' },
+            body: 'Looks right. Keep the amount in cents.',
+            createdAt: ago(60 * 3),
+            editedAt: ago(60 * 2),
+        },
     ];
 
     const chats: Chat[] = [
-        { id: 'c-1', projectId, title: 'Simplify booking', mode: 'autopilot', orchestratorRunId: 'r-orch-1', createdAt: ago(95), updatedAt: ago(1) },
-        { id: 'c-2', projectId, title: 'First version', mode: 'autopilot', orchestratorRunId: 'r-orch-2', createdAt: ago(60 * 24 * 5), updatedAt: ago(60 * 24 * 4) },
-        { id: 'c-3', projectId, title: 'Architecture questions', mode: 'semi', orchestratorRunId: 'r-orch-3', createdAt: ago(40), updatedAt: ago(9) },
+        {
+            id: 'c-1',
+            projectId,
+            title: 'Simplify booking',
+            mode: 'autopilot',
+            orchestratorRunId: 'r-orch-1',
+            createdAt: ago(95),
+            updatedAt: ago(1),
+        },
+        {
+            id: 'c-2',
+            projectId,
+            title: 'First version',
+            mode: 'autopilot',
+            orchestratorRunId: 'r-orch-2',
+            createdAt: ago(60 * 24 * 5),
+            updatedAt: ago(60 * 24 * 4),
+        },
+        {
+            id: 'c-3',
+            projectId,
+            title: 'Architecture questions',
+            mode: 'semi',
+            orchestratorRunId: 'r-orch-3',
+            createdAt: ago(40),
+            updatedAt: ago(9),
+        },
         { id: 'c-4', projectId, title: 'New chat', mode: 'autopilot', createdAt: ago(2), updatedAt: ago(2) },
         // Its orchestrator started two commands in the background and waits for them: the strip above the message box counts them.
-        { id: 'c-5', projectId, title: 'Check the booking changes', mode: 'autopilot', orchestratorRunId: 'r-orch-5', createdAt: ago(30), updatedAt: ago(5) },
+        {
+            id: 'c-5',
+            projectId,
+            title: 'Check the booking changes',
+            mode: 'autopilot',
+            orchestratorRunId: 'r-orch-5',
+            createdAt: ago(30),
+            updatedAt: ago(5),
+        },
         /*
          * A chat whose agent handed the work to threads (`clowdy thread spawn`) and rests while they work, so its dot is green for them: Fix the price
          * rounding works and has a thread of its own, which finished while it worked (the notice waits in its queue); Write the refund tests finished and
          * Migrate the payments table failed, both told in the parent's stream with Load test the checkout, which waits for its background work.
          */
-        { id: 'c-6', projectId, title: 'Ship the checkout', mode: 'autopilot', orchestratorRunId: 'r-orch-6', createdAt: ago(50), updatedAt: ago(3) },
+        {
+            id: 'c-6',
+            projectId,
+            title: 'Ship the checkout',
+            mode: 'autopilot',
+            orchestratorRunId: 'r-orch-6',
+            createdAt: ago(50),
+            updatedAt: ago(3),
+        },
         {
             id: 'c-6a',
             projectId,
@@ -1219,21 +2010,69 @@ export function createFixtureData(now = Date.now()): FixtureData {
             mode: 'autopilot',
             parentChatId: 'c-6',
             orchestratorRunId: 'r-orch-6a',
-            queue: [{
-                id: 'q-notice-6a',
-                mode: 'queue',
-                text: 'Thread "Check the currency table" finished',
-                content: 'Thread "Check the currency table" finished.',
-                from: { kind: 'threadNotice', threads: [{ chatId: 'c-6a1', title: 'Check the currency table', outcome: 'finished', text: CURRENCY_ANSWER }] },
-                createdAt: ago(25),
-            }],
+            queue: [
+                {
+                    id: 'q-notice-6a',
+                    mode: 'queue',
+                    text: 'Thread "Check the currency table" finished',
+                    content: 'Thread "Check the currency table" finished.',
+                    from: {
+                        kind: 'threadNotice',
+                        threads: [
+                            {
+                                chatId: 'c-6a1',
+                                title: 'Check the currency table',
+                                outcome: 'finished',
+                                text: CURRENCY_ANSWER,
+                            },
+                        ],
+                    },
+                    createdAt: ago(25),
+                },
+            ],
             createdAt: ago(48),
             updatedAt: ago(2),
         },
-        { id: 'c-6a1', projectId, title: 'Check the currency table', mode: 'autopilot', parentChatId: 'c-6a', orchestratorRunId: 'r-orch-6a1', createdAt: ago(46), updatedAt: ago(25) },
-        { id: 'c-6b', projectId, title: 'Write the refund tests', mode: 'autopilot', parentChatId: 'c-6', orchestratorRunId: 'r-orch-6b', createdAt: ago(47.5), updatedAt: ago(20) },
-        { id: 'c-6c', projectId, title: 'Migrate the payments table', mode: 'autopilot', parentChatId: 'c-6', orchestratorRunId: 'r-orch-6c', createdAt: ago(47), updatedAt: ago(20) },
-        { id: 'c-6e', projectId, title: 'Load test the checkout', mode: 'autopilot', parentChatId: 'c-6', orchestratorRunId: 'r-orch-6e', createdAt: ago(46.5), updatedAt: ago(20) },
+        {
+            id: 'c-6a1',
+            projectId,
+            title: 'Check the currency table',
+            mode: 'autopilot',
+            parentChatId: 'c-6a',
+            orchestratorRunId: 'r-orch-6a1',
+            createdAt: ago(46),
+            updatedAt: ago(25),
+        },
+        {
+            id: 'c-6b',
+            projectId,
+            title: 'Write the refund tests',
+            mode: 'autopilot',
+            parentChatId: 'c-6',
+            orchestratorRunId: 'r-orch-6b',
+            createdAt: ago(47.5),
+            updatedAt: ago(20),
+        },
+        {
+            id: 'c-6c',
+            projectId,
+            title: 'Migrate the payments table',
+            mode: 'autopilot',
+            parentChatId: 'c-6',
+            orchestratorRunId: 'r-orch-6c',
+            createdAt: ago(47),
+            updatedAt: ago(20),
+        },
+        {
+            id: 'c-6e',
+            projectId,
+            title: 'Load test the checkout',
+            mode: 'autopilot',
+            parentChatId: 'c-6',
+            orchestratorRunId: 'r-orch-6e',
+            createdAt: ago(46.5),
+            updatedAt: ago(20),
+        },
     ];
 
     const run = (id: string, name: string, role: Run['role'], status: Run['status'], rest: Partial<Run> = {}): Run => ({
@@ -1251,7 +2090,13 @@ export function createFixtureData(now = Date.now()): FixtureData {
     });
 
     const runs: Run[] = [
-        run('r-orch-1', 'Orchestrator 01', 'orchestrator', 'running', { chatId: 'c-1', summary: 'Simplify booking', createdAt: ago(94), startedAt: ago(94), context: { used: 53000, size: 250000 } }),
+        run('r-orch-1', 'Orchestrator 01', 'orchestrator', 'running', {
+            chatId: 'c-1',
+            summary: 'Simplify booking',
+            createdAt: ago(94),
+            startedAt: ago(94),
+            context: { used: 53000, size: 250000 },
+        }),
         // Sub-agents of the orchestrator's own `Agent` calls (tc-agent-1 to tc-agent-4 in its stream): cards there, never rows of the Agents list.
         run('r-na-01', 'Explore', 'executor', 'succeeded', {
             parentRunId: 'r-orch-1',
@@ -1333,10 +2178,33 @@ export function createFixtureData(now = Date.now()): FixtureData {
             context: { used: 31000, size: 250000 },
         }),
         // The orchestrators of Ship the checkout and of its threads: a thread's orchestrator is a root run of its own chat, never a child run.
-        run('r-orch-6', 'Orchestrator 06', 'orchestrator', 'succeeded', { chatId: 'c-6', summary: 'Ship the checkout', createdAt: ago(50), startedAt: ago(50), finishedAt: ago(9) }),
-        run('r-orch-6a', 'Orchestrator 07', 'orchestrator', 'running', { chatId: 'c-6a', summary: 'Fix the price rounding', createdAt: ago(48), startedAt: ago(48) }),
-        run('r-orch-6a1', 'Orchestrator 08', 'orchestrator', 'succeeded', { chatId: 'c-6a1', summary: 'Check the currency table', createdAt: ago(46), startedAt: ago(46), finishedAt: ago(25) }),
-        run('r-orch-6b', 'Orchestrator 09', 'orchestrator', 'succeeded', { chatId: 'c-6b', summary: 'Write the refund tests', createdAt: ago(47.5), startedAt: ago(47.5), finishedAt: ago(20) }),
+        run('r-orch-6', 'Orchestrator 06', 'orchestrator', 'succeeded', {
+            chatId: 'c-6',
+            summary: 'Ship the checkout',
+            createdAt: ago(50),
+            startedAt: ago(50),
+            finishedAt: ago(9),
+        }),
+        run('r-orch-6a', 'Orchestrator 07', 'orchestrator', 'running', {
+            chatId: 'c-6a',
+            summary: 'Fix the price rounding',
+            createdAt: ago(48),
+            startedAt: ago(48),
+        }),
+        run('r-orch-6a1', 'Orchestrator 08', 'orchestrator', 'succeeded', {
+            chatId: 'c-6a1',
+            summary: 'Check the currency table',
+            createdAt: ago(46),
+            startedAt: ago(46),
+            finishedAt: ago(25),
+        }),
+        run('r-orch-6b', 'Orchestrator 09', 'orchestrator', 'succeeded', {
+            chatId: 'c-6b',
+            summary: 'Write the refund tests',
+            createdAt: ago(47.5),
+            startedAt: ago(47.5),
+            finishedAt: ago(20),
+        }),
         run('r-orch-6c', 'Orchestrator 10', 'orchestrator', 'failed', {
             chatId: 'c-6c',
             summary: 'Migrate the payments table',
@@ -1357,7 +2225,10 @@ export function createFixtureData(now = Date.now()): FixtureData {
         }),
     ];
 
-    const chatTaskLinks: ChatTaskLink[] = [20, 21, 22, 23, 24, 25, 26, 27].map(number => ({ chatId: 'c-1', taskId: `t-${ number }` }));
+    const chatTaskLinks: ChatTaskLink[] = [20, 21, 22, 23, 24, 25, 26, 27].map(number => ({
+        chatId: 'c-1',
+        taskId: `t-${number}`,
+    }));
 
     chatTaskLinks.push({ chatId: 'c-2', taskId: 't-28' }, { chatId: 'c-2', taskId: 't-29' });
 
@@ -1374,82 +2245,287 @@ export function createFixtureData(now = Date.now()): FixtureData {
 
     const items: Record<string, StreamItem[]> = {};
     const stream = (runId: string, entries: Array<[number, StreamItemBody]>) => {
-        items[runId] = entries.map(([minutesAgo, body], index) => ({ id: `${ runId }-${ index + 1 }`, runId, seq: index + 1, at: ago(minutesAgo), body }));
+        items[runId] = entries.map(([minutesAgo, body], index) => ({
+            id: `${runId}-${index + 1}`,
+            runId,
+            seq: index + 1,
+            at: ago(minutesAgo),
+            body,
+        }));
     };
 
     stream('r-orch-1', [
-        [94, { kind: 'user', text: 'Simplify the booking flow: one form instead of three steps, and show the price while the person types.', attachments: FIXTURE_ATTACHMENTS.map(file => file.attachment) }],
-        [94, { kind: 'assistant', done: true, text: 'I read the current flow. It has **three steps** and recalculates the price only on the last one.\n\nPlan:\n\n1. Move availability into one API call (`CAR-22`).\n2. Rebuild the form as one view (`CAR-24`).\n3. Send a short confirmation email (`CAR-25`).\n\nI will start the independent parts now.' }],
-        [93, { kind: 'tool', toolCallId: 'tc-1', name: 'Grep', state: 'done', input: { pattern: 'BookingStep', path: 'src' }, output: 'src/booking/steps.tsx:12\nsrc/booking/steps.tsx:40\nsrc/booking/index.tsx:8' }],
-        [93, {
-            kind: 'tool',
-            toolCallId: 'tc-agent-1',
-            name: 'Agent',
-            state: 'done',
-            input: { subagent_type: 'Explore', description: 'Map the booking flow', prompt: 'Find the components of the booking flow and where each step keeps its state.' },
-            output: 'Three step components in src/booking/steps.tsx share one context; the price is computed only on the last step.',
-        }],
-        [92, { kind: 'tool', toolCallId: 'tc-2', name: 'Read', state: 'done', input: { file_path: 'src/booking/index.tsx' }, output: 'export function Booking() {\n    return <Steps />;\n}' }],
-        [90, { kind: 'tool', toolCallId: 'tc-3', name: 'create_task', state: 'done', input: { title: 'Update the booking form', dependsOn: ['CAR-22'] }, output: { key: 'CAR-24' } }],
-        [70, {
-            kind: 'tool',
-            toolCallId: 'tc-agent-4',
-            name: 'Agent',
-            state: 'error',
-            input: { subagent_type: 'general-purpose', description: 'Weekend pricing rules', prompt: 'Add the weekend surcharge to the price helper and keep the typecheck green.' },
-            error: 'Typecheck failed in 3 files and the run could not repair them.',
-        }],
-        [60, { kind: 'assistant', done: true, text: 'The schema is in `src/db/schema.ts`. The pricing rules failed the typecheck; I will look at the report before I retry.\n\n### What changed\n\n| File | Change |\n| --- | --- |\n| `src/db/schema.ts` | adds the `bookings` table |\n| `src/booking/price.ts` | weekend surcharge |\n\n```src/booking/price.ts\nexport const weekendRate = 1.15;\n```\n\n> The price must be visible before the person commits.\n\nSee [the decision](https://example.com/decision) and `CAR-23`.' }],
+        [
+            94,
+            {
+                kind: 'user',
+                text: 'Simplify the booking flow: one form instead of three steps, and show the price while the person types.',
+                attachments: FIXTURE_ATTACHMENTS.map(file => file.attachment),
+            },
+        ],
+        [
+            94,
+            {
+                kind: 'assistant',
+                done: true,
+                text: 'I read the current flow. It has **three steps** and recalculates the price only on the last one.\n\nPlan:\n\n1. Move availability into one API call (`CAR-22`).\n2. Rebuild the form as one view (`CAR-24`).\n3. Send a short confirmation email (`CAR-25`).\n\nI will start the independent parts now.',
+            },
+        ],
+        [
+            93,
+            {
+                kind: 'tool',
+                toolCallId: 'tc-1',
+                name: 'Grep',
+                state: 'done',
+                input: { pattern: 'BookingStep', path: 'src' },
+                output: 'src/booking/steps.tsx:12\nsrc/booking/steps.tsx:40\nsrc/booking/index.tsx:8',
+            },
+        ],
+        [
+            93,
+            {
+                kind: 'tool',
+                toolCallId: 'tc-agent-1',
+                name: 'Agent',
+                state: 'done',
+                input: {
+                    subagent_type: 'Explore',
+                    description: 'Map the booking flow',
+                    prompt: 'Find the components of the booking flow and where each step keeps its state.',
+                },
+                output: 'Three step components in src/booking/steps.tsx share one context; the price is computed only on the last step.',
+            },
+        ],
+        [
+            92,
+            {
+                kind: 'tool',
+                toolCallId: 'tc-2',
+                name: 'Read',
+                state: 'done',
+                input: { file_path: 'src/booking/index.tsx' },
+                output: 'export function Booking() {\n    return <Steps />;\n}',
+            },
+        ],
+        [
+            90,
+            {
+                kind: 'tool',
+                toolCallId: 'tc-3',
+                name: 'create_task',
+                state: 'done',
+                input: { title: 'Update the booking form', dependsOn: ['CAR-22'] },
+                output: { key: 'CAR-24' },
+            },
+        ],
+        [
+            70,
+            {
+                kind: 'tool',
+                toolCallId: 'tc-agent-4',
+                name: 'Agent',
+                state: 'error',
+                input: {
+                    subagent_type: 'general-purpose',
+                    description: 'Weekend pricing rules',
+                    prompt: 'Add the weekend surcharge to the price helper and keep the typecheck green.',
+                },
+                error: 'Typecheck failed in 3 files and the run could not repair them.',
+            },
+        ],
+        [
+            60,
+            {
+                kind: 'assistant',
+                done: true,
+                text: 'The schema is in `src/db/schema.ts`. The pricing rules failed the typecheck; I will look at the report before I retry.\n\n### What changed\n\n| File | Change |\n| --- | --- |\n| `src/db/schema.ts` | adds the `bookings` table |\n| `src/booking/price.ts` | weekend surcharge |\n\n```src/booking/price.ts\nexport const weekendRate = 1.15;\n```\n\n> The price must be visible before the person commits.\n\nSee [the decision](https://example.com/decision) and `CAR-23`.',
+            },
+        ],
         [41, { kind: 'note', text: 'Background command finished: bun run typecheck' }],
         [41, { kind: 'error', text: 'The agent stopped and was started again' }],
-        [21, {
-            kind: 'tool',
-            toolCallId: 'tc-agent-3',
-            name: 'Agent',
-            state: 'running',
-            input: { subagent_type: 'general-purpose', description: 'Update the booking form', prompt: 'Update the booking form (CAR-24): one view with dates, car and live price. Keep the existing validation messages.' },
-        }],
-        [20, { kind: 'assistant', done: true, text: 'A sub-agent is on the form. I will check what it hands back before I move on.' }],
-        [2, { kind: 'tool', toolCallId: 'tc-agent-2', name: 'Agent', state: 'running', input: { subagent_type: 'Explore', description: 'Find where the price is computed', prompt: 'Find where the booking price is computed and who calls it.' } }],
+        [
+            21,
+            {
+                kind: 'tool',
+                toolCallId: 'tc-agent-3',
+                name: 'Agent',
+                state: 'running',
+                input: {
+                    subagent_type: 'general-purpose',
+                    description: 'Update the booking form',
+                    prompt: 'Update the booking form (CAR-24): one view with dates, car and live price. Keep the existing validation messages.',
+                },
+            },
+        ],
+        [
+            20,
+            {
+                kind: 'assistant',
+                done: true,
+                text: 'A sub-agent is on the form. I will check what it hands back before I move on.',
+            },
+        ],
+        [
+            2,
+            {
+                kind: 'tool',
+                toolCallId: 'tc-agent-2',
+                name: 'Agent',
+                state: 'running',
+                input: {
+                    subagent_type: 'Explore',
+                    description: 'Find where the price is computed',
+                    prompt: 'Find where the booking price is computed and who calls it.',
+                },
+            },
+        ],
     ]);
 
     stream('r-na-01', [
-        [93, { kind: 'tool', toolCallId: 'tc-1', name: 'Glob', state: 'done', input: { pattern: 'src/booking/**' }, output: 'src/booking/index.tsx\nsrc/booking/steps.tsx\nsrc/booking/price.ts' }],
-        [93, { kind: 'tool', toolCallId: 'tc-2', name: 'Read', state: 'done', input: { file_path: 'src/booking/steps.tsx' }, output: 'export const steps = [Dates, Car, Confirm];' }],
-        [92, { kind: 'assistant', done: true, text: 'Three step components in `src/booking/steps.tsx` share one context; the price is computed only on the last step.' }],
+        [
+            93,
+            {
+                kind: 'tool',
+                toolCallId: 'tc-1',
+                name: 'Glob',
+                state: 'done',
+                input: { pattern: 'src/booking/**' },
+                output: 'src/booking/index.tsx\nsrc/booking/steps.tsx\nsrc/booking/price.ts',
+            },
+        ],
+        [
+            93,
+            {
+                kind: 'tool',
+                toolCallId: 'tc-2',
+                name: 'Read',
+                state: 'done',
+                input: { file_path: 'src/booking/steps.tsx' },
+                output: 'export const steps = [Dates, Car, Confirm];',
+            },
+        ],
+        [
+            92,
+            {
+                kind: 'assistant',
+                done: true,
+                text: 'Three step components in `src/booking/steps.tsx` share one context; the price is computed only on the last step.',
+            },
+        ],
     ]);
 
     stream('r-na-02', [
         [2, { kind: 'assistant', done: true, text: 'Looking for the price helper and its callers.' }],
-        [1, { kind: 'tool', toolCallId: 'tc-1', name: 'Grep', state: 'running', input: { pattern: 'useBookingPrice', path: 'src' } }],
+        [
+            1,
+            {
+                kind: 'tool',
+                toolCallId: 'tc-1',
+                name: 'Grep',
+                state: 'running',
+                input: { pattern: 'useBookingPrice', path: 'src' },
+            },
+        ],
     ]);
 
     stream('r-na-03', [
         [21, { kind: 'assistant', done: true, text: 'I will start by reading the current form and the price helper.' }],
-        [20, { kind: 'tool', toolCallId: 'tc-1', name: 'Read', state: 'done', input: { file_path: 'src/booking/form.tsx' }, output: 'export function BookingForm() {\n    // ...\n}' }],
-        [19, { kind: 'tool', toolCallId: 'tc-2', name: 'Grep', state: 'done', input: { pattern: 'useBookingPrice', path: 'src' }, output: 'src/booking/price.ts:4' }],
-        [18, { kind: 'assistant', done: true, text: 'The form keeps its state per step. I will merge the steps into one component and call `useBookingPrice` on every change.' }],
-        [16, {
-            kind: 'tool',
-            toolCallId: 'tc-3',
-            name: 'Edit',
-            state: 'done',
-            input: { file_path: 'src/booking/form.tsx', old_string: 'const [step, setStep] = useState(0);\nconst next = () => setStep(step + 1);', new_string: 'const price = useBookingPrice(dates, car);\nconst canConfirm = dates.valid && car !== null;\nconst confirm = () => submit({ dates, car });' },
-            output: 'The file was updated.',
-        }],
-        [14, { kind: 'tool', toolCallId: 'tc-4', name: 'Edit', state: 'done', input: { file_path: 'src/booking/steps.tsx' }, output: { added: 42, removed: 118 } }],
-        [3, { kind: 'tool', toolCallId: 'tc-5', name: 'Bash', state: 'running', input: { command: 'bun run typecheck' } }],
+        [
+            20,
+            {
+                kind: 'tool',
+                toolCallId: 'tc-1',
+                name: 'Read',
+                state: 'done',
+                input: { file_path: 'src/booking/form.tsx' },
+                output: 'export function BookingForm() {\n    // ...\n}',
+            },
+        ],
+        [
+            19,
+            {
+                kind: 'tool',
+                toolCallId: 'tc-2',
+                name: 'Grep',
+                state: 'done',
+                input: { pattern: 'useBookingPrice', path: 'src' },
+                output: 'src/booking/price.ts:4',
+            },
+        ],
+        [
+            18,
+            {
+                kind: 'assistant',
+                done: true,
+                text: 'The form keeps its state per step. I will merge the steps into one component and call `useBookingPrice` on every change.',
+            },
+        ],
+        [
+            16,
+            {
+                kind: 'tool',
+                toolCallId: 'tc-3',
+                name: 'Edit',
+                state: 'done',
+                input: {
+                    file_path: 'src/booking/form.tsx',
+                    old_string: 'const [step, setStep] = useState(0);\nconst next = () => setStep(step + 1);',
+                    new_string:
+                        'const price = useBookingPrice(dates, car);\nconst canConfirm = dates.valid && car !== null;\nconst confirm = () => submit({ dates, car });',
+                },
+                output: 'The file was updated.',
+            },
+        ],
+        [
+            14,
+            {
+                kind: 'tool',
+                toolCallId: 'tc-4',
+                name: 'Edit',
+                state: 'done',
+                input: { file_path: 'src/booking/steps.tsx' },
+                output: { added: 42, removed: 118 },
+            },
+        ],
+        [
+            3,
+            {
+                kind: 'tool',
+                toolCallId: 'tc-5',
+                name: 'Bash',
+                state: 'running',
+                input: { command: 'bun run typecheck' },
+            },
+        ],
         [1, { kind: 'assistant', done: false, text: 'Checking confirmation handling' }],
     ]);
 
     stream('r-na-04', [
-        [60, { kind: 'tool', toolCallId: 'tc-1', name: 'Bash', state: 'error', input: { command: 'bun run typecheck' }, error: 'src/booking/price.ts(31,9): error TS2322: Type string is not assignable to type number.' }],
+        [
+            60,
+            {
+                kind: 'tool',
+                toolCallId: 'tc-1',
+                name: 'Bash',
+                state: 'error',
+                input: { command: 'bun run typecheck' },
+                error: 'src/booking/price.ts(31,9): error TS2322: Type string is not assignable to type number.',
+            },
+        ],
         [41, { kind: 'error', text: 'Typecheck failed in 3 files and the run could not repair them.' }],
     ]);
 
     stream('r-orch-3', [
         [40, { kind: 'user', text: 'Should bookings live in SQLite or in plain files?' }],
-        [39, { kind: 'assistant', done: true, text: 'Both work. The choice changes how reports are built, so I want your call before I continue.' }],
+        [
+            39,
+            {
+                kind: 'assistant',
+                done: true,
+                text: 'Both work. The choice changes how reports are built, so I want your call before I continue.',
+            },
+        ],
         [
             9,
             {
@@ -1457,8 +2533,16 @@ export function createFixtureData(now = Date.now()): FixtureData {
                 questionId: 'q-store',
                 text: 'Where should bookings be stored?',
                 options: [
-                    { id: 'sqlite', label: 'SQLite', consequence: 'Queries and reports are simple; one file to back up.' },
-                    { id: 'files', label: 'One JSON file per booking', consequence: 'Easy to read in git; slow to query past a few thousand.' },
+                    {
+                        id: 'sqlite',
+                        label: 'SQLite',
+                        consequence: 'Queries and reports are simple; one file to back up.',
+                    },
+                    {
+                        id: 'files',
+                        label: 'One JSON file per booking',
+                        consequence: 'Easy to read in git; slow to query past a few thousand.',
+                    },
                 ],
                 recommended: 'sqlite',
             },
@@ -1468,9 +2552,32 @@ export function createFixtureData(now = Date.now()): FixtureData {
     // The turn ended with two commands still running in the background: the session stays open, and their results arrive as a turn of the agent's own.
     stream('r-orch-5', [
         [30, { kind: 'user', text: 'Run the tests and the type check, and tell me when both are done.' }],
-        [29, { kind: 'assistant', done: true, text: 'Both take a few minutes, so I will start them in the background.' }],
-        [29, { kind: 'tool', toolCallId: 'tc-o5-1', name: 'Bash', state: 'done', input: { command: 'bun run test', run_in_background: true }, output: 'Command running in background with ID: bg-1' }],
-        [29, { kind: 'tool', toolCallId: 'tc-o5-2', name: 'Bash', state: 'done', input: { command: 'bun run typecheck', run_in_background: true }, output: 'Command running in background with ID: bg-2' }],
+        [
+            29,
+            { kind: 'assistant', done: true, text: 'Both take a few minutes, so I will start them in the background.' },
+        ],
+        [
+            29,
+            {
+                kind: 'tool',
+                toolCallId: 'tc-o5-1',
+                name: 'Bash',
+                state: 'done',
+                input: { command: 'bun run test', run_in_background: true },
+                output: 'Command running in background with ID: bg-1',
+            },
+        ],
+        [
+            29,
+            {
+                kind: 'tool',
+                toolCallId: 'tc-o5-2',
+                name: 'Bash',
+                state: 'done',
+                input: { command: 'bun run typecheck', run_in_background: true },
+                output: 'Command running in background with ID: bg-2',
+            },
+        ],
         [28, { kind: 'assistant', done: true, text: 'Both are running. I will report here when they finish.' }],
     ]);
 
@@ -1478,92 +2585,405 @@ export function createFixtureData(now = Date.now()): FixtureData {
     const fromParent = { kind: 'thread', chatId: 'c-6', title: 'Ship the checkout' } as const;
 
     stream('r-orch-6', [
-        [50, { kind: 'user', text: 'Ship the new checkout: fix the price rounding, write the refund tests, migrate the payments table and load test the whole flow.' }],
-        [49, { kind: 'assistant', done: true, text: 'Four parts that do not depend on each other, so each gets a thread of its own. I will stay here and put the results together.' }],
-        [48, { kind: 'tool', toolCallId: 'tc-o6-1', name: 'Bash', state: 'done', input: { command: 'clowdy thread spawn --title "Fix the price rounding" --prompt-file rounding.md', description: 'Start a thread for the price rounding' }, output: 'c-6a' }],
-        [47.5, { kind: 'tool', toolCallId: 'tc-o6-2', name: 'Bash', state: 'done', input: { command: 'clowdy thread spawn --title "Write the refund tests" --prompt-file refunds.md', description: 'Start a thread for the refund tests' }, output: 'c-6b' }],
-        [47, { kind: 'tool', toolCallId: 'tc-o6-3', name: 'Bash', state: 'done', input: { command: 'clowdy thread spawn --title "Migrate the payments table" --prompt-file migration.md', description: 'Start a thread for the migration' }, output: 'c-6c' }],
-        [46.5, { kind: 'tool', toolCallId: 'tc-o6-4', name: 'Bash', state: 'done', input: { command: 'clowdy thread spawn --title "Load test the checkout" --engine codex --prompt-file load.md', description: 'Start a thread for the load test' }, output: 'c-6e' }],
-        [46, { kind: 'assistant', done: true, text: 'Four threads are working. I will report what each of them finds.' }],
-        [20, {
-            kind: 'user',
-            text: '',
-            from: {
-                kind: 'threadNotice',
-                threads: [
-                    { chatId: 'c-6b', title: 'Write the refund tests', outcome: 'finished', text: REFUND_ANSWER },
-                    { chatId: 'c-6c', title: 'Migrate the payments table', outcome: 'failed', text: MIGRATION_FAILURE },
-                    { chatId: 'c-6e', title: 'Load test the checkout', outcome: 'finished', text: LOAD_ANSWER, background: ['k6 run checkout-long.js'] },
-                ],
+        [
+            50,
+            {
+                kind: 'user',
+                text: 'Ship the new checkout: fix the price rounding, write the refund tests, migrate the payments table and load test the whole flow.',
             },
-        }],
-        [19, { kind: 'assistant', done: true, text: 'The refund tests are in. The migration failed because staging already has the column, so I will not touch staging without you. The long load run is still going.' }],
-        [10, { kind: 'user', text: 'The rounding helper is shared with the invoices. Should I change both, or only the checkout?', from: { kind: 'thread', chatId: 'c-6a', title: 'Fix the price rounding' } }],
-        [9, { kind: 'tool', toolCallId: 'tc-o6-5', name: 'Bash', state: 'done', input: { command: 'clowdy thread tell c-6a "Change both, and add a test for the invoice total."', description: 'Answer the price rounding thread' }, output: 'Sent' }],
-        [9, { kind: 'assistant', done: true, text: 'I told the rounding thread to change both and to cover the invoice total with a test.' }],
+        ],
+        [
+            49,
+            {
+                kind: 'assistant',
+                done: true,
+                text: 'Four parts that do not depend on each other, so each gets a thread of its own. I will stay here and put the results together.',
+            },
+        ],
+        [
+            48,
+            {
+                kind: 'tool',
+                toolCallId: 'tc-o6-1',
+                name: 'Bash',
+                state: 'done',
+                input: {
+                    command: 'clowdy thread spawn --title "Fix the price rounding" --prompt-file rounding.md',
+                    description: 'Start a thread for the price rounding',
+                },
+                output: 'c-6a',
+            },
+        ],
+        [
+            47.5,
+            {
+                kind: 'tool',
+                toolCallId: 'tc-o6-2',
+                name: 'Bash',
+                state: 'done',
+                input: {
+                    command: 'clowdy thread spawn --title "Write the refund tests" --prompt-file refunds.md',
+                    description: 'Start a thread for the refund tests',
+                },
+                output: 'c-6b',
+            },
+        ],
+        [
+            47,
+            {
+                kind: 'tool',
+                toolCallId: 'tc-o6-3',
+                name: 'Bash',
+                state: 'done',
+                input: {
+                    command: 'clowdy thread spawn --title "Migrate the payments table" --prompt-file migration.md',
+                    description: 'Start a thread for the migration',
+                },
+                output: 'c-6c',
+            },
+        ],
+        [
+            46.5,
+            {
+                kind: 'tool',
+                toolCallId: 'tc-o6-4',
+                name: 'Bash',
+                state: 'done',
+                input: {
+                    command:
+                        'clowdy thread spawn --title "Load test the checkout" --engine codex --prompt-file load.md',
+                    description: 'Start a thread for the load test',
+                },
+                output: 'c-6e',
+            },
+        ],
+        [
+            46,
+            { kind: 'assistant', done: true, text: 'Four threads are working. I will report what each of them finds.' },
+        ],
+        [
+            20,
+            {
+                kind: 'user',
+                text: '',
+                from: {
+                    kind: 'threadNotice',
+                    threads: [
+                        { chatId: 'c-6b', title: 'Write the refund tests', outcome: 'finished', text: REFUND_ANSWER },
+                        {
+                            chatId: 'c-6c',
+                            title: 'Migrate the payments table',
+                            outcome: 'failed',
+                            text: MIGRATION_FAILURE,
+                        },
+                        {
+                            chatId: 'c-6e',
+                            title: 'Load test the checkout',
+                            outcome: 'finished',
+                            text: LOAD_ANSWER,
+                            background: ['k6 run checkout-long.js'],
+                        },
+                    ],
+                },
+            },
+        ],
+        [
+            19,
+            {
+                kind: 'assistant',
+                done: true,
+                text: 'The refund tests are in. The migration failed because staging already has the column, so I will not touch staging without you. The long load run is still going.',
+            },
+        ],
+        [
+            10,
+            {
+                kind: 'user',
+                text: 'The rounding helper is shared with the invoices. Should I change both, or only the checkout?',
+                from: { kind: 'thread', chatId: 'c-6a', title: 'Fix the price rounding' },
+            },
+        ],
+        [
+            9,
+            {
+                kind: 'tool',
+                toolCallId: 'tc-o6-5',
+                name: 'Bash',
+                state: 'done',
+                input: {
+                    command: 'clowdy thread tell c-6a "Change both, and add a test for the invoice total."',
+                    description: 'Answer the price rounding thread',
+                },
+                output: 'Sent',
+            },
+        ],
+        [
+            9,
+            {
+                kind: 'assistant',
+                done: true,
+                text: 'I told the rounding thread to change both and to cover the invoice total with a test.',
+            },
+        ],
     ]);
 
     stream('r-orch-6a', [
-        [48, { kind: 'user', text: 'Fix the price rounding in the checkout: totals are off by a cent on some weekend bookings. Keep the existing tests green.', from: fromParent }],
-        [47, { kind: 'assistant', done: true, text: 'I will find where the total is rounded, and have a thread check the currency table meanwhile.' }],
-        [46, { kind: 'tool', toolCallId: 'tc-o6a-1', name: 'Bash', state: 'done', input: { command: 'clowdy thread spawn --title "Check the currency table" --prompt "List the decimals of every currency"', description: 'Start a thread for the currency table' }, output: 'c-6a1' }],
-        [40, { kind: 'tool', toolCallId: 'tc-o6a-2', name: 'Read', state: 'done', input: { file_path: 'src/booking/price.ts' }, output: 'export const total = (days: number[]) => round(sum(days));' }],
-        [11, { kind: 'assistant', done: true, text: 'The helper is shared with the invoices, so I asked which of them to change.' }],
-        [10, { kind: 'tool', toolCallId: 'tc-o6a-3', name: 'Bash', state: 'done', input: { command: 'clowdy thread tell --parent "The rounding helper is shared with the invoices. Should I change both, or only the checkout?"', description: 'Ask the parent' }, output: 'Sent' }],
+        [
+            48,
+            {
+                kind: 'user',
+                text: 'Fix the price rounding in the checkout: totals are off by a cent on some weekend bookings. Keep the existing tests green.',
+                from: fromParent,
+            },
+        ],
+        [
+            47,
+            {
+                kind: 'assistant',
+                done: true,
+                text: 'I will find where the total is rounded, and have a thread check the currency table meanwhile.',
+            },
+        ],
+        [
+            46,
+            {
+                kind: 'tool',
+                toolCallId: 'tc-o6a-1',
+                name: 'Bash',
+                state: 'done',
+                input: {
+                    command:
+                        'clowdy thread spawn --title "Check the currency table" --prompt "List the decimals of every currency"',
+                    description: 'Start a thread for the currency table',
+                },
+                output: 'c-6a1',
+            },
+        ],
+        [
+            40,
+            {
+                kind: 'tool',
+                toolCallId: 'tc-o6a-2',
+                name: 'Read',
+                state: 'done',
+                input: { file_path: 'src/booking/price.ts' },
+                output: 'export const total = (days: number[]) => round(sum(days));',
+            },
+        ],
+        [
+            11,
+            {
+                kind: 'assistant',
+                done: true,
+                text: 'The helper is shared with the invoices, so I asked which of them to change.',
+            },
+        ],
+        [
+            10,
+            {
+                kind: 'tool',
+                toolCallId: 'tc-o6a-3',
+                name: 'Bash',
+                state: 'done',
+                input: {
+                    command:
+                        'clowdy thread tell --parent "The rounding helper is shared with the invoices. Should I change both, or only the checkout?"',
+                    description: 'Ask the parent',
+                },
+                output: 'Sent',
+            },
+        ],
         [9, { kind: 'user', text: 'Change both, and add a test for the invoice total.', from: fromParent }],
         [8, { kind: 'assistant', done: true, text: 'Changing both now.' }],
-        [2, { kind: 'tool', toolCallId: 'tc-o6a-4', name: 'Bash', state: 'running', input: { command: 'bun test src/checkout' } }],
+        [
+            2,
+            {
+                kind: 'tool',
+                toolCallId: 'tc-o6a-4',
+                name: 'Bash',
+                state: 'running',
+                input: { command: 'bun test src/checkout' },
+            },
+        ],
     ]);
 
     stream('r-orch-6a1', [
-        [46, { kind: 'user', text: 'List the decimals of every currency in the rates table and flag any that is not two.', from: { kind: 'thread', chatId: 'c-6a', title: 'Fix the price rounding' } }],
-        [44, { kind: 'tool', toolCallId: 'tc-o6a1-1', name: 'Grep', state: 'done', input: { pattern: 'decimals', path: 'src/db' }, output: 'src/db/currencies.ts:3' }],
+        [
+            46,
+            {
+                kind: 'user',
+                text: 'List the decimals of every currency in the rates table and flag any that is not two.',
+                from: { kind: 'thread', chatId: 'c-6a', title: 'Fix the price rounding' },
+            },
+        ],
+        [
+            44,
+            {
+                kind: 'tool',
+                toolCallId: 'tc-o6a1-1',
+                name: 'Grep',
+                state: 'done',
+                input: { pattern: 'decimals', path: 'src/db' },
+                output: 'src/db/currencies.ts:3',
+            },
+        ],
         [25, { kind: 'assistant', done: true, text: CURRENCY_ANSWER }],
     ]);
 
     stream('r-orch-6b', [
-        [47.5, { kind: 'user', text: 'Write tests for the refund rules: a full refund until 24 hours before pickup, half after that, none once the car is out.', from: fromParent }],
-        [30, { kind: 'tool', toolCallId: 'tc-o6b-1', name: 'Write', state: 'done', input: { file_path: 'src/payments/refund.test.ts' }, output: 'The file was written.' }],
-        [21, { kind: 'tool', toolCallId: 'tc-o6b-2', name: 'Bash', state: 'done', input: { command: 'bun test src/payments' }, output: '14 pass, 0 fail' }],
+        [
+            47.5,
+            {
+                kind: 'user',
+                text: 'Write tests for the refund rules: a full refund until 24 hours before pickup, half after that, none once the car is out.',
+                from: fromParent,
+            },
+        ],
+        [
+            30,
+            {
+                kind: 'tool',
+                toolCallId: 'tc-o6b-1',
+                name: 'Write',
+                state: 'done',
+                input: { file_path: 'src/payments/refund.test.ts' },
+                output: 'The file was written.',
+            },
+        ],
+        [
+            21,
+            {
+                kind: 'tool',
+                toolCallId: 'tc-o6b-2',
+                name: 'Bash',
+                state: 'done',
+                input: { command: 'bun test src/payments' },
+                output: '14 pass, 0 fail',
+            },
+        ],
         [20, { kind: 'assistant', done: true, text: REFUND_ANSWER }],
     ]);
 
     stream('r-orch-6c', [
-        [47, { kind: 'user', text: 'Add an amount_cents column to payments and move the data over. Run it against staging once it works locally.', from: fromParent }],
-        [25, { kind: 'tool', toolCallId: 'tc-o6c-1', name: 'Bash', state: 'error', input: { command: 'bun run migrate --env staging' }, error: 'column "amount_cents" of relation "payments" already exists' }],
+        [
+            47,
+            {
+                kind: 'user',
+                text: 'Add an amount_cents column to payments and move the data over. Run it against staging once it works locally.',
+                from: fromParent,
+            },
+        ],
+        [
+            25,
+            {
+                kind: 'tool',
+                toolCallId: 'tc-o6c-1',
+                name: 'Bash',
+                state: 'error',
+                input: { command: 'bun run migrate --env staging' },
+                error: 'column "amount_cents" of relation "payments" already exists',
+            },
+        ],
         [20, { kind: 'error', text: MIGRATION_FAILURE }],
     ]);
 
     stream('r-orch-6e', [
-        [46.5, { kind: 'user', text: 'Load test the checkout: a short run first, then a long one, and report the error rate.', from: fromParent }],
-        [40, { kind: 'tool', toolCallId: 'tc-o6e-1', name: 'Bash', state: 'done', input: { command: 'k6 run checkout-short.js' }, output: 'http_reqs: 7200 (120/s), http_req_failed: 0.00%' }],
-        [21, { kind: 'tool', toolCallId: 'tc-o6e-2', name: 'Bash', state: 'done', input: { command: 'k6 run checkout-long.js', run_in_background: true }, output: 'Command running in background with ID: bg-k6' }],
+        [
+            46.5,
+            {
+                kind: 'user',
+                text: 'Load test the checkout: a short run first, then a long one, and report the error rate.',
+                from: fromParent,
+            },
+        ],
+        [
+            40,
+            {
+                kind: 'tool',
+                toolCallId: 'tc-o6e-1',
+                name: 'Bash',
+                state: 'done',
+                input: { command: 'k6 run checkout-short.js' },
+                output: 'http_reqs: 7200 (120/s), http_req_failed: 0.00%',
+            },
+        ],
+        [
+            21,
+            {
+                kind: 'tool',
+                toolCallId: 'tc-o6e-2',
+                name: 'Bash',
+                state: 'done',
+                input: { command: 'k6 run checkout-long.js', run_in_background: true },
+                output: 'Command running in background with ID: bg-k6',
+            },
+        ],
         [20, { kind: 'assistant', done: true, text: LOAD_ANSWER }],
     ]);
 
     stream('r-orch-2', [
         [60 * 24 * 5, { kind: 'user', text: 'Build the first version: fleet list, booking page, price calculation.' }],
-        [60 * 24 * 5 - 1, { kind: 'assistant', done: true, text: 'I will start with the fleet list, then the booking page.' }],
-        [60 * 24 * 5 - 2, { kind: 'tool', toolCallId: 'tc-o2-1', name: 'Read', state: 'done', input: { file_path: 'src/fleet/index.tsx' }, output: 'export function Fleet() {}' }],
-        [60 * 24 * 5 - 9, { kind: 'tool', toolCallId: 'tc-o2-2', name: 'create_task', state: 'done', input: { title: 'Fleet list' }, output: { key: 'CAR-15' } }],
-        [60 * 24 * 5 - 12, {
-            kind: 'tool',
-            toolCallId: 'tc-o2-agent',
-            name: 'Agent',
-            state: 'done',
-            input: { subagent_type: 'general-purpose', description: 'Fleet list', prompt: 'Build the fleet list page from the cars table.' },
-            output: 'The fleet list renders every car with its status.',
-        }],
-        [60 * 24 * 5 - 14, { kind: 'assistant', done: true, text: 'The booking page, the fleet list and the price calculation are in.' }],
+        [
+            60 * 24 * 5 - 1,
+            { kind: 'assistant', done: true, text: 'I will start with the fleet list, then the booking page.' },
+        ],
+        [
+            60 * 24 * 5 - 2,
+            {
+                kind: 'tool',
+                toolCallId: 'tc-o2-1',
+                name: 'Read',
+                state: 'done',
+                input: { file_path: 'src/fleet/index.tsx' },
+                output: 'export function Fleet() {}',
+            },
+        ],
+        [
+            60 * 24 * 5 - 9,
+            {
+                kind: 'tool',
+                toolCallId: 'tc-o2-2',
+                name: 'create_task',
+                state: 'done',
+                input: { title: 'Fleet list' },
+                output: { key: 'CAR-15' },
+            },
+        ],
+        [
+            60 * 24 * 5 - 12,
+            {
+                kind: 'tool',
+                toolCallId: 'tc-o2-agent',
+                name: 'Agent',
+                state: 'done',
+                input: {
+                    subagent_type: 'general-purpose',
+                    description: 'Fleet list',
+                    prompt: 'Build the fleet list page from the cars table.',
+                },
+                output: 'The fleet list renders every car with its status.',
+            },
+        ],
+        [
+            60 * 24 * 5 - 14,
+            {
+                kind: 'assistant',
+                done: true,
+                text: 'The booking page, the fleet list and the price calculation are in.',
+            },
+        ],
         // Compact, pressed once the work was done: the agent's call with what it saved, as Claude reports it.
-        [60 * 24 * 4 + 5, {
-            kind: 'tool',
-            toolCallId: 'tc-o2-compact',
-            name: 'compact',
-            state: 'done',
-            input: { title: 'Compact conversation' },
-            output: JSON.stringify({ trigger: 'manual', preTokens: 41_503, postTokens: 9_870, durationMs: 5_200 }),
-        }],
+        [
+            60 * 24 * 4 + 5,
+            {
+                kind: 'tool',
+                toolCallId: 'tc-o2-compact',
+                name: 'compact',
+                state: 'done',
+                input: { title: 'Compact conversation' },
+                output: JSON.stringify({ trigger: 'manual', preTokens: 41_503, postTokens: 9_870, durationMs: 5_200 }),
+            },
+        ],
     ]);
 
     /*
@@ -1571,23 +2991,55 @@ export function createFixtureData(now = Date.now()): FixtureData {
      * message that starts a turn, Fork on the final answer that ends one, and neither on anything else. Simplify booking is running, which is where Edit shows
      * its disabled hint; First version rests, with its first message and its final answer (item 6; item 7 is the agent's own compact turn).
      */
-    const flag = (runId: string, seq: number, flags: Pick<StreamItem, 'canFork' | 'canEdit'>) => Object.assign(items[runId][seq - 1], flags);
+    const flag = (runId: string, seq: number, flags: Pick<StreamItem, 'canFork' | 'canEdit'>) =>
+        Object.assign(items[runId][seq - 1], flags);
 
     flag('r-orch-1', 1, { canEdit: true });
     flag('r-orch-2', 1, { canEdit: true });
     flag('r-orch-2', 6, { canFork: true });
 
     const docs: Record<string, string> = {
-        'README.md': '# Car Rental docs\n\nDecisions and specs for the booking service. Agents read this folder before they plan.\n',
-        'decisions/booking-flow.md': '# Booking flow\n\nOne form, no steps.\n\n## Why\n\n- Three steps lost people on the second one.\n- The price must be visible before the person commits.\n\n## Rules\n\n- [x] Dates and car in one view\n- [x] Live price\n- [ ] Cancel up to 24 hours before pickup\n',
-        'decisions/pricing.md': '# Pricing\n\nWeekend days cost 15% more. A booking that spans a month end is priced per day.\n',
-        'specs/booking.md': '# Booking spec\n\n| Field | Type | Notes |\n| --- | --- | --- |\n| pickup | date | not in the past |\n| return | date | after pickup |\n| car | id | must be free in the range |\n',
+        'README.md':
+            '# Car Rental docs\n\nDecisions and specs for the booking service. Agents read this folder before they plan.\n',
+        'decisions/booking-flow.md':
+            '# Booking flow\n\nOne form, no steps.\n\n## Why\n\n- Three steps lost people on the second one.\n- The price must be visible before the person commits.\n\n## Rules\n\n- [x] Dates and car in one view\n- [x] Live price\n- [ ] Cancel up to 24 hours before pickup\n',
+        'decisions/pricing.md':
+            '# Pricing\n\nWeekend days cost 15% more. A booking that spans a month end is priced per day.\n',
+        'specs/booking.md':
+            '# Booking spec\n\n| Field | Type | Notes |\n| --- | --- | --- |\n| pickup | date | not in the past |\n| return | date | after pickup |\n| car | id | must be free in the range |\n',
     };
 
     const artifacts: Artifact[] = [
-        { id: 'a-1', projectId, runId: 'r-orch-1', taskId: 't-21', kind: 'commit', title: 'Add the bookings table', ref: { sha: 'f00dcafe', branch: 'clowdy/car-21-booking-schema' }, createdAt: ago(52) },
-        { id: 'a-2', projectId, runId: 'r-na-03', taskId: 't-24', kind: 'diff', title: 'Changes in the booking form', ref: { files: 2, added: 42, removed: 118 }, createdAt: ago(14) },
-        { id: 'a-3', projectId, runId: 'r-na-04', taskId: 't-23', kind: 'check', title: 'Typecheck', ref: { command: 'bun run typecheck', exitCode: 2 }, createdAt: ago(41) },
+        {
+            id: 'a-1',
+            projectId,
+            runId: 'r-orch-1',
+            taskId: 't-21',
+            kind: 'commit',
+            title: 'Add the bookings table',
+            ref: { sha: 'f00dcafe', branch: 'clowdy/car-21-booking-schema' },
+            createdAt: ago(52),
+        },
+        {
+            id: 'a-2',
+            projectId,
+            runId: 'r-na-03',
+            taskId: 't-24',
+            kind: 'diff',
+            title: 'Changes in the booking form',
+            ref: { files: 2, added: 42, removed: 118 },
+            createdAt: ago(14),
+        },
+        {
+            id: 'a-3',
+            projectId,
+            runId: 'r-na-04',
+            taskId: 't-23',
+            kind: 'check',
+            title: 'Typecheck',
+            ref: { command: 'bun run typecheck', exitCode: 2 },
+            createdAt: ago(41),
+        },
     ];
 
     return {
@@ -1595,27 +3047,50 @@ export function createFixtureData(now = Date.now()): FixtureData {
         git: {
             '/Users/dev/car-rental': { remoteUrl: 'git@github.com:acme/car-rental.git', branch: 'main' },
             '/Users/dev/clowdy': { remoteUrl: 'https://github.com/acme/clowdy.git', branch: 'next' },
-            '/Users/dev/car-rental-api': { remoteUrl: 'git@github.com:acme/car-rental-api.git', branch: 'feature/payments' },
+            '/Users/dev/car-rental-api': {
+                remoteUrl: 'git@github.com:acme/car-rental-api.git',
+                branch: 'feature/payments',
+            },
         },
         // What git lists for the two repositories besides the folder's own checkout and the Clowdy-made one: a worktree somebody made by hand (changed), a locked one, one whose folder is gone.
         worktrees: {
             '/Users/dev/car-rental': [
-                { path: '/Users/dev/orca/car-rental/search-filters', branch: 'search-filters', head: '5c4b3a2', changes: 2, submodules: true, merged: false },
-                { path: '/Users/dev/car-rental-hotfix', branch: 'hotfix/invoice', head: '7e6d5c4', locked: 'on an external drive' },
+                {
+                    path: '/Users/dev/orca/car-rental/search-filters',
+                    branch: 'search-filters',
+                    head: '5c4b3a2',
+                    changes: 2,
+                    submodules: true,
+                    merged: false,
+                },
+                {
+                    path: '/Users/dev/car-rental-hotfix',
+                    branch: 'hotfix/invoice',
+                    head: '7e6d5c4',
+                    locked: 'on an external drive',
+                },
                 { path: '/Users/dev/car-rental-old', branch: 'old-pricing', head: '1d2c3b4', missing: true },
             ],
-            '/Users/dev/car-rental-api': [
-                { path: '/Users/dev/orca/car-rental-api/readme', head: '3a2b1c0' },
-            ],
+            '/Users/dev/car-rental-api': [{ path: '/Users/dev/orca/car-rental-api/readme', head: '3a2b1c0' }],
         },
         // Car Rental's own checkout is on `main` and has no pull request, the worktree of its chat has an open one; Clowdy's `next` has one that merged, and the API's branch a draft.
-        pullRequests: { '/Users/dev/car-rental': { checkout: 'none', worktree: 'open' }, '/Users/dev/clowdy': { checkout: 'merged' }, '/Users/dev/car-rental-api': { checkout: 'draft' } },
-        statuses: { [projectId]: DEFAULT_STATUSES, [FIXTURE_EMPTY_PROJECT_ID]: DEFAULT_STATUSES, [FIXTURE_PERSONAL_PROJECT_ID]: DEFAULT_STATUSES },
+        pullRequests: {
+            '/Users/dev/car-rental': { checkout: 'none', worktree: 'open' },
+            '/Users/dev/clowdy': { checkout: 'merged' },
+            '/Users/dev/car-rental-api': { checkout: 'draft' },
+        },
+        statuses: {
+            [projectId]: DEFAULT_STATUSES,
+            [FIXTURE_EMPTY_PROJECT_ID]: DEFAULT_STATUSES,
+            [FIXTURE_PERSONAL_PROJECT_ID]: DEFAULT_STATUSES,
+        },
         // As the daemon's migration leaves them: a chat that has an orchestrator records the engine and model it runs on.
-        chats: chats.map((chat) => {
+        chats: chats.map(chat => {
             const orchestrator = runs.find(candidate => candidate.id === chat.orchestratorRunId);
 
-            return orchestrator ? { ...chat, engine: orchestrator.engine, ...(orchestrator.model && { model: orchestrator.model }) } : chat;
+            return orchestrator
+                ? { ...chat, engine: orchestrator.engine, ...(orchestrator.model && { model: orchestrator.model }) }
+                : chat;
         }),
         tasks,
         comments,
@@ -1627,7 +3102,11 @@ export function createFixtureData(now = Date.now()): FixtureData {
         // `car-rental-api` belongs to no project yet: add it to Car Rental to see the documents, files and remotes of two folders.
         docs: { '/Users/dev/car-rental': docs, '/Users/dev/car-rental-api': API_DOCS },
         briefback: { '/Users/dev/car-rental': BRIEFBACK, [FIXTURE_WORKTREE_PATH]: WORKTREE_BRIEFBACK },
-        files: { '/Users/dev/car-rental': FIXTURE_FILES, '/Users/dev/car-rental-api': API_FILES, [FIXTURE_WORKTREE_PATH]: WORKTREE_FILES },
+        files: {
+            '/Users/dev/car-rental': FIXTURE_FILES,
+            '/Users/dev/car-rental-api': API_FILES,
+            [FIXTURE_WORKTREE_PATH]: WORKTREE_FILES,
+        },
         // Car Rental shows a favicon of its own; Clowdy has none, so it keeps the folder icon until one is uploaded.
         icons: { '/Users/dev/car-rental': CAR_RENTAL_ICON },
         attachments: structuredClone(FIXTURE_ATTACHMENTS),

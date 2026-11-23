@@ -9,6 +9,7 @@ import type { GitDiscard } from '../git/discard';
 import type { CommitMessages } from '../git/message';
 import type { PullRequests } from '../git/pullRequest';
 import type { GitRemote } from '../git/remote';
+import type { GitSwitch } from '../git/switch';
 import type { ModelCatalog } from '../providers/models';
 import type { ProvidersService } from '../providers/service';
 import type { RunDriver } from '../runs/driver';
@@ -45,6 +46,8 @@ export interface Services {
     gitWrites: GitWrites;
     /** What the daemon does between a person's branch and their `origin`: fetch, pull and push. */
     gitRemote: GitRemote;
+    /** What the daemon does to the branch of a folder's own checkout: the switch. */
+    gitSwitch: GitSwitch;
     /** The discard of the changes of single files, with the copy it keeps of what it removes. */
     gitDiscard: GitDiscard;
     /** The commit message an agent the person chose writes for the files they ticked. */
@@ -66,11 +69,18 @@ export type SometimesAsyncCommandType = 'chat.delete';
  * One handler per command type, run inside the transaction that also stores the command's result. Handlers are
  * synchronous and publish their events through the domain functions; the returned value is the result's `data`.
  */
-export type Handlers = { [T in Exclude<CommandType, AsyncCommandType>]: (services: Services, command: CommandOf<T>) => unknown };
+export type Handlers = {
+    [T in Exclude<CommandType, AsyncCommandType>]: (services: Services, command: CommandOf<T>) => unknown;
+};
 
 /**
  * The handlers of the commands that wait (for an agent, or for git). One does its waiting first, outside any transaction, and refuses with a `CommandError` when it must;
  * what it gives back is the part that changes the store, synchronous like any handler and run in the transaction that also stores the result
  * (`executeCommandAsync`), so everything that waited has happened before anything is written.
  */
-export type AsyncHandlers = { [T in AsyncCommandType | SometimesAsyncCommandType]: (services: Services, command: CommandOf<T>) => Promise<() => unknown> };
+export type AsyncHandlers = {
+    [T in AsyncCommandType | SometimesAsyncCommandType]: (
+        services: Services,
+        command: CommandOf<T>
+    ) => Promise<() => unknown>;
+};

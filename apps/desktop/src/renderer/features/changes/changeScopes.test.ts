@@ -1,34 +1,76 @@
 import { commitScope } from '@clowdy/protocol';
 import { describe, expect, it } from 'vitest';
 
-import { ALL_CHANGES_LABEL, commitLabel, commitOfScope, isCommitScope, scopeOptions, usableScope } from './changeScopes';
+import {
+    ALL_CHANGES_LABEL,
+    commitLabel,
+    commitOfScope,
+    isCommitScope,
+    scopeOptions,
+    usableScope,
+} from './changeScopes';
 
 import type { GitBase, GitCommit } from '@clowdy/protocol';
 
-const commit = (sha: string, subject: string): GitCommit => ({ sha: sha.repeat(40).slice(0, 40), shortSha: sha.repeat(7).slice(0, 7), subject, author: 'Dana', committedAt: 1 });
+const commit = (sha: string, subject: string): GitCommit => ({
+    sha: sha.repeat(40).slice(0, 40),
+    shortSha: sha.repeat(7).slice(0, 7),
+    subject,
+    author: 'Dana',
+    committedAt: 1,
+});
 const NEWEST = commit('b', 'Charge a weekend surcharge');
 const OLDEST = commit('a', 'Price a booking by the day');
 
-const ready: GitBase = { state: 'ready', name: 'origin/main', commit: 'c'.repeat(40), mergeBase: 'd'.repeat(40), ahead: 2, behind: 0, commits: [NEWEST, OLDEST] };
+const ready: GitBase = {
+    state: 'ready',
+    name: 'origin/main',
+    commit: 'c'.repeat(40),
+    mergeBase: 'd'.repeat(40),
+    ahead: 2,
+    behind: 0,
+    commits: [NEWEST, OLDEST],
+};
 
 describe('the scope menu', () => {
-    it('has all changes, the branch, what is not committed, and a commit for each of the branch\'s, newest first with its short hash and message', () => {
+    it("has all changes, the branch, what is not committed, and a commit for each of the branch's, newest first with its short hash and message", () => {
         const options = scopeOptions(ready);
 
-        expect(options.map(option => option.label)).toEqual([ALL_CHANGES_LABEL, 'Branch', 'Uncommitted', 'bbbbbbb Charge a weekend surcharge', 'aaaaaaa Price a booking by the day']);
-        expect(options.map(option => option.scope)).toEqual(['all', 'branch', 'uncommitted', commitScope(NEWEST.sha), commitScope(OLDEST.sha)]);
+        expect(options.map(option => option.label)).toEqual([
+            ALL_CHANGES_LABEL,
+            'Branch',
+            'Uncommitted',
+            'bbbbbbb Charge a weekend surcharge',
+            'aaaaaaa Price a booking by the day',
+        ]);
+        expect(options.map(option => option.scope)).toEqual([
+            'all',
+            'branch',
+            'uncommitted',
+            commitScope(NEWEST.sha),
+            commitScope(OLDEST.sha),
+        ]);
         expect(options[3]?.commit).toBe(NEWEST);
         expect(commitLabel(OLDEST)).toBe('aaaaaaa Price a booking by the day');
     });
 
     it('leaves the branch and its commits out while the base is not there, whatever the reason', () => {
-        for (const base of [undefined, { state: 'unborn' }, { state: 'no_base' }, { state: 'no_merge_base', name: 'origin/main', commit: 'c'.repeat(40) }] as const) {
+        for (const base of [
+            undefined,
+            { state: 'unborn' },
+            { state: 'no_base' },
+            { state: 'no_merge_base', name: 'origin/main', commit: 'c'.repeat(40) },
+        ] as const) {
             expect(scopeOptions(base).map(option => option.label)).toEqual([ALL_CHANGES_LABEL, 'Uncommitted']);
         }
     });
 
     it('has no commit entry for a branch with no commits yet, and keeps the branch', () => {
-        expect(scopeOptions({ ...ready, ahead: 0, commits: [] }).map(option => option.label)).toEqual([ALL_CHANGES_LABEL, 'Branch', 'Uncommitted']);
+        expect(scopeOptions({ ...ready, ahead: 0, commits: [] }).map(option => option.label)).toEqual([
+            ALL_CHANGES_LABEL,
+            'Branch',
+            'Uncommitted',
+        ]);
     });
 });
 
@@ -47,7 +89,7 @@ describe('the scope that is read', () => {
         }
     });
 
-    it('knows a commit\'s scope and the commit of the branch that it is', () => {
+    it("knows a commit's scope and the commit of the branch that it is", () => {
         expect(isCommitScope('all')).toBe(false);
         expect(isCommitScope(commitScope(NEWEST.sha))).toBe(true);
         expect(commitOfScope(commitScope(OLDEST.sha), ready)).toBe(OLDEST);

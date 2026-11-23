@@ -64,9 +64,8 @@ const taskListTokenizer = TaskList.config.markdownTokenizer!;
 const LinearTaskList = TaskList.extend({
     markdownTokenizer: {
         ...taskListTokenizer,
-        tokenize: (src, tokens, lexer) => (
-            /^\s*[-+*]\s+\[[ xX]\]\s+/.test(src) ? taskListTokenizer.tokenize(src, tokens, lexer) : undefined
-        ),
+        tokenize: (src, tokens, lexer) =>
+            /^\s*[-+*]\s+\[[ xX]\]\s+/.test(src) ? taskListTokenizer.tokenize(src, tokens, lexer) : undefined,
     },
 });
 
@@ -93,11 +92,14 @@ function resolvedImage(resolve: ResolveImageSrc) {
 
                 const src = String(node.attrs.src ?? '');
 
-                void resolve(src).then(url => {
-                    img.src = url;
-                }, () => {
-                    img.src = src;
-                });
+                void resolve(src).then(
+                    url => {
+                        img.src = url;
+                    },
+                    () => {
+                        img.src = src;
+                    }
+                );
 
                 return { dom: img };
             };
@@ -122,14 +124,34 @@ export function splitFrontMatter(markdown: string): { frontMatter: string; body:
 export function frontMatterBefore(markdown: string, body: string): string | null {
     const frontMatter = markdown.slice(0, markdown.length - body.length);
 
-    return markdown.endsWith(body) && (!frontMatter || FRONT_MATTER.exec(frontMatter)?.[0] === frontMatter) ? frontMatter : null;
+    return markdown.endsWith(body) && (!frontMatter || FRONT_MATTER.exec(frontMatter)?.[0] === frontMatter)
+        ? frontMatter
+        : null;
 }
 
 /** Token types the extensions turn into document nodes without losing text. */
 const SUPPORTED_TOKENS = new Set([
-    'space', 'paragraph', 'heading', 'text', 'escape', 'strong', 'em', 'del', 'codespan', 'br',
-    'link', 'image', 'code', 'blockquote', 'hr', 'list', 'list_item', 'checkbox', 'table',
-    'taskList', 'taskItem',
+    'space',
+    'paragraph',
+    'heading',
+    'text',
+    'escape',
+    'strong',
+    'em',
+    'del',
+    'codespan',
+    'br',
+    'link',
+    'image',
+    'code',
+    'blockquote',
+    'hr',
+    'list',
+    'list_item',
+    'checkbox',
+    'table',
+    'taskList',
+    'taskItem',
 ]);
 
 /** A footnote definition line. marked reads it as a paragraph, or as a link definition when one word follows. */
@@ -142,13 +164,17 @@ const ORDERED_TASK_ITEM = /^\s*\d+[.)]\s+\[[ xX]\]\s/;
 const NAMED_ENTITY = /&(?!(?:lt|gt|quot|amp);)[a-z][a-z\d]*;/i;
 
 function hasUnsupportedToken(tokens: readonly Token[]): boolean {
-    return tokens.some((token) => {
+    return tokens.some(token => {
         if (!SUPPORTED_TOKENS.has(token.type)) {
             return true;
         }
 
         // TipTap's lists read these as plain text, so a save would escape or flatten them.
-        if (token.type === 'list' && token.ordered && token.items.some((item: Tokens.ListItem) => ORDERED_TASK_ITEM.test(item.raw))) {
+        if (
+            token.type === 'list' &&
+            token.ordered &&
+            token.items.some((item: Tokens.ListItem) => ORDERED_TASK_ITEM.test(item.raw))
+        ) {
             return true;
         }
 
@@ -173,7 +199,7 @@ function hasUnsupportedToken(tokens: readonly Token[]): boolean {
 
 /** `markdown` ending in a newline when `like` does; the serializer drops the file's last one. */
 export function withTrailingNewline(markdown: string, like: string): string {
-    return like.endsWith('\n') && markdown && !markdown.endsWith('\n') ? `${ markdown }\n` : markdown;
+    return like.endsWith('\n') && markdown && !markdown.endsWith('\n') ? `${markdown}\n` : markdown;
 }
 
 let standaloneManager: MarkdownManager | undefined;
@@ -189,8 +215,7 @@ export function canonicalMarkdown(body: string): string | null {
         const manager = markdownManager();
 
         return manager.serialize(manager.parse(body));
-    }
-    catch {
+    } catch {
         return null;
     }
 }
@@ -198,7 +223,10 @@ export function canonicalMarkdown(body: string): string | null {
 /** `tooLarge` marks a file the editor does not load; it shows other unsupported files read-only. */
 type MarkdownSupport = { supported: true } | { supported: false; reason: string; tooLarge?: true };
 
-const SOURCE_ONLY: MarkdownSupport = { supported: false, reason: 'Some markdown in this file can only be edited in source mode' };
+const SOURCE_ONLY: MarkdownSupport = {
+    supported: false,
+    reason: 'This markdown file can only be edited in source mode',
+};
 
 /**
  * Whether the editor can show `body` (markdown without front matter) and save it back without
@@ -219,5 +247,7 @@ export function markdownSupport(body: string): MarkdownSupport {
 
     const doc = manager.parse(body);
 
-    return JSON.stringify(manager.parse(manager.serialize(doc))) === JSON.stringify(doc) ? { supported: true } : SOURCE_ONLY;
+    return JSON.stringify(manager.parse(manager.serialize(doc))) === JSON.stringify(doc)
+        ? { supported: true }
+        : SOURCE_ONLY;
 }

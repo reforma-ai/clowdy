@@ -1,11 +1,29 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ALL_ARCHIVED_ROWS, ALL_CHAT_ROWS, ALL_DOC_ROWS, ALL_FILE_ROWS, ALL_LINE_ROWS, ALL_RECENT_CHAT_ROWS, CHAT_ROWS, DOC_ROWS, FILE_ROWS, QuickSearchModel, TYPING_DELAY, type Found, type FoundChat, type QuickSearchSource } from './QuickSearchModel';
+import {
+    ALL_ARCHIVED_ROWS,
+    ALL_CHAT_ROWS,
+    ALL_DOC_ROWS,
+    ALL_FILE_ROWS,
+    ALL_LINE_ROWS,
+    ALL_RECENT_CHAT_ROWS,
+    CHAT_ROWS,
+    DOC_ROWS,
+    FILE_ROWS,
+    type Found,
+    type FoundChat,
+    QuickSearchModel,
+    type QuickSearchSource,
+    TYPING_DELAY,
+} from './QuickSearchModel';
 
 import type { SearchResult } from '@clowdy/file-manager/provider';
 
-const line = (n: number) => ({ line: n, column: 1, preview: `line ${ n }`, ranges: [{ start: 0, end: 4 }] });
-const result = (...files: Array<[string, number[]]>): SearchResult => ({ files: files.map(([path, lines]) => ({ path, matches: lines.map(line) })), truncated: false });
+const line = (n: number) => ({ line: n, column: 1, preview: `line ${n}`, ranges: [{ start: 0, end: 4 }] });
+const result = (...files: Array<[string, number[]]>): SearchResult => ({
+    files: files.map(([path, lines]) => ({ path, matches: lines.map(line) })),
+    truncated: false,
+});
 
 interface Deferred<T> {
     promise: Promise<T>;
@@ -21,15 +39,22 @@ function deferred<T>(): Deferred<T> {
     return out;
 }
 
-const chat = (id: string, title: string, archivedAt?: number): FoundChat => ({ kind: 'chat', id: `chat:${ id }`, chatId: id, chat: { id, title, archivedAt } as FoundChat['chat'], run: undefined });
+const chat = (id: string, title: string, archivedAt?: number): FoundChat => ({
+    kind: 'chat',
+    id: `chat:${id}`,
+    chatId: id,
+    chat: { id, title, archivedAt } as FoundChat['chat'],
+    run: undefined,
+});
 
 /** The path of a result, or the id of a chat. */
-const pathOf = (found: Found | undefined) => (found === undefined ? undefined : found.kind === 'chat' ? found.chatId : found.path);
+const pathOf = (found: Found | undefined) =>
+    found === undefined ? undefined : found.kind === 'chat' ? found.chatId : found.path;
 
 function source(overrides: Partial<QuickSearchSource> = {}) {
     const found = {
         chats: vi.fn((_query: string): FoundChat[] => []),
-        files: vi.fn(async (query: string) => [`${ query }.ts`, 'docs/guide.md']),
+        files: vi.fn(async (query: string) => [`${query}.ts`, 'docs/guide.md']),
         docs: vi.fn(async (_query: string): Promise<string[]> => []),
         text: vi.fn(async () => result(['src/a.ts', [3, 9]], ['src/b.ts', [1]])),
         open: vi.fn<(found: Found) => void>(),
@@ -111,7 +136,12 @@ describe('searching as the person types', () => {
 
         expect(model.pending).toBe(false);
         expect(model.sections.map(({ id }) => id)).toEqual(['files', 'text']);
-        expect(model.rows.map(({ id }) => id)).toEqual(['file:ab.ts', 'line:src/a.ts:3', 'line:src/a.ts:9', 'line:src/b.ts:1']);
+        expect(model.rows.map(({ id }) => id)).toEqual([
+            'file:ab.ts',
+            'line:src/a.ts:3',
+            'line:src/a.ts:9',
+            'line:src/b.ts:1',
+        ]);
     });
 
     it('drops the answer of a search that is not the latest', async () => {
@@ -147,7 +177,10 @@ describe('searching as the person types', () => {
     });
 
     it('says why there is nothing when the search failed, and does not call a failed search an empty one', async () => {
-        const model = new QuickSearchModel(source({ text: async () => Promise.reject(new Error('rg crashed')) }), 'text');
+        const model = new QuickSearchModel(
+            source({ text: async () => Promise.reject(new Error('rg crashed')) }),
+            'text'
+        );
 
         model.setQuery('ab');
         await settle();
@@ -215,7 +248,7 @@ describe('the tabs', () => {
     });
 
     it('list a few of each kind in All and all they have in their own', async () => {
-        const many = Array.from({ length: 80 }, (_, index) => `f${ index }.ts`);
+        const many = Array.from({ length: 80 }, (_, index) => `f${index}.ts`);
         const lines = result(['big.ts', Array.from({ length: 300 }, (_, index) => index + 1)]);
         const quick = source({ files: async () => many, text: async () => lines });
         const model = new QuickSearchModel(quick);
@@ -244,12 +277,21 @@ describe('the documents', () => {
         expect(quick.docs).toHaveBeenCalledExactlyOnceWith('p');
         expect(quick.files).not.toHaveBeenCalled();
         expect(quick.text).not.toHaveBeenCalled();
-        expect(model.sections).toEqual([{ id: 'docs', title: 'Docs', items: [{ kind: 'doc', id: 'doc:decisions/pricing.md', path: 'decisions/pricing.md' }, { kind: 'doc', id: 'doc:plan.md', path: 'plan.md' }] }]);
+        expect(model.sections).toEqual([
+            {
+                id: 'docs',
+                title: 'Docs',
+                items: [
+                    { kind: 'doc', id: 'doc:decisions/pricing.md', path: 'decisions/pricing.md' },
+                    { kind: 'doc', id: 'doc:plan.md', path: 'plan.md' },
+                ],
+            },
+        ]);
         expect(model.answered).toBe(true);
     });
 
     it('come before the files on the All tab, a few of them, and all they have on their own', async () => {
-        const many = Array.from({ length: 80 }, (_, index) => `d${ index }.md`);
+        const many = Array.from({ length: 80 }, (_, index) => `d${index}.md`);
         const model = new QuickSearchModel(source({ docs: async () => many }));
 
         model.setQuery('d');
@@ -264,7 +306,9 @@ describe('the documents', () => {
     });
 
     it('say why they could not be found, and leave the lists that came', async () => {
-        const model = new QuickSearchModel(source({ docs: async () => Promise.reject(new Error('the folder is missing')) }));
+        const model = new QuickSearchModel(
+            source({ docs: async () => Promise.reject(new Error('the folder is missing')) })
+        );
 
         model.setQuery('a');
         await settle();
@@ -302,7 +346,8 @@ describe('the documents', () => {
 });
 
 describe('the chats', () => {
-    const titles = (model: QuickSearchModel) => model.rows.map(row => (row.kind === 'chat' ? row.chat.title : row.kind));
+    const titles = (model: QuickSearchModel) =>
+        model.rows.map(row => (row.kind === 'chat' ? row.chat.title : row.kind));
 
     it('are the first list on the All tab, and the only one on the Chats tab, which searches nothing else', async () => {
         const quick = source({ chats: vi.fn(() => [chat('c1', 'Booking form'), chat('c2', 'Price rules')]) });
@@ -328,7 +373,11 @@ describe('the chats', () => {
     });
 
     it('are listed at once, as they are typed, without waiting for the pause that the files wait for', () => {
-        const quick = source({ chats: vi.fn((query: string) => (query === 'pr' ? [chat('c2', 'Price rules')] : [chat('c1', 'Booking form'), chat('c2', 'Price rules')])) });
+        const quick = source({
+            chats: vi.fn((query: string) =>
+                query === 'pr' ? [chat('c2', 'Price rules')] : [chat('c1', 'Booking form'), chat('c2', 'Price rules')]
+            ),
+        });
         const model = new QuickSearchModel(quick, 'chats', 'x');
 
         expect(titles(model)).toEqual(['Booking form', 'Price rules']);
@@ -339,7 +388,7 @@ describe('the chats', () => {
     });
 
     it('are the latest ones while nothing is typed, on the tabs that list chats, and the hint is for the others', () => {
-        const recent = Array.from({ length: 20 }, (_, index) => chat(`c${ index }`, `Chat ${ index }`));
+        const recent = Array.from({ length: 20 }, (_, index) => chat(`c${index}`, `Chat ${index}`));
         const model = new QuickSearchModel(source({ chats: () => recent }));
 
         expect(model.blank).toBe(true);
@@ -354,23 +403,37 @@ describe('the chats', () => {
     });
 
     it('are a few on the All tab, with the files and lines below them, and all of them on their own', async () => {
-        const many = Array.from({ length: CHAT_ROWS + 10 }, (_, index) => chat(`c${ index }`, `Chat ${ index }`));
+        const many = Array.from({ length: CHAT_ROWS + 10 }, (_, index) => chat(`c${index}`, `Chat ${index}`));
         const model = new QuickSearchModel(source({ chats: () => many }));
 
         model.setQuery('chat');
         await settle();
 
-        expect(model.sections.map(({ id, items }) => [id, items.length])).toEqual([['chats', ALL_CHAT_ROWS], ['files', 2], ['text', 3]]);
+        expect(model.sections.map(({ id, items }) => [id, items.length])).toEqual([
+            ['chats', ALL_CHAT_ROWS],
+            ['files', 2],
+            ['text', 3],
+        ]);
 
         model.setTab('chats');
         expect(model.rows).toHaveLength(CHAT_ROWS);
     });
 
     it('list the archived ones under a heading of their own, after the ones in use, on the All tab and on the Chats tab', () => {
-        const quick = source({ chats: () => [chat('a', 'Plan', undefined), chat('b', 'Planning', undefined), chat('c', 'Old plan', 5), chat('d', 'Older plan', 4)] });
+        const quick = source({
+            chats: () => [
+                chat('a', 'Plan', undefined),
+                chat('b', 'Planning', undefined),
+                chat('c', 'Old plan', 5),
+                chat('d', 'Older plan', 4),
+            ],
+        });
         const model = new QuickSearchModel(quick, 'chats', 'plan');
 
-        expect(model.sections.map(({ id, title, items }) => [id, title, items.length])).toEqual([['chats', 'Chats', 2], ['archived', 'Archived chats', 2]]);
+        expect(model.sections.map(({ id, title, items }) => [id, title, items.length])).toEqual([
+            ['chats', 'Chats', 2],
+            ['archived', 'Archived chats', 2],
+        ]);
         expect(titles(model)).toEqual(['Plan', 'Planning', 'Old plan', 'Older plan']);
 
         model.setTab('all');
@@ -384,7 +447,7 @@ describe('the chats', () => {
     });
 
     it('cap the archive on the All tab below the chats, and not on their own', () => {
-        const archived = Array.from({ length: 10 }, (_, index) => chat(`x${ index }`, `Old ${ index }`, index + 1));
+        const archived = Array.from({ length: 10 }, (_, index) => chat(`x${index}`, `Old ${index}`, index + 1));
         const model = new QuickSearchModel(source({ chats: () => archived }), 'all', 'old');
 
         expect(model.sections.map(({ id, items }) => [id, items.length])).toEqual([['archived', ALL_ARCHIVED_ROWS]]);

@@ -11,9 +11,9 @@ import type { ReactNode } from 'react';
 /** Centered note in place of an empty list or section. */
 export function PanelEmptyRow({ children, className }: { children: ReactNode; className?: string }) {
     return (
-        <Box align="center" justify="center" className={ cn(styles.emptyRow, className) }>
+        <Box align="center" justify="center" className={cn(styles.emptyRow, className)}>
             <Text variant="label" color="secondary">
-                { children }
+                {children}
             </Text>
         </Box>
     );
@@ -45,27 +45,19 @@ export function PanelEmptyState({
     action?: ReactNode;
 }) {
     return (
-        <Box
-            className="m-auto"
-            padding="lg"
-            gap="md"
-            grow
-            fullHeight
-            justify="center"
-            align="center"
-        >
-            { icon }
+        <Box className="m-auto" padding="lg" gap="md" grow fullHeight justify="center" align="center">
+            {icon}
             <Box gap="xs" align="center">
                 <Text variant="heading-4" align="center">
-                    { title }
+                    {title}
                 </Text>
-                <Show when={ description }>
+                <Show when={description}>
                     <Text variant="md" color="secondary" align="center">
-                        { description }
+                        {description}
                     </Text>
                 </Show>
             </Box>
-            { action }
+            {action}
         </Box>
     );
 }

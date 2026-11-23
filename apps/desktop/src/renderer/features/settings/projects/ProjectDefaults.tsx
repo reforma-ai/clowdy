@@ -15,10 +15,16 @@ export function ProjectDefaults({ project }: { project: Project }) {
     return (
         <NewChatChoices
             followsApp
-            engine={ engine ?? FOLLOW_APP }
-            mode={ chatMode ?? FOLLOW_APP }
-            onEngineChange={ next => void setProjectDefaults(root, project, { engine: next === FOLLOW_APP ? null : next }) }
-            onModeChange={ next => void setProjectDefaults(root, project, { chatMode: next === LAST_USED ? LAST_USED : (modeOf(next) ?? null) }) }
+            engine={engine ?? FOLLOW_APP}
+            mode={chatMode ?? FOLLOW_APP}
+            onEngineChange={next =>
+                void setProjectDefaults(root, project, { engine: next === FOLLOW_APP ? null : next })
+            }
+            onModeChange={next =>
+                void setProjectDefaults(root, project, {
+                    chatMode: next === LAST_USED ? LAST_USED : (modeOf(next) ?? null),
+                })
+            }
         />
     );
 }

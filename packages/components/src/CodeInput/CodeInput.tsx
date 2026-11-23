@@ -1,5 +1,5 @@
 import { cn, mergeRefs } from '@clowdy/lib';
-import { useEffect, useRef, useState, type Ref } from 'react';
+import { type Ref, useEffect, useRef, useState } from 'react';
 
 import { For } from '../For';
 import styles from './CodeInput.module.css';
@@ -51,14 +51,14 @@ export function CodeInput({
     const digits = value.slice(0, length);
     // Never past the digits: the value can shrink under the caret, as when a refused code is cleared.
     const caret = Math.min(selection.start, digits.length, length - 1);
-    const isActive = (index: number) => (selection.end > selection.start
-        ? index >= selection.start && index < selection.end
-        : index === caret);
+    const isActive = (index: number) =>
+        selection.end > selection.start ? index >= selection.start && index < selection.end : index === caret;
 
-    const trackSelection = (input: HTMLInputElement) => setSelection({
-        start: input.selectionStart ?? input.value.length,
-        end: input.selectionEnd ?? input.value.length,
-    });
+    const trackSelection = (input: HTMLInputElement) =>
+        setSelection({
+            start: input.selectionStart ?? input.value.length,
+            end: input.selectionEnd ?? input.value.length,
+        });
 
     // Past Modal.open(), which moves focus to the dialog after mount.
     useEffect(() => {
@@ -73,53 +73,53 @@ export function CodeInput({
 
     return (
         <div
-            className={ cn(styles.root, className) }
-            data-size={ size }
-            data-disabled={ isDisabled || undefined }
-            data-invalid={ isInvalid || undefined }
+            className={cn(styles.root, className)}
+            data-size={size}
+            data-disabled={isDisabled || undefined}
+            data-invalid={isInvalid || undefined}
         >
-            <For each={ Array.from({ length }, (_, index) => index) }>
-                { index => (
+            <For each={Array.from({ length }, (_, index) => index)}>
+                {index => (
                     <div
-                        key={ index }
-                        className={ styles.box }
-                        data-active={ (isFocused && isActive(index)) || undefined }
-                        data-filled={ index < digits.length || undefined }
+                        key={index}
+                        className={styles.box}
+                        data-active={(isFocused && isActive(index)) || undefined}
+                        data-filled={index < digits.length || undefined}
                         aria-hidden="true"
                     >
-                        { digits[index] }
+                        {digits[index]}
                     </div>
-                ) }
+                )}
             </For>
             <input
-                { ...aria }
-                ref={ mergeRefs(inputRef, ref) }
-                className={ styles.input }
+                {...aria}
+                ref={mergeRefs(inputRef, ref)}
+                className={styles.input}
                 type="text"
                 inputMode="numeric"
                 autoComplete="one-time-code"
                 pattern="[0-9]*"
-                spellCheck={ false }
+                spellCheck={false}
                 // No maxLength: it would cut a pasted `123 456` before the space is dropped.
-                value={ digits }
-                disabled={ isDisabled }
-                readOnly={ isReadOnly }
-                aria-invalid={ isInvalid || undefined }
-                onChange={ (event) => {
+                value={digits}
+                disabled={isDisabled}
+                readOnly={isReadOnly}
+                aria-invalid={isInvalid || undefined}
+                onChange={event => {
                     trackSelection(event.target);
                     onChange(event.target.value.replace(/\D/g, '').slice(0, length));
-                } }
-                onKeyDown={ (event) => {
+                }}
+                onKeyDown={event => {
                     if (event.key === 'Enter') {
                         onSubmit?.();
                     }
-                } }
-                onSelect={ event => trackSelection(event.currentTarget) }
-                onFocus={ (event) => {
+                }}
+                onSelect={event => trackSelection(event.currentTarget)}
+                onFocus={event => {
                     setIsFocused(true);
                     trackSelection(event.currentTarget);
-                } }
-                onBlur={ () => setIsFocused(false) }
+                }}
+                onBlur={() => setIsFocused(false)}
             />
         </div>
     );

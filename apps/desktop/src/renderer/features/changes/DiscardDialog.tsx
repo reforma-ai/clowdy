@@ -18,17 +18,33 @@ export interface DiscardDialogOptions {
 }
 
 /** The body of the confirmation: which file (its folder, when it has one), what happens to it, and the warning while an agent works in the place. */
-export function DiscardMessage({ file, body, working }: { file: Pick<GitChangedFile, 'path'>; body: string; working: string | undefined }) {
+export function DiscardMessage({
+    file,
+    body,
+    working,
+}: {
+    file: Pick<GitChangedFile, 'path'>;
+    body: string;
+    working: string | undefined;
+}) {
     const { folder } = splitPath(file.path);
 
     return (
         <Box gap="sm">
-            <Show when={ folder }>
-                <Text variant="sm" color="secondary" truncate title={ file.path }>{ file.path }</Text>
+            <Show when={folder}>
+                <Text variant="sm" color="secondary" truncate title={file.path}>
+                    {file.path}
+                </Text>
             </Show>
-            <Text variant="md" color="secondary">{ body }</Text>
-            <Show when={ working }>
-                { words => <Text variant="md" color="warning" role="note">{ words }</Text> }
+            <Text variant="md" color="secondary">
+                {body}
+            </Text>
+            <Show when={working}>
+                {words => (
+                    <Text variant="md" color="warning" role="note">
+                        {words}
+                    </Text>
+                )}
             </Show>
         </Box>
     );
@@ -44,16 +60,19 @@ export function DiscardMessage({ file, body, working }: { file: Pick<GitChangedF
 export function openDiscardDialog({ file, working, discard }: DiscardDialogOptions): void {
     const words = discardWords(file);
 
-    openConfirmModal({
-        title: words.title,
-        message: <DiscardMessage file={ file } body={ words.body } working={ agentsWorkingWords(working) } />,
-        confirmLabel: 'Discard changes',
-        cancelLabel: 'Cancel',
-        destructive: true,
-        initialFocus: 'cancel',
-        errorIn: 'dialog',
-        onConfirm: async () => {
-            await discard();
+    openConfirmModal(
+        {
+            title: words.title,
+            message: <DiscardMessage file={file} body={words.body} working={agentsWorkingWords(working)} />,
+            confirmLabel: 'Discard changes',
+            cancelLabel: 'Cancel',
+            destructive: true,
+            initialFocus: 'cancel',
+            errorIn: 'dialog',
+            onConfirm: async () => {
+                await discard();
+            },
         },
-    }, { width: 420 });
+        { width: 420 }
+    );
 }

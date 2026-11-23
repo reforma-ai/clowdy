@@ -1,6 +1,14 @@
 import { projectChatMode } from '@clowdy/protocol';
 
-import { createChat, deleteChat, renameChat, requireChat, setChatArchived, setChatMode, setChatModel } from '../domain/chats';
+import {
+    createChat,
+    deleteChat,
+    renameChat,
+    requireChat,
+    setChatArchived,
+    setChatMode,
+    setChatModel,
+} from '../domain/chats';
 import { requireProject } from '../domain/projects';
 import { removeChatWorkspace } from '../domain/workspaceRemoval';
 import { invalid } from '../errors';
@@ -11,8 +19,18 @@ import { isAtRest } from '../runs/queue';
 
 import type { AsyncHandlers, Handlers } from './context';
 
-type ChatCommand = 'chat.create' | 'chat.rename' | 'chat.setMode' | 'chat.setModel' | 'chat.compact' | 'chat.setArchived' | 'chat.delete' | 'chat.send'
-    | 'chat.removeQueued' | 'chat.moveQueued' | 'chat.sendQueued';
+type ChatCommand =
+    | 'chat.create'
+    | 'chat.rename'
+    | 'chat.setMode'
+    | 'chat.setModel'
+    | 'chat.compact'
+    | 'chat.setArchived'
+    | 'chat.delete'
+    | 'chat.send'
+    | 'chat.removeQueued'
+    | 'chat.moveQueued'
+    | 'chat.sendQueued';
 
 export const chatHandlers: Pick<Handlers, ChatCommand> = {
     /** A `workspace` is checked here and its row made; the worktree itself is made by the chat's first turn (`prepareWorkspace`). */
@@ -24,7 +42,9 @@ export const chatHandlers: Pick<Handlers, ChatCommand> = {
             runs.resolveEngine(project, command.engine);
         }
 
-        return { chat: createChat(store, { ...command, mode: command.mode ?? projectChatMode(project.settings) }, config) };
+        return {
+            chat: createChat(store, { ...command, mode: command.mode ?? projectChatMode(project.settings) }, config),
+        };
     },
 
     'chat.rename': ({ store }, command) => ({ chat: renameChat(store, command.chatId, command.title) }),
@@ -62,7 +82,7 @@ export const chatHandlers: Pick<Handlers, ChatCommand> = {
         const message = agents.compactCommand(run.engine);
 
         if (!message) {
-            throw invalid(`${ agents.nameOf(run.engine) } has no command to compact its conversation`);
+            throw invalid(`${agents.nameOf(run.engine)} has no command to compact its conversation`);
         }
 
         requireEnabled(agents, run.engine);
@@ -83,12 +103,18 @@ export const chatHandlers: Pick<Handlers, ChatCommand> = {
 
     /** The person's message: see `sendMessage`. */
     'chat.send': (services, command) => {
-        const { chatId, runId } = sendMessage(services, command.chatId, { text: command.text, attachmentIds: command.attachmentIds, mode: command.mode });
+        const { chatId, runId } = sendMessage(services, command.chatId, {
+            text: command.text,
+            attachmentIds: command.attachmentIds,
+            mode: command.mode,
+        });
 
         return { chatId, runId };
     },
 
-    'chat.removeQueued': ({ queue }, command) => ({ chat: queue.remove(command.chatId, command.itemId, command.keepFiles) }),
+    'chat.removeQueued': ({ queue }, command) => ({
+        chat: queue.remove(command.chatId, command.itemId, command.keepFiles),
+    }),
 
     'chat.moveQueued': ({ queue }, command) => ({ chat: queue.move(command.chatId, command.itemId, command.index) }),
 
@@ -113,7 +139,11 @@ export const chatHandlers: Pick<Handlers, ChatCommand> = {
 export const chatAsyncHandlers: Pick<AsyncHandlers, 'chat.fork' | 'chat.edit' | 'chat.delete'> = {
     'chat.fork': (services, command) => prepareFork(services, command.chatId, command.itemId),
 
-    'chat.edit': (services, command) => prepareEdit(services, command.chatId, command.itemId, { text: command.text, attachmentIds: command.attachmentIds }),
+    'chat.edit': (services, command) =>
+        prepareEdit(services, command.chatId, command.itemId, {
+            text: command.text,
+            attachmentIds: command.attachmentIds,
+        }),
 
     'chat.delete': async ({ store, config, attachments }, command) => {
         await removeChatWorkspace(store, config, command.chatId);

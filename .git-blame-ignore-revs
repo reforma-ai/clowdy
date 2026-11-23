@@ -1,0 +1,8 @@
+# Mechanical commits that git blame skips. GitHub reads this file on its own;
+# locally: git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# style: reformat the repository with biome
+7f907d4d4655226e646533476f8db656a9128e5c
+
+# style: reformat after merging next
+31610ea5a4b1d0f523ee4e5a8a05944cd3af1e9a

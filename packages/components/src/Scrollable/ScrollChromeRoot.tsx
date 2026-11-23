@@ -38,7 +38,7 @@ export function ScrollChromeRoot({
 
     return (
         <div
-            { ...mergeProps(attrs as HTMLAttributes<HTMLDivElement>, {
+            {...mergeProps(attrs as HTMLAttributes<HTMLDivElement>, {
                 ref: rootMergedRef,
                 className: cn(styles.root, className, {
                     [styles.scrollV]: isVerticalEnabled,
@@ -47,9 +47,9 @@ export function ScrollChromeRoot({
                 }),
                 onPointerEnter: rootPointerHandlers.onPointerEnter,
                 onPointerLeave: rootPointerHandlers.onPointerLeave,
-            }) }
+            })}
         >
-            { children }
+            {children}
         </div>
     );
 }

@@ -62,12 +62,19 @@ function takeTitle(store: Store, run: Run, given: string, prompt: string): boole
  * other session of such an agent is told to keep the title the chat has, so the agent spends no model call on a name nobody will use: a chat the person
  * renamed, one named for its task, one whose switch is off. The engine tells a new session from one that continues, which has its title already.
  */
-export function sessionTitle(store: Store, run: Run, enabled: boolean | undefined, prompt: string): SessionTitle | undefined {
+export function sessionTitle(
+    store: Store,
+    run: Run,
+    enabled: boolean | undefined,
+    prompt: string
+): SessionTitle | undefined {
     const chat = chatOf(store, run);
 
     if (enabled === undefined || !chat) {
         return undefined;
     }
 
-    return enabled && isUnnamed(store, run, chat) ? { onTitle: title => takeTitle(store, run, title, prompt) } : { keep: chat.title };
+    return enabled && isUnnamed(store, run, chat)
+        ? { onTitle: title => takeTitle(store, run, title, prompt) }
+        : { keep: chat.title };
 }

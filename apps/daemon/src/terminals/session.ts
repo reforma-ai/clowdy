@@ -2,7 +2,14 @@ import { isTerminalSize, TERMINAL_SCROLLBACK } from '@clowdy/protocol';
 import { SerializeAddon } from '@xterm/addon-serialize';
 import { Terminal } from '@xterm/headless';
 
-import type { FolderId, ProjectId, TerminalInfo, TerminalServerMessage, TerminalState, WorkspaceId } from '@clowdy/protocol';
+import type {
+    FolderId,
+    ProjectId,
+    TerminalInfo,
+    TerminalServerMessage,
+    TerminalState,
+    WorkspaceId,
+} from '@clowdy/protocol';
 import type { Pty, SpawnPty } from './pty';
 import type { Shell } from './shell';
 
@@ -84,10 +91,18 @@ export class TerminalSession {
     #mouseEncoding: number | undefined;
     #cursorHidden = false;
 
-    constructor(readonly id: string, readonly spec: TerminalSpec) {
+    constructor(
+        readonly id: string,
+        readonly spec: TerminalSpec
+    ) {
         this.#cols = spec.cols;
         this.#rows = spec.rows;
-        this.#mirror = new Terminal({ cols: spec.cols, rows: spec.rows, scrollback: TERMINAL_SCROLLBACK, allowProposedApi: true });
+        this.#mirror = new Terminal({
+            cols: spec.cols,
+            rows: spec.rows,
+            scrollback: TERMINAL_SCROLLBACK,
+            allowProposedApi: true,
+        });
         this.#mirror.loadAddon(this.#serializer);
         this.#trackModes();
     }
@@ -116,7 +131,19 @@ export class TerminalSession {
     info(): TerminalInfo {
         const { projectId, folderId, workspaceId, cwd, shell } = this.spec;
 
-        return { id: this.id, projectId, folderId, ...(workspaceId !== undefined && { workspaceId }), cwd, shell: shell.name, cols: this.#cols, rows: this.#rows, state: this.#state, exitCode: this.#exitCode, createdAt: this.createdAt };
+        return {
+            id: this.id,
+            projectId,
+            folderId,
+            ...(workspaceId !== undefined && { workspaceId }),
+            cwd,
+            shell: shell.name,
+            cols: this.#cols,
+            rows: this.#rows,
+            state: this.#state,
+            exitCode: this.#exitCode,
+            createdAt: this.createdAt,
+        };
     }
 
     /** Starts the shell. Throws when the program cannot be started; nothing of the session is left running then. */
@@ -220,8 +247,7 @@ export class TerminalSession {
 
         if (this.#batchBytes >= MAX_BATCH_BYTES) {
             this.#flush();
-        }
-        else if (!this.#flushScheduled) {
+        } else if (!this.#flushScheduled) {
             this.#flushScheduled = true;
             setImmediate(() => this.#flush());
         }
@@ -245,8 +271,7 @@ export class TerminalSession {
         for (const [listener, attachment] of this.#clients) {
             if (attachment.queue) {
                 attachment.queue.push({ seq, data });
-            }
-            else {
+            } else {
                 listener.output(data);
             }
         }
@@ -283,7 +308,8 @@ export class TerminalSession {
             return undefined;
         }
 
-        const modes = (this.#mouseEncoding ? `\x1b[?${ this.#mouseEncoding }h` : '') + (this.#cursorHidden ? '\x1b[?25l' : '');
+        const modes =
+            (this.#mouseEncoding ? `\x1b[?${this.#mouseEncoding}h` : '') + (this.#cursorHidden ? '\x1b[?25l' : '');
         const message: ScreenMessage = {
             type: 'screen',
             screen: this.#serializer.serialize({ scrollback: TERMINAL_SCROLLBACK }) + modes,
@@ -298,18 +324,19 @@ export class TerminalSession {
 
     /** Watches DECSET/DECRST and RIS without consuming them; the mirror still applies each. */
     #trackModes(): void {
-        const onMode = (isSet: boolean) => (params: Array<number | number[]>): boolean => {
-            for (const param of params) {
-                if (param === 25) {
-                    this.#cursorHidden = !isSet;
+        const onMode =
+            (isSet: boolean) =>
+            (params: Array<number | number[]>): boolean => {
+                for (const param of params) {
+                    if (param === 25) {
+                        this.#cursorHidden = !isSet;
+                    } else if (typeof param === 'number' && MOUSE_ENCODINGS.has(param)) {
+                        this.#mouseEncoding = isSet ? param : undefined;
+                    }
                 }
-                else if (typeof param === 'number' && MOUSE_ENCODINGS.has(param)) {
-                    this.#mouseEncoding = isSet ? param : undefined;
-                }
-            }
 
-            return false;
-        };
+                return false;
+            };
 
         this.#mirror.parser.registerCsiHandler({ prefix: '?', final: 'h' }, onMode(true));
         this.#mirror.parser.registerCsiHandler({ prefix: '?', final: 'l' }, onMode(false));

@@ -25,7 +25,7 @@ describe('progressScript', () => {
     ])('moves the bar for %s to %s percent', (fraction, percent) => {
         const script = progressScript(fraction);
 
-        expect(script).toContain(`'aria-valuenow', '${ percent }'`);
-        expect(script).toContain(`width = '${ percent }%'`);
+        expect(script).toContain(`'aria-valuenow', '${percent}'`);
+        expect(script).toContain(`width = '${percent}%'`);
     });
 });

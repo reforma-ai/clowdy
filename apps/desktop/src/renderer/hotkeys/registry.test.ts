@@ -1,12 +1,20 @@
 import { autorun } from 'mobx';
 import { describe, expect, it, vi } from 'vitest';
 
-import { commandPresses, commandSequences, createRegistry, findKeyConflicts, type Command } from './registry';
+import { type Command, commandPresses, commandSequences, createRegistry, findKeyConflicts } from './registry';
 
 let counter = 0;
 
 function command(overrides: Partial<Command> = {}): Command {
-    return { id: `command-${ ++counter }`, title: 'Command', group: 'Tests', keys: 'x', scope: 'tasks', handler: vi.fn(), ...overrides };
+    return {
+        id: `command-${++counter}`,
+        title: 'Command',
+        group: 'Tests',
+        keys: 'x',
+        scope: 'tasks',
+        handler: vi.fn(),
+        ...overrides,
+    };
 }
 
 describe('commandPresses', () => {
@@ -25,7 +33,7 @@ describe('commandPresses', () => {
         expect(commandPresses({ keys: 'ArrowDown' })).toEqual([['down']]);
         expect(commandPresses({ keys: 'Escape' })).toEqual([['escape']]);
         expect(commandPresses({ keys: 'Shift+R' }, 'darwin')).toEqual([['shift', 'r']]);
-        expect(commandPresses({ keys: '$mod+Shift+Quote' }, 'darwin')).toEqual([['shift', 'meta', '\'']]);
+        expect(commandPresses({ keys: '$mod+Shift+Quote' }, 'darwin')).toEqual([['shift', 'meta', "'"]]);
         expect(commandPresses({ keys: 'KeyK' })).toEqual([['k']]);
         expect(commandPresses({ keys: '?' })).toEqual([['?']]);
         expect(commandPresses({ keys: '$mod+/' }, 'win32')).toEqual([['ctrl', '/']]);
@@ -112,13 +120,17 @@ describe('key conflicts', () => {
 
         registry.defineCommand(command({ id: 'a', keys: 'g', scope: 'tasks' }));
 
-        expect(() => registry.defineCommand(command({ id: 'b', keys: 'g c', scope: 'tasks' }))).toThrow('starts or continues');
+        expect(() => registry.defineCommand(command({ id: 'b', keys: 'g c', scope: 'tasks' }))).toThrow(
+            'starts or continues'
+        );
 
         const other = createRegistry('darwin');
 
         other.defineCommand(command({ id: 'a', keys: 'g c', scope: 'tasks' }));
 
-        expect(() => other.defineCommand(command({ id: 'b', keys: 'g', scope: 'tasks' }))).toThrow('starts or continues');
+        expect(() => other.defineCommand(command({ id: 'b', keys: 'g', scope: 'tasks' }))).toThrow(
+            'starts or continues'
+        );
     });
 
     it('allows chords that only share a first key', () => {
@@ -159,7 +171,9 @@ describe('key conflicts', () => {
 
         registry.defineCommand(command({ id: 'a', keys: { mac: '$mod+Backspace', win: '$mod+Delete' } }));
 
-        expect(() => registry.defineCommand(command({ id: 'b', keys: { mac: 'x', win: 'Control+Delete' } }))).toThrow('same keys');
+        expect(() => registry.defineCommand(command({ id: 'b', keys: { mac: 'x', win: 'Control+Delete' } }))).toThrow(
+            'same keys'
+        );
     });
 
     it('checks the alternatives of one command against each other', () => {
@@ -177,10 +191,18 @@ describe('key conflicts', () => {
         expect(registry.findConflicts()).toEqual([]);
         expect(() => registry.assertNoConflicts()).not.toThrow();
 
-        const clashing = [command({ id: 'a', keys: 'j', scope: 'tasks' }), command({ id: 'b', keys: 'j', scope: 'tasks' }), command({ id: 'c', keys: 'k', scope: 'tasks' })];
+        const clashing = [
+            command({ id: 'a', keys: 'j', scope: 'tasks' }),
+            command({ id: 'b', keys: 'j', scope: 'tasks' }),
+            command({ id: 'c', keys: 'k', scope: 'tasks' }),
+        ];
 
-        expect(findKeyConflicts(clashing).map(({ a, b, kind }) => [a.id, b.id, kind])).toEqual([['a', 'b', 'duplicate']]);
-        expect(findKeyConflicts([command({ id: 'own', keys: ['g', 'g c'] })]).map(({ a, b, kind }) => [a.id, b.id, kind])).toEqual([['own', 'own', 'prefix']]);
+        expect(findKeyConflicts(clashing).map(({ a, b, kind }) => [a.id, b.id, kind])).toEqual([
+            ['a', 'b', 'duplicate'],
+        ]);
+        expect(
+            findKeyConflicts([command({ id: 'own', keys: ['g', 'g c'] })]).map(({ a, b, kind }) => [a.id, b.id, kind])
+        ).toEqual([['own', 'own', 'prefix']]);
     });
 });
 
@@ -255,7 +277,9 @@ describe('observed by a component', () => {
         const registry = createRegistry('darwin');
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
         const runs: string[] = [];
-        const stop = autorun(() => runs.push(`${ registry.entries.length } entries, scopes ${ registry.scopes.join('+') }`));
+        const stop = autorun(() =>
+            runs.push(`${registry.entries.length} entries, scopes ${registry.scopes.join('+')}`)
+        );
 
         try {
             const remove = registry.defineCommand(command({ scope: 'app' }));
@@ -264,10 +288,15 @@ describe('observed by a component', () => {
             remove();
             leave();
 
-            expect(runs).toEqual(['0 entries, scopes ', '1 entries, scopes ', '1 entries, scopes tasks', '0 entries, scopes tasks', '0 entries, scopes ']);
+            expect(runs).toEqual([
+                '0 entries, scopes ',
+                '1 entries, scopes ',
+                '1 entries, scopes tasks',
+                '0 entries, scopes tasks',
+                '0 entries, scopes ',
+            ]);
             expect(warn).not.toHaveBeenCalled();
-        }
-        finally {
+        } finally {
             stop();
             warn.mockRestore();
         }

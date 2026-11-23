@@ -28,7 +28,13 @@ export class UndoStack {
     #tail: Promise<unknown> = Promise.resolve();
 
     constructor(readonly limit = UNDO_LIMIT) {
-        makeAutoObservable(this, { limit: false, entries: observableShallow, canUndo: false, undoEntry: false, undoLatest: false });
+        makeAutoObservable(this, {
+            limit: false,
+            entries: observableShallow,
+            canUndo: false,
+            undoEntry: false,
+            undoLatest: false,
+        });
     }
 
     /**
@@ -73,8 +79,7 @@ export class UndoStack {
         const run = this.#tail.then(async () => {
             try {
                 return await entry.undo();
-            }
-            catch (error) {
+            } catch (error) {
                 // A broken undo must not stop the ones queued behind it.
                 console.error(error);
 

@@ -182,7 +182,16 @@ export type EngineEvent =
      * a tool call): the next piece starts a new one. Only an agent that shows its reasoning sends them. `agentId` names the sub-agent that thought, as for `text`.
      */
     | { type: 'thought'; delta: string; done: boolean; agentId?: string }
-    | { type: 'tool'; toolCallId: string; name: string; input: unknown; state: ToolState; output?: unknown; error?: string; agentId?: string }
+    | {
+          type: 'tool';
+          toolCallId: string;
+          name: string;
+          input: unknown;
+          state: ToolState;
+          output?: unknown;
+          error?: string;
+          agentId?: string;
+      }
     /**
      * A sub-agent that lives inside the session (an agent's own `Agent` or `Task`, when the engine can tell). The runtime shows it as a child run;
      * `text` and `tool` events with the same `agentId` belong to its stream. `stoppable`, on the event that makes the child run (its first), says the
@@ -190,7 +199,17 @@ export type EngineEvent =
      * does not. `parentAgentId` names the sub-agent that started this one (a sub-agent of a sub-agent: its run is made below that one's, and is kept
      * while that one is); absent when the session's own agent did.
      */
-    | { type: 'subagent'; agentId: string; parentAgentId?: string; parentToolCallId?: string; name: string; description?: string; state: SubagentState; summary?: string; stoppable?: boolean }
+    | {
+          type: 'subagent';
+          agentId: string;
+          parentAgentId?: string;
+          parentToolCallId?: string;
+          name: string;
+          description?: string;
+          state: SubagentState;
+          summary?: string;
+          stoppable?: boolean;
+      }
     /** A subscription quota signal. `resetsAt` is passed through exactly as the engine reported it. */
     | { type: 'limit'; status: 'warning' | 'rejected'; kind?: string; utilization?: number; resetsAt?: number }
     /** The OS process behind the session, so the runtime can kill its group on cancel and after a daemon crash. */

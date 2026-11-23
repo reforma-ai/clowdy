@@ -15,12 +15,16 @@ export type ToolEvent = Extract<EngineEvent, { type: 'tool' }>;
 export type Json = { [key: string]: unknown };
 
 /** `null` clears a field, an omitted one leaves it, a value replaces it: how an update of ACP v2 patches what an earlier one said. */
-export const patched = <T>(old: T | undefined, next: T | null | undefined): T | undefined => next === undefined ? old : next ?? undefined;
+export const patched = <T>(old: T | undefined, next: T | null | undefined): T | undefined =>
+    next === undefined ? old : (next ?? undefined);
 
-export const isRecord = (value: unknown): value is Json => typeof value === 'object' && value !== null && !Array.isArray(value);
+export const isRecord = (value: unknown): value is Json =>
+    typeof value === 'object' && value !== null && !Array.isArray(value);
 
 function clip(text: string): string {
-    return text.length > MAX_OUTPUT_CHARS ? `${ text.slice(0, MAX_OUTPUT_CHARS) }\n[cut: ${ text.length - MAX_OUTPUT_CHARS } more characters]` : text;
+    return text.length > MAX_OUTPUT_CHARS
+        ? `${text.slice(0, MAX_OUTPUT_CHARS)}\n[cut: ${text.length - MAX_OUTPUT_CHARS} more characters]`
+        : text;
 }
 
 /** What a tool kind is called when the agent gives the call no name of its own. These are the names the stream view recognizes. */
@@ -56,7 +60,9 @@ function outputOf(rawOutput: unknown, shown: string | undefined): string | undef
     }
 
     if (isRecord(rawOutput)) {
-        const named = ['output', 'stdout', 'text', 'content', 'result'].map(key => rawOutput[key]).find((value): value is string => typeof value === 'string' && value !== '');
+        const named = ['output', 'stdout', 'text', 'content', 'result']
+            .map(key => rawOutput[key])
+            .find((value): value is string => typeof value === 'string' && value !== '');
 
         return named ?? JSON.stringify(rawOutput);
     }
@@ -112,13 +118,17 @@ export class ToolLedger {
     /** The name the runtime knows a tool call by: its own tool's bare name, else the agent's name for it, else its kind. */
     private nameOf(update: ToolFacts, previous?: string): string {
         const claude = (update._meta?.claudeCode as { toolName?: unknown } | undefined)?.toolName;
-        const candidates = [typeof claude === 'string' ? claude : undefined, update.name ?? undefined, update.title ?? undefined].filter((value): value is string => Boolean(value));
+        const candidates = [
+            typeof claude === 'string' ? claude : undefined,
+            update.name ?? undefined,
+            update.title ?? undefined,
+        ].filter((value): value is string => Boolean(value));
 
         // The runtime's own tools reach the agent as an MCP server called `clowdy`; agents show them as `mcp__clowdy__task_list`,
         // `clowdy/task_list`, `Tool: clowdy.task_list` and so on.
         for (const tool of this.toolNames) {
             // `mcp__clowdy__task_list` has the name behind a double underscore; `my_task_list` is another tool.
-            const pattern = new RegExp(`(?:^|[^a-z0-9_]|__)${ escape(tool) }(?:$|[^a-z0-9_])`, 'i');
+            const pattern = new RegExp(`(?:^|[^a-z0-9_]|__)${escape(tool)}(?:$|[^a-z0-9_])`, 'i');
 
             if (candidates.some(text => text === tool || (/clowdy/i.test(text) && pattern.test(text)))) {
                 return tool;
@@ -126,11 +136,15 @@ export class ToolLedger {
         }
 
         // A compaction is a `think` call by its title (Codex) or by Claude's tool name; a later update that names nothing of its own keeps the name.
-        if (claude === COMPACT_TOOL || (update.title === COMPACT_TITLE && (!update.kind || update.kind === 'think')) || (previous === COMPACT_TOOL && !claude && !update.name)) {
+        if (
+            claude === COMPACT_TOOL ||
+            (update.title === COMPACT_TITLE && (!update.kind || update.kind === 'think')) ||
+            (previous === COMPACT_TOOL && !claude && !update.name)
+        ) {
             return COMPACT_TOOL;
         }
 
-        const kind = update.kind ? KIND_NAMES[update.kind] ?? '' : '';
+        const kind = update.kind ? (KIND_NAMES[update.kind] ?? '') : '';
 
         return (typeof claude === 'string' && claude) || update.name || kind || previous || update.title || 'Tool';
     }
@@ -142,14 +156,18 @@ export class ToolLedger {
     apply(update: ToolFacts, agentId?: string): ToolEvent | undefined {
         const id = update.toolCallId;
         const known = this.tools.get(id);
-        const tool: Tool = known ?? { name: '', input: undefined, state: 'running', ...(agentId !== undefined && { agentId }) };
+        const tool: Tool = known ?? {
+            name: '',
+            input: undefined,
+            state: 'running',
+            ...(agentId !== undefined && { agentId }),
+        };
 
         tool.name = this.nameOf(update, known?.name);
 
         if (update.rawInput !== undefined && update.rawInput !== null) {
             tool.input = update.rawInput;
-        }
-        else if (tool.input === undefined && update.title) {
+        } else if (tool.input === undefined && update.title) {
             tool.input = { title: update.title };
         }
 
@@ -160,17 +178,14 @@ export class ToolLedger {
 
             if (update.status === 'failed') {
                 tool.error = clip(text ?? 'The tool failed');
-            }
-            else if (text !== undefined) {
+            } else if (text !== undefined) {
                 tool.output = clip(text);
             }
-        }
-        else if (update.status === 'cancelled') {
+        } else if (update.status === 'cancelled') {
             // A call the agent cancelled was stopped, not failed: the app reads this text as such.
             tool.state = 'error';
             tool.error = STOPPED_TOOL;
-        }
-        else if (update.status === 'pending' || update.status === 'in_progress' || update.status === 'paused') {
+        } else if (update.status === 'pending' || update.status === 'in_progress' || update.status === 'paused') {
             tool.state = 'running';
         }
 
@@ -359,7 +374,15 @@ export class Message {
         this.last = this.text;
         this.text = '';
 
-        return [{ type: 'text', delta: '', done: true, ...(agentId !== undefined && { agentId }), ...(this.ids && messageId !== undefined && { messageId }) }];
+        return [
+            {
+                type: 'text',
+                delta: '',
+                done: true,
+                ...(agentId !== undefined && { agentId }),
+                ...(this.ids && messageId !== undefined && { messageId }),
+            },
+        ];
     }
 }
 
@@ -372,20 +395,27 @@ export interface Tokens {
 }
 
 /** What a prompt used: its tokens, and the rise of the session's cumulative cost over `costBefore` (unknown for a session this daemon never measured). */
-export function usageEvent(tokens: Tokens | null | undefined, cost: number | undefined, costBefore: number | undefined): EngineEvent[] {
+export function usageEvent(
+    tokens: Tokens | null | undefined,
+    cost: number | undefined,
+    costBefore: number | undefined
+): EngineEvent[] {
     const costUsd = cost !== undefined && costBefore !== undefined ? Math.max(0, cost - costBefore) : undefined;
 
     if (!tokens && costUsd === undefined) {
         return [];
     }
 
-    return [{
-        type: 'usage',
-        // The prompt as the model read it, cached parts included.
-        inputTokens: (tokens?.inputTokens ?? 0) + (tokens?.cachedReadTokens ?? 0) + (tokens?.cachedWriteTokens ?? 0),
-        outputTokens: tokens?.outputTokens ?? 0,
-        ...(costUsd !== undefined && { costUsd }),
-    }];
+    return [
+        {
+            type: 'usage',
+            // The prompt as the model read it, cached parts included.
+            inputTokens:
+                (tokens?.inputTokens ?? 0) + (tokens?.cachedReadTokens ?? 0) + (tokens?.cachedWriteTokens ?? 0),
+            outputTokens: tokens?.outputTokens ?? 0,
+            ...(costUsd !== undefined && { costUsd }),
+        },
+    ];
 }
 
 /** A `usage_update`: the window's fill, the session's cost so far, and whatever rides in its `_meta`. */
@@ -419,7 +449,7 @@ export class Gauges {
             return [];
         }
 
-        const signature = `${ used }/${ size }`;
+        const signature = `${used}/${size}`;
 
         if (signature === this.fill) {
             return [];
@@ -438,7 +468,7 @@ export class Gauges {
             return [];
         }
 
-        this.log?.(`rate limit ${ JSON.stringify(info) }`);
+        this.log?.(`rate limit ${JSON.stringify(info)}`);
 
         if (info.status !== 'allowed_warning' && info.status !== 'rejected') {
             return [];

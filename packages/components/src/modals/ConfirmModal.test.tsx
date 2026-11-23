@@ -3,36 +3,58 @@ import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import Modal from '../Modal/Modal';
-import { openConfirmModal, type OpenConfirmModalOptions } from './ConfirmModal';
+import { type OpenConfirmModalOptions, openConfirmModal } from './ConfirmModal';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 /** The dialog draws on the next animation frame, and a button that asks for the focus takes it after 50 ms. */
-const settle = () => act(async () => {
-    await new Promise(resolve => setTimeout(resolve, 120));
-});
+const settle = () =>
+    act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 120));
+    });
 
-const press = (target: Element) => act(async () => {
-    target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
-    target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
-    target.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
-    target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
-    (target as HTMLElement).click();
-});
+const press = (target: Element) =>
+    act(async () => {
+        target.dispatchEvent(
+            new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true })
+        );
+        target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+        target.dispatchEvent(
+            new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true })
+        );
+        target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
+        (target as HTMLElement).click();
+    });
 
-const buttonOf = (label: string) => [...document.querySelectorAll<HTMLButtonElement>('button')].find(candidate => candidate.textContent?.trim() === label)!;
+const buttonOf = (label: string) =>
+    [...document.querySelectorAll<HTMLButtonElement>('button')].find(
+        candidate => candidate.textContent?.trim() === label
+    )!;
 const alert = () => document.querySelector('[role="alert"]');
 
 /** Enter pressed where no button has the focus: on the dialog's own title. */
-const enterOnTitle = () => act(async () => {
-    const title = [...document.querySelectorAll('*')].find(element => element.children.length === 0 && element.textContent === 'Discard changes to a.ts?');
+const enterOnTitle = () =>
+    act(async () => {
+        const title = [...document.querySelectorAll('*')].find(
+            element => element.children.length === 0 && element.textContent === 'Discard changes to a.ts?'
+        );
 
-    expect(title).toBeDefined();
-    title!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
-});
+        expect(title).toBeDefined();
+        title!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    });
 
 async function open(options: Partial<OpenConfirmModalOptions> = {}) {
-    openConfirmModal({ title: 'Discard changes to a.ts?', message: 'The file goes back to the last commit', confirmLabel: 'Discard changes', destructive: true, onConfirm: () => undefined, ...options }, { animate: false });
+    openConfirmModal(
+        {
+            title: 'Discard changes to a.ts?',
+            message: 'The file goes back to the last commit',
+            confirmLabel: 'Discard changes',
+            destructive: true,
+            onConfirm: () => undefined,
+            ...options,
+        },
+        { animate: false }
+    );
     await settle();
 }
 
@@ -82,7 +104,10 @@ describe('the confirmation dialog', () => {
     });
 
     it('says a failure in the dialog when it asks to, keeps it open with its buttons back, and clears the line on the next try', async () => {
-        const onConfirm = vi.fn().mockRejectedValueOnce(new Error('fatal: Unable to create index.lock')).mockResolvedValueOnce(undefined);
+        const onConfirm = vi
+            .fn()
+            .mockRejectedValueOnce(new Error('fatal: Unable to create index.lock'))
+            .mockResolvedValueOnce(undefined);
 
         await open({ errorIn: 'dialog', initialFocus: 'cancel', onConfirm });
         await press(buttonOf('Discard changes'));
@@ -103,9 +128,10 @@ describe('the confirmation dialog', () => {
 
     it('holds both buttons while it works, and closes when it is done', async () => {
         let finish: () => void = () => undefined;
-        const onConfirm = () => new Promise<void>((resolve) => {
-            finish = resolve;
-        });
+        const onConfirm = () =>
+            new Promise<void>(resolve => {
+                finish = resolve;
+            });
 
         await open({ errorIn: 'dialog', onConfirm });
         await press(buttonOf('Discard changes'));

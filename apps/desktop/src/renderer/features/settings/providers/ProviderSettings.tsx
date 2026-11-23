@@ -21,14 +21,34 @@ interface SettingsProps {
     commands: ReturnType<typeof useAgentCommands>;
 }
 
-function SettingRow({ setting, isPending, onChange }: { setting: AgentSetting; isPending: boolean; onChange: (value: boolean) => void }) {
+function SettingRow({
+    setting,
+    isPending,
+    onChange,
+}: {
+    setting: AgentSetting;
+    isPending: boolean;
+    onChange: (value: boolean) => void;
+}) {
     return (
-        <li className={ styles.setting }>
-            <div className={ styles.text }>
-                <Text variant="sm" weight="medium">{ setting.label }</Text>
-                { setting.description && <Text variant="sm" color="secondary">{ setting.description }</Text> }
+        <li className={styles.setting}>
+            <div className={styles.text}>
+                <Text variant="sm" weight="medium">
+                    {setting.label}
+                </Text>
+                {setting.description && (
+                    <Text variant="sm" color="secondary">
+                        {setting.description}
+                    </Text>
+                )}
             </div>
-            <Switch size="sm" isSelected={ setting.value } isPending={ isPending } aria-label={ setting.label } onChange={ onChange } />
+            <Switch
+                size="sm"
+                isSelected={setting.value}
+                isPending={isPending}
+                aria-label={setting.label}
+                onChange={onChange}
+            />
         </li>
     );
 }
@@ -38,9 +58,9 @@ function AdvancedTrigger() {
 
     return (
         <CollapsibleTrigger asChild>
-            <Button type="button" variant="inline" color="secondary" size="sm" className={ styles.trigger }>
+            <Button type="button" variant="inline" color="secondary" size="sm" className={styles.trigger}>
                 Advanced
-                <ChevronDown className={ cn('chevron', 'next') } aria-expanded={ state.isExpanded } aria-hidden />
+                <ChevronDown className={cn('chevron', 'next')} aria-expanded={state.isExpanded} aria-hidden />
             </Button>
         </CollapsibleTrigger>
     );
@@ -50,8 +70,8 @@ function AdvancedPanel({ children }: { children: React.ReactNode }) {
     const { state } = useCollapsible();
 
     return (
-        <Show when={ state.isExpanded }>
-            <CollapsibleContent className={ styles.advanced }>{ children }</CollapsibleContent>
+        <Show when={state.isExpanded}>
+            <CollapsibleContent className={styles.advanced}>{children}</CollapsibleContent>
         </Show>
     );
 }
@@ -64,12 +84,12 @@ function programNoteOf(savedPath: string, foundPath: string | undefined): { text
     if (savedPath) {
         return foundPath
             ? { text: 'Clowdy uses this one instead of the one it found. Reset to go back.' }
-            : { text: 'There\'s no program at this path. Fix it, or reset to the one Clowdy finds.', tone: 'warning' };
+            : { text: "There's no program at this path. Fix it, or reset to the one Clowdy finds.", tone: 'warning' };
     }
 
     return foundPath
         ? { text: 'Clowdy uses the one it found on this computer. Enter a path to use another.' }
-        : { text: 'Clowdy couldn\'t find it on this computer. Enter the path to the program.', tone: 'warning' };
+        : { text: "Clowdy couldn't find it on this computer. Enter the path to the program.", tone: 'warning' };
 }
 
 /**
@@ -106,7 +126,7 @@ export function ProviderAdvanced({ agent, commands }: SettingsProps) {
     };
 
     const reset = async () => {
-        if (savedPath && !await commands.setPath(null)) return;
+        if (savedPath && !(await commands.setPath(null))) return;
 
         setPathDraft(undefined);
     };
@@ -115,58 +135,73 @@ export function ProviderAdvanced({ agent, commands }: SettingsProps) {
         <Collapsible>
             <AdvancedTrigger />
             <AdvancedPanel>
-                <div className={ styles.field }>
-                    <Text variant="sm" weight="medium">Program</Text>
-                    <Text variant="sm" color={ programNote.tone ?? 'secondary' }>{ programNote.text }</Text>
-                    <div className={ styles.inputs }>
+                <div className={styles.field}>
+                    <Text variant="sm" weight="medium">
+                        Program
+                    </Text>
+                    <Text variant="sm" color={programNote.tone ?? 'secondary'}>
+                        {programNote.text}
+                    </Text>
+                    <div className={styles.inputs}>
                         <Input
                             type="text"
                             variant="bordered"
                             size="sm"
-                            aria-label={ `Path to the ${ agent.name } program` }
-                            placeholder={ (!savedPath && agent.path) || '/path/to/program' }
-                            value={ path }
-                            onChange={ text => setPathDraft(text === savedPath ? undefined : text) }
-                            onBlur={ () => void commitPath() }
-                            onKeyDown={ (event) => {
+                            aria-label={`Path to the ${agent.name} program`}
+                            placeholder={(!savedPath && agent.path) || '/path/to/program'}
+                            value={path}
+                            onChange={text => setPathDraft(text === savedPath ? undefined : text)}
+                            onBlur={() => void commitPath()}
+                            onKeyDown={event => {
                                 if (event.key === 'Enter') (event.target as HTMLInputElement).blur();
                                 else if (event.key === 'Escape') setPathDraft(undefined);
-                            } }
+                            }}
                         />
                         {/* A press keeps the focus in the box, so the box does not save what Reset is about to throw away. */}
                         <Button
                             variant="bordered"
                             size="sm"
                             preventFocusOnPress
-                            isDisabled={ !canReset || commands.pending.has('path') }
-                            onPress={ () => void reset() }
+                            isDisabled={!canReset || commands.pending.has('path')}
+                            onPress={() => void reset()}
                         >
                             Reset
                         </Button>
                     </div>
                 </div>
 
-                <div className={ styles.field }>
-                    <Text variant="sm" weight="medium">Environment</Text>
-                    <Text variant="sm" color="secondary">Variables the program starts with, one KEY=VALUE per line. An empty box clears them. They apply to the next run.</Text>
+                <div className={styles.field}>
+                    <Text variant="sm" weight="medium">
+                        Environment
+                    </Text>
+                    <Text variant="sm" color="secondary">
+                        Variables the program starts with, one KEY=VALUE per line. An empty box clears them. They apply
+                        to the next run.
+                    </Text>
                     <Textarea
                         variant="bordered"
                         size="sm"
-                        aria-label={ `Environment of ${ agent.name }` }
+                        aria-label={`Environment of ${agent.name}`}
                         placeholder="KEY=VALUE"
-                        rows={ 3 }
-                        value={ env }
-                        isInvalid={ Boolean(envError) }
-                        onChange={ text => setEnvDraft(text === savedEnv ? undefined : text) }
+                        rows={3}
+                        value={env}
+                        isInvalid={Boolean(envError)}
+                        onChange={text => setEnvDraft(text === savedEnv ? undefined : text)}
                     />
-                    { envError && <Text variant="sm" color="danger" role="alert">{ envError }</Text> }
+                    {envError && (
+                        <Text variant="sm" color="danger" role="alert">
+                            {envError}
+                        </Text>
+                    )}
                     <div>
                         <Button
                             variant="bordered"
                             size="sm"
-                            isDisabled={ envDraft === undefined || !parsed.ok }
-                            isPending={ commands.pending.has('env') }
-                            onPress={ () => parsed.ok && void commands.setEnv(parsed.env).then(ok => ok && setEnvDraft(undefined)) }
+                            isDisabled={envDraft === undefined || !parsed.ok}
+                            isPending={commands.pending.has('env')}
+                            onPress={() =>
+                                parsed.ok && void commands.setEnv(parsed.env).then(ok => ok && setEnvDraft(undefined))
+                            }
                         >
                             Save
                         </Button>
@@ -184,15 +219,15 @@ export function ProviderSettings({ agent, commands }: SettingsProps) {
     if (settings.length === 0) return null;
 
     return (
-        <ul className={ styles.list } aria-label={ `${ agent.name } settings` }>
-            { settings.map(setting => (
+        <ul className={styles.list} aria-label={`${agent.name} settings`}>
+            {settings.map(setting => (
                 <SettingRow
-                    key={ setting.id }
-                    setting={ setting }
-                    isPending={ commands.pending.has(`setting:${ setting.id }`) }
-                    onChange={ value => void commands.setSetting(setting.id, value) }
+                    key={setting.id}
+                    setting={setting}
+                    isPending={commands.pending.has(`setting:${setting.id}`)}
+                    onChange={value => void commands.setSetting(setting.id, value)}
                 />
-            )) }
+            ))}
         </ul>
     );
 }
@@ -212,30 +247,40 @@ export function PermissionPresets({ agent, commands }: SettingsProps) {
     const isPending = commands.pending.has('permission');
 
     return (
-        <div className={ styles.permissions } aria-busy={ isPending || undefined }>
-            <div className={ styles.text }>
-                <Text variant="sm" weight="medium">Permissions</Text>
-                <Text variant="sm" color="secondary">What the agent may do without asking</Text>
+        <div className={styles.permissions} aria-busy={isPending || undefined}>
+            <div className={styles.text}>
+                <Text variant="sm" weight="medium">
+                    Permissions
+                </Text>
+                <Text variant="sm" color="secondary">
+                    What the agent may do without asking
+                </Text>
             </div>
 
             <RadioGroup
-                aria-label={ `${ agent.name } permissions` }
-                value={ selected }
-                isReadOnly={ isPending }
-                className={ styles.presets }
-                onChange={ value => void commands.setPermission(value as PermissionPresetId) }
+                aria-label={`${agent.name} permissions`}
+                value={selected}
+                isReadOnly={isPending}
+                className={styles.presets}
+                onChange={value => void commands.setPermission(value as PermissionPresetId)}
             >
-                { permissions.presets.map(preset => (
-                    <Radio key={ preset.id } value={ preset.id } className={ styles.preset }>
-                        <span className={ styles.presetText }>
-                            <span className={ styles.presetName }>
-                                <Text variant="sm" weight="medium" color={ preset.id === 'full' ? 'warning' : undefined }>{ preset.name }</Text>
-                                { preset.id === permissions.default && <span className={ styles.defaultTag }>Default</span> }
+                {permissions.presets.map(preset => (
+                    <Radio key={preset.id} value={preset.id} className={styles.preset}>
+                        <span className={styles.presetText}>
+                            <span className={styles.presetName}>
+                                <Text variant="sm" weight="medium" color={preset.id === 'full' ? 'warning' : undefined}>
+                                    {preset.name}
+                                </Text>
+                                {preset.id === permissions.default && (
+                                    <span className={styles.defaultTag}>Default</span>
+                                )}
                             </span>
-                            <Text variant="sm" color="secondary">{ preset.description }</Text>
+                            <Text variant="sm" color="secondary">
+                                {preset.description}
+                            </Text>
                         </span>
                     </Radio>
-                )) }
+                ))}
             </RadioGroup>
         </div>
     );

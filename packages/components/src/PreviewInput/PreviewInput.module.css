@@ -2,7 +2,10 @@
     .previewSlot {
         --clowdy-preview-slot-size: var(--spacing-22);
 
-        margin-inline-start: calc(((var(--clowdy-input-height) - var(--clowdy-preview-slot-size)) / 2) - var(--clowdy-input-padding-inline));
+        margin-inline-start: calc(
+            ((var(--clowdy-input-height) - var(--clowdy-preview-slot-size)) / 2) -
+            var(--clowdy-input-padding-inline)
+        );
     }
 
     .previewSlot[data-size='xs'] {

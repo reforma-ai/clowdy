@@ -221,7 +221,8 @@
     .cssPreviewChecker {
         opacity: 0.1;
         background:
-            repeating-conic-gradient(var(--color-dark) 0% 25%, transparent 0% 50%) 0 0 / var(--spacing-4) var(--spacing-4),
+            repeating-conic-gradient(var(--color-dark) 0% 25%, transparent 0% 50%) 0 0 / var(--spacing-4)
+            var(--spacing-4),
             var(--color-white);
         z-index: 0;
     }

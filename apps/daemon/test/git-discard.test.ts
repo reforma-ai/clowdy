@@ -1,7 +1,22 @@
-import { GIT_DISCARD_KEEP_DAYS, MAX_GIT_DISCARD_PATHS } from '@clowdy/protocol';
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
-import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import {
+    chmodSync,
+    existsSync,
+    lstatSync,
+    mkdirSync,
+    readdirSync,
+    readFileSync,
+    readlinkSync,
+    realpathSync,
+    renameSync,
+    rmSync,
+    statSync,
+    symlinkSync,
+    utimesSync,
+    writeFileSync,
+} from 'node:fs';
 import { dirname, join, relative } from 'node:path';
+import { GIT_DISCARD_KEEP_DAYS, MAX_GIT_DISCARD_PATHS } from '@clowdy/protocol';
 
 import { DiscardCopies, KEEP_COPIES_MS, MAX_COPY_FILE_BYTES, MAX_KEPT_BYTES } from '../src/git/discardCopies';
 import { WriteEnvironment } from '../src/git/writeEnv';
@@ -24,9 +39,23 @@ afterEach(async () => {
 });
 
 /** The person's own git configuration (which signs every commit on a developer's machine) and the system's stay out of the writes of a test. */
-const isolated = () => new WriteEnvironment({ env: () => ({ ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1', SHELL: '/usr/bin/true' }) });
+const isolated = () =>
+    new WriteEnvironment({
+        env: () => ({
+            ...process.env,
+            GIT_CONFIG_GLOBAL: '/dev/null',
+            GIT_CONFIG_NOSYSTEM: '1',
+            SHELL: '/usr/bin/true',
+        }),
+    });
 
-const FILES = { 'a.txt': 'a\n', 'b.txt': 'b\n', 'gone.txt': 'gone\n', 'old.txt': 'one\ntwo\nthree\nfour\nfive\n', 'src/mod.ts': 'export const mod = 1;\n' };
+const FILES = {
+    'a.txt': 'a\n',
+    'b.txt': 'b\n',
+    'gone.txt': 'gone\n',
+    'old.txt': 'one\ntwo\nthree\nfour\nfive\n',
+    'src/mod.ts': 'export const mod = 1;\n',
+};
 
 /** A repository with its own identity and no signing, and the files `files` committed. */
 function repository(files: Record<string, string> = FILES): string {
@@ -59,7 +88,16 @@ function hook(path: string, name: string, ...lines: string[]): void {
 }
 
 /** What is left in the tree and the index as `status --porcelain` says it. */
-const left = (path: string): string[] => Bun.spawnSync(['git', 'status', '--porcelain', '--untracked-files=all'], { cwd: path, stdout: 'pipe', stderr: 'pipe' }).stdout.toString().split('\n').filter(line => line !== '').sort();
+const left = (path: string): string[] =>
+    Bun.spawnSync(['git', 'status', '--porcelain', '--untracked-files=all'], {
+        cwd: path,
+        stdout: 'pipe',
+        stderr: 'pipe',
+    })
+        .stdout.toString()
+        .split('\n')
+        .filter(line => line !== '')
+        .sort();
 
 /** Everything about a place that a refusal must not change: HEAD, what the index holds, and every file and link on the disk (outside `.git`). */
 function snapshot(path: string): { head: string; index: string; tree: Record<string, string> } {
@@ -73,14 +111,12 @@ function snapshot(path: string): { head: string; index: string; tree: Record<str
             if (name === '.git' && directory === path) continue;
 
             if (info.isSymbolicLink()) {
-                tree[key] = `-> ${ readlinkSync(full) }`;
-            }
-            else if (info.isDirectory()) {
-                tree[`${ key }/`] = 'dir';
+                tree[key] = `-> ${readlinkSync(full)}`;
+            } else if (info.isDirectory()) {
+                tree[`${key}/`] = 'dir';
                 walk(full);
-            }
-            else {
-                tree[key] = `${ info.mode & 0o777 }:${ readFileSync(full, 'utf8') }`;
+            } else {
+                tree[key] = `${info.mode & 0o777}:${readFileSync(full, 'utf8')}`;
             }
         }
     };
@@ -90,9 +126,12 @@ function snapshot(path: string): { head: string; index: string; tree: Record<str
     return { head: git(path, 'rev-parse', 'HEAD'), index: git(path, 'ls-files', '--stage'), tree };
 }
 
-const json = async <T>(response: Response) => await response.json() as T;
+const json = async <T>(response: Response) => (await response.json()) as T;
 
-interface Failure { ok: false; error: { code: string; message: string; details?: unknown } }
+interface Failure {
+    ok: false;
+    error: { code: string; message: string; details?: unknown };
+}
 
 /** A copy that is spied on and may be made to misbehave: what the daemon makes copies with, with a hand in `keep`. */
 class SpyCopies extends DiscardCopies {
@@ -115,7 +154,9 @@ class SpyCopies extends DiscardCopies {
     }
 }
 
-interface StartOptions { copies?: DiscardCopies }
+interface StartOptions {
+    copies?: DiscardCopies;
+}
 
 async function start({ copies }: StartOptions = {}): Promise<Harness> {
     const h = await startHarness({}, { gitEnvironment: isolated(), ...(copies && { discardCopies: copies }) });
@@ -129,15 +170,18 @@ async function start({ copies }: StartOptions = {}): Promise<Harness> {
 async function open(path: string, h: Harness) {
     const { project } = h.ok('project.add', { folders: [path] });
     const folderId = project.folders[0].id as string;
-    const url = `/v1/projects/${ project.id }/git/discard`;
-    const discard = (paths: unknown, place: Record<string, string> = {}) => h.fetch(url, { method: 'POST', body: JSON.stringify({ folderId, paths, ...place }) });
+    const url = `/v1/projects/${project.id}/git/discard`;
+    const discard = (paths: unknown, place: Record<string, string> = {}) =>
+        h.fetch(url, { method: 'POST', body: JSON.stringify({ folderId, paths, ...place }) });
 
     return { project, folderId, url, discard };
 }
 
 /** The manifest of a copy, and a copied file. */
-const manifestOf = (copy: { folder: string }) => JSON.parse(readFileSync(join(copy.folder, 'manifest.json'), 'utf8')) as Record<string, any>;
-const copied = (copy: { folder: string }, path: string, kind: 'files' | 'staged' = 'files') => readFileSync(join(copy.folder, kind, path), 'utf8');
+const manifestOf = (copy: { folder: string }) =>
+    JSON.parse(readFileSync(join(copy.folder, 'manifest.json'), 'utf8')) as Record<string, any>;
+const copied = (copy: { folder: string }, path: string, kind: 'files' | 'staged' = 'files') =>
+    readFileSync(join(copy.folder, kind, path), 'utf8');
 
 describe('POST /v1/projects/:id/git/discard', () => {
     test('puts an edited file back as the last commit has it, keeps a copy of the edit, and leaves every other file and HEAD alone', async () => {
@@ -312,7 +356,10 @@ describe('POST /v1/projects/:id/git/discard', () => {
         expect(readFileSync(join(path, 'old.txt'), 'utf8')).toBe('one\ntwo\nthree\nfour\nfive\n');
         expect(existsSync(join(path, 'renamed.txt'))).toBe(false);
         expect(copied(result.copy, 'renamed.txt')).toBe('one\ntwo\nthree\nfour\nfive\nsix\n');
-        expect(manifestOf(result.copy).files.map((file: { path: string }) => file.path)).toEqual(['renamed.txt', 'old.txt']);
+        expect(manifestOf(result.copy).files.map((file: { path: string }) => file.path)).toEqual([
+            'renamed.txt',
+            'old.txt',
+        ]);
     });
 
     test('deletes an untracked file and that file only: no folder, no sibling, no ignored file', async () => {
@@ -323,7 +370,13 @@ describe('POST /v1/projects/:id/git/discard', () => {
         writeFileSync(join(path, '.gitignore'), 'ignored.log\n');
         git(path, 'add', '.gitignore');
         git(path, 'commit', '-q', '-m', 'Ignore the log');
-        put(path, { 'notes/draft.md': 'draft\n', 'notes/keep.md': 'keep\n', 'ignored.log': 'log\n', 'tmp/only.txt': 'only\n', 'new.txt': 'new\n' });
+        put(path, {
+            'notes/draft.md': 'draft\n',
+            'notes/keep.md': 'keep\n',
+            'ignored.log': 'log\n',
+            'tmp/only.txt': 'only\n',
+            'new.txt': 'new\n',
+        });
 
         const result = await json<GitDiscardResult>(await discard(['notes/draft.md']));
 
@@ -343,12 +396,21 @@ describe('POST /v1/projects/:id/git/discard', () => {
         expect(readFileSync(join(path, 'notes/keep.md'), 'utf8')).toBe('keep\n');
     });
 
-    test('takes a path with pattern characters, a space or a leading dash as the file\'s own, and not as a pattern for its neighbours', async () => {
+    test("takes a path with pattern characters, a space or a leading dash as the file's own, and not as a pattern for its neighbours", async () => {
         const h = await start();
-        const path = repository({ 'src/[id].tsx': '1\n', 'src/i.tsx': '2\n', 'star*.txt': '3\n', 'starX.txt': '4\n', 'a b.txt': '5\n', '-p': '6\n', ':colon.txt': '7\n' });
+        const path = repository({
+            'src/[id].tsx': '1\n',
+            'src/i.tsx': '2\n',
+            'star*.txt': '3\n',
+            'starX.txt': '4\n',
+            'a b.txt': '5\n',
+            '-p': '6\n',
+            ':colon.txt': '7\n',
+        });
         const { discard } = await open(path, h);
 
-        for (const file of ['src/[id].tsx', 'src/i.tsx', 'star*.txt', 'starX.txt', 'a b.txt', '-p', ':colon.txt']) put(path, { [file]: 'edited\n' });
+        for (const file of ['src/[id].tsx', 'src/i.tsx', 'star*.txt', 'starX.txt', 'a b.txt', '-p', ':colon.txt'])
+            put(path, { [file]: 'edited\n' });
 
         expect((await discard(['src/[id].tsx', 'star*.txt', 'a b.txt', '-p', ':colon.txt'])).status).toBe(200);
         expect(left(path)).toEqual([' M src/i.tsx', ' M starX.txt']);
@@ -373,7 +435,7 @@ describe('POST /v1/projects/:id/git/discard', () => {
         expect(manifestOf(result.copy).head).toBeUndefined();
     });
 
-    test('keeps what is in the repository the person\'s: the copy is readable by them alone', async () => {
+    test("keeps what is in the repository the person's: the copy is readable by them alone", async () => {
         const h = await start();
         const path = repository();
         const { discard } = await open(path, h);
@@ -416,7 +478,9 @@ describe('POST /v1/projects/:id/git/discard', () => {
             symlinkSync(outside, join(path, 'link-to-folder'));
             symlinkSync('real', join(path, 'link-inside'));
 
-            const result = await json<GitDiscardResult>(await discard(['link-to-file', 'link-to-folder', 'link-inside']));
+            const result = await json<GitDiscardResult>(
+                await discard(['link-to-file', 'link-to-folder', 'link-inside'])
+            );
 
             expect(result.discarded.map(file => file.action)).toEqual(['removed', 'removed', 'removed']);
             expect(existsSync(join(path, 'link-to-file'))).toBe(false);
@@ -476,9 +540,13 @@ describe('POST /v1/projects/:id/git/discard', () => {
             const inside = await discard(['twin/inner.txt']);
 
             expect(out.status).toBe(400);
-            expect((await json<Failure>(out)).error.message).toMatch(/dir\/inner\.txt runs through a symbolic link that leaves the folder/);
+            expect((await json<Failure>(out)).error.message).toMatch(
+                /dir\/inner\.txt runs through a symbolic link that leaves the folder/
+            );
             expect(inside.status).toBe(400);
-            expect((await json<Failure>(inside)).error.message).toMatch(/twin\/inner\.txt runs through a symbolic link/);
+            expect((await json<Failure>(inside)).error.message).toMatch(
+                /twin\/inner\.txt runs through a symbolic link/
+            );
             expect(snapshot(path)).toEqual(before);
             expect(readFileSync(join(outside, 'inner.txt'), 'utf8')).toBe('outside inner\n');
             expect(existsSync(join(h.config.dataDir, 'discarded'))).toBe(false);
@@ -500,7 +568,9 @@ describe('POST /v1/projects/:id/git/discard', () => {
             const folder = await discard(['plain.txt']);
 
             expect(blocked.status).toBe(400);
-            expect((await json<Failure>(blocked)).error.message).toBe('dir is in the way of dir/inner.txt, discard it first');
+            expect((await json<Failure>(blocked)).error.message).toBe(
+                'dir is in the way of dir/inner.txt, discard it first'
+            );
             expect(folder.status).toBe(400);
             expect((await json<Failure>(folder)).error.message).toBe('plain.txt is not a file any more');
             expect(snapshot(path)).toEqual(before);
@@ -527,7 +597,10 @@ describe('POST /v1/projects/:id/git/discard', () => {
         const withOther = await discard(['b.txt', 'a.txt']);
 
         expect(merging.status).toBe(409);
-        expect((await json<Failure>(merging)).error).toMatchObject({ code: 'conflict', message: 'Resolve the conflict first' });
+        expect((await json<Failure>(merging)).error).toMatchObject({
+            code: 'conflict',
+            message: 'Resolve the conflict first',
+        });
         expect(withOther.status).toBe(409);
         // The other file of the request was not discarded either.
         expect(snapshot(path)).toEqual(before);
@@ -565,7 +638,7 @@ describe('POST /v1/projects/:id/git/discard', () => {
         const mixed = await discard(['a.txt', 'vendor/sub']);
 
         expect(refused.status).toBe(400);
-        expect((await json<Failure>(refused)).error.message).toBe('A submodule can\'t be discarded here');
+        expect((await json<Failure>(refused)).error.message).toBe("A submodule can't be discarded here");
         expect(mixed.status).toBe(400);
         expect(snapshot(path)).toEqual(before);
         expect(git(join(path, 'vendor/sub'), 'log', '-1', '--format=%s')).toBe('More');
@@ -602,7 +675,10 @@ describe('POST /v1/projects/:id/git/discard', () => {
         await refuse(await discard(['']), /not a path inside the repository/);
         await refuse(await discard(['a.txt\0']), /not a path inside the repository/);
         await refuse(await discard(['a.txt', 'a.txt\n']), /not a changed file/);
-        await refuse(await discard(Array.from({ length: MAX_GIT_DISCARD_PATHS + 1 }, (_, index) => `f${ index }.txt`)), /at most 50/);
+        await refuse(
+            await discard(Array.from({ length: MAX_GIT_DISCARD_PATHS + 1 }, (_, index) => `f${index}.txt`)),
+            /at most 50/
+        );
         await refuse(await discard('a.txt'), /./);
         await refuse(await h.fetch(url, { method: 'POST', body: JSON.stringify({ folderId }) }), /./);
         await refuse(await h.fetch(url, { method: 'POST', body: 'not json' }), /JSON/);
@@ -613,14 +689,18 @@ describe('POST /v1/projects/:id/git/discard', () => {
 
     test('takes the most files a discard names, and a file once however often it is named', async () => {
         const h = await start();
-        const files = Object.fromEntries(Array.from({ length: MAX_GIT_DISCARD_PATHS }, (_, index) => [`f${ index }.txt`, `${ index }\n`]));
+        const files = Object.fromEntries(
+            Array.from({ length: MAX_GIT_DISCARD_PATHS }, (_, index) => [`f${index}.txt`, `${index}\n`])
+        );
         const path = repository(files);
         const { discard } = await open(path, h);
 
         for (const name of Object.keys(files)) put(path, { [name]: 'edited\n' });
 
         const names = Object.keys(files);
-        const result = await json<GitDiscardResult>(await discard([...names.slice(0, MAX_GIT_DISCARD_PATHS - 1), 'f0.txt']));
+        const result = await json<GitDiscardResult>(
+            await discard([...names.slice(0, MAX_GIT_DISCARD_PATHS - 1), 'f0.txt'])
+        );
 
         expect(result.discarded).toHaveLength(MAX_GIT_DISCARD_PATHS - 1);
         expect(left(path)).toEqual([' M f49.txt']);
@@ -633,21 +713,34 @@ describe('POST /v1/projects/:id/git/discard', () => {
 
         put(path, { 'a.txt': 'a\nedited\n' });
 
-        expect((await fetch(`${ h.url }${ url }`, { method: 'POST', body: JSON.stringify({ folderId, paths: ['a.txt'] }) })).status).toBe(401);
-        expect((await h.fetch('/v1/projects/prj_unknown/git/discard', { method: 'POST', body: JSON.stringify({ folderId, paths: ['a.txt'] }) })).status).toBe(404);
+        expect(
+            (await fetch(`${h.url}${url}`, { method: 'POST', body: JSON.stringify({ folderId, paths: ['a.txt'] }) }))
+                .status
+        ).toBe(401);
+        expect(
+            (
+                await h.fetch('/v1/projects/prj_unknown/git/discard', {
+                    method: 'POST',
+                    body: JSON.stringify({ folderId, paths: ['a.txt'] }),
+                })
+            ).status
+        ).toBe(404);
         expect((await discard(['a.txt'], { folderId: 'fld_unknown' })).status).toBe(404);
         expect((await discard(['a.txt'], { workspaceId: 'wks_unknown' })).status).toBe(404);
 
         const plain = tempDir('git-discard');
         const { project } = h.ok('project.add', { folders: [plain] });
-        const refused = await h.fetch(`/v1/projects/${ project.id }/git/discard`, { method: 'POST', body: JSON.stringify({ folderId: project.folders[0].id, paths: ['a.txt'] }) });
+        const refused = await h.fetch(`/v1/projects/${project.id}/git/discard`, {
+            method: 'POST',
+            body: JSON.stringify({ folderId: project.folders[0].id, paths: ['a.txt'] }),
+        });
 
         expect(refused.status).toBe(400);
         expect((await json<Failure>(refused)).error.message).toMatch(/not the root of a git repository/);
         expect(left(path)).toEqual([' M a.txt']);
     });
 
-    test('discards in a chat\'s worktree on its own, and leaves the same file of the main checkout alone', async () => {
+    test("discards in a chat's worktree on its own, and leaves the same file of the main checkout alone", async () => {
         const h = await start();
         const path = repository();
         const tree = join(tempDir('git-discard'), 'chat-tree');
@@ -657,8 +750,14 @@ describe('POST /v1/projects/:id/git/discard', () => {
         put(tree, { 'a.txt': 'a\nin the tree\n', 'tree-only.txt': 'new\n' });
 
         const { project, folderId } = await open(path, h);
-        const workspaceId = (h.ok('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: tree } }).chat.workspace as { id: string }).id;
-        const response = await h.fetch(`/v1/projects/${ project.id }/git/discard`, { method: 'POST', body: JSON.stringify({ folderId, workspaceId, paths: ['a.txt', 'tree-only.txt'] }) });
+        const workspaceId = (
+            h.ok('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: tree } }).chat
+                .workspace as { id: string }
+        ).id;
+        const response = await h.fetch(`/v1/projects/${project.id}/git/discard`, {
+            method: 'POST',
+            body: JSON.stringify({ folderId, workspaceId, paths: ['a.txt', 'tree-only.txt'] }),
+        });
         const result = await json<GitDiscardResult>(response);
 
         expect(response.status).toBe(200);
@@ -676,7 +775,10 @@ describe('POST /v1/projects/:id/git/discard', () => {
         // A file the worktree does not list as changed is refused, though the checkout lists it.
         put(tree, { 'b.txt': 'b\n' });
 
-        const asked = await h.fetch(`/v1/projects/${ project.id }/git/discard`, { method: 'POST', body: JSON.stringify({ folderId, workspaceId, paths: ['b.txt'] }) });
+        const asked = await h.fetch(`/v1/projects/${project.id}/git/discard`, {
+            method: 'POST',
+            body: JSON.stringify({ folderId, workspaceId, paths: ['b.txt'] }),
+        });
 
         expect(asked.status).toBe(400);
     });
@@ -692,7 +794,11 @@ describe('the copy of a discard', () => {
         const seen: Array<{ a: string; status: string[]; fresh: boolean }> = [];
 
         spy.before = () => {
-            seen.push({ a: readFileSync(join(path, 'a.txt'), 'utf8'), status: left(path), fresh: existsSync(join(path, 'fresh.txt')) });
+            seen.push({
+                a: readFileSync(join(path, 'a.txt'), 'utf8'),
+                status: left(path),
+                fresh: existsSync(join(path, 'fresh.txt')),
+            });
         };
         put(path, { 'a.txt': 'a\nwritten a minute ago\n', 'fresh.txt': 'fresh\n' });
 
@@ -723,7 +829,9 @@ describe('the copy of a discard', () => {
 
         expect(response.status).toBe(503);
         expect(body.error).toMatchObject({ code: 'unavailable' });
-        expect(body.error.message).toBe('Couldn\'t keep a copy of the files, so nothing was discarded: ENOSPC: no space left on device');
+        expect(body.error.message).toBe(
+            "Couldn't keep a copy of the files, so nothing was discarded: ENOSPC: no space left on device"
+        );
         expect(snapshot(path)).toEqual(before);
         expect(left(path)).toEqual([' D gone.txt', ' M a.txt', '?? fresh.txt', 'A  staged.txt']);
 
@@ -749,7 +857,13 @@ describe('the copy of a discard', () => {
 
         // The copy of b is made from a file that is not there: the copy fails, and what it made of a is removed.
         expect(response.status).toBe(503);
-        expect(existsSync(join(dataDir, 'discarded')) ? readdirSync(join(dataDir, 'discarded')).flatMap(project => readdirSync(join(dataDir, 'discarded', project))) : []).toEqual([]);
+        expect(
+            existsSync(join(dataDir, 'discarded'))
+                ? readdirSync(join(dataDir, 'discarded')).flatMap(project =>
+                      readdirSync(join(dataDir, 'discarded', project))
+                  )
+                : []
+        ).toEqual([]);
         expect(readFileSync(join(path, 'a.txt'), 'utf8')).toBe('a\nedited\n');
         expect(before.head).toBe(git(path, 'rev-parse', 'HEAD'));
     });
@@ -793,7 +907,10 @@ describe('the copy of a discard', () => {
         const big = await discard(['a.txt', 'big.bin']);
 
         expect(big.status).toBe(400);
-        expect((await json<Failure>(big)).error).toMatchObject({ code: 'invalid', message: 'big.bin is over 2 KB, discard it in a terminal' });
+        expect((await json<Failure>(big)).error).toMatchObject({
+            code: 'invalid',
+            message: 'big.bin is over 2 KB, discard it in a terminal',
+        });
         expect(snapshot(path)).toEqual(before);
 
         // The version in the index is a file's too: a small file on the disk with a big staged version is not a small file.
@@ -824,7 +941,9 @@ describe('the copy of a discard', () => {
         const response = await discard(['a.txt', 'b.txt', 'gone.txt']);
 
         expect(response.status).toBe(400);
-        expect((await json<Failure>(response)).error.message).toBe('The files are too big to keep a copy of together, discard fewer of them');
+        expect((await json<Failure>(response)).error.message).toBe(
+            'The files are too big to keep a copy of together, discard fewer of them'
+        );
         expect(snapshot(path)).toEqual(before);
         expect((await discard(['a.txt', 'b.txt'])).status).toBe(200);
     });
@@ -908,7 +1027,10 @@ describe('the retention of the copies', () => {
         writeFileSync(join(old, 'manifest.json'), JSON.stringify({ at: Date.now() - 8 * 24 * 3600 * 1000, bytes: 4 }));
         mkdirSync(join(fresh, 'files'), { recursive: true });
         writeFileSync(join(fresh, 'files', 'a.txt'), 'fresh\n');
-        writeFileSync(join(fresh, 'manifest.json'), JSON.stringify({ at: Date.now() - 6 * 24 * 3600 * 1000, bytes: 6 }));
+        writeFileSync(
+            join(fresh, 'manifest.json'),
+            JSON.stringify({ at: Date.now() - 6 * 24 * 3600 * 1000, bytes: 6 })
+        );
         // A copy that was interrupted has no manifest and is judged by the time of its folder.
         mkdirSync(join(cut, 'files'), { recursive: true });
         utimesSync(cut, new Date(Date.now() - 9 * 24 * 3600 * 1000), new Date(Date.now() - 9 * 24 * 3600 * 1000));
@@ -963,13 +1085,29 @@ describe('the retention of the copies', () => {
 
         writeFileSync(source, 'twelve bytes');
 
-        await expect(copies.keep({ projectId: 'prj_1', folderId: 'fld_1', place: '/repo', files: [{ path: 'f.txt', action: 'restored', work: { kind: 'file', source, size: 99 } }] })).rejects.toThrow(/12 bytes/);
-        await expect(copies.keep({ projectId: 'prj_1', folderId: 'fld_1', place: '/repo', files: [{ path: 'g.txt', action: 'restored', staged: { size: 3, read: async () => Buffer.from('four') } }] })).rejects.toThrow(/not the size/);
+        await expect(
+            copies.keep({
+                projectId: 'prj_1',
+                folderId: 'fld_1',
+                place: '/repo',
+                files: [{ path: 'f.txt', action: 'restored', work: { kind: 'file', source, size: 99 } }],
+            })
+        ).rejects.toThrow(/12 bytes/);
+        await expect(
+            copies.keep({
+                projectId: 'prj_1',
+                folderId: 'fld_1',
+                place: '/repo',
+                files: [
+                    { path: 'g.txt', action: 'restored', staged: { size: 3, read: async () => Buffer.from('four') } },
+                ],
+            })
+        ).rejects.toThrow(/not the size/);
         expect(readdirSync(join(dataDir, 'discarded', 'prj_1'))).toEqual([]);
     });
 });
 
-withPosix('GitDiscard on the place\'s line of writes', () => {
+withPosix("GitDiscard on the place's line of writes", () => {
     test('runs two discards of one place one after the other', async () => {
         const spy = new SpyCopies(tempDir('git-discard-data'));
         const h = await start({ copies: spy });
@@ -981,9 +1119,9 @@ withPosix('GitDiscard on the place\'s line of writes', () => {
         spy.before = async () => {
             const number = ++count;
 
-            log.push(`start ${ number }`);
+            log.push(`start ${number}`);
             await Bun.sleep(300);
-            log.push(`end ${ number }`);
+            log.push(`end ${number}`);
         };
         put(path, { 'a.txt': 'a\nedited\n', 'b.txt': 'b\nedited\n' });
 
@@ -1000,14 +1138,18 @@ withPosix('GitDiscard on the place\'s line of writes', () => {
         const path = repository();
         const { discard, project, folderId } = await open(path, h);
         const log = join(path, '.git', 'order.log');
-        const commit = () => h.fetch(`/v1/projects/${ project.id }/git/commit`, { method: 'POST', body: JSON.stringify({ folderId, paths: ['a.txt'], message: 'Edit a' }) });
+        const commit = () =>
+            h.fetch(`/v1/projects/${project.id}/git/commit`, {
+                method: 'POST',
+                body: JSON.stringify({ folderId, paths: ['a.txt'], message: 'Edit a' }),
+            });
 
         put(path, { 'a.txt': 'a\nedited\n', 'b.txt': 'b\nedited\n' });
-        hook(path, 'pre-commit', `echo "commit start" >> '${ log }'`, 'sleep 0.5', `echo "commit end" >> '${ log }'`);
+        hook(path, 'pre-commit', `echo "commit start" >> '${log}'`, 'sleep 0.5', `echo "commit end" >> '${log}'`);
         spy.before = async () => {
-            writeFileSync(log, `${ existsSync(log) ? readFileSync(log, 'utf8') : '' }discard start\n`);
+            writeFileSync(log, `${existsSync(log) ? readFileSync(log, 'utf8') : ''}discard start\n`);
             await Bun.sleep(300);
-            writeFileSync(log, `${ readFileSync(log, 'utf8') }discard end\n`);
+            writeFileSync(log, `${readFileSync(log, 'utf8')}discard end\n`);
         };
 
         const [committed, discarded] = await Promise.all([commit(), discard(['b.txt'])]);
@@ -1024,7 +1166,7 @@ withPosix('GitDiscard on the place\'s line of writes', () => {
         expect(left(path)).toEqual([]);
     });
 
-    test('runs the person\'s git without a switch that skips what they set, never a clean, a checkout, a reset, a stash or a force, and runs no hook of a commit', async () => {
+    test("runs the person's git without a switch that skips what they set, never a clean, a checkout, a reset, a stash or a force, and runs no hook of a commit", async () => {
         const dir = tempDir('git-discard');
         const argvLog = join(dir, 'argv');
         const bin = join(dir, 'bin');
@@ -1032,10 +1174,18 @@ withPosix('GitDiscard on the place\'s line of writes', () => {
         mkdirSync(bin);
         const real = Bun.which('git') as string;
 
-        writeFileSync(join(bin, 'git'), ['#!/bin/sh', `echo "$@" >> '${ argvLog }'`, `exec '${ real }' "$@"`].join('\n'));
+        writeFileSync(join(bin, 'git'), ['#!/bin/sh', `echo "$@" >> '${argvLog}'`, `exec '${real}' "$@"`].join('\n'));
         chmodSync(join(bin, 'git'), 0o755);
 
-        const environment = new WriteEnvironment({ env: () => ({ ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1', SHELL: '/usr/bin/true', PATH: `${ bin }:${ process.env.PATH }` }) });
+        const environment = new WriteEnvironment({
+            env: () => ({
+                ...process.env,
+                GIT_CONFIG_GLOBAL: '/dev/null',
+                GIT_CONFIG_NOSYSTEM: '1',
+                SHELL: '/usr/bin/true',
+                PATH: `${bin}:${process.env.PATH}`,
+            }),
+        });
         const h = await startHarness({}, { gitEnvironment: environment });
 
         harnesses.push(h);
@@ -1045,21 +1195,29 @@ withPosix('GitDiscard on the place\'s line of writes', () => {
 
         put(path, { 'a.txt': 'a\nedited\n', 'fresh.txt': 'fresh\n', 'staged.txt': 'staged\n' });
         git(path, 'add', 'staged.txt');
-        for (const name of ['pre-commit', 'prepare-commit-msg', 'commit-msg', 'post-checkout']) hook(path, name, `echo "${ name } $@" >> '${ join(dir, 'hooks') }'`);
+        for (const name of ['pre-commit', 'prepare-commit-msg', 'commit-msg', 'post-checkout'])
+            hook(path, name, `echo "${name} $@" >> '${join(dir, 'hooks')}'`);
 
         expect((await discard(['a.txt', 'fresh.txt', 'staged.txt'])).status).toBe(200);
 
-        const runs = readFileSync(argvLog, 'utf8').trim().split('\n').filter(line => /restore|rm --cached/.test(line));
+        const runs = readFileSync(argvLog, 'utf8')
+            .trim()
+            .split('\n')
+            .filter(line => /restore|rm --cached/.test(line));
 
         expect(runs).toContain('--literal-pathspecs restore --source=HEAD --staged --worktree -- a.txt');
         expect(runs).toContain('--literal-pathspecs rm --cached -f -q -- staged.txt');
-        expect(readFileSync(argvLog, 'utf8')).not.toMatch(/\bclean\b|\bcheckout\b|\breset\b|\bstash\b|--force|no-verify|\bcommit\b/);
+        expect(readFileSync(argvLog, 'utf8')).not.toMatch(
+            /\bclean\b|\bcheckout\b|\breset\b|\bstash\b|--force|no-verify|\bcommit\b/
+        );
         // No hook of a commit is run. The hooks git itself runs for a restore are the person's own, as when they restore in a terminal: `post-checkout` (with 0, a checkout of files) and
         // `post-index-change`, which Clowdy does not turn off (a test of the daemon documents it).
         const ran = readFileSync(join(dir, 'hooks'), 'utf8').trim().split('\n');
 
         expect(ran.some(line => /^pre-commit|^prepare-commit-msg|^commit-msg/.test(line))).toBe(false);
-        expect(ran.filter(line => line.startsWith('post-checkout'))).toEqual([expect.stringMatching(/^post-checkout [0-9a-f]{40} [0-9a-f]{40} 0$/) as unknown as string]);
+        expect(ran.filter(line => line.startsWith('post-checkout'))).toEqual([
+            expect.stringMatching(/^post-checkout [0-9a-f]{40} [0-9a-f]{40} 0$/) as unknown as string,
+        ]);
     });
 
     test('says a post-checkout hook that fails with its own line, after the restore it followed, and leaves the new file for the next try', async () => {
@@ -1073,7 +1231,10 @@ withPosix('GitDiscard on the place\'s line of writes', () => {
         const response = await discard(['a.txt', 'fresh.txt']);
 
         expect(response.status).toBe(409);
-        expect((await json<Failure>(response)).error).toMatchObject({ code: 'conflict', message: 'post-checkout: the build is broken' });
+        expect((await json<Failure>(response)).error).toMatchObject({
+            code: 'conflict',
+            message: 'post-checkout: the build is broken',
+        });
         // git restored the file before the hook ran; the new file was not deleted, since the discard stops where git did.
         expect(left(path)).toEqual(['?? fresh.txt']);
         expect(readFileSync(join(path, 'fresh.txt'), 'utf8')).toBe('fresh\n');
@@ -1084,7 +1245,7 @@ withPosix('GitDiscard on the place\'s line of writes', () => {
         expect(left(path)).toEqual([]);
     });
 
-    test('says git\'s own line when git refuses, and changes the disk no further', async () => {
+    test("says git's own line when git refuses, and changes the disk no further", async () => {
         const h = await start();
         const path = repository();
         const { discard } = await open(path, h);

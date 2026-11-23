@@ -19,32 +19,34 @@ export function ChatMenu({ busy, onClose, onRename, onArchive, onDelete }: ChatM
             <Menu
                 aria-label="Chat actions"
                 size="sm"
-                onAction={ (key) => {
+                onAction={key => {
                     onClose();
 
                     if (key === 'rename') onRename();
                     else if (key === 'archive') onArchive();
                     else if (key === 'delete') onDelete();
-                } }
+                }}
             >
-                <MenuItem id="rename" icon={ <EditPen /> } textValue="Rename">Rename</MenuItem>
+                <MenuItem id="rename" icon={<EditPen />} textValue="Rename">
+                    Rename
+                </MenuItem>
                 <MenuItem
                     id="archive"
-                    icon={ <Archive /> }
+                    icon={<Archive />}
                     textValue="Archive"
-                    isDisabled={ busy !== undefined }
-                    description={ busy }
+                    isDisabled={busy !== undefined}
+                    description={busy}
                 >
                     Archive
                 </MenuItem>
                 <MenuSeparator />
                 <MenuItem
                     id="delete"
-                    icon={ <Trash /> }
+                    icon={<Trash />}
                     textValue="Delete"
                     isDanger
-                    isDisabled={ busy !== undefined }
-                    description={ busy }
+                    isDisabled={busy !== undefined}
+                    description={busy}
                 >
                     Delete
                 </MenuItem>

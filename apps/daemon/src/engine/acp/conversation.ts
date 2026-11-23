@@ -27,12 +27,15 @@ export interface ConfigChange {
 }
 
 /** The select options of one category: `model` picks the model, `thought_level` the reasoning level, `mode` the permission mode. */
-const selectsOf = (options: SelectOption[], category: string): SelectOption[] => options.filter(option => option.category === category);
+const selectsOf = (options: SelectOption[], category: string): SelectOption[] =>
+    options.filter(option => option.category === category);
 
 /** The choice of `option` called `wanted`, by value or by name, case-insensitive. */
 function changeTo(option: SelectOption, wanted: string): ConfigChange | undefined {
     const lower = wanted.toLowerCase();
-    const match = option.choices.find(choice => choice.value.toLowerCase() === lower) ?? option.choices.find(choice => choice.name.toLowerCase() === lower);
+    const match =
+        option.choices.find(choice => choice.value.toLowerCase() === lower) ??
+        option.choices.find(choice => choice.name.toLowerCase() === lower);
 
     return match && { configId: option.id, value: match.value, unchanged: option.currentValue === match.value };
 }
@@ -92,10 +95,9 @@ export async function applyChoices({ agent, options, model, effort, mode, set }:
         const choice = modelChoice(current, model);
 
         if (!choice) {
-            console.warn(`[clowdy] ${ agent } offers no model called "${ model }"; it keeps its own choice`);
-        }
-        else if (!choice.unchanged) {
-            current = await set(choice) ?? current;
+            console.warn(`[clowdy] ${agent} offers no model called "${model}"; it keeps its own choice`);
+        } else if (!choice.unchanged) {
+            current = (await set(choice)) ?? current;
         }
     }
 
@@ -103,9 +105,10 @@ export async function applyChoices({ agent, options, model, effort, mode, set }:
         const choice = effortChoice(current, effort);
 
         if (!choice) {
-            console.warn(`[clowdy] ${ agent } offers no reasoning level called "${ effort }"${ model ? ` for ${ model }` : '' }; it keeps its own choice`);
-        }
-        else if (!choice.unchanged) {
+            console.warn(
+                `[clowdy] ${agent} offers no reasoning level called "${effort}"${model ? ` for ${model}` : ''}; it keeps its own choice`
+            );
+        } else if (!choice.unchanged) {
             await set(choice);
         }
     }
@@ -114,9 +117,8 @@ export async function applyChoices({ agent, options, model, effort, mode, set }:
         const choice = modeChoice(current, mode);
 
         if (!choice) {
-            console.warn(`[clowdy] ${ agent } offers no permission mode called "${ mode }"; it keeps its own choice`);
-        }
-        else if (!choice.unchanged) {
+            console.warn(`[clowdy] ${agent} offers no permission mode called "${mode}"; it keeps its own choice`);
+        } else if (!choice.unchanged) {
             await set(choice);
         }
     }
@@ -126,21 +128,23 @@ export async function applyChoices({ agent, options, model, effort, mode, set }:
  * Gives the agent the title the runtime keeps, before the first message: the agent keeps a title the client gave and makes none of its own (ACP says
  * so, and both adapters do). Only for a session the agent names itself (`naming`), which is a new one. `send` makes the request.
  */
-export async function keepTitle({ agent, signal, title, naming }: { agent: string; signal: AbortSignal; title?: SessionTitle; naming: boolean }, send: (title: string) => Promise<unknown>): Promise<void> {
+export async function keepTitle(
+    { agent, signal, title, naming }: { agent: string; signal: AbortSignal; title?: SessionTitle; naming: boolean },
+    send: (title: string) => Promise<unknown>
+): Promise<void> {
     if (!title || !('keep' in title) || !naming) {
         return;
     }
 
     try {
         await send(title.keep);
-    }
-    catch (error) {
+    } catch (error) {
         if (signal.aborted || error instanceof ProcessEnded) {
             throw error;
         }
 
         // Not fatal: the agent names the session as it would have, and the runtime ignores the name.
-        console.warn(`[clowdy] ${ agent } would not take a title for its session: ${ errorMessage(error) }`);
+        console.warn(`[clowdy] ${agent} would not take a title for its session: ${errorMessage(error)}`);
     }
 }
 
@@ -148,8 +152,21 @@ export async function keepTitle({ agent, signal, title, naming }: { agent: strin
  * What goes in front of the first message of a conversation the agent has not seen: the system prompt, when the agent cannot take one in the session
  * request, and the record of the conversation, when this session replaces one that could not be continued. Each part ends in a rule.
  */
-export function prefaceOf({ systemPrompt, supportsSystemPrompt, resumed, record }: { systemPrompt?: string; supportsSystemPrompt: boolean; resumed: boolean; record?: string }): string {
-    return [!supportsSystemPrompt && !resumed && systemPrompt, record].filter(Boolean).map(part => `${ part }\n\n---\n\n`).join('');
+export function prefaceOf({
+    systemPrompt,
+    supportsSystemPrompt,
+    resumed,
+    record,
+}: {
+    systemPrompt?: string;
+    supportsSystemPrompt: boolean;
+    resumed: boolean;
+    record?: string;
+}): string {
+    return [!supportsSystemPrompt && !resumed && systemPrompt, record]
+        .filter(Boolean)
+        .map(part => `${part}\n\n---\n\n`)
+        .join('');
 }
 
 /**
@@ -164,11 +181,21 @@ export const isResumeWarning = (text: string): boolean => RESUME_WARNING.test(te
 export function stopFailure(reason: string | null | undefined, agent: string): EngineEvent | undefined {
     switch (reason) {
         case 'max_tokens':
-            return { type: 'error', message: `${ agent } stopped because it reached the limit on the length of an answer.`, code: 'unknown' };
+            return {
+                type: 'error',
+                message: `${agent} stopped because it reached the limit on the length of an answer.`,
+                code: 'unknown',
+            };
         case 'max_turn_requests':
-            return { type: 'error', message: `${ agent } stopped because it reached its limit on steps in one turn.`, code: 'unknown' };
+            return {
+                type: 'error',
+                message: `${agent} stopped because it reached its limit on steps in one turn.`,
+                code: 'unknown',
+            };
         case 'refusal':
-            return failureEvent(classifyFailure({ agent, text: 'The agent declined the request', kind: 'invalid_request' }));
+            return failureEvent(
+                classifyFailure({ agent, text: 'The agent declined the request', kind: 'invalid_request' })
+            );
         default:
             return undefined;
     }
@@ -188,10 +215,17 @@ export interface SteerRequest {
     _meta: { steering: { idleBehavior: 'promptRequired' } };
 }
 
-export type SteerResponse = { outcome: 'injected' } | { outcome: 'startedNewTurn' } | { outcome: 'promptRequired'; reason?: string };
+export type SteerResponse =
+    | { outcome: 'injected' }
+    | { outcome: 'startedNewTurn' }
+    | { outcome: 'promptRequired'; reason?: string };
 
 /** The steer request for `text`. */
-export const steerRequest = (sessionId: string, text: string): SteerRequest => ({ sessionId, prompt: [{ type: 'text', text }], _meta: { steering: { idleBehavior: 'promptRequired' } } });
+export const steerRequest = (sessionId: string, text: string): SteerRequest => ({
+    sessionId,
+    prompt: [{ type: 'text', text }],
+    _meta: { steering: { idleBehavior: 'promptRequired' } },
+});
 
 /** Whether the agent's answer to `initialize` says it can take a steer through the extension. */
 export function advertisesSteering(init: { _meta?: Record<string, unknown> | null }): boolean {
@@ -211,7 +245,10 @@ const STEER_ATTEMPTS = 20;
  * Asks the agent to take a steer through the extension (`ask` sends the request), again while it says no turn runs yet and the prompt is still with it.
  * Resolves whether the message went into the running turn (`injected`); any other answer leaves it to the runtime. A failed request throws.
  */
-export async function steerByExtension(ask: () => Promise<SteerResponse | undefined>, { running, aborted }: { running(): boolean; aborted(): boolean }): Promise<boolean> {
+export async function steerByExtension(
+    ask: () => Promise<SteerResponse | undefined>,
+    { running, aborted }: { running(): boolean; aborted(): boolean }
+): Promise<boolean> {
     for (let attempt = 1; ; attempt++) {
         const answer = await ask();
 

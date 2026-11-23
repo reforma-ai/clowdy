@@ -16,9 +16,7 @@ function mapSpacing(value: string) {
     const cssVarValue = toSpacingTokenScale(value);
     const fallback = getSpacingFallback(cssVarValue);
 
-    return fallback
-        ? `var(--spacing-${ cssVarValue }, ${ fallback })`
-        : `var(--spacing-${ cssVarValue })`;
+    return fallback ? `var(--spacing-${cssVarValue}, ${fallback})` : `var(--spacing-${cssVarValue})`;
 }
 
 function decodeArbitraryValue(value: string) {
@@ -42,7 +40,7 @@ function getSpacingFallback(scale: string) {
     }
 
     if (/^-?\d+(\.\d+)?$/.test(scale)) {
-        return `${ scale }px`;
+        return `${scale}px`;
     }
 
     if (/^-?\d+(\.\d+)?px$/.test(scale)) {
@@ -53,9 +51,7 @@ function getSpacingFallback(scale: string) {
 }
 
 function formatScaleNumber(value: number) {
-    return Number.isInteger(value)
-        ? String(value)
-        : String(value).replace(/\.?0+$/, '');
+    return Number.isInteger(value) ? String(value) : String(value).replace(/\.?0+$/, '');
 }
 
 function mapTokenVar(prefix: string, value: string) {
@@ -63,7 +59,7 @@ function mapTokenVar(prefix: string, value: string) {
         return decodeArbitraryValue(value.slice(1, -1));
     }
 
-    return `var(--${ prefix }-${ value })`;
+    return `var(--${prefix}-${value})`;
 }
 
 // Map radius values to CSS variables
@@ -106,7 +102,7 @@ function mapEase(value: string) {
         return decodeArbitraryValue(value.slice(1, -1));
     }
 
-    return value === 'ease' ? 'var(--ease)' : `var(--ease-${ value })`;
+    return value === 'ease' ? 'var(--ease)' : `var(--ease-${value})`;
 }
 
 // Map shadow to CSS variables
@@ -120,21 +116,18 @@ function createRule(
     pattern: RegExp,
     handler: (value: string) => Record<string, string>
 ): [RegExp, (match: string[]) => Record<string, string>] {
-    return [
-        pattern,
-        ([_, value]: string[]) => handler(value),
-    ];
+    return [pattern, ([_, value]: string[]) => handler(value)];
 }
 
-const spacingPx = Object.fromEntries(
-    [...Array(512)].map((_, i) => [String(i), `var(--spacing-${ i }, ${ i }px)`])
-);
+const spacingPx = Object.fromEntries([...Array(512)].map((_, i) => [String(i), `var(--spacing-${i}, ${i}px)`]));
 
 export default defineConfig({
-    presets: [presetMini({
-        preflight: false,
-        arbitraryVariants: false,
-    })],
+    presets: [
+        presetMini({
+            preflight: false,
+            arbitraryVariants: false,
+        }),
+    ],
     transformers: [transformerDirectives()],
     theme: {
         width: spacingPx,
@@ -153,303 +146,224 @@ export default defineConfig({
     rules: [
         // Margin all sides (supports arbitrary values: m-[100px])
         // Spacing capture is not `.+` — prose like `right-aligned.` would emit `var(--spacing-aligned.)` and break lightningcss minify.
-        createRule(
-            /^m-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/,
-            value => ({ margin: mapSpacing(value) })
-        ),
+        createRule(/^m-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/, value => ({ margin: mapSpacing(value) })),
         // Margin top (supports arbitrary values: mt-[100px])
-        createRule(
-            /^mt-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/,
-            value => ({ 'margin-top': mapSpacing(value) })
-        ),
+        createRule(/^mt-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/, value => ({ 'margin-top': mapSpacing(value) })),
         // Margin bottom (supports arbitrary values: mb-[100px])
-        createRule(
-            /^mb-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/,
-            value => ({ 'margin-bottom': mapSpacing(value) })
-        ),
+        createRule(/^mb-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/, value => ({
+            'margin-bottom': mapSpacing(value),
+        })),
         // Margin left (supports arbitrary values: ml-[100px])
-        createRule(
-            /^ml-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/,
-            value => ({ 'margin-left': mapSpacing(value) })
-        ),
+        createRule(/^ml-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/, value => ({ 'margin-left': mapSpacing(value) })),
         // Margin right (supports arbitrary values: mr-[100px])
-        createRule(
-            /^mr-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/,
-            value => ({ 'margin-right': mapSpacing(value) })
-        ),
+        createRule(/^mr-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/, value => ({
+            'margin-right': mapSpacing(value),
+        })),
         // Margin horizontal (left and right) (supports arbitrary values: mx-[100px])
-        createRule(
-            /^mx-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/,
-            value => ({
-                'margin-left': mapSpacing(value),
-                'margin-right': mapSpacing(value),
-            })
-        ),
+        createRule(/^mx-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/, value => ({
+            'margin-left': mapSpacing(value),
+            'margin-right': mapSpacing(value),
+        })),
         // Margin vertical (top and bottom) (supports arbitrary values: my-[100px])
-        createRule(
-            /^my-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/,
-            value => ({
-                'margin-top': mapSpacing(value),
-                'margin-bottom': mapSpacing(value),
-            })
-        ),
+        createRule(/^my-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/, value => ({
+            'margin-top': mapSpacing(value),
+            'margin-bottom': mapSpacing(value),
+        })),
 
         // Padding all sides (supports arbitrary values: p-[100px])
-        createRule(
-            /^p-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/,
-            value => ({ padding: mapSpacing(value) })
-        ),
+        createRule(/^p-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/, value => ({ padding: mapSpacing(value) })),
         // Padding top (supports arbitrary values: pt-[100px])
-        createRule(
-            /^pt-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/,
-            value => ({ 'padding-top': mapSpacing(value) })
-        ),
+        createRule(/^pt-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/, value => ({ 'padding-top': mapSpacing(value) })),
         // Padding bottom (supports arbitrary values: pb-[100px])
-        createRule(
-            /^pb-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/,
-            value => ({ 'padding-bottom': mapSpacing(value) })
-        ),
+        createRule(/^pb-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/, value => ({
+            'padding-bottom': mapSpacing(value),
+        })),
         // Padding left (supports arbitrary values: pl-[100px])
-        createRule(
-            /^pl-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/,
-            value => ({ 'padding-left': mapSpacing(value) })
-        ),
+        createRule(/^pl-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/, value => ({
+            'padding-left': mapSpacing(value),
+        })),
         // Padding right (supports arbitrary values: pr-[100px])
-        createRule(
-            /^pr-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/,
-            value => ({ 'padding-right': mapSpacing(value) })
-        ),
+        createRule(/^pr-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/, value => ({
+            'padding-right': mapSpacing(value),
+        })),
         // Padding horizontal (left and right) (supports arbitrary values: px-[100px])
-        createRule(
-            /^px-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/,
-            value => ({
-                'padding-left': mapSpacing(value),
-                'padding-right': mapSpacing(value),
-            })
-        ),
+        createRule(/^px-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/, value => ({
+            'padding-left': mapSpacing(value),
+            'padding-right': mapSpacing(value),
+        })),
         // Padding vertical (top and bottom) (supports arbitrary values: py-[100px])
-        createRule(
-            /^py-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/,
-            value => ({
-                'padding-top': mapSpacing(value),
-                'padding-bottom': mapSpacing(value),
-            })
-        ),
+        createRule(/^py-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/, value => ({
+            'padding-top': mapSpacing(value),
+            'padding-bottom': mapSpacing(value),
+        })),
 
         // Gap (all directions) (supports arbitrary values: gap-[100px])
-        createRule(
-            /^gap-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/,
-            value => ({ gap: mapSpacing(value) })
-        ),
+        createRule(/^gap-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/, value => ({ gap: mapSpacing(value) })),
         // Gap horizontal (column-gap) (supports arbitrary values: gap-x-[100px])
-        createRule(
-            /^gap-x-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/,
-            value => ({ 'column-gap': mapSpacing(value) })
-        ),
+        createRule(/^gap-x-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/, value => ({
+            'column-gap': mapSpacing(value),
+        })),
         // Gap vertical (row-gap) (supports arbitrary values: gap-y-[100px])
-        createRule(
-            /^gap-y-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/,
-            value => ({ 'row-gap': mapSpacing(value) })
-        ),
+        createRule(/^gap-y-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/, value => ({ 'row-gap': mapSpacing(value) })),
 
         // Border radius all corners
-        createRule(
-            /^rounded-(.+)$/,
-            value => ({ 'border-radius': mapRadius(value) })
-        ),
+        createRule(/^rounded-(.+)$/, value => ({ 'border-radius': mapRadius(value) })),
         // Border radius top
-        createRule(
-            /^rounded-t-(.+)$/,
-            value => ({
-                'border-top-left-radius': mapRadius(value),
-                'border-top-right-radius': mapRadius(value),
-            })
-        ),
+        createRule(/^rounded-t-(.+)$/, value => ({
+            'border-top-left-radius': mapRadius(value),
+            'border-top-right-radius': mapRadius(value),
+        })),
         // Border radius bottom
-        createRule(
-            /^rounded-b-(.+)$/,
-            value => ({
-                'border-bottom-left-radius': mapRadius(value),
-                'border-bottom-right-radius': mapRadius(value),
-            })
-        ),
+        createRule(/^rounded-b-(.+)$/, value => ({
+            'border-bottom-left-radius': mapRadius(value),
+            'border-bottom-right-radius': mapRadius(value),
+        })),
         // Border radius left
-        createRule(
-            /^rounded-l-(.+)$/,
-            value => ({
-                'border-top-left-radius': mapRadius(value),
-                'border-bottom-left-radius': mapRadius(value),
-            })
-        ),
+        createRule(/^rounded-l-(.+)$/, value => ({
+            'border-top-left-radius': mapRadius(value),
+            'border-bottom-left-radius': mapRadius(value),
+        })),
         // Border radius right
-        createRule(
-            /^rounded-r-(.+)$/,
-            value => ({
-                'border-top-right-radius': mapRadius(value),
-                'border-bottom-right-radius': mapRadius(value),
-            })
-        ),
+        createRule(/^rounded-r-(.+)$/, value => ({
+            'border-top-right-radius': mapRadius(value),
+            'border-bottom-right-radius': mapRadius(value),
+        })),
         // Border radius top-left
-        createRule(
-            /^rounded-tl-(.+)$/,
-            value => ({ 'border-top-left-radius': mapRadius(value) })
-        ),
+        createRule(/^rounded-tl-(.+)$/, value => ({ 'border-top-left-radius': mapRadius(value) })),
         // Border radius top-right
-        createRule(
-            /^rounded-tr-(.+)$/,
-            value => ({ 'border-top-right-radius': mapRadius(value) })
-        ),
+        createRule(/^rounded-tr-(.+)$/, value => ({ 'border-top-right-radius': mapRadius(value) })),
         // Border radius bottom-left
-        createRule(
-            /^rounded-bl-(.+)$/,
-            value => ({ 'border-bottom-left-radius': mapRadius(value) })
-        ),
+        createRule(/^rounded-bl-(.+)$/, value => ({ 'border-bottom-left-radius': mapRadius(value) })),
         // Border radius bottom-right
-        createRule(
-            /^rounded-br-(.+)$/,
-            value => ({ 'border-bottom-right-radius': mapRadius(value) })
-        ),
+        createRule(/^rounded-br-(.+)$/, value => ({ 'border-bottom-right-radius': mapRadius(value) })),
 
         // Line height
-        createRule(
-            /^leading-(.+)$/,
-            value => ({ 'line-height': mapLeading(value) })
-        ),
+        createRule(/^leading-(.+)$/, value => ({ 'line-height': mapLeading(value) })),
 
         // Text size
-        createRule(
-            /^text-(.+)$/,
-            (value: string): Record<string, string> => {
-                switch (value) {
-                    case 'bold':
-                        return { 'font-weight': '700' };
-                    case 'normal':
-                        return { 'font-weight': '400' };
-                    case 'medium':
-                        return { 'font-weight': '500' };
-                    case 'semibold':
-                        return { 'font-weight': '600' };
-                    case 'light':
-                        return { 'font-weight': '300' };
-                }
-
-                return { 'font-size': mapTextSize(value) };
+        createRule(/^text-(.+)$/, (value: string): Record<string, string> => {
+            switch (value) {
+                case 'bold':
+                    return { 'font-weight': '700' };
+                case 'normal':
+                    return { 'font-weight': '400' };
+                case 'medium':
+                    return { 'font-weight': '500' };
+                case 'semibold':
+                    return { 'font-weight': '600' };
+                case 'light':
+                    return { 'font-weight': '300' };
             }
-        ),
+
+            return { 'font-size': mapTextSize(value) };
+        }),
 
         // Inset (positioning) all sides (supports arbitrary values: inset-[100px])
-        createRule(
-            /^inset-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/,
-            value => ({ inset: mapSpacing(value) })
-        ),
+        createRule(/^inset-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/, value => ({ inset: mapSpacing(value) })),
         // Inset horizontal (left and right) (supports arbitrary values: inset-x-[100px])
-        createRule(
-            /^inset-x-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/,
-            value => ({
-                left: mapSpacing(value),
-                right: mapSpacing(value),
-            })
-        ),
+        createRule(/^inset-x-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/, value => ({
+            left: mapSpacing(value),
+            right: mapSpacing(value),
+        })),
         // Inset vertical (top and bottom) (supports arbitrary values: inset-y-[100px])
-        createRule(
-            /^inset-y-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/,
-            value => ({
-                top: mapSpacing(value),
-                bottom: mapSpacing(value),
-            })
-        ),
+        createRule(/^inset-y-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/, value => ({
+            top: mapSpacing(value),
+            bottom: mapSpacing(value),
+        })),
         // Top (supports arbitrary values: top-[100px])
-        createRule(
-            /^top-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/,
-            value => ({ top: mapSpacing(value) })
-        ),
+        createRule(/^top-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/, value => ({ top: mapSpacing(value) })),
         // Right (supports arbitrary values: right-[100px])
-        createRule(
-            /^right-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/,
-            value => ({ right: mapSpacing(value) })
-        ),
+        createRule(/^right-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/, value => ({ right: mapSpacing(value) })),
         // Bottom (supports arbitrary values: bottom-[100px])
-        createRule(
-            /^bottom-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/,
-            value => ({ bottom: mapSpacing(value) })
-        ),
+        createRule(/^bottom-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/, value => ({ bottom: mapSpacing(value) })),
         // Left (supports arbitrary values: left-[100px])
-        createRule(
-            /^left-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/,
-            value => ({ left: mapSpacing(value) })
-        ),
+        createRule(/^left-(\[.+\]|auto|-?\d+(?:\.\d+)?(?:px)?|[a-z]+)$/, value => ({ left: mapSpacing(value) })),
 
         // Background color (semantic tokens)
-        createRule(
-            /^bg-(.+)$/,
-            value => ({ 'background-color': mapColor(value) })
-        ),
+        createRule(/^bg-(.+)$/, value => ({ 'background-color': mapColor(value) })),
         // Text/content color (semantic tokens)
-        createRule(
-            /^color-(.+)$/,
-            value => ({ color: mapColor(value) })
-        ),
+        createRule(/^color-(.+)$/, value => ({ color: mapColor(value) })),
         // Border color (semantic tokens)
-        createRule(
-            /^border-color-(.+)$/,
-            value => ({ 'border-color': mapColor(value) })
-        ),
+        createRule(/^border-color-(.+)$/, value => ({ 'border-color': mapColor(value) })),
         // Fill (SVG, semantic tokens)
-        createRule(
-            /^fill-(.+)$/,
-            value => ({ fill: mapColor(value) })
-        ),
+        createRule(/^fill-(.+)$/, value => ({ fill: mapColor(value) })),
 
         // Opacity (tokens: disabled, inactive, hover, placeholder)
-        createRule(
-            /^opacity-(.+)$/,
-            value => ({ opacity: mapOpacity(value) })
-        ),
+        createRule(/^opacity-(.+)$/, value => ({ opacity: mapOpacity(value) })),
 
         // Transition duration (tokens: fast, slow)
-        createRule(
-            /^duration-(.+)$/,
-            value => ({ 'transition-duration': mapTransitionDuration(value) })
-        ),
+        createRule(/^duration-(.+)$/, value => ({ 'transition-duration': mapTransitionDuration(value) })),
         // Transition timing (tokens: linear, in-out, bounce)
-        createRule(
-            /^ease-(.+)$/,
-            value => ({ 'transition-timing-function': mapEase(value) })
-        ),
+        createRule(/^ease-(.+)$/, value => ({ 'transition-timing-function': mapEase(value) })),
 
         // Box shadow (tokens: xs, sm, md, lg, xl). Capture is not `.+` —
         // `shadow-color:${id}` is scanned as `shadow-color:$` and emits
         // `var(--shadow-color:$)`, which lightningcss rejects.
-        createRule(
-            /^shadow-(\[.+\]|[a-z0-9]+)$/,
-            value => ({ 'box-shadow': mapShadow(value) })
-        ),
+        createRule(/^shadow-(\[.+\]|[a-z0-9]+)$/, value => ({ 'box-shadow': mapShadow(value) })),
 
         // Single-line ellipsis; `inline-block` so max-width/width constrain the box.
         // Overrides presetMini's `truncate`, so all properties must be listed here.
-        ['truncate', {
-            display: 'inline-block',
-            overflow: 'hidden',
-            'text-overflow': 'ellipsis',
-            'white-space': 'nowrap',
-        }],
+        [
+            'truncate',
+            {
+                display: 'inline-block',
+                overflow: 'hidden',
+                'text-overflow': 'ellipsis',
+                'white-space': 'nowrap',
+            },
+        ],
     ],
     safelist: [
         ...['xxs', 'xs', 'sm', 'md', 'lg', 'xl'].flatMap(v =>
-            ['m', 'mt', 'mb', 'ml', 'mr', 'mx', 'my', 'p', 'pt', 'pb', 'pl', 'pr', 'px', 'py', 'gap', 'gap-x', 'gap-y', 'inset', 'inset-x', 'inset-y', 'top', 'right', 'bottom', 'left'].map(p => `${ p }-${ v }`)
+            [
+                'm',
+                'mt',
+                'mb',
+                'ml',
+                'mr',
+                'mx',
+                'my',
+                'p',
+                'pt',
+                'pb',
+                'pl',
+                'pr',
+                'px',
+                'py',
+                'gap',
+                'gap-x',
+                'gap-y',
+                'inset',
+                'inset-x',
+                'inset-y',
+                'top',
+                'right',
+                'bottom',
+                'left',
+            ].map(p => `${p}-${v}`)
         ),
         ...['xs', 'sm', 'md', 'lg', 'xl', 'full'].flatMap(v =>
-            ['rounded', 'rounded-t', 'rounded-b', 'rounded-l', 'rounded-r', 'rounded-tl', 'rounded-tr', 'rounded-bl', 'rounded-br'].map(p => `${ p }-${ v }`)
+            [
+                'rounded',
+                'rounded-t',
+                'rounded-b',
+                'rounded-l',
+                'rounded-r',
+                'rounded-tl',
+                'rounded-tr',
+                'rounded-bl',
+                'rounded-br',
+            ].map(p => `${p}-${v}`)
         ),
-        ...['xs', 'sm', 'md', 'lg', 'xl', 'xxl'].flatMap(v => [`leading-${ v }`, `text-${ v }`]),
-        ...['xs', 'sm'].map(v => `shadow-${ v }`),
-        ...['fast', 'slow'].map(v => `duration-${ v }`),
-        ...['ease', 'linear', 'in-out', 'bounce'].map(v => `ease-${ v }`),
-        ...['disabled', 'inactive', 'hover', 'placeholder'].map(v => `opacity-${ v }`),
+        ...['xs', 'sm', 'md', 'lg', 'xl', 'xxl'].flatMap(v => [`leading-${v}`, `text-${v}`]),
+        ...['xs', 'sm'].map(v => `shadow-${v}`),
+        ...['fast', 'slow'].map(v => `duration-${v}`),
+        ...['ease', 'linear', 'in-out', 'bounce'].map(v => `ease-${v}`),
+        ...['disabled', 'inactive', 'hover', 'placeholder'].map(v => `opacity-${v}`),
         ...['hidden', 'auto', 'scroll', 'visible', 'clip'].flatMap(v => [
-            `overflow-${ v }`,
-            `overflow-x-${ v }`,
-            `overflow-y-${ v }`,
+            `overflow-${v}`,
+            `overflow-x-${v}`,
+            `overflow-y-${v}`,
         ]),
         'truncate',
     ],

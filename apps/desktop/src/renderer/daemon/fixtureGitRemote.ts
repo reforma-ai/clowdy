@@ -20,10 +20,37 @@ import type { GitRemoteAction, GitRemoteResult, GitUpstream } from '@clowdy/prot
  * - `detached`: HEAD is on no branch;
  * - `unborn`: the branch has no commit yet.
  */
-export type FixtureRemoteScript = 'slow' | 'behind' | 'ahead' | 'level' | 'never' | 'diverged' | 'rejected' | 'signing' | 'offline' | 'renamed' | 'no_origin' | 'detached' | 'unborn';
+export type FixtureRemoteScript =
+    | 'slow'
+    | 'behind'
+    | 'ahead'
+    | 'level'
+    | 'never'
+    | 'diverged'
+    | 'rejected'
+    | 'signing'
+    | 'offline'
+    | 'renamed'
+    | 'no_origin'
+    | 'detached'
+    | 'unborn';
 
 /** The words the page's `&remote=` switch knows. */
-export const FIXTURE_REMOTE_SCRIPTS: readonly FixtureRemoteScript[] = ['slow', 'behind', 'ahead', 'level', 'never', 'diverged', 'rejected', 'signing', 'offline', 'renamed', 'no_origin', 'detached', 'unborn'];
+export const FIXTURE_REMOTE_SCRIPTS: readonly FixtureRemoteScript[] = [
+    'slow',
+    'behind',
+    'ahead',
+    'level',
+    'never',
+    'diverged',
+    'rejected',
+    'signing',
+    'offline',
+    'renamed',
+    'no_origin',
+    'detached',
+    'unborn',
+];
 
 /** How long before the page was opened the fixture's repository last fetched, when its script does not say it never did. */
 const FETCHED_AGO_MS = 3 * 60_000;
@@ -32,7 +59,8 @@ const FETCHED_AGO_MS = 3 * 60_000;
 const SLOW_MS = 2500;
 
 /** What git says with no network, as the daemon would send it (the credential of an address is already gone). */
-const FIXTURE_OFFLINE_LINE = 'fatal: unable to access \'https://github.com/acme/car-rental.git/\': Could not resolve host: github.com';
+const FIXTURE_OFFLINE_LINE =
+    "fatal: unable to access 'https://github.com/acme/car-rental.git/': Could not resolve host: github.com";
 
 const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
@@ -94,7 +122,9 @@ export class FixtureGitRemote {
 
         const state = this.#stateOf(place);
 
-        return state.published ? { name: `origin/${ state.tracks ?? place.branch }`, ahead: state.ahead, behind: state.behind } : undefined;
+        return state.published
+            ? { name: `origin/${state.tracks ?? place.branch}`, ahead: state.ahead, behind: state.behind }
+            : undefined;
     }
 
     /** A commit was made in the place: a published branch is one ahead further. */
@@ -109,7 +139,8 @@ export class FixtureGitRemote {
 
         if (!this.hasOrigin) throw new TransportError('The repository has no origin', 400);
 
-        if (action !== 'fetch' && place.branch === undefined) throw new TransportError('HEAD is detached, switch to a branch to ' + action, 400);
+        if (action !== 'fetch' && place.branch === undefined)
+            throw new TransportError('HEAD is detached, switch to a branch to ' + action, 400);
 
         if (action !== 'fetch' && script === 'unborn') throw new TransportError('The branch has no commits yet', 400);
 
@@ -127,9 +158,14 @@ export class FixtureGitRemote {
         }
 
         if (action === 'pull') {
-            if (!state.published) throw new TransportError(`${ branch } has no upstream to pull from, publish it first`, 400);
+            if (!state.published)
+                throw new TransportError(`${branch} has no upstream to pull from, publish it first`, 400);
 
-            if (state.tracks !== undefined) throw new TransportError(`${ branch } tracks origin/${ state.tracks }, not a branch of its own, publish it first`, 400);
+            if (state.tracks !== undefined)
+                throw new TransportError(
+                    `${branch} tracks origin/${state.tracks}, not a branch of its own, publish it first`,
+                    400
+                );
 
             // A pull fetches first, whatever it finds.
             this.#fetchedAt = this.#now();
@@ -156,7 +192,8 @@ export class FixtureGitRemote {
         if (script === 'signing') throw new TransportError(FIXTURE_SIGNING_LINE, 409, FIXTURE_SIGNING_HINT);
 
         // A branch that origin has commits for that it lacks is not taken, whichever script made it so.
-        if (state.behind > 0 && state.ahead > 0 || script === 'rejected') throw new TransportError(`! [rejected] ${ branch } -> ${ branch } (fetch first)`, 409);
+        if ((state.behind > 0 && state.ahead > 0) || script === 'rejected')
+            throw new TransportError(`! [rejected] ${branch} -> ${branch} (fetch first)`, 409);
 
         state.ahead = 0;
 
@@ -180,7 +217,12 @@ export class FixtureGitRemote {
 
             state = {
                 published: !place.worktree || scripted,
-                ahead: script === 'ahead' || script === 'renamed' ? 2 : script === 'diverged' || script === 'rejected' || script === 'signing' || script === 'offline' ? 1 : 0,
+                ahead:
+                    script === 'ahead' || script === 'renamed'
+                        ? 2
+                        : script === 'diverged' || script === 'rejected' || script === 'signing' || script === 'offline'
+                          ? 1
+                          : 0,
                 behind: script === 'behind' || script === 'diverged' ? 2 : script === 'renamed' ? 1 : 0,
                 ...(script === 'renamed' && { tracks: 'main' }),
             };

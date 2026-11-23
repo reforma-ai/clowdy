@@ -18,7 +18,7 @@ app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 if (options.theme) nativeTheme.themeSource = options.theme;
 if (process.platform === 'darwin') app.dock?.hide();
 
-const timeout = setTimeout(() => finish(2, `Timed out after ${ options.timeoutMs / 1000 }s`), options.timeoutMs);
+const timeout = setTimeout(() => finish(2, `Timed out after ${options.timeoutMs / 1000}s`), options.timeoutMs);
 
 function finish(code, message) {
     if (message) console.error(message);
@@ -39,7 +39,7 @@ function chromeOptions() {
 }
 
 async function waitFor(contents, selector) {
-    const expression = `document.querySelector(${ JSON.stringify(selector) }) !== null`;
+    const expression = `document.querySelector(${JSON.stringify(selector)}) !== null`;
 
     while (!(await contents.executeJavaScript(expression))) await sleep(POLL_MS);
 }
@@ -56,15 +56,16 @@ async function run() {
     const contents = window.webContents;
 
     contents.on('console-message', ({ level, message }) => {
-        if (level === 'warning') console.error(`[page warning] ${ message }`);
+        if (level === 'warning') console.error(`[page warning] ${message}`);
         else if (level === 'error') {
             pageErrors.push(message);
-            console.error(`[page error] ${ message }`);
-        }
-        else if (options.logs) console.error(`[page ${ level }] ${ message }`);
+            console.error(`[page error] ${message}`);
+        } else if (options.logs) console.error(`[page ${level}] ${message}`);
     });
-    contents.on('did-fail-load', (_event, code, description, url) => finish(2, `The page did not load (${ code } ${ description }): ${ url }`));
-    contents.on('render-process-gone', (_event, details) => finish(2, `The page process is gone: ${ details.reason }`));
+    contents.on('did-fail-load', (_event, code, description, url) =>
+        finish(2, `The page did not load (${code} ${description}): ${url}`)
+    );
+    contents.on('render-process-gone', (_event, details) => finish(2, `The page process is gone: ${details.reason}`));
 
     await window.loadURL(options.url);
     await waitFor(contents, options.waitFor);
@@ -72,7 +73,7 @@ async function run() {
     for (const step of options.evals) {
         const result = await contents.executeJavaScript(step);
 
-        if (result !== undefined) console.log(`[eval] ${ JSON.stringify(result) }`);
+        if (result !== undefined) console.log(`[eval] ${JSON.stringify(result)}`);
     }
 
     await sleep(options.delayMs);
@@ -86,8 +87,10 @@ async function run() {
 
     const size = image.getSize();
 
-    console.log(`Saved ${ options.out } (${ size.width }x${ size.height })`);
-    finish(pageErrors.length > 0 ? 1 : 0, pageErrors.length > 0 ? `${ pageErrors.length } page error(s)` : undefined);
+    console.log(`Saved ${options.out} (${size.width}x${size.height})`);
+    finish(pageErrors.length > 0 ? 1 : 0, pageErrors.length > 0 ? `${pageErrors.length} page error(s)` : undefined);
 }
 
-app.whenReady().then(run).catch(error => finish(2, `Failed: ${ error?.stack ?? error }`));
+app.whenReady()
+    .then(run)
+    .catch(error => finish(2, `Failed: ${error?.stack ?? error}`));

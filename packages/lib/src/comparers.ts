@@ -6,13 +6,12 @@
  * @param {Array} arrayTwo
  */
 export const compareArray = (ignoreSorting: boolean, arrayOne: any[], arrayTwo: any[]) => {
-    if ((!Array.isArray(arrayOne) || !Array.isArray(arrayTwo)) || (arrayOne.length !== arrayTwo.length)) {
+    if (!Array.isArray(arrayOne) || !Array.isArray(arrayTwo) || arrayOne.length !== arrayTwo.length) {
         return false;
     }
 
-    return arrayOne.every((value, index) => (ignoreSorting ? arrayTwo.includes(value) : (arrayTwo[index] === value)));
+    return arrayOne.every((value, index) => (ignoreSorting ? arrayTwo.includes(value) : arrayTwo[index] === value));
 };
-
 
 /**
  * Compares two objects for identity by keys (and values optionally)
@@ -27,7 +26,7 @@ export const equalObjects = (objectOne: any, objectTwo: any) => {
     }
 
     // Both are objects and not null
-    if ((typeof objectOne == 'object' && objectOne != null) && (typeof objectTwo == 'object' && objectTwo != null)) {
+    if (typeof objectOne == 'object' && objectOne != null && typeof objectTwo == 'object' && objectTwo != null) {
         // Same keys count
         if (Object.keys(objectOne).length !== Object.keys(objectTwo).length) {
             return false;
@@ -46,8 +45,7 @@ export const equalObjects = (objectOne: any, objectTwo: any) => {
                 else if (objectOne[prop] !== objectTwo[prop]) {
                     return false;
                 }
-            }
-            else {
+            } else {
                 return false;
             }
         }

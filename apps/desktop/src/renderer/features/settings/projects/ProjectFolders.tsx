@@ -9,9 +9,9 @@ import { FolderList } from '../../../shell/FolderList';
 import { useRootStore } from '../../../stores';
 import { SettingsSection } from '../ui/SettingsSection';
 import { openFolderWorkspace } from './FolderWorkspaceDialog';
-import { addFolders, locateFolderByDialog, removeFolder, reorderFolders } from './projectActions';
 import styles from './ProjectDetail.module.css';
-import { folderViews, missingFolderNote, siteName, type FolderView, type RemoteLink } from './projectView';
+import { addFolders, locateFolderByDialog, removeFolder, reorderFolders } from './projectActions';
+import { type FolderView, folderViews, missingFolderNote, type RemoteLink, siteName } from './projectView';
 
 import type { SortableListDropContext } from '@clowdy/components/SortableList';
 import type { Project, ProjectFolder, ProjectInfo } from '@clowdy/protocol';
@@ -47,7 +47,7 @@ export function ProjectFolders({ project, info, infoFailed }: ProjectFoldersProp
     const working = (info?.activeRuns ?? 0) > 0;
     const mainId = project.folders[0]?.id;
 
-    if (project.personal) return <PersonalFolder project={ project } views={ views } />;
+    if (project.personal) return <PersonalFolder project={project} views={views} />;
 
     const reorder = (next: FolderView[]) => {
         const order = next.map(view => view.folder);
@@ -62,13 +62,14 @@ export function ProjectFolders({ project, info, infoFailed }: ProjectFoldersProp
         const base = project.folders;
 
         setDragged({ base, folders: order });
-        void reorderFolders(root, project, order).then((saved) => {
+        void reorderFolders(root, project, order).then(saved => {
             if (!saved) setDragged(current => (current?.base === base ? null : current));
         });
     };
 
     // While agents work, the main folder neither moves nor has another dropped above it.
-    const keepsMain = ({ items: [source], target }: SortableListDropContext<FolderView>) => source?.folder.id !== mainId && target?.folder.id !== mainId;
+    const keepsMain = ({ items: [source], target }: SortableListDropContext<FolderView>) =>
+        source?.folder.id !== mainId && target?.folder.id !== mainId;
 
     return (
         <SettingsSection
@@ -76,29 +77,37 @@ export function ProjectFolders({ project, info, infoFailed }: ProjectFoldersProp
             description="The agents work in the main folder, the first one, and reach the others too. Drag a folder to change the order."
         >
             <FolderList
-                key={ listKey }
-                items={ views }
-                getKey={ view => view.folder.id }
-                getPath={ view => view.folder.path }
-                getName={ view => view.name }
-                renderDetails={ view => <FolderState project={ project } view={ view } /> }
-                renderActions={ view => (
+                key={listKey}
+                items={views}
+                getKey={view => view.folder.id}
+                getPath={view => view.folder.path}
+                getName={view => view.name}
+                renderDetails={view => <FolderState project={project} view={view} />}
+                renderActions={view => (
                     <>
-                        <LocateButton project={ project } view={ view } isDisabled={ view.isMain && working } />
-                        { view.remote && <RemoteButton remote={ view.remote } /> }
-                        <WorkspaceButton project={ project } view={ view } />
+                        <LocateButton project={project} view={view} isDisabled={view.isMain && working} />
+                        {view.remote && <RemoteButton remote={view.remote} />}
+                        <WorkspaceButton project={project} view={view} />
                     </>
-                ) }
+                )}
                 // A project has at least one folder.
-                onRemove={ views.length > 1 ? view => removeFolder(root, project, view.folder, view.chats) : undefined }
-                isRemoveDisabled={ view => view.isMain && working }
-                onReorder={ reorder }
-                canDrop={ working ? keepsMain : undefined }
-                onAdd={ paths => void addFolders(root, project, paths) }
+                onRemove={views.length > 1 ? view => removeFolder(root, project, view.folder, view.chats) : undefined}
+                isRemoveDisabled={view => view.isMain && working}
+                onReorder={reorder}
+                canDrop={working ? keepsMain : undefined}
+                onAdd={paths => void addFolders(root, project, paths)}
             />
 
-            { working && <Text variant="sm" color="secondary" role="status">Agents are working in this project. Stop them before changing the main folder.</Text> }
-            { infoFailed && <Text variant="sm" color="secondary" role="status">Couldn't check the folders</Text> }
+            {working && (
+                <Text variant="sm" color="secondary" role="status">
+                    Agents are working in this project. Stop them before changing the main folder.
+                </Text>
+            )}
+            {infoFailed && (
+                <Text variant="sm" color="secondary" role="status">
+                    Couldn't check the folders
+                </Text>
+            )}
         </SettingsSection>
     );
 }
@@ -108,12 +117,12 @@ function PersonalFolder({ project, views }: { project: Project; views: FolderVie
     return (
         <SettingsSection title="Folder">
             <FolderList
-                items={ views }
-                getKey={ view => view.folder.id }
-                getPath={ view => view.folder.path }
-                getName={ view => view.name }
-                renderDetails={ view => <FolderState project={ project } view={ view } /> }
-                renderActions={ view => view.remote && <RemoteButton remote={ view.remote } /> }
+                items={views}
+                getKey={view => view.folder.id}
+                getPath={view => view.folder.path}
+                getName={view => view.name}
+                renderDetails={view => <FolderState project={project} view={view} />}
+                renderActions={view => view.remote && <RemoteButton remote={view.remote} />}
             />
         </SettingsSection>
     );
@@ -121,9 +130,18 @@ function PersonalFolder({ project, views }: { project: Project; views: FolderVie
 
 /** Under a folder's path: that it is missing, or else a git remote that has no page to open. */
 function FolderState({ project, view }: { project: Project; view: FolderView }) {
-    if (view.missing) return <Text variant="sm" color="warning">{ missingFolderNote(project, view.isMain) }</Text>;
+    if (view.missing)
+        return (
+            <Text variant="sm" color="warning">
+                {missingFolderNote(project, view.isMain)}
+            </Text>
+        );
 
-    return view.remote && !view.remote.href ? <Text variant="sm" color="secondary" className={ styles.value }>{ view.remote.text }</Text> : null;
+    return view.remote && !view.remote.href ? (
+        <Text variant="sm" color="secondary" className={styles.value}>
+            {view.remote.text}
+        </Text>
+    ) : null;
 }
 
 /**
@@ -137,7 +155,14 @@ function LocateButton({ project, view, isDisabled }: { project: Project; view: F
 
     return (
         <Tooltip content="Pick where the folder is now">
-            <Button variant="filling" color="secondary" size="sm" aria-label={ `Locate ${ view.name }` } isDisabled={ isDisabled } onPress={ () => void locateFolderByDialog(root, project, view.folder) }>
+            <Button
+                variant="filling"
+                color="secondary"
+                size="sm"
+                aria-label={`Locate ${view.name}`}
+                isDisabled={isDisabled}
+                onPress={() => void locateFolderByDialog(root, project, view.folder)}
+            >
                 Locate…
             </Button>
         </Tooltip>
@@ -155,8 +180,10 @@ function WorkspaceButton({ project, view }: { project: Project; view: FolderView
                 color="secondary"
                 size="sm"
                 iconOnly
-                aria-label={ `Workspace of ${ view.name }` }
-                onPress={ () => openFolderWorkspace({ root, projectId: project.id, folderId: view.folder.id, name: view.name }) }
+                aria-label={`Workspace of ${view.name}`}
+                onPress={() =>
+                    openFolderWorkspace({ root, projectId: project.id, folderId: view.folder.id, name: view.name })
+                }
             >
                 <Settings />
             </Button>
@@ -171,10 +198,10 @@ function RemoteButton({ remote }: { remote: RemoteLink }) {
     const site = siteName(remote.href);
 
     return (
-        <Tooltip content={ remote.text }>
-            <Button variant="filling" color="secondary" size="sm" href={ remote.href } target="_blank" rel="noreferrer">
-                { site === 'GitHub' ? <Github size={ 14 } /> : <ArrowUpRight /> }
-                { `Open in ${ site }` }
+        <Tooltip content={remote.text}>
+            <Button variant="filling" color="secondary" size="sm" href={remote.href} target="_blank" rel="noreferrer">
+                {site === 'GitHub' ? <Github size={14} /> : <ArrowUpRight />}
+                {`Open in ${site}`}
             </Button>
         </Tooltip>
     );

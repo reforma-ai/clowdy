@@ -23,13 +23,16 @@ export interface ForkOrigin {
 export function ForkDivider({ title, onOpen }: Omit<ForkOrigin, 'atSeq'>) {
     return (
         <Marker variant="separator" data-slot="fork-divider">
-            <MarkerContent className={ styles.words }>
-                <Show when={ title !== undefined } fallback="Forked">
+            <MarkerContent className={styles.words}>
+                <Show when={title !== undefined} fallback="Forked">
                     Forked from
-                    { /* Read as words; the title is a button when it opens the chat. */ }
-                    { ' ' }
-                    <Show when={ onOpen } fallback={ <span>{ title }</span> }>
-                        { open => <Button variant="inline" className={ cn(inlineLink, styles.title) } onPress={ open }>{ title }</Button> }
+                    {/* Read as words; the title is a button when it opens the chat. */}{' '}
+                    <Show when={onOpen} fallback={<span>{title}</span>}>
+                        {open => (
+                            <Button variant="inline" className={cn(inlineLink, styles.title)} onPress={open}>
+                                {title}
+                            </Button>
+                        )}
                     </Show>
                 </Show>
             </MarkerContent>

@@ -4,11 +4,11 @@ import { Input } from '@clowdy/components/Input';
 import { Modal, useModalContext } from '@clowdy/components/Modal';
 import { Text } from '@clowdy/components/Text';
 import { Textarea } from '@clowdy/components/Textarea';
-import { useEffect, useId, useState, type FormEvent } from 'react';
+import { type FormEvent, useEffect, useId, useState } from 'react';
 
 import styles from './FolderWorkspaceDialog.module.css';
 import { setFolderSettings } from './projectActions';
-import { isWorkspaceSaved, workspaceFields, workspacePatch, type WorkspaceFields } from './projectView';
+import { isWorkspaceSaved, type WorkspaceFields, workspaceFields, workspacePatch } from './projectView';
 
 import type { FolderGit, FolderId, ProjectId } from '@clowdy/protocol';
 import type { RootStore } from '../../../stores';
@@ -29,7 +29,15 @@ export interface FolderWorkspaceDialogProps {
  * and the window's own close button floats at the corner.
  */
 export function openFolderWorkspace(props: FolderWorkspaceDialogProps): void {
-    Modal.create({ width: 480, shadow: true, clickOut: true, closeOnEscape: true, closeButton: true, handle: false, component: <FolderWorkspaceForm { ...props } /> });
+    Modal.create({
+        width: 480,
+        shadow: true,
+        clickOut: true,
+        closeOnEscape: true,
+        closeButton: true,
+        handle: false,
+        component: <FolderWorkspaceForm {...props} />,
+    });
 }
 
 function FolderWorkspaceForm({ root, projectId, folderId, name }: FolderWorkspaceDialogProps) {
@@ -38,7 +46,9 @@ function FolderWorkspaceForm({ root, projectId, folderId, name }: FolderWorkspac
     const filesHintId = useId();
     const commandId = useId();
     const commandHintId = useId();
-    const folder = root.projects.find(project => project.id === projectId)?.folders.find(candidate => candidate.id === folderId);
+    const folder = root.projects
+        .find(project => project.id === projectId)
+        ?.folders.find(candidate => candidate.id === folderId);
     const [fields, setFields] = useState<WorkspaceFields>(() => workspaceFields(folder?.settings));
     const [git, setGit] = useState<FolderGit>();
     const [isPending, setIsPending] = useState(false);
@@ -49,7 +59,7 @@ function FolderWorkspaceForm({ root, projectId, folderId, name }: FolderWorkspac
         let current = true;
 
         root.transport.getFolderGit(projectId, folderId).then(
-            (answer) => {
+            answer => {
                 if (current) setGit(answer);
             },
             () => undefined
@@ -65,7 +75,11 @@ function FolderWorkspaceForm({ root, projectId, folderId, name }: FolderWorkspac
     // The daemon answers `defaultBranch` as the folder's base: with a base set that the repository has, it is that base, not the repository's own default.
     const detected = git?.isRepository ? git.defaultBranch : undefined;
     const typed = fields.baseBranch.trim();
-    const lacksBranch = typed !== '' && git?.isRepository === true && !git.truncated && !git.branches.some(branch => branch.name === typed);
+    const lacksBranch =
+        typed !== '' &&
+        git?.isRepository === true &&
+        !git.truncated &&
+        !git.branches.some(branch => branch.name === typed);
 
     const submit = async (event: FormEvent) => {
         event.preventDefault();
@@ -82,9 +96,9 @@ function FolderWorkspaceForm({ root, projectId, folderId, name }: FolderWorkspac
     };
 
     return (
-        <form className={ styles.form } onSubmit={ event => void submit(event) }>
-            <div className={ styles.heading }>
-                <Text variant="heading-3" truncate>{ `Workspace of ${ name }` }</Text>
+        <form className={styles.form} onSubmit={event => void submit(event)}>
+            <div className={styles.heading}>
+                <Text variant="heading-3" truncate>{`Workspace of ${name}`}</Text>
                 <Text color="secondary">What a new worktree of this folder starts from and needs</Text>
             </div>
 
@@ -94,56 +108,80 @@ function FolderWorkspaceForm({ root, projectId, folderId, name }: FolderWorkspac
                 <Input
                     type="text"
                     aria-label="Base branch"
-                    value={ fields.baseBranch }
-                    onChange={ baseBranch => change({ baseBranch }) }
-                    placeholder={ detected && detected !== saved?.baseBranch ? detected : 'Default branch' }
+                    value={fields.baseBranch}
+                    onChange={baseBranch => change({ baseBranch })}
+                    placeholder={detected && detected !== saved?.baseBranch ? detected : 'Default branch'}
                     autoFocus
                 />
             </FormField>
-            { lacksBranch && <Text variant="sm" color="warning" role="status">{ `The repository has no branch called ${ typed }, so the default branch is used` }</Text> }
+            {lacksBranch && (
+                <Text
+                    variant="sm"
+                    color="warning"
+                    role="status"
+                >{`The repository has no branch called ${typed}, so the default branch is used`}</Text>
+            )}
 
             {/* Not a FormField: the Textarea would pass the field's `isDisabled` and `isInvalid` on to the DOM and React would warn. */}
-            <div className={ styles.field }>
-                <div className={ styles.copy }>
-                    <Text as="label" variant="heading-5" htmlFor={ filesId }>Files to copy</Text>
-                    <Text id={ filesHintId } variant="sm" color="secondary">One path per line, such as .env or .env*</Text>
+            <div className={styles.field}>
+                <div className={styles.copy}>
+                    <Text as="label" variant="heading-5" htmlFor={filesId}>
+                        Files to copy
+                    </Text>
+                    <Text id={filesHintId} variant="sm" color="secondary">
+                        One path per line, such as .env or .env*
+                    </Text>
                 </div>
                 <Textarea
-                    id={ filesId }
-                    aria-describedby={ filesHintId }
-                    value={ fields.files }
-                    onChange={ files => change({ files }) }
+                    id={filesId}
+                    aria-describedby={filesHintId}
+                    value={fields.files}
+                    onChange={files => change({ files })}
                     placeholder=".env"
-                    rows={ 3 }
+                    rows={3}
                     autoResize
-                    isResizable={ false }
-                    textareaClassName={ styles.code }
+                    isResizable={false}
+                    textareaClassName={styles.code}
                 />
             </div>
 
-            <div className={ styles.field }>
-                <div className={ styles.copy }>
-                    <Text as="label" variant="heading-5" htmlFor={ commandId }>Command</Text>
-                    <Text id={ commandHintId } variant="sm" color="secondary">Runs in the new worktree once the files are copied</Text>
+            <div className={styles.field}>
+                <div className={styles.copy}>
+                    <Text as="label" variant="heading-5" htmlFor={commandId}>
+                        Command
+                    </Text>
+                    <Text id={commandHintId} variant="sm" color="secondary">
+                        Runs in the new worktree once the files are copied
+                    </Text>
                 </div>
                 <Textarea
-                    id={ commandId }
-                    aria-describedby={ commandHintId }
-                    value={ fields.command }
-                    onChange={ command => change({ command }) }
+                    id={commandId}
+                    aria-describedby={commandHintId}
+                    value={fields.command}
+                    onChange={command => change({ command })}
                     placeholder="bun install"
-                    rows={ 3 }
+                    rows={3}
                     autoResize
-                    isResizable={ false }
-                    textareaClassName={ styles.code }
+                    isResizable={false}
+                    textareaClassName={styles.code}
                 />
             </div>
 
-            { git?.isRepository === false && <Text variant="sm" color="warning" role="status">Worktrees need a git repository, and this folder is not one</Text> }
-            { folder === undefined && <Text color="danger" role="alert">This folder is no longer in the project</Text> }
+            {git?.isRepository === false && (
+                <Text variant="sm" color="warning" role="status">
+                    Worktrees need a git repository, and this folder is not one
+                </Text>
+            )}
+            {folder === undefined && (
+                <Text color="danger" role="alert">
+                    This folder is no longer in the project
+                </Text>
+            )}
 
             {/* No Cancel: the window's close button, Escape and a click outside already close it. */}
-            <Button type="submit" color="primary" fullWidth isDisabled={ !canSubmit } isPending={ isPending }>Save</Button>
+            <Button type="submit" color="primary" fullWidth isDisabled={!canSubmit} isPending={isPending}>
+                Save
+            </Button>
         </form>
     );
 }

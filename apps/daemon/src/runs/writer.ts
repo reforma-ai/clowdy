@@ -38,7 +38,11 @@ export class TurnWriter {
     /** Each call's item and what it holds now. */
     private tools = new Map<string, { seq: number; body: ToolBody }>();
 
-    constructor(private store: Store, private runId: string, private throttleMs = TEXT_THROTTLE_MS) {}
+    constructor(
+        private store: Store,
+        private runId: string,
+        private throttleMs = TEXT_THROTTLE_MS
+    ) {}
 
     /** The agent's session is ready and its prompt goes out: what it thinks about is dated from now, not from the turn's start, which includes starting the agent. */
     heard(): void {
@@ -70,8 +74,7 @@ export class TurnWriter {
 
         if (done) {
             this.end();
-        }
-        else {
+        } else {
             this.schedule();
         }
     }
@@ -88,7 +91,7 @@ export class TurnWriter {
 
             this.thought ??= { text: '', startedAt: this.heardAt };
 
-            const text = `${ this.thought.text }${ delta }`.slice(0, MAX_THOUGHT_CHARS);
+            const text = `${this.thought.text}${delta}`.slice(0, MAX_THOUGHT_CHARS);
 
             // Past the cut a piece changes nothing, and the log is not written again for it (each write holds the whole thought).
             grew = text !== this.thought.text;
@@ -103,8 +106,7 @@ export class TurnWriter {
 
         if (done) {
             this.end();
-        }
-        else if (grew) {
+        } else if (grew) {
             this.schedule();
         }
     }
@@ -126,8 +128,7 @@ export class TurnWriter {
 
         if (known === undefined) {
             this.tools.set(event.toolCallId, { seq: appendItem(this.store, this.runId, body).seq, body });
-        }
-        else {
+        } else {
             known.body = body;
             updateItem(this.store, this.runId, known.seq, body);
         }
@@ -175,8 +176,7 @@ export class TurnWriter {
 
         if (wait <= 0) {
             this.flush(false);
-        }
-        else {
+        } else {
             this.timer = setTimeout(() => {
                 this.timer = undefined;
                 this.flush(false);
@@ -214,13 +214,15 @@ export class TurnWriter {
 
         if (message.seq === undefined) {
             message.seq = appendItem(this.store, this.runId, body).seq;
-        }
-        else {
+        } else {
             updateItem(this.store, this.runId, message.seq, body);
         }
 
         if (done) {
-            this.answer = message.messageId !== undefined && message.text.trim() !== '' ? { seq: message.seq, ref: message.messageId } : undefined;
+            this.answer =
+                message.messageId !== undefined && message.text.trim() !== ''
+                    ? { seq: message.seq, ref: message.messageId }
+                    : undefined;
             this.closed = { seq: message.seq, text: message.text };
         }
 
@@ -236,12 +238,16 @@ export class TurnWriter {
         }
 
         // The agents pad a thought with line breaks (a section break before Codex's, after Claude's): they are no part of it.
-        const body = { kind: 'reasoning' as const, text, done, ...(done && { durationMs: Date.now() - thought.startedAt }) };
+        const body = {
+            kind: 'reasoning' as const,
+            text,
+            done,
+            ...(done && { durationMs: Date.now() - thought.startedAt }),
+        };
 
         if (thought.seq === undefined) {
             thought.seq = appendItem(this.store, this.runId, body).seq;
-        }
-        else {
+        } else {
             updateItem(this.store, this.runId, thought.seq, body);
         }
 

@@ -1,6 +1,6 @@
 import type { FolderWorktrees, ProjectFolder, WorktreeInfo } from '@clowdy/protocol';
 
-const countOf = (changes: number) => `${ changes } ${ changes === 1 ? 'change' : 'changes' }`;
+const countOf = (changes: number) => `${changes} ${changes === 1 ? 'change' : 'changes'}`;
 
 /** How much a worktree has changed, in a word: `No local changes`, or `3 changes` (git's status entries, an untracked folder as one). */
 export function changesLabel(changes: number): string {
@@ -18,19 +18,27 @@ export interface MergedMark {
  * Whether the worktree's work is in the base (`WorktreeInfo.merged`), for the badge. Nothing for the folder's own checkout, which is the base's own place, and for a
  * worktree with no base to compare with. A squash merge reads as not merged, so the tip of that mark says so.
  */
-export function mergedMark({ main, merged, base }: Pick<WorktreeInfo, 'main' | 'merged' | 'base'>): MergedMark | undefined {
+export function mergedMark({
+    main,
+    merged,
+    base,
+}: Pick<WorktreeInfo, 'main' | 'merged' | 'base'>): MergedMark | undefined {
     if (main || merged === undefined) return undefined;
 
     const into = base ?? 'its base';
 
-    if (merged) return { label: 'Merged', tip: `Its commits are in ${ into }`, color: 'success' };
+    if (merged) return { label: 'Merged', tip: `Its commits are in ${into}`, color: 'success' };
 
-    return { label: 'Not merged', tip: `Its commits are not in ${ into } as last fetched. A squash merge shows as not merged.`, color: 'warning' };
+    return {
+        label: 'Not merged',
+        tip: `Its commits are not in ${into} as last fetched. A squash merge shows as not merged.`,
+        color: 'warning',
+    };
 }
 
 /** What a lock says on hover: git's reason when it gave one. */
 export function lockTip(locked: string): string {
-    return locked === '' ? 'Git has it locked' : `Git has it locked: ${ locked }`;
+    return locked === '' ? 'Git has it locked' : `Git has it locked: ${locked}`;
 }
 
 /** The one badge of a worktree's row: what it says, why (the tooltip), and the colour (the neutral grey when it has none). */
@@ -46,10 +54,14 @@ export interface WorktreeMark {
  * (an agent that works in it locks it for as long as it does), and that outweighs whether its work has reached the base. The base only comes last: `Merged` or `Not merged`,
  * and nothing where there is no base to compare with.
  */
-export function worktreeMark(worktree: Pick<WorktreeInfo, 'main' | 'missing' | 'locked' | 'merged' | 'base'>): WorktreeMark | undefined {
-    if (worktree.main) return { label: 'Project checkout', tip: 'The folder itself, where a chat works without a worktree' };
+export function worktreeMark(
+    worktree: Pick<WorktreeInfo, 'main' | 'missing' | 'locked' | 'merged' | 'base'>
+): WorktreeMark | undefined {
+    if (worktree.main)
+        return { label: 'Project checkout', tip: 'The folder itself, where a chat works without a worktree' };
 
-    if (worktree.missing) return { label: 'Missing on disk', tip: 'Git lists it, but its folder is gone', color: 'warning' };
+    if (worktree.missing)
+        return { label: 'Missing on disk', tip: 'Git lists it, but its folder is gone', color: 'warning' };
 
     if (worktree.locked !== undefined) return { label: 'Locked', tip: lockTip(worktree.locked) };
 
@@ -63,7 +75,7 @@ export function worktreeMark(worktree: Pick<WorktreeInfo, 'main' | 'missing' | '
 export function removeHint({ blocked, locked }: Pick<WorktreeInfo, 'blocked' | 'locked'>): string | undefined {
     if (blocked === 'locked') return lockTip(locked ?? '');
 
-    if (blocked === 'main') return 'The repository\'s own working tree, which git does not remove';
+    if (blocked === 'main') return "The repository's own working tree, which git does not remove";
 
     return blocked === 'chats' ? 'A chat works in it' : undefined;
 }
@@ -81,14 +93,17 @@ export interface BranchChoice {
 }
 
 /** Whether a branch is the base the worktree is compared with, or the local branch of the same name as a remote's (`main` for `origin/main`). */
-const isBaseBranch = (branch: string, base: string | undefined) => base !== undefined && (branch === base || branch === base.slice(base.indexOf('/') + 1));
+const isBaseBranch = (branch: string, base: string | undefined) =>
+    base !== undefined && (branch === base || branch === base.slice(base.indexOf('/') + 1));
 
 function branchChoice(name: string, merged: boolean | undefined, base: string | undefined): BranchChoice {
     if (merged === undefined) return { name, selected: false, standing: 'unknown' };
 
     if (!merged) return { name, selected: false, standing: 'unmerged' };
 
-    return isBaseBranch(name, base) ? { name, selected: false, standing: 'base' } : { name, selected: true, standing: 'merged' };
+    return isBaseBranch(name, base)
+        ? { name, selected: false, standing: 'base' }
+        : { name, selected: true, standing: 'merged' };
 }
 
 /**
@@ -110,37 +125,68 @@ export interface RemovalPlan {
 
 /** The red button of a changed tree: how many entries git's status counts go with it. */
 export function discardLabel(changes: number): string {
-    return `Discard ${ countOf(changes) } and remove`;
+    return `Discard ${countOf(changes)} and remove`;
 }
 
 /** What removing this worktree asks and says. The folder's own checkout has no removal, so it never gets here. */
-export function removalPlan({ branch, base, merged, missing, changes, submodules }: Pick<WorktreeInfo, 'branch' | 'base' | 'merged' | 'missing' | 'changes' | 'submodules'>): RemovalPlan {
+export function removalPlan({
+    branch,
+    base,
+    merged,
+    missing,
+    changes,
+    submodules,
+}: Pick<WorktreeInfo, 'branch' | 'base' | 'merged' | 'missing' | 'changes' | 'submodules'>): RemovalPlan {
     const choice = branch === undefined ? undefined : branchChoice(branch, merged, base);
     const common = { ...(choice && { branch: choice }), stranded: branch === undefined && merged === false };
 
     if (missing) {
-        return { ...common, kind: 'record', title: 'Remove the record?', confirmLabel: 'Remove record', notes: ['Git still lists it, but its folder is gone from the disk', 'Only git\'s record of it is removed'] };
+        return {
+            ...common,
+            kind: 'record',
+            title: 'Remove the record?',
+            confirmLabel: 'Remove record',
+            notes: ['Git still lists it, but its folder is gone from the disk', "Only git's record of it is removed"],
+        };
     }
 
     if (changes > 0) {
-        const notes = [`${ changes } uncommitted ${ changes === 1 ? 'change' : 'changes' } will be deleted for good`];
+        const notes = [`${changes} uncommitted ${changes === 1 ? 'change' : 'changes'} will be deleted for good`];
 
         if (submodules) notes.push('Its checked-out submodules are removed with it');
 
-        return { ...common, kind: 'discard', title: 'Discard changes and remove?', confirmLabel: discardLabel(changes), notes };
+        return {
+            ...common,
+            kind: 'discard',
+            title: 'Discard changes and remove?',
+            confirmLabel: discardLabel(changes),
+            notes,
+        };
     }
 
     if (submodules) {
-        return { ...common, kind: 'discard', title: 'Remove with its submodules?', confirmLabel: 'Remove with submodules', notes: ['Its checked-out submodules are removed with it, along with anything uncommitted in them'] };
+        return {
+            ...common,
+            kind: 'discard',
+            title: 'Remove with its submodules?',
+            confirmLabel: 'Remove with submodules',
+            notes: ['Its checked-out submodules are removed with it, along with anything uncommitted in them'],
+        };
     }
 
-    return { ...common, kind: 'plain', title: 'Remove the worktree?', confirmLabel: 'Remove', notes: ['Its folder is removed from the disk'] };
+    return {
+        ...common,
+        kind: 'plain',
+        title: 'Remove the worktree?',
+        confirmLabel: 'Remove',
+        notes: ['Its folder is removed from the disk'],
+    };
 }
 
 const BRANCH_WARNINGS: Record<BranchChoice['standing'], string | undefined> = {
     merged: undefined,
     unmerged: 'Its unmerged commits are lost with the branch',
-    unknown: 'Can\'t tell whether its commits are merged, so they may be lost',
+    unknown: "Can't tell whether its commits are merged, so they may be lost",
     base: 'It is the base branch itself',
 };
 
@@ -154,8 +200,11 @@ export const STRANDED_WARNING = 'Its commits may be in no branch, so they can be
 
 /**
 /** The groups of the project that are repositories and whose folder is still in the project, each with its folder, in the project's order. */
-export function repositoryGroups(groups: readonly FolderWorktrees[], folders: readonly ProjectFolder[]): { group: FolderWorktrees; folder: ProjectFolder }[] {
-    return groups.flatMap((group) => {
+export function repositoryGroups(
+    groups: readonly FolderWorktrees[],
+    folders: readonly ProjectFolder[]
+): { group: FolderWorktrees; folder: ProjectFolder }[] {
+    return groups.flatMap(group => {
         const folder = folders.find(candidate => candidate.id === group.folderId);
 
         return group.isRepository && folder ? [{ group, folder }] : [];

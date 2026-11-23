@@ -1,5 +1,5 @@
-import { client, methods, ndJsonStream, PROTOCOL_VERSION } from '@agentclientprotocol/sdk/unstable';
 import { Readable, Writable } from 'node:stream';
+import { client, methods, ndJsonStream, PROTOCOL_VERSION } from '@agentclientprotocol/sdk/unstable';
 import { z } from 'zod';
 
 import { errorMessage } from '../../errors';
@@ -37,7 +37,12 @@ export interface ProbeOptions {
  * `mcpServers`, and stops it. Shows whether the agent speaks ACP, which capabilities it has, and that it accepts the bridge.
  * Rejects with a message that says what failed, with the end of the agent's stderr.
  */
-export async function probeAgent(registry: AgentRegistry, bridge: ToolBridge, id: string, { cwd, timeoutMs = 120_000, env = process.env }: ProbeOptions): Promise<Probe> {
+export async function probeAgent(
+    registry: AgentRegistry,
+    bridge: ToolBridge,
+    id: string,
+    { cwd, timeoutMs = 120_000, env = process.env }: ProbeOptions
+): Promise<Probe> {
     const resolution = await registry.resolve(id);
 
     if (!resolution.ok) {
@@ -47,13 +52,34 @@ export async function probeAgent(registry: AgentRegistry, bridge: ToolBridge, id
     const { agent } = resolution;
 
     const started = Date.now();
-    const proc = await spawnInOwnGroup({ command: agent.command, args: agent.args, cwd, env: buildAgentEnv({ daemonEnv: env, path: await registry.path(), scrub: agent.scrub, set: agent.env }) });
-    const connection = client({ name: 'clowdy-probe' }).connect(ndJsonStream(Writable.toWeb(proc.child.stdin as Writable) as WritableStream<Uint8Array>, Readable.toWeb(proc.child.stdout as Readable) as ReadableStream<Uint8Array>));
-    const access = bridge.register([{ name: 'probe', description: 'A tool that does nothing.', inputSchema: { type: 'object', properties: {} }, schema: z.object({}), execute: async () => 'ok' }], new AbortController().signal);
+    const proc = await spawnInOwnGroup({
+        command: agent.command,
+        args: agent.args,
+        cwd,
+        env: buildAgentEnv({ daemonEnv: env, path: await registry.path(), scrub: agent.scrub, set: agent.env }),
+    });
+    const connection = client({ name: 'clowdy-probe' }).connect(
+        ndJsonStream(
+            Writable.toWeb(proc.child.stdin as Writable) as WritableStream<Uint8Array>,
+            Readable.toWeb(proc.child.stdout as Readable) as ReadableStream<Uint8Array>
+        )
+    );
+    const access = bridge.register(
+        [
+            {
+                name: 'probe',
+                description: 'A tool that does nothing.',
+                inputSchema: { type: 'object', properties: {} },
+                schema: z.object({}),
+                execute: async () => 'ok',
+            },
+        ],
+        new AbortController().signal
+    );
     const within = <T>(call: Promise<T>): Promise<T> => {
         let timer: ReturnType<typeof setTimeout>;
         const timeout = new Promise<never>((_resolve, reject) => {
-            timer = setTimeout(() => reject(new Error(`no answer in ${ timeoutMs / 1000 } s`)), timeoutMs);
+            timer = setTimeout(() => reject(new Error(`no answer in ${timeoutMs / 1000} s`)), timeoutMs);
         });
         const exited = proc.exited.then(() => Promise.reject(new Error('the agent exited')));
 
@@ -61,33 +87,45 @@ export async function probeAgent(registry: AgentRegistry, bridge: ToolBridge, id
     };
 
     try {
-        const init = await within(connection.agent.request(methods.agent.initialize, {
-            protocolVersion: PROTOCOL_VERSION,
-            clientCapabilities: clientCapabilities(agent),
-            clientInfo: { name: 'clowdy', title: 'Clowdy', version: '0' },
-        }));
+        const init = await within(
+            connection.agent.request(methods.agent.initialize, {
+                protocolVersion: PROTOCOL_VERSION,
+                clientCapabilities: clientCapabilities(agent),
+                clientInfo: { name: 'clowdy', title: 'Clowdy', version: '0' },
+            })
+        );
         const startedInMs = Date.now() - started;
-        const session = await within(connection.agent.request(methods.agent.session.new, { cwd, mcpServers: access.server ? [access.server] : [] }));
+        const session = await within(
+            connection.agent.request(methods.agent.session.new, {
+                cwd,
+                mcpServers: access.server ? [access.server] : [],
+            })
+        );
 
         return {
             id,
             command: [agent.command, ...agent.args].join(' '),
             startedInMs,
             protocolVersion: init.protocolVersion,
-            ...(init.agentInfo && { agentInfo: { name: init.agentInfo.name, ...(init.agentInfo.version && { version: init.agentInfo.version }) } }),
+            ...(init.agentInfo && {
+                agentInfo: {
+                    name: init.agentInfo.name,
+                    ...(init.agentInfo.version && { version: init.agentInfo.version }),
+                },
+            }),
             capabilities: init.agentCapabilities ?? {},
             authMethods: (init.authMethods ?? []).map(method => method.id),
             sessionId: session.sessionId,
             modes: (session.modes?.availableModes ?? []).map(mode => mode.id),
-            options: (session.configOptions ?? []).map(option => `${ option.id }${ option.category ? ` (${ option.category })` : '' }`),
+            options: (session.configOptions ?? []).map(
+                option => `${option.id}${option.category ? ` (${option.category})` : ''}`
+            ),
         };
-    }
-    catch (error) {
+    } catch (error) {
         const tail = proc.stderr().trim().slice(-500);
 
-        throw new Error(`${ errorMessage(error) }${ tail ? `\nThe agent wrote: ${ tail }` : '' }`);
-    }
-    finally {
+        throw new Error(`${errorMessage(error)}${tail ? `\nThe agent wrote: ${tail}` : ''}`);
+    } finally {
         access.dispose();
         connection.close();
         proc.stop();

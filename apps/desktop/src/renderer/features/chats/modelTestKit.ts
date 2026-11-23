@@ -24,11 +24,24 @@ export async function modelStore({ change, read, preload = true, agentsLoading =
 
     change?.(data);
 
-    const fixture = (agentId: string): AgentModels => structuredClone(data.agentModels[agentId] ?? { state: 'unavailable' as const, models: [] });
-    const transport = { getAgentModels: async (agentId: string) => (read ? read(agentId, fixture(agentId)) : fixture(agentId)) } as unknown as Transport;
+    const fixture = (agentId: string): AgentModels =>
+        structuredClone(data.agentModels[agentId] ?? { state: 'unavailable' as const, models: [] });
+    const transport = {
+        getAgentModels: async (agentId: string) => (read ? read(agentId, fixture(agentId)) : fixture(agentId)),
+    } as unknown as Transport;
     const models = new ModelsStore(transport);
 
-    if (preload) await Promise.all(data.agents.filter(agent => agent.enabled && agent.status === 'ready').map(agent => models.of(agent.id).load()));
+    if (preload)
+        await Promise.all(
+            data.agents
+                .filter(agent => agent.enabled && agent.status === 'ready')
+                .map(agent => models.of(agent.id).load())
+        );
 
-    return { agents: agentsLoading ? [] : data.agents, agentsStatus: agentsLoading ? 'loading' as const : 'ready' as const, agentsError: '', models };
+    return {
+        agents: agentsLoading ? [] : data.agents,
+        agentsStatus: agentsLoading ? ('loading' as const) : ('ready' as const),
+        agentsError: '',
+        models,
+    };
 }

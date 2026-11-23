@@ -16,7 +16,7 @@ on:
             - 'bunfig.toml'
             - 'turbo.json'
             - 'tsconfig.json'
-            - 'eslint.config.mjs'
+            - 'biome.json'
             - 'postcss.config.mjs'
             - '.github/workflows/ci.yml'
             - '.github/workflows/gate.yml'

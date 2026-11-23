@@ -6,7 +6,14 @@ import { Github } from '@clowdy/icons/logo';
 import { PathText } from '../../shared/PathText';
 import { ProjectIcon } from '../../shared/ProjectIcon';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
-import { additionsWords, aheadBehindWords, deletionsWords, filesWords, hasBranchFiles, PULL_REQUEST_STATE_LABEL } from '../changes/gitSummary';
+import {
+    additionsWords,
+    aheadBehindWords,
+    deletionsWords,
+    filesWords,
+    hasBranchFiles,
+    PULL_REQUEST_STATE_LABEL,
+} from '../changes/gitSummary';
 import { useGitFacts } from '../changes/useGitFacts';
 import { openEffects, useFolderGit } from '../openWith';
 import { openManageWorktrees } from '../worktrees';
@@ -17,12 +24,12 @@ import type { ReactNode } from 'react';
 
 function InfoRow({ icon, label, children }: { icon: ReactNode; label: string; children: ReactNode }) {
     return (
-        <div className={ styles.row }>
-            <dt className={ styles.label }>
-                <span className={ styles.icon }>{ icon }</span>
-                <Text color="secondary">{ label }</Text>
+        <div className={styles.row}>
+            <dt className={styles.label}>
+                <span className={styles.icon}>{icon}</span>
+                <Text color="secondary">{label}</Text>
             </dt>
-            <dd className={ styles.value }>{ children }</dd>
+            <dd className={styles.value}>{children}</dd>
         </div>
     );
 }
@@ -48,61 +55,68 @@ export function InfoTab() {
     const files = hasBranchFiles(facts?.branch) ? facts.branch : undefined;
 
     return (
-        <dl className={ styles.info }>
-            <InfoRow icon={ <ProjectIcon project={ project.project } /> } label="Project">
-                <Text truncate>{ project.project.name }</Text>
+        <dl className={styles.info}>
+            <InfoRow icon={<ProjectIcon project={project.project} />} label="Project">
+                <Text truncate>{project.project.name}</Text>
             </InfoRow>
-            <InfoRow icon={ <Folder aria-hidden="true" /> } label="Folder">
-                <PathText path={ folder.path } />
+            <InfoRow icon={<Folder aria-hidden="true" />} label="Folder">
+                <PathText path={folder.path} />
             </InfoRow>
-            { workspace && (
-                <InfoRow icon={ <Folder aria-hidden="true" /> } label="Worktree">
-                    <PathText path={ workspace.path } />
+            {workspace && (
+                <InfoRow icon={<Folder aria-hidden="true" />} label="Worktree">
+                    <PathText path={workspace.path} />
                     <Button
                         variant="filling"
                         color="secondary"
                         size="xs"
-                        className={ styles.manage }
+                        className={styles.manage}
                         tooltip="Manage worktrees"
                         aria-label="Manage worktrees"
-                        onPress={ () => openManageWorktrees({ root, projectId: project.id, folderId: folder.id }) }
+                        onPress={() => openManageWorktrees({ root, projectId: project.id, folderId: folder.id })}
                     >
                         Manage
                     </Button>
                 </InfoRow>
-            ) }
-            { git?.branch && (
-                <InfoRow icon={ <Version aria-hidden="true" /> } label="Branch">
-                    <Text truncate title={ git.detached ? 'Detached HEAD' : undefined }>{ git.branch }</Text>
-                </InfoRow>
-            ) }
-            { base && (
-                <InfoRow icon={ <Version aria-hidden="true" /> } label="Base">
-                    <Text truncate>{ base.name }</Text>
-                </InfoRow>
-            ) }
-            { aheadBehind && (
-                <InfoRow icon={ <Commit aria-hidden="true" /> } label="Ahead and behind">
-                    <Text truncate>{ aheadBehind }</Text>
-                </InfoRow>
-            ) }
-            { pr && (
-                <InfoRow icon={ <Github size={ 14 } /> } label="Pull request">
-                    <Button variant="inline" truncate tooltip={ pr.title } aria-label={ `Open pull request ${ pr.number } on GitHub` } onPress={ () => openEffects.openUrl(pr.url) }>
-                        { `#${ pr.number } ${ PULL_REQUEST_STATE_LABEL[pr.state] }` }
-                    </Button>
-                </InfoRow>
-            ) }
-            { files && (
-                <InfoRow icon={ <Page aria-hidden="true" /> } label="Files changed">
-                    <Text truncate>
-                        { `${ filesWords(files.files) }, ` }
-                        <Text color="success">{ additionsWords(files) }</Text>
-                        { ' ' }
-                        <Text color="danger">{ deletionsWords(files) }</Text>
+            )}
+            {git?.branch && (
+                <InfoRow icon={<Version aria-hidden="true" />} label="Branch">
+                    <Text truncate title={git.detached ? 'Detached HEAD' : undefined}>
+                        {git.branch}
                     </Text>
                 </InfoRow>
-            ) }
+            )}
+            {base && (
+                <InfoRow icon={<Version aria-hidden="true" />} label="Base">
+                    <Text truncate>{base.name}</Text>
+                </InfoRow>
+            )}
+            {aheadBehind && (
+                <InfoRow icon={<Commit aria-hidden="true" />} label="Ahead and behind">
+                    <Text truncate>{aheadBehind}</Text>
+                </InfoRow>
+            )}
+            {pr && (
+                <InfoRow icon={<Github size={14} />} label="Pull request">
+                    <Button
+                        variant="inline"
+                        truncate
+                        tooltip={pr.title}
+                        aria-label={`Open pull request ${pr.number} on GitHub`}
+                        onPress={() => openEffects.openUrl(pr.url)}
+                    >
+                        {`#${pr.number} ${PULL_REQUEST_STATE_LABEL[pr.state]}`}
+                    </Button>
+                </InfoRow>
+            )}
+            {files && (
+                <InfoRow icon={<Page aria-hidden="true" />} label="Files changed">
+                    <Text truncate>
+                        {`${filesWords(files.files)}, `}
+                        <Text color="success">{additionsWords(files)}</Text>{' '}
+                        <Text color="danger">{deletionsWords(files)}</Text>
+                    </Text>
+                </InfoRow>
+            )}
         </dl>
     );
 }

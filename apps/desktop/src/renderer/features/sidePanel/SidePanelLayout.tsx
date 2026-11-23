@@ -3,7 +3,13 @@ import { cn } from '@clowdy/lib';
 import { useId, useState } from 'react';
 
 import { browserStorage } from '../../stores/storage';
-import { readSidePanelWidth, SIDE_PANEL_MIN_WIDTH, TREE_PANEL_MIN_WIDTH, WINDOW_MIN_WIDTH, writeSidePanelWidth } from './panelWidth';
+import {
+    readSidePanelWidth,
+    SIDE_PANEL_MIN_WIDTH,
+    TREE_PANEL_MIN_WIDTH,
+    WINDOW_MIN_WIDTH,
+    writeSidePanelWidth,
+} from './panelWidth';
 import { SidePanel } from './SidePanel';
 import styles from './SidePanelLayout.module.css';
 import { useSidePanel } from './useSidePanel';
@@ -22,22 +28,22 @@ export function SidePanelLayout({ children }: { children: ReactNode }) {
     return (
         <ResizablePanelGroup
             orientation="horizontal"
-            className={ styles.layout }
+            className={styles.layout}
             // A window that is resized, or a width the range had to correct, changes the layout too: only the person's own drag is kept.
-            onLayoutChanged={ (_layout, meta) => {
+            onLayoutChanged={(_layout, meta) => {
                 if (!meta.isUserInteraction) return;
 
                 // The size the panel has once the layout has landed: a key press announces its change a step before the panel's size shows it.
                 requestAnimationFrame(() => {
                     if (panel.current) writeSidePanelWidth(browserStorage(), panel.current.getSize().inPixels);
                 });
-            } }
+            }}
         >
-            <ResizablePanel id="window" className={ styles.window } minSize={ WINDOW_MIN_WIDTH }>
-                { children }
+            <ResizablePanel id="window" className={styles.window} minSize={WINDOW_MIN_WIDTH}>
+                {children}
             </ResizablePanel>
 
-            { open && <SideColumn panel={ panel } /> }
+            {open && <SideColumn panel={panel} />}
         </ResizablePanelGroup>
     );
 }
@@ -56,14 +62,17 @@ function SideColumn({ panel }: { panel: ReturnType<typeof usePanelRef> }) {
 
     return (
         <>
-            <ResizableHandle aria-label="Resize the side panel" className={ cn(styles.edge, expanded && styles.edgeCovered) } />
+            <ResizableHandle
+                aria-label="Resize the side panel"
+                className={cn(styles.edge, expanded && styles.edgeCovered)}
+            />
 
             <ResizablePanel
-                id={ id }
-                panelRef={ panel }
-                className={ styles.side }
-                defaultSize={ width }
-                minSize={ minSize }
+                id={id}
+                panelRef={panel}
+                className={styles.side}
+                defaultSize={width}
+                minSize={minSize}
                 groupResizeBehavior="preserve-pixel-size"
             >
                 <SidePanel />

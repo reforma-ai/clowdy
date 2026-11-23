@@ -1,12 +1,9 @@
 import { cn } from '@clowdy/lib';
 import { createContext, use, useCallback, useEffect, useMemo, useRef } from 'react';
-import {
-    Popover as RACPopover,
-    type PopoverProps as RACPopoverProps,
-} from 'react-aria-components';
+import { Popover as RACPopover, type PopoverProps as RACPopoverProps } from 'react-aria-components';
 
 import { useControlledState } from '../hooks';
-import { resolveOverlayWidth, type OverlayWidth } from '../utils/resolveOverlayWidth';
+import { type OverlayWidth, resolveOverlayWidth } from '../utils/resolveOverlayWidth';
 import styles from './HoverCard.module.css';
 
 import type { CSSProperties, MouseEvent, ReactNode, RefObject } from 'react';
@@ -46,7 +43,7 @@ function useHoverCardContext(consumer: string): HoverCardContextValue {
     const ctx = use(HoverCardContext);
 
     if (!ctx) {
-        throw new Error(`${ consumer } must be rendered inside <HoverCard>`);
+        throw new Error(`${consumer} must be rendered inside <HoverCard>`);
     }
 
     return ctx;
@@ -124,21 +121,20 @@ export function HoverCard({
         }, closeDelay);
     }, [closeDelay, setOpen]);
 
-    useEffect(() => () => {
-        clearOpen();
-        clearClose();
-    }, []);
+    useEffect(
+        () => () => {
+            clearOpen();
+            clearClose();
+        },
+        []
+    );
 
     const ctx = useMemo<HoverCardContextValue>(
         () => ({ isOpen, setOpen, scheduleOpen, scheduleClose, triggerRef }),
         [isOpen, setOpen, scheduleOpen, scheduleClose]
     );
 
-    return (
-        <HoverCardContext value={ ctx }>
-            { children }
-        </HoverCardContext>
-    );
+    return <HoverCardContext value={ctx}>{children}</HoverCardContext>;
 }
 
 // ── Trigger ─────────────────────────────────────────────────────────────────
@@ -157,12 +153,12 @@ export function HoverCardTrigger({ children, className }: HoverCardTriggerProps)
 
     return (
         <span
-            ref={ triggerRef }
-            className={ cn(styles.trigger, className) }
-            onMouseEnter={ scheduleOpen }
-            onMouseLeave={ scheduleClose }
+            ref={triggerRef}
+            className={cn(styles.trigger, className)}
+            onMouseEnter={scheduleOpen}
+            onMouseLeave={scheduleClose}
         >
-            { children }
+            {children}
         </span>
     );
 }
@@ -171,7 +167,8 @@ export function HoverCardTrigger({ children, className }: HoverCardTriggerProps)
 
 export type HoverCardSpacing = Spacing;
 
-export interface HoverCardContentProps extends Omit<RACPopoverProps, 'className' | 'style' | 'triggerRef' | 'isOpen' | 'onOpenChange'> {
+export interface HoverCardContentProps
+    extends Omit<RACPopoverProps, 'className' | 'style' | 'triggerRef' | 'isOpen' | 'onOpenChange'> {
     className?: string;
     spacing?: HoverCardSpacing;
     style?: CSSProperties;
@@ -195,25 +192,23 @@ export function HoverCardContent({
 
     const widthStyle = resolveOverlayWidth(width);
 
-    const style = (widthStyle != null || styleProp != null)
-        ? { ...styleProp, ...widthStyle }
-        : undefined;
+    const style = widthStyle != null || styleProp != null ? { ...styleProp, ...widthStyle } : undefined;
 
     return (
         <RACPopover
-            triggerRef={ triggerRef }
-            isOpen={ isOpen }
-            onOpenChange={ setOpen }
+            triggerRef={triggerRef}
+            isOpen={isOpen}
+            onOpenChange={setOpen}
             isNonModal
-            className={ cn(styles.content, PADDING_CLASSES[spacing], className) }
-            style={ style }
-            offset={ SPACING_OFFSET_PX[spacing] }
-            containerPadding={ containerPadding }
-            { ...props }
-            onMouseEnter={ chain(onMouseEnter, scheduleOpen) }
-            onMouseLeave={ chain(onMouseLeave, scheduleClose) }
+            className={cn(styles.content, PADDING_CLASSES[spacing], className)}
+            style={style}
+            offset={SPACING_OFFSET_PX[spacing]}
+            containerPadding={containerPadding}
+            {...props}
+            onMouseEnter={chain(onMouseEnter, scheduleOpen)}
+            onMouseLeave={chain(onMouseLeave, scheduleClose)}
         >
-            { children }
+            {children}
         </RACPopover>
     );
 }

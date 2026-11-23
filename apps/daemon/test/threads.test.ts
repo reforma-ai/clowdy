@@ -12,7 +12,20 @@ import { WORKSPACE_TOOL } from '../src/domain/workspaces';
 import { clipOutput } from '../src/runs/threads';
 import { clip } from '../src/runs/tool-kit';
 import { toolsFor } from '../src/runs/tools';
-import { cleanTempDirs, git, latch, makeRepo, restartHarness, ScriptEngine, scriptEngines, SHORT_TIMINGS, startHarness, tempDir, untilAborted, waitFor } from './helpers';
+import {
+    cleanTempDirs,
+    git,
+    latch,
+    makeRepo,
+    restartHarness,
+    ScriptEngine,
+    SHORT_TIMINGS,
+    scriptEngines,
+    startHarness,
+    tempDir,
+    untilAborted,
+    waitFor,
+} from './helpers';
 
 import type { Chat, MessageSource, Run, StreamItemBody, ThreadNotice } from '@clowdy/protocol';
 import type { EngineEvent } from '../src/engine/types';
@@ -31,7 +44,7 @@ type Latch = ReturnType<typeof latch>;
 /** A turn that says `say`, then holds until `gate` is released (or the run is stopped), then ends. */
 function held(gate: Latch, say = 'working'): Script {
     return async function* ({ number, signal }) {
-        yield { type: 'session', sessionId: `s-${ number }` };
+        yield { type: 'session', sessionId: `s-${number}` };
         yield { type: 'text', delta: say, done: true };
         await gate.wait(signal);
         yield { type: 'done', result: say };
@@ -41,7 +54,7 @@ function held(gate: Latch, say = 'working'): Script {
 /** A turn that says each text as a message of its own and ends. */
 function says(...texts: string[]): Script {
     return async function* ({ number }) {
-        yield { type: 'session', sessionId: `s-${ number }` };
+        yield { type: 'session', sessionId: `s-${number}` };
 
         for (const text of texts) {
             yield { type: 'text', delta: text, done: true };
@@ -54,7 +67,7 @@ function says(...texts: string[]): Script {
 /** A turn that waits for `gate` (or the run's stop), then gives `answer` as its final message and ends. */
 function answers(gate: Latch, answer: string): Script {
     return async function* ({ number, signal }) {
-        yield { type: 'session', sessionId: `s-${ number }` };
+        yield { type: 'session', sessionId: `s-${number}` };
         await gate.wait(signal);
         yield { type: 'text', delta: answer, done: true };
         yield { type: 'done', result: answer };
@@ -74,7 +87,12 @@ async function setup(overrides: Parameters<typeof startHarness>[0] = {}) {
         yield* (route ? route[1] : says('Done'))(turn);
     });
     // The same scripts stand in for Claude Code, the agent with a compact command, for a thread that names it.
-    const h = await startHarness(overrides, { engines: new Map([['fake', engine], ['claude', engine]]) });
+    const h = await startHarness(overrides, {
+        engines: new Map([
+            ['fake', engine],
+            ['claude', engine],
+        ]),
+    });
 
     harnesses.push(h);
 
@@ -86,20 +104,31 @@ async function setup(overrides: Parameters<typeof startHarness>[0] = {}) {
     const on = (ending: string, script: Script) => routes.push([prompt => prompt.endsWith(ending), script]);
     const onPrompt = (matches: (prompt: string) => boolean, script: Script) => routes.push([matches, script]);
     /** Runs a tool of `run` as its agent would: the very definition its turn gets. */
-    const exec = async (run: Run, name: string, input: Record<string, unknown> = {}, signal = new AbortController().signal): Promise<any> => {
-        const tool = toolsFor({ store, runs, threads }, run, runs.modeOf(run)).find(candidate => candidate.name === name);
+    const exec = async (
+        run: Run,
+        name: string,
+        input: Record<string, unknown> = {},
+        signal = new AbortController().signal
+    ): Promise<any> => {
+        const tool = toolsFor({ store, runs, threads }, run, runs.modeOf(run)).find(
+            candidate => candidate.name === name
+        );
 
         if (!tool) {
-            throw new Error(`${ run.name } has no ${ name } tool`);
+            throw new Error(`${run.name} has no ${name} tool`);
         }
 
         return tool.execute(input, signal);
     };
     /** The notices of threads that stopped that reached the chat's orchestrator, oldest first: each is the threads of one message. */
-    const noticesTo = (chatId: string): ThreadNotice[][] => bodies(runOf(chatId).id).flatMap(body => (body.kind === 'user' && body.from?.kind === 'threadNotice' ? [body.from.threads] : []));
+    const noticesTo = (chatId: string): ThreadNotice[][] =>
+        bodies(runOf(chatId).id).flatMap(body =>
+            body.kind === 'user' && body.from?.kind === 'threadNotice' ? [body.from.threads] : []
+        );
     const turnOf = (ending: string) => engine.turns.find(turn => turn.prompt.endsWith(ending));
     /** Waits until the turn of the chat's message that ends with `ending` runs. */
-    const running = (chatId: string, ending: string) => waitFor(() => turnOf(ending) && runOf(chatId).status === 'running', `the turn on "${ ending }"`);
+    const running = (chatId: string, ending: string) =>
+        waitFor(() => turnOf(ending) && runOf(chatId).status === 'running', `the turn on "${ending}"`);
 
     /** A chat the person starts with `text`, whose first turn holds until `gate` is released; resolves once it runs. */
     const root = async (text: string, gate: Latch, fields: Record<string, unknown> = {}) => {
@@ -113,37 +142,90 @@ async function setup(overrides: Parameters<typeof startHarness>[0] = {}) {
     };
 
     /** A thread `caller` starts on `prompt`, whose turn runs `script` (a held turn by default); resolves once that turn runs, or ends with `settled`. */
-    const spawn = async (caller: Run, prompt: string, script: Script = held(latch()), extra: Record<string, unknown> = {}) => {
+    const spawn = async (
+        caller: Run,
+        prompt: string,
+        script: Script = held(latch()),
+        extra: Record<string, unknown> = {}
+    ) => {
         on(prompt, script);
 
         const result = await exec(caller, 'thread_spawn', { prompt, ...extra });
 
-        await waitFor(() => turnOf(prompt), `the thread on "${ prompt }" to start`);
+        await waitFor(() => turnOf(prompt), `the thread on "${prompt}" to start`);
 
-        return { ...result, run: () => runOf(result.threadId) } as { threadId: string; title: string; state: string; note: string; worktree?: { path: string; branch: string; base: string }; run: () => Run };
+        return { ...result, run: () => runOf(result.threadId) } as {
+            threadId: string;
+            title: string;
+            state: string;
+            note: string;
+            worktree?: { path: string; branch: string; base: string };
+            run: () => Run;
+        };
     };
 
-    return { h, engine, project, store, chatOf, runOf, bodies, on, onPrompt, exec, noticesTo, turnOf, running, root, spawn };
+    return {
+        h,
+        engine,
+        project,
+        store,
+        chatOf,
+        runOf,
+        bodies,
+        on,
+        onPrompt,
+        exec,
+        noticesTo,
+        turnOf,
+        running,
+        root,
+        spawn,
+    };
 }
 
 const fromChat = (chat: Chat): MessageSource => ({ kind: 'thread', chatId: chat.id, title: chat.title });
-const told = (sender: Chat, text: string) => `[Message from thread "${ sender.title }" (${ sender.id })]\n\n${ text }`;
+const told = (sender: Chat, text: string) => `[Message from thread "${sender.title}" (${sender.id})]\n\n${text}`;
 
 describe('thread_spawn', () => {
-    test('makes a chat below the caller\'s whose first message comes from the caller, and starts it on the caller\'s agent, model, level and mode', async () => {
+    test("makes a chat below the caller's whose first message comes from the caller, and starts it on the caller's agent, model, level and mode", async () => {
         const { h, chatOf, runOf, bodies, exec, turnOf, root, spawn } = await setup();
         const parent = await root('Plan the release', latch(), { model: 'big', effort: 'high', mode: 'semi' });
         const thread = await spawn(parent.run, 'Look into the cache\nand report what you find');
 
-        expect(thread).toEqual({ threadId: expect.stringMatching(/^cht_/), title: 'Look into the cache', state: 'working', note: expect.stringContaining('Do not poll'), run: expect.any(Function) });
-        expect(chatOf(thread.threadId)).toMatchObject({ parentChatId: parent.chat.id, projectId: parent.chat.projectId, title: 'Look into the cache', mode: 'semi', engine: 'fake', model: 'big', effort: 'high' });
+        expect(thread).toEqual({
+            threadId: expect.stringMatching(/^cht_/),
+            title: 'Look into the cache',
+            state: 'working',
+            note: expect.stringContaining('Do not poll'),
+            run: expect.any(Function),
+        });
+        expect(chatOf(thread.threadId)).toMatchObject({
+            parentChatId: parent.chat.id,
+            projectId: parent.chat.projectId,
+            title: 'Look into the cache',
+            mode: 'semi',
+            engine: 'fake',
+            model: 'big',
+            effort: 'high',
+        });
 
         const run = thread.run();
 
         // Its own root run, not a child of the caller's.
-        expect(run).toMatchObject({ chatId: thread.threadId, rootRunId: run.id, role: 'orchestrator', engine: 'fake', model: 'big', effort: 'high' });
+        expect(run).toMatchObject({
+            chatId: thread.threadId,
+            rootRunId: run.id,
+            role: 'orchestrator',
+            engine: 'fake',
+            model: 'big',
+            effort: 'high',
+        });
         expect(run.parentRunId).toBeUndefined();
-        expect(bodies(run.id)[0]).toEqual({ kind: 'user', text: 'Look into the cache\nand report what you find', from: fromChat(parent.chat) });
+        expect(bodies(run.id)[0]).toEqual({
+            kind: 'user',
+            text: 'Look into the cache\nand report what you find',
+            from: fromChat(parent.chat),
+        });
         expect(turnOf('and report what you find')).toMatchObject({
             prompt: 'Follow clowdy:orchestrate. Mode: semi-manual\n\nLook into the cache\nand report what you find',
             model: 'big',
@@ -156,7 +238,11 @@ describe('thread_spawn', () => {
         expect(bodies(parent.run.id).filter(body => body.kind === 'user')).toHaveLength(1);
 
         // A title is the chat's own; a model of its own leaves the caller's level behind; a mode of its own.
-        const named = await spawn(parent.run, 'Audit the logs', says('Audited'), { title: 'Log audit', model: 'small', mode: 'autopilot' });
+        const named = await spawn(parent.run, 'Audit the logs', says('Audited'), {
+            title: 'Log audit',
+            model: 'small',
+            mode: 'autopilot',
+        });
 
         await waitFor(() => named.run().status === 'succeeded', 'the named thread to finish');
         expect(chatOf(named.threadId)).toMatchObject({ title: 'Log audit', mode: 'autopilot', model: 'small' });
@@ -165,7 +251,7 @@ describe('thread_spawn', () => {
         expect(h.run(parent.run.id).status).toBe('running');
     });
 
-    test('works in the folder of its parent\'s chat, and the run\'s own cwd still wins', async () => {
+    test("works in the folder of its parent's chat, and the run's own cwd still wins", async () => {
         const { h, engine, chatOf, on, turnOf, spawn } = await setup();
         const parentDir = tempDir('clowdy-thread-folders');
 
@@ -173,16 +259,22 @@ describe('thread_spawn', () => {
             mkdirSync(join(parentDir, name));
         }
 
-        const { project } = h.ok('project.add', { name: 'Shop', folders: ['web', 'api'].map(name => join(parentDir, name)) });
+        const { project } = h.ok('project.add', {
+            name: 'Shop',
+            folders: ['web', 'api'].map(name => join(parentDir, name)),
+        });
         const [web, api] = project.folders as { id: string; path: string }[];
         const inApi = h.ok('chat.create', { projectId: project.id, folderId: api.id }).chat as Chat;
         const inMain = h.ok('chat.create', { projectId: project.id }).chat as Chat;
         const runOfChat = (chatId: string) => h.run(chatOf(chatId).orchestratorRunId as string);
 
-        for (const [chat, text] of [[inApi, 'Plan in the api'], [inMain, 'Plan in the web']] as const) {
+        for (const [chat, text] of [
+            [inApi, 'Plan in the api'],
+            [inMain, 'Plan in the web'],
+        ] as const) {
             on(text, held(latch()));
             h.ok('chat.send', { chatId: chat.id, text });
-            await waitFor(() => turnOf(text), `the turn on "${ text }" to start`);
+            await waitFor(() => turnOf(text), `the turn on "${text}" to start`);
         }
 
         const threadOfApi = await spawn(runOfChat(inApi.id), 'Look into the api');
@@ -208,42 +300,67 @@ describe('thread_spawn', () => {
         expect(getRunWork(store.db, thread.run().id).cwd).toBe(folder);
         await waitFor(() => thread.run().status === 'running', 'the thread to run');
 
-        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Nope', cwd: 'relative/path' })).rejects.toThrow('cwd must be the absolute path of an existing folder: relative/path');
-        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Nope', cwd: join(folder, 'missing') })).rejects.toThrow(/absolute path of an existing folder/);
-        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Nope', engine: 'fake' })).rejects.toThrow(/fake engine is not available to agents/);
-        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Nope', engine: 'nobody' })).rejects.toThrow(/not available in this daemon/);
+        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Nope', cwd: 'relative/path' })).rejects.toThrow(
+            'cwd must be the absolute path of an existing folder: relative/path'
+        );
+        await expect(
+            exec(parent.run, 'thread_spawn', { prompt: 'Nope', cwd: join(folder, 'missing') })
+        ).rejects.toThrow(/absolute path of an existing folder/);
+        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Nope', engine: 'fake' })).rejects.toThrow(
+            /fake engine is not available to agents/
+        );
+        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Nope', engine: 'nobody' })).rejects.toThrow(
+            /not available in this daemon/
+        );
         await expect(exec(parent.run, 'thread_spawn', {})).rejects.toThrow(/Invalid input for thread_spawn/);
 
-        expect((await exec(parent.run, 'thread_list')).threads.map((entry: { threadId: string }) => entry.threadId)).toEqual([thread.threadId]);
+        expect(
+            (await exec(parent.run, 'thread_list')).threads.map((entry: { threadId: string }) => entry.threadId)
+        ).toEqual([thread.threadId]);
     });
 
-    test('assigns the thread\'s run to its tasks and links its chat, refuses a task another run works on, and lets a chat started from a task hand it on', async () => {
+    test("assigns the thread's run to its tasks and links its chat, refuses a task another run works on, and lets a chat started from a task hand it on", async () => {
         const { h, store, chatOf, exec, root, spawn, running, on } = await setup();
         const parent = await root('Plan the release', latch());
         const { task: a } = await exec(parent.run, 'task_create', { title: 'A' });
         const { task: b } = await exec(parent.run, 'task_create', { title: 'B', dependsOn: [a.key] });
         const first = await spawn(parent.run, 'Do A', held(latch()), { tasks: [a.key] });
 
-        expect(store.db.query('SELECT run_id, relation FROM run_task_links WHERE task_id = ? AND relation = \'assigned\'').all(a.id)).toEqual([{ run_id: first.run().id, relation: 'assigned' }]);
-        expect(store.db.query('SELECT chat_id FROM chat_task_links WHERE task_id = ? ORDER BY rowid').all(a.id)).toContainEqual({ chat_id: first.threadId });
+        expect(
+            store.db
+                .query("SELECT run_id, relation FROM run_task_links WHERE task_id = ? AND relation = 'assigned'")
+                .all(a.id)
+        ).toEqual([{ run_id: first.run().id, relation: 'assigned' }]);
+        expect(
+            store.db.query('SELECT chat_id FROM chat_task_links WHERE task_id = ? ORDER BY rowid').all(a.id)
+        ).toContainEqual({ chat_id: first.threadId });
         await waitFor(() => first.run().status === 'running', 'the thread on A to run');
         expect((await exec(parent.run, 'task_get', { taskId: a.key })).task.category).toBe('active');
 
         // A second thread on the same task would do the work twice.
         const twice = exec(parent.run, 'thread_spawn', { prompt: 'Do A again', tasks: [a.key] });
 
-        await expect(twice).rejects.toMatchObject({ code: 'already_running', message: expect.stringContaining(`Task ${ a.key } already has an active run`) });
+        await expect(twice).rejects.toMatchObject({
+            code: 'already_running',
+            message: expect.stringContaining(`Task ${a.key} already has an active run`),
+        });
 
         // A task whose dependency is not Done makes the thread wait.
         const waiting = await exec(parent.run, 'thread_spawn', { prompt: 'Do B', tasks: [b.key] });
 
         expect(waiting.state).toBe('working');
-        expect(h.run(chatOf(waiting.threadId).orchestratorRunId as string)).toMatchObject({ status: 'blocked', statusReason: `Waiting for ${ a.key }` });
+        expect(h.run(chatOf(waiting.threadId).orchestratorRunId as string)).toMatchObject({
+            status: 'blocked',
+            statusReason: `Waiting for ${a.key}`,
+        });
 
         // The run of a chat started from a task may give the task to a thread of its own; then the thread has it.
         const { task: c } = await exec(parent.run, 'task_create', { title: 'C' });
 
-        on(`This chat is bound to ${ c.key }; read it with \`clowdy task get ${ c.key }\`, do the work, and finish with a short report.`, held(latch()));
+        on(
+            `This chat is bound to ${c.key}; read it with \`clowdy task get ${c.key}\`, do the work, and finish with a short report.`,
+            held(latch())
+        );
 
         const started = h.ok('task.start', { taskId: c.id });
 
@@ -252,7 +369,9 @@ describe('thread_spawn', () => {
         const handed = await spawn(h.run(started.runId), 'Do C', held(latch()), { tasks: [c.key] });
 
         expect(handed.state).toBe('working');
-        await expect(exec(h.run(started.runId), 'thread_spawn', { prompt: 'Do C twice', tasks: [c.key] })).rejects.toMatchObject({ code: 'already_running' });
+        await expect(
+            exec(h.run(started.runId), 'thread_spawn', { prompt: 'Do C twice', tasks: [c.key] })
+        ).rejects.toMatchObject({ code: 'already_running' });
     });
 });
 
@@ -263,7 +382,9 @@ describe('thread_spawn on an archived task', () => {
         const { task } = await exec(parent.run, 'task_create', { title: 'Finished', status: 'done' });
 
         await exec(parent.run, 'task_archive', { taskId: [task.key] });
-        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Do it again', tasks: [task.key] })).rejects.toMatchObject({ code: 'invalid', message: `Task ${ task.key } is archived: restore it first` });
+        await expect(
+            exec(parent.run, 'thread_spawn', { prompt: 'Do it again', tasks: [task.key] })
+        ).rejects.toMatchObject({ code: 'invalid', message: `Task ${task.key} is archived: restore it first` });
         expect((await exec(parent.run, 'thread_list')).threads).toEqual([]);
 
         h.ok('task.unarchive', { taskId: task.id });
@@ -286,30 +407,48 @@ describe('thread_tell', () => {
         engine.steerAnswer = () => true;
 
         // Steer, the default: the running turn takes it, and the stream shows it where the agent got it.
-        expect(await exec(parent.run, 'thread_tell', { thread: thread.threadId, message: 'Also check the footer' })).toEqual({ delivery: 'queued' });
+        expect(
+            await exec(parent.run, 'thread_tell', { thread: thread.threadId, message: 'Also check the footer' })
+        ).toEqual({ delivery: 'queued' });
         await waitFor(() => users().length === 2, 'the steer to reach the stream');
         expect(engine.steered).toEqual([told(parent.chat, 'Also check the footer')]);
         expect(users()[1]).toEqual({ kind: 'user', text: 'Also check the footer', from: fromChat(parent.chat) });
         expect(chatOf(thread.threadId).queue).toBeUndefined();
 
         // Queue: it waits in the thread's queue with its sender, and is the next turn.
-        expect(await exec(parent.run, 'thread_tell', { thread: thread.threadId, message: 'Then the header', mode: 'queue' })).toEqual({ delivery: 'queued' });
-        expect(chatOf(thread.threadId).queue).toEqual([{
-            id: expect.stringMatching(/^que_/),
-            mode: 'queue',
-            text: 'Then the header',
-            content: told(parent.chat, 'Then the header'),
-            from: fromChat(parent.chat),
-            createdAt: expect.any(Number),
-        }]);
+        expect(
+            await exec(parent.run, 'thread_tell', {
+                thread: thread.threadId,
+                message: 'Then the header',
+                mode: 'queue',
+            })
+        ).toEqual({ delivery: 'queued' });
+        expect(chatOf(thread.threadId).queue).toEqual([
+            {
+                id: expect.stringMatching(/^que_/),
+                mode: 'queue',
+                text: 'Then the header',
+                content: told(parent.chat, 'Then the header'),
+                from: fromChat(parent.chat),
+                createdAt: expect.any(Number),
+            },
+        ]);
         gate.release();
-        await waitFor(() => engine.turns.some(turn => turn.prompt === told(parent.chat, 'Then the header')), 'the queued turn');
+        await waitFor(
+            () => engine.turns.some(turn => turn.prompt === told(parent.chat, 'Then the header')),
+            'the queued turn'
+        );
         await waitFor(() => thread.run().status === 'succeeded', 'the thread to rest');
         expect(users()[2]).toEqual({ kind: 'user', text: 'Then the header', from: fromChat(parent.chat) });
 
         // At rest: a turn starts on it at once.
-        expect(await exec(parent.run, 'thread_tell', { thread: thread.threadId, message: 'One more thing' })).toEqual({ delivery: 'started' });
-        await waitFor(() => engine.turns.some(turn => turn.prompt === told(parent.chat, 'One more thing')), 'the turn at rest');
+        expect(await exec(parent.run, 'thread_tell', { thread: thread.threadId, message: 'One more thing' })).toEqual({
+            delivery: 'started',
+        });
+        await waitFor(
+            () => engine.turns.some(turn => turn.prompt === told(parent.chat, 'One more thing')),
+            'the turn at rest'
+        );
         expect(users()[3]).toEqual({ kind: 'user', text: 'One more thing', from: fromChat(parent.chat) });
     });
 
@@ -319,40 +458,68 @@ describe('thread_tell', () => {
         const first = await spawn(parent.run, 'First job', held(latch()));
         const second = await spawn(parent.run, 'Second job', held(latch()));
 
-        await waitFor(() => first.run().status === 'running' && second.run().status === 'running', 'both threads to run');
+        await waitFor(
+            () => first.run().status === 'running' && second.run().status === 'running',
+            'both threads to run'
+        );
 
         // Up to the busy parent: it waits in the parent's queue, from the thread.
-        expect(await exec(first.run(), 'thread_tell', { thread: parent.chat.id, message: 'Found a bug', mode: 'queue' })).toEqual({ delivery: 'queued' });
-        expect(chatOf(parent.chat.id).queue?.[0]).toMatchObject({ text: 'Found a bug', content: told(chatOf(first.threadId), 'Found a bug'), from: fromChat(chatOf(first.threadId)) });
+        expect(
+            await exec(first.run(), 'thread_tell', { thread: parent.chat.id, message: 'Found a bug', mode: 'queue' })
+        ).toEqual({ delivery: 'queued' });
+        expect(chatOf(parent.chat.id).queue?.[0]).toMatchObject({
+            text: 'Found a bug',
+            content: told(chatOf(first.threadId), 'Found a bug'),
+            from: fromChat(chatOf(first.threadId)),
+        });
 
         // Across to a sibling.
-        expect(await exec(first.run(), 'thread_tell', { thread: second.threadId, message: 'Use the new API', mode: 'queue' })).toEqual({ delivery: 'queued' });
-        expect(chatOf(second.threadId).queue?.[0]).toMatchObject({ text: 'Use the new API', from: fromChat(chatOf(first.threadId)) });
+        expect(
+            await exec(first.run(), 'thread_tell', {
+                thread: second.threadId,
+                message: 'Use the new API',
+                mode: 'queue',
+            })
+        ).toEqual({ delivery: 'queued' });
+        expect(chatOf(second.threadId).queue?.[0]).toMatchObject({
+            text: 'Use the new API',
+            from: fromChat(chatOf(first.threadId)),
+        });
 
         const { chat: stranger } = h.ok('chat.create', { projectId: project.id, title: 'Somebody else' });
 
-        await expect(exec(first.run(), 'thread_tell', { thread: stranger.id, message: 'Hi' })).rejects.toThrow(`Chat ${ stranger.id } is not in your thread tree`);
-        await expect(exec(first.run(), 'thread_tell', { thread: first.threadId, message: 'Hi' })).rejects.toThrow('That is your own chat');
-        await expect(exec(first.run(), 'thread_tell', { thread: 'cht_nope', message: 'Hi' })).rejects.toThrow('Thread cht_nope does not exist');
+        await expect(exec(first.run(), 'thread_tell', { thread: stranger.id, message: 'Hi' })).rejects.toThrow(
+            `Chat ${stranger.id} is not in your thread tree`
+        );
+        await expect(exec(first.run(), 'thread_tell', { thread: first.threadId, message: 'Hi' })).rejects.toThrow(
+            'That is your own chat'
+        );
+        await expect(exec(first.run(), 'thread_tell', { thread: 'cht_nope', message: 'Hi' })).rejects.toThrow(
+            'Thread cht_nope does not exist'
+        );
 
         // An archived thread takes no messages from threads.
         const done = await spawn(parent.run, 'Short job', says('Short answer'));
 
         await waitFor(() => done.run().status === 'succeeded', 'the short thread to finish');
         h.ok('chat.setArchived', { chatId: done.threadId, archived: true });
-        await expect(exec(parent.run, 'thread_tell', { thread: done.threadId, message: 'Hi' })).rejects.toThrow(/is archived and takes no messages from threads/);
+        await expect(exec(parent.run, 'thread_tell', { thread: done.threadId, message: 'Hi' })).rejects.toThrow(
+            /is archived and takes no messages from threads/
+        );
         expect(chatOf(done.threadId).archivedAt).toBeGreaterThan(0);
 
         // A stopped orchestrator whose session still makes a call starts nothing.
         h.ok('run.cancel', { runId: second.run().id });
-        await expect(exec(second.run(), 'thread_tell', { thread: parent.chat.id, message: 'Late' })).rejects.toThrow(/is cancelled and cannot start threads or message them/);
+        await expect(exec(second.run(), 'thread_tell', { thread: parent.chat.id, message: 'Late' })).rejects.toThrow(
+            /is cancelled and cannot start threads or message them/
+        );
         // The short thread's notice may wait there too; of the threads' messages only the first did.
         expect(chatOf(parent.chat.id).queue?.filter(item => item.from?.kind === 'thread')).toHaveLength(1);
     });
 });
 
 describe('thread_stop', () => {
-    test('stops a thread below the caller as the person\'s Stop does, holds its queue, leaves its own threads going, and refuses one that is not below', async () => {
+    test("stops a thread below the caller as the person's Stop does, holds its queue, leaves its own threads going, and refuses one that is not below", async () => {
         const { chatOf, exec, root, spawn } = await setup();
         const parent = await root('Plan the release', latch());
         const child = await spawn(parent.run, 'Child job', held(latch()));
@@ -365,18 +532,32 @@ describe('thread_stop', () => {
         await exec(parent.run, 'thread_tell', { thread: child.threadId, message: 'Waiting message', mode: 'queue' });
 
         // Neither a chat above the caller nor the caller itself is below it.
-        await expect(exec(grandchild.run(), 'thread_stop', { thread: child.threadId })).rejects.toThrow(/is not below you/);
+        await expect(exec(grandchild.run(), 'thread_stop', { thread: child.threadId })).rejects.toThrow(
+            /is not below you/
+        );
         await expect(exec(child.run(), 'thread_stop', { thread: child.threadId })).rejects.toThrow(/is not below you/);
 
-        expect(await exec(parent.run, 'thread_stop', { thread: child.threadId })).toEqual({ stopped: true, state: 'stopped' });
+        expect(await exec(parent.run, 'thread_stop', { thread: child.threadId })).toEqual({
+            stopped: true,
+            state: 'stopped',
+        });
         await waitFor(() => child.run().status === 'cancelled', 'the child to stop');
         expect(child.run().statusReason).toBe('Stopped by Plan the release');
-        expect(chatOf(child.threadId)).toMatchObject({ queuePaused: 'stopped', queue: [expect.objectContaining({ text: 'Waiting message' })] });
+        expect(chatOf(child.threadId)).toMatchObject({
+            queuePaused: 'stopped',
+            queue: [expect.objectContaining({ text: 'Waiting message' })],
+        });
 
         // Its thread goes on; the caller can stop that one too, and a thread whose work is over is left as it is.
         expect(grandchild.run().status).toBe('running');
-        expect(await exec(parent.run, 'thread_stop', { thread: child.threadId })).toEqual({ stopped: false, state: 'stopped' });
-        expect(await exec(parent.run, 'thread_stop', { thread: grandchild.threadId })).toEqual({ stopped: true, state: 'stopped' });
+        expect(await exec(parent.run, 'thread_stop', { thread: child.threadId })).toEqual({
+            stopped: false,
+            state: 'stopped',
+        });
+        expect(await exec(parent.run, 'thread_stop', { thread: grandchild.threadId })).toEqual({
+            stopped: true,
+            state: 'stopped',
+        });
         await waitFor(() => grandchild.run().status === 'cancelled', 'the grandchild to stop');
     });
 
@@ -389,20 +570,31 @@ describe('thread_stop', () => {
         const run = () => h.run(chatOf(waiting.threadId).orchestratorRunId as string);
 
         expect(run().status).toBe('blocked');
-        expect(await exec(parent.run, 'thread_stop', { thread: waiting.threadId })).toEqual({ stopped: true, state: 'stopped' });
+        expect(await exec(parent.run, 'thread_stop', { thread: waiting.threadId })).toEqual({
+            stopped: true,
+            state: 'stopped',
+        });
         expect(run()).toMatchObject({ status: 'cancelled', statusReason: 'Stopped by Plan the release' });
 
-        const fresh = createChat(store, { projectId: project.id, title: 'Not started yet', parentChatId: parent.chat.id });
+        const fresh = createChat(store, {
+            projectId: project.id,
+            title: 'Not started yet',
+            parentChatId: parent.chat.id,
+        });
 
         expect(await exec(parent.run, 'thread_stop', { thread: fresh.id })).toEqual({ stopped: false, state: 'new' });
     });
 });
 
 describe('thread_output and thread_log', () => {
-    test('output is the latest turn\'s final answer, cut at 4,000 characters; a failed thread says why; background work it keeps open is listed', async () => {
+    test("output is the latest turn's final answer, cut at 4,000 characters; a failed thread says why; background work it keeps open is listed", async () => {
         const { h, engine, exec, root, spawn, on } = await setup();
         const parent = await root('Plan the release', latch());
-        const answered = await spawn(parent.run, 'Check the cache', says(`First I looked around. ${ 'Still looking. '.repeat(300) }`, 'The cache is fine.'));
+        const answered = await spawn(
+            parent.run,
+            'Check the cache',
+            says(`First I looked around. ${'Still looking. '.repeat(300)}`, 'The cache is fine.')
+        );
 
         // Its final answer, whole: what it said on the way, however long, is not part of it.
         await waitFor(() => answered.run().status === 'succeeded', 'the thread to answer');
@@ -417,33 +609,46 @@ describe('thread_output and thread_log', () => {
         // Only what the latest turn said.
         on('And the database?', says('The database is fine too.'));
         await exec(parent.run, 'thread_tell', { thread: answered.threadId, message: 'And the database?' });
-        await waitFor(() => engine.turns.some(turn => turn.prompt.endsWith('And the database?')) && answered.run().status === 'succeeded', 'the second answer');
-        expect((await exec(parent.run, 'thread_output', { thread: answered.threadId })).text).toBe('The database is fine too.');
+        await waitFor(
+            () =>
+                engine.turns.some(turn => turn.prompt.endsWith('And the database?')) &&
+                answered.run().status === 'succeeded',
+            'the second answer'
+        );
+        expect((await exec(parent.run, 'thread_output', { thread: answered.threadId })).text).toBe(
+            'The database is fine too.'
+        );
 
         const long = await spawn(parent.run, 'Write a lot', says('x'.repeat(5000)));
 
         await waitFor(() => long.run().status === 'succeeded', 'the long answer');
-        expect((await exec(parent.run, 'thread_output', { thread: long.threadId })).text).toBe(`${ 'x'.repeat(4000) }\n\n[... 1000 more characters cut ...]`);
+        expect((await exec(parent.run, 'thread_output', { thread: long.threadId })).text).toBe(
+            `${'x'.repeat(4000)}\n\n[... 1000 more characters cut ...]`
+        );
 
         // A cut never splits an emoji (two UTF-16 units) in two: a lone half is not valid text, and a strict JSON reader refuses the result over it.
-        const emoji = `a${ '😀'.repeat(2500) }`;
+        const emoji = `a${'😀'.repeat(2500)}`;
 
-        expect(clipOutput(emoji)).toBe(`a${ '😀'.repeat(1999) }\n\n[... 1002 more characters cut ...]`);
-        expect(clip(`ab${ '😀'.repeat(5) }`, 4)).toBe('ab…');
+        expect(clipOutput(emoji)).toBe(`a${'😀'.repeat(1999)}\n\n[... 1002 more characters cut ...]`);
+        expect(clip(`ab${'😀'.repeat(5)}`, 4)).toBe('ab…');
 
         const failed = await spawn(parent.run, 'Fall over', async function* ({ number }) {
-            yield { type: 'session', sessionId: `s-${ number }` };
+            yield { type: 'session', sessionId: `s-${number}` };
             yield { type: 'error', message: 'The agent fell over' };
         });
 
         await waitFor(() => failed.run().status === 'failed', 'the thread to fail');
-        expect(await exec(parent.run, 'thread_output', { thread: failed.threadId })).toMatchObject({ state: 'failed', text: null, error: 'The agent fell over' });
+        expect(await exec(parent.run, 'thread_output', { thread: failed.threadId })).toMatchObject({
+            state: 'failed',
+            text: null,
+            error: 'The agent fell over',
+        });
 
         // A session that keeps background work open: idle, and its work is listed.
         engine.sendAnswer = () => true;
 
         const lingering = await spawn(parent.run, 'Start the build', async function* (turn) {
-            yield { type: 'session', sessionId: `s-${ turn.number }` };
+            yield { type: 'session', sessionId: `s-${turn.number}` };
             yield { type: 'text', delta: 'Started the build', done: true };
             yield { type: 'background', items: [{ id: 'bg-1', kind: 'command', title: 'bun run build' }] };
             yield { type: 'done', result: 'Started the build' };
@@ -451,27 +656,58 @@ describe('thread_output and thread_log', () => {
         });
 
         await waitFor(() => lingering.run().status === 'waiting_background', 'the thread to wait for its build');
-        expect(await exec(parent.run, 'thread_output', { thread: lingering.threadId })).toMatchObject({ state: 'idle', reason: 'Waiting for background work', text: 'Started the build', open: ['bun run build'] });
-        expect((await exec(parent.run, 'thread_list')).threads.find((entry: { threadId: string }) => entry.threadId === lingering.threadId)).toMatchObject({ state: 'idle', open: ['bun run build'] });
+        expect(await exec(parent.run, 'thread_output', { thread: lingering.threadId })).toMatchObject({
+            state: 'idle',
+            reason: 'Waiting for background work',
+            text: 'Started the build',
+            open: ['bun run build'],
+        });
+        expect(
+            (await exec(parent.run, 'thread_list')).threads.find(
+                (entry: { threadId: string }) => entry.threadId === lingering.threadId
+            )
+        ).toMatchObject({ state: 'idle', open: ['bun run build'] });
 
         // Its agent asks for permission in a turn it starts by itself while the session waits for the build: the run keeps its status, and the thread reads as asking,
         // with the reason that says so and the build still listed. Once the request is gone it is idle again.
         const withdraw = new AbortController();
-        const asked = h.daemon.services.runs.askApproval(lingering.run().id, { toolCallId: 'call-ls', title: 'Run ls', subject: { kind: 'command', command: 'ls' }, decisions: ['allow_once', 'reject'], key: 'command:ls' }, withdraw.signal);
+        const asked = h.daemon.services.runs.askApproval(
+            lingering.run().id,
+            {
+                toolCallId: 'call-ls',
+                title: 'Run ls',
+                subject: { kind: 'command', command: 'ls' },
+                decisions: ['allow_once', 'reject'],
+                key: 'command:ls',
+            },
+            withdraw.signal
+        );
 
         expect(lingering.run().status).toBe('waiting_background');
-        expect(await exec(parent.run, 'thread_output', { thread: lingering.threadId })).toMatchObject({ state: 'asking', reason: 'Waiting for you', open: ['bun run build'] });
-        expect((await exec(parent.run, 'thread_list')).threads.find((entry: { threadId: string }) => entry.threadId === lingering.threadId)).toMatchObject({ state: 'asking', open: ['bun run build'] });
+        expect(await exec(parent.run, 'thread_output', { thread: lingering.threadId })).toMatchObject({
+            state: 'asking',
+            reason: 'Waiting for you',
+            open: ['bun run build'],
+        });
+        expect(
+            (await exec(parent.run, 'thread_list')).threads.find(
+                (entry: { threadId: string }) => entry.threadId === lingering.threadId
+            )
+        ).toMatchObject({ state: 'asking', open: ['bun run build'] });
         withdraw.abort();
         expect(await asked).toBeUndefined();
-        expect(await exec(parent.run, 'thread_output', { thread: lingering.threadId })).toMatchObject({ state: 'idle', reason: 'Waiting for background work', open: ['bun run build'] });
+        expect(await exec(parent.run, 'thread_output', { thread: lingering.threadId })).toMatchObject({
+            state: 'idle',
+            reason: 'Waiting for background work',
+            open: ['bun run build'],
+        });
     });
 
     test('log shows the last lines with their numbers and who wrote each message', async () => {
         const { h, exec, root, spawn, on } = await setup();
         const parent = await root('Plan the release', latch());
         const thread = await spawn(parent.run, 'Check the tasks', async function* (turn) {
-            yield { type: 'session', sessionId: `s-${ turn.number }` };
+            yield { type: 'session', sessionId: `s-${turn.number}` };
             yield* turn.call('task_list');
             yield { type: 'text', delta: 'All clear\nnothing to do', done: true };
             yield { type: 'done', result: 'All clear' };
@@ -480,22 +716,34 @@ describe('thread_output and thread_log', () => {
         await waitFor(() => thread.run().status === 'succeeded', 'the thread to answer');
         on('Person here', says('Hello'));
         h.ok('chat.send', { chatId: thread.threadId, text: 'Person here' });
-        await waitFor(() => thread.run().status === 'succeeded' && h.run(thread.run().id).result === 'Hello', 'the answer to the person');
+        await waitFor(
+            () => thread.run().status === 'succeeded' && h.run(thread.run().id).result === 'Hello',
+            'the answer to the person'
+        );
 
         const { lines } = await exec(parent.run, 'thread_log', { thread: thread.threadId });
 
         expect(lines).toEqual([
-            `#1 thread "Plan the release" (${ parent.chat.id }): Check the tasks`,
+            `#1 thread "Plan the release" (${parent.chat.id}): Check the tasks`,
             '#2 tool task_list (done)',
             '#3 assistant: All clear nothing to do',
             '#4 person: Person here',
             '#5 assistant: Hello',
         ]);
-        expect(await exec(parent.run, 'thread_log', { thread: thread.threadId, limit: 2 })).toEqual({ threadId: thread.threadId, title: 'Check the tasks', state: 'idle', lines: lines.slice(3) });
-        await expect(exec(parent.run, 'thread_log', { thread: thread.threadId, limit: 101 })).rejects.toThrow(/Invalid input for thread_log/);
+        expect(await exec(parent.run, 'thread_log', { thread: thread.threadId, limit: 2 })).toEqual({
+            threadId: thread.threadId,
+            title: 'Check the tasks',
+            state: 'idle',
+            lines: lines.slice(3),
+        });
+        await expect(exec(parent.run, 'thread_log', { thread: thread.threadId, limit: 101 })).rejects.toThrow(
+            /Invalid input for thread_log/
+        );
 
         // The thread reads its parent's log too: any chat of the tree.
-        expect((await exec(thread.run(), 'thread_log', { thread: parent.chat.id })).lines[0]).toBe('#1 person: Plan the release');
+        expect((await exec(thread.run(), 'thread_log', { thread: parent.chat.id })).lines[0]).toBe(
+            '#1 person: Plan the release'
+        );
     });
 });
 
@@ -503,9 +751,12 @@ describe('thread_log and reasoning', () => {
     test('leaves out what the thread thought, and the limit counts the lines it shows', async () => {
         const { exec, root, spawn } = await setup();
         const parent = await root('Plan the release', latch());
-        const thought = (text: string): EngineEvent[] => [{ type: 'thought', delta: text, done: false }, { type: 'thought', delta: '', done: true }];
+        const thought = (text: string): EngineEvent[] => [
+            { type: 'thought', delta: text, done: false },
+            { type: 'thought', delta: '', done: true },
+        ];
         const thread = await spawn(parent.run, 'Check the tasks', async function* (turn) {
-            yield { type: 'session', sessionId: `s-${ turn.number }` };
+            yield { type: 'session', sessionId: `s-${turn.number}` };
             yield* thought('Let me look at the tasks first.');
             yield* turn.call('task_list');
             yield* thought('Nothing to do.');
@@ -519,14 +770,20 @@ describe('thread_log and reasoning', () => {
         const { lines } = await exec(parent.run, 'thread_log', { thread: thread.threadId });
 
         // Items 2, 4 and 5 are thoughts: the numbers keep their place in the stream.
-        expect(lines).toEqual([`#1 thread "Plan the release" (${ parent.chat.id }): Check the tasks`, '#3 tool task_list (done)', '#6 assistant: All clear']);
+        expect(lines).toEqual([
+            `#1 thread "Plan the release" (${parent.chat.id}): Check the tasks`,
+            '#3 tool task_list (done)',
+            '#6 assistant: All clear',
+        ]);
         // The two lines of the rest, though the last two items of the stream are a thought and a message.
-        expect((await exec(parent.run, 'thread_log', { thread: thread.threadId, limit: 2 })).lines).toEqual(lines.slice(1));
+        expect((await exec(parent.run, 'thread_log', { thread: thread.threadId, limit: 2 })).lines).toEqual(
+            lines.slice(1)
+        );
     });
 });
 
 describe('thread_list', () => {
-    test('lists the caller\'s own threads, or every chat below it with its depth and parent', async () => {
+    test("lists the caller's own threads, or every chat below it with its depth and parent", async () => {
         const { exec, root, spawn } = await setup();
         const parent = await root('Plan the release', latch());
         const a = await spawn(parent.run, 'Job A', held(latch()));
@@ -538,18 +795,43 @@ describe('thread_list', () => {
         const own = (await exec(parent.run, 'thread_list')).threads;
 
         expect(own).toEqual([
-            { threadId: a.threadId, title: 'Job A', parent: parent.chat.id, state: 'working', engine: 'fake', open: [], updatedAt: expect.stringMatching(/^\d{4}-\d\d-\d\dT/) },
-            { threadId: b.threadId, title: 'Job B', parent: parent.chat.id, state: 'idle', engine: 'fake', model: 'small', open: [], updatedAt: expect.any(String) },
+            {
+                threadId: a.threadId,
+                title: 'Job A',
+                parent: parent.chat.id,
+                state: 'working',
+                engine: 'fake',
+                open: [],
+                updatedAt: expect.stringMatching(/^\d{4}-\d\d-\d\dT/),
+            },
+            {
+                threadId: b.threadId,
+                title: 'Job B',
+                parent: parent.chat.id,
+                state: 'idle',
+                engine: 'fake',
+                model: 'small',
+                open: [],
+                updatedAt: expect.any(String),
+            },
         ]);
 
         const all = (await exec(parent.run, 'thread_list', { all: true })).threads;
 
-        expect(all.map((entry: { threadId: string; depth: number; parent: string }) => [entry.threadId, entry.depth, entry.parent])).toEqual([
+        expect(
+            all.map((entry: { threadId: string; depth: number; parent: string }) => [
+                entry.threadId,
+                entry.depth,
+                entry.parent,
+            ])
+        ).toEqual([
             [a.threadId, 1, parent.chat.id],
             [b.threadId, 1, parent.chat.id],
             [a1.threadId, 2, a.threadId],
         ]);
-        expect((await exec(a.run(), 'thread_list')).threads.map((entry: { threadId: string }) => entry.threadId)).toEqual([a1.threadId]);
+        expect(
+            (await exec(a.run(), 'thread_list')).threads.map((entry: { threadId: string }) => entry.threadId)
+        ).toEqual([a1.threadId]);
         expect((await exec(a1.run(), 'thread_list', { all: true })).threads).toEqual([]);
     });
 });
@@ -567,7 +849,9 @@ describe('thread limits', () => {
         await waitFor(() => grandchild.run().status === 'running', 'the grandchild to run');
         await expect(exec(grandchild.run(), 'thread_spawn', { prompt: 'Too deep' })).rejects.toMatchObject({
             code: 'conflict',
-            message: expect.stringContaining('Threads nest 3 levels deep at most, counting the chat the person started, and this chat is level 3'),
+            message: expect.stringContaining(
+                'Threads nest 3 levels deep at most, counting the chat the person started, and this chat is level 3'
+            ),
         });
         expect((await exec(grandchild.run(), 'thread_list')).threads).toEqual([]);
     });
@@ -578,7 +862,9 @@ describe('thread limits', () => {
         const first = await spawn(parent.run, 'First job', held(latch()));
 
         createChat(store, { projectId: project.id, title: 'Not started yet', parentChatId: parent.chat.id });
-        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Third job' })).rejects.toThrow('This chat has 2 threads at work, the most it may have at once; a thread whose turn is over counts while its background work runs. Start the next when one is done (you are told each time one stops)');
+        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Third job' })).rejects.toThrow(
+            'This chat has 2 threads at work, the most it may have at once; a thread whose turn is over counts while its background work runs. Start the next when one is done (you are told each time one stops)'
+        );
 
         await exec(parent.run, 'thread_stop', { thread: first.threadId });
         await waitFor(() => first.run().status === 'cancelled', 'the first thread to stop');
@@ -592,8 +878,13 @@ describe('thread limits', () => {
         const first = await spawn(parent.run, 'First job', says('One'));
         const second = await spawn(parent.run, 'Second job', says('Two'));
 
-        await waitFor(() => first.run().status === 'succeeded' && second.run().status === 'succeeded', 'both threads to finish');
-        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Third job' })).rejects.toThrow('This chat has started 2 threads, the most one chat may start');
+        await waitFor(
+            () => first.run().status === 'succeeded' && second.run().status === 'succeeded',
+            'both threads to finish'
+        );
+        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Third job' })).rejects.toThrow(
+            'This chat has started 2 threads, the most one chat may start'
+        );
     });
 });
 
@@ -614,9 +905,18 @@ describe('archive and delete', () => {
         gate.release();
         childGate.release();
         // The child answers its thread's notice ("Done"), and the parent hears of that answer last.
-        await waitFor(() => noticesTo(parent.chat.id).at(-1)?.some(notice => notice.chatId === child.threadId && notice.text === 'Done')
-            && [parent.run.id, child.run().id, grandchild.run().id].every(id => context.h.run(id).status === 'succeeded')
-            && !chatOf(parent.chat.id).queue && !chatOf(child.threadId).queue, 'the tree to finish');
+        await waitFor(
+            () =>
+                noticesTo(parent.chat.id)
+                    .at(-1)
+                    ?.some(notice => notice.chatId === child.threadId && notice.text === 'Done') &&
+                [parent.run.id, child.run().id, grandchild.run().id].every(
+                    id => context.h.run(id).status === 'succeeded'
+                ) &&
+                !chatOf(parent.chat.id).queue &&
+                !chatOf(child.threadId).queue,
+            'the tree to finish'
+        );
 
         return { ...context, parent, child, grandchild };
     }
@@ -636,23 +936,34 @@ describe('archive and delete', () => {
 
         // A message to the parent brings it to work again, and the thread it starts keeps the archive from happening.
         on('Again', async function* (turn) {
-            yield { type: 'session', sessionId: `s-${ turn.number }` };
+            yield { type: 'session', sessionId: `s-${turn.number}` };
             yield* turn.call('thread_spawn', { prompt: 'Busy job', title: 'Busy thread' });
             yield { type: 'done', result: 'Started it' };
         });
         on('Busy job', async function* ({ number, signal }) {
-            yield { type: 'session', sessionId: `s-${ number }` };
+            yield { type: 'session', sessionId: `s-${number}` };
             await untilAborted(signal);
         });
         h.ok('chat.send', { chatId: parent.chat.id, text: 'Again' });
-        await waitFor(() => h.run(parent.run.id).status === 'succeeded' && h.run(parent.run.id).result === 'Started it', 'the parent to start a thread');
+        await waitFor(
+            () => h.run(parent.run.id).status === 'succeeded' && h.run(parent.run.id).result === 'Started it',
+            'the parent to start a thread'
+        );
 
-        const busy = (await exec(h.run(parent.run.id), 'thread_list')).threads.find((entry: { title: string }) => entry.title === 'Busy thread');
+        const busy = (await exec(h.run(parent.run.id), 'thread_list')).threads.find(
+            (entry: { title: string }) => entry.title === 'Busy thread'
+        );
 
-        await waitFor(() => h.run(chatOf(busy.threadId).orchestratorRunId as string).status === 'running', 'the busy thread to run');
+        await waitFor(
+            () => h.run(chatOf(busy.threadId).orchestratorRunId as string).status === 'running',
+            'the busy thread to run'
+        );
         expect(h.send('chat.setArchived', { chatId: parent.chat.id, archived: true })).toMatchObject({
             ok: false,
-            error: { code: 'conflict', message: 'The thread "Busy thread" below this chat is still working. Stop it first.' },
+            error: {
+                code: 'conflict',
+                message: 'The thread "Busy thread" below this chat is still working. Stop it first.',
+            },
         });
         expect(ids.map(id => chatOf(id).archivedAt)).toEqual([undefined, archivedAt, archivedAt]);
         expect(chatOf(busy.threadId).archivedAt).toBeUndefined();
@@ -672,8 +983,16 @@ describe('archive and delete', () => {
             ['chat.deleted', child.threadId, [runIds[1]]],
             ['chat.deleted', parent.chat.id, [runIds[2]]],
         ]);
-        expect([parent.chat.id, child.threadId, grandchild.threadId].map(id => getChat(store.db, id))).toEqual([undefined, undefined, undefined]);
-        expect(store.db.query(`SELECT COUNT(*) AS n FROM runs WHERE id IN (${ runIds.map(() => '?').join(', ') })`).get(...runIds)).toEqual({ n: 0 });
+        expect([parent.chat.id, child.threadId, grandchild.threadId].map(id => getChat(store.db, id))).toEqual([
+            undefined,
+            undefined,
+            undefined,
+        ]);
+        expect(
+            store.db
+                .query(`SELECT COUNT(*) AS n FROM runs WHERE id IN (${runIds.map(() => '?').join(', ')})`)
+                .get(...runIds)
+        ).toEqual({ n: 0 });
     });
 
     test('a delete is refused while a thread below the chat works, naming it, and deletes nothing', async () => {
@@ -683,14 +1002,22 @@ describe('archive and delete', () => {
         const child = await spawn(parent.run, 'Long job', held(latch()), { title: 'Long thread' });
 
         gate.release();
-        await waitFor(() => h.run(parent.run.id).status === 'succeeded' && child.run().status === 'running', 'the parent to finish while its thread works');
+        await waitFor(
+            () => h.run(parent.run.id).status === 'succeeded' && child.run().status === 'running',
+            'the parent to finish while its thread works'
+        );
         expect(h.send('chat.delete', { chatId: parent.chat.id })).toMatchObject({
             ok: false,
-            error: { code: 'conflict', message: 'The thread "Long thread" below this chat is still working. Stop it first.' },
+            error: {
+                code: 'conflict',
+                message: 'The thread "Long thread" below this chat is still working. Stop it first.',
+            },
         });
         expect(chatOf(parent.chat.id)).toBeDefined();
         expect(chatOf(child.threadId)).toBeDefined();
-        expect(store.db.query('SELECT COUNT(*) AS n FROM chats WHERE parent_chat_id = ?').get(parent.chat.id)).toEqual({ n: 1 });
+        expect(store.db.query('SELECT COUNT(*) AS n FROM chats WHERE parent_chat_id = ?').get(parent.chat.id)).toEqual({
+            n: 1,
+        });
     });
 });
 
@@ -701,17 +1028,22 @@ describe('a scripted orchestrator', () => {
 
         engine.steerAnswer = () => true;
         on('Worker job', async function* ({ number, signal }) {
-            yield { type: 'session', sessionId: `s-${ number }` };
+            yield { type: 'session', sessionId: `s-${number}` };
             yield { type: 'text', delta: 'Working on it', done: true };
             await untilAborted(signal);
         });
         on('Coordinate the work', async function* (turn) {
-            yield { type: 'session', sessionId: `s-${ turn.number }` };
+            yield { type: 'session', sessionId: `s-${turn.number}` };
             results.spawned = yield* turn.call('thread_spawn', { prompt: 'Worker job', title: 'Worker' });
 
             const thread = results.spawned.threadId as string;
 
-            await waitFor(() => runOf(thread).status === 'running' && engine.turns.some(options => options.prompt.endsWith('Worker job')), 'the worker to run');
+            await waitFor(
+                () =>
+                    runOf(thread).status === 'running' &&
+                    engine.turns.some(options => options.prompt.endsWith('Worker job')),
+                'the worker to run'
+            );
             results.steer = yield* turn.call('thread_tell', { thread, message: 'Steer this' });
             await waitFor(() => engine.steered.length === 1, 'the steer to reach the worker');
             results.queue = yield* turn.call('thread_tell', { thread, message: 'Queue this', mode: 'queue' });
@@ -734,11 +1066,15 @@ describe('a scripted orchestrator', () => {
         expect(results.steer).toEqual({ delivery: 'queued' });
         expect(results.queue).toEqual({ delivery: 'queued' });
         expect(results.output).toMatchObject({ threadId: thread, title: 'Worker', state: 'working' });
-        expect(results.log.lines[0]).toBe(`#1 thread "Coordinate the work" (${ chat.id }): Worker job`);
-        expect(results.log.lines).toContain(`#3 thread "Coordinate the work" (${ chat.id }): Steer this`);
+        expect(results.log.lines[0]).toBe(`#1 thread "Coordinate the work" (${chat.id}): Worker job`);
+        expect(results.log.lines).toContain(`#3 thread "Coordinate the work" (${chat.id}): Steer this`);
         expect(results.stop).toEqual({ stopped: true, state: 'stopped' });
         expect(engine.steered).toEqual([told(parent, 'Steer this')]);
-        expect(chatOf(thread)).toMatchObject({ parentChatId: chat.id, queuePaused: 'stopped', queue: [expect.objectContaining({ text: 'Queue this', from: fromChat(parent) })] });
+        expect(chatOf(thread)).toMatchObject({
+            parentChatId: chat.id,
+            queuePaused: 'stopped',
+            queue: [expect.objectContaining({ text: 'Queue this', from: fromChat(parent) })],
+        });
         await waitFor(() => runOf(thread).status === 'cancelled', 'the worker to stop');
 
         // Each call is a tool card in the orchestrator's stream.
@@ -754,32 +1090,48 @@ describe('a scripted orchestrator', () => {
 });
 
 /** The line every notice ends with. */
-const RULE = 'Do not reply to this message just to acknowledge it, and do not message a thread unless you need something from it.';
+const RULE =
+    'Do not reply to this message just to acknowledge it, and do not message a thread unless you need something from it.';
 
 /** Long enough for the notice window that every test waits through to have passed several times over. */
 const QUIET_MS = 200;
 
-const finished = (chatId: string, title: string, text: string): ThreadNotice => ({ chatId, title, outcome: 'finished', text });
+const finished = (chatId: string, title: string, text: string): ThreadNotice => ({
+    chatId,
+    title,
+    outcome: 'finished',
+    text,
+});
 
 describe('notices to the parent', () => {
-    test('a thread\'s turn that ends tells its parent at rest once, with its final answer, and the parent starts a turn on it', async () => {
+    test("a thread's turn that ends tells its parent at rest once, with its final answer, and the parent starts a turn on it", async () => {
         const { h, engine, chatOf, exec, root, spawn, noticesTo, bodies } = await setup();
         const gate = latch();
         const parent = await root('Plan the release', gate);
         const threadGate = latch();
         const thread = await spawn(parent.run, 'Check the cache', answers(threadGate, 'The cache is fine'));
-        const content = `[Thread "Check the cache" (${ thread.threadId }) finished]\n\nThe cache is fine\n\n${ RULE }`;
+        const content = `[Thread "Check the cache" (${thread.threadId}) finished]\n\nThe cache is fine\n\n${RULE}`;
 
         gate.release();
         await waitFor(() => h.run(parent.run.id).status === 'succeeded', 'the parent to rest');
         threadGate.release();
-        await waitFor(() => engine.prompts.includes(content) && h.run(parent.run.id).status === 'succeeded', 'the parent\'s turn on the notice');
+        await waitFor(
+            () => engine.prompts.includes(content) && h.run(parent.run.id).status === 'succeeded',
+            "the parent's turn on the notice"
+        );
 
         // A notice has no words of its own: the stream draws it from `from`, and the agent reads the content.
-        expect(bodies(parent.run.id).filter(body => body.kind === 'user').at(-1)).toEqual({
+        expect(
+            bodies(parent.run.id)
+                .filter(body => body.kind === 'user')
+                .at(-1)
+        ).toEqual({
             kind: 'user',
             text: '',
-            from: { kind: 'threadNotice', threads: [finished(thread.threadId, 'Check the cache', 'The cache is fine')] },
+            from: {
+                kind: 'threadNotice',
+                threads: [finished(thread.threadId, 'Check the cache', 'The cache is fine')],
+            },
         });
         expect(engine.turns.find(turn => turn.prompt === content)?.resumeSessionId).toBe('s-1');
         expect(chatOf(parent.chat.id).queue).toBeUndefined();
@@ -787,11 +1139,16 @@ describe('notices to the parent', () => {
         expect(noticesTo(parent.chat.id)).toHaveLength(1);
         expect(h.run(parent.run.id)).toMatchObject({ status: 'succeeded', result: 'Done' });
         // The parent's log says how the thread stopped.
-        expect((await exec(thread.run(), 'thread_log', { thread: parent.chat.id })).lines.slice(-2)).toEqual(['#3 notice: "Check the cache" finished', '#4 assistant: Done']);
+        expect((await exec(thread.run(), 'thread_log', { thread: parent.chat.id })).lines.slice(-2)).toEqual([
+            '#3 notice: "Check the cache" finished',
+            '#4 assistant: Done',
+        ]);
     });
 
     test('two stops of one thread inside the window are one notice with the latest answer', async () => {
-        const { h, engine, root, spawn, on, noticesTo } = await setup({ timings: { ...SHORT_TIMINGS, noticeWindowMs: 500 } });
+        const { h, engine, root, spawn, on, noticesTo } = await setup({
+            timings: { ...SHORT_TIMINGS, noticeWindowMs: 500 },
+        });
         const gate = latch();
         const parent = await root('Plan the release', gate);
         const threadGate = latch();
@@ -801,18 +1158,31 @@ describe('notices to the parent', () => {
         gate.release();
         await waitFor(() => h.run(parent.run.id).status === 'succeeded', 'the parent to rest');
         threadGate.release();
-        await waitFor(() => thread.run().status === 'succeeded' && thread.run().result === 'First answer', 'the first answer');
+        await waitFor(
+            () => thread.run().status === 'succeeded' && thread.run().result === 'First answer',
+            'the first answer'
+        );
         h.ok('chat.send', { chatId: thread.threadId, text: 'Look again' });
-        await waitFor(() => thread.run().status === 'succeeded' && thread.run().result === 'Second answer', 'the second answer');
-        await waitFor(() => noticesTo(parent.chat.id).length > 0 && h.run(parent.run.id).status === 'succeeded', 'the notice');
+        await waitFor(
+            () => thread.run().status === 'succeeded' && thread.run().result === 'Second answer',
+            'the second answer'
+        );
+        await waitFor(
+            () => noticesTo(parent.chat.id).length > 0 && h.run(parent.run.id).status === 'succeeded',
+            'the notice'
+        );
         await Bun.sleep(600);
 
         expect(noticesTo(parent.chat.id)).toEqual([[finished(thread.threadId, 'Check the cache', 'Second answer')]]);
-        expect(engine.prompts.filter(prompt => prompt.includes('[Thread "Check the cache"'))).toEqual([`[Thread "Check the cache" (${ thread.threadId }) finished]\n\nSecond answer\n\n${ RULE }`]);
+        expect(engine.prompts.filter(prompt => prompt.includes('[Thread "Check the cache"'))).toEqual([
+            `[Thread "Check the cache" (${thread.threadId}) finished]\n\nSecond answer\n\n${RULE}`,
+        ]);
     });
 
     test('stops of two threads inside the window are one message with an entry for each', async () => {
-        const { h, engine, root, spawn, noticesTo } = await setup({ timings: { ...SHORT_TIMINGS, noticeWindowMs: 300 } });
+        const { h, engine, root, spawn, noticesTo } = await setup({
+            timings: { ...SHORT_TIMINGS, noticeWindowMs: 300 },
+        });
         const gate = latch();
         const parent = await root('Plan the release', gate);
         const gateA = latch();
@@ -824,18 +1194,26 @@ describe('notices to the parent', () => {
         await waitFor(() => h.run(parent.run.id).status === 'succeeded', 'the parent to rest');
         gateA.release();
         gateB.release();
-        await waitFor(() => noticesTo(parent.chat.id).length > 0 && h.run(parent.run.id).status === 'succeeded', 'the notice');
+        await waitFor(
+            () => noticesTo(parent.chat.id).length > 0 && h.run(parent.run.id).status === 'succeeded',
+            'the notice'
+        );
         await Bun.sleep(400);
 
         const [notice] = noticesTo(parent.chat.id);
-        const block = (entry: ThreadNotice) => `[Thread "${ entry.title }" (${ entry.chatId }) finished]\n\n${ entry.text }`;
+        const block = (entry: ThreadNotice) => `[Thread "${entry.title}" (${entry.chatId}) finished]\n\n${entry.text}`;
 
         expect(noticesTo(parent.chat.id)).toHaveLength(1);
-        expect([...notice].sort((x, y) => x.title.localeCompare(y.title))).toEqual([finished(a.threadId, 'Job A', 'A is done'), finished(b.threadId, 'Job B', 'B is done')]);
-        expect(engine.prompts).toContain(`Threads that stopped:\n\n${ block(notice[0]) }\n\n${ block(notice[1]) }\n\n${ RULE }`);
+        expect([...notice].sort((x, y) => x.title.localeCompare(y.title))).toEqual([
+            finished(a.threadId, 'Job A', 'A is done'),
+            finished(b.threadId, 'Job B', 'B is done'),
+        ]);
+        expect(engine.prompts).toContain(
+            `Threads that stopped:\n\n${block(notice[0])}\n\n${block(notice[1])}\n\n${RULE}`
+        );
     });
 
-    test('a thread whose session waits for background work says so with the work\'s titles, and its own report turn tells the parent again', async () => {
+    test("a thread whose session waits for background work says so with the work's titles, and its own report turn tells the parent again", async () => {
         const { h, engine, root, spawn, noticesTo } = await setup();
         const gate = latch();
         const begin = latch();
@@ -846,13 +1224,13 @@ describe('notices to the parent', () => {
 
         const parent = await root('Plan the release', gate);
         const thread = await spawn(parent.run, 'Start the build', async function* (turn) {
-            yield { type: 'session', sessionId: `s-${ turn.number }` };
+            yield { type: 'session', sessionId: `s-${turn.number}` };
             await turn.hold(begin);
             yield { type: 'text', delta: 'Started the build', done: true };
             yield { type: 'background', items: [{ id: 'bg-1', kind: 'command', title: 'bun run build' }] };
             yield { type: 'done', result: 'Started the build' };
 
-            if (!await turn.hold(build)) {
+            if (!(await turn.hold(build))) {
                 return;
             }
 
@@ -862,23 +1240,43 @@ describe('notices to the parent', () => {
             yield { type: 'done', result: 'The build passed' };
             await turn.hold(sessionEnd);
         });
-        const waiting = `[Thread "Start the build" (${ thread.threadId }) finished its turn and still has work running in the background: bun run build]\n\nStarted the build\n\nThis is not its final result; it will report again when that work finishes.\n\n${ RULE }`;
+        const waiting = `[Thread "Start the build" (${thread.threadId}) finished its turn and still has work running in the background: bun run build]\n\nStarted the build\n\nThis is not its final result; it will report again when that work finishes.\n\n${RULE}`;
 
         gate.release();
         await waitFor(() => h.run(parent.run.id).status === 'succeeded', 'the parent to rest');
         begin.release();
-        await waitFor(() => engine.prompts.includes(waiting) && h.run(parent.run.id).status === 'succeeded', 'the first notice');
+        await waitFor(
+            () => engine.prompts.includes(waiting) && h.run(parent.run.id).status === 'succeeded',
+            'the first notice'
+        );
         expect(thread.run().status).toBe('waiting_background');
-        expect(noticesTo(parent.chat.id)).toEqual([[{ chatId: thread.threadId, title: 'Start the build', outcome: 'finished', text: 'Started the build', background: ['bun run build'] }]]);
+        expect(noticesTo(parent.chat.id)).toEqual([
+            [
+                {
+                    chatId: thread.threadId,
+                    title: 'Start the build',
+                    outcome: 'finished',
+                    text: 'Started the build',
+                    background: ['bun run build'],
+                },
+            ],
+        ]);
 
         build.release();
-        await waitFor(() => noticesTo(parent.chat.id).length === 2 && h.run(parent.run.id).status === 'succeeded', 'the second notice');
-        expect(noticesTo(parent.chat.id)[1]).toEqual([finished(thread.threadId, 'Start the build', 'The build passed')]);
-        expect(engine.prompts).toContain(`[Thread "Start the build" (${ thread.threadId }) finished]\n\nThe build passed\n\n${ RULE }`);
+        await waitFor(
+            () => noticesTo(parent.chat.id).length === 2 && h.run(parent.run.id).status === 'succeeded',
+            'the second notice'
+        );
+        expect(noticesTo(parent.chat.id)[1]).toEqual([
+            finished(thread.threadId, 'Start the build', 'The build passed'),
+        ]);
+        expect(engine.prompts).toContain(
+            `[Thread "Start the build" (${thread.threadId}) finished]\n\nThe build passed\n\n${RULE}`
+        );
 
         // The session's end after the report is no turn of its own: the parent was told already.
         sessionEnd.release();
-        await waitFor(() => thread.run().status === 'succeeded', 'the thread\'s session to end');
+        await waitFor(() => thread.run().status === 'succeeded', "the thread's session to end");
         await Bun.sleep(QUIET_MS);
         expect(noticesTo(parent.chat.id)).toHaveLength(2);
     });
@@ -893,7 +1291,7 @@ describe('notices to the parent', () => {
 
         const parent = await root('Plan the release', gate);
         const thread = await spawn(parent.run, 'Start the build', async function* (turn) {
-            yield { type: 'session', sessionId: `s-${ turn.number }` };
+            yield { type: 'session', sessionId: `s-${turn.number}` };
             await turn.hold(begin);
             yield { type: 'text', delta: 'Started the build', done: true };
             yield { type: 'background', items: [{ id: 'bg-1', kind: 'command', title: 'bun run build' }] };
@@ -905,15 +1303,20 @@ describe('notices to the parent', () => {
         gate.release();
         await waitFor(() => h.run(parent.run.id).status === 'succeeded', 'the parent to rest');
         begin.release();
-        await waitFor(() => noticesTo(parent.chat.id).length === 1 && h.run(parent.run.id).status === 'succeeded', 'the first notice');
+        await waitFor(
+            () => noticesTo(parent.chat.id).length === 1 && h.run(parent.run.id).status === 'succeeded',
+            'the first notice'
+        );
         gone.release();
         await waitFor(() => noticesTo(parent.chat.id).length === 2, 'the second notice');
 
         expect(thread.run()).toMatchObject({ status: 'succeeded', result: 'Started the build' });
-        expect(noticesTo(parent.chat.id)[1]).toEqual([finished(thread.threadId, 'Start the build', 'Started the build')]);
+        expect(noticesTo(parent.chat.id)[1]).toEqual([
+            finished(thread.threadId, 'Start the build', 'Started the build'),
+        ]);
     });
 
-    test('a report turn of the agent\'s own that says nothing tells the parent that the thread finished, without the words of the turn before it', async () => {
+    test("a report turn of the agent's own that says nothing tells the parent that the thread finished, without the words of the turn before it", async () => {
         const { h, engine, root, spawn, noticesTo } = await setup();
         const gate = latch();
         const begin = latch();
@@ -924,19 +1327,26 @@ describe('notices to the parent', () => {
 
         const parent = await root('Plan the release', gate);
         const thread = await spawn(parent.run, 'Start the build', async function* (turn) {
-            yield { type: 'session', sessionId: `s-${ turn.number }` };
+            yield { type: 'session', sessionId: `s-${turn.number}` };
             await turn.hold(begin);
             yield { type: 'text', delta: 'Started the build', done: true };
             yield { type: 'background', items: [{ id: 'bg-1', kind: 'command', title: 'bun run build' }] };
             yield { type: 'done', result: 'Started the build' };
 
-            if (!await turn.hold(build)) {
+            if (!(await turn.hold(build))) {
                 return;
             }
 
             // The agent's own turn after the build looks at it and says nothing, and its `done` carries no result.
             yield { type: 'background', items: [] };
-            yield { type: 'tool', toolCallId: 'look', name: 'Read', input: { title: 'Read build.log' }, state: 'done', output: 'ok' };
+            yield {
+                type: 'tool',
+                toolCallId: 'look',
+                name: 'Read',
+                input: { title: 'Read build.log' },
+                state: 'done',
+                output: 'ok',
+            };
             yield { type: 'done' };
             await turn.hold(sessionEnd);
         });
@@ -944,16 +1354,24 @@ describe('notices to the parent', () => {
         gate.release();
         await waitFor(() => h.run(parent.run.id).status === 'succeeded', 'the parent to rest');
         begin.release();
-        await waitFor(() => noticesTo(parent.chat.id).length === 1 && h.run(parent.run.id).status === 'succeeded', 'the first notice');
+        await waitFor(
+            () => noticesTo(parent.chat.id).length === 1 && h.run(parent.run.id).status === 'succeeded',
+            'the first notice'
+        );
         expect(thread.run().status).toBe('waiting_background');
 
         build.release();
-        await waitFor(() => noticesTo(parent.chat.id).length === 2 && h.run(parent.run.id).status === 'succeeded', 'the second notice');
-        expect(noticesTo(parent.chat.id)[1]).toEqual([{ chatId: thread.threadId, title: 'Start the build', outcome: 'finished' }]);
+        await waitFor(
+            () => noticesTo(parent.chat.id).length === 2 && h.run(parent.run.id).status === 'succeeded',
+            'the second notice'
+        );
+        expect(noticesTo(parent.chat.id)[1]).toEqual([
+            { chatId: thread.threadId, title: 'Start the build', outcome: 'finished' },
+        ]);
 
         // The session's end after it tells nothing more: the parent knows the thread is done.
         sessionEnd.release();
-        await waitFor(() => thread.run().status === 'succeeded', 'the thread\'s session to end');
+        await waitFor(() => thread.run().status === 'succeeded', "the thread's session to end");
         await Bun.sleep(QUIET_MS);
         expect(noticesTo(parent.chat.id)).toHaveLength(2);
     });
@@ -964,14 +1382,14 @@ describe('notices to the parent', () => {
         const begin = latch();
         const parent = await root('Plan the release', gate);
         const thread = await spawn(parent.run, 'Stay quiet', async function* (turn) {
-            yield { type: 'session', sessionId: `s-${ turn.number }` };
+            yield { type: 'session', sessionId: `s-${turn.number}` };
             await turn.hold(begin);
             yield { type: 'done' };
         });
 
         // An agent whose `done` carries no result: its last message is the turn's text.
         on('Say something', async function* (turn) {
-            yield { type: 'session', sessionId: `s-${ turn.number }` };
+            yield { type: 'session', sessionId: `s-${turn.number}` };
             yield { type: 'text', delta: 'Now I speak', done: true };
             yield { type: 'done' };
         });
@@ -988,7 +1406,7 @@ describe('notices to the parent', () => {
         expect(noticesTo(parent.chat.id)).toEqual([[finished(thread.threadId, 'Stay quiet', 'Now I speak')]]);
     });
 
-    test('a thread stopped by thread_stop or by the person\'s Stop tells nothing', async () => {
+    test("a thread stopped by thread_stop or by the person's Stop tells nothing", async () => {
         const { h, exec, root, spawn, noticesTo } = await setup();
         const gate = latch();
         const parent = await root('Plan the release', gate);
@@ -998,10 +1416,19 @@ describe('notices to the parent', () => {
         const last = await spawn(parent.run, 'Job C', answers(lastGate, 'C is done'));
 
         gate.release();
-        await waitFor(() => h.run(parent.run.id).status === 'succeeded' && byParent.run().status === 'running' && byPerson.run().status === 'running', 'the parent to rest while A and B work');
+        await waitFor(
+            () =>
+                h.run(parent.run.id).status === 'succeeded' &&
+                byParent.run().status === 'running' &&
+                byPerson.run().status === 'running',
+            'the parent to rest while A and B work'
+        );
         expect(await exec(parent.run, 'thread_stop', { thread: byParent.threadId })).toMatchObject({ stopped: true });
         h.ok('run.cancel', { runId: byPerson.run().id });
-        await waitFor(() => byParent.run().status === 'cancelled' && byPerson.run().status === 'cancelled', 'both to stop');
+        await waitFor(
+            () => byParent.run().status === 'cancelled' && byPerson.run().status === 'cancelled',
+            'both to stop'
+        );
         await Bun.sleep(QUIET_MS);
         expect(noticesTo(parent.chat.id)).toEqual([]);
 
@@ -1019,12 +1446,23 @@ describe('notices to the parent', () => {
 
         onPrompt(prompt => prompt === '/compact', says('Compacted the conversation'));
         gate.release();
-        await waitFor(() => noticesTo(parent.chat.id).length === 1 && h.run(parent.run.id).status === 'succeeded' && thread.run().status === 'succeeded', 'the notice of the first answer');
+        await waitFor(
+            () =>
+                noticesTo(parent.chat.id).length === 1 &&
+                h.run(parent.run.id).status === 'succeeded' &&
+                thread.run().status === 'succeeded',
+            'the notice of the first answer'
+        );
 
         h.ok('chat.compact', { chatId: thread.threadId });
-        await waitFor(() => thread.run().status === 'succeeded' && thread.run().result === 'Compacted the conversation', 'the compact turn');
+        await waitFor(
+            () => thread.run().status === 'succeeded' && thread.run().result === 'Compacted the conversation',
+            'the compact turn'
+        );
         await Bun.sleep(QUIET_MS);
-        expect(noticesTo(parent.chat.id)).toEqual([[finished(thread.threadId, 'Check the cache', 'The cache is fine')]]);
+        expect(noticesTo(parent.chat.id)).toEqual([
+            [finished(thread.threadId, 'Check the cache', 'The cache is fine')],
+        ]);
     });
 
     test('a thread that fails always tells its parent, with the error and how to look at it', async () => {
@@ -1033,7 +1471,7 @@ describe('notices to the parent', () => {
         const begin = latch();
         const parent = await root('Plan the release', gate);
         const thread = await spawn(parent.run, 'Fall over', async function* (turn) {
-            yield { type: 'session', sessionId: `s-${ turn.number }` };
+            yield { type: 'session', sessionId: `s-${turn.number}` };
             await turn.hold(begin);
             yield { type: 'text', delta: 'Trying', done: true };
             yield { type: 'error', message: 'The agent fell over' };
@@ -1042,11 +1480,18 @@ describe('notices to the parent', () => {
         gate.release();
         await waitFor(() => h.run(parent.run.id).status === 'succeeded', 'the parent to rest');
         begin.release();
-        await waitFor(() => noticesTo(parent.chat.id).length === 1 && h.run(parent.run.id).status === 'succeeded', 'the notice');
+        await waitFor(
+            () => noticesTo(parent.chat.id).length === 1 && h.run(parent.run.id).status === 'succeeded',
+            'the notice'
+        );
 
         expect(thread.run().status).toBe('failed');
-        expect(noticesTo(parent.chat.id)).toEqual([[{ chatId: thread.threadId, title: 'Fall over', outcome: 'failed', text: 'The agent fell over' }]]);
-        expect(engine.prompts).toContain(`[Thread "Fall over" (${ thread.threadId }) failed]\n\nThe agent fell over\n\nLook at it with clowdy thread log ${ thread.threadId } before deciding what to do.\n\n${ RULE }`);
+        expect(noticesTo(parent.chat.id)).toEqual([
+            [{ chatId: thread.threadId, title: 'Fall over', outcome: 'failed', text: 'The agent fell over' }],
+        ]);
+        expect(engine.prompts).toContain(
+            `[Thread "Fall over" (${thread.threadId}) failed]\n\nThe agent fell over\n\nLook at it with clowdy thread log ${thread.threadId} before deciding what to do.\n\n${RULE}`
+        );
     });
 
     test('a thread that a restart interrupted tells its parent once, and the next start does not tell it again', async () => {
@@ -1054,11 +1499,17 @@ describe('notices to the parent', () => {
         const gate = latch();
         const parent = await root('Plan the release', gate);
         const thread = await spawn(parent.run, 'Long job', held(latch()));
-        const notices = (harness: Harness) => listItems(harness.store.db, parent.run.id, 0).filter(item => item.body.kind === 'user' && item.body.from?.kind === 'threadNotice');
-        const content = `[Thread "Long job" (${ thread.threadId }) was interrupted because the daemon restarted]\n\n${ RULE }`;
+        const notices = (harness: Harness) =>
+            listItems(harness.store.db, parent.run.id, 0).filter(
+                item => item.body.kind === 'user' && item.body.from?.kind === 'threadNotice'
+            );
+        const content = `[Thread "Long job" (${thread.threadId}) was interrupted because the daemon restarted]\n\n${RULE}`;
 
         gate.release();
-        await waitFor(() => h.run(parent.run.id).status === 'succeeded' && thread.run().status === 'running', 'the parent to rest while its thread works');
+        await waitFor(
+            () => h.run(parent.run.id).status === 'succeeded' && thread.run().status === 'running',
+            'the parent to rest while its thread works'
+        );
 
         const threadRunId = thread.run().id;
 
@@ -1067,13 +1518,21 @@ describe('notices to the parent', () => {
         const second = await restartHarness(h, { engines: scriptEngines(engine) });
 
         harnesses.push(second);
-        await waitFor(() => engine.prompts.includes(content) && second.run(parent.run.id).status === 'succeeded', 'the parent\'s turn on the notice');
+        await waitFor(
+            () => engine.prompts.includes(content) && second.run(parent.run.id).status === 'succeeded',
+            "the parent's turn on the notice"
+        );
         expect(second.run(threadRunId).status).toBe('interrupted');
-        expect(notices(second).map(item => item.body)).toEqual([{
-            kind: 'user',
-            text: '',
-            from: { kind: 'threadNotice', threads: [{ chatId: thread.threadId, title: 'Long job', outcome: 'interrupted' }] },
-        }]);
+        expect(notices(second).map(item => item.body)).toEqual([
+            {
+                kind: 'user',
+                text: '',
+                from: {
+                    kind: 'threadNotice',
+                    threads: [{ chatId: thread.threadId, title: 'Long job', outcome: 'interrupted' }],
+                },
+            },
+        ]);
 
         await second.stop();
 
@@ -1090,7 +1549,7 @@ describe('notices to the parent', () => {
         const parent = await root('Plan the release', latch());
 
         await spawn(parent.run, 'Quick job', says('Quick answer'));
-        await waitFor(() => chatOf(parent.chat.id).queue?.length === 1, 'the notice in the busy parent\'s queue');
+        await waitFor(() => chatOf(parent.chat.id).queue?.length === 1, "the notice in the busy parent's queue");
 
         const waiting = chatOf(parent.chat.id).queue;
 
@@ -1103,7 +1562,7 @@ describe('notices to the parent', () => {
         expect(second.run(parent.run.id).status).toBe('interrupted');
     });
 
-    test('a busy parent gets the notice in its queue, merged with the next of the same thread and with another thread\'s, and takes it as its next turn', async () => {
+    test("a busy parent gets the notice in its queue, merged with the next of the same thread and with another thread's, and takes it as its next turn", async () => {
         const { h, engine, chatOf, root, spawn, on, noticesTo, bodies } = await setup();
         const gate = latch();
         const parent = await root('Plan the release', gate);
@@ -1119,15 +1578,17 @@ describe('notices to the parent', () => {
         };
 
         gateA.release();
-        await waitFor(() => queued().length === 1, 'the notice to wait in the parent\'s queue');
-        expect(queued()).toEqual([{
-            id: expect.stringMatching(/^que_/),
-            mode: 'queue',
-            text: 'Thread "Job A" finished',
-            content: `[Thread "Job A" (${ a.threadId }) finished]\n\nA first\n\n${ RULE }`,
-            from: { kind: 'threadNotice', threads: [finished(a.threadId, 'Job A', 'A first')] },
-            createdAt: expect.any(Number),
-        }]);
+        await waitFor(() => queued().length === 1, "the notice to wait in the parent's queue");
+        expect(queued()).toEqual([
+            {
+                id: expect.stringMatching(/^que_/),
+                mode: 'queue',
+                text: 'Thread "Job A" finished',
+                content: `[Thread "Job A" (${a.threadId}) finished]\n\nA first\n\n${RULE}`,
+                from: { kind: 'threadNotice', threads: [finished(a.threadId, 'Job A', 'A first')] },
+                createdAt: expect.any(Number),
+            },
+        ]);
 
         const [{ id, createdAt }] = queued();
 
@@ -1141,27 +1602,42 @@ describe('notices to the parent', () => {
         gateB.release();
         await waitFor(() => threadsOf().length === 2, 'B to join the notice');
 
-        const content = `Threads that stopped:\n\n[Thread "Job A" (${ a.threadId }) finished]\n\nA second\n\n[Thread "Job B" (${ b.threadId }) finished]\n\nB is done\n\n${ RULE }`;
+        const content = `Threads that stopped:\n\n[Thread "Job A" (${a.threadId}) finished]\n\nA second\n\n[Thread "Job B" (${b.threadId}) finished]\n\nB is done\n\n${RULE}`;
 
-        expect(queued()).toEqual([{
-            id,
-            mode: 'queue',
-            text: '2 threads stopped',
-            content,
-            from: { kind: 'threadNotice', threads: [finished(a.threadId, 'Job A', 'A second'), finished(b.threadId, 'Job B', 'B is done')] },
-            createdAt,
-        }]);
+        expect(queued()).toEqual([
+            {
+                id,
+                mode: 'queue',
+                text: '2 threads stopped',
+                content,
+                from: {
+                    kind: 'threadNotice',
+                    threads: [finished(a.threadId, 'Job A', 'A second'), finished(b.threadId, 'Job B', 'B is done')],
+                },
+                createdAt,
+            },
+        ]);
         expect(noticesTo(parent.chat.id)).toEqual([]);
 
         // Nothing steers the running turn: it goes when the parent rests.
         gate.release();
-        await waitFor(() => engine.prompts.includes(content) && h.run(parent.run.id).status === 'succeeded', 'the parent\'s turn on the notice');
+        await waitFor(
+            () => engine.prompts.includes(content) && h.run(parent.run.id).status === 'succeeded',
+            "the parent's turn on the notice"
+        );
         expect(chatOf(parent.chat.id).queue).toBeUndefined();
         expect(engine.steered).toEqual([]);
-        expect(bodies(parent.run.id).filter(body => body.kind === 'user').at(-1)).toEqual({
+        expect(
+            bodies(parent.run.id)
+                .filter(body => body.kind === 'user')
+                .at(-1)
+        ).toEqual({
             kind: 'user',
             text: '',
-            from: { kind: 'threadNotice', threads: [finished(a.threadId, 'Job A', 'A second'), finished(b.threadId, 'Job B', 'B is done')] },
+            from: {
+                kind: 'threadNotice',
+                threads: [finished(a.threadId, 'Job A', 'A second'), finished(b.threadId, 'Job B', 'B is done')],
+            },
         });
     });
 
@@ -1180,7 +1656,13 @@ describe('notices to the parent', () => {
         await Bun.sleep(QUIET_MS);
         expect(chatOf(parent.chat.id)).toMatchObject({
             queuePaused: 'stopped',
-            queue: [expect.objectContaining({ text: 'Then do this' }), expect.objectContaining({ text: 'Thread "Check the cache" finished', from: expect.objectContaining({ kind: 'threadNotice' }) })],
+            queue: [
+                expect.objectContaining({ text: 'Then do this' }),
+                expect.objectContaining({
+                    text: 'Thread "Check the cache" finished',
+                    from: expect.objectContaining({ kind: 'threadNotice' }),
+                }),
+            ],
         });
         expect(h.run(parent.run.id).status).toBe('cancelled');
         expect(noticesTo(parent.chat.id)).toEqual([]);
@@ -1194,17 +1676,25 @@ describe('notices to the parent', () => {
         h.ok('run.cancel', { runId: other.run.id });
         await waitFor(() => h.run(other.run.id).status === 'cancelled', 'the other parent to stop');
         otherThreadGate.release();
-        await waitFor(() => chatOf(other.chat.id).queue?.length === 1, 'the notice to wait in the other parent\'s queue');
+        await waitFor(
+            () => chatOf(other.chat.id).queue?.length === 1,
+            "the notice to wait in the other parent's queue"
+        );
         await Bun.sleep(QUIET_MS);
         expect(chatOf(other.chat.id).queuePaused).toBe('stopped');
         expect(h.run(other.run.id).status).toBe('cancelled');
 
         // The person sends it: the parent takes it as a turn.
-        const content = `[Thread "Check the docs" (${ otherThread.threadId }) finished]\n\nThe docs are fine\n\n${ RULE }`;
+        const content = `[Thread "Check the docs" (${otherThread.threadId}) finished]\n\nThe docs are fine\n\n${RULE}`;
 
         h.ok('chat.sendQueued', { chatId: other.chat.id, itemId: (chatOf(other.chat.id).queue ?? [])[0].id });
-        await waitFor(() => engine.prompts.includes(content) && h.run(other.run.id).status === 'succeeded', 'the other parent\'s turn on the notice');
-        expect(noticesTo(other.chat.id)).toEqual([[finished(otherThread.threadId, 'Check the docs', 'The docs are fine')]]);
+        await waitFor(
+            () => engine.prompts.includes(content) && h.run(other.run.id).status === 'succeeded',
+            "the other parent's turn on the notice"
+        );
+        expect(noticesTo(other.chat.id)).toEqual([
+            [finished(otherThread.threadId, 'Check the docs', 'The docs are fine')],
+        ]);
         expect(thread.run().status).toBe('succeeded');
     });
 
@@ -1214,7 +1704,7 @@ describe('notices to the parent', () => {
 
         engine.sendAnswer = () => true;
         on('Watch the build', async function* (turn) {
-            yield { type: 'session', sessionId: `s-${ turn.number }` };
+            yield { type: 'session', sessionId: `s-${turn.number}` };
             yield { type: 'text', delta: 'Started the build', done: true };
             yield { type: 'background', items: [{ id: 'bg-1', kind: 'command', title: 'bun run build' }] };
             yield { type: 'done', result: 'Started the build' };
@@ -1232,10 +1722,17 @@ describe('notices to the parent', () => {
 
         const sessions = engine.turns.length;
         const thread = await spawn(runOf(chat.id), 'Check the cache', answers(threadGate, 'The cache is fine'));
-        const content = `[Thread "Check the cache" (${ thread.threadId }) finished]\n\nThe cache is fine\n\n${ RULE }`;
+        const content = `[Thread "Check the cache" (${thread.threadId}) finished]\n\nThe cache is fine\n\n${RULE}`;
 
         threadGate.release();
-        await waitFor(() => engine.sent.includes(content) && runOf(chat.id).status === 'waiting_background' && runOf(chat.id).statusReason === 'Waiting for background work' && noticesTo(chat.id).length === 1, 'the notice in the live session');
+        await waitFor(
+            () =>
+                engine.sent.includes(content) &&
+                runOf(chat.id).status === 'waiting_background' &&
+                runOf(chat.id).statusReason === 'Waiting for background work' &&
+                noticesTo(chat.id).length === 1,
+            'the notice in the live session'
+        );
         // No new session for the parent: only the thread's turn started.
         expect(engine.turns).toHaveLength(sessions + 1);
         expect(engine.sent).toEqual([content]);
@@ -1250,13 +1747,22 @@ describe('notices to the parent', () => {
 
         gate.release();
         threadGate.release();
-        await waitFor(() => noticesTo(parent.chat.id).length === 1 && h.run(parent.run.id).status === 'succeeded' && thread.run().status === 'succeeded', 'the first notice to be answered');
+        await waitFor(
+            () =>
+                noticesTo(parent.chat.id).length === 1 &&
+                h.run(parent.run.id).status === 'succeeded' &&
+                thread.run().status === 'succeeded',
+            'the first notice to be answered'
+        );
         h.ok('chat.setArchived', { chatId: parent.chat.id, archived: true });
 
         // The person writes to the archived thread, which brings only the thread back; its answer tells the archived parent nothing.
         on('Look again', says('Still fine'));
         h.ok('chat.send', { chatId: thread.threadId, text: 'Look again' });
-        await waitFor(() => thread.run().status === 'succeeded' && thread.run().result === 'Still fine', 'the thread\'s second answer');
+        await waitFor(
+            () => thread.run().status === 'succeeded' && thread.run().result === 'Still fine',
+            "the thread's second answer"
+        );
         await Bun.sleep(QUIET_MS);
 
         expect(chatOf(parent.chat.id).archivedAt).toBeGreaterThan(0);
@@ -1279,12 +1785,24 @@ describe('notices to the parent', () => {
         onPrompt(prompt => prompt.startsWith('[Thread "Leaf job"'), says('Middle relays: Leaf result'));
         gate.release();
         middleGate.release();
-        await waitFor(() => noticesTo(parent.chat.id).length === 1 && h.run(parent.run.id).status === 'succeeded' && middle.run().status === 'succeeded', 'the middle thread\'s first notice');
+        await waitFor(
+            () =>
+                noticesTo(parent.chat.id).length === 1 &&
+                h.run(parent.run.id).status === 'succeeded' &&
+                middle.run().status === 'succeeded',
+            "the middle thread's first notice"
+        );
 
         leafGate.release();
-        await waitFor(() => noticesTo(parent.chat.id).length === 2 && h.run(parent.run.id).status === 'succeeded', 'the middle thread\'s answer to reach the top');
+        await waitFor(
+            () => noticesTo(parent.chat.id).length === 2 && h.run(parent.run.id).status === 'succeeded',
+            "the middle thread's answer to reach the top"
+        );
         expect(noticesTo(middle.threadId)).toEqual([[finished(leaf.threadId, 'Leaf job', 'Leaf result')]]);
-        expect(noticesTo(parent.chat.id)).toEqual([[finished(middle.threadId, 'Middle job', 'Middle started')], [finished(middle.threadId, 'Middle job', 'Middle relays: Leaf result')]]);
+        expect(noticesTo(parent.chat.id)).toEqual([
+            [finished(middle.threadId, 'Middle job', 'Middle started')],
+            [finished(middle.threadId, 'Middle job', 'Middle relays: Leaf result')],
+        ]);
     });
 });
 
@@ -1298,7 +1816,14 @@ describe('thread_wait', () => {
 
         let started = Date.now();
 
-        expect(await exec(parent.run, 'thread_wait', { thread: quick.threadId })).toEqual({ threadId: quick.threadId, title: 'Quick job', state: 'idle', text: 'Quick answer', open: [], timedOut: false });
+        expect(await exec(parent.run, 'thread_wait', { thread: quick.threadId })).toEqual({
+            threadId: quick.threadId,
+            title: 'Quick job',
+            state: 'idle',
+            text: 'Quick answer',
+            open: [],
+            timedOut: false,
+        });
         expect(Date.now() - started).toBeLessThan(500);
 
         const lateGate = latch();
@@ -1311,27 +1836,44 @@ describe('thread_wait', () => {
         await Bun.sleep(150);
         expect(answered).toBe(false);
         lateGate.release();
-        expect(await waiting).toMatchObject({ threadId: late.threadId, state: 'idle', text: 'Late answer', timedOut: false });
+        expect(await waiting).toMatchObject({
+            threadId: late.threadId,
+            state: 'idle',
+            text: 'Late answer',
+            timedOut: false,
+        });
 
         const slow = await spawn(parent.run, 'Slow job', held(latch(), 'Still at it'));
 
         await waitFor(() => slow.run().status === 'running', 'the slow thread to run');
         started = Date.now();
-        expect(await exec(parent.run, 'thread_wait', { thread: slow.threadId, timeoutSeconds: 1 })).toMatchObject({ state: 'working', text: 'Still at it', timedOut: true });
+        expect(await exec(parent.run, 'thread_wait', { thread: slow.threadId, timeoutSeconds: 1 })).toMatchObject({
+            state: 'working',
+            text: 'Still at it',
+            timedOut: true,
+        });
         expect(Date.now() - started).toBeGreaterThanOrEqual(950);
     });
 
-    test('answers at once for a thread that asks the person, ends with the caller\'s stop, and takes only threads below the caller', async () => {
+    test("answers at once for a thread that asks the person, ends with the caller's stop, and takes only threads below the caller", async () => {
         const { exec, root, spawn } = await setup();
         const parent = await root('Plan the release', latch());
-        const asking = await spawn(parent.run, 'Ask the person', async function* (turn) {
-            yield { type: 'session', sessionId: `s-${ turn.number }` };
-            yield* turn.call('ask_user', { question: 'Which color?', options: [{ id: 'red', label: 'Red' }] });
-            yield { type: 'done', result: 'Asked' };
-        }, { mode: 'semi' });
+        const asking = await spawn(
+            parent.run,
+            'Ask the person',
+            async function* (turn) {
+                yield { type: 'session', sessionId: `s-${turn.number}` };
+                yield* turn.call('ask_user', { question: 'Which color?', options: [{ id: 'red', label: 'Red' }] });
+                yield { type: 'done', result: 'Asked' };
+            },
+            { mode: 'semi' }
+        );
 
         await waitFor(() => asking.run().status === 'waiting_user', 'the thread to ask');
-        expect(await exec(parent.run, 'thread_wait', { thread: asking.threadId })).toMatchObject({ state: 'asking', timedOut: false });
+        expect(await exec(parent.run, 'thread_wait', { thread: asking.threadId })).toMatchObject({
+            state: 'asking',
+            timedOut: false,
+        });
 
         const busy = await spawn(parent.run, 'Busy job', held(latch()));
         const stop = new AbortController();
@@ -1343,8 +1885,12 @@ describe('thread_wait', () => {
 
         await expect(exec(busy.run(), 'thread_wait', { thread: asking.threadId })).rejects.toThrow(/is not below you/);
         await expect(exec(busy.run(), 'thread_wait', { thread: parent.chat.id })).rejects.toThrow(/is not below you/);
-        await expect(exec(parent.run, 'thread_wait', { thread: busy.threadId, timeoutSeconds: 0 })).rejects.toThrow(/Invalid input for thread_wait/);
-        await expect(exec(parent.run, 'thread_wait', { thread: busy.threadId, timeoutSeconds: 601 })).rejects.toThrow(/Invalid input for thread_wait/);
+        await expect(exec(parent.run, 'thread_wait', { thread: busy.threadId, timeoutSeconds: 0 })).rejects.toThrow(
+            /Invalid input for thread_wait/
+        );
+        await expect(exec(parent.run, 'thread_wait', { thread: busy.threadId, timeoutSeconds: 601 })).rejects.toThrow(
+            /Invalid input for thread_wait/
+        );
     });
 });
 
@@ -1369,7 +1915,7 @@ describe('reading a thread instead of its notice', () => {
         expect(h.run(parent.run.id).result).toBe('working');
     });
 
-    test('thread_output of the parent takes its thread out of the queued notice; a sibling\'s reading leaves it', async () => {
+    test("thread_output of the parent takes its thread out of the queued notice; a sibling's reading leaves it", async () => {
         const { chatOf, exec, root, spawn } = await setup();
         const parent = await root('Plan the release', latch());
         const gateA = latch();
@@ -1382,7 +1928,10 @@ describe('reading a thread instead of its notice', () => {
         await waitFor(() => sibling.run().status === 'running', 'the sibling to run');
         gateA.release();
         gateB.release();
-        await waitFor(() => queued().length === 1 && queued()[0].text === '2 threads stopped', 'both notices in the queue');
+        await waitFor(
+            () => queued().length === 1 && queued()[0].text === '2 threads stopped',
+            'both notices in the queue'
+        );
 
         // A sibling reads A: the parent's notice stays whole.
         expect((await exec(sibling.run(), 'thread_output', { thread: a.threadId })).text).toBe('A is done');
@@ -1390,11 +1939,13 @@ describe('reading a thread instead of its notice', () => {
 
         // The parent reads A: only B is left, with its own line and content.
         expect((await exec(parent.run, 'thread_output', { thread: a.threadId })).text).toBe('A is done');
-        expect(queued()).toEqual([expect.objectContaining({
-            text: 'Thread "Job B" finished',
-            content: `[Thread "Job B" (${ b.threadId }) finished]\n\nB is done\n\n${ RULE }`,
-            from: { kind: 'threadNotice', threads: [finished(b.threadId, 'Job B', 'B is done')] },
-        })]);
+        expect(queued()).toEqual([
+            expect.objectContaining({
+                text: 'Thread "Job B" finished',
+                content: `[Thread "Job B" (${b.threadId}) finished]\n\nB is done\n\n${RULE}`,
+                from: { kind: 'threadNotice', threads: [finished(b.threadId, 'Job B', 'B is done')] },
+            }),
+        ]);
 
         // And then B: the notice is gone.
         await exec(parent.run, 'thread_output', { thread: b.threadId });
@@ -1407,7 +1958,10 @@ describe('reading a thread instead of its notice', () => {
         const threadGate = latch();
         const thread = await spawn(parent.run, 'Check the cache', answers(threadGate, 'The cache is fine'));
         const queued = () => chatOf(parent.chat.id).queue ?? [];
-        const notice: MessageSource = { kind: 'threadNotice', threads: [finished(thread.threadId, 'Check the cache', 'The cache is fine')] };
+        const notice: MessageSource = {
+            kind: 'threadNotice',
+            threads: [finished(thread.threadId, 'Check the cache', 'The cache is fine')],
+        };
 
         // The thread's next message waits in its queue, so the thread is at work again in the moment its turn ends.
         on('Look again', held(latch(), 'Looking again'));
@@ -1418,12 +1972,18 @@ describe('reading a thread instead of its notice', () => {
 
         threadGate.release();
         expect(await waiting).toMatchObject({ state: 'working', text: null, timedOut: false });
-        await waitFor(() => queued().length === 1, 'the notice in the busy parent\'s queue');
+        await waitFor(() => queued().length === 1, "the notice in the busy parent's queue");
         expect(queued()[0].from).toEqual(notice);
 
         // Reading it while it works shows the new turn's words, not the answer: the notice stays too.
-        await waitFor(() => bodies(thread.run().id).some(body => body.kind === 'assistant' && body.text === 'Looking again'), 'the thread\'s next turn to speak');
-        expect(await exec(parent.run, 'thread_output', { thread: thread.threadId })).toMatchObject({ state: 'working', text: 'Looking again' });
+        await waitFor(
+            () => bodies(thread.run().id).some(body => body.kind === 'assistant' && body.text === 'Looking again'),
+            "the thread's next turn to speak"
+        );
+        expect(await exec(parent.run, 'thread_output', { thread: thread.threadId })).toMatchObject({
+            state: 'working',
+            text: 'Looking again',
+        });
         expect(queued().map(item => item.from)).toEqual([notice]);
     });
 });
@@ -1438,7 +1998,7 @@ describe('worktree_name', () => {
         const { path, branch: placeholder } = parent.chat.workspace!;
 
         // The chat is told to name its branch, in the very turn that made the worktree.
-        expect(placeholder).toBe(`clowdy/${ id8(parent.chat.id) }`);
+        expect(placeholder).toBe(`clowdy/${id8(parent.chat.id)}`);
         expect(turnOf('Fix the login')?.systemPrompt).toContain('clowdy worktree name <two to four English words');
 
         const named = await exec(parent.run, 'worktree_name', { name: 'Fix login redirect!' });
@@ -1447,12 +2007,18 @@ describe('worktree_name', () => {
         // Git moved the branch under the worktree: nothing else did.
         expect(git(path, 'branch', '--show-current')).toBe('clowdy/fix-login-redirect');
         expect(git(project.path, 'branch', '--list', placeholder!)).toBe('');
-        expect(chatOf(parent.chat.id).workspace).toMatchObject({ path, branch: 'clowdy/fix-login-redirect', ready: true });
+        expect(chatOf(parent.chat.id).workspace).toMatchObject({
+            path,
+            branch: 'clowdy/fix-login-redirect',
+            ready: true,
+        });
         expect(getWorkspace(store.db, parent.chat.workspace!.id)?.branch).toBe('clowdy/fix-login-redirect');
         expect(h.run(parent.run.id).status).toBe('running');
 
         // Once: the command is gone for a chat whose branch has a name, and the next turn does not ask for one, and says the new name.
-        await expect(exec(h.run(parent.run.id), 'worktree_name', { name: 'Again' })).rejects.toThrow('has no worktree_name tool');
+        await expect(exec(h.run(parent.run.id), 'worktree_name', { name: 'Again' })).rejects.toThrow(
+            'has no worktree_name tool'
+        );
         gate.release();
         await waitFor(() => h.run(parent.run.id).status === 'succeeded', 'the turn to end');
         h.ok('chat.send', { chatId: parent.chat.id, text: 'Go on' });
@@ -1463,7 +2029,7 @@ describe('worktree_name', () => {
         expect(turnOf('Go on')?.cwd).toBe(path);
     });
 
-    test('keeps the worktree\'s removal working on the new name: the branch that goes with the chat is the renamed one', async () => {
+    test("keeps the worktree's removal working on the new name: the branch that goes with the chat is the renamed one", async () => {
         const { h, project, root, exec } = await setup();
         const gate = latch();
         const parent = await root('Fix the login', gate, { workspace: { mode: 'new' } });
@@ -1479,7 +2045,7 @@ describe('worktree_name', () => {
         expect(git(project.path, 'branch', '--list', 'clowdy/cleanup-me')).toBe('');
     });
 
-    test('adds the end of the chat\'s id when the name is taken, and refuses words with no letter in English, a branch that was pushed, and a worktree on another branch', async () => {
+    test("adds the end of the chat's id when the name is taken, and refuses words with no letter in English, a branch that was pushed, and a worktree on another branch", async () => {
         const { project, exec, root } = await setup();
         const first = await root('Fix the login', latch(), { workspace: { mode: 'new' } });
         const second = await root('Fix the logout', latch(), { workspace: { mode: 'new' } });
@@ -1490,19 +2056,28 @@ describe('worktree_name', () => {
 
         const taken = await exec(second.run, 'worktree_name', { name: 'fix-auth' });
 
-        expect(taken.branch).toBe(`clowdy/fix-auth-${ id8(second.chat.id).slice(-4).toLowerCase() }`);
-        await expect(exec(third.run, 'worktree_name', { name: 'Починить вход' })).rejects.toMatchObject({ code: 'invalid', message: expect.stringContaining('words in English') });
+        expect(taken.branch).toBe(`clowdy/fix-auth-${id8(second.chat.id).slice(-4).toLowerCase()}`);
+        await expect(exec(third.run, 'worktree_name', { name: 'Починить вход' })).rejects.toMatchObject({
+            code: 'invalid',
+            message: expect.stringContaining('words in English'),
+        });
 
         // The branch has an upstream: a new name would leave the remote's behind.
-        git(project.path, 'config', `branch.${ third.chat.workspace!.branch }.remote`, 'origin');
-        await expect(exec(third.run, 'worktree_name', { name: 'fix-profile' })).rejects.toMatchObject({ code: 'invalid', message: expect.stringContaining('has an upstream') });
+        git(project.path, 'config', `branch.${third.chat.workspace!.branch}.remote`, 'origin');
+        await expect(exec(third.run, 'worktree_name', { name: 'fix-profile' })).rejects.toMatchObject({
+            code: 'invalid',
+            message: expect.stringContaining('has an upstream'),
+        });
 
         // The agent moved to a branch of its own: the one the worktree was made with is not what it is on.
         git(fourth.chat.workspace!.path, 'switch', '-q', '-c', 'mine');
-        await expect(exec(fourth.run, 'worktree_name', { name: 'fix-cart' })).rejects.toMatchObject({ code: 'invalid', message: expect.stringContaining('not on clowdy/') });
+        await expect(exec(fourth.run, 'worktree_name', { name: 'fix-cart' })).rejects.toMatchObject({
+            code: 'invalid',
+            message: expect.stringContaining('not on clowdy/'),
+        });
     });
 
-    test('moves the base of a thread\'s own worktree, which was started from the branch that is renamed, so the thread can be merged, removed and made again', async () => {
+    test("moves the base of a thread's own worktree, which was started from the branch that is renamed, so the thread can be merged, removed and made again", async () => {
         const { h, project, store, chatOf, root, spawn, exec } = await setup();
         const gate = latch();
         const parent = await root('Fix the login', gate, { workspace: { mode: 'new' } });
@@ -1521,7 +2096,10 @@ describe('worktree_name', () => {
 
         gate.release();
         threadGate.release();
-        await waitFor(() => h.run(parent.run.id).status === 'succeeded' && thread.run().status === 'succeeded', 'both turns to end');
+        await waitFor(
+            () => h.run(parent.run.id).status === 'succeeded' && thread.run().status === 'succeeded',
+            'both turns to end'
+        );
         // Its work is in the base (nothing was committed), so the thread's own worktree may go with it, as it could not when the base was a name that was gone.
         await h.okAsync('chat.delete', { chatId: thread.threadId, removeWorkspace: true });
 
@@ -1531,7 +2109,9 @@ describe('worktree_name', () => {
 
     test('goes on when git renames the branch and then fails on its settings, takes a prefix with a slash, and refuses a branch a remote has', async () => {
         const { project, root, exec } = await setup();
-        const slashed = await root('Fix the login', latch(), { workspace: { mode: 'new', branchPrefix: 'max/threads' } });
+        const slashed = await root('Fix the login', latch(), {
+            workspace: { mode: 'new', branchPrefix: 'max/threads' },
+        });
         const locked = await root('Fix the logout', latch(), { workspace: { mode: 'new' } });
         const pushed = await root('Fix the profile', latch(), { workspace: { mode: 'new' } });
 
@@ -1543,17 +2123,19 @@ describe('worktree_name', () => {
         try {
             expect((await exec(locked.run, 'worktree_name', { name: 'fix-out' })).branch).toBe('clowdy/fix-out');
             expect(git(locked.chat.workspace!.path, 'branch', '--show-current')).toBe('clowdy/fix-out');
-        }
-        finally {
+        } finally {
             rmSync(join(project.path, '.git', 'config.lock'));
         }
 
         // Pushed with no -u: no upstream is set, but the remote's branch is there under the old name.
-        git(project.path, 'update-ref', `refs/remotes/origin/${ pushed.chat.workspace!.branch }`, 'HEAD');
-        await expect(exec(pushed.run, 'worktree_name', { name: 'fix-profile' })).rejects.toMatchObject({ code: 'invalid', message: expect.stringContaining('A remote has a branch called') });
+        git(project.path, 'update-ref', `refs/remotes/origin/${pushed.chat.workspace!.branch}`, 'HEAD');
+        await expect(exec(pushed.run, 'worktree_name', { name: 'fix-profile' })).rejects.toMatchObject({
+            code: 'invalid',
+            message: expect.stringContaining('A remote has a branch called'),
+        });
     });
 
-    test('is for a chat the person started in a worktree Clowdy made for it: not for a chat in the folder itself, a found worktree, a thread, or one that shares its parent\'s', async () => {
+    test("is for a chat the person started in a worktree Clowdy made for it: not for a chat in the folder itself, a found worktree, a thread, or one that shares its parent's", async () => {
         const { project, exec, root, spawn } = await setup();
         const plain = await root('Plan the release', latch());
         const found = join(tempDir('worktree-name'), 'found');
@@ -1570,8 +2152,10 @@ describe('worktree_name', () => {
         }
 
         // A thread's branch is what its parent was told when it started it, so a name from the thread would leave the parent with one that is gone.
-        expect(thread.worktree?.branch).toBe(`clowdy/${ id8(thread.threadId) }`);
-        await expect(exec(own.run, 'worktree_name', { name: 'fix-login' })).resolves.toMatchObject({ branch: 'clowdy/fix-login' });
+        expect(thread.worktree?.branch).toBe(`clowdy/${id8(thread.threadId)}`);
+        await expect(exec(own.run, 'worktree_name', { name: 'fix-login' })).resolves.toMatchObject({
+            branch: 'clowdy/fix-login',
+        });
     });
 });
 
@@ -1579,25 +2163,39 @@ describe('thread_spawn with a worktree', () => {
     /** The part of a chat's id its worktree and branch are named after. */
     const id8 = (chatId: string) => chatId.slice(-8);
 
-    test('gives the thread a worktree of its own on a branch of its own from the default branch, which its first turn makes and its agent works in, while one without it works in its parent\'s place', async () => {
+    test("gives the thread a worktree of its own on a branch of its own from the default branch, which its first turn makes and its agent works in, while one without it works in its parent's place", async () => {
         const { h, project, store, chatOf, runOf, bodies, turnOf, root, spawn } = await setup();
         const parent = await root('Plan the release', latch());
         const own = await spawn(parent.run, 'Rework the importer', held(latch()), { worktree: true });
         const plain = await spawn(parent.run, 'Read the importer');
         const path = join(h.config.workspacesDir, 'repo', id8(own.threadId), 'repo');
-        const branch = `clowdy/${ id8(own.threadId) }`;
+        const branch = `clowdy/${id8(own.threadId)}`;
         const folderId = getProject(store.db, project.id)!.folders[0].id;
 
         // The answer says where the thread is and what to merge; the parent is told that bringing the branch back is its job.
         expect(own.worktree).toEqual({ path, branch, base: 'main' });
-        expect(own.note).toContain(`its own git worktree at ${ path }, on the branch ${ branch }, started from main`);
+        expect(own.note).toContain(`its own git worktree at ${path}, on the branch ${branch}, started from main`);
         expect(own.note).toContain('Bringing the work back is yours');
         expect(plain.worktree).toBeUndefined();
 
         // Its own row, pinned to the folder, made by the thread's first turn.
-        expect(chatOf(own.threadId).workspace).toEqual({ id: expect.stringMatching(/^wks_/), folderId, path, branch, managed: true, ready: true });
+        expect(chatOf(own.threadId).workspace).toEqual({
+            id: expect.stringMatching(/^wks_/),
+            folderId,
+            path,
+            branch,
+            managed: true,
+            ready: true,
+        });
         expect(chatOf(own.threadId).folderId).toBe(folderId);
-        expect(getWorkspace(store.db, chatOf(own.threadId).workspace!.id)).toMatchObject({ projectId: project.id, folderId, path, branch, base: 'main', managed: true });
+        expect(getWorkspace(store.db, chatOf(own.threadId).workspace!.id)).toMatchObject({
+            projectId: project.id,
+            folderId,
+            path,
+            branch,
+            base: 'main',
+            managed: true,
+        });
         expect(git(project.path, 'worktree', 'list')).toContain(path.replaceAll('\\', '/'));
         expect(git(path, 'branch', '--show-current')).toBe(branch);
         expect(git(path, 'rev-parse', 'HEAD')).toBe(git(project.path, 'rev-parse', 'main'));
@@ -1606,12 +2204,25 @@ describe('thread_spawn with a worktree', () => {
         const items = bodies(runOf(own.threadId).id);
 
         expect(items.slice(0, 2).map(item => item.kind)).toEqual(['user', 'tool']);
-        expect(items[1]).toMatchObject({ kind: 'tool', name: WORKSPACE_TOOL, state: 'done', input: { path, branch, base: 'main' }, output: expect.stringContaining(`new branch '${ branch }'`) });
+        expect(items[1]).toMatchObject({
+            kind: 'tool',
+            name: WORKSPACE_TOOL,
+            state: 'done',
+            input: { path, branch, base: 'main' },
+            output: expect.stringContaining(`new branch '${branch}'`),
+        });
 
         // Its agent works there, is told so, and is told what is left to its parent; the main checkout is not handed to it.
-        expect(turnOf('Rework the importer')).toMatchObject({ cwd: path, additionalDirectories: [join(project.path, '.git')] });
-        expect(turnOf('Rework the importer')?.systemPrompt).toContain(`Worktree: you work in a git worktree of ${ project.path }, at ${ path }, on the branch ${ branch }.`);
-        expect(turnOf('Rework the importer')?.systemPrompt).toContain('on a branch started from main: commit your work on your own branch and name that branch in your report. Merging it back is your parent\'s job');
+        expect(turnOf('Rework the importer')).toMatchObject({
+            cwd: path,
+            additionalDirectories: [join(project.path, '.git')],
+        });
+        expect(turnOf('Rework the importer')?.systemPrompt).toContain(
+            `Worktree: you work in a git worktree of ${project.path}, at ${path}, on the branch ${branch}.`
+        );
+        expect(turnOf('Rework the importer')?.systemPrompt).toContain(
+            "on a branch started from main: commit your work on your own branch and name that branch in your report. Merging it back is your parent's job"
+        );
 
         // One without the option is where its parent is, with no worktree and no word of one.
         expect(chatOf(plain.threadId)).not.toHaveProperty('workspace');
@@ -1620,13 +2231,13 @@ describe('thread_spawn with a worktree', () => {
         expect(listWorkspacesOfProject(store.db, project.id)).toHaveLength(1);
     });
 
-    test('knows a worktree is the thread\'s own by the folder the thread\'s id names, whatever its branch is called, and the parent\'s shared one is not', async () => {
+    test("knows a worktree is the thread's own by the folder the thread's id names, whatever its branch is called, and the parent's shared one is not", async () => {
         const { h, project, store, chatOf, turnOf, root, spawn, on } = await setup();
         const parent = await root('Plan the release', latch(), { workspace: { mode: 'new', branchPrefix: 'max' } });
         const mine = parent.chat.workspace!;
         const alone = 'It had a git worktree made for you alone';
 
-        expect(mine.branch).toBe(`max/${ id8(parent.chat.id) }`);
+        expect(mine.branch).toBe(`max/${id8(parent.chat.id)}`);
 
         // A thread that shares the parent's worktree stands in the folder of the parent's id: not its own.
         const sharing = await spawn(parent.run, 'Read the importer');
@@ -1637,18 +2248,33 @@ describe('thread_spawn with a worktree', () => {
         // One that asks for a worktree of its own gets the daemon's own prefix (a thread has no say in the app's setting), and is told it is its own.
         const own = await spawn(parent.run, 'Rework the importer', held(latch()), { worktree: true });
 
-        expect(own.worktree?.branch).toBe(`clowdy/${ id8(own.threadId) }`);
-        expect(turnOf('Rework the importer')?.systemPrompt).toContain(`${ alone }, on a branch started from ${ mine.branch }`);
+        expect(own.worktree?.branch).toBe(`clowdy/${id8(own.threadId)}`);
+        expect(turnOf('Rework the importer')?.systemPrompt).toContain(
+            `${alone}, on a branch started from ${mine.branch}`
+        );
 
         // A thread whose worktree was made with another prefix is recognised the same way: it stands in the folder of its id.
-        const chat = createChat(store, { projectId: project.id, title: 'Rework the parser', parentChatId: parent.chat.id, folderId: mine.folderId, workspace: { mode: 'new', branchPrefix: 'max/threads' } }, h.config);
+        const chat = createChat(
+            store,
+            {
+                projectId: project.id,
+                title: 'Rework the parser',
+                parentChatId: parent.chat.id,
+                folderId: mine.folderId,
+                workspace: { mode: 'new', branchPrefix: 'max/threads' },
+            },
+            h.config
+        );
 
-        expect(chat.workspace?.branch).toBe(`max/threads/${ id8(chat.id) }`);
+        expect(chat.workspace?.branch).toBe(`max/threads/${id8(chat.id)}`);
         on('Rework the parser', held(latch()));
         h.ok('chat.send', { chatId: chat.id, text: 'Rework the parser' });
         await waitFor(() => turnOf('Rework the parser'), 'the turn of the thread on its worktree');
-        expect(turnOf('Rework the parser')?.systemPrompt).toContain(`${ alone }, on a branch started from main`);
-        expect(getWorkspace(store.db, chat.workspace!.id)).toMatchObject({ branch: chat.workspace!.branch!, managed: true });
+        expect(turnOf('Rework the parser')?.systemPrompt).toContain(`${alone}, on a branch started from main`);
+        expect(getWorkspace(store.db, chat.workspace!.id)).toMatchObject({
+            branch: chat.workspace!.branch!,
+            managed: true,
+        });
     });
 
     test('starts from the branch the parent works on, with its commits and none of its uncommitted files, and the branch comes back with a merge by the parent', async () => {
@@ -1665,10 +2291,16 @@ describe('thread_spawn with a worktree', () => {
 
         const own = await spawn(parent.run, 'Rework the importer', held(latch()), { worktree: true });
         const path = join(h.config.workspacesDir, 'repo', id8(own.threadId), 'repo');
-        const branch = `clowdy/${ id8(own.threadId) }`;
+        const branch = `clowdy/${id8(own.threadId)}`;
 
         expect(own.worktree).toEqual({ path, branch, base: mine.branch! });
-        expect(chatOf(own.threadId).workspace).toMatchObject({ id: expect.not.stringMatching(mine.id), path, branch, managed: true, ready: true });
+        expect(chatOf(own.threadId).workspace).toMatchObject({
+            id: expect.not.stringMatching(mine.id),
+            path,
+            branch,
+            managed: true,
+            ready: true,
+        });
         expect(getWorkspace(store.db, chatOf(own.threadId).workspace!.id)?.base).toBe(mine.branch!);
         expect(chatOf(own.threadId).folderId).toBe(mine.folderId);
         expect(turnOf('Rework the importer')?.cwd).toBe(path);
@@ -1723,25 +2355,45 @@ describe('thread_spawn with a worktree', () => {
 
         git(project.path, 'branch', 'release/2');
 
-        const own = await spawn(parent.run, 'Rework the importer', held(latch()), { worktree: true, base: 'release/2' });
+        const own = await spawn(parent.run, 'Rework the importer', held(latch()), {
+            worktree: true,
+            base: 'release/2',
+        });
 
         expect(own.worktree).toMatchObject({ base: 'release/2' });
-        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Nope', worktree: true, base: 'nowhere' })).rejects.toMatchObject({ code: 'invalid', message: expect.stringContaining('nowhere is not a branch of this repository') });
+        await expect(
+            exec(parent.run, 'thread_spawn', { prompt: 'Nope', worktree: true, base: 'nowhere' })
+        ).rejects.toMatchObject({
+            code: 'invalid',
+            message: expect.stringContaining('nowhere is not a branch of this repository'),
+        });
         // The options go with the worktree: without it there is no branch to start or to name.
-        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Nope', base: 'main' })).rejects.toMatchObject({ code: 'invalid', message: expect.stringContaining('they go with worktree') });
-        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Nope', branch: 'x' })).rejects.toMatchObject({ code: 'invalid', message: expect.stringContaining('they go with worktree') });
+        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Nope', base: 'main' })).rejects.toMatchObject({
+            code: 'invalid',
+            message: expect.stringContaining('they go with worktree'),
+        });
+        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Nope', branch: 'x' })).rejects.toMatchObject({
+            code: 'invalid',
+            message: expect.stringContaining('they go with worktree'),
+        });
     });
 
-    test('names the branch after the thread\'s title, in the folder the thread\'s id names, and has the thread know the worktree is its own', async () => {
+    test("names the branch after the thread's title, in the folder the thread's id names, and has the thread know the worktree is its own", async () => {
         const { h, project, store, chatOf, turnOf, root, spawn } = await setup();
         const parent = await root('Plan the release', latch());
-        const own = await spawn(parent.run, 'Rework the importer', held(latch()), { worktree: true, title: 'Fix the login redirect!' });
+        const own = await spawn(parent.run, 'Rework the importer', held(latch()), {
+            worktree: true,
+            title: 'Fix the login redirect!',
+        });
         const path = join(h.config.workspacesDir, 'repo', id8(own.threadId), 'repo');
 
         // The branch has the title's words; the folder has the id, and is where the agent works.
         expect(own.worktree).toEqual({ path, branch: 'clowdy/fix-the-login-redirect', base: 'main' });
         expect(git(path, 'branch', '--show-current')).toBe('clowdy/fix-the-login-redirect');
-        expect(getWorkspace(store.db, chatOf(own.threadId).workspace!.id)).toMatchObject({ path, branch: 'clowdy/fix-the-login-redirect' });
+        expect(getWorkspace(store.db, chatOf(own.threadId).workspace!.id)).toMatchObject({
+            path,
+            branch: 'clowdy/fix-the-login-redirect',
+        });
         expect(turnOf('Rework the importer')?.cwd).toBe(path);
         expect(turnOf('Rework the importer')?.systemPrompt).toContain('It had a git worktree made for you alone');
         expect(listWorkspacesOfProject(store.db, project.id)).toHaveLength(1);
@@ -1750,30 +2402,53 @@ describe('thread_spawn with a worktree', () => {
     test('keeps the id for a branch name when the title has no words in ASCII, cuts a long one at a word, and tells two threads with one title apart', async () => {
         const { root, spawn } = await setup();
         const parent = await root('Plan the release', latch());
-        const russian = await spawn(parent.run, 'Rework the importer', held(latch()), { worktree: true, title: 'Починить редирект' });
-        const long = await spawn(parent.run, 'Rework the parser', held(latch()), { worktree: true, title: 'Rework the importer so that it reads the long files in small pieces and keeps going' });
-        const first = await spawn(parent.run, 'Check the cache', held(latch()), { worktree: true, title: 'Check the cache' });
-        const second = await spawn(parent.run, 'Check the cache again', held(latch()), { worktree: true, title: 'Check the cache' });
+        const russian = await spawn(parent.run, 'Rework the importer', held(latch()), {
+            worktree: true,
+            title: 'Починить редирект',
+        });
+        const long = await spawn(parent.run, 'Rework the parser', held(latch()), {
+            worktree: true,
+            title: 'Rework the importer so that it reads the long files in small pieces and keeps going',
+        });
+        const first = await spawn(parent.run, 'Check the cache', held(latch()), {
+            worktree: true,
+            title: 'Check the cache',
+        });
+        const second = await spawn(parent.run, 'Check the cache again', held(latch()), {
+            worktree: true,
+            title: 'Check the cache',
+        });
 
-        expect(russian.worktree?.branch).toBe(`clowdy/${ id8(russian.threadId) }`);
+        expect(russian.worktree?.branch).toBe(`clowdy/${id8(russian.threadId)}`);
         // Cut at a word, leaving room for the end of the id that tells a second thread with the same title apart.
         expect(long.worktree?.branch).toBe('clowdy/rework-the-importer-so-that-it-reads-the');
         expect(first.worktree?.branch).toBe('clowdy/check-the-cache');
-        expect(second.worktree?.branch).toBe(`clowdy/check-the-cache-${ id8(second.threadId).slice(-4).toLowerCase() }`);
+        expect(second.worktree?.branch).toBe(`clowdy/check-the-cache-${id8(second.threadId).slice(-4).toLowerCase()}`);
     });
 
     test('takes the branch name the caller gives, refuses one git would not like or one that is taken, and leaves nothing behind', async () => {
         const { project, store, root, spawn, exec } = await setup();
         const parent = await root('Plan the release', latch());
-        const own = await spawn(parent.run, 'Rework the importer', held(latch()), { worktree: true, title: 'Anything', branch: 'importer-rework' });
+        const own = await spawn(parent.run, 'Rework the importer', held(latch()), {
+            worktree: true,
+            title: 'Anything',
+            branch: 'importer-rework',
+        });
         const rows = () => listWorkspacesOfProject(store.db, project.id).length;
 
         // The explicit name wins over the title.
         expect(own.worktree?.branch).toBe('clowdy/importer-rework');
         expect(rows()).toBe(1);
 
-        for (const [branch, message] of [['importer-rework', 'The branch name clowdy/importer-rework is taken'], ['Fix Login', 'lower-case letters'], ['x'.repeat(60), 'longer than 48'], ['two..dots', 'two dots']] as const) {
-            await expect(exec(parent.run, 'thread_spawn', { prompt: 'Nope', worktree: true, branch })).rejects.toMatchObject({ code: 'invalid', message: expect.stringContaining(message) });
+        for (const [branch, message] of [
+            ['importer-rework', 'The branch name clowdy/importer-rework is taken'],
+            ['Fix Login', 'lower-case letters'],
+            ['x'.repeat(60), 'longer than 48'],
+            ['two..dots', 'two dots'],
+        ] as const) {
+            await expect(
+                exec(parent.run, 'thread_spawn', { prompt: 'Nope', worktree: true, branch })
+            ).rejects.toMatchObject({ code: 'invalid', message: expect.stringContaining(message) });
         }
 
         expect(rows()).toBe(1);
@@ -1788,70 +2463,113 @@ describe('thread_spawn with a worktree', () => {
 
         const derived = await spawn(parent.run, 'Rework the importer', held(latch()), { worktree: true, title: 'Fix' });
 
-        expect(derived.worktree?.branch).toBe(`clowdy/fix-${ id8(derived.threadId).slice(-4).toLowerCase() }`);
-        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Nope', worktree: true, branch: 'fix' })).rejects.toMatchObject({ code: 'invalid', message: expect.stringContaining('The branch name clowdy/fix is taken') });
+        expect(derived.worktree?.branch).toBe(`clowdy/fix-${id8(derived.threadId).slice(-4).toLowerCase()}`);
+        await expect(
+            exec(parent.run, 'thread_spawn', { prompt: 'Nope', worktree: true, branch: 'fix' })
+        ).rejects.toMatchObject({
+            code: 'invalid',
+            message: expect.stringContaining('The branch name clowdy/fix is taken'),
+        });
 
         // A thread that is not made yet (a worktree row with its branch) counts as well, above and below.
-        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Nope', worktree: true, branch: 'fix-here' })).resolves.toBeDefined();
-        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Nope', worktree: true, branch: 'fix-here' })).rejects.toMatchObject({ code: 'invalid', message: expect.stringContaining('The branch name clowdy/fix-here is taken') });
+        await expect(
+            exec(parent.run, 'thread_spawn', { prompt: 'Nope', worktree: true, branch: 'fix-here' })
+        ).resolves.toBeDefined();
+        await expect(
+            exec(parent.run, 'thread_spawn', { prompt: 'Nope', worktree: true, branch: 'fix-here' })
+        ).rejects.toMatchObject({
+            code: 'invalid',
+            message: expect.stringContaining('The branch name clowdy/fix-here is taken'),
+        });
     });
 
     test('reads an empty base or branch as left out, takes a base for a parent on a detached HEAD, and does not take the name of a device Windows keeps', async () => {
         const { project, root, spawn, exec } = await setup();
         const parent = await root('Plan the release', latch(), { workspace: { mode: 'new' } });
-        const own = await spawn(parent.run, 'Rework the importer', held(latch()), { worktree: true, base: '', branch: '' });
+        const own = await spawn(parent.run, 'Rework the importer', held(latch()), {
+            worktree: true,
+            base: '',
+            branch: '',
+        });
 
-        expect(own.worktree).toMatchObject({ base: expect.any(String), branch: `clowdy/${ id8(own.threadId) }` });
+        expect(own.worktree).toMatchObject({ base: expect.any(String), branch: `clowdy/${id8(own.threadId)}` });
         // Left out with no worktree it is no refusal either: an empty string says nothing.
-        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Plain', base: '', branch: '' })).resolves.toBeDefined();
+        await expect(
+            exec(parent.run, 'thread_spawn', { prompt: 'Plain', base: '', branch: '' })
+        ).resolves.toBeDefined();
 
         // The parent's worktree is on a detached HEAD: it has no branch to start from, and the refusal says a base is the way out; one that is given is taken.
         git(parent.chat.workspace!.path, 'switch', '-q', '--detach');
-        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Nope', worktree: true })).rejects.toMatchObject({ code: 'invalid', message: expect.stringContaining('name the branch to start it from with base') });
+        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Nope', worktree: true })).rejects.toMatchObject({
+            code: 'invalid',
+            message: expect.stringContaining('name the branch to start it from with base'),
+        });
 
         const based = await spawn(parent.run, 'Rework the parser', held(latch()), { worktree: true, base: 'main' });
 
         expect(based.worktree).toMatchObject({ base: 'main' });
 
         // `con` is a device on Windows: a title of it takes the end of the id, a name that was given is refused.
-        const device = await spawn(parent.run, 'Rework the cache', held(latch()), { worktree: true, base: 'main', title: 'Con' });
+        const device = await spawn(parent.run, 'Rework the cache', held(latch()), {
+            worktree: true,
+            base: 'main',
+            title: 'Con',
+        });
 
-        expect(device.worktree?.branch).toBe(`clowdy/con-${ id8(device.threadId).slice(-4).toLowerCase() }`);
-        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Nope', worktree: true, base: 'main', branch: 'nul' })).rejects.toMatchObject({ code: 'invalid', message: expect.stringContaining('device') });
+        expect(device.worktree?.branch).toBe(`clowdy/con-${id8(device.threadId).slice(-4).toLowerCase()}`);
+        await expect(
+            exec(parent.run, 'thread_spawn', { prompt: 'Nope', worktree: true, base: 'main', branch: 'nul' })
+        ).rejects.toMatchObject({ code: 'invalid', message: expect.stringContaining('device') });
         expect(project.path).toBeDefined();
     });
 
-    test('is refused with cwd, by a caller that works in a folder named with cwd, and when the parent\'s worktree is on a detached HEAD or its branch is gone, leaving nothing behind', async () => {
+    test("is refused with cwd, by a caller that works in a folder named with cwd, and when the parent's worktree is on a detached HEAD or its branch is gone, leaving nothing behind", async () => {
         const { project, store, exec, root, spawn } = await setup();
         const parent = await root('Plan the release', latch(), { workspace: { mode: 'new' } });
         const mine = parent.chat.workspace!;
         const folder = tempDir('clowdy-thread-cwd');
-        const listed = async () => (await exec(parent.run, 'thread_list')).threads.map((entry: { threadId: string }) => entry.threadId);
+        const listed = async () =>
+            (await exec(parent.run, 'thread_list')).threads.map((entry: { threadId: string }) => entry.threadId);
         const refused = async (input: Record<string, unknown>, message: RegExp) => {
-            await expect(exec(parent.run, 'thread_spawn', { prompt: 'Nope', ...input })).rejects.toMatchObject({ code: 'invalid', message: expect.stringMatching(message) });
+            await expect(exec(parent.run, 'thread_spawn', { prompt: 'Nope', ...input })).rejects.toMatchObject({
+                code: 'invalid',
+                message: expect.stringMatching(message),
+            });
             expect(await listed()).toEqual([]);
             expect(listWorkspacesOfProject(store.db, project.id)).toHaveLength(1);
         };
 
         // Two ways to say where the thread works.
-        await refused({ worktree: true, cwd: folder }, /^worktree and cwd both say where the thread works, so give one/);
+        await refused(
+            { worktree: true, cwd: folder },
+            /^worktree and cwd both say where the thread works, so give one/
+        );
         await refused({ worktree: true, cwd: 'relative/path' }, /^worktree and cwd both say where the thread works/);
 
         // The parent's worktree is on a detached HEAD now (the row still has the branch it was made on): there is no branch of its work to start from.
         git(mine.path, 'switch', '--detach', '-q');
-        await refused({ worktree: true }, /^Cannot give the thread a worktree of its own\. Your worktree is on a detached HEAD/);
+        await refused(
+            { worktree: true },
+            /^Cannot give the thread a worktree of its own\. Your worktree is on a detached HEAD/
+        );
         git(mine.path, 'switch', '-q', mine.branch!);
 
         // The parent's branch is gone with its worktree: starting from anything else would hand the thread a tree without the parent's work.
         rmSync(mine.path, { recursive: true });
         updateWorkspace(store.db, mine.id, { branch: 'clowdy/nowhere' });
-        await refused({ worktree: true }, /^Cannot give the thread a worktree of its own\. Your branch clowdy\/nowhere is not in the repository any more/);
+        await refused(
+            { worktree: true },
+            /^Cannot give the thread a worktree of its own\. Your branch clowdy\/nowhere is not in the repository any more/
+        );
         updateWorkspace(store.db, mine.id, { branch: mine.branch });
 
         // A thread that works where its parent named has no branch of its own to start another from.
         const named = await spawn(parent.run, 'Look elsewhere', held(latch()), { cwd: folder });
 
-        await expect(exec(named.run(), 'thread_spawn', { prompt: 'Nested', worktree: true })).rejects.toMatchObject({ code: 'invalid', message: expect.stringContaining('named with cwd') });
+        await expect(exec(named.run(), 'thread_spawn', { prompt: 'Nested', worktree: true })).rejects.toMatchObject({
+            code: 'invalid',
+            message: expect.stringContaining('named with cwd'),
+        });
 
         // An existing worktree that was on a detached HEAD from the start has no branch either.
         const detached = join(tempDir('clowdy-thread-detached'), 'wt');
@@ -1861,7 +2579,10 @@ describe('thread_spawn with a worktree', () => {
         const onDetached = await root('Plan the cleanup', latch(), { workspace: { mode: 'existing', path: detached } });
 
         expect(onDetached.chat.workspace?.branch).toBeUndefined();
-        await expect(exec(onDetached.run, 'thread_spawn', { prompt: 'Nope', worktree: true })).rejects.toMatchObject({ code: 'invalid', message: expect.stringContaining('detached HEAD') });
+        await expect(exec(onDetached.run, 'thread_spawn', { prompt: 'Nope', worktree: true })).rejects.toMatchObject({
+            code: 'invalid',
+            message: expect.stringContaining('detached HEAD'),
+        });
         expect(listWorkspacesOfProject(store.db, project.id)).toHaveLength(2);
     });
 
@@ -1904,11 +2625,14 @@ describe('thread_spawn with a worktree', () => {
 
         // A worktree that is ready has no such excuse for a branch it lost.
         updateWorkspace(store.db, mine.id, { ready: true });
-        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Nope', worktree: true })).rejects.toMatchObject({ code: 'invalid', message: expect.stringContaining('clowdy/not-yet is not in the repository any more') });
+        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Nope', worktree: true })).rejects.toMatchObject({
+            code: 'invalid',
+            message: expect.stringContaining('clowdy/not-yet is not in the repository any more'),
+        });
         expect(h.run(parent.run.id).status).toBe('running');
     });
 
-    test('is refused where the project\'s folder is no repository, or is inside one, and nothing is made', async () => {
+    test("is refused where the project's folder is no repository, or is inside one, and nothing is made", async () => {
         const { h, store, exec, on, running, chatOf } = await setup();
         const inside = makeRepo(tempDir('clowdy-thread-inside'), 'app');
         const subfolder = join(inside, 'packages');
@@ -1916,19 +2640,23 @@ describe('thread_spawn with a worktree', () => {
 
         mkdirSync(subfolder);
 
-        for (const [name, folder] of [['Notes', plain], ['Packages', subfolder]] as const) {
+        for (const [name, folder] of [
+            ['Notes', plain],
+            ['Packages', subfolder],
+        ] as const) {
             const { project } = h.ok('project.add', { name, folders: [folder] });
             const { chat } = h.ok('chat.create', { projectId: project.id });
 
-            on(`Plan in ${ name }`, held(latch()));
-            h.ok('chat.send', { chatId: chat.id, text: `Plan in ${ name }` });
-            await running(chat.id, `Plan in ${ name }`);
+            on(`Plan in ${name}`, held(latch()));
+            h.ok('chat.send', { chatId: chat.id, text: `Plan in ${name}` });
+            await running(chat.id, `Plan in ${name}`);
 
             const run = h.run(chatOf(chat.id).orchestratorRunId as string);
 
             await expect(exec(run, 'thread_spawn', { prompt: 'Nope', worktree: true })).rejects.toMatchObject({
                 code: 'invalid',
-                message: 'Cannot give the thread a worktree of its own. A worktree needs the root of a git repository, and this folder is not one',
+                message:
+                    'Cannot give the thread a worktree of its own. A worktree needs the root of a git repository, and this folder is not one',
             });
             expect((await exec(run, 'thread_list')).threads).toEqual([]);
             expect(listWorkspacesOfProject(store.db, project.id)).toEqual([]);
@@ -1943,14 +2671,20 @@ describe('thread_spawn with a worktree', () => {
         const { h, project, store, chatOf, turnOf, root, spawn } = await setup();
         const parent = await root('Plan the release', latch());
         const prompts = ['Part one', 'Part two', 'Part three', 'Part four', 'Part five', 'Part six'];
-        const threads = await Promise.all(prompts.map(prompt => spawn(parent.run, prompt, held(latch()), { worktree: true })));
+        const threads = await Promise.all(
+            prompts.map(prompt => spawn(parent.run, prompt, held(latch()), { worktree: true }))
+        );
         const paths = threads.map(thread => thread.worktree!.path);
         const branches = threads.map(thread => thread.worktree!.branch);
 
         expect(new Set(paths).size).toBe(prompts.length);
         expect(new Set(branches).size).toBe(prompts.length);
         expect(new Set(threads.map(thread => chatOf(thread.threadId).workspace!.id)).size).toBe(prompts.length);
-        expect(listWorkspacesOfProject(store.db, project.id).map(record => record.path).sort()).toEqual([...paths].sort());
+        expect(
+            listWorkspacesOfProject(store.db, project.id)
+                .map(record => record.path)
+                .sort()
+        ).toEqual([...paths].sort());
 
         for (const [index, thread] of threads.entries()) {
             expect(paths[index]).toBe(join(h.config.workspacesDir, 'repo', id8(thread.threadId), 'repo'));
@@ -1968,22 +2702,31 @@ describe('thread_spawn with a worktree', () => {
         const { task: second } = await exec(parent.run, 'task_create', { title: 'Second', dependsOn: [first.key] });
 
         // The thread waits for the first task, which gives the test time to put something in the way of its worktree.
-        const waiting = await exec(parent.run, 'thread_spawn', { prompt: 'Rework the importer', tasks: [second.key], worktree: true });
+        const waiting = await exec(parent.run, 'thread_spawn', {
+            prompt: 'Rework the importer',
+            tasks: [second.key],
+            worktree: true,
+        });
         const { path } = waiting.worktree;
 
         expect(waiting.state).toBe('working');
         mkdirSync(path, { recursive: true });
-        writeFileSync(join(path, 'note.txt'), 'somebody\'s\n');
+        writeFileSync(join(path, 'note.txt'), "somebody's\n");
         await exec(parent.run, 'task_update', { taskId: first.key, status: 'done' });
         await waitFor(() => runOf(waiting.threadId).status === 'failed', 'the thread to fail');
 
         // The reason is the step's: the path was left as it is, and the parent hears of it.
-        expect(runOf(waiting.threadId).error).toContain(`${ path } exists and is not a worktree of`);
-        expect(bodies(runOf(waiting.threadId).id).find(body => body.kind === 'tool' && body.name === WORKSPACE_TOOL)).toMatchObject({ state: 'error', error: expect.stringContaining('exists and is not a worktree') });
-        expect(readFileSync(join(path, 'note.txt'), 'utf8')).toBe('somebody\'s\n');
+        expect(runOf(waiting.threadId).error).toContain(`${path} exists and is not a worktree of`);
+        expect(
+            bodies(runOf(waiting.threadId).id).find(body => body.kind === 'tool' && body.name === WORKSPACE_TOOL)
+        ).toMatchObject({ state: 'error', error: expect.stringContaining('exists and is not a worktree') });
+        expect(readFileSync(join(path, 'note.txt'), 'utf8')).toBe("somebody's\n");
         expect(chatOf(waiting.threadId).workspace).toMatchObject({ path, ready: false });
-        await waitFor(() => chatOf(parent.chat.id).queue?.length === 1, 'the notice in the busy parent\'s queue');
-        expect(chatOf(parent.chat.id).queue?.[0].from).toMatchObject({ kind: 'threadNotice', threads: [{ chatId: waiting.threadId, outcome: 'failed' }] });
+        await waitFor(() => chatOf(parent.chat.id).queue?.length === 1, "the notice in the busy parent's queue");
+        expect(chatOf(parent.chat.id).queue?.[0].from).toMatchObject({
+            kind: 'threadNotice',
+            threads: [{ chatId: waiting.threadId, outcome: 'failed' }],
+        });
         expect(h.run(parent.run.id).status).toBe('running');
 
         // The way is clear: the next message tries again and the thread runs in its worktree.
@@ -1991,10 +2734,10 @@ describe('thread_spawn with a worktree', () => {
         on('Try again', held(latch(), 'Working again'));
         await exec(parent.run, 'thread_tell', { thread: waiting.threadId, message: 'Try again' });
         await waitFor(() => chatOf(waiting.threadId).workspace?.ready, 'the worktree to be made');
-        expect(git(path, 'branch', '--show-current')).toBe(`clowdy/${ id8(waiting.threadId) }`);
+        expect(git(path, 'branch', '--show-current')).toBe(`clowdy/${id8(waiting.threadId)}`);
 
         // The first turn never reached the agent, so the retry carries the brief as well as the message, with the first message's line in front.
-        const retried = await waitFor(() => turnOf('Try again'), 'the thread\'s agent to start');
+        const retried = await waitFor(() => turnOf('Try again'), "the thread's agent to start");
 
         expect(retried.prompt).toStartWith('Follow clowdy:orchestrate.');
         expect(retried.prompt).toContain('Rework the importer\n\n[Message from thread');

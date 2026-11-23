@@ -13,8 +13,8 @@ import { useCallback } from 'react';
 
 import { sizeLimit } from '../../documents/TextDocument';
 import { basename, mediaKind } from '../../paths';
-import { closeTab } from './closeTab';
 import { CodeEditor } from './CodeEditor';
+import { closeTab } from './closeTab';
 import styles from './EditorArea.module.css';
 import { MarkdownPane } from './MarkdownPane';
 
@@ -23,7 +23,13 @@ import type { ReactNode } from 'react';
 import type { TextDocument } from '../../documents/TextDocument';
 import type { FileManager } from '../../FileManager';
 
-const DocumentTab = observer(function DocumentTab({ manager, document }: { manager: FileManager; document: TextDocument }) {
+const DocumentTab = observer(function DocumentTab({
+    manager,
+    document,
+}: {
+    manager: FileManager;
+    document: TextDocument;
+}) {
     const name = basename(document.path);
 
     return (

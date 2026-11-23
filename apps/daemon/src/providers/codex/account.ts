@@ -42,7 +42,11 @@ export function parseCodexAccount(response: AccountResponse): SignInRead {
 
     if (!account) {
         return response.requiresOpenaiAuth === false
-            ? { status: 'signed-in', account: { method: 'other' }, detail: 'Codex uses a model provider that needs no sign-in' }
+            ? {
+                  status: 'signed-in',
+                  account: { method: 'other' },
+                  detail: 'Codex uses a model provider that needs no sign-in',
+              }
             : { status: 'signed-out' };
     }
 
@@ -94,10 +98,10 @@ export function windowLabel(minutes: unknown, fallback: string): string {
     }
 
     if (minutes % 1440 === 0) {
-        return `${ minutes / 1440 }d`;
+        return `${minutes / 1440}d`;
     }
 
-    return minutes % 60 === 0 ? `${ minutes / 60 }h` : `${ minutes }m`;
+    return minutes % 60 === 0 ? `${minutes / 60}h` : `${minutes}m`;
 }
 
 /** The weekly limit of one model is named for the model, as Claude's is (`Fable`); another window of it says which one it is (`Session · Codex Spark`). */
@@ -106,27 +110,36 @@ function modelWindowLabel(window: string, model: string | undefined): string {
         return window;
     }
 
-    return window === 'Week' ? model : `${ window } · ${ model }`;
+    return window === 'Week' ? model : `${window} · ${model}`;
 }
 
 /** `account/rateLimits/read` as windows: the main bucket first, then the buckets of single models. Every window is optional. */
-export function codexWindows(response: { rateLimits?: Snapshot | null; rateLimitsByLimitId?: Record<string, Snapshot> | null }): AgentUsageWindow[] {
-    const buckets = response.rateLimitsByLimitId && Object.keys(response.rateLimitsByLimitId).length > 0
-        ? Object.entries(response.rateLimitsByLimitId)
-        : response.rateLimits ? [[response.rateLimits.limitId ?? 'codex', response.rateLimits] as const] : [];
+export function codexWindows(response: {
+    rateLimits?: Snapshot | null;
+    rateLimitsByLimitId?: Record<string, Snapshot> | null;
+}): AgentUsageWindow[] {
+    const buckets =
+        response.rateLimitsByLimitId && Object.keys(response.rateLimitsByLimitId).length > 0
+            ? Object.entries(response.rateLimitsByLimitId)
+            : response.rateLimits
+              ? [[response.rateLimits.limitId ?? 'codex', response.rateLimits] as const]
+              : [];
     const ordered = [...buckets].sort(([a], [b]) => (a === 'codex' ? -1 : 0) - (b === 'codex' ? -1 : 0));
     const windows: AgentUsageWindow[] = [];
 
     for (const [limitId, snapshot] of ordered) {
-        const model = limitId === 'codex' ? undefined : snapshot.limitName ?? limitId;
+        const model = limitId === 'codex' ? undefined : (snapshot.limitName ?? limitId);
 
-        for (const [slot, window, fallback] of [['primary', snapshot.primary, 'Session'], ['secondary', snapshot.secondary, 'Week']] as const) {
+        for (const [slot, window, fallback] of [
+            ['primary', snapshot.primary, 'Session'],
+            ['secondary', snapshot.secondary, 'Week'],
+        ] as const) {
             if (typeof window?.usedPercent !== 'number' || !Number.isFinite(window.usedPercent)) {
                 continue;
             }
 
             windows.push({
-                id: `${ limitId }:${ slot }`,
+                id: `${limitId}:${slot}`,
                 label: modelWindowLabel(windowLabel(window.windowDurationMins, fallback), model),
                 usedPercent: Math.min(100, Math.max(0, window.usedPercent)),
                 ...(typeof window.resetsAt === 'number' && { resetsAt: window.resetsAt * 1000 }),
@@ -142,33 +155,64 @@ export const codexAccount = {
     login: { args: ['login'] },
     async read(context): Promise<ProviderRead> {
         try {
-            return await withAppServer(context, async (rpc) => {
-                await rpc.call('initialize', { clientInfo: { name: 'clowdy', title: 'Clowdy', version: '0' }, capabilities: null });
-                rpc.notify('initialized');
+            return await withAppServer(
+                context,
+                async rpc => {
+                    await rpc.call('initialize', {
+                        clientInfo: { name: 'clowdy', title: 'Clowdy', version: '0' },
+                        capabilities: null,
+                    });
+                    rpc.notify('initialized');
 
-                const signIn = parseCodexAccount(await rpc.call('account/read', { refreshToken: false }) as AccountResponse);
+                    const signIn = parseCodexAccount(
+                        (await rpc.call('account/read', { refreshToken: false })) as AccountResponse
+                    );
 
-                if (signIn.account?.method !== 'subscription') {
-                    return {
-                        signIn,
-                        usage: signIn.status === 'signed-in'
-                            ? { state: 'unavailable', windows: [], detail: 'There are no plan limits: Codex is not signed in with ChatGPT' } satisfies AgentUsage
-                            : { state: 'unavailable', windows: [] } satisfies AgentUsage,
-                    };
-                }
+                    if (signIn.account?.method !== 'subscription') {
+                        return {
+                            signIn,
+                            usage:
+                                signIn.status === 'signed-in'
+                                    ? ({
+                                          state: 'unavailable',
+                                          windows: [],
+                                          detail: 'There are no plan limits: Codex is not signed in with ChatGPT',
+                                      } satisfies AgentUsage)
+                                    : ({ state: 'unavailable', windows: [] } satisfies AgentUsage),
+                        };
+                    }
 
-                try {
-                    const windows = codexWindows(await rpc.call('account/rateLimits/read') as Parameters<typeof codexWindows>[0]);
+                    try {
+                        const windows = codexWindows(
+                            (await rpc.call('account/rateLimits/read')) as Parameters<typeof codexWindows>[0]
+                        );
 
-                    return { signIn, usage: windows.length > 0 ? { state: 'ok', windows, fetchedAt: context.now() } : { state: 'unavailable', windows: [], detail: 'Codex reported no limits for this plan' } };
-                }
-                catch (error) {
-                    return { signIn, usage: { state: 'error', windows: [], detail: `Codex could not read its limits: ${ error instanceof Error ? error.message : String(error) }` } };
-                }
-            }, APP_SERVER_TIMEOUT_MS);
-        }
-        catch (error) {
-            const detail = `Codex did not say who is signed in: ${ error instanceof Error ? error.message : String(error) }`;
+                        return {
+                            signIn,
+                            usage:
+                                windows.length > 0
+                                    ? { state: 'ok', windows, fetchedAt: context.now() }
+                                    : {
+                                          state: 'unavailable',
+                                          windows: [],
+                                          detail: 'Codex reported no limits for this plan',
+                                      },
+                        };
+                    } catch (error) {
+                        return {
+                            signIn,
+                            usage: {
+                                state: 'error',
+                                windows: [],
+                                detail: `Codex could not read its limits: ${error instanceof Error ? error.message : String(error)}`,
+                            },
+                        };
+                    }
+                },
+                APP_SERVER_TIMEOUT_MS
+            );
+        } catch (error) {
+            const detail = `Codex did not say who is signed in: ${error instanceof Error ? error.message : String(error)}`;
 
             return { signIn: { status: 'unknown', detail }, usage: { state: 'unavailable', windows: [] } };
         }

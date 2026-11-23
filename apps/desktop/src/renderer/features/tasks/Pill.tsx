@@ -15,9 +15,13 @@ export interface PillProps {
 
 /** A small rounded label tinted by tone: a task status, a verdict. */
 export function Pill({ tone = 'neutral', children, className }: PillProps) {
-    return <span className={ cn(styles.pill, className) } data-tone={ tone }>{ children }</span>;
+    return (
+        <span className={cn(styles.pill, className)} data-tone={tone}>
+            {children}
+        </span>
+    );
 }
 
 export function PillLabel({ children }: { children: ReactNode }) {
-    return <span className={ styles.label }>{ children }</span>;
+    return <span className={styles.label}>{children}</span>;
 }

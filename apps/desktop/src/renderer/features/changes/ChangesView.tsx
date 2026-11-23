@@ -2,7 +2,7 @@ import { Button } from '@clowdy/components/Button';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup, usePanelRef } from '@clowdy/components/Resizable';
 import { Show } from '@clowdy/components/Show';
 import { Aside } from '@clowdy/icons/14';
-import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
+import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react';
 
 import { useRootStore } from '../../stores';
 import { ChangesList, type ChangesListHandle } from './ChangesList';
@@ -31,17 +31,18 @@ function SidebarToggle({ open, onPress }: { open: boolean; onPress: () => void }
             size="sm"
             iconOnly
             aria-label="Sidebar"
-            tooltip={ open ? 'Hide the sidebar' : 'Show the sidebar' }
+            tooltip={open ? 'Hide the sidebar' : 'Show the sidebar'}
             tooltipPlacement="bottom"
-            isPressed={ open }
+            isPressed={open}
             data-sidebar-toggle=""
-            onPress={ (event) => {
+            onPress={event => {
                 onPress();
 
-                if (event.pointerType === 'keyboard') requestAnimationFrame(() => document.querySelector<HTMLElement>('[data-sidebar-toggle]')?.focus());
-            } }
+                if (event.pointerType === 'keyboard')
+                    requestAnimationFrame(() => document.querySelector<HTMLElement>('[data-sidebar-toggle]')?.focus());
+            }}
         >
-            <Aside className={ styles.toggleIcon } aria-hidden="true" />
+            <Aside className={styles.toggleIcon} aria-hidden="true" />
         </Button>
     );
 }
@@ -50,7 +51,15 @@ function SidebarToggle({ open, onPress }: { open: boolean; onPress: () => void }
  * The sidebar's panel and the edge to drag it by. It is built each time the sidebar opens, which is when its width is read, with an id of its own each time: the panel library
  * keeps the last layout of every set of ids, in percentages, and would bring it back in place of the width, which is a different size when the view was resized meanwhile.
  */
-function Sidebar({ panelRef, width, children }: { panelRef: ReturnType<typeof usePanelRef>; width: number; children: ReactNode }) {
+function Sidebar({
+    panelRef,
+    width,
+    children,
+}: {
+    panelRef: ReturnType<typeof usePanelRef>;
+    width: number;
+    children: ReactNode;
+}) {
     const [opened] = useState(width);
     const id = useId();
 
@@ -58,8 +67,15 @@ function Sidebar({ panelRef, width, children }: { panelRef: ReturnType<typeof us
         <>
             <ResizableHandle aria-label="Resize the sidebar" />
 
-            <ResizablePanel id={ id } panelRef={ panelRef } className={ styles.side } defaultSize={ opened } minSize={ CHANGES_SIDEBAR_MIN_WIDTH } groupResizeBehavior="preserve-pixel-size">
-                { children }
+            <ResizablePanel
+                id={id}
+                panelRef={panelRef}
+                className={styles.side}
+                defaultSize={opened}
+                minSize={CHANGES_SIDEBAR_MIN_WIDTH}
+                groupResizeBehavior="preserve-pixel-size"
+            >
+                {children}
             </ResizablePanel>
         </>
     );
@@ -105,36 +121,36 @@ export function ChangesView({ projectId, place }: { projectId: ProjectId; place:
     const toggle = () => changesSidebarLayout.toggle();
 
     return (
-        <div ref={ boxRef } className={ styles.root }>
-            <Show when={ sized }>
+        <div ref={boxRef} className={styles.root}>
+            <Show when={sized}>
                 <ResizablePanelGroup
                     orientation="horizontal"
                     // Only the person's own drag is kept: a window that is resized, or a width the range had to correct, changes the layout too.
-                    onLayoutChanged={ (_layout, meta) => {
+                    onLayoutChanged={(_layout, meta) => {
                         if (!meta.isUserInteraction) return;
 
                         // After the layout has landed: a key press announces its change a step before the panel's size shows it.
                         requestAnimationFrame(() => {
                             if (sidebar.current) changesSidebarLayout.setWidth(sidebar.current.getSize().inPixels);
                         });
-                    } }
+                    }}
                 >
-                    <ResizablePanel id={ `${ id }-reading` } className={ styles.reading } minSize={ CHANGES_READING_MIN_WIDTH }>
-                        <ChangesToolbar model={ model } end={ !open && <SidebarToggle open={ false } onPress={ toggle } /> } />
-                        <ChangesList ref={ list } model={ model } />
+                    <ResizablePanel id={`${id}-reading`} className={styles.reading} minSize={CHANGES_READING_MIN_WIDTH}>
+                        <ChangesToolbar model={model} end={!open && <SidebarToggle open={false} onPress={toggle} />} />
+                        <ChangesList ref={list} model={model} />
                     </ResizablePanel>
 
-                    <Show when={ open }>
-                        <Sidebar panelRef={ sidebar } width={ changesSidebarLayout.width }>
+                    <Show when={open}>
+                        <Sidebar panelRef={sidebar} width={changesSidebarLayout.width}>
                             <ChangesSidebar
-                                model={ model }
-                                place={ place }
-                                projectId={ projectId }
-                                toggle={ <SidebarToggle open onPress={ toggle } /> }
-                                onOpenFile={ (path) => {
+                                model={model}
+                                place={place}
+                                projectId={projectId}
+                                toggle={<SidebarToggle open onPress={toggle} />}
+                                onOpenFile={path => {
                                     model.reveal(path);
                                     list.current?.scrollToFile(path);
-                                } }
+                                }}
                             />
                         </Sidebar>
                     </Show>

@@ -4,10 +4,18 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createFixtureData, FIXTURE_GIT_COMMITS, FIXTURE_PERSONAL_PROJECT_ID, FIXTURE_PROJECT_ID, FIXTURE_WORKSPACE_CHAT_ID, withFixtureWorkspace, type FixtureData } from '../../daemon/fixtureData';
+import {
+    createFixtureData,
+    FIXTURE_GIT_COMMITS,
+    FIXTURE_PERSONAL_PROJECT_ID,
+    FIXTURE_PROJECT_ID,
+    FIXTURE_WORKSPACE_CHAT_ID,
+    type FixtureData,
+    withFixtureWorkspace,
+} from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { overrideTransport } from '../../daemon/testing';
-import { TransportError, type Transport } from '../../daemon/transport';
+import { type Transport, TransportError } from '../../daemon/transport';
 import { RootStore, RootStoreProvider } from '../../stores';
 import ChangesTab from './ChangesTab';
 import { gitFactsOf } from './gitFacts';
@@ -21,20 +29,50 @@ import type { GitChanges, GitFileSides } from '@clowdy/protocol';
 vi.mock('./useBoxWidth', () => ({ useBoxWidth: () => [() => undefined, 900] }));
 // The diff view has specs of its own (`packages/file-manager/specs`); here it only has to be given the right texts.
 vi.mock('@clowdy/file-manager/react', () => ({
-    DiffView: ({ path, original, modified, estimatedLines }: { path: string; original: string | null; modified: string | null; estimatedLines?: number }) => (
-        <pre data-diff={ path } data-lines={ estimatedLines }>{ `${ original === null ? '(none)' : original }=>${ modified === null ? '(none)' : modified }` }</pre>
+    DiffView: ({
+        path,
+        original,
+        modified,
+        estimatedLines,
+    }: {
+        path: string;
+        original: string | null;
+        modified: string | null;
+        estimatedLines?: number;
+    }) => (
+        <pre
+            data-diff={path}
+            data-lines={estimatedLines}
+        >{`${original === null ? '(none)' : original}=>${modified === null ? '(none)' : modified}`}</pre>
     ),
     // What a card asks for once a message box is mounted (`useAddToChat`).
     selectionAction: () => [],
 }));
 // The babel plugin that makes the app's components observers does not run under Vitest: the parts of the tab are, to follow the model they read.
-vi.mock('./ChangesView', async importOriginal => ({ ...await importOriginal<typeof import('./ChangesView')>(), ChangesView: observer((await importOriginal<typeof import('./ChangesView')>()).ChangesView) }));
-vi.mock('./ChangesList', async importOriginal => ({ ChangesList: observer((await importOriginal<typeof import('./ChangesList')>()).ChangesList) }));
-vi.mock('./ChangesToolbar', async importOriginal => ({ ...await importOriginal<typeof import('./ChangesToolbar')>(), ChangesToolbar: observer((await importOriginal<typeof import('./ChangesToolbar')>()).ChangesToolbar) }));
-vi.mock('./ChangesSidebar', async importOriginal => ({ ...await importOriginal<typeof import('./ChangesSidebar')>(), ChangesSidebar: observer((await importOriginal<typeof import('./ChangesSidebar')>()).ChangesSidebar) }));
-vi.mock('./CommitBox', async importOriginal => ({ CommitBox: observer((await importOriginal<typeof import('./CommitBox')>()).CommitBox) }));
-vi.mock('./DiffCard', async importOriginal => ({ DiffCard: observer((await importOriginal<typeof import('./DiffCard')>()).DiffCard) }));
-vi.mock('./PullRequestChip', async importOriginal => ({ PullRequestChip: observer((await importOriginal<typeof import('./PullRequestChip')>()).PullRequestChip) }));
+vi.mock('./ChangesView', async importOriginal => ({
+    ...(await importOriginal<typeof import('./ChangesView')>()),
+    ChangesView: observer((await importOriginal<typeof import('./ChangesView')>()).ChangesView),
+}));
+vi.mock('./ChangesList', async importOriginal => ({
+    ChangesList: observer((await importOriginal<typeof import('./ChangesList')>()).ChangesList),
+}));
+vi.mock('./ChangesToolbar', async importOriginal => ({
+    ...(await importOriginal<typeof import('./ChangesToolbar')>()),
+    ChangesToolbar: observer((await importOriginal<typeof import('./ChangesToolbar')>()).ChangesToolbar),
+}));
+vi.mock('./ChangesSidebar', async importOriginal => ({
+    ...(await importOriginal<typeof import('./ChangesSidebar')>()),
+    ChangesSidebar: observer((await importOriginal<typeof import('./ChangesSidebar')>()).ChangesSidebar),
+}));
+vi.mock('./CommitBox', async importOriginal => ({
+    CommitBox: observer((await importOriginal<typeof import('./CommitBox')>()).CommitBox),
+}));
+vi.mock('./DiffCard', async importOriginal => ({
+    DiffCard: observer((await importOriginal<typeof import('./DiffCard')>()).DiffCard),
+}));
+vi.mock('./PullRequestChip', async importOriginal => ({
+    PullRequestChip: observer((await importOriginal<typeof import('./PullRequestChip')>()).PullRequestChip),
+}));
 
 /** What watches elements for the scroller's edge: it says nothing until the test says what came near. */
 const watchers = new Set<{ callback: IntersectionObserverCallback; targets: Set<Element> }>();
@@ -62,13 +100,18 @@ class FakeIntersectionObserver {
 }
 
 /** Tells the cards that `select` says that they came near the scroller's edge, or went far from it. */
-const moveCards = (isIntersecting: boolean, select: (card: Element) => boolean) => act(async () => {
-    for (const { callback, targets } of [...watchers]) {
-        const moved = [...targets].filter(select);
+const moveCards = (isIntersecting: boolean, select: (card: Element) => boolean) =>
+    act(async () => {
+        for (const { callback, targets } of [...watchers]) {
+            const moved = [...targets].filter(select);
 
-        if (moved.length > 0) callback(moved.map(target => ({ isIntersecting, target }) as IntersectionObserverEntry), {} as IntersectionObserver);
-    }
-});
+            if (moved.length > 0)
+                callback(
+                    moved.map(target => ({ isIntersecting, target }) as IntersectionObserverEntry),
+                    {} as IntersectionObserver
+                );
+        }
+    });
 
 /** Brings the cards that `select` says are near the scroller's edge into reach. */
 const bringNear = (select: (card: Element) => boolean = () => true) => moveCards(true, select);
@@ -84,29 +127,39 @@ let scrolled: HTMLElement[];
 
 const Tab = observer(ChangesTab);
 
-const settle = () => act(async () => {
-    await new Promise(resolve => setTimeout(resolve, 0));
-});
-const press = (target: Element) => act(async () => {
-    target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
-    target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
-    target.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
-    target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
-    (target as HTMLElement).click();
-});
+const settle = () =>
+    act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 0));
+    });
+const press = (target: Element) =>
+    act(async () => {
+        target.dispatchEvent(
+            new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true })
+        );
+        target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+        target.dispatchEvent(
+            new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true })
+        );
+        target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
+        (target as HTMLElement).click();
+    });
 
 const cards = () => [...container.querySelectorAll<HTMLElement>('[data-card]')];
 const cardPaths = () => cards().map(card => card.dataset.card);
 const card = (path: string) => cards().find(element => element.dataset.card === path)!;
 // The rows, and not the `Discard changes…` button some of them have beside them.
-const sidebarFiles = () => [...container.querySelectorAll<HTMLButtonElement>('[aria-label="Changed files"] button:not([data-discard])')];
+const sidebarFiles = () => [
+    ...container.querySelectorAll<HTMLButtonElement>('[aria-label="Changed files"] button:not([data-discard])'),
+];
 const sidebarPaths = () => sidebarFiles().map(row => row.querySelector('[class*="name"]')?.textContent);
-const commitRows = () => [...container.querySelectorAll<HTMLButtonElement>('[aria-label="Committed on branch"] button')];
+const commitRows = () => [
+    ...container.querySelectorAll<HTMLButtonElement>('[aria-label="Committed on branch"] button'),
+];
 const scopeTrigger = () => container.querySelector<HTMLButtonElement>('button[aria-haspopup="listbox"]')!;
 const options = () => [...document.querySelectorAll('[role="option"]')];
 const filter = () => container.querySelector<HTMLInputElement>('input[aria-label="Filter files"]')!;
 const summary = () => container.querySelector('[aria-label="Summary of the changes"]')?.textContent;
-const button = (label: string) => container.querySelector<HTMLButtonElement>(`button[aria-label="${ label }"]`)!;
+const button = (label: string) => container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!;
 
 async function type(text: string) {
     await act(async () => {
@@ -116,7 +169,15 @@ async function type(text: string) {
 }
 
 /** Starts the store on the fixtures, with a chat in a worktree open on the Changes tab, `tweak` having its say about the data first and `wrap` about the transport. */
-async function start({ tweak, wrap, chat = FIXTURE_WORKSPACE_CHAT_ID }: { tweak?: (data: FixtureData) => void; wrap?: (base: FixtureTransport) => Transport; chat?: string | null } = {}) {
+async function start({
+    tweak,
+    wrap,
+    chat = FIXTURE_WORKSPACE_CHAT_ID,
+}: {
+    tweak?: (data: FixtureData) => void;
+    wrap?: (base: FixtureTransport) => Transport;
+    chat?: string | null;
+} = {}) {
     const data = withFixtureWorkspace(createFixtureData());
 
     tweak?.(data);
@@ -132,7 +193,13 @@ async function start({ tweak, wrap, chat = FIXTURE_WORKSPACE_CHAT_ID }: { tweak?
 }
 
 async function draw() {
-    act(() => root.render(<RootStoreProvider value={ store }><Tab /></RootStoreProvider>));
+    act(() =>
+        root.render(
+            <RootStoreProvider value={store}>
+                <Tab />
+            </RootStoreProvider>
+        )
+    );
     await settle();
     await settle();
 }
@@ -166,20 +233,36 @@ describe('the Changes tab of a chat in a worktree', () => {
         await start();
         await draw();
 
-        expect(cardPaths()).toEqual(['assets/logo.png', 'notes.md', 'src/booking/price.test.ts', 'src/booking/price.ts', 'src/booking/weekend.ts', 'src/limits.ts']);
+        expect(cardPaths()).toEqual([
+            'assets/logo.png',
+            'notes.md',
+            'src/booking/price.test.ts',
+            'src/booking/price.ts',
+            'src/booking/weekend.ts',
+            'src/limits.ts',
+        ]);
         expect(summary()).toBe('6 files,+112−8');
         expect(scopeTrigger().textContent).toContain('All changes');
-        expect(sidebarPaths()).toEqual(['logo.png', 'notes.md', 'price.test.ts', 'price.ts', 'weekend.ts', 'limits.ts']);
+        expect(sidebarPaths()).toEqual([
+            'logo.png',
+            'notes.md',
+            'price.test.ts',
+            'price.ts',
+            'weekend.ts',
+            'limits.ts',
+        ]);
         expect(commitRows().map(row => row.textContent)).toEqual([
             expect.stringContaining('Charge a weekend surcharge'),
             expect.stringContaining('Price a booking by the day'),
         ]);
         expect(container.querySelector('[aria-label="Changes sidebar"]')?.textContent).toContain('clowdy/ab12cd34');
-        expect(container.querySelector('[aria-label="Changes sidebar"]')?.textContent).toContain('→ origin/main · 2 ahead, 1 behind');
+        expect(container.querySelector('[aria-label="Changes sidebar"]')?.textContent).toContain(
+            '→ origin/main · 2 ahead, 1 behind'
+        );
         expect(container.querySelector('[aria-label="Pull request"]')?.textContent).toContain('PR #128');
     });
 
-    it('opens every card, and reads a file\'s texts only once its card is near the scroller\'s edge', async () => {
+    it("opens every card, and reads a file's texts only once its card is near the scroller's edge", async () => {
         await start();
 
         const read = vi.spyOn(transport, 'getGitFile');
@@ -194,12 +277,19 @@ describe('the Changes tab of a chat in a worktree', () => {
 
         expect(read).toHaveBeenCalledTimes(1);
         // With the list's own start, which saves the daemon the lookup of the base.
-        expect(read).toHaveBeenCalledWith(FIXTURE_PROJECT_ID, { folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' }, 'all', 'src/booking/price.ts', undefined, '3'.repeat(40));
+        expect(read).toHaveBeenCalledWith(
+            FIXTURE_PROJECT_ID,
+            { folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' },
+            'all',
+            'src/booking/price.ts',
+            undefined,
+            '3'.repeat(40)
+        );
         expect(card('src/booking/price.ts').querySelector('[data-diff]')?.textContent).toContain('=>');
         expect(card('notes.md').querySelector('[data-diff]')).toBeNull();
     });
 
-    it('draws a file\'s diff with the two texts the daemon read, and a box of the lines its list counted before they come', async () => {
+    it("draws a file's diff with the two texts the daemon read, and a box of the lines its list counted before they come", async () => {
         await start();
         await draw();
         await bringNear();
@@ -210,21 +300,31 @@ describe('the Changes tab of a chat in a worktree', () => {
         expect(diff.textContent).toBe('export const MAX_DAYS = 30;\n=>export const MAX_DAYS = 28;\n');
         // `src/limits.ts` changes one line and removes one: the guess is those two, the context, and never fewer than a dozen.
         expect(diff.dataset.lines).toBe('12');
-        expect(card('src/booking/weekend.ts').querySelector('[data-diff]')?.textContent?.startsWith('(none)=>')).toBe(true);
+        expect(card('src/booking/weekend.ts').querySelector('[data-diff]')?.textContent?.startsWith('(none)=>')).toBe(
+            true
+        );
     });
 
     it('says a binary file is binary, and a file too large to show is, without reading either', async () => {
         await start({
             tweak: () => undefined,
-            wrap: base => overrideTransport(base, {
-                getGitChanges: async (project, place, scope) => {
-                    const answer = await base.getGitChanges(project, place, scope);
+            wrap: base =>
+                overrideTransport(base, {
+                    getGitChanges: async (project, place, scope) => {
+                        const answer = await base.getGitChanges(project, place, scope);
 
-                    if (!answer.isRepository || scope !== 'all') return answer;
+                        if (!answer.isRepository || scope !== 'all') return answer;
 
-                    return { ...answer, files: answer.files.map(file => (file.path === 'src/limits.ts' ? { ...file, tooLarge: true as const, additions: 30_000, deletions: 5 } : file)) };
-                },
-            }),
+                        return {
+                            ...answer,
+                            files: answer.files.map(file =>
+                                file.path === 'src/limits.ts'
+                                    ? { ...file, tooLarge: true as const, additions: 30_000, deletions: 5 }
+                                    : file
+                            ),
+                        };
+                    },
+                }),
         });
 
         const read = vi.spyOn(transport, 'getGitFile');
@@ -235,47 +335,57 @@ describe('the Changes tab of a chat in a worktree', () => {
 
         expect(card('assets/logo.png').textContent).toContain('Binary file');
         expect(card('src/limits.ts').textContent).toContain('Too large to show');
-        expect(read.mock.calls.map(call => call[3]).sort()).toEqual(['notes.md', 'src/booking/price.test.ts', 'src/booking/price.ts', 'src/booking/weekend.ts']);
+        expect(read.mock.calls.map(call => call[3]).sort()).toEqual([
+            'notes.md',
+            'src/booking/price.test.ts',
+            'src/booking/price.ts',
+            'src/booking/weekend.ts',
+        ]);
     });
 
     it('says a file whose text could not be read could not be, and reads it again on a press', async () => {
         let failures = 1;
 
         await start({
-            wrap: base => overrideTransport(base, {
-                getGitFile: async (project, place, scope, path, oldPath, from) => {
-                    if (path === 'notes.md' && failures-- > 0) throw new TransportError('The daemon answered 503', 503);
+            wrap: base =>
+                overrideTransport(base, {
+                    getGitFile: async (project, place, scope, path, oldPath, from) => {
+                        if (path === 'notes.md' && failures-- > 0)
+                            throw new TransportError('The daemon answered 503', 503);
 
-                    return base.getGitFile(project, place, scope, path, oldPath, from);
-                },
-            }),
+                        return base.getGitFile(project, place, scope, path, oldPath, from);
+                    },
+                }),
         });
         await draw();
         await bringNear();
         await settle();
 
-        expect(card('notes.md').textContent).toContain('Couldn\'t read this file');
+        expect(card('notes.md').textContent).toContain("Couldn't read this file");
 
-        const retry = [...card('notes.md').querySelectorAll('button')].find(element => element.textContent === 'Try again')!;
+        const retry = [...card('notes.md').querySelectorAll('button')].find(
+            element => element.textContent === 'Try again'
+        )!;
 
         await press(retry);
         await settle();
 
-        expect(card('notes.md').textContent).not.toContain('Couldn\'t read this file');
+        expect(card('notes.md').textContent).not.toContain("Couldn't read this file");
         expect(card('notes.md').querySelector('[data-diff]')?.textContent).toContain('# Notes');
     });
 
-    it('says a file the daemon takes for binary or too large after its list did not is, with the daemon\'s word', async () => {
+    it("says a file the daemon takes for binary or too large after its list did not is, with the daemon's word", async () => {
         await start({
-            wrap: base => overrideTransport(base, {
-                getGitFile: async (project, place, scope, path, oldPath, from): Promise<GitFileSides> => {
-                    const sides = await base.getGitFile(project, place, scope, path, oldPath, from);
+            wrap: base =>
+                overrideTransport(base, {
+                    getGitFile: async (project, place, scope, path, oldPath, from): Promise<GitFileSides> => {
+                        const sides = await base.getGitFile(project, place, scope, path, oldPath, from);
 
-                    if (path === 'notes.md') return { state: 'binary', revision: sides.revision };
+                        if (path === 'notes.md') return { state: 'binary', revision: sides.revision };
 
-                    return path === 'src/limits.ts' ? { state: 'too_large', revision: sides.revision } : sides;
-                },
-            }),
+                        return path === 'src/limits.ts' ? { state: 'too_large', revision: sides.revision } : sides;
+                    },
+                }),
         });
         await draw();
         await bringNear();
@@ -287,22 +397,36 @@ describe('the Changes tab of a chat in a worktree', () => {
 
     it('shows what a file is: added, modified or deleted, with its lines in the colours of the tool cards, and the old path of a rename', async () => {
         await start({
-            wrap: base => overrideTransport(base, {
-                getGitChanges: async (project, place, scope) => {
-                    const answer = await base.getGitChanges(project, place, scope);
+            wrap: base =>
+                overrideTransport(base, {
+                    getGitChanges: async (project, place, scope) => {
+                        const answer = await base.getGitChanges(project, place, scope);
 
-                    if (!answer.isRepository || scope !== 'all') return answer;
+                        if (!answer.isRepository || scope !== 'all') return answer;
 
-                    return {
-                        ...answer,
-                        files: [
-                            ...answer.files,
-                            { path: 'src/gone.ts', kind: 'deleted', additions: 0, deletions: 9, revision: `100644:${ '6'.repeat(40) }:000000:${ '0'.repeat(40) }` },
-                            { path: 'src/renamed.ts', oldPath: 'src/old-name.ts', kind: 'renamed', additions: 1, deletions: 1, revision: `100644:${ '7'.repeat(40) }:100644:${ '8'.repeat(40) }` },
-                        ],
-                    } satisfies GitChanges;
-                },
-            }),
+                        return {
+                            ...answer,
+                            files: [
+                                ...answer.files,
+                                {
+                                    path: 'src/gone.ts',
+                                    kind: 'deleted',
+                                    additions: 0,
+                                    deletions: 9,
+                                    revision: `100644:${'6'.repeat(40)}:000000:${'0'.repeat(40)}`,
+                                },
+                                {
+                                    path: 'src/renamed.ts',
+                                    oldPath: 'src/old-name.ts',
+                                    kind: 'renamed',
+                                    additions: 1,
+                                    deletions: 1,
+                                    revision: `100644:${'7'.repeat(40)}:100644:${'8'.repeat(40)}`,
+                                },
+                            ],
+                        } satisfies GitChanges;
+                    },
+                }),
         });
         await draw();
 
@@ -332,7 +456,9 @@ describe('the Changes tab of a chat in a worktree', () => {
         expect(label.textContent).toBe('src/booking/price.ts');
         expect(label.getAttribute('title')).toBe('src/booking/price.ts');
         // An isolate, not an override: `bdo` would draw the letters of a Hebrew name backwards.
-        expect([...label.children].map(child => `${ child.tagName.toLowerCase() }:${ child.getAttribute('dir') }`)).toEqual(['bdi:ltr']);
+        expect([...label.children].map(child => `${child.tagName.toLowerCase()}:${child.getAttribute('dir')}`)).toEqual(
+            ['bdi:ltr']
+        );
         expect(label.querySelector('bdo')).toBeNull();
     });
 
@@ -377,7 +503,13 @@ describe('the scope', () => {
         await press(scopeTrigger());
         await vi.waitFor(() => expect(options().length).toBeGreaterThan(0));
 
-        expect(options().map(option => option.textContent)).toEqual(['All changes', 'Branch', 'Uncommitted', 'b744444 Charge a weekend surcharge', 'a155555 Price a booking by the day']);
+        expect(options().map(option => option.textContent)).toEqual([
+            'All changes',
+            'Branch',
+            'Uncommitted',
+            'b744444 Charge a weekend surcharge',
+            'a155555 Price a booking by the day',
+        ]);
     });
 
     it('changes the list with the scope chosen from the menu', async () => {
@@ -403,7 +535,7 @@ describe('the scope', () => {
         await press(commitRows()[1]!);
         await settle();
 
-        expect(scopeTrigger().textContent).toContain(`${ second.shortSha } ${ second.subject }`);
+        expect(scopeTrigger().textContent).toContain(`${second.shortSha} ${second.subject}`);
         expect(cardPaths()).toEqual(['assets/logo.png', 'src/booking/price.test.ts', 'src/booking/price.ts']);
         expect(commitRows()[0]!.textContent).toContain('Back to all changes');
         expect(commitRows()[2]!.getAttribute('aria-pressed')).toBe('true');
@@ -413,7 +545,11 @@ describe('the scope', () => {
         await settle();
         expect(scopeTrigger().textContent).toContain('All changes');
         expect(cards()).toHaveLength(6);
-        expect(commitRows().map(row => row.textContent).join('')).not.toContain('Back to all changes');
+        expect(
+            commitRows()
+                .map(row => row.textContent)
+                .join('')
+        ).not.toContain('Back to all changes');
 
         // And so does the row that goes back.
         await press(commitRows()[0]!);
@@ -436,7 +572,10 @@ describe('the scope', () => {
         await draw();
 
         const commitBox = () => container.querySelector('[aria-label="Commit"]');
-        const ticks = () => [...container.querySelectorAll<HTMLInputElement>('[aria-label="Commit"] input[type="checkbox"]')].map(tick => tick.getAttribute('aria-label'));
+        const ticks = () =>
+            [...container.querySelectorAll<HTMLInputElement>('[aria-label="Commit"] input[type="checkbox"]')].map(
+                tick => tick.getAttribute('aria-label')
+            );
 
         // The scope is all changes, six files, and the box lists the three that are not committed, from a read of its own.
         expect(cards()).toHaveLength(6);
@@ -448,7 +587,9 @@ describe('the scope', () => {
             scopeTrigger().click();
         });
         await act(async () => {
-            options().find(option => option.textContent === 'Branch')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            options()
+                .find(option => option.textContent === 'Branch')!
+                .dispatchEvent(new MouseEvent('click', { bubbles: true }));
         });
         await settle();
         expect(scopeTrigger().textContent).toContain('Branch');
@@ -457,18 +598,28 @@ describe('the scope', () => {
         await act(async () => {
             const text = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Commit message"]')!;
 
-            Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(text, 'feat: from the branch scope');
+            Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(
+                text,
+                'feat: from the branch scope'
+            );
             text.dispatchEvent(new Event('input', { bubbles: true }));
         });
-        await press([...commitBox()!.querySelectorAll('button')].find(candidate => candidate.textContent?.startsWith('Commit'))!);
+        await press(
+            [...commitBox()!.querySelectorAll('button')].find(candidate => candidate.textContent?.startsWith('Commit'))!
+        );
         await settle();
         await settle();
 
-        expect(commit).toHaveBeenCalledWith(FIXTURE_PROJECT_ID, { folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' }, ['notes.md', 'src/booking/price.ts', 'src/limits.ts'], 'feat: from the branch scope');
+        expect(commit).toHaveBeenCalledWith(
+            FIXTURE_PROJECT_ID,
+            { folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' },
+            ['notes.md', 'src/booking/price.ts', 'src/limits.ts'],
+            'feat: from the branch scope'
+        );
         expect(commitBox()?.textContent).toContain('Committed c0ffee0');
     });
 
-    it('reads again only when the facts start a round of reads: a refresh of the store and the window\'s focus reach it, and nothing else does', async () => {
+    it("reads again only when the facts start a round of reads: a refresh of the store and the window's focus reach it, and nothing else does", async () => {
         await start();
 
         const read = vi.spyOn(transport, 'getGitChanges');
@@ -500,19 +651,27 @@ describe('the scope', () => {
         expect(allReads()).toBe(3);
     });
 
-    it('reads a refreshed list\'s files again only where their revision changed', async () => {
+    it("reads a refreshed list's files again only where their revision changed", async () => {
         let edited = false;
 
         await start({
-            wrap: base => overrideTransport(base, {
-                getGitChanges: async (project, place, scope) => {
-                    const answer = await base.getGitChanges(project, place, scope);
+            wrap: base =>
+                overrideTransport(base, {
+                    getGitChanges: async (project, place, scope) => {
+                        const answer = await base.getGitChanges(project, place, scope);
 
-                    if (!edited || !answer.isRepository || scope !== 'all') return answer;
+                        if (!edited || !answer.isRepository || scope !== 'all') return answer;
 
-                    return { ...answer, files: answer.files.map(file => (file.path === 'src/limits.ts' ? { ...file, revision: `100644:${ 'd'.repeat(40) }:100644:${ '9'.repeat(40) }` } : file)) };
-                },
-            }),
+                        return {
+                            ...answer,
+                            files: answer.files.map(file =>
+                                file.path === 'src/limits.ts'
+                                    ? { ...file, revision: `100644:${'d'.repeat(40)}:100644:${'9'.repeat(40)}` }
+                                    : file
+                            ),
+                        };
+                    },
+                }),
         });
 
         const read = vi.spyOn(transport, 'getGitFile');
@@ -526,7 +685,11 @@ describe('the scope', () => {
         edited = true;
         read.mockClear();
         await act(async () => {
-            gitFactsOf(transport).refresh({ projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' });
+            gitFactsOf(transport).refresh({
+                projectId: FIXTURE_PROJECT_ID,
+                folderId: 'fld_car_rental',
+                workspaceId: 'wks_ab12cd34',
+            });
         });
         await settle();
         await bringNear();
@@ -537,7 +700,7 @@ describe('the scope', () => {
 });
 
 describe('the filter', () => {
-    it('narrows the cards and the sidebar\'s files by what is typed, and says how many of the files are shown', async () => {
+    it("narrows the cards and the sidebar's files by what is typed, and says how many of the files are shown", async () => {
         await start();
         await draw();
 
@@ -563,9 +726,13 @@ describe('the filter', () => {
 
         expect(cards()).toHaveLength(0);
         expect(container.textContent).toContain('No files match the filter');
-        expect(container.querySelector('[aria-label="Changed files"]')?.textContent).toContain('No files match the filter');
+        expect(container.querySelector('[aria-label="Changed files"]')?.textContent).toContain(
+            'No files match the filter'
+        );
 
-        await press([...container.querySelectorAll('button')].find(element => element.textContent === 'Clear the filter')!);
+        await press(
+            [...container.querySelectorAll('button')].find(element => element.textContent === 'Clear the filter')!
+        );
 
         expect(cards()).toHaveLength(6);
     });
@@ -623,12 +790,17 @@ describe('the sidebar', () => {
 
 describe('the viewed files', () => {
     const tickOf = (path: string) => card(path).querySelector<HTMLInputElement>('input[type="checkbox"]')!;
-    const tick = (path: string) => act(async () => {
-        tickOf(path).click();
-        await new Promise(resolve => setTimeout(resolve, 0));
-    });
-    const sidebarRow = (path: string) => sidebarFiles().find(row => row.textContent?.includes(path.split('/').at(-1)!))!;
-    const viewedTicks = () => sidebarFiles().filter(row => row.querySelector('[aria-label="Viewed"]') !== null).map(row => row.querySelector('[class*="name"]')?.textContent);
+    const tick = (path: string) =>
+        act(async () => {
+            tickOf(path).click();
+            await new Promise(resolve => setTimeout(resolve, 0));
+        });
+    const sidebarRow = (path: string) =>
+        sidebarFiles().find(row => row.textContent?.includes(path.split('/').at(-1)!))!;
+    const viewedTicks = () =>
+        sidebarFiles()
+            .filter(row => row.querySelector('[aria-label="Viewed"]') !== null)
+            .map(row => row.querySelector('[class*="name"]')?.textContent);
     const hideViewed = () => button('Hide viewed');
     /** The fixture's own transport, which holds the marks: the tab is drawn again over it, the way a window is over the daemon. */
     let shared: FixtureTransport | undefined;
@@ -642,17 +814,32 @@ describe('the viewed files', () => {
         await start();
         await draw();
 
-        expect(cards().map(element => tickOf(element.dataset.card!).checked)).toEqual([false, false, false, false, false, false]);
+        expect(cards().map(element => tickOf(element.dataset.card!).checked)).toEqual([
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+        ]);
         expect(cards().every(element => element.textContent?.includes('Viewed'))).toBe(true);
         // Each checkbox is named by its file as well as by `Viewed`, so a list of them is not fifty of the same name.
-        expect(cards().map(element => tickOf(element.dataset.card!).getAttribute('aria-label'))).toEqual(cards().map(element => `Viewed ${ element.dataset.card }`));
+        expect(cards().map(element => tickOf(element.dataset.card!).getAttribute('aria-label'))).toEqual(
+            cards().map(element => `Viewed ${element.dataset.card}`)
+        );
         expect(summary()).toBe('6 files,+112−8');
 
         const write = vi.spyOn(transport, 'setGitViewed');
 
         await tick('notes.md');
 
-        expect(write).toHaveBeenCalledExactlyOnceWith(FIXTURE_PROJECT_ID, { folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' }, 'all', 'notes.md', expect.stringMatching(/^000000:0+:100644:b+$/));
+        expect(write).toHaveBeenCalledExactlyOnceWith(
+            FIXTURE_PROJECT_ID,
+            { folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' },
+            'all',
+            'notes.md',
+            expect.stringMatching(/^000000:0+:100644:b+$/)
+        );
         expect(tickOf('notes.md').checked).toBe(true);
         expect(card('notes.md').hasAttribute('data-open')).toBe(false);
         expect(card('src/limits.ts').hasAttribute('data-open')).toBe(true);
@@ -660,7 +847,7 @@ describe('the viewed files', () => {
         expect(summary()).toBe('6 files,+112−81 of 6 viewed');
     });
 
-    it('opens the card and takes the tick, the row\'s tick and the count away when the checkbox is unticked', async () => {
+    it("opens the card and takes the tick, the row's tick and the count away when the checkbox is unticked", async () => {
         await start();
         await draw();
         await tick('src/limits.ts');
@@ -673,7 +860,12 @@ describe('the viewed files', () => {
 
         await tick('notes.md');
 
-        expect(clear).toHaveBeenCalledExactlyOnceWith(FIXTURE_PROJECT_ID, { folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' }, 'all', 'notes.md');
+        expect(clear).toHaveBeenCalledExactlyOnceWith(
+            FIXTURE_PROJECT_ID,
+            { folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' },
+            'all',
+            'notes.md'
+        );
         expect(tickOf('notes.md').checked).toBe(false);
         expect(card('notes.md').hasAttribute('data-open')).toBe(true);
         expect(viewedTicks()).toEqual(['limits.ts']);
@@ -703,11 +895,13 @@ describe('the viewed files', () => {
         let refuse: (reason: unknown) => void = () => undefined;
 
         await start({
-            wrap: base => overrideTransport(base, {
-                setGitViewed: () => new Promise((_resolve, reject) => {
-                    refuse = reject;
+            wrap: base =>
+                overrideTransport(base, {
+                    setGitViewed: () =>
+                        new Promise((_resolve, reject) => {
+                            refuse = reject;
+                        }),
                 }),
-            }),
         });
         await draw();
         await tick('notes.md');
@@ -727,8 +921,10 @@ describe('the viewed files', () => {
         expect(viewedTicks()).toEqual([]);
         expect(summary()).not.toMatch(/\d of \d viewed/);
         // A phrase in the summary line with the daemon's reason on it, no dialog and no toast.
-        expect(summary()).toContain('Couldn\'t save the viewed mark');
-        expect(container.querySelector('[title="The worktree is missing"]')?.textContent).toBe('Couldn\'t save the viewed mark');
+        expect(summary()).toContain("Couldn't save the viewed mark");
+        expect(container.querySelector('[title="The worktree is missing"]')?.textContent).toBe(
+            "Couldn't save the viewed mark"
+        );
         expect(document.querySelector('[role="alertdialog"], [role="alert"]')).toBeNull();
     });
 
@@ -752,7 +948,11 @@ describe('the viewed files', () => {
         expect(viewedTicks()).toEqual(['weekend.ts', 'limits.ts']);
         expect(tickOf('src/limits.ts').checked).toBe(true);
         expect(tickOf('notes.md').checked).toBe(false);
-        expect(cards().filter(element => element.hasAttribute('data-open')).map(element => element.dataset.card)).toEqual(['assets/logo.png', 'notes.md', 'src/booking/price.test.ts', 'src/booking/price.ts']);
+        expect(
+            cards()
+                .filter(element => element.hasAttribute('data-open'))
+                .map(element => element.dataset.card)
+        ).toEqual(['assets/logo.png', 'notes.md', 'src/booking/price.test.ts', 'src/booking/price.ts']);
         expect(summary()).toContain('2 of 6 viewed');
     });
 
@@ -783,15 +983,23 @@ describe('the viewed files', () => {
         let edited = false;
 
         await start({
-            wrap: base => overrideTransport(base, {
-                getGitChanges: async (project, place, scope) => {
-                    const answer = await base.getGitChanges(project, place, scope);
+            wrap: base =>
+                overrideTransport(base, {
+                    getGitChanges: async (project, place, scope) => {
+                        const answer = await base.getGitChanges(project, place, scope);
 
-                    if (!edited || !answer.isRepository || scope !== 'all') return answer;
+                        if (!edited || !answer.isRepository || scope !== 'all') return answer;
 
-                    return { ...answer, files: answer.files.map(file => (file.path === 'src/limits.ts' ? { ...file, revision: `100644:${ 'd'.repeat(40) }:100644:${ '9'.repeat(40) }` } : file)) };
-                },
-            }),
+                        return {
+                            ...answer,
+                            files: answer.files.map(file =>
+                                file.path === 'src/limits.ts'
+                                    ? { ...file, revision: `100644:${'d'.repeat(40)}:100644:${'9'.repeat(40)}` }
+                                    : file
+                            ),
+                        };
+                    },
+                }),
         });
         await draw();
         await tick('src/limits.ts');
@@ -801,7 +1009,11 @@ describe('the viewed files', () => {
 
         edited = true;
         await act(async () => {
-            gitFactsOf(transport).refresh({ projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' });
+            gitFactsOf(transport).refresh({
+                projectId: FIXTURE_PROJECT_ID,
+                folderId: 'fld_car_rental',
+                workspaceId: 'wks_ab12cd34',
+            });
         });
         await settle();
 
@@ -818,11 +1030,27 @@ describe('the viewed files', () => {
 
         expect(viewedTicks()).toEqual([]);
 
-        const notes = (await shared!.getGitChanges(FIXTURE_PROJECT_ID, { folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' }, 'all') as { files: Array<{ path: string; revision: string }> }).files.find(file => file.path === 'notes.md')!;
+        const notes = (
+            (await shared!.getGitChanges(
+                FIXTURE_PROJECT_ID,
+                { folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' },
+                'all'
+            )) as { files: Array<{ path: string; revision: string }> }
+        ).files.find(file => file.path === 'notes.md')!;
 
-        await shared!.setGitViewed(FIXTURE_PROJECT_ID, { folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' }, 'all', 'notes.md', notes.revision);
+        await shared!.setGitViewed(
+            FIXTURE_PROJECT_ID,
+            { folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' },
+            'all',
+            'notes.md',
+            notes.revision
+        );
         await act(async () => {
-            gitFactsOf(transport).refresh({ projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' });
+            gitFactsOf(transport).refresh({
+                projectId: FIXTURE_PROJECT_ID,
+                folderId: 'fld_car_rental',
+                workspaceId: 'wks_ab12cd34',
+            });
         });
         await settle();
 
@@ -846,7 +1074,12 @@ describe('the viewed files', () => {
         await press(hideViewed());
 
         expect(hideViewed().getAttribute('aria-pressed')).toBe('true');
-        expect(cardPaths()).toEqual(['assets/logo.png', 'src/booking/price.test.ts', 'src/booking/price.ts', 'src/booking/weekend.ts']);
+        expect(cardPaths()).toEqual([
+            'assets/logo.png',
+            'src/booking/price.test.ts',
+            'src/booking/price.ts',
+            'src/booking/weekend.ts',
+        ]);
         expect(sidebarPaths()).toEqual(['logo.png', 'price.test.ts', 'price.ts', 'weekend.ts']);
         // The count is of the list, so it says what was read.
         expect(summary()).toContain('2 of 6 viewed');
@@ -865,14 +1098,23 @@ describe('the viewed files', () => {
         await tick('notes.md');
         await press(hideViewed());
 
-        for (const path of ['assets/logo.png', 'src/booking/price.test.ts', 'src/booking/price.ts', 'src/booking/weekend.ts', 'src/limits.ts']) await tick(path);
+        for (const path of [
+            'assets/logo.png',
+            'src/booking/price.test.ts',
+            'src/booking/price.ts',
+            'src/booking/weekend.ts',
+            'src/limits.ts',
+        ])
+            await tick(path);
 
         expect(cards()).toHaveLength(0);
         expect(container.textContent).toContain('Every file is viewed');
         expect(container.querySelector('[aria-label="Changed files"]')?.textContent).toContain('Every file is viewed');
         expect(summary()).toContain('6 of 6 viewed');
 
-        await press([...container.querySelectorAll('button')].find(element => element.textContent === 'Show viewed files')!);
+        await press(
+            [...container.querySelectorAll('button')].find(element => element.textContent === 'Show viewed files')!
+        );
 
         expect(hideViewed().getAttribute('aria-pressed')).toBe('false');
         expect(cards()).toHaveLength(6);
@@ -940,17 +1182,18 @@ describe('the states instead of the cards', () => {
         let fails = true;
 
         await start({
-            wrap: base => overrideTransport(base, {
-                getGitChanges: async (project, place, scope) => {
-                    if (fails && scope === 'all') throw new TransportError('The daemon answered 503', 503);
+            wrap: base =>
+                overrideTransport(base, {
+                    getGitChanges: async (project, place, scope) => {
+                        if (fails && scope === 'all') throw new TransportError('The daemon answered 503', 503);
 
-                    return base.getGitChanges(project, place, scope);
-                },
-            }),
+                        return base.getGitChanges(project, place, scope);
+                    },
+                }),
         });
         await draw();
 
-        expect(container.textContent).toContain('Couldn\'t read the changes');
+        expect(container.textContent).toContain("Couldn't read the changes");
         expect(cards()).toHaveLength(0);
 
         fails = false;
@@ -964,41 +1207,47 @@ describe('the states instead of the cards', () => {
         let fails = false;
 
         await start({
-            wrap: base => overrideTransport(base, {
-                getGitChanges: async (project, place, scope) => {
-                    if (fails && scope === 'all') throw new TransportError('The daemon answered 503', 503);
+            wrap: base =>
+                overrideTransport(base, {
+                    getGitChanges: async (project, place, scope) => {
+                        if (fails && scope === 'all') throw new TransportError('The daemon answered 503', 503);
 
-                    return base.getGitChanges(project, place, scope);
-                },
-            }),
+                        return base.getGitChanges(project, place, scope);
+                    },
+                }),
         });
         await draw();
 
         fails = true;
         await act(async () => {
-            gitFactsOf(transport).refresh({ projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' });
+            gitFactsOf(transport).refresh({
+                projectId: FIXTURE_PROJECT_ID,
+                folderId: 'fld_car_rental',
+                workspaceId: 'wks_ab12cd34',
+            });
         });
         await settle();
 
         expect(cards()).toHaveLength(6);
-        expect(container.textContent).not.toContain('Couldn\'t read');
+        expect(container.textContent).not.toContain("Couldn't read");
     });
 
     it('says a branch with no base has nothing to compare with, and that all changes are then what is not committed', async () => {
         await start({
             chat: null,
-            wrap: base => overrideTransport(base, {
-                getGitStatus: async (project, place) => {
-                    const status = await base.getGitStatus(project, place);
+            wrap: base =>
+                overrideTransport(base, {
+                    getGitStatus: async (project, place) => {
+                        const status = await base.getGitStatus(project, place);
 
-                    return status.isRepository ? { ...status, base: { state: 'no_base' as const } } : status;
-                },
-                getGitChanges: async (project, place, scope) => {
-                    const answer = await base.getGitChanges(project, place, scope);
+                        return status.isRepository ? { ...status, base: { state: 'no_base' as const } } : status;
+                    },
+                    getGitChanges: async (project, place, scope) => {
+                        const answer = await base.getGitChanges(project, place, scope);
 
-                    return answer.isRepository ? { ...answer, baseState: 'no_base' as const } : answer;
-                },
-            }),
+                        return answer.isRepository ? { ...answer, baseState: 'no_base' as const } : answer;
+                    },
+                }),
         });
         await draw();
 
@@ -1009,7 +1258,7 @@ describe('the states instead of the cards', () => {
 
     it('says a worktree that is not made yet is not, and reads nothing of it', async () => {
         await start({
-            tweak: (data) => {
+            tweak: data => {
                 const chat = data.chats.find(entry => entry.id === FIXTURE_WORKSPACE_CHAT_ID)!;
 
                 chat.workspace = { ...chat.workspace!, ready: false };
@@ -1026,13 +1275,16 @@ describe('the states instead of the cards', () => {
 
     it('says the list is cut when the daemon cut it, and keeps the rest working', async () => {
         await start({
-            wrap: base => overrideTransport(base, {
-                getGitChanges: async (project, place, scope) => {
-                    const answer = await base.getGitChanges(project, place, scope);
+            wrap: base =>
+                overrideTransport(base, {
+                    getGitChanges: async (project, place, scope) => {
+                        const answer = await base.getGitChanges(project, place, scope);
 
-                    return answer.isRepository && scope === 'all' ? { ...answer, fileCount: 731, truncated: true as const } : answer;
-                },
-            }),
+                        return answer.isRepository && scope === 'all'
+                            ? { ...answer, fileCount: 731, truncated: true as const }
+                            : answer;
+                    },
+                }),
         });
         await draw();
 
@@ -1050,24 +1302,34 @@ describe('the reads of the texts', () => {
         const names: string[] = [];
 
         await start({
-            wrap: base => overrideTransport(base, {
-                getGitChanges: async (project, place, scope) => {
-                    const answer = await base.getGitChanges(project, place, scope);
+            wrap: base =>
+                overrideTransport(base, {
+                    getGitChanges: async (project, place, scope) => {
+                        const answer = await base.getGitChanges(project, place, scope);
 
-                    if (!answer.isRepository || scope !== 'all') return answer;
+                        if (!answer.isRepository || scope !== 'all') return answer;
 
-                    return { ...answer, files: Array.from({ length: 10 }, (_, index) => ({ path: `src/f${ index }.ts`, kind: 'modified' as const, additions: 1, deletions: 1, revision: `100644:${ 'a'.repeat(40) }:100644:${ String(index).repeat(40) }` })) };
-                },
-                getGitFile: async (_project, _place, _scope, path) => {
-                    running++;
-                    most = Math.max(most, running);
-                    names.push(path);
-                    await new Promise<void>(resolve => release.push(resolve));
-                    running--;
+                        return {
+                            ...answer,
+                            files: Array.from({ length: 10 }, (_, index) => ({
+                                path: `src/f${index}.ts`,
+                                kind: 'modified' as const,
+                                additions: 1,
+                                deletions: 1,
+                                revision: `100644:${'a'.repeat(40)}:100644:${String(index).repeat(40)}`,
+                            })),
+                        };
+                    },
+                    getGitFile: async (_project, _place, _scope, path) => {
+                        running++;
+                        most = Math.max(most, running);
+                        names.push(path);
+                        await new Promise<void>(resolve => release.push(resolve));
+                        running--;
 
-                    return { state: 'text', original: 'a\n', modified: 'b\n', revision: 'r' };
-                },
-            }),
+                        return { state: 'text', original: 'a\n', modified: 'b\n', revision: 'r' };
+                    },
+                }),
         });
         await draw();
         await bringNear();
@@ -1093,21 +1355,31 @@ describe('the reads of the texts', () => {
         const names: string[] = [];
 
         await start({
-            wrap: base => overrideTransport(base, {
-                getGitChanges: async (project, place, scope) => {
-                    const answer = await base.getGitChanges(project, place, scope);
+            wrap: base =>
+                overrideTransport(base, {
+                    getGitChanges: async (project, place, scope) => {
+                        const answer = await base.getGitChanges(project, place, scope);
 
-                    if (!answer.isRepository || scope !== 'all') return answer;
+                        if (!answer.isRepository || scope !== 'all') return answer;
 
-                    return { ...answer, files: Array.from({ length: 10 }, (_, index) => ({ path: `src/f${ index }.ts`, kind: 'modified' as const, additions: 1, deletions: 1, revision: `100644:${ 'a'.repeat(40) }:100644:${ String(index).repeat(40) }` })) };
-                },
-                getGitFile: async (_project, _place, _scope, path) => {
-                    names.push(path);
-                    await new Promise<void>(resolve => release.push(resolve));
+                        return {
+                            ...answer,
+                            files: Array.from({ length: 10 }, (_, index) => ({
+                                path: `src/f${index}.ts`,
+                                kind: 'modified' as const,
+                                additions: 1,
+                                deletions: 1,
+                                revision: `100644:${'a'.repeat(40)}:100644:${String(index).repeat(40)}`,
+                            })),
+                        };
+                    },
+                    getGitFile: async (_project, _place, _scope, path) => {
+                        names.push(path);
+                        await new Promise<void>(resolve => release.push(resolve));
 
-                    return { state: 'text', original: 'a\n', modified: 'b\n', revision: 'r' };
-                },
-            }),
+                        return { state: 'text', original: 'a\n', modified: 'b\n', revision: 'r' };
+                    },
+                }),
         });
         await draw();
         await bringNear();
@@ -1115,10 +1387,11 @@ describe('the reads of the texts', () => {
 
         return {
             names,
-            finishAll: () => act(async () => {
-                release.splice(0).forEach(resolve => resolve());
-                await new Promise(resolve => setTimeout(resolve, 0));
-            }),
+            finishAll: () =>
+                act(async () => {
+                    release.splice(0).forEach(resolve => resolve());
+                    await new Promise(resolve => setTimeout(resolve, 0));
+                }),
         };
     }
 
@@ -1128,7 +1401,9 @@ describe('the reads of the texts', () => {
         expect(names).toEqual(['src/f0.ts', 'src/f1.ts', 'src/f2.ts', 'src/f3.ts']);
 
         // A scroll past f6 to f9, and a press that folds f4, while the first four are still on their way.
-        await sendAway(element => ['src/f6.ts', 'src/f7.ts', 'src/f8.ts', 'src/f9.ts'].includes((element as HTMLElement).dataset.card!));
+        await sendAway(element =>
+            ['src/f6.ts', 'src/f7.ts', 'src/f8.ts', 'src/f9.ts'].includes((element as HTMLElement).dataset.card!)
+        );
         await press(button('Fold src/f4.ts'));
         await finishAll();
         await finishAll();
@@ -1141,7 +1416,15 @@ describe('the reads of the texts', () => {
         await finishAll();
         await finishAll();
 
-        expect(names).toEqual(['src/f0.ts', 'src/f1.ts', 'src/f2.ts', 'src/f3.ts', 'src/f5.ts', 'src/f6.ts', 'src/f4.ts']);
+        expect(names).toEqual([
+            'src/f0.ts',
+            'src/f1.ts',
+            'src/f2.ts',
+            'src/f3.ts',
+            'src/f5.ts',
+            'src/f6.ts',
+            'src/f4.ts',
+        ]);
     });
 
     it('does not read the files that the filter takes out of the list', async () => {

@@ -21,7 +21,7 @@ export function paneTransition(reducedMotion: boolean | null) {
 export function layerRest(covered: boolean, reducedMotion: boolean | null) {
     return {
         opacity: covered ? 0 : 1,
-        x: (covered && !reducedMotion) ? SLIDE_OUT : 0,
+        x: covered && !reducedMotion ? SLIDE_OUT : 0,
         y: 0,
     };
 }

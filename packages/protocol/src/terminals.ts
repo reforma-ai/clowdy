@@ -79,13 +79,19 @@ export interface TerminalCreate {
 
 /** Whether a size is one a PTY can take: whole numbers within the limits. */
 export function isTerminalSize(cols: unknown, rows: unknown): boolean {
-    return typeof cols === 'number' && typeof rows === 'number' && Number.isInteger(cols) && Number.isInteger(rows)
-        && cols >= MIN_TERMINAL_COLS && cols <= MAX_TERMINAL_COLS
-        && rows >= MIN_TERMINAL_ROWS && rows <= MAX_TERMINAL_ROWS;
+    return (
+        typeof cols === 'number' &&
+        typeof rows === 'number' &&
+        Number.isInteger(cols) &&
+        Number.isInteger(rows) &&
+        cols >= MIN_TERMINAL_COLS &&
+        cols <= MAX_TERMINAL_COLS &&
+        rows >= MIN_TERMINAL_ROWS &&
+        rows <= MAX_TERMINAL_ROWS
+    );
 }
 
-export type TerminalClientMessage =
-    | { type: 'resize'; cols: number; rows: number };
+export type TerminalClientMessage = { type: 'resize'; cols: number; rows: number };
 
 /** The screen of a terminal as the daemon's own copy of it has it: what a client shows before the output that follows. */
 export interface TerminalScreen {
@@ -116,12 +122,15 @@ export function terminalTokenProtocol(token: string): string {
         binary += String.fromCharCode(byte);
     }
 
-    return `${ TOKEN_PROTOCOL_PREFIX }${ btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '') }`;
+    return `${TOKEN_PROTOCOL_PREFIX}${btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '')}`;
 }
 
 /** The token a client offered in `Sec-WebSocket-Protocol`, or `undefined` when it offered none or a malformed one. */
 export function tokenFromTerminalProtocols(header: string | null): string | undefined {
-    const offered = (header ?? '').split(',').map(part => part.trim()).find(part => part.startsWith(TOKEN_PROTOCOL_PREFIX));
+    const offered = (header ?? '')
+        .split(',')
+        .map(part => part.trim())
+        .find(part => part.startsWith(TOKEN_PROTOCOL_PREFIX));
 
     if (offered === undefined) {
         return undefined;
@@ -131,9 +140,10 @@ export function tokenFromTerminalProtocols(header: string | null): string | unde
         const base64 = offered.slice(TOKEN_PROTOCOL_PREFIX.length).replaceAll('-', '+').replaceAll('_', '/');
         const binary = atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, '='));
 
-        return new TextDecoder('utf-8', { fatal: true }).decode(Uint8Array.from(binary, character => character.charCodeAt(0)));
-    }
-    catch {
+        return new TextDecoder('utf-8', { fatal: true }).decode(
+            Uint8Array.from(binary, character => character.charCodeAt(0))
+        );
+    } catch {
         return undefined;
     }
 }

@@ -76,7 +76,8 @@
         inset: 0;
         opacity: 0.1;
         background:
-            repeating-conic-gradient(var(--clowdy-swatch-checker-color) 0% 25%, transparent 0% 50%) 0 0 / var(--clowdy-swatch-checker-size) var(--clowdy-swatch-checker-size),
+            repeating-conic-gradient(var(--clowdy-swatch-checker-color) 0% 25%, transparent 0% 50%) 0 0 /
+            var(--clowdy-swatch-checker-size) var(--clowdy-swatch-checker-size),
             var(--color-white);
         z-index: 0;
     }

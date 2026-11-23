@@ -8,23 +8,23 @@ import { undoStack } from '../../hotkeys/undo';
 import { PickerPopover, type PickerRequest } from '../../shared/PickerPopover';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { openChat } from '../chats/archiveChat';
-import { archiveTasks } from './archiveActions';
 import { ArchivedPanel } from './ArchivedPanel';
 import { ArchiveView } from './ArchiveView';
+import { archiveTasks } from './archiveActions';
 import { Board } from './Board';
-import { copyWithToast, startTask } from './commands';
 import { openCreateTask } from './CreateTaskDialog';
+import { copyWithToast, startTask } from './commands';
 import { DetailPanel } from './DetailPanel';
 import { OpeningTask } from './OpeningTask';
 import { ScopeEmpty } from './ScopeEmpty';
 import { ScopeHeader } from './ScopeHeader';
 import styles from './Screen.module.css';
-import { focusZoneOf, TASK_CONTROL, taskCommands, TASKS_SCOPE } from './taskCommands';
 import { TaskList } from './TaskList';
 import { TasksHeader } from './TasksHeader';
+import { focusZoneOf, TASK_CONTROL, TASKS_SCOPE, taskCommands } from './taskCommands';
 import { DEPTH_LIMIT_HINT } from './taskTree';
 import { sendWithUndo } from './taskUndo';
-import { agentOptions, isFiltering, newestDocPath, NO_FILTER, runsByTask, startBlockedReason } from './taskView';
+import { agentOptions, isFiltering, NO_FILTER, newestDocPath, runsByTask, startBlockedReason } from './taskView';
 import { useArchiveMenu } from './useArchiveMenu';
 import { useTaskById } from './useTaskReadings';
 import { useTasksScope } from './useTasksScope';
@@ -34,14 +34,17 @@ import type { Task, TaskId } from '@clowdy/protocol';
 import type { FocusEvent, KeyboardEvent, MouseEvent, PointerEvent } from 'react';
 
 /** The card or row the target is in or is. */
-const itemAt = (target: EventTarget | null) => (target instanceof Element ? target.closest<HTMLElement>('[data-task-id]') : null);
+const itemAt = (target: EventTarget | null) =>
+    target instanceof Element ? target.closest<HTMLElement>('[data-task-id]') : null;
 
 const taskIdOf = (target: EventTarget | null): TaskId | null => itemAt(target)?.dataset.taskId ?? null;
 
 /** The agent chips on a card or row do their own thing when pressed; a press there is not a press on the task. */
-const isTaskControl = (target: EventTarget | null) => target instanceof Element && target.closest(TASK_CONTROL) !== null;
+const isTaskControl = (target: EventTarget | null) =>
+    target instanceof Element && target.closest(TASK_CONTROL) !== null;
 
-const itemOf = (region: Element | null, taskId: TaskId) => region?.querySelector<HTMLElement>(`[data-task-id="${ CSS.escape(taskId) }"]`) ?? null;
+const itemOf = (region: Element | null, taskId: TaskId) =>
+    region?.querySelector<HTMLElement>(`[data-task-id="${CSS.escape(taskId)}"]`) ?? null;
 
 /** The card's title button or the row itself holds the DOM focus, so a screen reader and the keys that are not ours follow the cursor. */
 function focusItem(region: Element | null, taskId: TaskId, { scroll }: { scroll: boolean }) {
@@ -88,14 +91,16 @@ export function Screen() {
 
     const runsOfTask = runsByTask(project.runTaskLinks.values(), project.runs);
     const tasks = project.taskList;
-    const { isArchive, scope, ancestors, tree, view, content, notesOf, open, setView, commandDeps, nav } = useTasksScope({ cursor, filter, runsOfTask });
+    const { isArchive, scope, ancestors, tree, view, content, notesOf, open, setView, commandDeps, nav } =
+        useTasksScope({ cursor, filter, runsOfTask });
 
     // The panel's task is the board's, or an archived one (read from the daemon when the window does not know it, a task that is archived or deleted meanwhile follows the events).
     const selected = ui.taskId ? project.tasks.get(ui.taskId) : undefined;
     const { reading: opened, retry: retryOpened } = useTaskById(selected ? null : ui.taskId);
 
     const move = (taskId: string, statusId: string) => {
-        if (project.tasks.get(taskId)?.statusId !== statusId) void sendWithUndo(root, project, [{ type: 'task.update', taskId, statusId }]);
+        if (project.tasks.get(taskId)?.statusId !== statusId)
+            void sendWithUndo(root, project, [{ type: 'task.update', taskId, statusId }]);
     };
 
     // The cursor follows the open task, also one that has not reached the project yet (the daemon's event can come after the dialog that made it closed).
@@ -139,7 +144,8 @@ export function Screen() {
     useLayoutEffect(refocusIfRemoved);
 
     // The dialog hands focus back to what had it, which is gone when the daemon's event came in while it was open. That happens after `onClose`.
-    const confirm = (options: OpenConfirmModalOptions) => openConfirmModal(options, { onClose: () => setTimeout(refocusIfRemoved) });
+    const confirm = (options: OpenConfirmModalOptions) =>
+        openConfirmModal(options, { onClose: () => setTimeout(refocusIfRemoved) });
     const archive = (targets: readonly Task[]) => archiveTasks({ root, project, ui: nav, confirm }, targets);
     const taskMenu = useArchiveMenu({ project, tree, cursor, archive });
 
@@ -169,9 +175,10 @@ export function Screen() {
     const isFull = scope !== undefined && !tree.canHaveChildren(scope);
 
     // Shown after React Aria hands focus back to the Filter button, and only if it is still there: a click on another control moved it on purpose.
-    const leaveFilter = () => setTimeout(() => {
-        if (isFocusLost() || document.activeElement?.closest('[data-filter-trigger]')) revealCursor();
-    });
+    const leaveFilter = () =>
+        setTimeout(() => {
+            if (isFocusLost() || document.activeElement?.closest('[data-filter-trigger]')) revealCursor();
+        });
 
     const onFilterOpenChange = (isOpen: boolean) => {
         setFilterOpen(isOpen);
@@ -188,48 +195,60 @@ export function Screen() {
     };
 
     useHotkeyScope(TASKS_SCOPE);
-    useCommands(TASKS_SCOPE, taskCommands({
-        cursor,
-        ...commandDeps,
-        ui: nav,
-        hasTask: taskId => project.tasks.has(taskId),
-        focusZone,
-        isCursorFocused: () => cursor.cursorId !== null && taskIdOf(document.activeElement) === cursor.cursorId,
-        revealCursor,
-        // Read from the stores when asked, so a key hint that asks whether Start is available follows the runs.
-        tasks: () => project.taskList,
-        statuses: () => project.statuses,
-        startBlocked: taskId => startBlockedReason(runsByTask(project.runTaskLinks.values(), project.runs).get(taskId)),
-        send: inputs => sendWithUndo(root, project, inputs),
-        // Only this project's changes: the stack is the window's, an entry belongs to the project it was made in.
-        undo: { canUndo: () => undoStack.canUndo(project.id), undoLatest: () => undoStack.undoLatest(project.id) },
-        start: taskId => startTask(root, taskId),
-        openPicker: request => setPicker({ request, anchor: (cursor.cursorId === null ? null : itemOf(region.current, cursor.cursorId)) ?? screen.current?.querySelector('aside') ?? null }),
-        confirm,
-        archive,
-        focusTitle: () => {
-            // The panel for the task is drawn by the time of the next frame.
-            requestAnimationFrame(() => {
-                renaming.current = titleField.current !== null;
-                titleField.current?.focus({ preventScroll: true });
-                titleField.current?.select();
-            });
-        },
-        create: createTask,
-        openFilter: () => {
-            filterFromKey.current = true;
-            setFilterOpen(true);
-        },
-        focusSearch: () => {
-            searchField.current?.focus();
-            searchField.current?.select();
-        },
-        openChat: chatId => void openChat(root, project, ui, chatId),
-        chatsOf: taskId => project.chatsOfTask(taskId),
-        docPathOf: async taskId => newestDocPath((await root.transport.getTaskDetail(taskId)).artifacts),
-        copy: copyWithToast,
-        notify: (message, tone = 'info') => void (tone === 'error' ? toast.error({ message }) : toast.info({ message })),
-    }));
+    useCommands(
+        TASKS_SCOPE,
+        taskCommands({
+            cursor,
+            ...commandDeps,
+            ui: nav,
+            hasTask: taskId => project.tasks.has(taskId),
+            focusZone,
+            isCursorFocused: () => cursor.cursorId !== null && taskIdOf(document.activeElement) === cursor.cursorId,
+            revealCursor,
+            // Read from the stores when asked, so a key hint that asks whether Start is available follows the runs.
+            tasks: () => project.taskList,
+            statuses: () => project.statuses,
+            startBlocked: taskId =>
+                startBlockedReason(runsByTask(project.runTaskLinks.values(), project.runs).get(taskId)),
+            send: inputs => sendWithUndo(root, project, inputs),
+            // Only this project's changes: the stack is the window's, an entry belongs to the project it was made in.
+            undo: { canUndo: () => undoStack.canUndo(project.id), undoLatest: () => undoStack.undoLatest(project.id) },
+            start: taskId => startTask(root, taskId),
+            openPicker: request =>
+                setPicker({
+                    request,
+                    anchor:
+                        (cursor.cursorId === null ? null : itemOf(region.current, cursor.cursorId)) ??
+                        screen.current?.querySelector('aside') ??
+                        null,
+                }),
+            confirm,
+            archive,
+            focusTitle: () => {
+                // The panel for the task is drawn by the time of the next frame.
+                requestAnimationFrame(() => {
+                    renaming.current = titleField.current !== null;
+                    titleField.current?.focus({ preventScroll: true });
+                    titleField.current?.select();
+                });
+            },
+            create: createTask,
+            openFilter: () => {
+                filterFromKey.current = true;
+                setFilterOpen(true);
+            },
+            focusSearch: () => {
+                searchField.current?.focus();
+                searchField.current?.select();
+            },
+            openChat: chatId => void openChat(root, project, ui, chatId),
+            chatsOf: taskId => project.chatsOfTask(taskId),
+            docPathOf: async taskId => newestDocPath((await root.transport.getTaskDetail(taskId)).artifacts),
+            copy: copyWithToast,
+            notify: (message, tone = 'info') =>
+                void (tone === 'error' ? toast.error({ message }) : toast.info({ message })),
+        })
+    );
 
     // The filter popover belongs to the scope and goes with it: it must not be open again when the scope comes back.
     const showArchive = (show: boolean) => {
@@ -247,7 +266,12 @@ export function Screen() {
 
     // Enter saves a title and Esc drops the edit, and both leave the field. The capture runs before the field's own handler blurs it.
     const onKeyDownCapture = (event: KeyboardEvent) => {
-        if (renaming.current && event.target === titleField.current && (event.key === 'Enter' || event.key === 'Escape')) setTimeout(refocusIfLost);
+        if (
+            renaming.current &&
+            event.target === titleField.current &&
+            (event.key === 'Enter' || event.key === 'Escape')
+        )
+            setTimeout(refocusIfLost);
     };
 
     // The edit is over however it ended, so a later click into the title is not a rename from the keyboard.
@@ -263,11 +287,9 @@ export function Screen() {
 
         if (event.shiftKey) {
             cursor.extendTo(taskId);
-        }
-        else if (event.metaKey || event.ctrlKey) {
+        } else if (event.metaKey || event.ctrlKey) {
             cursor.toggle(taskId);
-        }
-        else {
+        } else {
             cursor.anchorAt(taskId);
             nav.openTask(taskId);
         }
@@ -303,85 +325,125 @@ export function Screen() {
     };
 
     return (
-        <div ref={ screen } className={ styles.screen } onKeyDownCapture={ onKeyDownCapture } onBlur={ onBlur }>
-            <div className={ styles.main }>
+        <div ref={screen} className={styles.screen} onKeyDownCapture={onKeyDownCapture} onBlur={onBlur}>
+            <div className={styles.main}>
                 <TasksHeader
-                    path={ scope && { ancestors, task: scope } }
-                    onOpenScope={ open }
-                    view={ view }
-                    onViewChange={ setView }
-                    showSubtasks={ ui.tasksSubtasks }
-                    onSubtasksChange={ show => ui.setTasksSubtasks(show) }
-                    inTask={ scope !== undefined }
-                    createHint={ isFull ? DEPTH_LIMIT_HINT : undefined }
-                    onCreate={ createTask }
-                    filter={ filter }
-                    onFilterChange={ setFilter }
-                    statuses={ project.statuses }
-                    agents={ agentOptions(runsOfTask) }
-                    searchRef={ searchField }
-                    onSearchExit={ exitSearch }
-                    isFilterOpen={ isFilterOpen }
-                    onFilterOpenChange={ onFilterOpenChange }
-                    isArchive={ isArchive }
-                    onArchiveChange={ showArchive }
+                    path={scope && { ancestors, task: scope }}
+                    onOpenScope={open}
+                    view={view}
+                    onViewChange={setView}
+                    showSubtasks={ui.tasksSubtasks}
+                    onSubtasksChange={show => ui.setTasksSubtasks(show)}
+                    inTask={scope !== undefined}
+                    createHint={isFull ? DEPTH_LIMIT_HINT : undefined}
+                    onCreate={createTask}
+                    filter={filter}
+                    onFilterChange={setFilter}
+                    statuses={project.statuses}
+                    agents={agentOptions(runsOfTask)}
+                    searchRef={searchField}
+                    onSearchExit={exitSearch}
+                    isFilterOpen={isFilterOpen}
+                    onFilterOpenChange={onFilterOpenChange}
+                    isArchive={isArchive}
+                    onArchiveChange={showArchive}
                 />
 
                 {/* Keyed by the project: the screen stays mounted when the person switches between two projects that both show their archive, and the list of one must not stand under the other. */}
-                { isArchive && <ArchiveView key={ project.id } statuses={ project.statuses } openId={ ui.taskId } onOpen={ id => nav.openTask(id) } /> }
-
-                { !isArchive && scope && (
-                    <ScopeHeader
-                        task={ scope }
-                        status={ project.statuses.find(status => status.id === scope.statusId) }
-                        rollUp={ tree.rollUp(scope) }
-                        canHaveChildren={ !isFull }
-                        onCreate={ () => createIn(scope.id) }
-                        onDetails={ () => nav.openTask(scope.id) }
+                {isArchive && (
+                    <ArchiveView
+                        key={project.id}
+                        statuses={project.statuses}
+                        openId={ui.taskId}
+                        onOpen={id => nav.openTask(id)}
                     />
-                ) }
+                )}
 
-                { !isArchive && (content.tasks.length === 0
-                    ? (
+                {!isArchive && scope && (
+                    <ScopeHeader
+                        task={scope}
+                        status={project.statuses.find(status => status.id === scope.statusId)}
+                        rollUp={tree.rollUp(scope)}
+                        canHaveChildren={!isFull}
+                        onCreate={() => createIn(scope.id)}
+                        onDetails={() => nav.openTask(scope.id)}
+                    />
+                )}
+
+                {!isArchive &&
+                    (content.tasks.length === 0 ? (
                         <ScopeEmpty
-                            isScope={ scope !== undefined }
-                            isHidden={ content.total > 0 }
-                            isFiltering={ isFiltering(filter) }
-                            canHaveChildren={ !isFull }
-                            onCreateSubtask={ () => scope && createIn(scope.id) }
-                            onClearFilters={ () => setFilter(NO_FILTER) }
+                            isScope={scope !== undefined}
+                            isHidden={content.total > 0}
+                            isFiltering={isFiltering(filter)}
+                            canHaveChildren={!isFull}
+                            onCreateSubtask={() => scope && createIn(scope.id)}
+                            onClearFilters={() => setFilter(NO_FILTER)}
                         />
-                    )
-                    : (
-                        <div ref={ region } className={ styles.region } onClickCapture={ onClickCapture } onContextMenu={ onContextMenu } onPointerMove={ onPointerMove } onFocus={ onFocus }>
-                            { content.mode === 'tree'
-                                ? <TaskList rows={ content.rows } statuses={ project.statuses } runsOfTask={ runsOfTask } notesOf={ notesOf } onOpenScope={ open } onToggle={ toggleFold } openId={ selected?.id ?? null } selectedIds={ cursor.selected } />
-                                : <Board columns={ content.columns } runsOfTask={ runsOfTask } notesOf={ notesOf } onOpenScope={ open } openId={ selected?.id ?? null } selectedIds={ cursor.selected } onMove={ move } onArchive={ archiveDropped } />
-                            }
+                    ) : (
+                        <div
+                            ref={region}
+                            className={styles.region}
+                            onClickCapture={onClickCapture}
+                            onContextMenu={onContextMenu}
+                            onPointerMove={onPointerMove}
+                            onFocus={onFocus}
+                        >
+                            {content.mode === 'tree' ? (
+                                <TaskList
+                                    rows={content.rows}
+                                    statuses={project.statuses}
+                                    runsOfTask={runsOfTask}
+                                    notesOf={notesOf}
+                                    onOpenScope={open}
+                                    onToggle={toggleFold}
+                                    openId={selected?.id ?? null}
+                                    selectedIds={cursor.selected}
+                                />
+                            ) : (
+                                <Board
+                                    columns={content.columns}
+                                    runsOfTask={runsOfTask}
+                                    notesOf={notesOf}
+                                    onOpenScope={open}
+                                    openId={selected?.id ?? null}
+                                    selectedIds={cursor.selected}
+                                    onMove={move}
+                                    onArchive={archiveDropped}
+                                />
+                            )}
                         </div>
-                    )) }
+                    ))}
             </div>
 
-            { selected && (
+            {selected && (
                 <DetailPanel
-                    key={ selected.id }
-                    task={ selected }
-                    taskRuns={ runsOfTask.get(selected.id) ?? [] }
-                    titleRef={ titleField }
+                    key={selected.id}
+                    task={selected}
+                    taskRuns={runsOfTask.get(selected.id) ?? []}
+                    titleRef={titleField}
                     // Not for the task the screen is inside already: its sub-tasks are what is drawn.
-                    onOpenSubtasks={ selected.id !== scope?.id && tree.childrenOf(selected.id).length > 0 ? () => open(selected.id) : undefined }
-                    tree={ tree }
-                    onCreateSubtask={ () => createIn(selected.id) }
+                    onOpenSubtasks={
+                        selected.id !== scope?.id && tree.childrenOf(selected.id).length > 0
+                            ? () => open(selected.id)
+                            : undefined
+                    }
+                    tree={tree}
+                    onCreateSubtask={() => createIn(selected.id)}
                 />
-            ) }
+            )}
 
-            { opened.status === 'ready' && opened.task.archivedAt !== undefined && <ArchivedPanel key={ opened.task.id } task={ opened.task } /> }
+            {opened.status === 'ready' && opened.task.archivedAt !== undefined && (
+                <ArchivedPanel key={opened.task.id} task={opened.task} />
+            )}
 
-            { (opened.status === 'loading' || opened.status === 'failed') && <OpeningTask reading={ opened } onRetry={ retryOpened } onClose={ () => nav.openTask(null) } /> }
+            {(opened.status === 'loading' || opened.status === 'failed') && (
+                <OpeningTask reading={opened} onRetry={retryOpened} onClose={() => nav.openTask(null)} />
+            )}
 
-            { picker && <PickerPopover anchor={ picker.anchor } { ...picker.request } onClose={ () => setPicker(null) } /> }
+            {picker && <PickerPopover anchor={picker.anchor} {...picker.request} onClose={() => setPicker(null)} />}
 
-            { taskMenu.menu }
+            {taskMenu.menu}
         </div>
     );
 }

@@ -1,12 +1,22 @@
 import { MAX_GIT_CHECKS } from '@clowdy/protocol';
 
-import type { GitCheck, GitChecks, GitCheckState, GitMergeability, GitPullRequest, GitPullRequestState, GitReviewDecision } from '@clowdy/protocol';
+import type {
+    GitCheck,
+    GitCheckState,
+    GitChecks,
+    GitMergeability,
+    GitPullRequest,
+    GitPullRequestState,
+    GitReviewDecision,
+} from '@clowdy/protocol';
 
 /** A JSON object of GitHub's answer, whose members are not trusted to be what they should. */
 export type Json = Record<string, unknown>;
 
-export const asObject = (value: unknown): Json | undefined => (typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Json : undefined);
-export const asString = (value: unknown): string | undefined => (typeof value === 'string' && value !== '' ? value : undefined);
+export const asObject = (value: unknown): Json | undefined =>
+    typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Json) : undefined;
+export const asString = (value: unknown): string | undefined =>
+    typeof value === 'string' && value !== '' ? value : undefined;
 /** A link of GitHub's answer, kept only when it is a web address: the app opens it in the person's browser, and the link of a check is whatever the service that ran it set. */
 const asLink = (value: unknown): string | undefined => {
     const text = asString(value);
@@ -67,14 +77,28 @@ function checkOf(node: unknown): RawCheck | undefined {
         const url = asLink(object.targetUrl);
         const at = asTime(object.createdAt);
 
-        return name === undefined ? undefined : { name, state: statusState(asString(object.state)), ...(url && { url }), ...(at !== undefined && { at }) };
+        return name === undefined
+            ? undefined
+            : {
+                  name,
+                  state: statusState(asString(object.state)),
+                  ...(url && { url }),
+                  ...(at !== undefined && { at }),
+              };
     }
 
     const name = asString(object.name);
     const url = asLink(object.detailsUrl);
     const at = asTime(object.startedAt);
 
-    return name === undefined ? undefined : { name, state: checkRunState(asString(object.status), asString(object.conclusion)), ...(url && { url }), ...(at !== undefined && { at }) };
+    return name === undefined
+        ? undefined
+        : {
+              name,
+              state: checkRunState(asString(object.status), asString(object.conclusion)),
+              ...(url && { url }),
+              ...(at !== undefined && { at }),
+          };
 }
 
 /** Whether `check` is the same check as `current` run at the same time or later, as bb has it: one that never began is the later of two that never did. */
@@ -100,7 +124,10 @@ function rollupStateOf(state: string | undefined): GitChecks['state'] {
  * The checks of a head commit as the app shows them: one for each name (the one that began last, a commit status by its context), failing first, with how many there are in
  * each state and what they add up to. When GitHub has more than the first page, the counts are of the page and the total takes the worse of the page's and GitHub's own.
  */
-export function rollupChecks(contexts: readonly unknown[], github: { state?: string; more: boolean } = { more: false }): GitChecks {
+export function rollupChecks(
+    contexts: readonly unknown[],
+    github: { state?: string; more: boolean } = { more: false }
+): GitChecks {
     const latest = new Map<string, RawCheck>();
 
     for (const node of contexts) {
@@ -115,11 +142,27 @@ export function rollupChecks(contexts: readonly unknown[], github: { state?: str
         .sort((a, b) => STATE_ORDER[a.state] - STATE_ORDER[b.state] || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
         .slice(0, MAX_GIT_CHECKS);
     const count = (state: GitCheckState) => items.filter(item => item.state === state).length;
-    const [passing, failing, pending, skipped] = [count('passing'), count('failing'), count('pending'), count('skipped')];
-    const own: GitChecks['state'] = items.length === 0 ? 'none' : failing > 0 ? 'failing' : pending > 0 ? 'pending' : 'passing';
-    const total = github.more ? ROLLUP_ORDER[Math.max(ROLLUP_ORDER.indexOf(own), ROLLUP_ORDER.indexOf(rollupStateOf(github.state)))]! : own;
+    const [passing, failing, pending, skipped] = [
+        count('passing'),
+        count('failing'),
+        count('pending'),
+        count('skipped'),
+    ];
+    const own: GitChecks['state'] =
+        items.length === 0 ? 'none' : failing > 0 ? 'failing' : pending > 0 ? 'pending' : 'passing';
+    const total = github.more
+        ? ROLLUP_ORDER[Math.max(ROLLUP_ORDER.indexOf(own), ROLLUP_ORDER.indexOf(rollupStateOf(github.state)))]!
+        : own;
 
-    return { state: total, passing, failing, pending, skipped, items, ...(github.more && { truncated: true as const }) };
+    return {
+        state: total,
+        passing,
+        failing,
+        pending,
+        skipped,
+        items,
+        ...(github.more && { truncated: true as const }),
+    };
 }
 
 /** One pull request of GitHub's answer, with the parts the app uses. */
@@ -150,11 +193,19 @@ export function readPullRequest(node: unknown, owner: string): RawPullRequest | 
     const number = object?.number;
     const url = asLink(object?.url);
 
-    if (!object || typeof number !== 'number' || url === undefined || (state !== 'OPEN' && state !== 'MERGED' && state !== 'CLOSED')) return undefined;
+    if (
+        !object ||
+        typeof number !== 'number' ||
+        url === undefined ||
+        (state !== 'OPEN' && state !== 'MERGED' && state !== 'CLOSED')
+    )
+        return undefined;
 
     const headOwner = asString(asObject(object.headRepositoryOwner)?.login);
     const commits = asObject(object.commits)?.nodes;
-    const rollup = asObject(asObject(Array.isArray(commits) ? asObject(commits[0])?.commit : undefined)?.statusCheckRollup);
+    const rollup = asObject(
+        asObject(Array.isArray(commits) ? asObject(commits[0])?.commit : undefined)?.statusCheckRollup
+    );
     const contexts = asObject(rollup?.contexts);
     const reviewDecision = asString(object.reviewDecision);
     const mergeStateStatus = asString(object.mergeStateStatus);
@@ -170,7 +221,9 @@ export function readPullRequest(node: unknown, owner: string): RawPullRequest | 
         head: asString(object.headRefName) ?? '',
         headCommit: asString(object.headRefOid) ?? '',
         updatedAt: asTime(object.updatedAt) ?? 0,
-        fork: object.isCrossRepository === true || (headOwner !== undefined && headOwner.toLowerCase() !== owner.toLowerCase()),
+        fork:
+            object.isCrossRepository === true ||
+            (headOwner !== undefined && headOwner.toLowerCase() !== owner.toLowerCase()),
         ...(reviewDecision && { reviewDecision }),
         ...(mergeStateStatus && { mergeStateStatus }),
         ...(mergeable && { mergeable }),
@@ -185,7 +238,10 @@ export function readPullRequest(node: unknown, owner: string): RawPullRequest | 
  * newest), else the newest. On the repository's default branch only an open one counts: a branch that every other branch is merged into has a history of closed pull
  * requests that say nothing of what is checked out.
  */
-export function choosePullRequest(candidates: readonly RawPullRequest[], { branch, defaultBranch }: { branch: string; defaultBranch?: string }): RawPullRequest | undefined {
+export function choosePullRequest(
+    candidates: readonly RawPullRequest[],
+    { branch, defaultBranch }: { branch: string; defaultBranch?: string }
+): RawPullRequest | undefined {
     const own = candidates
         .filter(pr => !pr.fork && (pr.state === 'OPEN' || branch !== defaultBranch))
         .sort((a, b) => b.number - a.number);
@@ -193,10 +249,18 @@ export function choosePullRequest(candidates: readonly RawPullRequest[], { branc
     return own.find(pr => pr.state === 'OPEN') ?? own[0];
 }
 
-const REVIEWS: Record<string, GitReviewDecision> = { APPROVED: 'approved', CHANGES_REQUESTED: 'changes_requested', REVIEW_REQUIRED: 'review_required' };
+const REVIEWS: Record<string, GitReviewDecision> = {
+    APPROVED: 'approved',
+    CHANGES_REQUESTED: 'changes_requested',
+    REVIEW_REQUIRED: 'review_required',
+};
 
 /** Whether an open pull request can be merged as it stands, from what GitHub says (a merged or closed one, and one that GitHub has not yet worked out, say nothing). */
-function mergeabilityOf(state: GitPullRequestState, mergeable: string | undefined, status: string | undefined): GitMergeability | undefined {
+function mergeabilityOf(
+    state: GitPullRequestState,
+    mergeable: string | undefined,
+    status: string | undefined
+): GitMergeability | undefined {
     if (state === 'merged' || state === 'closed') return undefined;
 
     if (mergeable === 'CONFLICTING' || status === 'DIRTY') return 'conflicts';
@@ -205,12 +269,15 @@ function mergeabilityOf(state: GitPullRequestState, mergeable: string | undefine
 
     if (status === 'BLOCKED' || status === 'BEHIND') return 'blocked';
 
-    return mergeable === 'MERGEABLE' || status === 'CLEAN' || status === 'HAS_HOOKS' || status === 'UNSTABLE' ? 'mergeable' : undefined;
+    return mergeable === 'MERGEABLE' || status === 'CLEAN' || status === 'HAS_HOOKS' || status === 'UNSTABLE'
+        ? 'mergeable'
+        : undefined;
 }
 
 /** A chosen pull request as the app has it. */
 export function assemblePullRequest(raw: RawPullRequest): GitPullRequest {
-    const state: GitPullRequestState = raw.state === 'MERGED' ? 'merged' : raw.state === 'CLOSED' ? 'closed' : raw.isDraft ? 'draft' : 'open';
+    const state: GitPullRequestState =
+        raw.state === 'MERGED' ? 'merged' : raw.state === 'CLOSED' ? 'closed' : raw.isDraft ? 'draft' : 'open';
     const reviewDecision = raw.reviewDecision === undefined ? undefined : REVIEWS[raw.reviewDecision];
     const mergeability = mergeabilityOf(state, raw.mergeable, raw.mergeStateStatus);
 

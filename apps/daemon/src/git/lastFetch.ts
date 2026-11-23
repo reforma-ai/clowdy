@@ -40,8 +40,7 @@ async function fetchedAt(file: string): Promise<number | undefined> {
         const info = await stat(file);
 
         return info.isFile() && info.size > 0 ? Math.floor(info.mtimeMs) : undefined;
-    }
-    catch {
+    } catch {
         return undefined;
     }
 }
@@ -58,7 +57,7 @@ async function fetchHeadFiles({ gitDir, common }: GitDirs): Promise<string[]> {
     return [...files];
 }
 
-const keyOf = async ({ common }: GitDirs): Promise<string> => await placeOf(common) ?? common;
+const keyOf = async ({ common }: GitDirs): Promise<string> => (await placeOf(common)) ?? common;
 
 /**
  * The app's own fetch of a place's repository went through now (`git fetch`, which a pull starts with). The time is kept in memory as a floor under what `FETCH_HEAD` says, because a fetch
@@ -95,7 +94,7 @@ export async function lastFetchedAt(cwd: string): Promise<number | undefined> {
     if (!dirs) return undefined;
 
     const [files, key] = await Promise.all([fetchHeadFiles(dirs), keyOf(dirs)]);
-    const times = [...await Promise.all(files.map(fetchedAt)), remembered.get(key)];
+    const times = [...(await Promise.all(files.map(fetchedAt))), remembered.get(key)];
     const found = times.filter((time): time is number => time !== undefined);
 
     return found.length > 0 ? Math.max(...found) : undefined;

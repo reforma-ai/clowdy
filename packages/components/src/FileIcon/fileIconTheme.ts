@@ -61,7 +61,8 @@ type AssociationMaps = Record<keyof IconAssociations, Map<string, string>>;
 
 /** Lookups by lowercase key, as VS Code matches them; a `Map`, so a file named `constructor` finds nothing. */
 function lookups(associations: IconAssociations = {}): AssociationMaps {
-    const index = (record: Record<string, string> = {}) => new Map(Object.entries(record).map(([key, icon]) => [key.toLowerCase(), icon]));
+    const index = (record: Record<string, string> = {}) =>
+        new Map(Object.entries(record).map(([key, icon]) => [key.toLowerCase(), icon]));
 
     return {
         fileExtensions: index(associations.fileExtensions),
@@ -98,10 +99,13 @@ export function createIconResolver(theme: IconThemeManifest) {
         };
 
         const [name = '', parent] = splitPath(path.toLowerCase()).reverse();
-        const names = parent ? [`${ parent }/${ name }`, name] : [name];
+        const names = parent ? [`${parent}/${name}`, name] : [name];
 
         if (kind === 'directory') {
-            return find(open ? 'folderNamesExpanded' : 'folderNames', names) ?? (open ? theme.folderExpanded : theme.folder);
+            return (
+                find(open ? 'folderNamesExpanded' : 'folderNames', names) ??
+                (open ? theme.folderExpanded : theme.folder)
+            );
         }
 
         // `page.test.tsx` → `test.tsx`, then `tsx`.
@@ -109,10 +113,12 @@ export function createIconResolver(theme: IconThemeManifest) {
         const extensions = segments.slice(1).map((_, index) => segments.slice(index + 1).join('.'));
         const language = LANGUAGE_BY_EXTENSION.get(extensions.at(-1) ?? '');
 
-        return find('fileNames', names)
-            ?? find('fileExtensions', extensions)
-            ?? (language === undefined ? undefined : find('languageIds', [language]))
-            ?? theme.file;
+        return (
+            find('fileNames', names) ??
+            find('fileExtensions', extensions) ??
+            (language === undefined ? undefined : find('languageIds', [language])) ??
+            theme.file
+        );
     };
 }
 

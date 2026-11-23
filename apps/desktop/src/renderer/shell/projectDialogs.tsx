@@ -11,5 +11,13 @@ import type { RootStore } from '../stores';
  * the controls.
  */
 export function openAddProject(root: RootStore): void {
-    Modal.create({ width: 460, shadow: true, clickOut: true, closeOnEscape: true, closeButton: true, handle: false, component: <AddProjectForm root={ root } /> });
+    Modal.create({
+        width: 460,
+        shadow: true,
+        clickOut: true,
+        closeOnEscape: true,
+        closeButton: true,
+        handle: false,
+        component: <AddProjectForm root={root} />,
+    });
 }

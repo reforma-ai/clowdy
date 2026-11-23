@@ -6,7 +6,25 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { overrideTransport } from '../../daemon/testing';
 import { undoStack } from '../../hotkeys/undo';
-import { buttonNamed, click, closePage, columnOf, draw, drawn, focusableOf, focusTask, itemOf, mountScreen, openPage, page, press, pressOn, project, ui, wait } from './screenHarness';
+import {
+    buttonNamed,
+    click,
+    closePage,
+    columnOf,
+    draw,
+    drawn,
+    focusableOf,
+    focusTask,
+    itemOf,
+    mountScreen,
+    openPage,
+    page,
+    press,
+    pressOn,
+    project,
+    ui,
+    wait,
+} from './screenHarness';
 
 import type { OpenConfirmModalOptions } from '@clowdy/components/modals';
 import type { CommandResult } from '@clowdy/protocol';
@@ -24,13 +42,14 @@ vi.mock('./CreateTaskDialog', () => ({ openCreateTask: vi.fn() }));
 
 let sent: CommandInput[];
 
-const daemon = (base: Parameters<NonNullable<Parameters<typeof mountScreen>[0]>['transport'] & {}>[0]) => overrideTransport(base, {
-    command: async (input) => {
-        sent.push(input);
+const daemon = (base: Parameters<NonNullable<Parameters<typeof mountScreen>[0]>['transport'] & {}>[0]) =>
+    overrideTransport(base, {
+        command: async input => {
+            sent.push(input);
 
-        return base.command(input);
-    },
-});
+            return base.command(input);
+        },
+    });
 
 beforeEach(() => {
     sent = [];
@@ -47,24 +66,35 @@ afterEach(() => {
 
 const archives = () => sent.filter(input => input.type === 'task.archive');
 const onBoard = (...ids: string[]) => ids.map(id => project().tasks.has(id));
-const panel = (key: string) => page.container.querySelector<HTMLElement>(`aside[aria-label="Task ${ key }"]`);
+const panel = (key: string) => page.container.querySelector<HTMLElement>(`aside[aria-label="Task ${key}"]`);
 
 /** The question the screen asked, which the person has not answered. */
 const asked = () => vi.mocked(openConfirmModal).mock.lastCall![0] as OpenConfirmModalOptions;
 
 /** The person agrees to it. */
-const agree = () => act(async () => {
-    await asked().onConfirm();
-});
+const agree = () =>
+    act(async () => {
+        await asked().onConfirm();
+    });
 
 /** What a right-click on the card or row sends the page. */
-const rightClick = (taskId: string, init: MouseEventInit = {}) => act(async () => void itemOf(taskId)!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 12, clientY: 8, ...init })));
+const rightClick = (taskId: string, init: MouseEventInit = {}) =>
+    act(
+        async () =>
+            void itemOf(taskId)!.dispatchEvent(
+                new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 12, clientY: 8, ...init })
+            )
+    );
 const menuItems = () => [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')];
 const menuLabels = () => menuItems().map(row => row.textContent);
 
 /** Presses an item of the menu, and draws what came of it. */
 async function choose(label: string) {
-    await act(async () => menuItems().find(row => row.textContent === label)!.click());
+    await act(async () =>
+        menuItems()
+            .find(row => row.textContent === label)!
+            .click()
+    );
     await wait(0);
     await draw();
 }
@@ -114,7 +144,10 @@ describe('the menu of a card', () => {
 
         await choose('Archive 2 tasks');
 
-        expect(archives()).toEqual([{ type: 'task.archive', taskId: 't-20' }, { type: 'task.archive', taskId: 't-21' }]);
+        expect(archives()).toEqual([
+            { type: 'task.archive', taskId: 't-20' },
+            { type: 'task.archive', taskId: 't-21' },
+        ]);
         expect(onBoard('t-20', 't-21')).toEqual([false, false]);
     });
 
@@ -143,10 +176,15 @@ describe('the menu of a card', () => {
         expect(itemOf('t-22')).toBeNull();
     });
 
-    it('opens from the keyboard\'s menu key, which sends the event to the card that has the focus', async () => {
+    it("opens from the keyboard's menu key, which sends the event to the card that has the focus", async () => {
         await mountScreen({ transport: daemon });
         await focusTask('t-21');
-        await act(async () => void focusableOf('t-21').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 0, clientY: 0 })));
+        await act(
+            async () =>
+                void focusableOf('t-21').dispatchEvent(
+                    new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 0, clientY: 0 })
+                )
+        );
 
         expect(menuLabels()).toEqual(['Archive']);
 
@@ -162,7 +200,12 @@ describe('the menu of a card', () => {
 
         expect(chip).not.toBeNull();
 
-        await act(async () => void chip!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 4, clientY: 4 })));
+        await act(
+            async () =>
+                void chip!.dispatchEvent(
+                    new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 4, clientY: 4 })
+                )
+        );
 
         expect(menuItems()).toEqual([]);
     });
@@ -205,7 +248,10 @@ describe('the key', () => {
         await draw();
 
         // In the order the person sees them: the backlog column is before the done column.
-        expect(archives()).toEqual([{ type: 'task.archive', taskId: 't-28', cancel: true }, { type: 'task.archive', taskId: 't-20' }]);
+        expect(archives()).toEqual([
+            { type: 'task.archive', taskId: 't-28', cancel: true },
+            { type: 'task.archive', taskId: 't-20' },
+        ]);
     });
 
     it('is not a key of a text field: typing an e in the search does not archive', async () => {
@@ -256,7 +302,7 @@ describe('the panel', () => {
         expect(panel('CAR-32')).toBeNull();
     });
 
-    it('keeps the panel and shows the daemon\'s reason when it refuses', async () => {
+    it("keeps the panel and shows the daemon's reason when it refuses", async () => {
         await mountScreen({ prepare: window => window.openTask('t-24'), transport: daemon });
         await click(buttonNamed('Cancel and archive', panel('CAR-24')!));
         await agree();
@@ -268,7 +314,13 @@ describe('the panel', () => {
 });
 
 /** What a card is dragged with: the transfer carries the task's id under the app's own type. */
-const transfer = (taskId: string) => ({ types: ['application/x-clowdy-task'], getData: () => taskId, setData: vi.fn(), effectAllowed: 'none', dropEffect: 'none' });
+const transfer = (taskId: string) => ({
+    types: ['application/x-clowdy-task'],
+    getData: () => taskId,
+    setData: vi.fn(),
+    effectAllowed: 'none',
+    dropEffect: 'none',
+});
 
 function dragEvent(type: string, taskId: string) {
     const event = new Event(type, { bubbles: true, cancelable: true });
@@ -279,7 +331,8 @@ function dragEvent(type: string, taskId: string) {
 }
 
 const target = () => page.container.querySelector<HTMLElement>('[data-archive-drop]');
-const startDrag = (taskId: string) => act(async () => void itemOf(taskId)!.dispatchEvent(dragEvent('dragstart', taskId)));
+const startDrag = (taskId: string) =>
+    act(async () => void itemOf(taskId)!.dispatchEvent(dragEvent('dragstart', taskId)));
 const endDrag = (taskId: string) => act(async () => void itemOf(taskId)?.dispatchEvent(dragEvent('dragend', taskId)));
 
 describe('the Archive target of the board', () => {
@@ -312,7 +365,8 @@ describe('the Archive target of the board', () => {
             await act(async () => void dragged.dispatchEvent(dragEvent('dragend', taskId)));
         }
 
-        const pointer = (type: 'pointermove' | 'pointerdown', buttons: number) => act(async () => void document.body.dispatchEvent(new MouseEvent(type, { bubbles: true, buttons })));
+        const pointer = (type: 'pointermove' | 'pointerdown', buttons: number) =>
+            act(async () => void document.body.dispatchEvent(new MouseEvent(type, { bubbles: true, buttons })));
 
         it('goes with the first pointer move that has no button down, which only comes when the drag is over', async () => {
             await mountScreen({ transport: daemon });
@@ -353,7 +407,7 @@ describe('the Archive target of the board', () => {
             expect(target()).toBeNull();
         });
 
-        it('lets a drop on the strip archive the card first, so the window\'s end of the drag does not cost it', async () => {
+        it("lets a drop on the strip archive the card first, so the window's end of the drag does not cost it", async () => {
             await mountScreen({ transport: daemon });
             await startDrag('t-20');
             await act(async () => void target()!.dispatchEvent(dragEvent('drop', 't-20')));
@@ -365,9 +419,12 @@ describe('the Archive target of the board', () => {
     });
 
     it('is on the through board too, which draws every level of the scope', async () => {
-        await mountScreen({ prepare: (window) => {
-            window.setTasksSubtasks(true);
-        }, transport: daemon });
+        await mountScreen({
+            prepare: window => {
+                window.setTasksSubtasks(true);
+            },
+            transport: daemon,
+        });
         await startDrag('t-20');
 
         expect(target()).not.toBeNull();
@@ -403,7 +460,7 @@ describe('the Archive target of the board', () => {
         expect(itemOf('t-31')).toBeNull();
     });
 
-    it('takes only the app\'s own drag: a file over it does nothing', async () => {
+    it("takes only the app's own drag: a file over it does nothing", async () => {
         await mountScreen({ transport: daemon });
         await startDrag('t-20');
 

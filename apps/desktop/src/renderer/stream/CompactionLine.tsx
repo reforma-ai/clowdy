@@ -5,8 +5,8 @@ import { cn } from '@clowdy/lib';
 import { STOPPED_TOOL } from '@clowdy/protocol';
 
 import { formatTokens } from '../shared/tokens';
-import { compactionCounts } from './compaction';
 import styles from './CompactionLine.module.css';
+import { compactionCounts } from './compaction';
 
 import type { StreamItemBody } from '@clowdy/protocol';
 
@@ -23,7 +23,9 @@ export interface CompactionLineProps {
 function doneText(output: unknown): string {
     const counts = compactionCounts(output);
 
-    return counts ? `Context compacted · ${ formatTokens(counts.before) } → ${ formatTokens(counts.after) }` : 'Context compacted';
+    return counts
+        ? `Context compacted · ${formatTokens(counts.before)} → ${formatTokens(counts.after)}`
+        : 'Context compacted';
 }
 
 /**
@@ -37,17 +39,19 @@ export function CompactionLine({ call, active }: CompactionLineProps) {
     const failed = call.state === 'error' && !stopped;
 
     return (
-        <Marker className={ cn(styles.line, failed && styles.failed) } role="status">
-            <MarkerIcon><Collapse /></MarkerIcon>
-            { live && <MarkerContent shimmer>Compacting context</MarkerContent> }
-            { call.state === 'done' && <MarkerContent>{ doneText(call.output) }</MarkerContent> }
-            { stopped && <MarkerContent>Compaction stopped</MarkerContent> }
-            { failed && (
-                <Tooltip content={ call.error?.trim() || 'The agent could not compact its context' } wrapTrigger>
+        <Marker className={cn(styles.line, failed && styles.failed)} role="status">
+            <MarkerIcon>
+                <Collapse />
+            </MarkerIcon>
+            {live && <MarkerContent shimmer>Compacting context</MarkerContent>}
+            {call.state === 'done' && <MarkerContent>{doneText(call.output)}</MarkerContent>}
+            {stopped && <MarkerContent>Compaction stopped</MarkerContent>}
+            {failed && (
+                <Tooltip content={call.error?.trim() || 'The agent could not compact its context'} wrapTrigger>
                     <MarkerContent>Compaction failed</MarkerContent>
                 </Tooltip>
-            ) }
-            { call.state === 'running' && !active && <MarkerContent>Compaction did not finish</MarkerContent> }
+            )}
+            {call.state === 'running' && !active && <MarkerContent>Compaction did not finish</MarkerContent>}
         </Marker>
     );
 }

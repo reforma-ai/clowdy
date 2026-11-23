@@ -72,7 +72,8 @@
 
         stroke: var(--spinner-color);
         stroke-linecap: round;
-        stroke-dasharray: calc(var(--spinner-arc) * var(--spinner-circ)) calc((1 - var(--spinner-arc)) * var(--spinner-circ));
+        stroke-dasharray: calc(var(--spinner-arc) * var(--spinner-circ))
+            calc((1 - var(--spinner-arc)) * var(--spinner-circ));
         stroke-dashoffset: calc(var(--spinner-travel) * var(--spinner-circ));
         animation:
             spinner-length 2s linear infinite,

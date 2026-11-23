@@ -10,13 +10,16 @@ export function NoProject() {
     const root = useRootStore();
 
     return (
-        <div className={ styles.message }>
+        <div className={styles.message}>
             <Text variant="heading-2">Add a project</Text>
             <Text color="secondary">
-                A project is one or more folders with your code, or a new folder to start in. Its chats, tasks and agents live here, and the agents make their changes directly in those folders.
+                A project is one or more folders with your code, or a new folder to start in. Its chats, tasks and
+                agents live here, and the agents make their changes directly in those folders.
             </Text>
-            <div className={ styles.actions }>
-                <Button color="primary" onPress={ () => openAddProject(root) }>Add project…</Button>
+            <div className={styles.actions}>
+                <Button color="primary" onPress={() => openAddProject(root)}>
+                    Add project…
+                </Button>
             </div>
         </div>
     );

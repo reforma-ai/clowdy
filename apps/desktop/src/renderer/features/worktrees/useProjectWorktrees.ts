@@ -37,9 +37,13 @@ export function useProjectWorktrees(projectId: ProjectId): ProjectWorktrees {
             const folders = await root.transport.getProjectWorktrees(projectId);
 
             if (request === latest.current) setRead({ projectId, folders, failed: false });
-        }
-        catch {
-            if (request === latest.current) setRead(current => ({ projectId, folders: current?.projectId === projectId ? current.folders : undefined, failed: true }));
+        } catch {
+            if (request === latest.current)
+                setRead(current => ({
+                    projectId,
+                    folders: current?.projectId === projectId ? current.folders : undefined,
+                    failed: true,
+                }));
         }
     }, [root, projectId]);
 

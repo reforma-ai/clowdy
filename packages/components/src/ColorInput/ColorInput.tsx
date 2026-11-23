@@ -1,22 +1,22 @@
 import { useCallback, useMemo, useState } from 'react';
 
 import {
+    type ColorInputEditorFormat,
+    type ColorInputFormat,
     canEditColorChannels,
     isColorObjectEditorFormat,
     isParsedColorEditorFormat,
     resolveColorInputEditorFormat,
-    type ColorInputEditorFormat,
-    type ColorInputFormat,
 } from './format';
 import { ColorObjectChannelEditor } from './ui/ColorObjectChannelEditor';
 import { CssFunctionChannelEditor } from './ui/CssFunctionChannelEditor';
 import { HexColorEditor } from './ui/HexColorEditor';
 import { RawColorEditor } from './ui/RawColorEditor';
 import {
-    colorInputValueToString,
-    parseColorInputValue,
     type ColorInputChangeDetails,
+    colorInputValueToString,
     type ParsedColorInputValue,
+    parseColorInputValue,
 } from './value';
 
 import type { HTMLAttributes, ReactNode, Ref } from 'react';
@@ -34,7 +34,8 @@ export interface ColorInputRenderState extends ColorInputChangeDetails {
     isInvalid: boolean;
 }
 
-export interface ColorInputProps extends Omit<HTMLAttributes<HTMLDivElement>, 'children' | 'defaultValue' | 'onChange'> {
+export interface ColorInputProps
+    extends Omit<HTMLAttributes<HTMLDivElement>, 'children' | 'defaultValue' | 'onChange'> {
     ref?: Ref<HTMLDivElement | null>;
     inputRef?: Ref<HTMLInputElement | null>;
     value?: ColorInputValue;
@@ -62,13 +63,7 @@ export interface ColorInputEditorProps extends Omit<ColorInputProps, 'value' | '
     onValueChange: (value: string | null, details: ColorInputChangeDetails) => void;
 }
 
-export function ColorInput({
-    value,
-    defaultValue = '#000000',
-    onChange,
-    format = 'auto',
-    ...props
-}: ColorInputProps) {
+export function ColorInput({ value, defaultValue = '#000000', onChange, format = 'auto', ...props }: ColorInputProps) {
     const isControlled = value !== undefined;
     const [localValue, setLocalValue] = useState<ColorInputValue>(defaultValue);
     const currentValue = isControlled ? value : localValue;
@@ -79,13 +74,16 @@ export function ColorInput({
         ? 'raw'
         : detectedEditorFormat;
 
-    const handleValueChange = useCallback((nextValue: string | null, details: ColorInputChangeDetails) => {
-        if (!isControlled) {
-            setLocalValue(nextValue);
-        }
+    const handleValueChange = useCallback(
+        (nextValue: string | null, details: ColorInputChangeDetails) => {
+            if (!isControlled) {
+                setLocalValue(nextValue);
+            }
 
-        onChange?.(nextValue, details);
-    }, [isControlled, onChange]);
+            onChange?.(nextValue, details);
+        },
+        [isControlled, onChange]
+    );
 
     const editorProps: ColorInputEditorProps = {
         ...props,
@@ -96,25 +94,25 @@ export function ColorInput({
     };
 
     if (editorFormat === 'raw') {
-        return <RawColorEditor { ...editorProps } />;
+        return <RawColorEditor {...editorProps} />;
     }
 
     if (isColorObjectEditorFormat(editorFormat)) {
         return (
             <ColorObjectChannelEditor
-                { ...editorProps }
-                editorFormat={ editorFormat }
-                parsedColor={ parsedColor.color ?? defaultParsedColor.color ?? FALLBACK_CHANNEL_COLOR.color! }
-                parsedAlpha={ resolveChannelEditorAlpha(parsedColor, defaultParsedColor) }
+                {...editorProps}
+                editorFormat={editorFormat}
+                parsedColor={parsedColor.color ?? defaultParsedColor.color ?? FALLBACK_CHANNEL_COLOR.color!}
+                parsedAlpha={resolveChannelEditorAlpha(parsedColor, defaultParsedColor)}
             />
         );
     }
 
     if (editorFormat !== 'hex') {
-        return <CssFunctionChannelEditor { ...editorProps } />;
+        return <CssFunctionChannelEditor {...editorProps} />;
     }
 
-    return <HexColorEditor { ...editorProps } />;
+    return <HexColorEditor {...editorProps} />;
 }
 
 function resolveChannelEditorAlpha(
@@ -132,7 +130,11 @@ function resolveChannelEditorAlpha(
     return FALLBACK_CHANNEL_COLOR.alpha;
 }
 
-function shouldUseRawEditor(value: ColorInputValue | undefined, editorFormat: ColorInputEditorFormat, parsedColor: Color | null): boolean {
+function shouldUseRawEditor(
+    value: ColorInputValue | undefined,
+    editorFormat: ColorInputEditorFormat,
+    parsedColor: Color | null
+): boolean {
     if (editorFormat === 'raw') {
         return true;
     }

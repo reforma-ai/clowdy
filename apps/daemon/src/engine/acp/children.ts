@@ -1,4 +1,9 @@
-import { BackgroundWork, ContentBlock, IdleStateUpdate, StateUpdate } from '@agentclientprotocol/sdk/experimental/v2/unstable';
+import {
+    BackgroundWork,
+    ContentBlock,
+    IdleStateUpdate,
+    StateUpdate,
+} from '@agentclientprotocol/sdk/experimental/v2/unstable';
 import { STOPPED_TOOL } from '@clowdy/protocol';
 
 import { Message, patched, Thought } from './mapper-core';
@@ -49,7 +54,8 @@ interface Child {
 }
 
 /** The text of the text blocks among `content`, which an agent message holds as an array. */
-export const textOf = (content: readonly ContentBlock[] | null | undefined): string => (content ?? []).map(block => ContentBlock.isText(block) ? block.text : '').join('');
+export const textOf = (content: readonly ContentBlock[] | null | undefined): string =>
+    (content ?? []).map(block => (ContentBlock.isText(block) ? block.text : '')).join('');
 
 /** Why a sub-agent that stopped for a reason other than an answer failed, for the card and the child run. */
 function failureOf(state: IdleStateUpdate): string {
@@ -57,7 +63,7 @@ function failureOf(state: IdleStateUpdate): string {
         return state.error?.message || 'The sub-agent failed';
     }
 
-    return `The sub-agent stopped: ${ String(state.stopReason).replace(/_/g, ' ') }`;
+    return `The sub-agent stopped: ${String(state.stopReason).replace(/_/g, ' ')}`;
 }
 
 /**
@@ -123,7 +129,18 @@ export class Children {
         let child = this.byId.get(update.sessionId);
 
         if (!child) {
-            child = { sessionId: update.sessionId, ...(parent !== undefined && { parent }), cancellable: false, announced: false, working: false, listed: false, ended: false, settled: false, message: new Message(), thought: new Thought() };
+            child = {
+                sessionId: update.sessionId,
+                ...(parent !== undefined && { parent }),
+                cancellable: false,
+                announced: false,
+                working: false,
+                listed: false,
+                ended: false,
+                settled: false,
+                message: new Message(),
+                thought: new Thought(),
+            };
             this.byId.set(update.sessionId, child);
         }
 
@@ -137,7 +154,8 @@ export class Children {
             child.cancellable = update.capabilities?.cancel != null;
         }
 
-        const events: EngineEvent[] = child.announced && child.title !== title && !child.ended ? this.describe(child) : [];
+        const events: EngineEvent[] =
+            child.announced && child.title !== title && !child.ended ? this.describe(child) : [];
 
         if (update.state) {
             events.push(...this.moved(child, update.state));
@@ -167,7 +185,12 @@ export class Children {
 
         if (from && text && !asked) {
             // Its report is the last thing it says: it is shown in its own stream and ends the card.
-            events.push(...this.show(from), ...from.thought.close(from.sessionId), ...from.message.upsert(update.messageId, text, from.sessionId), ...from.message.close(from.sessionId));
+            events.push(
+                ...this.show(from),
+                ...from.thought.close(from.sessionId),
+                ...from.message.upsert(update.messageId, text, from.sessionId),
+                ...from.message.close(from.sessionId)
+            );
             from.report = text;
         }
 
@@ -209,7 +232,7 @@ export class Children {
      * from the snapshot, when nothing shows the child back, which a sub-agent woken by its own command does within a millisecond.
      */
     listed(work: readonly BackgroundWork[]): EngineEvent[] {
-        const now = new Set(work.flatMap(item => BackgroundWork.isSubagent(item) ? [item.sessionId] : []));
+        const now = new Set(work.flatMap(item => (BackgroundWork.isSubagent(item) ? [item.sessionId] : [])));
         const events: EngineEvent[] = [];
 
         for (const child of this.byId.values()) {
@@ -252,7 +275,9 @@ export class Children {
         switch (state.stopReason) {
             case 'end_turn':
                 // A message it left open is over, whether or not the sub-agent is.
-                return child.listed ? [...child.thought.close(child.sessionId), ...child.message.close(child.sessionId)] : this.end(child, 'done');
+                return child.listed
+                    ? [...child.thought.close(child.sessionId), ...child.message.close(child.sessionId)]
+                    : this.end(child, 'done');
             case 'cancelled':
                 return this.end(child, 'cancelled');
             default:
@@ -262,7 +287,11 @@ export class Children {
 
     /** The child's run is over: its own message closes, the card ends with its report, and the runtime is told. */
     private end(child: Child, state: 'done' | 'error' | 'cancelled', failure?: string): EngineEvent[] {
-        const events = [...this.show(child), ...child.thought.close(child.sessionId), ...child.message.close(child.sessionId)];
+        const events = [
+            ...this.show(child),
+            ...child.thought.close(child.sessionId),
+            ...child.message.close(child.sessionId),
+        ];
         const report = child.report ?? child.message.result();
 
         child.ended = true;
@@ -274,7 +303,9 @@ export class Children {
             ...(child.callId !== undefined && { parentToolCallId: child.callId }),
             name: child.type ?? FALLBACK_NAME,
             state,
-            ...(state === 'done' ? report !== undefined && { summary: report } : failure !== undefined && { summary: failure }),
+            ...(state === 'done'
+                ? report !== undefined && { summary: report }
+                : failure !== undefined && { summary: failure }),
         });
 
         return events;
@@ -293,16 +324,18 @@ export class Children {
 
     /** The child's `running` event, again with a new description when its parent renamed the task. */
     private describe(child: Child): EngineEvent[] {
-        return [{
-            type: 'subagent',
-            agentId: child.sessionId,
-            ...(child.parent !== undefined && { parentAgentId: child.parent }),
-            ...(child.callId !== undefined && { parentToolCallId: child.callId }),
-            name: child.type ?? FALLBACK_NAME,
-            ...(child.title !== undefined && { description: child.title }),
-            state: 'running',
-            ...(child.cancellable && { stoppable: true }),
-        }];
+        return [
+            {
+                type: 'subagent',
+                agentId: child.sessionId,
+                ...(child.parent !== undefined && { parentAgentId: child.parent }),
+                ...(child.callId !== undefined && { parentToolCallId: child.callId }),
+                name: child.type ?? FALLBACK_NAME,
+                ...(child.title !== undefined && { description: child.title }),
+                state: 'running',
+                ...(child.cancellable && { stoppable: true }),
+            },
+        ];
     }
 
     /** The card of the call that started the child, as it stands: nothing when no call is known, or when it already says so. */
@@ -315,7 +348,11 @@ export class Children {
             type: 'tool',
             toolCallId: child.callId,
             name: AGENT_CALL,
-            input: { ...(child.type && { subagent_type: child.type }), ...(child.title && { description: child.title }), ...(child.prompt && { prompt: child.prompt }) },
+            input: {
+                ...(child.type && { subagent_type: child.type }),
+                ...(child.title && { description: child.title }),
+                ...(child.prompt && { prompt: child.prompt }),
+            },
             state: state === 'running' ? 'running' : state === 'done' ? 'done' : 'error',
             ...(state === 'done' && text !== undefined && { output: text }),
             ...(state === 'error' && { error: text ?? 'The sub-agent failed' }),

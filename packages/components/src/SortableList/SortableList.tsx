@@ -1,12 +1,6 @@
 import { DotsDrag } from '@clowdy/icons/14';
 import { cn } from '@clowdy/lib';
-import {
-    DragDropProvider,
-    DragOverlay,
-    PointerSensor,
-    useDroppable,
-    type DragEndEvent,
-} from '@dnd-kit/react';
+import { DragDropProvider, type DragEndEvent, DragOverlay, PointerSensor, useDroppable } from '@dnd-kit/react';
 import { isSortable, useSortable } from '@dnd-kit/react/sortable';
 import { useCallback, useMemo, useState } from 'react';
 
@@ -69,10 +63,7 @@ interface SortableListBaseProps<T> {
     onChange: (items: T[], move: { item: T; index: number }) => void;
     children: (item: T, props: SortableListItemRenderProps<T>) => ReactNode;
     canDrop?: (context: SortableListDropContext<T>) => boolean;
-    getDragHandleOptions?: (
-        item: T,
-        context: SortableListItemContext<T>
-    ) => SortableListDragHandleOptions;
+    getDragHandleOptions?: (item: T, context: SortableListItemContext<T>) => SortableListDragHandleOptions;
     className?: string;
     gap?: 'sm' | 'md';
     nestedGap?: 'sm' | 'md';
@@ -93,8 +84,7 @@ interface NestedSortableListProps<T> {
     canHaveChildren?: (item: T) => boolean;
 }
 
-export type SortableListProps<T> = SortableListBaseProps<T>
-  & (FlatSortableListProps | NestedSortableListProps<T>);
+export type SortableListProps<T> = SortableListBaseProps<T> & (FlatSortableListProps | NestedSortableListProps<T>);
 
 interface SortableNodeData<T> {
     kind: 'node';
@@ -112,10 +102,7 @@ interface SortableCollectionProps<T> {
     parentNode: SortableTreeNode<T> | null;
     renderItem: (item: T, props: SortableListItemRenderProps<T>) => ReactNode;
     canDrop?: (context: SortableListDropContext<T>) => boolean;
-    getDragHandleOptions?: (
-        item: T,
-        context: SortableListItemContext<T>
-    ) => SortableListDragHandleOptions;
+    getDragHandleOptions?: (item: T, context: SortableListItemContext<T>) => SortableListDragHandleOptions;
     className?: string;
     gap: 'sm' | 'md';
     nestedGap: 'sm' | 'md';
@@ -123,7 +110,8 @@ interface SortableCollectionProps<T> {
     ariaLabel: string;
 }
 
-interface SortableItemProps<T> extends Omit<SortableCollectionProps<T>, 'nodes' | 'className' | 'gap' | 'ariaLabel' | 'parentNode'> {
+interface SortableItemProps<T>
+    extends Omit<SortableCollectionProps<T>, 'nodes' | 'className' | 'gap' | 'ariaLabel' | 'parentNode'> {
     node: SortableTreeNode<T>;
 }
 
@@ -167,36 +155,43 @@ export function SortableList<T>({
     handle = true,
     'aria-label': ariaLabel,
 }: SortableListProps<T>) {
-    const getNodeKey = useCallback((item: T, path: readonly number[]) => {
-        const itemKey = getItemKey?.(item, path);
+    const getNodeKey = useCallback(
+        (item: T, path: readonly number[]) => {
+            const itemKey = getItemKey?.(item, path);
 
-        if (itemKey != null) {
-            return itemKey;
-        }
+            if (itemKey != null) {
+                return itemKey;
+            }
 
-        if (typeof item !== 'object' || item == null) {
-            return `${ PRIMITIVE_KEY_PREFIX }${ path.join('.') }`;
-        }
+            if (typeof item !== 'object' || item == null) {
+                return `${PRIMITIVE_KEY_PREFIX}${path.join('.')}`;
+            }
 
-        const existingKey = objectKeys.get(item);
+            const existingKey = objectKeys.get(item);
 
-        if (existingKey) {
-            return existingKey;
-        }
+            if (existingKey) {
+                return existingKey;
+            }
 
-        const key = `sortable:item:${ nextObjectKey }`;
+            const key = `sortable:item:${nextObjectKey}`;
 
-        nextObjectKey += 1;
-        objectKeys.set(item, key);
+            nextObjectKey += 1;
+            objectKeys.set(item, key);
 
-        return key;
-    }, [getItemKey]);
-    const nodes = useMemo(() => buildSortableTree(items, {
-        getKey: getNodeKey,
-        getTextValue,
-        getChildren,
-        canHaveChildren,
-    }), [canHaveChildren, getChildren, getNodeKey, getTextValue, items]);
+            return key;
+        },
+        [getItemKey]
+    );
+    const nodes = useMemo(
+        () =>
+            buildSortableTree(items, {
+                getKey: getNodeKey,
+                getTextValue,
+                getChildren,
+                canHaveChildren,
+            }),
+        [canHaveChildren, getChildren, getNodeKey, getTextValue, items]
+    );
     const [renderState, setRenderState] = useState({ items, revision: 0 });
 
     if (renderState.items !== items) {
@@ -227,18 +222,9 @@ export function SortableList<T>({
                 index: targetData.parentNode?.children.length ?? nodes.length,
                 dropPosition: 'end' as const,
             };
-        }
-        else if (targetNode
-          && target
-          && isSortable(target)) {
-            destination = destinationFromSortable(
-                nodes,
-                target.group,
-                source.index,
-                targetNode
-            );
-        }
-        else {
+        } else if (targetNode && target && isSortable(target)) {
+            destination = destinationFromSortable(nodes, target.group, source.index, targetNode);
+        } else {
             destination = null;
         }
 
@@ -246,34 +232,24 @@ export function SortableList<T>({
             return;
         }
 
-        const context = createDropContext(
-            sourceNode,
-            destination.parentNode,
-            targetNode,
-            destination.dropPosition
-        );
+        const context = createDropContext(sourceNode, destination.parentNode, targetNode, destination.dropPosition);
 
-        if (!canMoveToParent(sourceNode, destination.parentNode)
-          || (canDrop && !canDrop(context))) {
+        if (!canMoveToParent(sourceNode, destination.parentNode) || (canDrop && !canDrop(context))) {
             return;
         }
 
         const initialParentKey = parentKeyFromCollectionId(source.initialGroup);
         const destinationParentKey = destination.parentNode?.id ?? null;
-        const isSamePosition = initialParentKey !== undefined
-          && initialParentKey === destinationParentKey
-          && source.initialIndex === destination.index;
+        const isSamePosition =
+            initialParentKey !== undefined &&
+            initialParentKey === destinationParentKey &&
+            source.initialIndex === destination.index;
 
         if (isSamePosition) {
             return;
         }
 
-        const movedNodes = moveSortableTreeNodeToIndex(
-            nodes,
-            sourceNode.id,
-            destinationParentKey,
-            destination.index
-        );
+        const movedNodes = moveSortableTreeNodeToIndex(nodes, sourceNode.id, destinationParentKey, destination.index);
 
         onChange(restoreSortableTree(movedNodes, setChildren), {
             item: sourceNode.value,
@@ -285,44 +261,36 @@ export function SortableList<T>({
         <DragDropProvider
             // A cross-parent drop moves DOM nodes React does not own: remount nested trees on change.
             // Flat lists reconcile the optimistic order in place; a remount would cut the drop animation.
-            key={ getChildren ? renderState.revision : undefined }
-            sensors={ POINTER_SENSORS }
-            onDragEnd={ handleDragEnd }
+            key={getChildren ? renderState.revision : undefined}
+            sensors={POINTER_SENSORS}
+            onDragEnd={handleDragEnd}
         >
             <SortableCollection
-                nodes={ nodes }
-                rootNodes={ nodes }
-                parentNode={ null }
-                renderItem={ children }
-                canDrop={ canDrop }
-                getDragHandleOptions={ getDragHandleOptions }
-                className={ className }
-                gap={ gap }
-                nestedGap={ nestedGap }
-                handle={ handle }
-                ariaLabel={ ariaLabel }
+                nodes={nodes}
+                rootNodes={nodes}
+                parentNode={null}
+                renderItem={children}
+                canDrop={canDrop}
+                getDragHandleOptions={getDragHandleOptions}
+                className={className}
+                gap={gap}
+                nestedGap={nestedGap}
+                handle={handle}
+                ariaLabel={ariaLabel}
             />
 
             <DragOverlay
-                className={ styles.dragOverlay }
-                dropAnimation={ {
+                className={styles.dragOverlay}
+                dropAnimation={{
                     duration: 160,
                     easing: 'cubic-bezier(0.25, 1, 0.5, 1)',
-                } }
+                }}
             >
-                { (source) => {
+                {source => {
                     const node = nodeData<T>(source)?.node;
 
-                    return node
-                        ? (
-                            <SortablePreview
-                                node={ node }
-                                renderItem={ children }
-                                nestedGap={ nestedGap }
-                            />
-                        )
-                        : null;
-                } }
+                    return node ? <SortablePreview node={node} renderItem={children} nestedGap={nestedGap} /> : null;
+                }}
             </DragOverlay>
         </DragDropProvider>
     );
@@ -347,37 +315,31 @@ function SortableCollection<T>({
         data: { kind: 'collection', parentNode },
         disabled: nodes.length > 0,
         collisionPriority: 1,
-        accept: source => canAcceptDrop(
-            source,
-            parentNode,
-            null,
-            'end',
-            canDrop
-        ),
+        accept: source => canAcceptDrop(source, parentNode, null, 'end', canDrop),
     });
 
     return (
         <div
-            ref={ ref }
+            ref={ref}
             role="list"
-            className={ cn(styles.list, className) }
-            data-gap={ gap }
-            data-drop-target={ isDropTarget || undefined }
-            aria-label={ ariaLabel }
+            className={cn(styles.list, className)}
+            data-gap={gap}
+            data-drop-target={isDropTarget || undefined}
+            aria-label={ariaLabel}
         >
-            <For each={ nodes }>
-                { node => (
+            <For each={nodes}>
+                {node => (
                     <SortableItem
-                        key={ node.id }
-                        node={ node }
-                        rootNodes={ rootNodes }
-                        renderItem={ renderItem }
-                        canDrop={ canDrop }
-                        getDragHandleOptions={ getDragHandleOptions }
-                        nestedGap={ nestedGap }
-                        handle={ handle }
+                        key={node.id}
+                        node={node}
+                        rootNodes={rootNodes}
+                        renderItem={renderItem}
+                        canDrop={canDrop}
+                        getDragHandleOptions={getDragHandleOptions}
+                        nestedGap={nestedGap}
+                        handle={handle}
                     />
-                ) }
+                )}
             </For>
         </div>
     );
@@ -398,81 +360,72 @@ function SortableItem<T>({
         edgeOffset = 'none',
         variant = 'plain',
     } = getDragHandleOptions?.(node.value, context) ?? {};
-    const {
-        handleRef,
-        ref,
-        targetRef,
-        isDragging,
-        isDropTarget,
-    } = useSortable<SortableNodeData<T>>({
+    const { handleRef, ref, targetRef, isDragging, isDropTarget } = useSortable<SortableNodeData<T>>({
         id: node.id,
         index: node.index,
         group: collectionIdFromParentKey(nodeParentKey(rootNodes, node)),
         type: SORTABLE_ITEM_TYPE,
         data: { kind: 'node', node },
-        accept: source => canAcceptDrop(
-            source,
-            node.parent == null
-                ? null
-                : findParentNode(rootNodes, node),
-            node,
-            'before',
-            canDrop
-        ),
+        accept: source =>
+            canAcceptDrop(
+                source,
+                node.parent == null ? null : findParentNode(rootNodes, node),
+                node,
+                'before',
+                canDrop
+            ),
     });
-    const nestedItems = node.canHaveChildren
-        ? (
-            <SortableCollection
-                nodes={ node.children }
-                rootNodes={ rootNodes }
-                parentNode={ node }
-                renderItem={ renderItem }
-                canDrop={ canDrop }
-                getDragHandleOptions={ getDragHandleOptions }
-                gap={ nestedGap }
-                nestedGap={ nestedGap }
-                handle={ handle }
-                ariaLabel={ `${ node.textValue } items` }
-            />
-        )
-        : null;
+    const nestedItems = node.canHaveChildren ? (
+        <SortableCollection
+            nodes={node.children}
+            rootNodes={rootNodes}
+            parentNode={node}
+            renderItem={renderItem}
+            canDrop={canDrop}
+            getDragHandleOptions={getDragHandleOptions}
+            gap={nestedGap}
+            nestedGap={nestedGap}
+            handle={handle}
+            ariaLabel={`${node.textValue} items`}
+        />
+    ) : null;
 
     return (
         <div
-            ref={ ref }
+            ref={ref}
             role="listitem"
-            className={ styles.item }
-            data-level={ node.level }
-            data-dragging={ isDragging || undefined }
-            data-drop-target={ isDropTarget || undefined }
+            className={styles.item}
+            data-level={node.level}
+            data-dragging={isDragging || undefined}
+            data-drop-target={isDropTarget || undefined}
         >
             <div
-                ref={ targetRef }
-                className={ styles.dropTarget }
-                data-container={ node.canHaveChildren || undefined }
+                ref={targetRef}
+                className={styles.dropTarget}
+                data-container={node.canHaveChildren || undefined}
                 aria-hidden
             />
 
-            <Show when={ handle }>
+            <Show when={handle}>
                 <span
-                    ref={ handleRef }
-                    className={ styles.dragHandle }
-                    data-alignment={ alignment }
-                    data-edge-offset={ edgeOffset }
-                    data-variant={ variant }
+                    ref={handleRef}
+                    className={styles.dragHandle}
+                    data-alignment={alignment}
+                    data-edge-offset={edgeOffset}
+                    data-variant={variant}
                     aria-hidden
                 >
-                    <DotsDrag aria-hidden width={ 14 } height={ 14 } />
+                    <DotsDrag aria-hidden width={14} height={14} />
                 </span>
             </Show>
 
-            <div className={ styles.content }>
-                { renderItem(node.value, {
+            <div className={styles.content}>
+                {renderItem(node.value, {
                     ...context,
                     nestedItems,
                     isDragging,
                     isDropTarget,
-                }) }
+                })}
             </div>
         </div>
     );
@@ -487,31 +440,22 @@ function SortablePreview<T>({
     renderItem: (item: T, props: SortableListItemRenderProps<T>) => ReactNode;
     nestedGap: 'sm' | 'md';
 }): ReactElement {
-    const nestedItems = node.canHaveChildren
-        ? (
-            <div className={ styles.previewList } data-gap={ nestedGap }>
-                <For each={ node.children }>
-                    { child => (
-                        <SortablePreview
-                            key={ child.id }
-                            node={ child }
-                            renderItem={ renderItem }
-                            nestedGap={ nestedGap }
-                        />
-                    ) }
-                </For>
-            </div>
-        )
-        : null;
+    const nestedItems = node.canHaveChildren ? (
+        <div className={styles.previewList} data-gap={nestedGap}>
+            <For each={node.children}>
+                {child => <SortablePreview key={child.id} node={child} renderItem={renderItem} nestedGap={nestedGap} />}
+            </For>
+        </div>
+    ) : null;
 
     return (
-        <div className={ styles.dragPreviewItem }>
-            { renderItem(node.value, {
+        <div className={styles.dragPreviewItem}>
+            {renderItem(node.value, {
                 ...itemContext(node),
                 nestedItems,
                 isDragging: false,
                 isDropTarget: false,
-            }) }
+            })}
         </div>
     );
 }
@@ -542,9 +486,7 @@ function canAcceptDrop<T>(
         return false;
     }
 
-    return canDrop?.(
-        createDropContext(sourceNode, parentNode, targetNode, dropPosition)
-    ) ?? true;
+    return canDrop?.(createDropContext(sourceNode, parentNode, targetNode, dropPosition)) ?? true;
 }
 
 function createDropContext<T>(
@@ -564,13 +506,11 @@ function createDropContext<T>(
     };
 }
 
-function canMoveToParent<T>(
-    sourceNode: SortableTreeNode<T>,
-    parentNode: SortableTreeNode<T> | null
-): boolean {
-    return parentNode == null
-      || (parentNode.id !== sourceNode.id
-        && findSortableTreeNode(sourceNode.children, parentNode.id) == null);
+function canMoveToParent<T>(sourceNode: SortableTreeNode<T>, parentNode: SortableTreeNode<T> | null): boolean {
+    return (
+        parentNode == null ||
+        (parentNode.id !== sourceNode.id && findSortableTreeNode(sourceNode.children, parentNode.id) == null)
+    );
 }
 
 function destinationFromSortable<T>(
@@ -585,9 +525,7 @@ function destinationFromSortable<T>(
         return null;
     }
 
-    const parentNode = parentKey == null
-        ? null
-        : findSortableTreeNode(nodes, parentKey);
+    const parentNode = parentKey == null ? null : findSortableTreeNode(nodes, parentKey);
 
     if (parentKey != null && !parentNode) {
         return null;
@@ -607,30 +545,22 @@ function collectionId<T>(parentNode: SortableTreeNode<T> | null): string {
 }
 
 function collectionIdFromParentKey(parentKey: string | null): string {
-    return parentKey == null
-        ? ROOT_COLLECTION_ID
-        : `${ CHILD_COLLECTION_PREFIX }${ parentKey }`;
+    return parentKey == null ? ROOT_COLLECTION_ID : `${CHILD_COLLECTION_PREFIX}${parentKey}`;
 }
 
-function parentKeyFromCollectionId(
-    collectionId: string | number | undefined
-): string | null | undefined {
+function parentKeyFromCollectionId(collectionId: string | number | undefined): string | null | undefined {
     if (collectionId === ROOT_COLLECTION_ID) {
         return null;
     }
 
-    if (typeof collectionId === 'string'
-      && collectionId.startsWith(CHILD_COLLECTION_PREFIX)) {
+    if (typeof collectionId === 'string' && collectionId.startsWith(CHILD_COLLECTION_PREFIX)) {
         return collectionId.slice(CHILD_COLLECTION_PREFIX.length);
     }
 
     return undefined;
 }
 
-function nodeParentKey<T>(
-    nodes: readonly SortableTreeNode<T>[],
-    target: SortableTreeNode<T>
-): string | null {
+function nodeParentKey<T>(nodes: readonly SortableTreeNode<T>[], target: SortableTreeNode<T>): string | null {
     return findParentNode(nodes, target)?.id ?? null;
 }
 
@@ -675,9 +605,7 @@ function entityData<T>(
     return null;
 }
 
-function nodeData<T>(
-    entity: { data: Record<string, unknown> } | null
-): SortableNodeData<T> | null {
+function nodeData<T>(entity: { data: Record<string, unknown> } | null): SortableNodeData<T> | null {
     const data = entityData<T>(entity);
 
     return data?.kind === 'node' ? data : null;

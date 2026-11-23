@@ -1,10 +1,19 @@
-import { BackgroundWork, ContentBlock, SessionUpdate, ToolCallContent } from '@agentclientprotocol/sdk/experimental/v2/unstable';
+import {
+    BackgroundWork,
+    ContentBlock,
+    SessionUpdate,
+    ToolCallContent,
+} from '@agentclientprotocol/sdk/experimental/v2/unstable';
 
 import { Children, textOf } from './children';
 import { COMPACT_TOOL, Gauges, isRecord, Message, patched, Thought, ToolLedger, usageEvent } from './mapper-core';
 import { TIMED_TOOLS, timingOf } from './timed';
 
-import type { CompactionUpdate, TerminalUpdate, ToolCallUpdate } from '@agentclientprotocol/sdk/experimental/v2/unstable';
+import type {
+    CompactionUpdate,
+    TerminalUpdate,
+    ToolCallUpdate,
+} from '@agentclientprotocol/sdk/experimental/v2/unstable';
 import type { BackgroundItem } from '@clowdy/protocol';
 import type { EngineEvent } from '../types';
 import type { MapperOptions } from './mapper';
@@ -20,7 +29,12 @@ const MAX_BACKGROUND_TITLE = 200;
 const FINAL_STATES = new Set(['completed', 'failed', 'cancelled']);
 
 /** The state of a tool call for each state a compaction is in; one the draft adds later is taken as still going. */
-const COMPACTION_STATES: Record<string, string> = { in_progress: 'in_progress', completed: 'completed', failed: 'failed', cancelled: 'cancelled' };
+const COMPACTION_STATES: Record<string, string> = {
+    in_progress: 'in_progress',
+    completed: 'completed',
+    failed: 'failed',
+    cancelled: 'cancelled',
+};
 
 /** A tool call that holds the session until a time the agent named in it (`timed.ts`): the item the runtime shows for it, and how long the layer holds it. */
 export interface Timed {
@@ -59,7 +73,7 @@ function patchedMeta(old: Json | undefined, next: Json | null | undefined): Json
 function titled(text: string | null | undefined, fallback: string): string {
     const line = (text ?? '').replace(/\s+/g, ' ').trim();
 
-    return line.length > MAX_BACKGROUND_TITLE ? `${ line.slice(0, MAX_BACKGROUND_TITLE - 1) }…` : line || fallback;
+    return line.length > MAX_BACKGROUND_TITLE ? `${line.slice(0, MAX_BACKGROUND_TITLE - 1)}…` : line || fallback;
 }
 
 /**
@@ -110,7 +124,7 @@ export class UpdateMapperV2 {
     /** The start of a message that may be that repeat, held back (Claude's adapter says it as one chunk) until it is clear whether it is. */
     private held?: { id: string; text: string };
 
-    constructor(private options: MapperOptions) {
+    constructor(options: MapperOptions) {
         this.tools = new ToolLedger(options.toolNames);
         this.gauges = new Gauges(options.log);
         this.costBefore = options.costBefore;
@@ -137,11 +151,15 @@ export class UpdateMapperV2 {
 
         // The SDK's union keeps a catch-all for updates it does not know, so each kind is asked for by its guard.
         if (SessionUpdate.isAgentMessageChunk(update)) {
-            return ContentBlock.isText(update.content) ? [...this.thought.close(), ...this.chunk(update.content.text, update.messageId)] : [];
+            return ContentBlock.isText(update.content)
+                ? [...this.thought.close(), ...this.chunk(update.content.text, update.messageId)]
+                : [];
         }
 
         if (SessionUpdate.isAgentThoughtChunk(update)) {
-            return ContentBlock.isText(update.content) ? this.thought.append(update.content.text, update.messageId) : [];
+            return ContentBlock.isText(update.content)
+                ? this.thought.append(update.content.text, update.messageId)
+                : [];
         }
 
         if (SessionUpdate.isAgentThought(update)) {
@@ -158,7 +176,12 @@ export class UpdateMapperV2 {
             const text = textOf(update.content);
             const settled = [...this.thought.close(), ...this.settle()];
 
-            return [...settled, ...(this.folding && this.message.repeats(update.messageId, text) ? [] : this.message.upsert(update.messageId, text))];
+            return [
+                ...settled,
+                ...(this.folding && this.message.repeats(update.messageId, text)
+                    ? []
+                    : this.message.upsert(update.messageId, text)),
+            ];
         }
 
         if (SessionUpdate.isToolCallUpdate(update)) {
@@ -176,20 +199,15 @@ export class UpdateMapperV2 {
 
             this.permit(update);
             this.print(update.terminalId, update.output?.data, 'replace');
-        }
-        else if (SessionUpdate.isSubagentUpdate(update)) {
+        } else if (SessionUpdate.isSubagentUpdate(update)) {
             return this.children.announce(update);
-        }
-        else if (SessionUpdate.isSessionMessage(update)) {
+        } else if (SessionUpdate.isSessionMessage(update)) {
             return this.children.message(update);
-        }
-        else if (SessionUpdate.isTerminalOutputChunk(update)) {
+        } else if (SessionUpdate.isTerminalOutputChunk(update)) {
             this.print(update.terminalId, update.data, 'append');
-        }
-        else if (SessionUpdate.isCompactionUpdate(update)) {
+        } else if (SessionUpdate.isCompactionUpdate(update)) {
             return this.compaction(update);
-        }
-        else if (SessionUpdate.isUsageUpdate(update)) {
+        } else if (SessionUpdate.isUsageUpdate(update)) {
             return this.gauges.update(update);
         }
 
@@ -227,24 +245,52 @@ export class UpdateMapperV2 {
     background(list: readonly BackgroundWork[]): BackgroundItem[] {
         const items = list.flatMap((work): BackgroundItem[] => {
             if (BackgroundWork.isTerminal(work)) {
-                return [{ id: work.terminalId, kind: 'command', title: titled(this.commands.get(work.terminalId), 'Background command'), ...(this.cancellable.has(work.terminalId) && { canStopAlone: true }) }];
+                return [
+                    {
+                        id: work.terminalId,
+                        kind: 'command',
+                        title: titled(this.commands.get(work.terminalId), 'Background command'),
+                        ...(this.cancellable.has(work.terminalId) && { canStopAlone: true }),
+                    },
+                ];
             }
 
             if (BackgroundWork.isSubagent(work)) {
-                return [{ id: this.children.itemIdOf(work.sessionId), kind: 'subagent', title: titled(this.children.titleOf(work.sessionId), 'Sub-agent') }];
+                return [
+                    {
+                        id: this.children.itemIdOf(work.sessionId),
+                        kind: 'subagent',
+                        title: titled(this.children.titleOf(work.sessionId), 'Sub-agent'),
+                    },
+                ];
             }
 
             if (BackgroundWork.isToolCall(work)) {
                 this.adopted.add(work.toolCallId);
                 this.timed.delete(work.toolCallId);
 
-                return [{ id: work.toolCallId, kind: 'task', title: titled(this.names.get(work.toolCallId) || this.calls.get(work.toolCallId)?.title || this.tools.get(work.toolCallId)?.name, 'Background task'), ...(this.cancellableCalls.has(work.toolCallId) && { canStopAlone: true }) }];
+                return [
+                    {
+                        id: work.toolCallId,
+                        kind: 'task',
+                        title: titled(
+                            this.names.get(work.toolCallId) ||
+                                this.calls.get(work.toolCallId)?.title ||
+                                this.tools.get(work.toolCallId)?.name,
+                            'Background task'
+                        ),
+                        ...(this.cancellableCalls.has(work.toolCallId) && { canStopAlone: true }),
+                    },
+                ];
             }
 
             return [];
         });
 
-        return [...items, ...[...this.timed.values()].map(({ id, title }): BackgroundItem => ({ id, kind: 'task', title }))];
+        return [
+            ...items,
+            ...[...this.timed.values()].map(({ id, title }): BackgroundItem => ({ id, kind: 'task', title })),
+        ];
     }
 
     /** The calls that began to hold the session since the last time this was asked, each once: the layer starts the timer of each, which is when it lapses. */
@@ -262,9 +308,15 @@ export class UpdateMapperV2 {
      * until the command ends (Claude's `Bash` call completes at once). The runtime does not fail them when the turn ends.
      */
     openCalls(list: readonly BackgroundWork[]): string[] {
-        const listed = new Set(list.flatMap(work => BackgroundWork.isTerminal(work) ? [work.terminalId] : []));
+        const listed = new Set(list.flatMap(work => (BackgroundWork.isTerminal(work) ? [work.terminalId] : [])));
 
-        return [...this.calls].filter(([, call]) => !FINAL_STATES.has(call.status ?? '') && call.content.some(item => ToolCallContent.isTerminal(item) && listed.has(item.terminalId))).map(([id]) => id);
+        return [...this.calls]
+            .filter(
+                ([, call]) =>
+                    !FINAL_STATES.has(call.status ?? '') &&
+                    call.content.some(item => ToolCallContent.isTerminal(item) && listed.has(item.terminalId))
+            )
+            .map(([id]) => id);
     }
 
     /**
@@ -304,8 +356,7 @@ export class UpdateMapperV2 {
         if (capabilities !== undefined) {
             if (capabilities?.cancel != null) {
                 this.cancellable.add(terminalId);
-            }
-            else {
+            } else {
                 this.cancellable.delete(terminalId);
             }
         }
@@ -335,24 +386,47 @@ export class UpdateMapperV2 {
         }
 
         const stamp = (update as { _meta?: Json | null })._meta?.claudeCode;
-        const parentToolUseId = isRecord(stamp) && typeof stamp.parentToolUseId === 'string' ? stamp.parentToolUseId : undefined;
+        const parentToolUseId =
+            isRecord(stamp) && typeof stamp.parentToolUseId === 'string' ? stamp.parentToolUseId : undefined;
         const message = this.children.messageOf(agentId) as Message;
         const thought = this.children.thoughtOf(agentId) as Thought;
 
         if (SessionUpdate.isAgentMessageChunk(update)) {
-            return ContentBlock.isText(update.content) ? [...this.children.heard(agentId, parentToolUseId), ...thought.close(agentId), ...message.append(update.content.text, update.messageId, agentId)] : [];
+            return ContentBlock.isText(update.content)
+                ? [
+                      ...this.children.heard(agentId, parentToolUseId),
+                      ...thought.close(agentId),
+                      ...message.append(update.content.text, update.messageId, agentId),
+                  ]
+                : [];
         }
 
         if (SessionUpdate.isAgentMessage(update)) {
-            return update.content ? [...this.children.heard(agentId, parentToolUseId), ...thought.close(agentId), ...message.upsert(update.messageId, textOf(update.content), agentId)] : [];
+            return update.content
+                ? [
+                      ...this.children.heard(agentId, parentToolUseId),
+                      ...thought.close(agentId),
+                      ...message.upsert(update.messageId, textOf(update.content), agentId),
+                  ]
+                : [];
         }
 
         if (SessionUpdate.isAgentThoughtChunk(update)) {
-            return ContentBlock.isText(update.content) ? [...this.children.heard(agentId, parentToolUseId), ...thought.append(update.content.text, update.messageId, agentId)] : [];
+            return ContentBlock.isText(update.content)
+                ? [
+                      ...this.children.heard(agentId, parentToolUseId),
+                      ...thought.append(update.content.text, update.messageId, agentId),
+                  ]
+                : [];
         }
 
         if (SessionUpdate.isAgentThought(update)) {
-            return update.content ? [...this.children.heard(agentId, parentToolUseId), ...thought.upsert(update.messageId, textOf(update.content), agentId)] : [];
+            return update.content
+                ? [
+                      ...this.children.heard(agentId, parentToolUseId),
+                      ...thought.upsert(update.messageId, textOf(update.content), agentId),
+                  ]
+                : [];
         }
 
         if (SessionUpdate.isToolCallUpdate(update)) {
@@ -370,8 +444,7 @@ export class UpdateMapperV2 {
             }
 
             this.print(update.terminalId, update.output?.data, 'replace');
-        }
-        else if (SessionUpdate.isTerminalOutputChunk(update)) {
+        } else if (SessionUpdate.isTerminalOutputChunk(update)) {
             this.print(update.terminalId, update.data, 'append');
         }
 
@@ -382,7 +455,10 @@ export class UpdateMapperV2 {
     /** Ends the open assistant message and the open thought of the session, or of the sub-agent `agentId`, if there is one. */
     close(agentId?: string): EngineEvent[] {
         if (agentId !== undefined) {
-            return [...this.children.thoughtOf(agentId)?.close(agentId) ?? [], ...this.children.messageOf(agentId)?.close(agentId) ?? []];
+            return [
+                ...(this.children.thoughtOf(agentId)?.close(agentId) ?? []),
+                ...(this.children.messageOf(agentId)?.close(agentId) ?? []),
+            ];
         }
 
         return [...this.thought.close(), ...this.settle(), ...this.message.close()];
@@ -430,11 +506,14 @@ export class UpdateMapperV2 {
             name: patched(known?.name, update.name),
             title: patched(known?.title, update.title),
             // Null resets what a call is to the protocol's default.
-            kind: update.kind === null ? 'other' : update.kind ?? known?.kind,
-            status: update.status === null ? 'pending' : update.status ?? known?.status,
+            kind: update.kind === null ? 'other' : (update.kind ?? known?.kind),
+            status: update.status === null ? 'pending' : (update.status ?? known?.status),
             rawInput: update.rawInput === undefined ? known?.rawInput : update.rawInput,
             rawOutput: update.rawOutput === undefined ? known?.rawOutput : update.rawOutput,
-            content: [...(update.content === undefined ? known?.content ?? [] : update.content ?? []), ...(added ? [added] : [])],
+            content: [
+                ...(update.content === undefined ? (known?.content ?? []) : (update.content ?? [])),
+                ...(added ? [added] : []),
+            ],
             meta: patchedMeta(known?.meta, update._meta),
         };
 
@@ -446,8 +525,7 @@ export class UpdateMapperV2 {
             if (update.capabilities !== undefined) {
                 if (update.capabilities?.cancel != null) {
                     this.cancellableCalls.add(id);
-                }
-                else {
+                } else {
                     this.cancellableCalls.delete(id);
                 }
             }
@@ -483,7 +561,11 @@ export class UpdateMapperV2 {
         const timing = timingOf(tool.name, tool.input, tool.output, new Date());
 
         if (timing) {
-            const timed = { id, title: timing.what ? titled(`${ timing.label } · ${ timing.what }`, timing.label) : timing.label, ms: timing.ms };
+            const timed = {
+                id,
+                title: timing.what ? titled(`${timing.label} · ${timing.what}`, timing.label) : timing.label,
+                ms: timing.ms,
+            };
 
             this.names.set(id, timed.title);
 
@@ -495,25 +577,49 @@ export class UpdateMapperV2 {
     }
 
     private show(toolCallId: string, call: Call, agentId?: string): EngineEvent[] {
-        const event = this.tools.apply({ toolCallId, name: call.name, title: call.title, kind: call.kind, status: call.status, rawInput: call.rawInput, rawOutput: call.rawOutput, shown: this.shownOf(call.content), _meta: call.meta }, agentId);
+        const event = this.tools.apply(
+            {
+                toolCallId,
+                name: call.name,
+                title: call.title,
+                kind: call.kind,
+                status: call.status,
+                rawInput: call.rawInput,
+                rawOutput: call.rawOutput,
+                shown: this.shownOf(call.content),
+                _meta: call.meta,
+            },
+            agentId
+        );
 
         return event ? [event] : [];
     }
 
     /** The text of the content a call showed: the text blocks, a diff as the files it changed, a terminal as the output it printed. */
     private shownOf(content: ToolCallContent[]): string | undefined {
-        return content.map((item) => {
-            if (ToolCallContent.isContent(item)) {
-                return ContentBlock.isText(item.content) ? item.content.text : '';
-            }
+        return (
+            content
+                .map(item => {
+                    if (ToolCallContent.isContent(item)) {
+                        return ContentBlock.isText(item.content) ? item.content.text : '';
+                    }
 
-            if (ToolCallContent.isDiff(item)) {
-                // A kind of change the draft adds later may name no path.
-                return item.changes.flatMap(change => 'path' in change && typeof change.path === 'string' ? [`Changed ${ change.path }`] : []).join('\n');
-            }
+                    if (ToolCallContent.isDiff(item)) {
+                        // A kind of change the draft adds later may name no path.
+                        return item.changes
+                            .flatMap(change =>
+                                'path' in change && typeof change.path === 'string' ? [`Changed ${change.path}`] : []
+                            )
+                            .join('\n');
+                    }
 
-            return ToolCallContent.isTerminal(item) ? this.terminals.get(item.terminalId)?.toString('utf8') ?? '' : '';
-        }).filter(Boolean).join('\n') || undefined;
+                    return ToolCallContent.isTerminal(item)
+                        ? (this.terminals.get(item.terminalId)?.toString('utf8') ?? '')
+                        : '';
+                })
+                .filter(Boolean)
+                .join('\n') || undefined
+        );
     }
 
     /** What a terminal printed, as base64: the output of a call that shows it comes from here when the call completes. */
@@ -528,9 +634,14 @@ export class UpdateMapperV2 {
 
     /** A compaction the agent reports as its own kind of update (Claude's and Codex's adapters may report a tool call instead, which `tool` takes). */
     private compaction({ compactionId, status, error }: CompactionUpdate): EngineEvent[] {
-        const id = `compaction-${ compactionId }`;
+        const id = `compaction-${compactionId}`;
         const fresh = !this.calls.has(id);
-        const call: Call = { name: COMPACT_TOOL, status: COMPACTION_STATES[status] ?? 'in_progress', ...(error && { rawOutput: error }), content: [] };
+        const call: Call = {
+            name: COMPACT_TOOL,
+            status: COMPACTION_STATES[status] ?? 'in_progress',
+            ...(error && { rawOutput: error }),
+            content: [],
+        };
 
         this.calls.set(id, call);
 

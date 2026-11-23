@@ -4,7 +4,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { RootStoreProvider, type RootStore } from '../../stores';
+import { type RootStore, RootStoreProvider } from '../../stores';
 import { Composer } from './Composer';
 import { filesOf, setFiles } from './composerFiles';
 import { modelStore } from './modelTestKit';
@@ -16,7 +16,11 @@ import type { CommandInput } from '../../daemon/transport';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const accepted: CommandResult = { ok: true, requestId: 'request-1', data: {} };
-const refused: CommandResult = { ok: false, requestId: 'request-1', error: { code: 'unavailable', message: 'The daemon cannot be reached' } };
+const refused: CommandResult = {
+    ok: false,
+    requestId: 'request-1',
+    error: { code: 'unavailable', message: 'The daemon cannot be reached' },
+};
 
 let container: HTMLDivElement;
 let root: Root;
@@ -27,7 +31,12 @@ let chatNumber = 0;
 let uploads: ReturnType<typeof vi.fn>;
 let deletions: ReturnType<typeof vi.fn>;
 
-const sentFile = (file: File, id: string): Attachment => ({ id, name: file.name, mediaType: file.type, size: file.size });
+const sentFile = (file: File, id: string): Attachment => ({
+    id,
+    name: file.name,
+    mediaType: file.type,
+    size: file.size,
+});
 
 async function mount(result: CommandResult = accepted, page: 'chat' | { projectId: string } = 'chat') {
     const transport = {
@@ -42,14 +51,26 @@ async function mount(result: CommandResult = accepted, page: 'chat' | { projectI
 
         return result;
     });
-    const store = { command, transport, skillsRevision: 0, selectedProject: { project: { id: 'p', folders: [{ id: 'f1', path: '/Users/dev/web' }] }, taskList: [] }, ...await modelStore() };
+    const store = {
+        command,
+        transport,
+        skillsRevision: 0,
+        selectedProject: { project: { id: 'p', folders: [{ id: 'f1', path: '/Users/dev/web' }] }, taskList: [] },
+        ...(await modelStore()),
+    };
 
     await act(async () => {
         root.render(
-            <RootStoreProvider value={ store as unknown as RootStore }>
-                { page === 'chat'
-                    ? <Composer chat={ chat } run={ undefined } />
-                    : <Composer chat={ undefined } run={ undefined } start={ { projectId: page.projectId, onStarted: () => undefined } } /> }
+            <RootStoreProvider value={store as unknown as RootStore}>
+                {page === 'chat' ? (
+                    <Composer chat={chat} run={undefined} />
+                ) : (
+                    <Composer
+                        chat={undefined}
+                        run={undefined}
+                        start={{ projectId: page.projectId, onStarted: () => undefined }}
+                    />
+                )}
             </RootStoreProvider>
         );
     });
@@ -57,7 +78,7 @@ async function mount(result: CommandResult = accepted, page: 'chat' | { projectI
 
 const field = () => container.querySelector<HTMLElement>('[contenteditable="true"]')!;
 const editor = () => (field() as HTMLElement & { editor: Editor }).editor;
-const button = (label: string) => container.querySelector<HTMLButtonElement>(`button[aria-label="${ label }"]`);
+const button = (label: string) => container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
 const tiles = () => [...container.querySelectorAll('[data-slot="attachments"] > *')];
 
 async function pick(...files: File[]) {
@@ -71,8 +92,15 @@ async function pick(...files: File[]) {
 
 beforeEach(() => {
     sent = [];
-    chat = { id: `c-files-${ ++chatNumber }`, projectId: 'p', title: 'New chat', mode: 'autopilot', createdAt: 0, updatedAt: 0 };
-    uploads = vi.fn(async (_projectId: string, file: File) => sentFile(file, `a-${ file.name }`));
+    chat = {
+        id: `c-files-${++chatNumber}`,
+        projectId: 'p',
+        title: 'New chat',
+        mode: 'autopilot',
+        createdAt: 0,
+        updatedAt: 0,
+    };
+    uploads = vi.fn(async (_projectId: string, file: File) => sentFile(file, `a-${file.name}`));
     deletions = vi.fn(async () => undefined);
     container = document.createElement('div');
     document.body.append(container);
@@ -107,7 +135,9 @@ describe('Composer files', () => {
 
         await act(async () => button('Send')!.click());
 
-        expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: '', attachmentIds: ['a-a.txt'], mode: 'steer' }]);
+        expect(sent).toEqual([
+            { type: 'chat.send', chatId: chat.id, text: '', attachmentIds: ['a-a.txt'], mode: 'steer' },
+        ]);
         expect(tiles()).toHaveLength(0);
     });
 
@@ -119,16 +149,21 @@ describe('Composer files', () => {
         });
         await act(async () => button('Send')!.click());
 
-        expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Look at this', attachmentIds: ['a-a.txt'], mode: 'steer' }]);
+        expect(sent).toEqual([
+            { type: 'chat.send', chatId: chat.id, text: 'Look at this', attachmentIds: ['a-a.txt'], mode: 'steer' },
+        ]);
     });
 
     it('holds the message back while a file is going up, and says why', async () => {
         let finish: (attachment: Attachment) => void = () => undefined;
         const file = new File(['a'], 'slow.txt', { type: 'text/plain' });
 
-        uploads.mockImplementationOnce(() => new Promise<Attachment>(resolve => {
-            finish = resolve;
-        }));
+        uploads.mockImplementationOnce(
+            () =>
+                new Promise<Attachment>(resolve => {
+                    finish = resolve;
+                })
+        );
         await mount();
         await pick(file);
 
@@ -198,7 +233,14 @@ describe('Composer files', () => {
         const paste = new Event('paste', { bubbles: true, cancelable: true });
 
         // What Finder puts on the clipboard for a copied file: the file, and its name as text.
-        Object.defineProperty(paste, 'clipboardData', { value: { files: [file], items: [], types: ['Files', 'text/plain'], getData: (type: string) => (type === 'text/plain' ? 'copied.png' : '') } });
+        Object.defineProperty(paste, 'clipboardData', {
+            value: {
+                files: [file],
+                items: [],
+                types: ['Files', 'text/plain'],
+                getData: (type: string) => (type === 'text/plain' ? 'copied.png' : ''),
+            },
+        });
         await act(async () => void field().dispatchEvent(paste));
 
         expect(paste.defaultPrevented).toBe(true);
@@ -207,7 +249,7 @@ describe('Composer files', () => {
         expect(editor().getText()).toBe('');
     });
 
-    it('cites a file pasted from the project\'s folder by its path, and attaches one from anywhere else', async () => {
+    it("cites a file pasted from the project's folder by its path, and attaches one from anywhere else", async () => {
         await mount();
 
         window.desktop = {
@@ -221,16 +263,24 @@ describe('Composer files', () => {
         try {
             const paste = new Event('paste', { bubbles: true, cancelable: true });
 
-            Object.defineProperty(paste, 'clipboardData', { value: { files: [new File(['a'], 'a.ts'), new File(['r'], 'report.pdf')], items: [], types: ['Files'], getData: () => '' } });
+            Object.defineProperty(paste, 'clipboardData', {
+                value: {
+                    files: [new File(['a'], 'a.ts'), new File(['r'], 'report.pdf')],
+                    items: [],
+                    types: ['Files'],
+                    getData: () => '',
+                },
+            });
             await act(async () => void field().dispatchEvent(paste));
 
-            const chips = (editor().getJSON().content ?? []).flatMap(block => block.content ?? []).filter(node => node.type === 'composerMention');
+            const chips = (editor().getJSON().content ?? [])
+                .flatMap(block => block.content ?? [])
+                .filter(node => node.type === 'composerMention');
 
             expect(chips.map(chip => chip.attrs?.data)).toEqual([{ path: 'src/a.ts' }]);
             expect(uploads.mock.calls.map(call => (call[1] as File).name)).toEqual(['report.pdf']);
             expect(tiles()).toHaveLength(1);
-        }
-        finally {
+        } finally {
             delete window.desktop;
         }
     });
@@ -247,7 +297,10 @@ describe('Composer files', () => {
 
         await pick(new File(['b'], 'two.txt', { type: 'text/plain' }));
 
-        expect(uploads.mock.calls.map(call => [call[0], (call[1] as File).name])).toEqual([['p-one', 'one.txt'], ['p-two', 'two.txt']]);
+        expect(uploads.mock.calls.map(call => [call[0], (call[1] as File).name])).toEqual([
+            ['p-one', 'one.txt'],
+            ['p-two', 'two.txt'],
+        ]);
 
         await mount(accepted, { projectId: 'p-one' });
 

@@ -31,7 +31,9 @@ export function useTaskArtifacts(taskId: TaskId): { state: TaskArtifacts; retry:
         const timer = setTimeout(() => {
             transport.getTaskDetail(taskId).then(
                 detail => isCurrent && setState({ status: 'ready', artifacts: detail.artifacts }),
-                error => isCurrent && setState({ status: 'failed', message: error instanceof Error ? error.message : String(error) })
+                error =>
+                    isCurrent &&
+                    setState({ status: 'failed', message: error instanceof Error ? error.message : String(error) })
             );
         }, FETCH_DELAY_MS);
 

@@ -1,10 +1,10 @@
 import { Button } from '@clowdy/components/Button';
 import { Reply } from '@clowdy/icons/14';
-import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type RefObject } from 'react';
+import { type MouseEvent, type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
-import { placeToolbar, readSelection, sameSelection, visibleBounds, type SelectedText } from './selectedMessage';
 import styles from './SelectionReply.module.css';
+import { placeToolbar, readSelection, type SelectedText, sameSelection, visibleBounds } from './selectedMessage';
 
 export interface SelectionReplyProps {
     /** The element that holds the messages: only a selection inside one of its messages is offered. Another list on the page has its own. */
@@ -92,27 +92,37 @@ export function SelectionReply({ scope, onReply }: SelectionReplyProps) {
 
         if (!selected || !element || !list) return;
 
-        const { left, top } = placeToolbar(selected, { width: element.offsetWidth, height: element.offsetHeight }, visibleBounds(list));
+        const { left, top } = placeToolbar(
+            selected,
+            { width: element.offsetWidth, height: element.offsetHeight },
+            visibleBounds(list)
+        );
 
-        element.style.left = `${ left }px`;
-        element.style.top = `${ top }px`;
+        element.style.left = `${left}px`;
+        element.style.top = `${top}px`;
     }, [selected, scope]);
 
     if (!selected) return null;
 
     return createPortal(
         // The press of the mouse is what moves the focus and clears the selection; the button's own press handling still sees it.
-        <div ref={ box } className={ styles.box } role="toolbar" aria-label="Selected text" onMouseDownCapture={ (event: MouseEvent) => event.preventDefault() }>
+        <div
+            ref={box}
+            className={styles.box}
+            role="toolbar"
+            aria-label="Selected text"
+            onMouseDownCapture={(event: MouseEvent) => event.preventDefault()}
+        >
             <Button
                 variant="filling"
                 size="sm"
                 preventFocusOnPress
-                onPress={ () => {
+                onPress={() => {
                     // The selection goes first: the caller moves the focus into the message box, and clearing the selection after that would take its caret.
                     window.getSelection()?.removeAllRanges();
                     setSelected(null);
                     onReply(selected.text);
-                } }
+                }}
             >
                 <Reply />
                 Reply

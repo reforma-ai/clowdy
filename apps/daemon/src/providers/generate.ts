@@ -56,24 +56,54 @@ const codex: Recipe = {
     instructions: INSTRUCTIONS,
     asFile: true,
     args: instructions => [
-        'exec', '--ephemeral', '--skip-git-repo-check', '-s', 'read-only', '--ignore-user-config', '--ignore-rules',
-        '-m', 'gpt-6-luna', '-c', 'model_reasoning_effort=low',
-        '-c', 'agents.enabled=false',
-        '-c', 'tools.experimental_request_user_input.enabled=false',
-        '-c', 'tools.update_plan.enabled=false',
-        '-c', 'skills.include_instructions=false',
-        '-c', 'include_environment_context=false',
-        '-c', 'include_permissions_instructions=false',
-        '-c', 'include_collaboration_mode_instructions=false',
-        '-c', 'include_apps_instructions=false',
-        '-c', 'project_doc_max_bytes=0',
+        'exec',
+        '--ephemeral',
+        '--skip-git-repo-check',
+        '-s',
+        'read-only',
+        '--ignore-user-config',
+        '--ignore-rules',
+        '-m',
+        'gpt-6-luna',
+        '-c',
+        'model_reasoning_effort=low',
+        '-c',
+        'agents.enabled=false',
+        '-c',
+        'tools.experimental_request_user_input.enabled=false',
+        '-c',
+        'tools.update_plan.enabled=false',
+        '-c',
+        'skills.include_instructions=false',
+        '-c',
+        'include_environment_context=false',
+        '-c',
+        'include_permissions_instructions=false',
+        '-c',
+        'include_collaboration_mode_instructions=false',
+        '-c',
+        'include_apps_instructions=false',
+        '-c',
+        'project_doc_max_bytes=0',
         // A TOML string: JSON's escapes are TOML's for a path.
-        '-c', `model_instructions_file=${ JSON.stringify(instructions) }`,
-        '-c', 'features.shell_tool=false', '-c', 'features.sleep_tool=false', '-c', 'features.view_image=false',
-        '-c', 'features.plugins=false', '-c', 'features.apps=false', '-c', 'features.goals=false',
-        '--json', '-',
+        '-c',
+        `model_instructions_file=${JSON.stringify(instructions)}`,
+        '-c',
+        'features.shell_tool=false',
+        '-c',
+        'features.sleep_tool=false',
+        '-c',
+        'features.view_image=false',
+        '-c',
+        'features.plugins=false',
+        '-c',
+        'features.apps=false',
+        '-c',
+        'features.goals=false',
+        '--json',
+        '-',
     ],
-    answer: (run) => {
+    answer: run => {
         if (run.code !== 0) return undefined;
 
         let answer: string | undefined;
@@ -84,14 +114,18 @@ const codex: Recipe = {
 
             try {
                 event = JSON.parse(line) as typeof event;
-            }
-            catch {
+            } catch {
                 continue;
             }
 
             if (event?.type === 'turn.failed') return undefined;
 
-            if (event?.type === 'item.completed' && event.item?.type === 'agent_message' && typeof event.item.text === 'string') answer = event.item.text;
+            if (
+                event?.type === 'item.completed' &&
+                event.item?.type === 'agent_message' &&
+                typeof event.item.text === 'string'
+            )
+                answer = event.item.text;
         }
 
         return answer;
@@ -111,29 +145,44 @@ const codex: Recipe = {
 const claude: Recipe = {
     instructions: INSTRUCTIONS,
     args: instructions => [
-        '-p', '--output-format', 'json', '--no-session-persistence',
-        '--model', 'haiku', '--effort', 'low',
-        '--tools', '', '--strict-mcp-config', '--disable-slash-commands',
-        '--setting-sources', 'user',
-        '--settings', JSON.stringify({ autoMemoryEnabled: false, disableAllHooks: true, claudeMdExcludes: ['**/CLAUDE.md'] }),
-        '--system-prompt', instructions,
+        '-p',
+        '--output-format',
+        'json',
+        '--no-session-persistence',
+        '--model',
+        'haiku',
+        '--effort',
+        'low',
+        '--tools',
+        '',
+        '--strict-mcp-config',
+        '--disable-slash-commands',
+        '--setting-sources',
+        'user',
+        '--settings',
+        JSON.stringify({ autoMemoryEnabled: false, disableAllHooks: true, claudeMdExcludes: ['**/CLAUDE.md'] }),
+        '--system-prompt',
+        instructions,
     ],
     env: { MAX_THINKING_TOKENS: '0' },
     scrub: /^(?:CLAUDE|ANTHROPIC)/i,
-    answer: (run) => {
+    answer: run => {
         if (run.code !== 0) return undefined;
 
         let printed: unknown;
 
         try {
             printed = JSON.parse(run.stdout);
-        }
-        catch {
+        } catch {
             return undefined;
         }
 
         // One result object; a client that streams prints an array of messages whose last is the result.
-        const result = (Array.isArray(printed) ? printed.findLast(entry => (entry as { type?: unknown } | null)?.type === 'result') : printed) as { is_error?: unknown; result?: unknown } | null | undefined;
+        const result = (
+            Array.isArray(printed)
+                ? printed.findLast(entry => (entry as { type?: unknown } | null)?.type === 'result')
+                : printed
+        ) as { is_error?: unknown; result?: unknown } | null | undefined;
 
         return result?.is_error !== true && typeof result?.result === 'string' ? result.result : undefined;
     },
@@ -186,7 +235,9 @@ export class TextGeneration {
 
         if (!recipe || !target) throw new GenerateFailure('failed');
 
-        const instructions = recipe.asFile ? await this.#instructionsOf(agentId, recipe).catch(() => undefined) : recipe.instructions;
+        const instructions = recipe.asFile
+            ? await this.#instructionsOf(agentId, recipe).catch(() => undefined)
+            : recipe.instructions;
 
         if (instructions === undefined) throw new GenerateFailure('failed');
 
@@ -195,7 +246,10 @@ export class TextGeneration {
 
         try {
             const run = await runProgram(target.program, recipe.args(instructions), {
-                env: { ...Object.fromEntries(Object.entries(target.env).filter(([name]) => !recipe.scrub?.test(name))), ...recipe.env },
+                env: {
+                    ...Object.fromEntries(Object.entries(target.env).filter(([name]) => !recipe.scrub?.test(name))),
+                    ...recipe.env,
+                },
                 cwd,
                 timeoutMs: this.#options.timeoutMs ?? RUN_TIMEOUT_MS,
                 maxChars: MAX_PRINTED_CHARS,
@@ -210,8 +264,7 @@ export class TextGeneration {
             if (answer === undefined || answer.trim() === '') throw new GenerateFailure('failed');
 
             return answer;
-        }
-        finally {
+        } finally {
             await rm(cwd, { recursive: true, force: true }).catch(() => undefined);
         }
     }
@@ -221,12 +274,12 @@ export class TextGeneration {
         let file = this.#files.get(agentId);
 
         if (!file) {
-            const path = join(this.#options.dataDir, `${ agentId }-commit-message-instructions.md`);
+            const path = join(this.#options.dataDir, `${agentId}-commit-message-instructions.md`);
 
             file = (async () => {
                 const kept = await readFile(path, 'utf8').catch(() => undefined);
 
-                if (kept !== `${ recipe.instructions }\n`) await writeFile(path, `${ recipe.instructions }\n`);
+                if (kept !== `${recipe.instructions}\n`) await writeFile(path, `${recipe.instructions}\n`);
 
                 return path;
             })();
