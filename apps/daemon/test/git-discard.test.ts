@@ -419,6 +419,29 @@ describe('POST /v1/projects/:id/git/discard', () => {
         expect(left(path)).toEqual([' M src/i.tsx', ' M starX.txt']);
     });
 
+    test('keeps the bytes of a file exactly as they are on the disk, a binary one and one a line-ending filter would change, while the restore applies the filter', async () => {
+        const h = await start();
+        const path = repository({ '.gitattributes': '*.txt text eol=crlf\n', 'doc.txt': 'one\ntwo\n' });
+        const { discard } = await open(path, h);
+        const bytes = Buffer.from([0x00, 0xff, 0xfe, 0x80, 0x0a, 0x0d, 0x0d, 0x0a, 0xc3, 0x28]);
+
+        writeFileSync(join(path, 'blob.bin'), Buffer.from([0x00, 0x01, 0x02]));
+        git(path, 'add', 'blob.bin');
+        git(path, 'commit', '-q', '-m', 'Add a binary file');
+        writeFileSync(join(path, 'blob.bin'), bytes);
+        put(path, { 'doc.txt': 'one\ntwo\nthree\r\nfour\n' });
+
+        const result = await json<GitDiscardResult>(await discard(['blob.bin', 'doc.txt']));
+
+        // What was on the disk is kept to the byte: no line ending is changed, and a byte that is not text is not turned into one.
+        expect(readFileSync(join(result.copy.folder, 'files', 'blob.bin'))).toEqual(bytes);
+        expect(readFileSync(join(result.copy.folder, 'files', 'doc.txt'), 'latin1')).toBe('one\ntwo\nthree\r\nfour\n');
+        // The file is what the commit has, as a checkout writes it here.
+        expect(readFileSync(join(path, 'blob.bin'))).toEqual(Buffer.from([0x00, 0x01, 0x02]));
+        expect(readFileSync(join(path, 'doc.txt'), 'latin1')).toBe('one\r\ntwo\r\n');
+        expect(left(path)).toEqual([]);
+    });
+
     test('works in a repository with no commit yet', async () => {
         const h = await start();
         const path = tempDir('git-discard');
