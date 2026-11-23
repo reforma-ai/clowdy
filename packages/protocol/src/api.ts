@@ -61,6 +61,8 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  * GET  /v1/projects/:id/git/file?folderId=&workspaceId=&scope=&path=&oldPath=&from= -> GitFileSides (the text of one changed file before and after; `from` is the list's own start)
  * GET  /v1/projects/:id/git/pull-request?folderId=&workspaceId= -> GitPullRequestInfo (whether the person's `gh` can be asked about the place's `origin`, and the pull
  *                                            request of its branch with its checks, or none). The four are described in `git.ts`
+ * POST /v1/projects/:id/git/commit        -> GitCommitResult (commits the files the person ticked, `paths`, with `message`: the first route that changes a repository)
+ * POST /v1/projects/:id/git/message       -> GitMessage (a commit message for the ticked files, written by the provider the person turned `Commit messages` on for). Both are described in `git.ts`
  * GET  /v1/projects/:id/worktrees        -> FolderWorktrees[] (one entry per folder of the project, in the project's order: whether it is the root of a repository and, if
  *                                            it is, its own checkout first and then every worktree git lists for it (one Clowdy made, one an agent or a person made, a locked one,
  *                                            one whose folder is gone), each with the chats that work in it (archived ones too), the number of changed files, whether its work is
@@ -114,6 +116,8 @@ export const ROUTES = {
     projectGitFile: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/git/file`,
     projectWorktrees: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/worktrees`,
     projectGitPullRequest: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/git/pull-request`,
+    projectGitCommit: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/git/commit`,
+    projectGitMessage: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/git/message`,
     projectFiles: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/files`,
     projectAttachments: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/attachments`,
     projectAttachment: (projectId: string, attachmentId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/attachments/${ encodeURIComponent(attachmentId) }`,

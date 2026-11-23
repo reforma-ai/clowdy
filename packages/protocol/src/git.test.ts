@@ -26,3 +26,10 @@ describe('ROUTES git reads', () => {
         expect(ROUTES.projectGitFile('a/b?c')).toBe('/v1/projects/a%2Fb%3Fc/git/file');
     });
 });
+
+describe('ROUTES git writes', () => {
+    test('are beside the reads of the place', () => {
+        expect(ROUTES.projectGitCommit('prj_1')).toBe('/v1/projects/prj_1/git/commit');
+        expect(ROUTES.projectGitMessage('a/b?c')).toBe('/v1/projects/a%2Fb%3Fc/git/message');
+    });
+});
