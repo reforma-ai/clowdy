@@ -91,7 +91,13 @@ describe('the branch prefix of a new worktree', () => {
 
     test('refuses a space or a control character inside, and the characters git refuses in a ref name', () => {
         for (const prefix of ['two words', 'tab\there', 'new\nline', 'nul\u0000', 'del\u007f', 'a~b', 'a^b', 'a:b', 'a?b', 'a*b', 'a[b', 'a\\b']) {
-            expect(branchPrefixProblem(prefix)).toBeDefined();
+            expect(branchPrefixProblem(prefix), prefix).toBeDefined();
+        }
+    });
+
+    test('refuses an invisible character, which a person cannot see to fix, and the characters Windows does not take in a file name', () => {
+        for (const prefix of ['\u200b', 'a\u200bb', 'a\u202eb', 'a\ufeffb', 'a\u00adb', 'a"b', 'a<b', 'a>b', 'a|b']) {
+            expect(branchPrefixProblem(prefix), prefix).toBeDefined();
         }
     });
 

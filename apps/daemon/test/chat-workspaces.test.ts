@@ -154,7 +154,7 @@ describe('chat.create with a workspace', () => {
         const { h, create } = await setup();
         const refused: [prefix: string, message: string][] = [
             ['two words', 'The branch prefix cannot have a space or a control character'],
-            ['a~b', 'The branch prefix cannot have any of ~ ^ : ? * [ \\'],
+            ['a~b', 'The branch prefix cannot have any of ~ ^ : ? * [ \\ " < > |'],
             ['a..b', 'The branch prefix cannot have two dots in a row'],
             ['/max', 'The branch prefix cannot start with / . or -'],
             ['max/', 'The branch prefix cannot end with / or .'],
@@ -174,10 +174,10 @@ describe('chat.create with a workspace', () => {
     test('takes only the prefixes git itself takes: what the daemon accepts, git accepts as a branch name', async () => {
         const { repo, make } = await setup();
 
-        for (const branchPrefix of ['max', 'team/max', 'v1.2', 'ivan/@home', 'a-b_c', 'ünïcode']) {
+        for (const branchPrefix of ['max', 'team/max', 'v1.2', 'ivan/@home', 'a-b_c', 'ünïcode', '日本語', '@', 'HEAD', 'a/b/c/d', 'it\'s', 'a%b', 'a{b', 'a=b', 'x'.repeat(64)]) {
             const chat = make({ mode: 'new', branchPrefix });
 
-            expect(() => git(repo, 'check-ref-format', '--branch', chat.workspace!.branch!)).not.toThrow();
+            expect(() => git(repo, 'check-ref-format', '--branch', chat.workspace!.branch!), branchPrefix).not.toThrow();
         }
     });
 
