@@ -57,7 +57,7 @@ export function remoteHost(address: string): string | undefined {
 }
 
 /**
- * The environment of every git write the daemon makes (a commit, later a fetch, a pull and a push), and the signing agent it finds for them. A write runs the person's own git with
+ * The environment of every git write the daemon makes (a commit, a fetch, a pull and a push), and the signing agent it finds for them. A write runs the person's own git with
  * their configuration, so it needs what their terminal has: no password prompt that nobody can answer (`GIT_TERMINAL_PROMPT=0`), git's own words in English, and the socket of the
  * agent that holds their signing key. An app started from Finder has launchd's socket in `SSH_AUTH_SOCK`, which has no key (a signed commit stops with `No private key found`),
  * while SSH itself works because it reads `IdentityAgent` from `~/.ssh/config`, which signing does not. So the socket is taken from `ssh -G <the host of origin>` (its `identityagent`

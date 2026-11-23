@@ -208,7 +208,7 @@ const isHidden = () => typeof document !== 'undefined' && document.hidden;
  *
  * - once when the first observer comes (not when another place's observer is added, and not again within a second of a read that just started);
  * - when the window gets focus or becomes visible again (the branch changes in a terminal or by an agent while the app is in the background), one read for both events;
- * - when the caller says so (`refresh`): the end of a run of the open chat, a commit or a pull of a later stage;
+ * - when the caller says so (`refresh`): the end of a run of the open chat, a commit, a fetch, a pull or a push;
  * - every `GIT_POLL_MS` while a check of the place's pull request is not finished, and for the pull request alone.
  *
  * Nothing is read while the window is hidden: the read that was due waits for the window to be visible again, which asks for all of them. A place that turned out to be no repository
