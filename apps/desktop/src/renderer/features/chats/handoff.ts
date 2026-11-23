@@ -222,6 +222,17 @@ export interface Handoff {
     run: Run | undefined;
     /** Whether the person is still on the chat. Loading the conversation takes a moment: one who went elsewhere meanwhile is not taken to the new-chat page. */
     stillOpen?: () => boolean;
+    /** The answer to hand the conversation off at (its item's id): the file holds the conversation up to and including it, and not what came after. The whole conversation without one. */
+    itemId?: string;
+    /** The agent the new-chat page starts on, on its default model. Without one the page starts where the project and the last pick say. */
+    engine?: string;
+}
+
+/** The items of the conversation up to and including the item `itemId`; `undefined` when the stream has no such item (the chat was rewritten since the press). */
+export function itemsUpTo(items: readonly StreamItem[], itemId: string): StreamItem[] | undefined {
+    const cut = items.find(item => item.id === itemId);
+
+    return cut && items.filter(item => item.seq <= cut.seq);
 }
 
 /** The chats being handed off, so that a second press (or a second notice for the same chat) does not do it twice. */
@@ -239,8 +250,11 @@ const handingOff = new Set<ChatId>();
  * A full box (the files of one message are limited in number and in size, and the daemon refuses a message that carries more) does
  * not take the file in anyway: the message could not be sent until the person removed something, and a draft that says "attached
  * as ..." with no file behind it is worse than none. So the person is told plainly, and nothing changes: not the draft, not the page.
+ *
+ * From an answer (`itemId`) the file ends at that answer, as a fork does, and the new chat goes on from there. `engine` is the agent the page starts on (the Fork
+ * menu's "Fork to another agent"): the person can pick another, or close the page, which leaves nothing behind, since no chat exists before its first message is sent.
  */
-export async function startHandoff({ root, ui, chat, run, stillOpen = () => true }: Handoff): Promise<boolean> {
+export async function startHandoff({ root, ui, chat, run, stillOpen = () => true, itemId, engine: startOn }: Handoff): Promise<boolean> {
     if (!chat.orchestratorRunId) {
         toast.error({ message: 'There is nothing to hand off yet: the chat has no messages' });
 
@@ -267,7 +281,15 @@ export async function startHandoff({ root, ui, chat, run, stillOpen = () => true
             return false;
         }
 
-        const turns = turnsOf(stream.items);
+        const items = itemId === undefined ? stream.items : itemsUpTo(stream.items, itemId);
+
+        if (!items) {
+            toast.error({ message: 'That answer is no longer in the conversation' });
+
+            return false;
+        }
+
+        const turns = turnsOf(items);
 
         if (turns.length === 0) {
             toast.error({ message: 'There is nothing to hand off yet: the chat has no messages' });
@@ -292,7 +314,7 @@ export async function startHandoff({ root, ui, chat, run, stillOpen = () => true
 
         saveDraft(draftKey, withSentence(draftOf(draftKey), handoffSentence(chat.title, fileName)));
         // A chat in a worktree hands over to a chat in the same worktree, which is made and the folder the chat is pinned to. One whose worktree is not made yet has none to share.
-        ui.openDraft([file], chat.folderId ?? null, chat.workspace?.ready ? { mode: 'existing', path: chat.workspace.path } : null);
+        ui.openDraft([file], chat.folderId ?? null, chat.workspace?.ready ? { mode: 'existing', path: chat.workspace.path } : null, startOn ?? null);
 
         return true;
     }
