@@ -285,6 +285,114 @@ describe('FixtureTransport git branches and the switch', () => {
         });
     });
 
+    describe("chat.create in the folder's own checkout on a branch", () => {
+        const create = (transport: FixtureTransport, branch: string, extra: Record<string, unknown> = {}) =>
+            transport.command({
+                type: 'chat.create',
+                projectId: FIXTURE_PROJECT_ID,
+                workspace: { mode: 'main', branch },
+                ...extra,
+            });
+        const chatsOf = (transport: FixtureTransport) => transport.getProjectSnapshot(FIXTURE_PROJECT_ID);
+
+        it('switches the checkout and makes the chat after it, in the folder as it is: no worktree', async () => {
+            const transport = transportOf(['remote']);
+            const before = (await chatsOf(transport)).chats.length;
+            const result = await create(transport, 'feature/search');
+
+            expect(result.ok).toBe(true);
+
+            const { chat } = (result.ok ? result.data : {}) as { chat: { workspace?: unknown } };
+
+            expect(chat.workspace).toBeUndefined();
+            expect((await chatsOf(transport)).chats).toHaveLength(before + 1);
+            expect((await listing(transport)).local.find(branch => branch.current)?.name).toBe('feature/search');
+        });
+
+        it('answers a branch the checkout is on as made, with nothing switched', async () => {
+            const transport = transportOf(['dirty']);
+            const result = await create(transport, 'main');
+
+            expect(result.ok).toBe(true);
+            expect((await listing(transport)).local.find(branch => branch.current)?.name).toBe('main');
+        });
+
+        it('makes no chat for a refusal, and says why in the daemon words with the hint', async () => {
+            const transport = transportOf(['dirty']);
+            const before = (await chatsOf(transport)).chats.length;
+            const result = await create(transport, 'dev');
+
+            expect(result).toMatchObject({
+                ok: false,
+                error: {
+                    code: 'conflict',
+                    message: 'Commit or discard the changes first',
+                    details: { hint: '3 files changed' },
+                },
+            });
+            expect((await chatsOf(transport)).chats).toHaveLength(before);
+            expect((await listing(transport)).local.find(branch => branch.current)?.name).toBe('main');
+            expect(await create(transportOf(['refused']), 'dev')).toMatchObject({
+                ok: false,
+                error: { code: 'conflict', message: '2 chats are working here' },
+            });
+            expect(await create(transportOf(['held']), 'feature/payments')).toMatchObject({
+                ok: false,
+                error: { code: 'conflict', message: 'Checked out in /Users/dev/car-rental-payments' },
+            });
+            expect(await create(transportOf(), 'nowhere')).toMatchObject({
+                ok: false,
+                error: { code: 'invalid', message: 'There is no branch called nowhere' },
+            });
+        });
+
+        it('judges the agent and the folder before it switches anything', async () => {
+            const transport = transportOf();
+
+            expect(await create(transport, 'dev', { engine: 'nobody' })).toMatchObject({
+                ok: false,
+                error: { code: 'unavailable' },
+            });
+            expect(await create(transport, 'dev', { folderId: 'fld_nobody' })).toMatchObject({
+                ok: false,
+                error: { code: 'invalid' },
+            });
+            expect((await listing(transport)).local.find(branch => branch.current)?.name).toBe('main');
+        });
+
+        it('carries the warning of a switch whose hook failed, and waits for a slow one', async () => {
+            expect(await create(transportOf(['warned']), 'dev')).toMatchObject({
+                ok: true,
+                data: { warning: 'post-checkout: the install failed' },
+            });
+
+            vi.useFakeTimers();
+
+            try {
+                const pending = create(transportOf(['slow']), 'dev');
+                let settled = false;
+
+                void pending.then(() => {
+                    settled = true;
+                });
+                await vi.advanceTimersByTimeAsync(2000);
+                expect(settled).toBe(false);
+                await vi.advanceTimersByTimeAsync(1000);
+                expect(await pending).toMatchObject({ ok: true });
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        it('is a chat as it was for any other choice: no switch', async () => {
+            const transport = transportOf(['dirty']);
+            const result = await transport.command({ type: 'chat.create', projectId: FIXTURE_PROJECT_ID });
+
+            expect(result.ok).toBe(true);
+            expect((await listing(transport)).local.find(branch => branch.current)?.name).toBe('main');
+        });
+    });
+
     it('is no repository for a folder with no git', async () => {
         const transport = new FixtureTransport({ data: withFixtureWorktrees(createFixtureData()) });
 

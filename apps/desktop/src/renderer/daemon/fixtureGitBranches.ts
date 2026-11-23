@@ -17,12 +17,26 @@ import type {
  * - `held`: a worktree of the chat has `clowdy/ab12cd34` checked out, and one the person made has `feature/payments`, so git would refuse a second checkout of either;
  * - `dirty`: the folder's checkout has uncommitted files, so a switch is refused for them (and the Changes tab lists them);
  * - `refused`: two chats are working in the checkout, so a switch is refused for them;
- * - `slow`: a switch takes a while, for a look at the running state.
+ * - `slow`: a switch takes a while, for a look at the running state;
+ * - `warned`: a switch is made and the person's `post-checkout` hook failed after it, which the answer's `warning` says;
+ * - `idle`: every chat of the fixtures is at rest, so the chats working in the checkout (which the new chat's pill counts from the runs it has) are not in the way of a switch: without it five
+ *   of them are, and that is what the pill says.
  */
-export type FixtureBranchScript = 'remote' | 'held' | 'dirty' | 'refused' | 'slow';
+export type FixtureBranchScript = 'remote' | 'held' | 'dirty' | 'refused' | 'slow' | 'warned' | 'idle';
 
 /** The words the page's `&branches=` switch knows. */
-export const FIXTURE_BRANCH_SCRIPTS: readonly FixtureBranchScript[] = ['remote', 'held', 'dirty', 'refused', 'slow'];
+export const FIXTURE_BRANCH_SCRIPTS: readonly FixtureBranchScript[] = [
+    'remote',
+    'held',
+    'dirty',
+    'refused',
+    'slow',
+    'warned',
+    'idle',
+];
+
+/** What a `warned` switch says its hook printed. */
+const HOOK_WARNING = 'post-checkout: the install failed';
 
 /** How long a `slow` switch takes: long enough for a screenshot of its running state. */
 const SLOW_MS = 2500;
@@ -70,6 +84,11 @@ export class FixtureGitBranches {
 
     constructor(scripts: readonly FixtureBranchScript[] = []) {
         this.#scripts = new Set(scripts);
+    }
+
+    /** The chats are all at rest (`&branches=idle`). */
+    get idle(): boolean {
+        return this.#scripts.has('idle');
     }
 
     /** The checkout has uncommitted files. */
@@ -178,10 +197,12 @@ export class FixtureGitBranches {
 
         if (this.#scripts.has('slow')) await sleep(SLOW_MS);
 
+        const warning = this.#scripts.has('warned') ? { warning: HOOK_WARNING } : {};
+
         if (create) {
             this.#made.set(place.key, [...(this.#made.get(place.key) ?? []), name]);
 
-            return { head: { kind: 'branch', name, commit: FIXTURE_BASE_COMMIT }, created: true };
+            return { head: { kind: 'branch', name, commit: FIXTURE_BASE_COMMIT }, created: true, ...warning };
         }
 
         if (remoteOnly) {
@@ -191,12 +212,14 @@ export class FixtureGitBranches {
                 head: { kind: 'branch', name, commit: FIXTURE_BASE_COMMIT },
                 upstream: { name: `origin/${name}`, ahead: 0, behind: 0 },
                 created: true,
+                ...warning,
             };
         }
 
         return {
             head: { kind: 'branch', name, commit: FIXTURE_BASE_COMMIT },
             ...(TRACKED.includes(name) && { upstream: { name: `origin/${name}`, ahead: 0, behind: 0 } }),
+            ...warning,
         };
     }
 }

@@ -269,6 +269,11 @@ export class FixtureTransport implements Transport {
         this.#gitWrites = new FixtureGitWrites(gitWrites);
         this.#gitRemote = new FixtureGitRemote(gitWrites?.remote);
         this.#branches = new FixtureGitBranches(branches);
+
+        // `&branches=idle`: no run is working, so nothing but the tree stands in the way of a switch.
+        if (this.#branches.idle)
+            for (const run of data.runs) if (!isTerminalRunStatus(run.status)) run.status = 'succeeded';
+
         this.#tasks = new FixtureTasks(data, {
             emit: (projectId, event) => this.#emit(projectId, event),
             id: prefix => this.#id(prefix),
@@ -747,7 +752,11 @@ export class FixtureTransport implements Transport {
 
     async command(command: CommandInput): Promise<CommandResult> {
         const requestId = crypto.randomUUID();
-        const outcome = this.#apply(command);
+        // A chat on a branch of the folder's checkout waits for the switch, as the daemon's does (`&branches=slow` makes it take a while).
+        const outcome =
+            command.type === 'chat.create' && command.workspace?.mode === 'main'
+                ? await this.#createOnBranch(command, command.workspace.branch)
+                : this.#apply(command);
 
         return outcome.ok
             ? { ok: true, requestId, data: outcome.data }
@@ -761,6 +770,48 @@ export class FixtureTransport implements Transport {
                 : this.#data.chats.find(chat => chat.id === target.chatId)?.orchestratorRunId;
 
         return structuredClone((runId ? (this.#data.items[runId] ?? []) : []).filter(item => item.seq > afterSeq));
+    }
+
+    /**
+     * `chat.create` with `{ mode: 'main', branch }`, as the daemon answers it: the agent and the folder are judged first, then the folder's checkout is switched with the rules of the
+     * Changes sidebar's switch (`switchGitBranch`: the same refusals, in the same words, as `conflict` with `details.hint`), and only then is the chat made, as the folder's own checkout
+     * with no worktree; a refusal makes no chat. The answer carries the switch's `warning` when it had one.
+     */
+    async #createOnBranch(command: Extract<CommandInput, { type: 'chat.create' }>, branch: string): Promise<Outcome> {
+        const project = this.#data.projects.find(candidate => candidate.id === command.projectId);
+
+        if (!project) return fail('not_found', `Project ${command.projectId} does not exist`);
+
+        const refused = this.#refuseEngine(command.engine);
+
+        if (refused) return refused;
+
+        const folder =
+            command.folderId === undefined
+                ? mainFolder(project)
+                : project.folders.find(candidate => candidate.id === command.folderId);
+
+        if (!folder)
+            return fail('invalid', `Folder ${command.folderId} does not belong to project ${command.projectId}`);
+
+        let warning: string | undefined;
+
+        try {
+            ({ warning } = await this.switchGitBranch(project.id, { folderId: folder.id }, branch));
+        } catch (error) {
+            if (!(error instanceof TransportError)) throw error;
+
+            return fail(
+                error.status === 409 ? 'conflict' : 'invalid',
+                error.message,
+                error.hint === undefined ? undefined : { hint: error.hint }
+            );
+        }
+
+        const { workspace: _branch, ...own } = command;
+        const made = this.#apply(own);
+
+        return made.ok && warning !== undefined ? ok({ ...(made.data as object), warning }) : made;
     }
 
     async getTaskDetail(taskId: TaskId): Promise<TaskDetail> {
@@ -1540,7 +1591,8 @@ export class FixtureTransport implements Transport {
                 let workspace: Chat['workspace'];
 
                 // Like the daemon: a worktree of the chat's folder (the main one when none is named), refused where the folder is no repository, the base is no ref or the path is no worktree.
-                if (command.workspace && project) {
+                // The folder's own checkout on a branch has no worktree and is `#createOnBranch`'s.
+                if (command.workspace && command.workspace.mode !== 'main' && project) {
                     const folder =
                         project.folders.find(candidate => candidate.id === command.folderId) ?? mainFolder(project);
                     const made = fixtureChatWorkspace(command.workspace, {

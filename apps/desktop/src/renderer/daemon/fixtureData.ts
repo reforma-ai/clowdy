@@ -21,7 +21,7 @@ import type {
     Chat,
     ChatTaskLink,
     ChatWorkspace,
-    ChatWorkspaceChoice,
+    ChatWorktreeChoice,
     DocNode,
     DocsSource,
     FolderGit,
@@ -1342,7 +1342,7 @@ const kebab = (name: string) =>
  * not made yet (`ready` false: the chat's first turn makes it); an existing one is ready, and a chat that has it already shares its row.
  */
 export function fixtureChatWorkspace(
-    choice: ChatWorkspaceChoice,
+    choice: ChatWorktreeChoice,
     {
         projectName,
         folder,
