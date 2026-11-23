@@ -62,6 +62,8 @@ const folderSelect = () => container.querySelector<HTMLButtonElement>('button[ar
 const menuItems = () => [...document.body.querySelectorAll<HTMLElement>('[role="menu"] [role^="menuitem"]')];
 const menuItem = (text: string) => menuItems().find(row => row.textContent?.startsWith(text))!;
 /** The rows of the submenu `Existing worktree` flies out: the folder's other worktrees, by branch. */
+/** How many icons a row draws: its own, and the chevron of a row that opens a submenu. */
+const iconsOf = (row: HTMLElement) => row.querySelectorAll('svg').length;
 const worktreeRows = () => [...document.body.querySelectorAll<HTMLElement>('[role="menu"][aria-label="Existing worktrees"] [role^="menuitem"]')];
 const worktreeRow = (text: string) => worktreeRows().find(row => row.textContent?.startsWith(text))!;
 const options = () => [...document.body.querySelectorAll<HTMLElement>('[role="option"]')];
@@ -164,7 +166,6 @@ afterEach(() => {
 describe('the control', () => {
     const textsOf = (rows: HTMLElement[]) => rows.map(row => row.textContent);
     /** Whether the slot at a row's start has a check: the slot is there on every row, so the words line up. */
-    const checkOf = (row: HTMLElement) => row.firstElementChild!.querySelector('svg') !== null;
     const dimParts = () => [...chip()!.querySelectorAll('span')].filter(part => part.className.includes('color-secondary-muted-text')).map(part => part.textContent);
 
     it('says the branch that is checked out to begin with and nothing of a mode, in the one pill there is', () => {
@@ -199,12 +200,13 @@ describe('the control', () => {
         expect(worktreeRows()).toEqual([]);
     });
 
-    it('puts the check at the start of the row that is on, and room for it before the others', async () => {
+    it('gives each row of the menu an icon and ticks none: the row that is on is the one the menu has selected', async () => {
         await press(chip()!);
 
-        expect(menuItems().map(checkOf)).toEqual([true, false, false, false]);
-        // The same slot is there on every row, so the text of the rows starts at one place.
-        expect(menuItems().every(row => row.firstElementChild!.firstElementChild?.getAttribute('aria-hidden') === 'true')).toBe(true);
+        // An icon each, and the chevron too on the two rows that open something beside the menu.
+        expect(menuItems().map(iconsOf)).toEqual([1, 2, 2, 1]);
+        expect(document.body.querySelector('[role="menu"] [aria-label="Current"]')).toBeNull();
+        expect(menuItems().map(row => row.getAttribute('aria-checked'))).toEqual(['true', 'false', null, null]);
     });
 
     it('makes the chat a new worktree from the default branch, and says so in the pill with the base in the dim tone', async () => {
@@ -219,7 +221,7 @@ describe('the control', () => {
         await press(chip()!);
 
         expect(menuItem('New worktree').getAttribute('aria-checked')).toBe('true');
-        expect(menuItems().map(checkOf)).toEqual([false, true, false, false]);
+        expect(menuItem('Main worktree').getAttribute('aria-checked')).toBe('false');
     });
 
     it('sends the chat into the worktree that is picked, and says its branch after the word Worktree in the dim tone', async () => {
@@ -232,15 +234,14 @@ describe('the control', () => {
         expect(options()).toEqual([]);
         expect(menuItems()).toEqual([]);
 
-        // Existing worktree is ticked, and so is the worktree in the submenu.
+        // The worktree is the selected row of the submenu, and the main worktree is no longer selected.
         await press(chip()!);
 
-        expect(menuItems().map(checkOf)).toEqual([false, false, true, false]);
+        expect(menuItem('Main worktree').getAttribute('aria-checked')).toBe('false');
 
         await flyOut('Existing worktree');
 
         expect(worktreeRow('clowdy/ab12cd34').getAttribute('aria-checked')).toBe('true');
-        expect(checkOf(worktreeRow('clowdy/ab12cd34'))).toBe(true);
     });
 
     it('goes back to the current checkout from a worktree', async () => {
@@ -403,6 +404,14 @@ describe('the branch a new worktree starts from', () => {
             expect(chip()?.hasAttribute('data-open')).toBe(true);
         });
 
+        it('has the local branches first and the remote ones after them, each under its heading', () => {
+            const groups = [...document.body.querySelectorAll('[role="listbox"] [role="group"]')];
+
+            expect(groups.map(group => group.getAttribute('aria-label'))).toEqual(['Local', 'Remote']);
+            expect(groups.map(group => [...group.querySelectorAll('[role="option"]')].map(row => row.textContent))).toEqual([['main', 'dev', 'feature/payments'], ['origin/mainDefault', 'origin/dev']]);
+            expect(document.body.querySelector('[role="listbox"]')?.textContent).toContain('Remote');
+        });
+
         it('is searched as the person types', async () => {
             await act(async () => {
                 search().focus();
@@ -448,6 +457,19 @@ describe('the branch a new worktree starts from', () => {
         });
     });
 
+    it('has no headings for a folder that has only local branches', async () => {
+        const transport = new FixtureTransport();
+
+        vi.spyOn(transport, 'getFolderGit').mockResolvedValue({ isRepository: true, branch: 'main', defaultBranch: 'main', branches: [{ name: 'main', remote: false }, { name: 'dev', remote: false }], worktrees: [{ path: '/Users/dev/car-rental', branch: 'main', head: 'a1b2c3d', main: true, dirty: false }] });
+        await start({ transport });
+        await press(chip()!);
+        await press(baseButton()!);
+        await settle();
+
+        expect(options().map(row => row.textContent)).toEqual(['mainDefault', 'dev']);
+        expect(document.body.querySelector('[role="listbox"]')?.textContent).not.toMatch(/Local|Remote/);
+    });
+
     it('is kept when the row of a new worktree is pressed again, and the base at its end shows it', async () => {
         await pickBase('dev');
         await chooseMode('New worktree');
@@ -471,18 +493,49 @@ describe('the branch a new worktree starts from', () => {
 });
 
 describe('Existing worktrees', () => {
-    it('are the rows of the submenu Existing worktree flies out, by branch, with the chats that use each and a mark for changes', async () => {
+    it('are the rows of the submenu Existing worktree flies out, by branch, with the chats that use each, flat: no icon and no mark of changes', async () => {
         await start({ data: withFixtureWorkspace(createFixtureData()) });
         await openWorktrees();
 
-        expect(worktreeRows().map(row => row.textContent)).toEqual(['clowdy/ab12cd34Weekend surcharge in a worktreeChanges']);
-        expect(worktreeRow('clowdy/ab12cd34').querySelector('[class*="changes"]')?.textContent).toBe('Changes');
+        expect(worktreeRows().map(row => row.textContent)).toEqual(['clowdy/ab12cd34Weekend surcharge in a worktree']);
+        expect(worktreeRows().map(iconsOf)).toEqual([0]);
+        expect(document.body.textContent).not.toContain('Changes');
     });
 
     it('say no chat uses a worktree nobody has picked yet', async () => {
         await openWorktrees();
 
-        expect(worktreeRows().map(row => row.textContent)).toEqual(['clowdy/ab12cd34No chat uses itChanges']);
+        expect(worktreeRows().map(row => row.textContent)).toEqual(['clowdy/ab12cd34No chat uses it']);
+    });
+
+    describe('the ones a chat works in and the ones none does', () => {
+        const withThree = (data: FixtureData) => {
+            const transport = new FixtureTransport({ data });
+            const git = { isRepository: true as const, branch: 'main', defaultBranch: 'origin/main', branches: [{ name: 'main', remote: false }], worktrees: [{ path: '/Users/dev/car-rental', branch: 'main', head: 'a1b2c3d', main: true, dirty: false }, { path: '/Users/dev/trees/stale-one', branch: 'worktree-agent-a1', head: 'b1', main: false, dirty: true }, { path: WORKTREE, branch: 'clowdy/ab12cd34', head: 'c1', main: false, dirty: false }, { path: '/Users/dev/trees/stale-two', branch: 'worktree-agent-a2', head: 'd1', main: false, dirty: false }] };
+
+            vi.spyOn(transport, 'getFolderGit').mockResolvedValue(git);
+
+            return transport;
+        };
+
+        it('are listed first, and the others after them under a heading, each group in git\'s order', async () => {
+            const data = withFixtureWorkspace(createFixtureData());
+
+            await start({ data, transport: withThree(data) });
+            await openWorktrees();
+
+            expect(worktreeRows().map(row => row.textContent?.split('No chat')[0]?.slice(0, 22))).toEqual(['clowdy/ab12cd34Weekend', 'worktree-agent-a1', 'worktree-agent-a2']);
+            expect(document.body.querySelector('[role="menu"][aria-label="Existing worktrees"]')?.textContent).toContain('Not in use');
+            expect([...document.body.querySelectorAll('[role="menu"][aria-label="Existing worktrees"] [role="group"]')].map(group => group.getAttribute('aria-label'))).toEqual(['Worktrees in use', 'Worktrees not in use']);
+        });
+
+        it('have no heading when none of them is in use, nor when all of them are', async () => {
+            await start({ transport: withThree(createFixtureData()) });
+            await openWorktrees();
+
+            expect(worktreeRows()).toHaveLength(3);
+            expect(document.body.querySelector('[role="menu"][aria-label="Existing worktrees"]')?.textContent).not.toContain('Not in use');
+        });
     });
 
     it('name a few chats, and count the rest', async () => {

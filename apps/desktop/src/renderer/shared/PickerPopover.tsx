@@ -1,8 +1,9 @@
 import { Autocomplete, useAutocompleteEnterAction } from '@clowdy/components/Autocomplete';
-import { ListBox, ListBoxItem } from '@clowdy/components/List';
+import { ListBox, ListBoxHeader, ListBoxItem, ListBoxSection } from '@clowdy/components/List';
 import { Popover } from '@clowdy/components/Popover';
 import { Check } from '@clowdy/icons/14';
 import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { Collection } from 'react-aria-components';
 
 import styles from './PickerPopover.module.css';
 
@@ -19,6 +20,8 @@ export interface PickerOption {
     stacked?: boolean;
     /** A marker at the row's end, before the check of the current option. */
     trailing?: ReactNode;
+    /** The heading of the group the option is under (`Local`, `Remote`): options that name one are listed in groups, in the order the first of each appeared. Options with none are listed as they come. */
+    group?: string;
 }
 
 export interface PickerPopoverProps {
@@ -47,6 +50,20 @@ export const isInPickerPopover = (element: Element): boolean => element.closest(
 
 /** What a caller says to open a picker: everything but the place it opens and what happens when it closes, which the screen that renders it supplies. */
 export type PickerRequest = Omit<PickerPopoverProps, 'anchor' | 'onClose'>;
+
+/** The options as the list draws them: in sections by `group` when any option names one, else one list that has no heading. */
+function groupsOf(options: readonly PickerOption[]): Array<{ id: string; title?: string; items: PickerOption[] }> {
+    const groups: Array<{ id: string; title?: string; items: PickerOption[] }> = [];
+
+    for (const option of options) {
+        const id = option.group ?? '';
+        const group = groups.find(candidate => candidate.id === id) ?? (groups[groups.push({ id, title: option.group, items: [] }) - 1] as (typeof groups)[number]);
+
+        group.items.push(option);
+    }
+
+    return groups;
+}
 
 /** Every word typed has to be in the label, in any order, so `car 12` finds `CAR-12 Fix login`. */
 const matches = (label: string, query: string) => query.toLowerCase().split(/\s+/).filter(Boolean).every(word => label.toLowerCase().includes(word));
@@ -89,6 +106,7 @@ export function PickerPopover({ anchor, options, selectedIds = [], 'aria-label':
     }, []);
 
     const current = new Set(selectedIds);
+    const groups = useMemo(() => groupsOf(options), [options]);
 
     return (
         <>
@@ -118,26 +136,33 @@ export function PickerPopover({ anchor, options, selectedIds = [], 'aria-label':
                         size="sm"
                         className={ styles.list }
                         autoFocus={ false }
-                        items={ options }
+                        items={ groups }
                         onAction={ key => pick(String(key)) }
                         renderEmptyState={ () => <div className={ styles.empty }>Nothing found</div> }
                     >
-                        { option => (
-                            <ListBoxItem
-                                id={ option.id }
-                                text={ option.label }
-                                icon={ option.icon }
-                                description={ option.description }
-                                stacked={ option.stacked }
-                                endAffix={ option.trailing || current.has(option.id)
-                                    ? (
-                                        <>
-                                            { option.trailing }
-                                            { current.has(option.id) && <Check className={ styles.current } aria-label="Current" /> }
-                                        </>
-                                    )
-                                    : undefined }
-                            />
+                        { group => (
+                            <ListBoxSection id={ group.id } aria-label={ group.title ?? ariaLabel }>
+                                { group.title !== undefined && <ListBoxHeader>{ group.title }</ListBoxHeader> }
+                                <Collection items={ group.items }>
+                                    { option => (
+                                        <ListBoxItem
+                                            id={ option.id }
+                                            text={ option.label }
+                                            icon={ option.icon }
+                                            description={ option.description }
+                                            stacked={ option.stacked }
+                                            endAffix={ option.trailing || current.has(option.id)
+                                                ? (
+                                                    <>
+                                                        { option.trailing }
+                                                        { current.has(option.id) && <Check className={ styles.current } aria-label="Current" /> }
+                                                    </>
+                                                )
+                                                : undefined }
+                                        />
+                                    ) }
+                                </Collection>
+                            </ListBoxSection>
                         ) }
                     </ListBox>
                 </Autocomplete>

@@ -1,8 +1,8 @@
 import { Button } from '@clowdy/components/Button';
-import { Menu, MenuItem, MenuSection, MenuSeparator, MenuTrigger, SubmenuTrigger } from '@clowdy/components/List';
+import { Menu, MenuHeader, MenuItem, MenuSection, MenuSeparator, MenuTrigger, SubmenuTrigger } from '@clowdy/components/List';
 import { Popover, PopoverScroll } from '@clowdy/components/Popover';
 import { Text } from '@clowdy/components/Text';
-import { Check, Version } from '@clowdy/icons/14';
+import { Folder, Settings, Version, VersionPlus } from '@clowdy/icons/14';
 import { ChevronRight } from '@clowdy/icons/8';
 import { capitalize } from '@clowdy/lib';
 import { useRef, useState, type KeyboardEvent } from 'react';
@@ -16,7 +16,7 @@ import { ChipTrigger } from './ChipTrigger';
 import styles from './WorkspaceChips.module.css';
 import { chatsUsing, pickableWorktrees, repositoryOf, worktreeLabel, type Repository } from './workspaceChoice';
 
-import type { Chat, ChatId, ChatWorkspaceChoice } from '@clowdy/protocol';
+import type { Chat, ChatId, ChatWorkspaceChoice, GitWorktree } from '@clowdy/protocol';
 import type { FolderGit } from '../openWith';
 import type { FolderRepository } from './useFolderRepository';
 
@@ -63,19 +63,19 @@ function usersLine(chats: readonly Chat[]): string {
     return `${ chats[0].title }, ${ chats[1].title } and ${ chats.length - 2 } more`;
 }
 
-/** The slot at the start of a row of the menu: the check of the row that is on, and room of the same width for the others, so the words line up. */
-function Mark({ checked }: { checked: boolean }) {
-    return <span className={ styles.mark } aria-hidden="true">{ checked && <Check /> }</span>;
-}
-
-/** The ref a new worktree starts from, as a list of the folder's branches (local and remote) with the default one marked. On a detached HEAD the default is the commit, which is no branch of the list. */
+/**
+ * The refs a new worktree may start from, as a list of the folder's branches in two groups, `Local` and `Remote` (one list with no headings when the folder has only the one kind), the
+ * default one marked. On a detached HEAD the default is the commit, which is no branch of the list, and is listed first.
+ */
 function baseOptions(git: Repository): PickerOption[] {
-    const names = git.branches.map(branch => branch.name);
+    const options: PickerOption[] = git.branches.map(branch => ({ id: branch.name, label: branch.name, description: branch.name === git.defaultBranch ? 'Default' : undefined, group: branch.remote ? 'Remote' : 'Local' }));
 
-    return [
-        ...(git.defaultBranch !== undefined && !names.includes(git.defaultBranch) ? [git.defaultBranch] : []),
-        ...names,
-    ].map(name => ({ id: name, label: name, description: name === git.defaultBranch ? 'Default' : undefined }));
+    if (git.defaultBranch !== undefined && !options.some(option => option.id === git.defaultBranch)) options.unshift({ id: git.defaultBranch, label: git.defaultBranch, description: 'Default', group: 'Local' });
+
+    const local = options.filter(option => option.group === 'Local');
+    const remote = options.filter(option => option.group === 'Remote');
+
+    return local.length > 0 && remote.length > 0 ? [...local, ...remote] : options.map(({ group: _group, ...option }) => option);
 }
 
 /** The key of the row of a worktree in the menu: its path, which no other row's key is. */
@@ -97,17 +97,30 @@ interface WorkspaceChipProps {
 /**
  * The one control of the new chat's place: a pill that says where the chat will work and opens a menu to change it. Closed it says the branch alone for the folder's own
  * checkout, `New worktree` and `from <base>` for a worktree to be made, and `Worktree` and the branch for one that exists. The menu has `Main worktree` (the folder itself, with its branch),
- * `New worktree` (pressing the row chooses it; the base at its end is a chip of its own whose press, or the right arrow on the row, opens the searchable list of the folder's branches to start from at
- * the menu's side, with the menu staying open under it), and `Existing worktree`, a submenu that flies the folder's other worktrees out to its side, each with the chats that use it by name and a
- * mark when something in it is not committed (it has no default to choose, so it is a plain submenu). A row's check is at its start. `Manage worktrees…` ends the menu behind a separator: it shuts
- * the menu and opens the dialog of the project's worktrees (`onManage`), and chooses nothing. The list of branches is drawn inside the menu's popover, as its child, so that focus moving into it does not
- * shut the menu; picking a branch chooses a new worktree from it and shuts both.
+ * `New worktree` (pressing the row chooses it; the base at its end is a chip of its own whose press, or the right arrow on the row, opens the searchable list of the folder's branches to start from, in
+ * the groups Local and Remote, at the menu's side, with the menu staying open under it), and `Existing worktree`, a submenu that flies the folder's other worktrees out to its side: first those a
+ * chat works in, then, under `Not in use`, the ones no chat works in, each with the chats that use it by name (it has no default to choose, so it is a plain submenu). The rows have an icon each and no
+ * check: the row that is on is the one the menu highlights. `Manage worktrees…` ends the menu behind a separator: it shuts the menu and opens the dialog of the project's worktrees (`onManage`), and chooses
+ * nothing. The list of branches is drawn inside the menu's popover, as its child, so that focus moving into it does not shut the menu; picking a branch chooses a new worktree from it and shuts both.
  */
 function WorkspaceChip({ git, choice, chats, onChoose, onManage }: WorkspaceChipProps) {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     // The row of a new worktree while the list of its base branches is open beside the menu.
     const [listAnchor, setListAnchor] = useState<HTMLElement | null>(null);
     const worktrees = pickableWorktrees(git);
+    // The worktrees a chat works in come first, and the ones no chat works in, which are what is left of finished work, after them under a heading.
+    const used = worktrees.filter(worktree => chatsUsing(chats.values(), worktree.path).length > 0);
+    const idle = worktrees.filter(worktree => !used.includes(worktree));
+    const worktreeItem = (worktree: GitWorktree) => (
+        <MenuItem
+            key={ worktree.path }
+            id={ worktreeKey(worktree.path) }
+            shouldCloseOnSelect
+            stacked
+            text={ worktreeLabel(worktree) }
+            description={ usersLine(chatsUsing(chats.values(), worktree.path)) }
+        />
+    );
     const chosen = choice?.mode === 'existing' ? worktrees.find(worktree => worktree.path === choice.path) : undefined;
     const base = choice?.mode === 'new' ? choice.base ?? git.defaultBranch : git.defaultBranch;
     const canMakeOne = git.defaultBranch !== undefined;
@@ -182,7 +195,7 @@ function WorkspaceChip({ git, choice, chats, onChoose, onManage }: WorkspaceChip
                                     // Every item shuts the menu, from the keyboard's Space too, which a single choice list leaves open.
                                     shouldCloseOnSelect
                                     stacked
-                                    icon={ <Mark checked={ selected === 'checkout' } /> }
+                                    icon={ <Folder aria-hidden="true" /> }
                                     text="Main worktree"
                                     description="Work in the folder as it is"
                                     endAffix={ branch ? <Text truncate color="secondary" className={ styles.suffix }>{ branch }</Text> : undefined }
@@ -192,7 +205,7 @@ function WorkspaceChip({ git, choice, chats, onChoose, onManage }: WorkspaceChip
                                     data-new-worktree=""
                                     // The row shuts the menu itself (`onAction`): a press on the base inside it must not.
                                     shouldCloseOnSelect={ false }
-                                    icon={ <Mark checked={ selected === 'new' } /> }
+                                    icon={ <VersionPlus aria-hidden="true" /> }
                                     text="New worktree"
                                     stacked
                                     description={ canMakeOne ? 'A separate checkout on a branch of its own' : 'The repository has no commit yet' }
@@ -203,7 +216,7 @@ function WorkspaceChip({ git, choice, chats, onChoose, onManage }: WorkspaceChip
                                 <SubmenuTrigger>
                                     <MenuItem
                                         id="existing"
-                                        icon={ <Mark checked={ selected === 'existing' } /> }
+                                        icon={ <Version aria-hidden="true" /> }
                                         text="Existing worktree"
                                         stacked
                                         description={ worktrees.length === 0 ? 'The folder has no other worktrees' : 'Pick one the folder already has' }
@@ -219,25 +232,20 @@ function WorkspaceChip({ git, choice, chats, onChoose, onManage }: WorkspaceChip
                                                 selectedKeys={ chosen ? [worktreeKey(chosen.path)] : [] }
                                                 onAction={ key => onChoose({ mode: 'existing', path: String(key).slice('worktree:'.length) }) }
                                             >
-                                                { worktrees.map(worktree => (
-                                                    <MenuItem
-                                                        key={ worktree.path }
-                                                        id={ worktreeKey(worktree.path) }
-                                                        shouldCloseOnSelect
-                                                        stacked
-                                                        icon={ <Mark checked={ chosen?.path === worktree.path } /> }
-                                                        text={ worktreeLabel(worktree) }
-                                                        description={ usersLine(chatsUsing(chats.values(), worktree.path)) }
-                                                        endAffix={ worktree.dirty ? <span className={ styles.changes } title="Something in it is not committed">Changes</span> : undefined }
-                                                    />
-                                                )) }
+                                                { used.length > 0 && <MenuSection aria-label="Worktrees in use">{ used.map(worktreeItem) }</MenuSection> }
+                                                { idle.length > 0 && (
+                                                    <MenuSection aria-label="Worktrees not in use">
+                                                        { used.length > 0 && <MenuHeader>Not in use</MenuHeader> }
+                                                        { idle.map(worktreeItem) }
+                                                    </MenuSection>
+                                                ) }
                                             </Menu>
                                         </PopoverScroll>
                                     </Popover>
                                 </SubmenuTrigger>
                                 <MenuSeparator />
                                 <MenuSection aria-label="Worktrees of the project" selectionMode="none">
-                                    <MenuItem id={ MANAGE_KEY } shouldCloseOnSelect icon={ <Mark checked={ false } /> } text="Manage worktrees…" />
+                                    <MenuItem id={ MANAGE_KEY } shouldCloseOnSelect icon={ <Settings aria-hidden="true" /> } text="Manage worktrees…" />
                                 </MenuSection>
                             </Menu>
                         </div>
