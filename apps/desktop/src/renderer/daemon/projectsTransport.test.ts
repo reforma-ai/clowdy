@@ -851,6 +851,36 @@ describe('HttpTransport git writes', () => {
         expect(sent.map(request => [request.url, request.method, request.body])).toEqual([['http://127.0.0.1:4310/v1/projects/prj_a/git/message', 'POST', { folderId: 'fld_b', workspaceId: 'wks_c', paths: ['a.ts'] }]]);
     });
 
+    it('discards the files of a place, a worktree of its folder included, with the paths named, and gives what was discarded and where the copy is', async () => {
+        const result = { discarded: [{ path: 'a.ts', action: 'restored' }], copy: { folder: '/data/discarded/prj_a/20261123T100000000Z-4f2a9c', keptUntil: 1_800_000_000_000, files: 1 } };
+        const { sent, transport } = transportFor(result);
+
+        expect(await transport.discardGit('prj a', { folderId: 'fld/b' }, ['a.ts'])).toEqual(result);
+        await transport.discardGit('prj a', { folderId: 'fld/b', workspaceId: 'wks 1' }, ['src/b c.ts']);
+        expect(sent.map(request => [request.url, request.method, request.body])).toEqual([
+            ['http://127.0.0.1:4310/v1/projects/prj%20a/git/discard', 'POST', { folderId: 'fld/b', paths: ['a.ts'] }],
+            ['http://127.0.0.1:4310/v1/projects/prj%20a/git/discard', 'POST', { folderId: 'fld/b', workspaceId: 'wks 1', paths: ['src/b c.ts'] }],
+        ]);
+        expect(sent[0]!.headers).toMatchObject({ authorization: 'Bearer t', 'content-type': 'application/json' });
+    });
+
+    it('rejects a discard with the daemon\'s own words and the status, and sends it only once', async () => {
+        const conflict = transportFor({ ok: false, error: { code: 'conflict', message: 'Resolve the conflict first' } }, 409);
+        const copy = transportFor({ ok: false, error: { code: 'unavailable', message: 'Couldn\'t keep a copy of the files, so nothing was discarded: ENOSPC: no space left on device' } }, 503);
+        const invalid = transportFor({ ok: false, error: { code: 'invalid', message: 'A submodule can\'t be discarded here' } }, 400);
+
+        await expect(conflict.transport.discardGit('prj_a', { folderId: 'fld_b' }, ['a.ts'])).rejects.toMatchObject({ message: 'Resolve the conflict first', status: 409 });
+        await expect(copy.transport.discardGit('prj_a', { folderId: 'fld_b' }, ['a.ts'])).rejects.toMatchObject({ message: expect.stringContaining('nothing was discarded'), status: 503 });
+        await expect(invalid.transport.discardGit('prj_a', { folderId: 'fld_b' }, ['sub'])).rejects.toMatchObject({ message: 'A submodule can\'t be discarded here', status: 400 });
+        // A discard is not asked for twice, whatever the answer.
+        expect(conflict.sent).toHaveLength(1);
+        expect(copy.sent).toHaveLength(1);
+
+        const bare = new HttpTransport({ url: 'http://127.0.0.1:4310', token: 't', fetch: (async () => new Response('Bad gateway', { status: 502 })) as unknown as typeof fetch });
+
+        await expect(bare.discardGit('prj_a', { folderId: 'fld_b' }, ['a.ts'])).rejects.toMatchObject({ message: expect.stringContaining('502'), status: 502 });
+    });
+
     it('rejects with git\'s own line and the hint the daemon gave, and the status, and sends a commit only once', async () => {
         const body = { ok: false, error: { code: 'conflict', message: 'error: No private key found for public key "k.pub"?', details: { hint: 'The signing agent couldn\'t be reached' } } };
         const { sent, transport } = transportFor(body, 409);
@@ -907,6 +937,70 @@ describe('FixtureTransport git writes', () => {
 
         await expect(hook.commitGit(FIXTURE_PROJECT_ID, inWorktree, ['notes.md'], 'x')).rejects.toMatchObject({ status: 409, message: 'pre-commit: 2 problems in src/limits.ts' });
         expect(await pathsOf(hook)).toHaveLength(3);
+    });
+
+    it('discards a file: it leaves the uncommitted list, the status and `all`, a new file is removed and an edited one restored, and the branch\'s own changes stay in `all`', async () => {
+        const transport = worktree();
+        const result = await transport.discardGit(FIXTURE_PROJECT_ID, inWorktree, ['notes.md', 'src/booking/price.ts']);
+
+        expect(result.discarded).toEqual([{ path: 'notes.md', action: 'removed' }, { path: 'src/booking/price.ts', action: 'restored' }]);
+        expect(result.copy).toMatchObject({ files: 2, folder: expect.stringContaining(`/discarded/${ FIXTURE_PROJECT_ID }/`) });
+        expect(result.copy.keptUntil).toBeGreaterThan(Date.now() + 6 * 24 * 3600 * 1000);
+        expect(await pathsOf(transport)).toEqual(['src/limits.ts']);
+        expect((await transport.getGitStatus(FIXTURE_PROJECT_ID, inWorktree) as { entries: unknown[] }).entries).toEqual([{ path: 'src/limits.ts', unstaged: 'modified' }]);
+
+        const all = await transport.getGitChanges(FIXTURE_PROJECT_ID, inWorktree, 'all') as { files: Array<{ path: string; additions?: number }>; fileCount: number };
+
+        // The new file is gone from `all`; the file the branch had committed changes to is still there, with the branch's own lines.
+        expect(all.files.map(file => file.path)).toEqual(['assets/logo.png', 'src/booking/price.test.ts', 'src/booking/price.ts', 'src/booking/weekend.ts', 'src/limits.ts']);
+        expect(all.files.find(file => file.path === 'src/booking/price.ts')?.additions).toBe(23);
+        // The branch scope is what was committed, which a discard does not touch.
+        expect(await transport.getGitChanges(FIXTURE_PROJECT_ID, inWorktree, 'branch')).toMatchObject({ fileCount: 4 });
+        // The same file is not changed any more, and what was committed stays committed.
+        await expect(transport.discardGit(FIXTURE_PROJECT_ID, inWorktree, ['notes.md'])).rejects.toMatchObject({ status: 400, message: 'notes.md is not a changed file' });
+        await expect(transport.commitGit(FIXTURE_PROJECT_ID, inWorktree, ['notes.md'], 'x')).rejects.toMatchObject({ status: 400 });
+        expect((await transport.commitGit(FIXTURE_PROJECT_ID, inWorktree, ['src/limits.ts'], 'Limit')).subject).toBe('Limit');
+    });
+
+    it('judges a discard as the daemon does: no paths, too many, a file that is not changed, a folder that is no repository, a place that is none', async () => {
+        const transport = worktree();
+
+        await expect(transport.discardGit(FIXTURE_PROJECT_ID, inWorktree, [])).rejects.toMatchObject({ status: 400, message: 'Pick at least one file' });
+        await expect(transport.discardGit(FIXTURE_PROJECT_ID, inWorktree, Array.from({ length: 51 }, (_, index) => `f${ index }.ts`))).rejects.toMatchObject({ status: 400, message: 'Pick at most 50 files' });
+        await expect(transport.discardGit(FIXTURE_PROJECT_ID, inWorktree, ['notes.md', 'assets/logo.png'])).rejects.toMatchObject({ status: 400, message: 'assets/logo.png is not a changed file' });
+        await expect(transport.discardGit(FIXTURE_PROJECT_ID, place, ['notes.md'])).rejects.toMatchObject({ status: 400 });
+        await expect(transport.discardGit(FIXTURE_PROJECT_ID, { ...place, workspaceId: 'wks_none' }, ['notes.md'])).rejects.toMatchObject({ status: 404 });
+        // The request that was refused did nothing to the file that was fine.
+        expect(await pathsOf(transport)).toHaveLength(3);
+    });
+
+    it('ends a discard the way its script says: slow, a file with conflicts, or a copy that cannot be kept, and takes nothing out', async () => {
+        vi.useFakeTimers();
+
+        try {
+            const slow = worktree({ discard: 'slow' });
+            const pending = slow.discardGit(FIXTURE_PROJECT_ID, inWorktree, ['notes.md']);
+            let done = false;
+
+            void pending.then(() => {
+                done = true;
+            });
+            await vi.advanceTimersByTimeAsync(1000);
+            expect(done).toBe(false);
+            await vi.advanceTimersByTimeAsync(2000);
+            expect((await pending).discarded).toEqual([{ path: 'notes.md', action: 'removed' }]);
+        }
+        finally {
+            vi.useRealTimers();
+        }
+
+        const refused = worktree({ discard: 'refused' });
+        const copy = worktree({ discard: 'copyfail' });
+
+        await expect(refused.discardGit(FIXTURE_PROJECT_ID, inWorktree, ['notes.md'])).rejects.toMatchObject({ status: 409, message: 'Resolve the conflict first' });
+        await expect(copy.discardGit(FIXTURE_PROJECT_ID, inWorktree, ['notes.md'])).rejects.toMatchObject({ status: 503, message: expect.stringContaining('nothing was discarded') });
+        expect(await pathsOf(refused)).toHaveLength(3);
+        expect(await pathsOf(copy)).toHaveLength(3);
     });
 
     it('writes a message for the changed files, as the agent the fixtures have on does, and fails as its script says', async () => {

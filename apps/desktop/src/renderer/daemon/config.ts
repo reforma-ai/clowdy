@@ -8,11 +8,11 @@ import { TransportError, type ProjectFileSystem, type Transport } from './transp
 
 import type { FixturePullRequestScript } from './fixtureData';
 import type { FixtureRemoteScript } from './fixtureGitRemote';
-import type { FixtureCommitScript, FixtureMessageScript } from './fixtureGitWrites';
+import type { FixtureCommitScript, FixtureDiscardScript, FixtureMessageScript } from './fixtureGitWrites';
 
 export type DaemonConfig =
     | { kind: 'daemon'; url: string; token: string }
-    | { kind: 'fixtures'; timeline: boolean; worktree?: true; clean?: true; base?: true; commit?: FixtureCommitScript; message?: FixtureMessageScript; remote?: FixtureRemoteScript; pr?: FixturePullRequestScript }
+    | { kind: 'fixtures'; timeline: boolean; worktree?: true; clean?: true; base?: true; commit?: FixtureCommitScript; message?: FixtureMessageScript; discard?: Exclude<FixtureDiscardScript, 'ok'>; remote?: FixtureRemoteScript; pr?: FixturePullRequestScript }
     | { kind: 'none' };
 
 /** The words the page's `&pr=` switch knows: what `GET git/pull-request` says of the fixture's worktree. */
@@ -27,7 +27,7 @@ const oneOf = <T extends string>(value: string | null, words: readonly T[]): T |
  * 2. `?daemon=<url>&token=<token>` in the page URL;
  * 3. `?fixtures`, scripted data in memory (`?fixtures=static` leaves out the timed events, `&worktree` adds the chat that works in a dirty worktree, `?chat=c-9`, whose changes
  *    the side panel's Changes tab shows; `&commit=signing|hook|slow` and `&message=failed|slow` say how a commit and a request for its message end there, which the screenshots of the commit
- *    box use; `&remote=slow|behind|ahead|level|never|diverged|rejected|signing|offline|renamed|no_origin|detached|unborn` says how a fetch, a pull and a push end and where the branch stands against its upstream
+ *    box use; `&discard=slow|refused|copyfail` says how a discard of a file's changes ends (it takes a while, git refuses the file, the copy cannot be kept); `&remote=slow|behind|ahead|level|never|diverged|rejected|signing|offline|renamed|no_origin|detached|unborn` says how a fetch, a pull and a push end and where the branch stands against its upstream
  *    and when the repository last fetched (the sync button's states), `&pr=none|open|draft|merged|closed|no_gh|not_signed_in|no_remote|unavailable` what GitHub says of the worktree's branch (`open` by default,
  *    `none` is the one that offers Create PR), `&clean` leaves the worktree with nothing uncommitted (the commit box's `No local changes`), and `&base` puts the worktree on `main`, the branch the work is compared with);
  * 4. nothing: the UI shows that it cannot reach a daemon.
@@ -43,10 +43,11 @@ export function resolveDaemonConfig(search: string, bridge?: { url: string; toke
     if (params.has('fixtures')) {
         const commit = oneOf(params.get('commit'), ['signing', 'hook', 'slow'] as const);
         const message = oneOf(params.get('message'), ['failed', 'slow'] as const);
+        const discard = oneOf(params.get('discard'), ['slow', 'refused', 'copyfail'] as const);
         const remote = oneOf(params.get('remote'), FIXTURE_REMOTE_SCRIPTS);
         const pr = oneOf(params.get('pr'), PULL_REQUEST_SCRIPTS);
 
-        return { kind: 'fixtures', timeline: params.get('fixtures') !== 'static', ...(params.has('worktree') && { worktree: true as const }), ...(params.has('clean') && { clean: true as const }), ...(params.has('base') && { base: true as const }), ...(commit && { commit }), ...(message && { message }), ...(remote && { remote }), ...(pr && { pr }) };
+        return { kind: 'fixtures', timeline: params.get('fixtures') !== 'static', ...(params.has('worktree') && { worktree: true as const }), ...(params.has('clean') && { clean: true as const }), ...(params.has('base') && { base: true as const }), ...(commit && { commit }), ...(message && { message }), ...(discard && { discard }), ...(remote && { remote }), ...(pr && { pr }) };
     }
 
     return { kind: 'none' };
@@ -74,6 +75,7 @@ const unconfigured: Transport = {
     setGitViewed: noDaemon,
     clearGitViewed: noDaemon,
     commitGit: noDaemon,
+    discardGit: noDaemon,
     generateGitMessage: noDaemon,
     fetchGit: noDaemon,
     pullGit: noDaemon,
@@ -114,7 +116,7 @@ export function createTransport(config: DaemonConfig): Transport {
 
     if (config.kind !== 'fixtures') return unconfigured;
 
-    const { timeline, commit, message, remote, pr, clean, base } = config;
+    const { timeline, commit, message, discard, remote, pr, clean, base } = config;
     const data = config.worktree ? withFixtureWorkspace(createFixtureData()) : createFixtureData();
 
     // The worktree's branch is the branch the work is compared with, which is where a commit goes straight to the base.
@@ -123,5 +125,5 @@ export function createTransport(config: DaemonConfig): Transport {
     // What GitHub says of the worktree's branch, for the states of Create PR to be looked at.
     if (pr) for (const scripts of Object.values(data.pullRequests)) scripts.worktree = pr;
 
-    return new FixtureTransport({ timeline, data, gitWrites: { commit, message, remote, ...(clean && { clean }) } });
+    return new FixtureTransport({ timeline, data, gitWrites: { commit, message, discard, remote, ...(clean && { clean }) } });
 }
