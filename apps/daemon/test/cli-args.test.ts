@@ -134,7 +134,7 @@ describe('commandOf, flagsOf, summaryOf, commandText and helpOf', () => {
     });
 
     test('the real thread_spawn takes --worktree and --no-worktree, and its help says what the option does and that merging the branch back is the parent\'s', () => {
-        const real = threadTools({ threads: undefined as never }, {} as never).find((tool: ToolDefinition) => tool.name === 'thread_spawn') as unknown as CliTool;
+        const real = threadTools({ threads: undefined as never, store: undefined as never, runs: undefined as never }, {} as never).find((tool: ToolDefinition) => tool.name === 'thread_spawn') as unknown as CliTool;
 
         expect(flagsOf(real)).toEqual(expect.arrayContaining(['worktree', 'no-worktree', 'cwd']));
         expect(parseCommand(real, ['--prompt', 'x', '--worktree']).arguments).toEqual({ prompt: 'x', worktree: true });

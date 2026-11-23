@@ -34,7 +34,7 @@ const THREADS = [
 export interface PromptParent {
     id: string;
     title: string;
-    /** The branch the parent's worktree for this thread was started from, when the parent had one made for it (`thread_spawn` with `worktree`). */
+    /** The branch the worktree made for this thread alone was started from (the parent's, or the repository's default one), when it has one (`thread_spawn` with `worktree`). */
     worktreeBase?: string;
 }
 
@@ -66,7 +66,7 @@ function workspaceFacts({ path, branch, folder }: PromptWorkspace): string {
 function threadIntro(parent: PromptParent): string {
     return [
         `This chat is a thread: the chat "${ parent.title }" (${ parent.id }) started it, and the first message is your assignment from that chat.`,
-        parent.worktreeBase && `It had a git worktree made for you alone, on a branch started from its own branch ${ parent.worktreeBase }: commit your work on your own branch and name that branch in your report. Merging it back is your parent's job, so do not merge it or switch to another branch.`,
+        parent.worktreeBase && `It had a git worktree made for you alone, on a branch started from ${ parent.worktreeBase }: commit your work on your own branch and name that branch in your report. Merging it back is your parent's job, so do not merge it or switch to another branch.`,
         'Your last message of each turn is your report to it, delivered when you stop: the verdict first (done, partly done, failed or blocked), then the evidence (what you ran and saw), then what is left.',
         `Ask your parent with \`clowdy thread tell ${ parent.id } "<question>"\` only when you are blocked. Write to no other chat unless your assignment says so. You may start threads of your own while the depth limit allows.`,
         'Follow clowdy:thread as well.',

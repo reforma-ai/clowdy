@@ -1451,7 +1451,7 @@ describe('thread_spawn with a worktree', () => {
         expect(chatOf(own.threadId).workspace).toEqual({ id: expect.stringMatching(/^wks_/), folderId, path, branch, managed: true, ready: true });
         expect(chatOf(own.threadId).folderId).toBe(folderId);
         expect(getWorkspace(store.db, chatOf(own.threadId).workspace!.id)).toMatchObject({ projectId: project.id, folderId, path, branch, base: 'main', managed: true });
-        expect(git(project.path, 'worktree', 'list')).toContain(path);
+        expect(git(project.path, 'worktree', 'list')).toContain(path.replaceAll('\\', '/'));
         expect(git(path, 'branch', '--show-current')).toBe(branch);
         expect(git(path, 'rev-parse', 'HEAD')).toBe(git(project.path, 'rev-parse', 'main'));
 
@@ -1464,7 +1464,7 @@ describe('thread_spawn with a worktree', () => {
         // Its agent works there, is told so, and is told what is left to its parent; the main checkout is not handed to it.
         expect(turnOf('Rework the importer')).toMatchObject({ cwd: path, additionalDirectories: [join(project.path, '.git')] });
         expect(turnOf('Rework the importer')?.systemPrompt).toContain(`Worktree: you work in a git worktree of ${ project.path }, at ${ path }, on the branch ${ branch }.`);
-        expect(turnOf('Rework the importer')?.systemPrompt).toContain('on a branch started from its own branch main: commit your work on your own branch and name that branch in your report. Merging it back is your parent\'s job');
+        expect(turnOf('Rework the importer')?.systemPrompt).toContain('on a branch started from main: commit your work on your own branch and name that branch in your report. Merging it back is your parent\'s job');
 
         // One without the option is where its parent is, with no worktree and no word of one.
         expect(chatOf(plain.threadId)).not.toHaveProperty('workspace');
@@ -1489,7 +1489,7 @@ describe('thread_spawn with a worktree', () => {
         const path = join(h.config.workspacesDir, 'repo', id8(own.threadId), 'repo');
         const branch = `clowdy/${ id8(own.threadId) }`;
 
-        expect(own.worktree).toEqual({ path, branch, base: mine.branch });
+        expect(own.worktree).toEqual({ path, branch, base: mine.branch! });
         expect(chatOf(own.threadId).workspace).toMatchObject({ id: expect.not.stringMatching(mine.id), path, branch, managed: true, ready: true });
         expect(getWorkspace(store.db, chatOf(own.threadId).workspace!.id)?.base).toBe(mine.branch!);
         expect(chatOf(own.threadId).folderId).toBe(mine.folderId);
@@ -1514,9 +1514,10 @@ describe('thread_spawn with a worktree', () => {
         expect(h.run(parent.run.id).status).toBe('running');
     });
 
-    test('is refused with cwd, by a caller that works in a folder named with cwd, and when the parent\'s branch is gone or its worktree is on a detached HEAD, leaving nothing behind', async () => {
+    test('is refused with cwd, by a caller that works in a folder named with cwd, and when the parent\'s worktree is on a detached HEAD or its branch is gone, leaving nothing behind', async () => {
         const { project, store, exec, root, spawn } = await setup();
         const parent = await root('Plan the release', latch(), { workspace: { mode: 'new' } });
+        const mine = parent.chat.workspace!;
         const folder = tempDir('clowdy-thread-cwd');
         const listed = async () => (await exec(parent.run, 'thread_list')).threads.map((entry: { threadId: string }) => entry.threadId);
         const refused = async (input: Record<string, unknown>, message: RegExp) => {
@@ -1529,9 +1530,13 @@ describe('thread_spawn with a worktree', () => {
         await refused({ worktree: true, cwd: folder }, /^worktree and cwd both say where the thread works, so give one/);
         await refused({ worktree: true, cwd: 'relative/path' }, /^worktree and cwd both say where the thread works/);
 
-        // The parent's branch is gone: starting from anything else would hand the thread a tree without the parent's work.
-        const mine = parent.chat.workspace!;
+        // The parent's worktree is on a detached HEAD now (the row still has the branch it was made on): there is no branch of its work to start from.
+        git(mine.path, 'switch', '--detach', '-q');
+        await refused({ worktree: true }, /^Cannot give the thread a worktree of its own\. Your worktree is on a detached HEAD/);
+        git(mine.path, 'switch', '-q', mine.branch!);
 
+        // The parent's branch is gone with its worktree: starting from anything else would hand the thread a tree without the parent's work.
+        rmSync(mine.path, { recursive: true });
         updateWorkspace(store.db, mine.id, { branch: 'clowdy/nowhere' });
         await refused({ worktree: true }, /^Cannot give the thread a worktree of its own\. Your branch clowdy\/nowhere is not in the repository any more/);
         updateWorkspace(store.db, mine.id, { branch: mine.branch });
@@ -1541,7 +1546,7 @@ describe('thread_spawn with a worktree', () => {
 
         await expect(exec(named.run(), 'thread_spawn', { prompt: 'Nested', worktree: true })).rejects.toMatchObject({ code: 'invalid', message: expect.stringContaining('named with cwd') });
 
-        // An existing worktree on a detached HEAD has no branch to start from.
+        // An existing worktree that was on a detached HEAD from the start has no branch either.
         const detached = join(tempDir('clowdy-thread-detached'), 'wt');
 
         git(project.path, 'worktree', 'add', '--detach', detached);
@@ -1553,12 +1558,35 @@ describe('thread_spawn with a worktree', () => {
         expect(listWorkspacesOfProject(store.db, project.id)).toHaveLength(2);
     });
 
+    test('starts from the branch the parent has checked out now, not the one its worktree was made on', async () => {
+        const { h, store, chatOf, turnOf, root, spawn } = await setup();
+        const parent = await root('Plan the release', latch(), { workspace: { mode: 'new' } });
+        const mine = parent.chat.workspace!;
+
+        // The parent's agent branches off in its worktree and commits there; the row still says the branch the worktree was made on.
+        git(mine.path, 'switch', '-q', '-c', 'feature/mine');
+        writeFileSync(join(mine.path, 'parent.txt'), 'parent work\n');
+        git(mine.path, 'add', 'parent.txt');
+        git(mine.path, 'commit', '-q', '-m', 'Parent work');
+
+        const own = await spawn(parent.run, 'Rework the importer', held(latch()), { worktree: true });
+
+        expect(chatOf(parent.chat.id).workspace?.branch).toBe(mine.branch);
+        expect(own.worktree).toMatchObject({ base: 'feature/mine' });
+        expect(getWorkspace(store.db, chatOf(own.threadId).workspace!.id)?.base).toBe('feature/mine');
+        expect(readFileSync(join(own.worktree!.path, 'parent.txt'), 'utf8')).toBe('parent work\n');
+        expect(git(own.worktree!.path, 'rev-parse', 'HEAD')).toBe(git(mine.path, 'rev-parse', 'HEAD'));
+        expect(turnOf('Rework the importer')?.cwd).toBe(own.worktree!.path);
+        expect(h.run(parent.run.id).status).toBe('running');
+    });
+
     test('starts from the base a parent whose worktree is not made yet is going to be made from, since nothing is committed in it', async () => {
         const { h, project, store, chatOf, exec, root, spawn } = await setup();
         const parent = await root('Plan the release', latch(), { workspace: { mode: 'new' } });
         const mine = parent.chat.workspace!;
 
         // Its branch does not exist and the worktree is to be made: the thread's base is the one the parent's is made from.
+        rmSync(mine.path, { recursive: true });
         updateWorkspace(store.db, mine.id, { ready: false, branch: 'clowdy/not-yet' });
 
         const own = await spawn(parent.run, 'Rework the importer', held(latch()), { worktree: true });
@@ -1607,27 +1635,27 @@ describe('thread_spawn with a worktree', () => {
     test('gives each of many threads started at once its own row, path and branch, and their first turns make them side by side', async () => {
         const { h, project, store, chatOf, turnOf, root, spawn } = await setup();
         const parent = await root('Plan the release', latch());
-        const prompts = ['Part one', 'Part two', 'Part three', 'Part four'];
+        const prompts = ['Part one', 'Part two', 'Part three', 'Part four', 'Part five', 'Part six'];
         const threads = await Promise.all(prompts.map(prompt => spawn(parent.run, prompt, held(latch()), { worktree: true })));
         const paths = threads.map(thread => thread.worktree!.path);
         const branches = threads.map(thread => thread.worktree!.branch);
 
-        expect(new Set(paths).size).toBe(4);
-        expect(new Set(branches).size).toBe(4);
-        expect(new Set(threads.map(thread => chatOf(thread.threadId).workspace!.id)).size).toBe(4);
+        expect(new Set(paths).size).toBe(prompts.length);
+        expect(new Set(branches).size).toBe(prompts.length);
+        expect(new Set(threads.map(thread => chatOf(thread.threadId).workspace!.id)).size).toBe(prompts.length);
         expect(listWorkspacesOfProject(store.db, project.id).map(record => record.path).sort()).toEqual([...paths].sort());
 
         for (const [index, thread] of threads.entries()) {
             expect(paths[index]).toBe(join(h.config.workspacesDir, 'repo', id8(thread.threadId), 'repo'));
             expect(turnOf(prompts[index])?.cwd).toBe(paths[index]);
             expect(git(paths[index], 'branch', '--show-current')).toBe(branches[index]);
-            expect(git(project.path, 'worktree', 'list')).toContain(paths[index]);
+            expect(git(project.path, 'worktree', 'list')).toContain(paths[index].replaceAll('\\', '/'));
             expect(chatsOfWorkspace(store.db, chatOf(thread.threadId).workspace!.id)).toEqual([thread.threadId]);
         }
     });
 
     test('fails the thread, not the parent, when its worktree cannot be made, and a message of the parent makes it again once the way is clear', async () => {
-        const { h, chatOf, runOf, bodies, exec, on, root } = await setup();
+        const { h, chatOf, runOf, bodies, exec, on, turnOf, root } = await setup();
         const parent = await root('Plan the release', latch());
         const { task: first } = await exec(parent.run, 'task_create', { title: 'First' });
         const { task: second } = await exec(parent.run, 'task_create', { title: 'Second', dependsOn: [first.key] });
@@ -1657,5 +1685,12 @@ describe('thread_spawn with a worktree', () => {
         await exec(parent.run, 'thread_tell', { thread: waiting.threadId, message: 'Try again' });
         await waitFor(() => chatOf(waiting.threadId).workspace?.ready, 'the worktree to be made');
         expect(git(path, 'branch', '--show-current')).toBe(`clowdy/${ id8(waiting.threadId) }`);
+
+        // The first turn never reached the agent, so the retry carries the brief as well as the message, with the first message's line in front.
+        const retried = await waitFor(() => turnOf('Try again'), 'the thread\'s agent to start');
+
+        expect(retried.prompt).toStartWith('Follow clowdy:orchestrate.');
+        expect(retried.prompt).toContain('Rework the importer\n\n[Message from thread');
+        expect(retried.cwd).toBe(path);
     });
 });

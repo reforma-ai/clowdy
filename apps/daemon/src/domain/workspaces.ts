@@ -343,10 +343,12 @@ export function inheritWorkspace(store: Store, project: Project, workspaceId: st
 }
 
 /**
- * The base of a thread's own worktree when its parent works in `workspace`: the parent's branch, read as an exact local ref (every worktree of a repository shares
- * its branches), so the thread starts from what the parent has committed there. A parent whose worktree is not made yet has no branch: it will be made from its
- * own base and nothing is committed in it, so that base is the same commit. Anything else (a detached HEAD, a branch the repository no longer has) is `invalid`
- * with nothing made, since a thread started from some other commit would work on a tree without the parent's work.
+ * The base of a thread's own worktree when its parent works in `workspace`: the branch the parent's worktree has checked out now (an agent may have switched
+ * since the row recorded one, and the work is on the branch it is on), read as an exact local ref (every worktree of a repository shares its branches), so the
+ * thread starts from what the parent has committed there. When the parent's worktree is not there to ask, the recorded branch stands in. A parent whose worktree
+ * is not made yet has no branch: it will be made from its own base and nothing is committed in it, so that base is the same commit. Anything else (a detached
+ * HEAD, a branch the repository no longer has) is `invalid` with nothing made, since a thread started from some other commit would work on a tree without the
+ * parent's work.
  */
 export function threadBase(store: Store, project: Project, workspace: ChatWorkspace): string {
     const folder = project.folders.find(candidate => candidate.id === workspace.folderId);
@@ -355,11 +357,19 @@ export function threadBase(store: Store, project: Project, workspace: ChatWorksp
         throw invalid('The folder of your worktree is no longer part of the project');
     }
 
-    if (workspace.branch !== undefined) {
-        const found = readGit(folder.path, ['show-ref', '--verify', '--hash', `refs/heads/${ workspace.branch }`]);
+    const head = existsSync(workspace.path) && isRepositoryRoot(workspace.path) ? headOf(workspace.path) : undefined;
+
+    if (head?.detached || (head === undefined && workspace.branch === undefined)) {
+        throw invalid('Your worktree is on a detached HEAD, so there is no branch of yours to start the thread from');
+    }
+
+    const branch = head?.branch ?? workspace.branch;
+
+    if (branch !== undefined) {
+        const found = readGit(folder.path, ['show-ref', '--verify', '--hash', `refs/heads/${ branch }`]);
 
         if (found.ok && found.stdout) {
-            return workspace.branch;
+            return branch;
         }
     }
 
@@ -369,7 +379,7 @@ export function threadBase(store: Store, project: Project, workspace: ChatWorksp
         return base;
     }
 
-    throw invalid(workspace.branch === undefined ? 'Your worktree is on a detached HEAD, so there is no branch of yours to start the thread from' : `Your branch ${ workspace.branch } is not in the repository any more, so there is nothing to start the thread from`);
+    throw invalid(`Your branch ${ branch } is not in the repository any more, so there is nothing to start the thread from`);
 }
 
 /** Whether a chat's first turn (or a later one) has to run `Prepare workspace`: the worktree is not set up yet, or Clowdy made it and it is gone from the disk. */
@@ -463,6 +473,11 @@ export interface EnsureWorktreeOptions extends Step {
     base?: string;
     /** Clowdy made it, so Clowdy may make it again when it is gone; a worktree it merely found is never made. */
     managed: boolean;
+    /**
+     * Runs the part that changes the repository's worktrees, one at a time per repository: git fails a `worktree add` that runs while another is half done in
+     * the same repository (`failed to read .git/worktrees/<name>/commondir`), which many threads started together do. Without it the part runs at once.
+     */
+    serialize?: <T>(work: () => Promise<T>) => Promise<T>;
 }
 
 /**
@@ -520,21 +535,23 @@ export async function ensureWorktree(options: EnsureWorktreeOptions): Promise<'t
 
     const commit = exists.ok ? undefined : await baseCommit(folder, base, options);
 
-    // The fetch above may have taken minutes: whatever was put at the path meanwhile is somebody's, and neither the record's removal (which deletes a tree that is
-    // there and clean, ignored files included) nor the checkout is run over it.
-    if (await isThere(path)) {
-        throw new WorkspaceError(`${ path } appeared while the worktree was being made, so it was left alone`);
-    }
+    return (options.serialize ?? (work => work()))(async () => {
+        // The fetch above may have taken minutes: whatever was put at the path meanwhile is somebody's, and neither the record's removal (which deletes a tree that is
+        // there and clean, ignored files included) nor the checkout is run over it.
+        if (await isThere(path)) {
+            throw new WorkspaceError(`${ path } appeared while the worktree was being made, so it was left alone`);
+        }
 
-    if (entry) {
-        options.log(`Forgetting the record of the worktree ${ path }, which is gone from the disk`);
-        await mustGit(folder, ['worktree', 'remove', entry.path], options, FORGET_TIMEOUT_MS, 'forget the missing worktree');
-    }
+        if (entry) {
+            options.log(`Forgetting the record of the worktree ${ path }, which is gone from the disk`);
+            await mustGit(folder, ['worktree', 'remove', entry.path], options, FORGET_TIMEOUT_MS, 'forget the missing worktree');
+        }
 
-    // The branch stays as it is when the repository has it; a new one starts at the commit the base had a moment ago.
-    await mustGit(folder, ['-c', 'core.longpaths=true', 'worktree', 'add', ...(commit ? ['-b', branch, path, commit] : [path, branch])], options, ADD_TIMEOUT_MS, 'make the worktree');
+        // The branch stays as it is when the repository has it; a new one starts at the commit the base had a moment ago.
+        await mustGit(folder, ['-c', 'core.longpaths=true', 'worktree', 'add', ...(commit ? ['-b', branch, path, commit] : [path, branch])], options, ADD_TIMEOUT_MS, 'make the worktree');
 
-    return 'made';
+        return 'made' as const;
+    });
 }
 
 /**
@@ -753,7 +770,10 @@ export async function prepareWorkspace(store: Store, workspaceId: string, option
                 throw new WorkspaceError(`The folder ${ folder.path } no longer exists`);
             }
 
-            await ensureWorktree({ folder: folder.path, path: record.path, branch: record.branch, base: record.base, managed: record.managed, log: line => item.log(line), signal: options.signal });
+            // The worktrees of one repository are added one at a time: the key is the folder's real place, whichever project holds it.
+            const serialize = <T>(work: () => Promise<T>) => exclusive(store, `repository:${ pathKey(placeOf(folder.path)) }`, options.signal, work);
+
+            await ensureWorktree({ folder: folder.path, path: record.path, branch: record.branch, base: record.base, managed: record.managed, log: line => item.log(line), signal: options.signal, serialize });
             markReady(store, record.id);
             item.end();
         }
