@@ -11,6 +11,7 @@ import type {
     DocsTree,
     FolderGit,
     FolderId,
+    FolderWorktrees,
     GitChanges,
     GitFileSides,
     GitScope,
@@ -101,6 +102,12 @@ export interface Transport {
      * draw answers its state and no text. Rejects as `getGitChanges` does, and with 404 for a path that did not change in the scope.
      */
     getGitFile: (projectId: ProjectId, place: PlaceRef, scope: GitScope, path: string, oldPath?: string) => Promise<GitFileSides>;
+    /**
+     * Every worktree of every folder of a project, with the chats that work in each, how many files are changed and whether its work is in the base: what the Manage worktrees
+     * dialog lists. One entry per folder in the project's order, a folder that is no repository (or is gone) with no worktrees. Read when asked, never pushed: worktrees change
+     * in a terminal or by an agent. Rejects with a `TransportError` of status 404 for a project the daemon does not have.
+     */
+    getProjectWorktrees: (projectId: ProjectId) => Promise<FolderWorktrees[]>;
     /**
      * Whether the chat's worktree may be removed together with the chat, which is what `chat.delete`'s `removeWorkspace` asks for: Clowdy made it, no other chat uses it, nothing in it
      * is uncommitted and its work is merged into its base. Read when the delete dialog opens, never pushed: a tree changes in a terminal or by an agent, and the daemon checks again

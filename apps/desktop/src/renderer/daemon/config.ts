@@ -48,6 +48,7 @@ const unconfigured: Transport = {
     getGitStatus: noDaemon,
     getGitChanges: noDaemon,
     getGitFile: noDaemon,
+    getProjectWorktrees: noDaemon,
     getChatWorkspaceRemoval: noDaemon,
     subscribe: () => () => undefined,
     command: noDaemon,

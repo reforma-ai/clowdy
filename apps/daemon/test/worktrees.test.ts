@@ -1,0 +1,513 @@
+import { afterAll, afterEach, describe, expect, test } from 'bun:test';
+import { mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
+
+import { getChat } from '../src/db/chats';
+import { cleanTempDirs, git, makeRepo, ScriptEngine, scriptEngines, startHarness, tempDir, waitFor } from './helpers';
+
+import type { Chat, FolderWorktrees, Project, Run, WorktreeInfo } from '@clowdy/protocol';
+import type { Harness, Script } from './helpers';
+
+afterAll(cleanTempDirs);
+
+const harnesses: Harness[] = [];
+
+afterEach(async () => {
+    await Promise.all(harnesses.splice(0).map(h => h.stop().catch(() => undefined)));
+});
+
+const finishing: Script = async function* ({ number }) {
+    yield { type: 'session', sessionId: `s${ number }` };
+    yield { type: 'text', delta: 'Done', done: false };
+    yield { type: 'text', delta: '', done: true, messageId: `m${ number }` };
+    yield { type: 'done', result: 'Done' };
+};
+
+/** The place git writes for a path: the real one (`/var` is `/private/var` on a Mac), which is how `GET worktrees` writes a worktree's path; for a folder that is gone, its parent's. */
+function real(path: string): string {
+    try {
+        return realpathSync(path);
+    }
+    catch {
+        return join(realpathSync(dirname(path)), basename(path));
+    }
+}
+
+/**
+ * A daemon with a project of one repository, `shop-web` (a commit on `main`), and whatever folders a test adds. `worktrees` reads the route as the app does. Chats are made with a
+ * script engine that finishes at once, so a chat on a new worktree has made it once `start` has run.
+ */
+async function setup(folders: string[] = []) {
+    const engine = new ScriptEngine(finishing);
+    const h = await startHarness({}, { engines: scriptEngines(engine) });
+
+    harnesses.push(h);
+
+    const root = tempDir('worktrees');
+    const repo = makeRepo(root, 'shop-web');
+    const { project } = h.ok('project.add', { name: 'Shop', folders: [repo, ...folders] }) as { project: Project };
+    // The project keeps the real place of a folder (`/private/var/...` for `/var/...` on a Mac), which is the path of its own checkout's row.
+    const folder = project.folders[0].path;
+    const chatOf = (chatId: string) => getChat(h.store.db, chatId) as Chat;
+    const make = (workspace: unknown): Chat => (h.ok('chat.create', { projectId: project.id, workspace }) as { chat: Chat }).chat;
+    const start = async (workspace: unknown = { mode: 'new' }): Promise<Chat> => {
+        const chat = make(workspace);
+
+        h.ok('chat.send', { chatId: chat.id, text: 'Start' });
+        await waitFor(() => {
+            const run = chatOf(chat.id).orchestratorRunId ? h.run(chatOf(chat.id).orchestratorRunId as string) : undefined;
+
+            return run?.status === 'succeeded' && (run as Run).finishedAt !== undefined;
+        }, 'the turn to end');
+
+        return chatOf(chat.id);
+    };
+    const worktrees = async (id = project.id): Promise<FolderWorktrees[]> => {
+        const response = await h.fetch(`/v1/projects/${ id }/worktrees`);
+
+        expect(response.status).toBe(200);
+
+        return await response.json() as FolderWorktrees[];
+    };
+    /** The rows of the first folder, which `shop-web` is. */
+    const rows = async (): Promise<WorktreeInfo[]> => (await worktrees())[0].worktrees;
+    const at = async (path: string): Promise<WorktreeInfo> => {
+        const row = (await rows()).find(candidate => candidate.path === real(path));
+
+        if (!row) throw new Error(`No row for ${ path }`);
+
+        return row;
+    };
+    /** A worktree made by hand, as a person or another tool does: `git worktree add` on a branch of its own (or on a detached HEAD), outside Clowdy's folder. */
+    const found = (name: string, detach = false): string => {
+        const path = join(root, name);
+
+        git(repo, 'worktree', 'add', '-q', ...detach ? ['--detach', path, 'main'] : ['-b', name, path]);
+
+        return path;
+    };
+
+    /** `git worktree lock`, with the reason when there is one. */
+    const lock = (path: string, reason?: string): void => {
+        git(repo, 'worktree', 'lock', ...reason === undefined ? [] : ['--reason', reason], path);
+    };
+
+    return { h, root, repo, folder, project, chatOf, make, start, worktrees, rows, at, found, lock };
+}
+
+/** Commits a file in a worktree. */
+function commit(path: string, file = 'work.txt', message = 'Work'): void {
+    writeFileSync(join(path, file), `${ message }\n`);
+    git(path, 'add', file);
+    git(path, 'commit', '-q', '-m', message);
+}
+
+describe('GET /v1/projects/:id/worktrees', () => {
+    test('lists the folder\'s own checkout first, with its branch, clean, and nothing to remove or to compare with a base', async () => {
+        const { rows, folder } = await setup();
+        const [main, ...others] = await rows();
+
+        expect(main).toEqual({
+            path: folder,
+            branch: 'main',
+            head: git(folder, 'rev-parse', '--short=7', 'HEAD'),
+            main: true,
+            missing: false,
+            changes: 0,
+            submodules: false,
+            managed: false,
+            chats: [],
+            blocked: 'main',
+        });
+        expect(others).toEqual([]);
+    });
+
+    test('keeps the checkout first and counts its changes, a new file included', async () => {
+        const { rows, folder } = await setup();
+
+        writeFileSync(join(folder, 'README.md'), '# Changed\n');
+        writeFileSync(join(folder, 'new.txt'), 'new\n');
+
+        expect((await rows())[0]).toMatchObject({ main: true, changes: 2, blocked: 'main' });
+    });
+
+    test('lists a worktree somebody made by hand, with no record and no chats, and not blocked', async () => {
+        const { at, found, project, h } = await setup();
+        const path = found('by-hand');
+        const row = await at(path);
+
+        expect(row).toEqual({
+            path: real(path),
+            branch: 'by-hand',
+            head: git(path, 'rev-parse', '--short=7', 'HEAD'),
+            main: false,
+            missing: false,
+            changes: 0,
+            submodules: false,
+            // It starts from the commit `main` is on, so its work is in the base; a repository with no remote has its own `main` as the base.
+            merged: true,
+            base: 'main',
+            managed: false,
+            chats: [],
+        });
+        // Asking leaves no record behind: the dialog only reads.
+        expect(h.store.db.query('SELECT COUNT(*) AS n FROM workspaces WHERE project_id = ?').get(project.id)).toEqual({ n: 0 });
+    });
+
+    test('lists a worktree Clowdy made with its chats, archived ones too, and blocks Remove while they work in it', async () => {
+        const { at, start, h, folder } = await setup();
+        const first = await start();
+        const record = first.workspace!;
+        const second = await start({ mode: 'existing', path: record.path });
+        const archived = await start({ mode: 'existing', path: record.path });
+
+        h.ok('chat.setArchived', { chatId: archived.id, archived: true });
+
+        const row = await at(record.path);
+
+        expect(row).toMatchObject({
+            branch: record.branch,
+            managed: true,
+            workspaceId: record.id,
+            missing: false,
+            changes: 0,
+            merged: true,
+            base: 'main',
+            blocked: 'chats',
+        });
+        expect(row.chats).toEqual([
+            { id: first.id, title: first.title, archived: false },
+            { id: second.id, title: second.title, archived: false },
+            { id: archived.id, title: archived.title, archived: true },
+        ]);
+        expect(await at(folder)).toMatchObject({ main: true, chats: [] });
+    });
+
+    test('lists a Clowdy-made worktree nobody works in with its record and no block', async () => {
+        const { at, start, h } = await setup();
+        const chat = await start();
+
+        h.store.db.query('UPDATE chats SET workspace_id = NULL WHERE id = ?').run(chat.id);
+
+        const row = await at(chat.workspace!.path);
+
+        expect(row).toMatchObject({ managed: true, workspaceId: chat.workspace!.id, chats: [] });
+        expect(row.blocked).toBeUndefined();
+    });
+
+    test('says a locked worktree is locked, with the reason, and blocks it before its chats', async () => {
+        const { at, found, start, h, lock } = await setup();
+        const withReason = found('on-usb');
+        const without = found('no-reason');
+
+        lock(withReason, 'on a usb drive');
+        lock(without);
+
+        expect(await at(withReason)).toMatchObject({ locked: 'on a usb drive', blocked: 'locked', missing: false });
+        expect(await at(without)).toMatchObject({ locked: '', blocked: 'locked' });
+
+        // A lock outranks the chats that work in the worktree.
+        const chat = await start();
+
+        lock(chat.workspace!.path);
+        h.ok('chat.setArchived', { chatId: chat.id, archived: true });
+
+        expect(await at(chat.workspace!.path)).toMatchObject({ locked: '', blocked: 'locked', chats: [{ id: chat.id, archived: true }] });
+    });
+
+    test('keeps a worktree whose folder was deleted, missing on disk, with the work it had', async () => {
+        const { at, found, folder, rows } = await setup();
+        const gone = found('gone');
+        const kept = found('kept');
+
+        commit(gone, 'lost.txt', 'Work that was not merged');
+        rmSync(gone, { recursive: true, force: true });
+
+        // It is still a worktree of the repository until git prunes it, so it is listed, with no files to read, and its branch is still judged.
+        expect(await at(gone)).toMatchObject({ branch: 'gone', missing: true, changes: 0, submodules: false, merged: false, base: 'main' });
+        expect(await at(kept)).toMatchObject({ missing: false });
+        expect((await rows()).map(row => row.path).sort()).toEqual([folder, real(gone), real(kept)].sort());
+    });
+
+    test('keeps a locked worktree whose folder is gone, both marks on it', async () => {
+        const { at, found, lock } = await setup();
+        const path = found('locked-gone');
+
+        lock(path, 'moved');
+        rmSync(path, { recursive: true, force: true });
+
+        expect(await at(path)).toMatchObject({ missing: true, locked: 'moved', blocked: 'locked' });
+    });
+
+    test('counts the changed files of a dirty worktree, a new file and an untracked folder\'s file included', async () => {
+        const { at, found } = await setup();
+        const path = found('dirty');
+        const clean = found('clean');
+
+        writeFileSync(join(path, 'README.md'), '# Edited\n');
+        writeFileSync(join(path, 'new.txt'), 'new\n');
+        mkdirSync(join(path, 'docs'));
+        writeFileSync(join(path, 'docs', 'a.md'), 'a\n');
+        writeFileSync(join(path, 'docs', 'b.md'), 'b\n');
+
+        // `--untracked-files=normal` shows a new folder as one entry, so the count is of what `git status` lists.
+        expect(await at(path)).toMatchObject({ changes: 3 });
+        expect(await at(clean)).toMatchObject({ changes: 0 });
+    });
+
+    test('does not count what .gitignore hides, and counts a staged change once', async () => {
+        const { at, found } = await setup();
+        const path = found('ignored');
+
+        writeFileSync(join(path, '.gitignore'), 'build/\n');
+        git(path, 'add', '.gitignore');
+        git(path, 'commit', '-q', '-m', 'Ignore build output');
+        mkdirSync(join(path, 'build'));
+        writeFileSync(join(path, 'build', 'out.js'), 'x\n');
+        writeFileSync(join(path, 'README.md'), '# Staged and changed again\n');
+        git(path, 'add', 'README.md');
+        writeFileSync(join(path, 'README.md'), '# Changed after staging\n');
+
+        expect(await at(path)).toMatchObject({ changes: 1 });
+    });
+
+    test('keeps the record and the chats of a Clowdy-made worktree whose folder was deleted, though the record names its path through a link', async () => {
+        const { at, start, rows, root, h } = await setup();
+        const chat = await start();
+        const record = chat.workspace!;
+        // The record keeps the path as it was configured and git writes the real one: a link in the way (`/var` and `/private/var` on a Mac) must not part a gone worktree from its chats.
+        const alias = join(root, 'alias');
+
+        symlinkSync(realpathSync(dirname(record.path)), alias);
+        h.store.db.query('UPDATE workspaces SET path = ? WHERE id = ?').run(join(alias, basename(record.path)), record.id);
+        rmSync(record.path, { recursive: true, force: true });
+
+        const row = (await rows()).find(candidate => candidate.branch === record.branch);
+
+        expect(row).toMatchObject({ missing: true, managed: true, workspaceId: record.id, chats: [{ id: chat.id }], blocked: 'chats' });
+        expect(row?.path).toBe(real(record.path));
+        expect(await at(record.path)).toMatchObject({ workspaceId: record.id });
+    });
+
+    test('leaves out the git directory git names as the main entry when the repository keeps it apart from its checkout', async () => {
+        const root = tempDir('worktrees-apart');
+        const repo = join(root, 'apart');
+
+        mkdirSync(repo);
+        git(repo, 'init', '-q', '-b', 'main', '--separate-git-dir', join(root, 'apart.git'));
+        writeFileSync(join(repo, 'a.txt'), 'a\n');
+        git(repo, 'add', '.');
+        git(repo, 'commit', '-q', '-m', 'Initial commit');
+        git(repo, 'worktree', 'add', '-q', '-b', 'side', join(root, 'side'));
+
+        const { worktrees } = await setup([repo]);
+        const group = (await worktrees())[1];
+
+        expect(group.isRepository).toBe(true);
+        expect(group.worktrees.map(row => [row.path, row.main, row.missing])).toEqual([[real(repo), true, false], [real(join(root, 'side')), false, false]]);
+    });
+
+    test('says nothing of merging for a worktree on a branch with no commit yet', async () => {
+        const { at, repo, root } = await setup();
+        const path = join(root, 'fresh');
+
+        git(repo, 'worktree', 'add', '-q', '--orphan', '-b', 'fresh', path);
+
+        const row = await at(path);
+
+        expect(row).toMatchObject({ branch: 'fresh', head: '', missing: false, changes: 0 });
+        expect(row.merged).toBeUndefined();
+        expect(row.base).toBeUndefined();
+    });
+
+    test('compares with a remote branch as last fetched when that is the folder\'s default', async () => {
+        const root = tempDir('worktrees-remote');
+        const origin = makeRepo(root, 'origin');
+        const clone = join(root, 'clone');
+        const feat = join(root, 'feat');
+
+        git(root, 'clone', '-q', origin, clone);
+        git(clone, 'worktree', 'add', '-q', '-b', 'feat', feat, 'origin/main');
+
+        const { worktrees } = await setup([clone]);
+        const featRow = async () => (await worktrees())[1].worktrees.find(row => row.path === real(feat));
+
+        expect(await featRow()).toMatchObject({ merged: true, base: 'origin/main' });
+
+        commit(feat);
+
+        expect(await featRow()).toMatchObject({ merged: false, base: 'origin/main' });
+    });
+
+    test('says whether the work of a worktree is in the base: not before it is merged, yes after', async () => {
+        const { at, found, folder } = await setup();
+        const path = found('feature');
+
+        expect(await at(path)).toMatchObject({ merged: true });
+
+        commit(path);
+
+        expect(await at(path)).toMatchObject({ merged: false, base: 'main' });
+
+        git(folder, 'merge', '-q', '--no-ff', '-m', 'Merge the work', 'feature');
+
+        expect(await at(path)).toMatchObject({ merged: true });
+    });
+
+    test('reads a detached HEAD by its commit alone: merged at the base, not once it has commits of its own', async () => {
+        const { at, found } = await setup();
+        const path = found('detached', true);
+        const row = await at(path);
+
+        expect(row.branch).toBeUndefined();
+        expect(row).toMatchObject({ merged: true, base: 'main', head: git(path, 'rev-parse', '--short=7', 'HEAD') });
+
+        commit(path, 'detached.txt', 'Work on no branch');
+
+        const after = await at(path);
+
+        expect(after.branch).toBeUndefined();
+        expect(after).toMatchObject({ merged: false, head: git(path, 'rev-parse', '--short=7', 'HEAD') });
+    });
+
+    test('compares with the base the worktree was made from, not the default one', async () => {
+        const { at, start, folder, h } = await setup();
+
+        git(folder, 'branch', 'dev');
+        git(folder, 'checkout', '-q', 'dev');
+        commit(folder, 'dev.txt', 'Work on dev');
+        git(folder, 'checkout', '-q', 'main');
+
+        const chat = await start({ mode: 'new', base: 'dev' });
+        const row = await at(chat.workspace!.path);
+
+        // Made from `dev`, so its work is in `dev` and not in `main`, the default.
+        expect(row).toMatchObject({ merged: true, base: 'dev' });
+
+        h.store.db.query('UPDATE workspaces SET base = ? WHERE id = ?').run('main', chat.workspace!.id);
+
+        expect(await at(chat.workspace!.path)).toMatchObject({ merged: false, base: 'main' });
+    });
+
+    test('leaves merged and base out when no base resolves', async () => {
+        const { at, start, h } = await setup();
+        const chat = await start();
+
+        h.store.db.query('UPDATE workspaces SET base = ? WHERE id = ?').run('deleted-branch', chat.workspace!.id);
+
+        const row = await at(chat.workspace!.path);
+
+        expect(row.merged).toBeUndefined();
+        expect(row.base).toBeUndefined();
+    });
+
+    test('says an initialised submodule is checked out, so a plain removal would be refused', async () => {
+        const { at, found } = await setup();
+        const library = makeRepo(tempDir('worktrees-library'), 'library');
+        const path = found('with-submodule');
+        const plain = found('without');
+
+        git(path, '-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', library, 'vendor/library');
+
+        expect(await at(path)).toMatchObject({ submodules: true });
+        expect(await at(plain)).toMatchObject({ submodules: false });
+    });
+
+    test('names a project\'s folders in its order: a repository, a plain folder, a folder that is gone, one a file replaced and one inside a repository', async () => {
+        const root = tempDir('worktrees-folders');
+        const plain = join(root, 'notes');
+        const inside = join(makeRepo(root, 'other'), 'packages');
+        const gone = join(root, 'gone');
+        const replaced = join(root, 'replaced');
+
+        mkdirSync(plain);
+        mkdirSync(inside);
+        mkdirSync(gone);
+        mkdirSync(replaced);
+
+        const { worktrees, project } = await setup([plain, inside, gone, replaced]);
+
+        // Folders the project holds and the disk lost: one is gone, one is a file now. Neither stops the read of the others.
+        rmSync(gone, { recursive: true });
+        rmSync(replaced, { recursive: true });
+        writeFileSync(replaced, 'now a file\n');
+
+        const groups = await worktrees();
+
+        expect(groups.map(group => [group.folderId, group.name, group.isRepository])).toEqual([
+            [project.folders[0].id, 'shop-web', true],
+            [project.folders[1].id, 'notes', false],
+            [project.folders[2].id, 'packages', false],
+            [project.folders[3].id, 'gone', false],
+            [project.folders[4].id, 'replaced', false],
+        ]);
+        expect(groups.slice(1).every(group => group.worktrees.length === 0)).toBe(true);
+    });
+
+    test('lists every repository of the project, each with its own worktrees and its own base', async () => {
+        const root = tempDir('worktrees-two');
+        const api = makeRepo(root, 'shop-api');
+        const { worktrees, found } = await setup([api]);
+        const path = found('web-feature');
+
+        git(api, 'branch', 'api-feature');
+        git(api, 'worktree', 'add', '-q', join(root, 'api-feature'), 'api-feature');
+
+        const [web, second] = await worktrees();
+
+        expect(web.worktrees.map(row => row.path)).toContain(real(path));
+        expect(second.worktrees.map(row => [row.main, row.branch])).toEqual([[true, 'main'], [false, 'api-feature']]);
+        expect(second.worktrees.some(row => row.path === real(path))).toBe(false);
+    });
+
+    test('flags the repository\'s primary working tree, which git never removes, when the folder is a linked worktree', async () => {
+        const root = tempDir('worktrees-linked');
+        const primary = makeRepo(root, 'primary');
+        const linked = join(root, 'linked');
+
+        git(primary, 'worktree', 'add', '-q', '-b', 'linked', linked);
+
+        const { worktrees } = await setup([linked]);
+        const group = (await worktrees())[1];
+
+        expect(group.isRepository).toBe(true);
+        expect(group.worktrees[0]).toMatchObject({ path: real(linked), branch: 'linked', main: true, blocked: 'main' });
+        expect(group.worktrees[1]).toMatchObject({ path: real(primary), branch: 'main', main: false, blocked: 'main' });
+    });
+
+    test('lists every worktree of a repository with many, in the order git lists them, though they are read a few at a time', async () => {
+        const { rows, found, repo } = await setup();
+        const names = Array.from({ length: 9 }, (_, index) => `many-${ index }`);
+
+        for (const name of names) found(name);
+
+        const listed = git(repo, 'worktree', 'list', '--porcelain').split('\n').filter(line => line.startsWith('worktree ')).map(line => real(line.slice('worktree '.length)));
+
+        expect(listed).toHaveLength(10);
+        expect((await rows()).map(row => row.path)).toEqual(listed);
+        expect((await rows()).slice(1).map(row => row.branch).sort()).toEqual([...names].sort());
+    });
+
+    test('is unavailable, not an empty answer, when git cannot be run', async () => {
+        const { h, project } = await setup();
+        const path = process.env.PATH;
+
+        process.env.PATH = tempDir('worktrees-no-git');
+
+        try {
+            const response = await h.fetch(`/v1/projects/${ project.id }/worktrees`);
+
+            expect(response.status).toBe(503);
+        }
+        finally {
+            process.env.PATH = path;
+        }
+    });
+
+    test('answers not_found for a project that does not exist', async () => {
+        const { h } = await setup();
+        const response = await h.fetch('/v1/projects/prj_none/worktrees');
+
+        expect(response.status).toBe(404);
+    });
+});

@@ -14,6 +14,7 @@ import { archivedTasksPage } from '../domain/taskArchive';
 import { taskCommentsPage } from '../domain/taskComments';
 import { DEFAULT_LIMIT } from '../domain/taskQuery';
 import { workspaceRemoval } from '../domain/workspaceRemoval';
+import { projectWorktrees } from '../domain/worktrees';
 import { CommandError, invalid, notFound } from '../errors';
 import { placeChanges, placeFile } from '../git/changes';
 import { projectFolderGit } from '../git/state';
@@ -217,6 +218,7 @@ export function createRoutes(context: RouteContext): Route[] {
             pattern: /^\/v1\/projects\/([^/]+)\/git\/file$/,
             handle: async (_request, url, [id]) => json(await placeFile(gitPlaceOf(id, url), gitScopeOf(url), url.searchParams.get('path') ?? '', url.searchParams.get('oldPath') ?? undefined)),
         },
+        { method: 'GET', pattern: /^\/v1\/projects\/([^/]+)\/worktrees$/, handle: async (_request, _url, [id]) => json(await projectWorktrees(store, requireProject(store, id))) },
         {
             method: 'GET',
             pattern: /^\/v1\/projects\/([^/]+)\/docs$/,
