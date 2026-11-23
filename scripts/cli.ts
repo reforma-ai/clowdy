@@ -5,11 +5,13 @@
  *   ./clowdy build [mac|win]       Build the unpacked desktop app for an OS (default: this one).
  *   ./clowdy sync icons [...]      Pull the icon packs from Figma into `packages/icons`.
  *   ./clowdy worktree add|remove   Extra checkout for work that should not share the working branch.
+ *   ./clowdy licenses              Regenerate THIRD-PARTY-LICENSES.md from the production dependencies.
  *
  * `bun run clowdy <command>` does the same where `./clowdy` cannot run, such as Windows.
  */
 import path from 'node:path';
 
+import { licensesCommand } from './licenses';
 import { worktreeCommand } from './worktree';
 
 const root = path.resolve(import.meta.dir, '..');
@@ -23,6 +25,7 @@ Commands:
   sync icons [pack ...]  Pull icon packs from Figma into packages/icons (--list, --json, auth, --help)
   worktree add <slug> [--from <ref>]  New checkout at ../clowdy-<slug> on <nickname>/<slug> from origin/main, fetched first (or from <ref>, such as next)
   worktree remove <slug>  Remove that checkout. Refuses uncommitted work
+  licenses              Regenerate THIRD-PARTY-LICENSES.md: the npm packages that ship in the app, plus the hand-written entries of scripts/licenses-extra.md
   help                  Show this help
 
 Examples:
@@ -32,6 +35,7 @@ Examples:
   ./clowdy sync icons
   ./clowdy sync icons 16
   ./clowdy worktree add auth-refresh
+  ./clowdy licenses
 `;
 
 switch (command) {
@@ -46,6 +50,9 @@ switch (command) {
         break;
     case 'worktree':
         await worktreeCommand(root, args);
+        break;
+    case 'licenses':
+        await licensesCommand(root, args);
         break;
     case 'help':
     case '--help':
