@@ -179,7 +179,7 @@ describe('over HTTP', () => {
         const cleared = await clear('all', 'lib.ts');
 
         expect(cleared.status).toBe(200);
-        expect(await json(cleared)).toEqual({ ok: true });
+        expect(await json<{ ok: true }>(cleared)).toEqual({ ok: true });
         expect(await marks('all')).toEqual([{ path: 'feature.ts', revision: feature.revision }]);
         expect((await clear('all', 'lib.ts')).status).toBe(200);
         expect((await clear('all', 'never-marked.ts')).status).toBe(200);
