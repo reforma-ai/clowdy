@@ -127,24 +127,11 @@
     gap: var(--spacing-md);
 }
 
-/* Why Remove is off: a line of the row, dim, that wraps (git's own words for a lock can be long) and does not push the actions. */
-.reason {
-    min-width: 0;
-    overflow-wrap: anywhere;
-}
-
-.chatsBlock {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-xs);
-    margin-top: var(--spacing-xs);
-    min-width: 0;
-}
-
 .chats {
     display: flex;
     flex-wrap: wrap;
     gap: var(--spacing-xs);
+    margin-top: var(--spacing-xs);
     /* The chips' own side padding (xs buttons: --spacing-md) hangs out to the left, so the titles line up with the path above them. */
     margin-inline-start: calc(var(--spacing-md) * -1);
 }

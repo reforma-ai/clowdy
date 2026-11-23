@@ -12,7 +12,7 @@ import { Unavailable } from '../../shared/Unavailable';
 import { worktreeLabel } from '../agents/workspaceChoice';
 import { canOpenPaths, OpenWithMenu, useFolderGit } from '../openWith';
 import styles from './ManageWorktrees.module.css';
-import { changesLabel, lockTip, mergedMark, removeHint, removeNote } from './worktreeView';
+import { changesLabel, lockTip, mergedMark, removeHint } from './worktreeView';
 
 import type { FolderWorktrees, ProjectFolder, ProjectId, WorktreeChat, WorktreeInfo } from '@clowdy/protocol';
 import type { OpenTarget } from '../openWith';
@@ -52,17 +52,13 @@ interface WorktreeRowProps extends WorktreeRowActions {
  *
  * Sizes are the app's list row, as `ProjectRow` has it: the title is body (`md`) medium, the path and the facts `sm` and dim, the marks `xs`; a bare `Text` would take the page's 16px,
  * which this window shows far larger than the lists around it. The branch and the path are one line each and cut with an ellipsis (the path in its middle, `PathText`), the whole
- * on hover, so they never push the actions. A Remove that is off says why in a line of the row (`removeNote`), and the same on hover of the button.
+ * on hover, so they never push the actions. A Remove that is off says why only on hover of the button (`removeHint`): the row has no line for it.
  */
 export function WorktreeRow({ projectId, group, folder, worktree, onNewChat, onOpenChat, onRemove }: WorktreeRowProps) {
     const label = worktreeLabel(worktree);
     const merged = mergedMark(worktree);
     const newChat = worktree.main ? 'New chat in this folder' : 'New chat in this worktree';
     const hint = removeHint(worktree);
-    const note = removeNote(worktree);
-    // Chats are the reason there is no Remove: the note leads the chats it is about. Any other reason stands on a line of its own.
-    const chatNote = worktree.blocked === 'chats' ? note : undefined;
-    const reason = chatNote === undefined ? note : undefined;
     const removeTip = worktree.missing ? 'Remove record' : 'Remove';
     const removeLabel = worktree.missing ? `Remove record of ${ label }` : `Remove ${ label }`;
 
@@ -81,20 +77,16 @@ export function WorktreeRow({ projectId, group, folder, worktree, onNewChat, onO
                     { !worktree.missing && <Text variant="sm" color={ worktree.changes === 0 ? 'secondary' : 'default' }>{ changesLabel(worktree.changes) }</Text> }
                     { merged && <Badge size="xs" color={ merged.color } textValue={ merged.label } tooltip={ merged.tip }>{ merged.label }</Badge> }
                 </span>
-                { reason !== undefined && <Text variant="sm" color="secondary" className={ styles.reason }>{ reason }</Text> }
                 { worktree.chats.length > 0 && (
-                    <span className={ styles.chatsBlock }>
-                        { chatNote !== undefined && <Text variant="sm" color="secondary" className={ styles.reason }>{ chatNote }</Text> }
-                        <span className={ styles.chats } role="group" aria-label="Chats">
-                            <For each={ worktree.chats }>
-                                {chat => (
-                                    <Button key={ chat.id } variant="filling" color="secondary" size="xs" truncate className={ styles.chat } onPress={ () => onOpenChat(chat) }>
-                                        <span className={ styles.chatTitle }>{ chat.title }</span>
-                                        { chat.archived && <span className={ styles.archived }>Archived</span> }
-                                    </Button>
-                                )}
-                            </For>
-                        </span>
+                    <span className={ styles.chats } role="group" aria-label="Chats">
+                        <For each={ worktree.chats }>
+                            {chat => (
+                                <Button key={ chat.id } variant="filling" color="secondary" size="xs" truncate className={ styles.chat } onPress={ () => onOpenChat(chat) }>
+                                    <span className={ styles.chatTitle }>{ chat.title }</span>
+                                    { chat.archived && <span className={ styles.archived }>Archived</span> }
+                                </Button>
+                            )}
+                        </For>
                     </span>
                 ) }
             </span>

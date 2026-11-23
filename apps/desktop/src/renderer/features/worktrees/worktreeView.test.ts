@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { branchWarning, changesLabel, discardLabel, lockTip, mergedMark, removalPlan, removeHint, removeNote, repositoryGroups } from './worktreeView';
+import { branchWarning, changesLabel, discardLabel, lockTip, mergedMark, removalPlan, removeHint, repositoryGroups } from './worktreeView';
 
 import type { FolderWorktrees, ProjectFolder } from '@clowdy/protocol';
 
@@ -44,30 +44,6 @@ describe('removeHint', () => {
 
     it('gives none for a worktree nothing stops', () => {
         expect(removeHint({})).toBeUndefined();
-    });
-});
-
-describe('removeNote', () => {
-    const chat = (id: string) => ({ id, title: id, archived: false });
-
-    it('says in a line why Remove is off, the lock with git\'s own words in brackets', () => {
-        expect(removeNote({ main: false, blocked: 'locked', locked: 'on an external drive', chats: [] })).toBe('Can\'t remove: git has it locked (on an external drive)');
-        expect(removeNote({ main: false, blocked: 'locked', locked: '', chats: [] })).toBe('Can\'t remove: git has it locked');
-        expect(removeNote({ main: false, blocked: 'main', chats: [] })).toBe('Can\'t remove: it is the repository\'s own working tree');
-    });
-
-    it('names the chats as the reason, in the singular for one and the plural for more', () => {
-        expect(removeNote({ main: false, blocked: 'chats', chats: [chat('c-1')] })).toBe('Can\'t remove while this chat works in it');
-        expect(removeNote({ main: false, blocked: 'chats', chats: [chat('c-1'), chat('c-2')] })).toBe('Can\'t remove while these chats work in it');
-    });
-
-    it('has none for a worktree nothing stops, and for the folder\'s own checkout, which has no Remove', () => {
-        expect(removeNote({ main: false, chats: [] })).toBeUndefined();
-        expect(removeNote({ main: true, blocked: 'main', chats: [] })).toBeUndefined();
-    });
-
-    it('ends no line with a period', () => {
-        for (const blocked of ['locked', 'main', 'chats'] as const) expect(removeNote({ main: false, blocked, locked: 'on a drive', chats: [chat('c-1')] })).not.toMatch(/\.$/);
     });
 });
 

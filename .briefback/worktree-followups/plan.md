@@ -290,5 +290,6 @@ Each stage runs in its own worktree (GITFLOW, Worktrees) and is merged into `nex
 
 - All nine stages are on `next` and pushed. The docs and the Info tests that were held back while the git chat had those files dirty came back in `58ccc66` and `efa8381` (merged as `297edfb`).
 - After the owner's first look at the real app a polish pass narrowed the dialog (540 wide), set the row title and description to the list size (`Text` without a `variant` inherits the page's 16 px), used `--opacity-inactive` for a missing row and put the reason a Remove is off in the row itself (`05a9dbf`, merged as `94f9cb1`).
+- The owner then took the reason line back out of the row (`removeNote`, the "Can't remove: ..." text): a Remove that is off says why on hover of the button (`removeHint`), and the line only repeated it.
 - **For the owner:** widen the Fork menu to answers without `canFork` (a grey Fork and the hand-off); the destructive button's autofocus in the shared `ConfirmModalContent` (Enter confirms a red Discard; the chat delete behaves the same); the dialog heading is `heading-3` (18 px), `heading-4` is the next step if it still reads big.
 - **Unverified:** the app was not run in a packaged Electron against a real daemon with these stages (the workers looked at the fixture in a browser and in the Electron screenshot script), nothing was run on Windows.
