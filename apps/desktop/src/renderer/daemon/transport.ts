@@ -4,6 +4,7 @@ import type {
     AgentModels,
     Attachment,
     ChatId,
+    ChatWorkspaceRemoval,
     ClowdyEvent,
     Command,
     CommandResult,
@@ -73,6 +74,12 @@ export interface Transport {
      * pushed: a folder's branches and worktrees change in a terminal or by an agent. `unavailable` for a folder gone from the disk.
      */
     getFolderGit: (projectId: ProjectId, folderId: FolderId) => Promise<FolderGit>;
+    /**
+     * Whether the chat's worktree may be removed together with the chat, which is what `chat.delete`'s `removeWorkspace` asks for: Clowdy made it, no other chat uses it, nothing in it
+     * is uncommitted and its work is merged into its base. Read when the delete dialog opens, never pushed: a tree changes in a terminal or by an agent, and the daemon checks again
+     * when the chat is deleted. `removable` is false for a chat with no worktree; rejects with a `TransportError` of status 404 for a chat the daemon does not have.
+     */
+    getChatWorkspaceRemoval: (chatId: ChatId) => Promise<ChatWorkspaceRemoval>;
     /** Follows the change feed after `cursor`. Returns what ends the subscription. */
     subscribe: (cursor: number, onEvent: (event: ClowdyEvent) => void, onStatus: (status: FeedStatus) => void) => () => void;
     /**

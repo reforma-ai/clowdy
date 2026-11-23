@@ -63,6 +63,28 @@ describe('HttpTransport.getFolderGit', () => {
     });
 });
 
+describe('HttpTransport.getChatWorkspaceRemoval', () => {
+    it('asks for one chat, its id escaped, and gives the daemon\'s answer', async () => {
+        const urls: string[] = [];
+        const fetchImpl = (async (input: RequestInfo | URL) => {
+            urls.push(String(input));
+
+            return new Response(JSON.stringify({ removable: true, path: '/w/ab12cd34/app', branch: 'clowdy/ab12cd34' }), { status: 200 });
+        }) as typeof fetch;
+        const transport = new HttpTransport({ url: 'http://127.0.0.1:4310', token: 't', fetch: fetchImpl });
+
+        expect(await transport.getChatWorkspaceRemoval('cht a/b')).toEqual({ removable: true, path: '/w/ab12cd34/app', branch: 'clowdy/ab12cd34' });
+        expect(urls).toEqual(['http://127.0.0.1:4310/v1/chats/cht%20a%2Fb/workspace']);
+    });
+
+    it('rejects with the status for a chat the daemon does not have', async () => {
+        const fetchImpl = (async () => new Response(JSON.stringify({ error: { code: 'not_found', message: 'Chat cht_x does not exist' } }), { status: 404 })) as unknown as typeof fetch;
+        const transport = new HttpTransport({ url: 'http://127.0.0.1:4310', token: 't', fetch: fetchImpl });
+
+        await expect(transport.getChatWorkspaceRemoval('cht_x')).rejects.toMatchObject({ status: 404 });
+    });
+});
+
 describe('FixtureTransport.getFolderGit', () => {
     it('answers the branches and worktrees of a repository, and that a folder git knows nothing of is none', async () => {
         const transport = new FixtureTransport();
