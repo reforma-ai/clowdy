@@ -159,8 +159,8 @@ export async function baseOf(folder: ProjectFolder): Promise<string | undefined>
     return pickBase(folder.settings?.baseBranch, branches, () => pickDefaultBranch(remoteHead, branches, head));
 }
 
-/** Whether something is there on the disk, a folder or a file. */
-async function isThere(path: string): Promise<boolean> {
+/** Whether something is there on the disk, a folder or a file. A path that cannot be looked at is not known to be there, and nothing is removed on a guess. */
+export async function isOnDisk(path: string): Promise<boolean> {
     try {
         await stat(path);
 
@@ -173,13 +173,17 @@ async function isThere(path: string): Promise<boolean> {
 
 /**
  * How many files of a worktree have uncommitted changes, a new file or a changed submodule too, whatever the person's git configuration says of untracked files and of
- * submodules (a renamed file is one). A `status` that fails, is cut short or does not answer in time counts as one: the answer is a reason to keep a tree, so it errs
- * toward "changed" and never says clean on a guess.
+ * submodules (a renamed file is one, and a new folder is one: `--untracked-files=normal`). Nothing when the `status` fails, is cut short or does not answer in time.
  */
-export async function changedFiles(path: string): Promise<number> {
+export async function countChanges(path: string): Promise<number | undefined> {
     const output = await gitOutput(path, ['-c', 'core.longpaths=true', 'status', '--porcelain', '--untracked-files=normal', '--ignore-submodules=none']);
 
-    return output === undefined ? 1 : output.split('\n').filter(line => line !== '').length;
+    return output?.split('\n').filter(line => line !== '').length;
+}
+
+/** `countChanges`, where a `status` git could not give counts as one: the answer is a reason to keep a tree, so it errs toward "changed" and never says clean on a guess. */
+export async function changedFiles(path: string): Promise<number> {
+    return await countChanges(path) ?? 1;
 }
 
 /** Whether a worktree has anything uncommitted (`changedFiles`). */
@@ -229,7 +233,7 @@ async function worktreesOf(folder: string, root: string, head: Awaited<ReturnTyp
     for (const entry of parseWorktrees(read.ok ? read.stdout : '')) {
         const place = entry.bare || entry.prunable ? undefined : await placeOf(entry.path);
 
-        if (place && await isThere(join(place, '.git'))) {
+        if (place && await isOnDisk(join(place, '.git'))) {
             worktrees.push({
                 // Git prints `C:/work/app` on Windows; the project's folders and the app's paths are written as the machine writes them.
                 path: resolve(entry.path),

@@ -1,11 +1,10 @@
 import { folderNames } from '@clowdy/protocol';
-import { stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
 import { getChat } from '../db/chats';
 import { chatsOfWorkspace, listWorkspacesOfProject } from '../db/workspaces';
 import { unavailable } from '../errors';
-import { baseOf, changedFiles, commitOf, hasCheckedOutSubmodules, isMerged, parseWorktrees, placeOf, repositoryRoot, shortHash } from '../git/state';
+import { baseOf, changedFiles, commitOf, hasCheckedOutSubmodules, isMerged, isOnDisk, parseWorktrees, placeOf, repositoryRoot, shortHash } from '../git/state';
 import { gitLine, gitRead } from './git';
 import { pathKey } from './workspaces';
 
@@ -36,9 +35,6 @@ export interface WorktreeOwner {
     record?: WorkspaceRecord;
     chats?: WorktreeChat[];
 }
-
-/** Whether something is there on the disk. */
-const isOnDisk = (path: string): Promise<boolean> => stat(path).then(() => true, () => false);
 
 /** A path as a key to compare it with another: its real place when it is there, else its name (a worktree whose folder is gone has no real place, and two such must not match). */
 async function keyOf(path: string): Promise<string> {

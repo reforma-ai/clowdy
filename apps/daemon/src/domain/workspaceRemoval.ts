@@ -1,11 +1,11 @@
-import { rmdir, stat } from 'node:fs/promises';
+import { rmdir } from 'node:fs/promises';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 
 import { getChat, listChatDescendants } from '../db/chats';
 import { getProject } from '../db/projects';
 import { chatsOfWorkspace, getWorkspace, updateWorkspace } from '../db/workspaces';
 import { conflict } from '../errors';
-import { commitOf, hasCheckedOutSubmodules, isMerged, parseWorktrees } from '../git/state';
+import { commitOf, countChanges, hasCheckedOutSubmodules, isMerged, isOnDisk, parseWorktrees } from '../git/state';
 import { requireChat, stoppedSubtree } from './chats';
 import { gitRead } from './git';
 import { exclusive, mustGit, pathKey, samePlace, WorkspaceError } from './workspaces';
@@ -43,9 +43,6 @@ interface Refused {
 type Verdict = Removable | Refused;
 
 const refused = (reason: string, record?: WorkspaceRecord): Refused => ({ removable: false, reason, ...(record && { record }) });
-
-/** Whether something is there at the path. A path that cannot be looked at is not known to be there, and a worktree is not removed on a guess. */
-const isOnDisk = (path: string): Promise<boolean> => stat(path).then(() => true, () => false);
 
 /**
  * Whether the chat's worktree may be removed together with the chat, and what in it says no. All of these hold, and each is checked against what is on the disk and in
@@ -115,13 +112,13 @@ async function checkRemoval(store: Store, chat: Chat): Promise<Verdict> {
         return refused(`The branch ${ record.branch } is checked out in another worktree`, record);
     }
 
-    const status = await gitRead(record.path, ['-c', 'core.longpaths=true', 'status', '--porcelain', '--untracked-files=normal', '--ignore-submodules=none']);
+    const changes = await countChanges(record.path);
 
-    if (!status.ok) {
+    if (changes === undefined) {
         return refused('Git did not say what is changed in the worktree', record);
     }
 
-    if (status.stdout !== '') {
+    if (changes > 0) {
         return refused('The worktree has changes that are not committed', record);
     }
 
