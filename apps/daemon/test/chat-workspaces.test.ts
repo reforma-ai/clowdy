@@ -612,6 +612,36 @@ describe('Prepare workspace', () => {
         expect(chatOf(chat.id).workspace?.ready).toBe(true);
     });
 
+    test('sets a worktree up again when it is made again, being a new tree without its ignored files, and retries a setup that failed then', async () => {
+        const { engine, repo, make, send, chatOf, configure } = await setup();
+
+        writeFileSync(join(repo, '.env'), 'TOKEN=1\n');
+        configure({ setup: { files: ['.env'], command: 'test -f .env' } });
+
+        const chat = make({ mode: 'new' });
+        const { path } = chat.workspace!;
+
+        await send(chat, 'Start');
+        expect(readFileSync(join(path, '.env'), 'utf8')).toBe('TOKEN=1\n');
+
+        // The tree goes by hand, with its `.env`; the next turn makes it again and copies the file again.
+        rmSync(path, { recursive: true });
+        await send(chat, 'Come back');
+        expect(readFileSync(join(path, '.env'), 'utf8')).toBe('TOKEN=1\n');
+        expect(chatOf(chat.id).workspace?.ready).toBe(true);
+        expect(engine.turns.map(turn => turn.cwd)).toEqual([path, path]);
+
+        // And a setup that fails on a tree made again is not forgotten: the worktree is not ready, so the turn after runs it again.
+        rmSync(path, { recursive: true });
+        configure({ setup: { files: ['.env'], command: 'test -f never-there' } });
+        await send(chat, 'Again', 'failed');
+
+        expect(chatOf(chat.id).workspace?.ready).toBe(false);
+        configure({ setup: { files: ['.env'], command: 'test -f .env' } });
+        await send(chat, 'Once more');
+        expect(chatOf(chat.id).workspace?.ready).toBe(true);
+    });
+
     test('never makes again a worktree it found: a turn on one that is gone fails saying so, and nothing is made', async () => {
         const { engine, repo, root, make, send, stepOf } = await setup();
         const tree = join(root, 'feature-tree');

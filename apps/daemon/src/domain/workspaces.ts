@@ -685,9 +685,9 @@ async function exclusive<T>(store: Store, key: string, signal: AbortSignal | und
 }
 
 /** Marks the worktree set up and publishes every chat that works in it, which now say so. */
-function markReady(store: Store, workspaceId: string): void {
+function markReady(store: Store, workspaceId: string, ready = true): void {
     store.tx(() => {
-        updateWorkspace(store.db, workspaceId, { ready: true });
+        updateWorkspace(store.db, workspaceId, { ready });
 
         for (const chatId of chatsOfWorkspace(store.db, workspaceId)) {
             const chat = getChat(store.db, chatId);
@@ -742,11 +742,19 @@ export async function prepareWorkspace(store: Store, workspaceId: string, option
                 throw new WorkspaceError(`The folder ${ folder.path } no longer exists`);
             }
 
-            await ensureWorktree({ folder: folder.path, path: record.path, branch: record.branch, base: record.base, managed: record.managed, log: line => item.log(line), signal: options.signal });
+            const made = await ensureWorktree({ folder: folder.path, path: record.path, branch: record.branch, base: record.base, managed: record.managed, log: line => item.log(line), signal: options.signal });
 
             // The folder's setup, for a worktree Clowdy made that is not set up yet: a step that failed here comes back with the worktree there and `ready` still false, so
-            // only this part runs again (a copy never overwrites). A worktree that is ready is never set up again, and one that was found never is.
-            if (record.managed && !record.ready && folder.settings?.setup) {
+            // only this part runs again (a copy never overwrites). A worktree that is ready and still there is never set up again, and one that was found never is. One that was
+            // made again (it went from the disk, with its ignored files: `.env`, the dependencies) is a new tree and is set up again; it stops being ready first, so a setup
+            // that fails is run again by the next turn and not forgotten.
+            const again = record.ready && made === 'made';
+
+            if (record.managed && folder.settings?.setup && (!record.ready || again)) {
+                if (again) {
+                    markReady(store, record.id, false);
+                }
+
                 await runSetup({ root: folder.path, workspace: record.path, branch: record.branch, setup: folder.settings.setup, log: line => item.log(line), signal: options.signal, timeoutMs: options.setupTimeoutMs });
             }
 

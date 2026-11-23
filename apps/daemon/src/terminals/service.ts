@@ -2,6 +2,7 @@ import { isTerminalSize, MAX_TERMINALS } from '@clowdy/protocol';
 import { realpathSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { ownsPlace } from '../domain/places';
 import { CommandError, conflict, errorMessage, invalid, notFound, unavailable } from '../errors';
 import { isInside, normalizeFsPath, outside } from '../fs/paths';
 import { newId } from '../ids';
@@ -10,6 +11,7 @@ import { TerminalSession } from './session';
 import { resolveShell, terminalEnvironment } from './shell';
 
 import type { Project, TerminalCreate, TerminalInfo } from '@clowdy/protocol';
+import type { Place } from '../domain/places';
 import type { SpawnPty } from './pty';
 import type { Shell } from './shell';
 
@@ -43,7 +45,12 @@ export class TerminalService {
         this.#sweeper.unref?.();
     }
 
-    create(project: Project, request: TerminalCreate): TerminalInfo {
+    /**
+     * Starts a shell in the folder, or below it at `request.path`. With a `place` (`resolvePlace`'s answer for the request's folder and workspace) that is a worktree, the
+     * shell starts in the worktree and the terminal says so (`workspaceId`), in place of the folder's own checkout: a project's terminals are told apart by folder and
+     * workspace. The place is the caller's to have judged, as the folder lookup is here for a request without one.
+     */
+    create(project: Project, request: TerminalCreate, place?: Place): TerminalInfo {
         if (!isTerminalSize(request.cols, request.rows)) {
             throw invalid('The size of the terminal is not one a terminal can have');
         }
@@ -54,7 +61,16 @@ export class TerminalService {
             throw conflict(`This machine already runs ${ limit } terminals`, { reason: 'limit' });
         }
 
-        const folder = project.folders.find(candidate => candidate.id === request.folderId);
+        // A worktree asked for and not judged would start the shell in the folder's own checkout under the worktree's name.
+        if (request.workspaceId && place?.workspace?.id !== request.workspaceId) {
+            throw invalid('The worktree of the terminal was not resolved');
+        }
+
+        if (place && (!ownsPlace(project, place) || place.folder.id !== request.folderId)) {
+            throw notFound('Folder', request.folderId);
+        }
+
+        const folder = place?.folder ?? project.folders.find(candidate => candidate.id === request.folderId);
 
         if (!folder) {
             throw notFound('Folder', request.folderId);
@@ -63,7 +79,8 @@ export class TerminalService {
         const session = new TerminalSession(newId('trm'), {
             projectId: project.id,
             folderId: folder.id,
-            cwd: directoryIn(folder.path, request.path),
+            ...(place?.workspace && { workspaceId: place.workspace.id }),
+            cwd: directoryIn(place?.path ?? folder.path, request.path, place?.workspace ? 'worktree' : 'folder'),
             shell: (this.#options.shell ?? resolveShell)(),
             env: terminalEnvironment(this.#options.env?.() ?? process.env),
             cols: request.cols,
@@ -134,15 +151,15 @@ export class TerminalService {
     }
 }
 
-/** The real path of the project folder, or of a folder below it, which must be a folder that is there and that no link leads out of. */
-function directoryIn(root: string, path = ''): string {
+/** The real path of the project folder (or of its worktree, `what` saying which), or of a folder below it, which must be a folder that is there and that no link leads out of. */
+function directoryIn(root: string, path = '', what: 'folder' | 'worktree' = 'folder'): string {
     let base: string;
 
     try {
         base = realpathSync(root);
     }
     catch {
-        throw unavailable(`The folder ${ root } is missing`);
+        throw unavailable(`The ${ what } ${ root } is missing`);
     }
 
     const wanted = join(base, normalizeFsPath(path));

@@ -2,7 +2,7 @@ import { isTerminalSize, TERMINAL_SCROLLBACK } from '@clowdy/protocol';
 import { SerializeAddon } from '@xterm/addon-serialize';
 import { Terminal } from '@xterm/headless';
 
-import type { FolderId, ProjectId, TerminalInfo, TerminalServerMessage, TerminalState } from '@clowdy/protocol';
+import type { FolderId, ProjectId, TerminalInfo, TerminalServerMessage, TerminalState, WorkspaceId } from '@clowdy/protocol';
 import type { Pty, SpawnPty } from './pty';
 import type { Shell } from './shell';
 
@@ -15,6 +15,8 @@ const MOUSE_ENCODINGS = new Set([1005, 1006, 1015, 1016]);
 export interface TerminalSpec {
     projectId: ProjectId;
     folderId: FolderId;
+    /** The worktree of the folder the shell runs in, in place of the folder's own checkout. */
+    workspaceId?: WorkspaceId;
     cwd: string;
     shell: Shell;
     env: Record<string, string>;
@@ -112,9 +114,9 @@ export class TerminalSession {
     }
 
     info(): TerminalInfo {
-        const { projectId, folderId, cwd, shell } = this.spec;
+        const { projectId, folderId, workspaceId, cwd, shell } = this.spec;
 
-        return { id: this.id, projectId, folderId, cwd, shell: shell.name, cols: this.#cols, rows: this.#rows, state: this.#state, exitCode: this.#exitCode, createdAt: this.createdAt };
+        return { id: this.id, projectId, folderId, ...(workspaceId !== undefined && { workspaceId }), cwd, shell: shell.name, cols: this.#cols, rows: this.#rows, state: this.#state, exitCode: this.#exitCode, createdAt: this.createdAt };
     }
 
     /** Starts the shell. Throws when the program cannot be started; nothing of the session is left running then. */
