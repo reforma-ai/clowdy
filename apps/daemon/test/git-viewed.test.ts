@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { MAX_GIT_REVISION_LENGTH, MAX_GIT_VIEWED_MARKS, MAX_GIT_VIEWED_PATH_LENGTH } from '@clowdy/protocol';
+import { MAX_GIT_REVISION_LENGTH, MAX_GIT_VIEWED_MARKS, MAX_GIT_VIEWED_PATH_LENGTH, turnScope } from '@clowdy/protocol';
 
 import { openDatabase } from '../src/db/connection';
 import {
@@ -13,6 +13,7 @@ import {
     listViewed,
     setViewed,
 } from '../src/db/viewed';
+import { snapshotTree } from '../src/git/snapshot';
 import { checkRevision, viewedScopeKey } from '../src/git/viewed';
 import { cleanTempDirs, git, makeRepo, startHarness, tempDir } from './helpers';
 
@@ -288,6 +289,39 @@ describe('over HTTP', () => {
         expect(await json<GitViewedMark[]>(await h.fetch(`${route}/viewed?folderId=${folderId}`))).toEqual(
             await marks('all')
         );
+    });
+
+    test('holds a mark in the scope of a run for good: its key is the scope itself, its files never change, and another run has its own', async () => {
+        const { work: repo } = work();
+        const { fileOf, marks, mark, rows, viewed, clear } = open(repo);
+        const first = await snapshotTree(repo);
+
+        put(repo, { 'lib.ts': lines('a', 'edited by the first run', 'c') });
+
+        const second = await snapshotTree(repo);
+
+        put(repo, { 'lib.ts': lines('a', 'edited by the second run', 'c') });
+
+        const third = await snapshotTree(repo);
+        const run = turnScope(first as string, second as string);
+        const other = turnScope(second as string, third as string);
+        const lib = await fileOf(run, 'lib.ts');
+
+        expect((await mark(run, 'lib.ts', lib.revision)).status).toBe(200);
+        expect(rows()).toEqual([{ workspace_id: '', scope_key: run, path: 'lib.ts', revision: lib.revision }]);
+        expect(viewed(lib, await marks(run))).toBe(true);
+        // Another run has its own list and its own marks, and the same file there is not viewed.
+        expect(await marks(other)).toEqual([]);
+        expect(viewed(await fileOf(other, 'lib.ts'), await marks(other))).toBe(false);
+
+        // The file is edited, committed and edited again: the run's list, and so the mark, is what it was.
+        git(repo, 'add', '-A');
+        git(repo, 'commit', '-q', '-m', 'Later work');
+        put(repo, { 'lib.ts': lines('later') });
+        expect(viewed(await fileOf(run, 'lib.ts'), await marks(run))).toBe(true);
+
+        expect((await clear(run, 'lib.ts')).status).toBe(200);
+        expect(await marks(run)).toEqual([]);
     });
 
     test("keeps a place's marks apart from another worktree's, another folder's and the checkout's of the same folder", async () => {
@@ -655,6 +689,12 @@ describe('the scope key', () => {
         );
         expect(await viewedScopeKey(placeAt(repo), 'all', { base: 'dev' })).toBe('all:origin/dev');
         expect(await viewedScopeKey(placeAt(repo, 'dev'), 'all')).toBe('all:origin/dev');
+
+        // A run's scope is its own key, whatever the base is, with no git read of the trees: a place that has not got them still has a name for the marks.
+        const run = turnScope('a'.repeat(40), 'b'.repeat(40));
+
+        expect(await viewedScopeKey(placeAt(repo), run)).toBe(run);
+        expect(await viewedScopeKey(placeAt(repo, 'dev'), run, { base: 'dev' })).toBe(run);
 
         // The local `main` has a commit `origin/main` has not: the compare takes it, as the changes read does.
         git(repo, 'branch', '-q', '-f', 'main', 'HEAD');

@@ -8,6 +8,7 @@ import {
     mainFolder,
     PROTOCOL_VERSION,
     STOPPED_TOOL,
+    turnScopeTrees,
     writesCommitMessages,
 } from '@clowdy/protocol';
 
@@ -472,6 +473,10 @@ export class FixtureTransport implements Transport {
             dirtyCheckout && found?.isRepository
                 ? { ...found, scope, ...(scope === 'all' && { baseState: 'ready' as const }) }
                 : found;
+
+        // A run whose trees git has pruned is `unavailable`, a commit the repository does not have is `not_found`.
+        if (!changes && turnScopeTrees(scope))
+            throw new TransportError('The changes of that run are no longer in the repository', 503);
 
         if (!changes) throw new TransportError(`Commit ${scope.slice('commit:'.length)} does not exist`, 404);
 

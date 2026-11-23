@@ -1,12 +1,19 @@
+import { turnScope } from '@clowdy/protocol';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
     createFixtureData,
     FIXTURE_EMPTY_PROJECT_ID,
     FIXTURE_GIT_COMMITS,
+    FIXTURE_LAST_RUN_CHAT_ID,
     FIXTURE_PERSONAL_PROJECT_ID,
     FIXTURE_PROJECT_ID,
+    FIXTURE_QUIET_CHAT_ID,
+    FIXTURE_RUN_FILES,
+    FIXTURE_RUN_SCOPE,
+    FIXTURE_RUN_TREES,
     FIXTURE_WORKTREE_PATH,
+    withFixtureLastRun,
     withFixtureWorkspace,
     withFixtureWorktrees,
 } from './fixtureData';
@@ -126,6 +133,39 @@ describe('HttpTransport git reads', () => {
             'http://127.0.0.1:4310/v1/projects/prj_a/git/changes?folderId=fld_b&workspaceId=wks_c&scope=branch',
             'http://127.0.0.1:4310/v1/projects/prj_a/git/changes?folderId=fld_b&scope=commit%3Aabc1234',
         ]);
+    });
+
+    it("asks for the changes of what a run did by the two trees of its scope, which are no part of the daemon's own words for a scope and go through as they are", async () => {
+        const scope = turnScope('a'.repeat(40), 'b'.repeat(40));
+        const { urls, transport } = transportFor({
+            isRepository: true,
+            scope,
+            files: [],
+            fileCount: 0,
+            additions: 0,
+            deletions: 0,
+            statsComplete: true,
+        });
+
+        expect(
+            await transport.getGitChanges('prj_a', { folderId: 'fld_b', workspaceId: 'wks_c' }, scope)
+        ).toMatchObject({ scope, fileCount: 0 });
+        await transport.getGitFile('prj_a', { folderId: 'fld_b' }, scope, 'src/a.ts');
+        expect(urls).toEqual([
+            `http://127.0.0.1:4310/v1/projects/prj_a/git/changes?folderId=fld_b&workspaceId=wks_c&scope=turn%3A${'a'.repeat(40)}%3A${'b'.repeat(40)}`,
+            `http://127.0.0.1:4310/v1/projects/prj_a/git/file?folderId=fld_b&scope=turn%3A${'a'.repeat(40)}%3A${'b'.repeat(40)}&path=src%2Fa.ts`,
+        ]);
+    });
+
+    it("says a run whose trees git has pruned is unavailable, with the daemon's status", async () => {
+        const { transport } = transportFor(
+            { error: { code: 'unavailable', message: 'The changes of that run are no longer in the repository' } },
+            503
+        );
+
+        await expect(
+            transport.getGitChanges('prj_a', { folderId: 'fld_b' }, turnScope('a'.repeat(40), 'b'.repeat(40)))
+        ).rejects.toMatchObject({ status: 503 });
     });
 
     it('asks for the two sides of a file by its path, and by its old path when it was renamed', async () => {
@@ -833,6 +873,56 @@ describe('FixtureTransport git reads', () => {
         await expect(
             transport.getGitFile(FIXTURE_PERSONAL_PROJECT_ID, { folderId: personal.id }, 'all', 'a.ts')
         ).rejects.toMatchObject({ status: 400 });
+    });
+
+    it("lists what a run changed by its trees, with no start of its own and no base state, and its files' texts, and says the trees of any other run are pruned", async () => {
+        const transport = new FixtureTransport({ data: withFixtureLastRun(withFixtureWorkspace(createFixtureData())) });
+        const answer = await transport.getGitChanges(FIXTURE_PROJECT_ID, inWorktree, FIXTURE_RUN_SCOPE);
+
+        expect(answer).toMatchObject({
+            isRepository: true,
+            scope: FIXTURE_RUN_SCOPE,
+            fileCount: 7,
+            additions: 178,
+            deletions: 29,
+            statsComplete: true,
+        });
+        expect(answer).not.toHaveProperty('from');
+        expect(answer).not.toHaveProperty('baseState');
+        expect((answer as { files: Array<{ path: string }> }).files.map(file => file.path)).toEqual(
+            FIXTURE_RUN_FILES.map(file => file.path)
+        );
+        expect(
+            await transport.getGitFile(FIXTURE_PROJECT_ID, inWorktree, FIXTURE_RUN_SCOPE, 'src/booking/price.ts')
+        ).toMatchObject({
+            state: 'text',
+            original: expect.stringContaining('days * rate'),
+            modified: expect.stringContaining('weekend'),
+        });
+        await expect(
+            transport.getGitFile(FIXTURE_PROJECT_ID, inWorktree, FIXTURE_RUN_SCOPE, 'README.md')
+        ).rejects.toMatchObject({ status: 404 });
+        await expect(
+            transport.getGitChanges(FIXTURE_PROJECT_ID, inWorktree, turnScope('c'.repeat(40), 'd'.repeat(40)))
+        ).rejects.toMatchObject({ status: 503 });
+        // The folder's own checkout has no run's trees either.
+        await expect(transport.getGitChanges(FIXTURE_PROJECT_ID, place, FIXTURE_RUN_SCOPE)).rejects.toMatchObject({
+            status: 503,
+        });
+    });
+
+    it('has two chats that finished a turn in the worktree: one whose run changed seven files, and one whose run changed nothing', async () => {
+        const data = withFixtureLastRun(withFixtureWorkspace(createFixtureData()));
+        const chat = (id: string) => data.chats.find(candidate => candidate.id === id)!;
+
+        expect(chat(FIXTURE_LAST_RUN_CHAT_ID).lastRun).toMatchObject({ ...FIXTURE_RUN_TREES, seq: 2 });
+        expect(chat(FIXTURE_QUIET_CHAT_ID)).not.toHaveProperty('lastRun');
+        expect(chat(FIXTURE_LAST_RUN_CHAT_ID).workspace).toEqual(chat(FIXTURE_QUIET_CHAT_ID).workspace);
+        expect(
+            data.runs
+                .filter(run => run.chatId === FIXTURE_LAST_RUN_CHAT_ID || run.chatId === FIXTURE_QUIET_CHAT_ID)
+                .map(run => run.status)
+        ).toEqual(['succeeded', 'succeeded']);
     });
 
     it('says a worktree that is not made yet is unavailable, as the daemon does', async () => {

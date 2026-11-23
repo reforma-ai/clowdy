@@ -1,6 +1,6 @@
 import { isTerminalRunStatus } from '@clowdy/protocol';
 
-import { deleteChatAndRuns, getChat, listChatDescendants, runsOfChat, upsertChat } from '../db/chats';
+import { deleteChatAndRuns, getChat, getChatLastRun, listChatDescendants, runsOfChat, upsertChat } from '../db/chats';
 import { getRun } from '../db/runs';
 import { chatsOfWorkspace, deleteWorkspace, getWorkspace, toChatWorkspace } from '../db/workspaces';
 import { conflict, invalid, notFound } from '../errors';
@@ -44,11 +44,16 @@ export function requireChat(store: Store, chatId: string): Chat {
 
 /**
  * Writes the chat and publishes it. A chat that works in a worktree is published with the worktree as it is now: the copy the caller holds may be older than
- * the turn that made the worktree ready.
+ * the turn that made the worktree ready. It is published with the latest turn's changes as the daemon holds them (`Chat.lastRun`, which no save writes), for the same reason.
  */
 export function saveChat(store: Store, chat: Chat): Chat {
     const record = chat.workspace && getWorkspace(store.db, chat.workspace.id);
-    const saved: Chat = record ? { ...chat, workspace: toChatWorkspace(record) } : chat;
+    const { lastRun: _held, ...rest } = chat;
+    const lastRun = getChatLastRun(store.db, chat.id);
+    const saved: Chat = {
+        ...(record ? { ...rest, workspace: toChatWorkspace(record) } : rest),
+        ...(lastRun && { lastRun }),
+    };
 
     upsertChat(store.db, saved);
     store.emit(saved.projectId, { type: 'chat.upserted', chat: saved });

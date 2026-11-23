@@ -5,6 +5,7 @@ import {
     MAX_GIT_CHANGED_FILES,
     MAX_GIT_DIFF_LINES,
     MAX_GIT_SIDE_BYTES,
+    turnScopeTrees,
 } from '@clowdy/protocol';
 
 import { gitLine, gitRead, gitRecords } from '../domain/git';
@@ -138,6 +139,8 @@ interface Plan {
     empty?: true;
     /** `all` and `branch`: how the base stood. */
     baseState?: GitBaseState;
+    /** `from` and `to` are trees (a run's scope), which no commit lookup and no client's `from` applies to. */
+    trees?: true;
 }
 
 /** The tree git has no object for and every repository can name: what a root commit and an unborn branch are counted from. Its id depends on the repository's hash. */
@@ -147,6 +150,29 @@ async function emptyTree(cwd: string): Promise<string> {
     if (!read.ok) throw unavailable('git did not answer');
 
     return read.stdout.trim();
+}
+
+/**
+ * What a run's scope is counted between: the two trees it names (`turn:<start>:<end>`), nothing else. Both have to be in the repository: a tree that git has pruned (nothing refers to
+ * the objects a snapshot writes, so `git gc` removes them after its grace period) is `unavailable`, which the app reads as "that run's changes are gone", and an id that is an object of
+ * another kind is `invalid`.
+ */
+async function turnPlanOf(cwd: string, startTree: string, endTree: string): Promise<Plan> {
+    const read = await gitRead(cwd, ['cat-file', '--batch-check'], { input: `${startTree}\n${endTree}\n` });
+
+    if (!read.ok) throw unavailable('git did not answer');
+
+    const kinds = read.stdout
+        .split('\n')
+        .filter(line => line !== '')
+        .map(line => line.split(' ')[1]);
+
+    if (kinds.length !== 2 || kinds.includes('missing'))
+        throw unavailable('The changes of that run are no longer in the repository');
+
+    if (kinds.some(kind => kind !== 'tree')) throw invalid('The scope names something that is not a tree');
+
+    return { from: startTree, to: endTree, untracked: false, trees: true };
 }
 
 /** What a read of one file may be told besides the base: the commit its list counted from. */
@@ -200,6 +226,10 @@ async function pinnedPlanOf(place: Place, scope: GitScope, from: string): Promis
  */
 async function planOf(place: Place, scope: GitScope, options: FileOptions): Promise<Plan> {
     const cwd = place.path;
+    const trees = turnScopeTrees(scope);
+
+    // A run's scope is its two trees and nothing the list or the base says: a `from` that a card sends is not looked at.
+    if (trees) return turnPlanOf(cwd, trees.startTree, trees.endTree);
 
     if (options.from !== undefined) return pinnedPlanOf(place, scope, options.from);
 
@@ -613,7 +643,7 @@ export async function placeChanges(place: Place, scope: GitScope, options: BaseO
     return {
         isRepository: true,
         scope,
-        ...(plan.from && { from: plan.from }),
+        ...(plan.from && !plan.trees && { from: plan.from }),
         ...(plan.baseState && { baseState: plan.baseState }),
         files,
         fileCount: entries.length,
