@@ -1,17 +1,22 @@
 import { FileSystemError } from '@clowdy/file-manager/provider';
 
 import { createFixtureData, withFixtureWorkspace } from './fixtureData';
+import { FIXTURE_REMOTE_SCRIPTS } from './fixtureGitRemote';
 import { FixtureTransport } from './fixtureTransport';
 import { HttpTransport } from './httpTransport';
 import { TransportError, type ProjectFileSystem, type Transport } from './transport';
 
+import type { FixturePullRequestScript } from './fixtureData';
+import type { FixtureRemoteScript } from './fixtureGitRemote';
 import type { FixtureCommitScript, FixtureMessageScript } from './fixtureGitWrites';
-
 
 export type DaemonConfig =
     | { kind: 'daemon'; url: string; token: string }
-    | { kind: 'fixtures'; timeline: boolean; worktree?: true; commit?: FixtureCommitScript; message?: FixtureMessageScript }
+    | { kind: 'fixtures'; timeline: boolean; worktree?: true; commit?: FixtureCommitScript; message?: FixtureMessageScript; remote?: FixtureRemoteScript; pr?: FixturePullRequestScript }
     | { kind: 'none' };
+
+/** The words the page's `&pr=` switch knows: what `GET git/pull-request` says of the fixture's worktree. */
+const PULL_REQUEST_SCRIPTS = ['none', 'open', 'draft', 'merged', 'closed', 'no_gh', 'not_signed_in', 'no_remote', 'unavailable'] as const satisfies readonly FixturePullRequestScript[];
 
 /** The value of a switch of the page's address when it is one of the words the switch knows. */
 const oneOf = <T extends string>(value: string | null, words: readonly T[]): T | undefined => words.find(word => word === value);
@@ -22,7 +27,8 @@ const oneOf = <T extends string>(value: string | null, words: readonly T[]): T |
  * 2. `?daemon=<url>&token=<token>` in the page URL;
  * 3. `?fixtures`, scripted data in memory (`?fixtures=static` leaves out the timed events, `&worktree` adds the chat that works in a dirty worktree, `?chat=c-9`, whose changes
  *    the side panel's Changes tab shows; `&commit=signing|hook|slow` and `&message=failed|slow` say how a commit and a request for its message end there, which the screenshots of the commit
- *    box use);
+ *    box use; `&remote=slow|behind|diverged|rejected|signing|offline` says how a fetch, a pull and a push end and where the branch stands against its upstream, and `&pr=none|open|draft|merged|closed|no_gh|
+ *    not_signed_in|no_remote|unavailable` what GitHub says of the worktree's branch (`open` by default, `none` is the one that offers Create PR));
  * 4. nothing: the UI shows that it cannot reach a daemon.
  */
 export function resolveDaemonConfig(search: string, bridge?: { url: string; token: string }): DaemonConfig {
@@ -36,8 +42,10 @@ export function resolveDaemonConfig(search: string, bridge?: { url: string; toke
     if (params.has('fixtures')) {
         const commit = oneOf(params.get('commit'), ['signing', 'hook', 'slow'] as const);
         const message = oneOf(params.get('message'), ['failed', 'slow'] as const);
+        const remote = oneOf(params.get('remote'), FIXTURE_REMOTE_SCRIPTS);
+        const pr = oneOf(params.get('pr'), PULL_REQUEST_SCRIPTS);
 
-        return { kind: 'fixtures', timeline: params.get('fixtures') !== 'static', ...(params.has('worktree') && { worktree: true as const }), ...(commit && { commit }), ...(message && { message }) };
+        return { kind: 'fixtures', timeline: params.get('fixtures') !== 'static', ...(params.has('worktree') && { worktree: true as const }), ...(commit && { commit }), ...(message && { message }), ...(remote && { remote }), ...(pr && { pr }) };
     }
 
     return { kind: 'none' };
@@ -66,6 +74,9 @@ const unconfigured: Transport = {
     clearGitViewed: noDaemon,
     commitGit: noDaemon,
     generateGitMessage: noDaemon,
+    fetchGit: noDaemon,
+    pullGit: noDaemon,
+    pushGit: noDaemon,
     getProjectWorktrees: noDaemon,
     getGitPullRequest: noDaemon,
     getChatWorkspaceRemoval: noDaemon,
@@ -99,7 +110,13 @@ const unconfigured: Transport = {
 export function createTransport(config: DaemonConfig): Transport {
     if (config.kind === 'daemon') return new HttpTransport(config);
 
-    return config.kind === 'fixtures'
-        ? new FixtureTransport({ timeline: config.timeline, gitWrites: { commit: config.commit, message: config.message }, ...(config.worktree && { data: withFixtureWorkspace(createFixtureData()) }) })
-        : unconfigured;
+    if (config.kind !== 'fixtures') return unconfigured;
+
+    const { timeline, commit, message, remote, pr } = config;
+    const data = config.worktree ? withFixtureWorkspace(createFixtureData()) : createFixtureData();
+
+    // What GitHub says of the worktree's branch, for the states of Create PR to be looked at.
+    if (pr) for (const scripts of Object.values(data.pullRequests)) scripts.worktree = pr;
+
+    return new FixtureTransport({ timeline, data, gitWrites: { commit, message, remote } });
 }

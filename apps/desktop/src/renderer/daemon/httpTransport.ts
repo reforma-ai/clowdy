@@ -23,6 +23,8 @@ import type {
     GitFileSides,
     GitMessage,
     GitPullRequestInfo,
+    GitRemoteRequest,
+    GitRemoteResult,
     GitScope,
     GitStatus,
     GitViewedMark,
@@ -174,6 +176,18 @@ export class HttpTransport implements Transport {
 
     generateGitMessage(projectId: ProjectId, place: PlaceRef, paths: string[]): Promise<GitMessage> {
         return this.#write(ROUTES.projectGitMessage(projectId), { ...place, paths });
+    }
+
+    fetchGit(projectId: ProjectId, place: PlaceRef): Promise<GitRemoteResult> {
+        return this.#write(ROUTES.projectGitRemote(projectId, 'fetch'), { ...place } satisfies GitRemoteRequest);
+    }
+
+    pullGit(projectId: ProjectId, place: PlaceRef): Promise<GitRemoteResult> {
+        return this.#write(ROUTES.projectGitRemote(projectId, 'pull'), { ...place } satisfies GitRemoteRequest);
+    }
+
+    pushGit(projectId: ProjectId, place: PlaceRef): Promise<GitRemoteResult> {
+        return this.#write(ROUTES.projectGitRemote(projectId, 'push'), { ...place } satisfies GitRemoteRequest);
     }
 
     getProjectWorktrees(projectId: ProjectId): Promise<FolderWorktrees[]> {
@@ -364,7 +378,7 @@ export class HttpTransport implements Transport {
         return await response.json() as T;
     }
 
-    /** A write the daemon makes for a person (a commit) or a run it makes for one (a message), as JSON. Sent once, never retried: the daemon's reason is the error. */
+    /** A write the daemon makes for a person (a commit, a fetch, a pull, a push) or a run it makes for one (a message), as JSON. Sent once, never retried: the daemon's reason is the error. */
     async #write<T>(route: string, body: unknown): Promise<T> {
         const response = await this.#fetch(this.#base + route, { method: 'POST', headers: { ...this.#headers, 'content-type': 'application/json' }, body: JSON.stringify(body) });
 
