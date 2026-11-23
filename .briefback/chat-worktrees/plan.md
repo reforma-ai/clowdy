@@ -85,16 +85,16 @@
 
 **This stage:** a chat gets a workspace and its turns run there. `chat.create` takes the choice (a new worktree from a base, or an existing worktree), the daemon records the workspace row and points the chat at it, and the chat's first turn makes the worktree as the `Prepare workspace` item before the agent's session opens. Threads and forks share their parent's workspace. This is the decision-heavy stage: the layout of `workspacesDir`, the branch name, that a missing Clowdy-made worktree is made again, and what the agent is told.
 
-- [ ] Complete
-  - [ ] Protocol: `ChatWorkspace { id, path, branch?, managed, ready }`, `Chat.workspace?`, `chat.create.workspace?: { mode: 'new', base?: string } | { mode: 'existing', path: string }`, a `wks` id prefix
-  - [ ] Migration 24: `workspaces` (id, project_id, folder_id, path, branch, base, managed, created_at) and `chats.workspace_id`, with no foreign keys (a project update rewrites the folder rows); `toChat` embeds the workspace, so it is published with the chat
-  - [ ] `workspacesDir` in the config; `domain/workspaces.ts` makes the row and the path `<workspacesDir>/<project-slug>/<chat-id8>/<folder-name>` and the branch `clowdy/<chat-id8>`
-  - [ ] A base is resolved as `refs/heads/<name>`, then `refs/remotes/<name>`, never as a bare name (a tag called `main` would make it ambiguous), and a detached HEAD's short hash is taken as a commit; `worktree add` is given the resolved commit
-  - [ ] `chat.create` with a workspace: `invalid` for a folder that is not a repository, a base that is not a ref of it, an existing path that `git worktree list` of the folder does not name, and for a workspace with `chat.folderId` of another folder
-  - [ ] The first turn (and any later turn while the Clowdy-made worktree is missing) runs `Prepare workspace`: a `tool` item of the orchestrator run (`name: 'workspace'`) with the git lines as its output as they arrive, `fetch` of a remote base (a failure with the ref fetched before is a log line, not an error), `git worktree add` (`-b` from the base, or the existing branch as it is), `ready` set and published; a failure ends the turn with the reason and leaves the next message to try again
-  - [ ] `workingFolder` returns the workspace path; `additionalFolders` leaves out the chat's own folder when it works in a workspace; the system prompt names the worktree, its branch and the main checkout
-  - [ ] A thread takes its parent's workspace (`threads.ts`), a fork its source's (`fork.ts`); the same row, not a copy
-  - [ ] Daemon tests with the fake engine reporting its `cwd`, on real repositories, among them: a second turn and a second chat on a worktree with uncommitted and committed work leave every file and the branch as they were, a path that exists but is no worktree and a branch checked out elsewhere are refused with nothing changed
+- [x] Complete
+  - [x] Protocol: `ChatWorkspace { id, path, branch?, managed, ready }`, `Chat.workspace?`, `chat.create.workspace?: { mode: 'new', base?: string } | { mode: 'existing', path: string }`, a `wks` id prefix
+  - [x] Migration 24: `workspaces` (id, project_id, folder_id, path, branch, base, managed, created_at) and `chats.workspace_id`, with no foreign keys (a project update rewrites the folder rows); `toChat` embeds the workspace, so it is published with the chat
+  - [x] `workspacesDir` in the config; `domain/workspaces.ts` makes the row and the path `<workspacesDir>/<project-slug>/<chat-id8>/<folder-name>` and the branch `clowdy/<chat-id8>`
+  - [x] A base is resolved as `refs/heads/<name>`, then `refs/remotes/<name>`, never as a bare name (a tag called `main` would make it ambiguous), and a detached HEAD's short hash is taken as a commit; `worktree add` is given the resolved commit
+  - [x] `chat.create` with a workspace: `invalid` for a folder that is not a repository, a base that is not a ref of it, an existing path that `git worktree list` of the folder does not name, and for a workspace with `chat.folderId` of another folder
+  - [x] The first turn (and any later turn while the Clowdy-made worktree is missing) runs `Prepare workspace`: a `tool` item of the orchestrator run (`name: 'workspace'`) with the git lines as its output as they arrive, `fetch` of a remote base (a failure with the ref fetched before is a log line, not an error), `git worktree add` (`-b` from the base, or the existing branch as it is), `ready` set and published; a failure ends the turn with the reason and leaves the next message to try again
+  - [x] `workingFolder` returns the workspace path; `additionalFolders` leaves out the chat's own folder when it works in a workspace; the system prompt names the worktree, its branch and the main checkout
+  - [x] A thread takes its parent's workspace (`threads.ts`), a fork its source's (`fork.ts`); the same row, not a copy
+  - [x] Daemon tests with the fake engine reporting its `cwd`, on real repositories, among them: a second turn and a second chat on a worktree with uncommitted and committed work leave every file and the branch as they were, a path that exists but is no worktree and a branch checked out elsewhere are refused with nothing changed
 
 **Files**
 
@@ -116,7 +116,10 @@
 
 **Done when:** a chat made with `workspace: { mode: 'new' }` in a temp repository has, after its first message, a worktree at `<workspacesDir>/<slug>/<id8>/<folder>` on `clowdy/<id8>` made from the default branch, a finished `Prepare workspace` item with git's lines, and the fake engine's `cwd` is that path; a thread and a fork of it run in the same path; an existing worktree is used as it is.
 **Verify:** `cd apps/daemon && bun test test/chat-workspaces.test.ts test/chat-folders.test.ts test/threads.test.ts test/fork.test.ts`, `cd packages/protocol && bun run test && bun run typecheck`, `bun run --cwd apps/desktop typecheck`
-**Commits:** None yet.
+**Scope changes:** `chat.create` is synchronous, so it reads the repository with sync git (a 10 s timeout each; `parseBranches` and `pickDefaultBranch` are exported from `git/state.ts`) and Stage 5's base setting needs a sync twin of `baseOf` there; a chat with a workspace has `Chat.folderId` pinned to the workspace's folder (the main folder's id too), so a later change of the main folder cannot separate the two; chats that pick one existing worktree share its row; `chatsOfWorkspace` gives ids; `domain/lines.ts` (`runLines`, the line-by-line process runner that kills the tree and works on POSIX and Windows) is what Stage 5's setup command runs through; migration 25 (24 is the folder settings). A turn in a worktree gets the repository's git directory (`git rev-parse --git-common-dir`) among its additional folders, so a sandboxed agent can commit in it; whether a real Claude or Codex can with only that handed over is not checked. The personal space is a repository too, so it can have a worktree.
+**Review findings, fixed:** a Stop or a fetch timeout did not bound the step (the process group is killed, the wait for its pipes is capped); a missing path is re-checked right before `git worktree remove` and before the checkout; a worktree git still has locked as `initializing` is refused; a base is an exact ref (`show-ref --verify`); a failure shows git's first `fatal:` line; the engine is checked before the worktree is made.
+**Commits:** `a3a76b2` feat(daemon): let a chat work in a git worktree, made by its first turn; `64a2822` fix(daemon): bound a stopped workspace step and refuse a worktree that was cut off while it was made; `1af80f2` feat(daemon): hand an agent in a worktree the repository's git directory, in place of the main checkout.
+
 
 ## Stage 3 — Places: the file system, terminals and documents in a worktree
 
@@ -189,11 +192,11 @@
 **This stage:** each folder of a project gets settings of its own for the worktrees made from it: the branch they start from and a setup that makes a new one ready to run. They belong to the project's row of the folder, since the folders of a project are different repositories. `Prepare workspace` copies the listed files and runs the command after the checkout, with the output in the same log, and the base branch settles the default of the draft's branch chip. The Folders block of Settings > Projects gets the dialog that edits them.
 
 - [ ] Complete
-  - [ ] Protocol: `FolderSettings { baseBranch?: string; setup?: WorkspaceSetup }`, `WorkspaceSetup { files: string[]; command?: string }`, `ProjectFolder.settings?`, and a command `project.updateFolder { projectId, folderId, settings }` (a field set to `null` is cleared) that answers `{ project }`; `files` are relative paths or a `*` in the last segment, none absolute or with `..`, at most 50; `command` at most 4000 characters; `invalid` otherwise, `not_found` for a folder the project does not have, `conflict` for the personal space
-  - [ ] Migration 25: `project_folders.settings` (JSON); `toFolder` and `upsertProject` carry it, so a reorder, a rename of the project or an update of another folder keeps it
-  - [ ] `baseOf(folder)`: the folder's `baseBranch` when the repository has it, else `defaultBranchOf`; the git endpoint's `defaultBranch` and the new worktree's base both use it
+  - [x] Protocol: `FolderSettings { baseBranch?: string; setup?: WorkspaceSetup }`, `WorkspaceSetup { files: string[]; command?: string }`, `ProjectFolder.settings?`, and a command `project.updateFolder { projectId, folderId, settings }` (a field set to `null` is cleared) that answers `{ project }`; `files` are relative paths or a `*` in the last segment, none absolute or with `..`, at most 50; `command` at most 4000 characters; `invalid` otherwise, `not_found` for a folder the project does not have, `conflict` for the personal space
+  - [x] Migration 24 (25 is the workspaces now): `project_folders.settings` (JSON); `toFolder` and `upsertProject` carry it, so a reorder, a rename of the project or an update of another folder keeps it
+  - [x] `baseOf(folder)` (the sync twin `createWorkspace` needs is part of the rest below): the folder's `baseBranch` when the repository has it, else `defaultBranchOf`; the git endpoint's `defaultBranch` and the new worktree's base both use it
   - [ ] `Prepare workspace` after the checkout copies each listed file that exists in the main checkout into the same relative place (an existing file in the worktree is left alone), then runs the command in the worktree with `CLOWDY_ROOT_PATH`, `CLOWDY_WORKSPACE_PATH` and `CLOWDY_BRANCH` set, its output in the log; a command that fails or runs over ten minutes (its process group is stopped) makes the step an error, `ready` stays false and the next message runs the step again
-  - [ ] Settings > Projects: each folder's row has a `Workspace` button (not in the personal space) that opens a dialog with `Base branch` (the detected default as its placeholder), `Files to copy` (one per line) and `Command`; Save sends `project.updateFolder`
+  - [x] Settings > Projects: each folder's row has a `Workspace` button (not in the personal space) that opens a dialog with `Base branch` (the detected default as its placeholder), `Files to copy` (one per line) and `Command`; Save sends `project.updateFolder`
   - [ ] Tests: a copied `.env` and a `.env*` pattern, a command that writes a file and sees the three variables, a failing command and a timeout, settings kept through `project.update` (reorder, another folder), a configured base branch used and a missing one skipped, a project with no settings unchanged
 
 **Files**
@@ -215,7 +218,8 @@
 
 **Done when:** a folder whose settings list `.env` and the command `touch ready` gives a chat whose new worktree has the `.env` copied and `ready` made, both in the `Prepare workspace` log, a folder with a base branch of its own starts its worktrees there, and the Workspace dialog of a folder edits the three fields.
 **Verify:** `cd apps/daemon && bun test test/chat-workspaces.test.ts test/projects.test.ts test/git-state.test.ts`, `cd packages/protocol && bun run test && bun run typecheck`, `cd apps/desktop && bunx vitest run src/renderer/features/settings src/renderer/daemon && bun run typecheck`
-**Commits:** None yet.
+**Done so far (the settings half):** `5e7c4ba`, `a5585f9`, `46a75c6`, merged as `d577302`. The schema holds shapes only; the daemon enforces the limits (`.git`, `..`, control marks, a leading dash are refused). Left: `Prepare workspace`'s setup and `createWorkspace`'s base through the folder's setting (needs a sync twin of `baseOf`), with their tests.
+**Commits:** the settings half as above; the rest None yet.
 
 ## Stage 6 — The chips and the Prepare workspace row
 
@@ -223,14 +227,14 @@
 
 **This stage:** the person chooses where a chat works. The draft has the three chips (folder, mode, branch) with the lists decided above, the first message sends the choice, a started chat keeps the chips read only with the folder menu on a press, `Prepare workspace` is drawn as a tool row with its log, and a chat row in the Agents list shows it works in a worktree.
 
-- [ ] Complete
-  - [ ] `ProjectUi`: the draft's choice (`draftWorkspace`: checkout, new with a base, existing with a path), reset with the draft and kept with back and forward as `draftFolderId` is
-  - [ ] The mode chip: `Project checkout`, `New worktree`, `Existing worktree…` (the third opens the list: branch, the chats that use it, a changes marker), only for a repository; the branch chip as decided (read only label / `Branch from: <ref>` with search / none); the lists come from `getFolderGit`, read when the draft opens and when the window gets focus again
-  - [ ] The composer sends `workspace` with `chat.create`; the chips follow the folder chip when the folder changes, and the choice resets to Project checkout for a folder that is no repository
-  - [ ] The started chat's chips: folder, mode (`Project checkout` or `Worktree`) and the branch the tree has checked out now (`useFolderGit` reads the workspace's head from `projectsInfo` beside the folder's, again when the window gets focus), read only, the folder chip's menu opening on the worktree's path
-  - [ ] `toolView` draws the `workspace` tool as `Preparing workspace` / `Prepared workspace` with its log folded under it; its error shows the reason
-  - [ ] The Agents list's row shows a branch icon, with the branch in its title, for a chat that works in a worktree
-  - [ ] Tests, and a screenshot of the draft with each mode's menu and of a started worktree chat in the fixtures
+- [x] Complete
+  - [x] `ProjectUi`: the draft's choice (`draftWorkspace`: checkout, new with a base, existing with a path), reset with the draft and kept with back and forward as `draftFolderId` is
+  - [x] The mode chip: `Project checkout`, `New worktree`, `Existing worktree…` (the third opens the list: branch, the chats that use it, a changes marker), only for a repository; the branch chip as decided (read only label / `Branch from: <ref>` with search / none); the lists come from `getFolderGit`, read when the draft opens and when the window gets focus again
+  - [x] The composer sends `workspace` with `chat.create`; the chips follow the folder chip when the folder changes, and the choice resets to Project checkout for a folder that is no repository
+  - [x] The started chat's chips: folder, mode (`Project checkout` or `Worktree`) and the branch the tree has checked out now (`useFolderGit` reads the workspace's head from `projectsInfo` beside the folder's, again when the window gets focus), read only, the folder chip's menu opening on the worktree's path
+  - [x] `toolView` draws the `workspace` tool as `Preparing workspace` / `Prepared workspace` with its log folded under it; its error shows the reason
+  - [x] The Agents list's row shows a branch icon, with the branch in its title, for a chat that works in a worktree
+  - [x] Tests, and a screenshot of the draft with each mode's menu and of a started worktree chat in the fixtures
 
 **Files**
 
@@ -249,7 +253,9 @@
 
 **Done when:** in the fixtures page the draft's mode chip offers the three modes, `New worktree` shows `Branch from: origin/main` with a searchable list, the first message makes a chat whose chips are read only with the branch, and its stream starts with a `Prepare workspace` row that unfolds to its log.
 **Verify:** `cd apps/desktop && bunx vitest run src/renderer/features/agents src/renderer/stream src/renderer/stores && bun run typecheck && bun run lint`, and a screenshot
-**Commits:** None yet.
+**Scope changes:** the live branch needs Stage 3's `ProjectInfo.workspaces` from the daemon; until then a ready worktree chat shows no branch (the fixtures show it). Left: a hand-off from a worktree chat opens in Project checkout (a product decision); the draft keeps its choice when its folder goes, checked against what it finds when it is sent.
+**Commits:** `c27b60f`, `76b4933`, `b3127c8`, `6a72c04` (the last: shut the mode menu on Space, read the worktrees again once one is made, hold the first message while a choice waits for its read).
+
 
 ## Stage 7 — The side panel follows the chat's worktree
 
