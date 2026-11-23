@@ -1,4 +1,5 @@
-import type { GitBase, GitCheck, GitChecks, GitCheckState, GitHubAccess, GitHubRepo, GitPullRequestState } from '@clowdy/protocol';
+import type { TextColor } from '@clowdy/components/Text';
+import type { GitBase, GitChangeKind, GitCheck, GitChecks, GitCheckState, GitHubAccess, GitHubRepo, GitPullRequestState } from '@clowdy/protocol';
 import type { StatusTone } from '../../shared/runStatus';
 import type { BranchSummary } from './gitFacts';
 
@@ -53,6 +54,39 @@ export function aheadBehindWords(base: GitBase | undefined): string | undefined 
     if (behind > 0) return `${ behind } behind ${ name }`;
 
     return `Even with ${ name }`;
+}
+
+/** How far the branch is from its base without naming it: `3 ahead, 1 behind`, `2 ahead`, `1 behind`, `Even`. Nothing when there is no base to compare with. */
+export function aheadBehindCounts(base: GitBase | undefined): string | undefined {
+    if (base?.state !== 'ready') return undefined;
+
+    const { ahead, behind } = base;
+
+    if (ahead > 0 && behind > 0) return `${ ahead } ahead, ${ behind } behind`;
+
+    if (ahead > 0) return `${ ahead } ahead`;
+
+    if (behind > 0) return `${ behind } behind`;
+
+    return 'Even';
+}
+
+/** What a changed file is called and drawn as: the letter of its status in the colour that status has in the lists of a tool such as this, and its name for a tooltip and a screen reader. */
+export const CHANGE_KIND_VIEW: Record<GitChangeKind, { glyph: string; label: string; color: TextColor }> = {
+    added: { glyph: 'A', label: 'Added', color: 'success' },
+    modified: { glyph: 'M', label: 'Modified', color: 'warning' },
+    deleted: { glyph: 'D', label: 'Deleted', color: 'danger' },
+    renamed: { glyph: 'R', label: 'Renamed', color: 'accent' },
+    copied: { glyph: 'C', label: 'Copied', color: 'accent' },
+    typechange: { glyph: 'T', label: 'Type changed', color: 'secondary' },
+    conflicted: { glyph: 'U', label: 'Conflicted', color: 'danger' },
+};
+
+/** A file's path as a folder and a name: `src/booking/` and `price.ts`; the folder is empty for a file at the top. */
+export function splitPath(path: string): { folder: string; name: string } {
+    const cut = path.lastIndexOf('/') + 1;
+
+    return { folder: path.slice(0, cut), name: path.slice(cut) };
 }
 
 /** Whether the branch has files to show against its base: there is a base to count from, and something changed. */
