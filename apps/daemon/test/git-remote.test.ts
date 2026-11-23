@@ -341,6 +341,23 @@ withScripts('POST /v1/projects/:id/git/fetch, pull and push', () => {
             expect(await result('push')).toEqual({ state: 'done', action: 'push', upstream: { name: 'origin/feature/new-menu', ahead: 0, behind: 0 } });
         });
 
+        test('publishes a branch whose upstream is set to a branch that origin does not have, as a new one', async () => {
+            const h = await start();
+            const { path, origin } = repository();
+            const { result } = await open(path, h);
+
+            git(path, 'switch', '-q', '-c', 'short-lived');
+            git(path, 'config', 'branch.short-lived.remote', 'origin');
+            git(path, 'config', 'branch.short-lived.merge', 'refs/heads/short-lived');
+
+            const mine = commitFile(path, 'mine.txt');
+
+            expect(await result('push')).toMatchObject({ state: 'done', action: 'push', published: true, upstream: { name: 'origin/short-lived', ahead: 0, behind: 0 } });
+            expect(git(origin, 'rev-parse', 'refs/heads/short-lived')).toBe(mine);
+            // Now it is there: the next push is a plain one.
+            expect(await result('push')).toEqual({ state: 'done', action: 'push', upstream: { name: 'origin/short-lived', ahead: 0, behind: 0 } });
+        });
+
         test('reports a push that origin rejects with git\'s own line, changes nothing and does not try again', async () => {
             const h = await start();
             const { path, origin } = repository();

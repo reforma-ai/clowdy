@@ -1,4 +1,4 @@
-import { gitRead } from '../domain/git';
+import { gitAnswer, gitRead } from '../domain/git';
 import { exclusive } from '../domain/workspaces';
 import { conflict, invalid, unavailable } from '../errors';
 import { runProgram } from '../providers/exec';
@@ -48,19 +48,6 @@ export function remoteFailureLine(stderr: string, stdout: string, fallback: stri
         ?? fallback;
 
     return shownLine(line);
-}
-
-/** The first line git printed, nothing when it said none or no; a git that cannot be asked at all is `unavailable`, never taken for "no". */
-async function lineOf(cwd: string, args: string[]): Promise<string | undefined> {
-    const read = await gitRead(cwd, args);
-
-    if (!read.ok) {
-        if (read.reason === 'unavailable') throw unavailable('git did not answer');
-
-        return undefined;
-    }
-
-    return read.stdout.trim().split('\n')[0] || undefined;
 }
 
 /** Where the place's HEAD is, as far as the actions need to know it, and where the branch is set to go. */
@@ -148,11 +135,12 @@ export class GitRemote {
     push(place: Place): Promise<GitRemoteResult> {
         return this.#alone(place, async () => {
             const { branch, tracking } = await this.#branchOf(place, 'push');
-            const publish = tracking === undefined;
+            // A branch is published when it tracks nothing, and also when what it tracks is not on origin (the upstream is set and the remote's branch is gone): it is sent as a new one.
+            const publish = tracking === undefined || await gitAnswer(place.path, ['rev-parse', '--verify', '--quiet', '@{upstream}']) === undefined;
 
             // Everything a person's configuration may add to a push (other refs, a force, tags, submodules) is overridden here: the branch goes to the branch it tracks, nothing else. The
             // source is spelled as a full ref, so a tag of the branch's name is not meant, and git names the ref as the branch in what it says of a refusal.
-            await this.#run(place, 'push', ['push', '--no-follow-tags', '--no-recurse-submodules', ...(publish ? ['-u', ORIGIN, 'HEAD'] : [ORIGIN, `refs/heads/${ branch }:${ tracking.merge }`])]);
+            await this.#run(place, 'push', ['push', '--no-follow-tags', '--no-recurse-submodules', ...(tracking === undefined ? ['-u', ORIGIN, 'HEAD'] : [ORIGIN, `refs/heads/${ branch }:${ tracking.merge }`])]);
 
             const upstream = await this.#upstream(place);
 
@@ -171,16 +159,16 @@ export class GitRemote {
 
         if (!await workingTreeRoot(cwd)) throw invalid('The folder is not the root of a git repository');
 
-        if (await lineOf(cwd, ['remote', 'get-url', ORIGIN]) === undefined) throw invalid('The repository has no origin');
+        if (await gitAnswer(cwd, ['remote', 'get-url', ORIGIN]) === undefined) throw invalid('The repository has no origin');
 
-        const branch = await lineOf(cwd, ['symbolic-ref', '--quiet', '--short', 'HEAD']);
+        const branch = await gitAnswer(cwd, ['symbolic-ref', '--quiet', '--short', 'HEAD']);
 
-        if (branch === undefined) return { born: await lineOf(cwd, ['rev-parse', '--verify', '--quiet', 'HEAD']) !== undefined };
+        if (branch === undefined) return { born: await gitAnswer(cwd, ['rev-parse', '--verify', '--quiet', 'HEAD']) !== undefined };
 
         const [remote, merge, commit] = await Promise.all([
-            lineOf(cwd, ['config', '--get', `branch.${ branch }.remote`]),
-            lineOf(cwd, ['config', '--get', `branch.${ branch }.merge`]),
-            lineOf(cwd, ['rev-parse', '--verify', '--quiet', 'HEAD']),
+            gitAnswer(cwd, ['config', '--get', `branch.${ branch }.remote`]),
+            gitAnswer(cwd, ['config', '--get', `branch.${ branch }.merge`]),
+            gitAnswer(cwd, ['rev-parse', '--verify', '--quiet', 'HEAD']),
         ]);
 
         return { branch, born: commit !== undefined, ...(remote !== undefined && merge !== undefined && { tracking: { remote, merge } }) };
@@ -208,7 +196,7 @@ export class GitRemote {
 
     /** How many commits the branch has that its upstream lacks and the other way round, as last fetched; nothing when the upstream is not there. */
     async #apart(place: Place): Promise<{ ahead: number; behind: number } | undefined> {
-        const counts = await lineOf(place.path, ['rev-list', '--left-right', '--count', 'HEAD...@{upstream}']);
+        const counts = await gitAnswer(place.path, ['rev-list', '--left-right', '--count', 'HEAD...@{upstream}']);
         const [ahead, behind] = (counts ?? '').split(/\s+/).map(Number);
 
         return counts === undefined || ahead === undefined || behind === undefined || Number.isNaN(ahead) || Number.isNaN(behind) ? undefined : { ahead, behind };

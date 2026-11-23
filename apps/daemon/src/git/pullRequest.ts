@@ -3,7 +3,7 @@ import { statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { gitLine, gitRead } from '../domain/git';
+import { gitAnswer, gitLine, gitRead } from '../domain/git';
 import { unavailable } from '../errors';
 import { runProgram } from '../providers/exec';
 import { parseRemote } from './githubRemote';
@@ -213,19 +213,6 @@ function unanswered(run: RunResult, subject: string): CommandError | undefined {
 /** What an answer about a branch is kept by: the repository, the branch and the commit the place is at (a new commit asks again). */
 const answerKey = (repo: GitHubRepo, branch: string, commit: string): string => `${ repo.host }/${ repo.owner }/${ repo.name }#${ branch }@${ commit }`;
 
-/** A line git printed, nothing when it printed none or said no; a git that cannot answer is `unavailable`. */
-async function lineOf(cwd: string, args: string[]): Promise<string | undefined> {
-    const read = await gitRead(cwd, args);
-
-    if (!read.ok) {
-        if (read.reason === 'unavailable') throw unavailable('git did not answer');
-
-        return undefined;
-    }
-
-    return read.stdout.trim().split('\n')[0] || undefined;
-}
-
 /**
  * Whether the place's HEAD has commits that the pull request's branch lacks, so the pull request is about work the branch has left behind. A commit the repository does
  * not have (the person has not fetched it), a git that cannot say, and a hash that is not one count as "not moved past", so the pull request stays.
@@ -298,9 +285,9 @@ export class PullRequests {
     /** The branch, the commit and the repository `origin` names, of the place at `cwd`: what an answer is kept by. */
     async #target(cwd: string): Promise<{ branch: string | undefined; commit: string | undefined; repo?: GitHubRepo }> {
         const [branch, commit, address] = await Promise.all([
-            lineOf(cwd, ['branch', '--show-current']),
-            lineOf(cwd, ['rev-parse', '--verify', '--quiet', 'HEAD']),
-            lineOf(cwd, ['remote', 'get-url', 'origin']),
+            gitAnswer(cwd, ['branch', '--show-current']),
+            gitAnswer(cwd, ['rev-parse', '--verify', '--quiet', 'HEAD']),
+            gitAnswer(cwd, ['remote', 'get-url', 'origin']),
         ]);
         const repo = address === undefined ? undefined : parseRemote(address);
 

@@ -207,3 +207,19 @@ export async function gitOutput(cwd: string, args: string[], options?: GitReadOp
 export async function gitLine(cwd: string, args: string[], options?: GitReadOptions): Promise<string | undefined> {
     return (await gitOutput(cwd, args, options))?.trim().split('\n')[0] || undefined;
 }
+
+/**
+ * The first line git prints in `cwd`, nothing when git says no or prints nothing. Unlike `gitLine`, a git that cannot be asked at all (not there, too slow, too much to say) is
+ * `unavailable`, never taken for "no": for a caller whose "no" changes what it does (a place with no `origin`, a branch with no upstream).
+ */
+export async function gitAnswer(cwd: string, args: string[]): Promise<string | undefined> {
+    const read = await gitRead(cwd, args);
+
+    if (!read.ok) {
+        if (read.reason === 'unavailable') throw unavailable('git did not answer');
+
+        return undefined;
+    }
+
+    return read.stdout.trim().split('\n')[0] || undefined;
+}
