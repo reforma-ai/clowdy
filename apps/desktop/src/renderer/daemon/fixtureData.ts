@@ -1,4 +1,4 @@
-import { DOC_SOURCES, folderNames, PERMISSION_PRESET_NAMES, PERMISSION_PRESETS } from '@clowdy/protocol';
+import { branchPrefixOf, branchPrefixProblem, DOC_SOURCES, folderNames, PERMISSION_PRESET_NAMES, PERMISSION_PRESETS } from '@clowdy/protocol';
 
 import type {
     AgentInfo,
@@ -14,6 +14,12 @@ import type {
     DocsSource,
     FolderGit,
     FolderWorktrees,
+    GitChangedFile,
+    GitChanges,
+    GitCommit,
+    GitFileSides,
+    GitScope,
+    GitStatus,
     PermissionPresetId,
     Project,
     ProjectFolder,
@@ -456,11 +462,162 @@ export const FIXTURE_WORKSPACES_ROOT = '/Users/dev/Clowdy/workspaces';
  */
 export const FIXTURE_WORKTREE_PATH = `${ FIXTURE_WORKSPACES_ROOT }/car-rental/ab12cd34/car-rental`;
 
+/** The commit the fixture's `origin/main` is at, and the one the worktree's branch started from: 40 hexadecimal digits of one digit, which is all a fixture needs of an id. */
+const FIXTURE_BASE_COMMIT = '3'.repeat(40);
+
+/** The commits of the fixture worktree's branch, newest first: what `GitBase.commits` lists, each a `commit:<sha>` scope with the files below. */
+export const FIXTURE_GIT_COMMITS: GitCommit[] = [
+    { sha: `b7${ '4'.repeat(38) }`, shortSha: 'b744444', subject: 'Charge a weekend surcharge', author: 'Dana Reyes', committedAt: Date.UTC(2026, 10, 21, 16, 20) },
+    { sha: `a1${ '5'.repeat(38) }`, shortSha: 'a155555', subject: 'Price a booking by the day', author: 'Dana Reyes', committedAt: Date.UTC(2026, 10, 20, 9, 45) },
+];
+
+/** A changed file of the fixture: modes of a plain file, and the two ids made of the digits it is given (a `0` for a side that is not there). */
+function changedFile(path: string, kind: GitChangedFile['kind'], lines: [additions: number, deletions: number] | 'binary', ids: [old: string, now: string], more: Partial<GitChangedFile> = {}): GitChangedFile {
+    const side = (digit: string) => (digit === '0' ? `000000:${ '0'.repeat(40) }` : `100644:${ digit.repeat(40) }`);
+
+    return {
+        path,
+        kind,
+        ...(lines === 'binary' ? { binary: true as const } : { additions: lines[0], deletions: lines[1] }),
+        ...more,
+        revision: `${ side(ids[0]) }:${ side(ids[1]) }`,
+    };
+}
+
+/** What each commit of the fixture worktree changed, by the commit's id, and what the whole branch did and what is not committed yet. */
+const FIXTURE_COMMIT_FILES: Record<string, GitChangedFile[]> = {
+    [FIXTURE_GIT_COMMITS[0]!.sha]: [changedFile('src/booking/price.ts', 'modified', [5, 1], ['6', '7']), changedFile('src/booking/weekend.ts', 'added', [42, 0], ['0', '8'])],
+    [FIXTURE_GIT_COMMITS[1]!.sha]: [
+        changedFile('assets/logo.png', 'added', 'binary', ['0', '9']),
+        changedFile('src/booking/price.test.ts', 'added', [37, 0], ['0', 'a']),
+        changedFile('src/booking/price.ts', 'modified', [18, 4], ['1', '6']),
+    ],
+};
+
+const FIXTURE_BRANCH_FILES: GitChangedFile[] = [
+    changedFile('assets/logo.png', 'added', 'binary', ['0', '9']),
+    changedFile('src/booking/price.test.ts', 'added', [37, 0], ['0', 'a']),
+    changedFile('src/booking/price.ts', 'modified', [23, 5], ['1', '7']),
+    changedFile('src/booking/weekend.ts', 'added', [42, 0], ['0', '8']),
+];
+
+const FIXTURE_UNCOMMITTED_FILES: GitChangedFile[] = [
+    changedFile('notes.md', 'added', [3, 0], ['0', 'b'], { untracked: true }),
+    changedFile('src/booking/price.ts', 'modified', [6, 2], ['7', 'c']),
+    changedFile('src/limits.ts', 'modified', [1, 1], ['d', 'e']),
+];
+
+/** The branch's files with what is not committed on top, as `all` counts them: a file edited again is one row, against the merge base. */
+const FIXTURE_ALL_FILES: GitChangedFile[] = [
+    FIXTURE_BRANCH_FILES[0]!,
+    FIXTURE_UNCOMMITTED_FILES[0]!,
+    FIXTURE_BRANCH_FILES[1]!,
+    changedFile('src/booking/price.ts', 'modified', [29, 7], ['1', 'c']),
+    FIXTURE_BRANCH_FILES[3]!,
+    FIXTURE_UNCOMMITTED_FILES[2]!,
+];
+
+const totalsOf = (files: readonly GitChangedFile[]) => ({ fileCount: files.length, additions: files.reduce((sum, file) => sum + (file.additions ?? 0), 0), deletions: files.reduce((sum, file) => sum + (file.deletions ?? 0), 0) });
+
+/**
+ * What `GET git/status` answers for a fixture folder: no repository when `git` says nothing of it. The folder's own checkout is clean and level with `origin/main`. A worktree
+ * (`workspace`) is the dirty one `fixtureFolderGit` lists: two commits ahead of the base and one behind, an edited file, one that is not tracked, and no upstream.
+ */
+export function fixtureGitStatus(head: { branch?: string; detached?: true } | undefined, workspace: Pick<ChatWorkspace, 'branch'> | undefined): GitStatus {
+    if (!head?.branch) return { isRepository: false };
+
+    if (workspace) {
+        return {
+            isRepository: true,
+            head: { kind: 'branch', name: workspace.branch ?? 'clowdy/ab12cd34', commit: FIXTURE_GIT_COMMITS[0]!.sha },
+            origin: true,
+            entries: [{ path: 'notes.md', untracked: true }, { path: 'src/booking/price.ts', unstaged: 'modified' }, { path: 'src/limits.ts', unstaged: 'modified' }],
+            base: { state: 'ready', name: 'origin/main', commit: '2'.repeat(40), mergeBase: FIXTURE_BASE_COMMIT, ahead: FIXTURE_GIT_COMMITS.length, behind: 1, commits: FIXTURE_GIT_COMMITS },
+        };
+    }
+
+    return {
+        isRepository: true,
+        head: head.detached ? { kind: 'detached', commit: FIXTURE_BASE_COMMIT } : { kind: 'branch', name: head.branch, commit: FIXTURE_BASE_COMMIT },
+        ...(!head.detached && { upstream: { name: `origin/${ head.branch }`, ahead: 0, behind: 0 } }),
+        origin: true,
+        entries: [],
+        base: { state: 'ready', name: 'origin/main', commit: FIXTURE_BASE_COMMIT, mergeBase: FIXTURE_BASE_COMMIT, ahead: 0, behind: 0, commits: [] },
+    };
+}
+
+/** The commit of the fixture worktree that a `commit:<sha>` scope names (the hash may be short), nothing for one it does not have. */
+const fixtureCommitOf = (scope: GitScope) => (scope.startsWith('commit:') ? FIXTURE_GIT_COMMITS.find(commit => commit.sha.startsWith(scope.slice('commit:'.length))) : undefined);
+
+/** The files of one scope of the fixture worktree, and what each is counted from. */
+function fixtureScopeFiles(scope: GitScope): { files: GitChangedFile[]; from: string } | undefined {
+    if (scope === 'all') return { files: FIXTURE_ALL_FILES, from: FIXTURE_BASE_COMMIT };
+
+    if (scope === 'branch') return { files: FIXTURE_BRANCH_FILES, from: FIXTURE_BASE_COMMIT };
+
+    if (scope === 'uncommitted') return { files: FIXTURE_UNCOMMITTED_FILES, from: FIXTURE_GIT_COMMITS[0]!.sha };
+
+    const commit = fixtureCommitOf(scope);
+
+    return commit && { files: FIXTURE_COMMIT_FILES[commit.sha]!, from: commit.sha === FIXTURE_GIT_COMMITS[0]!.sha ? FIXTURE_GIT_COMMITS[1]!.sha : FIXTURE_BASE_COMMIT };
+}
+
+/**
+ * What `GET git/changes` answers for a fixture folder. A checkout that is clean has no changes in any scope; the worktree has the files above. `undefined` for a commit the
+ * fixture's repository does not have, which the daemon answers `not_found`.
+ */
+export function fixtureGitChanges(head: { branch?: string } | undefined, inWorktree: boolean, scope: GitScope): GitChanges | undefined {
+    if (!head?.branch) return { isRepository: false };
+
+    const found = inWorktree ? fixtureScopeFiles(scope) : scope.startsWith('commit:') ? undefined : { files: [], from: FIXTURE_BASE_COMMIT };
+
+    if (!found) return undefined;
+
+    return {
+        isRepository: true,
+        scope,
+        from: found.from,
+        ...(!scope.startsWith('commit:') && scope !== 'uncommitted' && { baseState: 'ready' as const }),
+        files: structuredClone(found.files),
+        ...totalsOf(found.files),
+        statsComplete: true,
+    };
+}
+
+/** The text of the files of the fixture worktree that have any: before and after, by path. A path that is not here is a file the fixture has no text for. */
+const FIXTURE_FILE_TEXT: Record<string, [original: string | null, modified: string | null]> = {
+    'src/booking/price.ts': [
+        ['export function price(days: number, rate: number): number {', '    return days * rate;', '}', ''].join('\n'),
+        ['export function price(days: number, rate: number, weekend = false): number {', '    const base = days * rate;', '', '    return weekend ? base * 1.15 : base;', '}', ''].join('\n'),
+    ],
+    'src/booking/weekend.ts': [null, ['export const WEEKEND_SURCHARGE = 0.15;', '', 'export const isWeekend = (date: Date) => date.getDay() === 0 || date.getDay() === 6;', ''].join('\n')],
+    'src/booking/price.test.ts': [null, ['import { price } from \'./price\';', '', 'test(\'prices a booking by the day\', () => {', '    expect(price(3, 40)).toBe(120);', '});', ''].join('\n')],
+    'src/limits.ts': [['export const MAX_DAYS = 30;', ''].join('\n'), ['export const MAX_DAYS = 28;', ''].join('\n')],
+    'notes.md': [null, ['# Notes', '', '- Ask about the weekend rate for holidays', ''].join('\n')],
+};
+
+/**
+ * What `GET git/file` answers for a fixture worktree: the text of a changed file before and after, that a binary file has none, and `undefined` for a path that did not change
+ * in the scope (the daemon's `not_found`).
+ */
+export function fixtureGitFile(scope: GitScope, path: string): GitFileSides | undefined {
+    const file = fixtureScopeFiles(scope)?.files.find(candidate => candidate.path === path);
+
+    if (!file) return undefined;
+
+    if (file.binary) return { state: 'binary', revision: file.revision };
+
+    const text = FIXTURE_FILE_TEXT[path];
+
+    return text ? { state: 'text', original: text[0], modified: text[1], revision: file.revision } : { state: 'text', original: null, modified: '', revision: file.revision };
+}
+
 const kebab = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 
 /**
  * What `chat.create` makes of a workspace choice, as the daemon does (the refusals are its `invalid`): a worktree of a folder that is no repository, a base that is no ref of it
- * and a path that is no worktree of it are refused. A new worktree gets the daemon's layout and branch (`<root>/<project>/<chat id's end>/<folder>`, `clowdy/<chat id's end>`) and is
+ * and a path that is no worktree of it are refused, and so is a branch prefix git would not take. A new worktree gets the daemon's layout and branch (`<root>/<project>/<chat id's end>/<folder>`,
+ * `<prefix>/<chat id's end>`, `clowdy` without a prefix) and is
  * not made yet (`ready` false: the chat's first turn makes it); an existing one is ready, and a chat that has it already shares its row.
  */
 export function fixtureChatWorkspace(
@@ -474,10 +631,14 @@ export function fixtureChatWorkspace(
     if (choice.mode === 'new') {
         if (choice.base !== undefined && choice.base !== repository.defaultBranch && !repository.branches.some(branch => branch.name === choice.base)) return { error: `${ choice.base } is not a branch of ${ folder.path }` };
 
+        const problem = branchPrefixProblem(choice.branchPrefix);
+
+        if (problem) return { error: problem };
+
         const end = chatId.slice(-8);
         const name = folder.path.split('/').filter(Boolean).at(-1) ?? 'folder';
 
-        return { workspace: { id: `wks_${ end }`, folderId: folder.id, path: `${ FIXTURE_WORKSPACES_ROOT }/${ kebab(projectName) }/${ end }/${ name }`, branch: `clowdy/${ end }`, managed: true, ready: false } };
+        return { workspace: { id: `wks_${ end }`, folderId: folder.id, path: `${ FIXTURE_WORKSPACES_ROOT }/${ kebab(projectName) }/${ end }/${ name }`, branch: `${ branchPrefixOf(choice.branchPrefix) }/${ end }`, managed: true, ready: false } };
     }
 
     const worktree = repository.worktrees.find(candidate => !candidate.main && candidate.path === choice.path);

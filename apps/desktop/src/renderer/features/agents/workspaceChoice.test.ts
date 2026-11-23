@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { chatsUsing, effectiveChoice, modeOf, pickableWorktrees, repositoryOf, samePath, worktreeLabel } from './workspaceChoice';
+import { chatsUsing, effectiveChoice, pickableWorktrees, repositoryOf, samePath, worktreeLabel } from './workspaceChoice';
 
 import type { Chat, FolderGit } from '@clowdy/protocol';
 import type { FolderRepository } from './useFolderRepository';
@@ -36,7 +36,6 @@ describe('the repository of a folder', () => {
 describe('what a new chat is sent with', () => {
     it('is Project checkout, which sends nothing, for no choice', () => {
         expect(effectiveChoice(null, ready(git))).toBeUndefined();
-        expect(modeOf(undefined)).toBe('checkout');
     });
 
     it('sends nothing, whatever was chosen, for a folder that is no repository, one that could not be read and one still being read', () => {

@@ -17,7 +17,7 @@ import type { KeyValueStorage } from '../../stores/storage';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 /*
- * The new-chat page's chips for where the chat works, on the fixture project: one folder, `car-rental`, a repository on `main` whose default branch is `origin/main`, with
+ * The new-chat page's one control for where the chat works, on the fixture project: one folder, `car-rental`, a repository on `main` whose default branch is `origin/main`, with
  * the branches `main`, `dev`, `feature/payments`, `origin/main` and `origin/dev`, and one worktree besides its own, `clowdy/ab12cd34`, with changes in it.
  */
 
@@ -50,8 +50,10 @@ const press = async (target: HTMLElement) => act(async () => {
     render();
 });
 
-const modeChip = () => container.querySelector<HTMLButtonElement>('button[aria-label^="Where it runs"]');
-const baseChip = () => container.querySelector<HTMLButtonElement>('button[aria-label^="Branch from"]');
+/** The control's pill: the only one of its kind on the page. */
+const chip = () => container.querySelector<HTMLButtonElement>('button[aria-label^="Where it runs"]');
+/** The base of the row of a new worktree, in the open menu: a press target of its own at the row's end. */
+const baseButton = () => document.body.querySelector<HTMLButtonElement>('[role="menu"] button[aria-label^="Start from"]');
 const folderSelect = () => container.querySelector<HTMLButtonElement>('button[aria-label^="Folder:"]');
 const menuItems = () => [...document.body.querySelectorAll<HTMLElement>('[role="menu"] [role^="menuitem"]')];
 const menuItem = (text: string) => menuItems().find(row => row.textContent?.startsWith(text))!;
@@ -79,9 +81,19 @@ async function start({ data = createFixtureData(), project = FIXTURE_PROJECT_ID,
     await settle();
 }
 
+/** Presses a row of the control's menu: `Current checkout`, `New worktree`, or a worktree by its branch. */
 async function chooseMode(text: string) {
-    await press(modeChip()!);
+    await press(chip()!);
     await press(menuItem(text));
+    await settle();
+}
+
+/** Picks the ref a new worktree starts from in the list that opens from the base at the end of its row. */
+async function pickBase(name: string) {
+    await press(chip()!);
+    await press(baseButton()!);
+    await settle();
+    await press(option(name));
     await settle();
 }
 
@@ -117,41 +129,93 @@ afterEach(() => {
     store.dispose();
 });
 
-describe('the mode chip', () => {
-    it('says Project checkout to begin with, with the branch that is checked out beside it and nothing to pick it from', () => {
-        expect(modeChip()?.textContent).toBe('Project checkout');
-        expect(line()).toContain('Project checkoutmain');
-        expect(container.querySelector('[aria-label="Branch: main"]')).not.toBeNull();
-        expect(baseChip()).toBeNull();
+describe('the control', () => {
+    const textsOf = (rows: HTMLElement[]) => rows.map(row => row.textContent);
+    /** Whether the slot at a row's start has a check: the slot is there on every row, so the words line up. */
+    const checkOf = (row: HTMLElement) => row.firstElementChild!.querySelector('svg') !== null;
+    const dimParts = () => [...chip()!.querySelectorAll('span')].filter(part => part.className.includes('color-secondary-muted-text')).map(part => part.textContent);
+
+    it('says the branch that is checked out to begin with and nothing of a mode, in the one pill there is', () => {
+        expect(chip()?.textContent).toBe('main');
+        expect(chip()?.getAttribute('aria-label')).toBe('Where it runs: Project checkout, branch main');
+        expect(container.querySelectorAll('button[aria-label^="Where it runs"]')).toHaveLength(1);
+        expect(container.querySelector('[aria-label^="Branch"]')).toBeNull();
+        expect(chip()?.querySelector('svg')).not.toBeNull();
+        expect(dimParts()).toEqual([]);
     });
 
-    it('lists Project checkout, New worktree and Existing worktree, the chosen one ticked, each with a line of what it does', async () => {
-        await press(modeChip()!);
+    it('lists the current checkout with its branch, a new worktree with the base it starts from, and, after a separator, the folder\'s other worktrees', async () => {
+        await press(chip()!);
 
-        expect(menuItems().map(row => row.textContent)).toEqual([
-            'Project checkoutWork in the folder as it is',
-            'New worktreeA separate checkout on a branch of its own',
-            'Existing worktree…Pick one the folder already has',
+        expect(textsOf(menuItems())).toEqual([
+            'Current checkoutmain',
+            'New worktreeorigin/main',
+            'clowdy/ab12cd34No chat uses itChanges',
         ]);
         expect(menuItems().map(row => row.getAttribute('aria-checked'))).toEqual(['true', 'false', 'false']);
         expect(menuItems().every(row => row.getAttribute('aria-disabled') !== 'true')).toBe(true);
+        // The separator stands between the two ways to make a place and the places that are there.
+        expect(document.body.querySelectorAll('[role="menu"] [role="separator"]')).toHaveLength(1);
+
+        const rows = [...document.body.querySelectorAll<HTMLElement>('[role="menu"] > *')];
+
+        expect(rows.map(row => row.getAttribute('role'))).toEqual(['menuitemradio', 'menuitemradio', 'separator', 'menuitemradio']);
     });
 
-    it('makes the chat a new worktree from the default branch, with Branch from as its second chip in place of the branch label', async () => {
+    it('puts the check at the start of the row that is on, and room for it before the others', async () => {
+        await press(chip()!);
+
+        expect(menuItems().map(checkOf)).toEqual([true, false, false]);
+        // The same slot is there on every row, so the text of the rows starts at one place.
+        expect(menuItems().every(row => row.firstElementChild!.firstElementChild?.getAttribute('aria-hidden') === 'true')).toBe(true);
+    });
+
+    it('makes the chat a new worktree from the default branch, and says so in the pill with the base in the dim tone', async () => {
         await chooseMode('New worktree');
 
         expect(ui().draftWorkspace).toEqual({ mode: 'new' });
-        expect(modeChip()?.textContent).toBe('New worktree');
-        expect(baseChip()?.textContent).toBe('Branch from: origin/main');
-        expect(container.querySelector('[aria-label="Branch: main"]')).toBeNull();
+        expect(chip()?.textContent).toBe('New worktreefrom origin/main');
+        expect(chip()?.getAttribute('aria-label')).toBe('Where it runs: New worktree from origin/main');
+        expect(dimParts()).toEqual(['from origin/main']);
+        expect(container.querySelector('[aria-label^="Branch"]')).toBeNull();
 
-        await press(modeChip()!);
+        await press(chip()!);
 
         expect(menuItem('New worktree').getAttribute('aria-checked')).toBe('true');
+        expect(menuItems().map(checkOf)).toEqual([false, true, false]);
+    });
+
+    it('sends the chat into the worktree that is picked, and says its branch after the word Worktree in the dim tone', async () => {
+        await chooseMode('clowdy/ab12cd34');
+
+        expect(ui().draftWorkspace).toEqual({ mode: 'existing', path: WORKTREE });
+        expect(chip()?.textContent).toBe('Worktreeclowdy/ab12cd34');
+        expect(chip()?.getAttribute('aria-label')).toBe('Where it runs: Worktree, branch clowdy/ab12cd34');
+        expect(dimParts()).toEqual(['Worktree']);
+        expect(options()).toEqual([]);
+
+        await press(chip()!);
+
+        expect(menuItem('clowdy/ab12cd34').getAttribute('aria-checked')).toBe('true');
+        expect(menuItems().map(checkOf)).toEqual([false, false, true]);
+    });
+
+    it('goes back to the current checkout from a worktree', async () => {
+        await chooseMode('New worktree');
+        await chooseMode('Current checkout');
+
+        expect(ui().draftWorkspace).toBeNull();
+        expect(chip()?.textContent).toBe('main');
+
+        await chooseMode('clowdy/ab12cd34');
+        await chooseMode('Current checkout');
+
+        expect(ui().draftWorkspace).toBeNull();
+        expect(chip()?.textContent).toBe('main');
     });
 
     // A single choice list shuts for Enter, and leaves itself open for Space unless its items say otherwise.
-    it('shuts for Space as for Enter, and opens the list of worktrees only for the item that asks it, as the menu closes', async () => {
+    it('shuts for Space as for Enter, whichever row it is pressed on', async () => {
         const key = async (target: HTMLElement, name: string, code: string) => act(async () => {
             target.focus();
             target.dispatchEvent(new KeyboardEvent('keydown', { key: name, code, bubbles: true, cancelable: true }));
@@ -159,7 +223,7 @@ describe('the mode chip', () => {
             render();
         });
 
-        await press(modeChip()!);
+        await press(chip()!);
         await key(menuItem('New worktree'), ' ', 'Space');
         await settle();
 
@@ -167,156 +231,221 @@ describe('the mode chip', () => {
         expect(menuItems()).toEqual([]);
         expect(options()).toEqual([]);
 
-        await press(modeChip()!);
-        await key(menuItem('Existing worktree'), ' ', 'Space');
+        await press(chip()!);
+        await key(menuItem('clowdy/ab12cd34'), ' ', 'Space');
         await settle();
 
+        expect(ui().draftWorkspace).toEqual({ mode: 'existing', path: WORKTREE });
         expect(menuItems()).toEqual([]);
-        expect(options().map(row => row.textContent)).toEqual(['clowdy/ab12cd34No chat uses itChanges']);
     });
 
-    it('does not open the list of worktrees for a menu that was shut some other way after Existing worktree was asked for', async () => {
-        await press(modeChip()!);
-        await press(menuItem('Existing worktree'));
-        await settle();
+    it('is off in a repository with no commit, for a new worktree, saying so', async () => {
+        const transport = new FixtureTransport();
+
+        vi.spyOn(transport, 'getFolderGit').mockResolvedValue({ isRepository: true, branch: 'main', branches: [], worktrees: [{ path: '/Users/dev/car-rental', branch: 'main', head: 'a1b2c3d', main: true, dirty: false }] });
+        await start({ transport });
+        await press(chip()!);
+
+        expect(menuItem('New worktree').getAttribute('aria-disabled')).toBe('true');
+        expect(menuItem('New worktree').textContent).toContain('The repository has no commit yet');
+        expect(baseButton()).toBeNull();
+    });
+
+    it('keeps the current checkout and a new worktree and nothing more, with no separator, when the folder has no other worktree', async () => {
+        const transport = new FixtureTransport();
+
+        vi.spyOn(transport, 'getFolderGit').mockResolvedValue({ isRepository: true, branch: 'main', defaultBranch: 'origin/main', branches: [{ name: 'main', remote: false }], worktrees: [{ path: '/Users/dev/car-rental', branch: 'main', head: 'a1b2c3d', main: true, dirty: false }] });
+        await start({ transport });
+        await press(chip()!);
+
+        expect(textsOf(menuItems())).toEqual(['Current checkoutmain', 'New worktreeorigin/main']);
+        expect(document.body.querySelector('[role="separator"]')).toBeNull();
+    });
+
+    it('says a detached HEAD by its short hash in the pill and on the row of the current checkout', async () => {
+        const transport = new FixtureTransport();
+
+        vi.spyOn(transport, 'getFolderGit').mockResolvedValue({ isRepository: true, branch: '5c4d3e2', detached: true, defaultBranch: 'origin/main', branches: [{ name: 'main', remote: false }], worktrees: [{ path: '/Users/dev/car-rental', head: '5c4d3e2', main: true, dirty: false }] });
+        await start({ transport });
+
+        expect(chip()?.textContent).toBe('5c4d3e2');
+        expect(chip()?.getAttribute('aria-label')).toBe('Where it runs: Project checkout, detached at 5c4d3e2');
+
+        // The hash is no branch: the pill says so in its tooltip, which the keyboard's focus shows.
         await act(async () => {
-            search().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+            chip()!.focus();
         });
-        await settle();
+        await act(async () => new Promise(resolve => setTimeout(resolve, 0)));
 
-        expect(options()).toEqual([]);
+        expect(document.querySelector('[role="tooltip"]')?.textContent).toBe('Detached HEAD');
 
-        // The next time the menu opens and shuts, no list comes with it.
-        await press(modeChip()!);
-        await press(menuItem('Project checkout'));
-        await settle();
+        await press(chip()!);
 
-        expect(options()).toEqual([]);
-        expect(ui().draftWorkspace).toBeNull();
-    });
-
-    it('goes back to Project checkout from a worktree', async () => {
-        await chooseMode('New worktree');
-        await chooseMode('Project checkout');
-
-        expect(ui().draftWorkspace).toBeNull();
-        expect(baseChip()).toBeNull();
-        expect(container.querySelector('[aria-label="Branch: main"]')).not.toBeNull();
-    });
-
-    it('keeps the base that was picked when New worktree is pressed again', async () => {
-        await chooseMode('New worktree');
-        await press(baseChip()!);
-        await press(option('dev'));
-        await chooseMode('New worktree');
-
-        expect(ui().draftWorkspace).toEqual({ mode: 'new', base: 'dev' });
+        expect(menuItem('Current checkout').textContent).toBe('Current checkout5c4d3e2');
     });
 });
 
 describe('the branch a new worktree starts from', () => {
-    beforeEach(async () => {
-        await chooseMode('New worktree');
-        await press(baseChip()!);
-    });
+    it('is the base at the end of the row of a new worktree, a press target of its own that opens the list of branches and leaves the row alone', async () => {
+        await press(chip()!);
 
-    it('lists the branches, local and remote, with the default one marked and ticked', () => {
-        expect(options().map(row => row.textContent)).toEqual(['main', 'dev', 'feature/payments', 'origin/mainDefault', 'origin/dev']);
-        expect(option('origin/main').querySelector('[aria-label="Current"]')).not.toBeNull();
-        expect(baseChip()?.hasAttribute('data-open')).toBe(true);
-    });
+        expect(baseButton()?.textContent).toBe('origin/main');
+        expect(baseButton()?.closest('[role="menuitemradio"]')?.textContent).toContain('New worktree');
 
-    it('is searched as the person types', async () => {
-        await act(async () => {
-            search().focus();
-        });
-        await act(async () => {
-            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(search(), 'pay');
-            search().dispatchEvent(new Event('input', { bubbles: true }));
-        });
-
-        expect(options().map(row => row.textContent)).toEqual(['feature/payments']);
-    });
-
-    it('sets the base to the one picked and shuts the list', async () => {
-        await press(option('origin/dev'));
+        await press(baseButton()!);
         await settle();
 
-        expect(ui().draftWorkspace).toEqual({ mode: 'new', base: 'origin/dev' });
-        expect(baseChip()?.textContent).toBe('Branch from: origin/dev');
-        expect(options()).toEqual([]);
+        // The menu is shut and the list is open in its place, and nothing was chosen: the row of the new worktree was not pressed.
+        expect(menuItems()).toEqual([]);
+        expect(options().length).toBeGreaterThan(0);
+        expect(ui().draftWorkspace).toBeNull();
+        expect(chip()?.textContent).toBe('main');
     });
 
-    it('is shut by Escape, and keeps the base', async () => {
-        await act(async () => {
-            search().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
-        });
+    it('does not open the list when the row itself is pressed, which chooses the new worktree and shuts the menu', async () => {
+        await press(chip()!);
+        await press(menuItem('New worktree'));
         await settle();
 
-        expect(options()).toEqual([]);
         expect(ui().draftWorkspace).toEqual({ mode: 'new' });
+        expect(menuItems()).toEqual([]);
+        expect(options()).toEqual([]);
+    });
+
+    it('is out of the tab order, since the right arrow on the row is the keyboard\'s way to it', async () => {
+        await press(chip()!);
+
+        expect(baseButton()?.getAttribute('tabindex')).toBe('-1');
+    });
+
+    it('opens the list for the right arrow on the row of a new worktree, and only on that row', async () => {
+        const key = async (target: HTMLElement) => act(async () => {
+            target.focus();
+            target.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', code: 'ArrowRight', bubbles: true, cancelable: true }));
+            render();
+        });
+
+        await press(chip()!);
+        await key(menuItem('clowdy/ab12cd34'));
+        await key(menuItem('Current checkout'));
+        await settle();
+
+        expect(options()).toEqual([]);
+        expect(menuItems().length).toBeGreaterThan(0);
+
+        await key(menuItem('New worktree'));
+        await settle();
+
+        expect(menuItems()).toEqual([]);
+        expect(options().map(row => row.textContent)).toEqual(['main', 'dev', 'feature/payments', 'origin/mainDefault', 'origin/dev']);
+        expect(ui().draftWorkspace).toBeNull();
+    });
+
+    describe('in the list', () => {
+        beforeEach(async () => {
+            await press(chip()!);
+            await press(baseButton()!);
+            await settle();
+        });
+
+        it('has the branches, local and remote, with the default one marked and ticked, and the pill looks pressed while it is open', () => {
+            expect(options().map(row => row.textContent)).toEqual(['main', 'dev', 'feature/payments', 'origin/mainDefault', 'origin/dev']);
+            expect(option('origin/main').querySelector('[aria-label="Current"]')).not.toBeNull();
+            expect(chip()?.hasAttribute('data-open')).toBe(true);
+        });
+
+        it('is searched as the person types', async () => {
+            await act(async () => {
+                search().focus();
+            });
+            await act(async () => {
+                Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(search(), 'pay');
+                search().dispatchEvent(new Event('input', { bubbles: true }));
+            });
+
+            expect(options().map(row => row.textContent)).toEqual(['feature/payments']);
+        });
+
+        it('makes the chat a new worktree from the branch picked, and shuts the list', async () => {
+            await press(option('origin/dev'));
+            await settle();
+
+            expect(ui().draftWorkspace).toEqual({ mode: 'new', base: 'origin/dev' });
+            expect(chip()?.textContent).toBe('New worktreefrom origin/dev');
+            expect(options()).toEqual([]);
+        });
+
+        it('is shut by Escape, and chooses nothing', async () => {
+            await act(async () => {
+                search().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+            });
+            await settle();
+
+            expect(options()).toEqual([]);
+            expect(ui().draftWorkspace).toBeNull();
+        });
+    });
+
+    it('is kept when the row of a new worktree is pressed again, and the base at its end shows it', async () => {
+        await pickBase('dev');
+        await chooseMode('New worktree');
+
+        expect(ui().draftWorkspace).toEqual({ mode: 'new', base: 'dev' });
+
+        await press(chip()!);
+
+        expect(baseButton()?.textContent).toBe('dev');
+    });
+
+    it('ticks the base the new worktree starts from when the list is open again', async () => {
+        await pickBase('dev');
+        await press(chip()!);
+        await press(baseButton()!);
+        await settle();
+
+        expect(option('dev').querySelector('[aria-label="Current"]')).not.toBeNull();
+        expect(option('origin/main').querySelector('[aria-label="Current"]')).toBeNull();
     });
 });
 
-describe('Existing worktree', () => {
-    it('lists the worktrees of the folder but the folder\'s own, by branch, with the chats that use each and a mark for changes', async () => {
+describe('Existing worktrees', () => {
+    it('are rows of the menu, by branch, with the chats that use each and a mark for changes', async () => {
         await start({ data: withFixtureWorkspace(createFixtureData()) });
-        await press(modeChip()!);
-        await press(menuItem('Existing worktree'));
-        await settle();
+        await press(chip()!);
 
-        expect(options().map(row => row.textContent)).toEqual(['clowdy/ab12cd34Weekend surcharge in a worktreeChanges']);
+        expect(menuItems().map(row => row.textContent).at(-1)).toBe('clowdy/ab12cd34Weekend surcharge in a worktreeChanges');
+        expect(menuItem('clowdy/ab12cd34').querySelector('[class*="changes"]')?.textContent).toBe('Changes');
     });
 
-    it('says no chat uses a worktree nobody has picked yet', async () => {
-        await press(modeChip()!);
-        await press(menuItem('Existing worktree'));
-        await settle();
+    it('say no chat uses a worktree nobody has picked yet', async () => {
+        await press(chip()!);
 
-        expect(options().map(row => row.textContent)).toEqual(['clowdy/ab12cd34No chat uses itChanges']);
+        expect(menuItems().map(row => row.textContent).at(-1)).toBe('clowdy/ab12cd34No chat uses itChanges');
     });
 
-    it('names a few chats, and counts the rest', async () => {
+    it('name a few chats, and count the rest', async () => {
         const data = withFixtureWorkspace(createFixtureData());
         const used = data.chats.find(chat => chat.workspace)!;
 
         for (const [id, title] of [['c-x1', 'Second chat'], ['c-x2', 'Third chat'], ['c-x3', 'Fourth chat']]) data.chats.push({ ...structuredClone(used), id, title, orchestratorRunId: undefined });
 
         await start({ data });
-        await press(modeChip()!);
-        await press(menuItem('Existing worktree'));
-        await settle();
+        await press(chip()!);
 
-        expect(options()[0]?.textContent).toContain('Weekend surcharge in a worktree, Second chat and 2 more');
+        expect(menuItem('clowdy/ab12cd34').textContent).toContain('Weekend surcharge in a worktree, Second chat and 2 more');
     });
 
-    it('sends the chat into the worktree that is picked, with that worktree as the mode\'s own label and no branch chip', async () => {
-        await press(modeChip()!);
-        await press(menuItem('Existing worktree'));
-        await settle();
-        await press(option('clowdy/ab12cd34'));
-        await settle();
-
-        expect(ui().draftWorkspace).toEqual({ mode: 'existing', path: WORKTREE });
-        expect(modeChip()?.textContent).toBe('Worktree: clowdy/ab12cd34');
-        expect(baseChip()).toBeNull();
-        expect(container.querySelector('[aria-label^="Branch:"]')).toBeNull();
-        expect(options()).toEqual([]);
-
-        await press(modeChip()!);
-
-        expect(menuItem('Existing worktree').getAttribute('aria-checked')).toBe('true');
-    });
-
-    it('is off, saying so, in a folder that has no other worktree', async () => {
+    it('scroll when there are many, in a box that keeps the popover to a height', async () => {
         const transport = new FixtureTransport();
+        const worktrees = Array.from({ length: 30 }, (_, n) => ({ path: `/Users/dev/trees/t${ n }`, branch: `feature/t${ n }`, head: 'a1b2c3d', main: false, dirty: false }));
 
-        vi.spyOn(transport, 'getFolderGit').mockResolvedValue({ isRepository: true, branch: 'main', defaultBranch: 'origin/main', branches: [{ name: 'main', remote: false }], worktrees: [{ path: '/Users/dev/car-rental', branch: 'main', head: 'a1b2c3d', main: true, dirty: false }] });
+        vi.spyOn(transport, 'getFolderGit').mockResolvedValue({ isRepository: true, branch: 'main', defaultBranch: 'origin/main', branches: [{ name: 'main', remote: false }], worktrees: [{ path: '/Users/dev/car-rental', branch: 'main', head: 'a1b2c3d', main: true, dirty: false }, ...worktrees] });
         await start({ transport });
-        await press(modeChip()!);
+        await press(chip()!);
 
-        expect(menuItem('Existing worktree').getAttribute('aria-disabled')).toBe('true');
-        expect(menuItem('Existing worktree').textContent).toContain('The folder has no other worktrees');
+        expect(menuItems()).toHaveLength(32);
+        expect(document.body.querySelector('[role="menu"]')?.closest('[style*="max-height"]')).not.toBeNull();
     });
 });
 
@@ -331,23 +460,22 @@ describe('a folder that offers no worktree', () => {
         return document.querySelector('[role="tooltip"]')?.textContent;
     };
 
-    it('keeps Project checkout alone, off, and says on hover that the folder is no repository', async () => {
+    it('has no control at all when the folder is no repository: nothing to pick and no branch to say', async () => {
         await start({ project: FIXTURE_PERSONAL_PROJECT_ID });
 
-        expect(modeChip()).toBeNull();
-        expect(container.querySelector('[aria-label="Where it runs: Project checkout"]')?.textContent).toBe('Project checkout');
-        expect(await hint()).toBe('This folder is not a git repository');
-        // Nothing of a branch.
+        expect(chip()).toBeNull();
+        expect(container.querySelector('[aria-label^="Where it runs"]')).toBeNull();
         expect(container.querySelector('[aria-label^="Branch"]')).toBeNull();
     });
 
-    it('says why the daemon could not read the folder, in its own words when it gave them', async () => {
+    it('says why the daemon could not read the folder, in its own words when it gave them, in a dim label that does not open', async () => {
         const transport = new FixtureTransport();
 
         vi.spyOn(transport, 'getFolderGit').mockRejectedValue(new TransportError('git did not answer', 503));
         await start({ transport });
 
-        expect(modeChip()).toBeNull();
+        expect(chip()).toBeNull();
+        expect(container.querySelector('[aria-label="Where it runs: Project checkout"]')?.textContent).toBe('Project checkout');
         expect(await hint()).toBe('Git did not answer');
     });
 
@@ -360,15 +488,14 @@ describe('a folder that offers no worktree', () => {
         expect(await hint()).toBe('Couldn\'t read the folder\'s git');
     });
 
-    it('is off with no word to say while the daemon has not answered yet', async () => {
+    it('shows nothing while the daemon has not answered yet', async () => {
         const transport = new FixtureTransport();
 
         vi.spyOn(transport, 'getFolderGit').mockReturnValue(new Promise<FolderGit>(() => undefined));
         await start({ transport });
 
-        expect(modeChip()).toBeNull();
-        expect(container.querySelector('[aria-label="Where it runs: Project checkout"]')).not.toBeNull();
-        expect(container.querySelector('[role="button"][aria-label^="Where it runs"]')).toBeNull();
+        expect(chip()).toBeNull();
+        expect(container.querySelector('[aria-label^="Where it runs"]')).toBeNull();
     });
 
     it('holds the first message while a choice that was made waits for the read, rather than send the chat to the folder itself, and lets it go once the read answers', async () => {
@@ -423,12 +550,12 @@ describe('a folder that offers no worktree', () => {
         await chooseMode('New worktree');
         expect(ui().draftWorkspace).toEqual({ mode: 'new' });
 
-        // The window gets focus, and the read now says the folder is no repository: the chips are Project checkout again and nothing is sent.
+        // The window gets focus, and the read now says the folder is no repository: the control is gone and nothing is sent.
         read.mockResolvedValue({ isRepository: false });
         act(() => void window.dispatchEvent(new Event('focus')));
         await settle();
 
-        expect(container.querySelector('[aria-label="Where it runs: Project checkout"]')).not.toBeNull();
+        expect(chip()).toBeNull();
 
         const before = new Set(store.selectedProject!.chats.keys());
 
@@ -452,9 +579,7 @@ describe('the first message', () => {
     it('makes a chat in a new worktree that starts from the base that was picked', async () => {
         const before = new Set(store.selectedProject!.chats.keys());
 
-        await chooseMode('New worktree');
-        await press(baseChip()!);
-        await press(option('dev'));
+        await pickBase('dev');
         await send('Fix the price');
 
         const [chat] = made(before);
@@ -467,10 +592,7 @@ describe('the first message', () => {
     it('makes a chat in the existing worktree that was picked, sharing the worktree with the chats that have it', async () => {
         const before = new Set(store.selectedProject!.chats.keys());
 
-        await press(modeChip()!);
-        await press(menuItem('Existing worktree'));
-        await settle();
-        await press(option('clowdy/ab12cd34'));
+        await chooseMode('clowdy/ab12cd34');
         await send('Fix the price');
 
         expect(made(before)[0]?.workspace).toMatchObject({ path: WORKTREE, ready: true, branch: 'clowdy/ab12cd34' });
@@ -486,7 +608,7 @@ describe('the first message', () => {
         await draw(() => ui().openDraft());
         await settle();
 
-        expect(modeChip()?.textContent).toBe('Project checkout');
+        expect(chip()?.textContent).toBe('main');
     });
 
     it('goes on in the chat a first message that failed had made while the choice is as it was, and starts another when it changed', async () => {
@@ -529,7 +651,7 @@ describe('the first message', () => {
         expect(made(before)).toHaveLength(1);
 
         commands.mockRestore();
-        await chooseMode('Project checkout');
+        await chooseMode('Current checkout');
         await send('Second try');
 
         const chats = made(before);
@@ -555,9 +677,7 @@ describe('the folder of the page', () => {
         const read = vi.spyOn(transport, 'getFolderGit');
 
         await start({ transport });
-        await chooseMode('New worktree');
-        await press(baseChip()!);
-        await press(option('dev'));
+        await pickBase('dev');
 
         expect(ui().draftWorkspace).toEqual({ mode: 'new', base: 'dev' });
         expect(read).toHaveBeenCalledExactlyOnceWith(FIXTURE_PROJECT_ID, 'fld_car_rental');
@@ -568,12 +688,11 @@ describe('the folder of the page', () => {
 
         expect(read).toHaveBeenLastCalledWith(FIXTURE_PROJECT_ID, API.id);
         expect(ui().draftWorkspace).toBeNull();
-        expect(modeChip()?.textContent).toBe('Project checkout');
-        // The branch label is the other folder's.
-        expect(container.querySelector('[aria-label="Branch: feature/payments"]')).not.toBeNull();
+        // The branch the pill says is the other folder's.
+        expect(chip()?.textContent).toBe('feature/payments');
     });
 
-    it('shows no chip of the folder it had while the answer for the new one is on its way, and sends nothing for it', async () => {
+    it('shows no control of the folder it had while the answer for the new one is on its way, and sends nothing for it', async () => {
         const transport = new FixtureTransport({ data: twoFolders() });
 
         await start({ transport });
@@ -581,15 +700,12 @@ describe('the folder of the page', () => {
         vi.spyOn(transport, 'getFolderGit').mockReturnValue(new Promise<FolderGit>(() => undefined));
         await draw(() => ui().setDraftFolder(API.id));
 
-        expect(baseChip()).toBeNull();
-        expect(container.querySelector('[aria-label^="Branch"]')).toBeNull();
-        expect(container.querySelector('[aria-label="Where it runs: Project checkout"]')).not.toBeNull();
+        expect(chip()).toBeNull();
+        expect(container.querySelector('[aria-label^="Where it runs"]')).toBeNull();
     });
 
     it('keeps the choice with the page through another chat, back and forward', async () => {
-        await chooseMode('New worktree');
-        await press(baseChip()!);
-        await press(option('dev'));
+        await pickBase('dev');
 
         const view = ui().view;
 
@@ -597,19 +713,12 @@ describe('the folder of the page', () => {
         await draw(() => ui().show(view));
         await settle();
 
-        expect(modeChip()?.textContent).toBe('New worktree');
-        expect(baseChip()?.textContent).toBe('Branch from: dev');
+        expect(chip()?.textContent).toBe('New worktreefrom dev');
     });
 });
 
 describe('the place of the page', () => {
-    const pickWorktree = async () => {
-        await press(modeChip()!);
-        await press(menuItem('Existing worktree'));
-        await settle();
-        await press(option('clowdy/ab12cd34'));
-        await settle();
-    };
+    const pickWorktree = () => chooseMode('clowdy/ab12cd34');
     const placeOfPage = () => currentPlace(store.selectedProject!, ui());
 
     it('is the folder\'s own checkout in Project checkout and for a new worktree, which the first message makes', async () => {
@@ -627,7 +736,7 @@ describe('the place of the page', () => {
         expect(ui().draftWorkspaceRow).toMatchObject({ path: WORKTREE, managed: true, ready: true });
         expect(placeOfPage()).toMatchObject({ folder: { id: 'fld_car_rental' }, workspace: { path: WORKTREE, ready: true } });
 
-        await chooseMode('Project checkout');
+        await chooseMode('Current checkout');
 
         expect(ui().draftWorkspaceRow).toBeNull();
         expect(placeOfPage().workspace).toBeUndefined();
@@ -725,7 +834,7 @@ describe('the place of the page', () => {
 
         expect(ui().draftWorkspaceRow).toBeNull();
 
-        await chooseMode('Project checkout');
+        await chooseMode('Current checkout');
         await act(async () => answer());
         await settle();
 

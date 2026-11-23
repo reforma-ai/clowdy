@@ -3,7 +3,7 @@ import { PROTOCOL_HEADER, PROTOCOL_VERSION, ROUTES, SSE_EVENT } from '@clowdy/pr
 import { HttpFileSystem } from './httpFileSystem';
 import { SseParser } from './sse';
 import { TerminalSocket } from './terminalStream';
-import { TransportError, type CommandInput, type FeedStatus, type PageQuery, type ProjectFileSystem, type StreamTarget, type Transport } from './transport';
+import { TransportError, type CommandInput, type FeedStatus, type PageQuery, type PlaceRef, type ProjectFileSystem, type StreamTarget, type Transport } from './transport';
 
 import type {
     AgentInfo,
@@ -17,6 +17,10 @@ import type {
     FolderGit,
     FolderId,
     FolderWorktrees,
+    GitChanges,
+    GitFileSides,
+    GitScope,
+    GitStatus,
     ProjectFileMatch,
     ProjectId,
     ProjectInfo,
@@ -69,6 +73,11 @@ function pageQuery({ limit, cursor }: PageQuery = {}): string {
     return params.size > 0 ? `?${ params }` : '';
 }
 
+/** The query a read of a place's git is asked with: the folder, the worktree when there is one, and what else the read takes (`undefined` values are left out). */
+function placeQuery({ folderId, workspaceId }: PlaceRef, more: Record<string, string | undefined> = {}): string {
+    return new URLSearchParams(Object.entries({ folderId, workspaceId, ...more }).flatMap(([name, value]) => (value === undefined ? [] : [[name, value]]))).toString();
+}
+
 /** A refused request as an error: the daemon's own reason when it gave one, else its status. */
 async function refusal(response: Response, route: string): Promise<TransportError> {
     const body = await response.json().catch(() => undefined) as { error?: { message?: unknown } } | undefined;
@@ -111,14 +120,21 @@ export class HttpTransport implements Transport {
         return this.#get(projectId === undefined ? ROUTES.projectsInfo : `${ ROUTES.projectsInfo }?project=${ encodeURIComponent(projectId) }`);
     }
 
-    async getFolderGit(projectId: ProjectId, folderId: FolderId): Promise<FolderGit> {
-        const route = `${ ROUTES.projectGit(projectId) }?folderId=${ encodeURIComponent(folderId) }`;
-        const response = await this.#fetch(this.#base + route, { headers: this.#headers });
-
+    getFolderGit(projectId: ProjectId, folderId: FolderId): Promise<FolderGit> {
         // The daemon says why it cannot read a folder (git is not there, the folder is gone) and the new-chat page tells the person.
-        if (!response.ok) throw await refusal(response, route);
+        return this.#read(`${ ROUTES.projectGit(projectId) }?folderId=${ encodeURIComponent(folderId) }`);
+    }
 
-        return await response.json() as FolderGit;
+    getGitStatus(projectId: ProjectId, place: PlaceRef): Promise<GitStatus> {
+        return this.#read(`${ ROUTES.projectGitStatus(projectId) }?${ placeQuery(place) }`);
+    }
+
+    getGitChanges(projectId: ProjectId, place: PlaceRef, scope: GitScope): Promise<GitChanges> {
+        return this.#read(`${ ROUTES.projectGitChanges(projectId) }?${ placeQuery(place, { scope }) }`);
+    }
+
+    getGitFile(projectId: ProjectId, place: PlaceRef, scope: GitScope, path: string, oldPath?: string): Promise<GitFileSides> {
+        return this.#read(`${ ROUTES.projectGitFile(projectId) }?${ placeQuery(place, { scope, path, oldPath }) }`);
     }
 
     getProjectWorktrees(projectId: ProjectId): Promise<FolderWorktrees[]> {
@@ -294,6 +310,15 @@ export class HttpTransport implements Transport {
         void this.#follow(cursor, onEvent, onStatus, controller.signal);
 
         return () => controller.abort();
+    }
+
+    /** `#get` for a read whose refusal the app tells the person (git is not there, the folder is gone): the error carries the daemon's own reason. */
+    async #read<T>(route: string): Promise<T> {
+        const response = await this.#fetch(this.#base + route, { headers: this.#headers });
+
+        if (!response.ok) throw await refusal(response, route);
+
+        return await response.json() as T;
     }
 
     async #get<T>(route: string): Promise<T> {
