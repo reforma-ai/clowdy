@@ -219,6 +219,25 @@ describe('Manage worktrees', () => {
         expect(isOpen()).toBe(false);
     });
 
+    it('does not hand the focus back to the button that opened it when it closes for a new chat or for a chat, which the page it shows takes', async () => {
+        const trigger = document.body.appendChild(document.createElement('button'));
+
+        trigger.focus();
+        await open();
+        await click(buttonIn(row(FOUND_WORKTREE), 'New chat in this worktree: search-filters')!);
+
+        expect(isOpen()).toBe(false);
+        expect(document.activeElement).not.toBe(trigger);
+
+        trigger.focus();
+        await open();
+        await click(textButton(row(CLOWDY_WORKTREE), 'Weekend surcharge in a worktree')!);
+        await flush();
+
+        expect(isOpen()).toBe(false);
+        expect(document.activeElement).not.toBe(trigger);
+    });
+
     it('scrolls the group of the folder it was opened for into view, once', async () => {
         const scrolled: Array<string | undefined> = [];
 

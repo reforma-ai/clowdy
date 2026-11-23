@@ -72,25 +72,27 @@ function ManageWorktrees({ projectId, folderId, onRemove }: Omit<ManageWorktrees
         if (scrolled.current || !groups || folderId === undefined) return;
 
         scrolled.current = true;
-        [...list.current?.querySelectorAll<HTMLElement>('[data-folder-id]') ?? []].find(section => section.dataset.folderId === folderId)?.scrollIntoView?.({ block: 'start' });
+        [...list.current?.querySelectorAll<HTMLElement>('[data-folder-id]') ?? []].find(section => section.dataset.folderId === folderId)?.scrollIntoView({ block: 'start' });
     }, [groups, folderId]);
 
     if (!project) return null;
 
-    const close = () => void modal.cancel();
+    // The two actions that close the window take the person to a chat or to the new-chat page, whose message box takes the focus: the window must not hand it back, after its
+    // closing animation, to the button that opened it.
+    const leave = () => void modal.cancel({ restoreFocus: false });
 
     const actions: WorktreeRowActions = {
         onNewChat: (folder, worktree) => {
             // The main folder's chat has no folder of its own: it follows the main folder, as the sidebar's New chat does. The folder's own checkout is no worktree to choose.
             root.ui.forProject(projectId).openDraft([], folder.id === mainFolder(project).id ? null : folder.id, worktree.main ? null : { mode: 'existing', path: worktree.path });
-            close();
+            leave();
         },
         onOpenChat: (chat: WorktreeChat) => {
             const state = root.projectState(projectId);
 
             if (state) void openChat(root, state, root.ui.forProject(projectId), chat.id);
 
-            close();
+            leave();
         },
         ...(onRemove && { onRemove: (group: FolderWorktrees, worktree: WorktreeInfo) => onRemove(group, worktree, reload) }),
     };
