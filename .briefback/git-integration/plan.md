@@ -242,12 +242,12 @@
 
 **This stage:** words selected in code go to the chat as a reference. One CodeMirror extension shows the button and answers `⌘I`, and both the Files editor and the diff cards take it, so the work is done once. The composer has no door from the side panel today (`ComposerHandle.quote` is reached only from the chat's own view), so a small bridge gives it one.
 
-- [ ] Complete
-  - [ ] A CodeMirror extension that shows "Add to chat" with `⌘I` (bound with `Prec.high`, since `defaultKeymap` binds `Mod-i` to select the parent syntax and host extensions come after it) over a non-empty selection and calls a host callback with the path, the line range and the text; in a diff card it covers the lines of the new text only, because `unifiedMergeView` draws removed lines as widgets that are not part of the document (the owner's call on this is open: the alternative is a renderer of our own over an interleaved document)
-  - [ ] The Files editor gets it through `editorExtensions`; the diff cards get it from the diff view
-  - [ ] A bridge in the renderer: the open chat's composer registers its `quote` while mounted, and the side panel calls it; a quote carries `path:from–to` and the selected text; with no chat open the button is not shown
-  - [ ] The Docs editor (tiptap) takes the same button, or the stage records that it was cut
-  - [ ] Tests: the extension's visibility and callback, the bridge's registration and removal, a quote reaching the composer's draft
+- [x] Complete
+  - [x] A CodeMirror extension that shows "Add to chat" with `⌘I` (bound with `Prec.high`, since `defaultKeymap` binds `Mod-i` to select the parent syntax and host extensions come after it) over a non-empty selection and calls a host callback with the path, the line range and the text; in a diff card it covers the lines of the new text only, because `unifiedMergeView` draws removed lines as widgets that are not part of the document (the owner's call on this is open: the alternative is a renderer of our own over an interleaved document)
+  - [x] The Files editor gets it through `editorExtensions`; the diff cards get it from the diff view
+  - [x] A bridge in the renderer: the open chat's composer registers its `quote` while mounted, and the side panel calls it; a quote carries `path:from–to` and the selected text; with no chat open the button is not shown
+  - [x] The Docs editor (tiptap) takes the same button, or the stage records that it was cut
+  - [x] Tests: the extension's visibility and callback, the bridge's registration and removal, a quote reaching the composer's draft
 
 **Files**
 
@@ -262,7 +262,9 @@
 
 **Done when:** selecting lines in a file or in a diff card shows Add to chat, and pressing it or `⌘I` puts a quote with the path and lines in the open chat's message box.
 **Verify:** `cd packages/file-manager && bun run test && bun run typecheck`, `bun run --cwd apps/desktop typecheck`, `bun run --cwd apps/desktop test src/renderer/features/chats src/renderer/features/changes`, `bun run lint`
-**Commits:** None yet.
+**Scope changes:** the composer registers with the bridge from inside `Composer` (`useRegisterComposer`), not from `ChatView`: the edit-frame box and a read-only chat register nothing, and the new-chat page's box does; `useAddToChat(pathOf)` returns no extension while no box is mounted; the quote is `` `path:from-to` `` then the text in a fenced block named by the file extension, inside the composer's `> ` quote, capped at 100,000 characters (cut at a whole line, the header names the lines actually quoted); after a quote `ui.showChat()` shuts a side panel that covers the chat so the box can be typed in (the author's addition, kept: a panel beside the chat is untouched); the Docs rich (tiptap) view is cut (a selection in rendered Markdown cannot be traced to source lines), a Markdown document in its source view has the button; removed lines of a diff cannot be quoted (the owner confirmed); Escape does not dismiss the button, several selection ranges quote only the main one.
+**Review findings, fixed:** `quoteOf` dropped blank lines between lines starting with `>` inside code (two blockquotes in a Markdown file were corrupted): it keeps them inside fenced blocks now; a quote had no cap (a 1.7 MB lockfile took 1.1 s to quote and each keystroke after 0.4 s) and a huge count of backtick runs could throw a `RangeError`; an unused export; fixed 20 ms pauses in specs. Left (follow-ups): `docToPlainText` writes hard breaks as two spaces and a newline, so the agent receives every line of a quoted code block with two trailing spaces (Reply quotes too): harmless to read, wrong for whitespace-sensitive code, and the fix reaches the shared message serializer; a path with a backtick breaks the inline code span on the quote's first line. Not checked: Windows, a real mouse drag in Electron.
+**Commits:** `0b8866f` feat(file-manager): add a selection button that hands the selected lines to the host; `ab7d218` feat(desktop): let the side panel quote code into the message box; `865bfe9` feat(desktop): offer Add to chat over words selected in the Files editor and the diff cards; `e335fc6`, `29347a1`, `866a39b`, `6841c9b` fixes, tests and docs by the author; review: `67193ba` fenced quotes keep blank lines, `6d30d8d` quote cap, `905fcae` export and specs, `9f97ec6` the `ChangesTab.test.tsx` mock, `1155c9e` docs; merged into `next` as `5de1a2f` (two conflicts resolved on the branch: `FilesTab.tsx` and its test after the place bar was removed on `next`, and long bullets of `apps/desktop/AGENTS.md`).
 
 ## Stage 7 — Commit the ticked files, with a generated message
 
