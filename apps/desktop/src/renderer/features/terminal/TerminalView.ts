@@ -248,6 +248,6 @@ export class TerminalView implements TerminalViewHandle {
             return false;
         }
 
-        return event.code === 'KeyV' ? false : true;
+        return event.code !== 'KeyV';
     }
 }

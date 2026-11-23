@@ -124,7 +124,7 @@ export class UpdateMapperV2 {
     /** The start of a message that may be that repeat, held back (Claude's adapter says it as one chunk) until it is clear whether it is. */
     private held?: { id: string; text: string };
 
-    constructor(private options: MapperOptions) {
+    constructor(options: MapperOptions) {
         this.tools = new ToolLedger(options.toolNames);
         this.gauges = new Gauges(options.log);
         this.costBefore = options.costBefore;
