@@ -5,8 +5,8 @@
     display: flex;
     flex-shrink: 0;
     flex-direction: column;
-    gap: var(--spacing-6);
-    padding: var(--spacing-8) var(--spacing-12) var(--spacing-12);
+    gap: var(--spacing-sm);
+    padding: var(--spacing-md) var(--spacing-lg) var(--spacing-lg);
     border-top: 1px solid var(--color-surface-border);
 }
 
@@ -16,11 +16,13 @@
     user-select: text;
 }
 
+/* The tick of every file stands over the ticks of the rows: the list reaches out of the box by what its plates need, and its rows have their own padding. */
 .header {
     display: flex;
     align-items: center;
-    gap: var(--spacing-6);
-    min-height: var(--spacing-22);
+    gap: var(--spacing-md);
+    min-height: var(--spacing-24);
+    padding-inline: var(--spacing-xs);
 }
 
 .count {
@@ -28,48 +30,32 @@
     white-space: nowrap;
 }
 
-/* The checklist shows a few files and scrolls for the rest, so the message box never leaves the sidebar. */
+/* The checklist shows five files and a half (so it is seen to scroll) and scrolls for the rest, so the message box never leaves the sidebar. Its plates stand 4px off the sidebar's
+   edges, as the files' list above does. */
 .list {
     flex: 0 1 auto;
-    max-height: var(--spacing-144);
-    margin-inline: calc(var(--spacing-6) * -1);
+    max-height: calc(var(--spacing-30) * 5.5 + var(--spacing-xxs) * 5);
+    margin-inline: calc(var(--spacing-lg) * -1);
 }
 
 .rows {
+    padding-inline: var(--spacing-xs);
+}
+
+/* The row's label: the letter, the name, strong, and the folder after it, dimmed; the folder is cut before the name is. */
+.fileName {
     display: flex;
-    flex-direction: column;
-    gap: var(--spacing-2);
-    padding: 0 var(--spacing-6);
+    align-items: baseline;
+    gap: var(--spacing-sm);
 }
 
-/* A file is a tick and its name in one press. The label of the checkbox is the last child, and takes what the tick leaves. */
-.row[data-size] {
-    display: flex;
-    width: 100%;
-    min-height: var(--spacing-24);
-}
-
-.row[data-size] > :last-child {
-    flex: 1;
-    gap: var(--spacing-6);
-    min-width: 0;
-}
-
+/* The letter that says what happened to the file: a box of its own, so the names start at one place whichever letter it is. */
 .glyph {
     display: inline-flex;
     flex-shrink: 0;
     align-items: center;
     justify-content: center;
     width: var(--spacing-14);
-}
-
-/* The name first, strong, and the folder after it, dimmed: the folder is cut before the name is. */
-.fileName {
-    display: flex;
-    flex: 1;
-    align-items: baseline;
-    gap: var(--spacing-6);
-    min-width: 0;
 }
 
 .name {
@@ -85,8 +71,7 @@
 .counts {
     display: inline-flex;
     flex-shrink: 0;
-    gap: var(--spacing-4);
-    margin-inline-start: var(--spacing-6);
+    gap: var(--spacing-xs);
     white-space: nowrap;
 }
 
@@ -105,14 +90,14 @@
 .actions {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--spacing-6);
+    gap: var(--spacing-sm);
 }
 
 /* Commit, with the button of its menu beside it, is the main action and has a line of its own: its words name the files and the branch (`Commit 3 files to main`), and they must not be squeezed to make room for Generate. */
 .commitGroup {
     display: flex;
     flex: 1 1 100%;
-    gap: var(--spacing-6);
+    gap: var(--spacing-sm);
     min-width: 0;
 }
 
@@ -130,7 +115,7 @@
     min-width: 0;
     height: auto;
     min-height: var(--spacing-30);
-    padding-block: var(--spacing-4);
+    padding-block: var(--spacing-xs);
 }
 
 .commitContent {
@@ -148,7 +133,7 @@
 /* At the narrowest the button's menu and its own sides give up room, so the branch's name has a line to itself. */
 @container (max-width: 12rem) {
     .commit[data-size][data-variant] {
-        padding-inline: var(--spacing-6);
+        padding-inline: var(--spacing-sm);
     }
 
     .commitText {
@@ -170,26 +155,26 @@
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: var(--spacing-2);
+    gap: var(--spacing-xxs);
     overflow-wrap: anywhere;
 }
 
 .fetch[data-size][data-variant] {
-    margin-top: var(--spacing-2);
+    margin-top: var(--spacing-xxs);
 }
 
 /* The empty box's next step: its title is the button, which wraps where the sidebar is narrow, and a phrase of why under it. */
 .step {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-4);
+    gap: var(--spacing-xs);
 }
 
 .stepButton[data-size][data-variant] {
     width: 100%;
     height: auto;
     min-height: var(--spacing-30);
-    padding-block: var(--spacing-6);
+    padding-block: var(--spacing-sm);
 }
 
 .stepText {
@@ -199,23 +184,9 @@
     white-space: normal;
 }
 
-/* The three quiet ways out, one under another. */
+/* The three quiet ways out, rows of the design system's list, reaching out of the box as the checklist does. */
 .quiet {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-2);
-    margin-inline: calc(var(--spacing-6) * -1);
-}
-
-.quietButton[data-size][data-variant] {
-    justify-content: flex-start;
-    width: 100%;
-    min-width: 0;
-    padding-inline: var(--spacing-6);
-}
-
-.quietContent {
-    justify-content: flex-start;
-    min-width: 0;
-    gap: var(--spacing-6);
+    width: auto;
+    margin-inline: calc(var(--spacing-lg) * -1);
+    padding-inline: var(--spacing-xs);
 }

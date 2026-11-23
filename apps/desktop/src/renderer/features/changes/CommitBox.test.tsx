@@ -165,6 +165,20 @@ describe('the commit box', () => {
         expect(buttonOf('Generate')?.disabled).toBe(false);
     });
 
+    it('ticks and unticks a file on a press anywhere on its row, as on its tick', async () => {
+        await start();
+
+        const row = tickOf('src/limits.ts').closest('[role="row"]')!;
+
+        await press(row);
+        expect(tickOf('src/limits.ts').checked).toBe(false);
+        expect(box()?.textContent).toContain('2 of 3');
+
+        await press(row);
+        expect(tickOf('src/limits.ts').checked).toBe(true);
+        expect(box()?.textContent).toContain('3 of 3');
+    });
+
     it('commits only the files that are ticked, with the message as typed, clears the box, and reads the place again', async () => {
         await start();
 
@@ -676,7 +690,7 @@ describe('the empty box, No local changes', () => {
     const stepButton = () =>
         container.querySelector<HTMLButtonElement>('[aria-label="Commit"] button[class*="stepButton"]');
     const quietButtons = () => [
-        ...container.querySelectorAll<HTMLButtonElement>('[aria-label="Commit"] button[class*="quietButton"]'),
+        ...container.querySelectorAll<HTMLElement>('[aria-label="Commit"] [aria-label="Open the place"] [role="row"]'),
     ];
     let opened: string[];
 
