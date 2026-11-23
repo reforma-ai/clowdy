@@ -22,10 +22,12 @@
     min-width: 0;
 }
 
-/* The button's stop, when it is off and says why: it takes what the dropdown leaves. */
+/* The button's stop (`Unavailable`), when it is off and says why: it takes what the dropdown leaves, and its focus ring follows the button's corners. */
 .host {
     flex: 1 1 0;
     min-width: 0;
+    border-radius: calc(var(--radius-md) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
 }
 
 /* The button takes what the dropdown leaves and is as tall as its two lines, with the corners of the dropdown's side squared so the two read as one. */

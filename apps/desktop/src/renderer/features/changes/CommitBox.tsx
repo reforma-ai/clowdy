@@ -10,6 +10,7 @@ import { AiStar, ArrowUp, ChevronDown } from '@clowdy/icons/14';
 import { writesCommitMessages } from '@clowdy/protocol';
 import { useEffect, type ReactNode } from 'react';
 
+import { Unavailable } from '../../shared/Unavailable';
 import { useAgents, useRootStore } from '../../stores';
 import { actionIcon, chosenPrograms, openActions, openEffects, useOpenApps } from '../openWith';
 import { placePath } from '../sidePanel/currentPlace';
@@ -17,7 +18,6 @@ import { commitLabel, commitTarget, isFetchFirst, nextStep, type NextStep, type 
 import styles from './CommitBox.module.css';
 import { commitDraftOf } from './CommitDraft';
 import { createPullRequestOf } from './CreatePullRequest';
-import { DisabledTooltip } from './DisabledTooltip';
 import { gitFactsOf } from './gitFacts';
 import { CHANGE_KIND_VIEW, splitPath } from './gitSummary';
 import { useRemoteActions } from './useRemoteActions';
@@ -244,7 +244,7 @@ export function CommitBox({ model, place, projectId, git }: CommitBoxProps) {
                 ) }
                 { /* Commit and its menu wrap together, so the menu's button is never left alone on a line. */ }
                 <div className={ styles.commitGroup }>
-                    <DisabledTooltip reason={ reason } className={ styles.commitHost }>
+                    <Unavailable label={ commitLabel(ticked, target?.name) } hint={ reason } className={ styles.commitHost }>
                         <Button
                             color="primary"
                             size="sm"
@@ -258,7 +258,7 @@ export function CommitBox({ model, place, projectId, git }: CommitBoxProps) {
                         >
                             <span className={ styles.commitText }>{ breakable(commitLabel(ticked, target?.name)) }</span>
                         </Button>
-                    </DisabledTooltip>
+                    </Unavailable>
                     <MenuTrigger>
                         <Button variant="bordered" size="sm" iconOnly className={ styles.more } isDisabled={ !draft.canCommit } aria-label="More ways to commit" tooltip="More ways to commit" tooltipPlacement="top">
                             <ChevronDown aria-hidden="true" />

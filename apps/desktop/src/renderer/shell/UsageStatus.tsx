@@ -13,8 +13,8 @@ import { ProviderIcon } from '../features/settings/providers/ProviderIcon';
 import { accountLine, headlineWindow, isUsableProvider, providerAgents, scopedHotWindow, USAGE_DANGER_PERCENT, usageTone, weeklyMark, windowPercent } from '../features/settings/providers/providerView';
 import { RefreshUsageButton, UsageReading } from '../features/settings/providers/UsageRows';
 import { waitForRead } from '../features/settings/providers/useAgentCommands';
-import { useNow } from '../features/settings/providers/useNow';
 import { describeRemaining, formatRemaining } from '../shared';
+import { useNow } from '../shared/useNow';
 import { useAgents, useRootStore } from '../stores';
 import styles from './UsageStatus.module.css';
 

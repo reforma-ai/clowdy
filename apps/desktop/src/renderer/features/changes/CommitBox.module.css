@@ -116,10 +116,12 @@
     min-width: 0;
 }
 
-/* The Commit button's stop, when it is off and says why (`DisabledTooltip`): it is the button's place in the group. */
+/* The Commit button's stop (`Unavailable`), when it is off and says why: it is the button's place in the group, and its focus ring follows the button's corners. */
 .commitHost {
     flex: 1 1 0;
     min-width: 0;
+    border-radius: calc(var(--radius-md) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
 }
 
 /* Commit names the files and the branch (`Commit 3 files to main`), which is the point of it: it goes onto a second line where the sidebar is narrow, and is as tall as its lines. */

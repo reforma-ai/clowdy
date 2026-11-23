@@ -263,7 +263,11 @@ describe('the sync button in the sidebar', () => {
         expect(syncButton().disabled).toBe(true);
         expect(syncButton().textContent).toContain(line);
         // The stop that carries the tooltip of a button that cannot be pressed.
-        expect(syncButton().closest('[role="button"][aria-disabled="true"]')).not.toBeNull();
+        const stand = syncButton().closest('[role="button"][aria-disabled="true"]');
+
+        expect(stand).not.toBeNull();
+        expect(stand?.getAttribute('tabindex')).toBe('0');
+        expect(stand?.getAttribute('aria-label')).toBe(syncButton().textContent?.startsWith('No origin') ? 'No origin' : 'Publish branch');
         // Fetch origin is in the dropdown, except where there is no origin to fetch from.
         await openMenu();
         expect(isOff('Fetch origin')).toBe(script === 'no_origin');

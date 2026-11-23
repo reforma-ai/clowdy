@@ -532,6 +532,9 @@ describe('the commit button and the line under the box', () => {
         // The stop that stands for the disabled button carries the tooltip.
         expect(reasonStop()).not.toBeNull();
         expect(reasonStop()?.contains(commitButton()!)).toBe(true);
+        // One tab stop that reads out what the button is, and the reason is its description.
+        expect(reasonStop()?.getAttribute('tabindex')).toBe('0');
+        expect(reasonStop()?.getAttribute('aria-label')).toBe('Commit 3 files to clowdy/ab12cd34');
 
         await type('feat: surcharge');
         expect(draft.commitReason).toBeUndefined();

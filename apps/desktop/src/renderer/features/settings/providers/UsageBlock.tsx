@@ -1,6 +1,6 @@
+import { useNow } from '../../../shared/useNow';
 import styles from './UsageBlock.module.css';
 import { UsageReading } from './UsageRows';
-import { useNow } from './useNow';
 
 import type { AgentUsage } from '@clowdy/protocol';
 

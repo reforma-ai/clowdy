@@ -4,9 +4,9 @@ import { Popover } from '@clowdy/components/Popover';
 import { Text } from '@clowdy/components/Text';
 import { ArrowDown, ArrowUp, ChevronDown, Refresh } from '@clowdy/icons/14';
 
-import { useNow } from '../settings/providers/useNow';
+import { Unavailable } from '../../shared/Unavailable';
+import { useNow } from '../../shared/useNow';
 import { isFetchFirst, remoteActions, syncButton, type RemoteActionId, type SyncView } from './changesActions';
-import { DisabledTooltip } from './DisabledTooltip';
 import styles from './RemoteMenu.module.css';
 import { useRemoteActions } from './useRemoteActions';
 
@@ -58,7 +58,7 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
     return (
         <div className={ styles.root }>
             <div className={ styles.split }>
-                <DisabledTooltip reason={ off ? view.title : undefined } className={ styles.host }>
+                <Unavailable label={ view.label } hint={ off ? view.title : undefined } className={ styles.host }>
                     <Button
                         variant="filled"
                         color="secondary"
@@ -82,7 +82,7 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
                             { view.line && <Text variant="xs" color={ view.tone === 'warning' ? 'warning' : 'secondary' } truncate className={ styles.line }>{ view.line }</Text> }
                         </span>
                     </Button>
-                </DisabledTooltip>
+                </Unavailable>
 
                 <MenuTrigger>
                     <Button variant="filled" color="secondary" size="sm" iconOnly className={ styles.more } aria-label="More ways to sync with origin" tooltip="Fetch, pull and push" tooltipPlacement="bottom">
