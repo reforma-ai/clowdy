@@ -77,8 +77,8 @@ function Body({ body, file, onRetry }: { body: CardBody; file: GitChangedFile; o
 /**
  * One changed file of the list: a header with a chevron, the file's path (the folder dimmed, the name strong, cut at the start when it does not fit), what happened to it
  * (added, modified, deleted, renamed, with the old path of a rename under it), its added and removed lines and a button that copies the path; and, when it is open, the diff of its
- * two texts. A card is open until it is shut. Its texts are asked of the cache when the card is near the scroller's edge and open, and not before, so a list of hundreds costs what
- * is on screen; the header sticks to the top of the list while its diff scrolls.
+ * two texts. A card is open until it is shut. Its texts are asked of the cache while the card is near the scroller's edge and open, and not before, and a read that has not begun is
+ * let go of when it stops being near, so a list of hundreds costs what is on screen; the header sticks to the top of the list while its diff scrolls.
  */
 export function DiffCard({ model, file }: { model: PlaceChanges; file: GitChangedFile }) {
     const open = !model.isFolded(file.path);
@@ -92,7 +92,12 @@ export function DiffCard({ model, file }: { model: PlaceChanges; file: GitChange
     const wanted = open && near && needsSides(file) && previous?.revision !== file.revision;
 
     useEffect(() => {
-        if (wanted) model.sides.want(request);
+        if (!wanted) return;
+
+        model.sides.want(request);
+
+        // A read that still waits for its turn when the card is shut, far from the screen, edited or gone is not made.
+        return () => model.sides.drop(request);
     }, [wanted, key, model]);
 
     const kind = CHANGE_KIND_VIEW[file.kind];

@@ -58,14 +58,20 @@ class FakeIntersectionObserver {
     }
 }
 
-/** Brings the cards that `select` says are near the scroller's edge into reach. */
-const bringNear = (select: (card: Element) => boolean = () => true) => act(async () => {
+/** Tells the cards that `select` says that they came near the scroller's edge, or went far from it. */
+const moveCards = (isIntersecting: boolean, select: (card: Element) => boolean) => act(async () => {
     for (const { callback, targets } of [...watchers]) {
-        const near = [...targets].filter(select);
+        const moved = [...targets].filter(select);
 
-        if (near.length > 0) callback(near.map(target => ({ isIntersecting: true, target }) as IntersectionObserverEntry), {} as IntersectionObserver);
+        if (moved.length > 0) callback(moved.map(target => ({ isIntersecting, target }) as IntersectionObserverEntry), {} as IntersectionObserver);
     }
 });
+
+/** Brings the cards that `select` says are near the scroller's edge into reach. */
+const bringNear = (select: (card: Element) => boolean = () => true) => moveCards(true, select);
+
+/** Takes the cards that `select` says out of reach of the scroller's edge, as a scroll past them does. */
+const sendAway = (select: (card: Element) => boolean) => moveCards(false, select);
 
 let container: HTMLDivElement;
 let root: Root;
@@ -729,5 +735,83 @@ describe('the reads of the texts', () => {
 
         expect(names).toHaveLength(10);
         expect(most).toBe(4);
+    });
+
+    /** Ten files whose reads wait for the test, four of them running and six waiting for a place once every card is near. */
+    async function startWithTenReads() {
+        const release: Array<() => void> = [];
+        const names: string[] = [];
+
+        await start({
+            wrap: base => overrideTransport(base, {
+                getGitChanges: async (project, place, scope) => {
+                    const answer = await base.getGitChanges(project, place, scope);
+
+                    if (!answer.isRepository || scope !== 'all') return answer;
+
+                    return { ...answer, files: Array.from({ length: 10 }, (_, index) => ({ path: `src/f${ index }.ts`, kind: 'modified' as const, additions: 1, deletions: 1, revision: `100644:${ 'a'.repeat(40) }:100644:${ String(index).repeat(40) }` })) };
+                },
+                getGitFile: async (_project, _place, _scope, path) => {
+                    names.push(path);
+                    await new Promise<void>(resolve => release.push(resolve));
+
+                    return { state: 'text', original: 'a\n', modified: 'b\n', revision: 'r' };
+                },
+            }),
+        });
+        await draw();
+        await bringNear();
+        await settle();
+
+        return {
+            names,
+            finishAll: () => act(async () => {
+                release.splice(0).forEach(resolve => resolve());
+                await new Promise(resolve => setTimeout(resolve, 0));
+            }),
+        };
+    }
+
+    it('does not read the files of the cards that were scrolled past or shut before their turn, and reads them when they are near and open again', async () => {
+        const { names, finishAll } = await startWithTenReads();
+
+        expect(names).toEqual(['src/f0.ts', 'src/f1.ts', 'src/f2.ts', 'src/f3.ts']);
+
+        // A scroll past f6 to f9, and a press that folds f4, while the first four are still on their way.
+        await sendAway(element => ['src/f6.ts', 'src/f7.ts', 'src/f8.ts', 'src/f9.ts'].includes((element as HTMLElement).dataset.card!));
+        await press(button('Fold src/f4.ts'));
+        await finishAll();
+        await finishAll();
+
+        expect(names).toEqual(['src/f0.ts', 'src/f1.ts', 'src/f2.ts', 'src/f3.ts', 'src/f5.ts']);
+
+        // They come back: what they need is read, and what is read is not read again.
+        await bringNear(element => (element as HTMLElement).dataset.card === 'src/f6.ts');
+        await press(button('Unfold src/f4.ts'));
+        await finishAll();
+        await finishAll();
+
+        expect(names).toEqual(['src/f0.ts', 'src/f1.ts', 'src/f2.ts', 'src/f3.ts', 'src/f5.ts', 'src/f6.ts', 'src/f4.ts']);
+    });
+
+    it('does not read the files that the filter takes out of the list', async () => {
+        const { names, finishAll } = await startWithTenReads();
+
+        await type('f0, f1, f2, f3, f4');
+        await finishAll();
+        await finishAll();
+
+        // f5 to f9 were waiting, and are not in the list any more.
+        expect(names).toEqual(['src/f0.ts', 'src/f1.ts', 'src/f2.ts', 'src/f3.ts', 'src/f4.ts']);
+    });
+
+    it('does not read any file once the tab is gone', async () => {
+        const { names, finishAll } = await startWithTenReads();
+
+        act(() => root.render(null));
+        await finishAll();
+        await finishAll();
+
+        expect(names).toEqual(['src/f0.ts', 'src/f1.ts', 'src/f2.ts', 'src/f3.ts']);
     });
 });

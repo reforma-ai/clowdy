@@ -16,28 +16,27 @@ function observerRoot(element: HTMLElement): Element | null {
 }
 
 /**
- * True once the element has come within `NEAR_MARGIN` of the scroll container it is in, and for good: the card is read once, and a card that scrolls away keeps what it has. Where
- * there is no `IntersectionObserver` (a test) everything is near.
+ * Whether the element is within `NEAR_MARGIN` of the scroll container it is in, as it scrolls: a card that is read when it comes near, and whose read that is still waiting is let go
+ * of when it goes far again (a person who scrolls through hundreds of cards asks for the ones where they stop, not for every one they passed). Where there is no
+ * `IntersectionObserver` (a test) everything is near.
  */
 export function useNearViewport(element: HTMLElement | null): boolean {
     const [near, setNear] = useState(false);
     const observable = typeof IntersectionObserver !== 'undefined';
-    const waiting = observable && !near;
 
     useEffect(() => {
-        if (!waiting || !element) return;
+        if (!observable || !element) return;
 
         const observer = new IntersectionObserver(
-            (entries) => {
-                if (entries.some(entry => entry.isIntersecting)) setNear(true);
-            },
+            // The newest entry of the element is how it stands now.
+            entries => setNear(entries.at(-1)?.isIntersecting ?? false),
             { root: observerRoot(element), rootMargin: NEAR_MARGIN }
         );
 
         observer.observe(element);
 
         return () => observer.disconnect();
-    }, [waiting, element]);
+    }, [observable, element]);
 
-    return !waiting;
+    return !observable || near;
 }

@@ -191,14 +191,7 @@ export class PlaceChanges {
             runInAction(() => {
                 this.scope = 'all';
             });
-
-            return;
         }
-
-        // The files that wait for their text are the ones of the list now.
-        const paths = new Set(this.changes?.files.map(file => file.path));
-
-        this.sides.retainQueued(request => request.scope === this.effectiveScope && paths.has(request.path));
     }
 }
 

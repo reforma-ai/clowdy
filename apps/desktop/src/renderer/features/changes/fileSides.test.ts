@@ -170,40 +170,107 @@ describe('the files\' texts', () => {
         expect(cache.entryOf(request('d.ts'))?.status).toBe('ready');
     });
 
-    it('drops the reads that wait for their turn when they are not wanted any more, and leaves the ones on their way', async () => {
+    it('lets go of a read that waits for its turn when its card does not want it any more, and leaves the ones on their way', async () => {
         const reads = deferredReads();
         const cache = new SidesCache(reads.read, 1);
 
         cache.want(request('a.ts'));
         cache.want(request('b.ts'));
         cache.want(request('c.ts'));
-        cache.retainQueued(wanted => wanted.path === 'c.ts');
+        cache.drop(request('b.ts'));
+        // One that is on its way runs to its end and is kept.
+        cache.drop(request('a.ts'));
 
         expect(cache.entryOf(request('a.ts'))).toEqual({ status: 'loading' });
         expect(cache.entryOf(request('b.ts'))).toBeUndefined();
+        expect(cache.entryOf(request('c.ts'))).toEqual({ status: 'loading' });
 
         reads.finish(request('a.ts'));
         await tick();
 
+        // The read that was dropped is never made, and the one behind it takes its turn.
         expect(reads.started.map(started => started.path)).toEqual(['a.ts', 'c.ts']);
+        expect(cache.entryOf(request('a.ts'))?.status).toBe('ready');
+
+        // Asked for again, it is read again; a read that is not there to drop is nothing.
+        cache.drop(request('zz.ts'));
+        cache.want(request('b.ts'));
+        reads.finish(request('c.ts'));
+        await tick();
+        expect(reads.started.map(started => started.path)).toEqual(['a.ts', 'c.ts', 'b.ts']);
     });
 
-    it('forgets everything on a clear, and an answer that was on its way does not come back into it', async () => {
+    it('does not drop a read that failed or a read that is here', async () => {
         const reads = deferredReads();
         const cache = new SidesCache(reads.read);
 
         cache.want(request('a.ts'));
-        cache.clear();
-
-        expect(cache.entryOf(request('a.ts'))).toBeUndefined();
-
+        cache.want(request('b.ts'));
         reads.finish(request('a.ts'));
+        reads.fail(request('b.ts'));
         await tick();
 
-        expect(cache.entryOf(request('a.ts'))).toBeUndefined();
+        cache.drop(request('a.ts'));
+        cache.drop(request('b.ts'));
 
-        cache.want(request('a.ts'));
-        expect(reads.started).toHaveLength(2);
+        expect(cache.entryOf(request('a.ts'))?.status).toBe('ready');
+        expect(cache.entryOf(request('b.ts'))?.status).toBe('error');
+    });
+
+    it('holds no more characters of text than its bound, letting go of the files that were read longest ago, and keeps the one that just ended whatever its size', async () => {
+        const reads = deferredReads();
+        // 100 characters of text for all the files, and four files of 40.
+        const cache = new SidesCache(reads.read, 4, 150, 100);
+        const sized = (path: string, size: number): GitFileSides => ({ state: 'text', original: 'o'.repeat(size / 2), modified: 'm'.repeat(size / 2), revision: 'r1' });
+        const read = async (path: string, size: number) => {
+            cache.want(request(path));
+            reads.finish(request(path), sized(path, size));
+            await tick();
+        };
+
+        await read('a.ts', 40);
+        await read('b.ts', 40);
+        expect(cache.entryOf(request('a.ts'))?.status).toBe('ready');
+
+        // 120 characters: the oldest goes, and its file's last texts with it.
+        await read('c.ts', 40);
+        expect(cache.entryOf(request('a.ts'))).toBeUndefined();
+        expect(cache.latestOf(request('a.ts'))).toBeUndefined();
+        expect(cache.entryOf(request('b.ts'))?.status).toBe('ready');
+        expect(cache.latestOf(request('b.ts'))).toBeDefined();
+
+        // A file bigger than the whole bound pushes the others out and stays itself: a card would only read it again.
+        await read('huge.ts', 400);
+        expect(cache.entryOf(request('huge.ts'))?.status).toBe('ready');
+        expect(cache.latestOf(request('huge.ts'))).toBeDefined();
+        expect([request('b.ts'), request('c.ts')].map(entry => cache.entryOf(entry))).toEqual([undefined, undefined]);
+
+        // Once another read ends, the huge one is the oldest and over the bound: it goes. Binary and too large answers hold no text, so they never push anything out.
+        for (const path of ['logo.png', 'dump.json', 'other.png']) {
+            cache.want(request(path));
+            reads.finish(request(path), { state: path === 'dump.json' ? 'too_large' : 'binary', revision: 'r1' });
+            await tick();
+        }
+
+        expect(cache.entryOf(request('huge.ts'))).toBeUndefined();
+        expect(['logo.png', 'dump.json', 'other.png'].map(path => cache.entryOf(request(path))?.status)).toEqual(['ready', 'ready', 'ready']);
+    });
+
+    it('lets go of an old revision of a file before a newer file, and keeps the last texts of the file while a newer revision is on its way', async () => {
+        const reads = deferredReads();
+        const cache = new SidesCache(reads.read, 4, 2);
+
+        for (const [path, revision] of [['a.ts', 'r1'], ['a.ts', 'r2'], ['b.ts', 'r1']] as const) {
+            cache.want(request(path, revision));
+            reads.finish(request(path, revision));
+            await tick();
+        }
+
+        // Two entries are kept: the edited file's old revision, the oldest, went.
+        expect(cache.entryOf(request('a.ts', 'r1'))).toBeUndefined();
+        expect(cache.entryOf(request('a.ts', 'r2'))?.status).toBe('ready');
+        // Its file's last texts are the newer revision's, which are still held.
+        expect(cache.latestOf(request('a.ts'))).toMatchObject({ revision: 'r2' });
     });
 
     it('is observable per file: a card follows its own file\'s entry and not the others\'', async () => {
