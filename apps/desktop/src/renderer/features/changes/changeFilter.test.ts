@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { compileChangeFilter, filterChanged, globToRegExp } from './changeFilter';
+import { compileChangeFilter, compileGlob, filterChanged } from './changeFilter';
 
 const PATHS = [
     'README.md',
@@ -86,13 +86,50 @@ describe('the filter text', () => {
         expect(shown('[!a-o]rice.ts')).toEqual(['src/booking/price.ts']);
         expect(shown('price\\.t?')).toEqual(['src/booking/price.ts']);
         expect(shown('\\*.md')).toEqual([]);
+        // An escaped star or question mark is that character, and not a run of the one before it.
+        expect(filterChanged([{ path: 'a/x*.txt' }, { path: 'a/x.txt' }, { path: 'a/xx.txt' }], 'x\\*.txt').map(item => item.path)).toEqual(['a/x*.txt']);
+        expect(filterChanged([{ path: 'a/x?.txt' }, { path: 'a/xy.txt' }], 'x\\?.txt').map(item => item.path)).toEqual(['a/x?.txt']);
         // A `[` that nothing closes is a bracket.
         expect(shown('[x*')).toEqual([]);
         expect(filterChanged([{ path: 'a/[x.txt' }, { path: 'a/x.txt' }], '*[x*').map(item => item.path)).toEqual(['a/[x.txt']);
     });
 
+    it('takes every character that is not a glob character as itself, and keeps a slash between folders', () => {
+        const matches = (glob: string, path: string) => compileGlob(glob)!(path);
+
+        for (const special of ['.', '+', '^', '$', '{', '}', '(', ')', '|', ']', '-', '/']) {
+            expect(matches(`a${ special }*`, `a${ special }b`)).toBe(true);
+            expect(matches(`a${ special }*`, `ax${ special }b`)).toBe(false);
+        }
+
+        expect(matches('src/*', 'src/a/b.ts')).toBe(false);
+        expect(matches('src/**', 'src/a/b.ts')).toBe(true);
+        expect(matches('a/**/b', 'a/b')).toBe(true);
+        expect(matches('a/**/b', 'a/x/y/b')).toBe(true);
+        expect(matches('a/**/b', 'a/xb')).toBe(false);
+        expect(matches('a?b', 'a/b')).toBe(false);
+        // A path that starts or ends with the characters a path may.
+        expect(matches('.github/*/*.yml', '.github/workflows/ci.yml')).toBe(true);
+        expect(matches('src/(app)/*', 'src/(app)/page.tsx')).toBe(true);
+    });
+
+    it('answers in the time of the path whatever the pattern, so a long path and many stars do not stop the window', () => {
+        const flat = 'a'.repeat(2000);
+        const deep = `${ 'a/'.repeat(1000) }x`;
+
+        // Each of these made a regular expression backtrack for seconds to minutes; they are a few steps for each character here.
+        expect(compileChangeFilter('a*a*a*a*b').matches(flat)).toBe(false);
+        expect(compileChangeFilter('*a*a*a*a*a*b').matches(flat)).toBe(false);
+        expect(compileChangeFilter('**/**/**/*b').matches(deep)).toBe(false);
+        expect(compileChangeFilter('a/**/**/**/**/**/y').matches(deep)).toBe(false);
+        expect(compileChangeFilter('**a**a**a**a**b').matches(flat)).toBe(false);
+        expect(compileChangeFilter('a*a*a*a*a').matches(flat)).toBe(true);
+        expect(compileChangeFilter('**/**/**/*').matches(deep)).toBe(true);
+        expect(compileChangeFilter('a/**/**/**/x').matches(deep)).toBe(true);
+    });
+
     it('falls back to the text itself for a glob that is no expression', () => {
-        expect(globToRegExp('[z-a]')).toBeUndefined();
+        expect(compileGlob('[z-a]')).toBeUndefined();
         expect(filterChanged([{ path: 'a/[z-a].txt' }, { path: 'a/z.txt' }], '[z-a]').map(item => item.path)).toEqual(['a/[z-a].txt']);
     });
 
