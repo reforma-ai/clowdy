@@ -80,7 +80,7 @@ const onDisk = (root: string, path: string) => join(root, ...path.split('/'));
  * made, or the work is over its limits, nothing is discarded. Then:
  *
  * - a file the last commit has (edited, staged, deleted, a new mode, a link retargeted, a file made a link) goes back to it: `git restore --source=HEAD --staged --worktree`, which
- *   replaces the index and the file and runs no hook;
+ *   replaces the index and the file, and runs the person's own `post-checkout` hook as git does (a hook that fails after the files are back is a `warning`, see `#restore`);
  * - a file the last commit has not (a new file, staged or not; the new name of a renamed one) is removed from the index (`git rm --cached`) and deleted: that file alone, a link as
  *   the link and never what it points to, never `git clean`, never a folder and never the folders above it;
  * - a file with merge conflicts, a submodule, something that is a folder now, a path that leaves the place or runs through a link, and a path git does not list as changed are refused,
@@ -174,10 +174,10 @@ export class GitDiscard {
         const toRestore = targets.filter(target => target.head).map(target => target.path);
         const toUnstage = targets.filter(target => !target.head && target.index).map(target => target.path);
         const toDelete = targets.filter(target => !target.head && target.work.kind !== 'missing');
+        let warning: string | undefined;
 
         // The restore comes first: a file git cannot bring back stops the discard with nothing deleted from the disk.
-        if (toRestore.length > 0)
-            this.#check(await git(['restore', '--source=HEAD', '--staged', '--worktree', '--', ...toRestore]));
+        if (toRestore.length > 0) warning = await this.#restore(cwd, git, toRestore);
 
         if (toUnstage.length > 0) this.#check(await git(['rm', '--cached', '-f', '-q', '--', ...toUnstage]));
 
@@ -193,6 +193,7 @@ export class GitDiscard {
                 })
             ),
             copy: { folder: kept.folder, keptUntil: kept.keptUntil, files: kept.files },
+            ...(warning !== undefined && { warning }),
         };
     }
 
@@ -426,23 +427,70 @@ export class GitDiscard {
         return stdout;
     }
 
-    /** Refuses when a file is not the one that was copied: it was written to after the copy was begun. */
+    /**
+     * Refuses when a file is not the one that was copied: it was written to after the copy was begun, or (a file that was not there, which a restore brings back) written for the first time
+     * since. A path that was missing and still is has nothing to be kept of.
+     */
     async #unchanged(root: string, targets: Target[]): Promise<void> {
         for (const target of targets) {
-            if (target.work.kind === 'missing') continue;
-
             const now = await lstat(onDisk(root, target.path), { bigint: true }).catch(() => undefined);
+            const stamp = target.work.kind === 'missing' ? undefined : target.work.stamp;
 
-            if (now === undefined || stampOf(now) !== target.work.stamp)
+            if ((now === undefined ? undefined : stampOf(now)) !== stamp)
                 throw conflict(`${target.path} changed while its copy was made, try again`);
         }
     }
 
-    /** Deletes one file the commit does not have: the file or the link, found again and walked as before, and nothing else. */
+    /**
+     * Brings the files back with `git restore`. git runs the person's `post-checkout` hook after it (with `0`, a checkout of files), and its exit status is then the hook's: when the files
+     * are back as the last commit has them all the same, the discard was made and the hook's line is the warning, as for a switch that was made with a hook that failed (`GitSwitch`).
+     * Any other failure is git's own, and the new files of the request are then left for the next try.
+     */
+    async #restore(
+        cwd: string,
+        git: (args: string[]) => Promise<RunResult>,
+        paths: string[]
+    ): Promise<string | undefined> {
+        const run = await git(['restore', '--source=HEAD', '--staged', '--worktree', '--', ...paths]);
+
+        if (run.code === 0) return undefined;
+
+        if (run.error === undefined && (run.timedOut || run.code !== null) && (await this.#isBack(cwd, paths)))
+            return run.timedOut
+                ? 'The post-checkout hook did not finish in time'
+                : failureLine(run.stderr, run.stdout, 'The post-checkout hook failed');
+
+        this.#check(run);
+
+        return undefined;
+    }
+
+    /** Whether the index and the disk have these paths as the last commit does. */
+    async #isBack(cwd: string, paths: string[]): Promise<boolean> {
+        const read = await gitRead(cwd, [
+            'status',
+            '--porcelain=v1',
+            '-z',
+            '--untracked-files=no',
+            '--ignore-submodules=all',
+            '--',
+            ...paths.map(path => `:(literal)${path}`),
+        ]);
+
+        return read.ok && read.stdout === '';
+    }
+
+    /**
+     * Deletes one file the commit does not have: the file or the link, found again and walked as before, and nothing else. The restore may have taken a while (a filter that fetches), so a file
+     * that was written to since it was copied is left where it is: its copy is not what it holds.
+     */
     async #delete(root: string, target: Target): Promise<void> {
         const work = await this.#workOf(root, target.path);
 
         if (work.kind === 'missing') return;
+
+        if (target.work.kind === 'missing' || work.stamp !== target.work.stamp)
+            throw conflict(`${target.path} changed while the files were discarded, so it was left as it is`);
 
         try {
             await unlink(onDisk(root, target.path));

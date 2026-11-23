@@ -18,6 +18,9 @@ import {
 import { dirname, join, relative } from 'node:path';
 import { GIT_DISCARD_KEEP_DAYS, MAX_GIT_DISCARD_PATHS } from '@clowdy/protocol';
 
+import { resolvePlace } from '../src/domain/places';
+import { requireProject } from '../src/domain/projects';
+import { GitDiscard } from '../src/git/discard';
 import { DiscardCopies, KEEP_COPIES_MS, MAX_COPY_FILE_BYTES, MAX_KEPT_BYTES } from '../src/git/discardCopies';
 import { WriteEnvironment } from '../src/git/writeEnv';
 import { cleanTempDirs, git, makeRepo, startHarness, tempDir, waitFor } from './helpers';
@@ -895,6 +898,32 @@ describe('the copy of a discard', () => {
         expect(left(path)).toEqual([]);
     });
 
+    test('refuses a deleted file that was written again while the copies were made, since the restore would write over it', async () => {
+        const spy = new SpyCopies(tempDir('git-discard-data'));
+        const h = await start({ copies: spy });
+        const path = repository();
+        const { discard } = await open(path, h);
+
+        rmSync(join(path, 'gone.txt'));
+        // Nothing was there to copy, and then the agent writes the file anew.
+        spy.after = () => writeFileSync(join(path, 'gone.txt'), 'written while the copies were made\n');
+
+        const response = await discard(['gone.txt']);
+
+        expect(response.status).toBe(409);
+        expect((await json<Failure>(response)).error.message).toBe(
+            'gone.txt changed while its copy was made, try again'
+        );
+        expect(readFileSync(join(path, 'gone.txt'), 'utf8')).toBe('written while the copies were made\n');
+
+        spy.after = undefined;
+
+        const retried = await json<GitDiscardResult>(await discard(['gone.txt']));
+
+        expect(copied(retried.copy, 'gone.txt')).toBe('written while the copies were made\n');
+        expect(readFileSync(join(path, 'gone.txt'), 'utf8')).toBe('gone\n');
+    });
+
     test('refuses a file over the per-file limit, and a staged version over it, and leaves everything in the request where it is', async () => {
         const copies = new DiscardCopies(tempDir('git-discard-data'), { maxFileBytes: 2048, maxBytes: 100_000 });
         const h = await start({ copies });
@@ -1220,29 +1249,115 @@ withPosix("GitDiscard on the place's line of writes", () => {
         ]);
     });
 
-    test('says a post-checkout hook that fails with its own line, after the restore it followed, and leaves the new file for the next try', async () => {
+    test('tells a post-checkout hook that fails with its own line as a warning, and still discards every file of the request', async () => {
+        const h = await start();
+        const path = repository();
+        const { discard } = await open(path, h);
+
+        put(path, { 'a.txt': 'a\nedited\n', 'fresh.txt': 'fresh\n', 'staged.txt': 'staged\n' });
+        git(path, 'add', 'staged.txt');
+        hook(path, 'post-checkout', 'echo "post-checkout: the build is broken" >&2', 'exit 1');
+
+        const response = await discard(['a.txt', 'fresh.txt', 'staged.txt']);
+        const result = await json<GitDiscardResult>(response);
+
+        // git's exit status is the hook's, though the file was restored before it ran: the discard was made, and the hook's line is what the person is told besides.
+        expect(response.status).toBe(200);
+        expect(result.warning).toBe('post-checkout: the build is broken');
+        expect(result.discarded).toEqual([
+            { path: 'a.txt', action: 'restored' },
+            { path: 'fresh.txt', action: 'removed' },
+            { path: 'staged.txt', action: 'removed' },
+        ]);
+        expect(left(path)).toEqual([]);
+        expect(readFileSync(join(path, 'a.txt'), 'utf8')).toBe('a\n');
+        expect(existsSync(join(path, 'fresh.txt'))).toBe(false);
+        expect(existsSync(join(path, 'staged.txt'))).toBe(false);
+        expect(copied(result.copy, 'a.txt')).toBe('a\nedited\n');
+        expect(copied(result.copy, 'fresh.txt')).toBe('fresh\n');
+        expect(manifestOf(result.copy).completed).toBe(true);
+
+        // A hook that says nothing is still named, and one that works is no warning.
+        put(path, { 'a.txt': 'a\nedited again\n' });
+        hook(path, 'post-checkout', 'exit 1');
+
+        expect((await json<GitDiscardResult>(await discard(['a.txt']))).warning).toBe('The post-checkout hook failed');
+
+        put(path, { 'a.txt': 'a\nonce more\n' });
+        hook(path, 'post-checkout', 'exit 0');
+
+        expect((await json<GitDiscardResult>(await discard(['a.txt']))).warning).toBeUndefined();
+    });
+
+    test('is no warning when a restore failed for another reason: some files are back, the rest are not, and the new files stay for the next try', async () => {
+        const h = await start();
+        const path = repository({ ...FILES, 'ro/a.txt': 'a\n', 'ro/b.txt': 'b\n' });
+        const { discard } = await open(path, h);
+
+        put(path, { 'a.txt': 'a\nedited\n', 'ro/a.txt': 'edited\n', 'fresh.txt': 'fresh\n' });
+        // git cannot replace a file in a folder it cannot write to.
+        chmodSync(join(path, 'ro'), 0o555);
+
+        try {
+            const response = await discard(['a.txt', 'ro/a.txt', 'fresh.txt']);
+            const body = await json<Failure>(response);
+
+            expect(response.status).toBe(409);
+            expect(body.error).toMatchObject({ code: 'conflict' });
+            expect(body.error.message).toBe("error: unable to unlink old 'ro/a.txt': Permission denied");
+            // The new file is not deleted after a restore that did not finish, and what was not restored is as it was; the copy of all of it is kept.
+            expect(readFileSync(join(path, 'fresh.txt'), 'utf8')).toBe('fresh\n');
+            expect(readFileSync(join(path, 'ro/a.txt'), 'utf8')).toBe('edited\n');
+            expect(left(path)).toEqual([' M ro/a.txt', '?? fresh.txt']);
+        } finally {
+            chmodSync(join(path, 'ro'), 0o755);
+        }
+
+        expect((await discard(['ro/a.txt', 'fresh.txt'])).status).toBe(200);
+        expect(left(path)).toEqual([]);
+    });
+
+    test('says a post-checkout hook that does not end in time as a warning, when the files are back', async () => {
+        const h = await start();
+        const path = repository();
+        const { project, folderId } = await open(path, h);
+        const discarding = new GitDiscard({
+            store: h.store,
+            dataDir: tempDir('git-discard-data'),
+            environment: isolated(),
+            timeoutMs: 1500,
+        });
+        const place = resolvePlace(h.store, requireProject(h.store, project.id), folderId);
+
+        put(path, { 'a.txt': 'a\nedited\n', 'fresh.txt': 'fresh\n' });
+        hook(path, 'post-checkout', 'sleep 30');
+
+        const started = Date.now();
+        const result = await discarding.discard(place, { projectId: project.id, paths: ['a.txt', 'fresh.txt'] });
+
+        expect(result.warning).toBe('The post-checkout hook did not finish in time');
+        expect(Date.now() - started).toBeLessThan(15_000);
+        expect(left(path)).toEqual([]);
+        expect(existsSync(join(path, 'fresh.txt'))).toBe(false);
+    });
+
+    test('leaves a new file that was written to while the restore ran, whose copy is not what it holds', async () => {
         const h = await start();
         const path = repository();
         const { discard } = await open(path, h);
 
         put(path, { 'a.txt': 'a\nedited\n', 'fresh.txt': 'fresh\n' });
-        hook(path, 'post-checkout', 'echo "post-checkout: the build is broken" >&2', 'exit 1');
+        // The restore takes its time (a filter that fetches, a hook that builds): the agent goes on writing to the file it is about to lose.
+        hook(path, 'post-checkout', `echo "written after the copy" >> '${join(path, 'fresh.txt')}'`);
 
         const response = await discard(['a.txt', 'fresh.txt']);
 
         expect(response.status).toBe(409);
-        expect((await json<Failure>(response)).error).toMatchObject({
-            code: 'conflict',
-            message: 'post-checkout: the build is broken',
-        });
-        // git restored the file before the hook ran; the new file was not deleted, since the discard stops where git did.
-        expect(left(path)).toEqual(['?? fresh.txt']);
-        expect(readFileSync(join(path, 'fresh.txt'), 'utf8')).toBe('fresh\n');
-
-        hook(path, 'post-checkout', 'exit 0');
-
-        expect((await discard(['fresh.txt'])).status).toBe(200);
-        expect(left(path)).toEqual([]);
+        expect((await json<Failure>(response)).error.message).toBe(
+            'fresh.txt changed while the files were discarded, so it was left as it is'
+        );
+        expect(readFileSync(join(path, 'fresh.txt'), 'utf8')).toBe('fresh\nwritten after the copy\n');
+        expect(readFileSync(join(path, 'a.txt'), 'utf8')).toBe('a\n');
     });
 
     test("says git's own line when git refuses, and changes the disk no further", async () => {

@@ -63,7 +63,8 @@
  *                                         deletes work, so it is slow on purpose: the paths are judged against what `GET .../git/changes?scope=uncommitted` lists right now (a renamed file
  *                                         brings its old path along), a copy of what each file holds now is made in the daemon's own data folder and checked before anything is touched (`copy`,
  *                                         kept `GIT_DISCARD_KEEP_DAYS` days, never in the repository), and then a file git has in its last commit goes back to it (`git restore --source=HEAD --staged
- *                                         --worktree`: the staged and the edited versions are both replaced) and a file it has not (new, staged or not) is deleted, only that file. No hook runs.
+ *                                         --worktree`: the staged and the edited versions are both replaced) and a file it has not (new, staged or not) is deleted, only that file. The person's own `post-checkout` hook runs
+ *                                         as git runs it for a restore; a hook that fails after the files are back is told as `warning` of the answer, as a switch tells it.
  *                                         A path that is not a changed file or that escapes the place (`..`, an absolute path, a symbolic link in the way), a submodule, a file over the copy's size limit and
  *                                         a request whose copies would not fit are `invalid`; a file with merge conflicts is `conflict` (`Resolve the conflict first`); a copy that could not be made is
  *                                         `unavailable` with nothing discarded; git's own refusal is `conflict` with its first `fatal:` or `error:` line. One request at a time per place, on the line of writes.
@@ -617,6 +618,8 @@ export interface GitDiscardResult {
     /** In the order they were sent; a renamed file is its new path, and its old one is not listed (it is back too). */
     discarded: GitDiscardedFile[];
     copy: GitDiscardCopy;
+    /** What the person is told besides: the line of their `post-checkout` hook, which failed (or did not end in time) after the files were put back. Every file is discarded all the same. */
+    warning?: string;
 }
 
 /** The body of `POST /v1/projects/:id/git/message`. */
