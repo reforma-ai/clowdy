@@ -613,7 +613,7 @@ export class RunDriver {
 
         // Before anything that counts a session: the step waits for git, and no session is open yet.
         await this.prepareWorkspace(runId, signal);
-        await this.measureStart(runId, live);
+        this.measureStart(runId, live);
 
         const deadline = Date.now() + 2 * config.timings.killGraceMs;
 
@@ -701,6 +701,9 @@ export class RunDriver {
         this.onTurnStarted(runId);
 
         try {
+            // The tree before the agent acts: the session is read only now, and an agent that has been started already needs seconds to answer.
+            await live.trees?.started();
+
             const result = await this.consume(run, session, writer, live);
 
             // A message was on its way to the session when it ended; its refusal (the session is over) makes it the next turn of a new one.
@@ -786,10 +789,11 @@ export class RunDriver {
     }
 
     /**
-     * The tree of the folder the turn works in before the agent can touch it, which the tree at the turn's end is compared with (`Chat.lastRun`). Only the orchestrator of a chat is
-     * measured (`TurnSnapshots.begin`). It waits for the tree for a second at most, so a very large project does not hold the turn back.
+     * Starts taking the tree of the folder the turn works in, which the tree at the turn's end is compared with (`Chat.lastRun`). Only the orchestrator of a chat is measured
+     * (`TurnSnapshots.begin`). Nothing is awaited here, so the order in which runs count their sessions and start is as it was; `turn` waits for the tree (a second at most) just
+     * before it reads the session, which is when the agent can first act.
      */
-    private async measureStart(runId: string, live: LiveRun): Promise<void> {
+    private measureStart(runId: string, live: LiveRun): void {
         const { store, runs } = this.deps;
         const run = runs.require(runId);
 
@@ -800,7 +804,6 @@ export class RunDriver {
 
             live.cwd = cwd;
             live.trees = this.snapshots.begin(runId, cwd);
-            await live.trees?.started();
         }
         catch {
             // A turn is never held up or failed by what it changed in the place: without a snapshot it has no last run, and the turn goes on.

@@ -16,9 +16,10 @@ import type { Store } from '../store';
 export const SNAPSHOT_TIMEOUT_MS = 10_000;
 
 /**
- * How long a turn's start waits for its snapshot before the agent is started anyway: an agent needs a few seconds to start and answer before its first edit, so a snapshot
- * that is done within this is taken before any edit. A slower one (a very large tree) goes on while the agent starts, and an edit made in the agent's first seconds may then be in
- * the start tree and be missed by the scope, which is the price of not holding the turn back.
+ * How long the driver waits for a turn's start snapshot before it reads the session, which is when the agent can first act (and, with a message sent into a session that is
+ * waiting, before the message goes). The snapshot is started before the session is, so an agent that needs seconds to start and answer finds it done; a snapshot slower than this
+ * (a very large tree) goes on while the agent works, and an edit made in the agent's first moments may then be in the start tree and be missed by the scope, which is the price of
+ * not holding the turn back.
  */
 export const START_WAIT_MS = 1000;
 
@@ -143,15 +144,16 @@ export class TurnSnapshots {
     }
 
     /** @internal for `TurnTrees`: keeps what the turn changed on the chat (or forgets the earlier turn's), and publishes the chat when that changed it. */
-    keep(chatId: string, trees: Pick<ChatLastRun, 'startTree' | 'endTree' | 'seq' | 'at'> | undefined): void {
+    keep(chatId: string, trees: Pick<ChatLastRun, 'startTree' | 'endTree'> | undefined, mark: { seq: number; at: number }): void {
         const { store } = this;
 
         try {
             store.tx(() => {
                 const before = getChatLastRun(store.db, chatId);
-                const lastRun: ChatLastRun | undefined = trees;
+                const lastRun: ChatLastRun | undefined = trees && { ...trees, ...mark };
 
-                if (!before && !lastRun) return;
+                // A turn whose snapshot came in late (past its wait) and a newer turn that has already kept its own: the newer one stays.
+                if ((before && before.at > mark.at) || (!before && !lastRun)) return;
 
                 setChatLastRun(store.db, chatId, lastRun);
 
@@ -176,7 +178,7 @@ export class TurnTrees {
         this.#start = owner.take(cwd);
     }
 
-    /** Resolves once the start tree is made, or after `START_WAIT_MS`: the turn's agent is started then, whatever the snapshot has come to. Never rejects. */
+    /** Resolves once the start tree is made, or after `START_WAIT_MS`, whatever the snapshot has come to. Never rejects. */
     async started(): Promise<void> {
         await within(this.#start, this.owner.waits.start);
     }
@@ -187,8 +189,16 @@ export class TurnTrees {
      * it is the first answer. Never rejects.
      */
     end(): Promise<void> {
-        // Where the stream was when the turn ended, not when the second tree is done: a message the person writes meanwhile is newer than the turn.
-        this.#finished ??= this.#finish(this.owner.mark(this.runId));
+        if (!this.#finished) {
+            try {
+                // Where the stream was when the turn ended, not when the second tree is done: a message the person writes meanwhile is newer than the turn.
+                this.#finished = this.#finish(this.owner.mark(this.runId));
+            }
+            catch {
+                // The run or the database is gone (the daemon is stopping): nothing to keep the trees on.
+                this.#finished = Promise.resolve();
+            }
+        }
 
         return within(this.#finished, this.owner.waits.end);
     }
@@ -198,6 +208,6 @@ export class TurnTrees {
         // A turn that could not be measured at its start is not measured at its end either: one failed attempt (not a repository, git gone) is not tried twice.
         const endTree = startTree === undefined ? undefined : await this.owner.take(this.cwd);
 
-        this.owner.keep(this.chatId, startTree !== undefined && endTree !== undefined && startTree !== endTree ? { startTree, endTree, ...mark } : undefined);
+        this.owner.keep(this.chatId, startTree !== undefined && endTree !== undefined && startTree !== endTree ? { startTree, endTree } : undefined, mark);
     }
 }

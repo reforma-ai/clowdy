@@ -679,6 +679,52 @@ describe('TurnSnapshots', () => {
         expect(chatOf(chat.id).lastRun).toBeUndefined();
     });
 
+    test('keeps the record of a newer turn when an older turn\'s snapshot comes in after it, and still forgets nothing the newer turn kept', async () => {
+        const C = 'c'.repeat(40);
+        const D = 'd'.repeat(40);
+        let clock = 100;
+        let release!: (tree: string) => void;
+        const late = new Promise<string>((resolve) => {
+            release = resolve;
+        });
+        const calls = new Map<string, number>();
+        const answer = (cwd: string) => {
+            const call = calls.get(cwd) ?? 0;
+
+            calls.set(cwd, call + 1);
+
+            // The older turn's end is the one that is slow.
+            if (cwd === '/old') return call === 0 ? Promise.resolve(A) : late;
+
+            return Promise.resolve(call === 0 ? C : D);
+        };
+        const { h, chat, chatOf, runId } = await bare(answer);
+        const snapshots = new TurnSnapshots(h.store, { snapshot: answer, now: () => clock, endWaitMs: 20 });
+        const older = snapshots.begin(runId, '/old');
+        const newer = snapshots.begin(runId, '/new');
+
+        await older?.end();
+        expect(chatOf(chat.id).lastRun).toBeUndefined();
+
+        clock = 200;
+        await newer?.end();
+        expect(chatOf(chat.id).lastRun).toMatchObject({ startTree: C, endTree: D, at: 200 });
+
+        release(B);
+        await Bun.sleep(30);
+        expect(chatOf(chat.id).lastRun).toMatchObject({ startTree: C, endTree: D, at: 200 });
+    });
+
+    test('lets a turn end when the run is gone, as in a daemon that is stopping: nothing is kept and nothing is thrown', async () => {
+        const { h, chat, chatOf, runId, snapshots } = await bare(async () => A);
+        const turn = snapshots.begin(runId, '/somewhere');
+
+        // The stream the turn's place in it is read from is not there any more.
+        h.store.db.query('DROP TABLE stream_items').run();
+        await expect(turn?.end()).resolves.toBeUndefined();
+        expect(chatOf(chat.id).lastRun).toBeUndefined();
+    });
+
     test('measures only a chat\'s own orchestrator: no run, a run with a folder of its own and a sub-agent\'s run have none', async () => {
         const { h, chat, chatOf, runId, snapshots } = await bare(async () => A);
 
