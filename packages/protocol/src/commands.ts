@@ -24,6 +24,8 @@ const chatWorkspaceChoice = z.union([
         })
         .strict(),
     z.object({ mode: z.literal('existing'), path: z.string().min(1) }).strict(),
+    // What is a branch name is git's to say (`GitSwitch`), so a refusal names the rule; the schema only keeps the text short.
+    z.object({ mode: z.literal('main'), branch: z.string().max(1000) }).strict(),
 ]);
 const effort = z.string().min(1).max(64);
 const actor = z.object({ kind: z.literal('user') });
@@ -158,6 +160,10 @@ export const commandSchema = z.discriminatedUnion('type', [
      * the folder; left out, in the folder itself. Refused for a folder that is not the root of a repository, a base that is not a ref of it, or a path that is not one of its worktrees.
      * A new worktree is on the branch `<branchPrefix>/<branchName>` (`branchName` is the chat's id8 when left out, and is refused when it is not a name `branchNameProblem` accepts or the repository has the branch); the prefix is the app's setting and the client sends it (`clowdy` when left out or empty), and it is refused when
      * git would not take it as the start of a branch name (`branchPrefixProblem`) or the repository has a branch of that name (a branch `max` and a branch `max/x` cannot both be).
+     * `{ mode: 'main', branch }` has the chat work in the folder's own checkout on that branch: **the command waits for git**, which switches the checkout first (`GitSwitch`, the Changes sidebar's
+     * switch, refused for a tree with any change, a merge or rebase under way, a chat working in the folder and a branch another worktree has: `conflict` with its short reason and `details.hint`; a
+     * branch that does not exist or a name that is none is `invalid`), and the chat is made only when that is done: a refusal makes no chat and leaves the repository as it was. A branch the checkout
+     * is on changes nothing. The answer is `{ chat }`, and `{ chat, warning }` when the switch was made and the person's `post-checkout` hook failed after it or a detached HEAD's commits are on no branch now.
      */
     z.object({
         ...base,

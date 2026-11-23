@@ -276,13 +276,20 @@ export interface ChatWorkspace {
 }
 
 /**
- * Where a new chat works when it is not in the folder itself: in a new worktree started from `base` (the folder's default branch when absent) on the branch
- * `<branchPrefix>/<branchName>` (`DEFAULT_BRANCH_PREFIX` when the prefix is absent or empty; the chat's id8 when there is no name, which is what a chat the person starts
- * has), or in a worktree that exists. The folder of the worktree is named by its chat's id8 whatever the branch is called.
+ * Where a new chat works: in a new worktree started from `base` (the folder's default branch when absent) on the branch `<branchPrefix>/<branchName>`
+ * (`DEFAULT_BRANCH_PREFIX` when the prefix is absent or empty; the chat's id8 when there is no name, which is what a chat the person starts has), in a worktree that exists, or
+ * in the folder's own checkout on `branch` (`main`): the daemon changes the checkout to that branch first, as the Changes sidebar's branch button does (`POST .../git/switch`,
+ * with all of its refusals: a tree with any change, an operation under way, a chat working there, a branch another worktree holds) and makes the chat only once that is done, so a
+ * refusal leaves no chat behind. A branch the checkout is on already changes nothing. No choice at all is the folder's own checkout as it is, which is what every chat made before
+ * `main` existed has. The folder of a worktree is named by its chat's id8 whatever the branch is called.
  */
 export type ChatWorkspaceChoice =
     | { mode: 'new'; base?: string; branchPrefix?: string; branchName?: string }
-    | { mode: 'existing'; path: string };
+    | { mode: 'existing'; path: string }
+    | { mode: 'main'; branch: string };
+
+/** The choices that make a worktree row for the chat (`ChatWorkspace`): `main` is the folder's own checkout, which has none. */
+export type ChatWorktreeChoice = Exclude<ChatWorkspaceChoice, { mode: 'main' }>;
 
 /** What the branch of a new worktree starts with when none is chosen: `clowdy/<chat id8>`. */
 export const DEFAULT_BRANCH_PREFIX = 'clowdy';
