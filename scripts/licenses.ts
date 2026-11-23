@@ -30,9 +30,6 @@ const UNKNOWN = 'UNKNOWN';
 /** Wrap license text in the file at this width; only whitespace changes, never words. */
 const WRAP = 100;
 
-/** The copyright part a row keeps from a license file. */
-const MAX_COPYRIGHT_LINES = 2;
-
 /** Packages named in the heading of a variant text. */
 const MAX_NAMES = 5;
 
@@ -110,7 +107,7 @@ interface Row {
     name: string
     version: string
     license: string
-    /** Copyright lines of the package's license file, or the author when the package ships none. */
+    /** The notice lines of the package's license files, or the author when they hold none. */
     copyright: string[]
     /** True when the copyright part is not from a license file. */
     fallback: boolean
@@ -163,10 +160,6 @@ function collectRows(repoRoot: string, warnings: string[]): Row[] {
 
         const json = readJson(path.join(dir, 'package.json'));
 
-        if (!json) {
-            return;
-        }
-
         if (json.name && HAND_WRITTEN.has(json.name)) {
             return;
         }
@@ -203,7 +196,13 @@ function collectRows(repoRoot: string, warnings: string[]): Row[] {
     }
 
     for (const root of ROOTS) {
-        walk(path.join(repoRoot, root));
+        const dir = path.join(repoRoot, root);
+
+        if (!existsSync(path.join(dir, 'package.json'))) {
+            die(`${ root } has no package.json: the list of shipped packages would be incomplete`);
+        }
+
+        walk(dir);
     }
 
     const rows: Row[] = [];
@@ -234,18 +233,16 @@ function buildRow(dir: string, json: PackageJson, warnings: string[]): Row {
     const name = json.name ?? '';
     const version = json.version ?? '';
     const license = declaredLicense(json);
-    const files = licenseFiles(dir);
-    const texts = files.map(file => readFileSync(path.join(dir, file), 'utf8').replace(/\r\n?/g, '\n'));
+    const texts = licenseFiles(dir).map(file => readFileSync(path.join(dir, file), 'utf8').replace(/\r\n?/g, '\n'));
     const url = sourceUrl(json) ?? `https://www.npmjs.com/package/${ name }`;
-    let copyright = texts.flatMap(text => text.split('\n').filter(isCopyrightLine).map(line => line.trim()));
-    let fallback = false;
+    const notices = [...new Set(texts.flatMap(text => findNotice(text.split('\n'))?.lines ?? []))];
+    const fallback = notices.length === 0;
 
     if (license === UNKNOWN) {
         warnings.push(`${ name }@${ version } declares no license`);
     }
 
     if (texts.length === 0) {
-        fallback = true;
         texts.push(TEMPLATES[license] ?? noTemplateText(license));
 
         if (!TEMPLATES[license]) {
@@ -253,16 +250,11 @@ function buildRow(dir: string, json: PackageJson, warnings: string[]): Row {
         }
     }
 
-    if (copyright.length === 0) {
-        fallback = true;
-        copyright = [authorCopyright(json)];
-    }
-
     return {
         name,
         version,
         license,
-        copyright: copyright.slice(0, MAX_COPYRIGHT_LINES),
+        copyright: fallback ? [authorCopyright(json)] : notices,
         fallback,
         url,
         texts,
@@ -399,7 +391,7 @@ function collectTexts(rows: Row[]): LicenseText[] {
 }
 
 function textKey(text: string): string {
-    return withoutCopyrightRun(text, '')
+    return withoutNotice(text, '')
         .replace(/[\u2018\u2019\u201c\u201d']/g, '"')
         .replace(/\s+/g, ' ')
         .trim()
@@ -416,25 +408,34 @@ function isRightsLine(line: string): boolean {
     return /^all rights reserved\.?$/i.test(line.trim());
 }
 
+/** The first run of copyright lines in a license text: where it sits, and the lines it holds. */
+interface Notice {
+    /** Index of its first line and of its last line in the text's lines. */
+    start: number
+    end: number
+    /** Its non-blank lines, trimmed. */
+    lines: string[]
+}
+
 /**
- * The text with its first run of copyright lines (blank lines and `All rights reserved.` between them included) taken
- * out, `replacement` standing there. Later copyright lines are part of the text, as in a license that credits several
- * works, and stay.
+ * The first run of copyright lines: blank lines, `All rights reserved.` and the second line of a holder that wraps
+ * (the first one ends with a comma) between them included. Later copyright lines are part of the text, as in a license
+ * that credits several works, and stay there.
  */
-function withoutCopyrightRun(text: string, replacement: string): string {
-    const lines = text.split('\n');
+function findNotice(lines: string[]): Notice | undefined {
     const start = lines.findIndex(isNotice);
 
     if (start === -1) {
-        return lines.join('\n');
+        return undefined;
     }
 
     let end = start;
 
     for (let index = start + 1; index < lines.length; index += 1) {
         const line = lines[index]!;
+        const wraps = index === end + 1 && lines[end]!.trimEnd().endsWith(',') && line.trim() !== '';
 
-        if (isNotice(line)) {
+        if (isNotice(line) || wraps) {
             end = index;
         }
         else if (line.trim() !== '' && !isRightsLine(line)) {
@@ -447,12 +448,24 @@ function withoutCopyrightRun(text: string, replacement: string): string {
         end += 1;
     }
 
-    return [...lines.slice(0, start), replacement, ...lines.slice(end + 1)].join('\n');
+    return {
+        start,
+        end,
+        lines: lines.slice(start, end + 1).map(line => line.trim()).filter(line => line !== ''),
+    };
 }
 
-/** The text with its copyright run replaced by one placeholder line, wrapped and with single blank lines. */
+/** The text with its notice taken out, `replacement` standing there. Every line it took out is in a package's row. */
+function withoutNotice(text: string, replacement: string): string {
+    const lines = text.split('\n');
+    const notice = findNotice(lines);
+
+    return notice ? [...lines.slice(0, notice.start), replacement, ...lines.slice(notice.end + 1)].join('\n') : text;
+}
+
+/** The text with its notice replaced by one placeholder line, wrapped and with single blank lines. */
 function displayText(text: string): string {
-    return withoutCopyrightRun(text, COPYRIGHT_PLACEHOLDER)
+    return withoutNotice(text, COPYRIGHT_PLACEHOLDER)
         .split('\n')
         .flatMap(line => wrap(line.trimEnd()))
         .join('\n')
@@ -490,7 +503,7 @@ function renderPackages(rows: Row[]): string {
     const lines = [
         '## npm packages',
         '',
-        `${ rows.length } packages from the production dependencies of the desktop app and the daemon, with the license each declares in its \`package.json\`. The copyright lines are the first ones of the package's own license file.`,
+        `${ rows.length } packages from the production dependencies of the desktop app and the daemon, with the license each declares in its \`package.json\`. The copyright column is the notice from the package's own license file, line by line.`,
         '',
         '| Package | Version | License | Copyright | Source |',
         '| --- | --- | --- | --- | --- |',
@@ -539,12 +552,13 @@ function escapeCell(text: string): string {
 
 // MARK: Helpers
 
-function readJson(file: string): PackageJson | undefined {
+/** A malformed `package.json` fails the run: a package skipped here would be missing from a legal file. */
+function readJson(file: string): PackageJson {
     try {
         return JSON.parse(readFileSync(file, 'utf8')) as PackageJson;
     }
-    catch {
-        return undefined;
+    catch (error) {
+        throw new Error(`${ file }: ${ error instanceof Error ? error.message : String(error) }`, { cause: error });
     }
 }
 

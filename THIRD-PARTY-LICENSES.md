@@ -10,7 +10,7 @@ Electron contains Chromium and other components under their own licenses. Their 
 
 ## Bun
 
-The daemon runs on Bun, which ships inside the app as the unmodified release binary from <https://github.com/oven-sh/bun>. Bun is released under the MIT license. It statically links JavaScriptCore and WebKit (LGPL-2), TinyCC (LGPL-2.1), and other libraries under their own licenses. Bun's license file lists them with their terms: <https://github.com/oven-sh/bun/blob/main/LICENSE.md>.
+The daemon runs on Bun, which ships inside the app as the release binary from <https://github.com/oven-sh/bun>, not rebuilt or patched. Bun is released under the MIT license. It statically links JavaScriptCore and WebKit (LGPL-2), TinyCC (LGPL-2.1), and other libraries under their own licenses. Bun's license file lists them with their terms: <https://github.com/oven-sh/bun/blob/main/LICENSE.md>.
 
 ## ripgrep
 
@@ -152,7 +152,7 @@ Clowdy also contains design-system code, icon packs and an animation that were a
 
 ## npm packages
 
-305 packages from the production dependencies of the desktop app and the daemon, with the license each declares in its `package.json`. The copyright lines are the first ones of the package's own license file.
+305 packages from the production dependencies of the desktop app and the daemon, with the license each declares in its `package.json`. The copyright column is the notice from the package's own license file, line by line.
 
 | Package | Version | License | Copyright | Source |
 | --- | --- | --- | --- | --- |
@@ -264,9 +264,9 @@ Clowdy also contains design-system code, icon packs and an animation that were a
 | `@xterm/addon-web-links` | 0.12.0 | MIT | Copyright (c) 2017, The xterm.js authors (https://github.com/xtermjs/xterm.js) | https://github.com/xtermjs/xterm.js/tree/master/addons/addon-web-links |
 | `@xterm/addon-webgl` | 0.19.0 | MIT | Copyright (c) 2018, The xterm.js authors (https://github.com/xtermjs/xterm.js) | https://github.com/xtermjs/xterm.js/tree/master/addons/addon-webgl |
 | `@xterm/headless` | 6.0.0 | MIT | Copyright (c) the @xterm/headless authors † | https://github.com/xtermjs/xterm.js |
-| `@xterm/xterm` | 6.0.0 | MIT | Copyright (c) 2017-2019, The xterm.js authors (https://github.com/xtermjs/xterm.js)<br>Copyright (c) 2014-2016, SourceLair Private Company (https://www.sourcelair.com) | https://github.com/xtermjs/xterm.js |
+| `@xterm/xterm` | 6.0.0 | MIT | Copyright (c) 2017-2019, The xterm.js authors (https://github.com/xtermjs/xterm.js)<br>Copyright (c) 2014-2016, SourceLair Private Company (https://www.sourcelair.com)<br>Copyright (c) 2012-2013, Christopher Jeffrey (https://github.com/chjj/) | https://github.com/xtermjs/xterm.js |
 | `anser` | 2.3.5 | MIT | Copyright (c) 2012-25 Ionică Bizău \<bizauionica@gmail.com\> (https://ionicabizau.net) | https://github.com/IonicaBizau/anser |
-| `argparse` | 2.0.1 | Python-2.0 | Copyright (c) 1991 - 1995, Stichting Mathematisch Centrum Amsterdam, | https://github.com/nodeca/argparse |
+| `argparse` | 2.0.1 | Python-2.0 | Copyright (c) 1991 - 1995, Stichting Mathematisch Centrum Amsterdam,<br>The Netherlands.  All rights reserved. | https://github.com/nodeca/argparse |
 | `aria-hidden` | 1.2.6 | MIT | Copyright (c) 2017 Anton Korzunov | https://github.com/theKashey/aria-hidden |
 | `bail` | 2.0.2 | MIT | Copyright (c) 2015 Titus Wormer \<tituswormer@gmail.com\> | https://github.com/wooorm/bail |
 | `balanced-match` | 4.0.4 | MIT | Original code Copyright Julian Gruber \<julian@juliangruber.com\><br>Port to TypeScript Copyright Isaac Z. Schlueter \<i@izs.me\> | https://github.com/juliangruber/balanced-match |
@@ -277,7 +277,7 @@ Clowdy also contains design-system code, icon packs and an animation that were a
 | `character-entities-html4` | 2.1.0 | MIT | Copyright (c) 2015 Titus Wormer \<tituswormer@gmail.com\> | https://github.com/wooorm/character-entities-html4 |
 | `character-entities-legacy` | 3.0.0 | MIT | Copyright (c) 2015 Titus Wormer \<tituswormer@gmail.com\> | https://github.com/wooorm/character-entities-legacy |
 | `character-reference-invalid` | 2.0.1 | MIT | Copyright (c) 2015 Titus Wormer \<tituswormer@gmail.com\> | https://github.com/wooorm/character-reference-invalid |
-| `chroma-js` | 3.3.0 | (BSD-3-Clause AND Apache-2.0) | Copyright (c) 2011-2025, Gregor Aisch<br>Copyright (c) 2002 Cynthia Brewer, Mark Harrower, | https://github.com/gka/chroma.js |
+| `chroma-js` | 3.3.0 | (BSD-3-Clause AND Apache-2.0) | Copyright (c) 2011-2025, Gregor Aisch<br>All rights reserved. | https://github.com/gka/chroma.js |
 | `client-only` | 0.0.1 | MIT | Copyright (c) the client-only authors † | https://reactjs.org/ |
 | `clsx` | 2.1.1 | MIT | Copyright (c) Luke Edwards \<luke.edwards05@gmail.com\> (lukeed.com) | https://github.com/lukeed/clsx |
 | `codemirror` | 6.0.2 | MIT | Copyright (C) 2018-2021 by Marijn Haverbeke \<marijn@haverbeke.berlin\> and others | https://github.com/codemirror/basic-setup |
@@ -289,7 +289,7 @@ Clowdy also contains design-system code, icon packs and an animation that were a
 | `devlop` | 1.1.0 | MIT | Copyright (c) 2023 Titus Wormer \<tituswormer@gmail.com\> | https://github.com/wooorm/devlop |
 | `dnd-core` | 14.0.1 | MIT | Copyright (c) 2015 Dan Abramov | https://github.com/react-dnd/react-dnd |
 | `electron-updater` | 6.8.11 | MIT | Copyright (c) 2015 Loopline Systems | https://github.com/electron-userland/electron-builder |
-| `entities` | 9.0.0 | BSD-2-Clause | Copyright (c) Felix Böhm | https://github.com/fb55/entities |
+| `entities` | 9.0.0 | BSD-2-Clause | Copyright (c) Felix Böhm<br>All rights reserved. | https://github.com/fb55/entities |
 | `escape-string-regexp` | 5.0.0 | MIT | Copyright (c) Sindre Sorhus \<sindresorhus@gmail.com\> (https://sindresorhus.com) | https://github.com/sindresorhus/escape-string-regexp |
 | `estree-util-is-identifier-name` | 3.0.0 | MIT | Copyright (c) 2020 Titus Wormer \<tituswormer@gmail.com\> | https://github.com/syntax-tree/estree-util-is-identifier-name |
 | `extend` | 3.0.2 | MIT | Copyright (c) 2014 Stefan Thomas | https://github.com/justmoon/node-extend |
@@ -1793,7 +1793,6 @@ CWI LICENSE AGREEMENT FOR PYTHON 0.9.0 THROUGH 1.2
 --------------------------------------------------
 
 [The copyright notice of each package is in the table above]
-The Netherlands.  All rights reserved.
 
 Permission to use, copy, modify, and distribute this software and its
 documentation for any purpose and without fee is hereby granted,

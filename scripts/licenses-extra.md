@@ -10,7 +10,7 @@ Electron contains Chromium and other components under their own licenses. Their 
 
 ## Bun
 
-The daemon runs on Bun, which ships inside the app as the unmodified release binary from <https://github.com/oven-sh/bun>. Bun is released under the MIT license. It statically links JavaScriptCore and WebKit (LGPL-2), TinyCC (LGPL-2.1), and other libraries under their own licenses. Bun's license file lists them with their terms: <https://github.com/oven-sh/bun/blob/main/LICENSE.md>.
+The daemon runs on Bun, which ships inside the app as the release binary from <https://github.com/oven-sh/bun>, not rebuilt or patched. Bun is released under the MIT license. It statically links JavaScriptCore and WebKit (LGPL-2), TinyCC (LGPL-2.1), and other libraries under their own licenses. Bun's license file lists them with their terms: <https://github.com/oven-sh/bun/blob/main/LICENSE.md>.
 
 ## ripgrep
 
