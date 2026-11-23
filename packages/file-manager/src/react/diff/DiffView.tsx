@@ -71,7 +71,7 @@ function useCodeLanguage(path: string, enabled: boolean): LanguageSupport | null
 
         let live = true;
 
-        void result.then((support) => {
+        void result.then(support => {
             if (live) {
                 setCurrent(support);
             }
@@ -111,7 +111,7 @@ function useNearViewport(lazy: boolean, rootRef: { current: HTMLElement | null }
         }
 
         const observer = new IntersectionObserver(
-            (entries) => {
+            entries => {
                 if (entries.some(entry => entry.isIntersecting)) {
                     setNear(true);
                 }
@@ -133,7 +133,7 @@ const addedLine = Decoration.line({ class: 'cm-changedLine' });
  * Every line of the document marked as added, as the merge extension marks a changed one. The extension is not used for a file with no
  * earlier text: it would show the empty text as one removed blank line above the new ones.
  */
-const allAdded = EditorView.decorations.compute(['doc'], (state) => {
+const allAdded = EditorView.decorations.compute(['doc'], state => {
     const { doc } = state;
 
     if (!doc.length) {
@@ -172,20 +172,20 @@ function createState(
             syntaxHighlighting(codeHighlighter),
             // Selecting all and moving the caret; every command that edits stands down in a read-only state.
             keymap.of(defaultKeymap),
-            EditorView.contentAttributes.of({ 'aria-label': `Changes in ${ basename(path) }` }),
+            EditorView.contentAttributes.of({ 'aria-label': `Changes in ${basename(path)}` }),
             language ?? [],
             original
                 ? unifiedMergeView({
-                    // Cut at the line breaks the document is cut at (a lone CR is one too), or such a text would differ from itself.
-                    original: Text.of(original.split(/\r\n?|\n/)),
-                    diffConfig: { timeout: DIFF_TIMEOUT_MS },
-                    mergeControls: false,
-                    // No stripe in the gutter: the lines carry their own edge (see the styles).
-                    gutter: false,
-                    // A file that is gone is removed as a whole: marking every word of it would only add noise.
-                    highlightChanges: Boolean(text),
-                    collapseUnchanged: { margin: COLLAPSE_MARGIN, minSize: COLLAPSE_MIN_LINES },
-                })
+                      // Cut at the line breaks the document is cut at (a lone CR is one too), or such a text would differ from itself.
+                      original: Text.of(original.split(/\r\n?|\n/)),
+                      diffConfig: { timeout: DIFF_TIMEOUT_MS },
+                      mergeControls: false,
+                      // No stripe in the gutter: the lines carry their own edge (see the styles).
+                      gutter: false,
+                      // A file that is gone is removed as a whole: marking every word of it would only add noise.
+                      highlightChanges: Boolean(text),
+                      collapseUnchanged: { margin: COLLAPSE_MARGIN, minSize: COLLAPSE_MIN_LINES },
+                  })
                 : allAdded,
             hostExtensions.of(host),
         ],
@@ -196,7 +196,15 @@ function createState(
  * A read-only unified diff of two texts of one file: changed lines tinted, removed lines above the ones that replace them, unchanged
  * stretches folded. It is built on `@codemirror/merge`, with the editor's look and the language of `path`.
  */
-export function DiffView({ path, original, modified, extensions, lazy = false, estimatedLines, className }: DiffViewProps) {
+export function DiffView({
+    path,
+    original,
+    modified,
+    extensions,
+    lazy = false,
+    estimatedLines,
+    className,
+}: DiffViewProps) {
     const [view, setView] = useState<EditorView | null>(null);
     const hostRef = useRef<Extension>([]);
 
@@ -207,7 +215,10 @@ export function DiffView({ path, original, modified, extensions, lazy = false, e
     const wanted = useNearViewport(lazy, chrome.rootRef);
     const language = useCodeLanguage(path, wanted);
     const ready = wanted && language !== undefined;
-    const boxLines = useMemo(() => estimatedLines ?? estimateDiffLines(original, modified), [estimatedLines, original, modified]);
+    const boxLines = useMemo(
+        () => estimatedLines ?? estimateDiffLines(original, modified),
+        [estimatedLines, original, modified]
+    );
 
     const mount = useCallback((host: HTMLDivElement | null) => {
         if (!host) {
@@ -242,21 +253,21 @@ export function DiffView({ path, original, modified, extensions, lazy = false, e
 
     return (
         <ScrollChromeRoot
-            rootRef={ chrome.rootRef }
-            className={ cn(styles.root, className) }
-            data-state={ view ? 'ready' : 'idle' }
+            rootRef={chrome.rootRef}
+            className={cn(styles.root, className)}
+            data-state={view ? 'ready' : 'idle'}
             // Until the editor stands, a box of about the height it will take keeps the cards below from jumping.
-            style={ view ? undefined : { minHeight: `calc(${ boxLines } * var(--leading-md) + var(--spacing-16))` } }
-            vertical={ false }
+            style={view ? undefined : { minHeight: `calc(${boxLines} * var(--leading-md) + var(--spacing-16))` }}
+            vertical={false}
             horizontal
-            rootPointerHandlers={ chrome.rootPointerHandlers }
+            rootPointerHandlers={chrome.rootPointerHandlers}
         >
-            { ready ? <div ref={ mount } className={ styles.content } /> : null }
+            {ready ? <div ref={mount} className={styles.content} /> : null}
             <ScrollChromeBars
-                vertical={ false }
+                vertical={false}
                 horizontal
-                setScrollbarH={ chrome.setScrollbarH }
-                onPointerDown={ chrome.handlePointerDown }
+                setScrollbarH={chrome.setScrollbarH}
+                onPointerDown={chrome.handlePointerDown}
             />
         </ScrollChromeRoot>
     );

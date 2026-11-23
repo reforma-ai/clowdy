@@ -59,7 +59,10 @@ export function patchFile(key: string, fileKey: string, patch: Partial<DraftFile
 
     if (!files.some(file => file.key === fileKey)) return false;
 
-    setFiles(key, files.map(file => (file.key === fileKey ? { ...file, ...patch } : file)));
+    setFiles(
+        key,
+        files.map(file => (file.key === fileKey ? { ...file, ...patch } : file))
+    );
 
     return true;
 }
@@ -106,25 +109,33 @@ export function draftFileOf(file: File): DraftFile {
 const sameFile = (draft: DraftFile, file: File) => draft.name === file.name && draft.size === file.size;
 
 /** Which of the files may join those in the box, and why the others may not (one line each, for the person). */
-export function admitFiles(held: readonly DraftFile[], incoming: readonly File[]): { accepted: File[]; refusals: string[] } {
+export function admitFiles(
+    held: readonly DraftFile[],
+    incoming: readonly File[]
+): { accepted: File[]; refusals: string[] } {
     const accepted: File[] = [];
     const refusals: string[] = [];
     let count = held.length;
     let bytes = held.reduce((sum, file) => sum + file.size, 0);
 
     for (const file of incoming) {
-        if (held.some(draft => sameFile(draft, file)) || accepted.some(other => other.name === file.name && other.size === file.size)) continue;
+        if (
+            held.some(draft => sameFile(draft, file)) ||
+            accepted.some(other => other.name === file.name && other.size === file.size)
+        )
+            continue;
 
         if (file.size > MAX_ATTACHMENT_BYTES) {
-            refusals.push(`${ file.name } is over the ${ formatFileSize(MAX_ATTACHMENT_BYTES, { round: 'up' }) } limit of one file.`);
-        }
-        else if (count >= MAX_ATTACHMENTS_PER_MESSAGE) {
-            refusals.push(`${ file.name } was left out: a message takes ${ MAX_ATTACHMENTS_PER_MESSAGE } files at most.`);
-        }
-        else if (bytes + file.size > MAX_ATTACHMENTS_BYTES_PER_MESSAGE) {
-            refusals.push(`${ file.name } was left out: a message takes ${ formatFileSize(MAX_ATTACHMENTS_BYTES_PER_MESSAGE, { round: 'up' }) } of files at most.`);
-        }
-        else {
+            refusals.push(
+                `${file.name} is over the ${formatFileSize(MAX_ATTACHMENT_BYTES, { round: 'up' })} limit of one file.`
+            );
+        } else if (count >= MAX_ATTACHMENTS_PER_MESSAGE) {
+            refusals.push(`${file.name} was left out: a message takes ${MAX_ATTACHMENTS_PER_MESSAGE} files at most.`);
+        } else if (bytes + file.size > MAX_ATTACHMENTS_BYTES_PER_MESSAGE) {
+            refusals.push(
+                `${file.name} was left out: a message takes ${formatFileSize(MAX_ATTACHMENTS_BYTES_PER_MESSAGE, { round: 'up' })} of files at most.`
+            );
+        } else {
             accepted.push(file);
             count += 1;
             bytes += file.size;

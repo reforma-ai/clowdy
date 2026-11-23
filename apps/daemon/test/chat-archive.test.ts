@@ -1,7 +1,7 @@
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
 import { projectSnapshot } from '../src/domain/snapshots';
-import { cleanTempDirs, startHarness, waitFor, type Harness } from './helpers';
+import { cleanTempDirs, type Harness, startHarness, waitFor } from './helpers';
 
 afterAll(cleanTempDirs);
 
@@ -22,14 +22,19 @@ async function setup() {
     return { h, project, chat };
 }
 
-const chatOf = (h: Harness, projectId: string, chatId: string) => projectSnapshot(h.store, projectId).chats.find(chat => chat.id === chatId);
+const chatOf = (h: Harness, projectId: string, chatId: string) =>
+    projectSnapshot(h.store, projectId).chats.find(chat => chat.id === chatId);
 
 describe('chat.setArchived', () => {
     test('archives a chat and brings it back, announcing each change, and changes nothing else', async () => {
         const { h, project, chat } = await setup();
         const cursor = h.store.headCursor();
 
-        const archived = h.ok('chat.setArchived', { chatId: chat.id, archived: true }).chat as { archivedAt?: number; updatedAt: number; title: string };
+        const archived = h.ok('chat.setArchived', { chatId: chat.id, archived: true }).chat as {
+            archivedAt?: number;
+            updatedAt: number;
+            title: string;
+        };
 
         expect(archived.archivedAt).toBeGreaterThan(0);
         expect(archived).toMatchObject({ updatedAt: chat.updatedAt, title: chat.title });
@@ -39,7 +44,10 @@ describe('chat.setArchived', () => {
 
         expect(restored.archivedAt).toBeUndefined();
         expect(chatOf(h, project.id, chat.id)).not.toHaveProperty('archivedAt');
-        expect(h.events(cursor).map(event => (event.data as { type: string }).type)).toEqual(['chat.upserted', 'chat.upserted']);
+        expect(h.events(cursor).map(event => (event.data as { type: string }).type)).toEqual([
+            'chat.upserted',
+            'chat.upserted',
+        ]);
     });
 
     test('says nothing for what is set already', async () => {
@@ -59,12 +67,18 @@ describe('chat.setArchived', () => {
     test('refuses an unknown chat', async () => {
         const { h } = await setup();
 
-        expect(h.send('chat.setArchived', { chatId: 'cht_nope', archived: true })).toMatchObject({ ok: false, error: { code: 'not_found' } });
+        expect(h.send('chat.setArchived', { chatId: 'cht_nope', archived: true })).toMatchObject({
+            ok: false,
+            error: { code: 'not_found' },
+        });
     });
 
     test('keeps the runs, the tasks and the stream of a finished chat', async () => {
         const { h, project, chat } = await setup();
-        const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'Simplify the booking flow so users book in two steps' });
+        const { runId } = h.ok('chat.send', {
+            chatId: chat.id,
+            text: 'Simplify the booking flow so users book in two steps',
+        });
 
         await waitFor(() => h.run(runId).status === 'succeeded', 'the orchestrator to succeed', 8000);
 
@@ -83,7 +97,10 @@ describe('chat.setArchived', () => {
         const { h, chat } = await setup();
         const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'Add dark mode' });
 
-        expect(h.send('chat.setArchived', { chatId: chat.id, archived: true })).toMatchObject({ ok: false, error: { code: 'conflict' } });
+        expect(h.send('chat.setArchived', { chatId: chat.id, archived: true })).toMatchObject({
+            ok: false,
+            error: { code: 'conflict' },
+        });
 
         h.ok('run.cancel', { runId });
     });
@@ -107,7 +124,9 @@ describe('chat.setArchived', () => {
 
         h.ok('chat.setArchived', { chatId: chat.id, archived: true });
 
-        const row = h.store.db.query('SELECT archived_at FROM chats WHERE id = ?').get(chat.id) as { archived_at: number | null };
+        const row = h.store.db.query('SELECT archived_at FROM chats WHERE id = ?').get(chat.id) as {
+            archived_at: number | null;
+        };
 
         expect(row.archived_at).toBeGreaterThan(0);
         expect(chatOf(h, project.id, chat.id)?.archivedAt).toBe(row.archived_at ?? undefined);

@@ -24,7 +24,9 @@ function deferred<T = void>() {
 
 /** A transport that holds marks as the daemon would, and counts what it is asked. */
 function daemon(initial: Record<string, GitViewedMark[]> = {}) {
-    const held = new Map<string, Map<string, string>>(Object.entries(initial).map(([scope, marks]) => [scope, new Map(marks.map(mark => [mark.path, mark.revision]))]));
+    const held = new Map<string, Map<string, string>>(
+        Object.entries(initial).map(([scope, marks]) => [scope, new Map(marks.map(mark => [mark.path, mark.revision]))])
+    );
     const scope = (name: string) => {
         let marks = held.get(name);
 
@@ -35,7 +37,13 @@ function daemon(initial: Record<string, GitViewedMark[]> = {}) {
 
         return marks;
     };
-    const setReal = async (_project: string, _place: unknown, name: string, path: string, revision: string): Promise<GitViewedMark> => {
+    const setReal = async (
+        _project: string,
+        _place: unknown,
+        name: string,
+        path: string,
+        revision: string
+    ): Promise<GitViewedMark> => {
         scope(name).set(path, revision);
 
         return { path, revision };
@@ -44,7 +52,9 @@ function daemon(initial: Record<string, GitViewedMark[]> = {}) {
         scope(name).delete(path);
     };
     const transport = {
-        getGitViewed: vi.fn(async (_project: string, _place: unknown, name: string) => [...scope(name)].map(([path, revision]) => ({ path, revision }))),
+        getGitViewed: vi.fn(async (_project: string, _place: unknown, name: string) =>
+            [...scope(name)].map(([path, revision]) => ({ path, revision }))
+        ),
         setGitViewed: vi.fn(setReal),
         clearGitViewed: vi.fn(clearReal),
     };
@@ -100,7 +110,10 @@ describe('a file counts as viewed', () => {
     });
 
     it('in the scope it was marked in, and in no other', async () => {
-        const { transport } = daemon({ all: [{ path: 'a.ts', revision: 'r1' }], uncommitted: [{ path: 'b.ts', revision: 'r1' }] });
+        const { transport } = daemon({
+            all: [{ path: 'a.ts', revision: 'r1' }],
+            uncommitted: [{ path: 'b.ts', revision: 'r1' }],
+        });
         const marks = new ViewedMarks(KEY, transport);
 
         await marks.read('all');
@@ -161,7 +174,7 @@ describe('marking a file', () => {
         expect(marks.error).toBeUndefined();
     });
 
-    it('takes it back when the daemon refuses, and says so with the daemon\'s reason', async () => {
+    it("takes it back when the daemon refuses, and says so with the daemon's reason", async () => {
         const { transport } = daemon();
         const marks = new ViewedMarks(KEY, transport);
 

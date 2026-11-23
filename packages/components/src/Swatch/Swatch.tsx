@@ -37,45 +37,37 @@ export interface ImageSwatchProps extends Omit<SwatchProps, 'children'> {
     alt?: string;
 }
 
-export function Swatch({
-    ref,
-    size = 'sm',
-    isDisabled,
-    onPress,
-    className,
-    children,
-    ...props
-}: SwatchProps) {
+export function Swatch({ ref, size = 'sm', isDisabled, onPress, className, children, ...props }: SwatchProps) {
     if (onPress) {
         const { role: _role, onClick: _onClick, ...buttonProps } = props;
 
         return (
             <Button
-                { ...(buttonProps as ButtonProps) }
-                ref={ ref as Ref<HTMLButtonElement | HTMLAnchorElement | null> }
+                {...(buttonProps as ButtonProps)}
+                ref={ref as Ref<HTMLButtonElement | HTMLAnchorElement | null>}
                 variant="inline"
                 color="inherit"
                 size="unset"
-                className={ cn(styles.swatch, styles.swatchButton, className) }
-                data-size={ size }
-                data-disabled={ isDisabled || undefined }
-                isDisabled={ isDisabled }
-                onPress={ onPress }
+                className={cn(styles.swatch, styles.swatchButton, className)}
+                data-size={size}
+                data-disabled={isDisabled || undefined}
+                isDisabled={isDisabled}
+                onPress={onPress}
             >
-                { children }
+                {children}
             </Button>
         );
     }
 
     return (
         <div
-            ref={ ref as Ref<HTMLDivElement | null> }
-            className={ cn(styles.swatch, className) }
-            data-size={ size }
-            data-disabled={ isDisabled || undefined }
-            { ...props }
+            ref={ref as Ref<HTMLDivElement | null>}
+            className={cn(styles.swatch, className)}
+            data-size={size}
+            data-disabled={isDisabled || undefined}
+            {...props}
         >
-            { children }
+            {children}
         </div>
     );
 }
@@ -97,21 +89,18 @@ export function ColorSwatch({
 
         return (
             <Swatch
-                ref={ ref }
-                size={ size }
-                isDisabled={ isDisabled }
-                className={ className }
-                { ...domProps }
-                aria-label={ domProps['aria-label'] ?? (css ? 'Selected color' : 'No color') }
+                ref={ref}
+                size={size}
+                isDisabled={isDisabled}
+                className={className}
+                {...domProps}
+                aria-label={domProps['aria-label'] ?? (css ? 'Selected color' : 'No color')}
             >
-                <span className={ styles.checker } aria-hidden />
-                <Show
-                    when={ css }
-                    fallback={ <span className={ styles.empty } aria-hidden /> }
-                >
+                <span className={styles.checker} aria-hidden />
+                <Show when={css} fallback={<span className={styles.empty} aria-hidden />}>
                     <span
-                        className={ styles.cssColor }
-                        style={ { '--clowdy-swatch-value': css } as CSSProperties }
+                        className={styles.cssColor}
+                        style={{ '--clowdy-swatch-value': css } as CSSProperties}
                         aria-hidden
                     />
                 </Show>
@@ -121,12 +110,12 @@ export function ColorSwatch({
 
     return (
         <ColorSwatchInner
-            ref={ ref }
-            color={ parsedColor }
-            size={ size }
-            isDisabled={ isDisabled }
-            className={ className }
-            { ...props }
+            ref={ref}
+            color={parsedColor}
+            size={size}
+            isDisabled={isDisabled}
+            className={className}
+            {...props}
         />
     );
 }
@@ -149,42 +138,34 @@ function ColorSwatchInner({
 
     return (
         <Swatch
-            ref={ ref }
-            size={ size }
-            isDisabled={ isDisabled }
-            className={ className }
-            { ...colorSwatchProps }
-            onPress={ onPress }
+            ref={ref}
+            size={size}
+            isDisabled={isDisabled}
+            className={className}
+            {...colorSwatchProps}
+            onPress={onPress}
         >
-            <span className={ styles.checker } aria-hidden />
-            <span className={ styles.colorFill } aria-hidden>
+            <span className={styles.checker} aria-hidden />
+            <span className={styles.colorFill} aria-hidden>
                 <span
-                    className={ styles.colorHalf }
+                    className={styles.colorHalf}
                     data-side="left"
-                    style={ { '--clowdy-swatch-value': opaqueColor } as CSSProperties }
+                    style={{ '--clowdy-swatch-value': opaqueColor } as CSSProperties}
                 />
                 <span
-                    className={ styles.colorHalf }
+                    className={styles.colorHalf}
                     data-side="right"
-                    style={ { '--clowdy-swatch-value': alphaColor } as CSSProperties }
+                    style={{ '--clowdy-swatch-value': alphaColor } as CSSProperties}
                 />
             </span>
         </Swatch>
     );
 }
 
-export function ImageSwatch({
-    src,
-    alt = '',
-    ...props
-}: ImageSwatchProps) {
+export function ImageSwatch({ src, alt = '', ...props }: ImageSwatchProps) {
     return (
-        <Swatch { ...props }>
-            {
-                src
-                    ? <img className={ styles.image } src={ src } alt={ alt } />
-                    : <span className={ styles.empty } aria-hidden />
-            }
+        <Swatch {...props}>
+            {src ? <img className={styles.image} src={src} alt={alt} /> : <span className={styles.empty} aria-hidden />}
         </Swatch>
     );
 }
@@ -192,8 +173,7 @@ export function ImageSwatch({
 function withOpaqueAlpha(color: Color): Color {
     try {
         return color.withChannelValue('alpha', 1);
-    }
-    catch {
+    } catch {
         return color;
     }
 }

@@ -1,10 +1,30 @@
 import { describe, expect, it } from 'vitest';
 
-import { accountLine, formatEnv, headlineWindow, isSignInRunning, isUsableProvider, parseEnv, providerAgents, scopedHotWindow, usageTone, weeklyMark, windowPercent } from './providerView';
+import {
+    accountLine,
+    formatEnv,
+    headlineWindow,
+    isSignInRunning,
+    isUsableProvider,
+    parseEnv,
+    providerAgents,
+    scopedHotWindow,
+    usageTone,
+    weeklyMark,
+    windowPercent,
+} from './providerView';
 
 import type { AgentInfo, AgentUsage, AgentUsageWindow } from '@clowdy/protocol';
 
-const agent = (patch: Partial<AgentInfo> = {}): AgentInfo => ({ id: 'claude', name: 'Claude Code', custom: false, enabled: true, status: 'ready', launch: 'x', ...patch });
+const agent = (patch: Partial<AgentInfo> = {}): AgentInfo => ({
+    id: 'claude',
+    name: 'Claude Code',
+    custom: false,
+    enabled: true,
+    status: 'ready',
+    launch: 'x',
+    ...patch,
+});
 
 describe('providerAgents', () => {
     it('keeps Claude, Codex and Cursor in that order and leaves the others out', () => {
@@ -15,8 +35,17 @@ describe('providerAgents', () => {
     });
 });
 
-const meter = (id: string, usedPercent: number, resetsAt?: number): AgentUsageWindow => ({ id, label: id, usedPercent, resetsAt });
-const usage = (windows: AgentUsageWindow[], state: AgentUsage['state'] = 'ok'): AgentUsage => ({ state, windows, fetchedAt: 1 });
+const meter = (id: string, usedPercent: number, resetsAt?: number): AgentUsageWindow => ({
+    id,
+    label: id,
+    usedPercent,
+    resetsAt,
+});
+const usage = (windows: AgentUsageWindow[], state: AgentUsage['state'] = 'ok'): AgentUsage => ({
+    state,
+    windows,
+    fetchedAt: 1,
+});
 
 describe('isUsableProvider', () => {
     it('is true for a provider that is switched on and installed, and false otherwise', () => {
@@ -55,18 +84,26 @@ describe('windowPercent', () => {
 
 describe('headlineWindow', () => {
     it('is the first window of the plan, the nearest limit, whatever its percent', () => {
-        expect(headlineWindow(agent({ usage: usage([meter('session', 0), meter('weekly', 78), meter('other', 20)]) }))?.id).toBe('session');
+        expect(
+            headlineWindow(agent({ usage: usage([meter('session', 0), meter('weekly', 78), meter('other', 20)]) }))?.id
+        ).toBe('session');
         expect(headlineWindow(agent({ usage: usage([meter('session', 8), meter('weekly', 78)]) }))?.id).toBe('session');
-        expect(headlineWindow(agent({ usage: usage([meter('session', Number.NaN), meter('weekly', 12)]) }))?.id).toBe('session');
+        expect(headlineWindow(agent({ usage: usage([meter('session', Number.NaN), meter('weekly', 12)]) }))?.id).toBe(
+            'session'
+        );
     });
 
     it('leaves out a scoped window, whatever its place and its percent', () => {
-        expect(headlineWindow(agent({ usage: usage([meter('weekly:fable', 95), meter('session', 8), meter('weekly', 20)]) }))?.id).toBe('session');
+        expect(
+            headlineWindow(
+                agent({ usage: usage([meter('weekly:fable', 95), meter('session', 8), meter('weekly', 20)]) })
+            )?.id
+        ).toBe('session');
         expect(headlineWindow(agent({ usage: usage([meter('weekly:fable', 95)]) }))).toBeUndefined();
         expect(headlineWindow(agent({ usage: usage([meter('weekly:fable', 99)]) }))).toBeUndefined();
     });
 
-    it('prefers a quota of the plan to spend: Cursor\'s on-demand window is not the headline while its plan window is there, wherever it is listed', () => {
+    it("prefers a quota of the plan to spend: Cursor's on-demand window is not the headline while its plan window is there, wherever it is listed", () => {
         const plan = meter('plan', 5);
         const onDemand = meter('on-demand', 80);
 
@@ -78,13 +115,18 @@ describe('headlineWindow', () => {
         expect(headlineWindow(agent({ id: 'cursor', usage: usage([meter('model:x', 99)]) }))).toBeUndefined();
     });
 
-    it('takes the windows of Codex\'s main limit for primary ones, and leaves out the limit of a single model', () => {
-        const codex = agent({ id: 'codex', usage: usage([meter('codex:primary', 3), meter('codex:secondary', 18), meter('spark:secondary', 40)]) });
+    it("takes the windows of Codex's main limit for primary ones, and leaves out the limit of a single model", () => {
+        const codex = agent({
+            id: 'codex',
+            usage: usage([meter('codex:primary', 3), meter('codex:secondary', 18), meter('spark:secondary', 40)]),
+        });
 
         // The ids the daemon really gives Codex's windows all carry a `:`, so a rule on the colon alone would leave it without a headline.
         expect(headlineWindow(codex)?.id).toBe('codex:primary');
         expect(headlineWindow(agent({ id: 'codex', usage: usage([meter('spark:secondary', 40)]) }))).toBeUndefined();
-        expect(headlineWindow(agent({ id: 'claude', usage: usage([meter('codex:primary', 90), meter('session', 5)]) }))?.id).toBe('session');
+        expect(
+            headlineWindow(agent({ id: 'claude', usage: usage([meter('codex:primary', 90), meter('session', 5)]) }))?.id
+        ).toBe('session');
     });
 
     it('is nothing without a trusted reading: no usage, not ok, no windows or signed out', () => {
@@ -95,18 +137,31 @@ describe('headlineWindow', () => {
         // The last good windows of a failed read are not news.
         expect(headlineWindow(agent({ usage: usage(windows, 'error') }))).toBeUndefined();
         expect(headlineWindow(agent({ usage: usage([]) }))).toBeUndefined();
-        expect(headlineWindow(agent({ usage: usage(windows), signIn: { status: 'signed-out', checkedAt: 1 } }))).toBeUndefined();
-        expect(headlineWindow(agent({ usage: usage(windows), signIn: { status: 'signed-in', checkedAt: 1 } }))?.id).toBe('session');
+        expect(
+            headlineWindow(agent({ usage: usage(windows), signIn: { status: 'signed-out', checkedAt: 1 } }))
+        ).toBeUndefined();
+        expect(
+            headlineWindow(agent({ usage: usage(windows), signIn: { status: 'signed-in', checkedAt: 1 } }))?.id
+        ).toBe('session');
     });
 });
 
 describe('weeklyMark', () => {
-    const claude = (windows: AgentUsageWindow[]) => agent({ usage: usage(windows), signIn: { status: 'signed-in', checkedAt: 1 } });
+    const claude = (windows: AgentUsageWindow[]) =>
+        agent({ usage: usage(windows), signIn: { status: 'signed-in', checkedAt: 1 } });
 
     it('is the second plan window from 60% used, once it is ahead of the nearest one', () => {
         expect(weeklyMark(claude([meter('session', 8), meter('weekly', 78)]))?.id).toBe('weekly');
         expect(weeklyMark(claude([meter('session', 8), meter('weekly', 60)]))?.id).toBe('weekly');
-        expect(weeklyMark(agent({ id: 'codex', usage: usage([meter('codex:primary', 12), meter('codex:secondary', 60)]), signIn: { status: 'signed-in', checkedAt: 1 } }))?.id).toBe('codex:secondary');
+        expect(
+            weeklyMark(
+                agent({
+                    id: 'codex',
+                    usage: usage([meter('codex:primary', 12), meter('codex:secondary', 60)]),
+                    signIn: { status: 'signed-in', checkedAt: 1 },
+                })
+            )?.id
+        ).toBe('codex:secondary');
     });
 
     it('stays off while the week is quiet, behind the session, or the only window', () => {
@@ -119,23 +174,45 @@ describe('weeklyMark', () => {
 
     it('leaves out a scoped window and an untrusted reading', () => {
         expect(weeklyMark(claude([meter('session', 8), meter('weekly:fable', 99)]))).toBeUndefined();
-        expect(weeklyMark(agent({ usage: usage([meter('session', 8), meter('weekly', 80)], 'error') }))).toBeUndefined();
-        expect(weeklyMark(agent({ usage: usage([meter('session', 8), meter('weekly', 80)]), signIn: { status: 'signed-out', checkedAt: 1 } }))).toBeUndefined();
+        expect(
+            weeklyMark(agent({ usage: usage([meter('session', 8), meter('weekly', 80)], 'error') }))
+        ).toBeUndefined();
+        expect(
+            weeklyMark(
+                agent({
+                    usage: usage([meter('session', 8), meter('weekly', 80)]),
+                    signIn: { status: 'signed-out', checkedAt: 1 },
+                })
+            )
+        ).toBeUndefined();
     });
 });
 
 describe('scopedHotWindow', () => {
-    const claude = (windows: AgentUsageWindow[]) => agent({ usage: usage(windows), signIn: { status: 'signed-in', checkedAt: 1 } });
+    const claude = (windows: AgentUsageWindow[]) =>
+        agent({ usage: usage(windows), signIn: { status: 'signed-in', checkedAt: 1 } });
 
     it('is the fullest model limit at 90% or more, while the plan is not there yet', () => {
-        expect(scopedHotWindow(claude([meter('session', 8), meter('weekly', 78), meter('weekly:fable', 99)]))?.id).toBe('weekly:fable');
+        expect(scopedHotWindow(claude([meter('session', 8), meter('weekly', 78), meter('weekly:fable', 99)]))?.id).toBe(
+            'weekly:fable'
+        );
         expect(scopedHotWindow(claude([meter('weekly:fable', 99)]))?.id).toBe('weekly:fable');
-        expect(scopedHotWindow(agent({ id: 'codex', usage: usage([meter('codex:primary', 12), meter('spark:secondary', 99)]), signIn: { status: 'signed-in', checkedAt: 1 } }))?.id).toBe('spark:secondary');
+        expect(
+            scopedHotWindow(
+                agent({
+                    id: 'codex',
+                    usage: usage([meter('codex:primary', 12), meter('spark:secondary', 99)]),
+                    signIn: { status: 'signed-in', checkedAt: 1 },
+                })
+            )?.id
+        ).toBe('spark:secondary');
         expect(scopedHotWindow(claude([meter('weekly:fable', 92), meter('weekly:opus', 99)]))?.id).toBe('weekly:opus');
     });
 
     it('stays off when a plan window is already at the danger tone, or the model limit is not', () => {
-        expect(scopedHotWindow(claude([meter('session', 8), meter('weekly', 90), meter('weekly:fable', 99)]))).toBeUndefined();
+        expect(
+            scopedHotWindow(claude([meter('session', 8), meter('weekly', 90), meter('weekly:fable', 99)]))
+        ).toBeUndefined();
         expect(scopedHotWindow(claude([meter('session', 90), meter('weekly:fable', 99)]))).toBeUndefined();
         expect(scopedHotWindow(claude([meter('session', 8), meter('weekly:fable', 89)]))).toBeUndefined();
         expect(scopedHotWindow(claude([meter('session', 8), meter('on-demand', 99)]))).toBeUndefined();
@@ -144,30 +221,55 @@ describe('scopedHotWindow', () => {
 
 describe('accountLine', () => {
     it('shows the e-mail and the plan of who is signed in', () => {
-        const line = accountLine(agent({ signIn: { status: 'signed-in', checkedAt: 1, account: { email: 'me@x.dev', plan: 'Max' } } }));
+        const line = accountLine(
+            agent({ signIn: { status: 'signed-in', checkedAt: 1, account: { email: 'me@x.dev', plan: 'Max' } } })
+        );
 
         expect(line).toMatchObject({ text: 'me@x.dev', plan: 'Max' });
     });
 
     it('falls back to the name, then to how it is signed in', () => {
-        expect(accountLine(agent({ signIn: { status: 'signed-in', checkedAt: 1, account: { name: 'Dev' } } })).text).toBe('Dev');
-        expect(accountLine(agent({ signIn: { status: 'signed-in', checkedAt: 1, account: { method: 'api-key' } } })).text).toBe('Signed in with an API key');
+        expect(
+            accountLine(agent({ signIn: { status: 'signed-in', checkedAt: 1, account: { name: 'Dev' } } })).text
+        ).toBe('Dev');
+        expect(
+            accountLine(agent({ signIn: { status: 'signed-in', checkedAt: 1, account: { method: 'api-key' } } })).text
+        ).toBe('Signed in with an API key');
         expect(accountLine(agent({ signIn: { status: 'signed-in', checkedAt: 1 } })).text).toBe('Signed in');
     });
 
     it('says so when nobody is signed in, and when it has not asked yet', () => {
-        expect(accountLine(agent({ signIn: { status: 'signed-out', checkedAt: 1 } }))).toMatchObject({ text: 'Not signed in', tone: 'warning' });
+        expect(accountLine(agent({ signIn: { status: 'signed-out', checkedAt: 1 } }))).toMatchObject({
+            text: 'Not signed in',
+            tone: 'warning',
+        });
         expect(accountLine(agent())).toMatchObject({ text: 'Checking who is signed in…', tone: 'muted' });
-        expect(accountLine(agent({ signIn: { status: 'unknown', checkedAt: 1, detail: 'The program did not answer' } }))).toMatchObject({ text: 'Could not tell who is signed in', detail: 'The program did not answer' });
+        expect(
+            accountLine(agent({ signIn: { status: 'unknown', checkedAt: 1, detail: 'The program did not answer' } }))
+        ).toMatchObject({ text: 'Could not tell who is signed in', detail: 'The program did not answer' });
     });
 
-    it('puts a missing program or runtime before anything else, with the daemon\'s hint', () => {
-        expect(accountLine(agent({ status: 'missing', detail: 'Install it' }))).toMatchObject({ text: 'Not installed', detail: 'Install it' });
-        expect(accountLine(agent({ status: 'needs-runtime', detail: 'Install Bun' }))).toMatchObject({ text: 'Needs Bun to start', detail: 'Install Bun' });
+    it("puts a missing program or runtime before anything else, with the daemon's hint", () => {
+        expect(accountLine(agent({ status: 'missing', detail: 'Install it' }))).toMatchObject({
+            text: 'Not installed',
+            detail: 'Install it',
+        });
+        expect(accountLine(agent({ status: 'needs-runtime', detail: 'Install Bun' }))).toMatchObject({
+            text: 'Needs Bun to start',
+            detail: 'Install Bun',
+        });
     });
 
     it('keeps showing the account of an agent that is turned off, and says it is off when there is none', () => {
-        expect(accountLine(agent({ enabled: false, status: 'disabled', signIn: { status: 'signed-in', checkedAt: 1, account: { email: 'me@x.dev' } } })).text).toBe('me@x.dev');
+        expect(
+            accountLine(
+                agent({
+                    enabled: false,
+                    status: 'disabled',
+                    signIn: { status: 'signed-in', checkedAt: 1, account: { email: 'me@x.dev' } },
+                })
+            ).text
+        ).toBe('me@x.dev');
         expect(accountLine(agent({ enabled: false, status: 'disabled' })).text).toBe('Turned off in Clowdy');
     });
 });
@@ -184,7 +286,10 @@ describe('isSignInRunning', () => {
 
 describe('the environment editor', () => {
     it('reads KEY=VALUE lines, skipping blanks and comments, and keeps an equals sign in a value', () => {
-        expect(parseEnv('A=1\n\n# note\r\nB = two words\nURL=https://x.dev/?a=b')).toEqual({ ok: true, env: { A: '1', B: 'two words', URL: 'https://x.dev/?a=b' } });
+        expect(parseEnv('A=1\n\n# note\r\nB = two words\nURL=https://x.dev/?a=b')).toEqual({
+            ok: true,
+            env: { A: '1', B: 'two words', URL: 'https://x.dev/?a=b' },
+        });
         expect(parseEnv('EMPTY=')).toEqual({ ok: true, env: { EMPTY: '' } });
         expect(parseEnv('')).toEqual({ ok: true, env: {} });
     });

@@ -151,11 +151,13 @@ function fileNameExtension(fileName: string): string | null {
 }
 
 function isTextLikeUploadMime(mime: string): boolean {
-    return mime.startsWith('text/')
-      || mime === 'application/json'
-      || mime === 'application/javascript'
-      || mime === 'application/typescript'
-      || mime === 'application/xml';
+    return (
+        mime.startsWith('text/') ||
+        mime === 'application/json' ||
+        mime === 'application/javascript' ||
+        mime === 'application/typescript' ||
+        mime === 'application/xml'
+    );
 }
 
 /**

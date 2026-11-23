@@ -1,7 +1,7 @@
 import { Button } from '@clowdy/components/Button';
 import { Show } from '@clowdy/components/Show';
 import { ChevronDown } from '@clowdy/icons/8';
-import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { type CSSProperties, type ReactNode, useLayoutEffect, useRef, useState } from 'react';
 
 import styles from './Clamp.module.css';
 
@@ -38,13 +38,25 @@ export function Clamp({ children, lines, moreLabel, align = 'end' }: ClampProps)
 
     return (
         <>
-            <div className={ styles.clamp } data-expanded={ expanded } data-clipped={ clipped } style={ { '--clamp-lines': lines } as CSSProperties }>
-                <div ref={ content }>{ children }</div>
+            <div
+                className={styles.clamp}
+                data-expanded={expanded}
+                data-clipped={clipped}
+                style={{ '--clamp-lines': lines } as CSSProperties}
+            >
+                <div ref={content}>{children}</div>
             </div>
-            <Show when={ clipped }>
-                <Button variant="inline" color="secondary" className={ styles.toggle } data-align={ align } aria-expanded={ expanded } onPress={ () => setExpanded(!expanded) }>
-                    { expanded ? 'Show less' : moreLabel }
-                    <ChevronDown className="chevron" aria-expanded={ expanded } aria-hidden />
+            <Show when={clipped}>
+                <Button
+                    variant="inline"
+                    color="secondary"
+                    className={styles.toggle}
+                    data-align={align}
+                    aria-expanded={expanded}
+                    onPress={() => setExpanded(!expanded)}
+                >
+                    {expanded ? 'Show less' : moreLabel}
+                    <ChevronDown className="chevron" aria-expanded={expanded} aria-hidden />
                 </Button>
             </Show>
         </>

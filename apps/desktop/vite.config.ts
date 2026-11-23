@@ -1,10 +1,11 @@
 // The renderer. `scripts/dev.ts` builds it in watch mode into `dist/renderer` (the app serves that from `app://clowdy`) and
 // `scripts/build.ts` builds it into the packaged app. The `server` block below is for `scripts/screenshot.ts`, which loads a page from a dev server.
-import react from '@vitejs/plugin-react';
-import observingComponentsPlugin from 'babel-plugin-observing-components';
+
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import path, { resolve } from 'node:path';
+import react from '@vitejs/plugin-react';
+import observingComponentsPlugin from 'babel-plugin-observing-components';
 import UnoCSS from 'unocss/vite';
 import { defineConfig, searchForWorkspaceRoot } from 'vite';
 import babel from 'vite-plugin-babel';
@@ -27,16 +28,18 @@ export default defineConfig({
         postcss: monorepoRoot,
         modules: {
             localsConvention: 'camelCase',
-            generateScopedName: isProd ? '[hash:base64:6]' : (name, filename) => {
-                const file = path.basename(filename).replace(/\.module\.\w+$/, '');
-                const hash = createHash('md5')
-                    .update(filename + name)
-                    .digest('base64')
-                    .replace(/[/+=]/g, '')
-                    .slice(0, 6);
+            generateScopedName: isProd
+                ? '[hash:base64:6]'
+                : (name, filename) => {
+                      const file = path.basename(filename).replace(/\.module\.\w+$/, '');
+                      const hash = createHash('md5')
+                          .update(filename + name)
+                          .digest('base64')
+                          .replace(/[/+=]/g, '')
+                          .slice(0, 6);
 
-                return `${ file }__${ name }__${ hash }`;
-            },
+                      return `${file}__${name}__${hash}`;
+                  },
         },
     },
     build: {
@@ -54,9 +57,7 @@ export default defineConfig({
             babelConfig: {
                 babelrc: false,
                 configFile: false,
-                presets: [
-                    ['@babel/preset-typescript', { onlyRemoveTypeImports: true, allowDeclareFields: true }],
-                ],
+                presets: [['@babel/preset-typescript', { onlyRemoveTypeImports: true, allowDeclareFields: true }]],
                 plugins: [
                     observingComponentsPlugin({ importPath: 'mobx-react-lite' }),
                     ['@babel/plugin-proposal-decorators', { version: '2023-05' }],

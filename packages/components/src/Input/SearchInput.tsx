@@ -1,9 +1,9 @@
 import { Close, Search } from '@clowdy/icons/14';
-import { useState, type KeyboardEvent, type ReactNode, type Ref } from 'react';
+import { type KeyboardEvent, type ReactNode, type Ref, useState } from 'react';
 
 import { Button } from '../Button';
 import { filterSlots } from '../Slot';
-import { Input, INPUT_CONTROL_AFFIX, type InputProps, type InputSize } from './Input';
+import { INPUT_CONTROL_AFFIX, Input, type InputProps, type InputSize } from './Input';
 
 export interface SearchInputProps extends Omit<InputProps, 'type' | 'prefix' | 'suffix'> {
     autoComplete?: string;
@@ -62,32 +62,26 @@ export function SearchInput({
         (onKeyDown as ((event: KeyboardEvent<HTMLInputElement>) => void) | undefined)?.(event);
     };
 
-    const prefix = filterSlots(
-        children,
-        'prefix',
-        <Search slot="prefix" aria-hidden size={ iconSize } />
-    );
+    const prefix = filterSlots(children, 'prefix', <Search slot="prefix" aria-hidden size={iconSize} />);
 
     const suffix = filterSlots(
         children,
         'suffix',
-        currentValue
-            ? (
-                <Button
-                    slot="suffix"
-                    data-input-affix={ INPUT_CONTROL_AFFIX }
-                    type="button"
-                    variant="filling"
-                    size="xs"
-                    iconOnly
-                    isDisabled={ isDisabled }
-                    tooltip="Clear"
-                    onPress={ clear }
-                >
-                    <Close aria-hidden size={ iconSize } />
-                </Button>
-            )
-            : null
+        currentValue ? (
+            <Button
+                slot="suffix"
+                data-input-affix={INPUT_CONTROL_AFFIX}
+                type="button"
+                variant="filling"
+                size="xs"
+                iconOnly
+                isDisabled={isDisabled}
+                tooltip="Clear"
+                onPress={clear}
+            >
+                <Close aria-hidden size={iconSize} />
+            </Button>
+        ) : null
     );
 
     const inputProps = {
@@ -102,9 +96,9 @@ export function SearchInput({
     } as InputProps;
 
     return (
-        <Input { ...inputProps }>
-            { prefix }
-            { suffix }
+        <Input {...inputProps}>
+            {prefix}
+            {suffix}
         </Input>
     );
 }

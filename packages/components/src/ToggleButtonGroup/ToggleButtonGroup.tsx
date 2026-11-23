@@ -1,17 +1,17 @@
 import { ChevronDown } from '@clowdy/icons/10';
-import { cn, toSet, type SelectionInput } from '@clowdy/lib';
+import { cn, type SelectionInput, toSet } from '@clowdy/lib';
 import { createContext, use, useMemo } from 'react';
 import {
     composeRenderProps,
+    type Key,
     Button as RACButton,
     Select as RACSelect,
+    type SelectProps as RACSelectProps,
     ToggleButton as RACToggleButton,
     ToggleButtonGroup as RACToggleButtonGroup,
-    SelectionIndicator,
-    type Key,
-    type SelectProps as RACSelectProps,
     type ToggleButtonGroupProps as RACToggleButtonGroupProps,
     type ToggleButtonProps as RACToggleButtonProps,
+    SelectionIndicator,
 } from 'react-aria-components';
 
 import { ListBox, type ListBoxSize } from '../List';
@@ -35,7 +35,8 @@ interface ToggleButtonGroupContextValue {
 
 const ToggleButtonGroupContext = createContext<ToggleButtonGroupContextValue | null>(null);
 
-export interface ToggleButtonGroupProps extends Omit<RACToggleButtonGroupProps, 'className' | 'children' | 'selectionMode' | 'selectedKeys'> {
+export interface ToggleButtonGroupProps
+    extends Omit<RACToggleButtonGroupProps, 'className' | 'children' | 'selectionMode' | 'selectedKeys'> {
     variant?: ToggleButtonGroupVariant;
     size?: ToggleButtonGroupSize;
     fullWidth?: boolean;
@@ -56,7 +57,8 @@ export interface ToggleButtonGroupItemProps extends Omit<RACToggleButtonProps, '
     children: ReactNode;
 }
 
-export interface ToggleButtonGroupSelectItemProps<T extends object = object> extends Omit<RACSelectProps<T>, 'className' | 'children'> {
+export interface ToggleButtonGroupSelectItemProps<T extends object = object>
+    extends Omit<RACSelectProps<T>, 'className' | 'children'> {
     items: Iterable<T>;
     isSelected?: boolean;
     iconOnly?: boolean;
@@ -82,7 +84,7 @@ export function ToggleButtonGroup(props: ToggleButtonGroupProps) {
         ...restProps
     } = merged;
     const selectionMode = variant === 'multiselect' ? 'multiple' : 'single';
-    const requireSelection = disallowEmptySelection ?? (variant !== 'multiselect');
+    const requireSelection = disallowEmptySelection ?? variant !== 'multiselect';
     const contextValue = useMemo(() => ({ variant, size }), [variant, size]);
     const selectedKeysSet = useMemo(
         () => (selectedKeys !== undefined ? toSet(selectedKeys) : undefined),
@@ -90,19 +92,19 @@ export function ToggleButtonGroup(props: ToggleButtonGroupProps) {
     );
 
     return (
-        <ToggleButtonGroupContext value={ contextValue }>
+        <ToggleButtonGroupContext value={contextValue}>
             <RACToggleButtonGroup
-                { ...restProps }
-                selectedKeys={ selectedKeysSet }
-                selectionMode={ selectionMode }
-                disallowEmptySelection={ requireSelection }
-                className={ cn(styles.group, className, { 'w-full': fullWidth }) }
-                data-variant={ variant }
-                data-size={ size }
-                data-active={ isActive || undefined }
-                data-placeholder-selected={ isPlaceholderSelected || undefined }
+                {...restProps}
+                selectedKeys={selectedKeysSet}
+                selectionMode={selectionMode}
+                disallowEmptySelection={requireSelection}
+                className={cn(styles.group, className, { 'w-full': fullWidth })}
+                data-variant={variant}
+                data-size={size}
+                data-active={isActive || undefined}
+                data-placeholder-selected={isPlaceholderSelected || undefined}
             >
-                { children }
+                {children}
             </RACToggleButtonGroup>
         </ToggleButtonGroupContext>
     );
@@ -131,33 +133,30 @@ export function ToggleButtonGroupItem({
 
     const button = (
         <RACToggleButton
-            { ...props }
-            id={ value }
-            className={ renderProps => cn(
-                styles.item,
-                typeof className === 'function' ? className(renderProps) : className
-            ) }
-            data-variant={ variant }
-            data-size={ size }
-            data-icon-only={ iconOnly || undefined }
+            {...props}
+            id={value}
+            className={renderProps =>
+                cn(styles.item, typeof className === 'function' ? className(renderProps) : className)
+            }
+            data-variant={variant}
+            data-size={size}
+            data-icon-only={iconOnly || undefined}
         >
-            { useSelectionIndicator
+            {useSelectionIndicator
                 ? composeRenderProps(children, content => (
-                    <>
-                        <SelectionIndicator className={ styles.selectionIndicator } data-selected />
-                        <span className={ styles.itemContent }>{ content }</span>
-                    </>
-                ))
-                : composeRenderProps(children, content => (
-                    <span className={ styles.itemContent }>{ content }</span>
-                )) }
+                      <>
+                          <SelectionIndicator className={styles.selectionIndicator} data-selected />
+                          <span className={styles.itemContent}>{content}</span>
+                      </>
+                  ))
+                : composeRenderProps(children, content => <span className={styles.itemContent}>{content}</span>)}
         </RACToggleButton>
     );
 
     if (tooltip) {
         return (
-            <Tooltip content={ tooltip } placement={ tooltipPlacement }>
-                { button }
+            <Tooltip content={tooltip} placement={tooltipPlacement}>
+                {button}
             </Tooltip>
         );
     }
@@ -190,38 +189,36 @@ export function ToggleButtonGroupSelectItem<T extends object = object>({
 
     const button = (
         <RACButton
-            className={ cn(styles.item, className) }
-            data-variant={ variant }
-            data-size={ size }
-            data-icon-only={ iconOnly || undefined }
-            data-selected={ isSelected || undefined }
+            className={cn(styles.item, className)}
+            data-variant={variant}
+            data-size={size}
+            data-icon-only={iconOnly || undefined}
+            data-selected={isSelected || undefined}
             data-select-item
         >
-            { useSelectionIndicator && isSelected && (
-                <span className={ styles.selectionIndicator } data-selected aria-hidden />
-            ) }
-            <span className={ styles.itemContent }>
-                <span className={ styles.selectItemLabel }>{ selectedContent }</span>
-                <ChevronDown className={ styles.itemChevron } aria-hidden />
+            {useSelectionIndicator && isSelected && (
+                <span className={styles.selectionIndicator} data-selected aria-hidden />
+            )}
+            <span className={styles.itemContent}>
+                <span className={styles.selectItemLabel}>{selectedContent}</span>
+                <ChevronDown className={styles.itemChevron} aria-hidden />
             </span>
         </RACButton>
     );
 
     return (
-        <RACSelect { ...props } className={ styles.selectItem }>
-            { tooltip
-                ? <Tooltip content={ tooltip }>{ button }</Tooltip>
-                : button }
+        <RACSelect {...props} className={styles.selectItem}>
+            {tooltip ? <Tooltip content={tooltip}>{button}</Tooltip> : button}
 
-            <Popover className={ cn(styles.selectPopover, popoverClassName) } spacing="xs">
+            <Popover className={cn(styles.selectPopover, popoverClassName)} spacing="xs">
                 <ListBox
-                    aria-label={ props['aria-label'] }
-                    size={ listBoxSize }
+                    aria-label={props['aria-label']}
+                    size={listBoxSize}
                     autoFocus
-                    className={ styles.selectListBox }
-                    items={ items }
+                    className={styles.selectListBox}
+                    items={items}
                 >
-                    { children }
+                    {children}
                 </ListBox>
             </Popover>
         </RACSelect>

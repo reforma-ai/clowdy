@@ -17,7 +17,10 @@ afterEach(async () => {
 const pause = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
 /** A thought in pieces, ending with the mark that closes it. */
-const think = (...pieces: string[]): EngineEvent[] => [...pieces.map((delta): EngineEvent => ({ type: 'thought', delta, done: false })), { type: 'thought', delta: '', done: true }];
+const think = (...pieces: string[]): EngineEvent[] => [
+    ...pieces.map((delta): EngineEvent => ({ type: 'thought', delta, done: false })),
+    { type: 'thought', delta: '', done: true },
+];
 
 async function setup(script: Script) {
     const engine = new ScriptEngine(script);
@@ -31,7 +34,7 @@ async function setup(script: Script) {
 
     await waitFor(() => engine.turns.length === 1 && h.run(runId).status === 'succeeded', 'the turn to end');
 
-    return await (await h.fetch(`/v1/chats/${ chat.id }/items`)).json() as StreamItem[];
+    return (await (await h.fetch(`/v1/chats/${chat.id}/items`)).json()) as StreamItem[];
 }
 
 const thoughts = (items: StreamItem[]) => items.flatMap(item => (item.body.kind === 'reasoning' ? [item.body] : []));
@@ -44,7 +47,14 @@ describe('how long a thought took, and how it reads', () => {
             yield { type: 'session', sessionId: 's1' };
             await pause(80);
             yield* think('First.');
-            yield { type: 'tool', toolCallId: 'c1', name: 'Read', input: { file_path: 'a.ts' }, state: 'done', output: 'x' };
+            yield {
+                type: 'tool',
+                toolCallId: 'c1',
+                name: 'Read',
+                input: { file_path: 'a.ts' },
+                state: 'done',
+                output: 'x',
+            };
             await pause(120);
             yield* think('Second.');
             yield { type: 'text', delta: 'Done.', done: false };
@@ -68,6 +78,9 @@ describe('how long a thought took, and how it reads', () => {
             yield { type: 'done' };
         });
 
-        expect(thoughts(items).map(thought => thought.text)).toEqual(['**Checking the current directory**', 'The user wants a number.']);
+        expect(thoughts(items).map(thought => thought.text)).toEqual([
+            '**Checking the current directory**',
+            'The user wants a number.',
+        ]);
     });
 });

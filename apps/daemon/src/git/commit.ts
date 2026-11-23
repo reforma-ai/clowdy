@@ -1,6 +1,6 @@
-import { MAX_GIT_MESSAGE_CHARS } from '@clowdy/protocol';
 import { lstat } from 'node:fs/promises';
 import { join } from 'node:path';
+import { MAX_GIT_MESSAGE_CHARS } from '@clowdy/protocol';
 
 import { gitLine, gitRead } from '../domain/git';
 import { exclusive, pathKey, placeOf } from '../domain/workspaces';
@@ -38,14 +38,18 @@ export interface GitWritesOptions {
 /** The lines of what a program printed that have something in them, without colour codes. */
 export function printedLines(text: string): string[] {
     // eslint-disable-next-line no-control-regex
-    return text.replace(/\u001B\[[0-9;]*[A-Za-z]/g, '').split(/\r?\n/).map(line => line.trim()).filter(line => line !== '');
+    return text
+        .replace(/\u001B\[[0-9;]*[A-Za-z]/g, '')
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(line => line !== '');
 }
 
 /** A line of git's as the person is shown it: without the credential of an address in it (everything before the last `@` of its authority, so a password with an `@` in it goes whole), and cut. */
 export function shownLine(line: string): string {
     const plain = line.replace(/\b([a-z][a-z0-9+.-]*:\/\/)[^\s/]*@/gi, '$1');
 
-    return plain.length > MAX_LINE_CHARS ? `${ plain.slice(0, MAX_LINE_CHARS - 1) }…` : plain;
+    return plain.length > MAX_LINE_CHARS ? `${plain.slice(0, MAX_LINE_CHARS - 1)}…` : plain;
 }
 
 /**
@@ -55,13 +59,18 @@ export function shownLine(line: string): string {
 export function failureLine(stderr: string, stdout: string): string {
     const printed = printedLines(stderr);
     // The line that names the signing key comes first: git adds its own `fatal: failed to write commit object` after what the signing program said.
-    const line = printed.find(namesSigningKey) ?? printed.find(candidate => /^(?:fatal|error):/i.test(candidate)) ?? printed[0] ?? printedLines(stdout)[0] ?? 'git could not make the commit';
+    const line =
+        printed.find(namesSigningKey) ??
+        printed.find(candidate => /^(?:fatal|error):/i.test(candidate)) ??
+        printed[0] ??
+        printedLines(stdout)[0] ??
+        'git could not make the commit';
 
     return shownLine(line);
 }
 
 /** The line of writes that a place has (`exclusive`): everything that changes the place's repository, a commit, a fetch, a pull and a push, waits for the one before it, keyed by the place's real path so two paths to one folder are one line. */
-export const writeLine = (place: Place): string => `git:${ pathKey(placeOf(place.path)) }`;
+export const writeLine = (place: Place): string => `git:${pathKey(placeOf(place.path))}`;
 
 /**
  * The commit, the write the daemon makes to a person's repository that stays on their machine (fetch, pull and push are `GitRemote`'s, on the same line of writes). Every write runs the person's own `git` in the place,
@@ -97,7 +106,8 @@ export class GitWrites {
 
         if (typeof message !== 'string' || message.trim() === '') throw invalid('Write a message for the commit');
 
-        if (message.length > MAX_GIT_MESSAGE_CHARS) throw invalid(`The message is over ${ MAX_GIT_MESSAGE_CHARS } characters`);
+        if (message.length > MAX_GIT_MESSAGE_CHARS)
+            throw invalid(`The message is over ${MAX_GIT_MESSAGE_CHARS} characters`);
 
         if (message.includes('\0')) throw invalid('The message has a character that cannot be in a commit');
 
@@ -105,19 +115,24 @@ export class GitWrites {
         return exclusive(this.#store, writeLine(place), this.#stopper.signal, async () => {
             const { files, gitPaths } = await selectChanged(place, request.paths);
 
-            await this.#refuseUnsettled(place, files.map(file => file.path));
+            await this.#refuseUnsettled(
+                place,
+                files.map(file => file.path)
+            );
 
             const env = await this.environment.of(place.path);
             const run = (args: string[]) => this.#git(place.path, env, args);
-            const [toAdd, stagedBefore] = await Promise.all([this.#addable(place.path, gitPaths), this.#staged(place.path, gitPaths)]);
+            const [toAdd, stagedBefore] = await Promise.all([
+                this.#addable(place.path, gitPaths),
+                this.#staged(place.path, gitPaths),
+            ]);
 
             try {
                 // Nothing to add when every path is a removal that is staged already (`git rm`, the old side of `git mv`): the commit below takes it from there.
                 if (toAdd.length > 0) this.#check(await run(['add', '--', ...toAdd]));
 
                 this.#check(await run(['commit', '-m', message, '--', ...gitPaths]));
-            }
-            catch (error) {
+            } catch (error) {
                 // Takes back what the add staged, which is `git reset` to HEAD for the paths whose entry was HEAD's before; one the person had staged stays as they left it. Best effort: when git
                 // cannot (a commit that timed out is still letting go of its lock) the paths stay staged, which is what the next try does first. If the commit landed after all, HEAD is the new commit and the reset changes nothing.
                 const added = gitPaths.filter(path => !stagedBefore.has(path));
@@ -140,16 +155,35 @@ export class GitWrites {
      * (`pathspec did not match any files`), which is what the old path of a rename is once the rename is staged: the commit takes it from HEAD.
      */
     async #addable(cwd: string, paths: string[]): Promise<string[]> {
-        const indexed = await gitRead(cwd, ['ls-files', '-z', '--cached', '--', ...paths.map(path => `:(literal)${ path }`)]);
+        const indexed = await gitRead(cwd, [
+            'ls-files',
+            '-z',
+            '--cached',
+            '--',
+            ...paths.map(path => `:(literal)${path}`),
+        ]);
         const known = new Set(indexed.ok ? indexed.stdout.split('\0') : []);
-        const present = await Promise.all(paths.map(async path => known.has(path) || await lstat(join(cwd, path)).then(() => true, () => false)));
+        const present = await Promise.all(
+            paths.map(
+                async path =>
+                    known.has(path) ||
+                    (await lstat(join(cwd, path)).then(
+                        () => true,
+                        () => false
+                    ))
+            )
+        );
 
         return paths.filter((_, index) => present[index]);
     }
 
     /** The paths the index already holds differently from HEAD (staged by the person, or by an agent in the place): what a failed commit must leave staged. When git does not say, every path counts as staged. */
     async #staged(cwd: string, paths: string[]): Promise<Set<string>> {
-        const read = await gitRead(cwd, ['diff', '--cached', '--name-only', '-z', '--no-renames', '--', ...paths.map(path => `:(literal)${ path }`)], { parsed: true });
+        const read = await gitRead(
+            cwd,
+            ['diff', '--cached', '--name-only', '-z', '--no-renames', '--', ...paths.map(path => `:(literal)${path}`)],
+            { parsed: true }
+        );
 
         return new Set(read.ok ? read.stdout.split('\0').filter(path => path !== '') : paths);
     }
@@ -158,21 +192,35 @@ export class GitWrites {
     async #refuseUnsettled(place: Place, paths: string[]): Promise<void> {
         const cwd = place.path;
         const [merging, unmerged] = await Promise.all([
-            Promise.all(['MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD'].map(ref => gitRead(cwd, ['rev-parse', '-q', '--verify', ref]))),
+            Promise.all(
+                ['MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD'].map(ref =>
+                    gitRead(cwd, ['rev-parse', '-q', '--verify', ref])
+                )
+            ),
             gitRead(cwd, ['diff', '--name-only', '--diff-filter=U', '-z'], { parsed: true }),
         ]);
 
-        if (merging.some(read => read.ok)) throw conflict('A merge, cherry-pick or revert is in progress here, finish it first');
+        if (merging.some(read => read.ok))
+            throw conflict('A merge, cherry-pick or revert is in progress here, finish it first');
 
-        const conflicted = unmerged.ok ? unmerged.stdout.split('\0').filter(path => path !== '' && paths.includes(path)) : [];
+        const conflicted = unmerged.ok
+            ? unmerged.stdout.split('\0').filter(path => path !== '' && paths.includes(path))
+            : [];
 
-        if (conflicted.length > 0) throw conflict(`${ conflicted[0] } has merge conflicts`);
+        if (conflicted.length > 0) throw conflict(`${conflicted[0]} has merge conflicts`);
     }
 
     /** `git` in the place with the write environment, asked to stop with `SIGTERM` so it removes its lock files when the time is up. */
     #git(cwd: string, env: Record<string, string>, args: string[]): Promise<RunResult> {
         // The paths are plain names, never patterns: `*`, `[` and a leading `:` in a file's name are the file's own.
-        return runProgram('git', ['--literal-pathspecs', ...args], { env, cwd, timeoutMs: this.#timeoutMs, maxChars: MAX_PRINTED_CHARS, signal: this.#stopper.signal, stopSignal: 'SIGTERM' });
+        return runProgram('git', ['--literal-pathspecs', ...args], {
+            env,
+            cwd,
+            timeoutMs: this.#timeoutMs,
+            maxChars: MAX_PRINTED_CHARS,
+            signal: this.#stopper.signal,
+            stopSignal: 'SIGTERM',
+        });
     }
 
     /** Throws what a run that did not succeed came to, in words the person reads; returns when it did. */
@@ -185,11 +233,12 @@ export class GitWrites {
 
         if (run.code === 0) return;
 
-        if (NOTHING_TO_COMMIT.test(run.stdout) || NOTHING_TO_COMMIT.test(run.stderr)) throw invalid('Nothing to commit');
+        if (NOTHING_TO_COMMIT.test(run.stdout) || NOTHING_TO_COMMIT.test(run.stderr))
+            throw invalid('Nothing to commit');
 
         const line = failureLine(run.stderr, run.stdout);
 
-        if (namesSigningKey(`${ run.stderr }\n${ run.stdout }`)) {
+        if (namesSigningKey(`${run.stderr}\n${run.stdout}`)) {
             // What was found of the agent may be what failed: it is looked for again at the next write.
             this.environment.forgetAgent();
 

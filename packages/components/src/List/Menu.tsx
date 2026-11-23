@@ -4,18 +4,18 @@ import {
     Header as AriaHeader,
     Menu as AriaMenu,
     MenuItem as AriaMenuItem,
-    MenuSection as AriaMenuSection,
-    Separator as AriaSeparator,
-    MenuTrigger,
-    SubmenuTrigger,
     type MenuItemProps as AriaMenuItemProps,
     type MenuProps as AriaMenuProps,
+    MenuSection as AriaMenuSection,
     type MenuSectionProps as AriaMenuSectionProps,
+    Separator as AriaSeparator,
     type SeparatorProps as AriaSeparatorProps,
+    MenuTrigger,
+    SubmenuTrigger,
 } from 'react-aria-components';
 
 import { Tooltip } from '../Tooltip';
-import { resolveOverlayWidth, type OverlayWidth } from '../utils/resolveOverlayWidth';
+import { type OverlayWidth, resolveOverlayWidth } from '../utils/resolveOverlayWidth';
 import styles from './ListBox.module.css';
 import { renderListRowItemContent } from './listRowItemContent';
 import { useListHoverHighlight } from './useListHoverHighlight';
@@ -28,11 +28,7 @@ export type {
     MenuTriggerProps,
     SubmenuTriggerProps,
 } from 'react-aria-components';
-
-export {
-    MenuTrigger,
-    SubmenuTrigger,
-};
+export { MenuTrigger, SubmenuTrigger };
 
 export type MenuSize = 'sm' | 'md' | 'lg';
 
@@ -52,12 +48,12 @@ export interface MenuItemSlots {
     stacked?: boolean;
 }
 
-export type MenuItemProps<T extends object = object> = Omit<AriaMenuItemProps<T>, 'className'>
-  & MenuItemSlots & {
-      className?: string;
-      text?: string;
-      isDanger?: boolean;
-  };
+export type MenuItemProps<T extends object = object> = Omit<AriaMenuItemProps<T>, 'className'> &
+    MenuItemSlots & {
+        className?: string;
+        text?: string;
+        isDanger?: boolean;
+    };
 
 /** Command / action list (RAC **Menu**). For picker content in a popover, wrap **`ListBox`** in **`PopoverScroll`**. */
 export function Menu<T extends object>({
@@ -75,19 +71,17 @@ export function Menu<T extends object>({
 
     const widthStyle = resolveOverlayWidth(width);
 
-    const style = (widthStyle != null || styleProp != null)
-        ? { ...styleProp, ...widthStyle }
-        : undefined;
+    const style = widthStyle != null || styleProp != null ? { ...styleProp, ...widthStyle } : undefined;
 
     return (
         <AriaMenu
-            className={ cn(styles.list, styles.menuList, className) }
-            style={ style }
-            selectionMode={ selectionMode }
-            data-size={ size }
-            data-interactive={ interactive || undefined }
-            { ...props }
-            ref={ listRef }
+            className={cn(styles.list, styles.menuList, className)}
+            style={style}
+            selectionMode={selectionMode}
+            data-size={size}
+            data-interactive={interactive || undefined}
+            {...props}
+            ref={listRef}
         />
     );
 }
@@ -116,7 +110,7 @@ export function MenuItem<T extends object>({
             return;
         }
 
-        const node = itemRef.current?.querySelector(`.${ CSS.escape(styles.itemDescription) }`);
+        const node = itemRef.current?.querySelector(`.${CSS.escape(styles.itemDescription)}`);
 
         if (!(node instanceof HTMLElement)) {
             return;
@@ -141,19 +135,19 @@ export function MenuItem<T extends object>({
 
     const item = (
         <AriaMenuItem
-            ref={ mergeRefs(scrollRef, ref) }
-            className={ cn(styles.item, stacked && styles.itemStacked, isDanger && styles.itemDanger, className) }
-            textValue={ textValue }
-            { ...props }
+            ref={mergeRefs(scrollRef, ref)}
+            className={cn(styles.item, stacked && styles.itemStacked, isDanger && styles.itemDanger, className)}
+            textValue={textValue}
+            {...props}
         >
-            { renderListRowItemContent(children, {
+            {renderListRowItemContent(children, {
                 icon,
                 description,
                 startAffix,
                 endAffix,
                 stacked,
                 textValue,
-            }) }
+            })}
         </AriaMenuItem>
     );
 
@@ -162,22 +156,25 @@ export function MenuItem<T extends object>({
     }
 
     return (
-        <Tooltip content={ description } placement="right" isDisabled={ !descriptionTruncated }>
-            { item }
+        <Tooltip content={description} placement="right" isDisabled={!descriptionTruncated}>
+            {item}
         </Tooltip>
     );
 }
 
 export function MenuSeparator({ className, ...props }: Omit<AriaSeparatorProps, 'className'> & { className?: string }) {
-    return <AriaSeparator className={ cn(styles.menuSeparator, className) } { ...props } />;
+    return <AriaSeparator className={cn(styles.menuSeparator, className)} {...props} />;
 }
 
 export function MenuHeader({ className, sticky, ...props }: HTMLAttributes<HTMLElement> & { sticky?: boolean }) {
-    return <AriaHeader className={ cn(styles.sectionHeader, className) } { ...props } data-sticky={ sticky || undefined } />;
+    return <AriaHeader className={cn(styles.sectionHeader, className)} {...props} data-sticky={sticky || undefined} />;
 }
 
-export function MenuSection<T extends object>({ className, ...props }: Omit<AriaMenuSectionProps<T>, 'className'> & { className?: string }) {
-    return <AriaMenuSection className={ cn(styles.section, className) } { ...props } />;
+export function MenuSection<T extends object>({
+    className,
+    ...props
+}: Omit<AriaMenuSectionProps<T>, 'className'> & { className?: string }) {
+    return <AriaMenuSection className={cn(styles.section, className)} {...props} />;
 }
 
 Menu.displayName = 'Menu';

@@ -2,12 +2,7 @@ import { IMAGE_EXTENSIONS } from '@clowdy/constants';
 import { Close, File } from '@clowdy/icons/12';
 import { Refresh } from '@clowdy/icons/14';
 import { cn, extractExtension, formatFileSize } from '@clowdy/lib';
-import {
-    Children,
-    useState,
-    type ComponentProps,
-    type HTMLAttributes,
-} from 'react';
+import { Children, type ComponentProps, type HTMLAttributes, useState } from 'react';
 
 import { Button } from '../Button';
 import { FileIcon } from '../FileIcon';
@@ -64,26 +59,21 @@ export function Attachments({
     const hiddenCount = collapsed ? items.length - limit : 0;
 
     return (
-        <div
-            className={ cn(styles.attachments, className) }
-            data-slot="attachments"
-            data-size={ size }
-            { ...props }
-        >
-            { collapsed ? items.slice(0, limit) : items }
+        <div className={cn(styles.attachments, className)} data-slot="attachments" data-size={size} {...props}>
+            {collapsed ? items.slice(0, limit) : items}
 
-            <Show when={ collapsed }>
+            <Show when={collapsed}>
                 <Button
-                    className={ styles.showMore }
+                    className={styles.showMore}
                     type="button"
                     variant="ghost"
                     size="unset"
                     data-slot="attachments-show-more"
-                    tooltip={ showMoreLabel }
+                    tooltip={showMoreLabel}
                     tooltipPlacement="top"
-                    onPress={ () => setExpanded(true) }
+                    onPress={() => setExpanded(true)}
                 >
-                    <Text variant="label">{ `+${ hiddenCount }` }</Text>
+                    <Text variant="label">{`+${hiddenCount}`}</Text>
                 </Button>
             </Show>
         </div>
@@ -126,28 +116,28 @@ export function Attachment({
     const content = (
         <>
             <Show
-                when={ !loading }
+                when={!loading}
                 fallback={
-                    <div className={ cn(styles.preview, styles.previewLoading) }>
+                    <div className={cn(styles.preview, styles.previewLoading)}>
                         <Spinner size="xs" />
                     </div>
                 }
             >
-                <Show when={ error } fallback={ <AttachmentPreview data={ data } label={ label } /> }>
-                    <div className={ cn(styles.preview, styles.previewError) }>
-                        <AttachmentPreview data={ data } label={ label } />
-                        <Show when={ onRetry }>
+                <Show when={error} fallback={<AttachmentPreview data={data} label={label} />}>
+                    <div className={cn(styles.preview, styles.previewError)}>
+                        <AttachmentPreview data={data} label={label} />
+                        <Show when={onRetry}>
                             <Button
                                 type="button"
                                 variant="filled"
                                 rounded
                                 size="unset"
                                 iconOnly
-                                className={ styles.retryButton }
-                                aria-label={ `Retry ${ label }` }
+                                className={styles.retryButton}
+                                aria-label={`Retry ${label}`}
                                 tooltip="Retry"
                                 tooltipPlacement="top"
-                                onPress={ onRetry }
+                                onPress={onRetry}
                             >
                                 <Refresh />
                             </Button>
@@ -156,10 +146,14 @@ export function Attachment({
                 </Show>
             </Show>
 
-            <div className={ styles.info }>
-                <Text variant="label" truncate>{ label }</Text>
-                <Show when={ size }>
-                    <Text variant="label" truncate className={ styles.infoDetail }>{ size }</Text>
+            <div className={styles.info}>
+                <Text variant="label" truncate>
+                    {label}
+                </Text>
+                <Show when={size}>
+                    <Text variant="label" truncate className={styles.infoDetail}>
+                        {size}
+                    </Text>
                 </Show>
             </div>
         </>
@@ -167,24 +161,24 @@ export function Attachment({
 
     return (
         <div
-            className={ cn(
+            className={cn(
                 styles.attachment,
                 interactive && styles.pressable,
                 error && styles.attachmentError,
                 className
-            ) }
+            )}
             role="group"
-            aria-label={ label }
-            aria-busy={ loading || undefined }
+            aria-label={label}
+            aria-busy={loading || undefined}
             data-slot="attachment"
-            data-attachment-id={ data.id ?? data.filename }
-            data-interactive={ interactive || undefined }
-            data-removable={ removable || undefined }
-            data-loading={ loading || undefined }
-            data-error={ error || undefined }
-            { ...props }
+            data-attachment-id={data.id ?? data.filename}
+            data-interactive={interactive || undefined}
+            data-removable={removable || undefined}
+            data-loading={loading || undefined}
+            data-error={error || undefined}
+            {...props}
         >
-            <Show when={ interactive } fallback={ content }>
+            <Show when={interactive} fallback={content}>
                 <Button
                     type="button"
                     variant="transparent"
@@ -192,25 +186,25 @@ export function Attachment({
                     size="unset"
                     fullWidth
                     truncate
-                    className={ styles.attachmentHit }
-                    aria-label={ label }
-                    onPress={ onPress }
+                    className={styles.attachmentHit}
+                    aria-label={label}
+                    onPress={onPress}
                 >
-                    { content }
+                    {content}
                 </Button>
             </Show>
 
-            <Show when={ removable }>
+            <Show when={removable}>
                 <Button
-                    className={ styles.removeButton }
+                    className={styles.removeButton}
                     type="button"
                     variant="filled"
                     size="unset"
                     iconOnly
-                    aria-label={ `Remove ${ label }` }
+                    aria-label={`Remove ${label}`}
                     tooltip="Remove"
                     tooltipPlacement="top"
-                    onPress={ onRemove }
+                    onPress={onRemove}
                 >
                     <Close />
                 </Button>
@@ -224,12 +218,12 @@ export function PreviewableAttachment(props: AttachmentProps) {
     const src = imageSource(props.data);
 
     if (!src) {
-        return <Attachment { ...props } />;
+        return <Attachment {...props} />;
     }
 
     return (
-        <Lightbox src={ src } alt={ attachmentLabel(props.data) }>
-            { open => <Attachment { ...props } onPress={ open } /> }
+        <Lightbox src={src} alt={attachmentLabel(props.data)}>
+            {open => <Attachment {...props} onPress={open} />}
         </Lightbox>
     );
 }
@@ -241,28 +235,30 @@ function AttachmentPreview({ data, label }: { data: AttachmentData; label: strin
 
     return (
         <Show
-            when={ src && src !== failedSrc }
+            when={src && src !== failedSrc}
             fallback={
-                <div className={ cn(styles.preview, styles.previewIcon) }>
-                    <Show when={ data.filename } fallback={ <File /> }>
-                        { filename => <FileIcon path={ filename } kind="file" /> }
+                <div className={cn(styles.preview, styles.previewIcon)}>
+                    <Show when={data.filename} fallback={<File />}>
+                        {filename => <FileIcon path={filename} kind="file" />}
                     </Show>
                 </div>
             }
         >
             <Image
-                className={ cn(styles.preview, styles.previewImg) }
-                src={ src }
-                alt={ label }
-                onError={ () => setFailedSrc(src) }
+                className={cn(styles.preview, styles.previewImg)}
+                src={src}
+                alt={label}
+                onError={() => setFailedSrc(src)}
             />
         </Show>
     );
 }
 
 function isImage({ mediaType, filename, preview, url }: AttachmentData): boolean {
-    return Boolean(mediaType?.startsWith('image/'))
-        || [filename, preview, url].some(name => IMAGE_EXTENSIONS.includes(extractExtension(name) ?? ''));
+    return (
+        Boolean(mediaType?.startsWith('image/')) ||
+        [filename, preview, url].some(name => IMAGE_EXTENSIONS.includes(extractExtension(name) ?? ''))
+    );
 }
 
 /** The URL to draw, for an image only. */

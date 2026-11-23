@@ -5,10 +5,10 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { RootStoreProvider, type RootStore } from '../../stores';
+import { type RootStore, RootStoreProvider } from '../../stores';
 import { Composer } from './Composer';
 import { newChatDraftKey, saveDraft } from './composerDrafts';
-import { modelStore, type ModelStoreOptions } from './modelTestKit';
+import { type ModelStoreOptions, modelStore } from './modelTestKit';
 
 import type { Chat, CommandResult, QueuedMessage, Run } from '@clowdy/protocol';
 import type { CommandInput } from '../../daemon/transport';
@@ -25,7 +25,14 @@ vi.mock('@clowdy/components/Toast', () => ({ toast: toasts }));
  */
 
 const accepted: CommandResult = { ok: true, requestId: 'request-1', data: {} };
-const refused: CommandResult = { ok: false, requestId: 'request-1', error: { code: 'conflict', message: 'The orchestrator is waiting for background work. Compact the chat when it has finished' } };
+const refused: CommandResult = {
+    ok: false,
+    requestId: 'request-1',
+    error: {
+        code: 'conflict',
+        message: 'The orchestrator is waiting for background work. Compact the chat when it has finished',
+    },
+};
 
 const transport = {
     getDocsTree: vi.fn(async () => []),
@@ -54,16 +61,25 @@ async function mount(page: Page = {}, options: ModelStoreOptions = {}) {
 
         return (current.answer ?? (() => accepted))(input);
     });
-    const root$ = { command, transport, skillsRevision: 0, selectedProject: { project: { id: 'p', folders: [{ id: 'f1', path: '/Users/dev/web' }] }, taskList: [] }, ...store } as unknown as RootStore;
-    const draw = () => act(async () => {
-        root.render(
-            <RootStoreProvider value={ root$ }>
-                { current.chat
-                    ? <Composer chat={ current.chat } run={ current.run } />
-                    : <Composer chat={ undefined } run={ undefined } start={ { projectId: 'p', onStarted: () => {} } } /> }
-            </RootStoreProvider>
-        );
-    });
+    const root$ = {
+        command,
+        transport,
+        skillsRevision: 0,
+        selectedProject: { project: { id: 'p', folders: [{ id: 'f1', path: '/Users/dev/web' }] }, taskList: [] },
+        ...store,
+    } as unknown as RootStore;
+    const draw = () =>
+        act(async () => {
+            root.render(
+                <RootStoreProvider value={root$}>
+                    {current.chat ? (
+                        <Composer chat={current.chat} run={current.run} />
+                    ) : (
+                        <Composer chat={undefined} run={undefined} start={{ projectId: 'p', onStarted: () => {} }} />
+                    )}
+                </RootStoreProvider>
+            );
+        });
 
     await draw();
 
@@ -80,37 +96,71 @@ const ring = () => container.querySelector<HTMLButtonElement>('button[aria-label
 const modelPill = () => container.querySelector<HTMLButtonElement>('button[aria-label^="Model:"]');
 const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]');
 // The popover has a hidden dismiss button of its own, so the button is found by its words.
-const compactButton = () => [...dialog()?.querySelectorAll('button') ?? []].find(button => button.textContent === 'Compact') ?? null;
+const compactButton = () =>
+    [...(dialog()?.querySelectorAll('button') ?? [])].find(button => button.textContent === 'Compact') ?? null;
 const stand = () => dialog()?.querySelector<HTMLElement>('[role="button"][aria-disabled]') ?? null;
 const meter = () => dialog()!.querySelector<HTMLElement>('[role="meter"]')!;
 const arc = () => ring()!.querySelector('circle[stroke-dasharray]');
 
-const pointer = { bubbles: true, cancelable: true, pointerId: 1, pointerType: 'mouse', button: 0, width: 1, height: 1, pressure: 0.5, detail: 1 };
+const pointer = {
+    bubbles: true,
+    cancelable: true,
+    pointerId: 1,
+    pointerType: 'mouse',
+    button: 0,
+    width: 1,
+    height: 1,
+    pressure: 0.5,
+    detail: 1,
+};
 
-const press = (element: Element | null | undefined) => act(async () => {
-    element!.dispatchEvent(new PointerEvent('pointerdown', pointer));
-    element!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
-    element!.dispatchEvent(new PointerEvent('pointerup', pointer));
-    element!.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
-    element!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, detail: 1 }));
-});
+const press = (element: Element | null | undefined) =>
+    act(async () => {
+        element!.dispatchEvent(new PointerEvent('pointerdown', pointer));
+        element!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+        element!.dispatchEvent(new PointerEvent('pointerup', pointer));
+        element!.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
+        element!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, detail: 1 }));
+    });
 
-const settle = () => act(async () => {
-    await new Promise(resolve => setTimeout(resolve, 30));
-});
+const settle = () =>
+    act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 30));
+    });
 
 async function openRing() {
     await press(ring());
     await settle();
 }
 
-const chatOn = (rest: Partial<Chat> = {}): Chat => ({ id: `c-ring-${ ++chatNumber }`, projectId: 'p', title: 'A chat', mode: 'autopilot', createdAt: 0, updatedAt: 0, engine: 'claude', model: 'opus', effort: 'high', orchestratorRunId: 'r-1', ...rest });
-const runOf = (rest: Partial<Run> = {}) => ({ id: 'r-1', status: 'succeeded', engine: 'claude', model: 'opus', effort: 'high', context: { used: 53_000, size: 250_000 }, ...rest }) as Run;
+const chatOn = (rest: Partial<Chat> = {}): Chat => ({
+    id: `c-ring-${++chatNumber}`,
+    projectId: 'p',
+    title: 'A chat',
+    mode: 'autopilot',
+    createdAt: 0,
+    updatedAt: 0,
+    engine: 'claude',
+    model: 'opus',
+    effort: 'high',
+    orchestratorRunId: 'r-1',
+    ...rest,
+});
+const runOf = (rest: Partial<Run> = {}) =>
+    ({
+        id: 'r-1',
+        status: 'succeeded',
+        engine: 'claude',
+        model: 'opus',
+        effort: 'high',
+        context: { used: 53_000, size: 250_000 },
+        ...rest,
+    }) as Run;
 /** A run whose window is 100K tokens, `used` thousand of them taken. */
 const filled = (used: number) => runOf({ context: { used: used * 1_000, size: 100_000 } });
 
 const withoutCompact = (agentId: string): ModelStoreOptions => ({
-    change: (data) => {
+    change: data => {
         delete data.agents.find(agent => agent.id === agentId)!.canCompact;
     },
 });
@@ -154,7 +204,10 @@ describe('the ring', () => {
     });
 
     it('is not drawn when the run has no reading, as for Cursor, which sends none', async () => {
-        await mount({ chat: chatOn({ engine: 'cursor', model: 'default' }), run: runOf({ engine: 'cursor', context: undefined }) });
+        await mount({
+            chat: chatOn({ engine: 'cursor', model: 'default' }),
+            run: runOf({ engine: 'cursor', context: undefined }),
+        });
 
         expect(ring()).toBeNull();
         expect(modelPill()).not.toBeNull();
@@ -181,10 +234,11 @@ describe('the ring', () => {
 describe('its tooltip', () => {
     const tooltip = () => document.querySelector('[role="tooltip"]');
     /** Moves focus to the ring the way a keyboard does, which shows a tooltip at once (a pointer waits for its delay). */
-    const focusRing = () => act(async () => {
-        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
-        ring()!.focus();
-    });
+    const focusRing = () =>
+        act(async () => {
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+            ring()!.focus();
+        });
 
     it('says what the ring is and how full, as its label does, since the ring is only an arc', async () => {
         await mount({ chat: chatOn(), run: runOf() });
@@ -255,7 +309,7 @@ describe('its popover', () => {
         await openRing();
 
         expect(meter().getAttribute('data-tone')).toBe(tone);
-        expect(dialog()!.textContent).toContain(`${ percent }% full`);
+        expect(dialog()!.textContent).toContain(`${percent}% full`);
     });
 
     it('keeps a window that is over full at 100%', async () => {
@@ -296,7 +350,7 @@ describe('its popover', () => {
 });
 
 describe('Compact', () => {
-    it.each(['claude', 'codex'])('is offered for %s, which can compact its conversation', async (engine) => {
+    it.each(['claude', 'codex'])('is offered for %s, which can compact its conversation', async engine => {
         await mount({ chat: chatOn({ engine }), run: runOf({ engine }) });
         await openRing();
 
@@ -320,7 +374,7 @@ describe('Compact', () => {
         expect(compactButton()).toBeNull();
     });
 
-    it('asks the chat\'s own agent, and the run\'s for a chat from before chats had one', async () => {
+    it("asks the chat's own agent, and the run's for a chat from before chats had one", async () => {
         await mount({ chat: chatOn({ engine: undefined }), run: runOf({ engine: 'codex' }) }, withoutCompact('claude'));
         await openRing();
 
@@ -351,9 +405,10 @@ describe('Compact', () => {
 
     it('is pending while the command is on its way, then closes the popover', async () => {
         let answer!: (result: CommandResult) => void;
-        const onItsWay = () => new Promise<CommandResult>((resolve) => {
-            answer = resolve;
-        });
+        const onItsWay = () =>
+            new Promise<CommandResult>(resolve => {
+                answer = resolve;
+            });
 
         await mount({ chat: chatOn(), run: runOf(), answer: onItsWay });
         await openRing();
@@ -374,7 +429,7 @@ describe('Compact', () => {
         expect(dialog()).toBeNull();
     });
 
-    it('shows the daemon\'s refusal as the usual toast and closes the popover', async () => {
+    it("shows the daemon's refusal as the usual toast and closes the popover", async () => {
         await mount({ chat: chatOn(), run: runOf(), answer: () => refused });
         await openRing();
         await press(compactButton());
@@ -384,7 +439,7 @@ describe('Compact', () => {
         expect(dialog()).toBeNull();
     });
 
-    it.each(TERMINAL_RUN_STATUSES)('is on when the orchestrator has ended as %s', async (status) => {
+    it.each(TERMINAL_RUN_STATUSES)('is on when the orchestrator has ended as %s', async status => {
         await mount({ chat: chatOn(), run: runOf({ status }) });
         await openRing();
 
@@ -395,30 +450,41 @@ describe('Compact', () => {
     describe('while the orchestrator works', () => {
         const caption = 'Waits in the queue until the agent finishes';
 
-        it.each(ACTIVE_RUN_STATUSES)('is on when the run is %s, and says it waits in the queue until the agent finishes', async (status) => {
-            const chat = chatOn();
+        it.each(ACTIVE_RUN_STATUSES)(
+            'is on when the run is %s, and says it waits in the queue until the agent finishes',
+            async status => {
+                const chat = chatOn();
 
-            await mount({ chat, run: runOf({ status }) });
-            await openRing();
+                await mount({ chat, run: runOf({ status }) });
+                await openRing();
 
-            expect(stand()).toBeNull();
-            expect(compactButton()!.disabled).toBe(false);
-            expect(dialog()!.textContent).toContain(caption);
+                expect(stand()).toBeNull();
+                expect(compactButton()!.disabled).toBe(false);
+                expect(dialog()!.textContent).toContain(caption);
 
-            await press(compactButton());
-            await settle();
+                await press(compactButton());
+                await settle();
 
-            expect(sent).toEqual([{ type: 'chat.compact', chatId: chat.id }]);
-            expect(dialog()).toBeNull();
-        });
+                expect(sent).toEqual([{ type: 'chat.compact', chatId: chat.id }]);
+                expect(dialog()).toBeNull();
+            }
+        );
 
         it('says a held queue does not send it by itself: the person sends it from there', async () => {
-            await mount({ chat: chatOn({ queuePaused: 'stopped', queue: [{ id: 'q-1', mode: 'queue', text: 'Later', content: 'Later', createdAt: 0 }] }), run: runOf({ status: 'running' }) });
+            await mount({
+                chat: chatOn({
+                    queuePaused: 'stopped',
+                    queue: [{ id: 'q-1', mode: 'queue', text: 'Later', content: 'Later', createdAt: 0 }],
+                }),
+                run: runOf({ status: 'running' }),
+            });
             await openRing();
 
             expect(compactButton()!.disabled).toBe(false);
             expect(dialog()!.textContent).not.toContain(caption);
-            expect(dialog()!.textContent).toContain('Joins the paused queue. Use Send now on it once the agent finishes.');
+            expect(dialog()!.textContent).toContain(
+                'Joins the paused queue. Use Send now on it once the agent finishes.'
+            );
         });
 
         it('says nothing of the queue once the orchestrator has finished', async () => {
@@ -434,7 +500,14 @@ describe('Compact', () => {
         });
 
         it('is off while a compact item waits in the queue, and says so when the stand-in has the focus', async () => {
-            const queued: QueuedMessage = { id: 'q-1', mode: 'queue', command: 'compact', text: 'Compact the conversation', content: '/compact', createdAt: 0 };
+            const queued: QueuedMessage = {
+                id: 'q-1',
+                mode: 'queue',
+                command: 'compact',
+                text: 'Compact the conversation',
+                content: '/compact',
+                createdAt: 0,
+            };
 
             await mount({ chat: chatOn({ queue: [queued] }), run: runOf({ status: 'running' }) });
             await openRing();

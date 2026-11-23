@@ -18,8 +18,7 @@ function unwrapBody(text: string, depth: number): string {
         if (typeof inner === 'string' && inner.trim()) {
             return [text.slice(0, start).trim(), unwrapBody(inner, depth + 1)].filter(Boolean).join(' ');
         }
-    }
-    catch {
+    } catch {
         // Not JSON after all: keep the prose.
     }
 
@@ -41,7 +40,11 @@ export function readableMessage(error: unknown, depth = 0): string {
     }
 
     const record = error as { message?: unknown; error?: unknown; cause?: unknown; data?: unknown };
-    const data = typeof record.data === 'string' ? record.data : (record.data as { details?: unknown; message?: unknown } | undefined)?.details ?? (record.data as { message?: unknown } | undefined)?.message;
+    const data =
+        typeof record.data === 'string'
+            ? record.data
+            : ((record.data as { details?: unknown; message?: unknown } | undefined)?.details ??
+              (record.data as { message?: unknown } | undefined)?.message);
     const own = typeof record.message === 'string' && record.message.trim() ? unwrapBody(record.message, 0) : '';
     const detail = typeof data === 'string' && data.trim() && !own.includes(data.trim()) ? unwrapBody(data, 0) : '';
 

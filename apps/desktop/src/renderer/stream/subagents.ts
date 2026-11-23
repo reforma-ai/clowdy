@@ -32,11 +32,11 @@ export function subagentName(input: unknown): string | undefined {
 
 /** The card's title: a verb while the sub-agent works, `Ran Explore agent` once it is over. */
 export function subagentTitle(label: string | undefined, live: boolean): string {
-    if (!live) return label ? `Ran ${ label } agent` : 'Ran agent';
+    if (!live) return label ? `Ran ${label} agent` : 'Ran agent';
 
     if (!label) return 'Running agent';
 
-    return LIVE_VERBS[label.toLowerCase()] ?? `Running ${ label }`;
+    return LIVE_VERBS[label.toLowerCase()] ?? `Running ${label}`;
 }
 
 /** The verbs of `describeTool` as a sub-agent's activity says them, with the thing it works on after them. */
@@ -54,13 +54,13 @@ export function toolActivity(name: string, input: unknown): string {
     const view = describeTool(name, input);
     const target = view.target && (view.icon === 'file' || view.icon === 'code') ? basename(view.target) : view.target;
 
-    if (view.icon === 'terminal') return target ? `Running ${ target }` : 'Running a command';
+    if (view.icon === 'terminal') return target ? `Running ${target}` : 'Running a command';
 
-    if (view.icon === 'tool') return `Using ${ view.verb }`;
+    if (view.icon === 'tool') return `Using ${view.verb}`;
 
     const verb = ACTIVITY_VERBS[view.verb] ?? view.verb;
 
-    return target ? `${ verb } ${ target }` : view.verb;
+    return target ? `${verb} ${target}` : view.verb;
 }
 
 /**
@@ -85,14 +85,25 @@ export function latestActivity(items: readonly StreamItem[]): string | undefined
     for (let index = items.length - 1; index >= 0; index--) {
         const { body } = items[index];
 
-        if (body.kind === 'tool' || body.kind === 'assistant' || body.kind === 'question' || body.kind === 'user') return activityOf(body);
+        if (body.kind === 'tool' || body.kind === 'assistant' || body.kind === 'question' || body.kind === 'user')
+            return activityOf(body);
     }
 
     return undefined;
 }
 
 /** The second line of a sub-agent card: what the agent does while it works, `Finished` after; nothing for a failed or stalled call, whose title says it. */
-export function agentStatusLine({ live, failed, stalled, activity }: { live: boolean; failed: boolean; stalled?: boolean; activity?: string }): string | undefined {
+export function agentStatusLine({
+    live,
+    failed,
+    stalled,
+    activity,
+}: {
+    live: boolean;
+    failed: boolean;
+    stalled?: boolean;
+    activity?: string;
+}): string | undefined {
     if (failed || stalled) return undefined;
 
     if (!live) return 'Finished';

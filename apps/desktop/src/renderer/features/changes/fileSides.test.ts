@@ -1,7 +1,7 @@
 import { autorun } from 'mobx';
 import { describe, expect, it } from 'vitest';
 
-import { SidesCache, sidesKey, type SidesEntry, type SidesRequest } from './fileSides';
+import { SidesCache, type SidesEntry, type SidesRequest, sidesKey } from './fileSides';
 
 import type { GitFileSides } from '@clowdy/protocol';
 
@@ -12,20 +12,33 @@ function deferredReads() {
 
     return {
         started,
-        read: (request: SidesRequest) => new Promise<GitFileSides>((resolve, reject) => {
-            started.push(request);
-            waiting.set(sidesKey(request), { resolve, reject });
-        }),
-        finish: (request: SidesRequest, sides: GitFileSides = text(request)) => waiting.get(sidesKey(request))!.resolve(sides),
-        fail: (request: SidesRequest, message = 'git did not answer') => waiting.get(sidesKey(request))!.reject(new Error(message)),
+        read: (request: SidesRequest) =>
+            new Promise<GitFileSides>((resolve, reject) => {
+                started.push(request);
+                waiting.set(sidesKey(request), { resolve, reject });
+            }),
+        finish: (request: SidesRequest, sides: GitFileSides = text(request)) =>
+            waiting.get(sidesKey(request))!.resolve(sides),
+        fail: (request: SidesRequest, message = 'git did not answer') =>
+            waiting.get(sidesKey(request))!.reject(new Error(message)),
     };
 }
 
-const text = (request: SidesRequest): GitFileSides => ({ state: 'text', original: `before ${ request.path }`, modified: `after ${ request.path }`, revision: request.revision });
-const request = (path: string, revision = 'r1', scope: SidesRequest['scope'] = 'all'): SidesRequest => ({ scope, path, revision, from: 'abc1234' });
+const text = (request: SidesRequest): GitFileSides => ({
+    state: 'text',
+    original: `before ${request.path}`,
+    modified: `after ${request.path}`,
+    revision: request.revision,
+});
+const request = (path: string, revision = 'r1', scope: SidesRequest['scope'] = 'all'): SidesRequest => ({
+    scope,
+    path,
+    revision,
+    from: 'abc1234',
+});
 const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 
-describe('the files\' texts', () => {
+describe("the files' texts", () => {
     it('is kept under the scope, the path and the revision', () => {
         expect(sidesKey(request('a.ts'))).not.toBe(sidesKey(request('b.ts')));
         expect(sidesKey(request('a.ts', 'r1'))).not.toBe(sidesKey(request('a.ts', 'r2')));
@@ -79,7 +92,7 @@ describe('the files\' texts', () => {
     it('runs at most four reads at once by default, and the rest wait in the order they were asked', async () => {
         const reads = deferredReads();
         const cache = new SidesCache(reads.read);
-        const paths = Array.from({ length: 9 }, (_, index) => `file-${ index }.ts`);
+        const paths = Array.from({ length: 9 }, (_, index) => `file-${index}.ts`);
 
         for (const path of paths) cache.want(request(path));
 
@@ -221,7 +234,12 @@ describe('the files\' texts', () => {
         const reads = deferredReads();
         // 100 characters of text for all the files, and four files of 40.
         const cache = new SidesCache(reads.read, 4, 150, 100);
-        const sized = (path: string, size: number): GitFileSides => ({ state: 'text', original: 'o'.repeat(size / 2), modified: 'm'.repeat(size / 2), revision: 'r1' });
+        const sized = (path: string, size: number): GitFileSides => ({
+            state: 'text',
+            original: 'o'.repeat(size / 2),
+            modified: 'm'.repeat(size / 2),
+            revision: 'r1',
+        });
         const read = async (path: string, size: number) => {
             cache.want(request(path));
             reads.finish(request(path), sized(path, size));
@@ -253,14 +271,22 @@ describe('the files\' texts', () => {
         }
 
         expect(cache.entryOf(request('huge.ts'))).toBeUndefined();
-        expect(['logo.png', 'dump.json', 'other.png'].map(path => cache.entryOf(request(path))?.status)).toEqual(['ready', 'ready', 'ready']);
+        expect(['logo.png', 'dump.json', 'other.png'].map(path => cache.entryOf(request(path))?.status)).toEqual([
+            'ready',
+            'ready',
+            'ready',
+        ]);
     });
 
     it('lets go of an old revision of a file before a newer file, and keeps the last texts of the file while a newer revision is on its way', async () => {
         const reads = deferredReads();
         const cache = new SidesCache(reads.read, 4, 2);
 
-        for (const [path, revision] of [['a.ts', 'r1'], ['a.ts', 'r2'], ['b.ts', 'r1']] as const) {
+        for (const [path, revision] of [
+            ['a.ts', 'r1'],
+            ['a.ts', 'r2'],
+            ['b.ts', 'r1'],
+        ] as const) {
             cache.want(request(path, revision));
             reads.finish(request(path, revision));
             await tick();
@@ -273,7 +299,7 @@ describe('the files\' texts', () => {
         expect(cache.latestOf(request('a.ts'))).toMatchObject({ revision: 'r2' });
     });
 
-    it('is observable per file: a card follows its own file\'s entry and not the others\'', async () => {
+    it("is observable per file: a card follows its own file's entry and not the others'", async () => {
         const reads = deferredReads();
         const cache = new SidesCache(reads.read);
         const seen: Array<SidesEntry | undefined> = [];

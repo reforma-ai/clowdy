@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
-import { STAR_CARD_MIN_AGE_MS, STAR_CARD_MIN_CHATS, starCardDue, StarCardPreferences } from './starCardState';
+import { STAR_CARD_MIN_AGE_MS, STAR_CARD_MIN_CHATS, StarCardPreferences, starCardDue } from './starCardState';
 
 import type { ChatId } from '@clowdy/protocol';
 
 const memory = () => {
     const values = new Map<string, string>();
 
-    return { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => void values.set(key, value) };
+    return {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => void values.set(key, value),
+    };
 };
 
 const NOW = 1_800_000_000_000;

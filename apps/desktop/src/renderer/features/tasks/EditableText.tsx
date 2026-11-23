@@ -1,5 +1,5 @@
 import { Textarea } from '@clowdy/components/Textarea';
-import { useRef, useState, type KeyboardEvent, type Ref } from 'react';
+import { type KeyboardEvent, type Ref, useRef, useState } from 'react';
 
 import styles from './EditableText.module.css';
 
@@ -21,7 +21,15 @@ export interface EditableTextProps {
  * Text edited in place and saved when the field loses focus. Escape drops the edit; Enter ends it in a title.
  * A change that arrives from outside shows at once, unless the person is typing: their text is kept and saved on blur.
  */
-export function EditableText({ value, onCommit, variant, placeholder, required, ref, 'aria-label': ariaLabel }: EditableTextProps) {
+export function EditableText({
+    value,
+    onCommit,
+    variant,
+    placeholder,
+    required,
+    ref,
+    'aria-label': ariaLabel,
+}: EditableTextProps) {
     const [draft, setDraft] = useState(value);
     const [seen, setSeen] = useState(value);
     const [isFocused, setIsFocused] = useState(false);
@@ -45,7 +53,7 @@ export function EditableText({ value, onCommit, variant, placeholder, required, 
 
         setDraft(text);
 
-        if (!await onCommit(text)) setDraft(value);
+        if (!(await onCommit(text))) setDraft(value);
     };
 
     const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -53,8 +61,7 @@ export function EditableText({ value, onCommit, variant, placeholder, required, 
             dropped.current = true;
             setDraft(value);
             event.currentTarget.blur();
-        }
-        else if (event.key === 'Enter' && variant === 'title') {
+        } else if (event.key === 'Enter' && variant === 'title') {
             event.preventDefault();
             event.currentTarget.blur();
         }
@@ -62,26 +69,26 @@ export function EditableText({ value, onCommit, variant, placeholder, required, 
 
     return (
         <Textarea
-            ref={ ref }
-            aria-label={ ariaLabel }
-            variant={ variant === 'title' ? 'inline' : 'filled' }
+            ref={ref}
+            aria-label={ariaLabel}
+            variant={variant === 'title' ? 'inline' : 'filled'}
             size="md"
-            rows={ variant === 'title' ? 1 : 3 }
+            rows={variant === 'title' ? 1 : 3}
             autoResize
-            isResizable={ false }
-            placeholder={ placeholder }
-            className={ variant === 'title' ? styles.title : undefined }
-            textareaClassName={ variant === 'title' ? styles.titleText : undefined }
-            value={ draft }
-            onChange={ setDraft }
-            onFocus={ () => setIsFocused(true) }
-            onBlur={ () => {
+            isResizable={false}
+            placeholder={placeholder}
+            className={variant === 'title' ? styles.title : undefined}
+            textareaClassName={variant === 'title' ? styles.titleText : undefined}
+            value={draft}
+            onChange={setDraft}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => {
                 setIsFocused(false);
 
                 if (dropped.current) dropped.current = false;
                 else void commit(draft);
-            } }
-            onKeyDown={ onKeyDown }
+            }}
+            onKeyDown={onKeyDown}
         />
     );
 }

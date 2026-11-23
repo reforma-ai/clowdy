@@ -87,7 +87,7 @@ export class ProvidersService {
 
     /** The agents as `GET /v1/agents` answers: what the registry found, plus what is known of each account and its usage; stale reads start in the background. */
     decorate(infos: AgentInfo[]): AgentInfo[] {
-        return infos.map((info) => {
+        return infos.map(info => {
             const provider = this.providers.get(info.id);
 
             // A provider with no reader and no login has nothing to add to what the registry found.
@@ -118,7 +118,7 @@ export class ProvidersService {
             this.ensure(id);
         }
 
-        void this.options.registry.list().then((infos) => {
+        void this.options.registry.list().then(infos => {
             for (const info of infos) {
                 if (info.status === 'ready' && this.providers.get(info.id)?.read) {
                     this.ensure(info.id);
@@ -169,8 +169,7 @@ export class ProvidersService {
 
         try {
             this.options.announce();
-        }
-        catch (error) {
+        } catch (error) {
             console.error('[clowdy] announcing a change of agents failed:', error);
         }
     }
@@ -201,9 +200,9 @@ export class ProvidersService {
         const generation = entry.generation;
 
         entry.inflight = this.read(id, entry, generation)
-            .catch((error) => {
+            .catch(error => {
                 // A reader never throws, so this is a fault in the registry or here. Say so once per try, and wait as after any failed read.
-                console.error(`[clowdy] reading the account of ${ id } failed:`, error);
+                console.error(`[clowdy] reading the account of ${id} failed:`, error);
                 entry.failures++;
                 entry.nextAt = this.now() + retryDelay(entry.failures);
             })
@@ -217,15 +216,17 @@ export class ProvidersService {
     private async context(id: string): Promise<ProbeContext | undefined> {
         const target = await this.options.registry.probeTarget(id);
 
-        return target && {
-            ...target,
-            cwd: this.options.cwd ?? tmpdir(),
-            fetch: this.options.fetch ?? fetch,
-            now: this.now,
-            platform: this.options.platform ?? process.platform,
-            home: this.options.home ?? homedir(),
-            signal: this.stopper.signal,
-        };
+        return (
+            target && {
+                ...target,
+                cwd: this.options.cwd ?? tmpdir(),
+                fetch: this.options.fetch ?? fetch,
+                now: this.now,
+                platform: this.options.platform ?? process.platform,
+                home: this.options.home ?? homedir(),
+                signal: this.stopper.signal,
+            }
+        );
     }
 
     private async read(id: string, entry: Entry, generation: number): Promise<void> {
@@ -248,18 +249,30 @@ export class ProvidersService {
 
         // A failed read keeps the last good numbers, marked as an error, instead of an empty card.
         if (usage.state === 'error' && previous.usage && previous.usage.windows.length > 0) {
-            usage = { ...usage, windows: previous.usage.windows, ...(previous.usage.fetchedAt !== undefined && { fetchedAt: previous.usage.fetchedAt }) };
+            usage = {
+                ...usage,
+                windows: previous.usage.windows,
+                ...(previous.usage.fetchedAt !== undefined && { fetchedAt: previous.usage.fetchedAt }),
+            };
         }
 
         const failed = signIn.status === 'unknown' || usage.state === 'error';
 
         entry.failures = failed ? entry.failures + 1 : 0;
-        entry.nextAt = this.now() + (failed ? retryDelay(entry.failures) : this.providers.get(id)?.freshMs ?? this.freshMs);
+        entry.nextAt =
+            this.now() + (failed ? retryDelay(entry.failures) : (this.providers.get(id)?.freshMs ?? this.freshMs));
         entry.signIn = signIn;
         entry.usage = usage;
 
-        const changed = JSON.stringify([previous.signIn && { ...previous.signIn, checkedAt: 0 }, previous.usage && { ...previous.usage, fetchedAt: 0 }])
-            !== JSON.stringify([{ ...signIn, checkedAt: 0 }, { ...usage, fetchedAt: 0 }]);
+        const changed =
+            JSON.stringify([
+                previous.signIn && { ...previous.signIn, checkedAt: 0 },
+                previous.usage && { ...previous.usage, fetchedAt: 0 },
+            ]) !==
+            JSON.stringify([
+                { ...signIn, checkedAt: 0 },
+                { ...usage, fetchedAt: 0 },
+            ]);
 
         if (changed) {
             this.announce();

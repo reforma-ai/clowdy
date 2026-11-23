@@ -1,7 +1,16 @@
 import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_BYTES_PER_MESSAGE, MAX_ATTACHMENTS_PER_MESSAGE } from '@clowdy/protocol';
 import { describe, expect, it } from 'vitest';
 
-import { admitFiles, draftFileOf, filesOf, patchFile, restoreFiles, setFiles, takeFiles, type DraftFile } from './composerFiles';
+import {
+    admitFiles,
+    type DraftFile,
+    draftFileOf,
+    filesOf,
+    patchFile,
+    restoreFiles,
+    setFiles,
+    takeFiles,
+} from './composerFiles';
 
 const file = (name: string, size = 10, type = 'text/plain') => new File([new Uint8Array(size)], name, { type });
 const held = (name: string, size = 10): DraftFile => ({ ...draftFileOf(file(name, size)), status: 'ready' });
@@ -25,7 +34,7 @@ describe('admitFiles', () => {
     });
 
     it('stops at the count of files one message takes', () => {
-        const incoming = Array.from({ length: MAX_ATTACHMENTS_PER_MESSAGE + 2 }, (_, index) => file(`f${ index }.txt`));
+        const incoming = Array.from({ length: MAX_ATTACHMENTS_PER_MESSAGE + 2 }, (_, index) => file(`f${index}.txt`));
         const { accepted, refusals } = admitFiles([], incoming);
 
         expect(accepted).toHaveLength(MAX_ATTACHMENTS_PER_MESSAGE);

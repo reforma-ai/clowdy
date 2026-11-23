@@ -344,8 +344,16 @@
         z-index: 1;
     }
 
-    .item[data-variant='filled']:not([data-selected='true']):not([data-disabled]):is([data-hovered], [data-pressed], :hover),
-    .item[data-variant='transparent']:not([data-selected='true']):not([data-disabled]):is([data-hovered], [data-pressed], :hover) {
+    .item[data-variant='filled']:not([data-selected='true']):not([data-disabled]):is(
+        [data-hovered],
+        [data-pressed],
+        :hover
+    ),
+    .item[data-variant='transparent']:not([data-selected='true']):not([data-disabled]):is(
+        [data-hovered],
+        [data-pressed],
+        :hover
+    ) {
         background-color: var(--color-secondary-muted-light);
     }
 
@@ -371,25 +379,65 @@
         scale: 0.97;
     }
 
-    .group[data-orientation='horizontal'][data-variant='filled']:has(.item[data-pressed]:not([data-selected='true']) + .item[data-selected='true']) .item[data-selected='true'] .selectionIndicator,
-    .group[data-orientation='horizontal'][data-variant='transparent']:has(.item[data-pressed]:not([data-selected='true']) + .item[data-selected='true']) .item[data-selected='true'] .selectionIndicator {
+    .group[data-orientation='horizontal'][data-variant='filled']:has(
+            .item[data-pressed]:not([data-selected='true']) + .item[data-selected='true']
+        )
+        .item[data-selected='true']
+        .selectionIndicator,
+    .group[data-orientation='horizontal'][data-variant='transparent']:has(
+            .item[data-pressed]:not([data-selected='true']) + .item[data-selected='true']
+        )
+        .item[data-selected='true']
+        .selectionIndicator {
         translate: calc(var(--clowdy-toggle-press-nudge) * -1) 0;
         width: calc(100% + var(--clowdy-toggle-press-nudge));
     }
 
-    .group[data-orientation='horizontal'][data-variant='filled']:has(.item[data-selected='true'] + .item[data-pressed]:not([data-selected='true'])) .item[data-selected='true'] .selectionIndicator,
-    .group[data-orientation='horizontal'][data-variant='transparent']:has(.item[data-selected='true'] + .item[data-pressed]:not([data-selected='true'])) .item[data-selected='true'] .selectionIndicator {
+    .group[data-orientation='horizontal'][data-variant='filled']:has(
+            .item[data-selected='true'] + .item[data-pressed]:not([data-selected='true'])
+        )
+        .item[data-selected='true']
+        .selectionIndicator,
+    .group[data-orientation='horizontal'][data-variant='transparent']:has(
+            .item[data-selected='true'] + .item[data-pressed]:not([data-selected='true'])
+        )
+        .item[data-selected='true']
+        .selectionIndicator {
         width: calc(100% + var(--clowdy-toggle-press-nudge));
     }
 
-    .group[data-orientation='horizontal'][data-variant='filled']:has(.item[data-pressed]:not([data-selected='true']) + .item:not([data-selected='true']) + .item[data-selected='true']) .item[data-selected='true'] .selectionIndicator,
-    .group[data-orientation='horizontal'][data-variant='transparent']:has(.item[data-pressed]:not([data-selected='true']) + .item:not([data-selected='true']) + .item[data-selected='true']) .item[data-selected='true'] .selectionIndicator {
+    .group[data-orientation='horizontal'][data-variant='filled']:has(
+            .item[data-pressed]:not([data-selected='true'])
+                + .item:not([data-selected='true'])
+                + .item[data-selected='true']
+        )
+        .item[data-selected='true']
+        .selectionIndicator,
+    .group[data-orientation='horizontal'][data-variant='transparent']:has(
+            .item[data-pressed]:not([data-selected='true'])
+                + .item:not([data-selected='true'])
+                + .item[data-selected='true']
+        )
+        .item[data-selected='true']
+        .selectionIndicator {
         translate: calc(var(--clowdy-toggle-press-nudge) * -2) 0;
         width: calc(100% + var(--clowdy-toggle-press-nudge) * 2);
     }
 
-    .group[data-orientation='horizontal'][data-variant='filled']:has(.item[data-selected='true'] + .item:not([data-selected='true']) + .item[data-pressed]:not([data-selected='true'])) .item[data-selected='true'] .selectionIndicator,
-    .group[data-orientation='horizontal'][data-variant='transparent']:has(.item[data-selected='true'] + .item:not([data-selected='true']) + .item[data-pressed]:not([data-selected='true'])) .item[data-selected='true'] .selectionIndicator {
+    .group[data-orientation='horizontal'][data-variant='filled']:has(
+            .item[data-selected='true']
+                + .item:not([data-selected='true'])
+                + .item[data-pressed]:not([data-selected='true'])
+        )
+        .item[data-selected='true']
+        .selectionIndicator,
+    .group[data-orientation='horizontal'][data-variant='transparent']:has(
+            .item[data-selected='true']
+                + .item:not([data-selected='true'])
+                + .item[data-pressed]:not([data-selected='true'])
+        )
+        .item[data-selected='true']
+        .selectionIndicator {
         width: calc(100% + var(--clowdy-toggle-press-nudge) * 2);
     }
 

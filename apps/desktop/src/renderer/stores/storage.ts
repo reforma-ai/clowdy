@@ -9,8 +9,7 @@ export interface KeyValueStorage {
 export function browserStorage(): KeyValueStorage | undefined {
     try {
         return window.localStorage;
-    }
-    catch {
+    } catch {
         return undefined;
     }
 }
@@ -21,8 +20,7 @@ export function readStored(storage: KeyValueStorage | undefined, key: string): u
         const raw = storage?.getItem(key);
 
         return raw == null ? undefined : JSON.parse(raw);
-    }
-    catch {
+    } catch {
         return undefined;
     }
 }
@@ -30,8 +28,7 @@ export function readStored(storage: KeyValueStorage | undefined, key: string): u
 export function writeStored(storage: KeyValueStorage | undefined, key: string, value: unknown): void {
     try {
         storage?.setItem(key, JSON.stringify(value));
-    }
-    catch {
+    } catch {
         // Storage is a convenience: a full or blocked one must not break the app.
     }
 }
@@ -39,8 +36,7 @@ export function writeStored(storage: KeyValueStorage | undefined, key: string, v
 export function removeStored(storage: KeyValueStorage | undefined, key: string): void {
     try {
         storage?.removeItem?.(key);
-    }
-    catch {
+    } catch {
         // As above.
     }
 }

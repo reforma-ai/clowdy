@@ -65,8 +65,7 @@ export class Tabs {
 
             if (next) {
                 this.#use(next);
-            }
-            else {
+            } else {
                 this.activePath = null;
             }
         }

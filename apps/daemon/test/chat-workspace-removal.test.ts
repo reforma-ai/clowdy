@@ -6,7 +6,17 @@ import { getChat } from '../src/db/chats';
 import { chatsOfWorkspace, listWorkspacesOfProject } from '../src/db/workspaces';
 import { createChat } from '../src/domain/chats';
 import { isBeingRemoved } from '../src/domain/workspaceRemoval';
-import { cleanTempDirs, git, latch, makeRepo, ScriptEngine, scriptEngines, startHarness, tempDir, waitFor } from './helpers';
+import {
+    cleanTempDirs,
+    git,
+    latch,
+    makeRepo,
+    ScriptEngine,
+    scriptEngines,
+    startHarness,
+    tempDir,
+    waitFor,
+} from './helpers';
 
 import type { Chat, ChatWorkspaceRemoval, CommandResult, Project, Run } from '@clowdy/protocol';
 import type { Harness, Script } from './helpers';
@@ -20,9 +30,9 @@ afterEach(async () => {
 });
 
 const finishing: Script = async function* ({ number }) {
-    yield { type: 'session', sessionId: `s${ number }` };
+    yield { type: 'session', sessionId: `s${number}` };
     yield { type: 'text', delta: 'Done', done: false };
-    yield { type: 'text', delta: '', done: true, messageId: `m${ number }` };
+    yield { type: 'text', delta: '', done: true, messageId: `m${number}` };
     yield { type: 'done', result: 'Done' };
 };
 
@@ -49,7 +59,7 @@ function mainState(repo: string): Record<string, string> {
         branch: git(repo, 'branch', '--show-current'),
         branches: git(repo, 'branch', '--list'),
         status: git(repo, 'status', '--porcelain'),
-        ...Object.fromEntries(files.map(file => [`file:${ file }`, readFileSync(join(repo, file), 'utf8')])),
+        ...Object.fromEntries(files.map(file => [`file:${file}`, readFileSync(join(repo, file), 'utf8')])),
     };
 }
 
@@ -67,7 +77,8 @@ async function setup(options: { origin?: boolean; script?: Script } = {}) {
     const { store } = h;
     const chatOf = (chatId: string) => getChat(store.db, chatId) as Chat;
     const runOf = (chatId: string) => h.run(chatOf(chatId).orchestratorRunId as string);
-    const make = (workspace: unknown): Chat => (h.ok('chat.create', { projectId: project.id, workspace }) as { chat: Chat }).chat;
+    const make = (workspace: unknown): Chat =>
+        (h.ok('chat.create', { projectId: project.id, workspace }) as { chat: Chat }).chat;
     const send = async (chat: Chat, text: string, until: Run['status'] = 'succeeded') => {
         const before = chatOf(chat.id).orchestratorRunId === undefined ? undefined : runOf(chat.id).finishedAt;
 
@@ -76,7 +87,7 @@ async function setup(options: { origin?: boolean; script?: Script } = {}) {
             const run = chatOf(chat.id).orchestratorRunId ? runOf(chat.id) : undefined;
 
             return run?.status === until && run.finishedAt !== before;
-        }, `the turn on "${ text }" to end as ${ until }`);
+        }, `the turn on "${text}" to end as ${until}`);
 
         return runOf(chat.id);
     };
@@ -89,17 +100,35 @@ async function setup(options: { origin?: boolean; script?: Script } = {}) {
         return chatOf(chat.id);
     };
     const removal = async (chat: Chat): Promise<ChatWorkspaceRemoval> => {
-        const response = await h.fetch(`/v1/chats/${ chat.id }/workspace`);
+        const response = await h.fetch(`/v1/chats/${chat.id}/workspace`);
 
         expect(response.status).toBe(200);
 
-        return await response.json() as ChatWorkspaceRemoval;
+        return (await response.json()) as ChatWorkspaceRemoval;
     };
-    const remove = (chat: Chat, removeWorkspace = true): Promise<CommandResult> => h.sendAsync('chat.delete', { chatId: chat.id, ...(removeWorkspace && { removeWorkspace }) });
+    const remove = (chat: Chat, removeWorkspace = true): Promise<CommandResult> =>
+        h.sendAsync('chat.delete', { chatId: chat.id, ...(removeWorkspace && { removeWorkspace }) });
     const refusal = (result: CommandResult) => (result.ok ? undefined : result.error);
     const exists = (chatId: string) => getChat(store.db, chatId) !== undefined;
 
-    return { h, engine, repo, remote, project, store, root, chatOf, runOf, make, send, start, removal, remove, refusal, exists };
+    return {
+        h,
+        engine,
+        repo,
+        remote,
+        project,
+        store,
+        root,
+        chatOf,
+        runOf,
+        make,
+        send,
+        start,
+        removal,
+        remove,
+        refusal,
+        exists,
+    };
 }
 
 /** Commits a file in the worktree and merges the branch into `main` of the folder, as a person would when the work is done. */
@@ -115,7 +144,11 @@ describe('what GET /v1/chats/:id/workspace says', () => {
         const { start, removal } = await setup();
         const chat = await start();
 
-        expect(await removal(chat)).toEqual({ removable: true, path: chat.workspace!.path, branch: chat.workspace!.branch });
+        expect(await removal(chat)).toEqual({
+            removable: true,
+            path: chat.workspace!.path,
+            branch: chat.workspace!.branch,
+        });
     });
 
     test('is removable once the branch was merged into the base, and not while it holds a commit the base lacks', async () => {
@@ -191,7 +224,7 @@ describe('what GET /v1/chats/:id/workspace says', () => {
         expect(listWorkspacesOfProject(h.store.db, project.id)).toEqual([]);
     });
 
-    test('says no for a worktree on a base that was not fetched yet: the remote\'s branch as last fetched is what the work is compared with', async () => {
+    test("says no for a worktree on a base that was not fetched yet: the remote's branch as last fetched is what the work is compared with", async () => {
         const { repo, start, removal } = await setup({ origin: true });
         const chat = await start();
         const { path, branch } = chat.workspace!;
@@ -206,7 +239,7 @@ describe('what GET /v1/chats/:id/workspace says', () => {
         expect(await removal(chat)).toMatchObject({ removable: true });
     });
 
-    test('says no for a worktree that is not Clowdy\'s: one an agent or a person made, which a chat picked from the list', async () => {
+    test("says no for a worktree that is not Clowdy's: one an agent or a person made, which a chat picked from the list", async () => {
         const { repo, root, make, removal } = await setup();
         const tree = join(root, 'feature-tree');
 
@@ -238,8 +271,18 @@ describe('what GET /v1/chats/:id/workspace says', () => {
         const { h, store, project, make, start, removal } = await setup();
         const chat = await start();
         const { path } = chat.workspace!;
-        const thread = createChat(store, { projectId: project.id, parentChatId: chat.id, folderId: chat.folderId, workspaceId: chat.workspace!.id });
-        const deeper = createChat(store, { projectId: project.id, parentChatId: thread.id, folderId: chat.folderId, workspaceId: chat.workspace!.id });
+        const thread = createChat(store, {
+            projectId: project.id,
+            parentChatId: chat.id,
+            folderId: chat.folderId,
+            workspaceId: chat.workspace!.id,
+        });
+        const deeper = createChat(store, {
+            projectId: project.id,
+            parentChatId: thread.id,
+            folderId: chat.folderId,
+            workspaceId: chat.workspace!.id,
+        });
 
         // The threads go with the chat, so they are not sharing.
         expect(chatsOfWorkspace(store.db, chat.workspace!.id)).toEqual([chat.id, thread.id, deeper.id]);
@@ -308,7 +351,12 @@ describe('chat.delete with removeWorkspace', () => {
         const { repo, store, project, start, remove, exists } = await setup();
         const chat = await start();
         const { path, branch } = chat.workspace!;
-        const thread = createChat(store, { projectId: project.id, parentChatId: chat.id, folderId: chat.folderId, workspaceId: chat.workspace!.id });
+        const thread = createChat(store, {
+            projectId: project.id,
+            parentChatId: chat.id,
+            folderId: chat.folderId,
+            workspaceId: chat.workspace!.id,
+        });
 
         expect((await remove(chat)).ok).toBe(true);
         expect(existsSync(path)).toBe(false);
@@ -318,7 +366,7 @@ describe('chat.delete with removeWorkspace', () => {
         expect(listWorkspacesOfProject(store.db, project.id)).toEqual([]);
     });
 
-    test('keeps the folders of other chats\' worktrees while it prunes its own', async () => {
+    test("keeps the folders of other chats' worktrees while it prunes its own", async () => {
         const { h, start, remove } = await setup();
         const first = await start();
         const second = await start();
@@ -353,7 +401,10 @@ describe('chat.delete with removeWorkspace', () => {
 
         const result = await remove(chat);
 
-        expect(refusal(result)).toEqual({ code: 'conflict', message: 'The worktree has changes that are not committed' });
+        expect(refusal(result)).toEqual({
+            code: 'conflict',
+            message: 'The worktree has changes that are not committed',
+        });
         expect(readFileSync(join(path, 'draft.txt'), 'utf8')).toBe('not committed\n');
         expect(git(repo, 'branch', '--list', branch!)).toContain(branch!);
         expect(exists(chat.id)).toBe(true);
@@ -369,14 +420,20 @@ describe('chat.delete with removeWorkspace', () => {
         writeFileSync(join(path, 'done.txt'), 'finished work\n');
         git(path, 'add', 'done.txt');
         git(path, 'commit', '-q', '-m', 'Work');
-        expect(refusal(await remove(chat))).toEqual({ code: 'conflict', message: 'The worktree has commits that are not in main' });
+        expect(refusal(await remove(chat))).toEqual({
+            code: 'conflict',
+            message: 'The worktree has commits that are not in main',
+        });
 
         // Shared with another chat.
         git(repo, 'merge', '-q', '--no-ff', '-m', 'Merge the work', branch!);
 
         const other = make({ mode: 'existing', path });
 
-        expect(refusal(await remove(chat))).toEqual({ code: 'conflict', message: expect.stringContaining('works in this worktree too') as unknown as string });
+        expect(refusal(await remove(chat))).toEqual({
+            code: 'conflict',
+            message: expect.stringContaining('works in this worktree too') as unknown as string,
+        });
         h.ok('chat.delete', { chatId: other.id });
 
         // Locked.
@@ -391,13 +448,21 @@ describe('chat.delete with removeWorkspace', () => {
 
         const found = make({ mode: 'existing', path: tree });
 
-        expect(refusal(await remove(found))).toEqual({ code: 'conflict', message: 'Clowdy did not make this worktree' });
+        expect(refusal(await remove(found))).toEqual({
+            code: 'conflict',
+            message: 'Clowdy did not make this worktree',
+        });
 
         // A chat with no worktree.
         const { chat: bare } = h.ok('chat.create', { projectId: project.id }) as { chat: Chat };
 
-        expect(refusal(await remove(bare))).toEqual({ code: 'conflict', message: 'This chat has no worktree to remove' });
-        expect(refusal(await h.sendAsync('chat.delete', { chatId: 'cht_missing', removeWorkspace: true }))?.code).toBe('not_found');
+        expect(refusal(await remove(bare))).toEqual({
+            code: 'conflict',
+            message: 'This chat has no worktree to remove',
+        });
+        expect(refusal(await h.sendAsync('chat.delete', { chatId: 'cht_missing', removeWorkspace: true }))?.code).toBe(
+            'not_found'
+        );
 
         for (const kept of [chat, found, bare]) {
             expect(exists(kept.id)).toBe(true);
@@ -412,7 +477,7 @@ describe('chat.delete with removeWorkspace', () => {
     test('is refused while the chat is working, before anything is removed', async () => {
         const gate = latch();
         const script: Script = async function* ({ number, signal }) {
-            yield { type: 'session', sessionId: `s${ number }` };
+            yield { type: 'session', sessionId: `s${number}` };
 
             if (number === 2) {
                 await gate.wait(signal);
@@ -443,7 +508,7 @@ describe('chat.delete with removeWorkspace', () => {
         expect(existsSync(path)).toBe(false);
     });
 
-    test('keeps the chat and the branch when git cannot remove the tree, and the chat\'s next turn says the folder is no worktree instead of starting in it', async () => {
+    test("keeps the chat and the branch when git cannot remove the tree, and the chat's next turn says the folder is no worktree instead of starting in it", async () => {
         if (process.platform === 'win32' || process.getuid?.() === 0) {
             return;
         }
@@ -467,8 +532,10 @@ describe('chat.delete with removeWorkspace', () => {
             const result = await remove(chat);
 
             expect(refusal(result)?.code).toBe('conflict');
-            expect(refusal(result)?.message).toStartWith('Couldn\'t remove the worktree:');
-            expect(refusal(result)?.message).toContain(`Git no longer lists ${ path }, so what is left of the folder has to be deleted by hand`);
+            expect(refusal(result)?.message).toStartWith("Couldn't remove the worktree:");
+            expect(refusal(result)?.message).toContain(
+                `Git no longer lists ${path}, so what is left of the folder has to be deleted by hand`
+            );
             expect(exists(chat.id)).toBe(true);
             expect(git(repo, 'branch', '--list', branch!)).toContain(branch!);
             expect(git(repo, 'worktree', 'list', '--porcelain')).not.toContain(path);
@@ -480,11 +547,10 @@ describe('chat.delete with removeWorkspace', () => {
             const turns = engine.turns.length;
             const failed = await send(chat, 'Go on', 'failed');
 
-            expect(failed.error).toStartWith(`${ path } exists and is not a worktree of `);
+            expect(failed.error).toStartWith(`${path} exists and is not a worktree of `);
             expect(engine.turns).toHaveLength(turns);
             expect(runOf(chat.id).status).toBe('failed');
-        }
-        finally {
+        } finally {
             chmodSync(folder, 0o755);
         }
 
@@ -563,16 +629,19 @@ describe('chat.delete with removeWorkspace', () => {
         const { path, branch } = chat.workspace!;
 
         // A leftover lock of the branch's ref: git cannot take it to delete it.
-        writeFileSync(join(repo, '.git', 'refs', 'heads', `${ branch! }.lock`), '');
+        writeFileSync(join(repo, '.git', 'refs', 'heads', `${branch!}.lock`), '');
 
         const result = await remove(chat);
 
         expect(refusal(result)?.code).toBe('conflict');
-        expect(refusal(result)?.message).toStartWith('The worktree was removed. Couldn\'t delete the branch:');
+        expect(refusal(result)?.message).toStartWith("The worktree was removed. Couldn't delete the branch:");
         expect(existsSync(path)).toBe(false);
         expect(git(repo, 'branch', '--list', branch!)).toContain(branch!);
         expect(exists(chat.id)).toBe(true);
-        expect(refusal(await remove(chat))).toEqual({ code: 'conflict', message: 'The worktree is gone from the disk' });
+        expect(refusal(await remove(chat))).toEqual({
+            code: 'conflict',
+            message: 'The worktree is gone from the disk',
+        });
         expect((await remove(chat, false)).ok).toBe(true);
         expect(exists(chat.id)).toBe(false);
     });
@@ -597,7 +666,7 @@ describe('chat.delete with removeWorkspace', () => {
         expect(existsSync(path)).toBe(true);
         expect(git(repo, 'branch', '--list', branch!)).toContain(branch!);
         // Git still lists it, so a new chat can pick it from the folder's existing worktrees, as one that is not Clowdy's now.
-        expect(git(repo, 'worktree', 'list', '--porcelain')).toContain(`branch refs/heads/${ branch }`);
+        expect(git(repo, 'worktree', 'list', '--porcelain')).toContain(`branch refs/heads/${branch}`);
 
         const again = make({ mode: 'existing', path });
 
@@ -628,11 +697,19 @@ describe('chat.delete with removeWorkspace', () => {
     test('is a command for the async path only when it asks for the removal, and a repeat of one that was answered gives the same answer', async () => {
         const { h, start } = await setup();
         const chat = await start();
-        const asked = { requestId: 'delete-with-worktree', type: 'chat.delete' as const, chatId: chat.id, removeWorkspace: true };
+        const asked = {
+            requestId: 'delete-with-worktree',
+            type: 'chat.delete' as const,
+            chatId: chat.id,
+            removeWorkspace: true,
+        };
         const sync = h.send('chat.delete', { chatId: chat.id, removeWorkspace: true });
 
         // Run without waiting, it would not know what to do with the removal: it refuses rather than delete the chat and leave the worktree behind.
-        expect(sync).toMatchObject({ ok: false, error: { code: 'internal', message: expect.stringContaining('executeCommandAsync') } });
+        expect(sync).toMatchObject({
+            ok: false,
+            error: { code: 'internal', message: expect.stringContaining('executeCommandAsync') },
+        });
 
         const { executeCommandAsync } = await import('../src/commands');
         const first = await executeCommandAsync(h.daemon.services, asked);
@@ -648,7 +725,12 @@ describe('chat.delete with removeWorkspace', () => {
         const response = await h.fetch('/v1/commands', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ requestId: 'http-delete', type: 'chat.delete', chatId: chat.id, removeWorkspace: true }),
+            body: JSON.stringify({
+                requestId: 'http-delete',
+                type: 'chat.delete',
+                chatId: chat.id,
+                removeWorkspace: true,
+            }),
         });
 
         expect(response.status).toBe(200);

@@ -9,8 +9,25 @@ import { getItem, itemRef, setItemRef } from '../src/db/items';
 import { MIGRATIONS } from '../src/db/migrations';
 import { getProject, upsertProject } from '../src/db/projects';
 import { getRun, getRunWork, upsertRun } from '../src/db/runs';
-import { countTaskComments, getTaskComment, insertTaskComment, latestTaskComments, listTaskComments, updateTaskCommentBody } from '../src/db/taskComments';
-import { childIdsOf, countArchivedTasks, deleteTask, getTask, latestArchiveTime, listAllTasks, listArchivedTasks, listTasks, upsertTask } from '../src/db/tasks';
+import {
+    countTaskComments,
+    getTaskComment,
+    insertTaskComment,
+    latestTaskComments,
+    listTaskComments,
+    updateTaskCommentBody,
+} from '../src/db/taskComments';
+import {
+    childIdsOf,
+    countArchivedTasks,
+    deleteTask,
+    getTask,
+    latestArchiveTime,
+    listAllTasks,
+    listArchivedTasks,
+    listTasks,
+    upsertTask,
+} from '../src/db/tasks';
 import { listViewed, setViewed } from '../src/db/viewed';
 import { newId } from '../src/ids';
 import { Store } from '../src/store';
@@ -21,7 +38,12 @@ import type { Migration } from '../src/db/migrations';
 
 afterAll(cleanTempDirs);
 
-const tables = (db: Database) => (db.query('SELECT name FROM sqlite_master WHERE type = \'table\' AND name NOT LIKE \'sqlite_%\' ORDER BY name').all() as { name: string }[]).map(row => row.name);
+const tables = (db: Database) =>
+    (
+        db
+            .query("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+            .all() as { name: string }[]
+    ).map(row => row.name);
 const version = (db: Database) => (db.query('PRAGMA user_version').get() as { user_version: number }).user_version;
 
 describe('migrations', () => {
@@ -29,13 +51,27 @@ describe('migrations', () => {
         const path = join(tempDir(), 'clowdy.db');
         const db = openDatabase(path);
 
-        expect(tables(db)).toEqual(expect.arrayContaining([
-            'artifacts', 'chat_task_links', 'chats', 'commands', 'events', 'project_folders', 'projects', 'run_task_links', 'runs', 'stream_items', 'task_deps', 'task_statuses', 'tasks',
-        ]));
+        expect(tables(db)).toEqual(
+            expect.arrayContaining([
+                'artifacts',
+                'chat_task_links',
+                'chats',
+                'commands',
+                'events',
+                'project_folders',
+                'projects',
+                'run_task_links',
+                'runs',
+                'stream_items',
+                'task_deps',
+                'task_statuses',
+                'tasks',
+            ])
+        );
         expect(version(db)).toBe(MIGRATIONS.length);
         expect((db.query('PRAGMA journal_mode').get() as { journal_mode: string }).journal_mode).toBe('wal');
         expect((db.query('PRAGMA foreign_keys').get() as { foreign_keys: number }).foreign_keys).toBe(1);
-        expect(existsSync(`${ path }.bak-v0`)).toBe(false);
+        expect(existsSync(`${path}.bak-v0`)).toBe(false);
         db.close();
     });
 
@@ -43,18 +79,23 @@ describe('migrations', () => {
         const path = join(tempDir(), 'clowdy.db');
         const first = openDatabase(path);
 
-        first.query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)').run('prj_1', 'Old', 'OLD', 1);
+        first
+            .query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)')
+            .run('prj_1', 'Old', 'OLD', 1);
         first.close();
 
         const latest = MIGRATIONS.length;
-        const next: Migration = { version: latest + 1, up: db => db.run('CREATE TABLE extra (id INTEGER PRIMARY KEY)') };
+        const next: Migration = {
+            version: latest + 1,
+            up: db => db.run('CREATE TABLE extra (id INTEGER PRIMARY KEY)'),
+        };
         const upgraded = openDatabase(path, [...MIGRATIONS, next]);
 
         expect(version(upgraded)).toBe(latest + 1);
         expect(tables(upgraded)).toContain('extra');
         expect(upgraded.query('SELECT name FROM projects').all()).toEqual([{ name: 'Old' }]);
 
-        const backup = new Database(`${ path }.bak-v${ latest }`, { readonly: true });
+        const backup = new Database(`${path}.bak-v${latest}`, { readonly: true });
 
         expect(version(backup)).toBe(latest);
         expect(tables(backup)).not.toContain('extra');
@@ -63,13 +104,26 @@ describe('migrations', () => {
         upgraded.close();
     });
 
-    test('version 11 moves each project\'s folder into project_folders and keeps everything that points at the project', () => {
+    test("version 11 moves each project's folder into project_folders and keeps everything that points at the project", () => {
         const path = join(tempDir(), 'clowdy.db');
-        const before = openDatabase(path, MIGRATIONS.filter(migration => migration.version < 11));
+        const before = openDatabase(
+            path,
+            MIGRATIONS.filter(migration => migration.version < 11)
+        );
 
-        before.query('INSERT INTO projects (id, name, path, task_prefix, created_at, personal, position) VALUES (?, ?, ?, ?, ?, ?, ?)').run('prj_1', 'Shop', '/work/shop', 'SHO', 1, 0, 3);
-        before.query('INSERT INTO projects (id, name, path, task_prefix, created_at, personal, position) VALUES (?, ?, ?, ?, ?, ?, ?)').run('prj_2', 'Personal', '/data/personal', 'PER', 2, 1, 0);
-        before.query('INSERT INTO chats (id, project_id, title, mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run('cht_1', 'prj_1', 'Hello', 'autopilot', 1, 1);
+        before
+            .query(
+                'INSERT INTO projects (id, name, path, task_prefix, created_at, personal, position) VALUES (?, ?, ?, ?, ?, ?, ?)'
+            )
+            .run('prj_1', 'Shop', '/work/shop', 'SHO', 1, 0, 3);
+        before
+            .query(
+                'INSERT INTO projects (id, name, path, task_prefix, created_at, personal, position) VALUES (?, ?, ?, ?, ?, ?, ?)'
+            )
+            .run('prj_2', 'Personal', '/data/personal', 'PER', 2, 1, 0);
+        before
+            .query('INSERT INTO chats (id, project_id, title, mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
+            .run('cht_1', 'prj_1', 'Hello', 'autopilot', 1, 1);
         before.close();
 
         const db = openDatabase(path);
@@ -78,29 +132,50 @@ describe('migrations', () => {
             { project_id: 'prj_1', path: '/work/shop', position: 0 },
             { project_id: 'prj_2', path: '/data/personal', position: 0 },
         ]);
-        expect((db.query('SELECT id FROM project_folders').all() as { id: string }[]).every(row => row.id.startsWith('fld_'))).toBe(true);
-        expect((db.query('PRAGMA table_info(projects)').all() as { name: string }[]).map(column => column.name)).not.toContain('path');
+        expect(
+            (db.query('SELECT id FROM project_folders').all() as { id: string }[]).every(row =>
+                row.id.startsWith('fld_')
+            )
+        ).toBe(true);
+        expect(
+            (db.query('PRAGMA table_info(projects)').all() as { name: string }[]).map(column => column.name)
+        ).not.toContain('path');
         expect(db.query('SELECT id, name, position, personal FROM projects ORDER BY id').all()).toEqual([
             { id: 'prj_1', name: 'Shop', position: 3, personal: 0 },
             { id: 'prj_2', name: 'Personal', position: 0, personal: 1 },
         ]);
         expect(db.query('SELECT id FROM chats').all()).toEqual([{ id: 'cht_1' }]);
         expect((db.query('PRAGMA foreign_keys').get() as { foreign_keys: number }).foreign_keys).toBe(1);
-        expect(() => db.query('INSERT INTO projects (id, name, task_prefix, created_at, personal) VALUES (?, ?, ?, ?, ?)').run('prj_3', 'Again', 'AGA', 3, 1)).toThrow();
+        expect(() =>
+            db
+                .query('INSERT INTO projects (id, name, task_prefix, created_at, personal) VALUES (?, ?, ?, ?, ?)')
+                .run('prj_3', 'Again', 'AGA', 3, 1)
+        ).toThrow();
 
         // The foreign keys still hold: a project's removal takes its chats and folders along.
         db.query('DELETE FROM projects WHERE id = ?').run('prj_1');
         expect(db.query('SELECT COUNT(*) AS n FROM chats').get()).toEqual({ n: 0 });
-        expect(db.query('SELECT COUNT(*) AS n FROM project_folders WHERE project_id = ?').get('prj_1')).toEqual({ n: 0 });
+        expect(db.query('SELECT COUNT(*) AS n FROM project_folders WHERE project_id = ?').get('prj_1')).toEqual({
+            n: 0,
+        });
         db.close();
     });
 
     test('version 12 gives the runs of an older database a background column that reads as nothing open, and stores a list', () => {
         const path = join(tempDir(), 'clowdy.db');
-        const before = openDatabase(path, MIGRATIONS.filter(migration => migration.version < 12));
+        const before = openDatabase(
+            path,
+            MIGRATIONS.filter(migration => migration.version < 12)
+        );
 
-        before.query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)').run('prj_1', 'Old', 'OLD', 1);
-        before.query('INSERT INTO runs (id, project_id, root_run_id, role, name, status, engine, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run('run_1', 'prj_1', 'run_1', 'orchestrator', 'Orchestrator 01', 'succeeded', 'claude', 1);
+        before
+            .query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)')
+            .run('prj_1', 'Old', 'OLD', 1);
+        before
+            .query(
+                'INSERT INTO runs (id, project_id, root_run_id, role, name, status, engine, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+            )
+            .run('run_1', 'prj_1', 'run_1', 'orchestrator', 'Orchestrator 01', 'succeeded', 'claude', 1);
         before.close();
 
         const db = openDatabase(path);
@@ -108,17 +183,29 @@ describe('migrations', () => {
         expect(version(db)).toBe(MIGRATIONS.length);
         expect(getRun(db, 'run_1')).toMatchObject({ id: 'run_1', status: 'succeeded' });
         expect(getRun(db, 'run_1')?.background).toBeUndefined();
-        db.query('UPDATE runs SET background = ? WHERE id = ?').run(JSON.stringify([{ id: 'bg-1', kind: 'command', title: 'sleep 60' }]), 'run_1');
+        db.query('UPDATE runs SET background = ? WHERE id = ?').run(
+            JSON.stringify([{ id: 'bg-1', kind: 'command', title: 'sleep 60' }]),
+            'run_1'
+        );
         expect(getRun(db, 'run_1')?.background).toEqual([{ id: 'bg-1', kind: 'command', title: 'sleep 60' }]);
         db.close();
     });
 
     test('version 23 gives the runs of an older database a column that reads as nothing open to the person, and stores the mark', () => {
         const path = join(tempDir(), 'clowdy.db');
-        const before = openDatabase(path, MIGRATIONS.filter(migration => migration.version < 23));
+        const before = openDatabase(
+            path,
+            MIGRATIONS.filter(migration => migration.version < 23)
+        );
 
-        before.query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)').run('prj_1', 'Old', 'OLD', 1);
-        before.query('INSERT INTO runs (id, project_id, root_run_id, role, name, status, engine, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run('run_1', 'prj_1', 'run_1', 'orchestrator', 'Orchestrator 01', 'waiting_background', 'claude', 1);
+        before
+            .query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)')
+            .run('prj_1', 'Old', 'OLD', 1);
+        before
+            .query(
+                'INSERT INTO runs (id, project_id, root_run_id, role, name, status, engine, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+            )
+            .run('run_1', 'prj_1', 'run_1', 'orchestrator', 'Orchestrator 01', 'waiting_background', 'claude', 1);
         before.close();
 
         const db = openDatabase(path);
@@ -134,12 +221,19 @@ describe('migrations', () => {
         db.close();
     });
 
-    test('version 24 gives the folders of an older database a settings column that reads as none, and stores the settings of a folder with its project\'s row', () => {
+    test("version 24 gives the folders of an older database a settings column that reads as none, and stores the settings of a folder with its project's row", () => {
         const path = join(tempDir(), 'clowdy.db');
-        const before = openDatabase(path, MIGRATIONS.filter(migration => migration.version < 24));
+        const before = openDatabase(
+            path,
+            MIGRATIONS.filter(migration => migration.version < 24)
+        );
 
-        before.query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)').run('prj_1', 'Old', 'OLD', 1);
-        before.query('INSERT INTO project_folders (id, project_id, path, position) VALUES (?, ?, ?, ?)').run('fld_1', 'prj_1', '/work/old', 0);
+        before
+            .query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)')
+            .run('prj_1', 'Old', 'OLD', 1);
+        before
+            .query('INSERT INTO project_folders (id, project_id, path, position) VALUES (?, ?, ?, ?)')
+            .run('fld_1', 'prj_1', '/work/old', 0);
         before.close();
 
         const db = openDatabase(path);
@@ -161,12 +255,21 @@ describe('migrations', () => {
 
     test('version 26 adds the table of viewed files to a database at version 25 and keeps its rows, and a new database has the table at once', () => {
         const path = join(tempDir(), 'clowdy.db');
-        const before = openDatabase(path, MIGRATIONS.filter(migration => migration.version < 26));
+        const before = openDatabase(
+            path,
+            MIGRATIONS.filter(migration => migration.version < 26)
+        );
 
         expect(version(before)).toBe(25);
         expect(tables(before)).not.toContain('viewed_files');
-        before.query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)').run('prj_1', 'Old', 'OLD', 1);
-        before.query('INSERT INTO workspaces (id, project_id, folder_id, path, managed, ready, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run('wks_1', 'prj_1', 'fld_1', '/work/tree', 0, 1, 1);
+        before
+            .query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)')
+            .run('prj_1', 'Old', 'OLD', 1);
+        before
+            .query(
+                'INSERT INTO workspaces (id, project_id, folder_id, path, managed, ready, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+            )
+            .run('wks_1', 'prj_1', 'fld_1', '/work/tree', 0, 1, 1);
         before.close();
 
         const db = openDatabase(path);
@@ -176,12 +279,25 @@ describe('migrations', () => {
         expect(MIGRATIONS.find(migration => migration.version === 26)).toBeDefined();
         expect(tables(db)).toContain('viewed_files');
         expect(db.query('SELECT id, path FROM workspaces').all()).toEqual([{ id: 'wks_1', path: '/work/tree' }]);
-        expect(existsSync(`${ path }.bak-v25`)).toBe(true);
+        expect(existsSync(`${path}.bak-v25`)).toBe(true);
 
         // The five columns of a mark's key, in order, are the primary key; the workspace is a string, so the folder's own checkout has a place in it.
-        const columns = db.query('PRAGMA table_info(viewed_files)').all() as { name: string; type: string; notnull: number; pk: number }[];
+        const columns = db.query('PRAGMA table_info(viewed_files)').all() as {
+            name: string;
+            type: string;
+            notnull: number;
+            pk: number;
+        }[];
 
-        expect(columns.map(column => column.name)).toEqual(['project_id', 'folder_id', 'workspace_id', 'scope_key', 'path', 'revision', 'updated_at']);
+        expect(columns.map(column => column.name)).toEqual([
+            'project_id',
+            'folder_id',
+            'workspace_id',
+            'scope_key',
+            'path',
+            'revision',
+            'updated_at',
+        ]);
         expect(columns.map(column => column.pk)).toEqual([1, 2, 3, 4, 5, 0, 0]);
         expect(columns.every(column => column.notnull === 1)).toBe(true);
 
@@ -191,7 +307,9 @@ describe('migrations', () => {
         setViewed(db, place, 'uncommitted', { path: 'a.ts', revision: 'r2' }, 2);
         setViewed(db, { ...place, workspaceId: 'wks_1' }, 'uncommitted', { path: 'a.ts', revision: 'r3' }, 3);
         expect(listViewed(db, place, 'uncommitted')).toEqual([{ path: 'a.ts', revision: 'r2' }]);
-        expect(listViewed(db, { ...place, workspaceId: 'wks_1' }, 'uncommitted')).toEqual([{ path: 'a.ts', revision: 'r3' }]);
+        expect(listViewed(db, { ...place, workspaceId: 'wks_1' }, 'uncommitted')).toEqual([
+            { path: 'a.ts', revision: 'r3' },
+        ]);
         db.close();
 
         const fresh = openDatabase(join(tempDir(), 'fresh.db'));
@@ -204,17 +322,26 @@ describe('migrations', () => {
 
     test('version 15 keeps what child runs left as history in the smaller model and drops the mailbox, the idempotency key and the outcome', () => {
         const path = join(tempDir(), 'clowdy.db');
-        const before = openDatabase(path, MIGRATIONS.filter(migration => migration.version < 15));
+        const before = openDatabase(
+            path,
+            MIGRATIONS.filter(migration => migration.version < 15)
+        );
         const background = JSON.stringify([{ id: 'bg-1', kind: 'command', title: 'sleep 60' }]);
         const run = before.query(`
             INSERT INTO runs (id, project_id, parent_run_id, root_run_id, role, origin, name, status, status_reason, engine, idempotency_key, outcome, background, created_at, finished_at)
             VALUES (?, 'prj_1', ?, ?, ?, ?, ?, ?, ?, 'claude', ?, ?, ?, 1, ?)
         `);
-        const status = before.query('INSERT INTO task_statuses (id, project_id, name, category, position) VALUES (?, \'prj_1\', ?, ?, ?)');
-        const task = before.query('INSERT INTO tasks (id, project_id, number, title, status_id, created_by, created_at, updated_at) VALUES (?, \'prj_1\', ?, ?, ?, \'{"kind":"user"}\', 1, 1)');
+        const status = before.query(
+            "INSERT INTO task_statuses (id, project_id, name, category, position) VALUES (?, 'prj_1', ?, ?, ?)"
+        );
+        const task = before.query(
+            'INSERT INTO tasks (id, project_id, number, title, status_id, created_by, created_at, updated_at) VALUES (?, \'prj_1\', ?, ?, ?, \'{"kind":"user"}\', 1, 1)'
+        );
         const link = before.query('INSERT INTO run_task_links (run_id, task_id, relation) VALUES (?, ?, ?)');
 
-        before.query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)').run('prj_1', 'Old', 'OLD', 1);
+        before
+            .query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)')
+            .run('prj_1', 'Old', 'OLD', 1);
         status.run('sts_todo', 'To do', 'todo', 0);
         status.run('sts_active', 'In progress', 'active', 1);
         task.run('tsk_1', 1, 'A', 'sts_todo');
@@ -222,13 +349,104 @@ describe('migrations', () => {
         task.run('tsk_3', 3, 'C', 'sts_active');
         // A parent that waited for its children with background work open, a finished child, a child still at work, a verifier, a sub-agent, another
         // chat's run, and a chat's run that still waits for a slot.
-        run.run('run_parent', null, 'run_parent', 'orchestrator', null, 'Orchestrator 01', 'waiting_children', 'Waiting for 1 child run', null, null, background, null);
-        run.run('run_done', 'run_parent', 'run_parent', 'executor', 'spawned', 'Executor 01', 'succeeded', null, 'k1', 'done', null, 5);
-        run.run('run_busy', 'run_parent', 'run_parent', 'executor', 'spawned', 'Executor 02', 'running', null, 'k2', null, background, null);
-        run.run('run_check', 'run_parent', 'run_parent', 'verifier', 'spawned', 'Verifier 01', 'failed', null, 'k3', 'blocked', null, 6);
-        run.run('run_native', 'run_parent', 'run_parent', 'executor', 'native', 'Explore', 'succeeded', null, null, null, null, 7);
-        run.run('run_other', null, 'run_other', 'orchestrator', null, 'Orchestrator 02', 'succeeded', null, null, null, null, 8);
-        run.run('run_queued', null, 'run_queued', 'orchestrator', null, 'Orchestrator 03', 'queued', 'Waiting for a free slot', null, null, null, null);
+        run.run(
+            'run_parent',
+            null,
+            'run_parent',
+            'orchestrator',
+            null,
+            'Orchestrator 01',
+            'waiting_children',
+            'Waiting for 1 child run',
+            null,
+            null,
+            background,
+            null
+        );
+        run.run(
+            'run_done',
+            'run_parent',
+            'run_parent',
+            'executor',
+            'spawned',
+            'Executor 01',
+            'succeeded',
+            null,
+            'k1',
+            'done',
+            null,
+            5
+        );
+        run.run(
+            'run_busy',
+            'run_parent',
+            'run_parent',
+            'executor',
+            'spawned',
+            'Executor 02',
+            'running',
+            null,
+            'k2',
+            null,
+            background,
+            null
+        );
+        run.run(
+            'run_check',
+            'run_parent',
+            'run_parent',
+            'verifier',
+            'spawned',
+            'Verifier 01',
+            'failed',
+            null,
+            'k3',
+            'blocked',
+            null,
+            6
+        );
+        run.run(
+            'run_native',
+            'run_parent',
+            'run_parent',
+            'executor',
+            'native',
+            'Explore',
+            'succeeded',
+            null,
+            null,
+            null,
+            null,
+            7
+        );
+        run.run(
+            'run_other',
+            null,
+            'run_other',
+            'orchestrator',
+            null,
+            'Orchestrator 02',
+            'succeeded',
+            null,
+            null,
+            null,
+            null,
+            8
+        );
+        run.run(
+            'run_queued',
+            null,
+            'run_queued',
+            'orchestrator',
+            null,
+            'Orchestrator 03',
+            'queued',
+            'Waiting for a free slot',
+            null,
+            null,
+            null,
+            null
+        );
         link.run('run_parent', 'tsk_1', 'created');
         link.run('run_done', 'tsk_1', 'assigned');
         link.run('run_check', 'tsk_1', 'verifies');
@@ -236,12 +454,16 @@ describe('migrations', () => {
         link.run('run_busy', 'tsk_2', 'assigned');
         link.run('run_busy', 'tsk_3', 'assigned');
         link.run('run_queued', 'tsk_3', 'assigned');
-        before.query('INSERT INTO run_mailbox (run_id, child_run_id, created_at) VALUES (?, ?, ?)').run('run_parent', 'run_done', 5);
+        before
+            .query('INSERT INTO run_mailbox (run_id, child_run_id, created_at) VALUES (?, ?, ?)')
+            .run('run_parent', 'run_done', 5);
         before.close();
 
         const db = openDatabase(path);
         const columns = (db.query('PRAGMA table_info(runs)').all() as { name: string }[]).map(column => column.name);
-        const indexes = (db.query('SELECT name FROM sqlite_master WHERE type = \'index\'').all() as { name: string }[]).map(row => row.name);
+        const indexes = (
+            db.query("SELECT name FROM sqlite_master WHERE type = 'index'").all() as { name: string }[]
+        ).map(row => row.name);
 
         expect(version(db)).toBe(MIGRATIONS.length);
 
@@ -249,17 +471,44 @@ describe('migrations', () => {
         expect(getRun(db, 'run_parent')).toMatchObject({ status: 'succeeded', finishedAt: expect.any(Number) });
         expect(getRun(db, 'run_parent')?.statusReason).toBeUndefined();
         expect(getRun(db, 'run_parent')?.background).toBeUndefined();
-        expect(getRunWork(db, 'run_parent').lostBackground).toEqual([{ id: 'bg-1', kind: 'command', title: 'sleep 60' }]);
+        expect(getRunWork(db, 'run_parent').lostBackground).toEqual([
+            { id: 'bg-1', kind: 'command', title: 'sleep 60' },
+        ]);
 
         // Every started child is a sub-agent now, a verifier an executor; the one still at work is stopped, the finished ones keep their end.
-        expect(getRun(db, 'run_done')).toMatchObject({ role: 'executor', origin: 'native', status: 'succeeded', finishedAt: 5 });
-        expect(getRun(db, 'run_busy')).toMatchObject({ role: 'executor', origin: 'native', status: 'cancelled', statusReason: 'Stopped by an update of Clowdy', finishedAt: expect.any(Number) });
+        expect(getRun(db, 'run_done')).toMatchObject({
+            role: 'executor',
+            origin: 'native',
+            status: 'succeeded',
+            finishedAt: 5,
+        });
+        expect(getRun(db, 'run_busy')).toMatchObject({
+            role: 'executor',
+            origin: 'native',
+            status: 'cancelled',
+            statusReason: 'Stopped by an update of Clowdy',
+            finishedAt: expect.any(Number),
+        });
         expect(getRun(db, 'run_busy')?.background).toBeUndefined();
-        expect(getRun(db, 'run_check')).toMatchObject({ role: 'executor', origin: 'native', status: 'failed', finishedAt: 6 });
-        expect(getRun(db, 'run_native')).toMatchObject({ role: 'executor', origin: 'native', status: 'succeeded', finishedAt: 7 });
+        expect(getRun(db, 'run_check')).toMatchObject({
+            role: 'executor',
+            origin: 'native',
+            status: 'failed',
+            finishedAt: 6,
+        });
+        expect(getRun(db, 'run_native')).toMatchObject({
+            role: 'executor',
+            origin: 'native',
+            status: 'succeeded',
+            finishedAt: 7,
+        });
         expect(getRun(db, 'run_other')).toMatchObject({ role: 'orchestrator', status: 'succeeded', finishedAt: 8 });
         expect(getRun(db, 'run_other')?.origin).toBeUndefined();
-        expect(getRun(db, 'run_queued')).toMatchObject({ role: 'orchestrator', status: 'queued', statusReason: 'Waiting for a free slot' });
+        expect(getRun(db, 'run_queued')).toMatchObject({
+            role: 'orchestrator',
+            status: 'queued',
+            statusReason: 'Waiting for a free slot',
+        });
         expect(db.query('SELECT COUNT(*) AS n FROM runs').get()).toEqual({ n: 7 });
 
         // The task whose work stopped is To do again; the one a chat's run still waits to work on, and the one nobody was at, keep their column.
@@ -270,61 +519,118 @@ describe('migrations', () => {
         ]);
 
         // The links of the verifier go, the others stay; the mailbox, the idempotency key and the outcome are gone.
-        expect(db.query('SELECT run_id, task_id, relation FROM run_task_links ORDER BY run_id, task_id').all()).toEqual([
-            { run_id: 'run_busy', task_id: 'tsk_2', relation: 'assigned' },
-            { run_id: 'run_busy', task_id: 'tsk_3', relation: 'assigned' },
-            { run_id: 'run_done', task_id: 'tsk_1', relation: 'assigned' },
-            { run_id: 'run_parent', task_id: 'tsk_1', relation: 'created' },
-            { run_id: 'run_queued', task_id: 'tsk_3', relation: 'assigned' },
-        ]);
+        expect(db.query('SELECT run_id, task_id, relation FROM run_task_links ORDER BY run_id, task_id').all()).toEqual(
+            [
+                { run_id: 'run_busy', task_id: 'tsk_2', relation: 'assigned' },
+                { run_id: 'run_busy', task_id: 'tsk_3', relation: 'assigned' },
+                { run_id: 'run_done', task_id: 'tsk_1', relation: 'assigned' },
+                { run_id: 'run_parent', task_id: 'tsk_1', relation: 'created' },
+                { run_id: 'run_queued', task_id: 'tsk_3', relation: 'assigned' },
+            ]
+        );
         expect(tables(db)).not.toContain('run_mailbox');
         expect(columns).not.toContain('idempotency_key');
         expect(columns).not.toContain('outcome');
-        expect(columns).toEqual(expect.arrayContaining(['cwd', 'next_prompt', 'pid', 'lost_background', 'can_stop_alone']));
+        expect(columns).toEqual(
+            expect.arrayContaining(['cwd', 'next_prompt', 'pid', 'lost_background', 'can_stop_alone'])
+        );
         expect(indexes).not.toContain('runs_idempotency');
         expect(indexes).not.toContain('run_mailbox_pending');
         expect((db.query('PRAGMA foreign_keys').get() as { foreign_keys: number }).foreign_keys).toBe(1);
         db.close();
     });
 
-    test('version 16 gives the chats of an older database a parent column that reads as none, and keeps a thread\'s parent', () => {
+    test("version 16 gives the chats of an older database a parent column that reads as none, and keeps a thread's parent", () => {
         const path = join(tempDir(), 'clowdy.db');
-        const before = openDatabase(path, MIGRATIONS.filter(migration => migration.version < 16));
+        const before = openDatabase(
+            path,
+            MIGRATIONS.filter(migration => migration.version < 16)
+        );
 
-        before.query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)').run('prj_1', 'Old', 'OLD', 1);
-        before.query('INSERT INTO chats (id, project_id, title, mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run('cht_1', 'prj_1', 'Hello', 'autopilot', 1, 1);
+        before
+            .query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)')
+            .run('prj_1', 'Old', 'OLD', 1);
+        before
+            .query('INSERT INTO chats (id, project_id, title, mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
+            .run('cht_1', 'prj_1', 'Hello', 'autopilot', 1, 1);
         before.close();
 
         const db = openDatabase(path);
-        const indexes = (db.query('SELECT name FROM sqlite_master WHERE type = \'index\'').all() as { name: string }[]).map(row => row.name);
+        const indexes = (
+            db.query("SELECT name FROM sqlite_master WHERE type = 'index'").all() as { name: string }[]
+        ).map(row => row.name);
 
         expect(version(db)).toBe(MIGRATIONS.length);
-        expect(getChat(db, 'cht_1')).toEqual({ id: 'cht_1', projectId: 'prj_1', title: 'Hello', mode: 'autopilot', createdAt: 1, updatedAt: 1 });
+        expect(getChat(db, 'cht_1')).toEqual({
+            id: 'cht_1',
+            projectId: 'prj_1',
+            title: 'Hello',
+            mode: 'autopilot',
+            createdAt: 1,
+            updatedAt: 1,
+        });
         expect(indexes).toContain('chats_parent');
 
-        upsertChat(db, { id: 'cht_2', projectId: 'prj_1', title: 'Thread', mode: 'autopilot', parentChatId: 'cht_1', createdAt: 2, updatedAt: 2 });
+        upsertChat(db, {
+            id: 'cht_2',
+            projectId: 'prj_1',
+            title: 'Thread',
+            mode: 'autopilot',
+            parentChatId: 'cht_1',
+            createdAt: 2,
+            updatedAt: 2,
+        });
         expect(getChat(db, 'cht_2')?.parentChatId).toBe('cht_1');
 
         // The parent is fixed: a later write of the chat does not move it.
-        upsertChat(db, { id: 'cht_2', projectId: 'prj_1', title: 'Renamed', mode: 'autopilot', createdAt: 2, updatedAt: 3 });
+        upsertChat(db, {
+            id: 'cht_2',
+            projectId: 'prj_1',
+            title: 'Renamed',
+            mode: 'autopilot',
+            createdAt: 2,
+            updatedAt: 3,
+        });
         expect(getChat(db, 'cht_2')).toMatchObject({ title: 'Renamed', parentChatId: 'cht_1' });
         db.close();
     });
 
     test('version 17 gives the chats of an older database a folder column that reads as none, and only clearChatFolders takes a folder off', () => {
         const path = join(tempDir(), 'clowdy.db');
-        const before = openDatabase(path, MIGRATIONS.filter(migration => migration.version < 17));
+        const before = openDatabase(
+            path,
+            MIGRATIONS.filter(migration => migration.version < 17)
+        );
 
-        before.query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)').run('prj_1', 'Old', 'OLD', 1);
-        before.query('INSERT INTO chats (id, project_id, title, mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run('cht_1', 'prj_1', 'Hello', 'autopilot', 1, 1);
+        before
+            .query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)')
+            .run('prj_1', 'Old', 'OLD', 1);
+        before
+            .query('INSERT INTO chats (id, project_id, title, mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
+            .run('cht_1', 'prj_1', 'Hello', 'autopilot', 1, 1);
         before.close();
 
         const db = openDatabase(path);
 
         expect(version(db)).toBe(MIGRATIONS.length);
-        expect(getChat(db, 'cht_1')).toEqual({ id: 'cht_1', projectId: 'prj_1', title: 'Hello', mode: 'autopilot', createdAt: 1, updatedAt: 1 });
+        expect(getChat(db, 'cht_1')).toEqual({
+            id: 'cht_1',
+            projectId: 'prj_1',
+            title: 'Hello',
+            mode: 'autopilot',
+            createdAt: 1,
+            updatedAt: 1,
+        });
 
-        const notes = { id: 'cht_2', projectId: 'prj_1', title: 'There', mode: 'autopilot', folderId: 'fld_notes', createdAt: 2, updatedAt: 2 } as const;
+        const notes = {
+            id: 'cht_2',
+            projectId: 'prj_1',
+            title: 'There',
+            mode: 'autopilot',
+            folderId: 'fld_notes',
+            createdAt: 2,
+            updatedAt: 2,
+        } as const;
         const api = { ...notes, id: 'cht_3', folderId: 'fld_api' };
 
         upsertChat(db, notes);
@@ -348,11 +654,22 @@ describe('migrations', () => {
 
     test('version 18 gives the items of an older database a rewind point that reads as none, and keeps the point it is given', () => {
         const path = join(tempDir(), 'clowdy.db');
-        const before = openDatabase(path, MIGRATIONS.filter(migration => migration.version < 18));
+        const before = openDatabase(
+            path,
+            MIGRATIONS.filter(migration => migration.version < 18)
+        );
 
-        before.query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)').run('prj_1', 'Old', 'OLD', 1);
-        before.query('INSERT INTO runs (id, project_id, root_run_id, role, name, summary, status, engine, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run('run_1', 'prj_1', 'run_1', 'orchestrator', 'Orchestrator 01', '', 'succeeded', 'claude', 1);
-        before.query('INSERT INTO stream_items (id, run_id, seq, at, body) VALUES (?, ?, ?, ?, ?)').run('itm_1', 'run_1', 1, 1, JSON.stringify({ kind: 'assistant', text: 'Old answer', done: true }));
+        before
+            .query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)')
+            .run('prj_1', 'Old', 'OLD', 1);
+        before
+            .query(
+                'INSERT INTO runs (id, project_id, root_run_id, role, name, summary, status, engine, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+            )
+            .run('run_1', 'prj_1', 'run_1', 'orchestrator', 'Orchestrator 01', '', 'succeeded', 'claude', 1);
+        before
+            .query('INSERT INTO stream_items (id, run_id, seq, at, body) VALUES (?, ?, ?, ?, ?)')
+            .run('itm_1', 'run_1', 1, 1, JSON.stringify({ kind: 'assistant', text: 'Old answer', done: true }));
         before.close();
 
         const db = openDatabase(path);
@@ -370,25 +687,47 @@ describe('migrations', () => {
 
     test('version 20 gives the tasks of an older database no parent and, when they are closed, a closing time taken from their last change', () => {
         const path = join(tempDir(), 'clowdy.db');
-        const before = openDatabase(path, MIGRATIONS.filter(migration => migration.version < 20));
+        const before = openDatabase(
+            path,
+            MIGRATIONS.filter(migration => migration.version < 20)
+        );
 
-        before.query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)').run('prj_1', 'Old', 'OLD', 1);
+        before
+            .query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)')
+            .run('prj_1', 'Old', 'OLD', 1);
 
         for (const [index, category] of ['todo', 'active', 'review', 'done', 'canceled'].entries()) {
-            before.query('INSERT INTO task_statuses (id, project_id, name, category, position) VALUES (?, ?, ?, ?, ?)').run(`sts_${ category }`, 'prj_1', category, category, index);
-            before.query('INSERT INTO tasks (id, project_id, number, title, status_id, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(`tsk_${ category }`, 'prj_1', index + 1, category, `sts_${ category }`, '{"kind":"user"}', 10, 100 + index);
+            before
+                .query('INSERT INTO task_statuses (id, project_id, name, category, position) VALUES (?, ?, ?, ?, ?)')
+                .run(`sts_${category}`, 'prj_1', category, category, index);
+            before
+                .query(
+                    'INSERT INTO tasks (id, project_id, number, title, status_id, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+                )
+                .run(
+                    `tsk_${category}`,
+                    'prj_1',
+                    index + 1,
+                    category,
+                    `sts_${category}`,
+                    '{"kind":"user"}',
+                    10,
+                    100 + index
+                );
         }
 
         before.close();
 
         const db = openDatabase(path);
-        const indexes = (db.query('SELECT name FROM sqlite_master WHERE type = \'index\'').all() as { name: string }[]).map(row => row.name);
+        const indexes = (
+            db.query("SELECT name FROM sqlite_master WHERE type = 'index'").all() as { name: string }[]
+        ).map(row => row.name);
 
         expect(version(db)).toBe(MIGRATIONS.length);
         expect(indexes).toContain('tasks_parent');
 
         for (const category of ['todo', 'active', 'review']) {
-            expect(getTask(db, `tsk_${ category }`)).not.toHaveProperty('closedAt');
+            expect(getTask(db, `tsk_${category}`)).not.toHaveProperty('closedAt');
         }
 
         expect(getTask(db, 'tsk_done')).toMatchObject({ closedAt: 103, updatedAt: 103 });
@@ -401,10 +740,30 @@ describe('migrations', () => {
     test('a task keeps its parent and closing time through writes, and a parent that goes clears the column of the tasks inside it', () => {
         const db = openDatabase(join(tempDir(), 'clowdy.db'));
 
-        db.query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)').run('prj_1', 'New', 'NEW', 1);
-        db.query('INSERT INTO task_statuses (id, project_id, name, category, position) VALUES (?, ?, ?, ?, ?)').run('sts_1', 'prj_1', 'To do', 'todo', 0);
+        db.query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)').run(
+            'prj_1',
+            'New',
+            'NEW',
+            1
+        );
+        db.query('INSERT INTO task_statuses (id, project_id, name, category, position) VALUES (?, ?, ?, ?, ?)').run(
+            'sts_1',
+            'prj_1',
+            'To do',
+            'todo',
+            0
+        );
 
-        const base: Omit<Task, 'id' | 'number' | 'key'> = { projectId: 'prj_1', title: 'T', description: '', statusId: 'sts_1', dependsOn: [], createdBy: { kind: 'user' }, createdAt: 1, updatedAt: 1 };
+        const base: Omit<Task, 'id' | 'number' | 'key'> = {
+            projectId: 'prj_1',
+            title: 'T',
+            description: '',
+            statusId: 'sts_1',
+            dependsOn: [],
+            createdBy: { kind: 'user' },
+            createdAt: 1,
+            updatedAt: 1,
+        };
 
         upsertTask(db, { ...base, id: 'tsk_a', number: 1, key: 'NEW-1' });
         upsertTask(db, { ...base, id: 'tsk_b', number: 2, key: 'NEW-2', parentId: 'tsk_a', closedAt: 5 });
@@ -425,31 +784,61 @@ describe('migrations', () => {
 
     test('version 21 adds the comments table to an older database, leaves its tasks as they were, and a task that goes takes its comments', () => {
         const path = join(tempDir(), 'clowdy.db');
-        const before = openDatabase(path, MIGRATIONS.filter(migration => migration.version < 21));
+        const before = openDatabase(
+            path,
+            MIGRATIONS.filter(migration => migration.version < 21)
+        );
 
-        before.query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)').run('prj_1', 'Old', 'OLD', 1);
-        before.query('INSERT INTO task_statuses (id, project_id, name, category, position) VALUES (?, ?, ?, ?, ?)').run('sts_1', 'prj_1', 'To do', 'todo', 0);
+        before
+            .query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)')
+            .run('prj_1', 'Old', 'OLD', 1);
+        before
+            .query('INSERT INTO task_statuses (id, project_id, name, category, position) VALUES (?, ?, ?, ?, ?)')
+            .run('sts_1', 'prj_1', 'To do', 'todo', 0);
 
         for (const number of [1, 2]) {
-            before.query('INSERT INTO tasks (id, project_id, number, title, status_id, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(`tsk_${ number }`, 'prj_1', number, `Task ${ number }`, 'sts_1', '{"kind":"user"}', 10, 20);
+            before
+                .query(
+                    'INSERT INTO tasks (id, project_id, number, title, status_id, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+                )
+                .run(`tsk_${number}`, 'prj_1', number, `Task ${number}`, 'sts_1', '{"kind":"user"}', 10, 20);
         }
 
-        expect((before.query('SELECT name FROM sqlite_master WHERE name = \'task_comments\'').all())).toEqual([]);
+        expect(before.query("SELECT name FROM sqlite_master WHERE name = 'task_comments'").all()).toEqual([]);
         before.close();
 
         const db = openDatabase(path);
-        const indexes = (db.query('SELECT name FROM sqlite_master WHERE type = \'index\'').all() as { name: string }[]).map(row => row.name);
-        const columns = (db.query('PRAGMA table_info(task_comments)').all() as { name: string; notnull: number }[]).map(column => [column.name, column.notnull]);
+        const indexes = (
+            db.query("SELECT name FROM sqlite_master WHERE type = 'index'").all() as { name: string }[]
+        ).map(row => row.name);
+        const columns = (db.query('PRAGMA table_info(task_comments)').all() as { name: string; notnull: number }[]).map(
+            column => [column.name, column.notnull]
+        );
 
         expect(version(db)).toBe(MIGRATIONS.length);
         expect(MIGRATIONS.length).toBeGreaterThanOrEqual(21);
         expect(indexes).toContain('task_comments_task');
-        expect(columns).toEqual([['id', 0], ['task_id', 1], ['author', 1], ['body', 1], ['created_at', 1], ['edited_at', 0]]);
-        expect((db.query('PRAGMA index_info(task_comments_task)').all() as { name: string }[]).map(column => column.name)).toEqual(['task_id', 'created_at']);
+        expect(columns).toEqual([
+            ['id', 0],
+            ['task_id', 1],
+            ['author', 1],
+            ['body', 1],
+            ['created_at', 1],
+            ['edited_at', 0],
+        ]);
+        expect(
+            (db.query('PRAGMA index_info(task_comments_task)').all() as { name: string }[]).map(column => column.name)
+        ).toEqual(['task_id', 'created_at']);
         expect(getTask(db, 'tsk_1')).toMatchObject({ title: 'Task 1', updatedAt: 20 });
         expect(db.query('SELECT COUNT(*) AS n FROM task_comments').get()).toEqual({ n: 0 });
 
-        const comment: TaskComment = { id: 'cmt_1', taskId: 'tsk_1', author: { kind: 'run', runId: 'run_1' }, body: '**Markdown**', createdAt: 30 };
+        const comment: TaskComment = {
+            id: 'cmt_1',
+            taskId: 'tsk_1',
+            author: { kind: 'run', runId: 'run_1' },
+            body: '**Markdown**',
+            createdAt: 30,
+        };
 
         insertTaskComment(db, comment);
         insertTaskComment(db, { ...comment, id: 'cmt_2', author: { kind: 'user' }, createdAt: 31 });
@@ -476,31 +865,58 @@ describe('migrations', () => {
 
     test('version 22 adds the archive column to an older database: its tasks are not archived, the archive is indexed, and the reads tell the two apart', () => {
         const path = join(tempDir(), 'clowdy.db');
-        const before = openDatabase(path, MIGRATIONS.filter(migration => migration.version < 22));
+        const before = openDatabase(
+            path,
+            MIGRATIONS.filter(migration => migration.version < 22)
+        );
 
-        before.query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)').run('prj_1', 'Old', 'OLD', 1);
-        before.query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)').run('prj_2', 'Other', 'OTH', 1);
-        before.query('INSERT INTO task_statuses (id, project_id, name, category, position) VALUES (?, ?, ?, ?, ?)').run('sts_1', 'prj_1', 'Done', 'done', 0);
-        before.query('INSERT INTO task_statuses (id, project_id, name, category, position) VALUES (?, ?, ?, ?, ?)').run('sts_2', 'prj_2', 'Done', 'done', 0);
+        before
+            .query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)')
+            .run('prj_1', 'Old', 'OLD', 1);
+        before
+            .query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)')
+            .run('prj_2', 'Other', 'OTH', 1);
+        before
+            .query('INSERT INTO task_statuses (id, project_id, name, category, position) VALUES (?, ?, ?, ?, ?)')
+            .run('sts_1', 'prj_1', 'Done', 'done', 0);
+        before
+            .query('INSERT INTO task_statuses (id, project_id, name, category, position) VALUES (?, ?, ?, ?, ?)')
+            .run('sts_2', 'prj_2', 'Done', 'done', 0);
 
         for (const number of [1, 2, 3, 4]) {
-            before.query('INSERT INTO tasks (id, project_id, number, title, status_id, created_by, created_at, updated_at, closed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(`tsk_${ number }`, 'prj_1', number, `Task ${ number }`, 'sts_1', '{"kind":"user"}', 10, 20, 30);
+            before
+                .query(
+                    'INSERT INTO tasks (id, project_id, number, title, status_id, created_by, created_at, updated_at, closed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                )
+                .run(`tsk_${number}`, 'prj_1', number, `Task ${number}`, 'sts_1', '{"kind":"user"}', 10, 20, 30);
         }
 
         before.query('INSERT INTO task_deps (task_id, depends_on_id) VALUES (?, ?)').run('tsk_2', 'tsk_1');
-        before.query('INSERT INTO tasks (id, project_id, number, title, status_id, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run('tsk_o', 'prj_2', 1, 'Elsewhere', 'sts_2', '{"kind":"user"}', 10, 20);
-        expect((before.query('PRAGMA table_info(tasks)').all() as { name: string }[]).map(column => column.name)).not.toContain('archived_at');
+        before
+            .query(
+                'INSERT INTO tasks (id, project_id, number, title, status_id, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+            )
+            .run('tsk_o', 'prj_2', 1, 'Elsewhere', 'sts_2', '{"kind":"user"}', 10, 20);
+        expect(
+            (before.query('PRAGMA table_info(tasks)').all() as { name: string }[]).map(column => column.name)
+        ).not.toContain('archived_at');
         before.close();
 
         const db = openDatabase(path);
-        const indexes = (db.query('SELECT name FROM sqlite_master WHERE type = \'index\'').all() as { name: string }[]).map(row => row.name);
-        const column = (db.query('PRAGMA table_info(tasks)').all() as { name: string; notnull: number }[]).find(entry => entry.name === 'archived_at');
+        const indexes = (
+            db.query("SELECT name FROM sqlite_master WHERE type = 'index'").all() as { name: string }[]
+        ).map(row => row.name);
+        const column = (db.query('PRAGMA table_info(tasks)').all() as { name: string; notnull: number }[]).find(
+            entry => entry.name === 'archived_at'
+        );
 
         expect(version(db)).toBe(MIGRATIONS.length);
         expect(MIGRATIONS.length).toBeGreaterThanOrEqual(22);
         expect(column).toMatchObject({ name: 'archived_at', notnull: 0 });
         expect(indexes).toContain('tasks_archived');
-        expect((db.query('PRAGMA index_info(tasks_archived)').all() as { name: string }[]).map(entry => entry.name)).toEqual(['project_id', 'archived_at']);
+        expect(
+            (db.query('PRAGMA index_info(tasks_archived)').all() as { name: string }[]).map(entry => entry.name)
+        ).toEqual(['project_id', 'archived_at']);
         // The index holds the archive only: every task of an older database is on the board.
         expect(db.query('SELECT COUNT(*) AS n FROM tasks WHERE archived_at IS NOT NULL').get()).toEqual({ n: 0 });
         expect(listTasks(db, 'prj_1').map(task => task.id)).toEqual(['tsk_1', 'tsk_2', 'tsk_3', 'tsk_4']);
@@ -511,10 +927,10 @@ describe('migrations', () => {
         expect(listArchivedTasks(db, 'prj_1', 10)).toEqual([]);
 
         // Archiving is a write of the same task with a time: the board and the archive part ways, the dependencies and the other project stay.
-        upsertTask(db, { ...getTask(db, 'tsk_1') as Task, archivedAt: 500 });
-        upsertTask(db, { ...getTask(db, 'tsk_2') as Task, archivedAt: 500 });
-        upsertTask(db, { ...getTask(db, 'tsk_4') as Task, archivedAt: 400 });
-        upsertTask(db, { ...getTask(db, 'tsk_o') as Task, archivedAt: 900 });
+        upsertTask(db, { ...(getTask(db, 'tsk_1') as Task), archivedAt: 500 });
+        upsertTask(db, { ...(getTask(db, 'tsk_2') as Task), archivedAt: 500 });
+        upsertTask(db, { ...(getTask(db, 'tsk_4') as Task), archivedAt: 400 });
+        upsertTask(db, { ...(getTask(db, 'tsk_o') as Task), archivedAt: 900 });
 
         expect(listTasks(db, 'prj_1').map(task => task.id)).toEqual(['tsk_3']);
         expect(listAllTasks(db, 'prj_1').map(task => task.id)).toEqual(['tsk_1', 'tsk_2', 'tsk_3', 'tsk_4']);
@@ -525,13 +941,18 @@ describe('migrations', () => {
         expect(listArchivedTasks(db, 'prj_1', 10).map(task => task.id)).toEqual(['tsk_1', 'tsk_2', 'tsk_4']);
         expect(listArchivedTasks(db, 'prj_1', 10)[1]).toMatchObject({ dependsOn: ['tsk_1'], archivedAt: 500 });
         expect(listArchivedTasks(db, 'prj_1', 2).map(task => task.id)).toEqual(['tsk_1', 'tsk_2']);
-        expect(listArchivedTasks(db, 'prj_1', 10, { archivedAt: 500, number: 1 }).map(task => task.id)).toEqual(['tsk_2', 'tsk_4']);
-        expect(listArchivedTasks(db, 'prj_1', 10, { archivedAt: 500, number: 2 }).map(task => task.id)).toEqual(['tsk_4']);
+        expect(listArchivedTasks(db, 'prj_1', 10, { archivedAt: 500, number: 1 }).map(task => task.id)).toEqual([
+            'tsk_2',
+            'tsk_4',
+        ]);
+        expect(listArchivedTasks(db, 'prj_1', 10, { archivedAt: 500, number: 2 }).map(task => task.id)).toEqual([
+            'tsk_4',
+        ]);
         expect(listArchivedTasks(db, 'prj_1', 10, { archivedAt: 400, number: 4 })).toEqual([]);
         expect(listArchivedTasks(db, 'prj_2', 10).map(task => task.id)).toEqual(['tsk_o']);
 
         // The next write of the task without the time brings it back, and a row keeps the time through writes of other fields.
-        upsertTask(db, { ...getTask(db, 'tsk_4') as Task, title: 'Renamed' });
+        upsertTask(db, { ...(getTask(db, 'tsk_4') as Task), title: 'Renamed' });
         expect(getTask(db, 'tsk_4')).toMatchObject({ title: 'Renamed', archivedAt: 400 });
 
         const { archivedAt: _, ...restored } = getTask(db, 'tsk_4') as Task;
@@ -556,7 +977,7 @@ describe('migrations', () => {
         };
 
         expect(() => openDatabase(path, [...MIGRATIONS, broken])).toThrow('boom');
-        expect(existsSync(`${ path }.bak-v${ MIGRATIONS.length }`)).toBe(true);
+        expect(existsSync(`${path}.bak-v${MIGRATIONS.length}`)).toBe(true);
 
         const db = openDatabase(path);
 
@@ -569,8 +990,12 @@ describe('migrations', () => {
         const path = join(tempDir(), 'clowdy.db');
         const first = openDatabase(path);
 
-        first.query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)').run('prj_1', 'Old', 'OLD', 1);
-        first.query('INSERT INTO chats (id, project_id, title, mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run('cht_1', 'prj_1', 'Hello', 'autopilot', 1, 1);
+        first
+            .query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)')
+            .run('prj_1', 'Old', 'OLD', 1);
+        first
+            .query('INSERT INTO chats (id, project_id, title, mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
+            .run('cht_1', 'prj_1', 'Hello', 'autopilot', 1, 1);
         first.close();
 
         // Rebuilds `projects` but forgets to copy its rows: with foreign keys on, the drop would take the chat along; off, the chat points at nothing.
@@ -601,13 +1026,23 @@ describe('migrations', () => {
         const path = join(tempDir(), 'clowdy.db');
         const old = openDatabase(path, MIGRATIONS.slice(0, 1));
 
-        old.query('INSERT INTO projects (id, name, path, task_prefix, created_at) VALUES (?, ?, ?, ?, ?)').run('prj_1', 'Old', '/old', 'OLD', 1);
-        old.query('INSERT INTO runs (id, project_id, root_run_id, role, name, status, engine, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run('run_1', 'prj_1', 'run_1', 'executor', 'Executor 01', 'succeeded', 'fake', 1);
+        old.query('INSERT INTO projects (id, name, path, task_prefix, created_at) VALUES (?, ?, ?, ?, ?)').run(
+            'prj_1',
+            'Old',
+            '/old',
+            'OLD',
+            1
+        );
+        old.query(
+            'INSERT INTO runs (id, project_id, root_run_id, role, name, status, engine, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+        ).run('run_1', 'prj_1', 'run_1', 'executor', 'Executor 01', 'succeeded', 'fake', 1);
         old.close();
 
         const upgraded = openDatabase(path);
 
-        expect(upgraded.query('SELECT name, origin, next_prompt, pid FROM runs').all()).toEqual([{ name: 'Executor 01', origin: null, next_prompt: null, pid: null }]);
+        expect(upgraded.query('SELECT name, origin, next_prompt, pid FROM runs').all()).toEqual([
+            { name: 'Executor 01', origin: null, next_prompt: null, pid: null },
+        ]);
         expect(tables(upgraded)).toContain('engine_pauses');
         upgraded.close();
     });
@@ -616,10 +1051,22 @@ describe('migrations', () => {
         const path = join(tempDir(), 'clowdy.db');
         const old = openDatabase(path, MIGRATIONS.slice(0, 4));
 
-        old.query('INSERT INTO projects (id, name, path, task_prefix, created_at) VALUES (?, ?, ?, ?, ?)').run('prj_1', 'Old', '/old', 'OLD', 1);
-        old.query('INSERT INTO runs (id, project_id, root_run_id, role, name, status, engine, model, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run('run_1', 'prj_1', 'run_1', 'orchestrator', 'Orchestrator 01', 'succeeded', 'claude', 'opus', 1);
-        old.query('INSERT INTO chats (id, project_id, title, mode, orchestrator_run_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run('cht_started', 'prj_1', 'Started', 'autopilot', 'run_1', 1, 1);
-        old.query('INSERT INTO chats (id, project_id, title, mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run('cht_empty', 'prj_1', 'Empty', 'autopilot', 1, 1);
+        old.query('INSERT INTO projects (id, name, path, task_prefix, created_at) VALUES (?, ?, ?, ?, ?)').run(
+            'prj_1',
+            'Old',
+            '/old',
+            'OLD',
+            1
+        );
+        old.query(
+            'INSERT INTO runs (id, project_id, root_run_id, role, name, status, engine, model, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        ).run('run_1', 'prj_1', 'run_1', 'orchestrator', 'Orchestrator 01', 'succeeded', 'claude', 'opus', 1);
+        old.query(
+            'INSERT INTO chats (id, project_id, title, mode, orchestrator_run_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+        ).run('cht_started', 'prj_1', 'Started', 'autopilot', 'run_1', 1, 1);
+        old.query(
+            'INSERT INTO chats (id, project_id, title, mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+        ).run('cht_empty', 'prj_1', 'Empty', 'autopilot', 1, 1);
         old.close();
 
         const upgraded = openDatabase(path);
@@ -635,14 +1082,22 @@ describe('migrations', () => {
     test('the personal and position migration numbers the projects of a version 4 database by creation and keeps at most one personal', () => {
         const path = join(tempDir(), 'clowdy.db');
         const old = openDatabase(path, MIGRATIONS.slice(0, 4));
-        const insert = old.query('INSERT INTO projects (id, name, path, task_prefix, created_at) VALUES (?, ?, ?, ?, ?)');
+        const insert = old.query(
+            'INSERT INTO projects (id, name, path, task_prefix, created_at) VALUES (?, ?, ?, ?, ?)'
+        );
 
         insert.run('prj_b', 'Second', '/second', 'SEC', 20);
         insert.run('prj_a', 'First', '/first', 'FIR', 10);
         // The same creation time: the id decides.
         insert.run('prj_d', 'Fourth', '/fourth', 'FOU', 30);
         insert.run('prj_c', 'Third', '/third', 'THI', 30);
-        old.query('INSERT INTO task_statuses (id, project_id, name, category, position) VALUES (?, ?, ?, ?, ?)').run('sts_1', 'prj_a', 'To do', 'todo', 0);
+        old.query('INSERT INTO task_statuses (id, project_id, name, category, position) VALUES (?, ?, ?, ?, ?)').run(
+            'sts_1',
+            'prj_a',
+            'To do',
+            'todo',
+            0
+        );
         expect(version(old)).toBe(4);
         old.close();
 
@@ -695,10 +1150,12 @@ describe('store', () => {
     test('events are inserted with the transaction and rolled back with it', () => {
         const store = create();
 
-        expect(() => store.tx(() => {
-            store.emit('prj_1', notice);
-            throw new Error('abort');
-        })).toThrow('abort');
+        expect(() =>
+            store.tx(() => {
+                store.emit('prj_1', notice);
+                throw new Error('abort');
+            })
+        ).toThrow('abort');
         expect(store.headCursor()).toBe(0);
 
         store.tx(() => {
@@ -716,13 +1173,15 @@ describe('store', () => {
         const store = create();
         const calls: string[] = [];
 
-        store.subscribe(events => calls.push(`events:${ events.length }`));
+        store.subscribe(events => calls.push(`events:${events.length}`));
 
-        expect(() => store.tx(() => {
-            store.emit('prj_1', notice);
-            store.afterCommit(() => calls.push('lost'));
-            throw new Error('abort');
-        })).toThrow();
+        expect(() =>
+            store.tx(() => {
+                store.emit('prj_1', notice);
+                store.afterCommit(() => calls.push('lost'));
+                throw new Error('abort');
+            })
+        ).toThrow();
 
         store.tx(() => {
             store.emit('prj_1', notice);

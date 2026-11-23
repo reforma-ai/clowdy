@@ -4,8 +4,8 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { compactionCounts } from './compaction';
 import { CompactionLine } from './CompactionLine';
+import { compactionCounts } from './compaction';
 
 import type { StreamItemBody } from '@clowdy/protocol';
 
@@ -28,8 +28,16 @@ afterEach(() => {
 });
 
 const facts = { trigger: 'manual', preTokens: 22_062, postTokens: 6_111, durationMs: 4_200 };
-const call = (fields: Partial<Call> = {}): Call => ({ kind: 'tool', toolCallId: 'k1', name: 'compact', input: { title: 'Compact conversation' }, state: 'done', ...fields });
-const draw = (fields: Partial<Call> = {}, active = true) => act(async () => root.render(<CompactionLine call={ call(fields) } active={ active } />));
+const call = (fields: Partial<Call> = {}): Call => ({
+    kind: 'tool',
+    toolCallId: 'k1',
+    name: 'compact',
+    input: { title: 'Compact conversation' },
+    state: 'done',
+    ...fields,
+});
+const draw = (fields: Partial<Call> = {}, active = true) =>
+    act(async () => root.render(<CompactionLine call={call(fields)} active={active} />));
 const line = () => container.querySelector<HTMLElement>('[role="status"]')!;
 
 describe('CompactionLine', () => {
@@ -79,7 +87,7 @@ describe('CompactionLine', () => {
 });
 
 describe('compactionCounts', () => {
-    it('reads the tokens before and after from the call\'s output', () => {
+    it("reads the tokens before and after from the call's output", () => {
         expect(compactionCounts(facts)).toEqual({ before: 22_062, after: 6_111 });
         expect(compactionCounts(JSON.stringify(facts))).toEqual({ before: 22_062, after: 6_111 });
     });

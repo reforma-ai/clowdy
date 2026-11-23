@@ -11,7 +11,14 @@ import { AgentRegistry } from '../src/engine/acp/registry';
 import type { ClowdyEvent, Command, CommandResult, EngineId, Project, Run, TaskStatus } from '@clowdy/protocol';
 import type { Config } from '../src/config';
 import type { Daemon, DaemonOptions } from '../src/daemon';
-import type { AgentEngine, EngineEvent, EngineFork, EngineForkOptions, EngineSession, EngineStartOptions } from '../src/engine/types';
+import type {
+    AgentEngine,
+    EngineEvent,
+    EngineFork,
+    EngineForkOptions,
+    EngineSession,
+    EngineStartOptions,
+} from '../src/engine/types';
 import type { Provider } from '../src/providers/types';
 
 const roots: string[] = [];
@@ -23,7 +30,7 @@ export function testSpec(id: string): Pick<Provider, 'spec'> {
 
 /** A fresh empty directory, removed when the test file ends. */
 export function tempDir(label = 'clowdy-test'): string {
-    const dir = mkdtempSync(join(tmpdir(), `${ label }-`));
+    const dir = mkdtempSync(join(tmpdir(), `${label}-`));
 
     roots.push(dir);
 
@@ -42,7 +49,7 @@ export function git(cwd: string, ...args: string[]): string {
     const result = Bun.spawnSync(['git', ...GIT_IDENTITY, ...args], { cwd, stdout: 'pipe', stderr: 'pipe' });
 
     if (result.exitCode !== 0) {
-        throw new Error(`git ${ args.join(' ') } failed: ${ result.stderr.toString() }`);
+        throw new Error(`git ${args.join(' ')} failed: ${result.stderr.toString()}`);
     }
 
     return result.stdout.toString().trim();
@@ -62,7 +69,13 @@ export function makeRepo(parent: string, name = 'repo'): string {
 }
 
 /** Delays of the runtime shrunk for tests. */
-export const SHORT_TIMINGS = { killGraceMs: 150, retryBaseMs: 10, pauseJitterMs: 0, noticeWindowMs: 30, setupMs: 60_000 };
+export const SHORT_TIMINGS = {
+    killGraceMs: 150,
+    retryBaseMs: 10,
+    pauseJitterMs: 0,
+    noticeWindowMs: 30,
+    setupMs: 60_000,
+};
 
 export function testConfig(overrides: Partial<Config> = {}): Config {
     const root = tempDir();
@@ -92,14 +105,17 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
 let counter = 0;
 
 export function command(type: Command['type'], fields: Record<string, unknown> = {}): Command {
-    return { requestId: `req-${ Date.now() }-${ ++counter }`, type, ...fields } as unknown as Command;
+    return { requestId: `req-${Date.now()}-${++counter}`, type, ...fields } as unknown as Command;
 }
 
 export class Harness {
-    constructor(readonly daemon: Daemon, readonly config: Config) {}
+    constructor(
+        readonly daemon: Daemon,
+        readonly config: Config
+    ) {}
 
     get url(): string {
-        return `http://127.0.0.1:${ this.daemon.info.port }`;
+        return `http://127.0.0.1:${this.daemon.info.port}`;
     }
 
     get store() {
@@ -125,7 +141,7 @@ export class Harness {
         const result = this.send(type, fields);
 
         if (!result.ok) {
-            throw new Error(`${ type } failed: ${ result.error.code } ${ result.error.message }`);
+            throw new Error(`${type} failed: ${result.error.code} ${result.error.message}`);
         }
 
         return result.data;
@@ -141,14 +157,17 @@ export class Harness {
         const result = await this.sendAsync(type, fields);
 
         if (!result.ok) {
-            throw new Error(`${ type } failed: ${ result.error.code } ${ result.error.message }`);
+            throw new Error(`${type} failed: ${result.error.code} ${result.error.message}`);
         }
 
         return result.data;
     }
 
     fetch(path: string, init: RequestInit = {}): Promise<Response> {
-        return fetch(`${ this.url }${ path }`, { ...init, headers: { authorization: `Bearer ${ this.config.token }`, ...init.headers } });
+        return fetch(`${this.url}${path}`, {
+            ...init,
+            headers: { authorization: `Bearer ${this.config.token}`, ...init.headers },
+        });
     }
 
     events(after = 0): ClowdyEvent[] {
@@ -176,7 +195,10 @@ export class Harness {
  * probe of a program someone installed), so a test sees only the agents it adds itself.
  */
 export function testAgents(config: Config): AgentRegistry {
-    return new AgentRegistry({ dataDir: config.dataDir, discovery: new Discovery({ env: { PATH: '' }, loginPath: async () => undefined, installDirs: [] }) });
+    return new AgentRegistry({
+        dataDir: config.dataDir,
+        discovery: new Discovery({ env: { PATH: '' }, loginPath: async () => undefined, installDirs: [] }),
+    });
 }
 
 export async function startHarness(overrides: Partial<Config> = {}, options: DaemonOptions = {}): Promise<Harness> {
@@ -186,13 +208,21 @@ export async function startHarness(overrides: Partial<Config> = {}, options: Dae
 }
 
 /** Restarts a daemon on the data directory of an earlier harness. */
-export async function restartHarness(previous: Harness, options: DaemonOptions = {}, overrides: Partial<Config> = {}): Promise<Harness> {
+export async function restartHarness(
+    previous: Harness,
+    options: DaemonOptions = {},
+    overrides: Partial<Config> = {}
+): Promise<Harness> {
     const config = { ...previous.config, ...overrides };
 
     return new Harness(await startDaemon(config, { agents: testAgents(config), ...options }), config);
 }
 
-export async function waitFor<T>(check: () => T | undefined | false | null, what: string, timeoutMs = 4000): Promise<T> {
+export async function waitFor<T>(
+    check: () => T | undefined | false | null,
+    what: string,
+    timeoutMs = 4000
+): Promise<T> {
     const deadline = Date.now() + timeoutMs;
 
     for (;;) {
@@ -203,7 +233,7 @@ export async function waitFor<T>(check: () => T | undefined | false | null, what
         }
 
         if (Date.now() > deadline) {
-            throw new Error(`Timed out waiting for ${ what }`);
+            throw new Error(`Timed out waiting for ${what}`);
         }
 
         await new Promise(resolve => setTimeout(resolve, 5));
@@ -229,18 +259,22 @@ export class GateEngine implements AgentEngine {
         return {
             close() {},
             async *[Symbol.asyncIterator](): AsyncGenerator<EngineEvent> {
-                yield { type: 'session', sessionId: `gate-${ options.prompt }` };
+                yield { type: 'session', sessionId: `gate-${options.prompt}` };
                 yield { type: 'text', delta: 'working', done: true };
 
                 await new Promise<void>((resolve, reject) => {
                     gates.set(options.prompt, resolve);
-                    options.signal.addEventListener('abort', () => {
-                        aborted.push(options.prompt);
-                        reject(options.signal.reason);
-                    }, { once: true });
+                    options.signal.addEventListener(
+                        'abort',
+                        () => {
+                            aborted.push(options.prompt);
+                            reject(options.signal.reason);
+                        },
+                        { once: true }
+                    );
                 });
 
-                yield { type: 'done', result: `finished ${ options.prompt }` };
+                yield { type: 'done', result: `finished ${options.prompt}` };
             },
         };
     }
@@ -253,7 +287,7 @@ export class GateEngine implements AgentEngine {
         const entry = [...this.gates].find(([prompt]) => prompt.includes(match));
 
         if (!entry) {
-            throw new Error(`No gated session matches ${ match }`);
+            throw new Error(`No gated session matches ${match}`);
         }
 
         this.gates.delete(entry[0]);
@@ -342,12 +376,15 @@ export class ScriptEngine implements AgentEngine {
     private calls = 0;
 
     /** `closeMs` makes `close()` slow, like an engine that takes a moment to shut its process down. */
-    constructor(private script: Script, private closeMs = 0) {}
+    constructor(
+        private script: Script,
+        private closeMs = 0
+    ) {}
 
     async fork(options: EngineForkOptions): Promise<EngineFork> {
         this.forked.push(options);
 
-        return await this.forkAnswer?.(options) ?? { sessionId: `${ options.sessionId }-fork-${ this.forked.length }` };
+        return (await this.forkAnswer?.(options)) ?? { sessionId: `${options.sessionId}-fork-${this.forked.length}` };
     }
 
     start(options: EngineStartOptions): EngineSession {
@@ -387,8 +424,7 @@ export class ScriptEngine implements AgentEngine {
                     await latch.wait(turn.signal);
 
                     return true;
-                }
-                catch {
+                } catch {
                     return false;
                 }
             },
@@ -396,10 +432,12 @@ export class ScriptEngine implements AgentEngine {
                 const tool = options.tools.find(candidate => candidate.name === name);
 
                 if (!tool) {
-                    throw new Error(`No ${ name } tool in this session (${ options.tools.map(candidate => candidate.name).join(', ') })`);
+                    throw new Error(
+                        `No ${name} tool in this session (${options.tools.map(candidate => candidate.name).join(', ')})`
+                    );
                 }
 
-                const toolCallId = `script-call-${ ++engine.calls }`;
+                const toolCallId = `script-call-${++engine.calls}`;
 
                 yield { type: 'tool', toolCallId, name, input, state: 'running' };
 
@@ -409,9 +447,15 @@ export class ScriptEngine implements AgentEngine {
                     yield { type: 'tool', toolCallId, name, input, state: 'done', output };
 
                     return output;
-                }
-                catch (error) {
-                    yield { type: 'tool', toolCallId, name, input, state: 'error', error: error instanceof Error ? error.message : String(error) };
+                } catch (error) {
+                    yield {
+                        type: 'tool',
+                        toolCallId,
+                        name,
+                        input,
+                        state: 'error',
+                        error: error instanceof Error ? error.message : String(error),
+                    };
                     throw error;
                 }
             },
@@ -425,16 +469,16 @@ export class ScriptEngine implements AgentEngine {
                 return engine.steerAnswer !== undefined;
             },
             ...(engine.wakes && { wakesOnBackgroundEnd: true as const }),
-            steer: async (text) => {
+            steer: async text => {
                 engine.steered.push(text);
 
-                return await engine.steerAnswer?.(text, turn) ?? false;
+                return (await engine.steerAnswer?.(text, turn)) ?? false;
             },
             ...(engine.sendAnswer && {
                 send: async (text: string) => {
                     engine.sent.push(text);
 
-                    if (over || turn.signal.aborted || !await engine.sendAnswer?.(text, turn)) {
+                    if (over || turn.signal.aborted || !(await engine.sendAnswer?.(text, turn))) {
                         return false;
                     }
 
@@ -448,7 +492,7 @@ export class ScriptEngine implements AgentEngine {
                 stopItem: async (agentId: string) => {
                     engine.stopRequests.push(agentId);
 
-                    if (over || turn.signal.aborted || !await engine.stopAnswer?.(agentId, turn)) {
+                    if (over || turn.signal.aborted || !(await engine.stopAnswer?.(agentId, turn))) {
                         return false;
                     }
 
@@ -471,8 +515,7 @@ export class ScriptEngine implements AgentEngine {
             async *[Symbol.asyncIterator]() {
                 try {
                     yield* script(turn);
-                }
-                finally {
+                } finally {
                     over = true;
                     wake();
                 }
@@ -491,21 +534,22 @@ export const scriptEngines = (engine: AgentEngine) => new Map<EngineId, AgentEng
 /** Resolves when `release()` is called; scripts use it to hold a session open until the test says so. Rejects when `signal` aborts first. */
 export function latch(): { wait(signal?: AbortSignal): Promise<void>; release(): void } {
     let release!: () => void;
-    const released = new Promise<void>((resolve) => {
+    const released = new Promise<void>(resolve => {
         release = resolve;
     });
 
     return {
         release,
-        wait: signal => new Promise<void>((resolve, reject) => {
-            void released.then(resolve);
+        wait: signal =>
+            new Promise<void>((resolve, reject) => {
+                void released.then(resolve);
 
-            if (signal?.aborted) {
-                reject(signal.reason);
-            }
+                if (signal?.aborted) {
+                    reject(signal.reason);
+                }
 
-            signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
-        }),
+                signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+            }),
     };
 }
 

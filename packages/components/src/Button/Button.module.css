@@ -123,7 +123,12 @@
        around it, in place of the button's own side padding. The capsule says its height itself (`--hotkey-height`). */
     .button > .content > [data-hotkey]:last-child,
     .button > .content > [data-hotkey-sequence]:last-child {
-        margin-inline-end: calc((var(--clowdy-button-size) - var(--hotkey-height)) / 2 - var(--clowdy-button-padding-inline) - var(--clowdy-button-border-width));
+        margin-inline-end: calc(
+            (var(--clowdy-button-size) - var(--hotkey-height)) /
+            2 -
+            var(--clowdy-button-padding-inline) -
+            var(--clowdy-button-border-width)
+        );
     }
 
     .button[data-icon-only] {

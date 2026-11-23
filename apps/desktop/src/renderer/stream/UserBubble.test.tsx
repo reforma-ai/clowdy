@@ -16,11 +16,20 @@ beforeAll(async () => {
 
 afterAll(() => store.dispose());
 
-const links = { taskOfKey: (key: string) => (key === 'CAR-24' ? { id: 't-24', key, title: 'Rebuild the form' } : undefined) };
-const bubble = (text: string) => renderToStaticMarkup(<RootStoreProvider value={ store }><StreamLinksContext value={ links }><UserBubble text={ text } at={ 0 } /></StreamLinksContext></RootStoreProvider>);
+const links = {
+    taskOfKey: (key: string) => (key === 'CAR-24' ? { id: 't-24', key, title: 'Rebuild the form' } : undefined),
+};
+const bubble = (text: string) =>
+    renderToStaticMarkup(
+        <RootStoreProvider value={store}>
+            <StreamLinksContext value={links}>
+                <UserBubble text={text} at={0} />
+            </StreamLinksContext>
+        </RootStoreProvider>
+    );
 
 describe('UserBubble', () => {
-    it('keeps the line breaks of a message the daemon wrote in the person\'s name', () => {
+    it("keeps the line breaks of a message the daemon wrote in the person's name", () => {
         const out = bubble('Complete task CAR-1: Fix it\n\nDescription:\nfirst\nsecond');
 
         expect(out).toContain('Description:\nfirst\nsecond');
@@ -49,9 +58,12 @@ describe('UserBubble', () => {
     });
 
     it('shows the files of a message above its text, and no bubble for a message of files alone', () => {
-        const files = [{ id: 'a-1', name: 'shot.png', mediaType: 'image/png', size: 2048 }, { id: 'a-2', name: 'error.log', mediaType: 'text/plain', size: 10 }];
-        const withText = renderToStaticMarkup(<UserBubble text="See these" attachments={ files } at={ 0 } />);
-        const alone = renderToStaticMarkup(<UserBubble text="" attachments={ files } at={ 0 } />);
+        const files = [
+            { id: 'a-1', name: 'shot.png', mediaType: 'image/png', size: 2048 },
+            { id: 'a-2', name: 'error.log', mediaType: 'text/plain', size: 10 },
+        ];
+        const withText = renderToStaticMarkup(<UserBubble text="See these" attachments={files} at={0} />);
+        const alone = renderToStaticMarkup(<UserBubble text="" attachments={files} at={0} />);
 
         expect(withText).toContain('shot.png');
         expect(withText).toContain('error.log');
@@ -61,8 +73,8 @@ describe('UserBubble', () => {
     });
 
     it('has no time of its own: it shows one only in the row of actions it is given', () => {
-        const bare = renderToStaticMarkup(<UserBubble text="Hello" at={ 0 } turn="i-1" />);
-        const withRow = renderToStaticMarkup(<UserBubble text="Hello" at={ 0 } turn="i-1" actions={ { show: 'hover' } } />);
+        const bare = renderToStaticMarkup(<UserBubble text="Hello" at={0} turn="i-1" />);
+        const withRow = renderToStaticMarkup(<UserBubble text="Hello" at={0} turn="i-1" actions={{ show: 'hover' }} />);
 
         expect(bare).not.toContain('<time');
         expect(bare).not.toContain('Copy message');

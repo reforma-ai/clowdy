@@ -26,7 +26,8 @@
     place-items: center;
     padding: 0;
     border: 0;
-    border-radius: calc(var(--clowdy-input-radius) * var(--squircle-radius-factor) - 1px) 0 0 calc(var(--clowdy-input-radius) * var(--squircle-radius-factor) - 1px);
+    border-radius: calc(var(--clowdy-input-radius) * var(--squircle-radius-factor) - 1px) 0 0
+        calc(var(--clowdy-input-radius) * var(--squircle-radius-factor) - 1px);
     corner-shape: superellipse(var(--squircle-value));
     background: transparent;
     color: var(--color-secondary-muted-text);

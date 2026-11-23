@@ -18,15 +18,15 @@ export const REFRESH_DELAY_MS = 150;
 export type TaskComments =
     | { status: 'loading' }
     | {
-        status: 'ready';
-        comments: TaskComment[];
-        /** How many the task has, whatever is loaded. */
-        total: number;
-        /** The task has more than `MAX_COMMENTS`, and the rest are not loaded. */
-        isCut: boolean;
-        /** Why the last read for a change of the comments failed. These are the comments as they were before it, and may be out of date. */
-        refreshError?: string;
-    }
+          status: 'ready';
+          comments: TaskComment[];
+          /** How many the task has, whatever is loaded. */
+          total: number;
+          /** The task has more than `MAX_COMMENTS`, and the rest are not loaded. */
+          isCut: boolean;
+          /** Why the last read for a change of the comments failed. These are the comments as they were before it, and may be out of date. */
+          refreshError?: string;
+      }
     | { status: 'failed'; message: string };
 
 const LOADING: TaskComments = { status: 'loading' };
@@ -71,26 +71,34 @@ export function useTaskComments(taskId: TaskId): { state: TaskComments; retry: (
 
     useEffect(() => {
         let isCurrent = true;
-        const timer = setTimeout(() => {
-            readComments(cursor => transport.getTaskComments(taskId, { limit: COMMENTS_PAGE_SIZE, cursor }), () => isCurrent).then(
-                (state) => {
-                    if (!state) return;
+        const timer = setTimeout(
+            () => {
+                readComments(
+                    cursor => transport.getTaskComments(taskId, { limit: COMMENTS_PAGE_SIZE, cursor }),
+                    () => isCurrent
+                ).then(
+                    state => {
+                        if (!state) return;
 
-                    shown.current = taskId;
-                    setResult({ taskId, state });
-                },
-                (error) => {
-                    if (!isCurrent) return;
+                        shown.current = taskId;
+                        setResult({ taskId, state });
+                    },
+                    error => {
+                        if (!isCurrent) return;
 
-                    const message = error instanceof Error ? error.message : String(error);
+                        const message = error instanceof Error ? error.message : String(error);
 
-                    // Comments that are on show stay, with the failure beside them: only a first read that fails takes their place.
-                    setResult(current => (current?.taskId === taskId && current.state.status === 'ready'
-                        ? { taskId, state: { ...current.state, refreshError: message } }
-                        : { taskId, state: { status: 'failed', message } }));
-                }
-            );
-        }, shown.current === taskId ? REFRESH_DELAY_MS : FETCH_DELAY_MS);
+                        // Comments that are on show stay, with the failure beside them: only a first read that fails takes their place.
+                        setResult(current =>
+                            current?.taskId === taskId && current.state.status === 'ready'
+                                ? { taskId, state: { ...current.state, refreshError: message } }
+                                : { taskId, state: { status: 'failed', message } }
+                        );
+                    }
+                );
+            },
+            shown.current === taskId ? REFRESH_DELAY_MS : FETCH_DELAY_MS
+        );
 
         return () => {
             isCurrent = false;
@@ -105,8 +113,7 @@ export function useTaskComments(taskId: TaskId): { state: TaskComments; retry: (
             if (result?.taskId === taskId && result.state.status === 'ready') {
                 // The comments on show stay, without the failure of the read that is tried again.
                 setResult({ taskId, state: { ...result.state, refreshError: undefined } });
-            }
-            else {
+            } else {
                 shown.current = undefined;
                 setResult(undefined);
             }

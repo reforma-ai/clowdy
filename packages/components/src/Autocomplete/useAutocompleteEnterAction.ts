@@ -1,4 +1,4 @@
-import { useCallback, type KeyboardEvent } from 'react';
+import { type KeyboardEvent, useCallback } from 'react';
 
 import type { Key } from 'react-aria-components';
 
@@ -55,33 +55,36 @@ export function useAutocompleteEnterAction({
     resolveOptionKey = autocompleteOptionKey,
     fallbackKey,
 }: UseAutocompleteEnterActionOptions) {
-    return useCallback((event: KeyboardEvent<HTMLInputElement>) => {
-        if (event.key !== 'Enter') {
-            return;
-        }
+    return useCallback(
+        (event: KeyboardEvent<HTMLInputElement>) => {
+            if (event.key !== 'Enter') {
+                return;
+            }
 
-        event.preventDefault();
+            event.preventDefault();
 
-        const activeKey = resolveOptionKey(autocompleteActiveOption(event.currentTarget));
+            const activeKey = resolveOptionKey(autocompleteActiveOption(event.currentTarget));
 
-        if (activeKey != null) {
-            onAction(activeKey);
+            if (activeKey != null) {
+                onAction(activeKey);
 
-            return;
-        }
+                return;
+            }
 
-        const fallback = typeof fallbackKey === 'function' ? fallbackKey() : fallbackKey;
+            const fallback = typeof fallbackKey === 'function' ? fallbackKey() : fallbackKey;
 
-        if (fallback != null && fallback !== '') {
-            onAction(fallback);
+            if (fallback != null && fallback !== '') {
+                onAction(fallback);
 
-            return;
-        }
+                return;
+            }
 
-        const firstKey = resolveOptionKey(autocompleteFirstOption(event.currentTarget));
+            const firstKey = resolveOptionKey(autocompleteFirstOption(event.currentTarget));
 
-        if (firstKey != null) {
-            onAction(firstKey);
-        }
-    }, [fallbackKey, onAction, resolveOptionKey]);
+            if (firstKey != null) {
+                onAction(firstKey);
+            }
+        },
+        [fallbackKey, onAction, resolveOptionKey]
+    );
 }

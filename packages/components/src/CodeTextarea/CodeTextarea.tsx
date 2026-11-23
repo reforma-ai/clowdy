@@ -1,32 +1,23 @@
 import { cn, mergeRefs } from '@clowdy/lib';
 import {
+    type CSSProperties,
     lazy,
+    type ReactNode,
+    type Ref,
     Suspense,
     useCallback,
     useMemo,
     useRef,
     useState,
-    type CSSProperties,
-    type ReactNode,
-    type Ref,
 } from 'react';
 import { Group } from 'react-aria-components';
 
-import {
-    elementScrollAxisSource,
-    ScrollChromeBars,
-    ScrollChromeRoot,
-    useScrollChrome,
-} from '../Scrollable';
+import { elementScrollAxisSource, ScrollChromeBars, ScrollChromeRoot, useScrollChrome } from '../Scrollable';
 import { Show } from '../Show';
 import styles from './CodeTextarea.module.css';
 
 import type { EditorView as CodeMirrorEditorView } from '@codemirror/view';
-import type {
-    BasicSetupOptions,
-    Extension,
-    ReactCodeMirrorRef,
-} from '@uiw/react-codemirror';
+import type { BasicSetupOptions, Extension, ReactCodeMirrorRef } from '@uiw/react-codemirror';
 
 export type CodeTextareaVariant = 'filled' | 'bordered' | 'transparent' | 'inline';
 export type CodeTextareaSize = 'sm' | 'md' | 'lg';
@@ -127,7 +118,7 @@ type CodeTextareaMirrorProps = {
     uncontrolledRef: { current: string };
 };
 
-const CodeTextareaMirror = lazy(async() => {
+const CodeTextareaMirror = lazy(async () => {
     const { default: CodeMirror, EditorView } = await import('@uiw/react-codemirror');
 
     function Mirror({
@@ -160,11 +151,13 @@ const CodeTextareaMirror = lazy(async() => {
             }
 
             if (ariaLabel || ariaLabelledBy || isInvalid) {
-                next.push(EditorView.contentAttributes.of({
-                    ...(ariaLabel ? { 'aria-label': ariaLabel } : {}),
-                    ...(ariaLabelledBy ? { 'aria-labelledby': ariaLabelledBy } : {}),
-                    ...(isInvalid ? { 'aria-invalid': 'true' } : {}),
-                }));
+                next.push(
+                    EditorView.contentAttributes.of({
+                        ...(ariaLabel ? { 'aria-label': ariaLabel } : {}),
+                        ...(ariaLabelledBy ? { 'aria-labelledby': ariaLabelledBy } : {}),
+                        ...(isInvalid ? { 'aria-invalid': 'true' } : {}),
+                    })
+                );
             }
 
             if (extensions) {
@@ -176,28 +169,28 @@ const CodeTextareaMirror = lazy(async() => {
 
         return (
             <CodeMirror
-                ref={ editorRef }
-                className={ className }
-                value={ doc }
+                ref={editorRef}
+                className={className}
+                value={doc}
                 theme="none"
-                height={ autoResize ? 'auto' : '100%' }
-                maxHeight={ autoResize ? maxHeight : '100%' }
+                height={autoResize ? 'auto' : '100%'}
+                maxHeight={autoResize ? maxHeight : '100%'}
                 width="100%"
-                autoFocus={ autoFocus }
-                placeholder={ placeholder }
-                editable={ !isDisabled }
-                readOnly={ isReadOnly }
-                indentWithTab={ indentWithTab }
-                basicSetup={ basicSetup }
-                extensions={ mergedExtensions }
-                onCreateEditor={ onCreateEditor }
-                onChange={ (next) => {
+                autoFocus={autoFocus}
+                placeholder={placeholder}
+                editable={!isDisabled}
+                readOnly={isReadOnly}
+                indentWithTab={indentWithTab}
+                basicSetup={basicSetup}
+                extensions={mergedExtensions}
+                onCreateEditor={onCreateEditor}
+                onChange={next => {
                     if (isUncontrolled) {
                         uncontrolledRef.current = next;
                     }
 
                     onChange?.(next);
-                } }
+                }}
             />
         );
     }
@@ -260,16 +253,16 @@ export function CodeTextarea({
         sourceKey: scrollEl,
     });
 
-    const resolvedHeight = heightProp ?? (autoResize
-        ? 'auto'
-        : `calc(var(--clowdy-textarea-line-height, var(--leading-md)) * ${ minRows } + var(--clowdy-textarea-padding-block) * 2)`);
+    const resolvedHeight =
+        heightProp ??
+        (autoResize
+            ? 'auto'
+            : `calc(var(--clowdy-textarea-line-height, var(--leading-md)) * ${minRows} + var(--clowdy-textarea-padding-block) * 2)`);
 
     const fieldStyle = {
         '--clowdy-textarea-min-rows': minRows,
         ...(maxHeight ? { '--clowdy-code-textarea-max-height': maxHeight } : {}),
-        ...(!autoResize && resolvedHeight !== 'auto'
-            ? { '--clowdy-code-textarea-height': resolvedHeight }
-            : {}),
+        ...(!autoResize && resolvedHeight !== 'auto' ? { '--clowdy-code-textarea-height': resolvedHeight } : {}),
     } as CSSProperties;
 
     const onCreateEditor = useCallback((view: CodeMirrorEditorView) => {
@@ -277,82 +270,79 @@ export function CodeTextarea({
     }, []);
 
     const editor = (
-        <Suspense fallback={ <div className={ cn(styles.editor, editorClassName) } /> }>
+        <Suspense fallback={<div className={cn(styles.editor, editorClassName)} />}>
             <CodeTextareaMirror
                 // eslint-disable-next-line react-hooks/refs -- mergeRefs composes; it does not read `.current`
-                editorRef={ mergeRefs(editorRef, ref) }
-                className={ cn(styles.editor, editorClassName) }
-                doc={ doc }
-                autoResize={ autoResize }
-                maxHeight={ maxHeight }
-                autoFocus={ autoFocus }
-                placeholder={ placeholder }
-                isDisabled={ isDisabled }
-                isReadOnly={ isReadOnly }
-                indentWithTab={ indentWithTab }
-                basicSetup={ resolveBasicSetup(basicSetup) }
-                lineWrapping={ lineWrapping }
-                extensions={ extensions }
-                ariaLabel={ ariaLabel }
-                ariaLabelledBy={ ariaLabelledBy }
-                isInvalid={ isInvalid }
-                onCreateEditor={ onCreateEditor }
-                onChange={ onChange }
-                isUncontrolled={ value === undefined }
-                uncontrolledRef={ uncontrolledRef }
+                editorRef={mergeRefs(editorRef, ref)}
+                className={cn(styles.editor, editorClassName)}
+                doc={doc}
+                autoResize={autoResize}
+                maxHeight={maxHeight}
+                autoFocus={autoFocus}
+                placeholder={placeholder}
+                isDisabled={isDisabled}
+                isReadOnly={isReadOnly}
+                indentWithTab={indentWithTab}
+                basicSetup={resolveBasicSetup(basicSetup)}
+                lineWrapping={lineWrapping}
+                extensions={extensions}
+                ariaLabel={ariaLabel}
+                ariaLabelledBy={ariaLabelledBy}
+                isInvalid={isInvalid}
+                onCreateEditor={onCreateEditor}
+                onChange={onChange}
+                isUncontrolled={value === undefined}
+                uncontrolledRef={uncontrolledRef}
             />
         </Suspense>
     );
 
     return (
         <Group
-            className={ cn(styles.field, className) }
-            data-variant={ variant }
-            data-size={ size }
-            data-autoresize={ autoResize ? 'true' : 'false' }
-            data-max-height={ maxHeight ? '' : undefined }
-            data-end-action={ endAction ? '' : undefined }
-            isDisabled={ isDisabled }
-            isReadOnly={ isReadOnly }
-            isInvalid={ isInvalid }
+            className={cn(styles.field, className)}
+            data-variant={variant}
+            data-size={size}
+            data-autoresize={autoResize ? 'true' : 'false'}
+            data-max-height={maxHeight ? '' : undefined}
+            data-end-action={endAction ? '' : undefined}
+            isDisabled={isDisabled}
+            isReadOnly={isReadOnly}
+            isInvalid={isInvalid}
             data-modal-drag-exclude
-            onClick={ () => {
+            onClick={() => {
                 editorRef.current?.view?.focus();
-            } }
-            style={ fieldStyle }
+            }}
+            style={fieldStyle}
         >
-            <Show
-                when={ verticalChrome || horizontalChrome }
-                fallback={ editor }
-            >
+            <Show when={verticalChrome || horizontalChrome} fallback={editor}>
                 <ScrollChromeRoot
-                    rootRef={ chrome.rootRef }
-                    className={ styles.scrollChrome }
-                    vertical={ verticalChrome }
-                    horizontal={ horizontalChrome }
-                    rootPointerHandlers={ chrome.rootPointerHandlers }
+                    rootRef={chrome.rootRef}
+                    className={styles.scrollChrome}
+                    vertical={verticalChrome}
+                    horizontal={horizontalChrome}
+                    rootPointerHandlers={chrome.rootPointerHandlers}
                 >
-                    { editor }
+                    {editor}
                     <ScrollChromeBars
-                        vertical={ verticalChrome }
-                        horizontal={ horizontalChrome }
-                        setScrollbarV={ chrome.setScrollbarV }
-                        setScrollbarH={ chrome.setScrollbarH }
-                        onPointerDown={ chrome.handlePointerDown }
+                        vertical={verticalChrome}
+                        horizontal={horizontalChrome}
+                        setScrollbarV={chrome.setScrollbarV}
+                        setScrollbarH={chrome.setScrollbarH}
+                        onPointerDown={chrome.handlePointerDown}
                     />
                 </ScrollChromeRoot>
             </Show>
-            <Show when={ endAction }>
+            <Show when={endAction}>
                 <span
-                    className={ styles.endAction }
-                    onClick={ (event) => {
+                    className={styles.endAction}
+                    onClick={event => {
                         event.stopPropagation();
-                    } }
-                    onPointerDown={ (event) => {
+                    }}
+                    onPointerDown={event => {
                         event.stopPropagation();
-                    } }
+                    }}
                 >
-                    { endAction }
+                    {endAction}
                 </span>
             </Show>
         </Group>

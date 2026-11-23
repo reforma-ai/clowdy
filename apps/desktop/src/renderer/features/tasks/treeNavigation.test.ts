@@ -6,7 +6,12 @@ import type { Task } from '@clowdy/protocol';
 import type { TreeRow } from './taskTree';
 
 /** A row of a task with only an id: the move reads the id, the depth, and whether the row has tasks inside it and is folded. */
-const row = (id: string, depth: number, { hasChildren = false, collapsed = false } = {}): TreeRow => ({ task: { id } as Task, depth, hasChildren, collapsed });
+const row = (id: string, depth: number, { hasChildren = false, collapsed = false } = {}): TreeRow => ({
+    task: { id } as Task,
+    depth,
+    hasChildren,
+    collapsed,
+});
 
 /**
  * a (open)
@@ -16,7 +21,14 @@ const row = (id: string, depth: number, { hasChildren = false, collapsed = false
  * e (folded)
  * f
  */
-const ROWS = [row('a', 0, { hasChildren: true }), row('b', 1, { hasChildren: true }), row('c', 2), row('d', 1), row('e', 0, { hasChildren: true, collapsed: true }), row('f', 0)];
+const ROWS = [
+    row('a', 0, { hasChildren: true }),
+    row('b', 1, { hasChildren: true }),
+    row('c', 2),
+    row('d', 1),
+    row('e', 0, { hasChildren: true, collapsed: true }),
+    row('f', 0),
+];
 
 describe('treeMove', () => {
     describe('Right', () => {
@@ -51,7 +63,11 @@ describe('treeMove', () => {
         });
 
         it('goes to the parent row from a folded row, since it has nothing to fold', () => {
-            const rows = [row('a', 0, { hasChildren: true }), row('b', 1, { hasChildren: true, collapsed: true }), row('c', 1)];
+            const rows = [
+                row('a', 0, { hasChildren: true }),
+                row('b', 1, { hasChildren: true, collapsed: true }),
+                row('c', 1),
+            ];
 
             expect(treeMove(rows, 'b', 'left')).toEqual({ kind: 'move', taskId: 'a' });
         });

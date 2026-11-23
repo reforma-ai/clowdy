@@ -10,7 +10,12 @@ import type { RootStore } from '../../stores';
  * needs it: the manager and the editor behind it are a chunk of their own, kept out of the window's first load. The place has to be ready (`isPlaceReady`): a worktree that
  * is not made yet has no files, and its manager would keep the failed listing after the worktree is made.
  */
-export async function filesManagerOf(root: RootStore, projectId: ProjectId, place: Place, kind: 'files' | 'docs' = 'files'): Promise<FileManager> {
+export async function filesManagerOf(
+    root: RootStore,
+    projectId: ProjectId,
+    place: Place,
+    kind: 'files' | 'docs' = 'files'
+): Promise<FileManager> {
     const { filesStoreOf } = await import('./useFilesStore');
 
     return filesStoreOf(root).startedManagerOf(projectId, place, kind);
@@ -37,15 +42,21 @@ async function entryOf(manager: FileManager, path: string): Promise<FileEntry | 
     try {
         const slash = path.lastIndexOf('/');
 
-        return (await manager.provider.list(slash === -1 ? '' : path.slice(0, slash), 1)).find(entry => entry.path === path);
-    }
-    catch {
+        return (await manager.provider.list(slash === -1 ? '' : path.slice(0, slash), 1)).find(
+            entry => entry.path === path
+        );
+    } catch {
         return undefined;
     }
 }
 
 /** Whether a path inside a place is a file or a folder on the disk, or nothing when it is not there (or the place cannot be read, or is a worktree that is not made yet). */
-export async function kindOnDisk(root: RootStore, projectId: ProjectId, place: Place, relative: string): Promise<FileKind | undefined> {
+export async function kindOnDisk(
+    root: RootStore,
+    projectId: ProjectId,
+    place: Place,
+    relative: string
+): Promise<FileKind | undefined> {
     if (!isPlaceReady(place)) return undefined;
 
     if (relative === '') return 'directory';
@@ -58,14 +69,19 @@ export async function kindOnDisk(root: RootStore, projectId: ProjectId, place: P
  * place (the folder's own checkout, or the worktree of the chat), empty for the place itself (the tab only shows). Resolves `false`, with nothing opened and the panel and
  * the tabs as they were, when the path is not there, the file cannot be read or the place is a worktree that is not made yet.
  */
-export async function openInFiles(root: RootStore, projectId: ProjectId, place: Place, relative: string): Promise<boolean> {
+export async function openInFiles(
+    root: RootStore,
+    projectId: ProjectId,
+    place: Place,
+    relative: string
+): Promise<boolean> {
     if (!isPlaceReady(place)) return false;
 
     const tab = tabOf(relative);
     const manager = await filesManagerOf(root, projectId, place, tab);
 
     // Asked before opening: opening a path that is not there still adds a tab, which takes the focus and, at the most tabs, closes the one used least, before it fails.
-    if (relative !== '' && !await entryOf(manager, relative)) return false;
+    if (relative !== '' && !(await entryOf(manager, relative))) return false;
 
     const document = await manager.open(relative);
 

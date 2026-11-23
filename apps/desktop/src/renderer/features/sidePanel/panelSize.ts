@@ -18,7 +18,10 @@ export interface PanelSizeOption {
 }
 
 /** What the grey tile of Half says when the pointer is over it: a tab that is always wide, and a window too narrow for the tab beside the chat. */
-const NO_HALF_HINTS: Record<NoHalfReason, string> = { tab: 'This tab is always wide', window: 'The window is too narrow for this tab beside the chat' };
+const NO_HALF_HINTS: Record<NoHalfReason, string> = {
+    tab: 'This tab is always wide',
+    window: 'The window is too narrow for this tab beside the chat',
+};
 
 /** The sizes the menu draws, wide, half and hide: half stays where it is, grey and saying why on hover, for a panel that cannot be beside the chat. */
 export function panelSizeOptions(noHalf: NoHalfReason | null): PanelSizeOption[] {

@@ -1,11 +1,18 @@
-import { PROTOCOL_VERSION, type DaemonInfo, type Health } from '@clowdy/protocol';
 import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { type DaemonInfo, type Health, PROTOCOL_VERSION } from '@clowdy/protocol';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { type DaemonContext } from './daemon';
-import { fromOlderBundle, isDaemonSource, keepDaemonFresh, newestSourceTime, restartIfStale, sourcesChangedSince } from './daemonKeeper';
+import {
+    fromOlderBundle,
+    isDaemonSource,
+    keepDaemonFresh,
+    newestSourceTime,
+    restartIfStale,
+    sourcesChangedSince,
+} from './daemonKeeper';
 
 import type { DaemonHost } from './daemonHost';
 
@@ -27,13 +34,53 @@ interface World {
  * A machine in memory with one daemon on it, started at `startedAt`, with `activeRuns` runs in progress. A daemon asked to
  * stop answers no more at once and its process ends `windDownMs` later.
  */
-function setup({ running = true, startedAt = 1000, activeRuns = 0, version = '0.0.1', protocol = PROTOCOL_VERSION, windDownMs = 0 }: { running?: boolean; startedAt?: number; activeRuns?: number; version?: string; protocol?: number; windDownMs?: number } = {}) {
-    const world: World = { files: new Map(), daemons: new Map(), endsAt: new Map(), stops: 0, launches: 0, clock: startedAt + 5000, nextPid: 100 };
-    const publish = (startedAtOfNew: number, runs: number, ofVersion = '412', ofProtocol = PROTOCOL_VERSION): DaemonInfo => {
-        const info: DaemonInfo = { pid: world.nextPid++, port: 50000 + world.nextPid, token: 't', protocol: ofProtocol, startedAt: startedAtOfNew };
+function setup({
+    running = true,
+    startedAt = 1000,
+    activeRuns = 0,
+    version = '0.0.1',
+    protocol = PROTOCOL_VERSION,
+    windDownMs = 0,
+}: {
+    running?: boolean;
+    startedAt?: number;
+    activeRuns?: number;
+    version?: string;
+    protocol?: number;
+    windDownMs?: number;
+} = {}) {
+    const world: World = {
+        files: new Map(),
+        daemons: new Map(),
+        endsAt: new Map(),
+        stops: 0,
+        launches: 0,
+        clock: startedAt + 5000,
+        nextPid: 100,
+    };
+    const publish = (
+        startedAtOfNew: number,
+        runs: number,
+        ofVersion = '412',
+        ofProtocol = PROTOCOL_VERSION
+    ): DaemonInfo => {
+        const info: DaemonInfo = {
+            pid: world.nextPid++,
+            port: 50000 + world.nextPid,
+            token: 't',
+            protocol: ofProtocol,
+            startedAt: startedAtOfNew,
+        };
 
         world.files.set(INFO_FILE, JSON.stringify(info));
-        world.daemons.set(info.port, { ok: true, protocol: ofProtocol, version: ofVersion, pid: info.pid, startedAt: startedAtOfNew, activeRuns: runs });
+        world.daemons.set(info.port, {
+            ok: true,
+            protocol: ofProtocol,
+            version: ofVersion,
+            pid: info.pid,
+            startedAt: startedAtOfNew,
+            activeRuns: runs,
+        });
         world.endsAt.set(info.pid, Infinity);
 
         return info;
@@ -59,7 +106,7 @@ function setup({ running = true, startedAt = 1000, activeRuns = 0, version = '0.
         },
         alive: pid => (world.endsAt.get(pid) ?? 0) > world.clock,
         loginPath: async () => undefined,
-        sleep: async (ms) => {
+        sleep: async ms => {
             world.clock += ms;
         },
         now: () => world.clock,
@@ -72,53 +119,92 @@ function setup({ running = true, startedAt = 1000, activeRuns = 0, version = '0.
         runtime: { bun: '/bin/bun', entry: '/repo/apps/daemon/src/main.ts' },
     };
 
-    return { world, context, setRuns: (runs: number) => world.daemons.forEach((health, port) => world.daemons.set(port, { ...health, activeRuns: runs })) };
+    return {
+        world,
+        context,
+        setRuns: (runs: number) =>
+            world.daemons.forEach((health, port) => world.daemons.set(port, { ...health, activeRuns: runs })),
+    };
 }
 
 describe('restartIfStale', () => {
     test('does nothing when no daemon runs', async () => {
         const { world, context } = setup({ running: false });
 
-        expect(await restartIfStale(context, sourcesChangedSince(async () => 9_999))).toEqual({ kind: 'none' });
+        expect(
+            await restartIfStale(
+                context,
+                sourcesChangedSince(async () => 9_999)
+            )
+        ).toEqual({ kind: 'none' });
         expect([world.stops, world.launches]).toEqual([0, 0]);
     });
 
     test('leaves a daemon that started after the last source change', async () => {
         const { world, context } = setup({ startedAt: 1000 });
 
-        expect(await restartIfStale(context, sourcesChangedSince(async () => 1000))).toEqual({ kind: 'fresh' });
+        expect(
+            await restartIfStale(
+                context,
+                sourcesChangedSince(async () => 1000)
+            )
+        ).toEqual({ kind: 'fresh' });
         expect([world.stops, world.launches]).toEqual([0, 0]);
     });
 
-    test('replaces a bundle\'s daemon, which a run on the test feed left, with one from the sources', async () => {
+    test("replaces a bundle's daemon, which a run on the test feed left, with one from the sources", async () => {
         const { world, context } = setup({ startedAt: 1000, version: '412' });
 
-        expect(await restartIfStale(context, sourcesChangedSince(async () => 0))).toMatchObject({ kind: 'restarted' });
+        expect(
+            await restartIfStale(
+                context,
+                sourcesChangedSince(async () => 0)
+            )
+        ).toMatchObject({ kind: 'restarted' });
         expect([world.stops, world.launches]).toEqual([1, 1]);
     });
 
     test('waits while the stale daemon has runs in progress, so nothing is interrupted', async () => {
         const { world, context } = setup({ startedAt: 1000, activeRuns: 2 });
 
-        expect(await restartIfStale(context, sourcesChangedSince(async () => 2000))).toMatchObject({ kind: 'busy', activeRuns: 2 });
+        expect(
+            await restartIfStale(
+                context,
+                sourcesChangedSince(async () => 2000)
+            )
+        ).toMatchObject({ kind: 'busy', activeRuns: 2 });
         expect([world.stops, world.launches]).toEqual([0, 0]);
     });
 
     test('does not restart a stale daemon that does not say how many runs it has', async () => {
         const { world, context } = setup({ startedAt: 1000 });
-        const silent = { ...context, host: { ...context.host, probe: async (port: number) => {
-            const { activeRuns: _runs, ...health } = (await context.host.probe(port))!;
+        const silent = {
+            ...context,
+            host: {
+                ...context.host,
+                probe: async (port: number) => {
+                    const { activeRuns: _runs, ...health } = (await context.host.probe(port))!;
 
-            return health;
-        } } };
+                    return health;
+                },
+            },
+        };
 
-        expect(await restartIfStale(silent, sourcesChangedSince(async () => 2000))).toMatchObject({ kind: 'busy', activeRuns: undefined });
+        expect(
+            await restartIfStale(
+                silent,
+                sourcesChangedSince(async () => 2000)
+            )
+        ).toMatchObject({ kind: 'busy', activeRuns: undefined });
         expect(world.stops).toBe(0);
     });
 
     test('replaces an idle stale daemon with a new one', async () => {
         const { world, context } = setup({ startedAt: 1000, activeRuns: 0 });
-        const outcome = await restartIfStale(context, sourcesChangedSince(async () => 2000));
+        const outcome = await restartIfStale(
+            context,
+            sourcesChangedSince(async () => 2000)
+        );
 
         expect(outcome.kind).toBe('restarted');
         expect([world.stops, world.launches]).toEqual([1, 1]);
@@ -130,20 +216,31 @@ describe('restartIfStale', () => {
         const { world, context } = setup({ startedAt: 1000, windDownMs: 1500 });
         const { pid: stale } = JSON.parse(world.files.get(INFO_FILE)!) as DaemonInfo;
         let staleRanAtLaunch: boolean | undefined;
-        const launch: DaemonHost['launch'] = (options) => {
+        const launch: DaemonHost['launch'] = options => {
             staleRanAtLaunch = context.host.alive(stale);
 
             return context.host.launch(options);
         };
 
-        expect(await restartIfStale({ ...context, host: { ...context.host, launch } }, sourcesChangedSince(async () => 2000), true)).toMatchObject({ kind: 'restarted' });
+        expect(
+            await restartIfStale(
+                { ...context, host: { ...context.host, launch } },
+                sourcesChangedSince(async () => 2000),
+                true
+            )
+        ).toMatchObject({ kind: 'restarted' });
         expect(staleRanAtLaunch).toBe(false);
     });
 
     test('starts nothing when the stale daemon does not end', async () => {
         const { world, context } = setup({ startedAt: 1000, windDownMs: Infinity });
 
-        await expect(restartIfStale(context, sourcesChangedSince(async () => 2000))).rejects.toThrow('did not stop within 30 seconds');
+        await expect(
+            restartIfStale(
+                context,
+                sourcesChangedSince(async () => 2000)
+            )
+        ).rejects.toThrow('did not stop within 30 seconds');
         expect(world.launches).toBe(0);
     });
 });
@@ -225,7 +322,7 @@ describe('keepDaemonFresh', () => {
         const { world, context } = setup({ startedAt: 1000 });
         let newest = 2000;
         let saved = false;
-        const launch: DaemonHost['launch'] = (options) => {
+        const launch: DaemonHost['launch'] = options => {
             const exited = context.host.launch(options);
 
             if (!saved) {
@@ -236,7 +333,10 @@ describe('keepDaemonFresh', () => {
 
             return exited;
         };
-        const { changes } = watched({ context: { ...context, host: { ...context.host, launch } }, isStale: sourcesChangedSince(async () => newest) });
+        const { changes } = watched({
+            context: { ...context, host: { ...context.host, launch } },
+            isStale: sourcesChangedSince(async () => newest),
+        });
 
         changes[0]('change', 'runs/service.ts');
         await vi.advanceTimersByTimeAsync(1000);
@@ -302,7 +402,13 @@ describe('a packaged app', () => {
         const { world, context, setRuns } = setup({ version: '411', activeRuns: 2 });
         const busy = vi.fn();
         const restarted = vi.fn();
-        const keeper = keepDaemonFresh({ context, isStale: fromOlderBundle(412), onRestarted: restarted, onBusy: busy, busyRetryMs: 5000 });
+        const keeper = keepDaemonFresh({
+            context,
+            isStale: fromOlderBundle(412),
+            onRestarted: restarted,
+            onBusy: busy,
+            busyRetryMs: 5000,
+        });
 
         expect(await keeper.checkNow()).toMatchObject({ kind: 'busy', activeRuns: 2, protocol: PROTOCOL_VERSION });
         await vi.advanceTimersByTimeAsync(10_000);
@@ -338,7 +444,9 @@ describe('a packaged app', () => {
 describe('daemon sources', () => {
     test('are TypeScript and JSON files that are not tests or dependencies', () => {
         expect(['runs/driver.ts', 'db/schema.json', 'a\\b\\c.ts'].map(isDaemonSource)).toEqual([true, true, true]);
-        expect(['runs/driver.test.ts', 'test/helpers.ts', 'node_modules/x/a.ts', 'README.md'].map(isDaemonSource)).toEqual([false, false, false, false]);
+        expect(
+            ['runs/driver.test.ts', 'test/helpers.ts', 'node_modules/x/a.ts', 'README.md'].map(isDaemonSource)
+        ).toEqual([false, false, false, false]);
     });
 
     test('newestSourceTime is the latest modification of a source, and 0 for a missing folder', async () => {
@@ -356,8 +464,7 @@ describe('daemon sources', () => {
 
             expect(await newestSourceTime([dir])).toBe(300_000);
             expect(await newestSourceTime([path.join(dir, 'missing')])).toBe(0);
-        }
-        finally {
+        } finally {
             rmSync(dir, { recursive: true, force: true });
         }
     });

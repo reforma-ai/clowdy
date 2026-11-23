@@ -22,17 +22,9 @@ export function ScrollContainer({
     onScroll,
 }: ScrollContainerProps) {
     return (
-        <div
-            ref={ userRef }
-            className={ cn(styles.container, containerClass) }
-            onScroll={ onScroll }
-            tabIndex={ -1 }
-        >
-            <div
-                ref={ contentRef }
-                className={ cn(styles.content, contentClass) }
-            >
-                { children }
+        <div ref={userRef} className={cn(styles.container, containerClass)} onScroll={onScroll} tabIndex={-1}>
+            <div ref={contentRef} className={cn(styles.content, contentClass)}>
+                {children}
             </div>
         </div>
     );

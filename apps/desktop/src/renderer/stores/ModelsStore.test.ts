@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FixtureTransport } from '../daemon/fixtureTransport';
 import { overrideTransport } from '../daemon/testing';
 import { RootStoreProvider, useAgentModels } from './hooks';
-import { ModelsStore, type AgentModelList } from './ModelsStore';
+import { type AgentModelList, ModelsStore } from './ModelsStore';
 import { RootStore } from './RootStore';
 
 import type { AgentModels } from '@clowdy/protocol';
@@ -20,9 +20,10 @@ const answer = (...ids: string[]): AgentModels => ({ state: 'ok', models: ids.ma
 function slowTransport() {
     const asked: { agentId: string; release: (answer: AgentModels) => void; fail: (error: Error) => void }[] = [];
     const transport = {
-        getAgentModels: (agentId: string) => new Promise<AgentModels>((resolve, reject) => {
-            asked.push({ agentId, release: resolve, fail: reject });
-        }),
+        getAgentModels: (agentId: string) =>
+            new Promise<AgentModels>((resolve, reject) => {
+                asked.push({ agentId, release: resolve, fail: reject });
+            }),
     } as unknown as Transport;
 
     return { transport, asked };
@@ -43,7 +44,9 @@ async function ended(promise: Promise<unknown>): Promise<boolean> {
 describe('ModelsStore', () => {
     it('reads the list of an agent once, however many ask', async () => {
         const reads: string[] = [];
-        const store = new ModelsStore({ getAgentModels: async (agentId: string) => (reads.push(agentId), answer('opus')) } as unknown as Transport);
+        const store = new ModelsStore({
+            getAgentModels: async (agentId: string) => (reads.push(agentId), answer('opus')),
+        } as unknown as Transport);
         const list = store.of('claude');
 
         expect(list.status).toBe('idle');
@@ -140,7 +143,9 @@ describe('ModelsStore', () => {
     });
 
     it('says what a rejection that is not an Error says', async () => {
-        const list = new ModelsStore({ getAgentModels: async () => Promise.reject('offline') } as unknown as Transport).of('codex');
+        const list = new ModelsStore({
+            getAgentModels: async () => Promise.reject('offline'),
+        } as unknown as Transport).of('codex');
 
         await list.load();
 
@@ -243,7 +248,9 @@ describe('the models the root store reloads', () => {
     });
 
     function make(getAgentModels: Transport['getAgentModels']) {
-        const root = new RootStore(overrideTransport(new FixtureTransport(), { getAgentModels }), { storage: { getItem: () => null, setItem: () => undefined } });
+        const root = new RootStore(overrideTransport(new FixtureTransport(), { getAgentModels }), {
+            storage: { getItem: () => null, setItem: () => undefined },
+        });
 
         stores.push(root);
 
@@ -281,7 +288,10 @@ describe('the models the root store reloads', () => {
             const dom = createRoot(document.createElement('div'));
 
             return {
-                show: (agentId: string | undefined) => act(async () => dom.render(createElement(RootStoreProvider, { value: root }, createElement(Probe, { agentId })))),
+                show: (agentId: string | undefined) =>
+                    act(async () =>
+                        dom.render(createElement(RootStoreProvider, { value: root }, createElement(Probe, { agentId })))
+                    ),
                 unmount: () => act(async () => dom.unmount()),
             };
         }

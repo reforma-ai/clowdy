@@ -18,9 +18,9 @@ import {
     formatAgo,
     groupByStatus,
     isFiltering,
+    NO_FILTER,
     newestChat,
     newestDocPath,
-    NO_FILTER,
     resultRows,
     runsByTask,
     startBlockedReason,
@@ -35,11 +35,11 @@ const MINUTE = 60_000;
 
 function task(number: number, rest: Partial<Task> = {}): Task {
     return {
-        id: `t-${ number }`,
+        id: `t-${number}`,
         projectId: 'p',
         number,
-        key: `CAR-${ number }`,
-        title: `Task ${ number }`,
+        key: `CAR-${number}`,
+        title: `Task ${number}`,
         description: '',
         statusId: 'todo',
         dependsOn: [],
@@ -51,10 +51,25 @@ function task(number: number, rest: Partial<Task> = {}): Task {
 }
 
 function run(id: string, status: Run['status'], rest: Partial<Run> = {}): Run {
-    return { id, projectId: 'p', rootRunId: id, role: 'orchestrator', name: `Orchestrator ${ id }`, summary: '', status, engine: 'fake', createdAt: 1000, ...rest };
+    return {
+        id,
+        projectId: 'p',
+        rootRunId: id,
+        role: 'orchestrator',
+        name: `Orchestrator ${id}`,
+        summary: '',
+        status,
+        engine: 'fake',
+        createdAt: 1000,
+        ...rest,
+    };
 }
 
-const link = (runId: string, taskId: string, relation: RunTaskLink['relation']): RunTaskLink => ({ runId, taskId, relation });
+const link = (runId: string, taskId: string, relation: RunTaskLink['relation']): RunTaskLink => ({
+    runId,
+    taskId,
+    relation,
+});
 
 function runMap(...runs: Run[]): Map<string, Run> {
     return new Map(runs.map(item => [item.id, item]));
@@ -62,8 +77,15 @@ function runMap(...runs: Run[]): Map<string, Run> {
 
 describe('runsByTask', () => {
     it('lists the assigned runs, oldest first, and leaves out runs that only created the task', () => {
-        const runs = runMap(run('a', 'running', { createdAt: 30 }), run('b', 'queued', { createdAt: 10 }), run('orch', 'running'));
-        const byTask = runsByTask([link('a', 't-1', 'assigned'), link('b', 't-1', 'assigned'), link('orch', 't-1', 'created')], runs);
+        const runs = runMap(
+            run('a', 'running', { createdAt: 30 }),
+            run('b', 'queued', { createdAt: 10 }),
+            run('orch', 'running')
+        );
+        const byTask = runsByTask(
+            [link('a', 't-1', 'assigned'), link('b', 't-1', 'assigned'), link('orch', 't-1', 'created')],
+            runs
+        );
 
         expect(byTask.get('t-1')?.map(item => item.id)).toEqual(['b', 'a']);
     });
@@ -71,9 +93,15 @@ describe('runsByTask', () => {
     it('lists a run once when it created the task and is assigned to it too, in either order', () => {
         const runs = runMap(run('a', 'running'));
 
-        expect(runsByTask([link('a', 't-1', 'assigned'), link('a', 't-1', 'created')], runs).get('t-1')).toEqual([runs.get('a')]);
-        expect(runsByTask([link('a', 't-1', 'created'), link('a', 't-1', 'assigned')], runs).get('t-1')).toEqual([runs.get('a')]);
-        expect(runsByTask([link('a', 't-1', 'assigned'), link('a', 't-1', 'assigned')], runs).get('t-1')).toEqual([runs.get('a')]);
+        expect(runsByTask([link('a', 't-1', 'assigned'), link('a', 't-1', 'created')], runs).get('t-1')).toEqual([
+            runs.get('a'),
+        ]);
+        expect(runsByTask([link('a', 't-1', 'created'), link('a', 't-1', 'assigned')], runs).get('t-1')).toEqual([
+            runs.get('a'),
+        ]);
+        expect(runsByTask([link('a', 't-1', 'assigned'), link('a', 't-1', 'assigned')], runs).get('t-1')).toEqual([
+            runs.get('a'),
+        ]);
     });
 
     it('skips links to runs that are not known', () => {
@@ -88,7 +116,8 @@ describe('dependencyState', () => {
     });
 
     it('holds back on every open category and on a status the workflow lost', () => {
-        for (const category of ['backlog', 'todo', 'active', 'review'] as const) expect(dependencyState(category)).toEqual({ resolved: false, label: 'Not done' });
+        for (const category of ['backlog', 'todo', 'active', 'review'] as const)
+            expect(dependencyState(category)).toEqual({ resolved: false, label: 'Not done' });
 
         expect(dependencyState(undefined)).toEqual({ resolved: false, label: 'Not done' });
     });
@@ -96,8 +125,12 @@ describe('dependencyState', () => {
 
 describe('start', () => {
     it('is blocked by an active assigned run, and names it', () => {
-        expect(startBlockedReason([run('07', 'running', { name: 'Orchestrator 07' })])).toBe('Orchestrator 07 is already working on this task');
-        expect(startBlockedReason([run('a', 'queued'), run('b', 'waiting_user')])).toBe('2 agents are already working on this task');
+        expect(startBlockedReason([run('07', 'running', { name: 'Orchestrator 07' })])).toBe(
+            'Orchestrator 07 is already working on this task'
+        );
+        expect(startBlockedReason([run('a', 'queued'), run('b', 'waiting_user')])).toBe(
+            '2 agents are already working on this task'
+        );
     });
 
     it('is open when the runs finished, or there are no runs', () => {
@@ -121,7 +154,8 @@ describe('filters', () => {
     ];
     const runs = runMap(run('a', 'running'), run('b', 'succeeded'));
     const byTask = runsByTask([link('a', 't-1', 'assigned'), link('b', 't-3', 'assigned')], runs);
-    const keysOf = (filter: Partial<typeof NO_FILTER>) => filterTasks(tasks, { ...NO_FILTER, ...filter }, byTask).map(item => item.key);
+    const keysOf = (filter: Partial<typeof NO_FILTER>) =>
+        filterTasks(tasks, { ...NO_FILTER, ...filter }, byTask).map(item => item.key);
 
     it('searches the key, the title and the description without regard to case', () => {
         expect(keysOf({ query: 'BOOKING' })).toEqual(['CAR-1', 'CAR-3']);
@@ -146,10 +180,16 @@ describe('filters', () => {
     });
 
     it('offers the agents linked to tasks, working ones first', () => {
-        const options = agentOptions(runsByTask(
-            [link('b', 't-1', 'assigned'), link('a', 't-2', 'assigned'), link('c', 't-2', 'assigned')],
-            runMap(run('a', 'succeeded', { name: 'Orchestrator 02' }), run('b', 'running', { name: 'Orchestrator 10' }), run('c', 'running', { name: 'Orchestrator 09' }))
-        ));
+        const options = agentOptions(
+            runsByTask(
+                [link('b', 't-1', 'assigned'), link('a', 't-2', 'assigned'), link('c', 't-2', 'assigned')],
+                runMap(
+                    run('a', 'succeeded', { name: 'Orchestrator 02' }),
+                    run('b', 'running', { name: 'Orchestrator 10' }),
+                    run('c', 'running', { name: 'Orchestrator 09' })
+                )
+            )
+        );
 
         expect(options.map(item => item.name)).toEqual(['Orchestrator 09', 'Orchestrator 10', 'Orchestrator 02']);
     });
@@ -202,7 +242,9 @@ describe('blockingCandidates', () => {
     it('does not offer a loop that dependencyCandidates would refuse from the other side', () => {
         for (const owner of tasks) {
             for (const candidate of blockingCandidates(tasks, { taskId: owner.id })) {
-                expect(ids(dependencyCandidates(tasks, { taskId: candidate.id, taken: candidate.dependsOn }))).toContain(owner.id);
+                expect(
+                    ids(dependencyCandidates(tasks, { taskId: candidate.id, taken: candidate.dependsOn }))
+                ).toContain(owner.id);
             }
         }
     });
@@ -219,7 +261,13 @@ describe('blockingCandidates', () => {
 });
 
 describe('dependency pickers', () => {
-    const tasks = [task(1), task(2, { dependsOn: ['t-1'] }), task(3, { dependsOn: ['t-2'] }), task(4), task(5, { dependsOn: ['t-2'] })];
+    const tasks = [
+        task(1),
+        task(2, { dependsOn: ['t-1'] }),
+        task(3, { dependsOn: ['t-2'] }),
+        task(4),
+        task(5, { dependsOn: ['t-2'] }),
+    ];
     const ids = (list: Task[]) => list.map(item => item.id);
 
     it('"blocked by" lists what the task depends on and what it may still depend on, in task order', () => {
@@ -233,7 +281,9 @@ describe('dependency pickers', () => {
     });
 
     it('leaves out a dependency whose task is gone', () => {
-        expect(ids(blockedByOptions([task(1, { dependsOn: ['gone'] })], { id: 't-1', dependsOn: ['gone'] }))).toEqual([]);
+        expect(ids(blockedByOptions([task(1, { dependsOn: ['gone'] })], { id: 't-1', dependsOn: ['gone'] }))).toEqual(
+            []
+        );
     });
 });
 
@@ -294,11 +344,20 @@ describe('sources', () => {
 
 describe('taskActivity', () => {
     const now = 100 * MINUTE;
-    const t = task(24, { createdAt: now - 90 * MINUTE, updatedAt: now - 5 * MINUTE, createdBy: { kind: 'run', runId: 'orch' } });
+    const t = task(24, {
+        createdAt: now - 90 * MINUTE,
+        updatedAt: now - 5 * MINUTE,
+        createdBy: { kind: 'run', runId: 'orch' },
+    });
 
     it('lists what happened, newest first, with the run behind each event', () => {
         const orch = run('orch', 'running', { name: 'Orchestrator 01' });
-        const done = run('x', 'succeeded', { name: 'Orchestrator 09', startedAt: now - 60 * MINUTE, finishedAt: now - 30 * MINUTE, result: 'Added the table.' });
+        const done = run('x', 'succeeded', {
+            name: 'Orchestrator 09',
+            startedAt: now - 60 * MINUTE,
+            finishedAt: now - 30 * MINUTE,
+            result: 'Added the table.',
+        });
         const live = run('y', 'running', { name: 'Orchestrator 07', startedAt: now - 20 * MINUTE });
         const queued = run('z', 'queued', { name: 'Orchestrator 02', createdAt: now - MINUTE });
         const activity = taskActivity(t, [done, live, queued], runMap(orch, done, live, queued));
@@ -314,11 +373,14 @@ describe('taskActivity', () => {
     });
 
     it('says who created the task, whoever they are', () => {
-        const textOf = (createdBy: Task['createdBy'], runs = runMap()) => taskActivity(task(1, { createdBy }), [], runs)[0].text;
+        const textOf = (createdBy: Task['createdBy'], runs = runMap()) =>
+            taskActivity(task(1, { createdBy }), [], runs)[0].text;
 
         expect(textOf({ kind: 'user' })).toBe('You created the task');
         expect(textOf({ kind: 'provider', provider: 'linear' })).toBe('Imported from Linear');
-        expect(textOf({ kind: 'run', runId: 'orch' }, runMap(run('orch', 'running', { name: 'Orchestrator 01' })))).toBe('Orchestrator 01 created the task');
+        expect(
+            textOf({ kind: 'run', runId: 'orch' }, runMap(run('orch', 'running', { name: 'Orchestrator 01' })))
+        ).toBe('Orchestrator 01 created the task');
         expect(textOf({ kind: 'run', runId: 'gone' })).toBe('An agent created the task');
     });
 
@@ -349,17 +411,26 @@ describe('formatAgo', () => {
 });
 
 describe('resultRows', () => {
-    const artifact = (id: string, kind: Artifact['kind'], title: string, ref: Artifact['ref'], createdAt = 1): Artifact => ({ id, projectId: 'p', kind, title, ref, createdAt });
+    const artifact = (
+        id: string,
+        kind: Artifact['kind'],
+        title: string,
+        ref: Artifact['ref'],
+        createdAt = 1
+    ): Artifact => ({ id, projectId: 'p', kind, title, ref, createdAt });
 
     it('reads each kind of artifact, newest first', () => {
-        const rows = resultRows([
-            artifact('a', 'commit', 'Add the table', { sha: 'f00dcafe1234' }, 1),
-            artifact('b', 'diff', 'Form changes', { files: 2, added: 42, removed: 118 }, 5),
-            artifact('c', 'check', 'Typecheck', { command: 'bun run typecheck', exitCode: 2 }, 4),
-            artifact('d', 'check', 'Tests', { exitCode: 0 }, 3),
-            artifact('e', 'doc', 'Pricing notes', { path: 'decisions/pricing.md' }, 2),
-            artifact('f', 'build', 'App build', { path: 'release/app.zip' }, 0),
-        ], { expectChecks: false });
+        const rows = resultRows(
+            [
+                artifact('a', 'commit', 'Add the table', { sha: 'f00dcafe1234' }, 1),
+                artifact('b', 'diff', 'Form changes', { files: 2, added: 42, removed: 118 }, 5),
+                artifact('c', 'check', 'Typecheck', { command: 'bun run typecheck', exitCode: 2 }, 4),
+                artifact('d', 'check', 'Tests', { exitCode: 0 }, 3),
+                artifact('e', 'doc', 'Pricing notes', { path: 'decisions/pricing.md' }, 2),
+                artifact('f', 'build', 'App build', { path: 'release/app.zip' }, 0),
+            ],
+            { expectChecks: false }
+        );
 
         expect(rows.map(row => row.id)).toEqual(['b', 'c', 'd', 'e', 'a', 'f']);
         expect(rows[0].meta).toBe('+42 −118');
@@ -371,33 +442,51 @@ describe('resultRows', () => {
     });
 
     it('treats a check without an exit code as still waiting, and survives artifacts with thin refs', () => {
-        const rows = resultRows([artifact('a', 'check', 'Lint', {}), artifact('b', 'diff', 'Changes', {})], { expectChecks: false });
+        const rows = resultRows([artifact('a', 'check', 'Lint', {}), artifact('b', 'diff', 'Changes', {})], {
+            expectChecks: false,
+        });
 
         expect(rows.find(row => row.id === 'a')?.verdict?.label).toBe('Waiting');
         expect(rows.find(row => row.id === 'b')?.meta).toBeUndefined();
     });
 
     it('announces checks to come while an agent works and no check has reported', () => {
-        expect(resultRows([], { expectChecks: true })).toEqual([{ id: 'checks-waiting', kind: 'check', title: 'Checks', verdict: { label: 'Waiting', tone: 'warning' } }]);
+        expect(resultRows([], { expectChecks: true })).toEqual([
+            { id: 'checks-waiting', kind: 'check', title: 'Checks', verdict: { label: 'Waiting', tone: 'warning' } },
+        ]);
         expect(resultRows([], { expectChecks: false })).toEqual([]);
         expect(resultRows([artifact('a', 'check', 'Lint', { exitCode: 0 })], { expectChecks: true })).toHaveLength(1);
     });
 });
 
 describe('newestDocPath', () => {
-    const artifact = (id: string, kind: Artifact['kind'], ref: Artifact['ref'], createdAt: number): Artifact => ({ id, projectId: 'p', kind, title: id, ref, createdAt });
+    const artifact = (id: string, kind: Artifact['kind'], ref: Artifact['ref'], createdAt: number): Artifact => ({
+        id,
+        projectId: 'p',
+        kind,
+        title: id,
+        ref,
+        createdAt,
+    });
 
     it('is the path of the document created last, whatever else the task produced', () => {
-        expect(newestDocPath([
-            artifact('old', 'doc', { path: 'notes/old.md' }, 1),
-            artifact('diff', 'diff', { files: 1 }, 9),
-            artifact('new', 'doc', { path: 'decisions/pricing.md' }, 5),
-        ])).toBe('decisions/pricing.md');
+        expect(
+            newestDocPath([
+                artifact('old', 'doc', { path: 'notes/old.md' }, 1),
+                artifact('diff', 'diff', { files: 1 }, 9),
+                artifact('new', 'doc', { path: 'decisions/pricing.md' }, 5),
+            ])
+        ).toBe('decisions/pricing.md');
     });
 
     it('is null when the task has no document', () => {
         expect(newestDocPath([])).toBeNull();
-        expect(newestDocPath([artifact('c', 'check', { exitCode: 0 }, 1), artifact('d', 'build', { path: 'release/app.zip' }, 2)])).toBeNull();
+        expect(
+            newestDocPath([
+                artifact('c', 'check', { exitCode: 0 }, 1),
+                artifact('d', 'build', { path: 'release/app.zip' }, 2),
+            ])
+        ).toBeNull();
     });
 
     it('skips a document artifact that names no file', () => {
@@ -408,14 +497,23 @@ describe('newestDocPath', () => {
 
 describe('newestChat', () => {
     it('is the chat updated last, and nothing for no chats', () => {
-        const chats = [{ id: 'a', updatedAt: 5 }, { id: 'b', updatedAt: 9 }, { id: 'c', updatedAt: 2 }];
+        const chats = [
+            { id: 'a', updatedAt: 5 },
+            { id: 'b', updatedAt: 9 },
+            { id: 'c', updatedAt: 2 },
+        ];
 
         expect(newestChat(chats)?.id).toBe('b');
         expect(newestChat([])).toBeUndefined();
     });
 
     it('keeps the first of chats updated at the same time', () => {
-        expect(newestChat([{ id: 'a', updatedAt: 1 }, { id: 'b', updatedAt: 1 }])?.id).toBe('a');
+        expect(
+            newestChat([
+                { id: 'a', updatedAt: 1 },
+                { id: 'b', updatedAt: 1 },
+            ])?.id
+        ).toBe('a');
     });
 });
 
@@ -459,7 +557,11 @@ describe('task grid', () => {
 
     it('leaves out a task whose status is gone, as the board does', () => {
         expect(taskGrid('board', tasks, statuses).flat()).not.toContain('t-5');
-        expect(boardColumns(statuses, tasks).flatMap(column => column.tasks).map(item => item.id)).not.toContain('t-5');
+        expect(
+            boardColumns(statuses, tasks)
+                .flatMap(column => column.tasks)
+                .map(item => item.id)
+        ).not.toContain('t-5');
     });
 
     it('lists the list as one column in the order the list draws it', () => {

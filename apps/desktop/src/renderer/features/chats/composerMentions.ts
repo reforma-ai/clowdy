@@ -12,7 +12,7 @@ function field(data: unknown, name: string): string {
 
 /** A path as a message writes it: `@src/a.ts`, and `@"my notes.md"` when it holds a space. */
 function pathMention(path: string): string {
-    return /\s/.test(path) ? `@"${ path }"` : `@${ path }`;
+    return /\s/.test(path) ? `@"${path}"` : `@${path}`;
 }
 
 /**
@@ -28,7 +28,7 @@ export function serializeMention({ kind, data }: ComposerMentionAttrs): string {
         case 'file':
             return pathMention(field(data, 'path'));
         case 'command':
-            return `Use the skill "${ field(data, 'name') }"`;
+            return `Use the skill "${field(data, 'name')}"`;
         default:
             return '';
     }

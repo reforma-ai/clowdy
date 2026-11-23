@@ -1,1 +1,6 @@
-export { confirmDiscardChanges, ConfirmModalContent, openConfirmModal, type OpenConfirmModalOptions } from './ConfirmModal';
+export {
+    ConfirmModalContent,
+    confirmDiscardChanges,
+    type OpenConfirmModalOptions,
+    openConfirmModal,
+} from './ConfirmModal';

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 
 import { Button, type ButtonColor, type ButtonProps, type ButtonVariant } from '../Button';
 import { useClickout } from '../hooks';
@@ -57,9 +57,12 @@ export function ConfirmButton({
         }, RESET_AFTER_LEAVE_MS);
     };
 
-    useEffect(() => () => {
-        clearResetTimer();
-    }, []);
+    useEffect(
+        () => () => {
+            clearResetTimer();
+        },
+        []
+    );
 
     useClickout({
         enabled: confirming && !busy,
@@ -85,9 +88,9 @@ export function ConfirmButton({
         document.addEventListener('keydown', onKeyDown);
 
         return () => document.removeEventListener('keydown', onKeyDown);
-    }, [ confirming, busy ]);
+    }, [confirming, busy]);
 
-    const confirm = async() => {
+    const confirm = async () => {
         if (busy) {
             return;
         }
@@ -97,8 +100,7 @@ export function ConfirmButton({
 
         try {
             await onConfirm();
-        }
-        finally {
+        } finally {
             setPending(false);
             setConfirming(false);
         }
@@ -106,15 +108,15 @@ export function ConfirmButton({
 
     return (
         <Button
-            { ...buttonProps }
-            ref={ buttonRef }
-            color={ confirming ? (confirmColor ?? color) : color }
-            variant={ confirming ? (confirmVariant ?? variant) : variant }
-            isDisabled={ isDisabled }
-            isPending={ busy }
-            onPointerEnter={ confirming ? clearResetTimer : undefined }
-            onPointerLeave={ confirming ? scheduleReset : undefined }
-            onBlur={ (event) => {
+            {...buttonProps}
+            ref={buttonRef}
+            color={confirming ? (confirmColor ?? color) : color}
+            variant={confirming ? (confirmVariant ?? variant) : variant}
+            isDisabled={isDisabled}
+            isPending={busy}
+            onPointerEnter={confirming ? clearResetTimer : undefined}
+            onPointerLeave={confirming ? scheduleReset : undefined}
+            onBlur={event => {
                 const next = event.relatedTarget;
 
                 if (next instanceof Node && buttonRef.current?.contains(next)) {
@@ -122,8 +124,8 @@ export function ConfirmButton({
                 }
 
                 scheduleReset();
-            } }
-            onPress={ () => {
+            }}
+            onPress={() => {
                 if (confirming) {
                     void confirm();
 
@@ -131,12 +133,18 @@ export function ConfirmButton({
                 }
 
                 setConfirming(true);
-            } }
+            }}
         >
-            <span className={ styles.labels } data-confirming={ confirming || undefined }>
-                <span className={ styles.measure } aria-hidden="true">{ confirmLabel }</span>
-                <span className={ styles.idle } aria-hidden={ confirming || undefined }>{ children }</span>
-                <span className={ styles.confirm } aria-hidden={ !confirming || undefined }>{ confirmLabel }</span>
+            <span className={styles.labels} data-confirming={confirming || undefined}>
+                <span className={styles.measure} aria-hidden="true">
+                    {confirmLabel}
+                </span>
+                <span className={styles.idle} aria-hidden={confirming || undefined}>
+                    {children}
+                </span>
+                <span className={styles.confirm} aria-hidden={!confirming || undefined}>
+                    {confirmLabel}
+                </span>
             </span>
         </Button>
     );

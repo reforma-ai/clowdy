@@ -24,11 +24,9 @@ function read(session: EngineSession) {
             for await (const event of session) {
                 events.push(event);
             }
-        }
-        catch (error) {
+        } catch (error) {
             reading.failure = error;
-        }
-        finally {
+        } finally {
             reading.ended = true;
         }
     })();
@@ -46,7 +44,7 @@ describe('ScriptEngine, a session that outlives its done', () => {
             yield { type: 'background', items: [command] };
             yield { type: 'done', result: 'Started it' };
 
-            if (!await turn.hold(finished)) {
+            if (!(await turn.hold(finished))) {
                 return;
             }
 
@@ -85,8 +83,8 @@ describe('ScriptEngine, a session that outlives its done', () => {
             yield { type: 'done' };
 
             for (let text = await turn.received(); text !== undefined; text = await turn.received()) {
-                yield { type: 'text', delta: `Heard: ${ text }`, done: true };
-                yield { type: 'done', result: `Heard: ${ text }` };
+                yield { type: 'text', delta: `Heard: ${text}`, done: true };
+                yield { type: 'done', result: `Heard: ${text}` };
             }
         });
 

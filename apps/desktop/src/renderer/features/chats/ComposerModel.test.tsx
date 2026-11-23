@@ -4,12 +4,12 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { RootStoreProvider, type RootStore } from '../../stores';
-import { readRememberedMode, writeRememberedMode } from './chatModeMemory';
+import { type RootStore, RootStoreProvider } from '../../stores';
 import { Composer } from './Composer';
+import { readRememberedMode, writeRememberedMode } from './chatModeMemory';
 import { newChatDraftKey, saveDraft } from './composerDrafts';
 import { readRemembered, writeRemembered } from './modelSelection';
-import { modelStore, type ModelStoreOptions } from './modelTestKit';
+import { type ModelStoreOptions, modelStore } from './modelTestKit';
 
 import type { AgentModels, Chat, ChatMode, CommandResult, Run } from '@clowdy/protocol';
 import type { Editor } from '@tiptap/core';
@@ -27,7 +27,11 @@ vi.mock('@clowdy/components/Toast', () => ({ toast: toasts }));
  */
 
 const accepted = (data: unknown = {}): CommandResult => ({ ok: true, requestId: 'request-1', data });
-const refused: CommandResult = { ok: false, requestId: 'request-1', error: { code: 'conflict', message: 'The provider of a chat is fixed once its first message was sent' } };
+const refused: CommandResult = {
+    ok: false,
+    requestId: 'request-1',
+    error: { code: 'conflict', message: 'The provider of a chat is fixed once its first message was sent' },
+};
 
 const transport = {
     getDocsTree: vi.fn(async () => []),
@@ -56,7 +60,15 @@ interface Page {
 }
 
 /** A chat as the daemon makes it from `chat.create`. */
-const madeFrom = (input: CommandInput): Chat => ({ id: 'c-new', projectId: 'p', title: 'New chat', mode: 'autopilot', createdAt: 0, updatedAt: 0, ...(input.type === 'chat.create' && { engine: input.engine, model: input.model, effort: input.effort }) });
+const madeFrom = (input: CommandInput): Chat => ({
+    id: 'c-new',
+    projectId: 'p',
+    title: 'New chat',
+    mode: 'autopilot',
+    createdAt: 0,
+    updatedAt: 0,
+    ...(input.type === 'chat.create' && { engine: input.engine, model: input.model, effort: input.effort }),
+});
 
 async function mount(page: Page = {}, options: ModelStoreOptions = {}) {
     let current = page;
@@ -66,19 +78,39 @@ async function mount(page: Page = {}, options: ModelStoreOptions = {}) {
     const command = vi.fn(async (input: CommandInput) => {
         sent.push(input);
 
-        return (current.answer ?? ((next: CommandInput) => (next.type === 'chat.create' ? accepted({ chat: madeFrom(next) }) : accepted())))(input);
+        return (
+            current.answer ??
+            ((next: CommandInput) => (next.type === 'chat.create' ? accepted({ chat: madeFrom(next) }) : accepted()))
+        )(input);
     });
-    const root$ = { command, transport, skillsRevision: 0, selectedProject: { project: { id: 'p', folders: [{ id: 'f1', path: '/Users/dev/web' }] }, taskList: [] }, ...store } as unknown as RootStore;
+    const root$ = {
+        command,
+        transport,
+        skillsRevision: 0,
+        selectedProject: { project: { id: 'p', folders: [{ id: 'f1', path: '/Users/dev/web' }] }, taskList: [] },
+        ...store,
+    } as unknown as RootStore;
 
-    draw = () => act(async () => {
-        root.render(
-            <RootStoreProvider value={ root$ }>
-                { current.chat
-                    ? <Composer chat={ current.chat } run={ current.run } />
-                    : <Composer chat={ undefined } run={ undefined } start={ { projectId: current.projectId ?? 'p', onStarted: chatId => started.push(chatId), defaults: current.defaults } } /> }
-            </RootStoreProvider>
-        );
-    });
+    draw = () =>
+        act(async () => {
+            root.render(
+                <RootStoreProvider value={root$}>
+                    {current.chat ? (
+                        <Composer chat={current.chat} run={current.run} />
+                    ) : (
+                        <Composer
+                            chat={undefined}
+                            run={undefined}
+                            start={{
+                                projectId: current.projectId ?? 'p',
+                                onStarted: chatId => started.push(chatId),
+                                defaults: current.defaults,
+                            }}
+                        />
+                    )}
+                </RootStoreProvider>
+            );
+        });
 
     await draw();
 
@@ -112,27 +144,41 @@ function type(value: string) {
     });
 }
 
-const pressEnter = () => act(async () => {
-    field().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
-});
+const pressEnter = () =>
+    act(async () => {
+        field().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    });
 
-const pointer = { bubbles: true, cancelable: true, pointerId: 1, pointerType: 'mouse', button: 0, width: 1, height: 1, pressure: 0.5, detail: 1 };
+const pointer = {
+    bubbles: true,
+    cancelable: true,
+    pointerId: 1,
+    pointerType: 'mouse',
+    button: 0,
+    width: 1,
+    height: 1,
+    pressure: 0.5,
+    detail: 1,
+};
 
-const press = (element: Element | null | undefined) => act(async () => {
-    element!.dispatchEvent(new PointerEvent('pointerdown', pointer));
-    element!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
-    element!.dispatchEvent(new PointerEvent('pointerup', pointer));
-    element!.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
-    element!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, detail: 1 }));
-});
+const press = (element: Element | null | undefined) =>
+    act(async () => {
+        element!.dispatchEvent(new PointerEvent('pointerdown', pointer));
+        element!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+        element!.dispatchEvent(new PointerEvent('pointerup', pointer));
+        element!.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
+        element!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, detail: 1 }));
+    });
 
-const settle = () => act(async () => {
-    await Promise.resolve();
-});
+const settle = () =>
+    act(async () => {
+        await Promise.resolve();
+    });
 
-const key = (target: Element, name: string) => act(async () => {
-    target.dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true }));
-});
+const key = (target: Element, name: string) =>
+    act(async () => {
+        target.dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true }));
+    });
 
 async function openPicker() {
     await press(trigger());
@@ -143,7 +189,11 @@ async function openPicker() {
 async function pickMode(label: string) {
     await press(modeTrigger());
     await settle();
-    await press([...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(item => item.textContent?.includes(label)));
+    await press(
+        [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(item =>
+            item.textContent?.includes(label)
+        )
+    );
 }
 
 /** Picks a model by its name in the open popover's list (on the tab of its provider, when it is not the one the list starts on), and leaves the popover open on its face. */
@@ -164,8 +214,21 @@ async function pickMoreModel(name: string) {
 }
 
 /** A chat that has a choice of its own, with or without its orchestrator started. */
-const chatOn = (rest: Partial<Chat> = {}): Chat => ({ id: `c-model-${ ++chatNumber }`, projectId: 'p', title: 'A chat', mode: 'autopilot', createdAt: 0, updatedAt: 0, engine: 'claude', model: 'opus', effort: 'high', orchestratorRunId: 'r-1', ...rest });
-const runOf = (rest: Partial<Run> = {}) => ({ id: 'r-1', status: 'succeeded', engine: 'claude', model: 'opus', effort: 'high', ...rest }) as Run;
+const chatOn = (rest: Partial<Chat> = {}): Chat => ({
+    id: `c-model-${++chatNumber}`,
+    projectId: 'p',
+    title: 'A chat',
+    mode: 'autopilot',
+    createdAt: 0,
+    updatedAt: 0,
+    engine: 'claude',
+    model: 'opus',
+    effort: 'high',
+    orchestratorRunId: 'r-1',
+    ...rest,
+});
+const runOf = (rest: Partial<Run> = {}) =>
+    ({ id: 'r-1', status: 'succeeded', engine: 'claude', model: 'opus', effort: 'high', ...rest }) as Run;
 
 beforeEach(() => {
     localStorage.clear();
@@ -251,7 +314,7 @@ describe('where a new chat starts', () => {
         expect(modeTrigger()!.getAttribute('aria-label')).toBe('Mode: Hands-off');
     });
 
-    it('starts on the provider its project asks for, even when another was picked last, on that provider\'s default model', async () => {
+    it("starts on the provider its project asks for, even when another was picked last, on that provider's default model", async () => {
         writeRemembered({ engine: 'claude', models: {}, efforts: {} });
         await mount({ defaults: { engine: 'codex' } });
 
@@ -262,7 +325,7 @@ describe('where a new chat starts', () => {
         expect(create()).toMatchObject({ engine: 'codex', model: 'gpt-6.2-sol' });
     });
 
-    it('lets the person\'s own pick in the box come before the provider its project asks for', async () => {
+    it("lets the person's own pick in the box come before the provider its project asks for", async () => {
         await mount({ defaults: { engine: 'codex' } });
         await openPicker();
         await pickModel('Opus 5.5', 'Claude Code');
@@ -281,7 +344,7 @@ describe('where a new chat starts', () => {
 });
 
 describe('on the new-chat page', () => {
-    it('starts on the provider\'s default model and level when nothing was picked before', async () => {
+    it("starts on the provider's default model and level when nothing was picked before", async () => {
         await mount();
 
         expect(trigger()!.getAttribute('aria-label')).toBe('Model: Opus 5.5 · High');
@@ -296,7 +359,14 @@ describe('on the new-chat page', () => {
         await pressEnter();
 
         expect(sent).toEqual([
-            { type: 'chat.create', projectId: 'p', mode: 'autopilot', engine: 'codex', model: 'gpt-6.2-sol', effort: 'ultra' },
+            {
+                type: 'chat.create',
+                projectId: 'p',
+                mode: 'autopilot',
+                engine: 'codex',
+                model: 'gpt-6.2-sol',
+                effort: 'ultra',
+            },
             { type: 'chat.send', chatId: 'c-new', text: 'Build the thing', mode: 'steer' },
         ]);
         expect(started).toEqual(['c-new']);
@@ -307,7 +377,14 @@ describe('on the new-chat page', () => {
         type('Build the thing');
         await pressEnter();
 
-        expect(sent[0]).toEqual({ type: 'chat.create', projectId: 'p', mode: 'autopilot', engine: 'claude', model: 'opus', effort: 'high' });
+        expect(sent[0]).toEqual({
+            type: 'chat.create',
+            projectId: 'p',
+            mode: 'autopilot',
+            engine: 'claude',
+            model: 'opus',
+            effort: 'high',
+        });
     });
 
     it('leaves out the level of a model that has none', async () => {
@@ -317,7 +394,13 @@ describe('on the new-chat page', () => {
         type('Build the thing');
         await pressEnter();
 
-        expect(sent[0]).toEqual({ type: 'chat.create', projectId: 'p', mode: 'autopilot', engine: 'claude', model: 'claude-haiku-4-5-20251001' });
+        expect(sent[0]).toEqual({
+            type: 'chat.create',
+            projectId: 'p',
+            mode: 'autopilot',
+            engine: 'claude',
+            model: 'claude-haiku-4-5-20251001',
+        });
     });
 
     it('remembers every pick, the level too, and starts the next new chat on it', async () => {
@@ -326,7 +409,11 @@ describe('on the new-chat page', () => {
         await pickModel('Fable 5.2');
         await key(slider(), 'Home');
 
-        expect(readRemembered()).toEqual({ engine: 'claude', models: { claude: 'fable' }, efforts: { 'claude/fable': 'low' } });
+        expect(readRemembered()).toEqual({
+            engine: 'claude',
+            models: { claude: 'fable' },
+            efforts: { 'claude/fable': 'low' },
+        });
 
         act(() => root.unmount());
         root = createRoot(container);
@@ -337,7 +424,14 @@ describe('on the new-chat page', () => {
         type('Next one');
         await pressEnter();
 
-        expect(sent[0]).toEqual({ type: 'chat.create', projectId: 'p', mode: 'autopilot', engine: 'claude', model: 'fable', effort: 'low' });
+        expect(sent[0]).toEqual({
+            type: 'chat.create',
+            projectId: 'p',
+            mode: 'autopilot',
+            engine: 'claude',
+            model: 'fable',
+            effort: 'low',
+        });
     });
 
     it('starts on the provider that was picked last, with its last model and level', async () => {
@@ -349,25 +443,36 @@ describe('on the new-chat page', () => {
         type('Go');
         await pressEnter();
 
-        expect(sent[0]).toEqual({ type: 'chat.create', projectId: 'p', mode: 'autopilot', engine: 'codex', model: 'gpt-6-luna', effort: 'max' });
+        expect(sent[0]).toEqual({
+            type: 'chat.create',
+            projectId: 'p',
+            mode: 'autopilot',
+            engine: 'codex',
+            model: 'gpt-6-luna',
+            effort: 'max',
+        });
     });
 
     it('starts on the first provider that can be used when the remembered one cannot', async () => {
         writeRemembered({ engine: 'codex', models: {}, efforts: {} });
-        await mount({}, {
-            change: (data) => {
-                data.agents.find(agent => agent.id === 'codex')!.enabled = false;
-            },
-        });
+        await mount(
+            {},
+            {
+                change: data => {
+                    data.agents.find(agent => agent.id === 'codex')!.enabled = false;
+                },
+            }
+        );
 
         expect(trigger()!.getAttribute('aria-label')).toBe('Model: Opus 5.5 · High');
     });
 
     it('looks again at the models as they arrive until something is picked, and never after', async () => {
         const arrive: (() => void)[] = [];
-        const read = (_agentId: string, fixture: AgentModels) => new Promise<AgentModels>((resolve) => {
-            arrive.push(() => resolve(fixture));
-        });
+        const read = (_agentId: string, fixture: AgentModels) =>
+            new Promise<AgentModels>(resolve => {
+                arrive.push(() => resolve(fixture));
+            });
         const { update } = await mount({}, { read, preload: false });
 
         // Nothing is known yet: the provider only, with a spinner.
@@ -414,9 +519,19 @@ describe('on the new-chat page', () => {
         await press(selectModel());
 
         expect(tabNames()).toEqual(['Claude Code', 'Codex', 'Cursor']);
-        expect(tabs().filter(tab => tab.getAttribute('aria-selected') === 'true').map(tab => tab.getAttribute('aria-label'))).toEqual(['Claude Code']);
+        expect(
+            tabs()
+                .filter(tab => tab.getAttribute('aria-selected') === 'true')
+                .map(tab => tab.getAttribute('aria-label'))
+        ).toEqual(['Claude Code']);
         expect(document.querySelectorAll('[role="listbox"] header')).toHaveLength(0);
-        expect(options().map(option => option.textContent)).toEqual(['Opus 5.5', 'Fable 5.2', 'Sonnet 5.5', 'Haiku 5.5', 'More models']);
+        expect(options().map(option => option.textContent)).toEqual([
+            'Opus 5.5',
+            'Fable 5.2',
+            'Sonnet 5.5',
+            'Haiku 5.5',
+            'More models',
+        ]);
     });
 
     it('turns the list to another provider with a tab and picks nothing, and sends the provider with the first message only when a model of it is picked', async () => {
@@ -425,14 +540,28 @@ describe('on the new-chat page', () => {
         await press(selectModel());
         await press(tabs()[1]);
 
-        expect(options().map(option => option.textContent)).toEqual(['GPT-6.2 Sol', 'GPT-6 Sol', 'GPT-6 Luna', 'GPT-6 Mini', 'GPT-6 Codex', 'More models']);
+        expect(options().map(option => option.textContent)).toEqual([
+            'GPT-6.2 Sol',
+            'GPT-6 Sol',
+            'GPT-6 Luna',
+            'GPT-6 Mini',
+            'GPT-6 Codex',
+            'More models',
+        ]);
         expect(trigger()!.getAttribute('aria-label')).toBe('Model: Opus 5.5 · High');
         expect(stored()).toBeNull();
 
         type('Build the thing');
         await pressEnter();
 
-        expect(sent[0]).toEqual({ type: 'chat.create', projectId: 'p', mode: 'autopilot', engine: 'claude', model: 'opus', effort: 'high' });
+        expect(sent[0]).toEqual({
+            type: 'chat.create',
+            projectId: 'p',
+            mode: 'autopilot',
+            engine: 'claude',
+            model: 'opus',
+            effort: 'high',
+        });
     });
 
     it('picks a model from the flyout of the provider the strip shows', async () => {
@@ -443,22 +572,38 @@ describe('on the new-chat page', () => {
         await press(optionNamed('More models'));
         await settle();
 
-        expect(flyoutOptions().map(option => option.textContent)).toEqual(['Claude Opus 5', 'Claude Opus 4.8', 'Gemini 4 Carbon', 'GPT-5.5', 'Muse Wonder 1.0']);
+        expect(flyoutOptions().map(option => option.textContent)).toEqual([
+            'Claude Opus 5',
+            'Claude Opus 4.8',
+            'Gemini 4 Carbon',
+            'GPT-5.5',
+            'Muse Wonder 1.0',
+        ]);
 
         await press(flyoutOptions().find(option => option.textContent === 'Gemini 4 Carbon'));
         type('Go');
         await pressEnter();
 
-        expect(sent[0]).toEqual({ type: 'chat.create', projectId: 'p', mode: 'autopilot', engine: 'cursor', model: 'gemini-4-carbon', effort: 'high' });
+        expect(sent[0]).toEqual({
+            type: 'chat.create',
+            projectId: 'p',
+            mode: 'autopilot',
+            engine: 'cursor',
+            model: 'gemini-4-carbon',
+            effort: 'high',
+        });
         expect(readRemembered()).toMatchObject({ engine: 'cursor', models: { cursor: 'gemini-4-carbon' } });
     });
 
     it('leaves out a provider that is off, and has no strip with one', async () => {
-        await mount({}, {
-            change: (data) => {
-                for (const agent of data.agents) agent.enabled = agent.id === 'codex';
-            },
-        });
+        await mount(
+            {},
+            {
+                change: data => {
+                    for (const agent of data.agents) agent.enabled = agent.id === 'codex';
+                },
+            }
+        );
 
         expect(trigger()!.getAttribute('aria-label')).toBe('Model: GPT-6.2 Sol · Low');
 
@@ -467,15 +612,22 @@ describe('on the new-chat page', () => {
 
         expect(tabs()).toEqual([]);
         expect(options().length).toBeGreaterThan(0);
-        expect(options().filter(option => option.hasAttribute('data-engine')).every(option => option.getAttribute('data-engine') === 'codex')).toBe(true);
+        expect(
+            options()
+                .filter(option => option.hasAttribute('data-engine'))
+                .every(option => option.getAttribute('data-engine') === 'codex')
+        ).toBe(true);
     });
 
     it('leaves out a provider that is not installed', async () => {
-        await mount({}, {
-            change: (data) => {
-                data.agents.find(agent => agent.id === 'cursor')!.status = 'missing';
-            },
-        });
+        await mount(
+            {},
+            {
+                change: data => {
+                    data.agents.find(agent => agent.id === 'cursor')!.status = 'missing';
+                },
+            }
+        );
         await openPicker();
         await press(selectModel());
 
@@ -515,7 +667,7 @@ describe('on the new-chat page', () => {
             expect(container.querySelector<HTMLButtonElement>('button[aria-label="Send"]')!.disabled).toBe(true);
         });
 
-        it('keeps a chat\'s own choice in its page, whatever is on', async () => {
+        it("keeps a chat's own choice in its page, whatever is on", async () => {
             const { update } = await mount({ chat: chatOn(), run: runOf() }, allOff);
 
             // The chat's own provider is read when the composer first asks, and the composer is drawn again as the list comes.
@@ -526,7 +678,12 @@ describe('on the new-chat page', () => {
     });
 
     describe('after a first message failed', () => {
-        const failsToSend = (input: CommandInput) => (input.type === 'chat.send' ? refused : input.type === 'chat.create' ? accepted({ chat: madeFrom(input) }) : accepted());
+        const failsToSend = (input: CommandInput) =>
+            input.type === 'chat.send'
+                ? refused
+                : input.type === 'chat.create'
+                  ? accepted({ chat: madeFrom(input) })
+                  : accepted();
 
         it('sends a pick of another provider to the chat it made, with the provider, and the retry goes to that chat', async () => {
             await mount({ answer: failsToSend });
@@ -536,7 +693,13 @@ describe('on the new-chat page', () => {
             await pickModel('GPT-6 Sol', 'Codex');
 
             expect(sent.map(input => input.type)).toEqual(['chat.create', 'chat.send', 'chat.setModel']);
-            expect(sent[2]).toEqual({ type: 'chat.setModel', chatId: 'c-new', engine: 'codex', model: 'gpt-6-sol', effort: 'high' });
+            expect(sent[2]).toEqual({
+                type: 'chat.setModel',
+                chatId: 'c-new',
+                engine: 'codex',
+                model: 'gpt-6-sol',
+                effort: 'high',
+            });
             expect(trigger()!.getAttribute('aria-label')).toBe('Model: GPT-6 Sol · High');
 
             // No orchestrator has started, so the provider may still change.
@@ -591,7 +754,7 @@ describe('on the new-chat page', () => {
 });
 
 describe('in a chat', () => {
-    it('holds the chat\'s own choice, as the store has it by now', async () => {
+    it("holds the chat's own choice, as the store has it by now", async () => {
         const chat = chatOn({ model: 'fable', effort: 'max' });
         const { update } = await mount({ chat, run: runOf() });
 
@@ -619,10 +782,12 @@ describe('in a chat', () => {
         await openPicker();
         await pickMoreModel('Haiku 4.5');
 
-        expect(sent).toEqual([{ type: 'chat.setModel', chatId: chat.id, model: 'claude-haiku-4-5-20251001', effort: null }]);
+        expect(sent).toEqual([
+            { type: 'chat.setModel', chatId: chat.id, model: 'claude-haiku-4-5-20251001', effort: null },
+        ]);
     });
 
-    it('sends a moved slider as the chat\'s model with the new level', async () => {
+    it("sends a moved slider as the chat's model with the new level", async () => {
         const chat = chatOn();
 
         await mount({ chat, run: runOf() });
@@ -640,7 +805,7 @@ describe('in a chat', () => {
         expect(sent).toEqual([]);
     });
 
-    it('shows the model the daemon took at once, and not the old one until the chat\'s record gets here', async () => {
+    it("shows the model the daemon took at once, and not the old one until the chat's record gets here", async () => {
         const chat = chatOn();
         const { update } = await mount({ chat, run: runOf() });
 
@@ -661,7 +826,7 @@ describe('in a chat', () => {
         expect(trigger()!.getAttribute('aria-label')).toBe('Model: Sonnet 5.5 · Low');
     });
 
-    it('does not bring a pick back when the chat\'s record, which has moved past it, returns to what it was before the pick', async () => {
+    it("does not bring a pick back when the chat's record, which has moved past it, returns to what it was before the pick", async () => {
         const chat = chatOn();
         const { update } = await mount({ chat, run: runOf() });
 
@@ -681,7 +846,7 @@ describe('in a chat', () => {
         expect(trigger()!.getAttribute('aria-label')).toBe('Model: Opus 5.5 · High');
     });
 
-    it('shows Claude\'s hidden default as the model it stands for, checked in the list', async () => {
+    it("shows Claude's hidden default as the model it stands for, checked in the list", async () => {
         await mount({ chat: chatOn({ model: 'default' }), run: runOf({ model: 'default' }) });
 
         expect(trigger()!.getAttribute('aria-label')).toBe('Model: Opus 5.5 · High');
@@ -689,7 +854,11 @@ describe('in a chat', () => {
         await openPicker();
         await press(selectModel());
 
-        expect(options().filter(option => option.getAttribute('aria-selected') === 'true').map(option => option.textContent)).toEqual(['Opus 5.5']);
+        expect(
+            options()
+                .filter(option => option.getAttribute('aria-selected') === 'true')
+                .map(option => option.textContent)
+        ).toEqual(['Opus 5.5']);
     });
 
     it('remembers a pick the daemon took, the level too', async () => {
@@ -702,7 +871,11 @@ describe('in a chat', () => {
         await update({ chat: { ...chat, model: 'sonnet' } });
         await key(slider(), 'Home');
 
-        expect(readRemembered()).toEqual({ engine: 'claude', models: { claude: 'sonnet' }, efforts: { 'claude/sonnet': 'low' } });
+        expect(readRemembered()).toEqual({
+            engine: 'claude',
+            models: { claude: 'sonnet' },
+            efforts: { 'claude/sonnet': 'low' },
+        });
     });
 
     it('says what the daemon refused, and remembers nothing of it', async () => {
@@ -710,18 +883,27 @@ describe('in a chat', () => {
         await openPicker();
         await pickModel('Sonnet 5.5');
 
-        expect(toasts.error).toHaveBeenCalledWith({ message: 'The provider of a chat is fixed once its first message was sent' });
+        expect(toasts.error).toHaveBeenCalledWith({
+            message: 'The provider of a chat is fixed once its first message was sent',
+        });
         expect(stored()).toBeNull();
     });
 
-    it('lists the models of the chat\'s provider alone, with no strip, once its orchestrator has started', async () => {
-        await mount({ chat: chatOn({ engine: 'codex', model: 'gpt-6-sol', effort: 'high' }), run: runOf({ engine: 'codex' }) });
+    it("lists the models of the chat's provider alone, with no strip, once its orchestrator has started", async () => {
+        await mount({
+            chat: chatOn({ engine: 'codex', model: 'gpt-6-sol', effort: 'high' }),
+            run: runOf({ engine: 'codex' }),
+        });
         await openPicker();
         await press(selectModel());
 
         expect(tabs()).toEqual([]);
         expect(options().length).toBeGreaterThan(0);
-        expect(options().filter(option => option.hasAttribute('data-engine')).every(option => option.getAttribute('data-engine') === 'codex')).toBe(true);
+        expect(
+            options()
+                .filter(option => option.hasAttribute('data-engine'))
+                .every(option => option.getAttribute('data-engine') === 'codex')
+        ).toBe(true);
 
         await press(optionNamed('More models'));
         await settle();
@@ -742,7 +924,9 @@ describe('in a chat', () => {
         await press(tabs()[1]);
         await press(optionNamed('GPT-6.2 Sol'));
 
-        expect(sent).toEqual([{ type: 'chat.setModel', chatId: chat.id, engine: 'codex', model: 'gpt-6.2-sol', effort: 'high' }]);
+        expect(sent).toEqual([
+            { type: 'chat.setModel', chatId: chat.id, engine: 'codex', model: 'gpt-6.2-sol', effort: 'high' },
+        ]);
     });
 
     it('is not held back while the orchestrator works, and says the pick applies from the next message', async () => {
@@ -784,12 +968,12 @@ describe('in a chat', () => {
             await openPicker();
 
             expect(selectModel().textContent).toBe('Default model');
-            expect(dialog()!.textContent).toContain('Runs on Claude Code\'s own default until you pick a model.');
+            expect(dialog()!.textContent).toContain("Runs on Claude Code's own default until you pick a model.");
             expect(slider()).toBeNull();
             expect(dialog()!.textContent).not.toContain('Reasoning effort');
         });
 
-        it('lists the chat\'s provider alone, checks no row, and sends the pick as the chat\'s first model', async () => {
+        it("lists the chat's provider alone, checks no row, and sends the pick as the chat's first model", async () => {
             const chat = bare();
 
             await mount({ chat, run: runOf({ model: undefined, effort: undefined }) });
@@ -807,13 +991,18 @@ describe('in a chat', () => {
 
     describe('from before chats had a choice of their own', () => {
         it('shows what the orchestrator started on', async () => {
-            await mount({ chat: chatOn({ engine: undefined, model: undefined, effort: undefined }), run: runOf({ engine: 'codex', model: 'gpt-6-sol', effort: 'xhigh' }) });
+            await mount({
+                chat: chatOn({ engine: undefined, model: undefined, effort: undefined }),
+                run: runOf({ engine: 'codex', model: 'gpt-6-sol', effort: 'xhigh' }),
+            });
 
             expect(trigger()!.getAttribute('aria-label')).toBe('Model: GPT-6 Sol · Extra high');
         });
 
         it('shows nothing when there is no orchestrator either', async () => {
-            await mount({ chat: chatOn({ engine: undefined, model: undefined, effort: undefined, orchestratorRunId: undefined }) });
+            await mount({
+                chat: chatOn({ engine: undefined, model: undefined, effort: undefined, orchestratorRunId: undefined }),
+            });
 
             expect(trigger()).toBeNull();
             expect(container.querySelector('button[aria-label^="Mode:"]')).not.toBeNull();

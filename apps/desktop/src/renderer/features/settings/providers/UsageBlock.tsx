@@ -13,8 +13,8 @@ export function UsageBlock({ usage }: { usage: AgentUsage }) {
     const now = useNow();
 
     return (
-        <section className={ styles.block } aria-label="Usage">
-            <UsageReading usage={ usage } now={ now } />
+        <section className={styles.block} aria-label="Usage">
+            <UsageReading usage={usage} now={now} />
         </section>
     );
 }

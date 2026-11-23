@@ -117,14 +117,17 @@ export function parseSince(since: string, now = Date.now()): number {
     const time = /^\d{4}-\d{2}-\d{2}/.test(text) ? Date.parse(text) : Number.NaN;
 
     if (Number.isNaN(time)) {
-        throw invalid(`"${ since }" is not a time: write an ISO date or time (2026-11-01, 2026-11-01T09:30:00Z) or a duration back from now (90m, 12h, 7d, 2w)`);
+        throw invalid(
+            `"${since}" is not a time: write an ISO date or time (2026-11-01, 2026-11-01T09:30:00Z) or a duration back from now (90m, 12h, 7d, 2w)`
+        );
     }
 
     return time;
 }
 
 /** The categories a listing counts and the order it names them in. */
-export const emptyCounts = (): Record<TaskStatusCategory, number> => Object.fromEntries(CATEGORIES.map(category => [category, 0])) as Record<TaskStatusCategory, number>;
+export const emptyCounts = (): Record<TaskStatusCategory, number> =>
+    Object.fromEntries(CATEGORIES.map(category => [category, 0])) as Record<TaskStatusCategory, number>;
 
 /** The categories counted, in the order a listing names them, leaving out the ones with no task. */
 export function countByCategory(categories: Iterable<TaskStatusCategory>): CategoryCounts {
@@ -134,7 +137,9 @@ export function countByCategory(categories: Iterable<TaskStatusCategory>): Categ
         counts[category]++;
     }
 
-    return Object.fromEntries(CATEGORIES.filter(category => counts[category] > 0).map(category => [category, counts[category]]));
+    return Object.fromEntries(
+        CATEGORIES.filter(category => counts[category] > 0).map(category => [category, counts[category]])
+    );
 }
 
 /** Where a task stands in a sort: the value it is ordered by, and its number, which settles a tie. */
@@ -143,7 +148,8 @@ interface Position {
     number: number;
 }
 
-const valueOf = (task: Task, sort: TaskSort) => (sort === 'updated' ? task.updatedAt : sort === 'created' ? task.createdAt : task.number);
+const valueOf = (task: Task, sort: TaskSort) =>
+    sort === 'updated' ? task.updatedAt : sort === 'created' ? task.createdAt : task.number;
 
 /** Negative when `left` comes before `right`: `updated` and `created` go newest first, `number` goes up, and `reverse` turns that round. */
 function compare(left: Position, right: Position, sort: TaskSort, reverse: boolean): number {
@@ -154,13 +160,13 @@ function compare(left: Position, right: Position, sort: TaskSort, reverse: boole
 }
 
 /** A cursor names the last task of a page by its place in the sort, so tasks that change between pages neither repeat nor shift the rest. */
-const encodeCursor = (position: Position) => `${ position.value }.${ position.number }`;
+const encodeCursor = (position: Position) => `${position.value}.${position.number}`;
 
 function decodeCursor(cursor: string): Position {
     const match = /^(\d+)\.(\d+)$/.exec(cursor);
 
     if (!match) {
-        throw invalid(`"${ cursor }" is not a cursor: pass the nextCursor of the previous page unchanged`);
+        throw invalid(`"${cursor}" is not a cursor: pass the nextCursor of the previous page unchanged`);
     }
 
     return { value: Number(match[1]), number: Number(match[2]) };
@@ -198,14 +204,18 @@ function structuralScope(tree: TaskTree, tasks: readonly Task[], query: TaskQuer
     const wanted = (task: Task) => (task.archivedAt !== undefined) === Boolean(query.archived);
     const byId = new Map(tasks.map(task => [task.id, task]));
     // In the archive a root is the top of an archived piece: a task with no parent, or one whose parent stays on the board (it was archived alone).
-    const isRoot = (task: Task) => task.parentId === undefined || (Boolean(query.archived) && byId.get(task.parentId)?.archivedAt === undefined);
+    const isRoot = (task: Task) =>
+        task.parentId === undefined || (Boolean(query.archived) && byId.get(task.parentId)?.archivedAt === undefined);
 
     if (query.parentId !== undefined) {
         return tree.childrenOf(query.parentId).filter(wanted);
     }
 
     if (query.underId !== undefined) {
-        return tree.descendantsOf(query.underId).map(({ task }) => task).filter(wanted);
+        return tree
+            .descendantsOf(query.underId)
+            .map(({ task }) => task)
+            .filter(wanted);
     }
 
     return tasks.filter(task => wanted(task) && (!query.roots || isRoot(task)));
@@ -230,7 +240,8 @@ export function queryTasks(context: TaskQueryContext, query: TaskQuery): TaskPag
     const byId = new Map(tasks.map(task => [task.id, task]));
     const statusById = new Map(statuses.map(status => [status.id, status]));
     const categoryOf = (task: Task): TaskStatusCategory => statusById.get(task.statusId)?.category ?? 'todo';
-    const unfinished = (task: Task) => task.dependsOn.filter(id => byId.has(id) && !isClosedCategory(categoryOf(byId.get(id) as Task)));
+    const unfinished = (task: Task) =>
+        task.dependsOn.filter(id => byId.has(id) && !isClosedCategory(categoryOf(byId.get(id) as Task)));
     const inScope = scopeOf(query);
     const text = query.query?.trim().toLowerCase();
     const scoped = structuralScope(tree, tasks, query);
@@ -241,17 +252,19 @@ export function queryTasks(context: TaskQueryContext, query: TaskQuery): TaskPag
     }
 
     const archived = tasks.reduce((count, task) => count + (task.archivedAt === undefined ? 0 : 1), 0);
-    const matching = scoped.filter((task) => {
+    const matching = scoped.filter(task => {
         const category = categoryOf(task);
         const open = !isClosedCategory(category);
 
-        return inScope(category, task.statusId)
-            && (!text || [task.key, task.title, task.description].some(field => field.toLowerCase().includes(text)))
-            && (query.updatedSince === undefined || task.updatedAt >= query.updatedSince)
-            && (!query.ready || (open && unfinished(task).length === 0))
-            && (!query.blocked || (open && unfinished(task).length > 0))
-            && (!query.mine || context.linkedToChat(task.id))
-            && (!query.running || context.isRunning(task.id));
+        return (
+            inScope(category, task.statusId) &&
+            (!text || [task.key, task.title, task.description].some(field => field.toLowerCase().includes(text))) &&
+            (query.updatedSince === undefined || task.updatedAt >= query.updatedSince) &&
+            (!query.ready || (open && unfinished(task).length === 0)) &&
+            (!query.blocked || (open && unfinished(task).length > 0)) &&
+            (!query.mine || context.linkedToChat(task.id)) &&
+            (!query.running || context.isRunning(task.id))
+        );
     });
     const position = (task: Task): Position => ({ value: valueOf(task, sort), number: task.number });
     const ordered = matching.toSorted((left, right) => compare(position(left), position(right), sort, reverse));

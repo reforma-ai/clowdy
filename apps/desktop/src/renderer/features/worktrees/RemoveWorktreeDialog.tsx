@@ -50,46 +50,62 @@ function RemoveMessage({ worktree, plan, choice }: RemoveMessageProps) {
     return (
         <Box gap="lg">
             <Box gap="xxs">
-                <Text weight="medium" truncate>{ worktreeLabel(worktree) }</Text>
-                <PathText path={ worktree.path } variant="sm" color="secondary" />
+                <Text weight="medium" truncate>
+                    {worktreeLabel(worktree)}
+                </Text>
+                <PathText path={worktree.path} variant="sm" color="secondary" />
             </Box>
 
             <Box gap="xs">
-                <For each={ plan.notes }>
-                    {note => <Text key={ note } variant="md" color="secondary">{ note }</Text>}
+                <For each={plan.notes}>
+                    {note => (
+                        <Text key={note} variant="md" color="secondary">
+                            {note}
+                        </Text>
+                    )}
                 </For>
             </Box>
 
-            <Show when={ plan.branch }>
+            <Show when={plan.branch}>
                 {branch => (
                     <Box gap="xs">
                         <Box direction="row" align="center" gap="md">
                             <Checkbox
                                 size="sm"
-                                isSelected={ deleteBranch }
-                                aria-describedby={ warning ? warningId : undefined }
-                                onChange={ (selected) => {
+                                isSelected={deleteBranch}
+                                aria-describedby={warning ? warningId : undefined}
+                                onChange={selected => {
                                     choice.deleteBranch = selected;
                                     setDeleteBranch(selected);
-                                } }
+                                }}
                             >
-                                { `Delete branch ${ branch.name }` }
+                                {`Delete branch ${branch.name}`}
                             </Checkbox>
-                            <Show when={ branch.standing === 'unmerged' }>
-                                <Badge size="xs" color="warning" textValue="Not merged">Not merged</Badge>
+                            <Show when={branch.standing === 'unmerged'}>
+                                <Badge size="xs" color="warning" textValue="Not merged">
+                                    Not merged
+                                </Badge>
                             </Show>
                         </Box>
-                        <Show when={ warning }>
-                            { text => <Text id={ warningId } variant="sm" color="warning">{ text }</Text> }
+                        <Show when={warning}>
+                            {text => (
+                                <Text id={warningId} variant="sm" color="warning">
+                                    {text}
+                                </Text>
+                            )}
                         </Show>
                     </Box>
                 )}
             </Show>
 
-            <Show when={ plan.stranded }>
+            <Show when={plan.stranded}>
                 <Box direction="row" align="center" gap="md">
-                    <Badge size="xs" color="warning" textValue="Not merged">Not merged</Badge>
-                    <Text variant="sm" color="warning">{ STRANDED_WARNING }</Text>
+                    <Badge size="xs" color="warning" textValue="Not merged">
+                        Not merged
+                    </Badge>
+                    <Text variant="sm" color="warning">
+                        {STRANDED_WARNING}
+                    </Text>
                 </Box>
             </Show>
         </Box>
@@ -106,26 +122,29 @@ export function openRemoveWorktree({ root, projectId, group, worktree, reload }:
     const plan = removalPlan(worktree);
     const choice: RemoveChoice = { deleteBranch: plan.branch?.selected ?? false };
 
-    openConfirmModal({
-        title: plan.title,
-        message: <RemoveMessage worktree={ worktree } plan={ plan } choice={ choice } />,
-        confirmLabel: plan.confirmLabel,
-        destructive: plan.kind === 'discard',
-        onConfirm: async () => {
-            const result = await root.command({
-                type: 'workspace.remove',
-                projectId,
-                folderId: group.folderId,
-                path: worktree.path,
-                ...(plan.kind === 'discard' && { discard: true }),
-                ...(plan.branch && choice.deleteBranch && { deleteBranch: true }),
-            });
+    openConfirmModal(
+        {
+            title: plan.title,
+            message: <RemoveMessage worktree={worktree} plan={plan} choice={choice} />,
+            confirmLabel: plan.confirmLabel,
+            destructive: plan.kind === 'discard',
+            onConfirm: async () => {
+                const result = await root.command({
+                    type: 'workspace.remove',
+                    projectId,
+                    folderId: group.folderId,
+                    path: worktree.path,
+                    ...(plan.kind === 'discard' && { discard: true }),
+                    ...(plan.branch && choice.deleteBranch && { deleteBranch: true }),
+                });
 
-            await reload();
+                await reload();
 
-            // A refusal means the row is not what the confirmation showed. The reason is toasted and the confirmation closes, so the next Remove asks about the row as the list
-            // now has it (a thrown message would keep this stale one open).
-            if (!result.ok) toast.error({ title: 'Couldn\'t remove the worktree', message: result.error.message });
+                // A refusal means the row is not what the confirmation showed. The reason is toasted and the confirmation closes, so the next Remove asks about the row as the list
+                // now has it (a thrown message would keep this stale one open).
+                if (!result.ok) toast.error({ title: "Couldn't remove the worktree", message: result.error.message });
+            },
         },
-    }, { width: 440 });
+        { width: 440 }
+    );
 }

@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { installDispatcher } from './dispatcher';
-import { createRegistry, type Command, type HotkeyRegistry, type Platform } from './registry';
+import { type Command, createRegistry, type HotkeyRegistry, type Platform } from './registry';
 
 interface PressInit extends KeyboardEventInit {
     /** What `getModifierState('AltGraph')` answers. */
@@ -35,7 +35,15 @@ function setup(platform: Platform = 'darwin') {
 function define(keys: Command['keys'], overrides: Partial<Command> = {}): ReturnType<typeof vi.fn> {
     const handler = vi.fn();
 
-    registry.defineCommand({ id: `command-${ ++counter }`, title: 'Command', group: 'Tests', keys, scope: 'app', handler, ...overrides });
+    registry.defineCommand({
+        id: `command-${++counter}`,
+        title: 'Command',
+        group: 'Tests',
+        keys,
+        scope: 'app',
+        handler,
+        ...overrides,
+    });
 
     return handler;
 }
@@ -77,7 +85,10 @@ describe('chords', () => {
 
         press(body, 'g');
 
-        expect(registry.pending?.candidates.map(({ command, remaining }) => [command.id, remaining])).toEqual([['nav.chats', [['c']]], ['nav.tasks', [['t']]]]);
+        expect(registry.pending?.candidates.map(({ command, remaining }) => [command.id, remaining])).toEqual([
+            ['nav.chats', [['c']]],
+            ['nav.tasks', [['t']]],
+        ]);
     });
 
     it('cancels on a key that does not continue it, and then the second key alone does nothing', () => {
@@ -199,9 +210,16 @@ describe('chords', () => {
     it('leaves nothing pending and keeps working after a handler throws', () => {
         const good = vi.fn();
 
-        registry.defineCommand({ id: 'bad', title: 'Bad', group: 'Tests', keys: 'g b', scope: 'app', handler: () => {
-            throw new Error('boom');
-        } });
+        registry.defineCommand({
+            id: 'bad',
+            title: 'Bad',
+            group: 'Tests',
+            keys: 'g b',
+            scope: 'app',
+            handler: () => {
+                throw new Error('boom');
+            },
+        });
         registry.defineCommand({ id: 'good', title: 'Good', group: 'Tests', keys: 'g c', scope: 'app', handler: good });
         press(body, 'g');
 
@@ -223,7 +241,14 @@ describe('chords', () => {
 
     it('drops a pending chord whose command was removed', () => {
         const handler = vi.fn();
-        const dispose = registry.defineCommand({ id: 'a', title: 'A', group: 'Tests', keys: 'g c', scope: 'app', handler });
+        const dispose = registry.defineCommand({
+            id: 'a',
+            title: 'A',
+            group: 'Tests',
+            keys: 'g c',
+            scope: 'app',
+            handler,
+        });
 
         press(body, 'g');
         dispose();
@@ -260,14 +285,17 @@ describe('text targets', () => {
         ['a select', () => field('select')],
         ['a contenteditable', () => field('div', { contenteditable: 'true' })],
         ['an empty contenteditable attribute', () => field('div', { contenteditable: '' })],
-        ['an element inside a contenteditable', () => {
-            const editor = field('div', { contenteditable: 'true' });
-            const inner = document.createElement('span');
+        [
+            'an element inside a contenteditable',
+            () => {
+                const editor = field('div', { contenteditable: 'true' });
+                const inner = document.createElement('span');
 
-            editor.append(inner);
+                editor.append(inner);
 
-            return inner;
-        }],
+                return inner;
+            },
+        ],
         ['a textbox role', () => field('div', { role: 'textbox' })],
         ['a combobox role', () => field('div', { role: 'combobox' })],
         ['a searchbox role', () => field('div', { role: 'searchbox' })],
@@ -450,25 +478,28 @@ describe('overlays', () => {
         expect(inside).toHaveBeenCalledTimes(1);
     });
 
-    it.each(['listbox', 'menu'])('blocks keys from a %s inside a popover, which React Aria renders as a dialog', (role) => {
-        const handler = define('x');
-        const popover = document.createElement('div');
-        const list = document.createElement('div');
-        const option = document.createElement('div');
+    it.each(['listbox', 'menu'])(
+        'blocks keys from a %s inside a popover, which React Aria renders as a dialog',
+        role => {
+            const handler = define('x');
+            const popover = document.createElement('div');
+            const list = document.createElement('div');
+            const option = document.createElement('div');
 
-        popover.setAttribute('role', 'dialog');
-        popover.setAttribute('data-modal-clickout-layer', '');
-        list.setAttribute('role', role);
-        option.setAttribute('role', role === 'menu' ? 'menuitem' : 'option');
-        list.append(option);
-        popover.append(list);
-        body.append(popover);
-        press(option, 'x');
+            popover.setAttribute('role', 'dialog');
+            popover.setAttribute('data-modal-clickout-layer', '');
+            list.setAttribute('role', role);
+            option.setAttribute('role', role === 'menu' ? 'menuitem' : 'option');
+            list.append(option);
+            popover.append(list);
+            body.append(popover);
+            press(option, 'x');
 
-        expect(handler).not.toHaveBeenCalled();
-    });
+            expect(handler).not.toHaveBeenCalled();
+        }
+    );
 
-    it.each(['listbox', 'menu'])('does not take a %s that sits in the page for an overlay', (role) => {
+    it.each(['listbox', 'menu'])('does not take a %s that sits in the page for an overlay', role => {
         const handler = define('x');
         const list = document.createElement('div');
         const option = document.createElement('div');
@@ -525,7 +556,7 @@ describe('platform keys', () => {
         expect(handler).toHaveBeenCalledTimes(1);
     });
 
-    it.each<Platform>(['win32', 'linux'])('uses the Windows keys on %s', (platform) => {
+    it.each<Platform>(['win32', 'linux'])('uses the Windows keys on %s', platform => {
         setup(platform);
 
         const handler = define(keys);

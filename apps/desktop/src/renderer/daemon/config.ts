@@ -4,7 +4,7 @@ import { createFixtureData, withFixtureWorkspace } from './fixtureData';
 import { FIXTURE_REMOTE_SCRIPTS } from './fixtureGitRemote';
 import { FixtureTransport } from './fixtureTransport';
 import { HttpTransport } from './httpTransport';
-import { TransportError, type ProjectFileSystem, type Transport } from './transport';
+import { type ProjectFileSystem, type Transport, TransportError } from './transport';
 
 import type { FixturePullRequestScript } from './fixtureData';
 import type { FixtureRemoteScript } from './fixtureGitRemote';
@@ -12,14 +12,33 @@ import type { FixtureCommitScript, FixtureMessageScript } from './fixtureGitWrit
 
 export type DaemonConfig =
     | { kind: 'daemon'; url: string; token: string }
-    | { kind: 'fixtures'; timeline: boolean; worktree?: true; commit?: FixtureCommitScript; message?: FixtureMessageScript; remote?: FixtureRemoteScript; pr?: FixturePullRequestScript }
+    | {
+          kind: 'fixtures';
+          timeline: boolean;
+          worktree?: true;
+          commit?: FixtureCommitScript;
+          message?: FixtureMessageScript;
+          remote?: FixtureRemoteScript;
+          pr?: FixturePullRequestScript;
+      }
     | { kind: 'none' };
 
 /** The words the page's `&pr=` switch knows: what `GET git/pull-request` says of the fixture's worktree. */
-const PULL_REQUEST_SCRIPTS = ['none', 'open', 'draft', 'merged', 'closed', 'no_gh', 'not_signed_in', 'no_remote', 'unavailable'] as const satisfies readonly FixturePullRequestScript[];
+const PULL_REQUEST_SCRIPTS = [
+    'none',
+    'open',
+    'draft',
+    'merged',
+    'closed',
+    'no_gh',
+    'not_signed_in',
+    'no_remote',
+    'unavailable',
+] as const satisfies readonly FixturePullRequestScript[];
 
 /** The value of a switch of the page's address when it is one of the words the switch knows. */
-const oneOf = <T extends string>(value: string | null, words: readonly T[]): T | undefined => words.find(word => word === value);
+const oneOf = <T extends string>(value: string | null, words: readonly T[]): T | undefined =>
+    words.find(word => word === value);
 
 /**
  * Where the UI gets its data, in order of precedence:
@@ -45,7 +64,15 @@ export function resolveDaemonConfig(search: string, bridge?: { url: string; toke
         const remote = oneOf(params.get('remote'), FIXTURE_REMOTE_SCRIPTS);
         const pr = oneOf(params.get('pr'), PULL_REQUEST_SCRIPTS);
 
-        return { kind: 'fixtures', timeline: params.get('fixtures') !== 'static', ...(params.has('worktree') && { worktree: true as const }), ...(commit && { commit }), ...(message && { message }), ...(remote && { remote }), ...(pr && { pr }) };
+        return {
+            kind: 'fixtures',
+            timeline: params.get('fixtures') !== 'static',
+            ...(params.has('worktree') && { worktree: true as const }),
+            ...(commit && { commit }),
+            ...(message && { message }),
+            ...(remote && { remote }),
+            ...(pr && { pr }),
+        };
     }
 
     return { kind: 'none' };

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { revealTask, type RevealTasks } from './taskReveal';
+import { type RevealTasks, revealTask } from './taskReveal';
 
 /**
  * 1
@@ -23,7 +23,8 @@ const TASKS: RevealTasks = new Map([
     ['t8', { id: 't8', archivedAt: 5 }],
 ]);
 
-const reveal = (scope: string | null, taskId: string, oneLevel = false) => revealTask(TASKS, scope, taskId, { oneLevel });
+const reveal = (scope: string | null, taskId: string, oneLevel = false) =>
+    revealTask(TASKS, scope, taskId, { oneLevel });
 
 describe('revealTask', () => {
     describe('a task inside the scope', () => {
@@ -74,7 +75,8 @@ describe('revealTask', () => {
     });
 
     describe('a task that was just made, which the project may not hold yet', () => {
-        const made = (scope: string | null, madeIn: string | null | undefined, oneLevel = false) => revealTask(TASKS, scope, 'new', { oneLevel, madeIn });
+        const made = (scope: string | null, madeIn: string | null | undefined, oneLevel = false) =>
+            revealTask(TASKS, scope, 'new', { oneLevel, madeIn });
 
         it('is revealed as the task it will be: inside the scope the scope stays, outside it the scope moves to the task it is inside', () => {
             expect(made('t1', 't1')).toEqual({ scope: 't1', unfold: [] });
@@ -97,7 +99,10 @@ describe('revealTask', () => {
         });
 
         it('reads a task the project holds as it is, whatever `madeIn` says', () => {
-            expect(revealTask(TASKS, 't1', 't2', { oneLevel: false, madeIn: 't6' })).toEqual({ scope: 't1', unfold: [] });
+            expect(revealTask(TASKS, 't1', 't2', { oneLevel: false, madeIn: 't6' })).toEqual({
+                scope: 't1',
+                unfold: [],
+            });
         });
     });
 

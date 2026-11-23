@@ -28,17 +28,23 @@ function readJson(path: string): Record<string, unknown> | undefined {
     try {
         const value: unknown = JSON.parse(readFileSync(path, 'utf8'));
 
-        return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
-    }
-    catch {
+        return value && typeof value === 'object' && !Array.isArray(value)
+            ? (value as Record<string, unknown>)
+            : undefined;
+    } catch {
         return undefined;
     }
 }
 
 /** Who the command line says is signed in: `cli-config.json` keeps the e-mail and name beside the login, not the token. */
-export function readCursorIdentity(context: Pick<ProbeContext, 'platform' | 'home' | 'env'>): { email?: string; name?: string } {
+export function readCursorIdentity(context: Pick<ProbeContext, 'platform' | 'home' | 'env'>): {
+    email?: string;
+    name?: string;
+} {
     for (const dir of cursorConfigDirs(context)) {
-        const info = readJson(join(dir, 'cli-config.json'))?.authInfo as { email?: unknown; displayName?: unknown } | undefined;
+        const info = readJson(join(dir, 'cli-config.json'))?.authInfo as
+            | { email?: unknown; displayName?: unknown }
+            | undefined;
         const email = typeof info?.email === 'string' && info.email ? info.email : undefined;
         const name = typeof info?.displayName === 'string' && info.displayName ? info.displayName : undefined;
 
@@ -60,7 +66,11 @@ const TOKEN = /^[\u0021-\u007E]{1,8192}$/;
  */
 export async function readCursorToken(context: ProbeContext): Promise<string | undefined> {
     if (context.platform === 'darwin') {
-        const run = await runProgram('/usr/bin/security', ['find-generic-password', '-s', 'cursor-access-token', '-a', 'cursor-user', '-w'], { env: context.env, cwd: context.cwd, timeoutMs: KEYCHAIN_TIMEOUT_MS, signal: context.signal });
+        const run = await runProgram(
+            '/usr/bin/security',
+            ['find-generic-password', '-s', 'cursor-access-token', '-a', 'cursor-user', '-w'],
+            { env: context.env, cwd: context.cwd, timeoutMs: KEYCHAIN_TIMEOUT_MS, signal: context.signal }
+        );
         const token = run.stdout.trim();
 
         if (run.code === 0 && TOKEN.test(token)) {
@@ -83,11 +93,11 @@ class RejectedError extends Error {}
 
 async function dashboard(context: ProbeContext, token: string, method: string): Promise<Record<string, unknown>> {
     const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
-    const response = await context.fetch(`${ API }/${ method }`, {
+    const response = await context.fetch(`${API}/${method}`, {
         method: 'POST',
         headers: {
-            'Authorization': `Bearer ${ token }`,
-            'Accept': 'application/json',
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/json',
             'Content-Type': 'application/json',
             'Connect-Protocol-Version': '1',
             'x-cursor-client-type': 'cli',
@@ -104,10 +114,10 @@ async function dashboard(context: ProbeContext, token: string, method: string): 
     }
 
     if (!response.ok) {
-        throw new Error(`Cursor answered ${ response.status }`);
+        throw new Error(`Cursor answered ${response.status}`);
     }
 
-    return await response.json() as Record<string, unknown>;
+    return (await response.json()) as Record<string, unknown>;
 }
 
 const number = (value: unknown): number | undefined => {
@@ -130,7 +140,12 @@ export function cursorWindows(usage: Record<string, unknown>): AgentUsageWindow[
     const percent = number((usage.planUsage as { totalPercentUsed?: unknown } | undefined)?.totalPercentUsed);
 
     if (percent !== undefined) {
-        windows.push({ id: 'plan', label: 'Plan usage', usedPercent: Math.min(100, Math.max(0, percent)), ...(resetsAt !== undefined && { resetsAt }) });
+        windows.push({
+            id: 'plan',
+            label: 'Plan usage',
+            usedPercent: Math.min(100, Math.max(0, percent)),
+            ...(resetsAt !== undefined && { resetsAt }),
+        });
     }
 
     const spend = usage.spendLimitUsage as Record<string, unknown> | undefined;
@@ -139,7 +154,12 @@ export function cursorWindows(usage: Record<string, unknown>): AgentUsageWindow[
     const [cap, spent] = limit > 0 ? [limit, used] : [overall, overallUsed];
 
     if (cap > 0) {
-        windows.push({ id: 'on-demand', label: 'On-demand', usedPercent: Math.min(100, Math.max(0, spent / cap * 100)), ...(resetsAt !== undefined && { resetsAt }) });
+        windows.push({
+            id: 'on-demand',
+            label: 'On-demand',
+            usedPercent: Math.min(100, Math.max(0, (spent / cap) * 100)),
+            ...(resetsAt !== undefined && { resetsAt }),
+        });
     }
 
     return windows;
@@ -153,33 +173,58 @@ export const cursorAccount = {
     async read(context): Promise<ProviderRead> {
         const identity = readCursorIdentity(context);
         const token = await readCursorToken(context);
-        const account: AgentAccount = { method: 'subscription', ...(identity.email && { email: identity.email }), ...(identity.name && !identity.email && { name: identity.name }) };
+        const account: AgentAccount = {
+            method: 'subscription',
+            ...(identity.email && { email: identity.email }),
+            ...(identity.name && !identity.email && { name: identity.name }),
+        };
 
         if (!token && !identity.email && !identity.name) {
             return { signIn: { status: 'signed-out' }, usage: { state: 'unavailable', windows: [] } };
         }
 
         if (!token) {
-            return { signIn: { status: 'signed-in', account }, usage: { state: 'unavailable', windows: [], detail: 'Clowdy could not read the Cursor login, so the limits are not shown' } };
+            return {
+                signIn: { status: 'signed-in', account },
+                usage: {
+                    state: 'unavailable',
+                    windows: [],
+                    detail: 'Clowdy could not read the Cursor login, so the limits are not shown',
+                },
+            };
         }
 
         try {
-            const [period, plan] = await Promise.all([dashboard(context, token, 'GetCurrentPeriodUsage'), dashboard(context, token, 'GetPlanInfo').catch(() => undefined)]);
+            const [period, plan] = await Promise.all([
+                dashboard(context, token, 'GetCurrentPeriodUsage'),
+                dashboard(context, token, 'GetPlanInfo').catch(() => undefined),
+            ]);
             const planName = (plan?.planInfo as { planName?: unknown } | undefined)?.planName;
             const windows = cursorWindows(period);
 
             return {
-                signIn: { status: 'signed-in', account: { ...account, ...(typeof planName === 'string' && planName.trim() && { plan: planName.trim() }) } },
-                usage: windows.length > 0 ? { state: 'ok', windows, fetchedAt: context.now() } : { state: 'unavailable', windows: [], detail: 'Cursor reported no limits for this plan' },
+                signIn: {
+                    status: 'signed-in',
+                    account: {
+                        ...account,
+                        ...(typeof planName === 'string' && planName.trim() && { plan: planName.trim() }),
+                    },
+                },
+                usage:
+                    windows.length > 0
+                        ? { state: 'ok', windows, fetchedAt: context.now() }
+                        : { state: 'unavailable', windows: [], detail: 'Cursor reported no limits for this plan' },
             };
-        }
-        catch (error) {
+        } catch (error) {
             const rejected = error instanceof RejectedError;
             // The token is never part of what a person or a client is told, whatever an error says.
             const detail = (error instanceof Error ? error.message : String(error)).split(token).join('…');
 
             return {
-                signIn: rejected && !identity.email ? { status: 'signed-out', detail: 'The Cursor login has expired' } : { status: 'signed-in', account },
+                signIn:
+                    rejected && !identity.email
+                        ? { status: 'signed-out', detail: 'The Cursor login has expired' }
+                        : { status: 'signed-in', account },
                 usage: { state: 'error', windows: [], detail },
             };
         }

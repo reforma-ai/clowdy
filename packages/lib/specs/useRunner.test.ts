@@ -3,7 +3,7 @@ import { act, createElement, useRef } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { useRunner, type UseRunnerOptions } from '../src/useRunner';
+import { type UseRunnerOptions, useRunner } from '../src/useRunner';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -27,8 +27,10 @@ const field = () => container.querySelector('[data-testid="runner"]') as HTMLEle
 // The drag overlay is the only element the hook appends to the body.
 const overlay = () => document.body.lastElementChild as HTMLElement;
 
-const pointer = (type: string, init: PointerEventInit) => new PointerEvent(type, { bubbles: true, cancelable: true, ...init });
-const key = (type: 'keydown' | 'keyup', shiftKey: boolean) => new KeyboardEvent(type, { key: 'Shift', shiftKey, bubbles: true });
+const pointer = (type: string, init: PointerEventInit) =>
+    new PointerEvent(type, { bubbles: true, cancelable: true, ...init });
+const key = (type: 'keydown' | 'keyup', shiftKey: boolean) =>
+    new KeyboardEvent(type, { key: 'Shift', shiftKey, bubbles: true });
 
 function down(init: PointerEventInit = {}) {
     act(() => {

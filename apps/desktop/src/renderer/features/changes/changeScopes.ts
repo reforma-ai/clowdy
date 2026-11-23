@@ -14,7 +14,8 @@ export interface ScopeOption {
 export const ALL_CHANGES_LABEL = 'All changes';
 
 /** How a commit is named in the menu: its short hash and the first line of its message. */
-export const commitLabel = ({ shortSha, subject }: Pick<GitCommit, 'shortSha' | 'subject'>): string => `${ shortSha } ${ subject }`;
+export const commitLabel = ({ shortSha, subject }: Pick<GitCommit, 'shortSha' | 'subject'>): string =>
+    `${shortSha} ${subject}`;
 
 /** The base the branch is compared with is there: the branch's own scope and its commits make sense. */
 const hasBase = (base: GitBase | undefined): base is Extract<GitBase, { state: 'ready' }> => base?.state === 'ready';
@@ -28,7 +29,9 @@ export function scopeOptions(base: GitBase | undefined): ScopeOption[] {
         { scope: 'all', label: ALL_CHANGES_LABEL },
         ...(hasBase(base) ? [{ scope: 'branch' as const, label: 'Branch' }] : []),
         { scope: 'uncommitted', label: 'Uncommitted' },
-        ...(hasBase(base) ? base.commits.map(commit => ({ scope: commitScope(commit.sha), label: commitLabel(commit), commit })) : []),
+        ...(hasBase(base)
+            ? base.commits.map(commit => ({ scope: commitScope(commit.sha), label: commitLabel(commit), commit }))
+            : []),
     ];
 }
 

@@ -17,7 +17,7 @@ export function pathInside(root: string, file: string): string | undefined {
     const base = comparable(root).replace(/\/+$/, '');
     const target = comparable(file);
 
-    if (!target.startsWith(`${ base }/`)) return undefined;
+    if (!target.startsWith(`${base}/`)) return undefined;
 
     // The case of the file's own name is kept: only the folder's part was compared in lower case.
     const relative = file.replaceAll('\\', '/').slice(base.length + 1);
@@ -34,9 +34,10 @@ function unwrapped(error: unknown): Error {
 }
 
 /** A bridge call whose failure is the words main gave. */
-const asked = <T>(call: Promise<T>): Promise<T> => call.catch((error: unknown) => {
-    throw unwrapped(error);
-});
+const asked = <T>(call: Promise<T>): Promise<T> =>
+    call.catch((error: unknown) => {
+        throw unwrapped(error);
+    });
 
 /**
  * The system clipboard's files for the file manager of one folder, over the desktop app's bridge. The manager names items of the folder by their paths from its
@@ -45,11 +46,12 @@ const asked = <T>(call: Promise<T>): Promise<T> => call.catch((error: unknown) =
 export function systemFileClipboard(bridge: ClipboardBridge, root: string): FileClipboard {
     return {
         write: paths => asked(bridge.writeClipboardFiles(paths.map(path => absolutePath(root, path)))),
-        read: async () => (await asked(bridge.readClipboardFiles())).map((file): ClipboardEntry => {
-            const local = pathInside(root, file.path);
+        read: async () =>
+            (await asked(bridge.readClipboardFiles())).map((file): ClipboardEntry => {
+                const local = pathInside(root, file.path);
 
-            return { ...file, ...(local === undefined ? {} : { local }) };
-        }),
+                return { ...file, ...(local === undefined ? {} : { local }) };
+            }),
         paste: (folder, items) => asked(bridge.pasteClipboardFiles(absolutePath(root, folder), items)),
     };
 }
@@ -59,5 +61,7 @@ export function clipboardOf(root: string | undefined): FileClipboard | undefined
     const bridge = window.desktop;
 
     // A shell older than this renderer lacks the three methods together.
-    return root !== undefined && bridge?.readClipboardFiles !== undefined ? systemFileClipboard(bridge, root) : undefined;
+    return root !== undefined && bridge?.readClipboardFiles !== undefined
+        ? systemFileClipboard(bridge, root)
+        : undefined;
 }

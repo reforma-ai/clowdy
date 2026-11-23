@@ -8,7 +8,19 @@ import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { overrideTransport } from '../../daemon/testing';
 import { undoStack } from '../../hotkeys/undo';
 import { openCreateTask } from './CreateTaskDialog';
-import { buttonNamed, click, closePage, draw, mountScreen, openPage, page, press, project, ui, wait } from './screenHarness';
+import {
+    buttonNamed,
+    click,
+    closePage,
+    draw,
+    mountScreen,
+    openPage,
+    page,
+    press,
+    project,
+    ui,
+    wait,
+} from './screenHarness';
 import { DEPTH_LIMIT_HINT } from './taskTree';
 import { REFRESH_DELAY_MS } from './useTaskComments';
 
@@ -29,15 +41,18 @@ let sent: CommandInput[];
 let refuse: (input: CommandInput) => string | undefined;
 
 /** The fixture daemon, remembering what it was asked and refusing what the test says. */
-const daemon = (base: FixtureTransport) => overrideTransport(base, {
-    command: async (input) => {
-        sent.push(input);
+const daemon = (base: FixtureTransport) =>
+    overrideTransport(base, {
+        command: async input => {
+            sent.push(input);
 
-        const message = refuse(input);
+            const message = refuse(input);
 
-        return message ? { ok: false, requestId: 'r', error: { code: 'invalid', message } } satisfies CommandResult : base.command(input);
-    },
-});
+            return message
+                ? ({ ok: false, requestId: 'r', error: { code: 'invalid', message } } satisfies CommandResult)
+                : base.command(input);
+        },
+    });
 
 beforeEach(() => {
     sent = [];
@@ -52,10 +67,11 @@ afterEach(() => {
     vi.restoreAllMocks();
 });
 
-const panel = (key: string) => page.container.querySelector<HTMLElement>(`aside[aria-label="Task ${ key }"]`)!;
+const panel = (key: string) => page.container.querySelector<HTMLElement>(`aside[aria-label="Task ${key}"]`)!;
 
 /** A section of the panel, found by its heading. */
-const sectionOf = (key: string, title: string) => [...panel(key).querySelectorAll<HTMLElement>('section')].find(section => section.textContent?.startsWith(title))!;
+const sectionOf = (key: string, title: string) =>
+    [...panel(key).querySelectorAll<HTMLElement>('section')].find(section => section.textContent?.startsWith(title))!;
 
 const updates = () => sent.filter(input => input.type === 'task.update');
 
@@ -102,13 +118,19 @@ async function openPicker(key: string, name: 'Set parent' | 'Change parent') {
 async function pick(text: string) {
     const row = options().find(option => option.textContent?.includes(text));
 
-    if (!row) throw new Error(`No row says ${ text }: ${ labels().join(' | ') }`);
+    if (!row) throw new Error(`No row says ${text}: ${labels().join(' | ')}`);
 
     await act(async () => row.click());
     await draw();
 }
 
-const closePicker = () => act(async () => void document.querySelector('input[type="text"]')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+const closePicker = () =>
+    act(
+        async () =>
+            void document
+                .querySelector('input[type="text"]')
+                ?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    );
 
 describe('the Parent picker', () => {
     it('lists "No parent" first and then the tasks it may go under, never itself or a task inside it, and marks the present parent', async () => {
@@ -124,7 +146,11 @@ describe('the Parent picker', () => {
         expect(rows.some(row => row?.includes('CAR-33'))).toBe(false);
         expect(rows.some(row => row?.includes('CAR-34'))).toBe(false);
         expect(rows.some(row => row?.includes('CAR-24'))).toBe(true);
-        expect(options().filter(option => option.querySelector('[aria-label="Current"]')).map(option => option.textContent)).toEqual([expect.stringContaining('CAR-31')]);
+        expect(
+            options()
+                .filter(option => option.querySelector('[aria-label="Current"]'))
+                .map(option => option.textContent)
+        ).toEqual([expect.stringContaining('CAR-31')]);
 
         await closePicker();
     });
@@ -133,7 +159,11 @@ describe('the Parent picker', () => {
         await mountScreen({ prepare: window => window.openTask('t-28'), transport: daemon });
         await openPicker('CAR-28', 'Set parent');
 
-        expect(options().filter(option => option.querySelector('[aria-label="Current"]')).map(option => option.textContent)).toEqual(['No parent']);
+        expect(
+            options()
+                .filter(option => option.querySelector('[aria-label="Current"]'))
+                .map(option => option.textContent)
+        ).toEqual(['No parent']);
 
         await closePicker();
     });
@@ -145,7 +175,12 @@ describe('the Parent picker', () => {
         let parentId = 't-33';
 
         for (let level = 4; level <= 8; level++) {
-            const result = await page.store.command({ type: 'task.create', projectId: FIXTURE_PROJECT_ID, title: `Level ${ level }`, parentId });
+            const result = await page.store.command({
+                type: 'task.create',
+                projectId: FIXTURE_PROJECT_ID,
+                title: `Level ${level}`,
+                parentId,
+            });
 
             parentId = (result as { ok: true; data: { task: { id: string } } }).data.task.id;
         }
@@ -229,10 +264,13 @@ describe('the Parent picker', () => {
         expect(undoStack.entries).toEqual([]);
     });
 
-    it('shows the daemon\'s refusal as a toast, changes nothing and records nothing to undo', async () => {
+    it("shows the daemon's refusal as a toast, changes nothing and records nothing to undo", async () => {
         const error = vi.spyOn(toast, 'error');
 
-        refuse = input => (input.type === 'task.update' && input.parentId === 't-31' ? 'CAR-31 is archived, restore it first' : undefined);
+        refuse = input =>
+            input.type === 'task.update' && input.parentId === 't-31'
+                ? 'CAR-31 is archived, restore it first'
+                : undefined;
         await mountScreen({ prepare: window => window.openTask('t-28'), transport: daemon });
         await openPicker('CAR-28', 'Set parent');
         await pick('CAR-31');
@@ -270,7 +308,12 @@ describe('the Sub-tasks section', () => {
         const rank = (taskId: string) => statuses.findIndex(status => status.id === task(taskId).statusId);
 
         // The workflow's order decides, and the number within a status: CAR-35 is todo, CAR-32 in progress, CAR-36 in review, CAR-37 canceled.
-        expect(rows.map(row => /CAR-\d+/.exec(row.textContent ?? '')?.[0])).toEqual(['CAR-35', 'CAR-32', 'CAR-36', 'CAR-37']);
+        expect(rows.map(row => /CAR-\d+/.exec(row.textContent ?? '')?.[0])).toEqual([
+            'CAR-35',
+            'CAR-32',
+            'CAR-36',
+            'CAR-37',
+        ]);
         expect(rank('t-35')).toBeLessThan(rank('t-32'));
         expect(sectionOf('CAR-31', 'Sub-tasks').textContent).not.toContain('CAR-33');
         expect(rows[0].textContent).toContain('Refund flow');
@@ -306,7 +349,7 @@ describe('the Sub-tasks section', () => {
         expect(sectionOf('CAR-32', 'Sub-tasks').textContent).toContain('CAR-33');
     });
 
-    it('opens the task for a grandchild too, from its parent\'s panel', async () => {
+    it("opens the task for a grandchild too, from its parent's panel", async () => {
         await mountScreen({ prepare: window => window.openTask('t-32'), transport: daemon });
         await click(rowsOf('CAR-32').find(row => row.textContent?.includes('CAR-34')));
 
@@ -350,14 +393,19 @@ describe('the Sub-tasks section', () => {
         expect(vi.mocked(openCreateTask).mock.lastCall?.[0].parentId).toBe('t-28');
     });
 
-    it('turns the button off for a task at the last level, and says why where the screen\'s own button does', async () => {
+    it("turns the button off for a task at the last level, and says why where the screen's own button does", async () => {
         await mountScreen({ prepare: window => window.openTask('t-28'), transport: daemon });
 
         // CAR-33 is level 3; five more under it make Level 8, the last level.
         let parentId = 't-33';
 
         for (let level = 4; level <= 8; level++) {
-            const result = await page.store.command({ type: 'task.create', projectId: FIXTURE_PROJECT_ID, title: `Level ${ level }`, parentId });
+            const result = await page.store.command({
+                type: 'task.create',
+                projectId: FIXTURE_PROJECT_ID,
+                title: `Level ${level}`,
+                parentId,
+            });
 
             parentId = (result as { ok: true; data: { task: { id: string } } }).data.task.id;
         }
@@ -367,7 +415,9 @@ describe('the Sub-tasks section', () => {
 
         const section = sectionOf('CAR-45', 'Sub-tasks');
         // The real button is off; the stand-in beside it, which can have the focus, carries the hint.
-        const button = [...section.querySelectorAll('button')].find(candidate => candidate.textContent === 'New sub-task');
+        const button = [...section.querySelectorAll('button')].find(
+            candidate => candidate.textContent === 'New sub-task'
+        );
 
         expect(section.textContent).toContain('No sub-tasks yet');
         expect(button?.hasAttribute('disabled')).toBe(true);
@@ -376,7 +426,9 @@ describe('the Sub-tasks section', () => {
 
         expect(openCreateTask).not.toHaveBeenCalled();
 
-        await act(async () => section.querySelector<HTMLElement>('[role="button"][aria-label="New sub-task"]')!.focus());
+        await act(async () =>
+            section.querySelector<HTMLElement>('[role="button"][aria-label="New sub-task"]')!.focus()
+        );
 
         expect(document.body.textContent).toContain(DEPTH_LIMIT_HINT);
     });
@@ -386,7 +438,11 @@ describe('the Sub-tasks section', () => {
         await act(async () => void (await page.store.command({ type: 'task.archive', taskId: 't-37' })));
         await draw();
 
-        expect(rowsOf('CAR-31').map(row => /CAR-\d+/.exec(row.textContent ?? '')?.[0])).toEqual(['CAR-35', 'CAR-32', 'CAR-36']);
+        expect(rowsOf('CAR-31').map(row => /CAR-\d+/.exec(row.textContent ?? '')?.[0])).toEqual([
+            'CAR-35',
+            'CAR-32',
+            'CAR-36',
+        ]);
     });
 });
 
@@ -398,7 +454,10 @@ describe('the checklist chip', () => {
 
         expect(chip?.textContent).toBe('2/5');
         // Under the title: before the status and the description.
-        expect(panel('CAR-35').querySelector('textarea[aria-label="Title"]')!.compareDocumentPosition(chip!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(
+            panel('CAR-35').querySelector('textarea[aria-label="Title"]')!.compareDocumentPosition(chip!) &
+                Node.DOCUMENT_POSITION_FOLLOWING
+        ).toBeTruthy();
     });
 
     it('shows nothing for a description with no checklist, or none', async () => {
@@ -456,7 +515,17 @@ describe('the description', () => {
 
     it('shows a line an agent ticked, from outside, at once', async () => {
         await mountScreen({ prepare: window => window.openTask('t-35'), transport: daemon });
-        await act(async () => void (await page.store.command({ type: 'task.update', taskId: 't-35', description: task('t-35').description.replace('- [ ] Tell the person by email', '- [x] Tell the person by email') })));
+        await act(
+            async () =>
+                void (await page.store.command({
+                    type: 'task.update',
+                    taskId: 't-35',
+                    description: task('t-35').description.replace(
+                        '- [ ] Tell the person by email',
+                        '- [x] Tell the person by email'
+                    ),
+                }))
+        );
         await draw();
 
         expect(boxes('CAR-35').map(box => box.checked)).toEqual([true, true, false, true, false]);
@@ -466,8 +535,12 @@ describe('the description', () => {
 describe('the Comments section', () => {
     const articles = () => [...panel('CAR-32').querySelectorAll<HTMLElement>('article')];
     const commentIds = () => articles().map(found => found.dataset.commentId);
-    const composer = () => panel('CAR-32').querySelector<HTMLElement & { editor: Editor }>('[contenteditable][aria-label="Write a comment"]')!;
-    const write = (text: string) => act(async () => void composer().editor.chain().focus('end').insertContent(text).run());
+    const composer = () =>
+        panel('CAR-32').querySelector<HTMLElement & { editor: Editor }>(
+            '[contenteditable][aria-label="Write a comment"]'
+        )!;
+    const write = (text: string) =>
+        act(async () => void composer().editor.chain().focus('end').insertContent(text).run());
     /** What the section needs to hear a change of the comments and read them again: the screen drawn, the pause that lets a burst of changes be one read, and the read. */
     const refresh = async () => {
         await wait(30);
@@ -506,16 +579,27 @@ describe('the Comments section', () => {
     it('is the last section, under the activity and above the footer', async () => {
         await mountScreen({ prepare: window => window.openTask('t-32'), transport: daemon });
 
-        const sections = [...panel('CAR-32').querySelectorAll('section')].map(found => found.firstElementChild?.textContent?.replace(/\d+$/, ''));
+        const sections = [...panel('CAR-32').querySelectorAll('section')].map(found =>
+            found.firstElementChild?.textContent?.replace(/\d+$/, '')
+        );
 
         expect(sections.at(-1)).toBe('Comments');
         expect(sections.at(-2)).toBe('Latest activity');
     });
 
     it('names the person "You" and an agent by its run, which opens in Agents, and knows when the run is gone', async () => {
-        const gone: TaskComment = { id: 'cmt_gone', taskId: 't-32', author: { kind: 'run', runId: 'r-deleted' }, body: 'Done.', createdAt: Date.now() };
+        const gone: TaskComment = {
+            id: 'cmt_gone',
+            taskId: 't-32',
+            author: { kind: 'run', runId: 'r-deleted' },
+            body: 'Done.',
+            createdAt: Date.now(),
+        };
 
-        await mountScreen({ prepare: window => window.openTask('t-32'), transport: withData(comments => void comments.push(gone)) });
+        await mountScreen({
+            prepare: window => window.openTask('t-32'),
+            transport: withData(comments => void comments.push(gone)),
+        });
         await wait(250);
         await draw();
 
@@ -533,7 +617,7 @@ describe('the Comments section', () => {
         expect(ui().runId).toBe('r-orch-1');
     });
 
-    it('offers Edit and Delete on the person\'s comments and not on the agent\'s', async () => {
+    it("offers Edit and Delete on the person's comments and not on the agent's", async () => {
         await mountScreen({ prepare: window => window.openTask('t-32'), transport: daemon });
         await wait(250);
         await draw();
@@ -552,7 +636,9 @@ describe('the Comments section', () => {
         await click([...panel('CAR-32').querySelectorAll('button')].find(button => button.textContent === 'Send'));
         await refresh();
 
-        expect(sent.filter(input => input.type === 'task.comment.add')).toEqual([{ type: 'task.comment.add', taskId: 't-32', body: 'Ship it.' }]);
+        expect(sent.filter(input => input.type === 'task.comment.add')).toEqual([
+            { type: 'task.comment.add', taskId: 't-32', body: 'Ship it.' },
+        ]);
         expect(commentIds()).toHaveLength(4);
         expect(articles().at(-1)!.textContent).toContain('Ship it.');
         expect(sectionOf('CAR-32', 'Comments').firstElementChild!.textContent).toBe('Comments4');
@@ -566,11 +652,28 @@ describe('the Comments section', () => {
         await wait(250);
         await draw();
 
-        await act(async () => void panel('CAR-27').querySelector<HTMLElement & { editor: Editor }>('[contenteditable][aria-label="Write a comment"]')!.editor.chain().focus('end').insertContent('Looks fine.').run());
-        await act(async () => void press('Enter', { mod: true }, panel('CAR-27').querySelector('[contenteditable][aria-label="Write a comment"]')!));
+        await act(
+            async () =>
+                void panel('CAR-27')
+                    .querySelector<HTMLElement & { editor: Editor }>('[contenteditable][aria-label="Write a comment"]')!
+                    .editor.chain()
+                    .focus('end')
+                    .insertContent('Looks fine.')
+                    .run()
+        );
+        await act(
+            async () =>
+                void press(
+                    'Enter',
+                    { mod: true },
+                    panel('CAR-27').querySelector('[contenteditable][aria-label="Write a comment"]')!
+                )
+        );
         await wait(30);
 
-        expect(sent.filter(input => input.type === 'task.comment.add')).toEqual([{ type: 'task.comment.add', taskId: 't-27', body: 'Looks fine.' }]);
+        expect(sent.filter(input => input.type === 'task.comment.add')).toEqual([
+            { type: 'task.comment.add', taskId: 't-27', body: 'Looks fine.' },
+        ]);
         expect(sent.filter(input => input.type === 'task.start')).toEqual([]);
     });
 
@@ -580,7 +683,14 @@ describe('the Comments section', () => {
         await draw();
 
         // Another window: the daemon takes a comment the composer here did not send.
-        await act(async () => void (await page.store.command({ type: 'task.comment.add', taskId: 't-32', body: 'From another window.' })));
+        await act(
+            async () =>
+                void (await page.store.command({
+                    type: 'task.comment.add',
+                    taskId: 't-32',
+                    body: 'From another window.',
+                }))
+        );
         await refresh();
 
         expect(commentIds()).toHaveLength(4);
@@ -598,12 +708,25 @@ describe('the Comments section', () => {
         expect(first().textContent).not.toContain('edited');
 
         await click(first().querySelector('button[aria-label="Edit comment"]'));
-        await act(async () => void first().querySelector<HTMLElement & { editor: Editor }>('[contenteditable]')!.editor.chain().focus('end').insertContent(' Always.').run());
+        await act(
+            async () =>
+                void first()
+                    .querySelector<HTMLElement & { editor: Editor }>('[contenteditable]')!
+                    .editor.chain()
+                    .focus('end')
+                    .insertContent(' Always.')
+                    .run()
+        );
         await click([...first().querySelectorAll('button')].find(button => button.textContent === 'Save'));
         await refresh();
 
         expect(sent.filter(input => input.type === 'task.comment.edit')).toEqual([
-            { type: 'task.comment.edit', taskId: 't-32', commentId: 'cmt_A001', body: 'Use the sandbox keys until the checkout is reviewed. Always.' },
+            {
+                type: 'task.comment.edit',
+                taskId: 't-32',
+                commentId: 'cmt_A001',
+                body: 'Use the sandbox keys until the checkout is reviewed. Always.',
+            },
         ]);
         expect(first().textContent).toContain('Always.');
         expect(first().textContent).toContain('edited');
@@ -615,7 +738,8 @@ describe('the Comments section', () => {
         await wait(250);
         await draw();
 
-        const button = () => [...articles()[0].querySelectorAll('button')].find(candidate => candidate.textContent?.includes('Delete'));
+        const button = () =>
+            [...articles()[0].querySelectorAll('button')].find(candidate => candidate.textContent?.includes('Delete'));
 
         await click(button());
 
@@ -624,7 +748,9 @@ describe('the Comments section', () => {
         await click(button());
         await refresh();
 
-        expect(sent.filter(input => input.type === 'task.comment.delete')).toEqual([{ type: 'task.comment.delete', taskId: 't-32', commentId: 'cmt_A001' }]);
+        expect(sent.filter(input => input.type === 'task.comment.delete')).toEqual([
+            { type: 'task.comment.delete', taskId: 't-32', commentId: 'cmt_A001' },
+        ]);
         expect(commentIds()).toEqual(['cmt_A002', 'cmt_A003']);
         expect(sectionOf('CAR-32', 'Comments').firstElementChild!.textContent).toBe('Comments2');
     });
@@ -653,7 +779,10 @@ describe('the Comments section', () => {
         await act(async () => ui().openTask('t-33'));
         await draw();
 
-        const otherComposer = () => panel('CAR-33').querySelector<HTMLElement & { editor: Editor }>('[contenteditable][aria-label="Write a comment"]')!;
+        const otherComposer = () =>
+            panel('CAR-33').querySelector<HTMLElement & { editor: Editor }>(
+                '[contenteditable][aria-label="Write a comment"]'
+            )!;
 
         expect(otherComposer().editor.getMarkdown()).toBe('');
 
@@ -665,9 +794,21 @@ describe('the Comments section', () => {
     });
 
     it('reads every page of a task with more than a hundred comments', async () => {
-        const many = Array.from({ length: 130 }, (_, index): TaskComment => ({ id: `cmt_M${ String(index).padStart(3, '0') }`, taskId: 't-33', author: { kind: 'user' }, body: `Note ${ index }`, createdAt: 1000 + index }));
+        const many = Array.from(
+            { length: 130 },
+            (_, index): TaskComment => ({
+                id: `cmt_M${String(index).padStart(3, '0')}`,
+                taskId: 't-33',
+                author: { kind: 'user' },
+                body: `Note ${index}`,
+                createdAt: 1000 + index,
+            })
+        );
 
-        await mountScreen({ prepare: window => window.openTask('t-33'), transport: withData(comments => void comments.push(...many)) });
+        await mountScreen({
+            prepare: window => window.openTask('t-33'),
+            transport: withData(comments => void comments.push(...many)),
+        });
         await wait(300);
         await draw();
 
@@ -684,13 +825,14 @@ describe('the Comments section', () => {
 
         await mountScreen({
             prepare: window => window.openTask('t-32'),
-            transport: base => overrideTransport(daemon(base), {
-                getTaskComments: async (taskId, page) => {
-                    if (isDown) throw new Error('The daemon cannot be reached');
+            transport: base =>
+                overrideTransport(daemon(base), {
+                    getTaskComments: async (taskId, page) => {
+                        if (isDown) throw new Error('The daemon cannot be reached');
 
-                    return base.getTaskComments(taskId, page);
-                },
-            }),
+                        return base.getTaskComments(taskId, page);
+                    },
+                }),
         });
         await wait(250);
         await draw();
@@ -711,13 +853,14 @@ describe('the Comments section', () => {
 
         await mountScreen({
             prepare: window => window.openTask('t-32'),
-            transport: base => overrideTransport(daemon(base), {
-                getTaskComments: async (taskId, page) => {
-                    reads.push(taskId);
+            transport: base =>
+                overrideTransport(daemon(base), {
+                    getTaskComments: async (taskId, page) => {
+                        reads.push(taskId);
 
-                    return base.getTaskComments(taskId, page);
-                },
-            }),
+                        return base.getTaskComments(taskId, page);
+                    },
+                }),
         });
 
         for (const taskId of ['t-33', 't-34', 't-35']) {

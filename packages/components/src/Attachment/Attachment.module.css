@@ -115,7 +115,9 @@
         object-fit: cover;
         object-position: center;
         background:
-            linear-gradient(45deg, rgba(42, 37, 33, 0.1) 25%, transparent 25%), linear-gradient(-45deg, rgba(42, 37, 33, 0.1) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(42, 37, 33, 0.1) 75%),
+            linear-gradient(45deg, rgba(42, 37, 33, 0.1) 25%, transparent 25%),
+            linear-gradient(-45deg, rgba(42, 37, 33, 0.1) 25%, transparent 25%),
+            linear-gradient(45deg, transparent 75%, rgba(42, 37, 33, 0.1) 75%),
             linear-gradient(-45deg, transparent 75%, rgba(42, 37, 33, 0.1) 75%);
         background-color: var(--color-secondary);
         background-position:

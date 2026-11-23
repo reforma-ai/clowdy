@@ -5,7 +5,12 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createFixtureData, FIXTURE_EMPTY_PROJECT_ID, FIXTURE_PERSONAL_PROJECT_ID, FIXTURE_PROJECT_ID } from '../daemon/fixtureData';
+import {
+    createFixtureData,
+    FIXTURE_EMPTY_PROJECT_ID,
+    FIXTURE_PERSONAL_PROJECT_ID,
+    FIXTURE_PROJECT_ID,
+} from '../daemon/fixtureData';
 import { FixtureTransport } from '../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider } from '../stores';
 import { ProjectSelect } from './ProjectSelect';
@@ -13,7 +18,7 @@ import { ProjectSelect } from './ProjectSelect';
 // The babel plugin that makes the app's components observers does not run under Vitest: `observer` stands in for it here.
 const Select = observer(ProjectSelect);
 
-vi.mock('../shared/ProjectIcon', async (importOriginal) => {
+vi.mock('../shared/ProjectIcon', async importOriginal => {
     const { ProjectIcon } = await importOriginal<typeof import('../shared/ProjectIcon')>();
     const mobx = await import('mobx-react-lite');
 
@@ -29,7 +34,10 @@ let store: RootStore;
 const storage = () => {
     const data: Record<string, string> = {};
 
-    return { getItem: (key: string) => data[key] ?? null, setItem: (key: string, value: string) => void (data[key] = value) };
+    return {
+        getItem: (key: string) => data[key] ?? null,
+        setItem: (key: string, value: string) => void (data[key] = value),
+    };
 };
 
 async function flush() {
@@ -41,7 +49,13 @@ async function flush() {
 async function open(data = createFixtureData()) {
     store = new RootStore(new FixtureTransport({ data }), { storage: storage() });
     await store.load();
-    act(() => root.render(<RootStoreProvider value={ store }><Select /></RootStoreProvider>));
+    act(() =>
+        root.render(
+            <RootStoreProvider value={store}>
+                <Select />
+            </RootStoreProvider>
+        )
+    );
     await flush();
     await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Project"]')!.click());
     await flush();
@@ -88,7 +102,12 @@ describe('ProjectSelect', () => {
     it('shows where each project is: its main folder, and +N for the folders it has besides', async () => {
         const data = createFixtureData();
 
-        data.projects.find(project => project.id === FIXTURE_PROJECT_ID)!.folders.push({ id: 'fld_api', path: '/Users/dev/car-rental-api' }, { id: 'fld_web', path: '/Users/dev/car-rental-web' });
+        data.projects
+            .find(project => project.id === FIXTURE_PROJECT_ID)!
+            .folders.push(
+                { id: 'fld_api', path: '/Users/dev/car-rental-api' },
+                { id: 'fld_web', path: '/Users/dev/car-rental-web' }
+            );
         await open(data);
 
         // The path stands as `~` in the home folder the fixture daemon names, and the count of the other folders beside it.
@@ -119,14 +138,18 @@ describe('ProjectSelect', () => {
         }
     });
 
-    it('shows a project\'s picture, uploaded or found in its main folder, on the button and in the menu, and the folder icon without one', async () => {
+    it("shows a project's picture, uploaded or found in its main folder, on the button and in the menu, and the folder icon without one", async () => {
         const data = createFixtureData();
         const png = 'data:image/png;base64,iVBORw0KGgo=';
 
         data.projects.find(project => project.id === FIXTURE_EMPTY_PROJECT_ID)!.settings.icon = png;
         await open(data);
 
-        const picture = (label: string) => items().find(item => item.textContent?.includes(label))?.querySelector('img')?.getAttribute('src');
+        const picture = (label: string) =>
+            items()
+                .find(item => item.textContent?.includes(label))
+                ?.querySelector('img')
+                ?.getAttribute('src');
 
         // Car Rental, the open project, has a favicon in its folder; Clowdy has an uploaded picture.
         expect(container.querySelector('button[aria-label="Project"] img')?.getAttribute('src')).toMatch(/^blob:/);
@@ -145,14 +168,26 @@ describe('ProjectSelect', () => {
 
     it('opens Settings on the list of projects with Manage projects…', async () => {
         await open();
-        await act(async () => items().find(item => item.textContent === 'Manage projects…')!.click());
+        await act(async () =>
+            items()
+                .find(item => item.textContent === 'Manage projects…')!
+                .click()
+        );
 
-        expect([store.ui.settingsOpen, store.ui.settingsPage, store.ui.settingsProjectId]).toEqual([true, 'projects', null]);
+        expect([store.ui.settingsOpen, store.ui.settingsPage, store.ui.settingsProjectId]).toEqual([
+            true,
+            'projects',
+            null,
+        ]);
     });
 
     it('opens the Add project form with Add project…', async () => {
         await open();
-        await act(async () => items().find(item => item.textContent === 'Add project…')!.click());
+        await act(async () =>
+            items()
+                .find(item => item.textContent === 'Add project…')!
+                .click()
+        );
         await act(async () => {
             await new Promise(resolve => setTimeout(resolve, 60));
         });

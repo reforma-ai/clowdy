@@ -34,8 +34,7 @@ export function ReadOnlyNotice({ chat, run, message }: ReadOnlyNoticeProps) {
 
         try {
             await handOffChat();
-        }
-        finally {
+        } finally {
             setIsHandingOff(false);
         }
     };
@@ -47,28 +46,38 @@ export function ReadOnlyNotice({ chat, run, message }: ReadOnlyNoticeProps) {
 
         try {
             await perform(root, { type: 'run.cancel', runId: run.id });
-        }
-        finally {
+        } finally {
             setIsStopping(false);
         }
     };
 
     return (
-        <section className={ styles.notice } aria-label="This chat is read only">
-            <span aria-hidden className={ styles.icon }><Info /></span>
+        <section className={styles.notice} aria-label="This chat is read only">
+            <span aria-hidden className={styles.icon}>
+                <Info />
+            </span>
 
-            <div className={ styles.body }>
-                <div role="status" className={ styles.message }>
-                    <Text variant="heading-5">{ message }</Text>
+            <div className={styles.body}>
+                <div role="status" className={styles.message}>
+                    <Text variant="heading-5">{message}</Text>
                     <Text variant="sm" color="secondary">
-                        The conversation stays readable here. Continue the work in a new chat on another provider, or open Providers to get this one running again.
+                        The conversation stays readable here. Continue the work in a new chat on another provider, or
+                        open Providers to get this one running again.
                     </Text>
                 </div>
 
-                <div className={ styles.actions }>
-                    <Button color="primary" size="sm" isPending={ isHandingOff } onPress={ () => void handOff() }>Hand off to a new chat</Button>
-                    <Button variant="bordered" size="sm" onPress={ () => root.ui.openSettings('providers') }>Open Providers</Button>
-                    { isRunActive(run) && <Button variant="bordered" size="sm" isPending={ isStopping } onPress={ () => void stop() }>Stop</Button> }
+                <div className={styles.actions}>
+                    <Button color="primary" size="sm" isPending={isHandingOff} onPress={() => void handOff()}>
+                        Hand off to a new chat
+                    </Button>
+                    <Button variant="bordered" size="sm" onPress={() => root.ui.openSettings('providers')}>
+                        Open Providers
+                    </Button>
+                    {isRunActive(run) && (
+                        <Button variant="bordered" size="sm" isPending={isStopping} onPress={() => void stop()}>
+                            Stop
+                        </Button>
+                    )}
                 </div>
             </div>
         </section>

@@ -25,11 +25,19 @@ export interface TabStripProps {
  */
 export function TabStrip({ children, end, className, 'aria-label': label }: TabStripProps) {
     return (
-        <div className={ cn(styles.bar, className) }>
-            <Scrollable vertical={ false } horizontal edgeFade className={ styles.strip } contentClass={ styles.list } role="tablist" aria-label={ label }>
-                { children }
+        <div className={cn(styles.bar, className)}>
+            <Scrollable
+                vertical={false}
+                horizontal
+                edgeFade
+                className={styles.strip}
+                contentClass={styles.list}
+                role="tablist"
+                aria-label={label}
+            >
+                {children}
             </Scrollable>
-            { end }
+            {end}
         </div>
     );
 }
@@ -63,30 +71,38 @@ export function Tab({ label, icon, active, dirty, deleted, closeLabel, className
 
     return (
         <div
-            ref={ tab }
-            className={ cn(styles.tab, className) }
-            data-active={ active || undefined }
-            data-dirty={ dirty || undefined }
-            data-deleted={ deleted || undefined }
-            onMouseDown={ (event) => {
+            ref={tab}
+            className={cn(styles.tab, className)}
+            data-active={active || undefined}
+            data-dirty={dirty || undefined}
+            data-deleted={deleted || undefined}
+            onMouseDown={event => {
                 // Middle click closes instead of starting autoscroll.
                 if (event.button === 1) {
                     event.preventDefault();
                 }
-            } }
-            onAuxClick={ (event) => {
+            }}
+            onAuxClick={event => {
                 if (event.button === 1) {
                     onClose();
                 }
-            } }
+            }}
         >
-            <button type="button" role="tab" aria-selected={ Boolean(active) } className={ styles.name } onClick={ onSelect }>
-                { icon }
-                <Text truncate>{ label }</Text>
+            <button type="button" role="tab" aria-selected={Boolean(active)} className={styles.name} onClick={onSelect}>
+                {icon}
+                <Text truncate>{label}</Text>
             </button>
-            <Button variant="filling" color="secondary" size="xs" iconOnly className={ styles.close } aria-label={ closeLabel } onPress={ onClose }>
-                <Close className={ styles.closeIcon } />
-                <span className={ styles.dirtyDot } />
+            <Button
+                variant="filling"
+                color="secondary"
+                size="xs"
+                iconOnly
+                className={styles.close}
+                aria-label={closeLabel}
+                onPress={onClose}
+            >
+                <Close className={styles.closeIcon} />
+                <span className={styles.dirtyDot} />
             </Button>
         </div>
     );

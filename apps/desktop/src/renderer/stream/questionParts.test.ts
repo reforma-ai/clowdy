@@ -4,11 +4,15 @@ import { splitQuestion } from './questionParts';
 
 describe('splitQuestion', () => {
     it('takes the first paragraph as the title and keeps the rest as paragraphs', () => {
-        const text = 'Where should the file live?\n\nThe CLI runs from the project folder.\n\nMy pick: Home folder because it follows the person.';
+        const text =
+            'Where should the file live?\n\nThe CLI runs from the project folder.\n\nMy pick: Home folder because it follows the person.';
 
         expect(splitQuestion(text)).toEqual({
             title: 'Where should the file live?',
-            paragraphs: ['The CLI runs from the project folder.', 'My pick: Home folder because it follows the person.'],
+            paragraphs: [
+                'The CLI runs from the project folder.',
+                'My pick: Home folder because it follows the person.',
+            ],
         });
     });
 

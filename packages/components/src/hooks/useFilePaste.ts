@@ -1,5 +1,5 @@
 import { filesFromDataTransfer } from '@clowdy/lib';
-import { useCallback, type ClipboardEvent } from 'react';
+import { type ClipboardEvent, useCallback } from 'react';
 
 export type UseFilePasteOptions<T extends Element = Element> = {
     enabled?: boolean;

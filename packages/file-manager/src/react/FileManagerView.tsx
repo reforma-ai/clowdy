@@ -23,8 +23,8 @@ import type { KeyboardEvent, ReactNode } from 'react';
 import type { FileManager } from '../FileManager';
 import type { FileEntry } from '../provider';
 import type { ExplorerHandle, ExplorerProps } from './explorer/Explorer';
-import type { ExplorerScope } from './explorer/explorerContext';
 import type { FileMenuItem } from './explorer/ExplorerMenu';
+import type { ExplorerScope } from './explorer/explorerContext';
 
 export interface FileManagerViewProps {
     manager: FileManager;
@@ -94,7 +94,9 @@ export const FileManagerView = observer(function FileManagerView({
     useEffect(() => {
         if (scope && ready) {
             for (const root of rootsKey === '' ? [] : rootsKey.split('\n')) {
-                manager.tree.loadDeep(root).catch((error: unknown) => manager.notify('Couldn’t list the folder', error));
+                manager.tree
+                    .loadDeep(root)
+                    .catch((error: unknown) => manager.notify('Couldn’t list the folder', error));
             }
         }
     }, [manager, scope, ready, rootsKey]);
@@ -197,7 +199,17 @@ export const FileManagerView = observer(function FileManagerView({
  * The filter of the tree: the files whose name has what is typed, with the folders above them. Enter opens the first. It takes the place a title would have in the
  * header. A scope keeps its query in the view (`scoped`), and the manager's goes through the provider.
  */
-const FilterField = observer(function FilterField({ manager, placeholder, scoped, onSubmit }: { manager: FileManager; placeholder: string; scoped?: { query: string; onChange: (query: string) => void }; onSubmit: () => void }) {
+const FilterField = observer(function FilterField({
+    manager,
+    placeholder,
+    scoped,
+    onSubmit,
+}: {
+    manager: FileManager;
+    placeholder: string;
+    scoped?: { query: string; onChange: (query: string) => void };
+    onSubmit: () => void;
+}) {
     const { filterQuery, filterResult } = manager;
     const query = scoped ? scoped.query : filterQuery;
     const pending = !scoped && filterQuery.trim() !== '' && filterResult?.query !== filterQuery;
@@ -211,7 +223,7 @@ const FilterField = observer(function FilterField({ manager, placeholder, scoped
             aria-label={placeholder}
             value={query}
             onChange={(next: string) => (scoped ? scoped.onChange(next) : void manager.filter(next))}
-            onKeyDown={(event) => {
+            onKeyDown={event => {
                 if (event.key === 'Enter') {
                     onSubmit();
                 }
@@ -258,7 +270,15 @@ function SidebarToggle({ open, onPress }: { open: boolean; onPress: () => void }
  * time: the panel library keeps the last layout of every set of ids, in percentages, and would bring it back in place of the width, which is a different
  * size when the view was resized meanwhile.
  */
-function Sidebar({ panelRef, width, children }: { panelRef: ReturnType<typeof usePanelRef>; width: number; children: ReactNode }) {
+function Sidebar({
+    panelRef,
+    width,
+    children,
+}: {
+    panelRef: ReturnType<typeof usePanelRef>;
+    width: number;
+    children: ReactNode;
+}) {
     const [opened] = useState(width);
     const id = useId();
 

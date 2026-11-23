@@ -1,6 +1,18 @@
 import { isClosedCategory, isTerminalRunStatus } from '@clowdy/protocol';
 
-import type { Actor, Artifact, Chat, Run, RunId, RunTaskLink, Task, TaskExternalRef, TaskId, TaskStatus, TaskStatusCategory } from '@clowdy/protocol';
+import type {
+    Actor,
+    Artifact,
+    Chat,
+    Run,
+    RunId,
+    RunTaskLink,
+    Task,
+    TaskExternalRef,
+    TaskId,
+    TaskStatus,
+    TaskStatusCategory,
+} from '@clowdy/protocol';
 import type { StatusTone } from '../../shared';
 import type { TasksView } from '../../stores';
 
@@ -37,7 +49,9 @@ export function startBlockedReason(taskRuns: readonly Run[] = []): string | null
 
     if (active.length === 0) return null;
 
-    return active.length === 1 ? `${ active[0].name } is already working on this task` : `${ active.length } agents are already working on this task`;
+    return active.length === 1
+        ? `${active[0].name} is already working on this task`
+        : `${active.length} agents are already working on this task`;
 }
 
 /* --------------------------------- Filters -------------------------------- */
@@ -61,15 +75,21 @@ export function isFiltering(filter: TaskFilter): boolean {
     return facetCount(filter) > 0 || filter.query.trim() !== '';
 }
 
-export function filterTasks(tasks: readonly Task[], filter: TaskFilter, runsOfTask: ReadonlyMap<TaskId, readonly Run[]>): Task[] {
+export function filterTasks(
+    tasks: readonly Task[],
+    filter: TaskFilter,
+    runsOfTask: ReadonlyMap<TaskId, readonly Run[]>
+): Task[] {
     const query = filter.query.trim().toLowerCase();
 
-    return tasks.filter((task) => {
-        if (query && !`${ task.key } ${ task.title } ${ task.description }`.toLowerCase().includes(query)) return false;
+    return tasks.filter(task => {
+        if (query && !`${task.key} ${task.title} ${task.description}`.toLowerCase().includes(query)) return false;
 
         if (filter.statusIds.length > 0 && !filter.statusIds.includes(task.statusId)) return false;
 
-        return filter.runIds.length === 0 || (runsOfTask.get(task.id) ?? []).some(run => filter.runIds.includes(run.id));
+        return (
+            filter.runIds.length === 0 || (runsOfTask.get(task.id) ?? []).some(run => filter.runIds.includes(run.id))
+        );
     });
 }
 
@@ -81,19 +101,24 @@ export function agentOptions(runsOfTask: ReadonlyMap<TaskId, readonly Run[]>): R
 
     const rank = (run: Run) => (isTerminalRunStatus(run.status) ? 1 : 0);
 
-    return [...runs.values()].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name, 'en', { numeric: true }));
+    return [...runs.values()].sort(
+        (a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name, 'en', { numeric: true })
+    );
 }
 
 export function groupByStatus(tasks: readonly Task[]): Map<string, Task[]> {
     const groups = new Map<string, Task[]>();
 
-    for (const task of tasks) groups.set(task.statusId, [...groups.get(task.statusId) ?? [], task]);
+    for (const task of tasks) groups.set(task.statusId, [...(groups.get(task.statusId) ?? []), task]);
 
     return groups;
 }
 
 /** The board's columns: a column per status in workflow order, with the tasks of that status. A task whose status is gone sits in none. */
-export function boardColumns(statuses: readonly TaskStatus[], tasks: readonly Task[]): { status: TaskStatus; tasks: Task[] }[] {
+export function boardColumns(
+    statuses: readonly TaskStatus[],
+    tasks: readonly Task[]
+): { status: TaskStatus; tasks: Task[] }[] {
     const byStatus = groupByStatus(tasks);
 
     return statuses.map(status => ({ status, tasks: byStatus.get(status.id) ?? [] }));
@@ -117,7 +142,10 @@ export function taskGrid(view: TasksView, tasks: readonly Task[], statuses: read
  * loop (a task that depends on it, directly or through others). Without `taskId` (a task not created yet) only
  * `taken` is left out.
  */
-export function dependencyCandidates(tasks: readonly Task[], { taskId, taken }: { taskId?: TaskId; taken: readonly TaskId[] }): Task[] {
+export function dependencyCandidates(
+    tasks: readonly Task[],
+    { taskId, taken }: { taskId?: TaskId; taken: readonly TaskId[] }
+): Task[] {
     const dependents = new Set<TaskId>(taskId ? [taskId] : []);
     let grew = taskId !== undefined;
 
@@ -142,13 +170,13 @@ export function dependencyCandidates(tasks: readonly Task[], { taskId, taken }: 
 export function blockingCandidates(tasks: readonly Task[], { taskId }: { taskId: TaskId }): Task[] {
     const byId = new Map(tasks.map(task => [task.id, task]));
     const upstream = new Set<TaskId>();
-    const pending = [...byId.get(taskId)?.dependsOn ?? []];
+    const pending = [...(byId.get(taskId)?.dependsOn ?? [])];
 
     for (let id = pending.pop(); id !== undefined; id = pending.pop()) {
         if (upstream.has(id)) continue;
 
         upstream.add(id);
-        pending.push(...byId.get(id)?.dependsOn ?? []);
+        pending.push(...(byId.get(id)?.dependsOn ?? []));
     }
 
     return tasks.filter(task => task.id !== taskId && !upstream.has(task.id) && !task.dependsOn.includes(taskId));
@@ -156,14 +184,22 @@ export function blockingCandidates(tasks: readonly Task[], { taskId }: { taskId:
 
 /** What the "blocked by" picker lists for a task: the tasks it depends on (to remove) and those it may still depend on (to add), in task order. */
 export function blockedByOptions(tasks: readonly Task[], task: Pick<Task, 'id' | 'dependsOn'>): Task[] {
-    const listed = new Set([...task.dependsOn, ...dependencyCandidates(tasks, { taskId: task.id, taken: task.dependsOn }).map(({ id }) => id)]);
+    const listed = new Set([
+        ...task.dependsOn,
+        ...dependencyCandidates(tasks, { taskId: task.id, taken: task.dependsOn }).map(({ id }) => id),
+    ]);
 
     return tasks.filter(({ id }) => listed.has(id));
 }
 
 /** What the "blocking" picker lists for a task: the tasks that depend on it (to remove) and those that may start to (to add), in task order. */
 export function blockingOptions(tasks: readonly Task[], task: Pick<Task, 'id'>): Task[] {
-    const listed = new Set([...tasks.filter(({ dependsOn }) => dependsOn.includes(task.id)), ...blockingCandidates(tasks, { taskId: task.id })].map(({ id }) => id));
+    const listed = new Set(
+        [
+            ...tasks.filter(({ dependsOn }) => dependsOn.includes(task.id)),
+            ...blockingCandidates(tasks, { taskId: task.id }),
+        ].map(({ id }) => id)
+    );
 
     return tasks.filter(({ id }) => listed.has(id));
 }
@@ -172,7 +208,10 @@ export function blockingOptions(tasks: readonly Task[], task: Pick<Task, 'id'>):
  * Whether a dependency no longer holds its dependents back, and what to call it: a closed task is resolved, Done or Canceled alike, as the daemon counts it
  * (`isClosedCategory`). A task whose status the workflow lost counts as not done.
  */
-export function dependencyState(category: TaskStatusCategory | undefined): { resolved: boolean; label: 'Done' | 'Canceled' | 'Not done' } {
+export function dependencyState(category: TaskStatusCategory | undefined): {
+    resolved: boolean;
+    label: 'Done' | 'Canceled' | 'Not done';
+} {
     if (category === undefined || !isClosedCategory(category)) return { resolved: false, label: 'Not done' };
 
     return { resolved: true, label: category === 'canceled' ? 'Canceled' : 'Done' };
@@ -186,7 +225,11 @@ export function toggleDependency(dependsOn: readonly TaskId[], id: TaskId): Task
 /* --------------------------------- Statuses -------------------------------- */
 
 /** The status one step along the workflow from `statusId`, or nothing at either end and for a status the workflow no longer has. */
-export function adjacentStatus(statuses: readonly TaskStatus[], statusId: string, step: 1 | -1): TaskStatus | undefined {
+export function adjacentStatus(
+    statuses: readonly TaskStatus[],
+    statusId: string,
+    step: 1 | -1
+): TaskStatus | undefined {
     const index = statuses.findIndex(status => status.id === statusId);
 
     return index < 0 ? undefined : statuses[index + step];
@@ -231,31 +274,42 @@ function createdText(actor: Actor, creator: Run | undefined): string {
         case 'user':
             return 'You created the task';
         case 'run':
-            return `${ creator?.name ?? 'An agent' } created the task`;
+            return `${creator?.name ?? 'An agent'} created the task`;
         case 'provider':
-            return `Imported from ${ providerName(actor.provider) }`;
+            return `Imported from ${providerName(actor.provider)}`;
     }
 }
 
 /** What happened to the task, newest first, derived from the task and the runs on it. */
-export function taskActivity(task: Task, taskRuns: readonly Run[], runsById: ReadonlyMap<RunId, Run>, limit = 5): Activity[] {
+export function taskActivity(
+    task: Task,
+    taskRuns: readonly Run[],
+    runsById: ReadonlyMap<RunId, Run>,
+    limit = 5
+): Activity[] {
     const activity: Activity[] = [];
     const creator = task.createdBy.kind === 'run' ? runsById.get(task.createdBy.runId) : undefined;
 
     activity.push({ id: 'created', at: task.createdAt, text: createdText(task.createdBy, creator), run: creator });
 
-    if (task.updatedAt - task.createdAt > 1000) activity.push({ id: 'updated', at: task.updatedAt, text: 'Task updated' });
+    if (task.updatedAt - task.createdAt > 1000)
+        activity.push({ id: 'updated', at: task.updatedAt, text: 'Task updated' });
 
     for (const run of taskRuns) {
         if (run.startedAt === undefined) {
-            activity.push({ id: `${ run.id }:queued`, at: run.createdAt, text: `${ run.name } is waiting to start`, run });
-        }
-        else {
-            activity.push({ id: `${ run.id }:started`, at: run.startedAt, text: `${ run.name } started working`, run });
+            activity.push({ id: `${run.id}:queued`, at: run.createdAt, text: `${run.name} is waiting to start`, run });
+        } else {
+            activity.push({ id: `${run.id}:started`, at: run.startedAt, text: `${run.name} started working`, run });
         }
 
         if (run.finishedAt !== undefined && FINISHED_TEXT[run.status]) {
-            activity.push({ id: `${ run.id }:finished`, at: run.finishedAt, text: `${ run.name } ${ FINISHED_TEXT[run.status] }`, detail: run.error ?? run.result, run });
+            activity.push({
+                id: `${run.id}:finished`,
+                at: run.finishedAt,
+                text: `${run.name} ${FINISHED_TEXT[run.status]}`,
+                detail: run.error ?? run.result,
+                run,
+            });
         }
     }
 
@@ -307,20 +361,21 @@ function artifactRow(artifact: Artifact): ResultRow {
         const added = count(ref.added);
         const removed = count(ref.removed);
 
-        if (added !== undefined || removed !== undefined) row.meta = `+${ added ?? 0 } −${ removed ?? 0 }`;
-    }
-    else if (kind === 'commit') {
+        if (added !== undefined || removed !== undefined) row.meta = `+${added ?? 0} −${removed ?? 0}`;
+    } else if (kind === 'commit') {
         row.meta = text(ref.sha)?.slice(0, 7);
-    }
-    else if (kind === 'check') {
+    } else if (kind === 'check') {
         const exitCode = count(ref.exitCode);
 
-        row.verdict = exitCode === undefined ? { label: 'Waiting', tone: 'warning' } : exitCode === 0 ? { label: 'Passed', tone: 'success' } : { label: 'Failed', tone: 'danger' };
-    }
-    else if (kind === 'doc') {
+        row.verdict =
+            exitCode === undefined
+                ? { label: 'Waiting', tone: 'warning' }
+                : exitCode === 0
+                  ? { label: 'Passed', tone: 'success' }
+                  : { label: 'Failed', tone: 'danger' };
+    } else if (kind === 'doc') {
         row.docPath = text(ref.path);
-    }
-    else {
+    } else {
         row.meta = text(ref.path);
     }
 
@@ -335,7 +390,12 @@ export function resultRows(artifacts: readonly Artifact[], { expectChecks }: { e
     const rows = [...artifacts].sort((a, b) => b.createdAt - a.createdAt).map(artifactRow);
 
     if (expectChecks && !artifacts.some(artifact => artifact.kind === 'check')) {
-        rows.push({ id: 'checks-waiting', kind: 'check', title: 'Checks', verdict: { label: 'Waiting', tone: 'warning' } });
+        rows.push({
+            id: 'checks-waiting',
+            kind: 'check',
+            title: 'Checks',
+            verdict: { label: 'Waiting', tone: 'warning' },
+        });
     }
 
     return rows;
@@ -348,14 +408,19 @@ export function newestDocPath(artifacts: readonly Artifact[]): string | null {
 
 /** The chat that was active last among the chats that discuss a task. */
 export function newestChat<T extends Pick<Chat, 'updatedAt'>>(chats: readonly T[]): T | undefined {
-    return chats.reduce<T | undefined>((newest, chat) => (newest === undefined || chat.updatedAt > newest.updatedAt ? chat : newest), undefined);
+    return chats.reduce<T | undefined>(
+        (newest, chat) => (newest === undefined || chat.updatedAt > newest.updatedAt ? chat : newest),
+        undefined
+    );
 }
 
 /** The id of the comment a `task.comment.add` answered with: `{ comment }`. */
 export function createdCommentId(data: unknown): string | undefined {
     const comment = data && typeof data === 'object' && 'comment' in data ? data.comment : undefined;
 
-    return comment && typeof comment === 'object' && 'id' in comment && typeof comment.id === 'string' ? comment.id : undefined;
+    return comment && typeof comment === 'object' && 'id' in comment && typeof comment.id === 'string'
+        ? comment.id
+        : undefined;
 }
 
 /** The id of the task a `task.create` answered with: the daemon and the fixture daemon answer `{ task }`. */

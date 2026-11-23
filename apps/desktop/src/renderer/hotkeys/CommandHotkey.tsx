@@ -6,7 +6,11 @@ import type { HotkeyRegistry } from './registry';
 
 /** One press in one capsule, several as a sequence ("G then T"). */
 export function PressesHotkey({ presses, size }: { presses: HintPresses; size?: HotkeySize }) {
-    return presses.length === 1 ? <Hotkey hotkey={ presses[0] } size={ size } /> : <Hotkey sequence={ presses } size={ size } />;
+    return presses.length === 1 ? (
+        <Hotkey hotkey={presses[0]} size={size} />
+    ) : (
+        <Hotkey sequence={presses} size={size} />
+    );
 }
 
 /**
@@ -16,5 +20,5 @@ export function PressesHotkey({ presses, size }: { presses: HintPresses; size?: 
 export function CommandHotkey({ id, registry, size }: { id: string; registry?: HotkeyRegistry; size?: HotkeySize }) {
     const presses = commandHint(id, registry);
 
-    return presses ? <PressesHotkey presses={ presses } size={ size } /> : null;
+    return presses ? <PressesHotkey presses={presses} size={size} /> : null;
 }

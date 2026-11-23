@@ -2,10 +2,10 @@ import { Button } from '@clowdy/components/Button';
 import { Menu, MenuItem, MenuTrigger } from '@clowdy/components/List';
 import { Popover } from '@clowdy/components/Popover';
 import { Text } from '@clowdy/components/Text';
-import { ArrowDown, ArrowUp, Cloud, Refresh } from '@clowdy/icons/14';
 import { ChevronDown } from '@clowdy/icons/8';
+import { ArrowDown, ArrowUp, Cloud, Refresh } from '@clowdy/icons/14';
 
-import { remoteActions, RUNNING_WORDS, upstreamView, type RemoteActionId } from './changesActions';
+import { type RemoteActionId, RUNNING_WORDS, remoteActions, upstreamView } from './changesActions';
 import styles from './RemoteMenu.module.css';
 import { useRemoteActions } from './useRemoteActions';
 
@@ -38,50 +38,81 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
     const { running, failure, notice } = remote;
 
     return (
-        <div className={ styles.root }>
+        <div className={styles.root}>
             <MenuTrigger>
                 <Button
                     variant="filling"
                     color="secondary"
                     size="xs"
-                    className={ styles.trigger }
-                    contentClassName={ styles.content }
-                    isPending={ running !== undefined }
+                    className={styles.trigger}
+                    contentClassName={styles.content}
+                    isPending={running !== undefined}
                     spinnerPlacement="start"
-                    aria-label={ running ? RUNNING_WORDS[running] : `Origin: ${ view.title }` }
-                    tooltip={ running ? undefined : view.title }
+                    aria-label={running ? RUNNING_WORDS[running] : `Origin: ${view.title}`}
+                    tooltip={running ? undefined : view.title}
                     tooltipPlacement="bottom"
                 >
-                    { !running && <Cloud aria-hidden="true" className={ styles.icon } /> }
-                    <Text variant="xs" weight="medium" truncate className={ styles.label }>{ running ? RUNNING_WORDS[running] : view.label }</Text>
-                    { !running && view.detail && <Text variant="xs" color={ view.tone === 'warning' ? 'warning' : 'secondary' } className={ styles.detail }>{ view.detail }</Text> }
-                    <ChevronDown aria-hidden="true" className={ styles.chevron } />
+                    {!running && <Cloud aria-hidden="true" className={styles.icon} />}
+                    <Text variant="xs" weight="medium" truncate className={styles.label}>
+                        {running ? RUNNING_WORDS[running] : view.label}
+                    </Text>
+                    {!running && view.detail && (
+                        <Text
+                            variant="xs"
+                            color={view.tone === 'warning' ? 'warning' : 'secondary'}
+                            className={styles.detail}
+                        >
+                            {view.detail}
+                        </Text>
+                    )}
+                    <ChevronDown aria-hidden="true" className={styles.chevron} />
                 </Button>
-                <Popover placement="bottom start" spacing="xs" width={ 220 }>
-                    <Menu aria-label="Origin" size="sm" onAction={ key => void remote.run(key as RemoteActionId) }>
-                        { actions.map(action => (
+                <Popover placement="bottom start" spacing="xs" width={220}>
+                    <Menu aria-label="Origin" size="sm" onAction={key => void remote.run(key as RemoteActionId)}>
+                        {actions.map(action => (
                             <MenuItem
-                                key={ action.id }
-                                id={ action.id }
-                                icon={ ICONS[action.id] }
-                                text={ action.label }
-                                endAffix={ action.count !== undefined && action.reason === undefined ? <Text variant="xs" color="secondary">{ action.count }</Text> : undefined }
-                                description={ action.reason }
-                                stacked={ action.reason !== undefined }
-                                isDisabled={ action.reason !== undefined }
+                                key={action.id}
+                                id={action.id}
+                                icon={ICONS[action.id]}
+                                text={action.label}
+                                endAffix={
+                                    action.count !== undefined && action.reason === undefined ? (
+                                        <Text variant="xs" color="secondary">
+                                            {action.count}
+                                        </Text>
+                                    ) : undefined
+                                }
+                                description={action.reason}
+                                stacked={action.reason !== undefined}
+                                isDisabled={action.reason !== undefined}
                             />
-                        )) }
+                        ))}
                     </Menu>
                 </Popover>
             </MenuTrigger>
 
-            { failure && (
-                <div className={ styles.failure } role="alert">
-                    <Text variant="xs" color="danger" select="text">{ failure.message }</Text>
-                    { failure.hint && <Text variant="xs" color="secondary" select="text">{ failure.hint }</Text> }
+            {failure && (
+                <div className={styles.failure} role="alert">
+                    <Text variant="xs" color="danger" select="text">
+                        {failure.message}
+                    </Text>
+                    {failure.hint && (
+                        <Text variant="xs" color="secondary" select="text">
+                            {failure.hint}
+                        </Text>
+                    )}
                 </div>
-            ) }
-            { !failure && notice && <Text variant="xs" color={ notice.tone === 'warning' ? 'warning' : 'secondary' } role="status" select="text">{ notice.words }</Text> }
+            )}
+            {!failure && notice && (
+                <Text
+                    variant="xs"
+                    color={notice.tone === 'warning' ? 'warning' : 'secondary'}
+                    role="status"
+                    select="text"
+                >
+                    {notice.words}
+                </Text>
+            )}
         </div>
     );
 }

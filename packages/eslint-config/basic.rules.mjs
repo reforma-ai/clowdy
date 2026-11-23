@@ -1,9 +1,9 @@
+import { createRequire } from 'node:module';
 import babelParser from '@babel/eslint-parser';
 import js from '@eslint/js';
 import stylistic from '@stylistic/eslint-plugin';
 import format from 'eslint-plugin-format';
 import globals from 'globals';
-import { createRequire } from 'node:module';
 
 import { combine } from './combine.mjs';
 
@@ -22,14 +22,13 @@ try {
             paths: [],
         };
     }
-}
-catch {
+} catch {
     // no `typescript` in the project — sort-imports falls back to regex groups
 }
 
 const perfectionist = require('eslint-plugin-perfectionist');
 const noopRule = { create: () => ({}) };
-const leftoverDisablePlugin = (ruleNames) => ({
+const leftoverDisablePlugin = ruleNames => ({
     rules: Object.fromEntries(ruleNames.map(name => [name, noopRule])),
 });
 
@@ -49,7 +48,7 @@ const prettierLess = {
 /** Plain text parser for format/prettier on CSS/LESS (same shape as @antfu/eslint-config). */
 const parserPlain = {
     meta: { name: 'parser-plain' },
-    parseForESLint: (code) => ({
+    parseForESLint: code => ({
         ast: {
             type: 'Program',
             body: [],
@@ -71,12 +70,8 @@ const tsBabelOptions = {
     babelOptions: {
         babelrc: false,
         configFile: false,
-        presets: [
-            [require.resolve('@babel/preset-typescript'), { allowDeclareFields: true }],
-        ],
-        plugins: [
-            [require.resolve('@babel/plugin-proposal-decorators'), { version: '2023-05' }],
-        ],
+        presets: [[require.resolve('@babel/preset-typescript'), { allowDeclareFields: true }]],
+        plugins: [[require.resolve('@babel/plugin-proposal-decorators'), { version: '2023-05' }]],
     },
 };
 
@@ -144,13 +139,7 @@ const namedSort = {
  */
 export default combine(
     {
-        ignores: [
-            '**/dist/**',
-            '**/build/**',
-            '**/.turbo/**',
-            '**/node_modules/**',
-            '**/coverage/**',
-        ],
+        ignores: ['**/dist/**', '**/build/**', '**/.turbo/**', '**/node_modules/**', '**/coverage/**'],
     },
     js.configs.recommended,
     {
@@ -163,11 +152,7 @@ export default combine(
             ]),
             import: leftoverDisablePlugin(['first']),
             style: leftoverDisablePlugin(['padding-line-between-statements', 'quotes']),
-            react: leftoverDisablePlugin([
-                'no-clone-element',
-                'no-children-only',
-                'no-children-count',
-            ]),
+            react: leftoverDisablePlugin(['no-clone-element', 'no-children-only', 'no-children-count']),
             'react-dom': leftoverDisablePlugin(['no-flush-sync']),
         },
     },
@@ -186,11 +171,14 @@ export default combine(
             },
         },
         rules: {
-            'no-unused-vars': ['error', {
-                argsIgnorePattern: '^_',
-                varsIgnorePattern: '^_',
-                caughtErrorsIgnorePattern: '^_',
-            }],
+            'no-unused-vars': [
+                'error',
+                {
+                    argsIgnorePattern: '^_',
+                    varsIgnorePattern: '^_',
+                    caughtErrorsIgnorePattern: '^_',
+                },
+            ],
             'no-undef': 'off',
         },
     },
@@ -221,20 +209,27 @@ export default combine(
         },
         rules: {
             // Babel has no TSEnumBody; stylistic would flatten enum members to column 0.
-            '@stylistic/indent': ['error', 4, {
-                SwitchCase: 1,
-                ignoredNodes: ['TSEnumDeclaration', 'TSEnumMember'],
-            }],
+            '@stylistic/indent': [
+                'error',
+                4,
+                {
+                    SwitchCase: 1,
+                    ignoredNodes: ['TSEnumDeclaration', 'TSEnumMember'],
+                },
+            ],
             '@stylistic/semi': ['error', 'always'],
             '@stylistic/quotes': ['error', 'single'],
             '@stylistic/brace-style': ['error', 'stroustrup'],
-            '@stylistic/comma-dangle': ['error', {
-                arrays: 'always-multiline',
-                objects: 'always-multiline',
-                imports: 'only-multiline',
-                exports: 'only-multiline',
-                functions: 'never',
-            }],
+            '@stylistic/comma-dangle': [
+                'error',
+                {
+                    arrays: 'always-multiline',
+                    objects: 'always-multiline',
+                    imports: 'only-multiline',
+                    exports: 'only-multiline',
+                    functions: 'never',
+                },
+            ],
             '@stylistic/eol-last': 'error',
             '@stylistic/no-trailing-spaces': 'error',
             '@stylistic/no-mixed-spaces-and-tabs': 'error',
@@ -249,18 +244,27 @@ export default combine(
         },
         rules: {
             'perfectionist/sort-imports': sortImports,
-            'perfectionist/sort-named-imports': ['error', {
-                ...namedSort,
-                groups: ['value-import', 'type-import'],
-            }],
-            'perfectionist/sort-exports': ['error', {
-                ...namedSort,
-                groups: ['value-export', 'type-export'],
-            }],
-            'perfectionist/sort-named-exports': ['error', {
-                ...namedSort,
-                groups: ['value-export', 'type-export'],
-            }],
+            'perfectionist/sort-named-imports': [
+                'error',
+                {
+                    ...namedSort,
+                    groups: ['value-import', 'type-import'],
+                },
+            ],
+            'perfectionist/sort-exports': [
+                'error',
+                {
+                    ...namedSort,
+                    groups: ['value-export', 'type-export'],
+                },
+            ],
+            'perfectionist/sort-named-exports': [
+                'error',
+                {
+                    ...namedSort,
+                    groups: ['value-export', 'type-export'],
+                },
+            ],
         },
     },
     {

@@ -8,7 +8,13 @@ import { HttpTransport } from './httpTransport';
 describe('HttpTransport.getHealth', () => {
     it('asks the daemon about itself and returns what it said', async () => {
         const urls: string[] = [];
-        const health = { ok: true, protocol: PROTOCOL_VERSION, version: '0.1.1', pid: 4242, startedAt: 1_700_000_000_000 };
+        const health = {
+            ok: true,
+            protocol: PROTOCOL_VERSION,
+            version: '0.1.1',
+            pid: 4242,
+            startedAt: 1_700_000_000_000,
+        };
         const fetchImpl = (async (input: RequestInfo | URL) => {
             urls.push(String(input));
 
@@ -35,7 +41,11 @@ describe('HttpTransport.getHealth', () => {
     });
 
     it('fails when the daemon refuses', async () => {
-        const transport = new HttpTransport({ url: 'http://127.0.0.1:4310', token: 't', fetch: (async () => new Response('{}', { status: 500 })) as typeof fetch });
+        const transport = new HttpTransport({
+            url: 'http://127.0.0.1:4310',
+            token: 't',
+            fetch: (async () => new Response('{}', { status: 500 })) as typeof fetch,
+        });
 
         await expect(transport.getHealth()).rejects.toMatchObject({ status: 500 });
     });

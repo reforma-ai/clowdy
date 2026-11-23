@@ -19,24 +19,22 @@ export function formatFileSize(bytes: number, options?: FormatFileSizeOptions): 
     }
 
     if (bytes < 1024) {
-        return roundUp ? '1 KB' : `${ bytes } B`;
+        return roundUp ? '1 KB' : `${bytes} B`;
     }
 
     if (bytes < 1024 * 1024) {
-        const kb = roundUp
-            ? Math.max(1, Math.ceil(bytes / 1024))
-            : Math.round(bytes / 1024);
+        const kb = roundUp ? Math.max(1, Math.ceil(bytes / 1024)) : Math.round(bytes / 1024);
 
-        return `${ kb } KB`;
+        return `${kb} KB`;
     }
 
     const mb = bytes / (1024 * 1024);
 
     if (roundUp && mb === Math.floor(mb)) {
-        return `${ Math.round(mb) } MB`;
+        return `${Math.round(mb)} MB`;
     }
 
-    return `${ mb.toFixed(1) } MB`;
+    return `${mb.toFixed(1)} MB`;
 }
 
 /** `URL.createObjectURL`, or `null` when the API is unavailable. */
@@ -50,12 +48,7 @@ export function createObjectURL(source: Blob | MediaSource): string | null {
 
 /** Revoke a `blob:` object URL; no-op for other strings / missing API. */
 export function revokeObjectURL(url: string | null | undefined): void {
-    if (
-        !url
-        || !url.startsWith('blob:')
-        || typeof URL === 'undefined'
-        || typeof URL.revokeObjectURL !== 'function'
-    ) {
+    if (!url || !url.startsWith('blob:') || typeof URL === 'undefined' || typeof URL.revokeObjectURL !== 'function') {
         return;
     }
 

@@ -15,13 +15,21 @@ import type { GitRemoteAction, GitRemoteResult, GitUpstream } from '@clowdy/prot
 export type FixtureRemoteScript = 'slow' | 'behind' | 'diverged' | 'rejected' | 'signing' | 'offline';
 
 /** The words the page's `&remote=` switch knows. */
-export const FIXTURE_REMOTE_SCRIPTS: readonly FixtureRemoteScript[] = ['slow', 'behind', 'diverged', 'rejected', 'signing', 'offline'];
+export const FIXTURE_REMOTE_SCRIPTS: readonly FixtureRemoteScript[] = [
+    'slow',
+    'behind',
+    'diverged',
+    'rejected',
+    'signing',
+    'offline',
+];
 
 /** How long a `slow` action takes: long enough for a screenshot of its running state. */
 const SLOW_MS = 2500;
 
 /** What git says with no network, as the daemon would send it (the credential of an address is already gone). */
-const FIXTURE_OFFLINE_LINE = 'fatal: unable to access \'https://github.com/acme/car-rental.git/\': Could not resolve host: github.com';
+const FIXTURE_OFFLINE_LINE =
+    "fatal: unable to access 'https://github.com/acme/car-rental.git/': Could not resolve host: github.com";
 
 const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
@@ -61,7 +69,9 @@ export class FixtureGitRemote {
 
         const state = this.#stateOf(place);
 
-        return state.published ? { name: `origin/${ place.branch }`, ahead: state.ahead, behind: state.behind } : undefined;
+        return state.published
+            ? { name: `origin/${place.branch}`, ahead: state.ahead, behind: state.behind }
+            : undefined;
     }
 
     /** A commit was made in the place: a published branch is one ahead further. */
@@ -74,7 +84,8 @@ export class FixtureGitRemote {
     async run(action: GitRemoteAction, place: FixtureRemotePlace): Promise<GitRemoteResult> {
         const script = this.#script;
 
-        if (action !== 'fetch' && place.branch === undefined) throw new TransportError('HEAD is detached, switch to a branch to ' + action, 400);
+        if (action !== 'fetch' && place.branch === undefined)
+            throw new TransportError('HEAD is detached, switch to a branch to ' + action, 400);
 
         if (script === 'slow') await sleep(SLOW_MS);
 
@@ -86,7 +97,8 @@ export class FixtureGitRemote {
         if (action === 'fetch') return { state: 'done', action, ...this.#upstream(place) };
 
         if (action === 'pull') {
-            if (!state.published) throw new TransportError(`${ branch } has no upstream to pull from, publish it first`, 400);
+            if (!state.published)
+                throw new TransportError(`${branch} has no upstream to pull from, publish it first`, 400);
 
             if (state.ahead > 0 && state.behind > 0) return { state: 'diverged', upstream: this.upstreamOf(place)! };
 
@@ -107,7 +119,8 @@ export class FixtureGitRemote {
         if (script === 'signing') throw new TransportError(FIXTURE_SIGNING_LINE, 409, FIXTURE_SIGNING_HINT);
 
         // A branch that origin has commits for that it lacks is not taken, whichever script made it so.
-        if (state.behind > 0 && state.ahead > 0 || script === 'rejected') throw new TransportError(`! [rejected] ${ branch } -> ${ branch } (fetch first)`, 409);
+        if ((state.behind > 0 && state.ahead > 0) || script === 'rejected')
+            throw new TransportError(`! [rejected] ${branch} -> ${branch} (fetch first)`, 409);
 
         state.ahead = 0;
 
@@ -131,7 +144,10 @@ export class FixtureGitRemote {
 
             state = {
                 published: !place.worktree || scripted,
-                ahead: script === 'diverged' || script === 'rejected' || script === 'signing' || script === 'offline' ? 1 : 0,
+                ahead:
+                    script === 'diverged' || script === 'rejected' || script === 'signing' || script === 'offline'
+                        ? 1
+                        : 0,
                 behind: script === 'behind' || script === 'diverged' ? 2 : 0,
             };
             this.#states.set(place.key, state);

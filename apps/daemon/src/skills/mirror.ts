@@ -29,18 +29,20 @@ export function buildUserMirror(dataDir: string, skills: readonly ScannedSkill[]
         .update(JSON.stringify(skills.map(({ folder, real, mtimeMs, size }) => [folder, real, mtimeMs, size])))
         .digest('hex')
         .slice(0, 16);
-    const dir = ensureHashDir(parent, hash, (temp) => {
+    const dir = ensureHashDir(parent, hash, temp => {
         mkdirSync(join(temp, '.claude-plugin'));
         mkdirSync(join(temp, 'skills'));
-        writeFileSync(join(temp, '.claude-plugin', 'plugin.json'), `${ JSON.stringify({ name: USER_PLUGIN_NAME, version: '0.1.0', description: 'Skills from your own skill folders' }, null, 4) }\n`);
+        writeFileSync(
+            join(temp, '.claude-plugin', 'plugin.json'),
+            `${JSON.stringify({ name: USER_PLUGIN_NAME, version: '0.1.0', description: 'Skills from your own skill folders' }, null, 4)}\n`
+        );
 
         for (const { folder, real } of skills) {
             const link = join(temp, 'skills', folder);
 
             if (process.platform === 'win32') {
                 cpSync(real, link, { recursive: true });
-            }
-            else {
+            } else {
                 symlinkSync(real, link, 'dir');
             }
         }

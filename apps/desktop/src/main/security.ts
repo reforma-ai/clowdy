@@ -10,7 +10,7 @@ const WINDOWS_MICA_BUILD = 22621;
 
 export const APP_SCHEME = 'app';
 export const APP_HOST = 'clowdy';
-export const APP_ORIGIN = `${ APP_SCHEME }://${ APP_HOST }`;
+export const APP_ORIGIN = `${APP_SCHEME}://${APP_HOST}`;
 
 /** `app:` is a standard, secure origin with `fetch`; it gets no CSP bypass, CORS, or service workers. */
 export const appScheme: CustomScheme = {
@@ -56,10 +56,10 @@ export function windowChrome(platform: NodeJS.Platform, build: number, dark = fa
                 symbolColor: captionSymbolColor(dark),
                 height: TITLE_BAR_HEIGHT,
             },
-            ...build >= WINDOWS_MICA_BUILD && {
+            ...(build >= WINDOWS_MICA_BUILD && {
                 backgroundMaterial: 'mica',
                 backgroundColor: '#00000000',
-            },
+            }),
         };
     }
 
@@ -71,7 +71,12 @@ export function windowChrome(platform: NodeJS.Platform, build: number, dark = fa
  * main frame only: with `nodeIntegrationInSubFrames` off, subframes get no preload.
  * `build` is the Windows build number and `dark` the appearance; other platforms ignore them.
  */
-export function windowOptions(preload: string, platform: NodeJS.Platform = process.platform, build = 0, dark = false): BrowserWindowConstructorOptions {
+export function windowOptions(
+    preload: string,
+    platform: NodeJS.Platform = process.platform,
+    build = 0,
+    dark = false
+): BrowserWindowConstructorOptions {
     const chrome = windowChrome(platform, build, dark);
     const material = chrome.vibrancy != null || chrome.backgroundMaterial != null;
 
@@ -109,7 +114,7 @@ const EXTERNAL_OPEN_INTERVAL_MS = 1000;
 export function originOf(url: string): string | undefined {
     const parsed = URL.parse(url);
 
-    return parsed ? `${ parsed.protocol }//${ parsed.host }` : undefined;
+    return parsed ? `${parsed.protocol}//${parsed.host}` : undefined;
 }
 
 /** True for a URL on the trusted origin: the app's own scheme, or the dev server in a development run. */
@@ -176,7 +181,8 @@ export function restrictPermissions(
         callback(allowed(permission, details.isMainFrame, details.requestingUrl));
     });
     session.setPermissionCheckHandler((_contents, permission, requestingOrigin, details) =>
-        allowed(permission, details.isMainFrame, details.requestingUrl ?? requestingOrigin));
+        allowed(permission, details.isMainFrame, details.requestingUrl ?? requestingOrigin)
+    );
     session.setDevicePermissionHandler(() => false);
 }
 
@@ -189,5 +195,7 @@ const UPDATED_SWITCH = '--updated';
  * Chromium on Windows also reads `/switch`. The one exception is `--updated`.
  */
 export function hasLaunchSwitches(argv: readonly string[], platform: NodeJS.Platform = process.platform): boolean {
-    return argv.some(arg => arg !== UPDATED_SWITCH && (arg.startsWith('-') || (platform === 'win32' && arg.startsWith('/'))));
+    return argv.some(
+        arg => arg !== UPDATED_SWITCH && (arg.startsWith('-') || (platform === 'win32' && arg.startsWith('/')))
+    );
 }

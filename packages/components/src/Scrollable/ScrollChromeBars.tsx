@@ -22,21 +22,21 @@ export function ScrollChromeBars({
 
     return (
         <>
-            { isVerticalEnabled && (
+            {isVerticalEnabled && (
                 <div
-                    ref={ setScrollbarV }
-                    className={ cn(styles.scrollbar, styles.scrollbarV) }
-                    onPointerDown={ onPointerDown }
+                    ref={setScrollbarV}
+                    className={cn(styles.scrollbar, styles.scrollbarV)}
+                    onPointerDown={onPointerDown}
                 />
-            ) }
+            )}
 
-            { isHorizontalEnabled && (
+            {isHorizontalEnabled && (
                 <div
-                    ref={ setScrollbarH }
-                    className={ cn(styles.scrollbar, styles.scrollbarH) }
-                    onPointerDown={ onPointerDown }
+                    ref={setScrollbarH}
+                    className={cn(styles.scrollbar, styles.scrollbarH)}
+                    onPointerDown={onPointerDown}
                 />
-            ) }
+            )}
         </>
     );
 }

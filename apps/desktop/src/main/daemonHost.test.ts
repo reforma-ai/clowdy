@@ -1,10 +1,10 @@
-import { PROTOCOL_HEADER, ROUTES } from '@clowdy/protocol';
 import { createServer, type IncomingHttpHeaders } from 'node:http';
+import { PROTOCOL_HEADER, ROUTES } from '@clowdy/protocol';
 import { expect, test } from 'vitest';
 
 import { nodeHost } from './daemonHost';
 
-test('stop names the daemon\'s own protocol, so a daemon an update left behind still accepts it', async () => {
+test("stop names the daemon's own protocol, so a daemon an update left behind still accepts it", async () => {
     const requests: Array<{ url?: string; headers: IncomingHttpHeaders }> = [];
     const server = createServer((request, response) => {
         requests.push({ url: request.url, headers: request.headers });
@@ -21,8 +21,7 @@ test('stop names the daemon\'s own protocol, so a daemon an update left behind s
         expect(requests).toEqual([expect.objectContaining({ url: ROUTES.shutdown })]);
         expect(requests[0]!.headers[PROTOCOL_HEADER]).toBe('7');
         expect(requests[0]!.headers.authorization).toBe('Bearer secret');
-    }
-    finally {
+    } finally {
         server.close();
     }
 });

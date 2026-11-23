@@ -14,7 +14,17 @@ const POLL_MS = 10_000;
  * (the first value is the page's opening, which reads anyway). A failed read keeps what was known, and `failed` says the last one did. With `enabled` off
  * nothing is read (a screen that needs the answer only sometimes).
  */
-export function useProjectsInfo({ enabled = true, poll = true, refreshOnFocus = false, reloadKey }: { enabled?: boolean; poll?: boolean; refreshOnFocus?: boolean; reloadKey?: string } = {}): { info: ReadonlyMap<ProjectId, ProjectInfo>; failed: boolean } {
+export function useProjectsInfo({
+    enabled = true,
+    poll = true,
+    refreshOnFocus = false,
+    reloadKey,
+}: {
+    enabled?: boolean;
+    poll?: boolean;
+    refreshOnFocus?: boolean;
+    reloadKey?: string;
+} = {}): { info: ReadonlyMap<ProjectId, ProjectInfo>; failed: boolean } {
     const root = useRootStore();
     const [info, setInfo] = useState<ReadonlyMap<ProjectId, ProjectInfo>>(new Map());
     const [failed, setFailed] = useState(false);
@@ -26,7 +36,7 @@ export function useProjectsInfo({ enabled = true, poll = true, refreshOnFocus = 
         const request = ++latest.current;
 
         root.transport.getProjectsInfo().then(
-            (entries) => {
+            entries => {
                 if (request !== latest.current) return;
 
                 setInfo(new Map(entries.map(entry => [entry.projectId, entry])));
@@ -51,11 +61,12 @@ export function useProjectsInfo({ enabled = true, poll = true, refreshOnFocus = 
     }, [enabled, refreshOnFocus, reload]);
 
     useEffect(() => {
-        const timer = enabled && poll
-            ? setInterval(() => {
-                if (!document.hidden) reload();
-            }, POLL_MS)
-            : undefined;
+        const timer =
+            enabled && poll
+                ? setInterval(() => {
+                      if (!document.hidden) reload();
+                  }, POLL_MS)
+                : undefined;
 
         return () => {
             clearInterval(timer);

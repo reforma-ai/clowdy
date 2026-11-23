@@ -1,7 +1,12 @@
 import { autorun } from 'mobx';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createFixtureData, FIXTURE_EMPTY_PROJECT_ID, FIXTURE_PERSONAL_PROJECT_ID, FIXTURE_PROJECT_ID } from '../daemon/fixtureData';
+import {
+    createFixtureData,
+    FIXTURE_EMPTY_PROJECT_ID,
+    FIXTURE_PERSONAL_PROJECT_ID,
+    FIXTURE_PROJECT_ID,
+} from '../daemon/fixtureData';
 import { FixtureTransport } from '../daemon/fixtureTransport';
 import { overrideTransport } from '../daemon/testing';
 import { BANNER_DELAY_MS, RootStore } from './RootStore';
@@ -13,7 +18,12 @@ import type { KeyValueStorage } from './storage';
 function memoryStorage(initial: Record<string, string> = {}): KeyValueStorage & { data: Record<string, string> } {
     const data = { ...initial };
 
-    return { data, getItem: key => data[key] ?? null, setItem: (key, value) => void (data[key] = value), removeItem: key => void delete data[key] };
+    return {
+        data,
+        getItem: key => data[key] ?? null,
+        setItem: (key, value) => void (data[key] = value),
+        removeItem: key => void delete data[key],
+    };
 }
 
 async function settle() {
@@ -29,7 +39,7 @@ afterEach(() => {
 });
 
 describe('RootStore', () => {
-    it('shows a project\'s screen only once the projects are loaded, the selected project has arrived, and Settings is shut', async () => {
+    it("shows a project's screen only once the projects are loaded, the selected project has arrived, and Settings is shut", async () => {
         const root = new RootStore(new FixtureTransport(), { storage: memoryStorage() });
 
         expect(root.showsProjectScreen).toBe(false);
@@ -48,12 +58,15 @@ describe('RootStore', () => {
         expect(root.showsProjectScreen).toBe(true);
     });
 
-    it('shows no project\'s screen while the selected project is still loading, nor when it failed to load', async () => {
+    it("shows no project's screen while the selected project is still loading, nor when it failed to load", async () => {
         let fail: (error: Error) => void = () => undefined;
-        const getProjectSnapshot = () => new Promise<never>((_resolve, reject) => {
-            fail = reject;
+        const getProjectSnapshot = () =>
+            new Promise<never>((_resolve, reject) => {
+                fail = reject;
+            });
+        const root = new RootStore(overrideTransport(new FixtureTransport(), { getProjectSnapshot }), {
+            storage: memoryStorage(),
         });
-        const root = new RootStore(overrideTransport(new FixtureTransport(), { getProjectSnapshot }), { storage: memoryStorage() });
 
         await root.load();
         await settle();
@@ -69,7 +82,7 @@ describe('RootStore', () => {
         expect(root.showsProjectScreen).toBe(false);
     });
 
-    it('loads the projects with the personal space first, and selects the first project of the person\'s own, with its snapshot', async () => {
+    it("loads the projects with the personal space first, and selects the first project of the person's own, with its snapshot", async () => {
         const root = new RootStore(new FixtureTransport(), { storage: memoryStorage() });
 
         await root.load();
@@ -98,7 +111,8 @@ describe('RootStore', () => {
         const transport = new FixtureTransport();
         let down = true;
         const flaky = overrideTransport(transport, {
-            getRootSnapshot: () => (down ? Promise.reject(new Error('connect ECONNREFUSED')) : transport.getRootSnapshot()),
+            getRootSnapshot: () =>
+                down ? Promise.reject(new Error('connect ECONNREFUSED')) : transport.getRootSnapshot(),
         });
         const root = new RootStore(flaky, { storage: memoryStorage() });
 
@@ -119,12 +133,18 @@ describe('RootStore', () => {
         await root.load();
         await settle();
 
-        const result = await root.command({ type: 'task.create', projectId: FIXTURE_PROJECT_ID, title: 'Write the release notes' });
+        const result = await root.command({
+            type: 'task.create',
+            projectId: FIXTURE_PROJECT_ID,
+            title: 'Write the release notes',
+        });
 
         await settle();
 
         expect(result.ok).toBe(true);
-        expect([...root.selectedProject!.tasks.values()].find(task => task.title === 'Write the release notes')?.key).toBe('CAR-41');
+        expect(
+            [...root.selectedProject!.tasks.values()].find(task => task.title === 'Write the release notes')?.key
+        ).toBe('CAR-41');
         root.dispose();
     });
 
@@ -172,7 +192,9 @@ describe('RootStore', () => {
         await settle();
 
         expect(result.ok).toBe(true);
-        expect(stream.items.map(item => [item.seq, item.body.kind === 'user' ? item.body.text : item.body.kind])).toEqual([[1, 'Start again']]);
+        expect(
+            stream.items.map(item => [item.seq, item.body.kind === 'user' ? item.body.text : item.body.kind])
+        ).toEqual([[1, 'Start again']]);
         expect(stream.items[0].id).not.toBe(first.id);
         expect(state.runs.get('r-orch-2')?.sessionId).toBeUndefined();
 
@@ -197,8 +219,19 @@ describe('RootStore', () => {
 
         await settle();
 
-        expect(result).toMatchObject({ ok: true, data: { project: { name: 'Garden Planner', folders: [{ path: '/Users/dev/Clowdy/projects/garden-planner' }] }, existing: false } });
-        expect(root.projects.map(project => project.name)).toEqual(['Personal', 'Car Rental', 'Clowdy', 'Garden Planner']);
+        expect(result).toMatchObject({
+            ok: true,
+            data: {
+                project: { name: 'Garden Planner', folders: [{ path: '/Users/dev/Clowdy/projects/garden-planner' }] },
+                existing: false,
+            },
+        });
+        expect(root.projects.map(project => project.name)).toEqual([
+            'Personal',
+            'Car Rental',
+            'Clowdy',
+            'Garden Planner',
+        ]);
         expect(root.selectedProject?.project.name).toBe('Garden Planner');
         expect(root.selectedProject?.project.taskPrefix).toBe('GAR');
         root.dispose();
@@ -212,7 +245,13 @@ describe('RootStore', () => {
         const named = await root.addProject({ folders: ['/Users/dev/web', '/Users/dev/api'] });
         const renamed = await root.addProject({ name: 'Shop', folders: ['/Users/dev/shop'] });
 
-        expect(named).toMatchObject({ ok: true, data: { project: { name: 'web', folders: [{ path: '/Users/dev/web' }, { path: '/Users/dev/api' }] }, existing: false } });
+        expect(named).toMatchObject({
+            ok: true,
+            data: {
+                project: { name: 'web', folders: [{ path: '/Users/dev/web' }, { path: '/Users/dev/api' }] },
+                existing: false,
+            },
+        });
         expect(renamed).toMatchObject({ ok: true, data: { project: { name: 'Shop' } } });
         expect(root.selectedProject?.project.name).toBe('Shop');
         root.dispose();
@@ -227,7 +266,10 @@ describe('RootStore', () => {
 
         await settle();
 
-        expect(result).toMatchObject({ ok: true, data: { project: { id: FIXTURE_EMPTY_PROJECT_ID, name: 'Clowdy' }, existing: true } });
+        expect(result).toMatchObject({
+            ok: true,
+            data: { project: { id: FIXTURE_EMPTY_PROJECT_ID, name: 'Clowdy' }, existing: true },
+        });
         expect(root.projects).toHaveLength(3);
         expect(root.selectedProjectId).toBe(FIXTURE_EMPTY_PROJECT_ID);
         root.dispose();
@@ -249,7 +291,10 @@ describe('RootStore', () => {
 
     it('turns a daemon that cannot be reached into an unavailable result for a command', async () => {
         const transport = new FixtureTransport();
-        const root = new RootStore(overrideTransport(transport, { command: () => Promise.reject(new Error('fetch failed')) }), { storage: memoryStorage() });
+        const root = new RootStore(
+            overrideTransport(transport, { command: () => Promise.reject(new Error('fetch failed')) }),
+            { storage: memoryStorage() }
+        );
 
         const result = await root.command({ type: 'chat.rename', chatId: 'c-1', title: 'x' });
 
@@ -259,7 +304,12 @@ describe('RootStore', () => {
     it('passes daemon notices on to the person', async () => {
         const notify = vi.fn();
         const root = new RootStore(new FixtureTransport(), { storage: memoryStorage(), notify });
-        const notice: ClowdyEvent = { cursor: 5000, at: 0, projectId: FIXTURE_PROJECT_ID, data: { type: 'notice', level: 'warn', text: 'The disk is almost full' } };
+        const notice: ClowdyEvent = {
+            cursor: 5000,
+            at: 0,
+            projectId: FIXTURE_PROJECT_ID,
+            data: { type: 'notice', level: 'warn', text: 'The disk is almost full' },
+        };
 
         root.handleEvent(notice);
 
@@ -268,8 +318,18 @@ describe('RootStore', () => {
 
     it('shows the first project that appears while none is selected, and leaves a later one alone', async () => {
         const root = new RootStore(new FixtureTransport(), { storage: memoryStorage() });
-        const project = { ...createFixtureData().projects[0], id: 'prj-new', name: 'Opened elsewhere', path: '/tmp/opened-elsewhere' };
-        const upsert = (cursor: number, id: string, position: number): ClowdyEvent => ({ cursor, at: 0, projectId: id, data: { type: 'project.upserted', project: { ...project, id, position }, statuses: [] } });
+        const project = {
+            ...createFixtureData().projects[0],
+            id: 'prj-new',
+            name: 'Opened elsewhere',
+            path: '/tmp/opened-elsewhere',
+        };
+        const upsert = (cursor: number, id: string, position: number): ClowdyEvent => ({
+            cursor,
+            at: 0,
+            projectId: id,
+            data: { type: 'project.upserted', project: { ...project, id, position }, statuses: [] },
+        });
 
         root.handleEvent(upsert(6000, 'prj-new', 1));
         root.handleEvent(upsert(6001, 'prj-later', 2));
@@ -301,7 +361,11 @@ describe('RootStore projects', () => {
 
         await root.load();
         await settle();
-        await root.command({ type: 'project.update', projectId: FIXTURE_PERSONAL_PROJECT_ID, settings: { chatMode: 'semi' } });
+        await root.command({
+            type: 'project.update',
+            projectId: FIXTURE_PERSONAL_PROJECT_ID,
+            settings: { chatMode: 'semi' },
+        });
         await root.command({ type: 'project.update', projectId: FIXTURE_PROJECT_ID, name: 'Car Rental 2' });
         await settle();
 
@@ -310,7 +374,9 @@ describe('RootStore projects', () => {
     });
 
     it('drops a removed project with its state and remembered window, and moves a window that was on it to the first project', async () => {
-        const storage = memoryStorage({ [`clowdy:ui:${ FIXTURE_EMPTY_PROJECT_ID }`]: JSON.stringify({ section: 'docs' }) });
+        const storage = memoryStorage({
+            [`clowdy:ui:${FIXTURE_EMPTY_PROJECT_ID}`]: JSON.stringify({ section: 'docs' }),
+        });
         const root = new RootStore(new FixtureTransport(), { storage });
 
         await root.load();
@@ -328,7 +394,7 @@ describe('RootStore projects', () => {
         expect(root.selectedProjectId).toBe(FIXTURE_PERSONAL_PROJECT_ID);
         expect(root.selectedProject?.status).toBe('ready');
         expect(root.ui.settingsProjectId).toBeNull();
-        expect(storage.data).not.toHaveProperty(`clowdy:ui:${ FIXTURE_EMPTY_PROJECT_ID }`);
+        expect(storage.data).not.toHaveProperty(`clowdy:ui:${FIXTURE_EMPTY_PROJECT_ID}`);
         root.dispose();
     });
 
@@ -348,7 +414,10 @@ describe('RootStore projects', () => {
         const transport = new FixtureTransport();
         let refuse = false;
         const flaky = overrideTransport(transport, {
-            command: input => (refuse ? Promise.resolve({ ok: false, requestId: 'x', error: { code: 'conflict', message: 'No' } }) : transport.command(input)),
+            command: input =>
+                refuse
+                    ? Promise.resolve({ ok: false, requestId: 'x', error: { code: 'conflict', message: 'No' } })
+                    : transport.command(input),
         });
         const root = new RootStore(flaky, { storage: memoryStorage() });
 
@@ -357,7 +426,11 @@ describe('RootStore projects', () => {
 
         const pending = root.reorderProjects([FIXTURE_EMPTY_PROJECT_ID, FIXTURE_PROJECT_ID]);
 
-        expect(root.projects.map(project => [project.name, project.position])).toEqual([['Personal', 0], ['Clowdy', 1], ['Car Rental', 2]]);
+        expect(root.projects.map(project => [project.name, project.position])).toEqual([
+            ['Personal', 0],
+            ['Clowdy', 1],
+            ['Car Rental', 2],
+        ]);
         await pending;
         await settle();
         expect(root.projects.map(project => project.name)).toEqual(['Personal', 'Clowdy', 'Car Rental']);

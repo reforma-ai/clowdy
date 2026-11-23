@@ -3,7 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { RootStoreProvider, type RootStore } from '../../stores';
+import { type RootStore, RootStoreProvider } from '../../stores';
 import { FETCH_DELAY_MS, useTaskArtifacts } from './useTaskArtifacts';
 
 import type { Artifact, TaskDetail } from '@clowdy/protocol';
@@ -25,17 +25,21 @@ function Probe({ taskId }: { taskId: string }) {
     return null;
 }
 
-const render = (taskId: string) => act(async () => {
-    root.render(
-        <RootStoreProvider value={ { transport: { getTaskDetail }, selectedProject: project } as unknown as RootStore }>
-            <Probe taskId={ taskId } />
-        </RootStoreProvider>
-    );
-});
+const render = (taskId: string) =>
+    act(async () => {
+        root.render(
+            <RootStoreProvider
+                value={{ transport: { getTaskDetail }, selectedProject: project } as unknown as RootStore}
+            >
+                <Probe taskId={taskId} />
+            </RootStoreProvider>
+        );
+    });
 
-const advance = (ms: number) => act(async () => {
-    await vi.advanceTimersByTimeAsync(ms);
-});
+const advance = (ms: number) =>
+    act(async () => {
+        await vi.advanceTimersByTimeAsync(ms);
+    });
 
 beforeEach(() => {
     vi.useFakeTimers();
@@ -98,9 +102,12 @@ describe('useTaskArtifacts', () => {
     it('drops an answer that comes after the task changed', async () => {
         let answer: (value: TaskDetail) => void = () => {};
 
-        getTaskDetail.mockImplementationOnce(() => new Promise((resolve) => {
-            answer = resolve;
-        }));
+        getTaskDetail.mockImplementationOnce(
+            () =>
+                new Promise(resolve => {
+                    answer = resolve;
+                })
+        );
 
         await render('t-1');
         await advance(FETCH_DELAY_MS);

@@ -43,7 +43,8 @@ export class TerminalSession {
 }
 
 /** What a place's shells are kept under: the worktree's id, else the folder's (they never meet), so a worktree has shells of its own and none of the folder's. */
-const keyOf = (projectId: ProjectId, folderId: FolderId, workspaceId?: WorkspaceId) => `${ projectId }/${ workspaceId ?? folderId }`;
+const keyOf = (projectId: ProjectId, folderId: FolderId, workspaceId?: WorkspaceId) =>
+    `${projectId}/${workspaceId ?? folderId}`;
 
 /**
  * The terminals the window shows: every shell the daemon runs for the projects it has been asked about, grouped by the place each runs in: a folder's own checkout, or a
@@ -60,13 +61,20 @@ export class TerminalsStore {
     /** The shells being made for a place with none, keyed as `chosen` is, so two asks at once make one. */
     readonly #starting = new Map<string, Promise<TerminalSession | undefined>>();
 
-    constructor(readonly transport: Pick<Transport, 'listTerminals' | 'createTerminal' | 'closeTerminal' | 'openTerminal'>) {
+    constructor(
+        readonly transport: Pick<Transport, 'listTerminals' | 'createTerminal' | 'closeTerminal' | 'openTerminal'>
+    ) {
         makeAutoObservable<TerminalsStore, 'transport'>(this, { transport: false });
     }
 
     /** The shells of a place: those that run in the worktree `workspaceId` names, or, without it, those that run in the folder's own checkout. */
     sessionsOf(projectId: ProjectId, folderId: FolderId, workspaceId?: WorkspaceId): TerminalSession[] {
-        return this.sessions.filter(session => session.info.projectId === projectId && session.info.folderId === folderId && session.info.workspaceId === workspaceId);
+        return this.sessions.filter(
+            session =>
+                session.info.projectId === projectId &&
+                session.info.folderId === folderId &&
+                session.info.workspaceId === workspaceId
+        );
     }
 
     activeOf(projectId: ProjectId, folderId: FolderId, workspaceId?: WorkspaceId): TerminalSession | undefined {
@@ -106,7 +114,11 @@ export class TerminalsStore {
      * The place's shell, made when it has none, however it came to have none (the last one was closed, say): opening the tab always gives a prompt, so a tab is
      * never shown without a shell. Two asks at once make one. Resolves `undefined` when none could be made (`error` says why).
      */
-    ensureOne(projectId: ProjectId, folderId: FolderId, workspaceId?: WorkspaceId): Promise<TerminalSession | undefined> {
+    ensureOne(
+        projectId: ProjectId,
+        folderId: FolderId,
+        workspaceId?: WorkspaceId
+    ): Promise<TerminalSession | undefined> {
         const held = this.activeOf(projectId, folderId, workspaceId);
 
         if (held) return Promise.resolve(held);
@@ -115,7 +127,9 @@ export class TerminalsStore {
         let starting = this.#starting.get(key);
 
         if (!starting) {
-            starting = this.start(projectId, folderId, undefined, workspaceId).finally(() => this.#starting.delete(key));
+            starting = this.start(projectId, folderId, undefined, workspaceId).finally(() =>
+                this.#starting.delete(key)
+            );
             this.#starting.set(key, starting);
         }
 
@@ -123,9 +137,20 @@ export class TerminalsStore {
     }
 
     /** Starts a shell in the folder (or in its worktree `workspaceId`), or in a folder below it, and chooses it. */
-    async start(projectId: ProjectId, folderId: FolderId, path?: string, workspaceId?: WorkspaceId): Promise<TerminalSession | undefined> {
+    async start(
+        projectId: ProjectId,
+        folderId: FolderId,
+        path?: string,
+        workspaceId?: WorkspaceId
+    ): Promise<TerminalSession | undefined> {
         try {
-            const info = await this.transport.createTerminal({ projectId, folderId, ...(workspaceId !== undefined && { workspaceId }), ...(path ? { path } : {}), ...FIRST_SIZE });
+            const info = await this.transport.createTerminal({
+                projectId,
+                folderId,
+                ...(workspaceId !== undefined && { workspaceId }),
+                ...(path ? { path } : {}),
+                ...FIRST_SIZE,
+            });
 
             return runInAction(() => {
                 this.error = '';
@@ -136,8 +161,7 @@ export class TerminalsStore {
 
                 return session;
             });
-        }
-        catch (error) {
+        } catch (error) {
             runInAction(() => {
                 this.error = errorMessage(error);
             });
@@ -152,8 +176,7 @@ export class TerminalsStore {
 
         try {
             await this.transport.closeTerminal(session.id);
-        }
-        catch (error) {
+        } catch (error) {
             runInAction(() => {
                 this.error = errorMessage(error);
             });
@@ -185,7 +208,10 @@ export class TerminalsStore {
 
             const present = new Set(infos.map(info => info.id));
 
-            for (const gone of this.sessions.filter(session => session.info.projectId === projectId && !present.has(session.id))) this.forget(gone);
+            for (const gone of this.sessions.filter(
+                session => session.info.projectId === projectId && !present.has(session.id)
+            ))
+                this.forget(gone);
 
             for (const info of infos) this.#adopt(info);
         });

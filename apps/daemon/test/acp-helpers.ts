@@ -17,7 +17,8 @@ export const FAKE_AGENT_V2 = new URL('./fake-acp-agent-v2.ts', import.meta.url).
 export const PROTOCOLS: AgentProtocol[] = ['v1', 'v2'];
 
 /** A discovery that never starts a login shell: tests must not depend on the machine's own setup. */
-export const quietDiscovery = (env: Record<string, string | undefined> = process.env) => new Discovery({ env, loginPath: async () => undefined });
+export const quietDiscovery = (env: Record<string, string | undefined> = process.env) =>
+    new Discovery({ env, loginPath: async () => undefined });
 
 export interface Rig {
     engine: AcpEngine;
@@ -65,7 +66,7 @@ export function rig(options: RigOptions = {}): Rig {
 
     const resolve = registry.resolve.bind(registry);
 
-    registry.resolve = async (id) => {
+    registry.resolve = async id => {
         const found = await resolve(id);
 
         if (!found.ok) {
@@ -73,12 +74,38 @@ export function rig(options: RigOptions = {}): Rig {
         }
 
         // The registry gives the custom agent the generic pair's default, Full access, so every request is allowed; a test may name the preset to run on instead.
-        return { ok: true, agent: { ...found.agent, ...(options.protocol && { protocol: options.protocol }), ...(options.wakesOnBackgroundEnd && { wakesOnBackgroundEnd: true }), ...(options.sessionMeta && { sessionMeta: options.sessionMeta }), ...(options.clientMeta && { clientMeta: options.clientMeta }), ...(options.permission && { permission: options.permission }) } };
+        return {
+            ok: true,
+            agent: {
+                ...found.agent,
+                ...(options.protocol && { protocol: options.protocol }),
+                ...(options.wakesOnBackgroundEnd && { wakesOnBackgroundEnd: true }),
+                ...(options.sessionMeta && { sessionMeta: options.sessionMeta }),
+                ...(options.clientMeta && { clientMeta: options.clientMeta }),
+                ...(options.permission && { permission: options.permission }),
+            },
+        };
     };
 
-    registry.add({ id: 'fake-acp', name: 'Fake ACP', command: options.command ?? process.execPath, args: options.args ?? [options.protocol === 'v2' ? FAKE_AGENT_V2 : FAKE_AGENT], env: options.agentEnv });
+    registry.add({
+        id: 'fake-acp',
+        name: 'Fake ACP',
+        command: options.command ?? process.execPath,
+        args: options.args ?? [options.protocol === 'v2' ? FAKE_AGENT_V2 : FAKE_AGENT],
+        env: options.agentEnv,
+    });
 
-    const engine = new AcpEngine('fake-acp', { registry, bridge, shim: options.shim, env, initializeTimeoutMs: options.initializeTimeoutMs, forkTimeoutMs: options.forkTimeoutMs, titleWaitMs: options.titleWaitMs, backgroundHandoffMs: options.backgroundHandoffMs ?? 400, backgroundReportMs: options.backgroundReportMs });
+    const engine = new AcpEngine('fake-acp', {
+        registry,
+        bridge,
+        shim: options.shim,
+        env,
+        initializeTimeoutMs: options.initializeTimeoutMs,
+        forkTimeoutMs: options.forkTimeoutMs,
+        titleWaitMs: options.titleWaitMs,
+        backgroundHandoffMs: options.backgroundHandoffMs ?? 400,
+        backgroundReportMs: options.backgroundReportMs,
+    });
 
     return {
         engine,
@@ -112,10 +139,17 @@ export async function collect(session: EngineSession): Promise<EngineEvent[]> {
 export const types = (events: EngineEvent[]) => events.map(event => event.type);
 
 /** The text of every assistant message, joined. */
-export const textOf = (events: EngineEvent[]): string => events.flatMap(event => event.type === 'text' ? [event.delta] : []).join('');
+export const textOf = (events: EngineEvent[]): string =>
+    events.flatMap(event => (event.type === 'text' ? [event.delta] : [])).join('');
 
 export function tool(name: string, execute: ToolDefinition['execute']): ToolDefinition {
-    return { name, description: `The ${ name } tool`, inputSchema: { type: 'object', properties: {} }, schema: z.object({}), execute };
+    return {
+        name,
+        description: `The ${name} tool`,
+        inputSchema: { type: 'object', properties: {} },
+        schema: z.object({}),
+        execute,
+    };
 }
 
 /** Whether a process with this id is still there. */
@@ -124,8 +158,7 @@ export function alive(pid: number): boolean {
         process.kill(pid, 0);
 
         return true;
-    }
-    catch {
+    } catch {
         return false;
     }
 }
@@ -135,7 +168,7 @@ export async function until(check: () => boolean, what: string, timeoutMs = 5000
 
     while (!check()) {
         if (Date.now() > deadline) {
-            throw new Error(`Timed out waiting for ${ what }`);
+            throw new Error(`Timed out waiting for ${what}`);
         }
 
         await Bun.sleep(10);

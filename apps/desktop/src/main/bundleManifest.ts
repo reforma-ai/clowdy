@@ -44,8 +44,11 @@ export function signManifest(manifest: BundleManifest, privateKeyPem: string): S
 export function openManifest(signed: string, publicKeyPem: string): BundleManifest {
     const { body, signature } = JSON.parse(signed) as Partial<SignedManifest>;
 
-    if (typeof body !== 'string' || typeof signature !== 'string'
-        || !verify(null, Buffer.from(body), createPublicKey(publicKeyPem), Buffer.from(signature, 'base64'))) {
+    if (
+        typeof body !== 'string' ||
+        typeof signature !== 'string' ||
+        !verify(null, Buffer.from(body), createPublicKey(publicKeyPem), Buffer.from(signature, 'base64'))
+    ) {
         throw new Error('The bundle manifest is not signed by the release key');
     }
 
@@ -58,13 +61,22 @@ const isSize = (value: unknown) => Number.isSafeInteger(value) && (value as numb
 /** A manifest checked field by field, so nothing downstream trusts its shape blindly. */
 export function parseManifest(json: string): BundleManifest {
     const manifest = JSON.parse(json) as BundleManifest;
-    const valid = Number.isSafeInteger(manifest.version) && manifest.version > 0
-        && typeof manifest.minShell === 'string' && /^\d+\.\d+\.\d+$/.test(manifest.minShell)
-        && Number.isSafeInteger(manifest.protocol)
-        && typeof manifest.archive === 'object' && manifest.archive !== null
-        && /^bundle-\d+\.tar\.gz$/.test(manifest.archive.name) && isHash(manifest.archive.sha256) && isSize(manifest.archive.size)
-        && typeof manifest.files === 'object' && manifest.files !== null
-        && Object.entries(manifest.files).every(([file, entry]) => isBundlePath(file) && isHash(entry?.sha256) && isSize(entry?.size));
+    const valid =
+        Number.isSafeInteger(manifest.version) &&
+        manifest.version > 0 &&
+        typeof manifest.minShell === 'string' &&
+        /^\d+\.\d+\.\d+$/.test(manifest.minShell) &&
+        Number.isSafeInteger(manifest.protocol) &&
+        typeof manifest.archive === 'object' &&
+        manifest.archive !== null &&
+        /^bundle-\d+\.tar\.gz$/.test(manifest.archive.name) &&
+        isHash(manifest.archive.sha256) &&
+        isSize(manifest.archive.size) &&
+        typeof manifest.files === 'object' &&
+        manifest.files !== null &&
+        Object.entries(manifest.files).every(
+            ([file, entry]) => isBundlePath(file) && isHash(entry?.sha256) && isSize(entry?.size)
+        );
 
     if (!valid) throw new Error('The bundle manifest is malformed');
 
@@ -79,12 +91,14 @@ export async function hashFolder(root: string): Promise<BundleFiles> {
     const files: BundleFiles = {};
     const entries = await readdir(root, { recursive: true, withFileTypes: true });
 
-    for (const entry of entries.sort((a, b) => path.join(a.parentPath, a.name).localeCompare(path.join(b.parentPath, b.name)))) {
+    for (const entry of entries.sort((a, b) =>
+        path.join(a.parentPath, a.name).localeCompare(path.join(b.parentPath, b.name))
+    )) {
         if (entry.isDirectory()) continue;
 
         const file = path.relative(root, path.join(entry.parentPath, entry.name)).split(path.sep).join('/');
 
-        if (!entry.isFile()) throw new Error(`${ file } is not a regular file, and a bundle holds only those`);
+        if (!entry.isFile()) throw new Error(`${file} is not a regular file, and a bundle holds only those`);
 
         if (file === MANIFEST_FILE) continue;
 
@@ -102,16 +116,22 @@ export function sha256(bytes: Uint8Array): string {
 
 /** The renderer's files, by their path inside the renderer folder, for the protocol handler's checks. */
 export function rendererFiles(files: BundleFiles): BundleFiles {
-    const prefix = `${ RENDERER_DIR }/`;
+    const prefix = `${RENDERER_DIR}/`;
 
-    return Object.fromEntries(Object.entries(files).filter(([file]) => file.startsWith(prefix)).map(([file, entry]) => [file.slice(prefix.length), entry]));
+    return Object.fromEntries(
+        Object.entries(files)
+            .filter(([file]) => file.startsWith(prefix))
+            .map(([file, entry]) => [file.slice(prefix.length), entry])
+    );
 }
 
 /** A relative `/`-separated path that stays inside the bundle's folder on every OS. */
 export function isBundlePath(file: string): boolean {
-    return file.length > 0
-        && file !== MANIFEST_FILE
-        && !file.startsWith('/')
-        && !/[\\:\0]/.test(file)
-        && file.split('/').every(segment => segment !== '' && segment !== '.' && segment !== '..');
+    return (
+        file.length > 0 &&
+        file !== MANIFEST_FILE &&
+        !file.startsWith('/') &&
+        !/[\\:\0]/.test(file) &&
+        file.split('/').every(segment => segment !== '' && segment !== '.' && segment !== '..')
+    );
 }

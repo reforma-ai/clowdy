@@ -1,8 +1,8 @@
-import { TERMINAL_SUBPROTOCOL, terminalTokenProtocol } from '@clowdy/protocol';
-import { Terminal } from '@xterm/headless';
 import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
+import { TERMINAL_SUBPROTOCOL, terminalTokenProtocol } from '@clowdy/protocol';
+import { Terminal } from '@xterm/headless';
 
 import { SocketClient } from '../src/http/terminals';
 import { spawnPty } from '../src/terminals/pty';
@@ -33,7 +33,12 @@ const quiet = { output: () => undefined, exit: () => undefined, gone: () => unde
 
 /** A PTY that does nothing but remember what it was asked, and lets the test play the shell. */
 function fakePty() {
-    const state = { spec: undefined as PtySpec | undefined, written: [] as string[], size: { cols: 0, rows: 0 }, killed: 0 };
+    const state = {
+        spec: undefined as PtySpec | undefined,
+        written: [] as string[],
+        size: { cols: 0, rows: 0 },
+        killed: 0,
+    };
     const pty: Pty = {
         pid: 1,
         write: data => void state.written.push(typeof data === 'string' ? data : decoder.decode(data)),
@@ -56,7 +61,16 @@ function fakePty() {
 
 function session(spec: Partial<ConstructorParameters<typeof TerminalSession>[1]> = {}) {
     const pty = fakePty();
-    const created = new TerminalSession('trm_test', { projectId: 'prj_1', folderId: 'fld_1', cwd: '/tmp', shell: SH, env: {}, cols: 40, rows: 10, ...spec });
+    const created = new TerminalSession('trm_test', {
+        projectId: 'prj_1',
+        folderId: 'fld_1',
+        cwd: '/tmp',
+        shell: SH,
+        env: {},
+        cols: 40,
+        rows: 10,
+        ...spec,
+    });
 
     created.start(pty.spawn);
 
@@ -123,12 +137,24 @@ class Viewer implements TerminalListener {
 }
 
 describe('the shell a terminal runs', () => {
-    test('is the person\'s own, as a terminal app starts it', () => {
+    test("is the person's own, as a terminal app starts it", () => {
         const exists = (file: string) => ['/bin/zsh', '/bin/bash', '/bin/sh', '/usr/local/bin/fish'].includes(file);
 
-        expect(resolveShell({ platform: 'darwin', env: { SHELL: '/usr/local/bin/fish' }, exists })).toEqual({ file: '/usr/local/bin/fish', args: ['-l'], name: 'fish' });
-        expect(resolveShell({ platform: 'darwin', env: {}, exists })).toEqual({ file: '/bin/zsh', args: ['-l'], name: 'zsh' });
-        expect(resolveShell({ platform: 'linux', env: { SHELL: '/usr/local/bin/fish' }, exists })).toEqual({ file: '/usr/local/bin/fish', args: [], name: 'fish' });
+        expect(resolveShell({ platform: 'darwin', env: { SHELL: '/usr/local/bin/fish' }, exists })).toEqual({
+            file: '/usr/local/bin/fish',
+            args: ['-l'],
+            name: 'fish',
+        });
+        expect(resolveShell({ platform: 'darwin', env: {}, exists })).toEqual({
+            file: '/bin/zsh',
+            args: ['-l'],
+            name: 'zsh',
+        });
+        expect(resolveShell({ platform: 'linux', env: { SHELL: '/usr/local/bin/fish' }, exists })).toEqual({
+            file: '/usr/local/bin/fish',
+            args: [],
+            name: 'fish',
+        });
     });
 
     test('falls back past a $SHELL that is not there, and fails when no shell is', () => {
@@ -142,8 +168,7 @@ describe('the shell a terminal runs', () => {
         const failure = (() => {
             try {
                 return resolveShell({ platform: 'linux', env: {}, exists: () => false });
-            }
-            catch (error) {
+            } catch (error) {
                 return error;
             }
         })();
@@ -154,15 +179,42 @@ describe('the shell a terminal runs', () => {
     test('on Windows is PowerShell 7, else Windows PowerShell, else the command prompt', () => {
         const which = (found: Record<string, string>) => (program: string) => found[program] ?? null;
 
-        expect(resolveShell({ platform: 'win32', env: {}, which: which({ pwsh: 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' }) })).toEqual({ file: 'C:\\Program Files\\PowerShell\\7\\pwsh.exe', args: ['-NoLogo'], name: 'pwsh' });
-        expect(resolveShell({ platform: 'win32', env: {}, which: which({ powershell: 'C:\\Windows\\powershell.exe' }) }).name).toBe('powershell');
-        expect(resolveShell({ platform: 'win32', env: { ComSpec: 'C:\\Windows\\System32\\cmd.exe' }, which: which({}) })).toEqual({ file: 'C:\\Windows\\System32\\cmd.exe', args: [], name: 'cmd' });
+        expect(
+            resolveShell({
+                platform: 'win32',
+                env: {},
+                which: which({ pwsh: 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' }),
+            })
+        ).toEqual({ file: 'C:\\Program Files\\PowerShell\\7\\pwsh.exe', args: ['-NoLogo'], name: 'pwsh' });
+        expect(
+            resolveShell({ platform: 'win32', env: {}, which: which({ powershell: 'C:\\Windows\\powershell.exe' }) })
+                .name
+        ).toBe('powershell');
+        expect(
+            resolveShell({ platform: 'win32', env: { ComSpec: 'C:\\Windows\\System32\\cmd.exe' }, which: which({}) })
+        ).toEqual({ file: 'C:\\Windows\\System32\\cmd.exe', args: [], name: 'cmd' });
     });
 
-    test('inherits the daemon\'s environment, without what an agent never inherits either, and says what kind of terminal it is', () => {
-        const env = terminalEnvironment({ PATH: '/bin', HOME: '/h', CLOWDY_TOKEN: 'secret', CLOWDY_DATA_DIR: '/d', ELECTRON_RUN_AS_NODE: '1', NODE_OPTIONS: '--x', CLAUDECODE: '1', GONE: undefined, TERM: 'dumb' });
+    test("inherits the daemon's environment, without what an agent never inherits either, and says what kind of terminal it is", () => {
+        const env = terminalEnvironment({
+            PATH: '/bin',
+            HOME: '/h',
+            CLOWDY_TOKEN: 'secret',
+            CLOWDY_DATA_DIR: '/d',
+            ELECTRON_RUN_AS_NODE: '1',
+            NODE_OPTIONS: '--x',
+            CLAUDECODE: '1',
+            GONE: undefined,
+            TERM: 'dumb',
+        });
 
-        expect(env).toEqual({ PATH: '/bin', HOME: '/h', TERM: 'xterm-256color', COLORTERM: 'truecolor', TERM_PROGRAM: 'Clowdy' });
+        expect(env).toEqual({
+            PATH: '/bin',
+            HOME: '/h',
+            TERM: 'xterm-256color',
+            COLORTERM: 'truecolor',
+            TERM_PROGRAM: 'Clowdy',
+        });
     });
 });
 
@@ -184,9 +236,9 @@ describe('a terminal session', () => {
         const { session: s, pty } = session({ cols: 20, rows: 5 });
         const viewer = new Viewer(20, 5);
         let next = 1;
-        const print = () => pty.emit(`line ${ next++ }\r\n`);
+        const print = () => pty.emit(`line ${next++}\r\n`);
 
-        for (; next <= 30;) {
+        for (; next <= 30; ) {
             print();
         }
 
@@ -205,7 +257,7 @@ describe('a terminal session', () => {
 
         const lines = await viewer.lines();
 
-        expect(lines).toEqual(Array.from({ length: next - 1 }, (_, index) => `line ${ index + 1 }`));
+        expect(lines).toEqual(Array.from({ length: next - 1 }, (_, index) => `line ${index + 1}`));
     });
 
     test('starts a client over with a new screen when it is attached again, as one that fell behind is', async () => {
@@ -244,7 +296,12 @@ describe('a terminal session', () => {
         const { session: s, pty } = session();
         const seen: string[] = [];
 
-        await s.attach({ screen: () => undefined, output: data => void seen.push(decoder.decode(data)), exit: code => void seen.push(`exit ${ code }`), gone: () => undefined });
+        await s.attach({
+            screen: () => undefined,
+            output: data => void seen.push(decoder.decode(data)),
+            exit: code => void seen.push(`exit ${code}`),
+            gone: () => undefined,
+        });
         pty.emit('bye\r\n');
         pty.exit(3);
 
@@ -280,7 +337,12 @@ describe('a terminal session', () => {
     test('tells its clients when it is closed, also one still being given its screen, and a client that comes after', async () => {
         const { session: s, pty } = session();
         const seen: string[] = [];
-        const listener: TerminalListener = { screen: () => void seen.push('screen'), output: () => void seen.push('output'), exit: () => void seen.push('exit'), gone: () => void seen.push('gone') };
+        const listener: TerminalListener = {
+            screen: () => void seen.push('screen'),
+            output: () => void seen.push('output'),
+            exit: () => void seen.push('exit'),
+            gone: () => void seen.push('gone'),
+        };
 
         pty.emit('text');
 
@@ -334,7 +396,12 @@ describe.skipIf(!posix)('a terminal on a real PTY', () => {
         const exits: number[] = [];
 
         sessions.push(found);
-        await found.attach({ screen: message => void (text += message.screen), output: data => void (text += decoder.decode(data)), exit: code => void exits.push(code), gone: () => undefined });
+        await found.attach({
+            screen: message => void (text += message.screen),
+            output: data => void (text += decoder.decode(data)),
+            exit: code => void exits.push(code),
+            gone: () => undefined,
+        });
 
         return {
             info,
@@ -342,7 +409,12 @@ describe.skipIf(!posix)('a terminal on a real PTY', () => {
             exits,
             text: () => text,
             type: (input: string) => found.write(input),
-            until: (what: string | RegExp) => waitFor(() => (typeof what === 'string' ? text.includes(what) : what.test(text)) && text, `${ String(what) } on the screen`, 6000),
+            until: (what: string | RegExp) =>
+                waitFor(
+                    () => (typeof what === 'string' ? text.includes(what) : what.test(text)) && text,
+                    `${String(what)} on the screen`,
+                    6000
+                ),
         };
     }
 
@@ -393,7 +465,7 @@ describe.skipIf(!posix)('a terminal on a real PTY', () => {
         await terminal.until('40 120');
     });
 
-    test('gives the shell a terminal that draws colors, and not the daemon\'s token', async () => {
+    test("gives the shell a terminal that draws colors, and not the daemon's token", async () => {
         const terminal = await open();
 
         await terminal.until('$ ');
@@ -412,21 +484,23 @@ describe.skipIf(!posix)('a terminal on a real PTY', () => {
 
         service.remove(terminal.info.id);
 
-        await waitFor(() => {
-            try {
-                process.kill(shell, 0);
+        await waitFor(
+            () => {
+                try {
+                    process.kill(shell, 0);
 
-                return false;
-            }
-            catch {
-                return true;
-            }
-        }, 'the shell to be gone', 6000);
+                    return false;
+                } catch {
+                    return true;
+                }
+            },
+            'the shell to be gone',
+            6000
+        );
         // The foreground jobs are hung up with it; a background job of a non-interactive-job-control `sh` may outlive it, so only clean up.
         try {
             process.kill(child, 'SIGKILL');
-        }
-        catch {
+        } catch {
             // Already gone.
         }
 
@@ -458,7 +532,8 @@ describe.skipIf(!posix)('a terminal on a real PTY', () => {
         symlinkSync(tempDir('elsewhere'), join(root, 'link'));
         await Bun.write(join(root, 'file.txt'), 'x');
 
-        const create = (path: string) => () => service.create(project, { projectId: 'prj_1', folderId: 'fld_1', path, cols: 80, rows: 24 });
+        const create = (path: string) => () =>
+            service.create(project, { projectId: 'prj_1', folderId: 'fld_1', path, cols: 80, rows: 24 });
 
         expect(create('..')).toThrow('must not contain');
         expect(create('/etc')).toThrow('relative');
@@ -469,9 +544,18 @@ describe.skipIf(!posix)('a terminal on a real PTY', () => {
     });
 
     test('refuses a folder the project does not have, a folder that is gone, and a size no terminal has', () => {
-        expect(() => service.create(project, { projectId: 'prj_1', folderId: 'fld_9', cols: 80, rows: 24 })).toThrow('does not exist');
-        expect(() => service.create({ ...project, folders: [{ id: 'fld_1', path: join(root, 'gone') }] }, { projectId: 'prj_1', folderId: 'fld_1', cols: 80, rows: 24 })).toThrow('is missing');
-        expect(() => service.create(project, { projectId: 'prj_1', folderId: 'fld_1', cols: 0, rows: 24 })).toThrow('size');
+        expect(() => service.create(project, { projectId: 'prj_1', folderId: 'fld_9', cols: 80, rows: 24 })).toThrow(
+            'does not exist'
+        );
+        expect(() =>
+            service.create(
+                { ...project, folders: [{ id: 'fld_1', path: join(root, 'gone') }] },
+                { projectId: 'prj_1', folderId: 'fld_1', cols: 80, rows: 24 }
+            )
+        ).toThrow('is missing');
+        expect(() => service.create(project, { projectId: 'prj_1', folderId: 'fld_1', cols: 0, rows: 24 })).toThrow(
+            'size'
+        );
     });
 
     test('runs only so many shells at once, and frees a place when one is closed', async () => {
@@ -485,16 +569,20 @@ describe.skipIf(!posix)('a terminal on a real PTY', () => {
             expect(create).toThrow('already runs 2 terminals');
             small.remove(first.id);
             expect(create).not.toThrow();
-        }
-        finally {
+        } finally {
             small.stop();
         }
     });
 
     test('says when the shell cannot be started, and leaves nothing running', () => {
-        const broken = new TerminalService({ shell: () => ({ file: join(root, 'no-such-shell'), args: [], name: 'x' }), env: shEnv });
+        const broken = new TerminalService({
+            shell: () => ({ file: join(root, 'no-such-shell'), args: [], name: 'x' }),
+            env: shEnv,
+        });
 
-        expect(() => broken.create(project, { projectId: 'prj_1', folderId: 'fld_1', cols: 80, rows: 24 })).toThrow('could not be started');
+        expect(() => broken.create(project, { projectId: 'prj_1', folderId: 'fld_1', cols: 80, rows: 24 })).toThrow(
+            'could not be started'
+        );
         expect(broken.list()).toEqual([]);
         broken.stop();
     });
@@ -517,14 +605,17 @@ describe('a client that cannot keep up', () => {
     function socket(buffered: () => number) {
         const sent: Array<string | Uint8Array> = [];
 
-        return { sent, ws: { send: (data: string | Uint8Array) => void sent.push(data), getBufferedAmount: buffered } as never };
+        return {
+            sent,
+            ws: { send: (data: string | Uint8Array) => void sent.push(data), getBufferedAmount: buffered } as never,
+        };
     }
 
     test('is passed over while its socket is full, and starts again from a new screen once the socket has drained', () => {
         let buffered = 0;
         const { sent, ws } = socket(() => buffered);
         const attached: TerminalListener[] = [];
-        const client = new SocketClient(ws, async (listener) => {
+        const client = new SocketClient(ws, async listener => {
             attached.push(listener);
         });
 
@@ -546,7 +637,11 @@ describe('a client that cannot keep up', () => {
         client.screen({ type: 'screen', screen: 'S', cols: 1, rows: 1, state: 'running' } as ScreenMessage);
         client.output(encoder.encode('d'));
 
-        expect(sent.map(frame => (typeof frame === 'string' ? (JSON.parse(frame) as TerminalServerMessage).type : decoder.decode(frame)))).toEqual(['a', 'screen', 'd']);
+        expect(
+            sent.map(frame =>
+                typeof frame === 'string' ? (JSON.parse(frame) as TerminalServerMessage).type : decoder.decode(frame)
+            )
+        ).toEqual(['a', 'screen', 'd']);
     });
 });
 
@@ -566,22 +661,26 @@ describe.skipIf(!posix)('the terminal routes', () => {
 
     afterEach(() => h.stop());
 
-    const body = (extra: Record<string, unknown> = {}) => JSON.stringify({ projectId: project.id, folderId: project.folders[0].id, cols: 80, rows: 24, ...extra });
-    const create = async (extra: Record<string, unknown> = {}) => (await (await h.fetch('/v1/terminals', { method: 'POST', body: body(extra) })).json()) as TerminalInfo;
+    const body = (extra: Record<string, unknown> = {}) =>
+        JSON.stringify({ projectId: project.id, folderId: project.folders[0].id, cols: 80, rows: 24, ...extra });
+    const create = async (extra: Record<string, unknown> = {}) =>
+        (await (await h.fetch('/v1/terminals', { method: 'POST', body: body(extra) })).json()) as TerminalInfo;
 
     /** A stream as the app opens it: the token in a subprotocol, from the app's own origin. */
     async function connect(id: string, options: { token?: string; origin?: string } = {}) {
-        const url = `ws://127.0.0.1:${ h.daemon.info.port }/v1/terminals/${ id }/stream`;
-        const socket = new WebSocket(url, { protocols: [TERMINAL_SUBPROTOCOL, terminalTokenProtocol(options.token ?? h.config.token)], headers: { origin: options.origin ?? 'app://clowdy' } } as never);
+        const url = `ws://127.0.0.1:${h.daemon.info.port}/v1/terminals/${id}/stream`;
+        const socket = new WebSocket(url, {
+            protocols: [TERMINAL_SUBPROTOCOL, terminalTokenProtocol(options.token ?? h.config.token)],
+            headers: { origin: options.origin ?? 'app://clowdy' },
+        } as never);
         const messages: TerminalServerMessage[] = [];
         let output = '';
 
         socket.binaryType = 'arraybuffer';
-        socket.onmessage = (event) => {
+        socket.onmessage = event => {
             if (typeof event.data === 'string') {
                 messages.push(JSON.parse(event.data) as TerminalServerMessage);
-            }
-            else {
+            } else {
                 output += decoder.decode(event.data as ArrayBuffer);
             }
         };
@@ -595,7 +694,7 @@ describe.skipIf(!posix)('the terminal routes', () => {
             messages,
             output: () => output,
             send: (text: string) => socket.send(encoder.encode(text)),
-            until: (what: string) => waitFor(() => output.includes(what) && output, `${ what } on the stream`, 6000),
+            until: (what: string) => waitFor(() => output.includes(what) && output, `${what} on the stream`, 6000),
             close: () => socket.close(),
         };
     }
@@ -603,20 +702,27 @@ describe.skipIf(!posix)('the terminal routes', () => {
     test('creates, lists and closes terminals', async () => {
         const info = await create();
 
-        expect(info).toMatchObject({ projectId: project.id, folderId: project.folders[0].id, shell: 'sh', state: 'running', cols: 80, rows: 24 });
+        expect(info).toMatchObject({
+            projectId: project.id,
+            folderId: project.folders[0].id,
+            shell: 'sh',
+            state: 'running',
+            cols: 80,
+            rows: 24,
+        });
         expect(info.id).toMatch(/^trm_/);
         expect(await (await h.fetch('/v1/terminals')).json()).toEqual([info]);
-        expect(await (await h.fetch(`/v1/terminals?projectId=${ project.id }`)).json()).toEqual([info]);
+        expect(await (await h.fetch(`/v1/terminals?projectId=${project.id}`)).json()).toEqual([info]);
         expect(await (await h.fetch('/v1/terminals?projectId=prj_other')).json()).toEqual([]);
 
-        const closed = await h.fetch(`/v1/terminals/${ info.id }`, { method: 'DELETE' });
+        const closed = await h.fetch(`/v1/terminals/${info.id}`, { method: 'DELETE' });
 
         expect(closed.status).toBe(200);
         expect(await (await h.fetch('/v1/terminals')).json()).toEqual([]);
-        expect((await h.fetch(`/v1/terminals/${ info.id }`, { method: 'DELETE' })).status).toBe(404);
+        expect((await h.fetch(`/v1/terminals/${info.id}`, { method: 'DELETE' })).status).toBe(404);
     });
 
-    test('answers what is wrong with a request in the daemon\'s usual way', async () => {
+    test("answers what is wrong with a request in the daemon's usual way", async () => {
         const post = (text: string) => h.fetch('/v1/terminals', { method: 'POST', body: text });
 
         expect((await post('not json')).status).toBe(400);
@@ -630,32 +736,32 @@ describe.skipIf(!posix)('the terminal routes', () => {
     test('is behind the token, the stream too', async () => {
         const info = await create();
 
-        for (const route of ['/v1/terminals', `/v1/terminals/${ info.id }/stream`]) {
-            expect((await fetch(`${ h.url }${ route }`)).status).toBe(401);
-            expect((await fetch(`${ h.url }${ route }`, { headers: { authorization: 'Bearer wrong' } })).status).toBe(401);
+        for (const route of ['/v1/terminals', `/v1/terminals/${info.id}/stream`]) {
+            expect((await fetch(`${h.url}${route}`)).status).toBe(401);
+            expect((await fetch(`${h.url}${route}`, { headers: { authorization: 'Bearer wrong' } })).status).toBe(401);
         }
 
-        expect((await fetch(`${ h.url }/v1/terminals`, { method: 'POST', body: body() })).status).toBe(401);
-        expect((await fetch(`${ h.url }/v1/terminals/${ info.id }`, { method: 'DELETE' })).status).toBe(401);
+        expect((await fetch(`${h.url}/v1/terminals`, { method: 'POST', body: body() })).status).toBe(401);
+        expect((await fetch(`${h.url}/v1/terminals/${info.id}`, { method: 'DELETE' })).status).toBe(401);
         await expect(connect(info.id, { token: 'wrong' })).rejects.toThrow('refused');
     });
 
-    test('refuses a stream from an origin that is not the app\'s, even with the token', async () => {
+    test("refuses a stream from an origin that is not the app's, even with the token", async () => {
         const info = await create();
 
         await expect(connect(info.id, { origin: 'https://evil.example' })).rejects.toThrow('refused');
     });
 
     test('answers a stream path with a malformed escape as any other that names no terminal, and asks for the token first', async () => {
-        const route = `${ h.url }/v1/terminals/%zz/stream`;
+        const route = `${h.url}/v1/terminals/%zz/stream`;
 
         expect((await fetch(route)).status).toBe(401);
-        expect((await fetch(route, { headers: { authorization: `Bearer ${ h.config.token }` } })).status).toBe(404);
+        expect((await fetch(route, { headers: { authorization: `Bearer ${h.config.token}` } })).status).toBe(404);
     });
 
     test('says what is wrong with a stream that is not one', async () => {
         expect((await h.fetch('/v1/terminals/trm_gone/stream')).status).toBe(404);
-        expect((await h.fetch(`/v1/terminals/${ (await create()).id }/stream`)).status).toBe(400);
+        expect((await h.fetch(`/v1/terminals/${(await create()).id}/stream`)).status).toBe(400);
     });
 
     test('streams the shell: the screen first, then its output, and takes input and a new size', async () => {
@@ -670,7 +776,10 @@ describe.skipIf(!posix)('the terminal routes', () => {
         stream.socket.send(JSON.stringify({ type: 'resize', cols: 100, rows: 30 }));
         stream.send('stty size\r');
         await stream.until('30 100');
-        expect((await (await h.fetch('/v1/terminals')).json() as TerminalInfo[])[0]).toMatchObject({ cols: 100, rows: 30 });
+        expect(((await (await h.fetch('/v1/terminals')).json()) as TerminalInfo[])[0]).toMatchObject({
+            cols: 100,
+            rows: 30,
+        });
         stream.close();
     });
 
@@ -702,7 +811,7 @@ describe.skipIf(!posix)('the terminal routes', () => {
         const closed = new Promise<number>(resolve => void (stream.socket.onclose = event => resolve(event.code)));
 
         await waitFor(() => stream.messages.length > 0, 'the screen', 6000);
-        expect((await h.fetch(`/v1/terminals/${ info.id }`, { method: 'DELETE' })).status).toBe(200);
+        expect((await h.fetch(`/v1/terminals/${info.id}`, { method: 'DELETE' })).status).toBe(200);
         expect(await closed).toBe(1001);
         await expect(connect(info.id)).rejects.toThrow('refused');
     });
@@ -732,16 +841,19 @@ describe.skipIf(!posix)('the terminal routes', () => {
         await waitFor(() => stream.messages.length > 0, 'the screen', 6000);
 
         await h.stop();
-        await waitFor(() => {
-            try {
-                process.kill(pid, 0);
+        await waitFor(
+            () => {
+                try {
+                    process.kill(pid, 0);
 
-                return false;
-            }
-            catch {
-                return true;
-            }
-        }, 'the shell to be gone', 6000);
+                    return false;
+                } catch {
+                    return true;
+                }
+            },
+            'the shell to be gone',
+            6000
+        );
         h = await startHarness();
     });
 });

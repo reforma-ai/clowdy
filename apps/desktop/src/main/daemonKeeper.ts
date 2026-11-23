@@ -1,9 +1,9 @@
-import { PROTOCOL_VERSION, type DaemonInfo, type Health } from '@clowdy/protocol';
-import { watch as fsWatch, type FSWatcher } from 'node:fs';
+import { type FSWatcher, watch as fsWatch } from 'node:fs';
 import { readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
+import { type DaemonInfo, type Health, PROTOCOL_VERSION } from '@clowdy/protocol';
 
-import { ensureDaemon, findRunning, stopDaemon, type DaemonContext, type RunningDaemon } from './daemon';
+import { type DaemonContext, ensureDaemon, findRunning, type RunningDaemon, stopDaemon } from './daemon';
 
 /** After a source file changes, how long to wait for the editing to settle before looking. */
 const DEBOUNCE_MS = 1000;
@@ -14,7 +14,12 @@ const BUSY_RETRY_MS = 5000;
 export function isDaemonSource(file: string): boolean {
     const parts = file.split(/[\\/]/);
 
-    return /\.(ts|json)$/.test(file) && !/\.test\.ts$/.test(file) && !parts.includes('node_modules') && !parts.includes('test');
+    return (
+        /\.(ts|json)$/.test(file) &&
+        !/\.test\.ts$/.test(file) &&
+        !parts.includes('node_modules') &&
+        !parts.includes('test')
+    );
 }
 
 /** The latest modification time, in milliseconds, of the daemon's source files under `dirs`. 0 when there are none. */
@@ -23,9 +28,16 @@ export async function newestSourceTime(dirs: readonly string[]): Promise<number>
 
     for (const dir of dirs) {
         const entries = await readdir(dir, { recursive: true, withFileTypes: true }).catch(() => []);
-        const times = await Promise.all(entries
-            .filter(entry => entry.isFile() && isDaemonSource(path.join(entry.parentPath, entry.name)))
-            .map(entry => stat(path.join(entry.parentPath, entry.name)).then(({ mtimeMs }) => mtimeMs, () => 0)));
+        const times = await Promise.all(
+            entries
+                .filter(entry => entry.isFile() && isDaemonSource(path.join(entry.parentPath, entry.name)))
+                .map(entry =>
+                    stat(path.join(entry.parentPath, entry.name)).then(
+                        ({ mtimeMs }) => mtimeMs,
+                        () => 0
+                    )
+                )
+        );
 
         newest = Math.max(newest, ...times);
     }
@@ -45,7 +57,7 @@ export function daemonBundle({ version }: Health): number | undefined {
 
 /** A development run: the daemon started before the newest change to its sources, or runs a bundle (the test feed's). */
 export function sourcesChangedSince(newestTime: () => Promise<number>): Staleness {
-    return async ({ health }) => daemonBundle(health) !== undefined || await newestTime() > health.startedAt;
+    return async ({ health }) => daemonBundle(health) !== undefined || (await newestTime()) > health.startedAt;
 }
 
 /**
@@ -79,12 +91,16 @@ export type KeeperOutcome =
  * Replaces the running daemon with a new one when it is stale, but only when it says it has no active runs: a restart
  * marks live runs interrupted, so work in progress is never cut short for it, unless `force` says the person chose to.
  */
-export async function restartIfStale(context: DaemonContext, isStale: Staleness, force = false): Promise<KeeperOutcome> {
+export async function restartIfStale(
+    context: DaemonContext,
+    isStale: Staleness,
+    force = false
+): Promise<KeeperOutcome> {
     const running = await findRunning(context);
 
     if (!running) return { kind: 'none' };
 
-    if (!await isStale(running)) return { kind: 'fresh' };
+    if (!(await isStale(running))) return { kind: 'fresh' };
 
     const { pid, protocol, activeRuns } = running.health;
 
@@ -126,7 +142,18 @@ export interface DaemonKeeper {
  * Keeps the running daemon the one the app wants: it looks once on demand and again after each change under `dirs`,
  * and a stale daemon that was busy is looked at again every few seconds until it is idle.
  */
-export function keepDaemonFresh({ context, isStale, onRestarted, onBusy, onFailed, dirs = [], log = () => undefined, watch = fsWatch, debounceMs = DEBOUNCE_MS, busyRetryMs = BUSY_RETRY_MS }: KeeperOptions): DaemonKeeper {
+export function keepDaemonFresh({
+    context,
+    isStale,
+    onRestarted,
+    onBusy,
+    onFailed,
+    dirs = [],
+    log = () => undefined,
+    watch = fsWatch,
+    debounceMs = DEBOUNCE_MS,
+    busyRetryMs = BUSY_RETRY_MS,
+}: KeeperOptions): DaemonKeeper {
     let timer: ReturnType<typeof setTimeout> | undefined;
     let current: Promise<KeeperOutcome> | undefined;
     let again = false;
@@ -150,11 +177,12 @@ export function keepDaemonFresh({ context, isStale, onRestarted, onBusy, onFaile
             const outcome = await restartIfStale(context, isStale, forced);
 
             if (outcome.kind === 'restarted') {
-                log(`Restarted the daemon: now pid ${ outcome.info.pid } on port ${ outcome.info.port }.`);
+                log(`Restarted the daemon: now pid ${outcome.info.pid} on port ${outcome.info.port}.`);
                 onRestarted(outcome.info);
-            }
-            else if (outcome.kind === 'busy') {
-                log(`The daemon is stale; waiting for ${ outcome.activeRuns ?? 'its' } run(s) to finish before restarting it.`);
+            } else if (outcome.kind === 'busy') {
+                log(
+                    `The daemon is stale; waiting for ${outcome.activeRuns ?? 'its'} run(s) to finish before restarting it.`
+                );
                 schedule(busyRetryMs);
 
                 if (reportedBusy !== outcome.pid) {
@@ -164,9 +192,8 @@ export function keepDaemonFresh({ context, isStale, onRestarted, onBusy, onFaile
             }
 
             return outcome;
-        }
-        catch (error) {
-            log(`Could not restart the daemon: ${ error instanceof Error ? error.message : String(error) }`);
+        } catch (error) {
+            log(`Could not restart the daemon: ${error instanceof Error ? error.message : String(error)}`);
             onFailed?.(error);
 
             return { kind: 'failed', error };
@@ -197,9 +224,11 @@ export function keepDaemonFresh({ context, isStale, onRestarted, onBusy, onFaile
         return current;
     }
 
-    const watchers: FSWatcher[] = dirs.map(dir => watch(dir, { recursive: true }, (_event, file) => {
-        if (file && isDaemonSource(String(file))) schedule(debounceMs);
-    }));
+    const watchers: FSWatcher[] = dirs.map(dir =>
+        watch(dir, { recursive: true }, (_event, file) => {
+            if (file && isDaemonSource(String(file))) schedule(debounceMs);
+        })
+    );
 
     return {
         checkNow,

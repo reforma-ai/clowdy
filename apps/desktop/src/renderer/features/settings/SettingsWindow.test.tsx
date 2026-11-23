@@ -13,8 +13,16 @@ let container: HTMLDivElement;
 let root: Root;
 let store: RootStore;
 
-const draw = () => act(async () => root.render(<RootStoreProvider value={ store }><SettingsWindow /></RootStoreProvider>));
-const sidebarPages = () => [...container.querySelectorAll('[aria-label="Settings pages"] [role="option"]')].map(item => item.textContent);
+const draw = () =>
+    act(async () =>
+        root.render(
+            <RootStoreProvider value={store}>
+                <SettingsWindow />
+            </RootStoreProvider>
+        )
+    );
+const sidebarPages = () =>
+    [...container.querySelectorAll('[aria-label="Settings pages"] [role="option"]')].map(item => item.textContent);
 
 beforeEach(async () => {
     store = new RootStore(new FixtureTransport(), { storage: undefined });
@@ -30,14 +38,22 @@ afterEach(() => {
     store.dispose();
 });
 
-const press = (target: Element | null | undefined) => act(async () => {
-    target?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
-    target?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
-    target?.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
-    target?.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
-    (target as HTMLElement | null | undefined)?.click();
-});
-const option = (name: string) => [...container.querySelectorAll('[aria-label="Settings pages"] [role="option"]')].find(item => item.textContent === name);
+const press = (target: Element | null | undefined) =>
+    act(async () => {
+        target?.dispatchEvent(
+            new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true })
+        );
+        target?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+        target?.dispatchEvent(
+            new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true })
+        );
+        target?.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
+        (target as HTMLElement | null | undefined)?.click();
+    });
+const option = (name: string) =>
+    [...container.querySelectorAll('[aria-label="Settings pages"] [role="option"]')].find(
+        item => item.textContent === name
+    );
 /** The title of the window: the path to the page that is shown, each page above the last one a link. */
 const path = () => container.querySelector('nav[aria-label]');
 const titleOf = () => path()?.querySelector('[aria-current="page"]')?.textContent;
@@ -46,12 +62,23 @@ describe('Settings', () => {
     it('has a sidebar entry for every page the store can show, in the order SETTINGS_PAGES names, under the headings of their groups', async () => {
         await draw();
 
-        expect(sidebarPages()).toEqual(['Appearance', 'Chat', 'Files', 'Shortcuts', 'Projects', 'Providers', 'Skills', 'About']);
+        expect(sidebarPages()).toEqual([
+            'Appearance',
+            'Chat',
+            'Files',
+            'Shortcuts',
+            'Projects',
+            'Providers',
+            'Skills',
+            'About',
+        ]);
         expect(sidebarPages()).toHaveLength(SETTINGS_PAGES.length);
 
         const text = container.querySelector('[aria-label="Settings pages"]')!.textContent!;
 
-        expect(['General', 'Appearance', 'Workspace', 'Projects', 'Agents', 'Providers'].map(word => text.indexOf(word))).toEqual([...Array(6)].map((_, index, all) => expect.any(Number)));
+        expect(
+            ['General', 'Appearance', 'Workspace', 'Projects', 'Agents', 'Providers'].map(word => text.indexOf(word))
+        ).toEqual([...Array(6)].map((_, index, all) => expect.any(Number)));
         expect(text.indexOf('General')).toBeLessThan(text.indexOf('Appearance'));
         expect(text.indexOf('Workspace')).toBeLessThan(text.indexOf('Projects'));
         expect(text.indexOf('Agents')).toBeLessThan(text.indexOf('Providers'));
@@ -78,7 +105,8 @@ describe('Settings', () => {
     });
 
     it('has Add project… at the end of the title of Projects, and not on another page', async () => {
-        const addProject = () => [...container.querySelectorAll('button')].find(button => button.textContent === 'Add project…');
+        const addProject = () =>
+            [...container.querySelectorAll('button')].find(button => button.textContent === 'Add project…');
 
         store.ui.openSettings('appearance');
         await draw();
@@ -100,7 +128,9 @@ describe('Settings', () => {
 
         expect(titleOf()).toBe(project.name);
         expect(path()?.querySelector('button')?.textContent).toBe('Projects');
-        expect([...container.querySelectorAll('button')].some(button => button.textContent === 'Add project…')).toBe(false);
+        expect([...container.querySelectorAll('button')].some(button => button.textContent === 'Add project…')).toBe(
+            false
+        );
 
         await press(path()!.querySelector('button'));
         await draw();

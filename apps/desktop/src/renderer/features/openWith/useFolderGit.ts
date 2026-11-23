@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { useRootStore } from '../../stores';
-import { workspaceHead, type WorkspaceRef } from './workspaceHead';
+import { type WorkspaceRef, workspaceHead } from './workspaceHead';
 
 import type { FolderId, ProjectId, ProjectWorkspaceInfo } from '@clowdy/protocol';
 import type { FolderGit } from './openTarget';
@@ -21,10 +21,14 @@ interface Read {
  * With the `workspace` of a chat that works in a worktree, the branch is the worktree's, read the same way (`ProjectInfo.workspaces`, see `workspaceHead`): the branch it has
  * now, nothing until the read has answered, the branch it will be made on while it is not made yet, and `gone` once it was made and is no longer on the disk. The `origin` is the folder's.
  */
-export function useFolderGit(projectId: ProjectId, folderId: FolderId, workspace?: WorkspaceRef): FolderGit | undefined {
+export function useFolderGit(
+    projectId: ProjectId,
+    folderId: FolderId,
+    workspace?: WorkspaceRef
+): FolderGit | undefined {
     const root = useRootStore();
     // A worktree that gets made is a change of its own: it is read again then, whatever the window did.
-    const key = `${ projectId }/${ folderId }/${ workspace ? `${ workspace.id }:${ workspace.ready }` : '' }`;
+    const key = `${projectId}/${folderId}/${workspace ? `${workspace.id}:${workspace.ready}` : ''}`;
     const [read, setRead] = useState<Read>();
 
     useEffect(() => {
@@ -35,13 +39,21 @@ export function useFolderGit(projectId: ProjectId, folderId: FolderId, workspace
             const request = ++latest;
 
             root.transport.getProjectsInfo(projectId).then(
-                (infos) => {
+                infos => {
                     if (request !== latest) return;
 
                     const info = infos.find(entry => entry.projectId === projectId);
                     const folder = info?.folders.find(entry => entry.folderId === folderId);
 
-                    setRead({ key, git: folder && { remoteUrl: folder.remoteUrl, branch: folder.branch, detached: folder.detached }, workspaces: info?.workspaces });
+                    setRead({
+                        key,
+                        git: folder && {
+                            remoteUrl: folder.remoteUrl,
+                            branch: folder.branch,
+                            detached: folder.detached,
+                        },
+                        workspaces: info?.workspaces,
+                    });
                 },
                 () => undefined
             );

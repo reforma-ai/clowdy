@@ -38,7 +38,7 @@ export function elementScrollAxisSource(
                 clientSize: vertical ? el.clientHeight : el.clientWidth,
             };
         },
-        setOffset: (offset) => {
+        setOffset: offset => {
             const el = getElement();
 
             if (!el) {
@@ -47,12 +47,11 @@ export function elementScrollAxisSource(
 
             if (vertical) {
                 el.scrollTop = offset;
-            }
-            else {
+            } else {
                 el.scrollLeft = offset;
             }
         },
-        subscribe: (onChange) => {
+        subscribe: onChange => {
             const el = getElement();
 
             if (!el) {

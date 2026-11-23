@@ -35,10 +35,13 @@ export function modePermissions(presets: readonly ModePreset[], defaultPreset: P
     return {
         presets: presets.map(({ id, description }) => ({ id, description })),
         default: defaultPreset,
-        apply: (preset) => {
+        apply: preset => {
             const found = presets.find(candidate => candidate.id === preset);
 
-            return { ...(found && { mode: found.mode, ...(found.effect && { effect: found.effect }) }), answer: preset === 'full' ? 'allow' : 'ask' };
+            return {
+                ...(found && { mode: found.mode, ...(found.effect && { effect: found.effect }) }),
+                answer: preset === 'full' ? 'allow' : 'ask',
+            };
         },
     };
 }

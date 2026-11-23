@@ -19,20 +19,31 @@ export interface ScopeEmptyProps {
 }
 
 /** What the screen says in place of the board or the list when it has nothing to draw: an empty project, an empty task, or a filter that hides everything. */
-export function ScopeEmpty({ isScope, isHidden, isFiltering, canHaveChildren, onCreateSubtask, onClearFilters }: ScopeEmptyProps) {
+export function ScopeEmpty({
+    isScope,
+    isHidden,
+    isFiltering,
+    canHaveChildren,
+    onCreateSubtask,
+    onClearFilters,
+}: ScopeEmptyProps) {
     if (isHidden) {
         return (
-            <div className={ styles.message }>
+            <div className={styles.message}>
                 <Text variant="heading-4">No tasks match</Text>
                 <Text color="secondary">Try a different search or clear the filters</Text>
-                { isFiltering && <Button variant="bordered" size="sm" onPress={ onClearFilters }>Clear filters</Button> }
+                {isFiltering && (
+                    <Button variant="bordered" size="sm" onPress={onClearFilters}>
+                        Clear filters
+                    </Button>
+                )}
             </div>
         );
     }
 
     if (!isScope) {
         return (
-            <div className={ styles.message }>
+            <div className={styles.message}>
                 <Text variant="heading-4">No tasks yet</Text>
                 <Text color="secondary">Create one, or ask the orchestrator in a chat to plan the work</Text>
             </div>
@@ -40,15 +51,19 @@ export function ScopeEmpty({ isScope, isHidden, isFiltering, canHaveChildren, on
     }
 
     return (
-        <div className={ styles.message }>
+        <div className={styles.message}>
             <Text variant="heading-4">No sub-tasks yet</Text>
-            <Text color="secondary">{ canHaveChildren ? 'Split this task into smaller ones' : 'This task is at the last level, so it cannot hold tasks' }</Text>
-            { canHaveChildren && (
-                <Button variant="bordered" size="sm" onPress={ onCreateSubtask }>
+            <Text color="secondary">
+                {canHaveChildren
+                    ? 'Split this task into smaller ones'
+                    : 'This task is at the last level, so it cannot hold tasks'}
+            </Text>
+            {canHaveChildren && (
+                <Button variant="bordered" size="sm" onPress={onCreateSubtask}>
                     <Plus />
                     New sub-task
                 </Button>
-            ) }
+            )}
         </div>
     );
 }

@@ -11,10 +11,11 @@ let container: HTMLDivElement;
 let root: Root;
 
 function Host({ first, second }: { first?: Ref<HTMLDivElement>; second?: Ref<HTMLDivElement> }) {
-    return <div ref={ useMergedRef(first, second) } data-host />;
+    return <div ref={useMergedRef(first, second)} data-host />;
 }
 
-const draw = (first?: Ref<HTMLDivElement>, second?: Ref<HTMLDivElement>) => act(() => root.render(<Host first={ first } second={ second } />));
+const draw = (first?: Ref<HTMLDivElement>, second?: Ref<HTMLDivElement>) =>
+    act(() => root.render(<Host first={first} second={second} />));
 const node = () => container.querySelector('[data-host]');
 
 beforeEach(() => {

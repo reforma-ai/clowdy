@@ -43,14 +43,13 @@ export function findProjectIcon(folder: string): ProjectIconFile | undefined {
 }
 
 function packageRoots(folder: string): string[] {
-    return WORKSPACES.flatMap((workspace) => {
+    return WORKSPACES.flatMap(workspace => {
         try {
             return readdirSync(join(folder, workspace), { withFileTypes: true })
                 .filter(entry => entry.isDirectory() && !entry.name.startsWith('.'))
                 .map(entry => join(folder, workspace, entry.name))
                 .sort();
-        }
-        catch {
+        } catch {
             return [];
         }
     });
@@ -65,8 +64,7 @@ function iconFile(folder: string, path: string): ProjectIconFile | undefined {
         const stat = statSync(real);
 
         if (!stat.isFile() || stat.size === 0 || stat.size > MAX_ICON_FILE_BYTES) return undefined;
-    }
-    catch {
+    } catch {
         return undefined;
     }
 

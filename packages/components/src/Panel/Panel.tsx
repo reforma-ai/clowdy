@@ -6,7 +6,7 @@ import { Button } from '../Button';
 import { For } from '../For';
 import { Scrollable } from '../Scrollable';
 import { Text } from '../Text';
-import { ToggleButtonGroup, ToggleButtonGroupItem, type Key } from '../ToggleButtonGroup';
+import { type Key, ToggleButtonGroup, ToggleButtonGroupItem } from '../ToggleButtonGroup';
 import styles from './Panel.module.css';
 
 type PanelSide = 'left' | 'right';
@@ -22,41 +22,29 @@ interface PanelProps {
 export function Panel({ children, className, side, 'data-collapsed': dataCollapsed, ...rest }: PanelProps) {
     return (
         <aside
-            className={ cn(styles.panel, side === 'left' ? styles.panelLeft : styles.panelRight, className) }
-            data-collapsed={ dataCollapsed }
-            { ...rest }
+            className={cn(styles.panel, side === 'left' ? styles.panelLeft : styles.panelRight, className)}
+            data-collapsed={dataCollapsed}
+            {...rest}
         >
-            { children }
+            {children}
         </aside>
     );
 }
 
 function PanelHeaderRoot({ children, className, ...props }: HTMLAttributes<HTMLDivElement>) {
     return (
-        <div className={ cn(styles.title, className) } { ...props }>
-            { children }
+        <div className={cn(styles.title, className)} {...props}>
+            {children}
         </div>
     );
 }
 
 function PanelHeaderActions({ children }: { children: ReactNode }) {
-    return (
-        <div className={ styles.titleActions }>
-            { children }
-        </div>
-    );
+    return <div className={styles.titleActions}>{children}</div>;
 }
 
 function PanelHeaderButton(props: ComponentProps<typeof Button>) {
-    return (
-        <Button
-            variant="filling"
-            color="secondary"
-            size="sm"
-            iconOnly
-            { ...props }
-        />
-    );
+    return <Button variant="filling" color="secondary" size="sm" iconOnly {...props} />;
 }
 
 /** 40px panel bar. Tabs or a title on the left, `PanelHeader.Actions` on the right. */
@@ -69,16 +57,16 @@ export const PanelHeader = Object.assign(PanelHeaderRoot, {
 export function PanelHeaderBack({ label, onPress }: { label: string; onPress: () => void }) {
     return (
         <Button
-            className={ styles.headerBack }
+            className={styles.headerBack}
             variant="transparent"
             color="secondary"
             size="sm"
             truncate
-            onPress={ onPress }
+            onPress={onPress}
         >
             <ArrowLeft className="shrink-0" />
             <Text truncate className="min-w-0">
-                { `Back to ${ label }` }
+                {`Back to ${label}`}
             </Text>
         </Button>
     );
@@ -93,24 +81,24 @@ interface PanelTabHeaderProps<T extends string> {
 export function PanelTabHeader<T extends string>({ tab, tabs, onSelect }: PanelTabHeaderProps<T>) {
     return (
         <ToggleButtonGroup
-            className={ styles.headerTabs }
+            className={styles.headerTabs}
             size="sm"
             variant="text"
-            selectedKeys={ tab }
-            onSelectionChange={ (keys: Set<Key>) => {
+            selectedKeys={tab}
+            onSelectionChange={(keys: Set<Key>) => {
                 const val = keys.size ? ([...keys][0] as T) : undefined;
 
                 if (val) {
                     onSelect(val);
                 }
-            } }
+            }}
         >
-            <For each={ tabs }>
-                { item => (
-                    <ToggleButtonGroupItem key={ item.value } value={ item.value }>
-                        { item.label }
+            <For each={tabs}>
+                {item => (
+                    <ToggleButtonGroupItem key={item.value} value={item.value}>
+                        {item.label}
                     </ToggleButtonGroupItem>
-                ) }
+                )}
             </For>
         </ToggleButtonGroup>
     );
@@ -118,10 +106,10 @@ export function PanelTabHeader<T extends string>({ tab, tabs, onSelect }: PanelT
 
 /** Scrollable panel body that fills the space below the header. */
 export function PanelContent({ className, ...props }: ComponentProps<typeof Scrollable>) {
-    return <Scrollable className={ cn(styles.body, className) } { ...props } />;
+    return <Scrollable className={cn(styles.body, className)} {...props} />;
 }
 
 /** The body of a tab: fills the space under the header. */
 export function PanelTab({ children }: { children: ReactNode }) {
-    return <div className={ styles.tab }>{ children }</div>;
+    return <div className={styles.tab}>{children}</div>;
 }

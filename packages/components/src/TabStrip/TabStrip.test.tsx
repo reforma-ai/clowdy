@@ -22,16 +22,24 @@ afterEach(() => {
 });
 
 const tabs = () => [...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
-const closeButton = (name: string) => host.querySelector<HTMLButtonElement>(`button[aria-label="${ name }"]`)!;
+const closeButton = (name: string) => host.querySelector<HTMLButtonElement>(`button[aria-label="${name}"]`)!;
 
 describe('TabStrip', () => {
     it('lists the tabs under a named tab list, with the end after it', () => {
-        act(() => root.render(
-            <TabStrip aria-label="Terminals" end={ <button type="button">Add</button> }>
-                <Tab label="one" closeLabel="Close one" onSelect={ () => undefined } onClose={ () => undefined } />
-                <Tab label="two" active closeLabel="Close two" onSelect={ () => undefined } onClose={ () => undefined } />
-            </TabStrip>
-        ));
+        act(() =>
+            root.render(
+                <TabStrip aria-label="Terminals" end={<button type="button">Add</button>}>
+                    <Tab label="one" closeLabel="Close one" onSelect={() => undefined} onClose={() => undefined} />
+                    <Tab
+                        label="two"
+                        active
+                        closeLabel="Close two"
+                        onSelect={() => undefined}
+                        onClose={() => undefined}
+                    />
+                </TabStrip>
+            )
+        );
 
         const list = host.querySelector('[role="tablist"]')!;
 
@@ -39,18 +47,28 @@ describe('TabStrip', () => {
         expect(tabs().map(tab => tab.textContent)).toEqual(['one', 'two']);
         expect(tabs().map(tab => tab.getAttribute('aria-selected'))).toEqual(['false', 'true']);
         expect(list.contains(host.querySelector('[aria-label="Close one"]'))).toBe(true);
-        expect(list.contains([...host.querySelectorAll('button')].find(button => button.textContent === 'Add')!)).toBe(false);
+        expect(list.contains([...host.querySelectorAll('button')].find(button => button.textContent === 'Add')!)).toBe(
+            false
+        );
     });
 
     it('selects with the name and closes with the cross or the middle button', () => {
         const onSelect = vi.fn();
         const onClose = vi.fn();
 
-        act(() => root.render(
-            <TabStrip>
-                <Tab label="one" icon={ <i data-icon /> } closeLabel="Close one" onSelect={ onSelect } onClose={ onClose } />
-            </TabStrip>
-        ));
+        act(() =>
+            root.render(
+                <TabStrip>
+                    <Tab
+                        label="one"
+                        icon={<i data-icon />}
+                        closeLabel="Close one"
+                        onSelect={onSelect}
+                        onClose={onClose}
+                    />
+                </TabStrip>
+            )
+        );
 
         expect(tabs()[0].querySelector('[data-icon]')).not.toBeNull();
 
@@ -74,8 +92,12 @@ describe('TabStrip', () => {
         act(() => {
             const cross = closeButton('Close one');
 
-            cross.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
-            cross.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
+            cross.dispatchEvent(
+                new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true })
+            );
+            cross.dispatchEvent(
+                new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true })
+            );
             cross.click();
         });
         expect(onClose).toHaveBeenCalledTimes(2);
@@ -86,7 +108,7 @@ describe('TabStrip', () => {
         const noop = () => undefined;
         const strip = (active: boolean) => (
             <TabStrip>
-                <Tab label="one" active={ active } dirty deleted closeLabel="Close one" onSelect={ noop } onClose={ noop } />
+                <Tab label="one" active={active} dirty deleted closeLabel="Close one" onSelect={noop} onClose={noop} />
             </TabStrip>
         );
 

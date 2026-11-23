@@ -1,6 +1,6 @@
 import { cn } from '@clowdy/lib';
 
-import { commandHint, CommandHotkey } from '../../hotkeys';
+import { CommandHotkey, commandHint } from '../../hotkeys';
 import { Unavailable } from '../../shared/Unavailable';
 import { SIDE_PANEL_COMMAND } from './commands';
 import { PANEL_SIZE_LABELS, type PanelSizeOption } from './panelSize';
@@ -14,25 +14,25 @@ import type { SidePanelSize } from '../../stores';
  */
 function SizePreview({ size }: { size: SidePanelSize }) {
     return (
-        <svg className={ styles.preview } viewBox="0 0 64 40" width={ 60 } height={ 37.5 } aria-hidden="true">
-            <rect className={ styles.frame } x={ 0.5 } y={ 0.5 } width={ 63 } height={ 39 } rx={ 5.5 } />
-            <rect className={ styles.chrome } x={ 4 } y={ 4 } width={ 11 } height={ 32 } rx={ 2.5 } />
-            <rect className={ styles.chrome } x={ 57 } y={ 4 } width={ 3 } height={ 32 } rx={ 1.5 } />
-            { size === 'wide' && <rect className={ styles.panel } x={ 18 } y={ 4 } width={ 36 } height={ 32 } rx={ 3 } /> }
-            { size === 'half' && (
+        <svg className={styles.preview} viewBox="0 0 64 40" width={60} height={37.5} aria-hidden="true">
+            <rect className={styles.frame} x={0.5} y={0.5} width={63} height={39} rx={5.5} />
+            <rect className={styles.chrome} x={4} y={4} width={11} height={32} rx={2.5} />
+            <rect className={styles.chrome} x={57} y={4} width={3} height={32} rx={1.5} />
+            {size === 'wide' && <rect className={styles.panel} x={18} y={4} width={36} height={32} rx={3} />}
+            {size === 'half' && (
                 <>
-                    <rect className={ styles.chrome } x={ 21 } y={ 8 } width={ 11 } height={ 3 } rx={ 1.5 } />
-                    <rect className={ styles.chrome } x={ 21 } y={ 14 } width={ 7 } height={ 3 } rx={ 1.5 } />
-                    <rect className={ styles.panel } x={ 36 } y={ 4 } width={ 18 } height={ 32 } rx={ 3 } />
+                    <rect className={styles.chrome} x={21} y={8} width={11} height={3} rx={1.5} />
+                    <rect className={styles.chrome} x={21} y={14} width={7} height={3} rx={1.5} />
+                    <rect className={styles.panel} x={36} y={4} width={18} height={32} rx={3} />
                 </>
-            ) }
-            { size === 'hide' && (
+            )}
+            {size === 'hide' && (
                 <>
-                    <rect className={ styles.chrome } x={ 21 } y={ 8 } width={ 30 } height={ 3 } rx={ 1.5 } />
-                    <rect className={ styles.chrome } x={ 21 } y={ 14 } width={ 20 } height={ 3 } rx={ 1.5 } />
-                    <rect className={ styles.chrome } x={ 21 } y={ 20 } width={ 26 } height={ 3 } rx={ 1.5 } />
+                    <rect className={styles.chrome} x={21} y={8} width={30} height={3} rx={1.5} />
+                    <rect className={styles.chrome} x={21} y={14} width={20} height={3} rx={1.5} />
+                    <rect className={styles.chrome} x={21} y={20} width={26} height={3} rx={1.5} />
                 </>
-            ) }
+            )}
         </svg>
     );
 }
@@ -53,31 +53,31 @@ export interface SidePanelSizesProps {
  */
 export function SidePanelSizes({ size, options, onSelect }: SidePanelSizesProps) {
     return (
-        <div className={ styles.menu }>
-            <div className={ styles.title }>Side panel</div>
-            { commandHint(SIDE_PANEL_COMMAND) && (
-                <div className={ styles.hint }>
-                    Use <CommandHotkey id={ SIDE_PANEL_COMMAND } size="xs" /> to toggle the panel
+        <div className={styles.menu}>
+            <div className={styles.title}>Side panel</div>
+            {commandHint(SIDE_PANEL_COMMAND) && (
+                <div className={styles.hint}>
+                    Use <CommandHotkey id={SIDE_PANEL_COMMAND} size="xs" /> to toggle the panel
                 </div>
-            ) }
-            <div className={ styles.sizes } role="group" aria-label="Side panel size">
-                { options.map(({ size: option, unavailable }) => (
-                    <div key={ option } className={ styles.cell }>
-                        <Unavailable label={ PANEL_SIZE_LABELS[option] } hint={ unavailable } placement="bottom">
+            )}
+            <div className={styles.sizes} role="group" aria-label="Side panel size">
+                {options.map(({ size: option, unavailable }) => (
+                    <div key={option} className={styles.cell}>
+                        <Unavailable label={PANEL_SIZE_LABELS[option]} hint={unavailable} placement="bottom">
                             <button
                                 type="button"
-                                className={ cn(styles.option, option === size && styles.current) }
-                                aria-pressed={ option === size }
-                                disabled={ unavailable !== undefined }
-                                autoFocus={ option === size }
-                                onClick={ () => onSelect(option) }
+                                className={cn(styles.option, option === size && styles.current)}
+                                aria-pressed={option === size}
+                                disabled={unavailable !== undefined}
+                                autoFocus={option === size}
+                                onClick={() => onSelect(option)}
                             >
-                                <SizePreview size={ option } />
-                                <span className={ styles.label }>{ PANEL_SIZE_LABELS[option] }</span>
+                                <SizePreview size={option} />
+                                <span className={styles.label}>{PANEL_SIZE_LABELS[option]}</span>
                             </button>
                         </Unavailable>
                     </div>
-                )) }
+                ))}
             </div>
         </div>
     );

@@ -20,7 +20,7 @@ export type CardBody =
 export const CARD_TEXT = {
     binary: 'Binary file',
     tooLarge: 'Too large to show',
-    error: 'Couldn\'t read this file',
+    error: "Couldn't read this file",
     emptyFile: 'Empty file',
     unchanged: 'No changes to the text',
     modeOnly: 'Only the file mode changed',
@@ -37,7 +37,10 @@ function modesOf(revision: string): { before: string; after: string } {
 const isAbsentMode = (mode: string) => /^0*$/.test(mode);
 
 /** What is said of a file whose two texts are the same, or that has no lines at all. `undefined` when there is a diff to draw. */
-function noteOf(file: GitChangedFile, { original, modified }: { original: string | null; modified: string | null }): string | undefined {
+function noteOf(
+    file: GitChangedFile,
+    { original, modified }: { original: string | null; modified: string | null }
+): string | undefined {
     if (original === modified) {
         const { before, after } = modesOf(file.revision);
 
@@ -47,7 +50,9 @@ function noteOf(file: GitChangedFile, { original, modified }: { original: string
     }
 
     // A file that is added or deleted with no lines in it: the diff view would draw nothing.
-    return (original === null && modified === '') || (original === '' && modified === null) ? CARD_TEXT.emptyFile : undefined;
+    return (original === null && modified === '') || (original === '' && modified === null)
+        ? CARD_TEXT.emptyFile
+        : undefined;
 }
 
 /**

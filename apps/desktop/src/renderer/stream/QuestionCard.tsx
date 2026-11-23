@@ -1,7 +1,6 @@
 import { Button } from '@clowdy/components/Button';
 import { Input } from '@clowdy/components/Input';
-import { Radio } from '@clowdy/components/Radio';
-import { RadioGroup } from '@clowdy/components/Radio';
+import { Radio, RadioGroup } from '@clowdy/components/Radio';
 import { Text } from '@clowdy/components/Text';
 import { Check } from '@clowdy/icons/14';
 import { useState } from 'react';
@@ -24,9 +23,13 @@ function QuestionText({ text }: { text: string }) {
     const { title, paragraphs } = splitQuestion(text);
 
     return (
-        <div className={ styles.text }>
-            <Text weight="medium">{ title }</Text>
-            { paragraphs.map(paragraph => <Text key={ paragraph } color="secondary" whitespace="pre-line">{ paragraph }</Text>) }
+        <div className={styles.text}>
+            <Text weight="medium">{title}</Text>
+            {paragraphs.map(paragraph => (
+                <Text key={paragraph} color="secondary" whitespace="pre-line">
+                    {paragraph}
+                </Text>
+            ))}
         </div>
     );
 }
@@ -45,11 +48,11 @@ export function QuestionCard({ question, onAnswer }: QuestionCardProps) {
 
     if (answer !== undefined) {
         return (
-            <div className={ styles.card } data-answered>
-                <QuestionText text={ text } />
-                <div className={ styles.answer }>
+            <div className={styles.card} data-answered>
+                <QuestionText text={text} />
+                <div className={styles.answer}>
                     <Check aria-hidden />
-                    <Text color="secondary">{ answer }</Text>
+                    <Text color="secondary">{answer}</Text>
                 </div>
             </div>
         );
@@ -62,50 +65,59 @@ export function QuestionCard({ question, onAnswer }: QuestionCardProps) {
 
         try {
             await onAnswer(reply);
-        }
-        finally {
+        } finally {
             setIsPending(false);
         }
     };
 
     return (
-        <form className={ styles.card } onSubmit={ (event) => {
-            event.preventDefault(); void submit();
-        } }>
-            <QuestionText text={ text } />
+        <form
+            className={styles.card}
+            onSubmit={event => {
+                event.preventDefault();
+                void submit();
+            }}
+        >
+            <QuestionText text={text} />
 
             <RadioGroup
-                aria-label={ splitQuestion(text).title }
-                value={ custom.trim() ? '' : selected ?? '' }
-                onChange={ (value) => {
+                aria-label={splitQuestion(text).title}
+                value={custom.trim() ? '' : (selected ?? '')}
+                onChange={value => {
                     setSelected(value);
                     setCustom('');
-                } }
-                className={ styles.options }
+                }}
+                className={styles.options}
             >
-                { options.map(option => (
-                    <Radio key={ option.id } value={ option.id } className={ styles.option }>
-                        <span className={ styles.label }>
-                            <span className={ styles.labelLine }>
-                                { option.label }
-                                { option.id === recommended && <span className={ styles.recommended }>Recommended</span> }
+                {options.map(option => (
+                    <Radio key={option.id} value={option.id} className={styles.option}>
+                        <span className={styles.label}>
+                            <span className={styles.labelLine}>
+                                {option.label}
+                                {option.id === recommended && <span className={styles.recommended}>Recommended</span>}
                             </span>
-                            { option.consequence && <Text variant="sm" color="secondary">{ option.consequence }</Text> }
+                            {option.consequence && (
+                                <Text variant="sm" color="secondary">
+                                    {option.consequence}
+                                </Text>
+                            )}
                         </span>
                     </Radio>
-                )) }
+                ))}
             </RadioGroup>
 
             <Input
                 type="text"
                 aria-label="Your own answer"
                 placeholder="Or write your own answer"
-                value={ custom }
-                onChange={ setCustom }
+                value={custom}
+                onChange={setCustom}
             />
 
-            <div className={ styles.actions }>
-                <Button type="submit" color="primary" isDisabled={ !reply || !onAnswer } isPending={ isPending }>Next</Button>
+            <div className={styles.actions}>
+                <Button type="submit" color="primary" isDisabled={!reply || !onAnswer} isPending={isPending}>
+                    Next
+                </Button>
             </div>
         </form>
     );

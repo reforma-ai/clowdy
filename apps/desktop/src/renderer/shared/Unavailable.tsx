@@ -22,8 +22,10 @@ export function Unavailable({ label, hint, placement = 'top', children }: Unavai
     if (!hint) return children;
 
     return (
-        <Tooltip content={ hint } placement={ placement }>
-            <span className={ styles.unavailable } role="button" tabIndex={ 0 } aria-disabled aria-label={ label }>{ children }</span>
+        <Tooltip content={hint} placement={placement}>
+            <span className={styles.unavailable} role="button" tabIndex={0} aria-disabled aria-label={label}>
+                {children}
+            </span>
         </Tooltip>
     );
 }

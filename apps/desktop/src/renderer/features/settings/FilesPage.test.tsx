@@ -18,31 +18,52 @@ import type { OpenApps } from '../../../shared/bridge';
 const Page = observer(FilesPage);
 
 const APPS: OpenApps = {
-    editors: [{ id: 'cursor', name: 'Cursor' }, { id: 'zed', name: 'Zed' }],
-    terminals: [{ id: 'ghostty', name: 'Ghostty' }, { id: 'terminal', name: 'Terminal' }],
-    fileManagers: [{ id: 'finder', name: 'Finder' }, { id: 'path-finder', name: 'Path Finder' }],
+    editors: [
+        { id: 'cursor', name: 'Cursor' },
+        { id: 'zed', name: 'Zed' },
+    ],
+    terminals: [
+        { id: 'ghostty', name: 'Ghostty' },
+        { id: 'terminal', name: 'Terminal' },
+    ],
+    fileManagers: [
+        { id: 'finder', name: 'Finder' },
+        { id: 'path-finder', name: 'Path Finder' },
+    ],
 };
 
 let container: HTMLDivElement;
 let root: Root;
 let store: RootStore;
 
-const settle = () => act(async () => {
-    await new Promise(resolve => setTimeout(resolve, 0));
-});
-const press = async (target: HTMLElement) => act(async () => {
-    target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
-    target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
-    target.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
-    target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
-    target.click();
-});
+const settle = () =>
+    act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 0));
+    });
+const press = async (target: HTMLElement) =>
+    act(async () => {
+        target.dispatchEvent(
+            new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true })
+        );
+        target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+        target.dispatchEvent(
+            new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true })
+        );
+        target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
+        target.click();
+    });
 /** The buttons that open the selects, in the order of the rows: the editor, the file manager, the terminal. */
 const triggers = () => [...container.querySelectorAll<HTMLButtonElement>('button')];
 
 async function draw(bridge: Partial<NonNullable<Window['desktop']>> | undefined) {
     window.desktop = bridge as never;
-    act(() => root.render(<RootStoreProvider value={ store }><Page /></RootStoreProvider>));
+    act(() =>
+        root.render(
+            <RootStoreProvider value={store}>
+                <Page />
+            </RootStoreProvider>
+        )
+    );
     await settle();
 }
 
@@ -97,7 +118,16 @@ describe('FilesPage', () => {
         const cursor = 'data:image/png;base64,Y3Vyc29y';
         const zed = 'data:image/png;base64,emVk';
 
-        await draw({ getOpenApps: async () => ({ editors: [{ id: 'cursor', name: 'Cursor', icon: cursor }, { id: 'zed', name: 'Zed', icon: zed }], terminals: [{ id: 'terminal', name: 'Terminal' }], fileManagers: [{ id: 'finder', name: 'Finder' }] }) });
+        await draw({
+            getOpenApps: async () => ({
+                editors: [
+                    { id: 'cursor', name: 'Cursor', icon: cursor },
+                    { id: 'zed', name: 'Zed', icon: zed },
+                ],
+                terminals: [{ id: 'terminal', name: 'Terminal' }],
+                fileManagers: [{ id: 'finder', name: 'Finder' }],
+            }),
+        });
 
         const source = (target: ParentNode) => target.querySelector('img')?.getAttribute('src');
 
@@ -111,7 +141,10 @@ describe('FilesPage', () => {
 
         const options = [...document.body.querySelectorAll<HTMLElement>('[role="option"]')];
 
-        expect(options.map(option => [option.textContent, source(option)])).toEqual([['Cursor', cursor], ['Zed', zed]]);
+        expect(options.map(option => [option.textContent, source(option)])).toEqual([
+            ['Cursor', cursor],
+            ['Zed', zed],
+        ]);
 
         await press(options[1]!);
 
@@ -122,7 +155,9 @@ describe('FilesPage', () => {
         await draw({ getOpenApps: async () => APPS });
         await press(triggers()[0]!);
 
-        const option = [...document.body.querySelectorAll<HTMLElement>('[role="option"]')].find(row => row.textContent === 'Zed')!;
+        const option = [...document.body.querySelectorAll<HTMLElement>('[role="option"]')].find(
+            row => row.textContent === 'Zed'
+        )!;
 
         await press(option);
 
@@ -135,7 +170,9 @@ describe('FilesPage', () => {
         await draw({ getOpenApps: async () => APPS });
         await press(triggers()[2]!);
 
-        const option = [...document.body.querySelectorAll<HTMLElement>('[role="option"]')].find(row => row.textContent === 'Terminal')!;
+        const option = [...document.body.querySelectorAll<HTMLElement>('[role="option"]')].find(
+            row => row.textContent === 'Terminal'
+        )!;
 
         await press(option);
 
@@ -153,15 +190,25 @@ describe('FilesPage', () => {
     });
 
     it('is off, and says none were found, for a list that is empty: a computer with no editor', async () => {
-        await draw({ getOpenApps: async () => ({ editors: [], terminals: [], fileManagers: [{ id: 'finder', name: 'Finder' }] }) });
+        await draw({
+            getOpenApps: async () => ({ editors: [], terminals: [], fileManagers: [{ id: 'finder', name: 'Finder' }] }),
+        });
 
-        expect(triggers().map(button => [button.textContent, button.disabled])).toEqual([['None found', true], ['Finder', false], ['None found', true]]);
+        expect(triggers().map(button => [button.textContent, button.disabled])).toEqual([
+            ['None found', true],
+            ['Finder', false],
+            ['None found', true],
+        ]);
     });
 
     it('finds no program in a page that is not the desktop app', async () => {
         await draw(undefined);
 
-        expect(triggers().map(button => [button.textContent, button.disabled])).toEqual([['None found', true], ['None found', true], ['None found', true]]);
+        expect(triggers().map(button => [button.textContent, button.disabled])).toEqual([
+            ['None found', true],
+            ['None found', true],
+            ['None found', true],
+        ]);
     });
 
     it('reads the computer once when it is opened', async () => {

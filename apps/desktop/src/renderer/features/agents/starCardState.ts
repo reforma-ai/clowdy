@@ -1,6 +1,6 @@
 import { makeAutoObservable } from 'mobx';
 
-import { browserStorage, readStored, writeStored, type KeyValueStorage } from '../../stores/storage';
+import { browserStorage, type KeyValueStorage, readStored, writeStored } from '../../stores/storage';
 
 import type { Chat, Project } from '@clowdy/protocol';
 
@@ -40,7 +40,11 @@ export const starCardPreferences = new StarCardPreferences(browserStorage());
  * Whether the card is due: the oldest project (the personal space the daemon makes at its first start) is at least three days old and the project on show has at least three chats.
  * The chats are the ones the person made, archived ones too, and not the threads their agents started. It is not asked while the card is closed.
  */
-export function starCardDue({ projects, chats, now }: {
+export function starCardDue({
+    projects,
+    chats,
+    now,
+}: {
     projects: readonly Pick<Project, 'createdAt'>[];
     chats: readonly Pick<Chat, 'parentChatId'>[];
     now: number;
@@ -49,5 +53,8 @@ export function starCardDue({ projects, chats, now }: {
 
     const born = Math.min(...projects.map(project => project.createdAt));
 
-    return now - born >= STAR_CARD_MIN_AGE_MS && chats.filter(chat => chat.parentChatId === undefined).length >= STAR_CARD_MIN_CHATS;
+    return (
+        now - born >= STAR_CARD_MIN_AGE_MS &&
+        chats.filter(chat => chat.parentChatId === undefined).length >= STAR_CARD_MIN_CHATS
+    );
 }

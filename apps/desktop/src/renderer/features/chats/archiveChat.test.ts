@@ -97,7 +97,7 @@ describe('openChat, a thread', () => {
         expect(ui().chatId).toBe('c-6a1');
     });
 
-    it('brings back the chat of a thread\'s run with the path to it', async () => {
+    it("brings back the chat of a thread's run with the path to it", async () => {
         await archiveShipTheCheckout();
         await openRun(store, project(), ui(), 'r-orch-6a1');
 

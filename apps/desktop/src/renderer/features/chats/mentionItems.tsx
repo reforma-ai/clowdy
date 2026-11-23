@@ -25,14 +25,14 @@ export function taskItems(tasks: readonly Task[], query: string): RichInputTrigg
     const words = wordsOf(query);
 
     return tasks
-        .filter(task => hasAll(words, `${ task.key } ${ task.title }`.toLowerCase()))
+        .filter(task => hasAll(words, `${task.key} ${task.title}`.toLowerCase()))
         .toSorted((a, b) => b.number - a.number)
         .slice(0, TASKS_SHOWN)
-        .map((task) => {
+        .map(task => {
             const data = { key: task.key, title: task.title };
 
             return {
-                value: `task:${ task.key }`,
+                value: `task:${task.key}`,
                 label: task.key,
                 description: task.title,
                 icon: mentionIcon({ kind: 'task', data }, 14),
@@ -54,14 +54,19 @@ function underFolder(folder: string, relative: string): string {
     const windows = folder.includes('\\') && !folder.includes('/');
     const separator = windows ? '\\' : '/';
 
-    return `${ folder.replace(/[\\/]+$/, '') }${ separator }${ windows ? relative.replaceAll('/', '\\') : relative }`;
+    return `${folder.replace(/[\\/]+$/, '')}${separator}${windows ? relative.replaceAll('/', '\\') : relative}`;
 }
 
 /**
  * The path an agent reads a file by: relative to the folder it works in (`home`, the main folder when none is named: its cwd, which for a chat in a worktree is the worktree,
  * and the list the file came from is the worktree's), and the absolute path of the folder's own checkout for a file of another folder, which is not under its cwd.
  */
-const agentPathOf = (folders: readonly ProjectFolder[], folder: ProjectFolder, home: FolderId | undefined, path: string) => ((home ?? folders[0]?.id) === folder.id ? path : underFolder(folder.path, path));
+const agentPathOf = (
+    folders: readonly ProjectFolder[],
+    folder: ProjectFolder,
+    home: FolderId | undefined,
+    path: string
+) => ((home ?? folders[0]?.id) === folder.id ? path : underFolder(folder.path, path));
 
 /**
  * Documents whose path has every word typed, source by source and folder by folder in the order the tree lists them. The path is the document's own in the project
@@ -70,7 +75,12 @@ const agentPathOf = (folders: readonly ProjectFolder[], folder: ProjectFolder, h
  * one, and the tree is the worktree's (`getDocsTree` with the workspace); another folder's by its absolute path. With several folders the suggestion names the folder,
  * and the folder's name counts as part of the path when searching.
  */
-export function docItems(tree: DocsTree, folders: readonly ProjectFolder[], query: string, home?: FolderId): RichInputTriggerItem[] {
+export function docItems(
+    tree: DocsTree,
+    folders: readonly ProjectFolder[],
+    query: string,
+    home?: FolderId
+): RichInputTriggerItem[] {
     const words = wordsOf(query);
     const names = folderNames(folders);
     const several = tree.length > 1;
@@ -82,11 +92,19 @@ export function docItems(tree: DocsTree, folders: readonly ProjectFolder[], quer
 
         const name = names[index] ?? '';
 
-        return sources.flatMap(({ id, root, nodes }) => docPaths(nodes).map((relative) => {
-            const path = `${ root }/${ relative }`;
+        return sources.flatMap(({ id, root, nodes }) =>
+            docPaths(nodes).map(relative => {
+                const path = `${root}/${relative}`;
 
-            return { folderId, source: `${ folderId }/${ id }`, path, shown: several ? `${ name }/${ path }` : path, agentPath: agentPathOf(folders, folder, home, path) };
-        }));
+                return {
+                    folderId,
+                    source: `${folderId}/${id}`,
+                    path,
+                    shown: several ? `${name}/${path}` : path,
+                    agentPath: agentPathOf(folders, folder, home, path),
+                };
+            })
+        );
     });
 
     const ranked = compareDocs(query);
@@ -98,7 +116,7 @@ export function docItems(tree: DocsTree, folders: readonly ProjectFolder[], quer
     return docs
         .filter(doc => hasAll(words, doc.shown.toLowerCase()))
         .toSorted((a, b) => ranked(a.path, b.path))
-        .filter((doc) => {
+        .filter(doc => {
             const count = taken.get(doc.source) ?? 0;
 
             taken.set(doc.source, count + 1);
@@ -110,7 +128,7 @@ export function docItems(tree: DocsTree, folders: readonly ProjectFolder[], quer
             const data = { path: agentPath };
 
             return {
-                value: `doc:${ folderId }:${ path }`,
+                value: `doc:${folderId}:${path}`,
                 label: baseName(path),
                 description: folderOf(shown) || undefined,
                 icon: mentionIcon({ kind: 'doc', data }, 14),
@@ -127,7 +145,11 @@ export function docItems(tree: DocsTree, folders: readonly ProjectFolder[], quer
  * working directory (the worktree, when the chat has one and the list is the worktree's); another folder's by its absolute path. With several folders the suggestion names
  * the folder (`<folder name>/<path>`).
  */
-export function fileItems(matches: readonly ProjectFileMatch[], folders: readonly ProjectFolder[], home?: FolderId): RichInputTriggerItem[] {
+export function fileItems(
+    matches: readonly ProjectFileMatch[],
+    folders: readonly ProjectFolder[],
+    home?: FolderId
+): RichInputTriggerItem[] {
     const names = folderNames(folders);
     const several = folders.length > 1;
 
@@ -138,14 +160,14 @@ export function fileItems(matches: readonly ProjectFileMatch[], folders: readonl
         // A folder the project no longer has: the answer was for its list before the change.
         if (!folder) return [];
 
-        const shown = several ? `${ names[index] }/${ path }` : path;
+        const shown = several ? `${names[index]}/${path}` : path;
         const data = { path: agentPathOf(folders, folder, home, path) };
 
         return {
-            value: `file:${ folderId }:${ path }`,
+            value: `file:${folderId}:${path}`,
             label: baseName(path),
             description: folderOf(shown) || undefined,
-            icon: <FileIcon path={ path } kind="file" />,
+            icon: <FileIcon path={path} kind="file" />,
             section: 'Files',
             kind: 'file',
             displayText: baseName(path),
@@ -169,15 +191,21 @@ export function skillItems(entries: readonly SkillEntry[], query: string): RichI
     for (const entry of entries) {
         const name = skillName(entry);
 
-        if (entry.source === 'system' || !entry.enabled || seen.has(name) || !hasAll(words, `${ name } ${ entry.description }`.toLowerCase())) continue;
+        if (
+            entry.source === 'system' ||
+            !entry.enabled ||
+            seen.has(name) ||
+            !hasAll(words, `${name} ${entry.description}`.toLowerCase())
+        )
+            continue;
 
         seen.add(name);
         items.push({
-            value: `skill:${ name }`,
-            label: `/${ name }`,
+            value: `skill:${name}`,
+            label: `/${name}`,
             description: entry.description,
             kind: 'command',
-            displayText: `/${ name }`,
+            displayText: `/${name}`,
             data: { name },
         });
     }

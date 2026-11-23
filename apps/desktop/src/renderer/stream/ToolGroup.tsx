@@ -26,12 +26,18 @@ export function ToolGroup({ items, live = false }: ToolGroupProps) {
     const thinking = live && last?.kind === 'reasoning' && !last.done;
 
     return (
-        <Worked label={ summarizeTools(calls) } open={ chosen ?? live } onOpenChange={ setChosen } shimmer={ thinking || calls.some(call => call.state === 'running') } ruled>
-            { items.map((item) => {
-                if (item.body.kind === 'tool') return <ToolCard key={ item.id } call={ item.body } />;
+        <Worked
+            label={summarizeTools(calls)}
+            open={chosen ?? live}
+            onOpenChange={setChosen}
+            shimmer={thinking || calls.some(call => call.state === 'running')}
+            ruled
+        >
+            {items.map(item => {
+                if (item.body.kind === 'tool') return <ToolCard key={item.id} call={item.body} />;
 
-                return item.body.kind === 'reasoning' ? <ReasoningLine key={ item.id } body={ item.body } /> : null;
-            }) }
+                return item.body.kind === 'reasoning' ? <ReasoningLine key={item.id} body={item.body} /> : null;
+            })}
         </Worked>
     );
 }

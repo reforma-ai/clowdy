@@ -76,7 +76,7 @@ export function replaceHomeDir(text: string, home: string): string {
 
     const pattern = root.split(pathSep).map(escapeRegExp).join('[/\\\\]');
 
-    return text.replace(new RegExp(`(?<![\\w.-])${ pattern }(?![\\w.-])`, 'g'), '~');
+    return text.replace(new RegExp(`(?<![\\w.-])${pattern}(?![\\w.-])`, 'g'), '~');
 }
 
 /** Join `fromFile`'s directory with a relative specifier (`./x`, `../y`). */
@@ -142,8 +142,7 @@ export function extractExtension(url: string | undefined): string | undefined {
             }
 
             return parsed.pathname;
-        }
-        catch {
+        } catch {
             return url.split(/[?#]/)[0] ?? url;
         }
     })();

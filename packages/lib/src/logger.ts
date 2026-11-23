@@ -36,7 +36,7 @@ export interface Logger {
  * Create a simple logger with a name prefix
  */
 export function createLogger(name: string): Logger {
-    const prefix = `[${ name }]`;
+    const prefix = `[${name}]`;
 
     return {
         debug: (...args: any[]) => {
@@ -63,7 +63,6 @@ export function createLogger(name: string): Logger {
         },
     };
 }
-
 
 // Default logger instance
 export const logger = createLogger('App');

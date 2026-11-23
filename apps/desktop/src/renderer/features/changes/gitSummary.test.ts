@@ -4,7 +4,15 @@ import { aheadBehindCounts, aheadBehindWords, CHANGE_KIND_VIEW, splitPath } from
 
 import type { GitBase, GitChangeKind } from '@clowdy/protocol';
 
-const base = (ahead: number, behind: number): GitBase => ({ state: 'ready', name: 'origin/main', commit: 'a'.repeat(40), mergeBase: 'b'.repeat(40), ahead, behind, commits: [] });
+const base = (ahead: number, behind: number): GitBase => ({
+    state: 'ready',
+    name: 'origin/main',
+    commit: 'a'.repeat(40),
+    mergeBase: 'b'.repeat(40),
+    ahead,
+    behind,
+    commits: [],
+});
 
 describe('how far the branch is from its base', () => {
     it('says it without naming the base, for the sidebar, where the base is named beside it', () => {
@@ -28,7 +36,15 @@ describe('how far the branch is from its base', () => {
 
 describe('a changed file', () => {
     it('has a letter, a name and a colour for each thing that can happen to it', () => {
-        const kinds: GitChangeKind[] = ['added', 'modified', 'deleted', 'renamed', 'copied', 'typechange', 'conflicted'];
+        const kinds: GitChangeKind[] = [
+            'added',
+            'modified',
+            'deleted',
+            'renamed',
+            'copied',
+            'typechange',
+            'conflicted',
+        ];
 
         expect(kinds.map(kind => CHANGE_KIND_VIEW[kind].glyph)).toEqual(['A', 'M', 'D', 'R', 'C', 'T', 'U']);
         expect(CHANGE_KIND_VIEW.added.color).toBe('success');

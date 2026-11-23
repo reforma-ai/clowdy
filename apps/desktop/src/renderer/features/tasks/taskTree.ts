@@ -1,4 +1,4 @@
-import { parseChecklist, type Checklist } from '@clowdy/lib/checklist';
+import { type Checklist, parseChecklist } from '@clowdy/lib/checklist';
 import { MAX_TASK_DEPTH } from '@clowdy/protocol';
 
 import type { Task, TaskId, TaskStatus, TaskStatusCategory } from '@clowdy/protocol';
@@ -15,7 +15,7 @@ import type { Task, TaskId, TaskStatus, TaskStatusCategory } from '@clowdy/proto
 export type { Checklist };
 
 /** Why a task at the last level cannot hold another: what every control that would add a sub-task says when it is off. */
-export const DEPTH_LIMIT_HINT = `Tasks go only ${ MAX_TASK_DEPTH } levels deep`;
+export const DEPTH_LIMIT_HINT = `Tasks go only ${MAX_TASK_DEPTH} levels deep`;
 
 /** Whether a task is wanted: what the screen's filter lets through. */
 export type Keep = (task: Task) => boolean;
@@ -59,7 +59,8 @@ export class TaskTree {
         const rank = new Map(statuses.map((status, index) => [status.id, index]));
 
         // A task whose status the workflow no longer has comes after every status.
-        this.#compare = (a, b) => (rank.get(a.statusId) ?? rank.size) - (rank.get(b.statusId) ?? rank.size) || a.number - b.number;
+        this.#compare = (a, b) =>
+            (rank.get(a.statusId) ?? rank.size) - (rank.get(b.statusId) ?? rank.size) || a.number - b.number;
         this.#categories = new Map(statuses.map(status => [status.id, status.category]));
         this.#byId = new Map(tasks.map(task => [task.id, task]));
 
@@ -89,7 +90,7 @@ export class TaskTree {
 
     /** The tasks directly inside the scope, in workflow status order and then number: what a board of one level shows. */
     childrenOf(scope: TaskId | null, keep?: Keep): Task[] {
-        const children = scope === null ? this.#roots : this.#children.get(scope) ?? [];
+        const children = scope === null ? this.#roots : (this.#children.get(scope) ?? []);
 
         return keep ? children.filter(keep) : [...children];
     }
@@ -156,7 +157,9 @@ export class TaskTree {
 
         if (parent !== null) guard.add(parent);
 
-        return direct.flatMap(child => (keep(child) ? [child] : guard.has(child.id) ? [] : this.#shown(child.id, keep, guard))).sort(this.#compare);
+        return direct
+            .flatMap(child => (keep(child) ? [child] : guard.has(child.id) ? [] : this.#shown(child.id, keep, guard)))
+            .sort(this.#compare);
     }
 
     /** The tasks above `task`, the root first and the parent last: the breadcrumbs. Not the task itself. */
@@ -185,11 +188,13 @@ export class TaskTree {
 
         while (level.length > 0) {
             height++;
-            level = level.filter(child => !seen.has(child.id)).flatMap((child) => {
-                seen.add(child.id);
+            level = level
+                .filter(child => !seen.has(child.id))
+                .flatMap(child => {
+                    seen.add(child.id);
 
-                return this.childrenOf(child.id);
-            });
+                    return this.childrenOf(child.id);
+                });
         }
 
         return height;
@@ -205,11 +210,16 @@ export class TaskTree {
      * (it is in neither number), as the progress of a chat counts. Nothing when nothing counts: a task with no tasks inside it, or only canceled ones.
      */
     rollUp(task: Pick<Task, 'id'>): Rollup | undefined {
-        const counted = this.descendantsOf(task.id).filter(below => this.#categories.get(below.statusId) !== 'canceled');
+        const counted = this.descendantsOf(task.id).filter(
+            below => this.#categories.get(below.statusId) !== 'canceled'
+        );
 
         if (counted.length === 0) return undefined;
 
-        return { done: counted.filter(below => this.#categories.get(below.statusId) === 'done').length, total: counted.length };
+        return {
+            done: counted.filter(below => this.#categories.get(below.statusId) === 'done').length,
+            total: counted.length,
+        };
     }
 }
 
@@ -224,5 +234,11 @@ export function parentCandidates(tasks: readonly Task[], task?: Pick<Task, 'id'>
     const inside = task ? new Set(tree.descendantsOf(task.id).map(({ id }) => id)) : new Set<TaskId>();
     const height = task ? tree.heightOf(task.id) : 0;
 
-    return tasks.filter(candidate => candidate.id !== task?.id && candidate.archivedAt === undefined && !inside.has(candidate.id) && tree.depthOf(candidate) + 1 + height <= MAX_TASK_DEPTH);
+    return tasks.filter(
+        candidate =>
+            candidate.id !== task?.id &&
+            candidate.archivedAt === undefined &&
+            !inside.has(candidate.id) &&
+            tree.depthOf(candidate) + 1 + height <= MAX_TASK_DEPTH
+    );
 }

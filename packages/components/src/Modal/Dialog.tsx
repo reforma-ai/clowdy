@@ -24,13 +24,16 @@ export function Dialog({
     const [internalOpen, setInternalOpen] = useState(defaultOpen);
     const isOpen = controlled ? _isOpen : internalOpen;
 
-    const setOpen = useCallback((open: boolean) => {
-        if (!controlled) {
-            setInternalOpen(open);
-        }
+    const setOpen = useCallback(
+        (open: boolean) => {
+            if (!controlled) {
+                setInternalOpen(open);
+            }
 
-        onOpenChange?.(open);
-    }, [controlled, onOpenChange]);
+            onOpenChange?.(open);
+        },
+        [controlled, onOpenChange]
+    );
 
     const [instance, setInstance] = useState<ModalInstance | null>(null);
     const instanceRef = useRef(instance);
@@ -41,20 +44,23 @@ export function Dialog({
 
     const resolvedComponent = children ?? component;
 
-    const modalOptions = useMemo<Partial<ModalOptions>>(() => ({
-        ..._modalOptions,
-        component: resolvedComponent,
-        reactHost: true,
-        onOpen: (modalInstance) => {
-            setOpen(true);
-            _modalOptions.onOpen?.(modalInstance);
-        },
-        onClose: (modalInstance) => {
-            setOpen(false);
-            setInstance(null);
-            _modalOptions.onClose?.(modalInstance);
-        },
-    }), [_modalOptions, resolvedComponent, setOpen]);
+    const modalOptions = useMemo<Partial<ModalOptions>>(
+        () => ({
+            ..._modalOptions,
+            component: resolvedComponent,
+            reactHost: true,
+            onOpen: modalInstance => {
+                setOpen(true);
+                _modalOptions.onOpen?.(modalInstance);
+            },
+            onClose: modalInstance => {
+                setOpen(false);
+                setInstance(null);
+                _modalOptions.onClose?.(modalInstance);
+            },
+        }),
+        [_modalOptions, resolvedComponent, setOpen]
+    );
 
     useLayoutEffect(() => {
         if (!isOpen || instance) {
@@ -76,13 +82,16 @@ export function Dialog({
         }
     }, [isOpen, instance]);
 
-    useLayoutEffect(() => () => {
-        void instanceRef.current?.close(false, { restoreFocus: false });
-    }, []);
+    useLayoutEffect(
+        () => () => {
+            void instanceRef.current?.close(false, { restoreFocus: false });
+        },
+        []
+    );
 
     if (!instance) {
         return;
     }
 
-    return <ModalRoot modal={ instance } />;
+    return <ModalRoot modal={instance} />;
 }

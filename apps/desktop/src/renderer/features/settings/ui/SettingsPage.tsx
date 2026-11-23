@@ -16,9 +16,9 @@ export interface SettingsPageProps {
  */
 export function SettingsPage({ description, children }: SettingsPageProps) {
     return (
-        <div className={ styles.body }>
-            { description && <SettingsLayout.Intro>{ description }</SettingsLayout.Intro> }
-            { children }
+        <div className={styles.body}>
+            {description && <SettingsLayout.Intro>{description}</SettingsLayout.Intro>}
+            {children}
         </div>
     );
 }

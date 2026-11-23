@@ -55,7 +55,14 @@
     }
 
     .root[data-selected='true'] .handle {
-        transform: translateX(calc(var(--clowdy-switch-track-width) - var(--clowdy-switch-handle-size) - var(--clowdy-switch-track-padding) * 2));
+        transform: translateX(
+            calc(
+                var(--clowdy-switch-track-width) -
+                var(--clowdy-switch-handle-size) -
+                var(--clowdy-switch-track-padding) *
+                2
+            )
+        );
     }
 
     /* ============================================

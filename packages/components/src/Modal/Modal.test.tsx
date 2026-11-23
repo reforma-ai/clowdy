@@ -34,7 +34,11 @@ afterEach(async () => {
 
 describe('Modal focus', () => {
     it('hands focus back to the element that had it when the content focuses itself first', async () => {
-        const modal = open(<button id="confirm" autoFocus>Confirm</button>);
+        const modal = open(
+            <button id="confirm" autoFocus>
+                Confirm
+            </button>
+        );
 
         await settle();
 
@@ -60,7 +64,11 @@ describe('Modal focus', () => {
     });
 
     it('does not restore focus when asked not to', async () => {
-        const modal = open(<button id="confirm" autoFocus>Confirm</button>);
+        const modal = open(
+            <button id="confirm" autoFocus>
+                Confirm
+            </button>
+        );
 
         await settle();
         await act(async () => modal.cancel({ restoreFocus: false }));

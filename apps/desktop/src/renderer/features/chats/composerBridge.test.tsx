@@ -84,7 +84,14 @@ describe('composerBridge', () => {
         it('registers a box while it is mounted and lets it go when it unmounts', async () => {
             const quote = vi.fn();
 
-            await act(async () => root.render(<><Watcher /><Box quote={ quote } /></>));
+            await act(async () =>
+                root.render(
+                    <>
+                        <Watcher />
+                        <Box quote={quote} />
+                    </>
+                )
+            );
             expect(seen.at(-1)).toBe(true);
             expect(quoteIntoComposer('words')).toBe(true);
             expect(quote).toHaveBeenCalledExactlyOnceWith('words');
@@ -96,18 +103,25 @@ describe('composerBridge', () => {
         });
 
         it('registers nothing for a box that takes no quotes (the box of an edit frame)', async () => {
-            await act(async () => root.render(<><Watcher /><Box quote={ undefined } /></>));
+            await act(async () =>
+                root.render(
+                    <>
+                        <Watcher />
+                        <Box quote={undefined} />
+                    </>
+                )
+            );
 
             expect(seen.at(-1)).toBe(false);
             expect(quoteIntoComposer('words')).toBe(false);
         });
 
-        it('calls the box\'s latest quote while staying registered once', async () => {
+        it("calls the box's latest quote while staying registered once", async () => {
             const stale = vi.fn();
             const latest = vi.fn();
 
-            await act(async () => root.render(<Box quote={ stale } />));
-            await act(async () => root.render(<Box quote={ latest } />));
+            await act(async () => root.render(<Box quote={stale} />));
+            await act(async () => root.render(<Box quote={latest} />));
 
             expect(quoteIntoComposer('words')).toBe(true);
             expect(stale).not.toHaveBeenCalled();

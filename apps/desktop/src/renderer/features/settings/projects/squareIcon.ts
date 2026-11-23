@@ -39,8 +39,7 @@ export async function squareIcon(file: Blob): Promise<string> {
         context.drawImage(image, (ICON_SIDE - drawnWidth) / 2, (ICON_SIDE - drawnHeight) / 2, drawnWidth, drawnHeight);
 
         return canvas.toDataURL('image/png');
-    }
-    finally {
+    } finally {
         URL.revokeObjectURL(url);
     }
 }

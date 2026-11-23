@@ -5,8 +5,8 @@ import { join } from 'node:path';
 import { CUTOFF_NAMES, isAddressable, TRANSIENT_NAME, underCutoff } from './paths';
 import { describe, walkTree } from './walk';
 
-import type { FsChange, FsKind, FsWatchEvent } from '@clowdy/protocol';
 import type { FSWatcher } from 'node:fs';
+import type { FsChange, FsKind, FsWatchEvent } from '@clowdy/protocol';
 
 /** Events of one burst are merged: a change is told this long after the first event of the burst. */
 export const WATCH_DEBOUNCE_MS = 100;
@@ -65,7 +65,10 @@ export class FolderWatch {
     private closed = false;
 
     /** @param root The real path of the folder. */
-    constructor(readonly root: string, private options: WatchOptions = {}) {}
+    constructor(
+        readonly root: string,
+        private options: WatchOptions = {}
+    ) {}
 
     get size(): number {
         return this.subscribers.size;
@@ -143,8 +146,7 @@ export class FolderWatch {
 
             try {
                 await this.tell(paths);
-            }
-            catch (error) {
+            } catch (error) {
                 // A path that changed again while it was looked at raises its own event; nothing may escape into the event loop.
                 console.warn('[clowdy] could not tell the changes of a watched folder:', error);
             }
@@ -156,15 +158,20 @@ export class FolderWatch {
         const known = new Map<string, Known>();
 
         try {
-            const { items, truncated } = await walkTree({ root: this.root, start: '', startReal: this.root, depth: Number.POSITIVE_INFINITY, cap: this.options.maxKnown ?? MAX_KNOWN });
+            const { items, truncated } = await walkTree({
+                root: this.root,
+                start: '',
+                startReal: this.root,
+                depth: Number.POSITIVE_INFINITY,
+                cap: this.options.maxKnown ?? MAX_KNOWN,
+            });
 
             for (const { entry, version } of items) {
                 known.set(entry.path, { kind: entry.kind, version });
             }
 
             this.complete = !truncated;
-        }
-        catch {
+        } catch {
             this.complete = false;
         }
 
@@ -175,20 +182,33 @@ export class FolderWatch {
      * What the folder has at `path` now, and whether it is a real folder (one that is entered; a link to a folder is not). Links that lead
      * out of the folder, and special files, are nothing.
      */
-    private async look(path: string): Promise<{ kind: FsKind; size?: number; version?: string; entered: boolean } | undefined> {
+    private async look(
+        path: string
+    ): Promise<{ kind: FsKind; size?: number; version?: string; entered: boolean } | undefined> {
         const abs = join(this.root, ...path.split('/'));
         let info;
 
         try {
             info = await lstat(abs);
-        }
-        catch {
+        } catch {
             return undefined;
         }
 
-        const found = await describe(this.root, abs, info.isFile() ? 'file' : info.isDirectory() ? 'directory' : info.isSymbolicLink() ? 'link' : 'other', path);
+        const found = await describe(
+            this.root,
+            abs,
+            info.isFile() ? 'file' : info.isDirectory() ? 'directory' : info.isSymbolicLink() ? 'link' : 'other',
+            path
+        );
 
-        return found && { kind: found.entry.kind, size: found.entry.size, version: found.version, entered: info.isDirectory() };
+        return (
+            found && {
+                kind: found.entry.kind,
+                size: found.entry.size,
+                version: found.version,
+                entered: info.isDirectory(),
+            }
+        );
     }
 
     /** Drops what the folder held below the folders told deleted, in one pass however many there are. */
@@ -254,8 +274,7 @@ export class FolderWatch {
 
             if (before && before.kind !== now.kind) {
                 vanished(path, before);
-            }
-            else if (before) {
+            } else if (before) {
                 if (now.kind === 'file' && before.version !== now.version) {
                     this.known.set(path, { kind: 'file', version: now.version });
                     changes.push({ type: 'changed', path, version: now.version, size: now.size });
@@ -266,18 +285,32 @@ export class FolderWatch {
 
             this.known.set(path, { kind: now.kind, version: now.version });
             told.add(path);
-            changes.push(now.kind === 'file' ? { type: 'created', path, kind: 'file', version: now.version, size: now.size } : { type: 'created', path, kind: 'directory' });
+            changes.push(
+                now.kind === 'file'
+                    ? { type: 'created', path, kind: 'file', version: now.version, size: now.size }
+                    : { type: 'created', path, kind: 'directory' }
+            );
 
             if (now.entered && !CUTOFF_NAMES.has(path.slice(path.lastIndexOf('/') + 1))) {
                 // A folder moved or copied in arrives whole, without an event for what is in it.
-                const { items, truncated } = await walkTree({ root: this.root, start: path, startReal: join(this.root, ...path.split('/')), depth: Number.POSITIVE_INFINITY, cap: MAX_CREATED_SUBTREE }).catch(() => ({ items: [], truncated: true }));
+                const { items, truncated } = await walkTree({
+                    root: this.root,
+                    start: path,
+                    startReal: join(this.root, ...path.split('/')),
+                    depth: Number.POSITIVE_INFINITY,
+                    cap: MAX_CREATED_SUBTREE,
+                }).catch(() => ({ items: [], truncated: true }));
 
                 incomplete ||= truncated;
 
                 for (const { entry, version } of items) {
                     if (!this.known.has(entry.path)) {
                         this.known.set(entry.path, { kind: entry.kind, version });
-                        changes.push(entry.kind === 'file' ? { type: 'created', path: entry.path, kind: 'file', version, size: entry.size } : { type: 'created', path: entry.path, kind: 'directory' });
+                        changes.push(
+                            entry.kind === 'file'
+                                ? { type: 'created', path: entry.path, kind: 'file', version, size: entry.size }
+                                : { type: 'created', path: entry.path, kind: 'directory' }
+                        );
                     }
 
                     told.add(entry.path);
@@ -300,8 +333,7 @@ export class FolderWatch {
         for (const subscriber of this.subscribers) {
             try {
                 subscriber.send(event);
-            }
-            catch {
+            } catch {
                 // A client that cannot be written to is gone; its stream ends itself.
             }
         }
@@ -334,8 +366,7 @@ export class FolderWatch {
                 this.attach();
                 this.restartDelay = RESTART_MS;
                 this.resync();
-            }
-            catch {
+            } catch {
                 this.restartDelay = Math.min(this.restartDelay * 2, MAX_RESTART_MS);
                 this.lost();
             }

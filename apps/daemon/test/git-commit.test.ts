@@ -1,7 +1,7 @@
-import { MAX_GIT_COMMIT_PATHS, MAX_GIT_MESSAGE_CHARS } from '@clowdy/protocol';
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { MAX_GIT_COMMIT_PATHS, MAX_GIT_MESSAGE_CHARS } from '@clowdy/protocol';
 
 import { CommandError } from '../src/errors';
 import { failureLine, GitWrites } from '../src/git/commit';
@@ -28,10 +28,26 @@ afterEach(async () => {
  * The environment of the daemon's writes in a test: the person's own git configuration (which on a developer's machine signs every commit, and asks for a fingerprint)
  * and the system's stay out, and the login shell finds no signing agent. What a test repository needs is in its own config (`repository`).
  */
-const isolated = (extra: Record<string, string> = {}) => new WriteEnvironment({ env: () => ({ ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1', SHELL: '/usr/bin/true', ...extra }) });
+const isolated = (extra: Record<string, string> = {}) =>
+    new WriteEnvironment({
+        env: () => ({
+            ...process.env,
+            GIT_CONFIG_GLOBAL: '/dev/null',
+            GIT_CONFIG_NOSYSTEM: '1',
+            SHELL: '/usr/bin/true',
+            ...extra,
+        }),
+    });
 
 /** A repository with its own identity and no signing, and the files `files` committed. */
-function repository(files: Record<string, string> = { 'a.txt': 'a\n', 'b.txt': 'b\n', 'gone.txt': 'gone\n', 'old.txt': 'one\ntwo\nthree\nfour\nfive\n' }): string {
+function repository(
+    files: Record<string, string> = {
+        'a.txt': 'a\n',
+        'b.txt': 'b\n',
+        'gone.txt': 'gone\n',
+        'old.txt': 'one\ntwo\nthree\nfour\nfive\n',
+    }
+): string {
     const path = makeRepo(tempDir('git-commit'));
 
     git(path, 'config', 'user.name', 'Test');
@@ -61,10 +77,18 @@ function hook(path: string, name: string, ...lines: string[]): void {
 }
 
 /** What a commit changed, as `name-status` lists it: `M\ta.txt`, `R100\told\tnew`. */
-const changedBy = (path: string, ref = 'HEAD'): string[] => git(path, '-c', 'core.quotepath=false', 'diff-tree', '--no-commit-id', '--name-status', '-r', '-M', ref).split('\n').filter(line => line !== '');
+const changedBy = (path: string, ref = 'HEAD'): string[] =>
+    git(path, '-c', 'core.quotepath=false', 'diff-tree', '--no-commit-id', '--name-status', '-r', '-M', ref)
+        .split('\n')
+        .filter(line => line !== '');
 
 /** What is left in the tree and the index as `status --porcelain` says it. */
-const left = (path: string): string[] => Bun.spawnSync(['git', 'status', '--porcelain'], { cwd: path, stdout: 'pipe', stderr: 'pipe' }).stdout.toString().split('\n').filter(line => line !== '').sort();
+const left = (path: string): string[] =>
+    Bun.spawnSync(['git', 'status', '--porcelain'], { cwd: path, stdout: 'pipe', stderr: 'pipe' })
+        .stdout.toString()
+        .split('\n')
+        .filter(line => line !== '')
+        .sort();
 
 async function start(): Promise<Harness> {
     const h = await startHarness({}, { gitEnvironment: isolated() });
@@ -74,21 +98,31 @@ async function start(): Promise<Harness> {
     return h;
 }
 
-const json = async <T>(response: Response) => await response.json() as T;
+const json = async <T>(response: Response) => (await response.json()) as T;
 
-interface Failure { ok: false; error: { code: string; message: string; details?: { hint?: string } } }
+interface Failure {
+    ok: false;
+    error: { code: string; message: string; details?: { hint?: string } };
+}
 
 describe('failureLine', () => {
-    test('is git\'s own fatal or error line, else the first line of what a hook said', () => {
-        expect(failureLine('hint: x\nerror: No private key found for public key "a.pub"?\nfatal: failed to write commit object\n', '')).toBe('error: No private key found for public key "a.pub"?');
+    test("is git's own fatal or error line, else the first line of what a hook said", () => {
+        expect(
+            failureLine(
+                'hint: x\nerror: No private key found for public key "a.pub"?\nfatal: failed to write commit object\n',
+                ''
+            )
+        ).toBe('error: No private key found for public key "a.pub"?');
         expect(failureLine('lint failed: 2 problems\nsee the log\n', 'out')).toBe('lint failed: 2 problems');
         expect(failureLine('', '\n\nTests failed\nmore')).toBe('Tests failed');
         expect(failureLine('', '')).toBe('git could not make the commit');
     });
 
     test('is one line, with no colour, no credential of an address and not too long', () => {
-        expect(failureLine('\u001B[31mfatal:\u001B[0m unable to access https://user:s3cret@github.com/acme/app.git/', '')).toBe('fatal: unable to access https://github.com/acme/app.git/');
-        expect(failureLine(`fatal: ${ 'x'.repeat(1000) }`, '')).toHaveLength(300);
+        expect(
+            failureLine('\u001B[31mfatal:\u001B[0m unable to access https://user:s3cret@github.com/acme/app.git/', '')
+        ).toBe('fatal: unable to access https://github.com/acme/app.git/');
+        expect(failureLine(`fatal: ${'x'.repeat(1000)}`, '')).toHaveLength(300);
     });
 });
 
@@ -97,8 +131,9 @@ withScripts('POST /v1/projects/:id/git/commit', () => {
     async function open(path: string, h: Harness) {
         const { project } = h.ok('project.add', { folders: [path] });
         const folderId = project.folders[0].id as string;
-        const url = `/v1/projects/${ project.id }/git/commit`;
-        const commit = (paths: unknown, message: unknown = 'Commit the files', place: Record<string, string> = {}) => h.fetch(url, { method: 'POST', body: JSON.stringify({ folderId, paths, message, ...place }) });
+        const url = `/v1/projects/${project.id}/git/commit`;
+        const commit = (paths: unknown, message: unknown = 'Commit the files', place: Record<string, string> = {}) =>
+            h.fetch(url, { method: 'POST', body: JSON.stringify({ folderId, paths, message, ...place }) });
 
         return { project, folderId, url, commit };
     }
@@ -181,24 +216,47 @@ withScripts('POST /v1/projects/:id/git/commit', () => {
         expect(left(path)).toEqual([' M a.txt']);
     });
 
-    test('takes a path whose name has pattern characters, a space or a quote as the file\'s own', async () => {
+    test("takes a path whose name has pattern characters, a space or a quote as the file's own", async () => {
         const h = await start();
         const path = repository();
         const { commit } = await open(path, h);
 
-        put(path, { 'src/[id].tsx': '1\n', 'star*.txt': '2\n', 'a b.txt': '3\n', 'src/other.tsx': '4\n', ':colon.txt': '5\n', 'it\'s.txt': '6\n', 'ünï.txt': '7\n', '--amend.txt': '8\n', '-p': '9\n' });
+        put(path, {
+            'src/[id].tsx': '1\n',
+            'star*.txt': '2\n',
+            'a b.txt': '3\n',
+            'src/other.tsx': '4\n',
+            ':colon.txt': '5\n',
+            "it's.txt": '6\n',
+            'ünï.txt': '7\n',
+            '--amend.txt': '8\n',
+            '-p': '9\n',
+        });
 
         const count = Number(git(path, 'rev-list', '--count', 'HEAD'));
 
         // A name that starts with a dash is a path after `--`, and a message that starts with one is the value of `-m`: neither is an option.
-        expect((await commit(['src/[id].tsx', 'star*.txt', 'a b.txt', ':colon.txt', 'it\'s.txt', 'ünï.txt', '--amend.txt', '-p'], '--amend the odd names')).status).toBe(200);
-        expect(changedBy(path).map(line => line.split('\t')[1]).sort()).toEqual(['--amend.txt', ':colon.txt', '-p', 'a b.txt', 'it\'s.txt', 'src/[id].tsx', 'star*.txt', 'ünï.txt'].sort());
+        expect(
+            (
+                await commit(
+                    ['src/[id].tsx', 'star*.txt', 'a b.txt', ':colon.txt', "it's.txt", 'ünï.txt', '--amend.txt', '-p'],
+                    '--amend the odd names'
+                )
+            ).status
+        ).toBe(200);
+        expect(
+            changedBy(path)
+                .map(line => line.split('\t')[1])
+                .sort()
+        ).toEqual(
+            ['--amend.txt', ':colon.txt', '-p', 'a b.txt', "it's.txt", 'src/[id].tsx', 'star*.txt', 'ünï.txt'].sort()
+        );
         expect(git(path, 'log', '-1', '--format=%s')).toBe('--amend the odd names');
         expect(Number(git(path, 'rev-list', '--count', 'HEAD'))).toBe(count + 1);
         expect(left(path)).toEqual(['?? src/other.tsx']);
     });
 
-    test('runs the person\'s hooks, and says a hook that failed with its own line, makes no commit and leaves the index as it found it', async () => {
+    test("runs the person's hooks, and says a hook that failed with its own line, makes no commit and leaves the index as it found it", async () => {
         const h = await start();
         const path = repository();
         const { commit } = await open(path, h);
@@ -270,7 +328,7 @@ withScripts('POST /v1/projects/:id/git/commit', () => {
         const log = join(path, '.git', 'order.log');
 
         put(path, { 'a.txt': 'a\nmore\n', 'b.txt': 'b\nmore\n' });
-        hook(path, 'pre-commit', `echo "start" >> '${ log }'`, 'sleep 0.5', `echo "end" >> '${ log }'`);
+        hook(path, 'pre-commit', `echo "start" >> '${log}'`, 'sleep 0.5', `echo "end" >> '${log}'`);
 
         const [first, second] = await Promise.all([commit(['a.txt'], 'Edit a'), commit(['b.txt'], 'Edit b')]);
 
@@ -310,7 +368,13 @@ withScripts('POST /v1/projects/:id/git/commit', () => {
         await refuse(await commit(['/etc/passwd'], 'Edit'), /not a path inside the repository/);
         await refuse(await commit(['.git/config'], 'Edit'), /not a changed file/);
         await refuse(await commit(['src/'], 'Edit'), /not a path inside the repository/);
-        await refuse(await commit(Array.from({ length: MAX_GIT_COMMIT_PATHS + 1 }, (_, index) => `f${ index }.txt`), 'Edit'), /at most/);
+        await refuse(
+            await commit(
+                Array.from({ length: MAX_GIT_COMMIT_PATHS + 1 }, (_, index) => `f${index}.txt`),
+                'Edit'
+            ),
+            /at most/
+        );
         await refuse(await commit('a.txt', 'Edit'), /./);
         await refuse(await h.fetch(url, { method: 'POST', body: JSON.stringify({ folderId }) }), /./);
         await refuse(await h.fetch(url, { method: 'POST', body: 'not json' }), /JSON/);
@@ -328,21 +392,38 @@ withScripts('POST /v1/projects/:id/git/commit', () => {
 
         put(path, { 'a.txt': 'a\nmore\n' });
 
-        expect((await fetch(`${ h.url }${ url }`, { method: 'POST', body: JSON.stringify({ folderId, paths: ['a.txt'], message: 'x' }) })).status).toBe(401);
-        expect((await h.fetch('/v1/projects/prj_unknown/git/commit', { method: 'POST', body: JSON.stringify({ folderId, paths: ['a.txt'], message: 'x' }) })).status).toBe(404);
+        expect(
+            (
+                await fetch(`${h.url}${url}`, {
+                    method: 'POST',
+                    body: JSON.stringify({ folderId, paths: ['a.txt'], message: 'x' }),
+                })
+            ).status
+        ).toBe(401);
+        expect(
+            (
+                await h.fetch('/v1/projects/prj_unknown/git/commit', {
+                    method: 'POST',
+                    body: JSON.stringify({ folderId, paths: ['a.txt'], message: 'x' }),
+                })
+            ).status
+        ).toBe(404);
         expect((await commit(['a.txt'], 'x', { folderId: 'fld_unknown' })).status).toBe(404);
         expect((await commit(['a.txt'], 'x', { workspaceId: 'wks_unknown' })).status).toBe(404);
 
         const plain = tempDir('git-commit');
         const { project } = h.ok('project.add', { folders: [plain] });
-        const refused = await h.fetch(`/v1/projects/${ project.id }/git/commit`, { method: 'POST', body: JSON.stringify({ folderId: project.folders[0].id, paths: ['a.txt'], message: 'x' }) });
+        const refused = await h.fetch(`/v1/projects/${project.id}/git/commit`, {
+            method: 'POST',
+            body: JSON.stringify({ folderId: project.folders[0].id, paths: ['a.txt'], message: 'x' }),
+        });
 
         expect(refused.status).toBe(400);
         expect((await json<Failure>(refused)).error.message).toMatch(/not the root of a git repository/);
         expect(left(path)).toEqual([' M a.txt']);
     });
 
-    test('commits in a chat\'s worktree on its own and leaves the main checkout and its changes alone', async () => {
+    test("commits in a chat's worktree on its own and leaves the main checkout and its changes alone", async () => {
         const h = await start();
         const path = repository();
         const tree = join(tempDir('git-commit'), 'chat-tree');
@@ -353,9 +434,20 @@ withScripts('POST /v1/projects/:id/git/commit', () => {
 
         const { project } = h.ok('project.add', { folders: [path] });
         const folderId = project.folders[0].id as string;
-        const workspaceId = (h.ok('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: tree } }).chat.workspace as { id: string }).id;
+        const workspaceId = (
+            h.ok('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: tree } }).chat
+                .workspace as { id: string }
+        ).id;
         const checkoutHead = git(path, 'rev-parse', 'HEAD');
-        const response = await h.fetch(`/v1/projects/${ project.id }/git/commit`, { method: 'POST', body: JSON.stringify({ folderId, workspaceId, paths: ['tree-only.txt', 'a.txt'], message: 'Work in the tree' }) });
+        const response = await h.fetch(`/v1/projects/${project.id}/git/commit`, {
+            method: 'POST',
+            body: JSON.stringify({
+                folderId,
+                workspaceId,
+                paths: ['tree-only.txt', 'a.txt'],
+                message: 'Work in the tree',
+            }),
+        });
         const result = await json<GitCommitResult>(response);
 
         expect(response.status).toBe(200);
@@ -367,7 +459,10 @@ withScripts('POST /v1/projects/:id/git/commit', () => {
         expect(git(path, 'rev-parse', 'HEAD')).toBe(checkoutHead);
         expect(left(path)).toEqual([' M a.txt']);
 
-        const asked = await h.fetch(`/v1/projects/${ project.id }/git/commit`, { method: 'POST', body: JSON.stringify({ folderId, paths: ['tree-only.txt'], message: 'Again' }) });
+        const asked = await h.fetch(`/v1/projects/${project.id}/git/commit`, {
+            method: 'POST',
+            body: JSON.stringify({ folderId, paths: ['tree-only.txt'], message: 'Again' }),
+        });
 
         // The same name in the checkout is not changed there.
         expect(asked.status).toBe(400);
@@ -429,7 +524,9 @@ withScripts('GitWrites', () => {
         hook(path, 'pre-commit', 'sleep 20');
 
         const started = Date.now();
-        const error = await slow.commit(place, { paths: ['a.txt'], message: 'Edit a' }).catch((caught: unknown) => caught);
+        const error = await slow
+            .commit(place, { paths: ['a.txt'], message: 'Edit a' })
+            .catch((caught: unknown) => caught);
 
         expect(error).toBeInstanceOf(CommandError);
         expect(error).toMatchObject({ code: 'unavailable', message: 'The commit did not finish in time' });
@@ -440,7 +537,11 @@ withScripts('GitWrites', () => {
         expect(existsSync(join(path, '.git', 'index.lock'))).toBe(false);
 
         hook(path, 'pre-commit', 'exit 0');
-        expect((await slow.commit(place, { paths: ['a.txt'], message: 'Edit a' }).catch((caught: unknown) => caught)) as unknown).toMatchObject({ subject: 'Edit a' });
+        expect(
+            (await slow
+                .commit(place, { paths: ['a.txt'], message: 'Edit a' })
+                .catch((caught: unknown) => caught)) as unknown
+        ).toMatchObject({ subject: 'Edit a' });
     });
 
     test('stops what is running when the daemon stops, and refuses a commit after it', async () => {
@@ -449,13 +550,17 @@ withScripts('GitWrites', () => {
         put(path, { 'a.txt': 'a\nmore\n' });
         hook(path, 'pre-commit', 'sleep 20');
 
-        const pending = running.commit(place, { paths: ['a.txt'], message: 'Edit a' }).catch((caught: unknown) => caught);
+        const pending = running
+            .commit(place, { paths: ['a.txt'], message: 'Edit a' })
+            .catch((caught: unknown) => caught);
 
         await Bun.sleep(400);
         running.stop();
 
         expect(await pending).toMatchObject({ code: 'unavailable', message: 'The daemon is stopping' });
-        expect(await running.commit(place, { paths: ['a.txt'], message: 'Edit a' }).catch((caught: unknown) => caught)).toBeInstanceOf(Error);
+        expect(
+            await running.commit(place, { paths: ['a.txt'], message: 'Edit a' }).catch((caught: unknown) => caught)
+        ).toBeInstanceOf(Error);
     });
 
     test('says a commit git refused with its own line and a hint when the line names the signing key, and looks for the signing agent again', async () => {
@@ -465,17 +570,37 @@ withScripts('GitWrites', () => {
         const bin = join(dir, 'bin');
 
         mkdirSync(bin);
-        writeFileSync(join(bin, 'ssh'), ['#!/bin/sh', `echo "$@" >> '${ sshLog }'`, 'echo "identityagent /tmp/clowdy-test/secretive.sock"'].join('\n'));
+        writeFileSync(
+            join(bin, 'ssh'),
+            ['#!/bin/sh', `echo "$@" >> '${sshLog}'`, 'echo "identityagent /tmp/clowdy-test/secretive.sock"'].join('\n')
+        );
         chmodSync(join(bin, 'ssh'), 0o755);
 
         // What `gpg.ssh.program` stands in for: it says what ssh-keygen says when it signs with a socket that has no key, and records the socket it was given.
         const signer = join(dir, 'signer');
 
-        writeFileSync(signer, ['#!/bin/sh', `echo "$SSH_AUTH_SOCK" >> '${ signerSeen }'`, 'echo "No private key found for public key \\"/keys/abc.pub\\"?" >&2', 'exit 1'].join('\n'));
+        writeFileSync(
+            signer,
+            [
+                '#!/bin/sh',
+                `echo "$SSH_AUTH_SOCK" >> '${signerSeen}'`,
+                'echo "No private key found for public key \\"/keys/abc.pub\\"?" >&2',
+                'exit 1',
+            ].join('\n')
+        );
         chmodSync(signer, 0o755);
         writeFileSync(join(dir, 'abc.pub'), 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAAA test\n');
 
-        const environment = new WriteEnvironment({ env: () => ({ ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1', PATH: `${ bin }:${ process.env.PATH }`, SSH_AUTH_SOCK: '/var/run/com.apple.launchd.abc/Listeners', SHELL: '/usr/bin/true' }) });
+        const environment = new WriteEnvironment({
+            env: () => ({
+                ...process.env,
+                GIT_CONFIG_GLOBAL: '/dev/null',
+                GIT_CONFIG_NOSYSTEM: '1',
+                PATH: `${bin}:${process.env.PATH}`,
+                SSH_AUTH_SOCK: '/var/run/com.apple.launchd.abc/Listeners',
+                SHELL: '/usr/bin/true',
+            }),
+        });
         const { path, place, writes: signing } = await writes({ environment });
 
         git(path, 'remote', 'add', 'origin', 'git@github.com:acme/app.git');
@@ -486,12 +611,14 @@ withScripts('GitWrites', () => {
         put(path, { 'a.txt': 'a\nmore\n' });
 
         const before = git(path, 'rev-parse', 'HEAD');
-        const error = await signing.commit(place, { paths: ['a.txt'], message: 'Edit a' }).catch((caught: unknown) => caught) as CommandError;
+        const error = (await signing
+            .commit(place, { paths: ['a.txt'], message: 'Edit a' })
+            .catch((caught: unknown) => caught)) as CommandError;
 
         expect(error).toBeInstanceOf(CommandError);
         expect(error.code).toBe('conflict');
         expect(error.message).toMatch(/No private key found for public key/);
-        expect(error.details).toEqual({ hint: 'The signing agent couldn\'t be reached' });
+        expect(error.details).toEqual({ hint: "The signing agent couldn't be reached" });
         expect(git(path, 'rev-parse', 'HEAD')).toBe(before);
         // The signing program was given the socket ssh named, not the one the daemon inherited.
         expect(readFileSync(signerSeen, 'utf8').trim()).toBe('/tmp/clowdy-test/secretive.sock');
@@ -505,7 +632,9 @@ withScripts('GitWrites', () => {
         git(path, 'config', 'commit.gpgsign', 'false');
         hook(path, 'pre-commit', 'echo "lint failed" >&2', 'exit 1');
 
-        const lint = await signing.commit(place, { paths: ['a.txt'], message: 'Edit a' }).catch((caught: unknown) => caught) as CommandError;
+        const lint = (await signing
+            .commit(place, { paths: ['a.txt'], message: 'Edit a' })
+            .catch((caught: unknown) => caught)) as CommandError;
 
         expect(lint).toMatchObject({ code: 'conflict', message: 'lint failed' });
         expect(lint.details).toBeUndefined();
@@ -513,7 +642,7 @@ withScripts('GitWrites', () => {
         expect(readFileSync(sshLog, 'utf8').trim().split('\n')).toHaveLength(3);
     });
 
-    test('never passes a switch that turns the person\'s checks off', async () => {
+    test("never passes a switch that turns the person's checks off", async () => {
         const { h, path, place } = await writes();
         const argvLog = join(tempDir('git-commit'), 'argv');
         const bin = join(tempDir('git-commit'), 'bin');
@@ -522,10 +651,18 @@ withScripts('GitWrites', () => {
         // A `git` that records what it is run with and runs the real one.
         const real = Bun.which('git') as string;
 
-        writeFileSync(join(bin, 'git'), ['#!/bin/sh', `echo "$@" >> '${ argvLog }'`, `exec '${ real }' "$@"`].join('\n'));
+        writeFileSync(join(bin, 'git'), ['#!/bin/sh', `echo "$@" >> '${argvLog}'`, `exec '${real}' "$@"`].join('\n'));
         chmodSync(join(bin, 'git'), 0o755);
 
-        const environment = new WriteEnvironment({ env: () => ({ ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1', SHELL: '/usr/bin/true', PATH: `${ bin }:${ process.env.PATH }` }) });
+        const environment = new WriteEnvironment({
+            env: () => ({
+                ...process.env,
+                GIT_CONFIG_GLOBAL: '/dev/null',
+                GIT_CONFIG_NOSYSTEM: '1',
+                SHELL: '/usr/bin/true',
+                PATH: `${bin}:${process.env.PATH}`,
+            }),
+        });
         const recorded = new GitWrites({ store: h.store, environment });
 
         put(path, { 'a.txt': 'a\nmore\n' });

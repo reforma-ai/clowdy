@@ -1,9 +1,4 @@
-import React, {
-    createContext,
-    Fragment,
-    ReactNode,
-    type ReactElement,
-} from 'react';
+import React, { createContext, Fragment, type ReactElement, ReactNode } from 'react';
 import { ContextValue, DEFAULT_SLOT, useContextProps, useSlottedContext } from 'react-aria-components';
 
 import type { SlotProps } from 'react-aria-components';
@@ -24,7 +19,6 @@ function toPredicate(filter: SlotFilter): (slot: string) => boolean {
     return filter as (slot: string) => boolean;
 }
 
-
 export const SlotContext = createContext<ContextValue<any, HTMLElement>>({});
 
 export function useSlotContext<T>(slot?: string | null): T | null | undefined {
@@ -38,9 +32,11 @@ export function useSlotContext<T>(slot?: string | null): T | null | undefined {
  * Returns props WITHOUT the `slot` property — `slot` is consumed by this hook to look up
  * the matching SlotContext entry, and should not be forwarded to the rendered element.
  */
-export function useSlotContextProps<T extends SlotProps & { ref?: React.Ref<any> }>(
-    { ref, slot, ...rest }: T
-): Omit<T, 'slot'> {
+export function useSlotContextProps<T extends SlotProps & { ref?: React.Ref<any> }>({
+    ref,
+    slot,
+    ...rest
+}: T): Omit<T, 'slot'> {
     const [mergedProps, mergedRef] = useContextProps(
         {
             ...rest,
@@ -55,19 +51,15 @@ export function useSlotContextProps<T extends SlotProps & { ref?: React.Ref<any>
     return { ...mergedRest, ref: mergedRef };
 }
 
-export function filterSlots(
-    children: ReactNode,
-    filter: SlotFilter,
-    defaultChildren?: ReactNode
-): ReactNode {
+export function filterSlots(children: ReactNode, filter: SlotFilter, defaultChildren?: ReactNode): ReactNode {
     const predicate = toPredicate(filter);
     const isFragment = React.isValidElement(children) && children.type === Fragment;
     const content: ReactNode = isFragment
         ? (children as React.ReactElement<{ children?: ReactNode }>).props.children
         : children;
 
-    const slots = React.Children.toArray(content).filter(
-        child => predicate(React.isValidElement(child) ? (child.props as SlotProps)?.slot as string : '')
+    const slots = React.Children.toArray(content).filter(child =>
+        predicate(React.isValidElement(child) ? ((child.props as SlotProps)?.slot as string) : '')
     );
 
     return slots.length ? slots : defaultChildren;
@@ -78,14 +70,17 @@ export function filterSlots(
  * (e.g. className from slots.label). Use when passing prop-based content that should participate
  * in the slot system—e.g. <Slot as="div" slot="startAffix">{ startAffix }</Slot>.
  */
-export function Slot({ as = Fragment, children, slot, ...rest }: { as?: React.ElementType; slot?: string; children?: React.ReactNode } & React.HTMLAttributes<HTMLElement>) {
+export function Slot({
+    as = Fragment,
+    children,
+    slot,
+    ...rest
+}: { as?: React.ElementType; slot?: string; children?: React.ReactNode } & React.HTMLAttributes<HTMLElement>) {
     const context = useSlottedContext(SlotContext, slot);
     const mergedProps = { ...context, ...rest, ...(slot != null && { slot }) };
 
     if (as === Fragment) {
-        return React.Children.toArray(children).map(
-            child => React.cloneElement(child as ReactElement, mergedProps)
-        );
+        return React.Children.toArray(children).map(child => React.cloneElement(child as ReactElement, mergedProps));
     }
 
     return React.createElement(as, mergedProps, children);

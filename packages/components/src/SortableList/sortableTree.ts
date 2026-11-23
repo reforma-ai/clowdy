@@ -35,7 +35,7 @@ export function buildSortableTree<T>(
         const itemPath = [...path, index];
 
         return {
-            id: options.getKey?.(item, itemPath) ?? `sortable:${ itemPath.join('.') }`,
+            id: options.getKey?.(item, itemPath) ?? `sortable:${itemPath.join('.')}`,
             value: item,
             textValue: options.getTextValue(item),
             canHaveChildren: options.canHaveChildren?.(item) ?? childItems.length > 0,
@@ -52,7 +52,7 @@ export function restoreSortableTree<T>(
     nodes: readonly SortableTreeNode<T>[],
     setChildren?: (item: T, children: T[]) => T
 ): T[] {
-    return nodes.map((node) => {
+    return nodes.map(node => {
         if (!setChildren || !node.canHaveChildren) {
             return node.value;
         }
@@ -61,10 +61,7 @@ export function restoreSortableTree<T>(
     });
 }
 
-export function findSortableTreeNode<T>(
-    nodes: readonly SortableTreeNode<T>[],
-    key: Key
-): SortableTreeNode<T> | null {
+export function findSortableTreeNode<T>(nodes: readonly SortableTreeNode<T>[], key: Key): SortableTreeNode<T> | null {
     for (const node of nodes) {
         if (node.id === key) {
             return node;
@@ -118,10 +115,7 @@ export function moveSortableTreeNodesToCollection<T>(
     }
 
     if (parentKey == null) {
-        return refreshSortableTreeMetadata([
-            ...remaining,
-            ...extracted.map(node => ({ ...node, parent: null })),
-        ]);
+        return refreshSortableTreeMetadata([...remaining, ...extracted.map(node => ({ ...node, parent: null }))]);
     }
 
     const parent = findSortableTreeNode(remaining, parentKey);
@@ -149,9 +143,8 @@ export function moveSortableTreeNodeToIndex<T>(
 ): SortableTreeNode<T>[] {
     const source = findSortableTreeNode(nodes, key);
 
-    const movesIntoDescendant = source != null
-      && parentKey != null
-      && findSortableTreeNode(source.children, parentKey) != null;
+    const movesIntoDescendant =
+        source != null && parentKey != null && findSortableTreeNode(source.children, parentKey) != null;
 
     if (!source || parentKey === key || movesIntoDescendant) {
         return [...nodes];
@@ -180,7 +173,7 @@ export function moveSortableTreeNodeToIndex<T>(
         return [...nodes];
     }
 
-    const inserted = mapSortableTreeNode(remaining, parentKey, (node) => {
+    const inserted = mapSortableTreeNode(remaining, parentKey, node => {
         const nextChildren = [...node.children];
         const insertionIndex = Math.max(0, Math.min(index, nextChildren.length));
 
@@ -264,11 +257,7 @@ function insertSortableTreeNodes<T>(
             const nextNodes = [...nodes];
             const parent = node.parent;
 
-            nextNodes.splice(
-                insertionIndex,
-                0,
-                ...inserted.map(item => ({ ...item, parent }))
-            );
+            nextNodes.splice(insertionIndex, 0, ...inserted.map(item => ({ ...item, parent })));
 
             return refreshSortableTreeMetadata(nextNodes);
         }
@@ -321,9 +310,7 @@ function mapSortableTreeNode<T>(
     return null;
 }
 
-function refreshSortableTreeMetadata<T>(
-    nodes: readonly SortableTreeNode<T>[]
-): SortableTreeNode<T>[] {
+function refreshSortableTreeMetadata<T>(nodes: readonly SortableTreeNode<T>[]): SortableTreeNode<T>[] {
     return nodes.map((node, index) => ({
         ...node,
         index,

@@ -4,7 +4,7 @@ import { Keyboard as AriaKeyboard } from 'react-aria-components';
 
 import { Text } from '../Text';
 import styles from './Hotkey.module.css';
-import { hotkeysToSymbols, type HotkeyValue } from './hotkeysToSymbols';
+import { type HotkeyValue, hotkeysToSymbols } from './hotkeysToSymbols';
 
 import type { ComponentPropsWithoutRef, ReactNode, Ref } from 'react';
 import type { TextVariant } from '../types';
@@ -45,26 +45,34 @@ export function Hotkey({
     children,
     ...props
 }: HotkeyProps) {
-    const variant = textVariant === false
-        ? undefined
-        : (textVariant ?? SIZE_TEXT_VARIANT[size]);
+    const variant = textVariant === false ? undefined : (textVariant ?? SIZE_TEXT_VARIANT[size]);
 
     if (sequence) {
         return (
             <span
-                { ...props }
-                ref={ ref }
+                {...props}
+                ref={ref}
                 data-hotkey-sequence=""
-                data-size={ size }
-                className={ cn(styles.sequence, className) }
+                data-size={size}
+                className={cn(styles.sequence, className)}
             >
-                { sequence.map((press, index) => (
+                {sequence.map((press, index) => (
                     // A sequence never reorders, so the position is the identity of a press.
-                    <Fragment key={ index }>
-                        { index > 0 && <Text as="span" variant={ variant } color="inherit" whitespace="nowrap" className={ styles.then }>then</Text> }
-                        <Hotkey hotkey={ press } size={ size } textVariant={ textVariant } />
+                    <Fragment key={index}>
+                        {index > 0 && (
+                            <Text
+                                as="span"
+                                variant={variant}
+                                color="inherit"
+                                whitespace="nowrap"
+                                className={styles.then}
+                            >
+                                then
+                            </Text>
+                        )}
+                        <Hotkey hotkey={press} size={size} textVariant={textVariant} />
                     </Fragment>
-                )) }
+                ))}
             </span>
         );
     }
@@ -72,19 +80,8 @@ export function Hotkey({
     const content = children ?? (hotkey != null ? hotkeysToSymbols(hotkey).join(' ') : undefined);
 
     return (
-        <AriaKeyboard
-            { ...props }
-            ref={ ref }
-            data-hotkey=""
-            data-size={ size }
-            className={ cn(styles.hotkey, className) }
-        >
-            <Text
-                as="span"
-                variant={ variant }
-                color="inherit"
-                whitespace="nowrap"
-            >
+        <AriaKeyboard {...props} ref={ref} data-hotkey="" data-size={size} className={cn(styles.hotkey, className)}>
+            <Text as="span" variant={variant} color="inherit" whitespace="nowrap">
                 {content}
             </Text>
         </AriaKeyboard>

@@ -25,7 +25,22 @@ async function setup(agentEnv: Record<string, string> = {}, taskTools?: 'cli' | 
     const config = testConfig({ engine: 'fake-acp' });
 
     mkdirSync(config.dataDir, { recursive: true });
-    writeFileSync(join(config.dataDir, 'agents.json'), JSON.stringify({ agents: [{ id: 'fake-acp', name: 'Fake ACP', command: process.execPath, args: [FAKE_AGENT], env: agentEnv, taskTools }], overrides: {} }));
+    writeFileSync(
+        join(config.dataDir, 'agents.json'),
+        JSON.stringify({
+            agents: [
+                {
+                    id: 'fake-acp',
+                    name: 'Fake ACP',
+                    command: process.execPath,
+                    args: [FAKE_AGENT],
+                    env: agentEnv,
+                    taskTools,
+                },
+            ],
+            overrides: {},
+        })
+    );
 
     const h = new Harness(await startDaemon(config, { agents: testAgents(config) }), config);
 
@@ -34,7 +49,8 @@ async function setup(agentEnv: Record<string, string> = {}, taskTools?: 'cli' | 
     const project = h.openRepo();
     const { chat } = h.ok('chat.create', { projectId: project.id });
     const say = (text: string): string => h.ok('chat.send', { chatId: chat.id, text }).runId;
-    const texts = (runId: string) => listItems(h.store.db, runId, 0).flatMap(item => item.body.kind === 'assistant' ? [item.body.text] : []);
+    const texts = (runId: string) =>
+        listItems(h.store.db, runId, 0).flatMap(item => (item.body.kind === 'assistant' ? [item.body.text] : []));
 
     return { h, project, chat, say, texts };
 }
@@ -45,7 +61,14 @@ describe('a message while an ACP agent works', () => {
         const { h, chat, say } = await setup(agentEnv);
         const runId = say('say first\nsleep 800\nsay last');
         const bodies = () => listItems(h.store.db, runId, 0).map(item => item.body);
-        const said = () => bodies().flatMap(body => (body.kind === 'assistant' ? [body.text] : body.kind === 'user' ? [`> ${ body.text.split('\n').at(-1) }`] : []));
+        const said = () =>
+            bodies().flatMap(body =>
+                body.kind === 'assistant'
+                    ? [body.text]
+                    : body.kind === 'user'
+                      ? [`> ${body.text.split('\n').at(-1)}`]
+                      : []
+            );
 
         await waitFor(() => said().includes('first'), 'the first words', 15_000);
         h.ok('chat.send', { chatId: chat.id, text: 'say steered', mode: 'steer' });
@@ -71,7 +94,8 @@ describe('a message while an ACP agent works', () => {
 });
 
 describe('an ACP agent on the preset that asks, through the real runtime', () => {
-    const approvals = (h: Harness, runId: string) => listItems(h.store.db, runId, 0).flatMap(item => (item.body.kind === 'approval' ? [item.body] : []));
+    const approvals = (h: Harness, runId: string) =>
+        listItems(h.store.db, runId, 0).flatMap(item => (item.body.kind === 'approval' ? [item.body] : []));
 
     test('its permission request is a card in the stream, the run waits for the person, and their decision reaches the agent', async () => {
         const { h, say, texts } = await setup();
@@ -83,7 +107,12 @@ describe('an ACP agent on the preset that asks, through the real runtime', () =>
         await waitFor(() => approvals(h, runId).length === 1, 'the approval', 15_000);
 
         expect(h.run(runId)).toMatchObject({ status: 'waiting_user', statusReason: 'Waiting for your approval' });
-        expect(approvals(h, runId)[0]).toMatchObject({ state: 'open', title: 'Run ls', subject: { kind: 'command', command: 'ls -la' }, decisions: ['allow_once', 'allow_always', 'reject'] });
+        expect(approvals(h, runId)[0]).toMatchObject({
+            state: 'open',
+            title: 'Run ls',
+            subject: { kind: 'command', command: 'ls -la' },
+            decisions: ['allow_once', 'allow_always', 'reject'],
+        });
 
         h.ok('run.decide', { runId, approvalId: approvals(h, runId)[0]!.approvalId, decision: 'reject' });
         await waitFor(() => h.run(runId).status === 'succeeded', 'the turn', 15_000);
@@ -104,7 +133,14 @@ describe('an ACP agent on the preset that asks, through the real runtime', () =>
         await waitFor(() => h.run(runId).status === 'succeeded', 'the first turn', 15_000);
 
         h.ok('chat.send', { chatId: chat.id, text: 'perm execute {"rawInput":{"command":"make"}}' });
-        await waitFor(() => listItems(h.store.db, runId, 0).filter(item => item.body.kind === 'assistant' && item.body.text === 'permission: once').length === 2, 'the answer without a card', 15_000);
+        await waitFor(
+            () =>
+                listItems(h.store.db, runId, 0).filter(
+                    item => item.body.kind === 'assistant' && item.body.text === 'permission: once'
+                ).length === 2,
+            'the answer without a card',
+            15_000
+        );
 
         expect(approvals(h, runId)).toHaveLength(1);
     });
@@ -118,14 +154,18 @@ describe('an ACP agent on the preset that asks, through the real runtime', () =>
 
         await waitFor(() => approvals(h, runId).length === 1, 'the approval', 15_000);
         h.ok('run.cancel', { runId });
-        await waitFor(() => h.run(runId).status === 'cancelled' && approvals(h, runId)[0]?.state === 'cancelled', 'the stop', 15_000);
+        await waitFor(
+            () => h.run(runId).status === 'cancelled' && approvals(h, runId)[0]?.state === 'cancelled',
+            'the stop',
+            15_000
+        );
 
         expect(approvals(h, runId)[0]).not.toHaveProperty('decision');
     });
 });
 
 describe('runs on an ACP agent, through the real runtime', () => {
-    test('a chat turn streams the agent\'s message into the stream and succeeds, and its session is kept for the next turn', async () => {
+    test("a chat turn streams the agent's message into the stream and succeeds, and its session is kept for the next turn", async () => {
         const { h, say, texts } = await setup();
         const runId = say('say hello from acp');
 
@@ -135,7 +175,13 @@ describe('runs on an ACP agent, through the real runtime', () => {
         // The first line of the message the run starts from is not a directive, so the fake agent acknowledges it.
         expect(texts(runId)).toEqual(['ok', 'hello from acp']);
         // The record of the process goes once the session has closed, a moment after the run succeeds.
-        await waitFor(() => (h.store.db.query('SELECT pid FROM runs WHERE id = ?').get(runId) as { pid: number | null }).pid === null, 'the process record to be cleared', 15_000);
+        await waitFor(
+            () =>
+                (h.store.db.query('SELECT pid FROM runs WHERE id = ?').get(runId) as { pid: number | null }).pid ===
+                null,
+            'the process record to be cleared',
+            15_000
+        );
 
         say('info');
         await waitFor(() => texts(runId).length === 3, 'the second turn', 15_000);
@@ -145,7 +191,7 @@ describe('runs on an ACP agent, through the real runtime', () => {
         expect(h.run(runId).sessionId).toBe('fake-1');
     });
 
-    test('the window\'s fill the agent reports is left on the run, the last reading of the turn included', async () => {
+    test("the window's fill the agent reports is left on the run, the last reading of the turn included", async () => {
         const { h, say } = await setup();
         const runId = say('context 40000 200000\ncontext 40100 200000');
 
@@ -162,7 +208,7 @@ describe('runs on an ACP agent, through the real runtime', () => {
 
         const { h, project, say, texts } = await setup({}, 'mcp');
         const task = h.ok('task.create', { projectId: project.id, title: 'Fix the footer' }).task;
-        const runId = say(`call task_get {"taskId":"${ task.key }"}`);
+        const runId = say(`call task_get {"taskId":"${task.key}"}`);
 
         await waitFor(() => h.run(runId).status === 'succeeded', 'the turn', 15_000);
 
@@ -171,7 +217,9 @@ describe('runs on an ACP agent, through the real runtime', () => {
         expect(answer).toContain('result: ');
         expect(answer).toContain('Fix the footer');
 
-        const tools = listItems(h.store.db, runId, 0).flatMap(item => item.body.kind === 'tool' ? [[item.body.name, item.body.state]] : []);
+        const tools = listItems(h.store.db, runId, 0).flatMap(item =>
+            item.body.kind === 'tool' ? [[item.body.name, item.body.state]] : []
+        );
 
         expect(tools).toEqual([['task_get', 'done']]);
     });
@@ -189,7 +237,7 @@ describe('runs on an ACP agent, through the real runtime', () => {
         expect(systemPrompt).toContain('/skills/<name>/SKILL.md');
     });
 
-    test('a sub-agent Claude\'s adapter stamps becomes a native child run under its call, ended by the call', async () => {
+    test("a sub-agent Claude's adapter stamps becomes a native child run under its call, ended by the call", async () => {
         const { h, project, say, texts } = await setup();
         const runId = say('subagent Explore Map the docs\nsay all mapped');
 
@@ -198,13 +246,29 @@ describe('runs on an ACP agent, through the real runtime', () => {
         const [child] = projectSnapshot(h.store, project.id).runs.filter(run => run.origin === 'native');
         const body = (id: string) => listItems(h.store.db, id, 0).map(item => item.body);
 
-        expect(child).toMatchObject({ parentRunId: runId, parentToolCallId: 'a1-1', name: 'Explore', summary: 'Map the docs', status: 'succeeded', result: 'Explore found the readme.' });
+        expect(child).toMatchObject({
+            parentRunId: runId,
+            parentToolCallId: 'a1-1',
+            name: 'Explore',
+            summary: 'Map the docs',
+            status: 'succeeded',
+            result: 'Explore found the readme.',
+        });
         expect(body(child.id)).toEqual([
             { kind: 'assistant', text: 'Looking around.', done: true },
-            { kind: 'tool', toolCallId: 'a1-1-read', name: 'Read', input: { file_path: 'README.md' }, state: 'done', output: '# Readme' },
+            {
+                kind: 'tool',
+                toolCallId: 'a1-1-read',
+                name: 'Read',
+                input: { file_path: 'README.md' },
+                state: 'done',
+                output: '# Readme',
+            },
         ]);
         // The parent keeps the call that started it, and none of what the sub-agent said or did.
-        expect(body(runId).flatMap(item => (item.kind === 'tool' ? [[item.toolCallId, item.name, item.state]] : []))).toEqual([['a1-1', 'Agent', 'done']]);
+        expect(
+            body(runId).flatMap(item => (item.kind === 'tool' ? [[item.toolCallId, item.name, item.state]] : []))
+        ).toEqual([['a1-1', 'Agent', 'done']]);
         expect(texts(runId)).toEqual(['ok', 'all mapped']);
         expect(h.run(runId).result).toBe('all mapped');
     });
@@ -212,20 +276,27 @@ describe('runs on an ACP agent, through the real runtime', () => {
     test('cancelling a run stops the agent and leaves no process behind', async () => {
         const { h, say } = await setup();
         const runId = say('sleep 60000');
-        const pid = await waitFor(() => (h.store.db.query('SELECT pid FROM runs WHERE id = ?').get(runId) as { pid: number | null }).pid, 'the agent to start', 15_000);
+        const pid = await waitFor(
+            () => (h.store.db.query('SELECT pid FROM runs WHERE id = ?').get(runId) as { pid: number | null }).pid,
+            'the agent to start',
+            15_000
+        );
 
         h.ok('run.cancel', { runId });
         await waitFor(() => h.run(runId).status === 'cancelled', 'the run to be cancelled', 15_000);
-        await waitFor(() => {
-            try {
-                process.kill(pid, 0);
+        await waitFor(
+            () => {
+                try {
+                    process.kill(pid, 0);
 
-                return false;
-            }
-            catch {
-                return true;
-            }
-        }, 'the agent process to be gone', 15_000);
+                    return false;
+                } catch {
+                    return true;
+                }
+            },
+            'the agent process to be gone',
+            15_000
+        );
     });
 
     test('an agent that asks for a login fails the run with a message that says what to do', async () => {
@@ -242,7 +313,10 @@ describe('runs on an ACP agent, through the real runtime', () => {
 
         mkdirSync(config.dataDir, { recursive: true });
         // Pointed at a program that is not there, so the test does not depend on what is installed on this machine.
-        writeFileSync(join(config.dataDir, 'agents.json'), JSON.stringify({ agents: [], overrides: { opencode: { path: '/nonexistent/opencode' } } }));
+        writeFileSync(
+            join(config.dataDir, 'agents.json'),
+            JSON.stringify({ agents: [], overrides: { opencode: { path: '/nonexistent/opencode' } } })
+        );
 
         const h = new Harness(await startDaemon(config, { agents: testAgents(config) }), config);
 
@@ -254,11 +328,15 @@ describe('runs on an ACP agent, through the real runtime', () => {
 
         await waitFor(() => h.run(runId).status === 'failed', 'the run to fail', 15_000);
 
-        expect(h.run(runId).error).toBe('OpenCode is not installed: no `opencode` command was found. Install it, then try again');
+        expect(h.run(runId).error).toBe(
+            'OpenCode is not installed: no `opencode` command was found. Install it, then try again'
+        );
     });
 
     test('a daemon told to use an agent it does not know refuses to start', async () => {
-        await expect(startDaemon(testConfig({ engine: 'gpt' }))).rejects.toThrow(/CLOWDY_ENGINE=gpt is not an agent this daemon knows/);
+        await expect(startDaemon(testConfig({ engine: 'gpt' }))).rejects.toThrow(
+            /CLOWDY_ENGINE=gpt is not an agent this daemon knows/
+        );
     });
 });
 
@@ -281,7 +359,7 @@ describe('a chat on an ACP v2 agent that works in the background, through the re
         // A custom agent speaks v1; this one is set to v2, as the built-in ones are once the real adapters pass their checks.
         const resolve = agents.resolve.bind(agents);
 
-        agents.resolve = async (id) => {
+        agents.resolve = async id => {
             const found = await resolve(id);
 
             return found.ok ? { ok: true, agent: { ...found.agent, protocol: 'v2' } } : found;
@@ -289,7 +367,10 @@ describe('a chat on an ACP v2 agent that works in the background, through the re
 
         const bridge = new ToolBridge();
         const engine = new AcpEngine('fake-acp', { registry: agents, bridge, backgroundHandoffMs: 300 });
-        const engines: EngineRegistry = { has: id => id === 'fake-acp', get: id => id === 'fake-acp' ? engine : undefined };
+        const engines: EngineRegistry = {
+            has: id => id === 'fake-acp',
+            get: id => (id === 'fake-acp' ? engine : undefined),
+        };
 
         bridges.push(bridge);
 
@@ -300,16 +381,28 @@ describe('a chat on an ACP v2 agent that works in the background, through the re
         const project = h.openRepo();
         const { chat } = h.ok('chat.create', { projectId: project.id });
         const say = (text: string): string => h.ok('chat.send', { chatId: chat.id, text }).runId;
-        const pid = (runId: string) => (h.store.db.query('SELECT pid FROM runs WHERE id = ?').get(runId) as { pid: number | null }).pid;
+        const pid = (runId: string) =>
+            (h.store.db.query('SELECT pid FROM runs WHERE id = ?').get(runId) as { pid: number | null }).pid;
         /** The stream as lines: what the person said (`> `), what the agent said (`< `), and the notes. */
-        const stream = (runId: string) => listItems(h.store.db, runId, 0).flatMap(item => item.body.kind === 'user' ? [`> ${ item.body.text.split('\n')[0] }`] : item.body.kind === 'assistant' ? [`< ${ item.body.text }`] : item.body.kind === 'note' ? [`note: ${ item.body.text }`] : []);
+        const stream = (runId: string) =>
+            listItems(h.store.db, runId, 0).flatMap(item =>
+                item.body.kind === 'user'
+                    ? [`> ${item.body.text.split('\n')[0]}`]
+                    : item.body.kind === 'assistant'
+                      ? [`< ${item.body.text}`]
+                      : item.body.kind === 'note'
+                        ? [`note: ${item.body.text}`]
+                        : []
+            );
 
         return { h, chat, say, pid, stream };
     }
 
     test('a turn that starts a command leaves the run waiting, the report turn is a message with no `user` item before it, and the run settles when nothing is open', async () => {
         const { h, say, pid, stream } = await setupV2();
-        const runId = say('say started\nbackground terminal 1200 sleep 60\nreport say the command finished\nreport sleep 100');
+        const runId = say(
+            'say started\nbackground terminal 1200 sleep 60\nreport say the command finished\nreport sleep 100'
+        );
 
         // The turn is over, and the run waits with the session: its process recorded, its slot free.
         await waitFor(() => h.run(runId).status === 'waiting_background', 'the run to wait for the command', 15_000);
@@ -349,7 +442,10 @@ describe('a chat on an ACP v2 agent that works in the background, through the re
     test('a workflow that goes on after the turn is a task of the run until it ends, and its call is finished by it', async () => {
         const { h, say } = await setupV2();
         const runId = say('say started\nbackground workflow 1000 Verify the docs\nreport say verified');
-        const calls = () => listItems(h.store.db, runId, 0).flatMap(item => item.body.kind === 'tool' ? [[item.body.name, item.body.state]] : []);
+        const calls = () =>
+            listItems(h.store.db, runId, 0).flatMap(item =>
+                item.body.kind === 'tool' ? [[item.body.name, item.body.state]] : []
+            );
 
         await waitFor(() => h.run(runId).status === 'waiting_background', 'the run to wait', 15_000);
         expect(h.run(runId).background).toEqual([{ id: 'wf-1', kind: 'task', title: 'Workflow: Verify the docs' }]);

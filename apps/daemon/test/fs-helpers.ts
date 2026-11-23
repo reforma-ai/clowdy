@@ -81,7 +81,7 @@ export class EventReader {
     async next(count = 1, timeoutMs = 4000): Promise<FsWatchEvent[]> {
         const from = this.taken;
 
-        await waitFor(() => this.events.length >= from + count, `${ count } more watch events`, timeoutMs);
+        await waitFor(() => this.events.length >= from + count, `${count} more watch events`, timeoutMs);
         this.taken = from + count;
 
         return this.events.slice(from, from + count);

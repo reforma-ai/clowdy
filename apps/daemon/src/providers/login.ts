@@ -13,7 +13,10 @@ const OUTPUT_TAIL_CHARS = 8000;
 const OUTPUT_GRACE_MS = 200;
 
 export class SignInError extends Error {
-    constructor(readonly kind: 'invalid' | 'conflict', message: string) {
+    constructor(
+        readonly kind: 'invalid' | 'conflict',
+        message: string
+    ) {
         super(message);
     }
 }
@@ -32,7 +35,9 @@ export function parseSignInOutput(output: string): { url?: string; code?: string
     // A terminal hyperlink names its target apart from its text: the last one is the one on screen.
     const hyperlinks = [...output.matchAll(OSC_LINK)].map(match => match[1]!);
     const plain = output.replace(ESCAPES, '');
-    const printed = [...plain.matchAll(URL_IN_TEXT)].map(match => match[0].replace(/[.,;:)\]]+$/, '')).find(link => !LOOPBACK.test(link));
+    const printed = [...plain.matchAll(URL_IN_TEXT)]
+        .map(match => match[0].replace(/[.,;:)\]]+$/, ''))
+        .find(link => !LOOPBACK.test(link));
     const url = hyperlinks.at(-1) ?? printed;
     // Not inside a link: its ids and states have the shape of a code too.
     const code = /\b[A-Z0-9]{4,5}-[A-Z0-9]{4,5}\b/.exec(plain.replace(URL_IN_TEXT, ' '))?.[0];
@@ -46,7 +51,13 @@ export function parseSignInOutput(output: string): { url?: string; code?: string
 
 /** The last line of output that says something, for the message of a failed sign-in. */
 function lastLine(output: string): string | undefined {
-    return output.replace(ESCAPES, '').split('\n').map(line => line.trim()).filter(Boolean).at(-1)?.slice(0, 200);
+    return output
+        .replace(ESCAPES, '')
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean)
+        .at(-1)
+        ?.slice(0, 200);
 }
 
 interface Session extends AgentSignInSession {
@@ -102,19 +113,25 @@ export class LoginSessions {
     /** Starts the login at once and answers; progress is read with `get`. Refused when the agent has no login to run or one is running. */
     start(id: string): void {
         if (!this.options.providers.get(id)?.login) {
-            throw new SignInError('invalid', `Clowdy cannot sign in to ${ this.options.registry.nameOf(id) } for you`);
+            throw new SignInError('invalid', `Clowdy cannot sign in to ${this.options.registry.nameOf(id)} for you`);
         }
 
         const running = this.sessions.get(id);
 
         if (running && running.session.endedAt === undefined) {
-            throw new SignInError('conflict', `A sign-in to ${ this.options.registry.nameOf(id) } is already running`);
+            throw new SignInError('conflict', `A sign-in to ${this.options.registry.nameOf(id)} is already running`);
         }
 
         const entry = { session: { step: 'starting', startedAt: this.now() } as Session, cancelled: false };
 
         this.sessions.set(id, entry);
-        void this.run(id, entry).catch(error => this.finish(entry, 'failed', `The sign-in to ${ this.options.registry.nameOf(id) } broke: ${ error instanceof Error ? error.message : String(error) }`));
+        void this.run(id, entry).catch(error =>
+            this.finish(
+                entry,
+                'failed',
+                `The sign-in to ${this.options.registry.nameOf(id)} broke: ${error instanceof Error ? error.message : String(error)}`
+            )
+        );
     }
 
     /** Stops the sign-in in progress. */
@@ -168,7 +185,7 @@ export class LoginSessions {
             target = await this.options.registry.probeTarget(id);
 
             if (!target) {
-                this.finish(entry, 'failed', `${ name } is not installed or is switched off in Clowdy`);
+                this.finish(entry, 'failed', `${name} is not installed or is switched off in Clowdy`);
 
                 return;
             }
@@ -179,10 +196,18 @@ export class LoginSessions {
                 return;
             }
 
-            entry.proc = await spawnInOwnGroup({ command: target.program, args: provider.login!.args, cwd: this.options.cwd, env: { ...target.env, NO_COLOR: '1', TERM: 'dumb' } });
-        }
-        catch (error) {
-            this.finish(entry, 'failed', `Could not start ${ name }: ${ error instanceof Error ? error.message : String(error) }`);
+            entry.proc = await spawnInOwnGroup({
+                command: target.program,
+                args: provider.login!.args,
+                cwd: this.options.cwd,
+                env: { ...target.env, NO_COLOR: '1', TERM: 'dumb' },
+            });
+        } catch (error) {
+            this.finish(
+                entry,
+                'failed',
+                `Could not start ${name}: ${error instanceof Error ? error.message : String(error)}`
+            );
 
             return;
         }
@@ -200,7 +225,7 @@ export class LoginSessions {
             output = (output + text).slice(-OUTPUT_TAIL_CHARS);
 
             const found = parseSignInOutput(output);
-            const before = `${ entry.session.url }|${ entry.session.code }`;
+            const before = `${entry.session.url}|${entry.session.code}`;
 
             if (found.url) {
                 entry.session.url = found.url;
@@ -216,7 +241,7 @@ export class LoginSessions {
                 proc.stop();
             }
 
-            if (before !== `${ entry.session.url }|${ entry.session.code }`) {
+            if (before !== `${entry.session.url}|${entry.session.code}`) {
                 this.options.announce();
             }
         };
@@ -227,8 +252,8 @@ export class LoginSessions {
         entry.session.step = 'waiting';
         this.options.announce();
 
-        const code = await new Promise<number | null>((resolve) => {
-            proc.child.once('exit', (exitCode) => {
+        const code = await new Promise<number | null>(resolve => {
+            proc.child.once('exit', exitCode => {
                 // Its last words may still be in the pipes (`close` says they are not), and a leftover that holds them open must not hold us.
                 const grace = setTimeout(() => resolve(exitCode), OUTPUT_GRACE_MS);
 
@@ -244,13 +269,15 @@ export class LoginSessions {
 
         if (entry.cancelled) {
             this.finish(entry, 'cancelled', 'Sign-in cancelled');
-        }
-        else if (code === 0 && !stopped) {
+        } else if (code === 0 && !stopped) {
             this.finish(entry, 'done');
             this.options.onSignedIn(id);
-        }
-        else {
-            this.finish(entry, 'failed', entry.session.message ?? lastLine(output) ?? `${ name } ended the sign-in (exit code ${ code ?? 'none' })`);
+        } else {
+            this.finish(
+                entry,
+                'failed',
+                entry.session.message ?? lastLine(output) ?? `${name} ended the sign-in (exit code ${code ?? 'none'})`
+            );
         }
     }
 }

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { codeLanguage } from './codeLanguages';
 
 describe('codeLanguage', () => {
-    it('should load a language once and return it synchronously after that, for any of its names', async() => {
+    it('should load a language once and return it synchronously after that, for any of its names', async () => {
         const pending = codeLanguage('ts');
 
         expect(pending).toBeInstanceOf(Promise);

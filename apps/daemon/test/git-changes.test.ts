@@ -1,7 +1,13 @@
-import { commitScope, MAX_GIT_CHANGED_FILES, MAX_GIT_COMMITS, MAX_GIT_SIDE_BYTES, MAX_GIT_STATUS_ENTRIES } from '@clowdy/protocol';
 import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { chmodSync, mkdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import {
+    commitScope,
+    MAX_GIT_CHANGED_FILES,
+    MAX_GIT_COMMITS,
+    MAX_GIT_SIDE_BYTES,
+    MAX_GIT_STATUS_ENTRIES,
+} from '@clowdy/protocol';
 
 import { gitRead, gitRecords } from '../src/domain/git';
 import { CommandError } from '../src/errors';
@@ -23,7 +29,18 @@ const onPosix = posix ? test : test.skip;
 const placeAt = (path: string, base?: string): Place => ({
     folder: { id: 'fld_test', path },
     path,
-    ...(base !== undefined && { workspace: { id: 'wks_test', projectId: 'prj_test', folderId: 'fld_test', path, base, managed: false, ready: true, createdAt: 1 } }),
+    ...(base !== undefined && {
+        workspace: {
+            id: 'wks_test',
+            projectId: 'prj_test',
+            folderId: 'fld_test',
+            path,
+            base,
+            managed: false,
+            ready: true,
+            createdAt: 1,
+        },
+    }),
 });
 
 /** Writes files (and the folders above them) under `root`. */
@@ -42,7 +59,7 @@ function commit(path: string, message: string): string {
     return git(path, 'rev-parse', 'HEAD');
 }
 
-const lines = (...text: string[]) => `${ text.join('\n') }\n`;
+const lines = (...text: string[]) => `${text.join('\n')}\n`;
 
 /** A bare `origin` with `main` and `dev`, a clone of it whose `main` tracks `origin/main`, and the seed repository both came from. */
 function clone(): { root: string; work: string; origin: string; seed: string } {
@@ -50,7 +67,11 @@ function clone(): { root: string; work: string; origin: string; seed: string } {
     const origin = join(root, 'origin.git');
     const seed = makeRepo(root, 'seed');
 
-    put(seed, { 'lib.ts': lines('a', 'b', 'c'), 'old-name.ts': lines('export const x = 1;', 'export const y = 2;', 'export const z = 3;'), 'gone.txt': lines('bye') });
+    put(seed, {
+        'lib.ts': lines('a', 'b', 'c'),
+        'old-name.ts': lines('export const x = 1;', 'export const y = 2;', 'export const z = 3;'),
+        'gone.txt': lines('bye'),
+    });
     commit(seed, 'Add the base files');
     git(root, 'init', '--bare', '-q', '-b', 'main', origin);
     git(seed, 'remote', 'add', 'origin', origin);
@@ -65,15 +86,19 @@ function clone(): { root: string; work: string; origin: string; seed: string } {
 async function status(place: Place, options?: { base?: string }): Promise<Extract<GitStatus, { isRepository: true }>> {
     const answer = await placeStatus(place, options);
 
-    if (!answer.isRepository) throw new Error(`${ place.path } is not a repository`);
+    if (!answer.isRepository) throw new Error(`${place.path} is not a repository`);
 
     return answer;
 }
 
-async function changes(place: Place, scope: GitScope, options?: { base?: string }): Promise<Extract<GitChanges, { isRepository: true }>> {
+async function changes(
+    place: Place,
+    scope: GitScope,
+    options?: { base?: string }
+): Promise<Extract<GitChanges, { isRepository: true }>> {
     const answer = await placeChanges(place, scope, options);
 
-    if (!answer.isRepository) throw new Error(`${ place.path } is not a repository`);
+    if (!answer.isRepository) throw new Error(`${place.path} is not a repository`);
 
     return answer;
 }
@@ -81,8 +106,7 @@ async function changes(place: Place, scope: GitScope, options?: { base?: string 
 async function failure(promise: Promise<unknown>): Promise<CommandError> {
     try {
         await promise;
-    }
-    catch (error) {
+    } catch (error) {
         if (error instanceof CommandError) return error;
 
         throw error;
@@ -102,21 +126,26 @@ async function gitProcessesOf(action: () => Promise<unknown>): Promise<string[]>
 
     if (!real) throw new Error('git is not on the PATH');
 
-    writeFileSync(join(shim, 'git'), `#!/bin/sh\nprintf '%s\\n' "$*" >> '${ log }'\nexec '${ real }' "$@"\n`);
+    writeFileSync(join(shim, 'git'), `#!/bin/sh\nprintf '%s\\n' "$*" >> '${log}'\nexec '${real}' "$@"\n`);
     chmodSync(join(shim, 'git'), 0o755);
 
     const path = process.env.PATH;
 
-    process.env.PATH = `${ shim }:${ path }`;
+    process.env.PATH = `${shim}:${path}`;
 
     try {
         await action();
-    }
-    finally {
+    } finally {
         process.env.PATH = path;
     }
 
-    return (await Bun.file(log).text().catch(() => '')).split('\n').filter(line => line !== '');
+    return (
+        await Bun.file(log)
+            .text()
+            .catch(() => '')
+    )
+        .split('\n')
+        .filter(line => line !== '');
 }
 
 /**
@@ -128,9 +157,15 @@ function work() {
     const { work: path, ...rest } = clone();
 
     git(path, 'switch', '-q', '-c', 'feature');
-    put(path, { 'src/new.ts': lines('export const one = 1;', 'export const two = 2;', 'export const three = 3;'), 'lib.ts': lines('a', 'B', 'c', 'd') });
+    put(path, {
+        'src/new.ts': lines('export const one = 1;', 'export const two = 2;', 'export const three = 3;'),
+        'lib.ts': lines('a', 'B', 'c', 'd'),
+    });
     renameSync(join(path, 'old-name.ts'), join(path, 'renamed.ts'));
-    writeFileSync(join(path, 'renamed.ts'), lines('export const x = 1;', 'export const y = 22;', 'export const z = 3;'));
+    writeFileSync(
+        join(path, 'renamed.ts'),
+        lines('export const x = 1;', 'export const y = 22;', 'export const z = 3;')
+    );
 
     const first = commit(path, 'Add the new module and rename the old one');
 
@@ -155,13 +190,19 @@ describe('gitRead options', () => {
         writeFileSync(join(repo, 'big.txt'), big);
 
         // Past the size a read may print, git is killed and the read is not an answer (`unavailable`), whatever the cap is called.
-        expect(await gitRead(repo, ['show', 'HEAD:README.md'], { maxBytes: 3 })).toEqual({ ok: false, reason: 'unavailable' });
-        expect(await gitRead(repo, ['hash-object', '--stdin'], { input: 'hello\n' })).toEqual({ ok: true, stdout: 'ce013625030ba8dba906f756967f9e9ca394464a\n' });
+        expect(await gitRead(repo, ['show', 'HEAD:README.md'], { maxBytes: 3 })).toEqual({
+            ok: false,
+            reason: 'unavailable',
+        });
+        expect(await gitRead(repo, ['hash-object', '--stdin'], { input: 'hello\n' })).toEqual({
+            ok: true,
+            stdout: 'ce013625030ba8dba906f756967f9e9ca394464a\n',
+        });
         expect(await gitRead(repo, ['rev-parse', 'HEAD'], { timeoutMs: 20_000 })).toMatchObject({ ok: true });
         expect(await gitRead(repo, ['hash-object', '--stdin'], { input: big })).toMatchObject({ ok: true });
     });
 
-    test('tells git to print what it prints to anyone, whatever the repository\'s configuration says, when the output is parsed', async () => {
+    test("tells git to print what it prints to anyone, whatever the repository's configuration says, when the output is parsed", async () => {
         const repo = makeRepo(tempDir('git-changes'));
 
         put(repo, { 'dir/ünï code.txt': lines('one') });
@@ -172,7 +213,9 @@ describe('gitRead options', () => {
         git(repo, 'config', 'diff.relative', 'true');
 
         // The config is the person's: a read that parses opts in to the daemon's own.
-        const parsed = await gitRead(join(repo, 'dir'), ['diff', '-p', '--no-ext-diff', 'HEAD~1', 'HEAD'], { parsed: true });
+        const parsed = await gitRead(join(repo, 'dir'), ['diff', '-p', '--no-ext-diff', 'HEAD~1', 'HEAD'], {
+            parsed: true,
+        });
 
         expect(parsed).toMatchObject({ ok: true });
         expect((parsed as { stdout: string }).stdout).toContain('diff --git a/dir/ünï code.txt b/dir/ünï code.txt');
@@ -181,7 +224,7 @@ describe('gitRead options', () => {
 });
 
 describe('the locale of every read', () => {
-    test('is fixed, and names that are not ASCII still come back whole from the readers of a folder\'s branches and worktrees', async () => {
+    test("is fixed, and names that are not ASCII still come back whole from the readers of a folder's branches and worktrees", async () => {
         const repo = makeRepo(tempDir('git-changes'));
         const tree = join(tempDir('git-changes'), 'дерево ö');
 
@@ -190,9 +233,15 @@ describe('the locale of every read', () => {
 
         const answer = await folderGit(repo);
 
-        expect(answer.isRepository && answer.branches.map(branch => branch.name)).toEqual(expect.arrayContaining(['фича/ü', 'ветка-ö']));
-        expect(answer.isRepository && answer.worktrees.map(worktree => worktree.path)).toContainEqual(expect.stringContaining('дерево ö'));
-        expect(answer.isRepository && answer.worktrees.find(worktree => worktree.path.includes('дерево'))?.branch).toBe('ветка-ö');
+        expect(answer.isRepository && answer.branches.map(branch => branch.name)).toEqual(
+            expect.arrayContaining(['фича/ü', 'ветка-ö'])
+        );
+        expect(answer.isRepository && answer.worktrees.map(worktree => worktree.path)).toContainEqual(
+            expect.stringContaining('дерево ö')
+        );
+        expect(answer.isRepository && answer.worktrees.find(worktree => worktree.path.includes('дерево'))?.branch).toBe(
+            'ветка-ö'
+        );
     });
 });
 
@@ -200,7 +249,8 @@ describe('gitRecords', () => {
     test('reads the records git prints and stops it once there are more than it was asked for', async () => {
         const repo = makeRepo(tempDir('git-changes'));
 
-        for (let index = 0; index < 30; index++) put(repo, { [`new/file-${ String(index).padStart(2, '0') }.txt`]: 'x\n' });
+        for (let index = 0; index < 30; index++)
+            put(repo, { [`new/file-${String(index).padStart(2, '0')}.txt`]: 'x\n' });
 
         const all = await gitRecords(repo, ['ls-files', '-z', '--others'], { maxRecords: 100 });
         const cut = await gitRecords(repo, ['ls-files', '-z', '--others'], { maxRecords: 10 });
@@ -209,15 +259,20 @@ describe('gitRecords', () => {
         expect(all).toMatchObject({ ok: true, truncated: false });
         expect(all.ok && all.records).toHaveLength(30);
         expect(cut).toMatchObject({ ok: true, truncated: true });
-        expect(cut.ok && cut.records).toEqual(Array.from({ length: 10 }, (_, index) => `new/file-${ String(index).padStart(2, '0') }.txt`));
+        expect(cut.ok && cut.records).toEqual(
+            Array.from({ length: 10 }, (_, index) => `new/file-${String(index).padStart(2, '0')}.txt`)
+        );
         expect(exact).toMatchObject({ ok: true, truncated: false });
     });
 
-    test('tells git\'s own no from a git that could not be run', async () => {
+    test("tells git's own no from a git that could not be run", async () => {
         const plain = tempDir('git-changes');
 
         expect(await gitRecords(plain, ['ls-files', '-z'], { maxRecords: 5 })).toEqual({ ok: false, reason: 'failed' });
-        expect(await gitRecords(join(plain, 'missing'), ['ls-files', '-z'], { maxRecords: 5 })).toEqual({ ok: false, reason: 'unavailable' });
+        expect(await gitRecords(join(plain, 'missing'), ['ls-files', '-z'], { maxRecords: 5 })).toEqual({
+            ok: false,
+            reason: 'unavailable',
+        });
     });
 });
 
@@ -254,7 +309,12 @@ describe('parseStatus', () => {
     test('knows a detached head, a branch with no commit and an upstream that is gone', () => {
         expect(parseStatus(['# branch.oid abc', '# branch.head (detached)'])).toEqual({ commit: 'abc', entries: [] });
         expect(parseStatus(['# branch.oid (initial)', '# branch.head main'])).toEqual({ branch: 'main', entries: [] });
-        expect(parseStatus(['# branch.oid abc', '# branch.head main', '# branch.upstream origin/main'])).toEqual({ commit: 'abc', branch: 'main', upstream: { name: 'origin/main', ahead: 0, behind: 0, gone: true }, entries: [] });
+        expect(parseStatus(['# branch.oid abc', '# branch.head main', '# branch.upstream origin/main'])).toEqual({
+            commit: 'abc',
+            branch: 'main',
+            upstream: { name: 'origin/main', ahead: 0, behind: 0, gone: true },
+            entries: [],
+        });
     });
 });
 
@@ -262,19 +322,52 @@ describe('parseDiff', () => {
     test('pairs each raw record with its numbers, a rename by its new path, a binary file by its dashes', () => {
         const zeros = '0'.repeat(40);
         const output = [
-            `:100644 100644 ${ 'a'.repeat(40) } ${ 'b'.repeat(40) } M`, 'dir/lib.ts',
-            `:100644 100644 ${ 'c'.repeat(40) } ${ 'd'.repeat(40) } R087`, 'old.ts', 'new.ts',
-            `:000000 100644 ${ zeros } ${ 'e'.repeat(40) } A`, 'logo.bin',
+            `:100644 100644 ${'a'.repeat(40)} ${'b'.repeat(40)} M`,
+            'dir/lib.ts',
+            `:100644 100644 ${'c'.repeat(40)} ${'d'.repeat(40)} R087`,
+            'old.ts',
+            'new.ts',
+            `:000000 100644 ${zeros} ${'e'.repeat(40)} A`,
+            'logo.bin',
             '2\t1\tdir/lib.ts',
-            '1\t0\t', 'old.ts', 'new.ts',
+            '1\t0\t',
+            'old.ts',
+            'new.ts',
             '-\t-\tlogo.bin',
             '',
         ].join('\0');
 
         expect(parseDiff(output)).toEqual([
-            { path: 'dir/lib.ts', kind: 'modified', oldMode: '100644', newMode: '100644', oldBlob: 'a'.repeat(40), newBlob: 'b'.repeat(40), additions: 2, deletions: 1 },
-            { path: 'new.ts', oldPath: 'old.ts', kind: 'renamed', oldMode: '100644', newMode: '100644', oldBlob: 'c'.repeat(40), newBlob: 'd'.repeat(40), additions: 1, deletions: 0 },
-            { path: 'logo.bin', kind: 'added', oldMode: '000000', newMode: '100644', oldBlob: zeros, newBlob: 'e'.repeat(40), binary: true },
+            {
+                path: 'dir/lib.ts',
+                kind: 'modified',
+                oldMode: '100644',
+                newMode: '100644',
+                oldBlob: 'a'.repeat(40),
+                newBlob: 'b'.repeat(40),
+                additions: 2,
+                deletions: 1,
+            },
+            {
+                path: 'new.ts',
+                oldPath: 'old.ts',
+                kind: 'renamed',
+                oldMode: '100644',
+                newMode: '100644',
+                oldBlob: 'c'.repeat(40),
+                newBlob: 'd'.repeat(40),
+                additions: 1,
+                deletions: 0,
+            },
+            {
+                path: 'logo.bin',
+                kind: 'added',
+                oldMode: '000000',
+                newMode: '100644',
+                oldBlob: zeros,
+                newBlob: 'e'.repeat(40),
+                binary: true,
+            },
         ]);
     });
 });
@@ -302,7 +395,15 @@ describe('placeStatus', () => {
         expect(answer.origin).toBe(true);
         expect(answer.entries).toEqual([]);
         expect(answer.truncated).toBeUndefined();
-        expect(answer.base).toEqual({ state: 'ready', name: 'origin/main', commit: sha, mergeBase: sha, ahead: 0, behind: 0, commits: [] });
+        expect(answer.base).toEqual({
+            state: 'ready',
+            name: 'origin/main',
+            commit: sha,
+            mergeBase: sha,
+            ahead: 0,
+            behind: 0,
+            commits: [],
+        });
     });
 
     test('lists what is not committed with its kinds: edited, staged, renamed, deleted and new', async () => {
@@ -336,7 +437,9 @@ describe('placeStatus', () => {
         git(path, 'add', 'lib.ts');
         put(path, { 'lib.ts': lines('a', 'staged', 'c', 'again') });
 
-        expect((await status(placeAt(path))).entries).toEqual([{ path: 'lib.ts', staged: 'modified', unstaged: 'modified' }]);
+        expect((await status(placeAt(path))).entries).toEqual([
+            { path: 'lib.ts', staged: 'modified', unstaged: 'modified' },
+        ]);
 
         git(path, 'checkout', '-q', '--', 'lib.ts');
         git(path, 'reset', '-q', '--hard');
@@ -347,12 +450,18 @@ describe('placeStatus', () => {
         put(path, { 'lib.ts': lines('a', 'main', 'c') });
         commit(path, 'Change lib on main');
 
-        const merged = Bun.spawnSync(['git', 'merge', 'side', '--no-edit'], { cwd: path, stdout: 'pipe', stderr: 'pipe' });
+        const merged = Bun.spawnSync(['git', 'merge', 'side', '--no-edit'], {
+            cwd: path,
+            stdout: 'pipe',
+            stderr: 'pipe',
+        });
 
         expect(merged.exitCode).not.toBe(0);
         expect((await status(placeAt(path))).entries).toEqual([{ path: 'lib.ts', unstaged: 'conflicted' }]);
         // A diff does not say it: to it the path is a file that changed.
-        expect((await changes(placeAt(path), 'uncommitted')).files.map(file => [file.path, file.kind])).toEqual([['lib.ts', 'modified']]);
+        expect((await changes(placeAt(path), 'uncommitted')).files.map(file => [file.path, file.kind])).toEqual([
+            ['lib.ts', 'modified'],
+        ]);
     });
 
     test('says a detached head, and a branch that tracks nothing', async () => {
@@ -404,10 +513,13 @@ describe('placeStatus', () => {
         expect(answer.head).toEqual({ kind: 'unborn', name: 'trunk' });
         expect(answer.upstream).toBeUndefined();
         expect(answer.base).toEqual({ state: 'unborn' });
-        expect(answer.entries).toEqual([{ path: 'a.txt', staged: 'added' }, { path: 'b.txt', untracked: true }]);
+        expect(answer.entries).toEqual([
+            { path: 'a.txt', staged: 'added' },
+            { path: 'b.txt', untracked: true },
+        ]);
     });
 
-    test('counts how far the branch and its upstream have grown apart, and lists the branch\'s commits, newest first', async () => {
+    test("counts how far the branch and its upstream have grown apart, and lists the branch's commits, newest first", async () => {
         const { work: path, seed } = clone();
 
         put(path, { 'one.txt': lines('one') });
@@ -419,17 +531,35 @@ describe('placeStatus', () => {
         const second = commit(path, 'Add two: with a "colon"');
 
         put(seed, { 'upstream.txt': lines('theirs') });
-        commit(seed, 'Someone else\'s work');
+        commit(seed, "Someone else's work");
         git(seed, 'push', '-q', 'origin', 'main');
         git(path, 'fetch', '-q');
 
         const answer = await status(placeAt(path));
 
         expect(answer.upstream).toEqual({ name: 'origin/main', ahead: 2, behind: 1 });
-        expect(answer.base).toMatchObject({ state: 'ready', name: 'origin/main', ahead: 2, behind: 1, mergeBase: git(path, 'rev-parse', 'HEAD~2') });
+        expect(answer.base).toMatchObject({
+            state: 'ready',
+            name: 'origin/main',
+            ahead: 2,
+            behind: 1,
+            mergeBase: git(path, 'rev-parse', 'HEAD~2'),
+        });
         expect(answer.base.state === 'ready' && answer.base.commits).toEqual([
-            { sha: second, shortSha: second.slice(0, 7), subject: 'Add two: with a "colon"', author: 'Test', committedAt: expect.any(Number) },
-            { sha: first, shortSha: first.slice(0, 7), subject: 'Add one', author: 'Test', committedAt: expect.any(Number) },
+            {
+                sha: second,
+                shortSha: second.slice(0, 7),
+                subject: 'Add two: with a "colon"',
+                author: 'Test',
+                committedAt: expect.any(Number),
+            },
+            {
+                sha: first,
+                shortSha: first.slice(0, 7),
+                subject: 'Add one',
+                author: 'Test',
+                committedAt: expect.any(Number),
+            },
         ]);
 
         const times = answer.base.state === 'ready' ? answer.base.commits.map(entry => entry.committedAt) : [];
@@ -441,19 +571,21 @@ describe('placeStatus', () => {
     test('lists at most the newest commits, and says how many there are', async () => {
         const { work: path } = clone();
 
-        for (let index = 0; index < MAX_GIT_COMMITS + 5; index++) git(path, 'commit', '-q', '--allow-empty', '-m', `Commit ${ index }`);
+        for (let index = 0; index < MAX_GIT_COMMITS + 5; index++)
+            git(path, 'commit', '-q', '--allow-empty', '-m', `Commit ${index}`);
 
         const base = (await status(placeAt(path))).base;
 
         expect(base.state === 'ready' && base.ahead).toBe(MAX_GIT_COMMITS + 5);
         expect(base.state === 'ready' && base.commits).toHaveLength(MAX_GIT_COMMITS);
-        expect(base.state === 'ready' && base.commits[0]?.subject).toBe(`Commit ${ MAX_GIT_COMMITS + 4 }`);
+        expect(base.state === 'ready' && base.commits[0]?.subject).toBe(`Commit ${MAX_GIT_COMMITS + 4}`);
     });
 
     test('stops reading a tree that is all new at a thousand entries and says it was cut', async () => {
         const path = makeRepo(tempDir('git-changes'));
 
-        for (let index = 0; index < MAX_GIT_STATUS_ENTRIES + 20; index++) writeFileSync(join(path, `file-${ String(index).padStart(5, '0') }.txt`), 'x\n');
+        for (let index = 0; index < MAX_GIT_STATUS_ENTRIES + 20; index++)
+            writeFileSync(join(path, `file-${String(index).padStart(5, '0')}.txt`), 'x\n');
 
         const answer = await status(placeAt(path));
 
@@ -464,7 +596,7 @@ describe('placeStatus', () => {
 });
 
 describe('the base', () => {
-    test('is origin\'s branch when the local one is equal to it, behind it or not there, and the local one when it is ahead or has diverged', async () => {
+    test("is origin's branch when the local one is equal to it, behind it or not there, and the local one when it is ahead or has diverged", async () => {
         const { work: path, seed } = clone();
         const origin = git(path, 'rev-parse', 'origin/main');
 
@@ -498,7 +630,7 @@ describe('the base', () => {
         expect(await resolveRef(path, 'main')).toEqual({ name: 'main', commit: mine });
     });
 
-    test('is a ref as it is spelled when it is a full ref or a hash, and never a tag that has a branch\'s name', async () => {
+    test("is a ref as it is spelled when it is a full ref or a hash, and never a tag that has a branch's name", async () => {
         const { work: path } = clone();
         const head = git(path, 'rev-parse', 'HEAD');
 
@@ -518,10 +650,11 @@ describe('the base', () => {
         expect(await resolveRef(path, 'main')).toEqual({ name: 'main', commit: more });
         expect(await resolveRef(path, 'nope')).toBeUndefined();
         // What is not a ref's name is not a ref, whatever a revision would make of it.
-        for (const name of ['main~1', 'main^', 'main@{1}', 'HEAD:lib.ts', 'refs/heads/main~1', '--all', 'a b', '']) expect(await resolveRef(path, name)).toBeUndefined();
+        for (const name of ['main~1', 'main^', 'main@{1}', 'HEAD:lib.ts', 'refs/heads/main~1', '--all', 'a b', ''])
+            expect(await resolveRef(path, name)).toBeUndefined();
     });
 
-    test('is the branch the request names first, then the worktree\'s own base, then the folder\'s', async () => {
+    test("is the branch the request names first, then the worktree's own base, then the folder's", async () => {
         const { work: path } = clone();
 
         put(path, { 'on-main.txt': lines('x') });
@@ -533,7 +666,7 @@ describe('the base', () => {
         const nameOf = async (place: Place, options?: { base?: string }) => {
             const base = await readBase(place, options);
 
-            return base.state === 'ready' ? `${ base.name } +${ base.ahead } -${ base.behind }` : base.state;
+            return base.state === 'ready' ? `${base.name} +${base.ahead} -${base.behind}` : base.state;
         };
 
         // The folder's own: `origin/main`, two commits behind the feature branch's work.
@@ -556,11 +689,27 @@ describe('the base', () => {
 
         const base = (await status(placeAt(path))).base;
 
-        expect(base).toEqual({ state: 'no_merge_base', name: 'origin/main', commit: git(path, 'rev-parse', 'origin/main') });
-        expect(await mergeBaseOf(placeAt(path))).toEqual({ state: 'no_merge_base', name: 'origin/main', commit: git(path, 'rev-parse', 'origin/main') });
+        expect(base).toEqual({
+            state: 'no_merge_base',
+            name: 'origin/main',
+            commit: git(path, 'rev-parse', 'origin/main'),
+        });
+        expect(await mergeBaseOf(placeAt(path))).toEqual({
+            state: 'no_merge_base',
+            name: 'origin/main',
+            commit: git(path, 'rev-parse', 'origin/main'),
+        });
         // All counts from HEAD then, and the branch is empty.
-        expect(await changes(placeAt(path), 'all')).toMatchObject({ baseState: 'no_merge_base', fileCount: 0, files: [] });
-        expect(await changes(placeAt(path), 'branch')).toMatchObject({ baseState: 'no_merge_base', fileCount: 0, files: [] });
+        expect(await changes(placeAt(path), 'all')).toMatchObject({
+            baseState: 'no_merge_base',
+            fileCount: 0,
+            files: [],
+        });
+        expect(await changes(placeAt(path), 'branch')).toMatchObject({
+            baseState: 'no_merge_base',
+            fileCount: 0,
+            files: [],
+        });
     });
 });
 
@@ -569,9 +718,19 @@ describe('placeChanges', () => {
         const { path, base } = work();
         const answer = await changes(placeAt(path), 'branch');
 
-        expect(answer).toMatchObject({ scope: 'branch', from: base, baseState: 'ready', fileCount: 5, additions: 3 + 2 + 1, deletions: 1 + 1 + 1, statsComplete: true });
+        expect(answer).toMatchObject({
+            scope: 'branch',
+            from: base,
+            baseState: 'ready',
+            fileCount: 5,
+            additions: 3 + 2 + 1,
+            deletions: 1 + 1 + 1,
+            statsComplete: true,
+        });
         expect(answer.truncated).toBeUndefined();
-        expect(answer.files.map(file => [file.path, file.kind, file.oldPath, file.additions, file.deletions, file.binary])).toEqual([
+        expect(
+            answer.files.map(file => [file.path, file.kind, file.oldPath, file.additions, file.deletions, file.binary])
+        ).toEqual([
             ['gone.txt', 'deleted', undefined, 0, 1, undefined],
             ['lib.ts', 'modified', undefined, 2, 1, undefined],
             ['logo.bin', 'added', undefined, undefined, undefined, true],
@@ -585,9 +744,18 @@ describe('placeChanges', () => {
         const { path, second } = work();
         const answer = await changes(placeAt(path), 'uncommitted');
 
-        expect(answer).toMatchObject({ scope: 'uncommitted', from: second, fileCount: 3, additions: 1 + 2 + 1, deletions: 0, statsComplete: true });
+        expect(answer).toMatchObject({
+            scope: 'uncommitted',
+            from: second,
+            fileCount: 3,
+            additions: 1 + 2 + 1,
+            deletions: 0,
+            statsComplete: true,
+        });
         expect(answer.baseState).toBeUndefined();
-        expect(answer.files.map(file => [file.path, file.kind, file.untracked, file.additions, file.deletions])).toEqual([
+        expect(
+            answer.files.map(file => [file.path, file.kind, file.untracked, file.additions, file.deletions])
+        ).toEqual([
             ['lib.ts', 'modified', undefined, 1, 0],
             ['scratch.txt', 'added', true, 2, 0],
             ['src/staged.ts', 'added', undefined, 1, 0],
@@ -598,10 +766,28 @@ describe('placeChanges', () => {
         const { path, base } = work();
         const answer = await changes(placeAt(path), 'all');
 
-        expect(answer).toMatchObject({ scope: 'all', from: base, baseState: 'ready', fileCount: 7, statsComplete: true });
-        expect(answer.files.map(file => file.path)).toEqual(['gone.txt', 'lib.ts', 'logo.bin', 'renamed.ts', 'scratch.txt', 'src/new.ts', 'src/staged.ts']);
+        expect(answer).toMatchObject({
+            scope: 'all',
+            from: base,
+            baseState: 'ready',
+            fileCount: 7,
+            statsComplete: true,
+        });
+        expect(answer.files.map(file => file.path)).toEqual([
+            'gone.txt',
+            'lib.ts',
+            'logo.bin',
+            'renamed.ts',
+            'scratch.txt',
+            'src/new.ts',
+            'src/staged.ts',
+        ]);
         // `lib.ts`: `B`, `d` and `e` are new and `b` is gone, against the base's `a b c`.
-        expect(answer.files.find(file => file.path === 'lib.ts')).toMatchObject({ kind: 'modified', additions: 3, deletions: 1 });
+        expect(answer.files.find(file => file.path === 'lib.ts')).toMatchObject({
+            kind: 'modified',
+            additions: 3,
+            deletions: 1,
+        });
         // The totals are the sum of the files': committed, staged, edited and new.
         expect(answer.additions).toBe(3 + 1 + 2 + 3 + 1);
         expect(answer.deletions).toBe(1 + 1 + 1);
@@ -612,7 +798,11 @@ describe('placeChanges', () => {
         const one = await changes(placeAt(path), commitScope(first));
         const two = await changes(placeAt(path), commitScope(second.slice(0, 9)));
 
-        expect(one).toMatchObject({ scope: `commit:${ first }`, from: git(path, 'rev-parse', `${ first }^`), fileCount: 3 });
+        expect(one).toMatchObject({
+            scope: `commit:${first}`,
+            from: git(path, 'rev-parse', `${first}^`),
+            fileCount: 3,
+        });
         expect(one.files.map(file => file.path)).toEqual(['lib.ts', 'renamed.ts', 'src/new.ts']);
         expect(two.files.map(file => file.path)).toEqual(['gone.txt', 'logo.bin']);
         expect(two.baseState).toBeUndefined();
@@ -621,12 +811,14 @@ describe('placeChanges', () => {
         const rootChanges = await changes(placeAt(path), commitScope(root));
 
         expect(rootChanges.from).toBeUndefined();
-        expect(rootChanges.files.map(file => [file.path, file.kind, file.additions])).toEqual([['README.md', 'added', 1]]);
+        expect(rootChanges.files.map(file => [file.path, file.kind, file.additions])).toEqual([
+            ['README.md', 'added', 1],
+        ]);
         expect((await failure(placeChanges(placeAt(path), commitScope('0123456789abcdef')))).code).toBe('not_found');
         expect((await failure(placeChanges(placeAt(path), 'commit:--all' as GitScope))).code).toBe('invalid');
     });
 
-    test('follows a merge commit\'s first parent, so the work it merged is what it shows', async () => {
+    test("follows a merge commit's first parent, so the work it merged is what it shows", async () => {
         const { work: path } = clone();
 
         git(path, 'switch', '-q', '-c', 'side');
@@ -637,29 +829,34 @@ describe('placeChanges', () => {
         commit(path, 'Add main');
         git(path, 'merge', '-q', '--no-ff', '--no-edit', 'side');
 
-        expect((await changes(placeAt(path), commitScope(git(path, 'rev-parse', 'HEAD')))).files.map(file => file.path)).toEqual(['side.txt']);
+        expect(
+            (await changes(placeAt(path), commitScope(git(path, 'rev-parse', 'HEAD')))).files.map(file => file.path)
+        ).toEqual(['side.txt']);
     });
 
     test('gives each file the revision of its two sides, which an edit of the file in the working tree changes', async () => {
         const { path, base } = work();
         const zeros = '0'.repeat(40);
-        const blob = (revision: string, path_: string) => git(path, 'rev-parse', `${ revision }:${ path_ }`);
+        const blob = (revision: string, path_: string) => git(path, 'rev-parse', `${revision}:${path_}`);
         const committed = await changes(placeAt(path), 'branch');
         const all = await changes(placeAt(path), 'all');
-        const revisionOf = (answer: typeof all, name: string) => answer.files.find(file => file.path === name)?.revision;
+        const revisionOf = (answer: typeof all, name: string) =>
+            answer.files.find(file => file.path === name)?.revision;
 
         // Committed: the blobs of the merge base and of HEAD.
-        expect(revisionOf(committed, 'lib.ts')).toBe(`100644:${ blob(base, 'lib.ts') }:100644:${ blob('HEAD', 'lib.ts') }`);
-        expect(revisionOf(committed, 'src/new.ts')).toBe(`000000:${ zeros }:100644:${ blob('HEAD', 'src/new.ts') }`);
-        expect(revisionOf(committed, 'gone.txt')).toBe(`100644:${ blob(base, 'gone.txt') }:000000:${ zeros }`);
-        expect(revisionOf(committed, 'renamed.ts')).toBe(`100644:${ blob(base, 'old-name.ts') }:100644:${ blob('HEAD', 'renamed.ts') }`);
+        expect(revisionOf(committed, 'lib.ts')).toBe(`100644:${blob(base, 'lib.ts')}:100644:${blob('HEAD', 'lib.ts')}`);
+        expect(revisionOf(committed, 'src/new.ts')).toBe(`000000:${zeros}:100644:${blob('HEAD', 'src/new.ts')}`);
+        expect(revisionOf(committed, 'gone.txt')).toBe(`100644:${blob(base, 'gone.txt')}:000000:${zeros}`);
+        expect(revisionOf(committed, 'renamed.ts')).toBe(
+            `100644:${blob(base, 'old-name.ts')}:100644:${blob('HEAD', 'renamed.ts')}`
+        );
 
         // The working tree: the id git gives the file there, a new file included.
         const hash = (name: string) => git(path, 'hash-object', name);
 
-        expect(revisionOf(all, 'lib.ts')).toBe(`100644:${ blob(base, 'lib.ts') }:100644:${ hash('lib.ts') }`);
-        expect(revisionOf(all, 'scratch.txt')).toBe(`000000:${ zeros }:100644:${ hash('scratch.txt') }`);
-        expect(revisionOf(all, 'src/staged.ts')).toBe(`000000:${ zeros }:100644:${ hash('src/staged.ts') }`);
+        expect(revisionOf(all, 'lib.ts')).toBe(`100644:${blob(base, 'lib.ts')}:100644:${hash('lib.ts')}`);
+        expect(revisionOf(all, 'scratch.txt')).toBe(`000000:${zeros}:100644:${hash('scratch.txt')}`);
+        expect(revisionOf(all, 'src/staged.ts')).toBe(`000000:${zeros}:100644:${hash('src/staged.ts')}`);
         expect(await changes(placeAt(path), 'all')).toEqual(all);
 
         const before = revisionOf(all, 'lib.ts');
@@ -670,13 +867,13 @@ describe('placeChanges', () => {
         const after = await changes(placeAt(path), 'all');
 
         expect(revisionOf(after, 'lib.ts')).not.toBe(before);
-        expect(revisionOf(after, 'lib.ts')).toBe(`100644:${ blob(base, 'lib.ts') }:100644:${ hash('lib.ts') }`);
-        expect(revisionOf(after, 'scratch.txt')).toBe(`000000:${ zeros }:100644:${ hash('scratch.txt') }`);
+        expect(revisionOf(after, 'lib.ts')).toBe(`100644:${blob(base, 'lib.ts')}:100644:${hash('lib.ts')}`);
+        expect(revisionOf(after, 'scratch.txt')).toBe(`000000:${zeros}:100644:${hash('scratch.txt')}`);
         // A file that was not touched keeps its revision.
         expect(revisionOf(after, 'renamed.ts')).toBe(revisionOf(all, 'renamed.ts'));
     });
 
-    onPosix('records an executable file\'s mode, a link as a link and a new file\'s mode from the disk', async () => {
+    onPosix("records an executable file's mode, a link as a link and a new file's mode from the disk", async () => {
         const { work: path } = clone();
 
         put(path, { 'run.sh': lines('#!/bin/sh'), 'plain.txt': lines('x') });
@@ -699,7 +896,11 @@ describe('placeChanges', () => {
 
         const committed = await changes(placeAt(path), commitScope(git(path, 'rev-parse', 'HEAD')));
 
-        expect(committed.files.map(file => [file.path, file.revision.split(':')[2]])).toEqual([['alias', '120000'], ['plain.txt', '100644'], ['run.sh', '100755']]);
+        expect(committed.files.map(file => [file.path, file.revision.split(':')[2]])).toEqual([
+            ['alias', '120000'],
+            ['plain.txt', '100644'],
+            ['run.sh', '100755'],
+        ]);
     });
 
     test('says a binary file, a new binary file and a file too big to draw', async () => {
@@ -707,7 +908,7 @@ describe('placeChanges', () => {
 
         put(path, {
             'new.bin': Buffer.from([0, 1, 2, 0]),
-            'huge-lines.txt': Array.from({ length: 25_000 }, (_, index) => `line ${ index }`).join('\n'),
+            'huge-lines.txt': Array.from({ length: 25_000 }, (_, index) => `line ${index}`).join('\n'),
             'wide.txt': 'w'.repeat(MAX_GIT_SIDE_BYTES + 10),
             'fine.txt': lines('fine'),
         });
@@ -724,16 +925,19 @@ describe('placeChanges', () => {
         expect(byName('fine.txt')).toMatchObject({ additions: 1, deletions: 0 });
 
         commit(path, 'Add the big ones');
-        put(path, { 'huge-lines.txt': Array.from({ length: 25_000 }, (_, index) => `changed ${ index }`).join('\n') });
+        put(path, { 'huge-lines.txt': Array.from({ length: 25_000 }, (_, index) => `changed ${index}`).join('\n') });
 
         // A tracked file is too big by its changed lines, which git counted.
-        expect((await changes(placeAt(path), 'uncommitted')).files).toMatchObject([{ path: 'huge-lines.txt', additions: 25_000, deletions: 25_000, tooLarge: true }]);
+        expect((await changes(placeAt(path), 'uncommitted')).files).toMatchObject([
+            { path: 'huge-lines.txt', additions: 25_000, deletions: 25_000, tooLarge: true },
+        ]);
     });
 
     test('counts the lines of new files only within a budget, and says when the totals are a lower bound', async () => {
         const { work: path } = clone();
 
-        for (let index = 0; index < 230; index++) put(path, { [`many/file-${ String(index).padStart(3, '0') }.txt`]: lines('a', 'b') });
+        for (let index = 0; index < 230; index++)
+            put(path, { [`many/file-${String(index).padStart(3, '0')}.txt`]: lines('a', 'b') });
 
         const answer = await changes(placeAt(path), 'uncommitted');
 
@@ -749,7 +953,8 @@ describe('placeChanges', () => {
     test('lists at most `MAX_GIT_CHANGED_FILES`, the first by path, and counts them all', async () => {
         const { work: path } = clone();
 
-        for (let index = 0; index < MAX_GIT_CHANGED_FILES + 20; index++) put(path, { [`bulk/file-${ String(index).padStart(3, '0') }.txt`]: lines('x') });
+        for (let index = 0; index < MAX_GIT_CHANGED_FILES + 20; index++)
+            put(path, { [`bulk/file-${String(index).padStart(3, '0')}.txt`]: lines('x') });
 
         const answer = await changes(placeAt(path), 'uncommitted');
 
@@ -757,7 +962,7 @@ describe('placeChanges', () => {
         expect(answer.fileCount).toBe(MAX_GIT_CHANGED_FILES + 20);
         expect(answer.truncated).toBe(true);
         expect(answer.files[0]?.path).toBe('bulk/file-000.txt');
-        expect(answer.files.at(-1)?.path).toBe(`bulk/file-${ MAX_GIT_CHANGED_FILES - 1 }.txt`);
+        expect(answer.files.at(-1)?.path).toBe(`bulk/file-${MAX_GIT_CHANGED_FILES - 1}.txt`);
         expect(answer.additions).toBe(200);
     });
 
@@ -766,7 +971,8 @@ describe('placeChanges', () => {
 
         mkdirSync(join(path, 'flood'));
 
-        for (let index = 0; index < 5010; index++) writeFileSync(join(path, 'flood', `file-${ String(index).padStart(4, '0') }.txt`), 'x\n');
+        for (let index = 0; index < 5010; index++)
+            writeFileSync(join(path, 'flood', `file-${String(index).padStart(4, '0')}.txt`), 'x\n');
 
         const answer = await changes(placeAt(path), 'uncommitted');
 
@@ -778,7 +984,7 @@ describe('placeChanges', () => {
         expect(answer.statsComplete).toBe(false);
     });
 
-    test('keeps paths whole whatever the repository\'s configuration says: spaces, non-ASCII and a newline in a name', async () => {
+    test("keeps paths whole whatever the repository's configuration says: spaces, non-ASCII and a newline in a name", async () => {
         const { work: path } = clone();
 
         git(path, 'config', 'core.quotepath', 'true');
@@ -787,7 +993,11 @@ describe('placeChanges', () => {
         git(path, 'config', 'diff.mnemonicprefix', 'true');
         git(path, 'config', 'diff.relative', 'true');
 
-        const names = ['dir with space/ünï code.txt', 'тест.txt', ...(posix ? ['line\nbreak.txt', 'tab\there.txt'] : [])];
+        const names = [
+            'dir with space/ünï code.txt',
+            'тест.txt',
+            ...(posix ? ['line\nbreak.txt', 'tab\there.txt'] : []),
+        ];
 
         for (const name of names) put(path, { [name]: lines('x') });
 
@@ -798,13 +1008,20 @@ describe('placeChanges', () => {
 
         commit(path, 'Add the odd names');
         put(path, { [names[0]!]: lines('x', 'y') });
-        expect((await changes(placeAt(path), 'uncommitted')).files).toMatchObject([{ path: names[0], additions: 1, deletions: 0 }]);
+        expect((await changes(placeAt(path), 'uncommitted')).files).toMatchObject([
+            { path: names[0], additions: 1, deletions: 0 },
+        ]);
     });
 
     test('leaves out a folder that is a repository of its own, and what git ignores', async () => {
         const { work: path } = clone();
 
-        put(path, { '.gitignore': 'build/\n*.log\n', 'build/out.js': 'x\n', 'debug.log': 'x\n', 'src/keep.ts': lines('keep') });
+        put(path, {
+            '.gitignore': 'build/\n*.log\n',
+            'build/out.js': 'x\n',
+            'debug.log': 'x\n',
+            'src/keep.ts': lines('keep'),
+        });
 
         const nested = join(path, 'vendor', 'lib');
 
@@ -812,7 +1029,10 @@ describe('placeChanges', () => {
         git(nested, 'init', '-q', '-b', 'main');
         put(nested, { 'inside.txt': 'x\n' });
 
-        expect((await changes(placeAt(path), 'uncommitted')).files.map(file => file.path)).toEqual(['.gitignore', 'src/keep.ts']);
+        expect((await changes(placeAt(path), 'uncommitted')).files.map(file => file.path)).toEqual([
+            '.gitignore',
+            'src/keep.ts',
+        ]);
     });
 
     test('gives a submodule the commit its own checkout is at, so moving it again changes its revision', async () => {
@@ -824,22 +1044,23 @@ describe('placeChanges', () => {
 
         const inside = join(path, 'vendor', 'library');
         const recorded = git(path, 'rev-parse', 'HEAD:vendor/library');
-        const revision = async () => (await changes(placeAt(path), 'uncommitted')).files.find(file => file.path === 'vendor/library')?.revision;
+        const revision = async () =>
+            (await changes(placeAt(path), 'uncommitted')).files.find(file => file.path === 'vendor/library')?.revision;
 
         // Both moves only edit a file that is already there: nothing about the submodule's folder itself changes.
         put(inside, { 'README.md': lines('two') });
 
         const second = commit(inside, 'Second');
 
-        expect(await revision()).toBe(`160000:${ recorded }:160000:${ second }`);
+        expect(await revision()).toBe(`160000:${recorded}:160000:${second}`);
         put(inside, { 'README.md': lines('three') });
 
         const third = commit(inside, 'Third');
 
-        expect(await revision()).toBe(`160000:${ recorded }:160000:${ third }`);
+        expect(await revision()).toBe(`160000:${recorded}:160000:${third}`);
     });
 
-    test('does not change the repository\'s index or take its lock', async () => {
+    test("does not change the repository's index or take its lock", async () => {
         const { path } = work();
         const index = join(path, '.git', 'index');
         const before = Bun.file(index).size;
@@ -865,7 +1086,10 @@ describe('placeChanges', () => {
             const answer = await changes(placeAt(path), scope);
 
             expect(answer.from).toBeUndefined();
-            expect(answer.files.map(file => [file.path, file.kind, file.untracked, file.additions])).toEqual([['a.txt', 'added', undefined, 2], ['b.txt', 'added', true, 1]]);
+            expect(answer.files.map(file => [file.path, file.kind, file.untracked, file.additions])).toEqual([
+                ['a.txt', 'added', undefined, 2],
+                ['b.txt', 'added', true, 1],
+            ]);
         }
 
         expect(await changes(placeAt(path), 'branch')).toMatchObject({ baseState: 'unborn', files: [], fileCount: 0 });
@@ -878,20 +1102,27 @@ describe('placeChanges', () => {
 
         const answer = await changes(placeAt(path), 'uncommitted');
 
-        expect(answer.files.map(file => [file.path, file.kind, file.untracked])).toEqual([['gone.txt', 'deleted', undefined]]);
+        expect(answer.files.map(file => [file.path, file.kind, file.untracked])).toEqual([
+            ['gone.txt', 'deleted', undefined],
+        ]);
     });
 });
 
 describe('placeFile', () => {
-    const text = async (place: Place, scope: GitScope, path: string, oldPath?: string): Promise<Extract<GitFileSides, { state: 'text' }>> => {
+    const text = async (
+        place: Place,
+        scope: GitScope,
+        path: string,
+        oldPath?: string
+    ): Promise<Extract<GitFileSides, { state: 'text' }>> => {
         const sides = await placeFile(place, scope, path, oldPath);
 
-        if (sides.state !== 'text') throw new Error(`${ path } is ${ sides.state }`);
+        if (sides.state !== 'text') throw new Error(`${path} is ${sides.state}`);
 
         return sides;
     };
 
-    test('reads a file before and after: the merge base\'s text, and the file on disk for a scope that includes the working tree', async () => {
+    test("reads a file before and after: the merge base's text, and the file on disk for a scope that includes the working tree", async () => {
         const { path } = work();
         const all = await text(placeAt(path), 'all', 'lib.ts');
         const branch = await text(placeAt(path), 'branch', 'lib.ts');
@@ -903,11 +1134,15 @@ describe('placeFile', () => {
         expect(branch.modified).toBe(lines('a', 'B', 'c', 'd'));
         expect(uncommitted.original).toBe(lines('a', 'B', 'c', 'd'));
         expect(uncommitted.modified).toBe(lines('a', 'B', 'c', 'd', 'e'));
-        expect((await changes(placeAt(path), 'all')).files.find(file => file.path === 'lib.ts')?.revision).toBe(all.revision);
-        expect((await changes(placeAt(path), 'branch')).files.find(file => file.path === 'lib.ts')?.revision).toBe(branch.revision);
+        expect((await changes(placeAt(path), 'all')).files.find(file => file.path === 'lib.ts')?.revision).toBe(
+            all.revision
+        );
+        expect((await changes(placeAt(path), 'branch')).files.find(file => file.path === 'lib.ts')?.revision).toBe(
+            branch.revision
+        );
     });
 
-    test('reads one commit\'s two sides from the repository, whatever is on the disk now', async () => {
+    test("reads one commit's two sides from the repository, whatever is on the disk now", async () => {
         const { path, first, base } = work();
 
         writeFileSync(join(path, 'lib.ts'), lines('something else entirely'));
@@ -916,16 +1151,30 @@ describe('placeFile', () => {
 
         expect(sides.original).toBe(lines('a', 'b', 'c'));
         expect(sides.modified).toBe(lines('a', 'B', 'c', 'd'));
-        expect(sides.revision).toBe(`100644:${ git(path, 'rev-parse', `${ base }:lib.ts`) }:100644:${ git(path, 'rev-parse', `${ first }:lib.ts`) }`);
+        expect(sides.revision).toBe(
+            `100644:${git(path, 'rev-parse', `${base}:lib.ts`)}:100644:${git(path, 'rev-parse', `${first}:lib.ts`)}`
+        );
     });
 
     test('has no old side for a new file and no new side for a deleted one, and reads a new file git does not track', async () => {
         const { path } = work();
 
-        expect(await text(placeAt(path), 'branch', 'src/new.ts')).toMatchObject({ original: null, modified: lines('export const one = 1;', 'export const two = 2;', 'export const three = 3;') });
-        expect(await text(placeAt(path), 'branch', 'gone.txt')).toMatchObject({ original: lines('bye'), modified: null });
-        expect(await text(placeAt(path), 'uncommitted', 'scratch.txt')).toMatchObject({ original: null, modified: lines('one', 'two') });
-        expect(await text(placeAt(path), 'all', 'src/staged.ts')).toMatchObject({ original: null, modified: lines('export const staged = true;') });
+        expect(await text(placeAt(path), 'branch', 'src/new.ts')).toMatchObject({
+            original: null,
+            modified: lines('export const one = 1;', 'export const two = 2;', 'export const three = 3;'),
+        });
+        expect(await text(placeAt(path), 'branch', 'gone.txt')).toMatchObject({
+            original: lines('bye'),
+            modified: null,
+        });
+        expect(await text(placeAt(path), 'uncommitted', 'scratch.txt')).toMatchObject({
+            original: null,
+            modified: lines('one', 'two'),
+        });
+        expect(await text(placeAt(path), 'all', 'src/staged.ts')).toMatchObject({
+            original: null,
+            modified: lines('export const staged = true;'),
+        });
     });
 
     test('reads a renamed file from its old path when it is given, and as a new file when it is not', async () => {
@@ -934,27 +1183,43 @@ describe('placeFile', () => {
 
         expect(renamed.original).toBe(lines('export const x = 1;', 'export const y = 2;', 'export const z = 3;'));
         expect(renamed.modified).toBe(lines('export const x = 1;', 'export const y = 22;', 'export const z = 3;'));
-        expect((await changes(placeAt(path), 'branch')).files.find(file => file.path === 'renamed.ts')?.revision).toBe(renamed.revision);
+        expect((await changes(placeAt(path), 'branch')).files.find(file => file.path === 'renamed.ts')?.revision).toBe(
+            renamed.revision
+        );
         expect(await text(placeAt(path), 'branch', 'renamed.ts')).toMatchObject({ original: null });
     });
 
     test('sends no text for a binary file, a side over the limit or a change of too many lines', async () => {
         const { work: path } = clone();
 
-        put(path, { 'logo.bin': Buffer.from([0, 1, 2]), 'wide.txt': 'w'.repeat(MAX_GIT_SIDE_BYTES + 10), 'many.txt': Array.from({ length: 25_000 }, (_, index) => `line ${ index }`).join('\n'), 'edge.txt': 'e'.repeat(MAX_GIT_SIDE_BYTES) });
+        put(path, {
+            'logo.bin': Buffer.from([0, 1, 2]),
+            'wide.txt': 'w'.repeat(MAX_GIT_SIDE_BYTES + 10),
+            'many.txt': Array.from({ length: 25_000 }, (_, index) => `line ${index}`).join('\n'),
+            'edge.txt': 'e'.repeat(MAX_GIT_SIDE_BYTES),
+        });
 
         const binary = await placeFile(placeAt(path), 'uncommitted', 'logo.bin', undefined);
 
         expect(binary).toEqual({ state: 'binary', revision: expect.stringMatching(/^000000:0+:100644:[0-9a-f]{40}$/) });
-        expect(await placeFile(placeAt(path), 'uncommitted', 'wide.txt', undefined)).toMatchObject({ state: 'too_large' });
-        expect(await placeFile(placeAt(path), 'uncommitted', 'many.txt', undefined)).toMatchObject({ state: 'too_large' });
+        expect(await placeFile(placeAt(path), 'uncommitted', 'wide.txt', undefined)).toMatchObject({
+            state: 'too_large',
+        });
+        expect(await placeFile(placeAt(path), 'uncommitted', 'many.txt', undefined)).toMatchObject({
+            state: 'too_large',
+        });
         // A side exactly at the limit is still sent.
-        expect(await placeFile(placeAt(path), 'uncommitted', 'edge.txt', undefined)).toMatchObject({ state: 'text', original: null });
+        expect(await placeFile(placeAt(path), 'uncommitted', 'edge.txt', undefined)).toMatchObject({
+            state: 'text',
+            original: null,
+        });
 
         commit(path, 'Add them');
         // The old side of a tracked file is measured too.
         writeFileSync(join(path, 'wide.txt'), 'small\n');
-        expect(await placeFile(placeAt(path), 'uncommitted', 'wide.txt', undefined)).toMatchObject({ state: 'too_large' });
+        expect(await placeFile(placeAt(path), 'uncommitted', 'wide.txt', undefined)).toMatchObject({
+            state: 'too_large',
+        });
         // A binary file that is committed is told by git's own numbers.
         expect(await placeFile(placeAt(path), 'branch', 'logo.bin', undefined)).toMatchObject({ state: 'binary' });
     });
@@ -978,7 +1243,11 @@ describe('placeFile', () => {
         }
 
         // A short hash is a hash, as it is in a scope.
-        expect(await placeFile(place, 'branch', 'lib.ts', undefined, { from: (await changes(place, 'branch')).from!.slice(0, 10) })).toEqual(await placeFile(place, 'branch', 'lib.ts', undefined));
+        expect(
+            await placeFile(place, 'branch', 'lib.ts', undefined, {
+                from: (await changes(place, 'branch')).from!.slice(0, 10),
+            })
+        ).toEqual(await placeFile(place, 'branch', 'lib.ts', undefined));
     });
 
     test('starts a scope at the commit it is given, whatever the base or HEAD is', async () => {
@@ -987,17 +1256,36 @@ describe('placeFile', () => {
 
         // `all` and `branch` start at `from` and not at the merge base: here the branch's first commit, so lib.ts has the text it had after it.
         expect(await text(place, 'all', 'lib.ts')).toMatchObject({ original: lines('a', 'b', 'c') });
-        expect(await placeFile(place, 'all', 'lib.ts', undefined, { from: first })).toMatchObject({ state: 'text', original: lines('a', 'B', 'c', 'd'), modified: lines('a', 'B', 'c', 'd', 'e') });
+        expect(await placeFile(place, 'all', 'lib.ts', undefined, { from: first })).toMatchObject({
+            state: 'text',
+            original: lines('a', 'B', 'c', 'd'),
+            modified: lines('a', 'B', 'c', 'd', 'e'),
+        });
         // The branch from its first commit to HEAD is the second commit's work: gone.txt is deleted in it, and lib.ts is not touched by it.
-        expect(await placeFile(place, 'branch', 'gone.txt', undefined, { from: first })).toMatchObject({ state: 'text', original: lines('bye'), modified: null });
-        expect((await failure(placeFile(place, 'branch', 'lib.ts', undefined, { from: first }))).code).toBe('not_found');
+        expect(await placeFile(place, 'branch', 'gone.txt', undefined, { from: first })).toMatchObject({
+            state: 'text',
+            original: lines('bye'),
+            modified: null,
+        });
+        expect((await failure(placeFile(place, 'branch', 'lib.ts', undefined, { from: first }))).code).toBe(
+            'not_found'
+        );
         // `uncommitted` is HEAD to the disk: told another start it is that start to the disk.
         expect(await text(place, 'uncommitted', 'lib.ts')).toMatchObject({ original: lines('a', 'B', 'c', 'd') });
-        expect(await placeFile(place, 'uncommitted', 'lib.ts', undefined, { from: base })).toMatchObject({ state: 'text', original: lines('a', 'b', 'c'), modified: lines('a', 'B', 'c', 'd', 'e') });
+        expect(await placeFile(place, 'uncommitted', 'lib.ts', undefined, { from: base })).toMatchObject({
+            state: 'text',
+            original: lines('a', 'b', 'c'),
+            modified: lines('a', 'B', 'c', 'd', 'e'),
+        });
         // A commit's scope starts at the parent the list gave, the commit itself still being the commit.
-        expect(await placeFile(place, commitScope(first), 'lib.ts', undefined, { from: base })).toMatchObject({ original: lines('a', 'b', 'c'), modified: lines('a', 'B', 'c', 'd') });
+        expect(await placeFile(place, commitScope(first), 'lib.ts', undefined, { from: base })).toMatchObject({
+            original: lines('a', 'b', 'c'),
+            modified: lines('a', 'B', 'c', 'd'),
+        });
         // A file that did not change since `from` is not in the scope, as it is not in a list.
-        expect((await failure(placeFile(place, 'branch', 'src/new.ts', undefined, { from: first }))).code).toBe('not_found');
+        expect((await failure(placeFile(place, 'branch', 'src/new.ts', undefined, { from: first }))).code).toBe(
+            'not_found'
+        );
     });
 
     test('refuses a start that is not a hash or not a commit of the repository, whatever the scope', async () => {
@@ -1006,13 +1294,36 @@ describe('placeFile', () => {
         const blob = git(path, 'rev-parse', 'HEAD:lib.ts');
 
         for (const scope of ['all', 'branch', 'uncommitted', commitScope(first)] as const) {
-            for (const bad of ['', 'abc', 'HEAD', 'main', '--stat', 'zzzzzzz', `${ first }~1`, `${ first }^`, `${ first }\0`, 'a'.repeat(65)]) {
-                expect((await failure(placeFile(place, scope, 'lib.ts', undefined, { from: bad }))).code).toBe('invalid');
+            for (const bad of [
+                '',
+                'abc',
+                'HEAD',
+                'main',
+                '--stat',
+                'zzzzzzz',
+                `${first}~1`,
+                `${first}^`,
+                `${first}\0`,
+                'a'.repeat(65),
+            ]) {
+                expect((await failure(placeFile(place, scope, 'lib.ts', undefined, { from: bad }))).code).toBe(
+                    'invalid'
+                );
             }
 
-            expect((await failure(placeFile(place, scope, 'lib.ts', undefined, { from: '0123456789abcdef0123456789abcdef01234567' }))).code).toBe('not_found');
+            expect(
+                (
+                    await failure(
+                        placeFile(place, scope, 'lib.ts', undefined, {
+                            from: '0123456789abcdef0123456789abcdef01234567',
+                        })
+                    )
+                ).code
+            ).toBe('not_found');
             // An object that is not a commit is no start.
-            expect((await failure(placeFile(place, scope, 'lib.ts', undefined, { from: blob }))).code).toBe('not_found');
+            expect((await failure(placeFile(place, scope, 'lib.ts', undefined, { from: blob }))).code).toBe(
+                'not_found'
+            );
         }
     });
 
@@ -1025,7 +1336,11 @@ describe('placeFile', () => {
 
         expect(unpinned.some(line => line.includes('merge-base'))).toBe(true);
         expect(pinned.some(line => line.includes('merge-base'))).toBe(false);
-        expect(pinned.some(line => line.includes('for-each-ref') || line.includes('symbolic-ref') || line.includes('config'))).toBe(false);
+        expect(
+            pinned.some(
+                line => line.includes('for-each-ref') || line.includes('symbolic-ref') || line.includes('config')
+            )
+        ).toBe(false);
         expect(pinned.length).toBeLessThan(unpinned.length - 4);
     });
 
@@ -1034,20 +1349,30 @@ describe('placeFile', () => {
 
         expect((await failure(placeFile(placeAt(path), 'uncommitted', 'README.md', undefined))).code).toBe('not_found');
         expect((await failure(placeFile(placeAt(path), 'branch', 'scratch.txt', undefined))).code).toBe('not_found');
-        expect((await failure(placeFile(placeAt(path), commitScope(first), 'logo.bin', undefined))).code).toBe('not_found');
+        expect((await failure(placeFile(placeAt(path), commitScope(first), 'logo.bin', undefined))).code).toBe(
+            'not_found'
+        );
 
         for (const bad of ['', '../outside.txt', '/etc/passwd', 'a/../b', 'a//b', 'dir/', './lib.ts', 'lib.ts\0']) {
             expect((await failure(placeFile(placeAt(path), 'all', bad, undefined))).code).toBe('invalid');
         }
 
         expect((await failure(placeFile(placeAt(path), 'all', 'lib.ts', '../x'))).code).toBe('invalid');
-        expect((await failure(placeFile(placeAt(tempDir('git-changes')), 'all', 'lib.ts', undefined))).code).toBe('invalid');
+        expect((await failure(placeFile(placeAt(tempDir('git-changes')), 'all', 'lib.ts', undefined))).code).toBe(
+            'invalid'
+        );
     });
 
     onPosix('takes a path as the path it is, whatever pattern characters it has', async () => {
         const { work: path } = clone();
 
-        put(path, { 'a*b.txt': lines('star'), 'axb.txt': lines('x'), '[id].tsx': lines('bracket'), ':colon.txt': lines('colon'), '--stat.txt': lines('dash') });
+        put(path, {
+            'a*b.txt': lines('star'),
+            'axb.txt': lines('x'),
+            '[id].tsx': lines('bracket'),
+            ':colon.txt': lines('colon'),
+            '--stat.txt': lines('dash'),
+        });
 
         expect(await text(placeAt(path), 'uncommitted', 'a*b.txt')).toMatchObject({ modified: lines('star') });
         expect(await text(placeAt(path), 'uncommitted', '[id].tsx')).toMatchObject({ modified: lines('bracket') });
@@ -1079,7 +1404,7 @@ describe('placeFile', () => {
         const { work: path } = clone();
         const secret = join(tempDir('git-changes'), 'secret.txt');
 
-        writeFileSync(secret, 'the daemon\'s own business\n');
+        writeFileSync(secret, "the daemon's own business\n");
         symlinkSync(secret, join(path, 'leak'));
         mkdirSync(join(path, 'real'));
         put(path, { 'real/in.txt': lines('in') });
@@ -1088,7 +1413,6 @@ describe('placeFile', () => {
 
         expect(sides.modified).toBe(secret);
         expect(JSON.stringify(sides)).not.toContain('business');
-
     });
 });
 
@@ -1103,64 +1427,96 @@ describe('over HTTP', () => {
         await h.stop();
     });
 
-    const json = async <T>(response: Response) => await response.json() as T;
+    const json = async <T>(response: Response) => (await response.json()) as T;
 
     test('answers a place of the project over the three routes, behind the token, and says what is wrong with a request', async () => {
         const { path, first } = work();
         const { project } = h.ok('project.add', { folders: [path] });
         const folderId = project.folders[0].id as string;
-        const base = `/v1/projects/${ project.id }/git`;
-        const query = (extra = '') => `?folderId=${ folderId }${ extra }`;
+        const base = `/v1/projects/${project.id}/git`;
+        const query = (extra = '') => `?folderId=${folderId}${extra}`;
 
-        const answer = await json<Extract<GitStatus, { isRepository: true }>>(await h.fetch(`${ base }/status${ query() }`));
+        const answer = await json<Extract<GitStatus, { isRepository: true }>>(
+            await h.fetch(`${base}/status${query()}`)
+        );
 
-        expect(answer).toMatchObject({ isRepository: true, head: { kind: 'branch', name: 'feature' }, origin: true, base: { state: 'ready', name: 'origin/main', ahead: 2, behind: 0 } });
+        expect(answer).toMatchObject({
+            isRepository: true,
+            head: { kind: 'branch', name: 'feature' },
+            origin: true,
+            base: { state: 'ready', name: 'origin/main', ahead: 2, behind: 0 },
+        });
         expect(answer.entries.map(entry => entry.path)).toEqual(['lib.ts', 'src/staged.ts', 'scratch.txt']);
 
-        const all = await json<Extract<GitChanges, { isRepository: true }>>(await h.fetch(`${ base }/changes${ query() }`));
+        const all = await json<Extract<GitChanges, { isRepository: true }>>(await h.fetch(`${base}/changes${query()}`));
 
         expect(all).toMatchObject({ scope: 'all', fileCount: 7, baseState: 'ready' });
-        expect((await json<GitChanges>(await h.fetch(`${ base }/changes${ query('&scope=branch') }`)))).toMatchObject({ scope: 'branch', fileCount: 5 });
-        expect((await json<GitChanges>(await h.fetch(`${ base }/changes${ query(`&scope=commit:${ first }`) }`)))).toMatchObject({ fileCount: 3 });
+        expect(await json<GitChanges>(await h.fetch(`${base}/changes${query('&scope=branch')}`))).toMatchObject({
+            scope: 'branch',
+            fileCount: 5,
+        });
+        expect(
+            await json<GitChanges>(await h.fetch(`${base}/changes${query(`&scope=commit:${first}`)}`))
+        ).toMatchObject({ fileCount: 3 });
 
-        const sides = await json<GitFileSides>(await h.fetch(`${ base }/file${ query('&scope=all&path=lib.ts') }`));
+        const sides = await json<GitFileSides>(await h.fetch(`${base}/file${query('&scope=all&path=lib.ts')}`));
 
-        expect(sides).toMatchObject({ state: 'text', original: lines('a', 'b', 'c'), modified: lines('a', 'B', 'c', 'd', 'e') });
-        expect(await json<GitFileSides>(await h.fetch(`${ base }/file${ query(`&scope=branch&path=${ encodeURIComponent('renamed.ts') }&oldPath=old-name.ts`) }`))).toMatchObject({ state: 'text', original: expect.stringContaining('y = 2') });
+        expect(sides).toMatchObject({
+            state: 'text',
+            original: lines('a', 'b', 'c'),
+            modified: lines('a', 'B', 'c', 'd', 'e'),
+        });
+        expect(
+            await json<GitFileSides>(
+                await h.fetch(
+                    `${base}/file${query(`&scope=branch&path=${encodeURIComponent('renamed.ts')}&oldPath=old-name.ts`)}`
+                )
+            )
+        ).toMatchObject({ state: 'text', original: expect.stringContaining('y = 2') });
 
         // A card sends the start of its list.
-        expect(await json<GitFileSides>(await h.fetch(`${ base }/file${ query(`&scope=all&path=lib.ts&from=${ all.from }`) }`))).toEqual(sides);
-        expect(await json<GitFileSides>(await h.fetch(`${ base }/file${ query(`&scope=all&path=lib.ts&from=${ first }`) }`))).toMatchObject({ original: lines('a', 'B', 'c', 'd') });
-        expect((await h.fetch(`${ base }/file${ query('&scope=all&path=lib.ts&from=main') }`)).status).toBe(400);
-        expect((await h.fetch(`${ base }/file${ query('&scope=all&path=lib.ts&from=') }`)).status).toBe(400);
-        expect((await h.fetch(`${ base }/file${ query('&scope=all&path=lib.ts&from=0123456789abcdef') }`)).status).toBe(404);
+        expect(
+            await json<GitFileSides>(await h.fetch(`${base}/file${query(`&scope=all&path=lib.ts&from=${all.from}`)}`))
+        ).toEqual(sides);
+        expect(
+            await json<GitFileSides>(await h.fetch(`${base}/file${query(`&scope=all&path=lib.ts&from=${first}`)}`))
+        ).toMatchObject({ original: lines('a', 'B', 'c', 'd') });
+        expect((await h.fetch(`${base}/file${query('&scope=all&path=lib.ts&from=main')}`)).status).toBe(400);
+        expect((await h.fetch(`${base}/file${query('&scope=all&path=lib.ts&from=')}`)).status).toBe(400);
+        expect((await h.fetch(`${base}/file${query('&scope=all&path=lib.ts&from=0123456789abcdef')}`)).status).toBe(
+            404
+        );
 
-        expect((await h.fetch(`${ base }/status`)).status).toBe(400);
-        expect((await h.fetch(`${ base }/changes${ query('&scope=sideways') }`)).status).toBe(400);
-        expect((await h.fetch(`${ base }/changes${ query('&scope=commit:abc') }`)).status).toBe(400);
-        expect((await h.fetch(`${ base }/changes${ query('&scope=commit:0123456789abcdef') }`)).status).toBe(404);
-        expect((await h.fetch(`${ base }/file${ query('&scope=all') }`)).status).toBe(400);
-        expect((await h.fetch(`${ base }/file${ query('&scope=all&path=nothing.txt') }`)).status).toBe(404);
-        expect((await h.fetch(`${ base }/file${ query('&scope=all&path=../lib.ts') }`)).status).toBe(400);
-        expect((await h.fetch(`${ base }/status?folderId=fld_unknown`)).status).toBe(404);
-        expect((await h.fetch(`/v1/projects/prj_unknown/git/status${ query() }`)).status).toBe(404);
-        expect((await fetch(`${ h.url }${ base }/status${ query() }`)).status).toBe(401);
+        expect((await h.fetch(`${base}/status`)).status).toBe(400);
+        expect((await h.fetch(`${base}/changes${query('&scope=sideways')}`)).status).toBe(400);
+        expect((await h.fetch(`${base}/changes${query('&scope=commit:abc')}`)).status).toBe(400);
+        expect((await h.fetch(`${base}/changes${query('&scope=commit:0123456789abcdef')}`)).status).toBe(404);
+        expect((await h.fetch(`${base}/file${query('&scope=all')}`)).status).toBe(400);
+        expect((await h.fetch(`${base}/file${query('&scope=all&path=nothing.txt')}`)).status).toBe(404);
+        expect((await h.fetch(`${base}/file${query('&scope=all&path=../lib.ts')}`)).status).toBe(400);
+        expect((await h.fetch(`${base}/status?folderId=fld_unknown`)).status).toBe(404);
+        expect((await h.fetch(`/v1/projects/prj_unknown/git/status${query()}`)).status).toBe(404);
+        expect((await fetch(`${h.url}${base}/status${query()}`)).status).toBe(401);
 
         rmSync(path, { recursive: true });
-        expect((await h.fetch(`${ base }/status${ query() }`)).status).toBe(503);
+        expect((await h.fetch(`${base}/status${query()}`)).status).toBe(503);
     });
 
     test('says a folder that is no repository is none', async () => {
         const plain = tempDir('git-changes');
         const { project } = h.ok('project.add', { folders: [plain] });
-        const query = `?folderId=${ project.folders[0].id }`;
+        const query = `?folderId=${project.folders[0].id}`;
 
-        expect(await json<GitStatus>(await h.fetch(`/v1/projects/${ project.id }/git/status${ query }`))).toEqual({ isRepository: false });
-        expect(await json<GitChanges>(await h.fetch(`/v1/projects/${ project.id }/git/changes${ query }`))).toEqual({ isRepository: false });
-        expect((await h.fetch(`/v1/projects/${ project.id }/git/file${ query }&path=a.txt`)).status).toBe(400);
+        expect(await json<GitStatus>(await h.fetch(`/v1/projects/${project.id}/git/status${query}`))).toEqual({
+            isRepository: false,
+        });
+        expect(await json<GitChanges>(await h.fetch(`/v1/projects/${project.id}/git/changes${query}`))).toEqual({
+            isRepository: false,
+        });
+        expect((await h.fetch(`/v1/projects/${project.id}/git/file${query}&path=a.txt`)).status).toBe(400);
     });
 
-    test('answers a chat\'s worktree on its own, as the file routes do, and refuses a workspace that is not the folder\'s or not made', async () => {
+    test("answers a chat's worktree on its own, as the file routes do, and refuses a workspace that is not the folder's or not made", async () => {
         const { work: repo } = clone();
         const tree = join(tempDir('git-changes'), 'chat-tree');
 
@@ -1179,13 +1535,21 @@ describe('over HTTP', () => {
         const { project } = h.ok('project.add', { name: 'Shop', folders: [repo] });
         const { project: other } = h.ok('project.add', { name: 'Other', folders: [stranger] });
         const folderId = project.folders[0].id as string;
-        const workspaceId = (h.ok('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: tree } }).chat.workspace as { id: string }).id;
-        const otherId = (h.ok('chat.create', { projectId: other.id, workspace: { mode: 'existing', path: strangerTree } }).chat.workspace as { id: string }).id;
-        const base = `/v1/projects/${ project.id }/git`;
-        const at = (query: string) => `?folderId=${ folderId }&workspaceId=${ workspaceId }${ query }`;
+        const workspaceId = (
+            h.ok('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: tree } }).chat
+                .workspace as { id: string }
+        ).id;
+        const otherId = (
+            h.ok('chat.create', { projectId: other.id, workspace: { mode: 'existing', path: strangerTree } }).chat
+                .workspace as { id: string }
+        ).id;
+        const base = `/v1/projects/${project.id}/git`;
+        const at = (query: string) => `?folderId=${folderId}&workspaceId=${workspaceId}${query}`;
 
-        const own = await json<Extract<GitStatus, { isRepository: true }>>(await h.fetch(`${ base }/status${ at('') }`));
-        const checkout = await json<Extract<GitStatus, { isRepository: true }>>(await h.fetch(`${ base }/status?folderId=${ folderId }`));
+        const own = await json<Extract<GitStatus, { isRepository: true }>>(await h.fetch(`${base}/status${at('')}`));
+        const checkout = await json<Extract<GitStatus, { isRepository: true }>>(
+            await h.fetch(`${base}/status?folderId=${folderId}`)
+        );
 
         expect(own.head).toMatchObject({ kind: 'branch', name: 'chat-branch' });
         expect(own.entries).toEqual([{ path: 'lib.ts', unstaged: 'modified' }]);
@@ -1193,25 +1557,40 @@ describe('over HTTP', () => {
         expect(checkout.head).toMatchObject({ kind: 'branch', name: 'main' });
         expect(checkout.entries).toEqual([{ path: 'in-checkout.txt', untracked: true }]);
 
-        const treeChanges = await json<Extract<GitChanges, { isRepository: true }>>(await h.fetch(`${ base }/changes${ at('&scope=all') }`));
+        const treeChanges = await json<Extract<GitChanges, { isRepository: true }>>(
+            await h.fetch(`${base}/changes${at('&scope=all')}`)
+        );
 
         expect(treeChanges.files.map(file => file.path)).toEqual(['in-tree.txt', 'lib.ts']);
-        expect((await json<Extract<GitChanges, { isRepository: true }>>(await h.fetch(`${ base }/changes?folderId=${ folderId }&scope=all`))).files.map(file => file.path)).toEqual(['in-checkout.txt']);
-        expect(await json(await h.fetch(`${ base }/file${ at('&scope=all&path=lib.ts') }`))).toMatchObject({ state: 'text', modified: lines('a', 'b', 'c', 'tree edit') });
-        expect((await h.fetch(`${ base }/file?folderId=${ folderId }&scope=all&path=in-tree.txt`)).status).toBe(404);
+        expect(
+            (
+                await json<Extract<GitChanges, { isRepository: true }>>(
+                    await h.fetch(`${base}/changes?folderId=${folderId}&scope=all`)
+                )
+            ).files.map(file => file.path)
+        ).toEqual(['in-checkout.txt']);
+        expect(await json(await h.fetch(`${base}/file${at('&scope=all&path=lib.ts')}`))).toMatchObject({
+            state: 'text',
+            modified: lines('a', 'b', 'c', 'tree edit'),
+        });
+        expect((await h.fetch(`${base}/file?folderId=${folderId}&scope=all&path=in-tree.txt`)).status).toBe(404);
 
         // The worktree's own base is what its compare starts from, when it has one; the folder's is still the default for the rest.
         git(repo, 'branch', '-q', 'release', 'origin/dev');
         h.store.db.query('UPDATE workspaces SET base = ? WHERE id = ?').run('release', workspaceId);
-        expect((await json<Extract<GitStatus, { isRepository: true }>>(await h.fetch(`${ base }/status${ at('') }`))).base).toMatchObject({ state: 'ready', name: 'release', ahead: 1 });
+        expect(
+            (await json<Extract<GitStatus, { isRepository: true }>>(await h.fetch(`${base}/status${at('')}`))).base
+        ).toMatchObject({ state: 'ready', name: 'release', ahead: 1 });
 
         // Another project's worktree, an unknown one and a worktree that is not made are not places of this project.
-        expect((await h.fetch(`${ base }/status${ at('').replace(workspaceId, otherId) }`)).status).toBe(404);
-        expect((await h.fetch(`${ base }/changes${ at('&scope=all').replace(workspaceId, 'wks_unknown') }`)).status).toBe(404);
+        expect((await h.fetch(`${base}/status${at('').replace(workspaceId, otherId)}`)).status).toBe(404);
+        expect((await h.fetch(`${base}/changes${at('&scope=all').replace(workspaceId, 'wks_unknown')}`)).status).toBe(
+            404
+        );
         h.store.db.query('UPDATE workspaces SET ready = 0 WHERE id = ?').run(workspaceId);
-        expect((await h.fetch(`${ base }/status${ at('') }`)).status).toBe(503);
+        expect((await h.fetch(`${base}/status${at('')}`)).status).toBe(503);
         h.store.db.query('UPDATE workspaces SET ready = 1 WHERE id = ?').run(workspaceId);
         rmSync(tree, { recursive: true });
-        expect((await h.fetch(`${ base }/file${ at('&scope=all&path=lib.ts') }`)).status).toBe(503);
+        expect((await h.fetch(`${base}/file${at('&scope=all&path=lib.ts')}`)).status).toBe(503);
     });
 });

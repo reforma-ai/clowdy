@@ -20,8 +20,14 @@ describe('SseParser', () => {
     it('accepts \\r\\n and lone \\r line ends, even when the pair is split between chunks', () => {
         const parser = new SseParser();
 
-        expect(parser.push('data: a\r\n\r\ndata: b\r\rdata: c\r\n\r\n').map(frame => frame.data)).toEqual(['a', 'b', 'c']);
-        expect([...parser.push('data: d\r'), ...parser.push('\n\r'), ...parser.push('\n')].map(frame => frame.data)).toEqual(['d']);
+        expect(parser.push('data: a\r\n\r\ndata: b\r\rdata: c\r\n\r\n').map(frame => frame.data)).toEqual([
+            'a',
+            'b',
+            'c',
+        ]);
+        expect(
+            [...parser.push('data: d\r'), ...parser.push('\n\r'), ...parser.push('\n')].map(frame => frame.data)
+        ).toEqual(['d']);
     });
 
     it('joins several data lines with a newline and keeps a space only after the first one', () => {

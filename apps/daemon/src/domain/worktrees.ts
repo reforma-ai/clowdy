@@ -1,15 +1,33 @@
-import { folderNames } from '@clowdy/protocol';
 import { stat } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
+import { folderNames } from '@clowdy/protocol';
 
 import { getChat } from '../db/chats';
 import { chatsOfWorkspace, listWorkspacesOfProject } from '../db/workspaces';
 import { unavailable } from '../errors';
-import { baseOf, changedFiles, commitOf, hasCheckedOutSubmodules, isMerged, isOnDisk, parseWorktrees, placeOf, shortHash, workingTreeRoot } from '../git/state';
+import {
+    baseOf,
+    changedFiles,
+    commitOf,
+    hasCheckedOutSubmodules,
+    isMerged,
+    isOnDisk,
+    parseWorktrees,
+    placeOf,
+    shortHash,
+    workingTreeRoot,
+} from '../git/state';
 import { gitLine, gitRead } from './git';
 import { pathKey } from './workspaces';
 
-import type { FolderWorktrees, Project, ProjectFolder, WorktreeBlock, WorktreeChat, WorktreeInfo } from '@clowdy/protocol';
+import type {
+    FolderWorktrees,
+    Project,
+    ProjectFolder,
+    WorktreeBlock,
+    WorktreeChat,
+    WorktreeInfo,
+} from '@clowdy/protocol';
 import type { WorkspaceRecord } from '../db/workspaces';
 import type { ListedWorktree } from '../git/state';
 import type { Store } from '../store';
@@ -40,7 +58,11 @@ export interface WorktreeOwner {
 }
 
 /** Whether a folder is there: a file in its place (a folder replaced by a file) is no folder, and git cannot be run in it. */
-const isFolder = (path: string): Promise<boolean> => stat(path).then(entry => entry.isDirectory(), () => false);
+const isFolder = (path: string): Promise<boolean> =>
+    stat(path).then(
+        entry => entry.isDirectory(),
+        () => false
+    );
 
 /**
  * A path as a key to compare it with another, as `samePlace` reads paths: its real place, and for a worktree whose folder is gone the real place of the nearest folder that is
@@ -59,11 +81,14 @@ async function keyOf(path: string): Promise<string> {
 function baseCommits(folder: string): WorktreeContext['commitOfBase'] {
     const known = new Map<string, Promise<string | undefined>>();
 
-    return (name) => {
+    return name => {
         let commit = known.get(name);
 
         if (!commit) {
-            commit = (async () => (await commitOf(folder, `refs/heads/${ name }`)) ?? (await commitOf(folder, `refs/remotes/${ name }`)) ?? undefined)();
+            commit = (async () =>
+                (await commitOf(folder, `refs/heads/${name}`)) ??
+                (await commitOf(folder, `refs/remotes/${name}`)) ??
+                undefined)();
             known.set(name, commit);
         }
 
@@ -81,7 +106,7 @@ async function isInBase(folder: string, entry: ListedWorktree, base: string): Pr
         return undefined;
     }
 
-    if (!await isMerged(folder, entry.head, base)) {
+    if (!(await isMerged(folder, entry.head, base))) {
         return false;
     }
 
@@ -89,13 +114,13 @@ async function isInBase(folder: string, entry: ListedWorktree, base: string): Pr
         return true;
     }
 
-    const branch = await commitOf(folder, `refs/heads/${ entry.branch }`);
+    const branch = await commitOf(folder, `refs/heads/${entry.branch}`);
 
     if (branch === undefined) {
         return undefined;
     }
 
-    return branch === null || branch === entry.head || await isMerged(folder, branch, base);
+    return branch === null || branch === entry.head || (await isMerged(folder, branch, base));
 }
 
 /**
@@ -115,11 +140,18 @@ function blockOf(owner: WorktreeOwner, locked: boolean, chats: readonly Worktree
  * from (the record's), else the folder's own; the folder's own checkout has none, and a base the repository no longer has says nothing about merging. Every read is asynchronous,
  * bounded in time, and changes nothing.
  */
-export async function inspectWorktree(context: WorktreeContext, entry: ListedWorktree, owner: WorktreeOwner): Promise<WorktreeInfo> {
+export async function inspectWorktree(
+    context: WorktreeContext,
+    entry: ListedWorktree,
+    owner: WorktreeOwner
+): Promise<WorktreeInfo> {
     const place = entry.prunable || entry.bare ? undefined : await placeOf(entry.path);
-    const present = place !== undefined && await isOnDisk(join(place, '.git')) ? place : undefined;
-    const base = owner.main ? undefined : owner.record?.base ?? context.defaultBase;
-    const counts = present === undefined ? [0, undefined] as const : await Promise.all([changedFiles(present), hasCheckedOutSubmodules(present)]);
+    const present = place !== undefined && (await isOnDisk(join(place, '.git'))) ? place : undefined;
+    const base = owner.main ? undefined : (owner.record?.base ?? context.defaultBase);
+    const counts =
+        present === undefined
+            ? ([0, undefined] as const)
+            : await Promise.all([changedFiles(present), hasCheckedOutSubmodules(present)]);
     const baseCommit = base === undefined ? undefined : await context.commitOfBase(base);
     const merged = baseCommit === undefined ? undefined : await isInBase(context.folder, entry, baseCommit);
     const chats = owner.chats ?? [];
@@ -145,14 +177,22 @@ export async function inspectWorktree(context: WorktreeContext, entry: ListedWor
 }
 
 /** What the database says of the project's worktrees: the records, and the chats that point at each (archived ones too, oldest first). */
-function readWorkspaces(store: Store, projectId: string): { records: WorkspaceRecord[]; chatsOf: Map<string, WorktreeChat[]> } {
+function readWorkspaces(
+    store: Store,
+    projectId: string
+): { records: WorkspaceRecord[]; chatsOf: Map<string, WorktreeChat[]> } {
     return store.read(() => {
         const records = listWorkspacesOfProject(store.db, projectId);
-        const chatsOf = new Map(records.map(record => [record.id, chatsOfWorkspace(store.db, record.id).flatMap((id) => {
-            const chat = getChat(store.db, id);
+        const chatsOf = new Map(
+            records.map(record => [
+                record.id,
+                chatsOfWorkspace(store.db, record.id).flatMap(id => {
+                    const chat = getChat(store.db, id);
 
-            return chat ? [{ id: chat.id, title: chat.title, archived: chat.archivedAt !== undefined }] : [];
-        })]));
+                    return chat ? [{ id: chat.id, title: chat.title, archived: chat.archivedAt !== undefined }] : [];
+                }),
+            ])
+        );
 
         return { records, chatsOf };
     });
@@ -163,7 +203,13 @@ function readWorkspaces(store: Store, projectId: string): { records: WorkspaceRe
  * or it is the repository's primary working tree or another folder's checkout, which `blocked: 'main'` says), then the rest (an agent's own worktree, one made by hand or by another
  * program), and last one whose folder is gone, of which only the record is left.
  */
-function rank({ main, missing, managed, chats, blocked }: Pick<WorktreeInfo, 'main' | 'missing' | 'managed' | 'chats' | 'blocked'>): number {
+function rank({
+    main,
+    missing,
+    managed,
+    chats,
+    blocked,
+}: Pick<WorktreeInfo, 'main' | 'missing' | 'managed' | 'chats' | 'blocked'>): number {
     if (main) return 0;
 
     if (missing) return 3;
@@ -173,7 +219,10 @@ function rank({ main, missing, managed, chats, blocked }: Pick<WorktreeInfo, 'ma
 
 /** A folder's worktrees with ours above the others (`rank`), each kind in the order git lists them. */
 export function orderWorktrees(worktrees: readonly WorktreeInfo[]): WorktreeInfo[] {
-    return worktrees.map((worktree, index) => ({ worktree, index })).sort((a, b) => rank(a.worktree) - rank(b.worktree) || a.index - b.index).map(({ worktree }) => worktree);
+    return worktrees
+        .map((worktree, index) => ({ worktree, index }))
+        .sort((a, b) => rank(a.worktree) - rank(b.worktree) || a.index - b.index)
+        .map(({ worktree }) => worktree);
 }
 
 /**
@@ -182,9 +231,15 @@ export function orderWorktrees(worktrees: readonly WorktreeInfo[]): WorktreeInfo
  * folder is itself a linked worktree, the repository's primary one is among the others, flagged because git never removes it, and so is the checkout of another folder of the
  * project (`siblings`), which the project works in. A git that does not answer is `unavailable` for the whole read, as for `GET /v1/projects/:id/git`.
  */
-async function folderWorktrees(folder: ProjectFolder, name: string, siblings: readonly string[], records: readonly WorkspaceRecord[], chatsOf: ReadonlyMap<string, WorktreeChat[]>): Promise<FolderWorktrees> {
+async function folderWorktrees(
+    folder: ProjectFolder,
+    name: string,
+    siblings: readonly string[],
+    records: readonly WorkspaceRecord[],
+    chatsOf: ReadonlyMap<string, WorktreeChat[]>
+): Promise<FolderWorktrees> {
     const none: FolderWorktrees = { folderId: folder.id, name, isRepository: false, worktrees: [] };
-    const root = await isFolder(folder.path) ? await workingTreeRoot(folder.path) : undefined;
+    const root = (await isFolder(folder.path)) ? await workingTreeRoot(folder.path) : undefined;
 
     if (!root) {
         return none;
@@ -202,34 +257,61 @@ async function folderWorktrees(folder: ProjectFolder, name: string, siblings: re
     const primary = all[0]?.bare ? undefined : all[0];
     // A repository that keeps its git directory apart from the checkout (`git init --separate-git-dir`) has that directory named as the first entry: it is there, it holds no files
     // to work in, and it has no `.git` of its own. A primary tree whose folder is gone is a row, as any worktree whose folder is gone is.
-    const apart = primary !== undefined && await isOnDisk(primary.path) && !await isOnDisk(join(primary.path, '.git'));
+    const apart =
+        primary !== undefined && (await isOnDisk(primary.path)) && !(await isOnDisk(join(primary.path, '.git')));
     const listed = all.filter(entry => !entry.bare && !(apart && entry === primary));
     const keys = await Promise.all(listed.map(entry => keyOf(entry.path)));
     const ownIndex = keys.indexOf(rootKey);
     // The checkout of a repository that keeps its git directory apart is not in the list under its own name: it is made from what git says in the folder.
     const branch = ownIndex >= 0 ? undefined : await gitLine(folder.path, ['branch', '--show-current']);
-    const own: ListedWorktree = ownIndex >= 0 ? listed[ownIndex] : {
-        path: root,
-        head: await gitLine(folder.path, ['rev-parse', 'HEAD']) ?? '',
-        ...(branch !== undefined && { branch }),
-        bare: false,
-        prunable: false,
-    };
+    const own: ListedWorktree =
+        ownIndex >= 0
+            ? listed[ownIndex]
+            : {
+                  path: root,
+                  head: (await gitLine(folder.path, ['rev-parse', 'HEAD'])) ?? '',
+                  ...(branch !== undefined && { branch }),
+                  bare: false,
+                  prunable: false,
+              };
     const defaultBase = await baseOf(folder);
-    const context: WorktreeContext = { folder: folder.path, ...(defaultBase !== undefined && { defaultBase }), commitOfBase: baseCommits(folder.path) };
-    const recordKeys = await Promise.all(records.filter(record => record.folderId === folder.id).map(async record => [await keyOf(record.path), record] as const));
+    const context: WorktreeContext = {
+        folder: folder.path,
+        ...(defaultBase !== undefined && { defaultBase }),
+        commitOfBase: baseCommits(folder.path),
+    };
+    const recordKeys = await Promise.all(
+        records
+            .filter(record => record.folderId === folder.id)
+            .map(async record => [await keyOf(record.path), record] as const)
+    );
     const recordAt = new Map(recordKeys);
     const siblingKeys = new Set(await Promise.all(siblings.map(keyOf)));
-    const others = listed.flatMap((entry, index) => index === ownIndex ? [] : [{ entry, key: keys[index], primary: entry === primary, sibling: siblingKeys.has(keys[index]) }]);
+    const others = listed.flatMap((entry, index) =>
+        index === ownIndex
+            ? []
+            : [{ entry, key: keys[index], primary: entry === primary, sibling: siblingKeys.has(keys[index]) }]
+    );
     // The folder's own checkout is the first row, with no record and no chats: it is where chats work when they have no worktree.
-    const worktrees: WorktreeInfo[] = [await inspectWorktree(context, { ...own, path: resolve(folder.path) }, { main: true })];
+    const worktrees: WorktreeInfo[] = [
+        await inspectWorktree(context, { ...own, path: resolve(folder.path) }, { main: true }),
+    ];
 
     for (let start = 0; start < others.length; start += INSPECTIONS) {
-        worktrees.push(...await Promise.all(others.slice(start, start + INSPECTIONS).map(({ entry, key, primary, sibling }) => {
-            const record = recordAt.get(key);
+        worktrees.push(
+            ...(await Promise.all(
+                others.slice(start, start + INSPECTIONS).map(({ entry, key, primary, sibling }) => {
+                    const record = recordAt.get(key);
 
-            return inspectWorktree(context, entry, { main: false, primary, sibling, ...(record && { record, chats: chatsOf.get(record.id) }) });
-        })));
+                    return inspectWorktree(context, entry, {
+                        main: false,
+                        primary,
+                        sibling,
+                        ...(record && { record, chats: chatsOf.get(record.id) }),
+                    });
+                })
+            ))
+        );
     }
 
     return { ...none, isRepository: true, worktrees: orderWorktrees(worktrees) };
@@ -246,7 +328,15 @@ export async function projectWorktrees(store: Store, project: Project): Promise<
     const groups: FolderWorktrees[] = [];
 
     for (const [index, folder] of project.folders.entries()) {
-        groups.push(await folderWorktrees(folder, names[index], project.folders.filter(other => other.id !== folder.id).map(other => other.path), records, chatsOf));
+        groups.push(
+            await folderWorktrees(
+                folder,
+                names[index],
+                project.folders.filter(other => other.id !== folder.id).map(other => other.path),
+                records,
+                chatsOf
+            )
+        );
     }
 
     return groups;

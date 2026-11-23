@@ -31,60 +31,66 @@ export function FilterPopover({ filter, onChange, statuses, agents, isOpen, onOp
     const facets = facetCount(filter);
 
     return (
-        <PopoverTrigger isOpen={ isOpen } onOpenChange={ onOpenChange }>
+        <PopoverTrigger isOpen={isOpen} onOpenChange={onOpenChange}>
             <Button
                 variant="bordered"
                 size="sm"
-                aria-label={ facets > 0 ? `Filter, ${ facets } active` : 'Filter' }
-                tooltip={ commandTooltip('Filter', 'tasks.filter') }
+                aria-label={facets > 0 ? `Filter, ${facets} active` : 'Filter'}
+                tooltip={commandTooltip('Filter', 'tasks.filter')}
                 data-filter-trigger
             >
                 <Sliders />
                 Filter
-                { facets > 0 && <span className={ styles.count }>{ facets }</span> }
+                {facets > 0 && <span className={styles.count}>{facets}</span>}
             </Button>
-            <Popover placement="bottom end" width={ 300 } spacing="md" aria-label="Filter tasks">
-                <div className={ styles.body }>
-                    <div className={ styles.group }>
-                        <span className={ styles.heading }>Status</span>
-                        { statuses.map(status => (
+            <Popover placement="bottom end" width={300} spacing="md" aria-label="Filter tasks">
+                <div className={styles.body}>
+                    <div className={styles.group}>
+                        <span className={styles.heading}>Status</span>
+                        {statuses.map(status => (
                             <Checkbox
-                                key={ status.id }
+                                key={status.id}
                                 size="sm"
-                                isSelected={ filter.statusIds.includes(status.id) }
-                                onChange={ () => onChange({ ...filter, statusIds: toggle(filter.statusIds, status.id) }) }
+                                isSelected={filter.statusIds.includes(status.id)}
+                                onChange={() => onChange({ ...filter, statusIds: toggle(filter.statusIds, status.id) })}
                             >
-                                <span className={ styles.optionLabel }>
-                                    <StatusIcon category={ status.category } />
-                                    { status.name }
+                                <span className={styles.optionLabel}>
+                                    <StatusIcon category={status.category} />
+                                    {status.name}
                                 </span>
                             </Checkbox>
-                        )) }
+                        ))}
                     </div>
 
-                    <div className={ styles.group }>
-                        <span className={ styles.heading }>Agent</span>
-                        { agents.length === 0 && <span className={ styles.none }>No agent has worked on a task yet</span> }
-                        <div className={ styles.agents }>
-                            { agents.map(run => (
+                    <div className={styles.group}>
+                        <span className={styles.heading}>Agent</span>
+                        {agents.length === 0 && <span className={styles.none}>No agent has worked on a task yet</span>}
+                        <div className={styles.agents}>
+                            {agents.map(run => (
                                 <Checkbox
-                                    key={ run.id }
+                                    key={run.id}
                                     size="sm"
-                                    isSelected={ filter.runIds.includes(run.id) }
-                                    onChange={ () => onChange({ ...filter, runIds: toggle(filter.runIds, run.id) }) }
+                                    isSelected={filter.runIds.includes(run.id)}
+                                    onChange={() => onChange({ ...filter, runIds: toggle(filter.runIds, run.id) })}
                                 >
-                                    <span className={ styles.option }>
-                                        <span className={ styles.optionLabel }>{ run.name }</span>
-                                        <RunStatusPill run={ run } />
+                                    <span className={styles.option}>
+                                        <span className={styles.optionLabel}>{run.name}</span>
+                                        <RunStatusPill run={run} />
                                     </span>
                                 </Checkbox>
-                            )) }
+                            ))}
                         </div>
                     </div>
 
-                    { facets > 0 && (
-                        <Button variant="filling" size="sm" onPress={ () => onChange({ ...NO_FILTER, query: filter.query }) }>Clear filters</Button>
-                    ) }
+                    {facets > 0 && (
+                        <Button
+                            variant="filling"
+                            size="sm"
+                            onPress={() => onChange({ ...NO_FILTER, query: filter.query })}
+                        >
+                            Clear filters
+                        </Button>
+                    )}
                 </div>
             </Popover>
         </PopoverTrigger>

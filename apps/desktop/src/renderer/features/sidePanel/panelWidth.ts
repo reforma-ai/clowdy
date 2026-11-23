@@ -1,7 +1,7 @@
 import { FILE_MANAGER_MIN_WIDTH } from '@clowdy/file-manager/layout';
 
 import { MAIN_MIN_WIDTH, SIDEBAR_MIN_WIDTH } from '../../shared/sidebarWidth';
-import { readStored, writeStored, type KeyValueStorage } from '../../stores/storage';
+import { type KeyValueStorage, readStored, writeStored } from '../../stores/storage';
 import { CHANGES_MIN_WIDTH } from '../changes/layout';
 
 /**

@@ -1,5 +1,17 @@
 import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+    chmodSync,
+    existsSync,
+    lstatSync,
+    mkdirSync,
+    readdirSync,
+    readFileSync,
+    readlinkSync,
+    rmSync,
+    statSync,
+    symlinkSync,
+    writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 
 import { openFolder, put } from './fs-helpers';
@@ -23,17 +35,32 @@ afterEach(() => h.stop());
 const text = (path: string) => readFileSync(path, 'utf8');
 const paths = (entries: FsEntry[]) => entries.map(entry => entry.path).sort();
 const byPath = (entries: FsEntry[]) => Object.fromEntries(entries.map(entry => [entry.path, entry]));
-const body = (content: string | Uint8Array) => (async function* () {
-    yield typeof content === 'string' ? new TextEncoder().encode(content) : content;
-})();
+const body = (content: string | Uint8Array) =>
+    (async function* () {
+        yield typeof content === 'string' ? new TextEncoder().encode(content) : content;
+    })();
 const neither = { create: false, declaredLength: 0 };
 
 describe('list', () => {
     test('lists every entry below the folder, files with their size and folders without hasChildren', async () => {
-        const { fs, project, folderId } = openFolder(h, { 'a.txt': 'hello', 'src/app/main.ts': 'xy', 'src/empty/.keep': '', 'docs/readme.md': '#' });
+        const { fs, project, folderId } = openFolder(h, {
+            'a.txt': 'hello',
+            'src/app/main.ts': 'xy',
+            'src/empty/.keep': '',
+            'docs/readme.md': '#',
+        });
         const entries = await fs.list(project, folderId, '');
 
-        expect(paths(entries)).toEqual(['a.txt', 'docs', 'docs/readme.md', 'src', 'src/app', 'src/app/main.ts', 'src/empty', 'src/empty/.keep']);
+        expect(paths(entries)).toEqual([
+            'a.txt',
+            'docs',
+            'docs/readme.md',
+            'src',
+            'src/app',
+            'src/app/main.ts',
+            'src/empty',
+            'src/empty/.keep',
+        ]);
         expect(byPath(entries)['a.txt']).toEqual({ path: 'a.txt', kind: 'file', size: 5 });
         expect(byPath(entries).src).toEqual({ path: 'src', kind: 'directory' });
     });
@@ -51,7 +78,11 @@ describe('list', () => {
     });
 
     test('stops at depth path segments and marks a folder at the cutoff with whether it has anything below', async () => {
-        const { fs, project, folderId, dir } = openFolder(h, { 'src/app/foo/x.ts': '1', 'src/empty/.keep': '', 'top.txt': '2' });
+        const { fs, project, folderId, dir } = openFolder(h, {
+            'src/app/foo/x.ts': '1',
+            'src/empty/.keep': '',
+            'top.txt': '2',
+        });
 
         mkdirSync(join(dir, 'src/void'));
 
@@ -71,11 +102,25 @@ describe('list', () => {
     });
 
     test('lists below a path with paths relative to the folder, and counts depth from that path', async () => {
-        const { fs, project, folderId } = openFolder(h, { 'src/app/foo/x.ts': '1', 'src/app/y.ts': '22', 'other.txt': '3' });
+        const { fs, project, folderId } = openFolder(h, {
+            'src/app/foo/x.ts': '1',
+            'src/app/y.ts': '22',
+            'other.txt': '3',
+        });
 
-        expect(byPath(await fs.list(project, folderId, 'src', 1))).toEqual({ 'src/app': { path: 'src/app', kind: 'directory', hasChildren: true } });
-        expect(paths(await fs.list(project, folderId, 'src/app'))).toEqual(['src/app/foo', 'src/app/foo/x.ts', 'src/app/y.ts']);
-        expect(paths(await fs.list(project, folderId, './src//app/'))).toEqual(['src/app/foo', 'src/app/foo/x.ts', 'src/app/y.ts']);
+        expect(byPath(await fs.list(project, folderId, 'src', 1))).toEqual({
+            'src/app': { path: 'src/app', kind: 'directory', hasChildren: true },
+        });
+        expect(paths(await fs.list(project, folderId, 'src/app'))).toEqual([
+            'src/app/foo',
+            'src/app/foo/x.ts',
+            'src/app/y.ts',
+        ]);
+        expect(paths(await fs.list(project, folderId, './src//app/'))).toEqual([
+            'src/app/foo',
+            'src/app/foo/x.ts',
+            'src/app/y.ts',
+        ]);
     });
 
     test('a missing path is not_found and a file is invalid', async () => {
@@ -88,23 +133,44 @@ describe('list', () => {
 
     test('lists .git and node_modules only as cutoff folders, however deep, and their content when asked for by path', async () => {
         const { fs, project, folderId, dir } = openFolder(h, {
-            '.git/HEAD': 'ref', 'node_modules/left-pad/index.js': '1', 'node_modules/left-pad/node_modules/dep/i.js': '2',
-            'pkg/node_modules/x.js': '3', 'pkg/.git/config': '4', 'pkg/src.ts': '5',
+            '.git/HEAD': 'ref',
+            'node_modules/left-pad/index.js': '1',
+            'node_modules/left-pad/node_modules/dep/i.js': '2',
+            'pkg/node_modules/x.js': '3',
+            'pkg/.git/config': '4',
+            'pkg/src.ts': '5',
         });
 
         mkdirSync(join(dir, 'empty/node_modules'), { recursive: true });
 
         const all = byPath(await fs.list(project, folderId, ''));
 
-        expect(Object.keys(all).sort()).toEqual(['.git', 'empty', 'empty/node_modules', 'node_modules', 'pkg', 'pkg/.git', 'pkg/node_modules', 'pkg/src.ts']);
+        expect(Object.keys(all).sort()).toEqual([
+            '.git',
+            'empty',
+            'empty/node_modules',
+            'node_modules',
+            'pkg',
+            'pkg/.git',
+            'pkg/node_modules',
+            'pkg/src.ts',
+        ]);
         expect(all['.git']).toEqual({ path: '.git', kind: 'directory', hasChildren: true });
         expect(all['node_modules']).toEqual({ path: 'node_modules', kind: 'directory', hasChildren: true });
-        expect(all['empty/node_modules']).toEqual({ path: 'empty/node_modules', kind: 'directory', hasChildren: false });
+        expect(all['empty/node_modules']).toEqual({
+            path: 'empty/node_modules',
+            kind: 'directory',
+            hasChildren: false,
+        });
         expect(all['pkg/.git']?.hasChildren).toBe(true);
 
         const inside = await fs.list(project, folderId, 'node_modules');
 
-        expect(paths(inside)).toEqual(['node_modules/left-pad', 'node_modules/left-pad/index.js', 'node_modules/left-pad/node_modules']);
+        expect(paths(inside)).toEqual([
+            'node_modules/left-pad',
+            'node_modules/left-pad/index.js',
+            'node_modules/left-pad/node_modules',
+        ]);
         expect(byPath(inside)['node_modules/left-pad/node_modules']?.hasChildren).toBe(true);
         expect(paths(await fs.list(project, folderId, '.git'))).toEqual(['.git/HEAD']);
     });
@@ -121,7 +187,7 @@ describe('list', () => {
         for (const dir of ['a', 'b', 'c']) {
             for (const sub of ['x', 'y']) {
                 for (let n = 0; n < 5; n++) {
-                    files[`${ dir }/${ sub }/f${ n }.txt`] = '1';
+                    files[`${dir}/${sub}/f${n}.txt`] = '1';
                 }
             }
         }
@@ -141,7 +207,9 @@ describe('list', () => {
         }
 
         // A folder whose content did not fit is a cutoff, not an empty folder.
-        const unread = ['a/x', 'a/y', 'b/x', 'b/y', 'c/x', 'c/y'].filter(path => !entries.some(entry => entry.path.startsWith(`${ path }/`)));
+        const unread = ['a/x', 'a/y', 'b/x', 'b/y', 'c/x', 'c/y'].filter(
+            path => !entries.some(entry => entry.path.startsWith(`${path}/`))
+        );
 
         expect(unread.length).toBeGreaterThan(0);
 
@@ -159,49 +227,83 @@ describe('list', () => {
     });
 
     test('leaves out what the daemon keeps next to a file while it writes', async () => {
-        const { fs, project, folderId } = openFolder(h, { 'a.txt': '1', '.clowdy-0123abcd.tmp': 'half', '.clowdy-0123abcd.replaced': 'old', '.clowdy-notours.tmp': 'mine' });
+        const { fs, project, folderId } = openFolder(h, {
+            'a.txt': '1',
+            '.clowdy-0123abcd.tmp': 'half',
+            '.clowdy-0123abcd.replaced': 'old',
+            '.clowdy-notours.tmp': 'mine',
+        });
 
         expect(paths(await fs.list(project, folderId, ''))).toEqual(['.clowdy-notours.tmp', 'a.txt']);
     });
 
-    test.skipIf(!posix || process.getuid?.() === 0)('a folder that cannot be read is a cutoff in a deeper listing and permission when asked for', async () => {
-        const { fs, project, folderId, dir } = openFolder(h, { 'open/a.txt': '1', 'locked/b.txt': '2' });
+    test.skipIf(!posix || process.getuid?.() === 0)(
+        'a folder that cannot be read is a cutoff in a deeper listing and permission when asked for',
+        async () => {
+            const { fs, project, folderId, dir } = openFolder(h, { 'open/a.txt': '1', 'locked/b.txt': '2' });
 
-        chmodSync(join(dir, 'locked'), 0o000);
+            chmodSync(join(dir, 'locked'), 0o000);
 
-        try {
-            expect(byPath(await fs.list(project, folderId, ''))['locked']).toEqual({ path: 'locked', kind: 'directory', hasChildren: true });
-            await expect(fs.list(project, folderId, 'locked')).rejects.toMatchObject({ code: 'invalid', details: { reason: 'permission' } });
+            try {
+                expect(byPath(await fs.list(project, folderId, ''))['locked']).toEqual({
+                    path: 'locked',
+                    kind: 'directory',
+                    hasChildren: true,
+                });
+                await expect(fs.list(project, folderId, 'locked')).rejects.toMatchObject({
+                    code: 'invalid',
+                    details: { reason: 'permission' },
+                });
+            } finally {
+                chmodSync(join(dir, 'locked'), 0o755);
+            }
         }
-        finally {
-            chmodSync(join(dir, 'locked'), 0o755);
+    );
+
+    link(
+        'lists a link to a folder as a folder that no listing enters, a link to a file as a file, and leaves out links that lead out or nowhere',
+        async () => {
+            const outside = tempDir('outside');
+
+            put(outside, { 'secret.txt': 'no', 'dir/s.txt': 'no' });
+
+            const { fs, project, folderId, dir } = openFolder(h, {
+                'real/inner/a.txt': '1',
+                'file.txt': 'abc',
+                'empty/.keep': '',
+            });
+
+            symlinkSync('real', join(dir, 'to-real'));
+            symlinkSync('file.txt', join(dir, 'to-file'));
+            symlinkSync('empty', join(dir, 'to-empty'));
+            symlinkSync(outside, join(dir, 'to-outside'));
+            symlinkSync(join(outside, 'secret.txt'), join(dir, 'to-secret'));
+            symlinkSync('does-not-exist', join(dir, 'dangling'));
+
+            const all = byPath(await fs.list(project, folderId, ''));
+
+            expect(Object.keys(all).sort()).toEqual([
+                'empty',
+                'empty/.keep',
+                'file.txt',
+                'real',
+                'real/inner',
+                'real/inner/a.txt',
+                'to-empty',
+                'to-file',
+                'to-real',
+            ]);
+            expect(all['to-real']).toEqual({ path: 'to-real', kind: 'directory', hasChildren: true });
+            expect(all['to-empty']).toEqual({ path: 'to-empty', kind: 'directory', hasChildren: true });
+            expect(all['to-file']).toEqual({ path: 'to-file', kind: 'file', size: 3 });
+
+            // Asked for by its own path, a link inside the folder is listed like the folder it leads to.
+            expect(paths(await fs.list(project, folderId, 'to-real'))).toEqual([
+                'to-real/inner',
+                'to-real/inner/a.txt',
+            ]);
         }
-    });
-
-    link('lists a link to a folder as a folder that no listing enters, a link to a file as a file, and leaves out links that lead out or nowhere', async () => {
-        const outside = tempDir('outside');
-
-        put(outside, { 'secret.txt': 'no', 'dir/s.txt': 'no' });
-
-        const { fs, project, folderId, dir } = openFolder(h, { 'real/inner/a.txt': '1', 'file.txt': 'abc', 'empty/.keep': '' });
-
-        symlinkSync('real', join(dir, 'to-real'));
-        symlinkSync('file.txt', join(dir, 'to-file'));
-        symlinkSync('empty', join(dir, 'to-empty'));
-        symlinkSync(outside, join(dir, 'to-outside'));
-        symlinkSync(join(outside, 'secret.txt'), join(dir, 'to-secret'));
-        symlinkSync('does-not-exist', join(dir, 'dangling'));
-
-        const all = byPath(await fs.list(project, folderId, ''));
-
-        expect(Object.keys(all).sort()).toEqual(['empty', 'empty/.keep', 'file.txt', 'real', 'real/inner', 'real/inner/a.txt', 'to-empty', 'to-file', 'to-real']);
-        expect(all['to-real']).toEqual({ path: 'to-real', kind: 'directory', hasChildren: true });
-        expect(all['to-empty']).toEqual({ path: 'to-empty', kind: 'directory', hasChildren: true });
-        expect(all['to-file']).toEqual({ path: 'to-file', kind: 'file', size: 3 });
-
-        // Asked for by its own path, a link inside the folder is listed like the folder it leads to.
-        expect(paths(await fs.list(project, folderId, 'to-real'))).toEqual(['to-real/inner', 'to-real/inner/a.txt']);
-    });
+    );
 });
 
 describe('containment', () => {
@@ -232,37 +334,50 @@ describe('containment', () => {
         expect(Buffer.from((await fs.read(project, folderId, './a//b.txt')).bytes).toString()).toBe('hi');
     });
 
-    link('never follows a link out of the folder: not to read, write, make a folder, list, copy or move through', async () => {
-        const outside = tempDir('outside');
+    link(
+        'never follows a link out of the folder: not to read, write, make a folder, list, copy or move through',
+        async () => {
+            const outside = tempDir('outside');
 
-        put(outside, { 'secret.txt': 'no', 'dir/s.txt': 'no' });
+            put(outside, { 'secret.txt': 'no', 'dir/s.txt': 'no' });
 
-        const { fs, project, folderId, dir } = openFolder(h, { 'mine.txt': 'mine' });
+            const { fs, project, folderId, dir } = openFolder(h, { 'mine.txt': 'mine' });
 
-        symlinkSync(outside, join(dir, 'out'));
-        symlinkSync(join(outside, 'secret.txt'), join(dir, 'secret'));
-        symlinkSync(join(dir, 'nowhere'), join(dir, 'dangling'));
+            symlinkSync(outside, join(dir, 'out'));
+            symlinkSync(join(outside, 'secret.txt'), join(dir, 'secret'));
+            symlinkSync(join(dir, 'nowhere'), join(dir, 'dangling'));
 
-        const refused = { code: 'invalid', details: { reason: 'outside' } };
+            const refused = { code: 'invalid', details: { reason: 'outside' } };
 
-        await expect(fs.read(project, folderId, 'secret')).rejects.toMatchObject(refused);
-        await expect(fs.read(project, folderId, 'out/secret.txt')).rejects.toMatchObject(refused);
-        await expect(fs.list(project, folderId, 'out')).rejects.toMatchObject(refused);
-        await expect(fs.write(project, folderId, 'out/new.txt', body('x'), neither)).rejects.toMatchObject(refused);
-        await expect(fs.write(project, folderId, 'out/deep/er/new.txt', body('x'), neither)).rejects.toMatchObject(refused);
-        await expect(fs.write(project, folderId, 'secret', body('x'), neither)).rejects.toMatchObject(refused);
-        await expect(fs.write(project, folderId, 'dangling', body('x'), neither)).rejects.toMatchObject(refused);
-        await expect(fs.makeFolder(project, folderId, 'out/made')).rejects.toMatchObject(refused);
-        await expect(fs.copy(project, folderId, [{ from: 'mine.txt', to: 'out/mine.txt' }])).rejects.toMatchObject(refused);
-        await expect(fs.move(project, folderId, [{ from: 'mine.txt', to: 'out/mine.txt' }])).rejects.toMatchObject(refused);
-        await expect(fs.copy(project, folderId, [{ from: 'out/secret.txt', to: 'stolen.txt' }])).rejects.toMatchObject(refused);
-        await expect(fs.move(project, folderId, [{ from: 'out/dir', to: 'stolen' }])).rejects.toMatchObject(refused);
+            await expect(fs.read(project, folderId, 'secret')).rejects.toMatchObject(refused);
+            await expect(fs.read(project, folderId, 'out/secret.txt')).rejects.toMatchObject(refused);
+            await expect(fs.list(project, folderId, 'out')).rejects.toMatchObject(refused);
+            await expect(fs.write(project, folderId, 'out/new.txt', body('x'), neither)).rejects.toMatchObject(refused);
+            await expect(fs.write(project, folderId, 'out/deep/er/new.txt', body('x'), neither)).rejects.toMatchObject(
+                refused
+            );
+            await expect(fs.write(project, folderId, 'secret', body('x'), neither)).rejects.toMatchObject(refused);
+            await expect(fs.write(project, folderId, 'dangling', body('x'), neither)).rejects.toMatchObject(refused);
+            await expect(fs.makeFolder(project, folderId, 'out/made')).rejects.toMatchObject(refused);
+            await expect(fs.copy(project, folderId, [{ from: 'mine.txt', to: 'out/mine.txt' }])).rejects.toMatchObject(
+                refused
+            );
+            await expect(fs.move(project, folderId, [{ from: 'mine.txt', to: 'out/mine.txt' }])).rejects.toMatchObject(
+                refused
+            );
+            await expect(
+                fs.copy(project, folderId, [{ from: 'out/secret.txt', to: 'stolen.txt' }])
+            ).rejects.toMatchObject(refused);
+            await expect(fs.move(project, folderId, [{ from: 'out/dir', to: 'stolen' }])).rejects.toMatchObject(
+                refused
+            );
 
-        expect(readdirSync(outside).sort()).toEqual(['dir', 'secret.txt']);
-        expect(text(join(outside, 'secret.txt'))).toBe('no');
-        expect(existsSync(join(dir, 'stolen.txt'))).toBe(false);
-        expect(text(join(dir, 'mine.txt'))).toBe('mine');
-    });
+            expect(readdirSync(outside).sort()).toEqual(['dir', 'secret.txt']);
+            expect(text(join(outside, 'secret.txt'))).toBe('no');
+            expect(existsSync(join(dir, 'stolen.txt'))).toBe(false);
+            expect(text(join(dir, 'mine.txt'))).toBe('mine');
+        }
+    );
 
     link('works through a link that stays inside the folder', async () => {
         const { fs, project, folderId, dir } = openFolder(h, { 'real/a.txt': 'inside' });
@@ -325,7 +440,9 @@ describe('containment', () => {
         expect(readlinkSync(join(dir, 'tree2/secret'))).toBe(join(outside, 'secret.txt'));
         expect(lstatSync(join(dir, 'moved-link')).isSymbolicLink()).toBe(true);
         expect(text(join(outside, 'secret.txt'))).toBe('keep');
-        await expect(fs.read(project, folderId, 'moved-link')).rejects.toMatchObject({ details: { reason: 'outside' } });
+        await expect(fs.read(project, folderId, 'moved-link')).rejects.toMatchObject({
+            details: { reason: 'outside' },
+        });
     });
 
     test('a folder that is gone from the disk is unavailable, one the project lacks is not_found, none given is invalid', async () => {
@@ -367,7 +484,10 @@ describe('read', () => {
         fs.maxFileBytes = 5;
 
         expect((await fs.read(project, folderId, 'small.txt')).bytes.length).toBe(5);
-        await expect(fs.read(project, folderId, 'big.txt')).rejects.toMatchObject({ code: 'invalid', details: { reason: 'too_large', maxBytes: 5, size: 6 } });
+        await expect(fs.read(project, folderId, 'big.txt')).rejects.toMatchObject({
+            code: 'invalid',
+            details: { reason: 'too_large', maxBytes: 5, size: 6 },
+        });
     });
 
     test('the version changes with the content and stays while nothing changes', async () => {
@@ -405,7 +525,9 @@ describe('write', () => {
     test('If-None-Match writes only a new file: conflict exists otherwise, and the file is left alone', async () => {
         const { fs, project, folderId, dir } = openFolder(h, { 'a.txt': 'one' });
 
-        await expect(fs.write(project, folderId, 'a.txt', body('two'), { create: true, declaredLength: 0 })).rejects.toMatchObject({ code: 'conflict', details: { reason: 'exists', path: 'a.txt' } });
+        await expect(
+            fs.write(project, folderId, 'a.txt', body('two'), { create: true, declaredLength: 0 })
+        ).rejects.toMatchObject({ code: 'conflict', details: { reason: 'exists', path: 'a.txt' } });
         expect(text(join(dir, 'a.txt'))).toBe('one');
 
         await fs.write(project, folderId, 'b.txt', body('new'), { create: true, declaredLength: 0 });
@@ -416,15 +538,23 @@ describe('write', () => {
     test('If-Match writes only over that version: conflict version with the current one, null when the file is gone', async () => {
         const { fs, project, folderId, dir } = openFolder(h, { 'a.txt': 'one' });
         const stale = (await fs.read(project, folderId, 'a.txt')).version;
-        const { version: current } = await fs.write(project, folderId, 'a.txt', body('two (longer)'), { create: false, declaredLength: 0, version: stale });
+        const { version: current } = await fs.write(project, folderId, 'a.txt', body('two (longer)'), {
+            create: false,
+            declaredLength: 0,
+            version: stale,
+        });
 
         expect(current).not.toBe(stale);
-        await expect(fs.write(project, folderId, 'a.txt', body('three'), { create: false, declaredLength: 0, version: stale })).rejects.toMatchObject({
+        await expect(
+            fs.write(project, folderId, 'a.txt', body('three'), { create: false, declaredLength: 0, version: stale })
+        ).rejects.toMatchObject({
             code: 'conflict',
             details: { reason: 'version', path: 'a.txt', currentVersion: current },
         });
         expect(text(join(dir, 'a.txt'))).toBe('two (longer)');
-        await expect(fs.write(project, folderId, 'gone.txt', body('x'), { create: false, declaredLength: 0, version: '1:1' })).rejects.toMatchObject({
+        await expect(
+            fs.write(project, folderId, 'gone.txt', body('x'), { create: false, declaredLength: 0, version: '1:1' })
+        ).rejects.toMatchObject({
             code: 'conflict',
             details: { reason: 'version', currentVersion: null },
         });
@@ -444,8 +574,12 @@ describe('write', () => {
         const { fs, project, folderId, dir } = openFolder(h, { 'a.txt': 'one' });
 
         await fs.write(project, folderId, 'a.txt', body('two'), neither);
-        await fs.write(project, folderId, 'a.txt', body('three'), { create: true, declaredLength: 0 }).catch(() => undefined);
-        await fs.write(project, folderId, 'sub/b.txt', body('x'), { create: false, declaredLength: 0, version: '1:1' }).catch(() => undefined);
+        await fs
+            .write(project, folderId, 'a.txt', body('three'), { create: true, declaredLength: 0 })
+            .catch(() => undefined);
+        await fs
+            .write(project, folderId, 'sub/b.txt', body('x'), { create: false, declaredLength: 0, version: '1:1' })
+            .catch(() => undefined);
 
         expect(readdirSync(dir).sort()).toEqual(['a.txt']);
     });
@@ -453,7 +587,9 @@ describe('write', () => {
     test('a refused write does not leave the parent folders it would have made', async () => {
         const { fs, project, folderId, dir } = openFolder(h);
 
-        await expect(fs.write(project, folderId, 'x/y/z.txt', body('1'), { create: false, declaredLength: 0, version: '9:9' })).rejects.toMatchObject({ code: 'conflict' });
+        await expect(
+            fs.write(project, folderId, 'x/y/z.txt', body('1'), { create: false, declaredLength: 0, version: '9:9' })
+        ).rejects.toMatchObject({ code: 'conflict' });
 
         expect(readdirSync(dir)).toEqual([]);
     });
@@ -461,10 +597,22 @@ describe('write', () => {
     test('a write over a folder, or below a file, is conflict exists', async () => {
         const { fs, project, folderId } = openFolder(h, { 'dir/a.txt': '1', 'file.txt': '2' });
 
-        await expect(fs.write(project, folderId, 'dir', body('x'), neither)).rejects.toMatchObject({ code: 'conflict', details: { reason: 'exists', path: 'dir' } });
-        await expect(fs.write(project, folderId, '', body('x'), neither)).rejects.toMatchObject({ code: 'conflict', details: { reason: 'exists' } });
-        await expect(fs.write(project, folderId, 'file.txt/inner.txt', body('x'), neither)).rejects.toMatchObject({ code: 'conflict', details: { reason: 'exists', path: 'file.txt' } });
-        await expect(fs.write(project, folderId, 'dir/a.txt/x/y.txt', body('x'), neither)).rejects.toMatchObject({ code: 'conflict', details: { reason: 'exists', path: 'dir/a.txt' } });
+        await expect(fs.write(project, folderId, 'dir', body('x'), neither)).rejects.toMatchObject({
+            code: 'conflict',
+            details: { reason: 'exists', path: 'dir' },
+        });
+        await expect(fs.write(project, folderId, '', body('x'), neither)).rejects.toMatchObject({
+            code: 'conflict',
+            details: { reason: 'exists' },
+        });
+        await expect(fs.write(project, folderId, 'file.txt/inner.txt', body('x'), neither)).rejects.toMatchObject({
+            code: 'conflict',
+            details: { reason: 'exists', path: 'file.txt' },
+        });
+        await expect(fs.write(project, folderId, 'dir/a.txt/x/y.txt', body('x'), neither)).rejects.toMatchObject({
+            code: 'conflict',
+            details: { reason: 'exists', path: 'dir/a.txt' },
+        });
     });
 
     test.skipIf(!posix)('keeps the mode of the file it replaces', async () => {
@@ -481,7 +629,10 @@ describe('write', () => {
 
         chmodSync(join(dir, 'locked.txt'), 0o444);
 
-        await expect(fs.write(project, folderId, 'locked.txt', body('two'), neither)).rejects.toMatchObject({ code: 'invalid', details: { reason: 'permission' } });
+        await expect(fs.write(project, folderId, 'locked.txt', body('two'), neither)).rejects.toMatchObject({
+            code: 'invalid',
+            details: { reason: 'permission' },
+        });
         expect(text(join(dir, 'locked.txt'))).toBe('one');
     });
 
@@ -490,8 +641,13 @@ describe('write', () => {
 
         fs.maxFileBytes = 4;
 
-        await expect(fs.write(project, folderId, 'big.txt', body('12345'), neither)).rejects.toMatchObject({ code: 'invalid', details: { reason: 'too_large', maxBytes: 4 } });
-        await expect(fs.write(project, folderId, 'big.txt', null, { create: false, declaredLength: 5 })).rejects.toMatchObject({ details: { reason: 'too_large' } });
+        await expect(fs.write(project, folderId, 'big.txt', body('12345'), neither)).rejects.toMatchObject({
+            code: 'invalid',
+            details: { reason: 'too_large', maxBytes: 4 },
+        });
+        await expect(
+            fs.write(project, folderId, 'big.txt', null, { create: false, declaredLength: 5 })
+        ).rejects.toMatchObject({ details: { reason: 'too_large' } });
         await fs.write(project, folderId, 'ok.txt', body('1234'), neither);
 
         expect(readdirSync(dir)).toEqual(['ok.txt']);
@@ -527,8 +683,14 @@ describe('makeFolder', () => {
     test('a file in the way is conflict exists', async () => {
         const { fs, project, folderId } = openFolder(h, { 'file.txt': '1' });
 
-        await expect(fs.makeFolder(project, folderId, 'file.txt')).rejects.toMatchObject({ code: 'conflict', details: { reason: 'exists', path: 'file.txt' } });
-        await expect(fs.makeFolder(project, folderId, 'file.txt/inner/deep')).rejects.toMatchObject({ code: 'conflict', details: { reason: 'exists', path: 'file.txt' } });
+        await expect(fs.makeFolder(project, folderId, 'file.txt')).rejects.toMatchObject({
+            code: 'conflict',
+            details: { reason: 'exists', path: 'file.txt' },
+        });
+        await expect(fs.makeFolder(project, folderId, 'file.txt/inner/deep')).rejects.toMatchObject({
+            code: 'conflict',
+            details: { reason: 'exists', path: 'file.txt' },
+        });
     });
 });
 
@@ -536,7 +698,11 @@ describe('move', () => {
     test('moves a batch, folders with everything in them, and makes the folders above the targets', async () => {
         const { fs, project, folderId, dir } = openFolder(h, { 'a.txt': 'a', 'b.txt': 'b', 'src/lib/c.ts': 'c' });
 
-        await fs.move(project, folderId, [{ from: 'a.txt', to: 'moved/a.txt' }, { from: 'b.txt', to: 'b2.txt' }, { from: 'src', to: 'app' }]);
+        await fs.move(project, folderId, [
+            { from: 'a.txt', to: 'moved/a.txt' },
+            { from: 'b.txt', to: 'b2.txt' },
+            { from: 'src', to: 'app' },
+        ]);
 
         expect(text(join(dir, 'moved/a.txt'))).toBe('a');
         expect(text(join(dir, 'b2.txt'))).toBe('b');
@@ -556,9 +722,15 @@ describe('move', () => {
 
     test('changes nothing when one target is there: conflict exists with the path, until overwrite replaces it', async () => {
         const { fs, project, folderId, dir } = openFolder(h, { 'a.ts': 'a', 'b.ts': 'b', 'taken.ts': 'taken' });
-        const moves = [{ from: 'a.ts', to: 'moved/a.ts' }, { from: 'b.ts', to: 'taken.ts' }];
+        const moves = [
+            { from: 'a.ts', to: 'moved/a.ts' },
+            { from: 'b.ts', to: 'taken.ts' },
+        ];
 
-        await expect(fs.move(project, folderId, moves)).rejects.toMatchObject({ code: 'conflict', details: { reason: 'exists', path: 'taken.ts' } });
+        await expect(fs.move(project, folderId, moves)).rejects.toMatchObject({
+            code: 'conflict',
+            details: { reason: 'exists', path: 'taken.ts' },
+        });
         expect(readdirSync(dir).sort()).toEqual(['a.ts', 'b.ts', 'taken.ts']);
 
         await fs.move(project, folderId, moves, true);
@@ -569,9 +741,22 @@ describe('move', () => {
     });
 
     test('overwrite replaces a folder with a file and a file with a folder', async () => {
-        const { fs, project, folderId, dir } = openFolder(h, { 'file.txt': 'f', 'dir/inner.txt': 'i', 'target-dir/old.txt': 'o', 'target-file.txt': 't' });
+        const { fs, project, folderId, dir } = openFolder(h, {
+            'file.txt': 'f',
+            'dir/inner.txt': 'i',
+            'target-dir/old.txt': 'o',
+            'target-file.txt': 't',
+        });
 
-        await fs.move(project, folderId, [{ from: 'file.txt', to: 'target-dir' }, { from: 'dir', to: 'target-file.txt' }], true);
+        await fs.move(
+            project,
+            folderId,
+            [
+                { from: 'file.txt', to: 'target-dir' },
+                { from: 'dir', to: 'target-file.txt' },
+            ],
+            true
+        );
 
         expect(text(join(dir, 'target-dir'))).toBe('f');
         expect(text(join(dir, 'target-file.txt/inner.txt'))).toBe('i');
@@ -582,7 +767,17 @@ describe('move', () => {
         const { fs, project, folderId, dir } = openFolder(h, { 'a.txt': 'a', 'taken/old.txt': 'old' });
 
         // The same source twice passes the check against the disk and fails when the second item runs.
-        await expect(fs.move(project, folderId, [{ from: 'a.txt', to: 'taken' }, { from: 'a.txt', to: 'other/a.txt' }], true)).rejects.toMatchObject({ code: 'not_found' });
+        await expect(
+            fs.move(
+                project,
+                folderId,
+                [
+                    { from: 'a.txt', to: 'taken' },
+                    { from: 'a.txt', to: 'other/a.txt' },
+                ],
+                true
+            )
+        ).rejects.toMatchObject({ code: 'not_found' });
 
         expect(readdirSync(dir).sort()).toEqual(['a.txt', 'taken']);
         expect(text(join(dir, 'a.txt'))).toBe('a');
@@ -593,7 +788,12 @@ describe('move', () => {
     test('a failure without overwrite puts back too, and takes back the folders it made', async () => {
         const { fs, project, folderId, dir } = openFolder(h, { 'a.txt': 'a' });
 
-        await expect(fs.move(project, folderId, [{ from: 'a.txt', to: 'new/dir/a.txt' }, { from: 'a.txt', to: 'x.txt' }])).rejects.toMatchObject({ code: 'not_found' });
+        await expect(
+            fs.move(project, folderId, [
+                { from: 'a.txt', to: 'new/dir/a.txt' },
+                { from: 'a.txt', to: 'x.txt' },
+            ])
+        ).rejects.toMatchObject({ code: 'not_found' });
 
         expect(readdirSync(dir)).toEqual(['a.txt']);
     });
@@ -601,16 +801,31 @@ describe('move', () => {
     test('a missing source is not_found and changes nothing', async () => {
         const { fs, project, folderId, dir } = openFolder(h, { 'a.txt': 'a' });
 
-        await expect(fs.move(project, folderId, [{ from: 'a.txt', to: 'b.txt' }, { from: 'nope.txt', to: 'c.txt' }])).rejects.toMatchObject({ code: 'not_found', details: { path: 'nope.txt' } });
+        await expect(
+            fs.move(project, folderId, [
+                { from: 'a.txt', to: 'b.txt' },
+                { from: 'nope.txt', to: 'c.txt' },
+            ])
+        ).rejects.toMatchObject({ code: 'not_found', details: { path: 'nope.txt' } });
         expect(readdirSync(dir)).toEqual(['a.txt']);
     });
 
     test('refuses a folder moved into itself or onto itself, and two items to one target', async () => {
         const { fs, project, folderId, dir } = openFolder(h, { 'app/a.txt': '1', 'x.txt': '2', 'y.txt': '3' });
 
-        await expect(fs.move(project, folderId, [{ from: 'app', to: 'app/inner' }])).rejects.toMatchObject({ code: 'conflict', details: { path: 'app/inner' } });
-        await expect(fs.move(project, folderId, [{ from: 'app', to: 'app' }], true)).rejects.toMatchObject({ code: 'conflict' });
-        await expect(fs.move(project, folderId, [{ from: 'x.txt', to: 'same' }, { from: 'y.txt', to: 'same' }])).rejects.toMatchObject({ code: 'conflict' });
+        await expect(fs.move(project, folderId, [{ from: 'app', to: 'app/inner' }])).rejects.toMatchObject({
+            code: 'conflict',
+            details: { path: 'app/inner' },
+        });
+        await expect(fs.move(project, folderId, [{ from: 'app', to: 'app' }], true)).rejects.toMatchObject({
+            code: 'conflict',
+        });
+        await expect(
+            fs.move(project, folderId, [
+                { from: 'x.txt', to: 'same' },
+                { from: 'y.txt', to: 'same' },
+            ])
+        ).rejects.toMatchObject({ code: 'conflict' });
         expect(readdirSync(dir).sort()).toEqual(['app', 'x.txt', 'y.txt']);
     });
 
@@ -619,15 +834,29 @@ describe('move', () => {
 
         symlinkSync('app', join(dir, 'alias'));
 
-        await expect(fs.move(project, folderId, [{ from: 'app', to: 'alias/inner' }])).rejects.toMatchObject({ code: 'conflict' });
-        await expect(fs.copy(project, folderId, [{ from: 'app', to: 'alias/inner' }])).rejects.toMatchObject({ code: 'conflict' });
+        await expect(fs.move(project, folderId, [{ from: 'app', to: 'alias/inner' }])).rejects.toMatchObject({
+            code: 'conflict',
+        });
+        await expect(fs.copy(project, folderId, [{ from: 'app', to: 'alias/inner' }])).rejects.toMatchObject({
+            code: 'conflict',
+        });
         expect(readdirSync(join(dir, 'app'))).toEqual(['a.txt']);
     });
 
     test('with overwrite, never replaces what another item of the batch comes from', async () => {
         const { fs, project, folderId, dir } = openFolder(h, { 'a.txt': 'a', 'b.txt': 'b' });
 
-        await expect(fs.move(project, folderId, [{ from: 'a.txt', to: 'b.txt' }, { from: 'b.txt', to: 'a.txt' }], true)).rejects.toMatchObject({ code: 'conflict' });
+        await expect(
+            fs.move(
+                project,
+                folderId,
+                [
+                    { from: 'a.txt', to: 'b.txt' },
+                    { from: 'b.txt', to: 'a.txt' },
+                ],
+                true
+            )
+        ).rejects.toMatchObject({ code: 'conflict' });
         expect(text(join(dir, 'a.txt'))).toBe('a');
         expect(text(join(dir, 'b.txt'))).toBe('b');
     });
@@ -635,17 +864,28 @@ describe('move', () => {
     test('never moves or replaces the folder itself', async () => {
         const { fs, project, folderId, dir } = openFolder(h, { 'a.txt': 'a' });
 
-        await expect(fs.move(project, folderId, [{ from: '', to: 'inside' }])).rejects.toMatchObject({ code: 'invalid' });
-        await expect(fs.move(project, folderId, [{ from: 'a.txt', to: '' }], true)).rejects.toMatchObject({ code: 'invalid' });
-        await expect(fs.copy(project, folderId, [{ from: 'a.txt', to: '' }], true)).rejects.toMatchObject({ code: 'invalid' });
-        await expect(fs.copy(project, folderId, [{ from: '', to: 'inside' }])).rejects.toMatchObject({ code: 'conflict' });
+        await expect(fs.move(project, folderId, [{ from: '', to: 'inside' }])).rejects.toMatchObject({
+            code: 'invalid',
+        });
+        await expect(fs.move(project, folderId, [{ from: 'a.txt', to: '' }], true)).rejects.toMatchObject({
+            code: 'invalid',
+        });
+        await expect(fs.copy(project, folderId, [{ from: 'a.txt', to: '' }], true)).rejects.toMatchObject({
+            code: 'invalid',
+        });
+        await expect(fs.copy(project, folderId, [{ from: '', to: 'inside' }])).rejects.toMatchObject({
+            code: 'conflict',
+        });
         expect(readdirSync(dir)).toEqual(['a.txt']);
     });
 
     test('a target below a file is conflict exists with the file', async () => {
         const { fs, project, folderId } = openFolder(h, { 'a.txt': 'a', 'file.txt': 'f' });
 
-        await expect(fs.move(project, folderId, [{ from: 'a.txt', to: 'file.txt/a.txt' }])).rejects.toMatchObject({ code: 'conflict', details: { reason: 'exists', path: 'file.txt' } });
+        await expect(fs.move(project, folderId, [{ from: 'a.txt', to: 'file.txt/a.txt' }])).rejects.toMatchObject({
+            code: 'conflict',
+            details: { reason: 'exists', path: 'file.txt' },
+        });
     });
 
     test('renames a file by its case only, on a file system that ignores case', async () => {
@@ -667,7 +907,10 @@ describe('copy', () => {
     test('copies files and folders with everything in them, and keeps the sources', async () => {
         const { fs, project, folderId, dir } = openFolder(h, { 'a.txt': 'a', 'src/lib/c.ts': 'c', 'src/d.ts': 'd' });
 
-        await fs.copy(project, folderId, [{ from: 'a.txt', to: 'copy/a.txt' }, { from: 'src', to: 'src2' }]);
+        await fs.copy(project, folderId, [
+            { from: 'a.txt', to: 'copy/a.txt' },
+            { from: 'src', to: 'src2' },
+        ]);
 
         expect(text(join(dir, 'copy/a.txt'))).toBe('a');
         expect(text(join(dir, 'src2/lib/c.ts'))).toBe('c');
@@ -677,7 +920,10 @@ describe('copy', () => {
     });
 
     test('copies .git and node_modules with the rest of a folder', async () => {
-        const { fs, project, folderId, dir } = openFolder(h, { 'pkg/.git/HEAD': 'ref', 'pkg/node_modules/x/i.js': '1' });
+        const { fs, project, folderId, dir } = openFolder(h, {
+            'pkg/.git/HEAD': 'ref',
+            'pkg/node_modules/x/i.js': '1',
+        });
 
         await fs.copy(project, folderId, [{ from: 'pkg', to: 'pkg2' }]);
 
@@ -699,10 +945,20 @@ describe('copy', () => {
     test('conflict exists when a target is there, until overwrite replaces it, and a failed batch takes its copies back', async () => {
         const { fs, project, folderId, dir } = openFolder(h, { 'a.txt': 'a', 'b.txt': 'b', 'taken.txt': 'taken' });
 
-        await expect(fs.copy(project, folderId, [{ from: 'a.txt', to: 'new.txt' }, { from: 'b.txt', to: 'taken.txt' }])).rejects.toMatchObject({ code: 'conflict', details: { reason: 'exists', path: 'taken.txt' } });
+        await expect(
+            fs.copy(project, folderId, [
+                { from: 'a.txt', to: 'new.txt' },
+                { from: 'b.txt', to: 'taken.txt' },
+            ])
+        ).rejects.toMatchObject({ code: 'conflict', details: { reason: 'exists', path: 'taken.txt' } });
         expect(existsSync(join(dir, 'new.txt'))).toBe(false);
 
-        await expect(fs.copy(project, folderId, [{ from: 'a.txt', to: 'new.txt' }, { from: 'gone.txt', to: 'x.txt' }])).rejects.toMatchObject({ code: 'not_found' });
+        await expect(
+            fs.copy(project, folderId, [
+                { from: 'a.txt', to: 'new.txt' },
+                { from: 'gone.txt', to: 'x.txt' },
+            ])
+        ).rejects.toMatchObject({ code: 'not_found' });
         expect(existsSync(join(dir, 'new.txt'))).toBe(false);
 
         await fs.copy(project, folderId, [{ from: 'b.txt', to: 'taken.txt' }], true);
@@ -714,7 +970,18 @@ describe('copy', () => {
     test('a failure after an overwrite puts the replaced file back', async () => {
         const { fs, project, folderId, dir } = openFolder(h, { 'a.txt': 'a', 'taken.txt': 'taken' });
 
-        await expect(fs.copy(project, folderId, [{ from: 'a.txt', to: 'taken.txt' }, { from: 'a.txt', to: 'b.txt' }, { from: 'a.txt', to: 'b.txt/x' }], true)).rejects.toMatchObject({ code: 'conflict' });
+        await expect(
+            fs.copy(
+                project,
+                folderId,
+                [
+                    { from: 'a.txt', to: 'taken.txt' },
+                    { from: 'a.txt', to: 'b.txt' },
+                    { from: 'a.txt', to: 'b.txt/x' },
+                ],
+                true
+            )
+        ).rejects.toMatchObject({ code: 'conflict' });
         expect(text(join(dir, 'taken.txt'))).toBe('taken');
         expect(readdirSync(dir).sort()).toEqual(['a.txt', 'taken.txt']);
     });
@@ -734,7 +1001,10 @@ describe('remove', () => {
 
         await expect(fs.remove(project, folderId, ['a.txt', ''])).rejects.toMatchObject({ code: 'invalid' });
         await expect(fs.remove(project, folderId, ['./'])).rejects.toMatchObject({ code: 'invalid' });
-        await expect(fs.remove(project, folderId, ['dir/..'])).rejects.toMatchObject({ code: 'invalid', details: { reason: 'outside' } });
+        await expect(fs.remove(project, folderId, ['dir/..'])).rejects.toMatchObject({
+            code: 'invalid',
+            details: { reason: 'outside' },
+        });
         expect(existsSync(dir)).toBe(true);
         expect(text(join(dir, 'a.txt'))).toBe('a');
     });
@@ -742,7 +1012,13 @@ describe('remove', () => {
     test('refuses a batch over the limit', async () => {
         const { fs, project, folderId } = openFolder(h);
 
-        await expect(fs.remove(project, folderId, Array.from({ length: 10_001 }, (_, index) => `f${ index }`))).rejects.toMatchObject({ code: 'invalid' });
+        await expect(
+            fs.remove(
+                project,
+                folderId,
+                Array.from({ length: 10_001 }, (_, index) => `f${index}`)
+            )
+        ).rejects.toMatchObject({ code: 'invalid' });
     });
 });
 
@@ -757,13 +1033,28 @@ describe('find', () => {
 
         const { project } = h.ok('project.add', { folders: [dir] });
 
-        return { project, folderId: project.folders[0].id as string, dir: project.folders[0].path as string, fs: h.daemon.services.fs };
+        return {
+            project,
+            folderId: project.folders[0].id as string,
+            dir: project.folders[0].path as string,
+            fs: h.daemon.services.fs,
+        };
     }
 
     test('a word matches anywhere in the path, case does not matter, and the name that starts with it comes first', async () => {
-        const { fs, project, folderId } = repo({ 'docs/notebook/x.md': '1', 'src/booking/index.ts': '2', 'lib/rebook.ts': '3', 'src/app/Book.tsx': '4' });
+        const { fs, project, folderId } = repo({
+            'docs/notebook/x.md': '1',
+            'src/booking/index.ts': '2',
+            'lib/rebook.ts': '3',
+            'src/app/Book.tsx': '4',
+        });
 
-        expect(await fs.find(project, folderId, 'book')).toEqual(['src/app/Book.tsx', 'lib/rebook.ts', 'docs/notebook/x.md', 'src/booking/index.ts']);
+        expect(await fs.find(project, folderId, 'book')).toEqual([
+            'src/app/Book.tsx',
+            'lib/rebook.ts',
+            'docs/notebook/x.md',
+            'src/booking/index.ts',
+        ]);
         expect(await fs.find(project, folderId, 'BOOK.TSX')).toEqual(['src/app/Book.tsx']);
         expect(await fs.find(project, folderId, '  book.tsx  ')).toEqual(['src/app/Book.tsx']);
         expect(await fs.find(project, folderId, 'nothing-like-it')).toEqual([]);
@@ -772,9 +1063,20 @@ describe('find', () => {
     });
 
     test('a query with * or ? is a glob: on the file name when it has no slash, on the path when it has', async () => {
-        const { fs, project, folderId } = repo({ 'a.ts': '1', 'src/b.ts': '2', 'src/b.tsx': '3', 'src/deep/c.ts': '4', 'lib/d.ts': '5' });
+        const { fs, project, folderId } = repo({
+            'a.ts': '1',
+            'src/b.ts': '2',
+            'src/b.tsx': '3',
+            'src/deep/c.ts': '4',
+            'lib/d.ts': '5',
+        });
 
-        expect((await fs.find(project, folderId, '*.ts')).sort()).toEqual(['a.ts', 'lib/d.ts', 'src/b.ts', 'src/deep/c.ts']);
+        expect((await fs.find(project, folderId, '*.ts')).sort()).toEqual([
+            'a.ts',
+            'lib/d.ts',
+            'src/b.ts',
+            'src/deep/c.ts',
+        ]);
         expect((await fs.find(project, folderId, 'b.ts?')).sort()).toEqual(['src/b.tsx']);
         expect((await fs.find(project, folderId, 'src/*.ts')).sort()).toEqual(['src/b.ts']);
         expect((await fs.find(project, folderId, 'src/**/*.ts')).sort()).toEqual(['src/b.ts', 'src/deep/c.ts']);
@@ -785,7 +1087,7 @@ describe('find', () => {
         const files: Record<string, string> = {};
 
         for (let n = 0; n < 60; n++) {
-            files[`many/file${ String(n).padStart(2, '0') }.txt`] = '1';
+            files[`many/file${String(n).padStart(2, '0')}.txt`] = '1';
         }
 
         const { fs, project, folderId } = repo(files);
@@ -795,7 +1097,11 @@ describe('find', () => {
     });
 
     test('leaves out .git and node_modules, files git ignores and what is not a file, and offers new files', async () => {
-        const { fs, project, folderId, dir } = repo({ 'src/keep.ts': '1', '.gitignore': 'dist/\n', 'node_modules/x/keep.js': '2' });
+        const { fs, project, folderId, dir } = repo({
+            'src/keep.ts': '1',
+            '.gitignore': 'dist/\n',
+            'node_modules/x/keep.js': '2',
+        });
 
         put(dir, { 'dist/keep.js': '3', 'src/fresh.ts': '4' });
         mkdirSync(join(dir, 'inner'));

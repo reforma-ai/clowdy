@@ -125,10 +125,12 @@ function step(state: SwipeState, input: SwipeInput, tuning: SwipeTuning): SwipeS
             const x = state.x + input.dx;
             const y = state.y + input.dy;
 
-            if (Math.abs(x) + Math.abs(y) < tuning.slop) return { state: { phase: 'deciding', x, y, at, offset: 0 }, claim: false };
+            if (Math.abs(x) + Math.abs(y) < tuning.slop)
+                return { state: { phase: 'deciding', x, y, at, offset: 0 }, claim: false };
 
             // Not ours: mostly vertical, to the right, or in a scroller that can still go that way.
-            if (Math.abs(x) <= Math.abs(y) * tuning.dominance || x > 0 || input.scrolls?.(x)) return { state: { phase: 'passing', x, y, at, offset: 0 }, claim: false };
+            if (Math.abs(x) <= Math.abs(y) * tuning.dominance || x > 0 || input.scrolls?.(x))
+                return { state: { phase: 'passing', x, y, at, offset: 0 }, claim: false };
 
             // A pull to the left: what was travelled while deciding counts as part of it.
             return step({ phase: 'pulling', x: state.x, y: state.y, at, offset: 0 }, input, tuning);

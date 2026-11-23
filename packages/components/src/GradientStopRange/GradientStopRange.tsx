@@ -77,40 +77,41 @@ export function GradientStopRange({
     const [isDraggingStop, setIsDraggingStop] = useState(false);
     const bounds = useMemo(() => ({ min, max }), [max, min]);
     const stepOptions = useMemo(() => ({ ...bounds, step, shiftStep }), [bounds, shiftStep, step]);
-    const thumbActions = useMemo(() => ({
-        onActiveStopChange,
-        onStopPreview,
-        onStopCommit,
-        onStopCancel,
-        onStopRemove,
-    }), [onActiveStopChange, onStopCancel, onStopCommit, onStopPreview, onStopRemove]);
-    const visibleStops = useMemo(
-        () => visibleGradientStops(stops, bounds),
-        [bounds, stops]
+    const thumbActions = useMemo(
+        () => ({
+            onActiveStopChange,
+            onStopPreview,
+            onStopCommit,
+            onStopCancel,
+            onStopRemove,
+        }),
+        [onActiveStopChange, onStopCancel, onStopCommit, onStopPreview, onStopRemove]
     );
-    const gradientBackground = useMemo(
-        () => gradientStopRangeBackground(stops, bounds),
-        [bounds, stops]
-    );
+    const visibleStops = useMemo(() => visibleGradientStops(stops, bounds), [bounds, stops]);
+    const gradientBackground = useMemo(() => gradientStopRangeBackground(stops, bounds), [bounds, stops]);
     const isInactive = isDisabled || isReadOnly;
     const canAddStop = Boolean(onStopAdd) && !isInactive;
-    const showAddMarker = canAddStop
-      && !isDraggingStop
-      && hoverPosition != null
-      && !hasGradientStopNearPosition(visibleStops, hoverPosition);
+    const showAddMarker =
+        canAddStop &&
+        !isDraggingStop &&
+        hoverPosition != null &&
+        !hasGradientStopNearPosition(visibleStops, hoverPosition);
 
     const hideAddMarker = useCallback(() => {
         setHoverPosition(null);
     }, []);
 
-    const handleThumbDraggingChange = useCallback((isDragging: boolean) => {
-        setIsDraggingStop(isDragging);
-        onStopDraggingChange?.(isDragging);
+    const handleThumbDraggingChange = useCallback(
+        (isDragging: boolean) => {
+            setIsDraggingStop(isDragging);
+            onStopDraggingChange?.(isDragging);
 
-        if (isDragging) {
-            setHoverPosition(null);
-        }
-    }, [onStopDraggingChange]);
+            if (isDragging) {
+                setHoverPosition(null);
+            }
+        },
+        [onStopDraggingChange]
+    );
 
     const rememberStopsBeforeAdd = useCallback(() => {
         addFocusRequestRef.current = new Set(visibleStops.map(stop => stop.id));
@@ -119,24 +120,29 @@ export function GradientStopRange({
     const setThumbRef = useCallback((stopId: string, node: HTMLDivElement | null) => {
         if (node) {
             thumbRefsRef.current.set(stopId, node);
-        }
-        else {
+        } else {
             thumbRefsRef.current.delete(stopId);
         }
     }, []);
 
-    const handleTrackPointerMove = useCallback((event: PointerEvent<HTMLDivElement>) => {
-        if (canAddStop && !isDraggingStop) {
-            const rect = event.currentTarget.getBoundingClientRect();
+    const handleTrackPointerMove = useCallback(
+        (event: PointerEvent<HTMLDivElement>) => {
+            if (canAddStop && !isDraggingStop) {
+                const rect = event.currentTarget.getBoundingClientRect();
 
-            setHoverPosition(positionFromTrackOffset(event.clientX - rect.left, rect.width, bounds));
-        }
-    }, [bounds, canAddStop, isDraggingStop]);
+                setHoverPosition(positionFromTrackOffset(event.clientX - rect.left, rect.width, bounds));
+            }
+        },
+        [bounds, canAddStop, isDraggingStop]
+    );
 
-    const handlePointerLeave = useCallback((event: PointerEvent<HTMLDivElement>) => {
-        setHoverPosition(null);
-        onPointerLeave?.(event);
-    }, [onPointerLeave]);
+    const handlePointerLeave = useCallback(
+        (event: PointerEvent<HTMLDivElement>) => {
+            setHoverPosition(null);
+            onPointerLeave?.(event);
+        },
+        [onPointerLeave]
+    );
 
     const { pressProps, isPressed } = usePress({
         isDisabled: !canAddStop,
@@ -173,54 +179,59 @@ export function GradientStopRange({
 
     return (
         <div
-            { ...props }
-            ref={ ref }
-            className={ cn(styles.range, className) }
-            data-disabled={ isDisabled || undefined }
-            data-dragging={ isDraggingStop || undefined }
-            data-readonly={ isReadOnly || undefined }
+            {...props}
+            ref={ref}
+            className={cn(styles.range, className)}
+            data-disabled={isDisabled || undefined}
+            data-dragging={isDraggingStop || undefined}
+            data-readonly={isReadOnly || undefined}
             data-modal-drag-exclude
-            onPointerLeave={ handlePointerLeave }
+            onPointerLeave={handlePointerLeave}
         >
             <div
-                { ...pressProps }
-                ref={ trackRef }
-                className={ styles.track }
-                data-addable={ canAddStop || undefined }
-                data-pressed={ isPressed || undefined }
-                role={ canAddStop ? 'button' : undefined }
-                tabIndex={ canAddStop ? 0 : undefined }
-                aria-label={ canAddStop ? `${ ariaLabel } add stop` : undefined }
-                style={ { '--clowdy-gradient-stop-range-background': gradientBackground } as CSSProperties }
-                onPointerMove={ handleTrackPointerMove }
+                {...pressProps}
+                ref={trackRef}
+                className={styles.track}
+                data-addable={canAddStop || undefined}
+                data-pressed={isPressed || undefined}
+                role={canAddStop ? 'button' : undefined}
+                tabIndex={canAddStop ? 0 : undefined}
+                aria-label={canAddStop ? `${ariaLabel} add stop` : undefined}
+                style={{ '--clowdy-gradient-stop-range-background': gradientBackground } as CSSProperties}
+                onPointerMove={handleTrackPointerMove}
             />
 
-            <For each={ visibleStops }>
-                { (stop, index) => (
+            <For each={visibleStops}>
+                {(stop, index) => (
                     <GradientStopThumb
-                        key={ stop.id }
-                        ref={ node => setThumbRef(stop.id, node) }
-                        stop={ stop }
-                        index={ index }
-                        activeStopId={ activeStopId }
-                        ariaLabel={ ariaLabel }
-                        trackRef={ trackRef }
-                        options={ stepOptions }
-                        isDisabled={ isDisabled }
-                        isReadOnly={ isReadOnly }
-                        actions={ thumbActions }
-                        onDraggingChange={ handleThumbDraggingChange }
-                        onPointerEnter={ hideAddMarker }
+                        key={stop.id}
+                        ref={node => setThumbRef(stop.id, node)}
+                        stop={stop}
+                        index={index}
+                        activeStopId={activeStopId}
+                        ariaLabel={ariaLabel}
+                        trackRef={trackRef}
+                        options={stepOptions}
+                        isDisabled={isDisabled}
+                        isReadOnly={isReadOnly}
+                        actions={thumbActions}
+                        onDraggingChange={handleThumbDraggingChange}
+                        onPointerEnter={hideAddMarker}
                     />
-                ) }
+                )}
             </For>
 
-            <Show when={ showAddMarker }>
+            <Show when={showAddMarker}>
                 <span
-                    className={ styles.addMarker }
-                    style={ {
-                        '--clowdy-gradient-stop-position': formatGradientStopTrackPosition(hoverPosition ?? min, bounds),
-                    } as CSSProperties }
+                    className={styles.addMarker}
+                    style={
+                        {
+                            '--clowdy-gradient-stop-position': formatGradientStopTrackPosition(
+                                hoverPosition ?? min,
+                                bounds
+                            ),
+                        } as CSSProperties
+                    }
                     aria-hidden
                 />
             </Show>

@@ -23,17 +23,21 @@ function scripted(answer: (call: Call) => Response) {
     return { fetchImpl, calls };
 }
 
-const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } });
+const json = (value: unknown, status = 200) =>
+    new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } });
 
 describe('HttpTransport.getTaskComments', () => {
-    it('reads the first page from the task\'s route, with the token and the protocol version', async () => {
+    it("reads the first page from the task's route, with the token and the protocol version", async () => {
         const page: TaskCommentsPage = { comments: [], total: 0 };
         const { fetchImpl, calls } = scripted(() => json(page));
         const transport = new HttpTransport({ url: 'http://d/', token: 'secret', fetch: fetchImpl });
 
         expect(await transport.getTaskComments('t 1')).toEqual(page);
         expect(calls[0].url).toBe('http://d/v1/tasks/t%201/comments');
-        expect(calls[0].init.headers).toMatchObject({ authorization: 'Bearer secret', [PROTOCOL_HEADER]: String(PROTOCOL_VERSION) });
+        expect(calls[0].init.headers).toMatchObject({
+            authorization: 'Bearer secret',
+            [PROTOCOL_HEADER]: String(PROTOCOL_VERSION),
+        });
     });
 
     it('passes the size and the cursor of the page before, and leaves out what it is not given', async () => {
@@ -58,7 +62,10 @@ describe('HttpTransport.getTaskComments', () => {
             const { fetchImpl } = scripted(() => json({ error: { message: 'No' } }, status));
             const transport = new HttpTransport({ url: 'http://d', token: 't', fetch: fetchImpl });
 
-            await expect(transport.getTaskComments('t1', { cursor: 'x' })).rejects.toMatchObject({ name: 'TransportError', status });
+            await expect(transport.getTaskComments('t1', { cursor: 'x' })).rejects.toMatchObject({
+                name: 'TransportError',
+                status,
+            });
         }
     });
 });
@@ -102,7 +109,11 @@ describe('FixtureTransport.getTaskComments', () => {
         const transport = new FixtureTransport();
 
         expect(await transport.getTaskComments('t-24')).toEqual({ comments: [], total: 0 });
-        await expect(transport.getTaskComments('t-missing')).rejects.toMatchObject({ name: 'TransportError', status: 404, message: 'Task t-missing does not exist' });
+        await expect(transport.getTaskComments('t-missing')).rejects.toMatchObject({
+            name: 'TransportError',
+            status: 404,
+            message: 'Task t-missing does not exist',
+        });
     });
 
     it('pages with the cursor the page before gave, and the last page has none', async () => {
@@ -119,15 +130,21 @@ describe('FixtureTransport.getTaskComments', () => {
         expect(second.nextCursor).toBeUndefined();
     });
 
-    it('holds a limit to the daemon\'s 1 to 100, and refuses a cursor that is not one, and a limit that is not a whole number', async () => {
+    it("holds a limit to the daemon's 1 to 100, and refuses a cursor that is not one, and a limit that is not a whole number", async () => {
         const transport = new FixtureTransport();
 
         expect((await transport.getTaskComments('t-32', { limit: 0 })).comments).toHaveLength(1);
         expect((await transport.getTaskComments('t-32', { limit: 1000 })).comments).toHaveLength(3);
-        await expect(transport.getTaskComments('t-32', { cursor: 'soon' })).rejects.toMatchObject({ status: 400, message: expect.stringContaining('is not a cursor') });
+        await expect(transport.getTaskComments('t-32', { cursor: 'soon' })).rejects.toMatchObject({
+            status: 400,
+            message: expect.stringContaining('is not a cursor'),
+        });
 
         for (const limit of [-1, 2.5, Number.NaN]) {
-            await expect(transport.getTaskComments('t-32', { limit })).rejects.toMatchObject({ status: 400, message: 'limit must be a non-negative integer' });
+            await expect(transport.getTaskComments('t-32', { limit })).rejects.toMatchObject({
+                status: 400,
+                message: 'limit must be a non-negative integer',
+            });
         }
     });
 
@@ -156,7 +173,10 @@ describe('FixtureTransport.getArchivedTasks', () => {
         const transport = new FixtureTransport();
 
         expect(await transport.getArchivedTasks(FIXTURE_EMPTY_PROJECT_ID)).toEqual({ tasks: [], total: 0 });
-        await expect(transport.getArchivedTasks('p-missing')).rejects.toMatchObject({ status: 404, message: 'Project p-missing does not exist' });
+        await expect(transport.getArchivedTasks('p-missing')).rejects.toMatchObject({
+            status: 404,
+            message: 'Project p-missing does not exist',
+        });
     });
 
     it('pages with the cursor, the latest batch first', async () => {
@@ -169,14 +189,19 @@ describe('FixtureTransport.getArchivedTasks', () => {
         // The batch just archived is the newest.
         expect(first.tasks.map(task => task.number)).toEqual([21, 38]);
         expect(first.total).toBe(4);
-        expect(first.nextCursor).toBe(`${ first.tasks[1].archivedAt }.38`);
+        expect(first.nextCursor).toBe(`${first.tasks[1].archivedAt}.38`);
 
         const second = await transport.getArchivedTasks(FIXTURE_PROJECT_ID, { limit: 2, cursor: first.nextCursor });
 
         expect(second.tasks.map(task => task.number)).toEqual([39, 40]);
         expect(second.nextCursor).toBeUndefined();
-        await expect(transport.getArchivedTasks(FIXTURE_PROJECT_ID, { cursor: '38' })).rejects.toMatchObject({ status: 400 });
-        await expect(transport.getArchivedTasks(FIXTURE_PROJECT_ID, { limit: -5 })).rejects.toMatchObject({ status: 400, message: 'limit must be a non-negative integer' });
+        await expect(transport.getArchivedTasks(FIXTURE_PROJECT_ID, { cursor: '38' })).rejects.toMatchObject({
+            status: 400,
+        });
+        await expect(transport.getArchivedTasks(FIXTURE_PROJECT_ID, { limit: -5 })).rejects.toMatchObject({
+            status: 400,
+            message: 'limit must be a non-negative integer',
+        });
         expect((await transport.getArchivedTasks(FIXTURE_PROJECT_ID, { limit: 500 })).tasks).toHaveLength(4);
     });
 });

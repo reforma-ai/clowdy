@@ -1,12 +1,31 @@
 import { describe, expect, it } from 'vitest';
 
-import { commitAndPushBlock, createPullRequest, githubBaseName, isDiverged, pushOrPublish, remoteActions, remoteBranchOf, remoteCall, remoteNotice, upstreamView } from './changesActions';
+import {
+    commitAndPushBlock,
+    createPullRequest,
+    githubBaseName,
+    isDiverged,
+    pushOrPublish,
+    remoteActions,
+    remoteBranchOf,
+    remoteCall,
+    remoteNotice,
+    upstreamView,
+} from './changesActions';
 
 import type { GitBase, GitStatus, GitUpstream } from '@clowdy/protocol';
 
 type RepositoryStatus = Extract<GitStatus, { isRepository: true }>;
 
-const READY: GitBase = { state: 'ready', name: 'origin/main', commit: 'b'.repeat(40), mergeBase: 'b'.repeat(40), ahead: 2, behind: 0, commits: [] };
+const READY: GitBase = {
+    state: 'ready',
+    name: 'origin/main',
+    commit: 'b'.repeat(40),
+    mergeBase: 'b'.repeat(40),
+    ahead: 2,
+    behind: 0,
+    commits: [],
+};
 
 /** A status of a branch `feature` with an upstream, `origin` and work ahead of its base, with `fields` having their say. */
 function status(fields: Partial<RepositoryStatus> = {}, upstream: Partial<GitUpstream> | null = {}): GitStatus {
@@ -21,7 +40,8 @@ function status(fields: Partial<RepositoryStatus> = {}, upstream: Partial<GitUps
     };
 }
 
-const reasons = (value: GitStatus | undefined, busy = false) => remoteActions(value, busy).map(action => [action.id, action.reason ?? null, action.count ?? null]);
+const reasons = (value: GitStatus | undefined, busy = false) =>
+    remoteActions(value, busy).map(action => [action.id, action.reason ?? null, action.count ?? null]);
 
 describe('remoteActions', () => {
     it('lists nothing for a place that is not a repository, and for one that has not been read', () => {
@@ -30,16 +50,32 @@ describe('remoteActions', () => {
     });
 
     it('lists Fetch, Pull and Push for a branch that is on origin and level, with a reason for the two that have nothing to do', () => {
-        expect(reasons(status())).toEqual([['fetch', null, null], ['pull', 'Nothing to pull', null], ['push', 'Nothing to push', null]]);
+        expect(reasons(status())).toEqual([
+            ['fetch', null, null],
+            ['pull', 'Nothing to pull', null],
+            ['push', 'Nothing to push', null],
+        ]);
     });
 
     it('counts what Pull takes and Push sends, and has no reason for them', () => {
-        expect(reasons(status({}, { behind: 3 }))).toEqual([['fetch', null, null], ['pull', null, 3], ['push', 'Nothing to push', null]]);
-        expect(reasons(status({}, { ahead: 1 }))).toEqual([['fetch', null, null], ['pull', 'Nothing to pull', null], ['push', null, 1]]);
+        expect(reasons(status({}, { behind: 3 }))).toEqual([
+            ['fetch', null, null],
+            ['pull', null, 3],
+            ['push', 'Nothing to push', null],
+        ]);
+        expect(reasons(status({}, { ahead: 1 }))).toEqual([
+            ['fetch', null, null],
+            ['pull', 'Nothing to pull', null],
+            ['push', null, 1],
+        ]);
     });
 
     it('turns Pull and Push off for a branch that diverged, and says it, with how far', () => {
-        expect(reasons(status({}, { ahead: 1, behind: 2 }))).toEqual([['fetch', null, null], ['pull', 'Diverged: 1 ahead, 2 behind', 2], ['push', 'Diverged: 1 ahead, 2 behind', 1]]);
+        expect(reasons(status({}, { ahead: 1, behind: 2 }))).toEqual([
+            ['fetch', null, null],
+            ['pull', 'Diverged: 1 ahead, 2 behind', 2],
+            ['push', 'Diverged: 1 ahead, 2 behind', 1],
+        ]);
         expect(isDiverged({ name: 'origin/feature', ahead: 1, behind: 2 })).toBe(true);
         expect(isDiverged({ name: 'origin/feature', ahead: 1, behind: 0 })).toBe(false);
         expect(isDiverged({ name: 'origin/feature', ahead: 1, behind: 2, gone: true })).toBe(false);
@@ -47,27 +83,60 @@ describe('remoteActions', () => {
     });
 
     it('offers Publish in place of Push for a branch that is not on origin, with nothing to pull from', () => {
-        expect(reasons(status({}, null))).toEqual([['fetch', null, null], ['pull', 'Not published yet', null], ['publish', null, null]]);
+        expect(reasons(status({}, null))).toEqual([
+            ['fetch', null, null],
+            ['pull', 'Not published yet', null],
+            ['publish', null, null],
+        ]);
         // An upstream that is gone from origin is published again, not pushed.
-        expect(reasons(status({}, { gone: true }))).toEqual([['fetch', null, null], ['pull', 'Upstream gone from origin', null], ['publish', null, null]]);
+        expect(reasons(status({}, { gone: true }))).toEqual([
+            ['fetch', null, null],
+            ['pull', 'Upstream gone from origin', null],
+            ['publish', null, null],
+        ]);
     });
 
     it('turns every action off with the reason when there is no origin, and all but Fetch for a HEAD that is on no branch', () => {
-        expect(reasons(status({ origin: false }, null))).toEqual([['fetch', 'No origin', null], ['pull', 'No origin', null], ['publish', 'No origin', null]]);
-        expect(reasons(status({ head: { kind: 'detached', commit: 'a'.repeat(40) } }, null))).toEqual([['fetch', null, null], ['pull', 'HEAD is detached', null], ['publish', 'HEAD is detached', null]]);
-        expect(reasons(status({ head: { kind: 'unborn', name: 'main' } }, null))).toEqual([['fetch', null, null], ['pull', 'No commits yet', null], ['publish', 'No commits yet', null]]);
+        expect(reasons(status({ origin: false }, null))).toEqual([
+            ['fetch', 'No origin', null],
+            ['pull', 'No origin', null],
+            ['publish', 'No origin', null],
+        ]);
+        expect(reasons(status({ head: { kind: 'detached', commit: 'a'.repeat(40) } }, null))).toEqual([
+            ['fetch', null, null],
+            ['pull', 'HEAD is detached', null],
+            ['publish', 'HEAD is detached', null],
+        ]);
+        expect(reasons(status({ head: { kind: 'unborn', name: 'main' } }, null))).toEqual([
+            ['fetch', null, null],
+            ['pull', 'No commits yet', null],
+            ['publish', 'No commits yet', null],
+        ]);
     });
 
     it('turns every action off while one runs', () => {
-        expect(reasons(status({}, { ahead: 1 }), true)).toEqual([['fetch', 'An action is running', null], ['pull', 'An action is running', null], ['push', 'An action is running', 1]]);
+        expect(reasons(status({}, { ahead: 1 }), true)).toEqual([
+            ['fetch', 'An action is running', null],
+            ['pull', 'An action is running', null],
+            ['push', 'An action is running', 1],
+        ]);
     });
 
     it('turns Pull and Push off for a branch that tracks something that is not on origin, and says what', () => {
-        expect(reasons(status({}, { name: 'upstream/main', ahead: 1 }))).toEqual([['fetch', null, null], ['pull', 'Tracks upstream/main, not origin', null], ['push', 'Tracks upstream/main, not origin', 1]]);
+        expect(reasons(status({}, { name: 'upstream/main', ahead: 1 }))).toEqual([
+            ['fetch', null, null],
+            ['pull', 'Tracks upstream/main, not origin', null],
+            ['push', 'Tracks upstream/main, not origin', 1],
+        ]);
     });
 
     it('makes a call of each action, publishing being a push', () => {
-        expect([remoteCall('fetch'), remoteCall('pull'), remoteCall('push'), remoteCall('publish')]).toEqual(['fetch', 'pull', 'push', 'push']);
+        expect([remoteCall('fetch'), remoteCall('pull'), remoteCall('push'), remoteCall('publish')]).toEqual([
+            'fetch',
+            'pull',
+            'push',
+            'push',
+        ]);
     });
 });
 
@@ -81,10 +150,19 @@ describe('upstreamView', () => {
     });
 
     it('warns for a branch that diverged and for an upstream that is gone, and names the rest of the cases', () => {
-        expect(upstreamView(status({}, { ahead: 1, behind: 2 }))).toMatchObject({ label: 'origin/feature', detail: 'diverged', tone: 'warning', title: 'origin/feature, diverged: 1 ahead, 2 behind' });
+        expect(upstreamView(status({}, { ahead: 1, behind: 2 }))).toMatchObject({
+            label: 'origin/feature',
+            detail: 'diverged',
+            tone: 'warning',
+            title: 'origin/feature, diverged: 1 ahead, 2 behind',
+        });
         expect(upstreamView(status({}, { gone: true }))).toMatchObject({ detail: 'gone', tone: 'warning' });
-        expect(upstreamView(status({ head: { kind: 'detached', commit: 'a'.repeat(40) } }, null))).toMatchObject({ label: 'Not on a branch' });
-        expect(upstreamView(status({ head: { kind: 'unborn', name: 'main' } }, null))).toMatchObject({ label: 'No commits yet' });
+        expect(upstreamView(status({ head: { kind: 'detached', commit: 'a'.repeat(40) } }, null))).toMatchObject({
+            label: 'Not on a branch',
+        });
+        expect(upstreamView(status({ head: { kind: 'unborn', name: 'main' } }, null))).toMatchObject({
+            label: 'No commits yet',
+        });
         expect(upstreamView({ isRepository: false })).toBeUndefined();
         expect(upstreamView(undefined)).toBeUndefined();
     });
@@ -97,16 +175,22 @@ describe('remoteNotice', () => {
         expect(remoteNotice({ state: 'done', action: 'pull', pulled: 3 })).toEqual({ words: 'Pulled 3 commits' });
         expect(remoteNotice({ state: 'done', action: 'pull', pulled: 0 })).toEqual({ words: 'Already up to date' });
         expect(remoteNotice({ state: 'done', action: 'push' })).toEqual({ words: 'Pushed to origin' });
-        expect(remoteNotice({ state: 'done', action: 'push', published: true })).toEqual({ words: 'Published to origin' });
+        expect(remoteNotice({ state: 'done', action: 'push', published: true })).toEqual({
+            words: 'Published to origin',
+        });
     });
 
     it('says a diverged branch was left as it was, as a warning, and with no period', () => {
-        expect(remoteNotice({ state: 'diverged', upstream: { name: 'origin/main', ahead: 1, behind: 2 } })).toEqual({ words: 'Diverged: 1 ahead, 2 behind, left as it was', tone: 'warning' });
+        expect(remoteNotice({ state: 'diverged', upstream: { name: 'origin/main', ahead: 1, behind: 2 } })).toEqual({
+            words: 'Diverged: 1 ahead, 2 behind, left as it was',
+            tone: 'warning',
+        });
     });
 });
 
 describe('githubBaseName', () => {
-    const named = (name: string, state: 'ready' | 'no_merge_base' = 'ready'): GitBase => (state === 'ready' ? { ...READY, name } : { state, name, commit: 'c'.repeat(40) });
+    const named = (name: string, state: 'ready' | 'no_merge_base' = 'ready'): GitBase =>
+        state === 'ready' ? { ...READY, name } : { state, name, commit: 'c'.repeat(40) };
 
     it('is the local part of a base on origin, and a local base as it is, with its slashes', () => {
         expect(githubBaseName(named('origin/main'))).toBe('main');
@@ -134,14 +218,15 @@ describe('remoteBranchOf', () => {
         expect(of(status({}, { name: 'origin/other', gone: true }))).toBe('other');
     });
 
-    it('is the branch\'s own name for an upstream that is not on origin, and nothing for a HEAD on no branch', () => {
+    it("is the branch's own name for an upstream that is not on origin, and nothing for a HEAD on no branch", () => {
         expect(of(status({}, { name: 'upstream/feature' }))).toBe('feature');
         expect(of(status({ head: { kind: 'detached', commit: 'a'.repeat(40) } }, null))).toBeUndefined();
     });
 });
 
 describe('createPullRequest', () => {
-    const state = (value: GitStatus | undefined, extra: { hasPullRequest?: boolean; onGitHub?: boolean } = {}) => createPullRequest({ status: value, hasPullRequest: false, onGitHub: true, ...extra });
+    const state = (value: GitStatus | undefined, extra: { hasPullRequest?: boolean; onGitHub?: boolean } = {}) =>
+        createPullRequest({ status: value, hasPullRequest: false, onGitHub: true, ...extra });
 
     it('opens the compare page once the branch is on origin and level with its upstream', () => {
         expect(state(status())).toEqual({ kind: 'ready', label: 'Create PR' });
@@ -150,9 +235,28 @@ describe('createPullRequest', () => {
     it('is off, with "Switch to a feature branch", on the branch the work is compared with, whether the base is origin\'s or the local one', () => {
         const blocked = { kind: 'blocked', label: 'Create PR', reason: 'Switch to a feature branch' };
 
-        expect(state(status({ head: { kind: 'branch', name: 'main', commit: 'a'.repeat(40) } }, { name: 'origin/main' }))).toEqual(blocked);
-        expect(state(status({ head: { kind: 'branch', name: 'main', commit: 'a'.repeat(40) }, base: { ...READY, name: 'main' } }, null))).toEqual(blocked);
-        expect(state(status({ head: { kind: 'branch', name: 'release/2.0', commit: 'a'.repeat(40) }, base: { ...READY, name: 'origin/release/2.0' } }))).toEqual(blocked);
+        expect(
+            state(status({ head: { kind: 'branch', name: 'main', commit: 'a'.repeat(40) } }, { name: 'origin/main' }))
+        ).toEqual(blocked);
+        expect(
+            state(
+                status(
+                    {
+                        head: { kind: 'branch', name: 'main', commit: 'a'.repeat(40) },
+                        base: { ...READY, name: 'main' },
+                    },
+                    null
+                )
+            )
+        ).toEqual(blocked);
+        expect(
+            state(
+                status({
+                    head: { kind: 'branch', name: 'release/2.0', commit: 'a'.repeat(40) },
+                    base: { ...READY, name: 'origin/release/2.0' },
+                })
+            )
+        ).toEqual(blocked);
     });
 
     it('says Publish first for a branch that is not on origin, and for one whose upstream is gone', () => {
@@ -167,13 +271,28 @@ describe('createPullRequest', () => {
     });
 
     it('is off for a branch that diverged, one that tracks something that is not on origin, and one with no commit ahead of its base', () => {
-        expect(state(status({}, { ahead: 1, behind: 1 }))).toEqual({ kind: 'blocked', label: 'Create PR', reason: 'Diverged: 1 ahead, 1 behind' });
-        expect(state(status({}, { name: 'upstream/feature' }))).toEqual({ kind: 'blocked', label: 'Create PR', reason: 'Tracks upstream/feature, not origin' });
-        expect(state(status({ base: { ...READY, ahead: 0 } }, null))).toEqual({ kind: 'blocked', label: 'Create PR', reason: 'No commits ahead of origin/main' });
+        expect(state(status({}, { ahead: 1, behind: 1 }))).toEqual({
+            kind: 'blocked',
+            label: 'Create PR',
+            reason: 'Diverged: 1 ahead, 1 behind',
+        });
+        expect(state(status({}, { name: 'upstream/feature' }))).toEqual({
+            kind: 'blocked',
+            label: 'Create PR',
+            reason: 'Tracks upstream/feature, not origin',
+        });
+        expect(state(status({ base: { ...READY, ahead: 0 } }, null))).toEqual({
+            kind: 'blocked',
+            label: 'Create PR',
+            reason: 'No commits ahead of origin/main',
+        });
     });
 
     it('works without a base to count from: a branch is still published, and the page is left to choose the base', () => {
-        expect(state(status({ base: { state: 'no_base' } }, null))).toEqual({ kind: 'publish', label: 'Publish first' });
+        expect(state(status({ base: { state: 'no_base' } }, null))).toEqual({
+            kind: 'publish',
+            label: 'Publish first',
+        });
         expect(state(status({ base: { state: 'no_base' } }))).toEqual({ kind: 'ready', label: 'Create PR' });
     });
 
@@ -198,7 +317,9 @@ describe('commitAndPushBlock', () => {
 
     it('says why not for no origin, a detached HEAD, another remote, a branch that is behind or has diverged, and a place that is no repository', () => {
         expect(commitAndPushBlock(status({ origin: false }))).toBe('No origin');
-        expect(commitAndPushBlock(status({ head: { kind: 'detached', commit: 'a'.repeat(40) } }, null))).toBe('HEAD is detached');
+        expect(commitAndPushBlock(status({ head: { kind: 'detached', commit: 'a'.repeat(40) } }, null))).toBe(
+            'HEAD is detached'
+        );
         expect(commitAndPushBlock(status({}, { name: 'fork/feature' }))).toBe('Tracks fork/feature, not origin');
         expect(commitAndPushBlock(status({}, { behind: 1 }))).toBe('1 commit to pull first');
         expect(commitAndPushBlock(status({}, { behind: 2 }))).toBe('2 commits to pull first');

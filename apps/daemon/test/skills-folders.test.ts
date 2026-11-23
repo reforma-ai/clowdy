@@ -1,5 +1,16 @@
 import { afterAll, describe, expect, test } from 'bun:test';
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import {
+    existsSync,
+    lstatSync,
+    mkdirSync,
+    readdirSync,
+    readFileSync,
+    realpathSync,
+    statSync,
+    symlinkSync,
+    utimesSync,
+    writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 
 import { buildCatalog, estimateTokens, mergeUserSkills } from '../src/skills/catalog';
@@ -37,8 +48,16 @@ describe('the catalog', () => {
             disabled: new Set(),
         });
 
-        expect(catalog.entries.map(({ id, name, source, enabled, engines }) => ({ id, name, source, enabled, engines }))).toEqual([
-            { id: 'system:orchestrate', name: 'clowdy:orchestrate', source: 'system', enabled: true, engines: ['claude', 'codex'] },
+        expect(
+            catalog.entries.map(({ id, name, source, enabled, engines }) => ({ id, name, source, enabled, engines }))
+        ).toEqual([
+            {
+                id: 'system:orchestrate',
+                name: 'clowdy:orchestrate',
+                source: 'system',
+                enabled: true,
+                engines: ['claude', 'codex'],
+            },
             { id: 'user:deploy', name: 'user:deploy', source: 'user', enabled: true, engines: ['claude', 'codex'] },
             { id: 'project:.claude/skills/ship', name: 'ship', source: 'project', enabled: true, engines: ['claude'] },
         ]);
@@ -55,9 +74,15 @@ describe('the catalog', () => {
         writeSkill(claude, 'only-claude');
         writeSkill(agents, 'shared', 'From .agents');
 
-        const { skills, warnings } = mergeUserSkills([labeled('~/.claude/skills', claude), labeled('~/.agents/skills', agents)]);
+        const { skills, warnings } = mergeUserSkills([
+            labeled('~/.claude/skills', claude),
+            labeled('~/.agents/skills', agents),
+        ]);
 
-        expect(skills.map(skill => [skill.folder, skill.description])).toEqual([['only-claude', 'Does only-claude work'], ['shared', 'From .agents']]);
+        expect(skills.map(skill => [skill.folder, skill.description])).toEqual([
+            ['only-claude', 'Does only-claude work'],
+            ['shared', 'From .agents'],
+        ]);
         expect(warnings).toEqual(['"shared" in ~/.claude/skills is hidden by the one in ~/.agents/skills']);
     });
 
@@ -80,11 +105,23 @@ describe('the catalog', () => {
         symlinkSync(writeSkill(tempDir(), 'both'), join(claude, 'both'), 'dir');
         symlinkSync(join(claude, 'both'), join(agents, 'both'), 'dir');
 
-        const project: ProjectScan[] = [{ ...labeled('.claude/skills', claude), engine: 'claude' }, { ...labeled('.agents/skills', agents), engine: 'codex' }];
+        const project: ProjectScan[] = [
+            { ...labeled('.claude/skills', claude), engine: 'claude' },
+            { ...labeled('.agents/skills', agents), engine: 'codex' },
+        ];
 
-        const { entries } = buildCatalog({ system: empty, user: { skills: [], warnings: [] }, project, disabled: new Set() });
+        const { entries } = buildCatalog({
+            system: empty,
+            user: { skills: [], warnings: [] },
+            project,
+            disabled: new Set(),
+        });
 
-        expect(entries.map(entry => [entry.name, entry.engines])).toEqual([['both', ['claude', 'codex']], ['for-claude', ['claude']], ['for-codex', ['codex']]]);
+        expect(entries.map(entry => [entry.name, entry.engines])).toEqual([
+            ['both', ['claude', 'codex']],
+            ['for-claude', ['claude']],
+            ['for-codex', ['codex']],
+        ]);
     });
 
     test('a skill switched off keeps its cost but stops counting', () => {
@@ -97,7 +134,10 @@ describe('the catalog', () => {
         const all = buildCatalog({ system: empty, user: merged, project: [], disabled: new Set() });
         const some = buildCatalog({ system: empty, user: merged, project: [], disabled: new Set(['off']) });
 
-        expect(some.entries.map(entry => [entry.name, entry.enabled])).toEqual([['user:off', false], ['user:on', true]]);
+        expect(some.entries.map(entry => [entry.name, entry.enabled])).toEqual([
+            ['user:off', false],
+            ['user:on', true],
+        ]);
         expect(some.entries[0].tokens).toBe(all.entries[0].tokens);
         expect(some.entries[0].tokens).toBeGreaterThan(0);
         expect(some.tokens).toBe(some.entries[1].tokens);
@@ -105,7 +145,10 @@ describe('the catalog', () => {
     });
 
     test('estimates a short skill between 33 and 48 tokens, as measured', () => {
-        const tokens = estimateTokens('user:deploy', 'Build the app, run every check and push it to the staging server when asked to ship.');
+        const tokens = estimateTokens(
+            'user:deploy',
+            'Build the app, run every check and push it to the staging server when asked to ship.'
+        );
 
         expect(tokens).toBeGreaterThanOrEqual(33);
         expect(tokens).toBeLessThanOrEqual(48);
@@ -116,14 +159,25 @@ describe('the catalog', () => {
         const user = tempDir();
 
         for (let index = 0; index < 30; index++) {
-            writeSkill(user, `skill-${ index }`, 'x'.repeat(300));
+            writeSkill(user, `skill-${index}`, 'x'.repeat(300));
         }
 
         writeSkill(user, 'broken', '', '---\nname: broken\n---\n');
 
         const merged = mergeUserSkills([labeled('~/.claude/skills', user)]);
-        const heavy = buildCatalog({ system: empty, user: merged, project: [], disabled: new Set(), warnings: ['skills.json is damaged'] });
-        const light = buildCatalog({ system: empty, user: merged, project: [], disabled: new Set(merged.skills.map(skill => skill.folder)) });
+        const heavy = buildCatalog({
+            system: empty,
+            user: merged,
+            project: [],
+            disabled: new Set(),
+            warnings: ['skills.json is damaged'],
+        });
+        const light = buildCatalog({
+            system: empty,
+            user: merged,
+            project: [],
+            disabled: new Set(merged.skills.map(skill => skill.folder)),
+        });
 
         expect(heavy.tokens).toBeGreaterThan(2000);
         expect(heavy.warnings).toEqual([
@@ -250,7 +304,12 @@ describe('the user plugin', () => {
         }
 
         expect(new Set(mirrors).size).toBe(7);
-        expect(readdirSync(join(dataDir, 'user-skills-plugin')).sort()).toEqual(mirrors.slice(2).map(dir => dir.split('/').at(-1) as string).sort());
+        expect(readdirSync(join(dataDir, 'user-skills-plugin')).sort()).toEqual(
+            mirrors
+                .slice(2)
+                .map(dir => dir.split('/').at(-1) as string)
+                .sort()
+        );
     });
 
     test('a skill that was edited gets a new plugin folder, so a link to old content is never reused', () => {
@@ -262,7 +321,9 @@ describe('the user plugin', () => {
         writeSkill(user, 'deploy', 'A longer description than before');
         utimesSync(join(dir, 'SKILL.md'), new Date(Date.now() + 5000), new Date(Date.now() + 5000));
 
-        expect(buildUserMirror(dataDir, mergeUserSkills([{ label: 'u', scan: new SkillScanner().scan(user) }]).skills)).not.toBe(before);
+        expect(
+            buildUserMirror(dataDir, mergeUserSkills([{ label: 'u', scan: new SkillScanner().scan(user) }]).skills)
+        ).not.toBe(before);
     });
 });
 
@@ -271,10 +332,13 @@ describe('materializing the system skills', () => {
         const dir = tempDir('plugin');
 
         mkdirSync(join(dir, '.claude-plugin'));
-        writeFileSync(join(dir, '.claude-plugin', 'plugin.json'), JSON.stringify({ name: manifestName, version: '0.1.0' }));
-        writeSkill(join(dir, 'skills'), 'orchestrate', `Entry skill, version ${ version }`);
+        writeFileSync(
+            join(dir, '.claude-plugin', 'plugin.json'),
+            JSON.stringify({ name: manifestName, version: '0.1.0' })
+        );
+        writeSkill(join(dir, 'skills'), 'orchestrate', `Entry skill, version ${version}`);
         mkdirSync(join(dir, 'skills', 'orchestrate', 'references'));
-        writeFileSync(join(dir, 'skills', 'orchestrate', 'references', 'fan-out.md'), `Fan out, ${ version }`);
+        writeFileSync(join(dir, 'skills', 'orchestrate', 'references', 'fan-out.md'), `Fan out, ${version}`);
         writeFileSync(join(dir, 'README.md'), 'not part of the plugin');
         writeFileSync(join(dir, 'package.json'), '{}');
         mkdirSync(join(dir, 'scripts'));
@@ -284,10 +348,11 @@ describe('materializing the system skills', () => {
         return dir;
     }
 
-    const filesOf = (dir: string): string[] => readdirSync(dir, { recursive: true, withFileTypes: true })
-        .filter(entry => entry.isFile())
-        .map(entry => join(entry.parentPath, entry.name).slice(dir.length + 1))
-        .sort();
+    const filesOf = (dir: string): string[] =>
+        readdirSync(dir, { recursive: true, withFileTypes: true })
+            .filter(entry => entry.isFile())
+            .map(entry => join(entry.parentPath, entry.name).slice(dir.length + 1))
+            .sort();
 
     test('copies the manifest and the skills, nothing else, into a folder named by a content hash', () => {
         const dataDir = tempDir();
@@ -295,7 +360,11 @@ describe('materializing the system skills', () => {
 
         expect(dir).toBe(join(dataDir, 'system-skills', hash));
         expect(hash).toMatch(/^[0-9a-f]{16}$/);
-        expect(filesOf(dir)).toEqual(['.claude-plugin/plugin.json', 'skills/orchestrate/SKILL.md', 'skills/orchestrate/references/fan-out.md']);
+        expect(filesOf(dir)).toEqual([
+            '.claude-plugin/plugin.json',
+            'skills/orchestrate/SKILL.md',
+            'skills/orchestrate/references/fan-out.md',
+        ]);
         expect(JSON.parse(readFileSync(join(dir, '.claude-plugin', 'plugin.json'), 'utf8')).name).toBe('clowdy');
     });
 
@@ -345,7 +414,12 @@ describe('materializing the system skills', () => {
             return dir;
         });
 
-        expect(readdirSync(join(dataDir, 'system-skills')).sort()).toEqual(copies.slice(2).map(dir => dir.split('/').at(-1) as string).sort());
+        expect(readdirSync(join(dataDir, 'system-skills')).sort()).toEqual(
+            copies
+                .slice(2)
+                .map(dir => dir.split('/').at(-1) as string)
+                .sort()
+        );
     });
 
     test('an older copy that is used again is kept over a newer one that is not', () => {
@@ -366,7 +440,9 @@ describe('materializing the system skills', () => {
     });
 
     test('refuses a source without the manifest or with another plugin name, and says how to fix it', () => {
-        expect(() => materializeSystemSkills(join(tempDir(), 'missing'), tempDir())).toThrow(/CLOWDY_SYSTEM_SKILLS_DIR/);
+        expect(() => materializeSystemSkills(join(tempDir(), 'missing'), tempDir())).toThrow(
+            /CLOWDY_SYSTEM_SKILLS_DIR/
+        );
         expect(() => materializeSystemSkills(source('one', 'other'), tempDir())).toThrow('must be named "clowdy"');
     });
 

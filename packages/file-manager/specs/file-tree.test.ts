@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { FileManager } from '../src/FileManager';
 import { MemoryFileSystem } from '../src/memory/MemoryFileSystem';
-import { FileSystemError, type FileEntry, type FileSystemProvider } from '../src/provider';
+import { type FileEntry, FileSystemError, type FileSystemProvider } from '../src/provider';
 import { FileTree } from '../src/tree/FileTree';
 
 const flush = () => new Promise(resolve => setTimeout(resolve));
@@ -184,7 +184,12 @@ describe('FileTree', () => {
 
     it('should say the children of a folder whatever the hidden and excluded globs say', async () => {
         const tree = new FileTree(
-            new MemoryFileSystem({ '.clowdy/docs/a.md': '', '.clowdy/docs/plans/b.md': '', 'node_modules/x/index.js': '', 'src/a.ts': '' }),
+            new MemoryFileSystem({
+                '.clowdy/docs/a.md': '',
+                '.clowdy/docs/plans/b.md': '',
+                'node_modules/x/index.js': '',
+                'src/a.ts': '',
+            }),
             { exclude: ['**/node_modules'], hidden: ['**/.*'] }
         );
 
@@ -193,7 +198,10 @@ describe('FileTree', () => {
         // The folder is hidden, so the tree's own rows leave it out; the entries below it are listed all the same.
         expect(names(tree)).toEqual(['src']);
         expect(tree.isVisible('.clowdy/docs/a.md')).toBe(false);
-        expect(tree.entriesOf('.clowdy/docs').map(entry => entry.path)).toEqual(['.clowdy/docs/plans', '.clowdy/docs/a.md']);
+        expect(tree.entriesOf('.clowdy/docs').map(entry => entry.path)).toEqual([
+            '.clowdy/docs/plans',
+            '.clowdy/docs/a.md',
+        ]);
         expect(tree.entriesOf('').map(entry => entry.path)).toEqual(['.clowdy', 'node_modules', 'src']);
         expect(tree.entriesOf('missing')).toEqual([]);
     });
@@ -222,7 +230,11 @@ describe('FileTree', () => {
     });
 
     it('should list a folder deep that was asked for while a refresh was in flight, once the refresh has committed', async () => {
-        const fs = new MemoryFileSystem({ 'a.ts': '', '.clowdy/docs/plans/deep/b.md': '', '.clowdy/docs/index.md': '' });
+        const fs = new MemoryFileSystem({
+            'a.ts': '',
+            '.clowdy/docs/plans/deep/b.md': '',
+            '.clowdy/docs/index.md': '',
+        });
         const tree = new FileTree(fs, { hidden: ['**/.*'] });
 
         await tree.refresh();
@@ -246,13 +258,18 @@ describe('FileTree', () => {
     });
 
     it('should list a folder listed deep once, whole, on a resync, and not every folder below it one by one', async () => {
-        const memory = new MemoryFileSystem({ 'a.ts': '', '.briefback/one/research/a.md': '', '.briefback/two/plan.md': '', '.briefback/three/handoff.md': '' });
+        const memory = new MemoryFileSystem({
+            'a.ts': '',
+            '.briefback/one/research/a.md': '',
+            '.briefback/two/plan.md': '',
+            '.briefback/three/handoff.md': '',
+        });
         const calls: string[] = [];
         const provider: FileSystemProvider = new Proxy(memory, {
             get(target, key) {
                 if (key === 'list') {
                     return async (dir = '', depth?: number) => {
-                        calls.push(`${ dir }:${ depth ?? 'all' }`);
+                        calls.push(`${dir}:${depth ?? 'all'}`);
 
                         return target.list(dir, depth);
                     };
@@ -272,7 +289,7 @@ describe('FileTree', () => {
         await memory.write('.briefback/one/research/b.md', '');
         await tree.refresh();
 
-        expect(calls).toEqual([`:${ 3 }`, '.briefback:all']);
+        expect(calls).toEqual([`:${3}`, '.briefback:all']);
         expect(tree.get('.briefback/one/research/b.md')?.kind).toBe('file');
     });
 
@@ -281,15 +298,22 @@ describe('FileTree', () => {
 
         class Strict extends MemoryFileSystem {
             override async list(dir = '', depth = Number.POSITIVE_INFINITY): Promise<FileEntry[]> {
-                if ([...gone].some(path => dir === path || dir.startsWith(`${ path }/`))) {
-                    throw new FileSystemError('NotFound', `${ dir } is gone`);
+                if ([...gone].some(path => dir === path || dir.startsWith(`${path}/`))) {
+                    throw new FileSystemError('NotFound', `${dir} is gone`);
                 }
 
-                return (await super.list(dir, depth)).filter(entry => ![...gone].some(path => entry.path === path || entry.path.startsWith(`${ path }/`)));
+                return (await super.list(dir, depth)).filter(
+                    entry => ![...gone].some(path => entry.path === path || entry.path.startsWith(`${path}/`))
+                );
             }
         }
 
-        const fs = new Strict({ '.briefback/old/research/a.md': '', '.briefback/keep/plan.md': '', 'lib/deep/x.ts': '', 'src/a.ts': '' });
+        const fs = new Strict({
+            '.briefback/old/research/a.md': '',
+            '.briefback/keep/plan.md': '',
+            'lib/deep/x.ts': '',
+            'src/a.ts': '',
+        });
         const tree = new FileTree(fs, { hidden: ['**/.*'] });
 
         await tree.refresh();

@@ -38,7 +38,12 @@ export function buildAgentEnv({ daemonEnv, path, scrub = [], set = {} }: AgentEn
     const env: Record<string, string> = {};
 
     for (const [name, value] of Object.entries(daemonEnv)) {
-        if (value === undefined || /^path$/i.test(name) || NEVER_INHERITED.some(pattern => pattern.test(name)) || scrub.some(pattern => pattern.test(name))) {
+        if (
+            value === undefined ||
+            /^path$/i.test(name) ||
+            NEVER_INHERITED.some(pattern => pattern.test(name)) ||
+            scrub.some(pattern => pattern.test(name))
+        ) {
             continue;
         }
 
@@ -55,7 +60,11 @@ export function buildAgentEnv({ daemonEnv, path, scrub = [], set = {} }: AgentEn
  * the daemon, the session's credential, the command's absolute path, and its folder first on `PATH`. The names carry no `KEY`, `TOKEN` or `SECRET`,
  * which Codex's default filter of a shell command's environment drops. Without commands or without a shim the environment stays as it is.
  */
-export function withCli(env: Record<string, string>, cli: CliAccess | undefined, shim: Shim | undefined): Record<string, string> {
+export function withCli(
+    env: Record<string, string>,
+    cli: CliAccess | undefined,
+    shim: Shim | undefined
+): Record<string, string> {
     if (!cli || !shim) {
         return env;
     }
@@ -65,6 +74,6 @@ export function withCli(env: Record<string, string>, cli: CliAccess | undefined,
         CLOWDY_CLI_URL: cli.url,
         CLOWDY_CLI_AUTH: cli.auth,
         CLOWDY_CLI: shim.command,
-        PATH: env.PATH ? `${ shim.dir }${ delimiter }${ env.PATH }` : shim.dir,
+        PATH: env.PATH ? `${shim.dir}${delimiter}${env.PATH}` : shim.dir,
     };
 }

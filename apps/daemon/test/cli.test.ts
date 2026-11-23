@@ -37,7 +37,14 @@ interface Ran {
 }
 
 /** Runs `argv` and collects what it printed. `stdin` is text to pipe in, `'ignore'` an empty one, `'open'` a pipe nobody writes to or closes. */
-async function run(argv: string[], { env = {}, cwd, stdin = 'ignore' }: { env?: Record<string, string | undefined>; cwd?: string; stdin?: string | 'ignore' | 'open' } = {}): Promise<Ran> {
+async function run(
+    argv: string[],
+    {
+        env = {},
+        cwd,
+        stdin = 'ignore',
+    }: { env?: Record<string, string | undefined>; cwd?: string; stdin?: string | 'ignore' | 'open' } = {}
+): Promise<Ran> {
     const child = Bun.spawn(argv, {
         cwd,
         env: { PATH: process.env.PATH, HOME: process.env.HOME, ...env },
@@ -45,7 +52,11 @@ async function run(argv: string[], { env = {}, cwd, stdin = 'ignore' }: { env?: 
         stdout: 'pipe',
         stderr: 'pipe',
     });
-    const [stdout, stderr, code] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
+    const [stdout, stderr, code] = await Promise.all([
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+        child.exited,
+    ]);
 
     return { code, stdout, stderr };
 }
@@ -58,7 +69,7 @@ function command(name: string, execute: ToolDefinition['execute'], positional?: 
 /** A script that says `say`, then holds until `gate` is released (or the run is stopped), then ends. */
 function held(gate: ReturnType<typeof latch>, say = 'working'): Script {
     return async function* ({ number, signal }) {
-        yield { type: 'session', sessionId: `s-${ number }` };
+        yield { type: 'session', sessionId: `s-${number}` };
         yield { type: 'text', delta: say, done: true };
         await gate.wait(signal);
         yield { type: 'done', result: say };
@@ -66,18 +77,20 @@ function held(gate: ReturnType<typeof latch>, say = 'working'): Script {
 }
 
 describe('the shim', () => {
-    test('is a POSIX script that runs the CLI with the daemon\'s Bun, kept out of the project\'s bunfig.toml and .env, and rewritten only when it changed', () => {
+    test("is a POSIX script that runs the CLI with the daemon's Bun, kept out of the project's bunfig.toml and .env, and rewritten only when it changed", () => {
         const dataDir = tempDir();
         const shim = installShim(dataDir, { platform: 'darwin' });
         const file = join(dataDir, 'bin', 'clowdy');
 
         expect(shim).toEqual({ dir: join(dataDir, 'bin'), command: file });
-        expect(readFileSync(file, 'utf8')).toBe([
-            '#!/bin/sh',
-            '# The clowdy command of the Clowdy daemon, written again at every start: do not edit',
-            `exec '${ process.execPath }' --no-env-file '--config=${ join(dataDir, 'bin', 'bunfig.toml') }' '${ CLI_ENTRY }' "$@"`,
-            '',
-        ].join('\n'));
+        expect(readFileSync(file, 'utf8')).toBe(
+            [
+                '#!/bin/sh',
+                '# The clowdy command of the Clowdy daemon, written again at every start: do not edit',
+                `exec '${process.execPath}' --no-env-file '--config=${join(dataDir, 'bin', 'bunfig.toml')}' '${CLI_ENTRY}' "$@"`,
+                '',
+            ].join('\n')
+        );
         expect(statSync(file).mode & 0o777).toBe(0o755);
         expect(readFileSync(join(dataDir, 'bin', 'bunfig.toml'), 'utf8')).toBe('');
         expect(existsSync(join(dataDir, 'bin', 'clowdy.cmd'))).toBe(false);
@@ -101,36 +114,49 @@ describe('the shim', () => {
 
     test('on Windows is also a .cmd beside the script, with % written twice', () => {
         const dataDir = tempDir();
-        const shim = installShim(dataDir, { platform: 'win32', runtime: 'C:\\Program Files\\Clowdy\\bun.exe', entry: 'C:\\Users\\Jo 100%\\clowdy.js' });
+        const shim = installShim(dataDir, {
+            platform: 'win32',
+            runtime: 'C:\\Program Files\\Clowdy\\bun.exe',
+            entry: 'C:\\Users\\Jo 100%\\clowdy.js',
+        });
 
         expect(shim.command).toBe(join(dataDir, 'bin', 'clowdy.cmd'));
-        expect(readFileSync(shim.command, 'utf8')).toBe([
-            '@echo off',
-            'rem The clowdy command of the Clowdy daemon, written again at every start: do not edit',
-            `"C:\\Program Files\\Clowdy\\bun.exe" --no-env-file "--config=${ join(dataDir, 'bin', 'bunfig.toml') }" "C:\\Users\\Jo 100%%\\clowdy.js" %*`,
-            '',
-        ].join('\r\n'));
+        expect(readFileSync(shim.command, 'utf8')).toBe(
+            [
+                '@echo off',
+                'rem The clowdy command of the Clowdy daemon, written again at every start: do not edit',
+                `"C:\\Program Files\\Clowdy\\bun.exe" --no-env-file "--config=${join(dataDir, 'bin', 'bunfig.toml')}" "C:\\Users\\Jo 100%%\\clowdy.js" %*`,
+                '',
+            ].join('\r\n')
+        );
         expect(existsSync(join(dataDir, 'bin', 'clowdy'))).toBe(true);
     });
 
-    test('works from folders with spaces, quotes and dollars, passes every argument as it is, and keeps the project\'s config and .env out', async () => {
+    test("works from folders with spaces, quotes and dollars, passes every argument as it is, and keeps the project's config and .env out", async () => {
         const dataDir = join(tempDir(), 'Application Support', 'it\'s "Clowdy" $HOME');
         const entry = join(tempDir(), 'my "cli" folder\'s $PATH', 'echo.ts');
         const project = tempDir();
 
         mkdirSync(dirname(entry), { recursive: true });
-        writeFileSync(entry, 'console.log(JSON.stringify({ args: process.argv.slice(2), dotenv: process.env.FROM_DOTENV ?? null, cwd: process.cwd() }));\n');
+        writeFileSync(
+            entry,
+            'console.log(JSON.stringify({ args: process.argv.slice(2), dotenv: process.env.FROM_DOTENV ?? null, cwd: process.cwd() }));\n'
+        );
         writeFileSync(join(project, 'bunfig.toml'), 'preload = ["./preload.ts"]\n');
         writeFileSync(join(project, 'preload.ts'), 'console.log("the project preload ran");\n');
         writeFileSync(join(project, '.env'), 'FROM_DOTENV=1\n');
 
         const shim = installShim(dataDir, { entry });
-        const args = ['a b', 'it\'s', '"quoted"', '$HOME', '', '--json'];
+        const args = ['a b', "it's", '"quoted"', '$HOME', '', '--json'];
         const ran = await run([shim.command, ...args], { cwd: project });
 
         expect(ran.stderr).toBe('');
         expect(ran.code).toBe(0);
-        expect(JSON.parse(ran.stdout)).toEqual({ args, dotenv: null, cwd: expect.stringContaining(project.split('/').at(-1) as string) });
+        expect(JSON.parse(ran.stdout)).toEqual({
+            args,
+            dotenv: null,
+            cwd: expect.stringContaining(project.split('/').at(-1) as string),
+        });
     });
 
     test('really runs the CLI, from the PATH, against a registered bridge, and a large output arrives whole', async () => {
@@ -140,8 +166,15 @@ describe('the shim', () => {
 
         bridges.push(bridge);
 
-        const access = bridge.register([command('thread_list', async () => ({ threads: [] })), command('thread_log', async () => big, ['thread'])], new AbortController().signal);
-        const env = { PATH: `${ shim.dir }${ delimiter }${ process.env.PATH }`, CLOWDY_CLI_URL: access.cli?.url, CLOWDY_CLI_AUTH: access.cli?.auth };
+        const access = bridge.register(
+            [command('thread_list', async () => ({ threads: [] })), command('thread_log', async () => big, ['thread'])],
+            new AbortController().signal
+        );
+        const env = {
+            PATH: `${shim.dir}${delimiter}${process.env.PATH}`,
+            CLOWDY_CLI_URL: access.cli?.url,
+            CLOWDY_CLI_AUTH: access.cli?.auth,
+        };
 
         const help = await run(['sh', '-c', 'clowdy --help'], { env });
 
@@ -149,7 +182,11 @@ describe('the shim', () => {
         expect(help.stdout).toContain('Usage: clowdy <group> <command>');
         expect(help.stdout).toContain('thread list');
 
-        expect(await run(['sh', '-c', 'clowdy thread list'], { env })).toEqual({ code: 0, stdout: '{"threads":[]}\n', stderr: '' });
+        expect(await run(['sh', '-c', 'clowdy thread list'], { env })).toEqual({
+            code: 0,
+            stdout: '{"threads":[]}\n',
+            stderr: '',
+        });
 
         const log = await run([shim.command, 'thread', 'log', 'cht_1'], { env });
 
@@ -162,26 +199,39 @@ describe('the shim', () => {
         expect(head.stdout).toBe('xxxxx');
     });
 
-    test('waits for a call that stays silent longer than Bun\'s idle limit of a request, as a long thread wait does', async () => {
+    test("waits for a call that stays silent longer than Bun's idle limit of a request, as a long thread wait does", async () => {
         const shim = installShim(tempDir());
         const bridge = new ToolBridge();
 
         bridges.push(bridge);
 
-        const access = bridge.register([command('thread_wait', async () => {
-            await Bun.sleep(10_000);
+        const access = bridge.register(
+            [
+                command('thread_wait', async () => {
+                    await Bun.sleep(10_000);
 
-            return 'rested';
-        }, ['thread'])], new AbortController().signal);
+                    return 'rested';
+                }, ['thread']),
+            ],
+            new AbortController().signal
+        );
         // Bun gives up on a request whose connection is silent for its idle limit: 5 minutes by default, under the 10 minutes a wait may take. One
         // second here, which its coarse timer turns into about 8.
-        const env = { CLOWDY_CLI_URL: access.cli?.url, CLOWDY_CLI_AUTH: access.cli?.auth, BUN_CONFIG_HTTP_IDLE_TIMEOUT: '1' };
+        const env = {
+            CLOWDY_CLI_URL: access.cli?.url,
+            CLOWDY_CLI_AUTH: access.cli?.auth,
+            BUN_CONFIG_HTTP_IDLE_TIMEOUT: '1',
+        };
 
-        expect(await run([shim.command, 'thread', 'wait', 'cht_1'], { env })).toEqual({ code: 0, stdout: 'rested\n', stderr: '' });
+        expect(await run([shim.command, 'thread', 'wait', 'cht_1'], { env })).toEqual({
+            code: 0,
+            stdout: 'rested\n',
+            stderr: '',
+        });
     }, 30_000);
 });
 
-describe('clowdy in an agent\'s shell, against a daemon', () => {
+describe("clowdy in an agent's shell, against a daemon", () => {
     /**
      * A daemon whose chat "Plan the release" holds its first turn, with that orchestrator's real tools registered on a real bridge the way a session
      * registers them, and the shim the daemon wrote at start first on the shell's `PATH`.
@@ -197,7 +247,7 @@ describe('clowdy in an agent\'s shell, against a daemon', () => {
                 return;
             }
 
-            yield { type: 'session', sessionId: `s-${ turn.number }` };
+            yield { type: 'session', sessionId: `s-${turn.number}` };
             yield { type: 'done', result: 'Done' };
         });
         const h = await startHarness({}, { engines: scriptEngines(engine) });
@@ -213,7 +263,10 @@ describe('clowdy in an agent\'s shell, against a daemon', () => {
 
         on('Plan the release', held(latch()));
         h.ok('chat.send', { chatId: chat.id, text: 'Plan the release' });
-        await waitFor(() => chatOf(chat.id).orchestratorRunId && runOf(chat.id).status === 'running', 'the parent to run');
+        await waitFor(
+            () => chatOf(chat.id).orchestratorRunId && runOf(chat.id).status === 'running',
+            'the parent to run'
+        );
 
         const parent = runOf(chat.id);
         const bridge = new ToolBridge();
@@ -223,9 +276,16 @@ describe('clowdy in an agent\'s shell, against a daemon', () => {
         const tools = toolsFor({ store, runs, threads }, parent, runs.modeOf(parent));
         const access = bridge.register(tools, new AbortController().signal);
         const shimDir = join(h.config.dataDir, 'bin');
-        const env = { PATH: `${ shimDir }${ delimiter }${ process.env.PATH }`, CLOWDY_CLI_URL: access.cli?.url, CLOWDY_CLI_AUTH: access.cli?.auth };
+        const env = {
+            PATH: `${shimDir}${delimiter}${process.env.PATH}`,
+            CLOWDY_CLI_URL: access.cli?.url,
+            CLOWDY_CLI_AUTH: access.cli?.auth,
+        };
         /** Runs `script` as the agent's shell would, in the project's folder. */
-        const shell = (script: string, options: { env?: Record<string, string | undefined>; stdin?: string | 'ignore' | 'open' } = {}) => run(['sh', '-c', script], { cwd: project.path, ...options, env: { ...env, ...options.env } });
+        const shell = (
+            script: string,
+            options: { env?: Record<string, string | undefined>; stdin?: string | 'ignore' | 'open' } = {}
+        ) => run(['sh', '-c', script], { cwd: project.path, ...options, env: { ...env, ...options.env } });
         const json = async (script: string) => {
             const ran = await shell(script);
 
@@ -239,11 +299,12 @@ describe('clowdy in an agent\'s shell, against a daemon', () => {
 
     test('spawns a thread from a heredoc, then lists, tells, reads, waits for and stops it', async () => {
         const { h, store, chat, chatOf, runOf, on, shell, json } = await setup();
-        const brief = 'Look into the slow cache.\nIt\'s "slow"; $HOME and `date` stay as written.\nReport what you find';
+        const brief =
+            'Look into the slow cache.\nIt\'s "slow"; $HOME and `date` stay as written.\nReport what you find';
 
         on('Report what you find', held(latch()));
 
-        const spawned = await json(`clowdy thread spawn --title 'Cache check' --prompt-file - <<'EOF'\n${ brief }\nEOF`);
+        const spawned = await json(`clowdy thread spawn --title 'Cache check' --prompt-file - <<'EOF'\n${brief}\nEOF`);
 
         const thread = spawned.threadId as string;
 
@@ -253,23 +314,37 @@ describe('clowdy in an agent\'s shell, against a daemon', () => {
         expect(chatOf(thread)).toMatchObject({ parentChatId: chat.id, title: 'Cache check' });
         await waitFor(() => runOf(thread).status === 'running', 'the thread to run');
         // The brief arrives exactly as written, without the line break the heredoc ends with.
-        expect(listItems(store.db, runOf(thread).id, 0)[0].body).toEqual({ kind: 'user', text: brief, from: { kind: 'thread', chatId: chat.id, title: chat.title } });
+        expect(listItems(store.db, runOf(thread).id, 0)[0].body).toEqual({
+            kind: 'user',
+            text: brief,
+            from: { kind: 'thread', chatId: chat.id, title: chat.title },
+        });
 
         const listed = await json('clowdy thread list --json');
 
-        expect(listed).toMatchObject({ ok: true, result: { threads: [{ threadId: thread, title: 'Cache check', state: 'working' }] } });
+        expect(listed).toMatchObject({
+            ok: true,
+            result: { threads: [{ threadId: thread, title: 'Cache check', state: 'working' }] },
+        });
 
         // The thread is busy and its agent takes no steer, so the message waits for its next turn.
-        expect(await json(`clowdy thread tell ${ thread } Also check the TTL, please`)).toEqual({ delivery: 'queued' });
+        expect(await json(`clowdy thread tell ${thread} Also check the TTL, please`)).toEqual({ delivery: 'queued' });
         expect(chatOf(thread).queue?.map(item => item.text)).toEqual(['Also check the TTL, please']);
 
-        expect(await json(`clowdy thread output ${ thread }`)).toMatchObject({ threadId: thread, state: 'working', text: 'working' });
-        expect((await json(`clowdy thread log ${ thread } --limit 5`)).lines.join('\n')).toContain('working');
-        expect(await json(`clowdy thread wait ${ thread } --timeout-seconds 1`)).toMatchObject({ state: 'working', timedOut: true });
+        expect(await json(`clowdy thread output ${thread}`)).toMatchObject({
+            threadId: thread,
+            state: 'working',
+            text: 'working',
+        });
+        expect((await json(`clowdy thread log ${thread} --limit 5`)).lines.join('\n')).toContain('working');
+        expect(await json(`clowdy thread wait ${thread} --timeout-seconds 1`)).toMatchObject({
+            state: 'working',
+            timedOut: true,
+        });
 
-        expect(await json(`clowdy thread stop ${ thread }`)).toEqual({ stopped: true, state: 'stopped' });
+        expect(await json(`clowdy thread stop ${thread}`)).toEqual({ stopped: true, state: 'stopped' });
         expect(runOf(thread).status).toBe('cancelled');
-        expect(await json(`clowdy thread wait ${ thread }`)).toMatchObject({ state: 'stopped', timedOut: false });
+        expect(await json(`clowdy thread wait ${thread}`)).toMatchObject({ state: 'stopped', timedOut: false });
         expect(h.run(runOf(chat.id).id).status).toBe('running');
     });
 
@@ -283,7 +358,7 @@ describe('clowdy in an agent\'s shell, against a daemon', () => {
 
         await waitFor(() => runOf(threadId).status === 'running', 'the thread to run');
 
-        const waiting = shell(`clowdy thread wait ${ threadId } --timeout-seconds 30 --json`);
+        const waiting = shell(`clowdy thread wait ${threadId} --timeout-seconds 30 --json`);
 
         await Bun.sleep(300);
         gate.release();
@@ -291,7 +366,10 @@ describe('clowdy in an agent\'s shell, against a daemon', () => {
         const ran = await waiting;
 
         expect(ran.code).toBe(0);
-        expect(JSON.parse(ran.stdout)).toMatchObject({ ok: true, result: { threadId, state: 'idle', text: 'There are 41 tests', timedOut: false } });
+        expect(JSON.parse(ran.stdout)).toMatchObject({
+            ok: true,
+            result: { threadId, state: 'idle', text: 'There are 41 tests', timedOut: false },
+        });
     });
 
     test('--worktree has the daemon make a git worktree for the thread, which its agent works in, and is refused together with --cwd', async () => {
@@ -303,15 +381,23 @@ describe('clowdy in an agent\'s shell, against a daemon', () => {
         const key = (spawned.threadId as string).slice(-8);
         const path = join(h.config.workspacesDir, 'repo', key, 'repo');
 
-        expect(spawned.worktree).toEqual({ path, branch: `clowdy/${ key }`, base: 'main' });
+        expect(spawned.worktree).toEqual({ path, branch: `clowdy/${key}`, base: 'main' });
         expect(spawned.note).toContain('Bringing the work back is yours');
 
         // Its first turn makes the worktree, and its agent starts in it.
-        const turn = await waitFor(() => engine.turns.find(candidate => candidate.prompt.endsWith('Rework the importer')), 'the thread\'s agent to start');
+        const turn = await waitFor(
+            () => engine.turns.find(candidate => candidate.prompt.endsWith('Rework the importer')),
+            "the thread's agent to start"
+        );
 
         expect(turn.cwd).toBe(path);
-        expect(chatOf(spawned.threadId).workspace).toMatchObject({ path, branch: `clowdy/${ key }`, managed: true, ready: true });
-        expect(git(path, 'branch', '--show-current')).toBe(`clowdy/${ key }`);
+        expect(chatOf(spawned.threadId).workspace).toMatchObject({
+            path,
+            branch: `clowdy/${key}`,
+            managed: true,
+            ready: true,
+        });
+        expect(git(path, 'branch', '--show-current')).toBe(`clowdy/${key}`);
 
         // Without the option the thread is where its parent is.
         const plain = await json('clowdy thread spawn --no-worktree --prompt "Read the importer"');
@@ -320,11 +406,15 @@ describe('clowdy in an agent\'s shell, against a daemon', () => {
         expect(chatOf(plain.threadId)).not.toHaveProperty('workspace');
 
         // Both ways of saying where the thread works are refused, and no thread is made.
-        const refused = await shell(`clowdy thread spawn --worktree --cwd ${ JSON.stringify(tempDir()) } --prompt "Nope"`);
+        const refused = await shell(
+            `clowdy thread spawn --worktree --cwd ${JSON.stringify(tempDir())} --prompt "Nope"`
+        );
 
         expect(refused.code).toBe(1);
         expect(refused.stderr).toContain('worktree and cwd both say where the thread works');
-        expect((await json('clowdy thread list')).threads.map((entry: { threadId: string }) => entry.threadId).sort()).toEqual([spawned.threadId, plain.threadId].sort());
+        expect(
+            (await json('clowdy thread list')).threads.map((entry: { threadId: string }) => entry.threadId).sort()
+        ).toEqual([spawned.threadId, plain.threadId].sort());
         expect(chatOf(chat.id).workspace).toBeUndefined();
 
         const help = await shell('clowdy thread spawn --help');
@@ -336,10 +426,19 @@ describe('clowdy in an agent\'s shell, against a daemon', () => {
         const { shell, json } = await setup();
         const description = 'Outcome: it exports.\nIt\'s "quoted"; $HOME and `date` stay as written.\nCheck: the page';
 
-        const first = await json(`clowdy task create CSV export --description-file - <<'EOF'\n${ description }\nEOF`);
+        const first = await json(`clowdy task create CSV export --description-file - <<'EOF'\n${description}\nEOF`);
 
-        expect(first.task).toMatchObject({ key: 'REP-1', title: 'CSV export', description, status: 'To do', createdBy: 'agent' });
-        expect((await json('clowdy task create "Document it" --depends-on REP-1 --status todo')).task).toMatchObject({ key: 'REP-2', dependsOn: [{ key: 'REP-1', title: 'CSV export', status: 'To do' }] });
+        expect(first.task).toMatchObject({
+            key: 'REP-1',
+            title: 'CSV export',
+            description,
+            status: 'To do',
+            createdBy: 'agent',
+        });
+        expect((await json('clowdy task create "Document it" --depends-on REP-1 --status todo')).task).toMatchObject({
+            key: 'REP-2',
+            dependsOn: [{ key: 'REP-1', title: 'CSV export', status: 'To do' }],
+        });
 
         const open = await json('clowdy task list');
 
@@ -350,15 +449,27 @@ describe('clowdy in an agent\'s shell, against a daemon', () => {
 
         expect((await json('clowdy task update REP-1 --status done')).task).toMatchObject({ category: 'done' });
         expect((await json('clowdy task list')).tasks.map((row: { key: string }) => row.key)).toEqual(['REP-2']);
-        expect((await json('clowdy task list --status done --json')).result).toMatchObject({ total: 1, tasks: [{ key: 'REP-1' }] });
-        expect((await json('clowdy task list --ready')).tasks.map((row: { key: string }) => row.key)).toEqual(['REP-2']);
-        expect((await json('clowdy task list --query export')).tasks.map((row: { key: string }) => row.key)).toEqual(['REP-1']);
+        expect((await json('clowdy task list --status done --json')).result).toMatchObject({
+            total: 1,
+            tasks: [{ key: 'REP-1' }],
+        });
+        expect((await json('clowdy task list --ready')).tasks.map((row: { key: string }) => row.key)).toEqual([
+            'REP-2',
+        ]);
+        expect((await json('clowdy task list --query export')).tasks.map((row: { key: string }) => row.key)).toEqual([
+            'REP-1',
+        ]);
         expect((await json('clowdy task list --all --limit 1 --sort number')).nextCursor).toBeDefined();
 
-        const replaced = await json('clowdy task update REP-2 --description "Verification passed: 41 tests" --add-depends-on REP-1');
+        const replaced = await json(
+            'clowdy task update REP-2 --description "Verification passed: 41 tests" --add-depends-on REP-1'
+        );
 
         expect(replaced.task.description).toBe('Verification passed: 41 tests');
-        expect((await json('clowdy task get REP-1')).task).toMatchObject({ description, blocks: [{ key: 'REP-2', title: 'Document it' }] });
+        expect((await json('clowdy task get REP-1')).task).toMatchObject({
+            description,
+            blocks: [{ key: 'REP-2', title: 'Document it' }],
+        });
 
         // The removed statusId and append options are usage errors that list the options.
         const old = await shell('clowdy task update REP-2 --status-id done');
@@ -379,9 +490,12 @@ describe('clowdy in an agent\'s shell, against a daemon', () => {
         const { shell, json } = await setup();
         const keys = (answer: { tasks: { key: string }[] }) => answer.tasks.map(row => row.key);
 
-        await json('clowdy task create Epic --description-file - <<\'EOF\'\n- [x] design\n- [ ] build\nEOF');
+        await json("clowdy task create Epic --description-file - <<'EOF'\n- [x] design\n- [ ] build\nEOF");
 
-        expect((await json('clowdy task create "Stage one" --parent REP-1')).task).toMatchObject({ key: 'REP-2', parent: { key: 'REP-1', title: 'Epic' } });
+        expect((await json('clowdy task create "Stage one" --parent REP-1')).task).toMatchObject({
+            key: 'REP-2',
+            parent: { key: 'REP-1', title: 'Epic' },
+        });
         await json('clowdy task create "Stage two" --parent REP-1 --status done');
         await json('clowdy task create Step --parent REP-2');
         await json('clowdy task create "Another root"');
@@ -390,12 +504,29 @@ describe('clowdy in an agent\'s shell, against a daemon', () => {
         expect(keys(await json('clowdy task list --parent REP-1 --all --sort number'))).toEqual(['REP-2', 'REP-3']);
         expect(keys(await json('clowdy task list --under REP-1 --sort number'))).toEqual(['REP-2', 'REP-4']);
         expect(keys(await json('clowdy task list --roots --sort number'))).toEqual(['REP-1', 'REP-5']);
-        expect(await json('clowdy task list --under REP-1 --all')).toMatchObject({ total: 3, counts: { todo: 2, done: 1 } });
-        expect((await json('clowdy task list --sort number')).tasks[0]).toMatchObject({ key: 'REP-1', children: { todo: 1, done: 1 }, checklist: { done: 1, total: 2 } });
-        expect((await json('clowdy task get REP-1')).task).toMatchObject({ children: [{ key: 'REP-2' }, { key: 'REP-3' }], childrenTotal: 2, descendants: { todo: 2, done: 1 }, checklist: { done: 1, total: 2 } });
+        expect(await json('clowdy task list --under REP-1 --all')).toMatchObject({
+            total: 3,
+            counts: { todo: 2, done: 1 },
+        });
+        expect((await json('clowdy task list --sort number')).tasks[0]).toMatchObject({
+            key: 'REP-1',
+            children: { todo: 1, done: 1 },
+            checklist: { done: 1, total: 2 },
+        });
+        expect((await json('clowdy task get REP-1')).task).toMatchObject({
+            children: [{ key: 'REP-2' }, { key: 'REP-3' }],
+            childrenTotal: 2,
+            descendants: { todo: 2, done: 1 },
+            checklist: { done: 1, total: 2 },
+        });
 
-        expect((await json('clowdy task update REP-4 --parent REP-1')).task).toMatchObject({ parent: { key: 'REP-1' } });
-        expect((await json('clowdy task update REP-4 --no-clear-parent --title Stepper')).task).toMatchObject({ title: 'Stepper', parent: { key: 'REP-1' } });
+        expect((await json('clowdy task update REP-4 --parent REP-1')).task).toMatchObject({
+            parent: { key: 'REP-1' },
+        });
+        expect((await json('clowdy task update REP-4 --no-clear-parent --title Stepper')).task).toMatchObject({
+            title: 'Stepper',
+            parent: { key: 'REP-1' },
+        });
         expect((await json('clowdy task update REP-4 --clear-parent')).task).not.toHaveProperty('parent');
         expect(keys(await json('clowdy task list --roots --sort number'))).toEqual(['REP-1', 'REP-4', 'REP-5']);
 
@@ -423,7 +554,9 @@ describe('clowdy in an agent\'s shell, against a daemon', () => {
         expect(help.stdout).toContain('Make the task a top-level task again');
         expect(help.stdout).toContain('--parent <text>');
         expect(help.stdout).toContain('clowdy task update CLW-7 --clear-parent');
-        expect((await shell('clowdy task list --help')).stdout).toMatch(/--under <text>\s+Only the tasks anywhere below this task/);
+        expect((await shell('clowdy task list --help')).stdout).toMatch(
+            /--under <text>\s+Only the tasks anywhere below this task/
+        );
     });
 
     test('archives tasks from bare words, lists the archive, reads an archived task, and brings the tasks back, each through the real command', async () => {
@@ -446,20 +579,40 @@ describe('clowdy in an agent\'s shell, against a daemon', () => {
         await json('clowdy task update REP-6 --status done');
 
         // Words, a comma list, and a mix of both are one list; the tasks inside go with each.
-        expect(await json('clowdy task archive REP-1 REP-4')).toEqual({ archived: ['REP-1', 'REP-2', 'REP-3', 'REP-6', 'REP-4'] });
+        expect(await json('clowdy task archive REP-1 REP-4')).toEqual({
+            archived: ['REP-1', 'REP-2', 'REP-3', 'REP-6', 'REP-4'],
+        });
         expect(keys(await json('clowdy task list --all --sort number'))).toEqual(['REP-5']);
-        expect(await json('clowdy task list --all')).toMatchObject({ total: 1, archived: 5, counts: { todo: 1, done: 0 } });
+        expect(await json('clowdy task list --all')).toMatchObject({
+            total: 1,
+            archived: 5,
+            counts: { todo: 1, done: 0 },
+        });
 
         const archive = await json('clowdy task list --archived --sort number');
 
         expect(keys(archive)).toEqual(['REP-1', 'REP-2', 'REP-3', 'REP-4', 'REP-6']);
         expect(archive).toMatchObject({ total: 5, archived: 5, counts: { done: 4, canceled: 1 } });
-        expect(archive.tasks[1]).toMatchObject({ key: 'REP-2', parent: 'REP-1', status: 'Done', archivedAt: expect.any(String) });
-        expect(keys(await json('clowdy task list --archived --parent REP-1 --sort number'))).toEqual(['REP-2', 'REP-3', 'REP-6']);
+        expect(archive.tasks[1]).toMatchObject({
+            key: 'REP-2',
+            parent: 'REP-1',
+            status: 'Done',
+            archivedAt: expect.any(String),
+        });
+        expect(keys(await json('clowdy task list --archived --parent REP-1 --sort number'))).toEqual([
+            'REP-2',
+            'REP-3',
+            'REP-6',
+        ]);
         expect(keys(await json('clowdy task list --archived --status canceled'))).toEqual(['REP-3']);
         expect(keys(await json('clowdy task list --archived --query "stage one"'))).toEqual(['REP-2']);
         expect(keys(await json('clowdy task list --query "stage one"'))).toEqual([]);
-        expect((await json('clowdy task get REP-1')).task).toMatchObject({ key: 'REP-1', archived: true, archivedAt: expect.any(String), childrenTotal: 3 });
+        expect((await json('clowdy task get REP-1')).task).toMatchObject({
+            key: 'REP-1',
+            archived: true,
+            archivedAt: expect.any(String),
+            childrenTotal: 3,
+        });
         expect((await json('clowdy task get REP-5')).task).not.toHaveProperty('archived');
 
         // A task of the batch cannot come back while its parent is archived; the parent brings the batch.
@@ -467,15 +620,26 @@ describe('clowdy in an agent\'s shell, against a daemon', () => {
 
         expect(stuck.code).toBe(1);
         expect(stuck.stderr).toContain('Task REP-2 is inside REP-1, which is archived: restore REP-1 first');
-        expect(await json('clowdy task unarchive REP-2,REP-1')).toEqual({ restored: ['REP-1', 'REP-2', 'REP-3', 'REP-6'] });
+        expect(await json('clowdy task unarchive REP-2,REP-1')).toEqual({
+            restored: ['REP-1', 'REP-2', 'REP-3', 'REP-6'],
+        });
         expect(await json('clowdy task unarchive REP-1')).toEqual({ restored: [] });
         expect(keys(await json('clowdy task list --archived'))).toEqual(['REP-4']);
 
         // --cancel closes the open work first and says which it canceled.
         await json('clowdy task update REP-6 --status todo');
-        expect(await json('clowdy task archive REP-1 --cancel REP-5')).toEqual({ archived: ['REP-1', 'REP-2', 'REP-3', 'REP-6', 'REP-5'], canceled: ['REP-6', 'REP-5'] });
-        expect(keys(await json('clowdy task list --archived --status canceled --sort number'))).toEqual(['REP-3', 'REP-5', 'REP-6']);
-        expect(await json('clowdy task unarchive REP-1 REP-5')).toEqual({ restored: ['REP-1', 'REP-2', 'REP-3', 'REP-6', 'REP-5'] });
+        expect(await json('clowdy task archive REP-1 --cancel REP-5')).toEqual({
+            archived: ['REP-1', 'REP-2', 'REP-3', 'REP-6', 'REP-5'],
+            canceled: ['REP-6', 'REP-5'],
+        });
+        expect(keys(await json('clowdy task list --archived --status canceled --sort number'))).toEqual([
+            'REP-3',
+            'REP-5',
+            'REP-6',
+        ]);
+        expect(await json('clowdy task unarchive REP-1 REP-5')).toEqual({
+            restored: ['REP-1', 'REP-2', 'REP-3', 'REP-6', 'REP-5'],
+        });
         expect((await json('clowdy task archive REP-6 --cancel --json')).result).toEqual({ archived: ['REP-6'] });
     });
 
@@ -489,7 +653,9 @@ describe('clowdy in an agent\'s shell, against a daemon', () => {
         expect(help.stdout).toContain('--cancel');
         expect(help.stdout).toContain('clowdy task archive CLW-3 --cancel');
         expect(help.stdout).toContain('is refused without --cancel');
-        expect((await shell('clowdy task unarchive --help')).stdout).toContain('Usage: clowdy task unarchive <task-id>... [options]');
+        expect((await shell('clowdy task unarchive --help')).stdout).toContain(
+            'Usage: clowdy task unarchive <task-id>... [options]'
+        );
         expect((await shell('clowdy task list --help')).stdout).toMatch(/--archived\s+Only the archived tasks/);
         expect((await shell('clowdy task list --help')).stdout).toContain('clowdy task list --archived');
         expect((await shell('clowdy task --help')).stdout).toMatch(/task archive +Archives closed tasks/);
@@ -515,34 +681,55 @@ describe('clowdy in an agent\'s shell, against a daemon', () => {
 
         const words = await json('clowdy task comment REP-1 The cache key ignores the locale');
 
-        expect(words).toMatchObject({ comment: { author: 'agent', body: 'The cache key ignores the locale' }, total: 1 });
+        expect(words).toMatchObject({
+            comment: { author: 'agent', body: 'The cache key ignores the locale' },
+            total: 1,
+        });
         expect((await json('clowdy task comment REP-1 --body "Via the option"')).comment.body).toBe('Via the option');
 
         // A heredoc as --body-file -, and as a bare - in the body's place (the convention thread tell has): the text arrives as written, without the line break the heredoc ends with.
-        expect((await json(`clowdy task comment REP-1 --body-file - <<'EOF'\n${ note }\nEOF`)).comment.body).toBe(note);
-        expect((await json(`clowdy task comment REP-1 - <<'EOF'\n${ note }\nEOF`)).comment.body).toBe(note);
-        expect((await json('printf \'From a pipe\\n\' | clowdy task comment REP-1 -')).comment.body).toBe('From a pipe');
+        expect((await json(`clowdy task comment REP-1 --body-file - <<'EOF'\n${note}\nEOF`)).comment.body).toBe(note);
+        expect((await json(`clowdy task comment REP-1 - <<'EOF'\n${note}\nEOF`)).comment.body).toBe(note);
+        expect((await json("printf 'From a pipe\\n' | clowdy task comment REP-1 -")).comment.body).toBe('From a pipe');
 
         const stored = taskCommentsPage(h.store, (await json('clowdy task get REP-1')).task.id).comments;
 
         expect(stored).toHaveLength(5);
         expect(stored.every(comment => comment.author.kind === 'run')).toBe(true);
-        expect(stored.map(comment => comment.body)).toEqual(['The cache key ignores the locale', 'Via the option', note, note, 'From a pipe']);
+        expect(stored.map(comment => comment.body)).toEqual([
+            'The cache key ignores the locale',
+            'Via the option',
+            note,
+            note,
+            'From a pipe',
+        ]);
 
         const got = (await json('clowdy task get REP-1')).task;
 
         expect(got.commentCount).toBe(5);
-        expect(got.latestComments.map((comment: { body: string }) => comment.body)).toEqual([note, note, 'From a pipe']);
+        expect(got.latestComments.map((comment: { body: string }) => comment.body)).toEqual([
+            note,
+            note,
+            'From a pipe',
+        ]);
 
         const first = await json('clowdy task comments REP-1 --limit 2');
 
-        expect(first).toMatchObject({ total: 5, shown: 2, comments: [{ body: 'The cache key ignores the locale' }, { body: 'Via the option' }] });
+        expect(first).toMatchObject({
+            total: 5,
+            shown: 2,
+            comments: [{ body: 'The cache key ignores the locale' }, { body: 'Via the option' }],
+        });
         expect(first.nextCursor).toBeDefined();
 
-        const next = await json(`clowdy task comments REP-1 --limit 2 --cursor '${ first.nextCursor }'`);
+        const next = await json(`clowdy task comments REP-1 --limit 2 --cursor '${first.nextCursor}'`);
 
         expect(next.comments.map((comment: { body: string }) => comment.body)).toEqual([note, note]);
-        expect((await json(`clowdy task comments REP-1 --cursor '${ next.nextCursor }'`)).comments.map((comment: { body: string }) => comment.body)).toEqual(['From a pipe']);
+        expect(
+            (await json(`clowdy task comments REP-1 --cursor '${next.nextCursor}'`)).comments.map(
+                (comment: { body: string }) => comment.body
+            )
+        ).toEqual(['From a pipe']);
         expect((await json('clowdy task comments REP-1 --json')).result).toMatchObject({ total: 5, shown: 5 });
         expect((await json('clowdy task create Quiet')).task).not.toHaveProperty('comments');
         expect(await json('clowdy task comments REP-2')).toEqual({ comments: [], total: 0, shown: 0 });
@@ -575,22 +762,26 @@ describe('clowdy in an agent\'s shell, against a daemon', () => {
         expect(missing.code).toBe(2);
         expect(missing.stderr).toContain('Missing <body>');
         expect((await shell('clowdy task comments REP-1 --limit 101')).code).toBe(1);
-        expect((await shell('clowdy task comment REP-1 Hello --parent REP-2')).stderr).toContain('Unknown option --parent');
+        expect((await shell('clowdy task comment REP-1 Hello --parent REP-2')).stderr).toContain(
+            'Unknown option --parent'
+        );
 
         const help = (await shell('clowdy task comment --help')).stdout;
 
         expect(help).toContain('Usage: clowdy task comment <task-id> <body> [options]');
         expect(help).toMatch(/<body>\s+The comment, in Markdown \(- reads it from stdin\)/);
-        expect(help).toContain('clowdy task comment CLW-3 --body-file - <<\'EOF\'');
-        expect((await shell('clowdy task comments --help')).stdout).toContain('clowdy task comments CLW-3 --cursor <nextCursor>');
+        expect(help).toContain("clowdy task comment CLW-3 --body-file - <<'EOF'");
+        expect((await shell('clowdy task comments --help')).stdout).toContain(
+            'clowdy task comments CLW-3 --cursor <nextCursor>'
+        );
         expect((await shell('clowdy task --help')).stdout).toMatch(/task comment\s+Adds a comment to a task/);
         expect((await shell('clowdy task --help')).stdout).toMatch(/task comments\s+Lists the comments on a task/);
     });
 
-    test('a refused call exits 1 with the daemon\'s message, a bad command line 2, and stdin with nothing in it 2 without hanging', async () => {
+    test("a refused call exits 1 with the daemon's message, a bad command line 2, and stdin with nothing in it 2 without hanging", async () => {
         const { chat, shell } = await setup();
 
-        const refused = await shell(`clowdy thread stop ${ chat.id }`);
+        const refused = await shell(`clowdy thread stop ${chat.id}`);
 
         expect(refused.code).toBe(1);
         expect(refused.stdout).toBe('');
@@ -611,7 +802,10 @@ describe('clowdy in an agent\'s shell, against a daemon', () => {
         expect(empty.code).toBe(2);
         expect(empty.stderr).toContain('stdin was empty');
 
-        const silent = await shell('clowdy thread spawn --prompt-file -', { stdin: 'open', env: { CLOWDY_CLI_STDIN_IDLE_MS: '300' } });
+        const silent = await shell('clowdy thread spawn --prompt-file -', {
+            stdin: 'open',
+            env: { CLOWDY_CLI_STDIN_IDLE_MS: '300' },
+        });
 
         expect(silent.code).toBe(2);
         expect(silent.stderr).toContain('Nothing came on stdin');
@@ -625,7 +819,9 @@ describe('clowdy in an agent\'s shell, against a daemon', () => {
         expect(wrong.code).toBe(4);
         expect(wrong.stderr).toContain('no longer valid');
 
-        const outside = await shell('clowdy thread list', { env: { CLOWDY_CLI_URL: undefined, CLOWDY_CLI_AUTH: undefined } });
+        const outside = await shell('clowdy thread list', {
+            env: { CLOWDY_CLI_URL: undefined, CLOWDY_CLI_AUTH: undefined },
+        });
 
         expect(outside.code).toBe(4);
         expect(outside.stderr).toContain('inside an agent session');
@@ -638,14 +834,36 @@ describe('clowdy in an agent\'s shell, against a daemon', () => {
         expect(JSON.parse(ended.stdout)).toMatchObject({ ok: false, error: { code: 'unreachable' } });
     });
 
-    test('the help\'s examples use only commands and options the task, thread and worktree tools have', async () => {
+    test("the help's examples use only commands and options the task, thread and worktree tools have", async () => {
         const { h, store, chat, tools } = await setup();
         const { runs, threads } = h.daemon.services;
         // `worktree_name` is there only for a chat whose worktree is its own and has no name yet; its definition is the same whichever chat asks.
-        const all = [...tools, worktreeNameTool({ store, runs, threads }, h.run(chat.orchestratorRunId as string), chat.id)];
-        const commands = new Map(all.filter(candidate => candidate.cli).map(candidate => [candidate.name, candidate as unknown as CliTool]));
+        const all = [
+            ...tools,
+            worktreeNameTool({ store, runs, threads }, h.run(chat.orchestratorRunId as string), chat.id),
+        ];
+        const commands = new Map(
+            all.filter(candidate => candidate.cli).map(candidate => [candidate.name, candidate as unknown as CliTool])
+        );
 
-        expect([...commands.keys()].sort()).toEqual(['task_archive', 'task_comment', 'task_comments', 'task_create', 'task_get', 'task_list', 'task_unarchive', 'task_update', 'thread_list', 'thread_log', 'thread_output', 'thread_spawn', 'thread_stop', 'thread_tell', 'thread_wait', 'worktree_name']);
+        expect([...commands.keys()].sort()).toEqual([
+            'task_archive',
+            'task_comment',
+            'task_comments',
+            'task_create',
+            'task_get',
+            'task_list',
+            'task_unarchive',
+            'task_update',
+            'thread_list',
+            'thread_log',
+            'thread_output',
+            'thread_spawn',
+            'thread_stop',
+            'thread_tell',
+            'thread_wait',
+            'worktree_name',
+        ]);
 
         for (const [name, lines] of Object.entries(EXAMPLES)) {
             const known = commands.get(name);
@@ -653,11 +871,14 @@ describe('clowdy in an agent\'s shell, against a daemon', () => {
             expect({ name, known: Boolean(known) }).toEqual({ name, known: true });
 
             for (const line of lines.filter(candidate => candidate.startsWith('clowdy '))) {
-                expect(line.startsWith(`clowdy ${ name.replace('_', ' ') } `)).toBe(true);
+                expect(line.startsWith(`clowdy ${name.replace('_', ' ')} `)).toBe(true);
 
                 const flags = [...line.split('#')[0].matchAll(/(?:^|\s)--([a-z][a-z-]*)/g)].map(match => match[1]);
 
-                expect({ line, unknown: flags.filter(flag => !['json', 'help', ...flagsOf(known as CliTool)].includes(flag)) }).toEqual({ line, unknown: [] });
+                expect({
+                    line,
+                    unknown: flags.filter(flag => !['json', 'help', ...flagsOf(known as CliTool)].includes(flag)),
+                }).toEqual({ line, unknown: [] });
             }
         }
     });
@@ -667,10 +888,24 @@ describe('the agent process of a session with shell commands', () => {
     let shim: Shim;
 
     /** What the fake agent said for each line of its prompt, one message per directive. */
-    async function session(prompt: string, tools: ToolDefinition[], options: Parameters<typeof rig>[0] = {}, registered: ReturnType<ToolBridge['register']>[] = []) {
+    async function session(
+        prompt: string,
+        tools: ToolDefinition[],
+        options: Parameters<typeof rig>[0] = {},
+        registered: ReturnType<ToolBridge['register']>[] = []
+    ) {
         shim ??= installShim(tempDir());
 
-        const r = rig({ shim, env: { PATH: process.env.PATH, HOME: process.env.HOME, CLOWDY_CLI_URL: 'http://stale.example', CLOWDY_CLI_AUTH: 'stale' }, ...options });
+        const r = rig({
+            shim,
+            env: {
+                PATH: process.env.PATH,
+                HOME: process.env.HOME,
+                CLOWDY_CLI_URL: 'http://stale.example',
+                CLOWDY_CLI_AUTH: 'stale',
+            },
+            ...options,
+        });
         const register = r.bridge.register.bind(r.bridge);
 
         r.bridge.register = (...args) => {
@@ -694,35 +929,46 @@ describe('the agent process of a session with shell commands', () => {
     const plain = tool('task_list', async () => 'tasks');
 
     test('has the command first on its PATH, the credential that works while the session lives, and no CLI tool among its MCP tools', async () => {
-        const { events, registered } = await session([
-            'env CLOWDY_CLI_URL',
-            'env CLOWDY_CLI_AUTH',
-            'env CLOWDY_CLI',
-            'env PATH',
-            'shell clowdy thread list',
-            'shell PATH=/usr/bin:/bin; "$CLOWDY_CLI" thread list --json',
-            'tools',
-        ].join('\n'), [plain, listing]);
+        const { events, registered } = await session(
+            [
+                'env CLOWDY_CLI_URL',
+                'env CLOWDY_CLI_AUTH',
+                'env CLOWDY_CLI',
+                'env PATH',
+                'shell clowdy thread list',
+                'shell PATH=/usr/bin:/bin; "$CLOWDY_CLI" thread list --json',
+                'tools',
+            ].join('\n'),
+            [plain, listing]
+        );
         const text = textOf(events);
         const [access] = registered;
 
         expect(registered).toHaveLength(1);
-        expect(text).toContain(`CLOWDY_CLI_URL=${ access.cli?.url }`);
-        expect(text).toContain(`CLOWDY_CLI_AUTH=${ access.cli?.auth }`);
-        expect(text).toContain(`CLOWDY_CLI=${ shim.command }`);
-        expect(text).toContain(`PATH=${ shim.dir }${ delimiter }`);
+        expect(text).toContain(`CLOWDY_CLI_URL=${access.cli?.url}`);
+        expect(text).toContain(`CLOWDY_CLI_AUTH=${access.cli?.auth}`);
+        expect(text).toContain(`CLOWDY_CLI=${shim.command}`);
+        expect(text).toContain(`PATH=${shim.dir}${delimiter}`);
         expect(text).toContain(JSON.stringify({ code: 0, stdout: '{"threads":["cht_1"]}\n', stderr: '' }));
         // A shell whose PATH lost the command still has it by its absolute path.
-        expect(text).toContain(JSON.stringify({ code: 0, stdout: '{"ok":true,"result":{"threads":["cht_1"]}}\n', stderr: '' }));
+        expect(text).toContain(
+            JSON.stringify({ code: 0, stdout: '{"ok":true,"result":{"threads":["cht_1"]}}\n', stderr: '' })
+        );
         expect(text).toContain('["task_list"]');
 
         // The session is over: its credential with it.
-        expect((await fetch(`${ access.cli?.url }/cli/tools`, { headers: { authorization: `Bearer ${ access.cli?.auth }` } })).status).toBe(401);
+        expect(
+            (await fetch(`${access.cli?.url}/cli/tools`, { headers: { authorization: `Bearer ${access.cli?.auth}` } }))
+                .status
+        ).toBe(401);
     });
 
-    test('without shell commands gets none of the variables, and the daemon\'s own are never passed on', async () => {
+    test("without shell commands gets none of the variables, and the daemon's own are never passed on", async () => {
         for (const tools of [[plain], []]) {
-            const { events } = await session('env CLOWDY_CLI_URL\nenv CLOWDY_CLI_AUTH\nenv CLOWDY_CLI\nenv PATH', tools);
+            const { events } = await session(
+                'env CLOWDY_CLI_URL\nenv CLOWDY_CLI_AUTH\nenv CLOWDY_CLI\nenv PATH',
+                tools
+            );
             const text = textOf(events);
 
             expect(text).toContain('CLOWDY_CLI_URL=CLOWDY_CLI_AUTH=CLOWDY_CLI=PATH=');
@@ -730,7 +976,7 @@ describe('the agent process of a session with shell commands', () => {
         }
     });
 
-    test.each(PROTOCOLS)('over %s, a session of shell commands only names no MCP server', async (protocol) => {
+    test.each(PROTOCOLS)('over %s, a session of shell commands only names no MCP server', async protocol => {
         const { events } = await session('info', [listing], { protocol });
 
         expect(JSON.parse(textOf(events))).toMatchObject({ servers: [] });
@@ -740,15 +986,24 @@ describe('the agent process of a session with shell commands', () => {
         let first: number | undefined;
         const registered: ReturnType<ToolBridge['register']>[] = [];
         const probe = command('thread_list', async () => {
-            first = (await fetch(`${ registered[0].cli?.url }/cli/tools`, { headers: { authorization: `Bearer ${ registered[0].cli?.auth }` } })).status;
+            first = (
+                await fetch(`${registered[0].cli?.url}/cli/tools`, {
+                    headers: { authorization: `Bearer ${registered[0].cli?.auth}` },
+                })
+            ).status;
 
             return 'listed';
         });
         // The v1 fake agent asked for v2 answers with version 1, so the engine starts it again on v1.
-        const { events } = await session('env CLOWDY_CLI_AUTH\nshell clowdy thread list', [probe], { protocol: 'v2', args: [FAKE_AGENT] }, registered);
+        const { events } = await session(
+            'env CLOWDY_CLI_AUTH\nshell clowdy thread list',
+            [probe],
+            { protocol: 'v2', args: [FAKE_AGENT] },
+            registered
+        );
 
         expect(registered).toHaveLength(2);
-        expect(textOf(events)).toContain(`CLOWDY_CLI_AUTH=${ registered[1].cli?.auth }`);
+        expect(textOf(events)).toContain(`CLOWDY_CLI_AUTH=${registered[1].cli?.auth}`);
         expect(textOf(events)).toContain('"stdout":"listed\\n"');
         expect(first).toBe(401);
     });

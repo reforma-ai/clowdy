@@ -39,79 +39,110 @@ export interface TaskListProps {
  * because the screen decides what a click, `X` or Shift+arrow selects. Arrow keys and `J`/`K` are the screen's too; the keys
  * it does not take (type-ahead, Space, `Tab`) are still the table's.
  */
-export function TaskList({ rows, statuses, runsOfTask, notesOf, onOpenScope, onToggle, openId, selectedIds }: TaskListProps) {
+export function TaskList({
+    rows,
+    statuses,
+    runsOfTask,
+    notesOf,
+    onOpenScope,
+    onToggle,
+    openId,
+    selectedIds,
+}: TaskListProps) {
     return (
-        <div className={ styles.list }>
+        <div className={styles.list}>
             <Table
                 aria-label="Tasks"
-                className={ styles.table }
+                className={styles.table}
                 maxHeight="100%"
                 selectionMode="multiple"
-                selectedKeys={ selectedIds }
+                selectedKeys={selectedIds}
             >
                 <TableHeader>
-                    <TableHead id="key" isRowHeader className={ styles.keyColumn }>Key</TableHead>
+                    <TableHead id="key" isRowHeader className={styles.keyColumn}>
+                        Key
+                    </TableHead>
                     <TableHead id="title">Title</TableHead>
-                    <TableHead id="status" className={ styles.statusColumn }>Status</TableHead>
-                    <TableHead id="agents" className={ styles.agentsColumn }>Agents</TableHead>
+                    <TableHead id="status" className={styles.statusColumn}>
+                        Status
+                    </TableHead>
+                    <TableHead id="agents" className={styles.agentsColumn}>
+                        Agents
+                    </TableHead>
                 </TableHeader>
                 {/* The rows are built again on every render, so the table's cache of a row (kept while its item is the same object) never serves one that is stale. */}
-                <TableBody items={ rows }>
-                    { ({ task, depth, hasChildren, collapsed }) => {
+                <TableBody items={rows}>
+                    {({ task, depth, hasChildren, collapsed }) => {
                         const { rollUp, checklist } = notesOf(task);
 
                         return (
                             <TableRow
-                                id={ task.id }
-                                className={ styles.row }
-                                data-task-id={ task.id }
-                                data-open={ task.id === openId || undefined }
-                                data-depth={ depth }
+                                id={task.id}
+                                className={styles.row}
+                                data-task-id={task.id}
+                                data-open={task.id === openId || undefined}
+                                data-depth={depth}
                             >
-                                <TableCell className={ styles.key }>{ task.key }</TableCell>
-                                <TableCell className={ styles.title }>
+                                <TableCell className={styles.key}>{task.key}</TableCell>
+                                <TableCell className={styles.title}>
                                     {/* A table row carries no level (React Aria passes no `aria-level` through), so a screen reader is told it here, as the first words of the cell. */}
-                                    <span className={ styles.level }>{ `Level ${ depth + 1 }` }</span>
-                                    <div className={ styles.line } style={ { '--depth': depth } as CSSProperties }>
+                                    <span className={styles.level}>{`Level ${depth + 1}`}</span>
+                                    <div className={styles.line} style={{ '--depth': depth } as CSSProperties}>
                                         {/* A row with nothing inside leaves the room, so the titles of one level line up, and a press there is a press on the row. The keys fold from the keyboard, so the button is for the pointer. */}
-                                        <span className={ styles.fold }>
-                                            { hasChildren && (
+                                        <span className={styles.fold}>
+                                            {hasChildren && (
                                                 <button
                                                     type="button"
-                                                    tabIndex={ -1 }
+                                                    tabIndex={-1}
                                                     data-task-control
-                                                    className={ styles.chevron }
-                                                    aria-expanded={ !collapsed }
-                                                    aria-label={ `${ collapsed ? 'Expand' : 'Collapse' } ${ task.key }` }
-                                                    onPointerDown={ stop }
-                                                    onKeyDown={ stop }
-                                                    onClick={ (event) => {
+                                                    className={styles.chevron}
+                                                    aria-expanded={!collapsed}
+                                                    aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${task.key}`}
+                                                    onPointerDown={stop}
+                                                    onKeyDown={stop}
+                                                    onClick={event => {
                                                         event.stopPropagation();
                                                         onToggle(task.id);
-                                                    } }
+                                                    }}
                                                 >
-                                                    { collapsed ? <ChevronRight /> : <ChevronDown /> }
+                                                    {collapsed ? <ChevronRight /> : <ChevronDown />}
                                                 </button>
-                                            ) }
+                                            )}
                                         </span>
-                                        <span className={ styles.text }>{ task.title }</span>
-                                        { (checklist || rollUp) && (
-                                            <span className={ styles.chips }>
-                                                { checklist && <ChecklistChip checklist={ checklist } /> }
-                                                { rollUp && <RollUpChip rollUp={ rollUp } taskKey={ task.key } onPress={ () => onOpenScope(task.id) } /> }
+                                        <span className={styles.text}>{task.title}</span>
+                                        {(checklist || rollUp) && (
+                                            <span className={styles.chips}>
+                                                {checklist && <ChecklistChip checklist={checklist} />}
+                                                {rollUp && (
+                                                    <RollUpChip
+                                                        rollUp={rollUp}
+                                                        taskKey={task.key}
+                                                        onPress={() => onOpenScope(task.id)}
+                                                    />
+                                                )}
                                             </span>
-                                        ) }
+                                        )}
                                     </div>
                                 </TableCell>
-                                <TableCell><StatusPill status={ statuses.find(status => status.id === task.statusId) } /></TableCell>
                                 <TableCell>
-                                    <div className={ styles.agents } data-task-control onPointerDown={ stop } onClick={ stop } onKeyDown={ stop }>
-                                        { activeExecutors(runsOfTask.get(task.id)).map(run => <AgentChip key={ run.id } run={ run } />) }
+                                    <StatusPill status={statuses.find(status => status.id === task.statusId)} />
+                                </TableCell>
+                                <TableCell>
+                                    <div
+                                        className={styles.agents}
+                                        data-task-control
+                                        onPointerDown={stop}
+                                        onClick={stop}
+                                        onKeyDown={stop}
+                                    >
+                                        {activeExecutors(runsOfTask.get(task.id)).map(run => (
+                                            <AgentChip key={run.id} run={run} />
+                                        ))}
                                     </div>
                                 </TableCell>
                             </TableRow>
                         );
-                    } }
+                    }}
                 </TableBody>
             </Table>
         </div>

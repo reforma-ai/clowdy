@@ -1,8 +1,8 @@
-import { MAX_FS_SEARCH_LINES_PER_FILE } from '@clowdy/protocol';
 import { spawn } from 'node:child_process';
 import { accessSync, constants, statSync } from 'node:fs';
 import { relative, sep } from 'node:path';
 import { createInterface } from 'node:readline';
+import { MAX_FS_SEARCH_LINES_PER_FILE } from '@clowdy/protocol';
 
 import { invalid, unavailable } from '../errors';
 import { MAX_SEARCHED_BYTES } from './search-rules';
@@ -38,7 +38,9 @@ export class RipgrepLocator {
             return this.found.path;
         }
 
-        const path = (this.configured !== undefined && isExecutable(this.configured) ? this.configured : Bun.which('rg')) ?? null;
+        const path =
+            (this.configured !== undefined && isExecutable(this.configured) ? this.configured : Bun.which('rg')) ??
+            null;
 
         this.found = { path, at: Date.now() };
 
@@ -56,8 +58,7 @@ function isExecutable(path: string): boolean {
         accessSync(path, constants.X_OK);
 
         return statSync(path).isFile();
-    }
-    catch {
+    } catch {
         return false;
     }
 }
@@ -87,13 +88,13 @@ function argumentsOf(run: RipgrepRun): string[] {
         // One thread, files in path order: a result cut by the cap keeps the first files, the same ones every time, as the scan does.
         '--sort=path',
         '--max-filesize',
-        `${ MAX_SEARCHED_BYTES / 1024 / 1024 }M`,
+        `${MAX_SEARCHED_BYTES / 1024 / 1024}M`,
         '--max-count',
         String(MAX_FS_SEARCH_LINES_PER_FILE + 1),
         '-F',
         run.matchCase ? '-s' : '-i',
-        ...run.wholeWord ? ['-w'] : [],
-        ...run.globs.flatMap(glob => ['-g', `!${ glob }`]),
+        ...(run.wholeWord ? ['-w'] : []),
+        ...run.globs.flatMap(glob => ['-g', `!${glob}`]),
         '-e',
         run.query,
         '--',
@@ -112,7 +113,13 @@ interface Ended {
  * Runs the program and hands each line of its output to `onLine`; a `false` from it, or the signal, kills the program. Answers when the
  * program has ended. Rejects with `RipgrepMissing` when it could not be started.
  */
-function runProgram(program: string, args: string[], cwd: string, onLine: (line: string) => boolean | void, signal: AbortSignal): Promise<Ended> {
+function runProgram(
+    program: string,
+    args: string[],
+    cwd: string,
+    onLine: (line: string) => boolean | void,
+    signal: AbortSignal
+): Promise<Ended> {
     return new Promise((resolve, reject) => {
         if (signal.aborted) {
             resolve({ code: null, stderr: '', stopped: true });
@@ -125,8 +132,7 @@ function runProgram(program: string, args: string[], cwd: string, onLine: (line:
 
         try {
             child = spawn(program, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
-        }
-        catch (error) {
+        } catch (error) {
             reject(new RipgrepMissing((error as Error).message));
 
             return;
@@ -167,7 +173,7 @@ function runProgram(program: string, args: string[], cwd: string, onLine: (line:
                 stderr += chunk.toString();
             }
         });
-        lines.on('line', (line) => {
+        lines.on('line', line => {
             if (!stopped && onLine(line) === false) {
                 stop();
             }
@@ -175,13 +181,13 @@ function runProgram(program: string, args: string[], cwd: string, onLine: (line:
         child.once('spawn', () => {
             started = true;
         });
-        child.on('error', (error) => {
+        child.on('error', error => {
             // An error after the program started is a failed kill: the close that follows ends the run.
             if (!started) {
                 finish(() => reject(new RipgrepMissing(error.message)));
             }
         });
-        child.on('close', (code) => {
+        child.on('close', code => {
             finish(() => resolve({ code, stderr, stopped }));
         });
     });
@@ -219,7 +225,12 @@ interface MatchEvent {
     };
 }
 
-const firstLine = (text: string) => text.split('\n').find(line => line.trim() !== '')?.replace(/^rg: /, '').trim() ?? '';
+const firstLine = (text: string) =>
+    text
+        .split('\n')
+        .find(line => line.trim() !== '')
+        ?.replace(/^rg: /, '')
+        .trim() ?? '';
 
 /**
  * Searches the folder with ripgrep, feeding the lines it finds to `collector`. A line or a path that is not UTF-8 (ripgrep gives it as
@@ -230,39 +241,44 @@ export async function ripgrepSearch(run: RipgrepRun, collector: Collector, signa
     let output = false;
     let summary = false;
 
-    const ended = await runProgram(run.program, argumentsOf(run), run.root, (line) => {
-        output = true;
+    const ended = await runProgram(
+        run.program,
+        argumentsOf(run),
+        run.root,
+        line => {
+            output = true;
 
-        let event: MatchEvent;
+            let event: MatchEvent;
 
-        try {
-            event = JSON.parse(line) as MatchEvent;
-        }
-        catch {
-            return;
-        }
+            try {
+                event = JSON.parse(line) as MatchEvent;
+            } catch {
+                return;
+            }
 
-        // Ripgrep says it is done with a summary, also when it could not read some of the files (and then exits with 2).
-        if (event.type === 'summary') {
-            summary = true;
+            // Ripgrep says it is done with a summary, also when it could not read some of the files (and then exits with 2).
+            if (event.type === 'summary') {
+                summary = true;
 
-            return;
-        }
+                return;
+            }
 
-        if (event.type !== 'match' || event.data.path.text === undefined || event.data.lines.text === undefined) {
-            return;
-        }
+            if (event.type !== 'match' || event.data.path.text === undefined || event.data.lines.text === undefined) {
+                return;
+            }
 
-        const path = relativePath(run.root, event.data.path.text);
+            const path = relativePath(run.root, event.data.path.text);
 
-        if (path === undefined) {
-            return;
-        }
+            if (path === undefined) {
+                return;
+            }
 
-        const text = event.data.lines.text.replace(/\r?\n$/, '');
+            const text = event.data.lines.text.replace(/\r?\n$/, '');
 
-        return collector.add(path, event.data.line_number, text, charRanges(text, event.data.submatches));
-    }, signal);
+            return collector.add(path, event.data.line_number, text, charRanges(text, event.data.submatches));
+        },
+        signal
+    );
 
     if (ended.stopped || summary || ended.code === 0 || ended.code === 1) {
         return;
@@ -270,7 +286,12 @@ export async function ripgrepSearch(run: RipgrepRun, collector: Collector, signa
 
     // Before any output: ripgrep did not like the request (an exclude glob, say).
     if (ended.code === 2 && !output) {
-        throw invalid(`The search was refused: ${ firstLine(ended.stderr) || 'ripgrep could not read the request' }`.replace(/\.$/, ''));
+        throw invalid(
+            `The search was refused: ${firstLine(ended.stderr) || 'ripgrep could not read the request'}`.replace(
+                /\.$/,
+                ''
+            )
+        );
     }
 
     // It died on the way (killed by the system, say): what it found is kept.

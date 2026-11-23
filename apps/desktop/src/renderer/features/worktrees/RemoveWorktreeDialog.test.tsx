@@ -4,7 +4,12 @@ import { toast } from '@clowdy/components/Toast';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createFixtureData, FIXTURE_PROJECT_ID, withFixtureWorktrees, type FixtureData } from '../../daemon/fixtureData';
+import {
+    createFixtureData,
+    FIXTURE_PROJECT_ID,
+    type FixtureData,
+    withFixtureWorktrees,
+} from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { overrideTransport } from '../../daemon/testing';
 import { RootStore } from '../../stores';
@@ -33,7 +38,10 @@ let getProjectWorktrees: ReturnType<typeof vi.fn<(projectId: string) => ReturnTy
 const memoryStorage = () => {
     const data: Record<string, string> = {};
 
-    return { getItem: (key: string) => data[key] ?? null, setItem: (key: string, value: string) => void (data[key] = value) };
+    return {
+        getItem: (key: string) => data[key] ?? null,
+        setItem: (key: string, value: string) => void (data[key] = value),
+    };
 };
 
 /** The windows draw on the next animation frame and their content mounts a little later. */
@@ -68,7 +76,9 @@ async function open({ data = dataWithKinds(), overrides = {} }: OpenOptions = {}
 
     command = vi.fn((input: CommandInput) => base.command(input));
     getProjectWorktrees = vi.fn((projectId: string) => base.getProjectWorktrees(projectId));
-    store = new RootStore(overrideTransport(base, { command, getProjectWorktrees, ...overrides }), { storage: memoryStorage() });
+    store = new RootStore(overrideTransport(base, { command, getProjectWorktrees, ...overrides }), {
+        storage: memoryStorage(),
+    });
     await store.load();
     store.selectProject(FIXTURE_PROJECT_ID);
     await act(async () => {
@@ -78,12 +88,13 @@ async function open({ data = dataWithKinds(), overrides = {} }: OpenOptions = {}
     await settle();
 }
 
-const row = (path: string) => document.body.querySelector<HTMLElement>(`li[data-worktree-path="${ path }"]`);
+const row = (path: string) => document.body.querySelector<HTMLElement>(`li[data-worktree-path="${path}"]`);
 const menuItems = () => [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')];
 /** The confirmation is the window on top of the Manage dialog. */
 const confirmation = () => [...document.body.querySelectorAll<HTMLElement>('[data-modal-window]')].at(-1)!;
 const isConfirming = () => Modal.opened.length === 2;
-const textButton = (parent: HTMLElement, text: string) => [...parent.querySelectorAll<HTMLButtonElement>('button')].find(candidate => candidate.textContent?.trim() === text);
+const textButton = (parent: HTMLElement, text: string) =>
+    [...parent.querySelectorAll<HTMLButtonElement>('button')].find(candidate => candidate.textContent?.trim() === text);
 const checkbox = () => confirmation().querySelector<HTMLInputElement>('input[type="checkbox"]');
 const click = (element: HTMLElement) => act(async () => element.click());
 const removals = () => command.mock.calls.map(([input]) => input).filter(input => input.type === 'workspace.remove');
@@ -116,7 +127,17 @@ beforeEach(() => {
     vi.spyOn(Modal, 'create').mockImplementation(options => create({ ...options, animate: false }));
     // The confirmation opens over the Manage dialog, as its child, and closes when the window it came from is not visible: happy-dom has no layout, so every element has no size.
     vi.spyOn(Element.prototype, 'getClientRects').mockReturnValue([{}] as unknown as DOMRectList);
-    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({ x: 0, y: 0, top: 0, left: 0, right: 640, bottom: 480, width: 640, height: 480, toJSON: () => ({}) });
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
+        x: 0,
+        y: 0,
+        top: 0,
+        left: 0,
+        right: 640,
+        bottom: 480,
+        width: 640,
+        height: 480,
+        toJSON: () => ({}),
+    });
 });
 
 afterEach(async () => {
@@ -148,7 +169,15 @@ describe('Remove in Manage worktrees', () => {
 
             await confirm('Remove');
 
-            expect(removals()).toEqual([{ type: 'workspace.remove', projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental', path: CLEAN_MERGED, deleteBranch: true }]);
+            expect(removals()).toEqual([
+                {
+                    type: 'workspace.remove',
+                    projectId: FIXTURE_PROJECT_ID,
+                    folderId: 'fld_car_rental',
+                    path: CLEAN_MERGED,
+                    deleteBranch: true,
+                },
+            ]);
             expect(removals()[0]).not.toHaveProperty('discard');
         });
 
@@ -161,7 +190,14 @@ describe('Remove in Manage worktrees', () => {
 
             await confirm('Remove');
 
-            expect(removals()).toEqual([{ type: 'workspace.remove', projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental', path: CLEAN_MERGED }]);
+            expect(removals()).toEqual([
+                {
+                    type: 'workspace.remove',
+                    projectId: FIXTURE_PROJECT_ID,
+                    folderId: 'fld_car_rental',
+                    path: CLEAN_MERGED,
+                },
+            ]);
         });
 
         it('reads the list again after the removal, closes the confirmation, and the row is gone', async () => {
@@ -184,9 +220,20 @@ describe('Remove in Manage worktrees', () => {
     describe('while the command runs', () => {
         it('sends it once for two presses, and keeps Cancel off until it answers', async () => {
             let answer!: () => void;
-            const slow = vi.fn((input: CommandInput) => new Promise<CommandResult>((resolve) => {
-                answer = () => void resolve({ ok: true, requestId: 'r', data: { path: input.type === 'workspace.remove' ? input.path : '', branchDeleted: false } });
-            }));
+            const slow = vi.fn(
+                (input: CommandInput) =>
+                    new Promise<CommandResult>(resolve => {
+                        answer = () =>
+                            void resolve({
+                                ok: true,
+                                requestId: 'r',
+                                data: {
+                                    path: input.type === 'workspace.remove' ? input.path : '',
+                                    branchDeleted: false,
+                                },
+                            });
+                    })
+            );
 
             await open({ overrides: { command: slow } });
             await askToRemove(CLEAN_MERGED);
@@ -219,11 +266,20 @@ describe('Remove in Manage worktrees', () => {
             expect(window.textContent).toContain('Its unmerged commits are lost with the branch');
             expect(checkbox()!.checked).toBe(false);
             // The warning is the box's description, so a screen reader hears it with the box.
-            expect(window.querySelector(`#${ CSS.escape(checkbox()!.getAttribute('aria-describedby')!) }`)?.textContent).toBe('Its unmerged commits are lost with the branch');
+            expect(
+                window.querySelector(`#${CSS.escape(checkbox()!.getAttribute('aria-describedby')!)}`)?.textContent
+            ).toBe('Its unmerged commits are lost with the branch');
 
             await confirm('Remove');
 
-            expect(removals()).toEqual([{ type: 'workspace.remove', projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental', path: CLEAN_UNMERGED }]);
+            expect(removals()).toEqual([
+                {
+                    type: 'workspace.remove',
+                    projectId: FIXTURE_PROJECT_ID,
+                    folderId: 'fld_car_rental',
+                    path: CLEAN_UNMERGED,
+                },
+            ]);
         });
 
         it('deletes the branch too once the person ticks it', async () => {
@@ -232,14 +288,26 @@ describe('Remove in Manage worktrees', () => {
             await act(async () => checkbox()!.click());
             await confirm('Remove');
 
-            expect(removals()).toEqual([{ type: 'workspace.remove', projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental', path: CLEAN_UNMERGED, deleteBranch: true }]);
+            expect(removals()).toEqual([
+                {
+                    type: 'workspace.remove',
+                    projectId: FIXTURE_PROJECT_ID,
+                    folderId: 'fld_car_rental',
+                    path: CLEAN_UNMERGED,
+                    deleteBranch: true,
+                },
+            ]);
         });
 
         it('leaves the box off for the base branch itself, whose work is "in the base" by being it, and says so', async () => {
             const data = dataWithKinds();
 
             // The fixture's base is `origin/main`: a worktree on the local `main` is merged into it, and deleting `main` keeps nothing of it anywhere else.
-            data.worktrees![CAR_RENTAL]!.push({ path: '/Users/dev/orca/car-rental/trunk', branch: 'main', head: 'fff7777' });
+            data.worktrees![CAR_RENTAL]!.push({
+                path: '/Users/dev/orca/car-rental/trunk',
+                branch: 'main',
+                head: 'fff7777',
+            });
             await open({ data });
             await askToRemove('/Users/dev/orca/car-rental/trunk');
 
@@ -250,13 +318,24 @@ describe('Remove in Manage worktrees', () => {
 
             await confirm('Remove');
 
-            expect(removals()).toEqual([{ type: 'workspace.remove', projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental', path: '/Users/dev/orca/car-rental/trunk' }]);
+            expect(removals()).toEqual([
+                {
+                    type: 'workspace.remove',
+                    projectId: FIXTURE_PROJECT_ID,
+                    folderId: 'fld_car_rental',
+                    path: '/Users/dev/orca/car-rental/trunk',
+                },
+            ]);
         });
 
         it('offers the branch whatever it is called, one the person made as well as the one Clowdy named', async () => {
             const data = dataWithKinds();
 
-            data.worktrees![CAR_RENTAL]!.push({ path: '/Users/dev/orca/car-rental/release', branch: 'release/1.0', head: 'fff6666' });
+            data.worktrees![CAR_RENTAL]!.push({
+                path: '/Users/dev/orca/car-rental/release',
+                branch: 'release/1.0',
+                head: 'fff6666',
+            });
             await open({ data });
             await askToRemove('/Users/dev/orca/car-rental/release');
 
@@ -284,7 +363,15 @@ describe('Remove in Manage worktrees', () => {
             await settle();
 
             // The branch of the worktree is not merged, so it stays unless it is ticked.
-            expect(removals()).toEqual([{ type: 'workspace.remove', projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental', path: FOUND_WORKTREE, discard: true }]);
+            expect(removals()).toEqual([
+                {
+                    type: 'workspace.remove',
+                    projectId: FIXTURE_PROJECT_ID,
+                    folderId: 'fld_car_rental',
+                    path: FOUND_WORKTREE,
+                    discard: true,
+                },
+            ]);
             expect(row(FOUND_WORKTREE)).toBeNull();
         });
 
@@ -298,7 +385,16 @@ describe('Remove in Manage worktrees', () => {
 
             await confirm('Discard 1 change and remove');
 
-            expect(removals()).toEqual([{ type: 'workspace.remove', projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental', path: ONE_CHANGE, discard: true, deleteBranch: true }]);
+            expect(removals()).toEqual([
+                {
+                    type: 'workspace.remove',
+                    projectId: FIXTURE_PROJECT_ID,
+                    folderId: 'fld_car_rental',
+                    path: ONE_CHANGE,
+                    discard: true,
+                    deleteBranch: true,
+                },
+            ]);
         });
 
         it('asks in red for a clean worktree with an initialised submodule, with no number of changes in it', async () => {
@@ -328,7 +424,9 @@ describe('Remove in Manage worktrees', () => {
 
             await confirm('Remove');
 
-            expect(removals()).toEqual([{ type: 'workspace.remove', projectId: FIXTURE_PROJECT_ID, folderId: 'fld_api', path: DETACHED_MERGED }]);
+            expect(removals()).toEqual([
+                { type: 'workspace.remove', projectId: FIXTURE_PROJECT_ID, folderId: 'fld_api', path: DETACHED_MERGED },
+            ]);
         });
 
         it('warns that its commits are not in the base and may be in no branch, with no branch box either', async () => {
@@ -337,11 +435,15 @@ describe('Remove in Manage worktrees', () => {
 
             expect(checkbox()).toBeNull();
             expect(confirmation().textContent).toContain('Not merged');
-            expect(confirmation().textContent).toContain('Its commits may be in no branch, so they can be lost with the worktree');
+            expect(confirmation().textContent).toContain(
+                'Its commits may be in no branch, so they can be lost with the worktree'
+            );
 
             await confirm('Remove');
 
-            expect(removals()).toEqual([{ type: 'workspace.remove', projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental', path: STRANDED }]);
+            expect(removals()).toEqual([
+                { type: 'workspace.remove', projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental', path: STRANDED },
+            ]);
         });
     });
 
@@ -359,7 +461,15 @@ describe('Remove in Manage worktrees', () => {
 
             await confirm('Remove record');
 
-            expect(removals()).toEqual([{ type: 'workspace.remove', projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental', path: MISSING_WORKTREE, deleteBranch: true }]);
+            expect(removals()).toEqual([
+                {
+                    type: 'workspace.remove',
+                    projectId: FIXTURE_PROJECT_ID,
+                    folderId: 'fld_car_rental',
+                    path: MISSING_WORKTREE,
+                    deleteBranch: true,
+                },
+            ]);
             expect(row(MISSING_WORKTREE)).toBeNull();
         });
     });
@@ -372,7 +482,9 @@ describe('Remove in Manage worktrees', () => {
 
             expect(remove.getAttribute('aria-disabled')).toBe('true');
             expect(remove.textContent).toContain('A chat works in it');
-            expect(row(CLOWDY_WORKTREE)!.querySelector('[aria-label="Chats"]')!.textContent).toContain('Weekend surcharge in a worktree');
+            expect(row(CLOWDY_WORKTREE)!.querySelector('[aria-label="Chats"]')!.textContent).toContain(
+                'Weekend surcharge in a worktree'
+            );
 
             await click(remove);
             await settle();
@@ -380,14 +492,20 @@ describe('Remove in Manage worktrees', () => {
             expect(isConfirming()).toBe(false);
             expect(removals()).toEqual([]);
         });
-
     });
 
     describe('cancelling', () => {
         it('sends nothing, reads nothing and leaves the list as it was, for each kind of confirmation', async () => {
             await open();
 
-            for (const path of [CLEAN_MERGED, CLEAN_UNMERGED, FOUND_WORKTREE, STRANDED, MISSING_WORKTREE, SUBMODULES_ONLY]) {
+            for (const path of [
+                CLEAN_MERGED,
+                CLEAN_UNMERGED,
+                FOUND_WORKTREE,
+                STRANDED,
+                MISSING_WORKTREE,
+                SUBMODULES_ONLY,
+            ]) {
                 await askToRemove(path);
                 await click(textButton(confirmation(), 'Cancel')!);
                 await settle();
@@ -402,16 +520,25 @@ describe('Remove in Manage worktrees', () => {
     });
 
     describe('a refusal', () => {
-        it('toasts the daemon\'s own reason, reads the list again since the row may have changed, and closes the confirmation', async () => {
+        it("toasts the daemon's own reason, reads the list again since the row may have changed, and closes the confirmation", async () => {
             const error = vi.spyOn(toast, 'error').mockReturnValue('' as never);
-            const refuse = vi.fn(async (): Promise<CommandResult> => ({ ok: false, requestId: 'r', error: { code: 'conflict', message: 'The chat "Fix the login" works in this worktree' } }));
+            const refuse = vi.fn(
+                async (): Promise<CommandResult> => ({
+                    ok: false,
+                    requestId: 'r',
+                    error: { code: 'conflict', message: 'The chat "Fix the login" works in this worktree' },
+                })
+            );
 
             await open({ overrides: { command: refuse } });
             await askToRemove(CLEAN_MERGED);
             await confirm('Remove');
 
             expect(refuse).toHaveBeenCalledTimes(1);
-            expect(error).toHaveBeenCalledWith({ title: 'Couldn\'t remove the worktree', message: 'The chat "Fix the login" works in this worktree' });
+            expect(error).toHaveBeenCalledWith({
+                title: "Couldn't remove the worktree",
+                message: 'The chat "Fix the login" works in this worktree',
+            });
             expect(isConfirming()).toBe(false);
             expect(Modal.opened).toHaveLength(1);
             expect(getProjectWorktrees).toHaveBeenCalledTimes(2);
@@ -428,7 +555,10 @@ describe('Remove in Manage worktrees', () => {
             await askToRemove(CLEAN_MERGED);
             await confirm('Remove');
 
-            expect(error).toHaveBeenCalledWith({ title: 'Couldn\'t remove the worktree', message: 'The worktree has changes that are not committed' });
+            expect(error).toHaveBeenCalledWith({
+                title: "Couldn't remove the worktree",
+                message: 'The worktree has changes that are not committed',
+            });
             expect(isConfirming()).toBe(false);
             expect(row(CLEAN_MERGED)!.textContent).toContain('2 changes');
 
@@ -449,20 +579,23 @@ describe('Remove in Manage worktrees', () => {
                 return base.getProjectWorktrees(projectId);
             });
 
-            await open({ data, overrides: { getProjectWorktrees: read, command: (input: CommandInput) => base.command(input) } });
+            await open({
+                data,
+                overrides: { getProjectWorktrees: read, command: (input: CommandInput) => base.command(input) },
+            });
             await askToRemove(CLEAN_MERGED);
             await confirm('Remove');
 
             const manage = document.body.querySelector<HTMLElement>('[data-modal-window]')!;
 
-            expect(manage.textContent).toContain('Couldn\'t refresh the list');
+            expect(manage.textContent).toContain("Couldn't refresh the list");
             // The list on screen is the earlier one: the row it still shows is the one that was removed.
             expect(row(CLEAN_MERGED)).not.toBeNull();
 
             await click(textButton(manage, 'Try again')!);
             await settle();
 
-            expect(manage.textContent).not.toContain('Couldn\'t refresh the list');
+            expect(manage.textContent).not.toContain("Couldn't refresh the list");
             expect(row(CLEAN_MERGED)).toBeNull();
         });
     });

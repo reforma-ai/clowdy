@@ -4,13 +4,18 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createFixtureData, FIXTURE_PROJECT_ID, withFixtureWorkspace, type FixtureData } from '../../daemon/fixtureData';
+import {
+    createFixtureData,
+    FIXTURE_PROJECT_ID,
+    type FixtureData,
+    withFixtureWorkspace,
+} from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { TransportError } from '../../daemon/transport';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { openEffects } from '../openWith';
 import { ChangesSidebar } from './ChangesSidebar';
-import { gitFactsOf, type GitPlaceKey } from './gitFacts';
+import { type GitPlaceKey, gitFactsOf } from './gitFacts';
 import { placeChangesOf } from './PlaceChanges';
 
 import type { GitRemoteResult } from '@clowdy/protocol';
@@ -21,13 +26,26 @@ import type { PlaceChanges } from './PlaceChanges';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 // The babel plugin that makes the app's components observers does not run under Vitest: the parts of the sidebar are, to follow the models they read.
-vi.mock('./RemoteMenu', async importOriginal => ({ RemoteMenu: observer((await importOriginal<typeof import('./RemoteMenu')>()).RemoteMenu) }));
-vi.mock('./CreatePullRequest', async importOriginal => ({ ...await importOriginal<typeof import('./CreatePullRequest')>(), CreatePullRequest: observer((await importOriginal<typeof import('./CreatePullRequest')>()).CreatePullRequest) }));
-vi.mock('./CommitBox', async importOriginal => ({ CommitBox: observer((await importOriginal<typeof import('./CommitBox')>()).CommitBox) }));
-vi.mock('./PullRequestChip', async importOriginal => ({ PullRequestChip: observer((await importOriginal<typeof import('./PullRequestChip')>()).PullRequestChip) }));
+vi.mock('./RemoteMenu', async importOriginal => ({
+    RemoteMenu: observer((await importOriginal<typeof import('./RemoteMenu')>()).RemoteMenu),
+}));
+vi.mock('./CreatePullRequest', async importOriginal => ({
+    ...(await importOriginal<typeof import('./CreatePullRequest')>()),
+    CreatePullRequest: observer((await importOriginal<typeof import('./CreatePullRequest')>()).CreatePullRequest),
+}));
+vi.mock('./CommitBox', async importOriginal => ({
+    CommitBox: observer((await importOriginal<typeof import('./CommitBox')>()).CommitBox),
+}));
+vi.mock('./PullRequestChip', async importOriginal => ({
+    PullRequestChip: observer((await importOriginal<typeof import('./PullRequestChip')>()).PullRequestChip),
+}));
 
 const CAR_RENTAL = '/Users/dev/car-rental';
-const WORKTREE: GitPlaceKey = { projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' };
+const WORKTREE: GitPlaceKey = {
+    projectId: FIXTURE_PROJECT_ID,
+    folderId: 'fld_car_rental',
+    workspaceId: 'wks_ab12cd34',
+};
 const CHECKOUT: GitPlaceKey = { projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental' };
 
 const Sidebar = observer(ChangesSidebar);
@@ -40,21 +58,33 @@ let model: PlaceChanges;
 let stop: () => void;
 let opened: string[];
 
-const settle = () => act(async () => {
-    await new Promise(resolve => setTimeout(resolve, 0));
-});
-const press = (target: Element) => act(async () => {
-    target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
-    target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
-    target.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
-    target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
-    (target as HTMLElement).click();
-});
+const settle = () =>
+    act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 0));
+    });
+const press = (target: Element) =>
+    act(async () => {
+        target.dispatchEvent(
+            new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true })
+        );
+        target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+        target.dispatchEvent(
+            new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true })
+        );
+        target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
+        (target as HTMLElement).click();
+    });
 
 const sidebar = () => container.querySelector('[aria-label="Changes sidebar"]')!;
-const buttonOf = (label: string) => [...container.querySelectorAll<HTMLButtonElement>('button')].find(candidate => candidate.textContent?.trim() === label);
+const buttonOf = (label: string) =>
+    [...container.querySelectorAll<HTMLButtonElement>('button')].find(
+        candidate => candidate.textContent?.trim() === label
+    );
 /** The row that opens the menu of Fetch, Pull and Push. */
-const originRow = () => container.querySelector<HTMLButtonElement>('button[aria-label^="Origin"], button[aria-label="Fetching origin"], button[aria-label="Pulling"], button[aria-label="Pushing"], button[aria-label="Publishing"]')!;
+const originRow = () =>
+    container.querySelector<HTMLButtonElement>(
+        'button[aria-label^="Origin"], button[aria-label="Fetching origin"], button[aria-label="Pulling"], button[aria-label="Pushing"], button[aria-label="Publishing"]'
+    )!;
 const items = () => [...document.querySelectorAll<HTMLElement>('[role="menu"] [role="menuitem"]')];
 const item = (label: string) => items().find(candidate => candidate.textContent?.startsWith(label))!;
 const isOff = (label: string) => item(label).getAttribute('aria-disabled') === 'true';
@@ -67,7 +97,15 @@ async function openMenu() {
 }
 
 /** The sidebar of the chat in a worktree (or of the checkout, with `key`) on the fixtures, `tweak` having its say about them first. */
-async function start({ tweak, gitWrites, key = WORKTREE }: { tweak?: (data: FixtureData) => void; gitWrites?: FixtureGitWritesOptions; key?: GitPlaceKey } = {}) {
+async function start({
+    tweak,
+    gitWrites,
+    key = WORKTREE,
+}: {
+    tweak?: (data: FixtureData) => void;
+    gitWrites?: FixtureGitWritesOptions;
+    key?: GitPlaceKey;
+} = {}) {
     const data = withFixtureWorkspace(createFixtureData());
 
     tweak?.(data);
@@ -91,7 +129,19 @@ let currentPlace: Place;
 
 async function draw(place = currentPlace) {
     currentPlace = place;
-    act(() => root.render(<RootStoreProvider value={ store }><Sidebar model={ model } place={ place } projectId={ FIXTURE_PROJECT_ID } onOpenFile={ () => undefined } toggle={ null } /></RootStoreProvider>));
+    act(() =>
+        root.render(
+            <RootStoreProvider value={store}>
+                <Sidebar
+                    model={model}
+                    place={place}
+                    projectId={FIXTURE_PROJECT_ID}
+                    onOpenFile={() => undefined}
+                    toggle={null}
+                />
+            </RootStoreProvider>
+        )
+    );
     await settle();
     await settle();
 }
@@ -103,7 +153,7 @@ const noPullRequest = (data: FixtureData) => {
 
 beforeEach(() => {
     opened = [];
-    vi.spyOn(openEffects, 'openUrl').mockImplementation((url) => {
+    vi.spyOn(openEffects, 'openUrl').mockImplementation(url => {
         opened.push(url);
     });
     container = document.createElement('div');
@@ -142,19 +192,29 @@ describe('the menu of Fetch, Pull and Push in the sidebar', () => {
         await settle();
         await settle();
 
-        expect(push).toHaveBeenCalledWith(FIXTURE_PROJECT_ID, { folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' });
+        expect(push).toHaveBeenCalledWith(FIXTURE_PROJECT_ID, {
+            folderId: 'fld_car_rental',
+            workspaceId: 'wks_ab12cd34',
+        });
         expect(status()?.textContent).toBe('Published to origin');
         expect(originRow().textContent).toContain('origin/clowdy/ab12cd34');
         expect(originRow().textContent).toContain('up to date');
 
         await openMenu();
-        expect(items().map(candidate => candidate.textContent)).toEqual(['Fetch', 'PullNothing to pull', 'PushNothing to push']);
+        expect(items().map(candidate => candidate.textContent)).toEqual([
+            'Fetch',
+            'PullNothing to pull',
+            'PushNothing to push',
+        ]);
     });
 
     it('reads the place again after an action, so the counts and the pull request are the ones it left', async () => {
         await start({ gitWrites: { remote: 'behind' } });
 
-        const reads = { status: vi.spyOn(transport, 'getGitStatus'), pullRequest: vi.spyOn(transport, 'getGitPullRequest') };
+        const reads = {
+            status: vi.spyOn(transport, 'getGitStatus'),
+            pullRequest: vi.spyOn(transport, 'getGitPullRequest'),
+        };
 
         expect(originRow().textContent).toContain('2 behind');
         await openMenu();
@@ -188,7 +248,10 @@ describe('the menu of Fetch, Pull and Push in the sidebar', () => {
 
     it('says a pull that found the branch diverged as a warning, and leaves it as it was', async () => {
         await start({ gitWrites: { remote: 'behind' } });
-        vi.spyOn(transport, 'pullGit').mockResolvedValue({ state: 'diverged', upstream: { name: 'origin/clowdy/ab12cd34', ahead: 1, behind: 3 } } satisfies GitRemoteResult);
+        vi.spyOn(transport, 'pullGit').mockResolvedValue({
+            state: 'diverged',
+            upstream: { name: 'origin/clowdy/ab12cd34', ahead: 1, behind: 3 },
+        } satisfies GitRemoteResult);
 
         await openMenu();
         await press(item('Pull'));
@@ -198,7 +261,7 @@ describe('the menu of Fetch, Pull and Push in the sidebar', () => {
         expect(alert()).toBeNull();
     });
 
-    it('shows git\'s own line when an action fails, selectable, with the hint under it, and goes when the person acts again', async () => {
+    it("shows git's own line when an action fails, selectable, with the hint under it, and goes when the person acts again", async () => {
         await start({ gitWrites: { remote: 'signing' } });
         await openMenu();
         await press(item('Push'));
@@ -206,7 +269,7 @@ describe('the menu of Fetch, Pull and Push in the sidebar', () => {
         await settle();
 
         expect(alert()?.textContent).toContain('error: No private key found for public key');
-        expect(alert()?.textContent).toContain('The signing agent couldn\'t be reached');
+        expect(alert()?.textContent).toContain("The signing agent couldn't be reached");
 
         await openMenu();
         await press(item('Fetch'));
@@ -233,9 +296,12 @@ describe('the menu of Fetch, Pull and Push in the sidebar', () => {
 
         let release: () => void = () => undefined;
 
-        vi.spyOn(transport, 'fetchGit').mockImplementation(() => new Promise((resolve) => {
-            release = () => resolve({ state: 'done', action: 'fetch' });
-        }));
+        vi.spyOn(transport, 'fetchGit').mockImplementation(
+            () =>
+                new Promise(resolve => {
+                    release = () => resolve({ state: 'done', action: 'fetch' });
+                })
+        );
         await openMenu();
         await press(item('Fetch'));
 
@@ -265,11 +331,15 @@ describe('the menu of Fetch, Pull and Push in the sidebar', () => {
         await settle();
         await openMenu();
 
-        expect(items().map(candidate => candidate.textContent)).toEqual(['FetchNo origin', 'PullNo origin', 'PublishNo origin']);
+        expect(items().map(candidate => candidate.textContent)).toEqual([
+            'FetchNo origin',
+            'PullNo origin',
+            'PublishNo origin',
+        ]);
         expect(items().every(candidate => candidate.getAttribute('aria-disabled') === 'true')).toBe(true);
     });
 
-    it('is the menu of a folder\'s own checkout too, level with its upstream', async () => {
+    it("is the menu of a folder's own checkout too, level with its upstream", async () => {
         await start({ key: CHECKOUT });
 
         expect(originRow().textContent).toContain('origin/main');
@@ -305,9 +375,11 @@ describe('Create PR in the sidebar', () => {
         expect(opened).toEqual(['https://github.com/acme/car-rental/compare/main...clowdy/ab12cd34?expand=1']);
     });
 
-    it('never opens the page for a branch GitHub does not have: a failed publish leaves it where it was, with git\'s line', async () => {
+    it("never opens the page for a branch GitHub does not have: a failed publish leaves it where it was, with git's line", async () => {
         await start({ tweak: noPullRequest });
-        vi.spyOn(transport, 'pushGit').mockRejectedValue(new TransportError('git@github.com: Permission denied (publickey).', 409));
+        vi.spyOn(transport, 'pushGit').mockRejectedValue(
+            new TransportError('git@github.com: Permission denied (publickey).', 409)
+        );
         await press(buttonOf('Publish first')!);
         await settle();
         await settle();
@@ -331,7 +403,7 @@ describe('Create PR in the sidebar', () => {
         expect(opened).toEqual(['https://github.com/acme/car-rental/compare/main...clowdy/ab12cd34?expand=1']);
     });
 
-    it('opens the page of the branch GitHub has: the one the worktree\'s branch tracks on origin, when it is not named as the branch is', async () => {
+    it("opens the page of the branch GitHub has: the one the worktree's branch tracks on origin, when it is not named as the branch is", async () => {
         await start({ tweak: noPullRequest, gitWrites: { remote: 'behind' } });
 
         const read = transport.getGitStatus.bind(transport);
@@ -339,7 +411,9 @@ describe('Create PR in the sidebar', () => {
         vi.spyOn(transport, 'getGitStatus').mockImplementation(async (...args) => {
             const value = await read(...args);
 
-            return value.isRepository && value.upstream ? { ...value, upstream: { ...value.upstream, name: 'origin/shared/feature' } } : value;
+            return value.isRepository && value.upstream
+                ? { ...value, upstream: { ...value.upstream, name: 'origin/shared/feature' } }
+                : value;
         });
         gitFactsOf(transport).refresh(WORKTREE);
         await settle();
@@ -366,10 +440,13 @@ describe('Create PR in the sidebar', () => {
     });
 
     it('is the page of a GitHub Enterprise server the person is signed in to, and nothing for another site', async () => {
-        await start({ tweak: (data) => {
-            noPullRequest(data);
-            data.git[CAR_RENTAL] = { ...data.git[CAR_RENTAL], remoteUrl: 'git@ghe.example.com:team/service.git' };
-        }, gitWrites: { remote: 'behind' } });
+        await start({
+            tweak: data => {
+                noPullRequest(data);
+                data.git[CAR_RENTAL] = { ...data.git[CAR_RENTAL], remoteUrl: 'git@ghe.example.com:team/service.git' };
+            },
+            gitWrites: { remote: 'behind' },
+        });
 
         await press(buttonOf('Create PR')!);
         expect(opened).toEqual(['https://ghe.example.com/team/service/compare/main...clowdy/ab12cd34?expand=1']);
@@ -379,20 +456,25 @@ describe('Create PR in the sidebar', () => {
         store.dispose();
         root = createRoot(container);
         // `gh` is signed in only to the GitHub hosts: for another site it says it is not.
-        await start({ tweak: (data) => {
-            data.pullRequests[CAR_RENTAL] = { checkout: 'none', worktree: 'not_signed_in' };
-            data.git[CAR_RENTAL] = { ...data.git[CAR_RENTAL], remoteUrl: 'git@gitlab.com:acme/app.git' };
-        }, gitWrites: { remote: 'behind' } });
+        await start({
+            tweak: data => {
+                data.pullRequests[CAR_RENTAL] = { checkout: 'none', worktree: 'not_signed_in' };
+                data.git[CAR_RENTAL] = { ...data.git[CAR_RENTAL], remoteUrl: 'git@gitlab.com:acme/app.git' };
+            },
+            gitWrites: { remote: 'behind' },
+        });
 
         expect(buttonOf('Create PR')).toBeUndefined();
         expect(buttonOf('Publish first')).toBeUndefined();
     });
 
     it('is not drawn for a folder with no remote', async () => {
-        await start({ tweak: (data) => {
-            noPullRequest(data);
-            delete data.git[CAR_RENTAL]!.remoteUrl;
-        } });
+        await start({
+            tweak: data => {
+                noPullRequest(data);
+                delete data.git[CAR_RENTAL]!.remoteUrl;
+            },
+        });
 
         expect(buttonOf('Create PR')).toBeUndefined();
         expect(buttonOf('Publish first')).toBeUndefined();

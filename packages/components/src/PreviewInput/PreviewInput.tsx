@@ -9,10 +9,7 @@ import type { ColorSwatchProps, ImageSwatchProps, SwatchProps } from '../Swatch'
 
 export type PreviewInputSize = InputSize;
 export type PreviewInputVariant = InputVariant;
-export type PreviewInputPreview
-    = | PreviewInputColorPreview
-      | PreviewInputImagePreview
-      | PreviewInputCustomPreview;
+export type PreviewInputPreview = PreviewInputColorPreview | PreviewInputImagePreview | PreviewInputCustomPreview;
 
 export interface PreviewInputColorPreview {
     kind: 'color';
@@ -75,45 +72,41 @@ export function PreviewInput({
 
     return (
         <Input
-            ref={ ref }
+            ref={ref}
             type="text"
-            value={ value }
-            placeholder={ placeholder }
-            size={ size }
-            variant={ variant }
-            isDisabled={ isDisabled }
-            { ...props }
+            value={value}
+            placeholder={placeholder}
+            size={size}
+            variant={variant}
+            isDisabled={isDisabled}
+            {...props}
         >
-            {
-                previewSlot
-                    ? <span slot="prefix" className={ styles.previewSlot } data-size={ size }>{ previewSlot }</span>
-                    : null
-            }
+            {previewSlot ? (
+                <span slot="prefix" className={styles.previewSlot} data-size={size}>
+                    {previewSlot}
+                </span>
+            ) : null}
 
-            {actionSlot ? <span slot="suffix">{ actionSlot }</span> : null}
+            {actionSlot ? <span slot="suffix">{actionSlot}</span> : null}
         </Input>
     );
 }
 
 PreviewInput.displayName = 'PreviewInput';
 
-function renderPreview(
-    preview: PreviewInputPreview,
-    size: PreviewInputSize,
-    isInputDisabled: boolean
-): ReactNode {
+function renderPreview(preview: PreviewInputPreview, size: PreviewInputSize, isInputDisabled: boolean): ReactNode {
     const isDisabled = preview.isDisabled ?? isInputDisabled;
 
     if (preview.kind === 'image') {
         return (
             <ImageSwatch
-                ref={ preview.ref }
-                size={ size }
-                src={ preview.src }
-                alt={ preview.alt }
-                isDisabled={ isDisabled }
-                aria-label={ preview.ariaLabel }
-                onPress={ preview.onPress }
+                ref={preview.ref}
+                size={size}
+                src={preview.src}
+                alt={preview.alt}
+                isDisabled={isDisabled}
+                aria-label={preview.ariaLabel}
+                onPress={preview.onPress}
             />
         );
     }
@@ -121,25 +114,25 @@ function renderPreview(
     if (preview.kind === 'custom') {
         return (
             <Swatch
-                ref={ preview.ref }
-                size={ size }
-                isDisabled={ isDisabled }
-                aria-label={ preview.ariaLabel }
-                onPress={ preview.onPress }
+                ref={preview.ref}
+                size={size}
+                isDisabled={isDisabled}
+                aria-label={preview.ariaLabel}
+                onPress={preview.onPress}
             >
-                { preview.content }
+                {preview.content}
             </Swatch>
         );
     }
 
     return (
         <ColorSwatch
-            ref={ preview.ref }
-            size={ size }
-            color={ preview.color }
-            isDisabled={ isDisabled }
-            aria-label={ preview.ariaLabel }
-            onPress={ preview.onPress }
+            ref={preview.ref}
+            size={size}
+            color={preview.color}
+            isDisabled={isDisabled}
+            aria-label={preview.ariaLabel}
+            onPress={preview.onPress}
         />
     );
 }

@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { FixtureTransport } from '../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider } from '../stores';
 import { Markdown } from './Markdown';
-import { StreamLinksContext, type StreamLinks } from './StreamLinks';
+import { type StreamLinks, StreamLinksContext } from './StreamLinks';
 
 // A file chip knows the project's folders, so the text is drawn inside a window that has a project selected.
 let store: RootStore;
@@ -16,9 +16,14 @@ beforeAll(async () => {
 
 afterAll(() => store.dispose());
 
-const html = (text: string, links: StreamLinks = {}, props: { streaming?: boolean; fromPerson?: boolean } = {}) => renderToStaticMarkup(
-    <RootStoreProvider value={ store }><StreamLinksContext value={ links }><Markdown text={ text } { ...props } /></StreamLinksContext></RootStoreProvider>
-);
+const html = (text: string, links: StreamLinks = {}, props: { streaming?: boolean; fromPerson?: boolean } = {}) =>
+    renderToStaticMarkup(
+        <RootStoreProvider value={store}>
+            <StreamLinksContext value={links}>
+                <Markdown text={text} {...props} />
+            </StreamLinksContext>
+        </RootStoreProvider>
+    );
 
 describe('Markdown', () => {
     it('renders emphasis, lists and links as elements', () => {
@@ -92,7 +97,9 @@ describe('Markdown', () => {
     });
 
     describe('chips', () => {
-        const links: StreamLinks = { taskOfKey: key => (key === 'CAR-24' ? { id: 't-24', key, title: 'Rebuild the form' } : undefined) };
+        const links: StreamLinks = {
+            taskOfKey: key => (key === 'CAR-24' ? { id: 't-24', key, title: 'Rebuild the form' } : undefined),
+        };
 
         it('draws a path in code as a file chip with the whole path on hover', () => {
             const out = html('Edit `src/booking/price.ts` next.');
@@ -123,7 +130,7 @@ describe('Markdown', () => {
         });
     });
 
-    describe('a person\'s text', () => {
+    describe("a person's text", () => {
         it('keeps raw HTML as characters and single line breaks as they are', () => {
             const out = html('first\nsecond <b>x</b>', {}, { fromPerson: true });
 

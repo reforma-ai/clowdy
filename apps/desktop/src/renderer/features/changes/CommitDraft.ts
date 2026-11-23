@@ -1,7 +1,7 @@
 import { errorMessage } from '@clowdy/lib';
 import { makeAutoObservable, observable, runInAction } from 'mobx';
 
-import { TransportError, type Transport } from '../../daemon/transport';
+import { type Transport, TransportError } from '../../daemon/transport';
 import { commitAndPushBlock, pushOrPublish } from './changesActions';
 import { placeRef } from './gitFacts';
 
@@ -48,7 +48,12 @@ export class CommitDraft {
         /** The place's moves to and from origin: what Commit & Push sends the branch with, and what it waits for. */
         private readonly remote: Pick<RemoteActions, 'run' | 'busy'>
     ) {
-        makeAutoObservable<CommitDraft, 'transport' | 'refresh' | 'remote'>(this, { model: false, transport: false, refresh: false, remote: false });
+        makeAutoObservable<CommitDraft, 'transport' | 'refresh' | 'remote'>(this, {
+            model: false,
+            transport: false,
+            refresh: false,
+            remote: false,
+        });
     }
 
     /** The commit or its push is being made: the ticks and the message are held. */
@@ -91,8 +96,7 @@ export class CommitDraft {
     setTicked(path: string, on: boolean): void {
         if (on) {
             this.#unticked.delete(path);
-        }
-        else {
+        } else {
             this.#unticked.add(path);
         }
 
@@ -126,14 +130,20 @@ export class CommitDraft {
 
     /** Generate may write when something is ticked, nothing is going on and the box is empty or holds what Generate wrote before: typed text is never replaced. */
     get canGenerate(): boolean {
-        return this.busy === undefined && !this.noneTicked && (this.message.trim() === '' || this.message === this.generated);
+        return (
+            this.busy === undefined &&
+            !this.noneTicked &&
+            (this.message.trim() === '' || this.message === this.generated)
+        );
     }
 
     /** Why Generate is not offered right now, for its tooltip; nothing when it is. */
     get generateBlock(): string | undefined {
         if (this.noneTicked) return 'Tick a file first';
 
-        return this.message.trim() !== '' && this.message !== this.generated ? 'Clear the message to have one written' : undefined;
+        return this.message.trim() !== '' && this.message !== this.generated
+            ? 'Clear the message to have one written'
+            : undefined;
     }
 
     get canCommit(): boolean {
@@ -176,13 +186,11 @@ export class CommitDraft {
                     this.generated = message;
                 }
             });
-        }
-        catch (error) {
+        } catch (error) {
             runInAction(() => {
                 this.failure = failureOf('generate', error);
             });
-        }
-        finally {
+        } finally {
             runInAction(() => {
                 this.busy = undefined;
             });
@@ -213,13 +221,11 @@ export class CommitDraft {
 
             // The commit stands whatever the push comes to: the box is clear and the sidebar offers Push again if it failed.
             if (andPush) await this.#send(result);
-        }
-        catch (error) {
+        } catch (error) {
             runInAction(() => {
                 this.failure = failureOf('commit', error);
             });
-        }
-        finally {
+        } finally {
             runInAction(() => {
                 this.busy = undefined;
             });
@@ -243,22 +249,34 @@ export class CommitDraft {
         runInAction(() => {
             if (outcome.ok) {
                 this.sent = action;
-            }
-            else {
-                this.failure = { what: 'push', message: `Committed ${ commit.shortSha }, push failed: ${ outcome.failure.message }`, ...(outcome.failure.hint !== undefined && { hint: outcome.failure.hint }) };
+            } else {
+                this.failure = {
+                    what: 'push',
+                    message: `Committed ${commit.shortSha}, push failed: ${outcome.failure.message}`,
+                    ...(outcome.failure.hint !== undefined && { hint: outcome.failure.hint }),
+                };
             }
         });
     }
 }
 
 function failureOf(what: CommitFailure['what'], error: unknown): CommitFailure {
-    return { what, message: errorMessage(error), ...(error instanceof TransportError && error.hint !== undefined && { hint: error.hint }) };
+    return {
+        what,
+        message: errorMessage(error),
+        ...(error instanceof TransportError && error.hint !== undefined && { hint: error.hint }),
+    };
 }
 
 const kept = new WeakMap<PlaceChanges, CommitDraft>();
 
 /** What the commit box holds of a place, made when it is first asked for and kept as long as the place's `PlaceChanges` is (the latest few places). */
-export function commitDraftOf(model: PlaceChanges, transport: CommitTransport, refresh: () => void, remote: Pick<RemoteActions, 'run' | 'busy'>): CommitDraft {
+export function commitDraftOf(
+    model: PlaceChanges,
+    transport: CommitTransport,
+    refresh: () => void,
+    remote: Pick<RemoteActions, 'run' | 'busy'>
+): CommitDraft {
     let draft = kept.get(model);
 
     if (!draft) {

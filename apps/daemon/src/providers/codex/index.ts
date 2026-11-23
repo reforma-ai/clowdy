@@ -34,15 +34,23 @@ export const codex: Provider = {
                 label: 'Memory',
                 description: 'Let Codex recall its memories and save new ones from your runs',
                 default: false,
-                effect: on => ({ codexConfig: { 'features.memories': on, 'memories.use_memories': on, 'memories.generate_memories': on } }),
+                effect: on => ({
+                    codexConfig: {
+                        'features.memories': on,
+                        'memories.use_memories': on,
+                        'memories.generate_memories': on,
+                    },
+                }),
             },
             {
                 // The keys of Codex 0.145 and newer (the adapter pins 0.166); an older Codex names them differently.
                 id: 'subagents',
                 label: 'Enable sub-agents',
-                description: 'Let Codex start sub-agents inside a run. Off turns them off, so agents delegate through Clowdy only.',
+                description:
+                    'Let Codex start sub-agents inside a run. Off turns them off, so agents delegate through Clowdy only.',
                 default: true,
-                effect: on => on ? {} : { codexConfig: { 'agents.enabled': false, 'features.multi_agent_v2': false } },
+                effect: on =>
+                    on ? {} : { codexConfig: { 'agents.enabled': false, 'features.multi_agent_v2': false } },
             },
             chatTitleSetting('Codex'),
             commitMessageSetting('Codex'),
@@ -54,10 +62,17 @@ export const codex: Provider = {
     models: codexModels,
     // The modes of `codex-acp@2.8.0` (`AgentMode`). Codex's permission profiles come from the person's own config and stay out. Only `agent-full-access` opens the
     // sandbox and the network; the others keep the workspace sandbox with the network off.
-    permissions: modePermissions([
-        { id: 'ask', mode: 'read-only', description: 'Asks before editing files or using the network' },
-        { id: 'accept-edits', mode: 'workspace-write', description: 'Edits workspace files, asks before going outside them or using the network' },
-        { id: 'auto', mode: 'agent', description: 'Reviews risky actions itself, asks about the rest' },
-        { id: 'full', mode: 'agent-full-access', description: 'No sandbox, never asks' },
-    ], 'auto'),
+    permissions: modePermissions(
+        [
+            { id: 'ask', mode: 'read-only', description: 'Asks before editing files or using the network' },
+            {
+                id: 'accept-edits',
+                mode: 'workspace-write',
+                description: 'Edits workspace files, asks before going outside them or using the network',
+            },
+            { id: 'auto', mode: 'agent', description: 'Reviews risky actions itself, asks about the rest' },
+            { id: 'full', mode: 'agent-full-access', description: 'No sandbox, never asks' },
+        ],
+        'auto'
+    ),
 };

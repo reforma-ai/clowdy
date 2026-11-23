@@ -103,11 +103,9 @@ export class Turns {
                 if (kind === 'send') {
                     review.queued++;
                 }
-            }
-            else if (echoed >= this.count) {
+            } else if (echoed >= this.count) {
                 review.landed++;
-            }
-            else if (kind === 'send') {
+            } else if (kind === 'send') {
                 review.answered++;
             }
         }

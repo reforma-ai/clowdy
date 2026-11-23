@@ -17,7 +17,7 @@ function daemonResources(platform: 'darwin' | 'win32'): FileSet[] {
     return [
         { from: 'bundle', to: 'bundle' },
         // electron-builder expands `${arch}`, not TypeScript.
-        { from: `runtime/${ platform }-\${arch}`, to: 'bun' },
+        { from: `runtime/${platform}-\${arch}`, to: 'bun' },
     ];
 }
 

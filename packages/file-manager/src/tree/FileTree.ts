@@ -120,8 +120,7 @@ export class FileTree {
 
                 if (siblings) {
                     siblings.push(entry);
-                }
-                else {
+                } else {
                     byParent.set(parent, [entry]);
                 }
             }
@@ -146,8 +145,7 @@ export class FileTree {
 
                 if (siblings) {
                     siblings.push(entry);
-                }
-                else {
+                } else {
                     byParent.set(parent, [entry]);
                 }
             }
@@ -235,7 +233,7 @@ export class FileTree {
             const covered = new Set<string>();
 
             const deepRoots = [...this.#deep];
-            const belowDeep = (dir: string) => deepRoots.some(root => dir === root || dir.startsWith(`${ root }/`));
+            const belowDeep = (dir: string) => deepRoots.some(root => dir === root || dir.startsWith(`${root}/`));
 
             // A folder opened while this listing is in flight is listed before the tree is replaced. The folders below a deep one are in its own listing.
             for (;;) {
@@ -249,7 +247,9 @@ export class FileTree {
                 const [root, nested, deep] = await Promise.all([
                     includeRoot ? this.#provider.list('', INITIAL_DEPTH) : Promise.resolve([]),
                     Promise.all(extra.map(dir => this.#listOpened(dir))).then(groups => groups.flat()),
-                    includeRoot ? Promise.all(deepRoots.map(dir => this.#listDeepAgain(dir))).then(groups => groups.flat()) : Promise.resolve([]),
+                    includeRoot
+                        ? Promise.all(deepRoots.map(dir => this.#listDeepAgain(dir))).then(groups => groups.flat())
+                        : Promise.resolve([]),
                 ]);
 
                 if (generation !== this.#generation) {
@@ -286,8 +286,7 @@ export class FileTree {
             });
 
             await this.#retryDeep();
-        }
-        catch (error) {
+        } catch (error) {
             if (generation === this.#generation) {
                 this.#pending = null;
 
@@ -350,8 +349,7 @@ export class FileTree {
                     this.entries.set(dir, { ...self, hasChildren: listed.length > 0 });
                 }
             });
-        }
-        catch (error) {
+        } catch (error) {
             if (generation === this.#generation && !this.#pending) {
                 this.#opened.delete(dir);
             }
@@ -379,8 +377,7 @@ export class FileTree {
 
         try {
             listed = await this.#provider.list(dir);
-        }
-        catch (error) {
+        } catch (error) {
             if (FileSystemError.is(error, 'NotFound')) {
                 return;
             }
@@ -422,8 +419,7 @@ export class FileTree {
     async #listOpened(dir: string): Promise<FileEntry[]> {
         try {
             return await this.#provider.list(dir, 1);
-        }
-        catch (error) {
+        } catch (error) {
             if (FileSystemError.is(error, 'NotFound')) {
                 this.#opened.delete(dir);
 
@@ -438,13 +434,12 @@ export class FileTree {
     async #listDeepAgain(dir: string): Promise<FileEntry[]> {
         try {
             return await this.#provider.list(dir);
-        }
-        catch (error) {
+        } catch (error) {
             if (FileSystemError.is(error, 'NotFound')) {
                 this.#deep.delete(dir);
 
                 for (const opened of [...this.#opened]) {
-                    if (opened === dir || opened.startsWith(`${ dir }/`)) {
+                    if (opened === dir || opened.startsWith(`${dir}/`)) {
                         this.#opened.delete(opened);
                     }
                 }
@@ -566,8 +561,8 @@ export class FileTree {
             visibility = this.#exclude.some(glob => glob.match(path))
                 ? 'excluded'
                 : this.#hidden.some(glob => glob.match(path))
-                    ? 'hidden'
-                    : 'shown';
+                  ? 'hidden'
+                  : 'shown';
             this.#visibility.set(path, visibility);
         }
 

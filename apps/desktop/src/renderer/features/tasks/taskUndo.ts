@@ -1,6 +1,6 @@
-import { toast, type ToastContent } from '@clowdy/components/Toast';
+import { type ToastContent, toast } from '@clowdy/components/Toast';
 
-import { undoStack, type UndoEntry, type UndoStack } from '../../hotkeys/undo';
+import { type UndoEntry, type UndoStack, undoStack } from '../../hotkeys/undo';
 import { sendEach } from './commands';
 
 import type { CommandResult, Task, TaskId } from '@clowdy/protocol';
@@ -56,41 +56,47 @@ function changeOf(input: TaskUpdate, task: Task | undefined): Change | null {
         if (next === undefined || sameValue(field, task[field], next)) continue;
 
         // A root is `null`, so putting it back detaches the task: an absent `parentId` would leave it where it is.
-        const previous = field === 'parentId' ? task.parentId ?? null : task[field];
+        const previous = field === 'parentId' ? (task.parentId ?? null) : task[field];
 
         // Copies, so the entry owns its lists: the store replaces a task on each event, and this must not depend on it never editing one in place.
         before[field] = Array.isArray(previous) ? [...previous] : previous;
         after[field] = Array.isArray(next) ? [...next] : next;
     }
 
-    return Object.keys(after).length > 0 ? { taskId: task.id, key: task.key, before: before as Fields, after: after as Fields } : null;
+    return Object.keys(after).length > 0
+        ? { taskId: task.id, key: task.key, before: before as Fields, after: after as Fields }
+        : null;
 }
 
 /** Whether the task still holds what the change gave it. Anything else means someone has changed it since, and putting the old value back would overwrite that. */
 function stillHolds(task: Task | undefined, after: Fields): boolean {
-    return task !== undefined && (Object.keys(after) as Field[]).every(field => sameValue(field, task[field], after[field]));
+    return (
+        task !== undefined &&
+        (Object.keys(after) as Field[]).every(field => sameValue(field, task[field], after[field]))
+    );
 }
 
 /** The change in a few words, for the offer to undo it. One action never mixes fields today; if one did, it is only "updated". */
 function describeChanges(project: ProjectState, changes: readonly Change[]): string {
     const [first] = changes;
-    const subject = changes.length === 1 ? first.key : `${ changes.length } tasks`;
+    const subject = changes.length === 1 ? first.key : `${changes.length} tasks`;
     const fields = new Set(changes.flatMap(change => Object.keys(change.after) as Field[]));
 
-    if (fields.size !== 1) return `${ subject } updated`;
+    if (fields.size !== 1) return `${subject} updated`;
 
     const [field] = fields;
 
-    if (field === 'title') return `Renamed ${ subject }`;
-    if (field === 'description') return `Description of ${ subject } changed`;
-    if (field === 'dependsOn') return `Dependencies of ${ subject } changed`;
-    if (field === 'parentId') return `Parent of ${ subject } changed`;
+    if (field === 'title') return `Renamed ${subject}`;
+    if (field === 'description') return `Description of ${subject} changed`;
+    if (field === 'dependsOn') return `Dependencies of ${subject} changed`;
+    if (field === 'parentId') return `Parent of ${subject} changed`;
 
     // Every task moved to the same status, which is then worth naming. A selection that steps along the workflow ends in several.
     const targets = new Set(changes.map(change => change.after.statusId));
-    const name = targets.size === 1 ? project.statuses.find(status => status.id === first.after.statusId)?.name : undefined;
+    const name =
+        targets.size === 1 ? project.statuses.find(status => status.id === first.after.statusId)?.name : undefined;
 
-    return name ? `${ subject } moved to ${ name }` : `${ subject } moved`;
+    return name ? `${subject} moved to ${name}` : `${subject} moved`;
 }
 
 /** The key of the toast of the latest change, so the next one replaces it: five quick moves must not stack five toasts. */
@@ -106,22 +112,29 @@ function showToast(kind: 'show' | 'success', content: ToastContent): string {
 
 /** Says that a change was taken back, in the toast the offer to undo it gave way to. */
 export function showUndone(label: string): void {
-    showToast('success', { message: `Undone: ${ label }` });
+    showToast('success', { message: `Undone: ${label}` });
 }
 
 function staleMessage(stale: readonly Change[], restoredAny: boolean): string {
-    const subject = stale.length === 1 ? stale[0].key : `${ stale.length } tasks`;
+    const subject = stale.length === 1 ? stale[0].key : `${stale.length} tasks`;
 
-    if (!restoredAny) return `${ subject } changed since, so this cannot be undone`;
+    if (!restoredAny) return `${subject} changed since, so this cannot be undone`;
 
-    return stale.length === 1 ? `${ subject } changed since and was left as it is` : `${ subject } changed since and were left as they are`;
+    return stale.length === 1
+        ? `${subject} changed since and was left as it is`
+        : `${subject} changed since and were left as they are`;
 }
 
 /**
  * Puts the previous values back, task by task, for the tasks that still hold what the change gave them. A task someone changed since (another edit,
  * an agent, a daemon event) is left alone and said so. Resolves to whether anything was put back; a refusal by the daemon shows its own toast.
  */
-async function restore(root: RootStore, project: ProjectState, changes: readonly Change[], label: string): Promise<boolean> {
+async function restore(
+    root: RootStore,
+    project: ProjectState,
+    changes: readonly Change[],
+    label: string
+): Promise<boolean> {
     const holds = (change: Change) => stillHolds(project.tasks.get(change.taskId), change.after);
     const fresh = changes.filter(holds);
     const stale = changes.filter(change => !fresh.includes(change));
@@ -165,7 +178,8 @@ interface Joinable {
 let joinable: Joinable | undefined;
 
 /** Whether the changes are one task's description and nothing else. */
-const isDescriptionEdit = (changes: readonly Change[]): boolean => changes.length === 1 && Object.keys(changes[0].after).join() === 'description';
+const isDescriptionEdit = (changes: readonly Change[]): boolean =>
+    changes.length === 1 && Object.keys(changes[0].after).join() === 'description';
 
 const descriptionOf = (fields: Fields): string => fields.description ?? '';
 
@@ -173,19 +187,23 @@ const descriptionOf = (fields: Fields): string => fields.description ?? '';
 function joinTarget(stack: UndoStack, project: ProjectState, changes: readonly Change[]): Joinable | undefined {
     const latest = stack.entries.findLast(entry => entry.scope === project.id);
 
-    return joinable
-        && isDescriptionEdit(changes)
-        && joinable.stack === stack
-        && joinable.entry === latest
-        && joinable.change.taskId === changes[0].taskId
-        && joinable.texts.has(descriptionOf(changes[0].before))
-        && Date.now() - joinable.at < JOIN_WINDOW_MS
+    return joinable &&
+        isDescriptionEdit(changes) &&
+        joinable.stack === stack &&
+        joinable.entry === latest &&
+        joinable.change.taskId === changes[0].taskId &&
+        joinable.texts.has(descriptionOf(changes[0].before)) &&
+        Date.now() - joinable.at < JOIN_WINDOW_MS
         ? joinable
         : undefined;
 }
 
 function offerUndo(stack: UndoStack, entry: UndoEntry): string {
-    return showToast('show', { message: entry.label, timeout: UNDO_TOAST_MS, action: { label: 'Undo', onPress: () => void stack.undoEntry(entry) } });
+    return showToast('show', {
+        message: entry.label,
+        timeout: UNDO_TOAST_MS,
+        action: { label: 'Undo', onPress: () => void stack.undoEntry(entry) },
+    });
 }
 
 /**
@@ -209,7 +227,14 @@ function record(root: RootStore, project: ProjectState, stack: UndoStack, change
     const { entry, offer } = pushEntry(stack, project.id, label, () => restore(root, project, changes, label));
 
     joinable = isDescriptionEdit(changes)
-        ? { stack, entry, change: changes[0], texts: new Set([descriptionOf(changes[0].before), descriptionOf(changes[0].after)]), offer, at: Date.now() }
+        ? {
+              stack,
+              entry,
+              change: changes[0],
+              texts: new Set([descriptionOf(changes[0].before), descriptionOf(changes[0].after)]),
+              offer,
+              at: Date.now(),
+          }
         : undefined;
 }
 
@@ -217,7 +242,12 @@ function record(root: RootStore, project: ProjectState, stack: UndoStack, change
  * Puts an entry on the stack and offers its undo in a toast: the toast and the stack run the same entry, and the entry closes its toast when it runs, so the
  * offer is out of the way before anything the undo says. Returns what a join needs to show the offer again.
  */
-function pushEntry(stack: UndoStack, scope: string, label: string, undo: () => Promise<boolean>): { entry: UndoEntry; offer: Joinable['offer'] } {
+function pushEntry(
+    stack: UndoStack,
+    scope: string,
+    label: string,
+    undo: () => Promise<boolean>
+): { entry: UndoEntry; offer: Joinable['offer'] } {
     const offer: Joinable['offer'] = {};
     const entry: UndoEntry = {
         scope,
@@ -250,8 +280,15 @@ export function recordUndo(stack: UndoStack, scope: string, label: string, undo:
  * The previous values are read before anything is sent. A refused change records nothing, and neither does anything but `task.update`: delete and start cannot be taken back.
  * At most one update per task, so each previous value is the one before this action.
  */
-export async function sendWithUndo(root: RootStore, project: ProjectState, inputs: readonly CommandInput[], stack: UndoStack = undoStack): Promise<CommandResult[]> {
-    const pending = inputs.map(input => (input.type === 'task.update' ? changeOf(input, project.tasks.get(input.taskId)) : null));
+export async function sendWithUndo(
+    root: RootStore,
+    project: ProjectState,
+    inputs: readonly CommandInput[],
+    stack: UndoStack = undoStack
+): Promise<CommandResult[]> {
+    const pending = inputs.map(input =>
+        input.type === 'task.update' ? changeOf(input, project.tasks.get(input.taskId)) : null
+    );
     const results = await sendEach(root, inputs);
     const changes = pending.flatMap((change, index) => (change && results[index]?.ok ? [change] : []));
 

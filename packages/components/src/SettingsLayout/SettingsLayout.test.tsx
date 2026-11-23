@@ -32,9 +32,13 @@ function Probe() {
 
     return (
         <div>
-            <span data-selected>{ selectedId }</span>
-            <button type="button" onClick={ () => onDirtyChange(true) }>Mark dirty</button>
-            <button type="button" onClick={ () => select('security') }>Leave</button>
+            <span data-selected>{selectedId}</span>
+            <button type="button" onClick={() => onDirtyChange(true)}>
+                Mark dirty
+            </button>
+            <button type="button" onClick={() => select('security')}>
+                Leave
+            </button>
         </div>
     );
 }
@@ -42,9 +46,9 @@ function Probe() {
 function renderLayout() {
     act(() => {
         root.render(
-            <ModalContext value={ { modal, store: undefined } }>
-                <SettingsLayout items={ ITEMS }>
-                    <SettingsLayout.Content saveable footer={ <div>Publish later</div> }>
+            <ModalContext value={{ modal, store: undefined }}>
+                <SettingsLayout items={ITEMS}>
+                    <SettingsLayout.Content saveable footer={<div>Publish later</div>}>
                         <Probe />
                     </SettingsLayout.Content>
                 </SettingsLayout>
@@ -66,7 +70,7 @@ function buttonNamed(name: string) {
     const button = [...host.querySelectorAll('button')].find(item => item.textContent === name);
 
     if (!button) {
-        throw new Error(`Missing button ${ name }`);
+        throw new Error(`Missing button ${name}`);
     }
 
     return button;
@@ -101,7 +105,7 @@ describe('SettingsLayout', () => {
         expect(selectedId()).toBe('security');
     });
 
-    it('keeps a dirty section until the changes are discarded', async() => {
+    it('keeps a dirty section until the changes are discarded', async () => {
         vi.mocked(confirmDiscardChanges).mockResolvedValue(false);
         renderLayout();
 
@@ -114,7 +118,7 @@ describe('SettingsLayout', () => {
         expect(host.textContent).not.toContain('Publish later');
         expect(modal.unsaved).toHaveBeenCalled();
 
-        await act(async() => {
+        await act(async () => {
             buttonNamed('Leave').click();
         });
 
@@ -123,14 +127,14 @@ describe('SettingsLayout', () => {
         expect(saveNotice()).not.toBeNull();
     });
 
-    it('leaves a dirty section after discard and brings the footer back', async() => {
+    it('leaves a dirty section after discard and brings the footer back', async () => {
         renderLayout();
 
         act(() => {
             buttonNamed('Mark dirty').click();
         });
 
-        await act(async() => {
+        await act(async () => {
             buttonNamed('Leave').click();
         });
 
@@ -152,23 +156,40 @@ describe('SettingsLayout as a window the host holds', () => {
 
         return (
             <div>
-                <button type="button" onClick={ () => select('chat') }>Choose chat</button>
-                <button type="button" onClick={ () => push({ id: 'one', label: 'One' }) }>Push</button>
-                <button type="button" onClick={ () => {
-                    push({ id: 'two', label: 'Two' }); rename('two', 'Second');
-                } }>Push and rename</button>
-                <button type="button" onClick={ pop }>Pop</button>
-                <button type="button" onClick={ reset }>Reset</button>
+                <button type="button" onClick={() => select('chat')}>
+                    Choose chat
+                </button>
+                <button type="button" onClick={() => push({ id: 'one', label: 'One' })}>
+                    Push
+                </button>
+                <button
+                    type="button"
+                    onClick={() => {
+                        push({ id: 'two', label: 'Two' });
+                        rename('two', 'Second');
+                    }}
+                >
+                    Push and rename
+                </button>
+                <button type="button" onClick={pop}>
+                    Pop
+                </button>
+                <button type="button" onClick={reset}>
+                    Reset
+                </button>
             </div>
         );
     }
 
-    function draw(props: Partial<React.ComponentProps<typeof SettingsLayout>> = {}, content: React.ReactNode = <Controls />) {
+    function draw(
+        props: Partial<React.ComponentProps<typeof SettingsLayout>> = {},
+        content: React.ReactNode = <Controls />
+    ) {
         act(() => {
             root.render(
-                <SettingsLayout items={ GROUPED } { ...props }>
+                <SettingsLayout items={GROUPED} {...props}>
                     <SettingsLayout.Sidebar title="Settings" />
-                    <SettingsLayout.Content>{ content }</SettingsLayout.Content>
+                    <SettingsLayout.Content>{content}</SettingsLayout.Content>
                 </SettingsLayout>
             );
         });
@@ -256,7 +277,12 @@ describe('SettingsLayout as a window the host holds', () => {
 
         expect(onStackChange).not.toHaveBeenCalled();
 
-        draw({ selectedId: 'projects', onSelectedChange: vi.fn(), stack: [{ id: 'one', label: 'One' }], onStackChange });
+        draw({
+            selectedId: 'projects',
+            onSelectedChange: vi.fn(),
+            stack: [{ id: 'one', label: 'One' }],
+            onStackChange,
+        });
 
         act(() => {
             buttonNamed('Choose chat').click();
@@ -291,7 +317,7 @@ describe('SettingsLayout as a window the host holds', () => {
         expect(host.querySelector('[class*="viewport"]')!.textContent).not.toContain('How it looks');
     });
 
-    it('draws only the top layer\'s line: the page\'s while no pane is open over it, and the pane\'s while it is the last of the stack', () => {
+    it("draws only the top layer's line: the page's while no pane is open over it, and the pane's while it is the last of the stack", () => {
         function Page() {
             return (
                 <>

@@ -1,10 +1,4 @@
-export type UnitCategory
-    = | 'absolute-length'
-      | 'relative-length'
-      | 'viewport'
-      | 'percent'
-      | 'time'
-      | 'angle';
+export type UnitCategory = 'absolute-length' | 'relative-length' | 'viewport' | 'percent' | 'time' | 'angle';
 
 export interface UnitDef {
     name: string;
@@ -46,8 +40,7 @@ export const UNIT_REGISTRY: Record<string, UnitDef> = {
 
 export const getUnit = (name: string): UnitDef | undefined => UNIT_REGISTRY[name];
 
-export const stepForUnit = (name: string): number =>
-    UNIT_REGISTRY[name]?.step ?? 1;
+export const stepForUnit = (name: string): number => UNIT_REGISTRY[name]?.step ?? 1;
 
 export const shiftStepForUnit = (name: string): number => {
     const def = UNIT_REGISTRY[name];
@@ -66,12 +59,7 @@ const unitsIn = (...cats: UnitCategory[]): string[] =>
 
 export const LENGTH_UNITS_BASIC: readonly string[] = ['px', 'rem', 'em', '%', 'vw', 'vh'];
 
-export const LENGTH_UNITS_ALL: readonly string[] = unitsIn(
-    'absolute-length',
-    'relative-length',
-    'viewport',
-    'percent'
-);
+export const LENGTH_UNITS_ALL: readonly string[] = unitsIn('absolute-length', 'relative-length', 'viewport', 'percent');
 
 export const TIME_UNITS: readonly string[] = unitsIn('time');
 export const ANGLE_UNITS: readonly string[] = unitsIn('angle');
@@ -81,18 +69,14 @@ export const UNIT_PRECISION: Record<string, number> = Object.fromEntries(
 );
 
 // longer names first so 'rem' isn't captured as 'em', 'dvh' before 'vh', etc.
-const LENGTH_UNITS_PATTERN = [...LENGTH_UNITS_ALL]
-    .sort((a, b) => b.length - a.length)
-    .join('|');
+const LENGTH_UNITS_PATTERN = [...LENGTH_UNITS_ALL].sort((a, b) => b.length - a.length).join('|');
 const CSS_UNITS_PATTERN = [...LENGTH_UNITS_ALL, ...TIME_UNITS, ...ANGLE_UNITS]
     .sort((a, b) => b.length - a.length)
     .join('|');
 
-export const LENGTH_UNIT_RE = new RegExp(`^(-?\\d+(?:\\.\\d+)?)(${ LENGTH_UNITS_PATTERN })$`);
-export const CSS_UNIT_RE = new RegExp(`^(-?\\d+(?:\\.\\d+)?)(${ CSS_UNITS_PATTERN })$`);
-export const NUMBER_WITH_UNIT_RE = new RegExp(
-    `^-?\\d+(\\.\\d+)?(${ CSS_UNITS_PATTERN })?$`
-);
+export const LENGTH_UNIT_RE = new RegExp(`^(-?\\d+(?:\\.\\d+)?)(${LENGTH_UNITS_PATTERN})$`);
+export const CSS_UNIT_RE = new RegExp(`^(-?\\d+(?:\\.\\d+)?)(${CSS_UNITS_PATTERN})$`);
+export const NUMBER_WITH_UNIT_RE = new RegExp(`^-?\\d+(\\.\\d+)?(${CSS_UNITS_PATTERN})?$`);
 
 export const BARE_NUMBER_RE = /^-?\d+(?:\.\d+)?$/;
 

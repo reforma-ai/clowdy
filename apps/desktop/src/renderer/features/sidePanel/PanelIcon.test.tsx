@@ -10,9 +10,10 @@ import { PanelIcon, type PanelIconState } from './PanelIcon';
 let container: HTMLDivElement;
 let root: Root;
 
-const draw = (state: PanelIconState) => act(() => root.render(<PanelIcon state={ state } />));
+const draw = (state: PanelIconState) => act(() => root.render(<PanelIcon state={state} />));
 const svg = () => container.querySelector('svg')!;
-const vars = () => Object.fromEntries(['x', 'width', 'rx'].map(name => [name, svg().style.getPropertyValue(`--${ name }`)]));
+const vars = () =>
+    Object.fromEntries(['x', 'width', 'rx'].map(name => [name, svg().style.getPropertyValue(`--${name}`)]));
 
 beforeEach(() => {
     container = document.createElement('div');

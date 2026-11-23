@@ -32,9 +32,10 @@ let opened: string[];
 let reads: PageQuery[];
 
 const project = () => store.selectedProject!;
-const wait = (ms: number) => act(async () => {
-    await new Promise(resolve => setTimeout(resolve, ms));
-});
+const wait = (ms: number) =>
+    act(async () => {
+        await new Promise(resolve => setTimeout(resolve, ms));
+    });
 
 interface Options {
     pageSize?: number;
@@ -48,9 +49,19 @@ interface Options {
 /** The page size the view is drawn with, for every draw of the test. */
 let size: number | undefined;
 
-const draw = () => act(async () => {
-    reactRoot.render(<RootStoreProvider value={ store }><ArchiveView statuses={ project().statuses } openId={ null } onOpen={ id => opened.push(id) } pageSize={ size } /></RootStoreProvider>);
-});
+const draw = () =>
+    act(async () => {
+        reactRoot.render(
+            <RootStoreProvider value={store}>
+                <ArchiveView
+                    statuses={project().statuses}
+                    openId={null}
+                    onOpen={id => opened.push(id)}
+                    pageSize={size}
+                />
+            </RootStoreProvider>
+        );
+    });
 
 async function mount({ pageSize, projectId, before = [], read }: Options = {}) {
     daemon = new FixtureTransport();
@@ -58,7 +69,7 @@ async function mount({ pageSize, projectId, before = [], read }: Options = {}) {
     for (const command of before) expect((await daemon.command(command)).ok).toBe(true);
 
     const transport = overrideTransport(daemon, {
-        command: async (input) => {
+        command: async input => {
             sent.push(input);
 
             return daemon.command(input);
@@ -100,15 +111,23 @@ afterEach(() => {
     vi.restoreAllMocks();
 });
 
-const archive = (taskId: string, cancel = false): CommandInput => ({ type: 'task.archive', taskId, ...(cancel && { cancel }) });
+const archive = (taskId: string, cancel = false): CommandInput => ({
+    type: 'task.archive',
+    taskId,
+    ...(cancel && { cancel }),
+});
 
 /** The batches drawn, newest first: the heading's count and the keys of its rows with their depths. */
-const batches = () => [...container.querySelectorAll<HTMLElement>('section')].map(section => ({
-    count: section.querySelector('header')?.lastElementChild?.textContent,
-    rows: [...section.querySelectorAll<HTMLElement>('li')].map(row => `${ row.dataset.depth }:${ row.querySelector('button span')?.textContent }`),
-}));
-const row = (taskId: string) => container.querySelector<HTMLElement>(`[data-archived-task="${ taskId }"]`);
-const restoreOf = (taskId: string) => row(taskId)?.querySelector<HTMLButtonElement>('button[aria-label^="Restore"]') ?? null;
+const batches = () =>
+    [...container.querySelectorAll<HTMLElement>('section')].map(section => ({
+        count: section.querySelector('header')?.lastElementChild?.textContent,
+        rows: [...section.querySelectorAll<HTMLElement>('li')].map(
+            row => `${row.dataset.depth}:${row.querySelector('button span')?.textContent}`
+        ),
+    }));
+const row = (taskId: string) => container.querySelector<HTMLElement>(`[data-archived-task="${taskId}"]`);
+const restoreOf = (taskId: string) =>
+    row(taskId)?.querySelector<HTMLButtonElement>('button[aria-label^="Restore"]') ?? null;
 const text = () => container.textContent ?? '';
 
 describe('the batches', () => {
@@ -117,7 +136,10 @@ describe('the batches', () => {
 
         expect(batches()).toEqual([
             // Canceled with the tree, so by number; CAR-33 was done and comes before CAR-34 inside CAR-32.
-            { count: '7 tasks', rows: ['0:CAR-31', '1:CAR-32', '2:CAR-33', '2:CAR-34', '1:CAR-35', '1:CAR-36', '1:CAR-37'] },
+            {
+                count: '7 tasks',
+                rows: ['0:CAR-31', '1:CAR-32', '2:CAR-33', '2:CAR-34', '1:CAR-35', '1:CAR-36', '1:CAR-37'],
+            },
             { count: '1 task', rows: ['0:CAR-20'] },
             { count: '3 tasks', rows: ['0:CAR-38', '1:CAR-39', '1:CAR-40'] },
         ]);
@@ -126,7 +148,9 @@ describe('the batches', () => {
     it('says when each batch was archived', async () => {
         await mount({ before: [archive('t-20')] });
 
-        expect([...container.querySelectorAll('section header')].map(header => header.firstElementChild?.textContent)).toEqual(['Archived just now', 'Archived 2 days ago']);
+        expect(
+            [...container.querySelectorAll('section header')].map(header => header.firstElementChild?.textContent)
+        ).toEqual(['Archived just now', 'Archived 2 days ago']);
     });
 
     it('puts the children of a task under it, sorted by workflow status within it, with the status of each', async () => {
@@ -173,7 +197,9 @@ describe('the batches', () => {
     it('is read only: a task has nothing to edit, move or delete', async () => {
         await mount();
 
-        const labels = [...container.querySelectorAll('button')].map(button => button.getAttribute('aria-label') ?? button.textContent);
+        const labels = [...container.querySelectorAll('button')].map(
+            button => button.getAttribute('aria-label') ?? button.textContent
+        );
 
         expect(labels.some(label => /Delete|Archive$|Start|Cancel/.test(label ?? ''))).toBe(false);
         expect(container.querySelector('input, textarea, [contenteditable]')).toBeNull();
@@ -191,7 +217,14 @@ describe('Restore', () => {
     it('is on the top of a batch and on no task inside it', async () => {
         await mount({ before: [archive('t-31', true)] });
 
-        expect([restoreOf('t-31') !== null, restoreOf('t-32') !== null, restoreOf('t-33') !== null, restoreOf('t-38') !== null, restoreOf('t-39') !== null, restoreOf('t-40') !== null]).toEqual([true, false, false, true, false, false]);
+        expect([
+            restoreOf('t-31') !== null,
+            restoreOf('t-32') !== null,
+            restoreOf('t-33') !== null,
+            restoreOf('t-38') !== null,
+            restoreOf('t-39') !== null,
+            restoreOf('t-40') !== null,
+        ]).toEqual([true, false, false, true, false, false]);
     });
 
     it('is a button that is there for the keyboard and shows with the pointer or the focus', async () => {
@@ -201,7 +234,7 @@ describe('Restore', () => {
         expect(restoreOf('t-38')!.getAttribute('aria-label')).toBe('Restore CAR-38');
     });
 
-    it('restores the batch, and the batch leaves the view when the daemon\'s event comes, the others staying', async () => {
+    it("restores the batch, and the batch leaves the view when the daemon's event comes, the others staying", async () => {
         await mount({ before: [archive('t-20')] });
         await act(async () => restoreOf('t-38')!.click());
 
@@ -232,24 +265,37 @@ describe('Restore', () => {
         expect(batches().map(batch => batch.rows)).toEqual([['0:CAR-38', '1:CAR-39', '1:CAR-40']]);
     });
 
-    it('is not on a top whose parent was archived by another call, the daemon refuses that, and is on the parent\'s own top', async () => {
+    it("is not on a top whose parent was archived by another call, the daemon refuses that, and is on the parent's own top", async () => {
         // CAR-33 is archived alone, and later CAR-32 above it: CAR-33 is the top of its own batch, under a parent that is archived.
-        await mount({ before: [archive('t-33'), { type: 'task.update', taskId: 't-34', statusId: 'canceled' }, { type: 'task.update', taskId: 't-32', statusId: 'done' }, archive('t-32')] });
+        await mount({
+            before: [
+                archive('t-33'),
+                { type: 'task.update', taskId: 't-34', statusId: 'canceled' },
+                { type: 'task.update', taskId: 't-32', statusId: 'done' },
+                archive('t-32'),
+            ],
+        });
 
         expect(restoreOf('t-33')).toBeNull();
         expect(restoreOf('t-32')).not.toBeNull();
         expect(restoreOf('t-34')).toBeNull();
     });
 
-    it('shows the daemon\'s reason as a toast when it refuses, and the batch stays with the focus on its button', async () => {
+    it("shows the daemon's reason as a toast when it refuses, and the batch stays with the focus on its button", async () => {
         // A refusal that comes after the button was drawn, as when the parent was archived by another call a moment before.
         const reason = 'Task CAR-38 is inside CAR-37, which is archived: restore CAR-37 first';
 
-        await mount({ read: base => ({ command: async (input) => {
-            sent.push(input);
+        await mount({
+            read: base => ({
+                command: async input => {
+                    sent.push(input);
 
-            return input.type === 'task.unarchive' ? { ok: false, requestId: 'r', error: { code: 'invalid', message: reason } } : base.command(input);
-        } }) });
+                    return input.type === 'task.unarchive'
+                        ? { ok: false, requestId: 'r', error: { code: 'invalid', message: reason } }
+                        : base.command(input);
+                },
+            }),
+        });
         restoreOf('t-38')!.focus();
         await act(async () => restoreOf('t-38')!.click());
         await wait(0);
@@ -266,14 +312,18 @@ describe('Restore', () => {
     it('keeps the button from a second press while the daemon works', async () => {
         let release: () => void = () => undefined;
 
-        await mount({ read: base => ({ command: async (input) => {
-            sent.push(input);
-            await new Promise<void>((resolve) => {
-                release = resolve;
-            });
+        await mount({
+            read: base => ({
+                command: async input => {
+                    sent.push(input);
+                    await new Promise<void>(resolve => {
+                        release = resolve;
+                    });
 
-            return base.command(input);
-        } }) });
+                    return base.command(input);
+                },
+            }),
+        });
         await act(async () => restoreOf('t-38')!.click());
         await act(async () => restoreOf('t-38')!.click());
 
@@ -370,7 +420,9 @@ describe('the pages', () => {
         expect(text()).toContain('Showing 2 of 11 archived tasks');
         expect(container.querySelectorAll('li')).toHaveLength(2);
 
-        await act(async () => [...container.querySelectorAll('button')].find(button => button.textContent === 'Show more')!.click());
+        await act(async () =>
+            [...container.querySelectorAll('button')].find(button => button.textContent === 'Show more')!.click()
+        );
         await wait(0);
 
         expect(reads.at(-1)).toMatchObject({ limit: 2 });
@@ -382,17 +434,24 @@ describe('the pages', () => {
     it('goes on until the end, and then says how many there are and has no button', async () => {
         await mount({ pageSize: 6, before: [archive('t-20'), archive('t-31', true)] });
 
-        await act(async () => [...container.querySelectorAll('button')].find(button => button.textContent === 'Show more')!.click());
+        await act(async () =>
+            [...container.querySelectorAll('button')].find(button => button.textContent === 'Show more')!.click()
+        );
         await wait(0);
 
         expect(text()).toContain('11 archived tasks');
         expect(text()).not.toContain('Showing');
-        expect([...container.querySelectorAll('button')].some(button => button.textContent === 'Show more')).toBe(false);
+        expect([...container.querySelectorAll('button')].some(button => button.textContent === 'Show more')).toBe(
+            false
+        );
         expect(container.querySelectorAll('li')).toHaveLength(11);
     });
 
     it('says 1 archived task when there is one', async () => {
-        await mount({ projectId: FIXTURE_PROJECT_ID, before: [{ type: 'task.unarchive', taskId: 't-38' }, archive('t-21')] });
+        await mount({
+            projectId: FIXTURE_PROJECT_ID,
+            before: [{ type: 'task.unarchive', taskId: 't-38' }, archive('t-21')],
+        });
 
         expect(text()).toContain('1 archived task');
         expect(text()).not.toContain('1 archived tasks');
@@ -400,13 +459,18 @@ describe('the pages', () => {
 
     it('shows a batch that a page cuts as what is loaded of it, and the rest comes with the next page', async () => {
         // CAR-20 goes inside CAR-22 and the two are archived together: CAR-20, the lower number, comes first.
-        await mount({ pageSize: 1, before: [{ type: 'task.update', taskId: 't-20', parentId: 't-22' }, archive('t-22')] });
+        await mount({
+            pageSize: 1,
+            before: [{ type: 'task.update', taskId: 't-20', parentId: 't-22' }, archive('t-22')],
+        });
 
         expect(batches()).toEqual([{ count: '1 task', rows: ['0:CAR-20'] }]);
         // CAR-22 is not here yet, and it is the top: a restore of CAR-20 would be refused, so it waits.
         expect(restoreOf('t-20')).toBeNull();
 
-        await act(async () => [...container.querySelectorAll('button')].find(button => button.textContent === 'Show more')!.click());
+        await act(async () =>
+            [...container.querySelectorAll('button')].find(button => button.textContent === 'Show more')!.click()
+        );
         await wait(0);
 
         expect(batches()[0]).toEqual({ count: '2 tasks', rows: ['0:CAR-22', '1:CAR-20'] });
@@ -424,24 +488,34 @@ describe('the pages', () => {
     it('says why more could not be loaded, keeps what it has, and tries again with the same button', async () => {
         let failing = false;
 
-        await mount({ pageSize: 2, before: [archive('t-20')], read: base => ({ getArchivedTasks: async (id, page) => {
-            if (failing && page?.cursor) throw new Error('The daemon is not answering');
+        await mount({
+            pageSize: 2,
+            before: [archive('t-20')],
+            read: base => ({
+                getArchivedTasks: async (id, page) => {
+                    if (failing && page?.cursor) throw new Error('The daemon is not answering');
 
-            return base.getArchivedTasks(id, page);
-        } }) });
+                    return base.getArchivedTasks(id, page);
+                },
+            }),
+        });
 
         failing = true;
-        await act(async () => [...container.querySelectorAll('button')].find(button => button.textContent === 'Show more')!.click());
+        await act(async () =>
+            [...container.querySelectorAll('button')].find(button => button.textContent === 'Show more')!.click()
+        );
         await wait(0);
 
-        expect(text()).toContain('Couldn\'t load more. The daemon is not answering');
+        expect(text()).toContain("Couldn't load more. The daemon is not answering");
         expect(container.querySelectorAll('li')).toHaveLength(2);
 
         failing = false;
-        await act(async () => [...container.querySelectorAll('button')].find(button => button.textContent === 'Show more')!.click());
+        await act(async () =>
+            [...container.querySelectorAll('button')].find(button => button.textContent === 'Show more')!.click()
+        );
         await wait(0);
 
-        expect(text()).not.toContain('Couldn\'t load more');
+        expect(text()).not.toContain("Couldn't load more");
         expect(container.querySelectorAll('li')).toHaveLength(4);
     });
 });
@@ -450,9 +524,14 @@ describe('what the view waits for', () => {
     it('shows the loader while the archive is read', async () => {
         let release: (page: TaskArchivePage) => void = () => undefined;
 
-        await mount({ read: () => ({ getArchivedTasks: () => new Promise<TaskArchivePage>((resolve) => {
-            release = resolve;
-        }) }) });
+        await mount({
+            read: () => ({
+                getArchivedTasks: () =>
+                    new Promise<TaskArchivePage>(resolve => {
+                        release = resolve;
+                    }),
+            }),
+        });
 
         expect(text()).toContain('Loading the archive…');
         expect(container.querySelector('section')).toBeNull();
@@ -472,17 +551,23 @@ describe('what the view waits for', () => {
     it('shows why the archive could not be read, with Retry, which reads it again', async () => {
         let failing = true;
 
-        await mount({ read: base => ({ getArchivedTasks: async (id, page) => {
-            if (failing) throw new Error('The daemon is not answering');
+        await mount({
+            read: base => ({
+                getArchivedTasks: async (id, page) => {
+                    if (failing) throw new Error('The daemon is not answering');
 
-            return base.getArchivedTasks(id, page);
-        } }) });
+                    return base.getArchivedTasks(id, page);
+                },
+            }),
+        });
 
         expect(text()).toContain('The archive could not be loaded. The daemon is not answering');
         expect(container.querySelector('section')).toBeNull();
 
         failing = false;
-        await act(async () => [...container.querySelectorAll('button')].find(button => button.textContent === 'Retry')!.click());
+        await act(async () =>
+            [...container.querySelectorAll('button')].find(button => button.textContent === 'Retry')!.click()
+        );
         await wait(0);
 
         expect(text()).not.toContain('could not be loaded');
@@ -535,7 +620,9 @@ describe('following the daemon', () => {
 
     it('asks for as many tasks as it shows, so a page that was loaded does not shrink', async () => {
         await mount({ pageSize: 2, before: [archive('t-31', true)] });
-        await act(async () => [...container.querySelectorAll('button')].find(button => button.textContent === 'Show more')!.click());
+        await act(async () =>
+            [...container.querySelectorAll('button')].find(button => button.textContent === 'Show more')!.click()
+        );
         await wait(0);
 
         expect(container.querySelectorAll('li')).toHaveLength(4);
@@ -553,20 +640,27 @@ describe('following the daemon', () => {
         let failing = false;
         let release: () => void = () => undefined;
 
-        await mount({ pageSize: 2, before: [archive('t-20'), archive('t-31', true)], read: base => ({ getArchivedTasks: async (id, page) => {
-            if (page?.cursor && !failing) {
-                // The next page is slow.
-                await new Promise<void>((resolve) => {
-                    release = resolve;
-                });
-            }
+        await mount({
+            pageSize: 2,
+            before: [archive('t-20'), archive('t-31', true)],
+            read: base => ({
+                getArchivedTasks: async (id, page) => {
+                    if (page?.cursor && !failing) {
+                        // The next page is slow.
+                        await new Promise<void>(resolve => {
+                            release = resolve;
+                        });
+                    }
 
-            if (failing && !page?.cursor) throw new Error('offline');
+                    if (failing && !page?.cursor) throw new Error('offline');
 
-            return base.getArchivedTasks(id, page);
-        } }) });
+                    return base.getArchivedTasks(id, page);
+                },
+            }),
+        });
 
-        const showMore = () => [...container.querySelectorAll('button')].find(button => button.textContent === 'Show more')!;
+        const showMore = () =>
+            [...container.querySelectorAll('button')].find(button => button.textContent === 'Show more')!;
 
         await act(async () => showMore().click());
 
@@ -586,11 +680,15 @@ describe('following the daemon', () => {
     it('keeps what it shows when reading again fails, and shows the change at the next one', async () => {
         let failing = false;
 
-        await mount({ read: base => ({ getArchivedTasks: async (id, page) => {
-            if (failing) throw new Error('offline');
+        await mount({
+            read: base => ({
+                getArchivedTasks: async (id, page) => {
+                    if (failing) throw new Error('offline');
 
-            return base.getArchivedTasks(id, page);
-        } }) });
+                    return base.getArchivedTasks(id, page);
+                },
+            }),
+        });
 
         failing = true;
         await act(async () => void (await daemon.command(archive('t-21'))));

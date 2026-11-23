@@ -9,52 +9,97 @@ import { writeSkill } from './skill-helpers';
 
 afterAll(cleanTempDirs);
 
-const file = (front: string, body = '# Body\n') => `---\n${ front }\n---\n${ body }`;
+const file = (front: string, body = '# Body\n') => `---\n${front}\n---\n${body}`;
 
 describe('front matter', () => {
     test('reads plain, double-quoted and single-quoted values', () => {
-        expect(parseSkillFile(file('name: a\ndescription: Plain words'), 'a')).toEqual({ ok: true, description: 'Plain words', truncated: false });
-        expect(parseSkillFile(file('description: "Use when: asked to deploy"'), 'a')).toMatchObject({ ok: true, description: 'Use when: asked to deploy' });
-        expect(parseSkillFile(file('description: \'It\'\'s fine\''), 'a')).toMatchObject({ ok: true, description: 'It\'s fine' });
+        expect(parseSkillFile(file('name: a\ndescription: Plain words'), 'a')).toEqual({
+            ok: true,
+            description: 'Plain words',
+            truncated: false,
+        });
+        expect(parseSkillFile(file('description: "Use when: asked to deploy"'), 'a')).toMatchObject({
+            ok: true,
+            description: 'Use when: asked to deploy',
+        });
+        expect(parseSkillFile(file("description: 'It''s fine'"), 'a')).toMatchObject({
+            ok: true,
+            description: "It's fine",
+        });
     });
 
     test('folds block scalars and collapses whitespace into one line', () => {
-        expect(parseSkillFile(file('description: >\n  First line\n  second line'), 'a')).toMatchObject({ ok: true, description: 'First line second line' });
-        expect(parseSkillFile(file('description: |\n  Kept\n\n  apart'), 'a')).toMatchObject({ ok: true, description: 'Kept apart' });
+        expect(parseSkillFile(file('description: >\n  First line\n  second line'), 'a')).toMatchObject({
+            ok: true,
+            description: 'First line second line',
+        });
+        expect(parseSkillFile(file('description: |\n  Kept\n\n  apart'), 'a')).toMatchObject({
+            ok: true,
+            description: 'Kept apart',
+        });
     });
 
     test('accepts a byte order mark and CRLF line ends', () => {
-        expect(parseSkillFile('﻿---\r\nname: a\r\ndescription: Windows file\r\n---\r\nBody', 'a')).toMatchObject({ ok: true, description: 'Windows file' });
+        expect(parseSkillFile('﻿---\r\nname: a\r\ndescription: Windows file\r\n---\r\nBody', 'a')).toMatchObject({
+            ok: true,
+            description: 'Windows file',
+        });
     });
 
     test('ignores keys it does not know, including nested ones', () => {
-        const raw = file('name: a\ndescription: Works\nallowed-tools: Read, Bash\ndisable-model-invocation: true\nmetadata:\n  short-description: x\n  tags: [1, 2]');
+        const raw = file(
+            'name: a\ndescription: Works\nallowed-tools: Read, Bash\ndisable-model-invocation: true\nmetadata:\n  short-description: x\n  tags: [1, 2]'
+        );
 
         expect(parseSkillFile(raw, 'a')).toMatchObject({ ok: true, description: 'Works' });
     });
 
     test('a name that is given must match the folder', () => {
-        expect(parseSkillFile(file('name: other\ndescription: Works'), 'a')).toEqual({ ok: false, reason: 'its name "other" differs from the folder name' });
+        expect(parseSkillFile(file('name: other\ndescription: Works'), 'a')).toEqual({
+            ok: false,
+            reason: 'its name "other" differs from the folder name',
+        });
         expect(parseSkillFile(file('name: 12\ndescription: Works'), '12')).toMatchObject({ ok: true });
     });
 
     test('says why a file is not a skill', () => {
-        expect(parseSkillFile('# Just text', 'a')).toMatchObject({ ok: false, reason: expect.stringContaining('no front matter') });
-        expect(parseSkillFile('---\nname: a\ndescription: never closed\n', 'a')).toMatchObject({ ok: false, reason: expect.stringContaining('no front matter') });
+        expect(parseSkillFile('# Just text', 'a')).toMatchObject({
+            ok: false,
+            reason: expect.stringContaining('no front matter'),
+        });
+        expect(parseSkillFile('---\nname: a\ndescription: never closed\n', 'a')).toMatchObject({
+            ok: false,
+            reason: expect.stringContaining('no front matter'),
+        });
         expect(parseSkillFile('---\n---\nBody', 'a')).toMatchObject({ ok: false, reason: 'it has no description' });
         expect(parseSkillFile(file('name: a'), 'a')).toMatchObject({ ok: false, reason: 'it has no description' });
-        expect(parseSkillFile(file('description: "   "'), 'a')).toMatchObject({ ok: false, reason: 'it has no description' });
-        expect(parseSkillFile(file('description: [one, two]'), 'a')).toMatchObject({ ok: false, reason: 'it has no description' });
-        expect(parseSkillFile(file('- a\n- b'), 'a')).toMatchObject({ ok: false, reason: expect.stringContaining('key: value') });
+        expect(parseSkillFile(file('description: "   "'), 'a')).toMatchObject({
+            ok: false,
+            reason: 'it has no description',
+        });
+        expect(parseSkillFile(file('description: [one, two]'), 'a')).toMatchObject({
+            ok: false,
+            reason: 'it has no description',
+        });
+        expect(parseSkillFile(file('- a\n- b'), 'a')).toMatchObject({
+            ok: false,
+            reason: expect.stringContaining('key: value'),
+        });
     });
 
     test('an unquoted colon is invalid YAML, and the reason says to quote it', () => {
-        expect(parseSkillFile(file('description: Use when: asked'), 'a')).toMatchObject({ ok: false, reason: expect.stringContaining('quote') });
-        expect(parseSkillFile(file('description: [unclosed'), 'a')).toMatchObject({ ok: false, reason: expect.stringContaining('not valid YAML') });
+        expect(parseSkillFile(file('description: Use when: asked'), 'a')).toMatchObject({
+            ok: false,
+            reason: expect.stringContaining('quote'),
+        });
+        expect(parseSkillFile(file('description: [unclosed'), 'a')).toMatchObject({
+            ok: false,
+            reason: expect.stringContaining('not valid YAML'),
+        });
     });
 
     test('cuts a long description like the engines do', () => {
-        const parsed = parseSkillFile(file(`description: ${ 'x'.repeat(MAX_DESCRIPTION_CHARS + 50) }`), 'a');
+        const parsed = parseSkillFile(file(`description: ${'x'.repeat(MAX_DESCRIPTION_CHARS + 50)}`), 'a');
 
         expect(parsed).toMatchObject({ ok: true, truncated: true });
         expect(parsed.ok && parsed.description).toHaveLength(MAX_DESCRIPTION_CHARS);
@@ -141,7 +186,7 @@ describe('scanning a skills folder', () => {
         writeSkill(root, 'not-yaml', '', '---\ndescription: Use when: x\n---\n');
         writeSkill(root, 'wrong-name', '', '---\nname: other\ndescription: x\n---\n');
         writeSkill(root, 'has space');
-        writeSkill(root, 'huge', '', `---\ndescription: x\n---\n${ 'y'.repeat(MAX_SKILL_BYTES) }`);
+        writeSkill(root, 'huge', '', `---\ndescription: x\n---\n${'y'.repeat(MAX_SKILL_BYTES)}`);
 
         const { skills, warnings } = new SkillScanner().scan(root);
 
@@ -158,19 +203,22 @@ describe('scanning a skills folder', () => {
         const root = tempDir();
 
         for (let index = 0; index < MAX_SKILLS_PER_ROOT + 3; index++) {
-            writeSkill(root, `skill-${ String(index).padStart(3, '0') }`);
+            writeSkill(root, `skill-${String(index).padStart(3, '0')}`);
         }
 
         const { skills, warnings } = new SkillScanner().scan(root);
 
         expect(skills).toHaveLength(MAX_SKILLS_PER_ROOT);
-        expect(skills.at(-1)?.folder).toBe(`skill-${ String(MAX_SKILLS_PER_ROOT - 1).padStart(3, '0') }`);
-        expect(warnings).toEqual([`This folder holds ${ MAX_SKILLS_PER_ROOT + 3 } skills; only the first ${ MAX_SKILLS_PER_ROOT } are listed`]);
+        expect(skills.at(-1)?.folder).toBe(`skill-${String(MAX_SKILLS_PER_ROOT - 1).padStart(3, '0')}`);
+        expect(warnings).toEqual([
+            `This folder holds ${MAX_SKILLS_PER_ROOT + 3} skills; only the first ${MAX_SKILLS_PER_ROOT} are listed`,
+        ]);
     });
 });
 
 describe('the scan cache', () => {
-    const later = (path: string, seconds: number) => utimesSync(path, new Date(Date.now() + seconds * 1000), new Date(Date.now() + seconds * 1000));
+    const later = (path: string, seconds: number) =>
+        utimesSync(path, new Date(Date.now() + seconds * 1000), new Date(Date.now() + seconds * 1000));
 
     test('an untouched folder is not read again', () => {
         const root = tempDir();

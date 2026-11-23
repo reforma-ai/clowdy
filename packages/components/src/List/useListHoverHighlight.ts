@@ -1,8 +1,8 @@
-import { useEffect, type RefObject } from 'react';
+import { type RefObject, useEffect } from 'react';
 
 import styles from './ListBox.module.css';
 
-const DEFAULT_ITEM = `.${ styles.item }`;
+const DEFAULT_ITEM = `.${styles.item}`;
 
 /** Keep the plate across the few pixels between rows. Empty space is farther than this. */
 const ROW_GAP = 16;
@@ -37,11 +37,7 @@ function resolveList(target: ListTarget): HTMLElement | null {
 /**
  * Slides one highlight plate across list/menu rows (hover + keyboard), instead of painting each row.
  */
-export function useListHoverHighlight(
-    list: ListTarget,
-    enabled: boolean,
-    itemSelector: string = DEFAULT_ITEM
-) {
+export function useListHoverHighlight(list: ListTarget, enabled: boolean, itemSelector: string = DEFAULT_ITEM) {
     const listEl = list instanceof HTMLElement ? list : null;
 
     useEffect(() => {
@@ -73,12 +69,11 @@ export function useListHoverHighlight(
             return row;
         };
 
-        const blocked = (row: HTMLElement) => (
-            row.hasAttribute('data-disabled')
-            || row.hasAttribute('data-selected')
-            || row.hasAttribute('data-highlighted')
-            || row.hasAttribute('data-nested-selected')
-        );
+        const blocked = (row: HTMLElement) =>
+            row.hasAttribute('data-disabled') ||
+            row.hasAttribute('data-selected') ||
+            row.hasAttribute('data-highlighted') ||
+            row.hasAttribute('data-nested-selected');
 
         // A label row (`data-plateless`) is no item to point at: the pointer draws no plate under it. The keyboard focus still does, so the focus is seen.
         const isPlateless = (row: HTMLElement) => row.hasAttribute('data-plateless');
@@ -89,9 +84,7 @@ export function useListHoverHighlight(
             return row && !isPlateless(row) ? row : null;
         };
 
-        const keyboardRow = () => (
-            root.querySelector<HTMLElement>(`${ itemSelector }[data-focus-visible]`)
-        );
+        const keyboardRow = () => root.querySelector<HTMLElement>(`${itemSelector}[data-focus-visible]`);
 
         const besideCurrent = (x: number, y: number) => {
             if (!current) {
@@ -100,18 +93,23 @@ export function useListHoverHighlight(
 
             const box = current.getBoundingClientRect();
 
-            return x >= box.left && x <= box.right
-                && y >= box.top - ROW_GAP && y <= box.bottom + ROW_GAP;
+            return x >= box.left && x <= box.right && y >= box.top - ROW_GAP && y <= box.bottom + ROW_GAP;
         };
 
         const setGeometry = (row: HTMLElement) => {
             const listRect = root.getBoundingClientRect();
             const rowRect = row.getBoundingClientRect();
 
-            root.style.setProperty('--clowdy-listbox-highlight-top', `${ rowRect.top - listRect.top + root.scrollTop }px`);
-            root.style.setProperty('--clowdy-listbox-highlight-left', `${ rowRect.left - listRect.left + root.scrollLeft }px`);
-            root.style.setProperty('--clowdy-listbox-highlight-width', `${ rowRect.width }px`);
-            root.style.setProperty('--clowdy-listbox-highlight-height', `${ rowRect.height }px`);
+            root.style.setProperty(
+                '--clowdy-listbox-highlight-top',
+                `${rowRect.top - listRect.top + root.scrollTop}px`
+            );
+            root.style.setProperty(
+                '--clowdy-listbox-highlight-left',
+                `${rowRect.left - listRect.left + root.scrollLeft}px`
+            );
+            root.style.setProperty('--clowdy-listbox-highlight-width', `${rowRect.width}px`);
+            root.style.setProperty('--clowdy-listbox-highlight-height', `${rowRect.height}px`);
         };
 
         const hide = () => {
@@ -198,11 +196,7 @@ export function useListHoverHighlight(
                 return;
             }
 
-            followPointer(
-                document.elementFromPoint(event.clientX, event.clientY),
-                event.clientX,
-                event.clientY
-            );
+            followPointer(document.elementFromPoint(event.clientX, event.clientY), event.clientX, event.clientY);
         };
 
         const onPointerLeave = (event: PointerEvent) => {
@@ -303,7 +297,7 @@ export function useListHoverHighlight(
             port.addEventListener('scroll', onScroll, { passive: true });
         }
 
-        show(root.querySelector<HTMLElement>(`${ itemSelector }:hover:not([data-plateless])`));
+        show(root.querySelector<HTMLElement>(`${itemSelector}:hover:not([data-plateless])`));
 
         return () => {
             rowState.disconnect();

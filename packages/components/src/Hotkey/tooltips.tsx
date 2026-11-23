@@ -7,9 +7,7 @@ import type { HotkeyValue } from './hotkeysToSymbols';
 export function tooltipWithHotkey(label: string, hotkey: HotkeyValue): ReactNode {
     return (
         <>
-            { label }
-            { ' ' }
-            <Hotkey hotkey={ hotkey } size="sm" />
+            {label} <Hotkey hotkey={hotkey} size="sm" />
         </>
     );
 }
@@ -18,9 +16,7 @@ export function tooltipWithHotkey(label: string, hotkey: HotkeyValue): ReactNode
 export function tooltipWithSequence(label: string, sequence: readonly HotkeyValue[]): ReactNode {
     return (
         <>
-            { label }
-            { ' ' }
-            <Hotkey sequence={ sequence } size="sm" />
+            {label} <Hotkey sequence={sequence} size="sm" />
         </>
     );
 }

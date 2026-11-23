@@ -14,8 +14,8 @@ export interface AgentAvatarProps {
 /** The avatar of an agent: a rounded square, layers for an orchestrator and a person for the rest. */
 export function AgentAvatar({ role = 'orchestrator', size = 'sm', className }: AgentAvatarProps) {
     return (
-        <span aria-hidden className={ cn(styles.avatar, className) } data-size={ size }>
-            { role === 'orchestrator' ? <Layers /> : <User /> }
+        <span aria-hidden className={cn(styles.avatar, className)} data-size={size}>
+            {role === 'orchestrator' ? <Layers /> : <User />}
         </span>
     );
 }

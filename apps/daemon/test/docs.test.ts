@@ -24,7 +24,15 @@ interface Fixture {
 let fx: Fixture;
 
 /** A project over the folders given, in the order given. */
-const projectOf = (folders: Project['folders']): Project => ({ id: 'prj_docs', name: 'docs', folders, taskPrefix: 'DOC', settings: {}, createdAt: 1, position: 1 });
+const projectOf = (folders: Project['folders']): Project => ({
+    id: 'prj_docs',
+    name: 'docs',
+    folders,
+    taskPrefix: 'DOC',
+    settings: {},
+    createdAt: 1,
+    position: 1,
+});
 
 /** Writes files (and the folders above them) below a folder. */
 function put(folder: string, files: Record<string, string>) {
@@ -37,7 +45,8 @@ function put(folder: string, files: Record<string, string>) {
 }
 
 /** A tree as nested paths, for a short expectation: a file is its path, a folder is `{ path: children }`. */
-const compact = (nodes: DocNode[]): unknown[] => nodes.map(node => (node.children ? { [node.path]: compact(node.children) } : node.path));
+const compact = (nodes: DocNode[]): unknown[] =>
+    nodes.map(node => (node.children ? { [node.path]: compact(node.children) } : node.path));
 
 /** The ids of a folder's sources, in order. */
 const idsOf = (project: Project, index = 0) => docsTree(project)[index]?.sources.map(source => source.id);
@@ -53,14 +62,13 @@ beforeEach(() => {
 const fails = (action: () => unknown, code: string) => {
     try {
         action();
-    }
-    catch (error) {
+    } catch (error) {
         expect((error as { code?: string }).code).toBe(code);
 
         return;
     }
 
-    throw new Error(`expected a ${ code } error`);
+    throw new Error(`expected a ${code} error`);
 };
 
 describe('document sources', () => {
@@ -88,7 +96,14 @@ describe('document sources', () => {
             ['openspec-specs', 'OpenSpec specs', 'openspec/specs'],
             ['kiro-steering', 'Kiro steering', '.kiro/steering'],
         ]);
-        expect(compact(folder?.sources[0]?.nodes ?? [])).toEqual([{ 'docs-sources': [{ 'docs-sources/research': ['docs-sources/research/spec-formats.md'] }, 'docs-sources/plan.md'] }]);
+        expect(compact(folder?.sources[0]?.nodes ?? [])).toEqual([
+            {
+                'docs-sources': [
+                    { 'docs-sources/research': ['docs-sources/research/spec-formats.md'] },
+                    'docs-sources/plan.md',
+                ],
+            },
+        ]);
         expect(compact(folder?.sources[1]?.nodes ?? [])).toEqual([{ decisions: ['decisions/pricing.md'] }]);
     });
 
@@ -98,11 +113,23 @@ describe('document sources', () => {
         const [source] = docsTree(fx.project)[0]?.sources ?? [];
 
         expect(source?.root).toBe('.briefback');
-        expect(source?.nodes).toEqual([{ path: 'acp', name: 'acp', kind: 'dir', children: [{ path: 'acp/plan.md', name: 'plan.md', kind: 'file' }] }]);
+        expect(source?.nodes).toEqual([
+            {
+                path: 'acp',
+                name: 'acp',
+                kind: 'dir',
+                children: [{ path: 'acp/plan.md', name: 'plan.md', kind: 'file' }],
+            },
+        ]);
     });
 
     test('hide a root that has no Markdown file in it, however many folders and other files', () => {
-        put(fx.path, { '.briefback/config.json': '{}', '.briefback/x/probe.ts.txt': '', '.clowdy/docs/notes.txt': '', '.kiro/specs/feature/.config.kiro': '{}' });
+        put(fx.path, {
+            '.briefback/config.json': '{}',
+            '.briefback/x/probe.ts.txt': '',
+            '.clowdy/docs/notes.txt': '',
+            '.kiro/specs/feature/.config.kiro': '{}',
+        });
         mkdirSync(join(fx.path, 'openspec', 'specs'), { recursive: true });
 
         expect(idsOf(fx.project)).toEqual([]);
@@ -112,7 +139,7 @@ describe('document sources', () => {
         expect(idsOf(fx.project)).toEqual(['briefback']);
     });
 
-    test('count Spec Kit\'s specs only beside .specify, and none of the rest of .specify: its templates and scripts are tool files', () => {
+    test("count Spec Kit's specs only beside .specify, and none of the rest of .specify: its templates and scripts are tool files", () => {
         put(fx.path, { 'specs/001-chat/spec.md': '# Chat' });
 
         // A bare specs folder is anybody's.
@@ -125,7 +152,11 @@ describe('document sources', () => {
 
         put(fx.path, { '.specify/memory/constitution.md': '# Constitution', '.specify/bugs/b1/fix.md': '# Fix' });
 
-        expect(docsTree(fx.project)[0]?.sources.map(source => source.root)).toEqual(['specs', '.specify/memory', '.specify/bugs']);
+        expect(docsTree(fx.project)[0]?.sources.map(source => source.root)).toEqual([
+            'specs',
+            '.specify/memory',
+            '.specify/bugs',
+        ]);
     });
 
     test('lists Markdown files and folders only, folders first, in natural order', () => {
@@ -133,7 +164,22 @@ describe('document sources', () => {
             mkdirSync(join(fx.path, '.clowdy', 'docs', dir), { recursive: true });
         }
 
-        put(fx.path, Object.fromEntries(['doc10.md', 'doc2.md', 'Alpha.md', 'readme.markdown', 'image.png', 'todo.txt', 'notes/b.md', 'notes/deep/c.md', 'notes/a.txt'].map(file => [`.clowdy/docs/${ file }`, 'x'])));
+        put(
+            fx.path,
+            Object.fromEntries(
+                [
+                    'doc10.md',
+                    'doc2.md',
+                    'Alpha.md',
+                    'readme.markdown',
+                    'image.png',
+                    'todo.txt',
+                    'notes/b.md',
+                    'notes/deep/c.md',
+                    'notes/a.txt',
+                ].map(file => [`.clowdy/docs/${file}`, 'x'])
+            )
+        );
 
         expect(compact(docsTree(fx.project)[0]?.sources[0]?.nodes ?? [])).toEqual([
             { notes: [{ 'notes/deep': ['notes/deep/c.md'] }, 'notes/b.md'] },
@@ -159,23 +205,35 @@ describe('document sources', () => {
         expect(idsOf(fx.project)).toEqual(['briefback']);
     });
 
-    test('has one entry per folder in the project\'s order, an empty folder too', () => {
+    test("has one entry per folder in the project's order, an empty folder too", () => {
         const second = tempDir('second');
-        const project = projectOf([{ id: 'fld_first', path: fx.path }, { id: 'fld_second', path: second }]);
+        const project = projectOf([
+            { id: 'fld_first', path: fx.path },
+            { id: 'fld_second', path: second },
+        ]);
 
         put(fx.path, { '.briefback/main/plan.md': '# Main' });
         put(second, { '.clowdy/docs/api/plan.md': '# Plan' });
 
-        expect(docsTree(project).map(folder => [folder.folderId, folder.sources.map(source => source.id)])).toEqual([['fld_first', ['briefback']], ['fld_second', ['documents']]]);
+        expect(docsTree(project).map(folder => [folder.folderId, folder.sources.map(source => source.id)])).toEqual([
+            ['fld_first', ['briefback']],
+            ['fld_second', ['documents']],
+        ]);
 
-        const third = projectOf([{ id: 'fld_first', path: fx.path }, { id: 'fld_empty', path: tempDir('empty') }]);
+        const third = projectOf([
+            { id: 'fld_first', path: fx.path },
+            { id: 'fld_empty', path: tempDir('empty') },
+        ]);
 
         expect(docsTree(third)[1]).toEqual({ folderId: 'fld_empty', sources: [] });
     });
 
     test('a missing folder other than the main one is left out', () => {
         const second = join(tempDir('parent'), 'gone');
-        const project = projectOf([{ id: 'fld_first', path: fx.path }, { id: 'fld_gone', path: second }]);
+        const project = projectOf([
+            { id: 'fld_first', path: fx.path },
+            { id: 'fld_gone', path: second },
+        ]);
 
         expect(docsTree(project)).toEqual([{ folderId: 'fld_first', sources: [] }]);
         expect(existsSync(second)).toBe(false);
@@ -189,29 +247,38 @@ describe('document sources', () => {
         expect(docsTree(fx.project)[0]?.sources[0]?.nodes.map(node => node.path)).toEqual(['real.md']);
     });
 
-    symlinks('a root that is a link out of the folder is left out, and nothing is read through it, while the other roots stay', () => {
-        put(fx.path, { '.briefback/plan.md': '# Plan' });
-        mkdirSync(join(fx.path, '.clowdy'), { recursive: true });
-        symlinkSync(fx.outside, join(fx.path, '.clowdy', 'docs'));
+    symlinks(
+        'a root that is a link out of the folder is left out, and nothing is read through it, while the other roots stay',
+        () => {
+            put(fx.path, { '.briefback/plan.md': '# Plan' });
+            mkdirSync(join(fx.path, '.clowdy'), { recursive: true });
+            symlinkSync(fx.outside, join(fx.path, '.clowdy', 'docs'));
 
-        expect(idsOf(fx.project)).toEqual(['briefback']);
-        expect(readdirSync(fx.outside)).toEqual(['secret.md']);
-    });
+            expect(idsOf(fx.project)).toEqual(['briefback']);
+            expect(readdirSync(fx.outside)).toEqual(['secret.md']);
+        }
+    );
 
-    symlinks('a .briefback that is a link out of its folder is left out, and so is a .clowdy that is one whose docs folder is in what it leads to', () => {
-        mkdirSync(join(fx.outside, 'docs'));
-        writeFileSync(join(fx.outside, 'docs', 'secret.md'), 'top secret');
-        symlinkSync(fx.outside, join(fx.path, '.clowdy'));
-        symlinkSync(fx.outside, join(fx.path, '.briefback'));
+    symlinks(
+        'a .briefback that is a link out of its folder is left out, and so is a .clowdy that is one whose docs folder is in what it leads to',
+        () => {
+            mkdirSync(join(fx.outside, 'docs'));
+            writeFileSync(join(fx.outside, 'docs', 'secret.md'), 'top secret');
+            symlinkSync(fx.outside, join(fx.path, '.clowdy'));
+            symlinkSync(fx.outside, join(fx.path, '.briefback'));
 
-        expect(docsTree(fx.project)).toEqual([{ folderId: 'fld_docs', sources: [] }]);
-    });
+            expect(docsTree(fx.project)).toEqual([{ folderId: 'fld_docs', sources: [] }]);
+        }
+    );
 
     symlinks('a specs folder that is a link to a folder inside the project is a source', () => {
         put(fx.path, { '.specify/memory/c.md': '# C', 'shared/001/spec.md': '# Spec' });
         symlinkSync(join(fx.path, 'shared'), join(fx.path, 'specs'));
 
-        expect(docsTree(fx.project)[0]?.sources.map(source => [source.root, source.nodes.length])).toEqual([['specs', 1], ['.specify/memory', 1]]);
+        expect(docsTree(fx.project)[0]?.sources.map(source => [source.root, source.nodes.length])).toEqual([
+            ['specs', 1],
+            ['.specify/memory', 1],
+        ]);
     });
 
     symlinks('a root that is a dangling link is no source, and nothing is made to follow it', () => {
@@ -224,14 +291,20 @@ describe('document sources', () => {
         expect(existsSync(target)).toBe(false);
     });
 
-    symlinks('another folder\'s roots that lead out of it are left out of its sources', () => {
+    symlinks("another folder's roots that lead out of it are left out of its sources", () => {
         const second = tempDir('second');
-        const project = projectOf([{ id: 'fld_first', path: fx.path }, { id: 'fld_out', path: second }]);
+        const project = projectOf([
+            { id: 'fld_first', path: fx.path },
+            { id: 'fld_out', path: second },
+        ]);
 
         mkdirSync(join(second, '.clowdy'));
         symlinkSync(fx.outside, join(second, '.clowdy', 'docs'));
 
-        expect(docsTree(project)).toEqual([{ folderId: 'fld_first', sources: [] }, { folderId: 'fld_out', sources: [] }]);
+        expect(docsTree(project)).toEqual([
+            { folderId: 'fld_first', sources: [] },
+            { folderId: 'fld_out', sources: [] },
+        ]);
     });
 
     unreadable('a folder that cannot be read lists nothing and does not take the others with it', () => {
@@ -242,9 +315,11 @@ describe('document sources', () => {
         chmodSync(shut, 0o000);
 
         try {
-            expect(compact(docsTree(fx.project)[0]?.sources[0]?.nodes ?? [])).toEqual([{ open: ['open/plan.md'] }, { shut: [] }]);
-        }
-        finally {
+            expect(compact(docsTree(fx.project)[0]?.sources[0]?.nodes ?? [])).toEqual([
+                { open: ['open/plan.md'] },
+                { shut: [] },
+            ]);
+        } finally {
             chmodSync(shut, 0o755);
         }
     });
@@ -254,19 +329,27 @@ describe('the size of a listing', () => {
     test('skips .git and node_modules, which no document is in, wherever they are put', () => {
         const root = tempDir('listing');
 
-        for (const dir of ['plans', 'plans/node_modules/pkg', '.git/refs', 'clone/.git']) mkdirSync(join(root, dir), { recursive: true });
+        for (const dir of ['plans', 'plans/node_modules/pkg', '.git/refs', 'clone/.git'])
+            mkdirSync(join(root, dir), { recursive: true });
 
-        for (const file of ['plans/a.md', 'plans/node_modules/pkg/README.md', '.git/refs/b.md', 'clone/.git/c.md', 'clone/d.md']) writeFileSync(join(root, file), 'x');
+        for (const file of [
+            'plans/a.md',
+            'plans/node_modules/pkg/README.md',
+            '.git/refs/b.md',
+            'clone/.git/c.md',
+            'clone/d.md',
+        ])
+            writeFileSync(join(root, file), 'x');
 
         const paths = (nodes: DocNode[]): string[] => nodes.flatMap(node => [node.path, ...paths(node.children ?? [])]);
 
         expect(paths(listDocs(root))).toEqual(['clone', 'clone/d.md', 'plans', 'plans/a.md']);
     });
 
-    test('stops at its budget of entries and keeps what it listed (which ones is the file system\'s order)', () => {
+    test("stops at its budget of entries and keeps what it listed (which ones is the file system's order)", () => {
         const root = tempDir('budget');
 
-        for (const name of ['a', 'b', 'c', 'd', 'e']) writeFileSync(join(root, `${ name }.md`), 'x');
+        for (const name of ['a', 'b', 'c', 'd', 'e']) writeFileSync(join(root, `${name}.md`), 'x');
 
         const listed = listDocs(root, '', { left: 3 }).map(node => node.path);
 
@@ -292,14 +375,26 @@ describe('over the API', () => {
 
             put(folder, { '.clowdy/docs/plan/mvp.md': '# MVP', '.briefback/acp/plan.md': '# Plan' });
 
-            const [entry] = await (await h.fetch(`/v1/projects/${ id }/docs`)).json() as Array<{ folderId: string; sources: Array<{ id: string; label: string; root: string; nodes: DocNode[] }> }>;
+            const [entry] = (await (await h.fetch(`/v1/projects/${id}/docs`)).json()) as Array<{
+                folderId: string;
+                sources: Array<{ id: string; label: string; root: string; nodes: DocNode[] }>;
+            }>;
 
-            expect(entry?.sources.map(source => [source.id, source.label, source.root])).toEqual([['briefback', 'Briefback', '.briefback'], ['documents', 'Documents', '.clowdy/docs']]);
-            expect(entry?.sources[1]?.nodes).toEqual([{ path: 'plan', name: 'plan', kind: 'dir', children: [{ path: 'plan/mvp.md', name: 'mvp.md', kind: 'file' }] }]);
+            expect(entry?.sources.map(source => [source.id, source.label, source.root])).toEqual([
+                ['briefback', 'Briefback', '.briefback'],
+                ['documents', 'Documents', '.clowdy/docs'],
+            ]);
+            expect(entry?.sources[1]?.nodes).toEqual([
+                {
+                    path: 'plan',
+                    name: 'plan',
+                    kind: 'dir',
+                    children: [{ path: 'plan/mvp.md', name: 'mvp.md', kind: 'file' }],
+                },
+            ]);
             expect((await h.fetch('/v1/projects/prj_nope/docs')).status).toBe(404);
-            expect((await h.fetch(`/v1/projects/${ id }/docs/file?path=plan/mvp.md`)).status).toBe(404);
-        }
-        finally {
+            expect((await h.fetch(`/v1/projects/${id}/docs/file?path=plan/mvp.md`)).status).toBe(404);
+        } finally {
             await h.stop();
         }
     });

@@ -1,4 +1,4 @@
-import { browserStorage, readStored, writeStored, type KeyValueStorage } from '../../stores/storage';
+import { browserStorage, type KeyValueStorage, readStored, writeStored } from '../../stores/storage';
 
 import type { ChatMode } from '@clowdy/protocol';
 

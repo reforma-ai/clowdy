@@ -5,11 +5,11 @@ import { archiveBatches, offersRestore } from './archiveBatches';
 import type { Task } from '@clowdy/protocol';
 
 const task = (number: number, archivedAt: number | undefined, parentId?: string): Task => ({
-    id: `t-${ number }`,
+    id: `t-${number}`,
     projectId: 'p',
     number,
-    key: `X-${ number }`,
-    title: `Task ${ number }`,
+    key: `X-${number}`,
+    title: `Task ${number}`,
     description: '',
     statusId: 'done',
     dependsOn: [],
@@ -22,7 +22,13 @@ const task = (number: number, archivedAt: number | undefined, parentId?: string)
 
 describe('archiveBatches', () => {
     it('groups the tasks by the time they were archived, keeping the order the daemon gave: the newest batch first', () => {
-        const batches = archiveBatches([task(9, 300), task(10, 300, 't-9'), task(3, 200), task(1, 100), task(2, 100, 't-1')]);
+        const batches = archiveBatches([
+            task(9, 300),
+            task(10, 300, 't-9'),
+            task(3, 200),
+            task(1, 100),
+            task(2, 100, 't-1'),
+        ]);
 
         expect(batches.map(batch => [batch.archivedAt, batch.tasks.map(candidate => candidate.number)])).toEqual([
             [300, [9, 10]],

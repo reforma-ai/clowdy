@@ -8,14 +8,23 @@ import { basename, dirname } from '@clowdy/file-manager/paths';
 import { Folder, Search } from '@clowdy/icons/14';
 import { cn } from '@clowdy/lib';
 import { observer } from 'mobx-react-lite';
-import { useEffect, useId, useRef, type KeyboardEvent } from 'react';
+import { type KeyboardEvent, useEffect, useId, useRef } from 'react';
 
 import { CommandHotkey } from '../../hotkeys';
 import { ChatIcon } from '../agents/ChatIcon';
 import { Marked, visiblePreview, wordRanges } from './preview';
 import styles from './QuickSearch.module.css';
+import {
+    type Found,
+    type FoundChat,
+    type FoundDoc,
+    type FoundFile,
+    type FoundLine,
+    QUICK_SEARCH_TABS,
+    type QuickSearchModel,
+    type QuickSearchTab,
+} from './QuickSearchModel';
 import { TAB_COMMANDS } from './quickSearchCommands';
-import { QUICK_SEARCH_TABS, type Found, type FoundChat, type FoundDoc, type FoundFile, type FoundLine, type QuickSearchModel, type QuickSearchTab } from './QuickSearchModel';
 
 export interface QuickSearchProps {
     model: QuickSearchModel;
@@ -49,20 +58,40 @@ const EMPTY: Record<QuickSearchTab, string> = {
 };
 
 /** The id of the row at `index`, for the field to name the row the keys are on. */
-const rowId = (list: string, index: number) => `${ list }-${ index }`;
+const rowId = (list: string, index: number) => `${list}-${index}`;
 
-function Row({ id, found, query, active, onOpen, onHover }: { id: string; found: Found; query: string; active: boolean; onOpen: () => void; onHover: () => void }) {
+function Row({
+    id,
+    found,
+    query,
+    active,
+    onOpen,
+    onHover,
+}: {
+    id: string;
+    found: Found;
+    query: string;
+    active: boolean;
+    onOpen: () => void;
+    onHover: () => void;
+}) {
     return (
         <div
-            id={ id }
+            id={id}
             role="option"
-            aria-selected={ active }
-            data-active={ active || undefined }
-            className={ styles.row }
-            onClick={ onOpen }
-            onMouseMove={ onHover }
+            aria-selected={active}
+            data-active={active || undefined}
+            className={styles.row}
+            onClick={onOpen}
+            onMouseMove={onHover}
         >
-            { found.kind === 'chat' ? <ChatRow found={ found } query={ query } /> : found.kind === 'line' ? <LineRow found={ found } /> : <FileRow found={ found } query={ query } /> }
+            {found.kind === 'chat' ? (
+                <ChatRow found={found} query={query} />
+            ) : found.kind === 'line' ? (
+                <LineRow found={found} />
+            ) : (
+                <FileRow found={found} query={query} />
+            )}
         </div>
     );
 }
@@ -70,9 +99,17 @@ function Row({ id, found, query, active, onOpen, onHover }: { id: string; found:
 function ChatRow({ found: { chat, run, note }, query }: { found: FoundChat; query: string }) {
     return (
         <>
-            <span className={ styles.chatIcon }><ChatIcon chat={ chat } run={ run } /></span>
-            <span className={ styles.main }><Marked text={ chat.title } ranges={ wordRanges(chat.title, query) } /></span>
-            { note && <Text truncate variant="xs" color="secondary" className={ cn(styles.meta, styles.end) }>{ note }</Text> }
+            <span className={styles.chatIcon}>
+                <ChatIcon chat={chat} run={run} />
+            </span>
+            <span className={styles.main}>
+                <Marked text={chat.title} ranges={wordRanges(chat.title, query)} />
+            </span>
+            {note && (
+                <Text truncate variant="xs" color="secondary" className={cn(styles.meta, styles.end)}>
+                    {note}
+                </Text>
+            )}
         </>
     );
 }
@@ -83,9 +120,15 @@ function FileRow({ found: { path }, query }: { found: FoundFile | FoundDoc; quer
 
     return (
         <>
-            <FileIcon path={ path } kind="file" className={ styles.icon } />
-            <span className={ styles.main }><Marked text={ name } ranges={ wordRanges(name, query) } /></span>
-            { folder && <Text truncate variant="xs" color="secondary" className={ styles.meta }>{ folder }</Text> }
+            <FileIcon path={path} kind="file" className={styles.icon} />
+            <span className={styles.main}>
+                <Marked text={name} ranges={wordRanges(name, query)} />
+            </span>
+            {folder && (
+                <Text truncate variant="xs" color="secondary" className={styles.meta}>
+                    {folder}
+                </Text>
+            )}
         </>
     );
 }
@@ -95,9 +138,16 @@ function LineRow({ found }: { found: FoundLine }) {
 
     return (
         <>
-            <FileIcon path={ found.path } kind="file" className={ styles.icon } />
-            <span className={ cn(styles.main, styles.code) }><Marked text={ preview.text } ranges={ preview.ranges } /></span>
-            <Text truncate variant="xs" color="secondary" className={ cn(styles.meta, styles.end) }>{ `${ basename(found.path) }:${ found.line }` }</Text>
+            <FileIcon path={found.path} kind="file" className={styles.icon} />
+            <span className={cn(styles.main, styles.code)}>
+                <Marked text={preview.text} ranges={preview.ranges} />
+            </span>
+            <Text
+                truncate
+                variant="xs"
+                color="secondary"
+                className={cn(styles.meta, styles.end)}
+            >{`${basename(found.path)}:${found.line}`}</Text>
         </>
     );
 }
@@ -131,12 +181,10 @@ export const QuickSearch = observer(function QuickSearch({ model, folder }: Quic
         if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
             event.preventDefault();
             model.move(event.key === 'ArrowDown' ? 1 : -1);
-        }
-        else if (event.key === 'Enter') {
+        } else if (event.key === 'Enter') {
             event.preventDefault();
             open();
-        }
-        else if (event.key === 'Tab') {
+        } else if (event.key === 'Tab') {
             event.preventDefault();
             model.stepTab(event.shiftKey ? -1 : 1);
         }
@@ -147,75 +195,87 @@ export const QuickSearch = observer(function QuickSearch({ model, folder }: Quic
     let at = 0;
 
     return (
-        <div className={ styles.palette } onKeyDown={ onKeyDown }>
-            <div className={ styles.field }>
-                <Search aria-hidden className={ styles.lens } />
+        <div className={styles.palette} onKeyDown={onKeyDown}>
+            <div className={styles.field}>
+                <Search aria-hidden className={styles.lens} />
                 <input
-                    ref={ field }
+                    ref={field}
                     autoFocus
                     role="combobox"
-                    aria-expanded={ rows.length > 0 }
-                    aria-controls={ list }
-                    aria-activedescendant={ activeIndex >= 0 ? rowId(list, activeIndex) : undefined }
+                    aria-expanded={rows.length > 0}
+                    aria-controls={list}
+                    aria-activedescendant={activeIndex >= 0 ? rowId(list, activeIndex) : undefined}
                     aria-label="Search"
-                    className={ styles.input }
-                    placeholder={ PLACEHOLDERS[tab] }
-                    spellCheck={ false }
+                    className={styles.input}
+                    placeholder={PLACEHOLDERS[tab]}
+                    spellCheck={false}
                     autoComplete="off"
-                    value={ query }
-                    onChange={ event => model.setQuery(event.target.value) }
+                    value={query}
+                    onChange={event => model.setQuery(event.target.value)}
                 />
-                { pending && <Spinner size="xxs" aria-label="Searching" className={ styles.spinner } /> }
+                {pending && <Spinner size="xxs" aria-label="Searching" className={styles.spinner} />}
             </div>
 
-            { rows.length > 0
-                ? (
-                    <Scrollable className={ styles.results } contentClass={ styles.content }>
-                        <div id={ list } role="listbox" aria-label="Results" className={ styles.list }>
-                            { sections.map(section => (
-                                <div key={ section.id } role="group" aria-label={ section.title } className={ styles.section }>
-                                    { headed && <Text variant="sm" color="secondary" className={ styles.title }>{ section.title }</Text> }
-                                    { section.items.map((found) => {
-                                        const index = at++;
+            {rows.length > 0 ? (
+                <Scrollable className={styles.results} contentClass={styles.content}>
+                    <div id={list} role="listbox" aria-label="Results" className={styles.list}>
+                        {sections.map(section => (
+                            <div key={section.id} role="group" aria-label={section.title} className={styles.section}>
+                                {headed && (
+                                    <Text variant="sm" color="secondary" className={styles.title}>
+                                        {section.title}
+                                    </Text>
+                                )}
+                                {section.items.map(found => {
+                                    const index = at++;
 
-                                        return <Row key={ found.id } id={ rowId(list, index) } found={ found } query={ query } active={ index === activeIndex } onOpen={ () => open(found) } onHover={ () => model.activate(found) } />;
-                                    }) }
-                                </div>
-                            )) }
-                        </div>
-                    </Scrollable>
-                )
-                : (
-                    <div className={ styles.empty } role={ error ? 'alert' : 'status' }>
-                        { blank ? HINTS[tab] : error ? `Couldn't search: ${ error }` : answered && !pending ? EMPTY[tab] : '' }
+                                    return (
+                                        <Row
+                                            key={found.id}
+                                            id={rowId(list, index)}
+                                            found={found}
+                                            query={query}
+                                            active={index === activeIndex}
+                                            onOpen={() => open(found)}
+                                            onHover={() => model.activate(found)}
+                                        />
+                                    );
+                                })}
+                            </div>
+                        ))}
                     </div>
-                ) }
+                </Scrollable>
+            ) : (
+                <div className={styles.empty} role={error ? 'alert' : 'status'}>
+                    {blank ? HINTS[tab] : error ? `Couldn't search: ${error}` : answered && !pending ? EMPTY[tab] : ''}
+                </div>
+            )}
 
-            <div className={ styles.footer }>
-                <div className={ styles.tabs } role="group" aria-label="What to search">
-                    { QUICK_SEARCH_TABS.map(({ value, label }) => (
+            <div className={styles.footer}>
+                <div className={styles.tabs} role="group" aria-label="What to search">
+                    {QUICK_SEARCH_TABS.map(({ value, label }) => (
                         <Button
-                            key={ value }
+                            key={value}
                             variant="filling"
                             size="sm"
-                            isPressed={ value === tab }
-                            onPress={ () => {
+                            isPressed={value === tab}
+                            onPress={() => {
                                 model.setTab(value);
                                 field.current?.focus();
-                            } }
+                            }}
                         >
-                            { label }
-                            <CommandHotkey id={ TAB_COMMANDS[value] } size="xs" />
+                            {label}
+                            <CommandHotkey id={TAB_COMMANDS[value]} size="xs" />
                         </Button>
-                    )) }
+                    ))}
                 </div>
 
-                { folder && (
-                    <Text variant="sm" color="secondary" className={ styles.folder } title="The folder that is searched">
+                {folder && (
+                    <Text variant="sm" color="secondary" className={styles.folder} title="The folder that is searched">
                         <Folder aria-hidden />
-                        <span>{ folder }</span>
+                        <span>{folder}</span>
                     </Text>
-                ) }
+                )}
             </div>
         </div>
     );
@@ -238,6 +298,6 @@ export function showQuickSearch(props: QuickSearchProps, { onClose }: { onClose:
         scrollable: 'hidden',
         position: ['center', 'start'],
         positionOffset: { y: 96 },
-        component: <QuickSearch { ...props } />,
+        component: <QuickSearch {...props} />,
     });
 }

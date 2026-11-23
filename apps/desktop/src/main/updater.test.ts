@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
-import { createUpdater, type Ask, type ShellUpdater } from './updater';
+import { type Ask, createUpdater, type ShellUpdater } from './updater';
 
 const HOUR = 60 * 60_000;
 
@@ -38,15 +38,20 @@ class FakeUpdater implements ShellUpdater {
             if (this.squirrelRefusals > 0) {
                 this.squirrelRefusals -= 1;
                 this.squirrel.emit('error', new Error('code signature mismatch'));
-            }
-            else {
+            } else {
                 this.squirrel.emit('update-downloaded');
             }
         });
     }
 }
 
-function launch({ platform = 'darwin' as NodeJS.Platform, inApplications = true, selfUpdates = true, latest = null as string | null, answers = [] as boolean[] } = {}) {
+function launch({
+    platform = 'darwin' as NodeJS.Platform,
+    inApplications = true,
+    selfUpdates = true,
+    latest = null as string | null,
+    answers = [] as boolean[],
+} = {}) {
     const updater = new FakeUpdater();
 
     // Set before the start: a build that cannot update itself checks without waiting for anything first.
@@ -54,7 +59,15 @@ function launch({ platform = 'darwin' as NodeJS.Platform, inApplications = true,
     const app = { isInApplicationsFolder: vi.fn(() => inApplications), moveToApplicationsFolder: vi.fn(() => true) };
     const ask = vi.fn<Ask>(async () => answers.shift() ?? false);
     const openReleasePage = vi.fn();
-    const shell = createUpdater({ updater, squirrel: updater.squirrel, platform, selfUpdates, app, ask, openReleasePage });
+    const shell = createUpdater({
+        updater,
+        squirrel: updater.squirrel,
+        platform,
+        selfUpdates,
+        app,
+        ask,
+        openReleasePage,
+    });
     const started = shell.start();
 
     return { updater, app, ask, openReleasePage, shell, started };
@@ -173,7 +186,12 @@ describe('createUpdater', () => {
     });
 
     test('a build that cannot update itself offers the release page once per version, and never downloads', async () => {
-        const { updater, ask, openReleasePage, shell, started } = launch({ selfUpdates: false, inApplications: false, latest: '0.2.0', answers: [true, false, true] });
+        const { updater, ask, openReleasePage, shell, started } = launch({
+            selfUpdates: false,
+            inApplications: false,
+            latest: '0.2.0',
+            answers: [true, false, true],
+        });
 
         await started;
 

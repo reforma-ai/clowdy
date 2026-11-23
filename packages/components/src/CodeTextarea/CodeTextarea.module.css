@@ -107,7 +107,12 @@
         /* Beat CM `.ͼN .cm-content { padding: 4px 0 }` — need our field padding (md = spacing-10). */
         padding: var(--clowdy-textarea-padding-block) var(--clowdy-textarea-padding-inline) !important;
         /* Override CM base `min-height: 100%` — that stretched content and pinned text to the top. */
-        min-height: calc(var(--clowdy-textarea-line-height, var(--leading-md)) * var(--clowdy-textarea-min-rows, 1) + var(--clowdy-textarea-padding-block) * 2);
+        min-height: calc(
+            var(--clowdy-textarea-line-height, var(--leading-md)) *
+            var(--clowdy-textarea-min-rows, 1) +
+            var(--clowdy-textarea-padding-block) *
+            2
+        );
         caret-color: currentColor;
         font: inherit;
         color: inherit;

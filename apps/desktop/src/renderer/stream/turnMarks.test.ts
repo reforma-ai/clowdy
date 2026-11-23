@@ -5,7 +5,11 @@ import { turnMarks } from './turnMarks';
 import type { StreamItem, StreamItemBody } from '@clowdy/protocol';
 
 const item = (id: string, body: StreamItemBody): StreamItem => ({ id, runId: 'r', seq: 1, at: 0, body });
-const user = (id: string, text: string, attachments?: { id: string; name: string; mediaType: string; size: number }[]) => item(id, { kind: 'user', text, attachments });
+const user = (
+    id: string,
+    text: string,
+    attachments?: { id: string; name: string; mediaType: string; size: number }[]
+) => item(id, { kind: 'user', text, attachments });
 const assistant = (id: string, text: string, done = true) => item(id, { kind: 'assistant', text, done });
 
 describe('turnMarks', () => {
@@ -27,11 +31,7 @@ describe('turnMarks', () => {
     });
 
     it('keeps a reply that is still arriving, and ignores an empty one after it', () => {
-        const marks = turnMarks([
-            user('u1', 'Go'),
-            assistant('a1', 'Hel', false),
-            assistant('a2', '   '),
-        ]);
+        const marks = turnMarks([user('u1', 'Go'), assistant('a1', 'Hel', false), assistant('a2', '   ')]);
 
         expect(marks).toEqual([{ id: 'u1', title: 'Go', reply: 'Hel' }]);
     });

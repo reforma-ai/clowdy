@@ -23,15 +23,17 @@ export interface RemoteActionView {
 }
 
 /** Whether a branch tracks something on `origin`: its upstream is named `origin/<branch>`. */
-const onOrigin = (upstream: GitUpstream): boolean => upstream.name.startsWith(`${ ORIGIN }/`);
+const onOrigin = (upstream: GitUpstream): boolean => upstream.name.startsWith(`${ORIGIN}/`);
 
 /** Whether the branch and its upstream each have commits the other lacks, so neither a pull nor a push can settle it. */
-export const isDiverged = (upstream: GitUpstream | undefined): boolean => upstream !== undefined && !upstream.gone && upstream.ahead > 0 && upstream.behind > 0;
+export const isDiverged = (upstream: GitUpstream | undefined): boolean =>
+    upstream !== undefined && !upstream.gone && upstream.ahead > 0 && upstream.behind > 0;
 
-const divergedWords = (upstream: GitUpstream): string => `Diverged: ${ upstream.ahead } ahead, ${ upstream.behind } behind`;
+const divergedWords = (upstream: GitUpstream): string => `Diverged: ${upstream.ahead} ahead, ${upstream.behind} behind`;
 
 /** The upstream of a branch that is published: it has one that is still there. Nothing for a branch that is not published and for one whose upstream is gone from origin. */
-const publishedUpstream = (upstream: GitUpstream | undefined): GitUpstream | undefined => (upstream && !upstream.gone ? upstream : undefined);
+const publishedUpstream = (upstream: GitUpstream | undefined): GitUpstream | undefined =>
+    upstream && !upstream.gone ? upstream : undefined;
 
 /**
  * What stops any move of the branch right now, as a few words: the repository has no `origin`, or another action is running. Nothing when neither is so.
@@ -50,7 +52,7 @@ function branchBlock(status: RepositoryStatus): string | undefined {
 
     if (head.kind === 'unborn') return 'No commits yet';
 
-    return upstream && !upstream.gone && !onOrigin(upstream) ? `Tracks ${ upstream.name }, not ${ ORIGIN }` : undefined;
+    return upstream && !upstream.gone && !onOrigin(upstream) ? `Tracks ${upstream.name}, not ${ORIGIN}` : undefined;
 }
 
 /**
@@ -68,18 +70,36 @@ export function remoteActions(status: GitStatus | undefined, busy: boolean): Rem
 
     // A branch that is not on origin has nothing to pull from, and is published in place of being pushed.
     if (!published) {
-        const pull: RemoteActionView = { id: 'pull', label: 'Pull', reason: moves ?? (status.upstream ? `Upstream gone from ${ ORIGIN }` : 'Not published yet') };
+        const pull: RemoteActionView = {
+            id: 'pull',
+            label: 'Pull',
+            reason: moves ?? (status.upstream ? `Upstream gone from ${ORIGIN}` : 'Not published yet'),
+        };
 
         return [fetch, pull, { id: 'publish', label: 'Publish', ...(moves && { reason: moves }) }];
     }
 
-    const pullReason = moves ?? (isDiverged(published) ? divergedWords(published) : published.behind === 0 ? 'Nothing to pull' : undefined);
-    const pushReason = moves ?? (isDiverged(published) ? divergedWords(published) : published.ahead === 0 ? 'Nothing to push' : undefined);
+    const pullReason =
+        moves ??
+        (isDiverged(published) ? divergedWords(published) : published.behind === 0 ? 'Nothing to pull' : undefined);
+    const pushReason =
+        moves ??
+        (isDiverged(published) ? divergedWords(published) : published.ahead === 0 ? 'Nothing to push' : undefined);
 
     return [
         fetch,
-        { id: 'pull', label: 'Pull', ...(published.behind > 0 && { count: published.behind }), ...(pullReason && { reason: pullReason }) },
-        { id: 'push', label: 'Push', ...(published.ahead > 0 && { count: published.ahead }), ...(pushReason && { reason: pushReason }) },
+        {
+            id: 'pull',
+            label: 'Pull',
+            ...(published.behind > 0 && { count: published.behind }),
+            ...(pullReason && { reason: pullReason }),
+        },
+        {
+            id: 'push',
+            label: 'Push',
+            ...(published.ahead > 0 && { count: published.ahead }),
+            ...(pushReason && { reason: pushReason }),
+        },
     ];
 }
 
@@ -107,27 +127,45 @@ export function upstreamView(status: GitStatus | undefined): UpstreamView | unde
 
     if (!upstream) return { label: 'Not published', title: 'The branch is not on origin yet' };
 
-    if (upstream.gone) return { label: upstream.name, detail: 'gone', tone: 'warning', title: `${ upstream.name } is gone from ${ ORIGIN }` };
+    if (upstream.gone)
+        return {
+            label: upstream.name,
+            detail: 'gone',
+            tone: 'warning',
+            title: `${upstream.name} is gone from ${ORIGIN}`,
+        };
 
-    if (isDiverged(upstream)) return { label: upstream.name, detail: 'diverged', tone: 'warning', title: `${ upstream.name }, ${ divergedWords(upstream).toLowerCase() }` };
+    if (isDiverged(upstream))
+        return {
+            label: upstream.name,
+            detail: 'diverged',
+            tone: 'warning',
+            title: `${upstream.name}, ${divergedWords(upstream).toLowerCase()}`,
+        };
 
-    const detail = upstream.ahead > 0 ? `${ upstream.ahead } ahead` : upstream.behind > 0 ? `${ upstream.behind } behind` : 'up to date';
+    const detail =
+        upstream.ahead > 0
+            ? `${upstream.ahead} ahead`
+            : upstream.behind > 0
+              ? `${upstream.behind} behind`
+              : 'up to date';
 
-    return { label: upstream.name, detail, title: `${ upstream.name }, ${ detail }` };
+    return { label: upstream.name, detail, title: `${upstream.name}, ${detail}` };
 }
 
 /** `1 commit`, `2 commits`. */
-const commitsWords = (count: number): string => `${ count } ${ count === 1 ? 'commit' : 'commits' }`;
+const commitsWords = (count: number): string => `${count} ${count === 1 ? 'commit' : 'commits'}`;
 
 /** What an action that ended says, as a quiet line: what came in or went out, or that the branch was left as it was. */
 export function remoteNotice(result: GitRemoteResult): { words: string; tone?: 'warning' } {
-    if (result.state === 'diverged') return { words: `${ divergedWords(result.upstream) }, left as it was`, tone: 'warning' };
+    if (result.state === 'diverged')
+        return { words: `${divergedWords(result.upstream)}, left as it was`, tone: 'warning' };
 
     switch (result.action) {
         case 'fetch':
             return { words: 'Fetched origin' };
         case 'pull':
-            return { words: result.pulled ? `Pulled ${ commitsWords(result.pulled) }` : 'Already up to date' };
+            return { words: result.pulled ? `Pulled ${commitsWords(result.pulled)}` : 'Already up to date' };
         default:
             return { words: result.published ? 'Published to origin' : 'Pushed to origin' };
     }
@@ -148,21 +186,28 @@ export function commitAndPushBlock(status: GitStatus | undefined): string | unde
 
     if (!published) return undefined;
 
-    if (!onOrigin(published)) return `Tracks ${ published.name }, not ${ ORIGIN }`;
+    if (!onOrigin(published)) return `Tracks ${published.name}, not ${ORIGIN}`;
 
     if (isDiverged(published)) return divergedWords(published);
 
-    return published.behind > 0 ? `${ commitsWords(published.behind) } to pull first` : undefined;
+    return published.behind > 0 ? `${commitsWords(published.behind)} to pull first` : undefined;
 }
 
 /** The action that sends the branch of a status after a commit: a push when it is on origin, else its publishing. */
-export const pushOrPublish = (status: GitStatus | undefined): 'push' | 'publish' => (status?.isRepository === true && publishedUpstream(status.upstream) ? 'push' : 'publish');
+export const pushOrPublish = (status: GitStatus | undefined): 'push' | 'publish' =>
+    status?.isRepository === true && publishedUpstream(status.upstream) ? 'push' : 'publish';
 
 /** What a running action says: the word of the menu's entry in the present, so the button that was pressed names what it is doing. */
-export const RUNNING_WORDS: Record<RemoteActionId, string> = { fetch: 'Fetching origin', pull: 'Pulling', push: 'Pushing', publish: 'Publishing' };
+export const RUNNING_WORDS: Record<RemoteActionId, string> = {
+    fetch: 'Fetching origin',
+    pull: 'Pulling',
+    push: 'Pushing',
+    publish: 'Publishing',
+};
 
 /** The branch a status is on, nothing for a HEAD that is on none. */
-const branchOf = (status: RepositoryStatus): string | undefined => (status.head.kind === 'detached' ? undefined : status.head.name);
+const branchOf = (status: RepositoryStatus): string | undefined =>
+    status.head.kind === 'detached' ? undefined : status.head.name;
 
 /**
  * The name the branch has on `origin`, which is the name GitHub knows it by: the branch it tracks there (a branch made with `git switch -c mine origin/feature` tracks `feature`, and that is
@@ -181,7 +226,7 @@ export function remoteBranchOf(status: RepositoryStatus): string | undefined {
 export function githubBaseName(base: GitBase | undefined): string | undefined {
     if (base?.state !== 'ready' && base?.state !== 'no_merge_base') return undefined;
 
-    const name = base.name.startsWith(`${ ORIGIN }/`) ? base.name.slice(ORIGIN.length + 1) : base.name;
+    const name = base.name.startsWith(`${ORIGIN}/`) ? base.name.slice(ORIGIN.length + 1) : base.name;
 
     return /^[0-9a-f]{7,40}$/i.test(name) ? undefined : name;
 }
@@ -211,7 +256,11 @@ export interface CreatePullRequestInput {
  * one that diverged from its upstream and on one that tracks another remote; **publish first** for a branch that is not on origin; **push first** for one with commits that are not; else **ready**.
  * The compare page is never offered for a branch GitHub does not have.
  */
-export function createPullRequest({ status, hasPullRequest, onGitHub }: CreatePullRequestInput): CreatePullRequestState | undefined {
+export function createPullRequest({
+    status,
+    hasPullRequest,
+    onGitHub,
+}: CreatePullRequestInput): CreatePullRequestState | undefined {
     if (status?.isRepository !== true || !status.origin || hasPullRequest || !onGitHub) return undefined;
 
     const branch = branchOf(status);
@@ -222,13 +271,16 @@ export function createPullRequest({ status, hasPullRequest, onGitHub }: CreatePu
     const published = publishedUpstream(status.upstream);
 
     // The branch the work is compared with is the branch itself: there is no pull request to make from it.
-    if (githubBaseName(base) === branch) return { kind: 'blocked', label: 'Create PR', reason: 'Switch to a feature branch' };
+    if (githubBaseName(base) === branch)
+        return { kind: 'blocked', label: 'Create PR', reason: 'Switch to a feature branch' };
 
-    if (base.state === 'ready' && base.ahead === 0) return { kind: 'blocked', label: 'Create PR', reason: `No commits ahead of ${ base.name }` };
+    if (base.state === 'ready' && base.ahead === 0)
+        return { kind: 'blocked', label: 'Create PR', reason: `No commits ahead of ${base.name}` };
 
     if (!published) return { kind: 'publish', label: 'Publish first' };
 
-    if (!onOrigin(published)) return { kind: 'blocked', label: 'Create PR', reason: `Tracks ${ published.name }, not ${ ORIGIN }` };
+    if (!onOrigin(published))
+        return { kind: 'blocked', label: 'Create PR', reason: `Tracks ${published.name}, not ${ORIGIN}` };
 
     if (isDiverged(published)) return { kind: 'blocked', label: 'Create PR', reason: divergedWords(published) };
 

@@ -12,11 +12,12 @@ import type { RootStore } from '../../stores';
 
 /** What the confirmation says goes: the chat, the threads below it (the daemon deletes them with it), and the runs of their agents. */
 export function deleteMessage(chat: Pick<Chat, 'title'>, threadCount: number): string {
-    if (threadCount === 0) return `"${ chat.title }" and the runs of its agents are deleted for good. The tasks it made stay.`;
+    if (threadCount === 0)
+        return `"${chat.title}" and the runs of its agents are deleted for good. The tasks it made stay.`;
 
-    const threads = threadCount === 1 ? 'its thread' : `its ${ threadCount } threads`;
+    const threads = threadCount === 1 ? 'its thread' : `its ${threadCount} threads`;
 
-    return `"${ chat.title }", ${ threads } and the runs of their agents are deleted for good. The tasks they made stay.`;
+    return `"${chat.title}", ${threads} and the runs of their agents are deleted for good. The tasks they made stay.`;
 }
 
 /** What the person chose in the confirmation besides deleting the chat: it is read when Delete is pressed. */
@@ -38,7 +39,7 @@ function useWorktreeRemovable(root: RootStore, chat: Pick<Chat, 'id' | 'workspac
         let current = true;
 
         root.transport.getChatWorkspaceRemoval(chat.id).then(
-            (answer) => {
+            answer => {
                 if (current) setRemovable(answer.removable);
             },
             () => undefined
@@ -66,15 +67,17 @@ function DeleteChatMessage({ root, chat, text, choice }: DeleteChatMessageProps)
 
     return (
         <Box gap="lg">
-            <Text variant="md" color="secondary">{ text }</Text>
-            <Show when={ removable }>
+            <Text variant="md" color="secondary">
+                {text}
+            </Text>
+            <Show when={removable}>
                 <Checkbox
                     size="sm"
-                    isSelected={ checked }
-                    onChange={ (selected) => {
+                    isSelected={checked}
+                    onChange={selected => {
                         choice.removeWorkspace = selected;
                         setChecked(selected);
-                    } }
+                    }}
                 >
                     Also remove the worktree and its branch
                 </Checkbox>
@@ -100,11 +103,15 @@ export function deleteChat(root: RootStore, chat: Chat, hasRuns: boolean, thread
 
     openConfirmModal({
         title: 'Delete chat?',
-        message: <DeleteChatMessage root={ root } chat={ chat } text={ deleteMessage(chat, threadCount) } choice={ choice } />,
+        message: <DeleteChatMessage root={root} chat={chat} text={deleteMessage(chat, threadCount)} choice={choice} />,
         confirmLabel: 'Delete',
         destructive: true,
         onConfirm: async () => {
-            const result = await root.command({ type: 'chat.delete', chatId: chat.id, ...(choice.removeWorkspace && { removeWorkspace: true }) });
+            const result = await root.command({
+                type: 'chat.delete',
+                chatId: chat.id,
+                ...(choice.removeWorkspace && { removeWorkspace: true }),
+            });
 
             // The dialog shows a thrown message as an error and stays open.
             if (!result.ok) throw new Error(result.error.message);

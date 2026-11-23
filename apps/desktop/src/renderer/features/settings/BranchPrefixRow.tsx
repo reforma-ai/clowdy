@@ -19,29 +19,35 @@ export function BranchPrefixRow() {
 
     return (
         <SettingsRow
-            title={ LABEL }
-            description={ `Branches of new worktrees are named like ${ branchPrefix.value }/ab12cd34` }
-            footer={ problem && <Text variant="sm" color="danger" role="alert">{ problem }</Text> }
+            title={LABEL}
+            description={`Branches of new worktrees are named like ${branchPrefix.value}/ab12cd34`}
+            footer={
+                problem && (
+                    <Text variant="sm" color="danger" role="alert">
+                        {problem}
+                    </Text>
+                )
+            }
         >
             <Input
                 type="text"
                 variant="bordered"
                 size="sm"
-                className={ styles.field }
-                aria-label={ LABEL }
-                placeholder={ DEFAULT_BRANCH_PREFIX }
-                isInvalid={ problem !== undefined }
-                value={ draft ?? branchPrefix.value }
-                onChange={ (text) => {
+                className={styles.field}
+                aria-label={LABEL}
+                placeholder={DEFAULT_BRANCH_PREFIX}
+                isInvalid={problem !== undefined}
+                value={draft ?? branchPrefix.value}
+                onChange={text => {
                     setDraft(text);
                     branchPrefix.setValue(text);
-                } }
-                onBlur={ () => {
+                }}
+                onBlur={() => {
                     if (!problem) setDraft(undefined);
-                } }
-                onKeyDown={ (event) => {
+                }}
+                onKeyDown={event => {
                     if (event.key === 'Enter') (event.target as HTMLInputElement).blur();
-                } }
+                }}
             />
         </SettingsRow>
     );

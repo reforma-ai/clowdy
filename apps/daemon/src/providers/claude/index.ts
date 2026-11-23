@@ -17,7 +17,11 @@ export const claude: Provider = {
         id: 'claude',
         name: 'Claude Code',
         programs: ['claude'],
-        launch: { kind: 'package', package: '@agentclientprotocol/claude-agent-acp@0.107.0', pathEnv: 'CLAUDE_CODE_EXECUTABLE' },
+        launch: {
+            kind: 'package',
+            package: '@agentclientprotocol/claude-agent-acp@0.107.0',
+            pathEnv: 'CLAUDE_CODE_EXECUTABLE',
+        },
         // ACP v2: background commands, sub-agents and workflows are told as `state_update`s, and the agent's own turns come on the same session.
         protocol: 'v2',
         compact: '/compact',
@@ -30,7 +34,12 @@ export const claude: Provider = {
         // makes the adapter send the agent's thoughts: recent models omit the text of their thinking unless it is asked for summarized (checked through the
         // daemon on 2026-11-21 against the pin: without it no `agent_thought_chunk` arrives, with it one thought comes before each step). The person may
         // set it to `omitted` in the agent's `env` to see none.
-        env: { CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH: '3', CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS: '20', CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: '1', CLAUDE_CODE_THINKING_DISPLAY: 'summarized' },
+        env: {
+            CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH: '3',
+            CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS: '20',
+            CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: '1',
+            CLAUDE_CODE_THINKING_DISPLAY: 'summarized',
+        },
         settings: [
             {
                 id: 'memory',
@@ -49,16 +58,18 @@ export const claude: Provider = {
             {
                 id: 'subagents',
                 label: 'Enable sub-agents',
-                description: 'Let Claude Code start sub-agents inside a run. Off hides them, so agents delegate through Clowdy only.',
+                description:
+                    'Let Claude Code start sub-agents inside a run. Off hides them, so agents delegate through Clowdy only.',
                 default: true,
-                effect: on => on ? {} : { disallowedTools: ['Agent', 'Task', 'ListAgents'] },
+                effect: on => (on ? {} : { disallowedTools: ['Agent', 'Task', 'ListAgents'] }),
             },
             {
                 id: 'workflows',
                 label: 'Enable workflow tool',
-                description: 'Let Claude Code run its Workflow tool, which fans one job out to many sub-agents and can use a lot of your plan. Off hides it, so agents delegate through Clowdy only.',
+                description:
+                    'Let Claude Code run its Workflow tool, which fans one job out to many sub-agents and can use a lot of your plan. Off hides it, so agents delegate through Clowdy only.',
                 default: true,
-                effect: on => on ? {} : { disallowedTools: ['Workflow'] },
+                effect: on => (on ? {} : { disallowedTools: ['Workflow'] }),
             },
             {
                 id: 'longContext',
@@ -71,7 +82,8 @@ export const claude: Provider = {
                 // Stated both ways: Claude Code reads `0` as off (`artifact_env_off`), and a variable the person's own shell sets does not turn it on in a run that has it off.
                 id: 'artifacts',
                 label: 'Claude Artifacts',
-                description: 'Let Claude Code publish pages such as reports and dashboards to your claude.ai account. They stay private until you share them, and Claude can publish without asking. Needs a claude.ai login on this machine.',
+                description:
+                    'Let Claude Code publish pages such as reports and dashboards to your claude.ai account. They stay private until you share them, and Claude can publish without asking. Needs a claude.ai login on this machine.',
                 default: false,
                 effect: on => ({ env: { CLAUDE_CODE_ARTIFACT: on ? '1' : '0' } }),
             },
@@ -88,10 +100,23 @@ export const claude: Provider = {
     models: claudeModels,
     // The modes of `claude-agent-acp@0.107.0` (`session-mode.js`). `plan` is a way of working, not a permission, and stays out. `auto` is offered unless the
     // account or the model cannot use it; a start on one it does not offer is logged and left to the agent.
-    permissions: modePermissions([
-        { id: 'ask', mode: 'default', description: 'Asks before every edit and command', effect: CLOWDY_COMMAND },
-        { id: 'accept-edits', mode: 'acceptEdits', description: 'Applies file edits, asks before commands and anything else', effect: CLOWDY_COMMAND },
-        { id: 'auto', mode: 'auto', description: 'Approves what its own check finds safe, asks about the rest', effect: CLOWDY_COMMAND },
-        { id: 'full', mode: 'bypassPermissions', description: 'Never asks, edits any file and runs any command' },
-    ], 'auto'),
+    permissions: modePermissions(
+        [
+            { id: 'ask', mode: 'default', description: 'Asks before every edit and command', effect: CLOWDY_COMMAND },
+            {
+                id: 'accept-edits',
+                mode: 'acceptEdits',
+                description: 'Applies file edits, asks before commands and anything else',
+                effect: CLOWDY_COMMAND,
+            },
+            {
+                id: 'auto',
+                mode: 'auto',
+                description: 'Approves what its own check finds safe, asks about the rest',
+                effect: CLOWDY_COMMAND,
+            },
+            { id: 'full', mode: 'bypassPermissions', description: 'Never asks, edits any file and runs any command' },
+        ],
+        'auto'
+    ),
 };

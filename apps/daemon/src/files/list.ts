@@ -16,7 +16,12 @@ const OWN_FOLDER = '.clowdy';
 const NEVER_WALKED = new Set(['.git', 'node_modules', OWN_FOLDER]);
 
 async function git(cwd: string, ...args: string[]): Promise<string[]> {
-    const { stdout } = await run('git', ['ls-files', '-z', ...args], { cwd, maxBuffer: MAX_GIT_OUTPUT, timeout: GIT_TIMEOUT_MS, windowsHide: true });
+    const { stdout } = await run('git', ['ls-files', '-z', ...args], {
+        cwd,
+        maxBuffer: MAX_GIT_OUTPUT,
+        timeout: GIT_TIMEOUT_MS,
+        windowsHide: true,
+    });
 
     return stdout.split('\0').filter(Boolean);
 }
@@ -27,7 +32,10 @@ async function git(cwd: string, ...args: string[]): Promise<string[]> {
  * `cwd` is not a repository or git is missing.
  */
 async function gitFiles(cwd: string): Promise<string[]> {
-    const [present, deleted] = await Promise.all([git(cwd, '--cached', '--others', '--exclude-standard'), git(cwd, '--deleted')]);
+    const [present, deleted] = await Promise.all([
+        git(cwd, '--cached', '--others', '--exclude-standard'),
+        git(cwd, '--deleted'),
+    ]);
     const gone = new Set(deleted);
 
     return present.filter(path => !gone.has(path)).map(path => path.replace(/\/$/, ''));
@@ -42,14 +50,13 @@ async function walkedFiles(root: string): Promise<string[]> {
         const next: string[] = [];
 
         for (const prefix of level) {
-            const entries = await readdir(`${ root }/${ prefix }`, { withFileTypes: true }).catch(() => []);
+            const entries = await readdir(`${root}/${prefix}`, { withFileTypes: true }).catch(() => []);
 
             for (const entry of entries) {
                 if (entry.isDirectory() && !NEVER_WALKED.has(entry.name)) {
-                    next.push(`${ prefix }${ entry.name }/`);
-                }
-                else if (entry.isFile()) {
-                    files.push(`${ prefix }${ entry.name }`);
+                    next.push(`${prefix}${entry.name}/`);
+                } else if (entry.isFile()) {
+                    files.push(`${prefix}${entry.name}`);
                 }
             }
         }
@@ -72,5 +79,5 @@ const HAS_CONTROL_CHARACTER = /[\u0000-\u001f\u007f]/;
 export async function listProjectFiles(root: string): Promise<string[]> {
     const files = await gitFiles(root).catch(() => walkedFiles(root));
 
-    return files.filter(path => !path.startsWith(`${ OWN_FOLDER }/`) && !HAS_CONTROL_CHARACTER.test(path));
+    return files.filter(path => !path.startsWith(`${OWN_FOLDER}/`) && !HAS_CONTROL_CHARACTER.test(path));
 }
