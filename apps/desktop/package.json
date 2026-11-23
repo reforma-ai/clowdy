@@ -2,6 +2,7 @@
     "name": "@clowdy/desktop",
     "productName": "Clowdy Dev",
     "private": true,
+    "license": "Apache-2.0",
     "version": "0.1.1",
     "description": "Clowdy desktop app",
     "type": "module",

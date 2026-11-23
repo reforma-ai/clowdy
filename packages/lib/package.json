@@ -1,6 +1,7 @@
 {
     "name": "@clowdy/lib",
     "private": true,
+    "license": "Apache-2.0",
     "description": "Common helpers shared between Clowdy packages",
     "type": "module",
     "version": "0.0.0",

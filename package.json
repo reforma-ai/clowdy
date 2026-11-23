@@ -1,6 +1,7 @@
 {
     "name": "clowdy",
     "private": true,
+    "license": "Apache-2.0",
     "description": "Clowdy: a local desktop app for autonomous software development (working name)",
     "scripts": {
         "clowdy": "bun scripts/cli.ts",

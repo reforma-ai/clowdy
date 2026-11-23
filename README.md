@@ -59,6 +59,10 @@ packages/lib, constants
 
 Checks: `bun run lint`, `bun run typecheck`, `bun run test` (daemon tests run with `bun test`). The design system package has known failing tests and lint errors inherited from Reforma.
 
+## License
+
+Clowdy is licensed under the [Apache License 2.0](./LICENSE); see [`NOTICE`](./NOTICE) for what it is derived from and [`THIRD-PARTY-LICENSES.md`](./THIRD-PARTY-LICENSES.md) for the open source it is built with (`./clowdy licenses` writes that file). The name and the logo are not licensed: see [`TRADEMARKS.md`](./TRADEMARKS.md).
+
 ## Known limits
 
 - macOS is the tested platform; Windows builds but was never run.

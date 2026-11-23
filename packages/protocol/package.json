@@ -1,6 +1,7 @@
 {
     "name": "@clowdy/protocol",
     "private": true,
+    "license": "Apache-2.0",
     "description": "The contract between the Clowdy daemon and its clients: domain types, events, commands, HTTP routes",
     "version": "0.0.0",
     "type": "module",

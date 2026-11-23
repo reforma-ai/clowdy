@@ -1,6 +1,7 @@
 {
     "name": "@clowdy/daemon",
     "private": true,
+    "license": "Apache-2.0",
     "description": "The Clowdy daemon: projects, chats, tasks, agent runs, worktrees, and documents behind a loopback HTTP + SSE API",
     "version": "0.0.1",
     "type": "module",

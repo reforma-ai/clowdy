@@ -4,7 +4,7 @@
     "description": "File manager and text editor over any file system provider",
     "type": "module",
     "version": "0.0.0",
-    "license": "UNLICENSED",
+    "license": "Apache-2.0",
     "sideEffects": [
         "**/*.css"
     ],
