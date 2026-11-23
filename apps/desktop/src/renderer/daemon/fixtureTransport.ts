@@ -11,10 +11,10 @@ import {
     FIXTURE_LIVE_TOOL_ID,
     fixtureChatWorkspace,
     fixtureFolderGit,
-    fixtureProjectWorktrees,
     fixtureGitChanges,
     fixtureGitFile,
     fixtureGitStatus,
+    fixtureProjectWorktrees,
     fixtureWorkspaceLog,
     type FixtureData,
 } from './fixtureData';
@@ -217,11 +217,13 @@ export class FixtureTransport implements Transport {
         const { chats, tasks, git } = this.#data;
 
         return structuredClone(this.#listed().filter(project => projectId === undefined || project.id === projectId).map((project) => {
-            // The worktrees the project's chats work in, as the daemon reads them: whether each is made, and the branch it has (the fixture's worktrees keep the branch they were made with).
+            // The worktrees the project's chats work in, and those `workspace.open` answered that no chat works in (yet), as the daemon reads them: whether each is made, and the branch it
+            // has (the fixture's worktrees keep the branch they were made with).
             const workspaces = new Map<string, ProjectWorkspaceInfo>();
+            const rows = [...chats.filter(chat => chat.projectId === project.id).flatMap(chat => (chat.workspace ? [chat.workspace] : [])), ...[...this.#opened.values()].filter(entry => entry.projectId === project.id).map(entry => entry.workspace)];
 
-            for (const { workspace } of chats.filter(chat => chat.projectId === project.id)) {
-                if (workspace) workspaces.set(workspace.id, { workspaceId: workspace.id, exists: workspace.ready, ...(workspace.ready && workspace.branch !== undefined && { branch: workspace.branch }) });
+            for (const workspace of rows) {
+                workspaces.set(workspace.id, { workspaceId: workspace.id, exists: workspace.ready, ...(workspace.ready && workspace.branch !== undefined && { branch: workspace.branch }) });
             }
 
             return {

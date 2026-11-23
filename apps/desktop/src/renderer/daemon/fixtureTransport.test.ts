@@ -515,8 +515,8 @@ describe('FixtureTransport', () => {
 
                 expect(first.data).toEqual({ workspace: expect.objectContaining({ folderId: 'fld_car_rental', path, branch: 'clowdy/ab12cd34', ready: true }) });
                 expect(again.data).toEqual(first.data);
-                // No chat uses it yet, so the info does not list it.
-                expect((await transport.getProjectsInfo(FIXTURE_PROJECT_ID))[0].workspaces).toBeUndefined();
+                // No chat uses it yet, and the info lists it all the same, with the branch it has: the new-chat page that asked for the row names it.
+                expect((await transport.getProjectsInfo(FIXTURE_PROJECT_ID))[0].workspaces).toEqual([{ workspaceId: (first.data as { workspace: { id: string } }).workspace.id, exists: true, branch: 'clowdy/ab12cd34' }]);
 
                 const chat = await create(transport, { workspace: { mode: 'existing', path } });
 

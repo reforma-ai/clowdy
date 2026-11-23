@@ -4,7 +4,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createFixtureData, FIXTURE_EMPTY_PROJECT_ID, FIXTURE_PROJECT_ID, FIXTURE_WORKSPACE_CHAT_ID, withFixtureWorkspace, type FixtureData } from '../../daemon/fixtureData';
+import { createFixtureData, FIXTURE_EMPTY_PROJECT_ID, FIXTURE_PROJECT_ID, FIXTURE_WORKSPACE_CHAT_ID, FIXTURE_WORKTREE_PATH, withFixtureWorkspace, type FixtureData } from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { hotkeys, installDispatcher } from '../../hotkeys';
 import { RootStore, RootStoreProvider } from '../../stores';
@@ -1360,6 +1360,23 @@ describe('a chat that works in a worktree', () => {
         await draw();
         await vi.waitFor(() => expect(mark(chat.id)?.title).toBe(`Works in a worktree on clowdy/${ chat.id.slice(-8) }`));
         expect(mark(chat.id)?.hasAttribute('data-gone')).toBe(false);
+    });
+
+    it('reads again when the new-chat page gets the row of the worktree it chose, which no chat works in yet', async () => {
+        const transport = new FixtureTransport({ data: createFixtureData() });
+        const read = vi.spyOn(transport, 'getProjectsInfo');
+        const everything = () => read.mock.calls.filter(([projectId]) => projectId === undefined).length;
+
+        await restart(transport);
+        await draw(() => ui().openDraft([], null, { mode: 'existing', path: FIXTURE_WORKTREE_PATH }));
+        // The page asks the daemon for the worktree's row, and has no chat to share it with.
+        await vi.waitFor(() => expect(ui().draftWorkspaceRow).toMatchObject({ path: FIXTURE_WORKTREE_PATH }));
+
+        const reads = everything();
+
+        await draw();
+        await vi.waitFor(() => expect(everything()).toBeGreaterThan(reads));
+        expect([...project().chats.values()].some(chat => chat.workspace?.path === FIXTURE_WORKTREE_PATH)).toBe(false);
     });
 
     it('falls back to the branch it was made with when the read has no word on the worktree, and to a plain line when it was made with none', async () => {
