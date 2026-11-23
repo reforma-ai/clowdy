@@ -12,6 +12,7 @@ import { projectSnapshot, rootSnapshot, taskDetail, taskDetailByKey } from '../d
 import { archivedTasksPage } from '../domain/taskArchive';
 import { taskCommentsPage } from '../domain/taskComments';
 import { DEFAULT_LIMIT } from '../domain/taskQuery';
+import { workspaceRemoval } from '../domain/workspaceRemoval';
 import { CommandError, invalid, notFound } from '../errors';
 import { projectFolderGit } from '../git/state';
 import { BodyTooLarge, declaredLength, JSON_BODY_LIMIT, readText } from './body';
@@ -130,7 +131,7 @@ export function createRoutes(context: RouteContext): Route[] {
                     return failure('invalid', 'The command is not valid', parsed.error.issues.map(issue => ({ path: issue.path.join('.'), message: issue.message })), requestId);
                 }
 
-                // A fork or an edit waits for the agent's process, which may outlast the idle timeout of a connection that sends nothing meanwhile.
+                // A fork or an edit waits for the agent's process, and a delete that removes a worktree for git: either may outlast the idle timeout of a connection that sends nothing meanwhile.
                 if (waitsForAgent(parsed.data)) {
                     context.keepOpen(request);
                 }
@@ -158,6 +159,7 @@ export function createRoutes(context: RouteContext): Route[] {
                 return json(runId ? streamItems(store, runId, integerParam(url.searchParams.get('after'), 'after', 0)) : []);
             },
         },
+        { method: 'GET', pattern: /^\/v1\/chats\/([^/]+)\/workspace$/, handle: async (_request, _url, [id]) => json(await workspaceRemoval(store, id)) },
         { method: 'GET', pattern: /^\/v1\/tasks\/([^/]+)\/detail$/, handle: (_request, _url, [id]) => json(taskDetail(store, id)) },
         // The same answer by a task's key within a project; the key segment is escaped by the client like any other.
         { method: 'GET', pattern: /^\/v1\/projects\/([^/]+)\/tasks\/([^/]+)\/detail$/, handle: (_request, _url, [id, key]) => json(taskDetailByKey(store, id, key)) },

@@ -8,17 +8,21 @@ import { taskHandlers } from './task';
 
 import type { Command, CommandResult } from '@clowdy/protocol';
 import type { Store } from '../store';
-import type { AsyncHandlers, Handlers, Services } from './context';
+import type { AsyncHandlers, CommandOf, Handlers, Services, SometimesAsyncCommandType } from './context';
 
 export type { Services } from './context';
 
 const handlers: Handlers = { ...projectHandlers, ...chatHandlers, ...taskHandlers, ...runHandlers, ...skillsHandlers, ...agentsHandlers };
 const asyncHandlers: AsyncHandlers = { ...chatAsyncHandlers };
 
-const isAsync = (type: Command['type']): type is keyof AsyncHandlers => type in asyncHandlers;
+/** When a command that has both kinds of handler takes the async one: a delete that removes the chat's worktree waits for git, a plain delete does not. */
+const waitsWhen: { [T in SometimesAsyncCommandType]: (command: CommandOf<T>) => boolean } = { 'chat.delete': command => command.removeWorkspace === true };
 
-/** Whether the command waits for an agent (`AsyncHandlers`): its answer may take longer than the server's idle timeout lets a silent connection live. */
-export const waitsForAgent = (command: Command): boolean => isAsync(command.type);
+/** Whether the command takes its `AsyncHandlers` entry: always for a command that has no other, and when `waitsWhen` says so for one that has. */
+const isAsync = (command: Command): boolean => command.type in asyncHandlers && ((waitsWhen as Record<string, ((command: Command) => boolean) | undefined>)[command.type]?.(command) ?? true);
+
+/** Whether the command waits (`AsyncHandlers`) for an agent or for git: its answer may take longer than the server's idle timeout lets a silent connection live. */
+export const waitsForAgent = (command: Command): boolean => isAsync(command);
 
 /** The async commands being run, by request id: a repeat that comes before the first has finished waits for it instead of acting twice. */
 const flights = new WeakMap<Store, Map<string, Promise<CommandResult>>>();
@@ -66,11 +70,11 @@ export function executeCommand(services: Services, command: Command): CommandRes
         return prior;
     }
 
-    if (isAsync(command.type)) {
-        return { ok: false, requestId: command.requestId, error: { code: 'internal', message: `${ command.type } waits for an agent: run it with executeCommandAsync` } };
+    if (isAsync(command)) {
+        return { ok: false, requestId: command.requestId, error: { code: 'internal', message: `${ command.type } waits for an agent or for git: run it with executeCommandAsync` } };
     }
 
-    const handler = handlers[command.type] as (services: Services, command: Command) => unknown;
+    const handler = (handlers as Record<string, (services: Services, command: Command) => unknown>)[command.type];
 
     return settle(services, command, () => handler(services, command));
 }
@@ -81,7 +85,7 @@ export function executeCommand(services: Services, command: Command): CommandRes
  * answered with the first's result.
  */
 export async function executeCommandAsync(services: Services, command: Command): Promise<CommandResult> {
-    if (!isAsync(command.type)) {
+    if (!isAsync(command)) {
         return executeCommand(services, command);
     }
 
@@ -99,7 +103,7 @@ export async function executeCommandAsync(services: Services, command: Command):
         return waiting;
     }
 
-    const handler = asyncHandlers[command.type] as (services: Services, command: Command) => Promise<() => unknown>;
+    const handler = (asyncHandlers as Record<string, (services: Services, command: Command) => Promise<() => unknown>>)[command.type];
     const flight = (async () => {
         let commit: () => unknown;
 

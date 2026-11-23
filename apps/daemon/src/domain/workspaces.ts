@@ -358,7 +358,7 @@ interface GitRun {
     timedOut: boolean;
 }
 
-interface Step {
+export interface Step {
     log(line: string): void;
     signal?: AbortSignal;
 }
@@ -397,7 +397,7 @@ async function runGit(cwd: string, args: string[], step: Step, timeoutMs: number
 }
 
 /** A git run that has to succeed, `what` being what it does (`make the worktree`): a stop, the time and git's own no each say so in the reason. */
-async function mustGit(cwd: string, args: string[], step: Step, timeoutMs: number, what: string): Promise<void> {
+export async function mustGit(cwd: string, args: string[], step: Step, timeoutMs: number, what: string): Promise<void> {
     const result = await runGit(cwd, args, step, timeoutMs);
 
     if (result.aborted) {
@@ -647,7 +647,7 @@ function until<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise
  * Runs `work` once nothing else holds `key`, one after another in the order they asked. A caller whose `signal` aborts while it waits leaves the line without
  * running, and the ones behind it still wait for whoever it was waiting for.
  */
-async function exclusive<T>(store: Store, key: string, signal: AbortSignal | undefined, work: () => Promise<T>): Promise<T> {
+export async function exclusive<T>(store: Store, key: string, signal: AbortSignal | undefined, work: () => Promise<T>): Promise<T> {
     const queue = preparing.get(store) ?? new Map<string, Promise<unknown>>();
     const before = (queue.get(key) ?? Promise.resolve()).catch(() => undefined);
     const run = until(before, signal).then(work);
