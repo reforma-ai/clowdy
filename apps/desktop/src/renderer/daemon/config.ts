@@ -1,18 +1,20 @@
 import { FileSystemError } from '@clowdy/file-manager/provider';
 
 import { createFixtureData, withFixtureWorkspace } from './fixtureData';
+import { FIXTURE_BRANCH_SCRIPTS } from './fixtureGitBranches';
 import { FIXTURE_REMOTE_SCRIPTS } from './fixtureGitRemote';
 import { FixtureTransport } from './fixtureTransport';
 import { HttpTransport } from './httpTransport';
 import { TransportError, type ProjectFileSystem, type Transport } from './transport';
 
 import type { FixturePullRequestScript } from './fixtureData';
+import type { FixtureBranchScript } from './fixtureGitBranches';
 import type { FixtureRemoteScript } from './fixtureGitRemote';
 import type { FixtureCommitScript, FixtureMessageScript } from './fixtureGitWrites';
 
 export type DaemonConfig =
     | { kind: 'daemon'; url: string; token: string }
-    | { kind: 'fixtures'; timeline: boolean; worktree?: true; commit?: FixtureCommitScript; message?: FixtureMessageScript; remote?: FixtureRemoteScript; pr?: FixturePullRequestScript }
+    | { kind: 'fixtures'; timeline: boolean; worktree?: true; commit?: FixtureCommitScript; message?: FixtureMessageScript; remote?: FixtureRemoteScript; pr?: FixturePullRequestScript; branches?: FixtureBranchScript[] }
     | { kind: 'none' };
 
 /** The words the page's `&pr=` switch knows: what `GET git/pull-request` says of the fixture's worktree. */
@@ -28,7 +30,9 @@ const oneOf = <T extends string>(value: string | null, words: readonly T[]): T |
  * 3. `?fixtures`, scripted data in memory (`?fixtures=static` leaves out the timed events, `&worktree` adds the chat that works in a dirty worktree, `?chat=c-9`, whose changes
  *    the side panel's Changes tab shows; `&commit=signing|hook|slow` and `&message=failed|slow` say how a commit and a request for its message end there, which the screenshots of the commit
  *    box use; `&remote=slow|behind|diverged|rejected|signing|offline` says how a fetch, a pull and a push end and where the branch stands against its upstream, and `&pr=none|open|draft|merged|closed|no_gh|
- *    not_signed_in|no_remote|unavailable` what GitHub says of the worktree's branch (`open` by default, `none` is the one that offers Create PR));
+ *    not_signed_in|no_remote|unavailable` what GitHub says of the worktree's branch (`open` by default, `none` is the one that offers Create PR); `&branches=remote,held,dirty,refused,slow`, any of the
+ *    words joined by commas, says what the folder's branches and a switch from the Changes sidebar's branch button are like: branches only origin has, branches that worktrees hold, a checkout with
+ *    changes, a switch that is refused for the chats working there, a switch that takes a while);
  * 4. nothing: the UI shows that it cannot reach a daemon.
  */
 export function resolveDaemonConfig(search: string, bridge?: { url: string; token: string }): DaemonConfig {
@@ -44,8 +48,18 @@ export function resolveDaemonConfig(search: string, bridge?: { url: string; toke
         const message = oneOf(params.get('message'), ['failed', 'slow'] as const);
         const remote = oneOf(params.get('remote'), FIXTURE_REMOTE_SCRIPTS);
         const pr = oneOf(params.get('pr'), PULL_REQUEST_SCRIPTS);
+        const branches = (params.get('branches') ?? '').split(',').flatMap(word => oneOf(word.trim(), FIXTURE_BRANCH_SCRIPTS) ?? []);
 
-        return { kind: 'fixtures', timeline: params.get('fixtures') !== 'static', ...(params.has('worktree') && { worktree: true as const }), ...(commit && { commit }), ...(message && { message }), ...(remote && { remote }), ...(pr && { pr }) };
+        return {
+            kind: 'fixtures',
+            timeline: params.get('fixtures') !== 'static',
+            ...(params.has('worktree') && { worktree: true as const }),
+            ...(commit && { commit }),
+            ...(message && { message }),
+            ...(remote && { remote }),
+            ...(pr && { pr }),
+            ...(branches.length > 0 && { branches }),
+        };
     }
 
     return { kind: 'none' };
@@ -77,6 +91,8 @@ const unconfigured: Transport = {
     fetchGit: noDaemon,
     pullGit: noDaemon,
     pushGit: noDaemon,
+    getGitBranches: noDaemon,
+    switchGitBranch: noDaemon,
     getProjectWorktrees: noDaemon,
     getGitPullRequest: noDaemon,
     getChatWorkspaceRemoval: noDaemon,
@@ -113,11 +129,11 @@ export function createTransport(config: DaemonConfig): Transport {
 
     if (config.kind !== 'fixtures') return unconfigured;
 
-    const { timeline, commit, message, remote, pr } = config;
+    const { timeline, commit, message, remote, pr, branches } = config;
     const data = config.worktree ? withFixtureWorkspace(createFixtureData()) : createFixtureData();
 
     // What GitHub says of the worktree's branch, for the states of Create PR to be looked at.
     if (pr) for (const scripts of Object.values(data.pullRequests)) scripts.worktree = pr;
 
-    return new FixtureTransport({ timeline, data, gitWrites: { commit, message, remote } });
+    return new FixtureTransport({ timeline, data, gitWrites: { commit, message, remote }, branches });
 }

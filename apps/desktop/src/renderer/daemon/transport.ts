@@ -12,6 +12,7 @@ import type {
     FolderGit,
     FolderId,
     FolderWorktrees,
+    GitBranches,
     GitChanges,
     GitCommitResult,
     GitFileSides,
@@ -20,6 +21,8 @@ import type {
     GitRemoteResult,
     GitScope,
     GitStatus,
+    GitSwitchRequest,
+    GitSwitchResult,
     GitViewedMark,
     Health,
     ProjectFileMatch,
@@ -150,6 +153,20 @@ export interface Transport {
      * with 409 and git's own line for a push that origin rejects (`! [rejected] main -> main (fetch first)`), a hook or no permission.
      */
     pushGit: (projectId: ProjectId, place: PlaceRef) => Promise<GitRemoteResult>;
+    /**
+     * The branches a place can switch to (`GET git/branches`): the local ones with the current and the default one, the upstream and the worktree that has one checked out, the branches
+     * only `origin` has, and the last few the place was on, newest first; or that the folder is no repository. Read when asked, never pushed, nothing fetched: a branch changes in a
+     * terminal or by an agent. Rejects as `getGitStatus` does.
+     */
+    getGitBranches: (projectId: ProjectId, place: PlaceRef) => Promise<GitBranches>;
+    /**
+     * Changes the branch of the folder's own checkout (`POST git/switch`): to an existing local branch, to one only `origin` has (a local branch that tracks it), or with `create` to a new branch
+     * cut from the current branch or the default one. Never for a chat's worktree. Nothing is stashed or carried along: a change in the tree, a merge or rebase under way, a run working in the
+     * place and a branch that another worktree has checked out are refused with the daemon's short reason. Rejects with a `TransportError`: 400 for a worktree place, a name that is no branch name, a
+     * branch that does not exist or a new one that does, 409 for a refusal that is the repository's state (its `message` is the reason, and `hint` says how many files or what to do) or a switch git
+     * refused, 503 for one that did not end in time. Not retried: a switch is not asked for twice. `warning` in the answer is what a failed `post-checkout` hook said after the branch changed.
+     */
+    switchGitBranch: (projectId: ProjectId, place: PlaceRef, branch: string, create?: GitSwitchRequest['create']) => Promise<GitSwitchResult>;
     /**
      * Every worktree of every folder of a project, with the chats that work in each, how many files are changed and whether its work is in the base: what the Manage worktrees
      * dialog lists. One entry per folder in the project's order, a folder that is no repository (or is gone) with no worktrees. Read when asked, never pushed: worktrees change
