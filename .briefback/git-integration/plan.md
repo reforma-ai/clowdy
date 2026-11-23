@@ -66,8 +66,8 @@
 
 **Done when:** `spikes.md` states, for Claude and Codex, the exact command of a tool-free run with its latency and tokens, and whether a signed commit and an SSH push work from the daemon's environment.
 **Verify:** none (the owner reads `spikes.md`).
-**Scope changes:** the ACP comparison was not run (`exec` already reaches the floor, about 3.3K tokens and 3.6 s) and Claude was not measured (Codex only, by decision). No Touch ID prompt appeared, so its wait is unmeasured and the timeouts in Decisions are suggestions. Only `ls-remote` ran against the network.
-**Commits:** None yet.
+**Scope changes:** the ACP comparison was not run (`exec` already reaches the floor, about 3.3K tokens and 3.6 s). Claude was measured afterwards, at the owner's request: a tool-free `claude -p` takes 2.1K input tokens and about 2.9 s (spikes.md, Spike A2); whether it becomes a second provider for commit messages is the owner's call. No Touch ID prompt appeared, so its wait is unmeasured and the timeouts in Decisions are suggestions. Only `ls-remote` ran against the network.
+**Commits:** `4306fed` docs: record the Codex and signing spikes and what they change in the plan; `a75e033` docs: add the Claude spike, a tool-free run takes 2.1K tokens.
 
 ## Stage 1 — The daemon reads a place's git: status, changes and the sides of a file
 
@@ -75,14 +75,14 @@
 
 **This stage:** every surface needs the same facts: what branch the place is on, how far it is from its base, which files changed in which scope, and the two texts of one file. The daemon computes them with the person's `git`, read only, for a place that `resolvePlace` judged, and the renderer reaches them through the transport. This stage settles the base rule, the scopes and the per-file revision (the blob ids that Viewed marks rely on) and tests them on real repositories.
 
-- [ ] Complete
-  - [ ] `gitRead` takes a timeout and a size cap per call (a diff needs more than 5 s and 8 MiB), and the git reads use `-z`, a pinned English locale and no colour or prefix surprises from the person's config
-  - [ ] A status read: branch or detached head, upstream, ahead and behind the upstream, the dirty files with their kinds, one `status --porcelain=v2 --branch -z` call, untracked files capped
-  - [ ] A compare read: the base ref picked by the rule in Decisions, the merge base, ahead and behind the base, the commits ahead (newest first, with author and time)
-  - [ ] A changes read per scope (All, Branch, Uncommitted, one commit): the files with status, old path, additions, deletions, binary, too large, and the revision `<oldMode>:<oldBlob>:<newMode>:<newBlob>`, capped with a `truncated` flag
-  - [ ] A file read: the original and the modified text of one path in a scope, with binary and too-large answers carrying no text
-  - [ ] `GET /v1/projects/:id/git/status`, `.../git/changes` and `.../git/file`, each taking `folderId` and `workspaceId` (`not_found`, `unavailable` and `invalid` as the other place routes answer), with the protocol types and the four transport places and their fixtures
-  - [ ] Tests on real repositories: dirty and clean, detached, no upstream, no remote, an unborn branch, ahead and behind, a rename, a binary file, an untracked file, each scope, the worktree of a chat
+- [x] Complete
+  - [x] `gitRead` takes a timeout and a size cap per call (a diff needs more than 5 s and 8 MiB), and the git reads use `-z`, a pinned English locale and no colour or prefix surprises from the person's config
+  - [x] A status read: branch or detached head, upstream, ahead and behind the upstream, the dirty files with their kinds, one `status --porcelain=v2 --branch -z` call, untracked files capped
+  - [x] A compare read: the base ref picked by the rule in Decisions, the merge base, ahead and behind the base, the commits ahead (newest first, with author and time)
+  - [x] A changes read per scope (All, Branch, Uncommitted, one commit): the files with status, old path, additions, deletions, binary, too large, and the revision `<oldMode>:<oldBlob>:<newMode>:<newBlob>`, capped with a `truncated` flag
+  - [x] A file read: the original and the modified text of one path in a scope, with binary and too-large answers carrying no text
+  - [x] `GET /v1/projects/:id/git/status`, `.../git/changes` and `.../git/file`, each taking `folderId` and `workspaceId` (`not_found`, `unavailable` and `invalid` as the other place routes answer), with the protocol types and the four transport places and their fixtures
+  - [x] Tests on real repositories: dirty and clean, detached, no upstream, no remote, an unborn branch, ahead and behind, a rename, a binary file, an untracked file, each scope, the worktree of a chat
 
 **Files**
 
@@ -100,7 +100,9 @@
 
 **Done when:** over HTTP, for a repository with a dirty tree and a branch ahead of its base, the three routes return the status, the files of each scope with revisions and the two texts of a file, and a chat's worktree gives its own answer.
 **Verify:** `cd apps/daemon && bun test test/git-changes.test.ts test/git-state.test.ts`, `cd packages/protocol && bun run test && bun run typecheck`, `bun run --cwd apps/desktop typecheck`, `bun run --cwd apps/desktop test src/renderer/daemon`
-**Commits:** None yet.
+**Scope changes:** `gitRead` also sets `LANGUAGE=C` and `LC_ALL=C` for every caller and has `parsed`, `input` options and a streaming sibling `gitRecords` that kills git at a record cap; scopes are the strings `all`, `branch`, `uncommitted`, `commit:<hex>`; the file route takes an extra `oldPath` (a renamed file); `PlaceRef { folderId, workspaceId? }` is the renderer's argument for the three reads; untracked line counts are made in the daemon with no temporary index (budget 200 files, 16 MiB, 5 s, `statsComplete` false past it); the working-tree id git cannot hash in time is `stat-<size>-<mtime>`; a submodule's revision is the commit its own checkout is at. `BaseOptions.base` takes the PR's base branch; no route passes it until Stage 2. `workingTreeRoot` in `git/state.ts` is the one rule for "is this folder the root of a working tree".
+**Review findings, fixed:** a submodule's revision did not change when a commit was made inside it, so a Viewed mark would have survived; "is a working-tree root" existed twice. Added tests: the submodule revision, non-ASCII branch and worktree names under the fixed locale, a tag named like the branch, a file named `--stat.txt`, a folder swapped for a link out of the place, the 5000-file cap. Left (follow-ups): `GET .../git/file` repeats the base lookup per call (about 12 git processes; 30 cards start about 360), so Stage 4 passes the list's `from` and base state to it or caches `mergeBaseOf` for about 2 s per place and HEAD; the working-tree hashing runs the person's clean and smudge filters (a Git LFS user's clean step writes into `.git/lfs`), and each untracked symlink among the first 500 files gets its own `hash-object`; status reads HEAD twice and probes refs more than once (about 4 processes). Not checked: Windows, Git LFS, SHA-256 repositories. `apps/daemon` typecheck keeps its 7 errors from before this stage.
+**Commits:** `a54edaf` feat(daemon): read a place's git status, changes per scope and the sides of a file; `6075984` feat(desktop): add the git status, changes and file reads to the transport.
 
 ## Stage 2 — The pull request of a branch through `gh`
 
@@ -173,6 +175,7 @@
   - [ ] The tab is registered (`changes`, a `TREE_TABS` member, `Cmd+5`, rail button, label) and keeps its choice per project; the fixtures page can open it with `?panelTab=changes`
   - [ ] The reading area: scope menu (All, Branch, Uncommitted, a commit), totals, the filter input above the cards (substring, glob, `!`), hide viewed (inert until Stage 5), expand and collapse all, cards expanded when the tab opens, a card per file with path, counts and copy path
   - [ ] The sidebar, hideable and resizable like Files': the PR row, the branch to its base with ahead and behind, an open-on-GitHub button, the changed-file list (a click scrolls to the card), and the list of commits whose click sets the scope
+  - [ ] A card reads its file with the list's own base (`GET .../git/file` takes the list's `from` and base state, as a hex commit checked on the daemon), so thirty cards do not repeat the base lookup and a card cannot be diffed against another base than the list was
   - [ ] An empty state for a clean tree and for a folder that is not a repository; the tab follows `currentPlace`
   - [ ] Tests for the filter's patterns, the scope switch, the empty states, and the diff view in the file-manager's specs
 
@@ -184,6 +187,7 @@
 - `packages/file-manager/src/react/index.ts` — export `DiffView`
 - `apps/desktop/src/renderer/features/changes/ChangesTab.tsx` — create: the tab, its folder as the Tasks and Terminal tabs have
 - `apps/desktop/src/renderer/features/changes/ChangesToolbar.tsx`, `DiffCard.tsx`, `ChangesSidebar.tsx`, `changeFilter.ts` — create: the parts of the tab; the filter is a pure function the tests drive
+- `apps/daemon/src/git/changes.ts`, `packages/protocol/src/git.ts`, `apps/daemon/src/http/routes.ts` — `placeFile` and the file route take the list's base; the four transport places and `projectsTransport.test.ts` follow
 - `apps/desktop/src/renderer/stores/UiStore.ts` — `SIDE_PANEL_TABS`, `TREE_TABS`
 - `apps/desktop/src/renderer/features/sidePanel/commands.ts` — `SIDE_PANEL_TAB_KEYS`, `SIDE_PANEL_TAB_LABELS`
 - `apps/desktop/src/renderer/features/sidePanel/SidePanelRail.tsx` — `TABS`; `SidePanel.tsx` — the lazy chunk

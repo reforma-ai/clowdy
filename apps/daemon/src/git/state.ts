@@ -222,18 +222,32 @@ function shortHash(hash: string): string {
 }
 
 /**
- * What git says about a folder (`GET /v1/projects/:id/git`). A folder counts as a repository only when it is the root of a working tree: a worktree is made of the whole
- * repository, so a folder inside one has none of its own. A git that does not answer (not there, too slow, too much to say) is `unavailable`, never an empty answer or "no
- * repository", which a caller would take for the truth. The reads of each worktree's status run one after another, so a repository with many worktrees does not start a crowd of processes.
+ * The real path of a folder that is the root of a working tree, and nothing for a folder that is not: one outside a repository, or inside one (a worktree is made of the
+ * whole repository, so a folder inside it has none of its own). A git that does not answer (not there, too slow) is `unavailable`, never "no", which a caller would take for the truth.
+ */
+export async function workingTreeRoot(folder: string): Promise<string | undefined> {
+    const [root, top] = await Promise.all([placeOf(folder), gitRead(folder, ['rev-parse', '--show-toplevel'])]);
+
+    if (!top.ok) {
+        if (top.reason === 'unavailable') throw unavailable('git did not answer');
+
+        return undefined;
+    }
+
+    // `/var` and `/private/var` are one place on a Mac, and git prints `C:/work` on Windows: the places are compared by their real paths.
+    return root !== undefined && await placeOf(top.stdout.trim()) === root ? root : undefined;
+}
+
+/**
+ * What git says about a folder (`GET /v1/projects/:id/git`). A folder counts as a repository only when it is the root of a working tree (`workingTreeRoot`). A git that does
+ * not answer (not there, too slow, too much to say) is `unavailable`, never an empty answer or "no repository", which a caller would take for the truth. The reads of each
+ * worktree's status run one after another, so a repository with many worktrees does not start a crowd of processes.
  * `baseBranch` is the folder's configured base (`pickBase`): `defaultBranch` is that branch when the repository has it.
  */
 export async function folderGit(folder: string, baseBranch?: string): Promise<FolderGit> {
-    const root = await placeOf(folder);
-    const top = await gitRead(folder, ['rev-parse', '--show-toplevel']);
+    const root = await workingTreeRoot(folder);
 
-    if (!top.ok && top.reason === 'unavailable') throw unavailable('git did not answer');
-
-    if (!top.ok || !root || await placeOf(top.stdout.trim()) !== root) return { isRepository: false };
+    if (!root) return { isRepository: false };
 
     const [head, remoteHead, all] = await Promise.all([folderHead(folder), originHead(folder), readBranches(folder)]);
     const defaultBranch = pickBase(baseBranch, all, () => pickDefaultBranch(remoteHead, all, head));
