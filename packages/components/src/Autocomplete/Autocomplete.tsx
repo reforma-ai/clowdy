@@ -24,7 +24,7 @@ export interface AutocompleteProps extends Omit<RACAutocompleteProps, 'children'
     /** Constrains the list area and enables scrolling. */
     maxHeight: number | string;
     placeholder?: string;
-    /** Name for the search field when it has no placeholder. */
+    /** Name for the search field when it has no placeholder; the placeholder names it otherwise (react-aria asks for a name that is not one, and warns in the console without it). */
     'aria-label'?: string;
     autoFocus?: boolean;
     isDisabled?: boolean;
@@ -70,7 +70,7 @@ export function Autocomplete({
                         size="sm"
                         variant="inline"
                         placeholder={ placeholder }
-                        aria-label={ placeholder ? undefined : ariaLabel }
+                        aria-label={ placeholder ?? ariaLabel }
                         autoFocus={ autoFocus }
                         isDisabled={ isDisabled }
                         onKeyDown={ onKeyDown }
