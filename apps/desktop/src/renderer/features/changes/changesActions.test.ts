@@ -66,6 +66,12 @@ describe('remoteActions', () => {
         expect(reasons(status({}, { name: 'upstream/main', ahead: 1 }))).toEqual([['fetch', null, null], ['pull', 'Tracks upstream/main, not origin', null], ['push', 'Tracks upstream/main, not origin', 1]]);
     });
 
+    it('does not offer to publish a branch whose upstream is gone from another remote: the daemon refuses it, so the reason is the remote and not a gone origin', () => {
+        expect(reasons(status({}, { name: 'upstream/main', gone: true }))).toEqual([['fetch', null, null], ['pull', 'Tracks upstream/main, not origin', null], ['publish', 'Tracks upstream/main, not origin', null]]);
+        // The same upstream gone from origin is published again.
+        expect(reasons(status({}, { gone: true }))).toEqual([['fetch', null, null], ['pull', 'Upstream gone from origin', null], ['publish', null, null]]);
+    });
+
     it('makes a call of each action, publishing being a push', () => {
         expect([remoteCall('fetch'), remoteCall('pull'), remoteCall('push'), remoteCall('publish')]).toEqual(['fetch', 'pull', 'push', 'push']);
     });
@@ -178,6 +184,10 @@ describe('syncButton', () => {
         expect(sync(status({}, { name: 'upstream/main', ahead: 1 }))).toMatchObject({ kind: 'fetch', label: 'Fetch origin', action: 'fetch', line: 'Tracks upstream/main, not origin' });
     });
 
+    it('is Fetch origin, not a Publish branch that the daemon would refuse, for an upstream that is gone from another remote', () => {
+        expect(sync(status({}, { name: 'upstream/main', gone: true }))).toMatchObject({ kind: 'fetch', label: 'Fetch origin', action: 'fetch', line: 'Tracks upstream/main, not origin' });
+    });
+
     it('goes down GitHub Desktop\'s order: running, no origin, no branch, not published, not on origin, diverged, behind, ahead, level', () => {
         const order = (value: GitStatus, running?: Parameters<typeof syncButton>[1]) => sync(value, running)?.kind;
 
@@ -221,6 +231,7 @@ describe('nextStep', () => {
     it('is nothing for a branch that diverged, one that tracks another remote, no origin, a HEAD on no branch, a branch with no commit and a place that is no repository', () => {
         expect(nextStep(status({}, { ahead: 1, behind: 1 }), ready)).toBeUndefined();
         expect(nextStep(status({}, { name: 'upstream/main', behind: 1 }), ready)).toBeUndefined();
+        expect(nextStep(status({}, { name: 'upstream/main', gone: true }), ready)).toBeUndefined();
         expect(nextStep(status({ origin: false }, null), ready)).toBeUndefined();
         expect(nextStep(status({ head: { kind: 'detached', commit: 'a'.repeat(40) } }, null), ready)).toBeUndefined();
         expect(nextStep(status({ head: { kind: 'unborn', name: 'main' } }, null), ready)).toBeUndefined();
@@ -229,7 +240,7 @@ describe('nextStep', () => {
     });
 
     it('agrees with the Create PR button: where it is ready the step is the pull request, unless the branch is behind, which comes first', () => {
-        for (const upstream of [null, {}, { ahead: 1 }, { behind: 1 }, { ahead: 1, behind: 1 }, { gone: true }, { name: 'upstream/feature' }] as Array<Partial<GitUpstream> | null>) {
+        for (const upstream of [null, {}, { ahead: 1 }, { behind: 1 }, { ahead: 1, behind: 1 }, { gone: true }, { name: 'upstream/feature' }, { name: 'upstream/feature', gone: true }] as Array<Partial<GitUpstream> | null>) {
             const value = status({}, upstream);
             const pr = createPullRequest({ status: value, hasPullRequest: false, onGitHub: true });
 
@@ -254,6 +265,18 @@ describe('the commit button', () => {
         expect(middleCut('clowdy/ab12cd34-weekend-surcharge', 24)).toHaveLength(24);
         expect(commitLabel(12, 'maksim-kachurin/feat/long-branch-name')).toBe('Commit 12 files to maksim-kachu…branch-name');
         expect(middleCut('abcdefghij', 6)).toBe('abc…ij');
+    });
+
+    it('never cuts a character in two: an emoji or an accented letter on the cut stays whole', () => {
+        const wide = `😀${ 'a'.repeat(30) }😀`;
+
+        // Each smiley is one character, though two UTF-16 units: cut by units, the end would start with half of one.
+        expect(middleCut(wide, 24)).toBe(`😀${ 'a'.repeat(11) }…${ 'a'.repeat(10) }😀`);
+        expect(middleCut('😀'.repeat(30), 24)).toBe(`${ '😀'.repeat(12) }…${ '😀'.repeat(11) }`);
+        // The accent is the last character of the kept start: it goes with its letter.
+        expect(middleCut(`${ 'a'.repeat(11) }e\u0301${ 'b'.repeat(25) }`, 24)).toBe(`${ 'a'.repeat(11) }e\u0301…${ 'b'.repeat(11) }`);
+        // A text that fits is left as it is, whatever its characters are made of.
+        expect(middleCut('😀'.repeat(24), 24)).toBe('😀'.repeat(24));
     });
 
     it('says why it cannot be pressed in GitHub Desktop\'s tooltips: the summary first, then the files', () => {
@@ -363,6 +386,7 @@ describe('createPullRequest', () => {
     it('is off for a branch that diverged, one that tracks something that is not on origin, and one with no commit ahead of its base', () => {
         expect(state(status({}, { ahead: 1, behind: 1 }))).toEqual({ kind: 'blocked', label: 'Create PR', reason: 'Diverged: 1 ahead, 1 behind' });
         expect(state(status({}, { name: 'upstream/feature' }))).toEqual({ kind: 'blocked', label: 'Create PR', reason: 'Tracks upstream/feature, not origin' });
+        expect(state(status({}, { name: 'upstream/feature', gone: true }))).toEqual({ kind: 'blocked', label: 'Create PR', reason: 'Tracks upstream/feature, not origin' });
         expect(state(status({ base: { ...READY, ahead: 0 } }, null))).toEqual({ kind: 'blocked', label: 'Create PR', reason: 'No commits ahead of origin/main' });
     });
 
@@ -394,6 +418,7 @@ describe('commitAndPushBlock', () => {
         expect(commitAndPushBlock(status({ origin: false }))).toBe('No origin');
         expect(commitAndPushBlock(status({ head: { kind: 'detached', commit: 'a'.repeat(40) } }, null))).toBe('HEAD is detached');
         expect(commitAndPushBlock(status({}, { name: 'fork/feature' }))).toBe('Tracks fork/feature, not origin');
+        expect(commitAndPushBlock(status({}, { name: 'fork/feature', gone: true }))).toBe('Tracks fork/feature, not origin');
         expect(commitAndPushBlock(status({}, { behind: 1 }))).toBe('1 commit to pull first');
         expect(commitAndPushBlock(status({}, { behind: 2 }))).toBe('2 commits to pull first');
         expect(commitAndPushBlock(status({}, { ahead: 1, behind: 2 }))).toBe('Diverged: 1 ahead, 2 behind');

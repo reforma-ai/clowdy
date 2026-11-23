@@ -25,6 +25,11 @@ export interface RemoteActionView {
 /** Whether a branch tracks something on `origin`: its upstream is named `origin/<branch>`. */
 const onOrigin = (upstream: GitUpstream): boolean => upstream.name.startsWith(`${ ORIGIN }/`);
 
+/** The upstream of a branch that tracks something that is not on `origin` (another remote, or a local branch), still there or gone: the daemon moves nothing of it, and publishing is refused too. */
+const foreignUpstream = (upstream: GitUpstream | undefined): GitUpstream | undefined => (upstream && !onOrigin(upstream) ? upstream : undefined);
+
+const foreignWords = (upstream: GitUpstream): string => `Tracks ${ upstream.name }, not ${ ORIGIN }`;
+
 /** Whether the branch and its upstream each have commits the other lacks, so neither a pull nor a push can settle it. */
 export const isDiverged = (upstream: GitUpstream | undefined): boolean => upstream !== undefined && !upstream.gone && upstream.ahead > 0 && upstream.behind > 0;
 
@@ -50,7 +55,9 @@ function branchBlock(status: RepositoryStatus): string | undefined {
 
     if (head.kind === 'unborn') return 'No commits yet';
 
-    return upstream && !upstream.gone && !onOrigin(upstream) ? `Tracks ${ upstream.name }, not ${ ORIGIN }` : undefined;
+    const foreign = foreignUpstream(upstream);
+
+    return foreign && foreignWords(foreign);
 }
 
 /**
@@ -178,16 +185,17 @@ export function syncButton(status: GitStatus | undefined, running: RemoteActionI
     if (head.kind === 'unborn') return { kind: 'blocked', label: 'Publish branch', line: 'No commits yet', reason: 'No commits yet', title: 'The branch has no commits yet, so there is nothing to publish' };
 
     const published = publishedUpstream(upstream);
+    const fetched = lastFetchedWords(status.lastFetchedAt, now);
+    const foreign = foreignUpstream(upstream);
+
+    // What the branch tracks is not on origin, there or gone: the daemon refuses to pull, push or publish it, so Fetch origin is all that works.
+    if (foreign) return { kind: 'fetch', label: 'Fetch origin', line: foreignWords(foreign), action: 'fetch', title: `${ foreignWords(foreign) }: pull, push and publish are off, ${ lowered(fetched) }` };
 
     if (!published) {
         return upstream
             ? { kind: 'publish', label: 'Publish branch', line: `Upstream gone from ${ ORIGIN }`, action: 'publish', tone: 'warning', title: `${ upstream.name } is gone from ${ ORIGIN }: publish the branch again` }
             : { kind: 'publish', label: 'Publish branch', line: `Publish this branch to ${ ORIGIN }`, action: 'publish', title: `The branch is not on ${ ORIGIN } yet: publish it` };
     }
-
-    const fetched = lastFetchedWords(status.lastFetchedAt, now);
-
-    if (!onOrigin(published)) return { kind: 'fetch', label: 'Fetch origin', line: `Tracks ${ published.name }, not ${ ORIGIN }`, action: 'fetch', title: `The branch tracks ${ published.name }, not ${ ORIGIN }: pull and push are off, ${ lowered(fetched) }` };
 
     if (isDiverged(published)) {
         return {
@@ -234,11 +242,13 @@ export function commitAndPushBlock(status: GitStatus | undefined): string | unde
 
     if (status.head.kind === 'detached') return 'HEAD is detached';
 
+    const foreign = foreignUpstream(status.upstream);
+
+    if (foreign) return foreignWords(foreign);
+
     const published = publishedUpstream(status.upstream);
 
     if (!published) return undefined;
-
-    if (!onOrigin(published)) return `Tracks ${ published.name }, not ${ ORIGIN }`;
 
     if (isDiverged(published)) return divergedWords(published);
 
@@ -309,6 +319,7 @@ export function createPullRequest({ status, hasPullRequest, onGitHub }: CreatePu
     if (branch === undefined || status.head.kind === 'unborn') return undefined;
 
     const { base } = status;
+    const foreign = foreignUpstream(status.upstream);
     const published = publishedUpstream(status.upstream);
 
     // The branch the work is compared with is the branch itself: there is no pull request to make from it.
@@ -316,9 +327,9 @@ export function createPullRequest({ status, hasPullRequest, onGitHub }: CreatePu
 
     if (base.state === 'ready' && base.ahead === 0) return { kind: 'blocked', label: 'Create PR', reason: `No commits ahead of ${ base.name }` };
 
-    if (!published) return { kind: 'publish', label: 'Publish first' };
+    if (foreign) return { kind: 'blocked', label: 'Create PR', reason: foreignWords(foreign) };
 
-    if (!onOrigin(published)) return { kind: 'blocked', label: 'Create PR', reason: `Tracks ${ published.name }, not ${ ORIGIN }` };
+    if (!published) return { kind: 'publish', label: 'Publish first' };
 
     if (isDiverged(published)) return { kind: 'blocked', label: 'Create PR', reason: divergedWords(published) };
 
@@ -350,11 +361,14 @@ export function nextStep(status: GitStatus | undefined, pullRequest: CreatePullR
 
     if (branch === undefined || status.head.kind === 'unborn') return undefined;
 
+    // What the branch tracks is not on origin: the app moves nothing of it, and publishing it is refused.
+    if (foreignUpstream(status.upstream)) return undefined;
+
     const published = publishedUpstream(status.upstream);
 
     if (!published) return { kind: 'publish', title: 'Publish your branch', description: `${ branch } is not on ${ ORIGIN } yet` };
 
-    if (!onOrigin(published) || isDiverged(published)) return undefined;
+    if (isDiverged(published)) return undefined;
 
     if (published.behind > 0) return { kind: 'pull', title: `Pull ${ commitsWords(published.behind) } from the ${ ORIGIN } remote`, description: `${ ORIGIN } has ${ published.behind === 1 ? 'a commit' : 'commits' } that ${ branch } lacks` };
 
@@ -366,14 +380,21 @@ export function nextStep(status: GitStatus | undefined, pullRequest: CreatePullR
 /** The most characters of a branch name the commit button shows: a longer one is cut in its middle, since its end is what tells branches of one family apart. */
 export const COMMIT_BRANCH_MAX = 24;
 
-/** A text of at most `max` characters: a longer one keeps its start and its end and has an ellipsis between. `clowdy/ab12cd34-weekend-surcharge` is `clowdy/ab12c…d-surcharge`. */
+const graphemes = new Intl.Segmenter();
+
+/**
+ * A text of at most `max` characters: a longer one keeps its start and its end and has an ellipsis between. `clowdy/ab12cd34-weekend-surcharge` is `clowdy/ab12c…d-surcharge`. A character is
+ * what a person sees as one (an emoji, a letter with its accent), so the cut never splits one into halves that draw as nothing.
+ */
 export function middleCut(text: string, max: number): string {
-    if (text.length <= max) return text;
+    const characters = Array.from(graphemes.segment(text), part => part.segment);
+
+    if (characters.length <= max) return text;
 
     const tail = Math.floor((max - 1) / 2);
     const head = max - 1 - tail;
 
-    return `${ text.slice(0, head) }…${ text.slice(text.length - tail) }`;
+    return `${ characters.slice(0, head).join('') }…${ characters.slice(characters.length - tail).join('') }`;
 }
 
 /** What a commit goes to: the branch checked out (`detached HEAD` for none), and whether it is the branch the work is compared with, which is where a commit goes straight to the base. */
