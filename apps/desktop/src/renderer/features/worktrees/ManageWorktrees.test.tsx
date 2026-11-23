@@ -530,10 +530,15 @@ describe('Manage worktrees', () => {
 
         expect(dialog()!.textContent).toContain('Loading worktrees…');
         expect(groups()).toEqual([]);
+        // The table the list will be, in two rows of blocks, with no spinner: the same card and the same rows, so the list takes the place without a jump.
+        expect(dialog()!.querySelectorAll('ul[data-skeleton] > li')).toHaveLength(2);
+        expect(dialog()!.querySelector('[role="status"]')?.textContent).toBe('Loading worktrees…');
+        expect(dialog()!.querySelector('[aria-busy="true"]')).not.toBeNull();
 
         await act(async () => answer([{ folderId: 'fld_car_rental', name: 'car-rental', isRepository: true, worktrees: [{ path: '/Users/dev/car-rental', branch: 'main', head: 'a1b2c3d', main: true, missing: false, changes: 0, submodules: false, managed: false, chats: [], blocked: 'main' }] }]));
 
         expect(dialog()!.textContent).not.toContain('Loading worktrees…');
+        expect(dialog()!.querySelector('[data-skeleton]')).toBeNull();
         expect(rowsOf(group('car-rental'))).toHaveLength(1);
     });
 

@@ -26,12 +26,56 @@
     min-width: 0;
 }
 
-.loading {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: var(--spacing-md);
-    padding: var(--spacing-xxl);
+/* The table before the list: the same card and rows, with blocks where the text goes. Each line is as tall as the text it stands for, so the list comes in without a jump. */
+.skeletonName {
+    display: inline-block;
+    width: 6rem;
+    height: 0.9em;
+    vertical-align: middle;
+}
+
+.skeletonIcon {
+    width: var(--spacing-14);
+    min-height: 0;
+    height: var(--spacing-14);
+}
+
+.skeletonLine {
+    width: 8rem;
+    max-width: 100%;
+    min-height: 0;
+    height: 0.8rem;
+}
+
+.skeletonButton {
+    width: var(--spacing-30);
+    min-height: 0;
+    height: var(--spacing-30);
+}
+
+.card[data-skeleton] {
+    pointer-events: none;
+}
+
+.card[data-skeleton] .row:hover {
+    background: none;
+}
+
+.card[data-skeleton] .title {
+    min-height: var(--leading-md);
+}
+
+.card[data-skeleton] .facts {
+    min-height: var(--leading-sm);
+}
+
+.visuallyHidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
 }
 
 /* The failure and the empty note, in the middle of the space the groups would take. */
