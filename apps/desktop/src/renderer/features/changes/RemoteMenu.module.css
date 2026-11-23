@@ -42,6 +42,11 @@
     border-end-end-radius: 0;
 }
 
+/* The words of a button that cannot be pressed are what says why, so they stay readable: the design system's dimming (0.4) would take them. */
+.main[data-disabled='true'] {
+    opacity: 0.7;
+}
+
 .more[data-size][data-variant] {
     flex-shrink: 0;
     align-self: stretch;
@@ -106,6 +111,34 @@
 .count svg {
     width: var(--spacing-12);
     height: var(--spacing-12);
+}
+
+/* In a sidebar dragged to its narrowest the label keeps the whole of its line and the counts take the next one, and the line of words (the last fetch) is left to the tooltip, which has it. */
+@container (max-width: 12rem) {
+    .head {
+        flex-wrap: wrap;
+        gap: 0;
+    }
+
+    .label {
+        flex-basis: 100%;
+    }
+
+    .counts {
+        margin-inline-start: 0;
+    }
+
+    .line {
+        display: none;
+    }
+
+    .main[data-size][data-variant] {
+        padding-inline: var(--spacing-6);
+    }
+
+    .more[data-size][data-variant] {
+        min-width: var(--spacing-24);
+    }
 }
 
 /* Git's line and the Fetch origin button that goes with a push turned down for newer commits: the button goes under the line where there is no room beside it. */

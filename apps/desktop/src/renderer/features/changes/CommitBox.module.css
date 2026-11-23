@@ -108,10 +108,10 @@
     gap: var(--spacing-6);
 }
 
-/* Commit, with the button of its menu beside it, is the main action and takes what Generate leaves; at the narrowest the two go on a line of their own. */
+/* Commit, with the button of its menu beside it, is the main action and has a line of its own: its words name the files and the branch (`Commit 3 files to main`), and they must not be squeezed to make room for Generate. */
 .commitGroup {
     display: flex;
-    flex: 1 1 calc(var(--spacing-80) + var(--spacing-30));
+    flex: 1 1 100%;
     gap: var(--spacing-6);
     min-width: 0;
 }
@@ -138,9 +138,24 @@
 .commitText {
     min-width: 0;
     line-height: 1.2;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
     text-align: center;
     white-space: normal;
+}
+
+/* At the narrowest the button's menu and its own sides give up room, so the branch's name has a line to itself. */
+@container (max-width: 12rem) {
+    .commit[data-size][data-variant] {
+        padding-inline: var(--spacing-6);
+    }
+
+    .commitText {
+        font-size: var(--text-xs);
+    }
+
+    .more[data-size][data-variant] {
+        min-width: var(--spacing-24);
+    }
 }
 
 .generate[data-size][data-variant],

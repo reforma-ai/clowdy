@@ -8,7 +8,7 @@ import { Text } from '@clowdy/components/Text';
 import { Textarea } from '@clowdy/components/Textarea';
 import { AiStar, ArrowUp, ChevronDown } from '@clowdy/icons/14';
 import { writesCommitMessages } from '@clowdy/protocol';
-import { useEffect } from 'react';
+import { useEffect, type ReactNode } from 'react';
 
 import { useAgents, useRootStore } from '../../stores';
 import { actionIcon, chosenPrograms, openActions, openEffects, useOpenApps } from '../openWith';
@@ -53,6 +53,11 @@ function FailureLines({ failure, draft, remote }: { failure: NonNullable<CommitD
             ) }
         </div>
     );
+}
+
+/** A text that may break after each slash, where a branch name (`clowdy/ab12cd34`) is cut by the edge of a narrow button, and nowhere inside a word. It says the same words. */
+function breakable(text: string): ReactNode[] {
+    return text.split('/').flatMap((part, index, parts) => [part, ...(index < parts.length - 1 ? ['/', <wbr key={ index } />] : [])]);
 }
 
 /** The three quiet ways out of an empty box, in GitHub Desktop's order: the editor, the file manager, GitHub. */
@@ -249,7 +254,7 @@ export function CommitBox({ model, place, projectId, git }: CommitBoxProps) {
                             tooltipPlacement="top"
                             onPress={ () => void draft.commit() }
                         >
-                            <span className={ styles.commitText }>{ commitLabel(ticked, target?.name) }</span>
+                            <span className={ styles.commitText }>{ breakable(commitLabel(ticked, target?.name)) }</span>
                         </Button>
                     </DisabledTooltip>
                     <MenuTrigger>
