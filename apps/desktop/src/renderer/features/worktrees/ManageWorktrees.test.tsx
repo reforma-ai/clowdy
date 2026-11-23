@@ -9,7 +9,7 @@ import { overrideTransport } from '../../daemon/testing';
 import { RootStore } from '../../stores';
 import { openManageWorktrees } from './ManageWorktrees';
 
-import type { FolderWorktrees, WorktreeInfo } from '@clowdy/protocol';
+import type { FolderWorktrees } from '@clowdy/protocol';
 import type { Transport } from '../../daemon/transport';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -255,17 +255,33 @@ describe('Manage worktrees', () => {
         expect(scrolled).toEqual(['fld_api']);
     });
 
-    it('draws Remove for every worktree but the folder\'s own checkout, and none of them can be pressed yet', async () => {
+    it('draws Remove for every worktree but the folder\'s own checkout, and holds it off for a lock and for a chat that works in the worktree', async () => {
         await open();
 
-        for (const path of [CLOWDY_WORKTREE, FOUND_WORKTREE, LOCKED_WORKTREE, MISSING_WORKTREE]) {
-            const remove = row(path).querySelector<HTMLButtonElement>('button[aria-label^="Remove "]');
+        const remove = (path: string) => row(path).querySelector<HTMLButtonElement>('button[aria-label^="Remove "]');
 
-            expect(remove, path).not.toBeNull();
-            expect(remove!.disabled, path).toBe(true);
-        }
+        for (const path of [CLOWDY_WORKTREE, FOUND_WORKTREE, LOCKED_WORKTREE, MISSING_WORKTREE]) expect(remove(path), path).not.toBeNull();
 
+        expect(remove(CLOWDY_WORKTREE)!.disabled).toBe(true);
+        expect(remove(LOCKED_WORKTREE)!.disabled).toBe(true);
+        expect(remove(FOUND_WORKTREE)!.disabled).toBe(false);
+        expect(remove(MISSING_WORKTREE)!.disabled).toBe(false);
         expect(row('/Users/dev/car-rental').querySelector('button[aria-label^="Remove "]')).toBeNull();
+    });
+
+    it('calls the removal of a worktree that has a chat, or a lock, nothing: the button is off and opens no confirmation', async () => {
+        await open();
+        await click(buttonIn(row(CLOWDY_WORKTREE), 'Remove clowdy/ab12cd34')!);
+        await click(buttonIn(row(LOCKED_WORKTREE), 'Remove hotfix/invoice')!);
+
+        expect(Modal.opened).toHaveLength(1);
+    });
+
+    it('says a worktree whose folder is gone has only its record to remove', async () => {
+        await open();
+
+        expect(buttonIn(row(MISSING_WORKTREE), 'Remove record of old-pricing')).not.toBeNull();
+        expect(buttonIn(row(MISSING_WORKTREE), 'Remove old-pricing')).toBeNull();
     });
 
     it('names, beside a Remove that is off, the reason the daemon gave', async () => {
@@ -277,31 +293,6 @@ describe('Manage worktrees', () => {
         expect(stand(CLOWDY_WORKTREE)?.getAttribute('aria-label')).toBe('Remove clowdy/ab12cd34');
         // Nothing stops a worktree that nobody works in and nobody locked: its Remove waits for the confirmation, not for a reason.
         expect(stand(FOUND_WORKTREE)).toBeNull();
-    });
-
-    it('hands the group and the worktree to the Remove that is wired, with the way to read the list again, for a worktree nothing blocks', async () => {
-        const removed: Array<[FolderWorktrees, WorktreeInfo, () => Promise<void>]> = [];
-
-        store = new RootStore(new FixtureTransport({ data: withFixtureWorktrees(createFixtureData()) }), { storage: memoryStorage() });
-        await store.load();
-        store.selectProject(FIXTURE_PROJECT_ID);
-        await flush();
-        act(() => openManageWorktrees({ root: store, projectId: FIXTURE_PROJECT_ID, onRemove: (...args) => void removed.push(args) }));
-        await settle();
-
-        const remove = (path: string) => row(path).querySelector<HTMLButtonElement>('button[aria-label^="Remove "]')!;
-
-        expect(remove(FOUND_WORKTREE).disabled).toBe(false);
-        // The daemon's reasons still hold it.
-        expect(remove(LOCKED_WORKTREE).disabled).toBe(true);
-        expect(remove(CLOWDY_WORKTREE).disabled).toBe(true);
-
-        await click(remove(FOUND_WORKTREE));
-
-        expect(removed).toHaveLength(1);
-        expect(removed[0]![0].folderId).toBe('fld_car_rental');
-        expect(removed[0]![1].path).toBe(FOUND_WORKTREE);
-        await expect(removed[0]![2]()).resolves.toBeUndefined();
     });
 
     it('offers the programs of the computer for a worktree in the desktop app, and nothing to open it in a page that is not', async () => {
@@ -439,6 +430,28 @@ describe('Manage worktrees', () => {
         expect(groups()).toHaveLength(2);
         expect(dialog()!.textContent).toContain('Couldn\'t refresh the list');
         expect(dialog()!.textContent).not.toContain('Couldn\'t read the worktrees');
+    });
+
+    it('puts a Try again beside the note that the list could not be refreshed, which reads it again and clears the note', async () => {
+        const base = new FixtureTransport({ data: withFixtureWorktrees(createFixtureData()) });
+        const getProjectWorktrees = vi.fn(async (projectId: string) => {
+            if (getProjectWorktrees.mock.calls.length === 2) throw new Error('git did not answer');
+
+            return base.getProjectWorktrees(projectId);
+        });
+
+        await open({ overrides: { getProjectWorktrees } });
+        await act(async () => void window.dispatchEvent(new Event('focus')));
+        await settle();
+
+        expect(dialog()!.textContent).toContain('Couldn\'t refresh the list');
+
+        await click(textButton(dialog()!, 'Try again')!);
+        await settle();
+
+        expect(getProjectWorktrees).toHaveBeenCalledTimes(3);
+        expect(dialog()!.textContent).not.toContain('Couldn\'t refresh the list');
+        expect(groups()).toHaveLength(2);
     });
 
     it('says so when none of the project\'s folders is a repository', async () => {
