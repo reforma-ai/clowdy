@@ -241,6 +241,7 @@ export class PlaceChanges {
         }
 
         this.followsRun = false;
+        this.revealRequest = undefined;
         this.scope = scope;
     }
 
@@ -250,6 +251,7 @@ export class PlaceChanges {
 
         this.scope = this.effectiveScope === scope ? 'all' : scope;
         this.followsRun = false;
+        this.revealRequest = undefined;
     }
 
     /**

@@ -743,6 +743,18 @@ describe('the last run of the open chat', () => {
         expect(model.revealRequest).toBeUndefined();
     });
 
+    it('drops the file to bring up when the person picks another scope before the list of the run has it', async () => {
+        const { model } = await modelOf(runs());
+
+        model.showRun('chat-1', RUN, 'also.ts');
+        model.setScope('uncommitted');
+        expect(model.revealRequest).toBeUndefined();
+
+        model.showRun('chat-1', RUN, 'also.ts');
+        model.pickCommit('c1');
+        expect(model.revealRequest).toBeUndefined();
+    });
+
     it('keeps its viewed marks under its own scope, which an edit of the files afterwards does not change', async () => {
         const transport = runs();
         const { model } = await modelOf(transport);
