@@ -1,4 +1,4 @@
-import { DOC_SOURCES, PERMISSION_PRESET_NAMES, PERMISSION_PRESETS } from '@clowdy/protocol';
+import { branchPrefixOf, branchPrefixProblem, DOC_SOURCES, PERMISSION_PRESET_NAMES, PERMISSION_PRESETS } from '@clowdy/protocol';
 
 import type {
     AgentInfo,
@@ -399,7 +399,8 @@ const kebab = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').r
 
 /**
  * What `chat.create` makes of a workspace choice, as the daemon does (the refusals are its `invalid`): a worktree of a folder that is no repository, a base that is no ref of it
- * and a path that is no worktree of it are refused. A new worktree gets the daemon's layout and branch (`<root>/<project>/<chat id's end>/<folder>`, `clowdy/<chat id's end>`) and is
+ * and a path that is no worktree of it are refused, and so is a branch prefix git would not take. A new worktree gets the daemon's layout and branch (`<root>/<project>/<chat id's end>/<folder>`,
+ * `<prefix>/<chat id's end>`, `clowdy` without a prefix) and is
  * not made yet (`ready` false: the chat's first turn makes it); an existing one is ready, and a chat that has it already shares its row.
  */
 export function fixtureChatWorkspace(
@@ -413,10 +414,14 @@ export function fixtureChatWorkspace(
     if (choice.mode === 'new') {
         if (choice.base !== undefined && choice.base !== repository.defaultBranch && !repository.branches.some(branch => branch.name === choice.base)) return { error: `${ choice.base } is not a branch of ${ folder.path }` };
 
+        const problem = branchPrefixProblem(choice.branchPrefix);
+
+        if (problem) return { error: problem };
+
         const end = chatId.slice(-8);
         const name = folder.path.split('/').filter(Boolean).at(-1) ?? 'folder';
 
-        return { workspace: { id: `wks_${ end }`, folderId: folder.id, path: `${ FIXTURE_WORKSPACES_ROOT }/${ kebab(projectName) }/${ end }/${ name }`, branch: `clowdy/${ end }`, managed: true, ready: false } };
+        return { workspace: { id: `wks_${ end }`, folderId: folder.id, path: `${ FIXTURE_WORKSPACES_ROOT }/${ kebab(projectName) }/${ end }/${ name }`, branch: `${ branchPrefixOf(choice.branchPrefix) }/${ end }`, managed: true, ready: false } };
     }
 
     const worktree = repository.worktrees.find(candidate => !candidate.main && candidate.path === choice.path);

@@ -433,6 +433,19 @@ describe('FixtureTransport', () => {
             expect(info.workspaces).toEqual([{ workspaceId: `wks_${ end }`, exists: false }]);
         });
 
+        it('puts the branch of a new worktree under the prefix asked for, clowdy without one, and refuses a prefix the daemon would', async () => {
+            const { transport } = await connected();
+            const named = await create(transport, { workspace: { mode: 'new', branchPrefix: 'team/max' } });
+            const plain = await create(transport, { workspace: { mode: 'new', branchPrefix: '' } });
+            const refused = await create(transport, { workspace: { mode: 'new', branchPrefix: 'two words' } });
+
+            if (!named.ok || !plain.ok) throw new Error('refused');
+
+            expect(named.data.chat.workspace?.branch).toBe(`team/max/${ named.data.chat.id.slice(-8) }`);
+            expect(plain.data.chat.workspace?.branch).toBe(`clowdy/${ plain.data.chat.id.slice(-8) }`);
+            expect(refused).toMatchObject({ ok: false, error: { code: 'invalid', message: 'The branch prefix cannot have a space or a control character' } });
+        });
+
         it('makes the worktree at the chat\'s first message: a Prepare workspace step with git\'s lines, from the base asked for, and the worktree is ready', async () => {
             const { transport, events } = await connected();
             const made = await create(transport, { workspace: { mode: 'new', base: 'dev' } });
