@@ -170,6 +170,12 @@ describe('MessageActions', () => {
             target.click();
         });
 
+        /** A key on the focused element, as the keyboard sends it. */
+        const key = (target: Element, name: string) => act(async () => {
+            target.dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true }));
+            target.dispatchEvent(new KeyboardEvent('keyup', { key: name, bubbles: true, cancelable: true }));
+        });
+
         it('is drawn only where a handler is given', async () => {
             await act(async () => root.render(<AssistantMessage text="Done." at={ at } actions={ { show: 'hover' } } />));
 
@@ -231,6 +237,45 @@ describe('MessageActions', () => {
             expect(onFork).not.toHaveBeenCalled();
             // The whole menu goes once an agent is picked.
             expect(items()).toEqual([]);
+        });
+
+        it('says it is open while the menu is (the row stays drawn on it), and Escape shuts it with the focus back on the button', async () => {
+            await act(async () => root.render(<MessageActions text="Done." at={ at } align="start" actions={ { show: 'hover', onFork: vi.fn(), onHandoff: vi.fn(), handoffAgents: agents } } />));
+
+            expect(forkButton()!.getAttribute('aria-expanded')).toBe('false');
+
+            await press(forkButton()!);
+
+            expect(forkButton()!.getAttribute('aria-expanded')).toBe('true');
+
+            await key(document.activeElement ?? document.body, 'Escape');
+
+            expect(menu()).toBeNull();
+            expect(forkButton()!.getAttribute('aria-expanded')).toBe('false');
+            expect(document.activeElement).toBe(forkButton());
+        });
+
+        it('opens the agents with the arrow key, hands the conversation to the one chosen with Enter, and gives the focus back to the button', async () => {
+            const onHandoff = vi.fn();
+
+            await act(async () => root.render(<MessageActions text="Done." at={ at } align="start" actions={ { show: 'hover', onFork: vi.fn(), onHandoff, handoffAgents: agents } } />));
+            await press(forkButton()!);
+
+            const other = itemNamed('Fork to another agent');
+
+            expect(other.getAttribute('aria-haspopup')).toBe('menu');
+
+            await act(async () => other.focus());
+            await key(other, 'ArrowRight');
+
+            const codex = itemNamed('Codex');
+
+            await act(async () => codex.focus());
+            await key(codex, 'Enter');
+
+            expect(onHandoff).toHaveBeenCalledExactlyOnceWith('codex');
+            expect(items()).toEqual([]);
+            expect(document.activeElement).toBe(forkButton());
         });
 
         it('turns Fork to another agent… off, and says why under it, when there is no other agent', async () => {

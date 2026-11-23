@@ -268,11 +268,20 @@ describe('where a new chat starts', () => {
         writeRemembered({ engine: 'claude', models: {}, efforts: {} });
         await mount({ defaults: { engine: 'claude' }, draftEngine: 'codex' });
 
-        expect(trigger()!.getAttribute('aria-label')).not.toContain('Opus');
+        expect(trigger()!.getAttribute('aria-label')).toBe('Model: GPT-6.2 Sol · Low');
 
         await send('Build the thing');
 
-        expect(create()).toMatchObject({ engine: 'codex' });
+        expect(create()).toMatchObject({ engine: 'codex', model: 'gpt-6.2-sol' });
+    });
+
+    it('lets the person\'s own pick in the box come before the agent a hand-off named', async () => {
+        await mount({ draftEngine: 'codex' });
+        await openPicker();
+        await pickModel('Opus 5.5', 'Claude Code');
+        await send('Build the thing');
+
+        expect(create()).toMatchObject({ engine: 'claude', model: 'opus' });
     });
 
     it('starts where it always does when the hand-off named no agent', async () => {
