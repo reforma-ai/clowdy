@@ -28,6 +28,42 @@ describe('codeQuote', () => {
         expect(codeQuote('notes.md', { from: 1, to: 3, text: '```ts\nlet a;\n```' })).toBe('`notes.md:1-3`\n````md\n```ts\nlet a;\n```\n````');
     });
 
+    it('quotes a huge text of backtick runs: it is cut first, so the count of runs stays below what the fence\'s longest-run search takes as arguments', () => {
+        const quoted = codeQuote('big.js', { from: 1, to: 1, text: '`a'.repeat(200_000) });
+
+        expect(quoted.startsWith('`big.js:1`\n```js\n')).toBe(true);
+    });
+
+    it('quotes a selection up to the last whole line that fits, names the lines quoted, and says where the selection goes on to', () => {
+        const line = `${ 'x'.repeat(98) }\n`;
+        const text = line.repeat(1500).trimEnd();
+        const quoted = codeQuote('lock.json', { from: 11, to: 1510, text });
+        const [head = '', , ...rest] = quoted.split('\n');
+        const code = rest.slice(0, -2);
+
+        // 99 characters a line and room for 1010 of them in 100,000.
+        expect(head).toBe('`lock.json:11-1020`');
+        expect(code).toHaveLength(1010);
+        expect(code.every(row => row === 'x'.repeat(98))).toBe(true);
+        expect(rest.at(-2)).toBe('```');
+        expect(rest.at(-1)).toBe('… the selection goes on to line 1510');
+        expect(quoted.length).toBeLessThan(100_200);
+    });
+
+    it('cuts a single line longer than the limit where it is, and still names the line', () => {
+        const quoted = codeQuote('min.js', { from: 3, to: 3, text: 'a'.repeat(150_000) });
+
+        expect(quoted.startsWith('`min.js:3`\n```js\n')).toBe(true);
+        expect(quoted.endsWith('\n```\n… the selection goes on to line 3')).toBe(true);
+        expect(quoted.length).toBeLessThan(100_200);
+    });
+
+    it('leaves a selection that fits whole, with nothing after the block', () => {
+        const text = 'x'.repeat(99_999);
+
+        expect(codeQuote('a.js', { from: 1, to: 1, text })).toBe(`\`a.js:1\`\n\`\`\`js\n${ text }\n\`\`\``);
+    });
+
     it('names no language for a file with no extension', () => {
         expect(codeQuote('Dockerfile', { from: 1, to: 1, text: 'FROM bun' })).toBe('`Dockerfile:1`\n```\nFROM bun\n```');
     });
