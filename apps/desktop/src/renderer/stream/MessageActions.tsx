@@ -35,7 +35,7 @@ export interface MessageActionsConfig {
     onFork?: () => void;
     /** A fork is being made: `pending` on the button that started it, `blocked` on the others, so there is one at a time. */
     forkState?: 'pending' | 'blocked';
-    /** Hand the conversation up to this message to another agent (the id of the one picked): the Fork menu's `Hand off to another agent…`, drawn only where it is given, beside `onFork`. */
+    /** Hand the conversation up to this message to another agent (the id of the one picked): the Fork menu's `Hand off to…`, drawn only where it is given, beside `onFork`. */
     onHandoff?: (agentId: string) => void;
     /** The agents `onHandoff` can take, in the order the list shows them: none disables the item, with the reason. */
     handoffAgents?: readonly ForkAgent[];

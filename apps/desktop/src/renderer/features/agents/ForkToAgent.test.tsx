@@ -25,7 +25,7 @@ vi.mock('../../stream/Markdown', () => ({ Markdown: ({ text }: { text: string })
 
 /*
  * The Fork menu's second item from end to end on the fixture project: on the answer of First version (c-2, which ran on Claude Code, switched on),
- * Hand off to another agent opens the new-chat page on the agent picked, with the conversation up to that answer attached, and nothing is made until its
+ * Hand off to opens the new-chat page on the agent picked, with the conversation up to that answer attached, and nothing is made until its
  * first message is sent. The test build has no MobX observer plugin, so the screen is drawn again by hand after a change, as the observer does in the app.
  */
 
@@ -67,7 +67,7 @@ async function forkTo(agent: string) {
     await draw();
     await draw();
     await press(container.querySelector('button[aria-label="Fork"]')!);
-    await press(menuItem('Hand off to another agent'));
+    await press(menuItem('Hand off to'));
     await press(menuItem(agent));
     await vi.waitFor(() => expect(ui().draft).toBe(true));
     await draw();
@@ -99,7 +99,7 @@ afterEach(() => {
     localStorage.clear();
 });
 
-describe('Hand off to another agent', () => {
+describe('Hand off to', () => {
     it('opens the new-chat page on the agent picked, on its default model, with the conversation attached and the draft filled', async () => {
         await forkTo('Codex');
 

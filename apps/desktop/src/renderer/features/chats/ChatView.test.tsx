@@ -928,10 +928,10 @@ describe('Fork in a chat', () => {
     });
 
     describe('to another agent', () => {
-        const agentRows = () => [...document.body.querySelectorAll<HTMLElement>('[role="menu"][aria-label="Hand off to another agent"] [role="menuitem"]')].map(row => row.textContent);
+        const agentRows = () => [...document.body.querySelectorAll<HTMLElement>('[role="menu"][aria-label="Hand off to"] [role="menuitem"]')].map(row => row.textContent);
         const openAgents = async (index = 0) => {
             await press(forkButtons()[index]);
-            await press(menuItem('Hand off to another agent'));
+            await press(menuItem('Hand off to'));
         };
         const change = (id: string, edit: (agent: FixtureData['agents'][number]) => void) => (agents: FixtureData['agents']) => edit(agents.find(agent => agent.id === id)!);
         const files = () => ui().pendingFiles;
@@ -942,7 +942,7 @@ describe('Fork in a chat', () => {
             await openAgents();
 
             expect(agentRows()).toEqual(['Codex', 'Cursor']);
-            expect(document.body.querySelectorAll('[role="menu"][aria-label="Hand off to another agent"] svg').length).toBeGreaterThanOrEqual(2);
+            expect(document.body.querySelectorAll('[role="menu"][aria-label="Hand off to"] svg').length).toBeGreaterThanOrEqual(2);
         });
 
         it('leaves out an agent that is signed out or switched off', async () => {
@@ -969,8 +969,8 @@ describe('Fork in a chat', () => {
             await draw('c-2');
             await press(forkButtons()[0]);
 
-            expect(menuItem('Hand off to another agent').getAttribute('aria-disabled')).toBe('true');
-            expect(menuItem('Hand off to another agent').textContent).toContain('No other agent is ready');
+            expect(menuItem('Hand off to').getAttribute('aria-disabled')).toBe('true');
+            expect(menuItem('Hand off to').textContent).toContain('No other agent is ready');
         });
 
         it('opens the new-chat page on the agent, with the conversation up to that answer attached, and sends nothing to the daemon', async () => {
@@ -1041,7 +1041,7 @@ describe('Fork in a chat', () => {
 
             await press(forkButtons()[0]);
 
-            expect(menuItems().map(row => row.textContent)).toEqual(['Fork', 'Hand off to another agent…']);
+            expect(menuItems().map(row => row.textContent)).toEqual(['Fork', 'Hand off to…']);
 
             await press(menuItem('Fork'));
             await vi.waitFor(() => expect(ui().draft).toBe(true));
@@ -1057,9 +1057,9 @@ describe('Fork in a chat', () => {
             await start(undefined, unflagged);
             await draw('c-2');
             await press(forkButtons()[0]);
-            await press(menuItem('Hand off to another agent'));
+            await press(menuItem('Hand off to'));
 
-            expect([...document.body.querySelectorAll<HTMLElement>('[role="menu"][aria-label="Hand off to another agent"] [role="menuitem"]')].map(row => row.textContent)).toEqual(['Codex', 'Cursor']);
+            expect([...document.body.querySelectorAll<HTMLElement>('[role="menu"][aria-label="Hand off to"] [role="menuitem"]')].map(row => row.textContent)).toEqual(['Codex', 'Cursor']);
         });
 
         it('draws none in a chat that is read only', async () => {

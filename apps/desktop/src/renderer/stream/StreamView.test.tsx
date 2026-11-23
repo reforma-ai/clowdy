@@ -757,7 +757,7 @@ describe('StreamView', () => {
 
                 await drawWith(forkable, { active: false, messageActions: { onFork, onHandoff, handoffAgents: [{ id: 'codex', name: 'Codex' }] } });
                 await press(forkButtons()[0]);
-                await press(itemNamed('Hand off to another agent'));
+                await press(itemNamed('Hand off to'));
                 await press(itemNamed('Codex'));
 
                 expect(onHandoff).toHaveBeenCalledExactlyOnceWith('i-3', 'codex');
@@ -796,7 +796,7 @@ describe('StreamView', () => {
 
                     await press(forkButtons()[0]);
 
-                    expect([...document.body.querySelectorAll('[role="menuitem"]')].map(row => row.textContent)).toEqual(['Fork', 'Hand off to another agent…']);
+                    expect([...document.body.querySelectorAll('[role="menuitem"]')].map(row => row.textContent)).toEqual(['Fork', 'Hand off to…']);
 
                     await press(itemNamed('Fork'));
 
@@ -810,7 +810,7 @@ describe('StreamView', () => {
                     expect(onHandoff).toHaveBeenCalledOnce();
                 });
 
-                it('still lists the other agents under Hand off to another agent… there', async () => {
+                it('still lists the other agents under Hand off to… there', async () => {
                     const onHandoff = vi.fn();
 
                     await drawWith(twoTurns, { active: false, messageActions: { onHandoff, ownAgent: 'cursor', handoffAgents: others } });
@@ -819,7 +819,7 @@ describe('StreamView', () => {
                     expect(forkButtons()).toHaveLength(2);
 
                     await press(forkButtons()[1]);
-                    await press(itemNamed('Hand off to another agent'));
+                    await press(itemNamed('Hand off to'));
                     await press(itemNamed('Codex'));
 
                     expect(onHandoff).toHaveBeenCalledExactlyOnceWith('i-5', 'codex');

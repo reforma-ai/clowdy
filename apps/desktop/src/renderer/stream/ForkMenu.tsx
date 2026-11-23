@@ -34,7 +34,7 @@ const FORK = 'fork';
 const OTHER_AGENT = 'agent';
 
 /**
- * The Fork button of an answer, as a menu that opens on a press (not on hover): **Fork** makes a new chat from the thread up to this answer, and **Hand off to another agent…**
+ * The Fork button of an answer, as a menu that opens on a press (not on hover): **Fork** makes a new chat from the thread up to this answer, and **Hand off to…**
  * opens the list of the other agents, whose pick opens a new-chat page on that agent with the conversation up to this answer attached as a file.
  */
 export function ForkMenu({ onFork, state, onHandoff, agents = [] }: ForkMenuProps) {
@@ -62,14 +62,14 @@ export function ForkMenu({ onFork, state, onHandoff, agents = [] }: ForkMenuProp
                                     id={ OTHER_AGENT }
                                     icon={ <NewChat /> }
                                     endAffix={ <ChevronRight /> }
-                                    text="Hand off to another agent…"
+                                    text="Hand off to…"
                                     // With no agent to take it the item says why, under its words.
                                     description={ agents.length === 0 ? 'No other agent is ready' : undefined }
                                     stacked={ agents.length === 0 }
                                     isDisabled={ agents.length === 0 }
                                 />
                                 <Popover spacing="xs" width={ 200 }>
-                                    <Menu aria-label="Hand off to another agent" size="sm" onAction={ key => handoff(String(key)) }>
+                                    <Menu aria-label="Hand off to" size="sm" onAction={ key => handoff(String(key)) }>
                                         <For each={ agents }>
                                             { agent => <MenuItem key={ agent.id } id={ agent.id } icon={ agent.icon } text={ agent.name } /> }
                                         </For>
