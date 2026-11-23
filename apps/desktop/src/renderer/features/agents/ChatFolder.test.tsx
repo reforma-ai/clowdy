@@ -88,11 +88,11 @@ describe('the folder of a chat', () => {
 
         expect(container.textContent).toBe('webmain');
 
-        const label = container.querySelector<HTMLElement>('[aria-label="Where it runs: Project checkout, branch main"]');
+        const label = container.querySelector<HTMLElement>('[aria-label="Where it runs: Main worktree, branch main"]');
 
         // The git mark and the branch, in one label that says on hover and to a screen reader where it runs.
         expect(label?.textContent).toBe('main');
-        expect(label?.title).toBe('Project checkout');
+        expect(label?.title).toBe('Main worktree');
         expect(label?.querySelector('svg')).not.toBeNull();
 
         await draw({ project: FIXTURE_PERSONAL_PROJECT_ID, folder: { id: 'fld_personal', path: '/Users/dev/Clowdy/Personal' } });
@@ -106,7 +106,7 @@ describe('the folder of a chat', () => {
         await draw({});
 
         expect(container.textContent).toBe('web5c4d3e2');
-        expect(container.querySelector<HTMLElement>('[aria-label="Where it runs: Project checkout, detached at 5c4d3e2"]')?.title).toBe('Detached HEAD');
+        expect(container.querySelector<HTMLElement>('[aria-label="Where it runs: Main worktree, detached at 5c4d3e2"]')?.title).toBe('Detached HEAD');
     });
 
     it('is read only outside the desktop app: its name, the path on hover, and nothing to press', async () => {

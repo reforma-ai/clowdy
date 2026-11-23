@@ -1381,6 +1381,6 @@ describe('a chat that works in a worktree', () => {
 
         await draw(() => ui().openChat('c-1'));
 
-        await vi.waitFor(() => expect(container.querySelector('[aria-label="Where it runs: Project checkout, branch main"]')?.textContent).toBe('main'));
+        await vi.waitFor(() => expect(container.querySelector('[aria-label="Where it runs: Main worktree, branch main"]')?.textContent).toBe('main'));
     });
 });
