@@ -212,13 +212,13 @@
 
 **This stage:** the person ticks files as reviewed and the tick survives a reload and clears itself when the file changes. The mark's value is the revision that Stage 1 computes, so no timestamp or polling decides whether it still holds. It is the daemon's table, since the browser's storage would lose it.
 
-- [ ] Complete
-  - [ ] Migration 26 adds `viewed_files` (project, folder, workspace or empty, scope key, path, revision, time); the scope key is `uncommitted`, `branch:<base ref>`, `all:<base ref>` or `commit:<sha>`
-  - [ ] Routes to list the marks of a place and scope, set a mark with a revision, and clear it; a mark is returned as viewed only while its revision equals the file's current one
-  - [ ] The protocol types and the four transport places with fixtures
-  - [ ] The card's header has the Viewed checkbox and the sidebar list shows the tick; "hide viewed" works; a viewed card folds
-  - [ ] Marks of a removed workspace go with it
-  - [ ] Tests: a mark holds, an edited file loses it, another scope or place does not share it, a removed worktree drops its marks
+- [x] Complete
+  - [x] Migration 26 adds `viewed_files` (project, folder, workspace or empty, scope key, path, revision, time); the scope key is `uncommitted`, `branch:<base ref>`, `all:<base ref>` or `commit:<sha>`
+  - [x] Routes to list the marks of a place and scope, set a mark with a revision, and clear it; a mark is returned as viewed only while its revision equals the file's current one
+  - [x] The protocol types and the four transport places with fixtures
+  - [x] The card's header has the Viewed checkbox and the sidebar list shows the tick; "hide viewed" works; a viewed card folds
+  - [x] Marks of a removed workspace go with it
+  - [x] Tests: a mark holds, an edited file loses it, another scope or place does not share it, a removed worktree drops its marks
 
 **Files**
 
@@ -235,7 +235,9 @@
 
 **Done when:** a file ticked as viewed stays ticked after a reload, and after it is edited in the worktree its card is unticked.
 **Verify:** `cd apps/daemon && bun test test/git-viewed.test.ts test/storage.test.ts`, `cd packages/protocol && bun run test && bun run typecheck`, `bun run --cwd apps/desktop typecheck`, `bun run --cwd apps/desktop test src/renderer/features/changes`
-**Commits:** None yet.
+**Scope changes:** the daemon keeps the revision the client sent and never judges it: the list answers `{ path, revision }` and the client calls a file viewed only while its revision in the current scope's list is the stored one (an edit clears the mark with no read, putting the text back brings it back); the daemon makes the scope key itself (`viewedScopeKey`, a short commit hash resolves to the full one), and `branch` and `all` carry the base's name as the changes read picks it (`origin/main`, or `main` while the local branch is ahead); a place keeps its newest 5000 marks over all its scopes; the routes are `GET`, `POST` and `DELETE .../git/viewed`; a viewed card starts shut when the tab opens and an edited file opens by itself; Hide viewed is disabled only while it is off with nothing viewed, and the all-viewed empty state offers `Show viewed files`; the sidebar's row press and the card's chevron open a viewed card and keep its mark.
+**Review findings, fixed:** `deleteViewedOfWorkspace` scanned the whole table (SQLite cannot prove a bound parameter is non-empty, so the partial index was never used; the query now says `workspace_id <> ''`, which also means an empty id never deletes the checkout's marks); every Viewed checkbox was named just `Viewed` for a screen reader (now `Viewed <path>`); a real-repository test for the revision of an untracked file, a staged rename and a binary file, and for a `commit:` mark that holds after the branch moves on. Left (follow-ups): `GET .../git/viewed` repeats the base lookup of the changes read (about 42 ms of git against 86 ms for the whole read), fixed either by dropping the base's name from the `all` and `branch` keys (the revision already holds the base-side blob, so a mark would mean "I saw exactly this diff" whatever the base is called, and the `main` to `origin/main` flip would go; a contract change) or by returning the marks inside the changes read; the cap trim sorts the place's 5000 rows on every write (about 14 ms at the cap; a `LIMIT` trim of the oldest `count - 5000` rows is cheaper); a read that began during a write and is answered from before it, arriving after it, needs out-of-order answers over separate connections. Not checked: the real app with a real daemon, Windows.
+**Commits:** `f408281` feat(daemon): keep the files a person marked as viewed, bound to the file's revision; `b2a2607` feat(desktop): add the viewed marks of a place to the transport; `9666483` feat(desktop): keep the viewed marks of the changes tab in a model bound to the file's revision; `fb6f0f8` feat(desktop): add the Viewed checkbox, the sidebar tick and the Hide viewed toggle to the changes tab; `a5ab2d4` docs: describe the viewed marks of the changes tab and the daemon's routes for them; `2a29fa1`, `ebc34a9`, `bf72f85`, `3153014` review fixes; merged by `5fab9a5`.
 
 ## Stage 6 — Add to chat from the editor and the diffs
 
