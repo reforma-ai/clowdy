@@ -320,7 +320,7 @@ describe('picking a branch', () => {
         expect(chip()?.textContent).toBe('main');
     });
 
-    it('goes when another mode is chosen, and is not kept for another folder', async () => {
+    it('goes when another mode is chosen', async () => {
         await openBranches();
         await press(option('dev'));
         await settle();
