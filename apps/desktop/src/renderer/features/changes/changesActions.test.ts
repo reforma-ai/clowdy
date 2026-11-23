@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { commitAndPushBlock, commitBlock, commitLabel, commitTarget, createPullRequest, githubBaseName, isDiverged, isFetchFirst, lastFetchedWords, middleCut, nextStep, pushOrPublish, remoteActions, remoteBranchOf, remoteCall, remoteNotice, syncButton } from './changesActions';
+import { commitAndPushBlock, commitBlock, commitLabel, commitTarget, createPullRequest, githubBaseName, isDiverged, isFetchFirst, lastFetchedWords, middleCut, nextStep, pushOrPublish, remoteActions, remoteBranchOf, remoteCall, remoteNotice, RUNNING_WORDS, syncButton } from './changesActions';
 
 import type { GitBase, GitStatus, GitUpstream } from '@clowdy/protocol';
 
@@ -200,6 +200,43 @@ describe('syncButton', () => {
         expect(order(status({}, { ahead: 3 }))).toBe('push');
         expect(order(status({}, { behind: 3 }))).toBe('pull');
         expect(order(status())).toBe('fetch');
+    });
+});
+
+describe('the words of the sidebar', () => {
+    const NOW = 1_700_000_000_000;
+    const head = { kind: 'branch', name: 'feature', commit: 'a'.repeat(40) } as const;
+
+    it('close a one-sentence text without a period, and a text of two sentences with one', () => {
+        const statuses: GitStatus[] = [
+            status({}, null),
+            status({}, { gone: true }),
+            status({}, { name: 'upstream/main', gone: true }),
+            status({}, { ahead: 2 }),
+            status({}, { behind: 1 }),
+            status({}, { ahead: 1, behind: 1 }),
+            status({}, {}),
+            status({ origin: false }, null),
+            status({ head: { kind: 'detached', commit: 'a'.repeat(40) } }, null),
+            status({ head: { kind: 'unborn', name: 'main' } }, null),
+            status({ head }, { name: 'upstream/main' }),
+        ];
+        const texts = new Set<string>(['A commit summary is required to commit', 'Select one or more files to commit', commitLabel(3, 'main'), ...Object.values(RUNNING_WORDS)]);
+
+        for (const value of statuses) {
+            for (const view of [syncButton(value, undefined, NOW)]) for (const text of [view?.label, view?.line, view?.reason, view?.title]) if (text) texts.add(text);
+
+            for (const action of remoteActions(value, false)) for (const text of [action.label, action.reason]) if (text) texts.add(text);
+
+            const step = nextStep(value, { kind: 'ready', label: 'Create PR' });
+
+            for (const text of [step?.title, step?.description, commitAndPushBlock(value)]) if (text) texts.add(text);
+        }
+
+        // At least the long tooltip of the diverged state has two sentences, so the check is not about nothing.
+        expect([...texts].some(text => /\. [A-Z]/.test(text))).toBe(true);
+
+        for (const text of texts) expect(/\. [A-Z]/.test(text) ? text.endsWith('.') : !text.endsWith('.')).toBe(true);
     });
 });
 

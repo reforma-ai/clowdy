@@ -206,7 +206,7 @@ export function syncButton(status: GitStatus | undefined, running: RemoteActionI
             behind: published.behind,
             reason: divergedWords(published),
             tone: 'warning',
-            title: `Diverged from ${ published.name }: ${ published.ahead } ahead, ${ published.behind } behind. The app does not merge, so Pull and Push are off: merge or rebase it in a terminal, or ask the agent to`,
+            title: `Diverged from ${ published.name }: ${ published.ahead } ahead, ${ published.behind } behind. The app does not merge, so Pull and Push are off: merge or rebase it in a terminal, or ask the agent to do it.`,
         };
     }
 
