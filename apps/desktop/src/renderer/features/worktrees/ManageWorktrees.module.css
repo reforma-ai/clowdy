@@ -1,0 +1,146 @@
+.dialog {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xxl);
+    padding: var(--spacing-20);
+}
+
+.heading {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xxs);
+    min-width: 0;
+}
+
+.groups {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xxl);
+    min-width: 0;
+}
+
+.loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-md);
+    padding: var(--spacing-xxl);
+}
+
+/* The failure and the empty note, in the middle of the space the groups would take. */
+.message {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--spacing-lg);
+    padding: var(--spacing-xxl);
+    text-align: center;
+    text-wrap: balance;
+}
+
+.group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+    min-width: 0;
+}
+
+/* One surface for the folder's worktrees, as Settings' folder card is: the rows bring no border of their own, hairlines join them. */
+.card {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    overflow: clip;
+    border: 1px solid var(--color-secondary-muted-border);
+    border-radius: calc(var(--radius-xl) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    background-color: var(--color-surface-float);
+    list-style: none;
+}
+
+.card > * + * {
+    border-top: 1px solid var(--color-secondary-muted-border);
+}
+
+.row {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--spacing-md);
+    min-width: 0;
+    box-sizing: border-box;
+    padding: var(--spacing-lg) var(--spacing-xl);
+}
+
+.row:hover {
+    background: var(--color-secondary-muted);
+}
+
+/* A worktree whose folder is gone is dimmed: there is little to do with it. */
+.row[data-missing] .title,
+.row[data-missing] .text > :not(.title) {
+    opacity: 0.7;
+}
+
+/* The mark stands on the first line of the text: as tall as the branch's line. */
+.icon {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    height: var(--leading-md);
+    color: var(--color-secondary-muted-text);
+}
+
+.text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--spacing-xxs);
+    min-width: 0;
+}
+
+.title {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    min-width: 0;
+}
+
+.facts {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+.chats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-xs);
+    margin-top: var(--spacing-xs);
+}
+
+.chat {
+    max-width: 16rem;
+}
+
+.chatTitle {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.archived {
+    flex-shrink: 0;
+    margin-inline-start: var(--spacing-sm);
+    color: var(--color-secondary-muted-text);
+}
+
+.actions {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: var(--spacing-xs);
+}
