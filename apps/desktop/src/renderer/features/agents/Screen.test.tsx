@@ -942,7 +942,7 @@ describe('the archive', () => {
 
         const popover = document.body.querySelector<HTMLElement>('[data-modal-clickout-layer]')!;
 
-        expect(popover.style.width).toBe('320px');
+        expect(popover.style.width).toBe('280px');
     });
 
     it('groups the chats by the day they were put away', async () => {

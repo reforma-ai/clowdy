@@ -16,8 +16,8 @@ import { ChatIcon } from './ChatIcon';
 
 import type { Chat, ChatId } from '@clowdy/protocol';
 
-/** The width of the list, between the project menu's (280) and the tasks' filter (300) and wider: titles are cut short at the column's width. */
-const LIST_WIDTH = 320;
+/** The width of the list: the project menu's, wider than the column, where titles were cut short. */
+const LIST_WIDTH = 280;
 
 /**
  * The archive, in the heading beside the filters: a button (the history mark) that drops down the chats that were put away, the last one first, each with how long
