@@ -5,20 +5,34 @@ import { cn } from '@clowdy/lib';
 
 import { tildePath } from '../../shared/displayPath';
 import { homeFolder } from '../../shared/homeFolder';
-import { useProjectState } from '../../stores';
+import { useProjectState, useRootStore } from '../../stores';
 import { canOpenPaths, OpenWithMenu, useFolderGit, useFolderRepair, type OpenTarget } from '../openWith';
+import { openManageWorktrees } from '../worktrees';
 import styles from './AgentList.module.css';
 
 import type { ProjectFolder } from '@clowdy/protocol';
 
-/** The menu of a group's folder: what is under the message box when a chat works in it (`ChatFolder`). It reads the folder's git once it is open, and not for each heading on the list. */
+/**
+ * The menu of a group's folder: what is under the message box when a chat works in it (`ChatFolder`), and, when the folder is a git repository, `Manage worktrees` above it. It
+ * reads the folder's git once it is open, and not for each heading on the list: a folder with a branch is a repository, so the item comes in with that read, and not for a folder that is gone.
+ */
 function GroupFolderMenu({ folder, missing }: { folder: ProjectFolder; missing: boolean }) {
+    const root = useRootStore();
     const project = useProjectState();
     const git = useFolderGit(project.id, folder.id);
     const repair = useFolderRepair(folder, missing);
     const target: OpenTarget = { projectId: project.id, folder, path: folder.path, relative: '', kind: 'directory' };
 
-    return <OpenWithMenu target={ target } missing={ missing } repair={ repair } git={ git } aria-label="Open folder" />;
+    return (
+        <OpenWithMenu
+            target={ target }
+            missing={ missing }
+            repair={ repair }
+            git={ git }
+            onManageWorktrees={ missing || git?.branch === undefined ? undefined : () => openManageWorktrees({ root, projectId: project.id, folderId: folder.id }) }
+            aria-label="Open folder"
+        />
+    );
 }
 
 /**
