@@ -6,8 +6,8 @@ import { useEffect, useRef } from 'react';
 import { StatusDot } from '../../shared/StatusDot';
 import { useProjectState } from '../../stores';
 import { chatFolder } from '../agents/agentTree';
-import { createPullRequest, isOffered } from '../changes/changesActions';
-import { CreatePullRequest } from '../changes/CreatePullRequest';
+import { isOffered } from '../changes/changesActions';
+import { CreatePullRequest, createPullRequestOf } from '../changes/CreatePullRequest';
 import { accessHint, accessHintTitle, additionsWords, deletionsWords, hasBranchFiles } from '../changes/gitSummary';
 import { PullRequestChip } from '../changes/PullRequestChip';
 import { useGitFacts, useGitFactsStore } from '../changes/useGitFacts';
@@ -16,9 +16,9 @@ import { chatPlace } from '../sidePanel/currentPlace';
 import { ComposerBanner } from './ComposerBanner';
 import styles from './GitStrip.module.css';
 
-import type { Chat, ProjectId, Run } from '@clowdy/protocol';
+import type { Chat, Run } from '@clowdy/protocol';
 import type { PlaceFacts } from '../changes/gitFacts';
-import type { Place } from '../sidePanel/currentPlace';
+import type { FolderGit } from '../openWith/openTarget';
 
 /** What the strip says of the files of the branch: `Files changed 13 +104 −38`. */
 function FilesChanged({ files, additions, deletions, complete }: { files: number; additions: string; deletions: string; complete: boolean }) {
@@ -32,21 +32,13 @@ function FilesChanged({ files, additions, deletions, complete }: { files: number
     );
 }
 
-/** Create PR as the strip offers it: the sidebar's button in its quiet form, which reads what git says of the folder for the address of the page. */
-function StripCreatePullRequest({ facts, projectId, place }: { facts: PlaceFacts; projectId: ProjectId; place: Place }) {
-    const git = useFolderGit(projectId, place.folder.id, place.workspace);
-
-    return <CreatePullRequest facts={ facts } git={ git } quiet />;
-}
-
 /** What the strip draws, from what is known of the place; nothing when there is nothing to say. */
-function StripRow({ facts, projectId, place }: { facts: PlaceFacts; projectId: ProjectId; place: Place }) {
+function StripRow({ facts, git }: { facts: PlaceFacts; git: FolderGit | undefined }) {
     const { pr, dirty, branch } = facts;
     const hint = pr ? undefined : accessHint(facts.access, facts.repo);
     const files = hasBranchFiles(branch) ? branch : undefined;
-    // Where the branch has no pull request, work ahead of its base and is not the base itself, Create PR is a quiet offer here, by the one rule the sidebar's button has (it is read again from
-    // the place's folder for the address of the page, so a remote that is not GitHub's makes it nothing).
-    const creatable = !pr && facts.pullRequest.settled && isOffered(createPullRequest({ status: facts.status.value, hasPullRequest: false, onGitHub: facts.access !== 'no_remote' }));
+    // Where the branch has no pull request, work ahead of its base and is not the base itself, Create PR is a quiet offer here, by the one rule the sidebar's button has.
+    const creatable = isOffered(createPullRequestOf(facts, git).state);
 
     if (!pr && !hint && !files && !dirty && !creatable) return null;
 
@@ -55,7 +47,7 @@ function StripRow({ facts, projectId, place }: { facts: PlaceFacts; projectId: P
             <div className={ styles.row }>
                 <div className={ styles.start }>
                     { pr && <PullRequestChip pr={ pr } stale={ facts.pullRequest.stale } /> }
-                    { creatable && <StripCreatePullRequest facts={ facts } projectId={ projectId } place={ place } /> }
+                    { creatable && <CreatePullRequest facts={ facts } git={ git } quiet /> }
                     { hint && <Text variant="xs" color="secondary" truncate className={ styles.hint } title={ accessHintTitle(facts.access, facts.repo) }>{ hint }</Text> }
                 </div>
                 <div className={ styles.end }>
@@ -86,6 +78,8 @@ export function GitStrip({ chat, run }: { chat: Chat; run: Run | undefined }) {
     const place = chatPlace(folders, chat, chatFolder(project.chats, folders, chat.id)?.folder);
     const facts = useGitFacts(project.id, place);
     const store = useGitFactsStore();
+    // What git says of the folder (its `origin`), which the address of Create PR's page is built from.
+    const git = useFolderGit(project.id, place.folder.id, place.workspace);
     const busy = run !== undefined && isBusyRunStatus(run.status);
     const wasBusy = useRef(busy);
 
@@ -97,5 +91,5 @@ export function GitStrip({ chat, run }: { chat: Chat; run: Run | undefined }) {
 
     if (!facts?.ready || facts.isRepository !== true) return null;
 
-    return <StripRow facts={ facts } projectId={ project.id } place={ place } />;
+    return <StripRow facts={ facts } git={ git } />;
 }
