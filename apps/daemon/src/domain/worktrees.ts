@@ -176,7 +176,10 @@ async function folderWorktrees(folder: ProjectFolder, name: string, records: rea
     const all = parseWorktrees(read.ok ? read.stdout : '');
     // The first entry git prints is the repository's primary working tree, unless that is a bare repository, which has none.
     const primary = all[0]?.bare ? undefined : all[0];
-    const listed = all.filter(entry => !entry.bare);
+    // A repository that keeps its git directory apart from the checkout (`git init --separate-git-dir`) has that directory named as the first entry: it is there, it holds no files
+    // to work in, and it has no `.git` of its own. A primary tree whose folder is gone is a row, as any worktree whose folder is gone is.
+    const apart = primary !== undefined && await isOnDisk(primary.path) && !await isOnDisk(join(primary.path, '.git'));
+    const listed = all.filter(entry => !entry.bare && !(apart && entry === primary));
     const keys = await Promise.all(listed.map(entry => keyOf(entry.path)));
     const ownIndex = keys.indexOf(rootKey);
     // The checkout of a repository that keeps its git directory apart is not in the list under its own name: it is made from what git says in the folder.

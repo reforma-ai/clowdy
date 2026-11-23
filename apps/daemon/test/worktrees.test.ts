@@ -289,6 +289,24 @@ describe('GET /v1/projects/:id/worktrees', () => {
         expect(await at(record.path)).toMatchObject({ workspaceId: record.id });
     });
 
+    test('leaves out the git directory git names as the main entry when the repository keeps it apart from its checkout', async () => {
+        const root = tempDir('worktrees-apart');
+        const repo = join(root, 'apart');
+
+        mkdirSync(repo);
+        git(repo, 'init', '-q', '-b', 'main', '--separate-git-dir', join(root, 'apart.git'));
+        writeFileSync(join(repo, 'a.txt'), 'a\n');
+        git(repo, 'add', '.');
+        git(repo, 'commit', '-q', '-m', 'Initial commit');
+        git(repo, 'worktree', 'add', '-q', '-b', 'side', join(root, 'side'));
+
+        const { worktrees } = await setup([repo]);
+        const group = (await worktrees())[1];
+
+        expect(group.isRepository).toBe(true);
+        expect(group.worktrees.map(row => [row.path, row.main, row.missing])).toEqual([[real(repo), true, false], [real(join(root, 'side')), false, false]]);
+    });
+
     test('says nothing of merging for a worktree on a branch with no commit yet', async () => {
         const { at, repo, root } = await setup();
         const path = join(root, 'fresh');
