@@ -16,9 +16,17 @@ export interface ForkAgent {
     icon?: ReactNode;
 }
 
+/**
+ * What Fork carries into the new chat: `session`, a copy of the agent's own session cut at the answer; `conversation`, the words of the conversation up to the answer, attached as a
+ * file to a new-chat page on the same agent, for an agent that cannot cut its session there (Cursor has no `session/fork`, an answer from before the points or one of a stopped turn has none).
+ */
+export type ForkMode = 'session' | 'conversation';
+
 export interface ForkMenuProps {
-    /** Fork the chat at this answer: a copy of the session, on the same agent, in a new chat. */
+    /** Fork the chat at this answer: a copy of the session, on the same agent, in a new chat (`mode` says what is copied). */
     onFork: () => void;
+    /** What `onFork` carries over. `conversation` says so under the item. */
+    mode?: ForkMode;
     /** A fork is being made: `pending` on the menu that started it, `blocked` on the others, so there is one at a time. */
     state?: 'pending' | 'blocked';
     /** Hand the conversation up to this answer to another agent, in a new-chat page. The second item is drawn only where it is given. */
@@ -31,10 +39,11 @@ const FORK = 'fork';
 const OTHER_AGENT = 'agent';
 
 /**
- * The Fork button of an answer, as a menu that opens on a press (not on hover): **Fork** makes a copy of the session in a new chat, and **Fork to another agent…**
- * opens the list of the other agents, whose pick opens a new-chat page on that agent with the conversation up to this answer attached.
+ * The Fork button of an answer, as a menu that opens on a press (not on hover): **Fork** makes a copy of the session in a new chat (or, in `conversation` mode, opens a
+ * new-chat page on the same agent with the conversation up to this answer attached), and **Fork to another agent…** opens the list of the other agents, whose pick opens a
+ * new-chat page on that agent with the same attachment.
  */
-export function ForkMenu({ onFork, state, onHandoff, agents = [] }: ForkMenuProps) {
+export function ForkMenu({ onFork, mode = 'session', state, onHandoff, agents = [] }: ForkMenuProps) {
     return (
         <MenuTrigger>
             <Button
@@ -51,7 +60,14 @@ export function ForkMenu({ onFork, state, onHandoff, agents = [] }: ForkMenuProp
             </Button>
             <Popover placement="bottom start" spacing="xs" width={ 240 }>
                 <Menu aria-label="Fork" size="sm" onAction={ key => key === FORK && onFork() }>
-                    <MenuItem id={ FORK } icon={ <ForkIcon /> } text="Fork" />
+                    <MenuItem
+                        id={ FORK }
+                        icon={ <ForkIcon /> }
+                        text="Fork"
+                        // A session cannot be cut here, so the new chat starts from the words of this one: say so.
+                        description={ mode === 'conversation' ? 'Carries the conversation over as a file' : undefined }
+                        stacked={ mode === 'conversation' }
+                    />
                     <Show when={ onHandoff }>
                         { handoff => (
                             <SubmenuTrigger>

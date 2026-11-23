@@ -39,13 +39,18 @@ import type { MessageActionsConfig, ReplyMessage } from './MessageActions';
  * What `StreamView` is given for the row under a message: `MessageActionsConfig`, except that a reply names who wrote the message and a fork and an edit are told
  * by the item they are made at.
  */
-export interface StreamMessageActions extends Omit<MessageActionsConfig, 'show' | 'onReply' | 'onFork' | 'forkState' | 'onHandoff' | 'onEdit'> {
+export interface StreamMessageActions extends Omit<MessageActionsConfig, 'show' | 'onReply' | 'onFork' | 'forkMode' | 'forkState' | 'onHandoff' | 'onEdit'> {
     /** Reply to a whole message, from its row or by swiping it: called with who wrote it and its source Markdown. */
     onReply?: (message: ReplyMessage) => void;
     /** Quote the words selected inside one message (the floating Reply button of `SelectionReply`): called with them as they are drawn. Not drawn without it. */
     onQuote?: (text: string) => void;
     /** Fork the chat at an answer (the id of its item): drawn under an answer that the daemon marked `canFork`. */
     onFork?: (itemId: string) => void;
+    /**
+     * The agent the chat runs on (its id). Under a final answer the daemon did not mark `canFork` (the agent has no `session/fork`, or the answer holds no rewind point) Fork is a
+     * hand-off to it (`onHandoff`, `forkMode: 'conversation'`): the new-chat page on this agent with the conversation up to the answer attached. Without it such answers have no Fork.
+     */
+    ownAgent?: string;
     /** The answer a fork is being made at: its button spins and the others of the stream wait. */
     forkingId?: string;
     /** Hand the conversation up to an answer (the id of its item) to another agent (the id of the one picked): the second item of the Fork menu, drawn beside `onFork` with `handoffAgents`. */
@@ -154,7 +159,7 @@ export function StreamView({ items, active = false, working, onAnswer, onDecide,
     const actionsOf = (block: StreamBlock): MessageActionsConfig | undefined => {
         if (!messageActions || !hasMessageActions(block)) return undefined;
 
-        const { onFork, forkingId, onHandoff, onEdit, editBusy, onReply, onQuote: _onQuote, ...shared } = messageActions;
+        const { onFork, forkingId, onHandoff, ownAgent, onEdit, editBusy, onReply, onQuote: _onQuote, ...shared } = messageActions;
         const { id, canFork, canEdit, body } = block.item;
         const actions: MessageActionsConfig = { ...shared, show: id === lastWithActions ? 'always' : 'hover' };
 
@@ -167,6 +172,13 @@ export function StreamView({ items, active = false, working, onAnswer, onDecide,
             if (onHandoff) actions.onHandoff = agentId => onHandoff(id, agentId);
 
             if (forkingId !== undefined) actions.forkState = forkingId === id ? 'pending' : 'blocked';
+        }
+        else if (onHandoff && ownAgent && block.answer) {
+            // The agent cannot cut its session at this answer, but the words of the conversation can go to a new chat on the same agent, which is all a hand-off does: it asks
+            // nothing of the daemon, so it waits for no fork that is being made.
+            actions.onFork = () => onHandoff(id, ownAgent);
+            actions.forkMode = 'conversation';
+            actions.onHandoff = agentId => onHandoff(id, agentId);
         }
 
         // One message is edited at a time: while its frame is open the others offer no Edit. None while the agent works either: a button that cannot be pressed is only noise.

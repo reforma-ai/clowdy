@@ -4,7 +4,7 @@ import { Show } from '@clowdy/components/Show';
 import { EditPen, Reply } from '@clowdy/icons/14';
 
 import { formatFullTime, formatMessageTime } from '../shared/time';
-import { ForkMenu, type ForkAgent } from './ForkMenu';
+import { ForkMenu, type ForkAgent, type ForkMode } from './ForkMenu';
 import styles from './MessageActions.module.css';
 
 /** A whole message handed to Reply: who wrote it (the person, or the agent whose answer it is), and its source Markdown. */
@@ -28,8 +28,13 @@ export interface MessageActionsConfig {
     swipeToReply?: boolean;
     /** Edit the message in place: drawn only where it is given (`StreamView` gives it to a message of the person's that the agent can rewrite the chat from, and to none while one is being edited). */
     onEdit?: () => void;
-    /** Fork into a new chat, at this message: the Fork menu is drawn only where it is given (`StreamView` gives it to an answer the agent can fork at). */
+    /**
+     * Fork into a new chat, at this message: the Fork menu is drawn only where it is given (`StreamView` gives it to an answer the agent can fork at, and, as a hand-off to
+     * the chat's own agent, to every other final answer).
+     */
     onFork?: () => void;
+    /** What `onFork` carries into the new chat: the agent's own session, cut at this message (the default), or the conversation as a file, for an answer the agent cannot cut its session at (`ForkMenu`). */
+    forkMode?: ForkMode;
     /** A fork is being made: `pending` on the button that started it, `blocked` on the others, so there is one at a time. */
     forkState?: 'pending' | 'blocked';
     /** Hand the conversation up to this message to another agent (the id of the one picked): the Fork menu's `Fork to another agent…`, drawn only where it is given, beside `onFork`. */
@@ -55,7 +60,7 @@ export interface MessageActionsProps {
  * pointer or the focus has to be on (see the stylesheet).
  */
 export function MessageActions({ text, at, align, actions }: MessageActionsProps) {
-    const { show, onReply, onEdit, onFork, forkState, onHandoff, handoffAgents } = actions;
+    const { show, onReply, onEdit, onFork, forkMode, forkState, onHandoff, handoffAgents } = actions;
     const time = <time className={ styles.time } dateTime={ new Date(at).toISOString() } title={ formatFullTime(at) }>{ formatMessageTime(at) }</time>;
     const hasText = text.trim() !== '';
 
@@ -83,7 +88,7 @@ export function MessageActions({ text, at, align, actions }: MessageActionsProps
                         <CopyButton value={ text } variant="filling" size="xs" tooltip="Copy message" tooltipPlacement="bottom" aria-label="Copy message" />
                     </Show>
                     <Show when={ onFork }>
-                        { fork => <ForkMenu onFork={ fork } state={ forkState } onHandoff={ onHandoff } agents={ handoffAgents } /> }
+                        { fork => <ForkMenu onFork={ fork } mode={ forkMode } state={ forkState } onHandoff={ onHandoff } agents={ handoffAgents } /> }
                     </Show>
                 </div>
             </Show>

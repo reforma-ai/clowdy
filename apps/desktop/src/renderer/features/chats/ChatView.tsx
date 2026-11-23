@@ -13,7 +13,7 @@ import { ProviderIcon } from '../settings/providers/ProviderIcon';
 import { openChat } from './archiveChat';
 import { ChatControls } from './ChatControls';
 import { ChatDropZone } from './ChatDropZone';
-import { canCompactChat, chatWritability, handoffAgents } from './chatProvider';
+import { canCompactChat, chatProvider, chatWritability, handoffAgents } from './chatProvider';
 import { isRunActive, liveLine, overflowed } from './chatRun';
 import styles from './ChatView.module.css';
 import { perform } from './commands';
@@ -111,6 +111,7 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
                             onFork: fork,
                             forkingId: forking,
                             onHandoff: (itemId, engine) => void handOff({ itemId, engine }),
+                            ownAgent: chatProvider(chat, run),
                             handoffAgents: handoffTargets,
                             onEdit: edit.begin,
                             editBusy: isRunActive(run),

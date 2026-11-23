@@ -220,6 +220,25 @@ describe('MessageActions', () => {
             expect(items().map(item => item.textContent)).toEqual(['Fork', 'Fork to another agent…']);
         });
 
+        it('says under Fork that it carries the conversation as a file where the session cannot be cut, and does not say it otherwise', async () => {
+            const onFork = vi.fn();
+
+            await act(async () => root.render(<MessageActions text="Done." at={ at } align="start" actions={ { show: 'hover', onFork } } />));
+            await press(forkButton()!);
+
+            expect(itemNamed('Fork').textContent).toBe('Fork');
+
+            await press(itemNamed('Fork'));
+            await act(async () => root.render(<MessageActions text="Done." at={ at } align="start" actions={ { show: 'hover', onFork, forkMode: 'conversation' } } />));
+            await press(forkButton()!);
+
+            expect(itemNamed('Fork').textContent).toBe('ForkCarries the conversation over as a file');
+
+            await press(itemNamed('Fork'));
+
+            expect(onFork).toHaveBeenCalledTimes(2);
+        });
+
         it('lists the other agents under Fork to another agent… and hands the conversation to the one picked', async () => {
             const onFork = vi.fn();
             const onHandoff = vi.fn();
