@@ -1,7 +1,7 @@
 import { turnScope } from '@clowdy/protocol';
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -251,6 +251,48 @@ describe('snapshotTree', () => {
         }
 
         expect(readdirSync(folder)).toEqual([]);
+        expect(readdirSync(join(path, '.git', 'objects')).filter(name => name.startsWith('tmp_'))).toEqual([]);
+    });
+
+    test('writes nothing into the repository when it comes to none: the objects of a failed snapshot are not left behind', async () => {
+        const path = work();
+        const count = () => git(path, 'count-objects', '-v').split('\n').find(line => line.startsWith('count:'));
+
+        // `add` takes the files in path order, writes the first and fails on the one it cannot read.
+        put(path, { 'a-readable.ts': lines('written before the failure'), 'zz-unreadable.ts': lines('git cannot read this') });
+        chmodSync(join(path, 'zz-unreadable.ts'), 0);
+
+        const before = count();
+
+        try {
+            // A user that can read everything (root) makes no failure to test.
+            if (process.platform !== 'win32' && process.getuid?.() !== 0) expect(await snapshotTree(path)).toBeUndefined();
+        }
+        finally {
+            chmodSync(join(path, 'zz-unreadable.ts'), 0o644);
+        }
+
+        expect(count()).toBe(before);
+        expect(readdirSync(join(path, '.git', 'objects')).filter(name => name.startsWith('tmp_'))).toEqual([]);
+        // Once it can be read, the same files make a tree whose objects are in the repository for good.
+        expect(pathsOf(path, await treeOf(path))).toContain('a-readable.ts');
+        expect(readdirSync(join(path, '.git', 'objects')).filter(name => name.startsWith('tmp_'))).toEqual([]);
+    });
+
+    test('works in a repository that borrows its objects from another one, and stores nothing the lender has', async () => {
+        const lender = work();
+        const borrower = join(tempDir('git-snapshot'), 'borrower');
+
+        git(lender, 'clone', '-q', '--shared', lender, borrower);
+        expect(existsSync(join(borrower, '.git', 'objects', 'info', 'alternates'))).toBe(true);
+        expect(await treeOf(borrower)).toBe(git(borrower, 'rev-parse', 'HEAD^{tree}'));
+
+        put(borrower, { 'a.ts': lines('edited in the borrower') });
+
+        const edited = await treeOf(borrower);
+
+        expect(git(borrower, 'show', `${ edited }:a.ts`)).toBe('edited in the borrower');
+        expect(git(borrower, 'fsck', '--no-dangling', '--connectivity-only')).not.toContain('missing');
     });
 });
 

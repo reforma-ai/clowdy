@@ -1,12 +1,12 @@
 import { constants } from 'node:fs';
-import { copyFile, mkdtemp, rm } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readdir, rename, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { delimiter, join, resolve } from 'node:path';
 
 import { getChat, getChatLastRun, setChatLastRun } from '../db/chats';
 import { nextSeq } from '../db/items';
 import { getRun, getRunWork } from '../db/runs';
-import { gitLine, gitRead } from '../domain/git';
+import { gitRead } from '../domain/git';
 import { workingTreeRoot } from './state';
 
 import type { ChatLastRun } from '@clowdy/protocol';
@@ -29,27 +29,64 @@ export const END_WAIT_MS = 4000;
 const SNAPSHOT_CONFIG = ['-c', 'core.splitIndex=false'];
 
 /**
+ * Moves the loose objects a snapshot wrote in its quarantine into the repository's own object folder, which is where a tree has to be for git to read it later. An object that is
+ * there already (another git wrote the same content meanwhile) is the same object and stays. Packs are not moved: git writes one only for a file bigger than `core.bigFileThreshold`
+ * (512 MiB), which a run's list could not draw anyway, so a snapshot that made one is none.
+ */
+async function adopt(quarantine: string, objects: string): Promise<boolean> {
+    for (const name of await readdir(quarantine)) {
+        if (name === 'pack') {
+            if ((await readdir(join(quarantine, name))).some(file => file.endsWith('.pack'))) return false;
+
+            continue;
+        }
+
+        if (!/^[0-9a-f]{2}$/.test(name)) continue;
+
+        await mkdir(join(objects, name), { recursive: true });
+
+        for (const file of await readdir(join(quarantine, name))) {
+            const target = join(objects, name, file);
+
+            await rename(join(quarantine, name, file), target).catch(async (error: unknown) => {
+                if (!await stat(target).then(() => true, () => false)) throw error;
+            });
+        }
+    }
+
+    return true;
+}
+
+/**
  * The id of a tree that holds the files of a working directory as `git add -A` would put them in a commit: the tracked files as they are on the disk now, and the new ones that
  * `.gitignore` and the other exclude rules do not hide; a file that was deleted is not there. It is made in an index of its own, a copy of the repository's index in a temporary
  * folder (`GIT_INDEX_FILE`) which is removed again, so the repository's own index, its refs, its config and its working tree are never touched, and the copy's cached file
  * stats make a tree of an unchanged project cost one pass over the files, not one read of each.
  *
  * Objects are written (`add` stores each changed or new file as a blob, and `write-tree` the trees), which is the one trace left in the repository: loose objects that nothing refers
- * to, which git's own `gc` removes after two weeks. The person's clean filters run, as for `git add` (a Git LFS user's clean step stores a file in `.git/lfs`).
+ * to, which git's own `gc` removes after two weeks. They are written into a quarantine folder of their own inside the repository's object folder (`GIT_OBJECT_DIRECTORY`, with the
+ * repository's own objects as an alternate so nothing is written twice) and moved into place only once both commands have succeeded: a git that is killed for the time limit while it
+ * writes a large file leaves a half-written `tmp_obj_*` behind it, which would otherwise stay in the repository for two weeks for every turn. The person's clean filters run, as for
+ * `git add` (a Git LFS user's clean step stores a file in `.git/lfs`).
  *
  * Nothing when the folder is not the root of a working tree, when git is not there, or when it takes longer than `timeoutMs` (a tree of a huge project, a file too big to hash in time),
- * and for any failure of either command (a file git cannot read): a snapshot is whole or it is none.
+ * and for any failure of either command (a file git cannot read): a snapshot is whole or it is none, and a snapshot that is none has written nothing.
  */
 export async function snapshotTree(cwd: string, timeoutMs = SNAPSHOT_TIMEOUT_MS): Promise<string | undefined> {
     const deadline = Date.now() + timeoutMs;
     let folder: string | undefined;
+    let quarantine: string | undefined;
 
     try {
-        const [root, index] = await Promise.all([workingTreeRoot(cwd), gitLine(cwd, ['rev-parse', '--git-path', 'index'])]);
+        const [root, paths] = await Promise.all([workingTreeRoot(cwd), gitRead(cwd, ['rev-parse', '--git-path', 'index', '--git-path', 'objects'])]);
+        const [index, objectsPath] = paths.ok ? paths.stdout.split('\n') : [];
 
-        if (!root || !index) return undefined;
+        if (!root || !index || !objectsPath) return undefined;
+
+        const objects = resolve(cwd, objectsPath);
 
         folder = await mkdtemp(join(tmpdir(), 'clowdy-tree-'));
+        quarantine = await mkdtemp(join(objects, 'tmp_objdir-clowdy-'));
 
         const own = join(folder, 'index');
 
@@ -58,7 +95,7 @@ export async function snapshotTree(cwd: string, timeoutMs = SNAPSHOT_TIMEOUT_MS)
             if (error.code !== 'ENOENT') throw error;
         });
 
-        const env = { GIT_INDEX_FILE: own };
+        const env = { GIT_INDEX_FILE: own, GIT_OBJECT_DIRECTORY: quarantine, GIT_ALTERNATE_OBJECT_DIRECTORIES: [objects, process.env.GIT_ALTERNATE_OBJECT_DIRECTORIES].filter(Boolean).join(delimiter) };
         const added = await gitRead(cwd, [...SNAPSHOT_CONFIG, 'add', '-A'], { env, timeoutMs: Math.max(1, deadline - Date.now()) });
 
         if (!added.ok) return undefined;
@@ -66,14 +103,14 @@ export async function snapshotTree(cwd: string, timeoutMs = SNAPSHOT_TIMEOUT_MS)
         const written = await gitRead(cwd, [...SNAPSHOT_CONFIG, 'write-tree'], { env, timeoutMs: Math.max(1, deadline - Date.now()) });
         const tree = written.ok ? written.stdout.trim() : '';
 
-        return /^([0-9a-f]{40}|[0-9a-f]{64})$/.test(tree) ? tree : undefined;
+        return /^([0-9a-f]{40}|[0-9a-f]{64})$/.test(tree) && await adopt(quarantine, objects) ? tree : undefined;
     }
     catch {
         // A folder that went, a disk that is full, a git that is not there: the turn has no snapshot, and says nothing of it.
         return undefined;
     }
     finally {
-        if (folder) await rm(folder, { recursive: true, force: true }).catch(() => undefined);
+        await Promise.all([folder, quarantine].map(path => path && rm(path, { recursive: true, force: true }).catch(() => undefined)));
     }
 }
 
