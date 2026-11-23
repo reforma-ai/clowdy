@@ -20,28 +20,18 @@ export interface BreadcrumbProps {
     children: ReactNode;
 }
 
-function BreadcrumbRoot({
-    variant,
-    className,
-    'aria-label': ariaLabel = 'Breadcrumb',
-    children,
-}: BreadcrumbProps) {
+function BreadcrumbRoot({ variant, className, 'aria-label': ariaLabel = 'Breadcrumb', children }: BreadcrumbProps) {
     return (
-        <nav
-            aria-label={ ariaLabel }
-            className={ cn(styles.root, variant && textStyles[variant], className) }
-        >
-            <ol className={ styles.list }>
-                <AnimatePresence initial={ false }>
-                    { children }
-                </AnimatePresence>
+        <nav aria-label={ariaLabel} className={cn(styles.root, variant && textStyles[variant], className)}>
+            <ol className={styles.list}>
+                <AnimatePresence initial={false}>{children}</AnimatePresence>
             </ol>
         </nav>
     );
 }
 
 function Sep() {
-    return <ChevronRight className={ styles.sep } aria-hidden />;
+    return <ChevronRight className={styles.sep} aria-hidden />;
 }
 
 export type BreadcrumbLinkProps = Pick<
@@ -51,17 +41,10 @@ export type BreadcrumbLinkProps = Pick<
 
 function Link({ className, children, ...props }: BreadcrumbLinkProps) {
     return (
-        <li className={ styles.item }>
+        <li className={styles.item}>
             <Sep />
-            <Button
-                { ...props }
-                className={ className }
-                variant="inline"
-                color="secondary"
-                size="unset"
-                truncate
-            >
-                { children }
+            <Button {...props} className={className} variant="inline" color="secondary" size="unset" truncate>
+                {children}
             </Button>
         </li>
     );
@@ -77,15 +60,15 @@ function Page({ className, children }: BreadcrumbPageProps) {
 
     return (
         <motion.li
-            className={ styles.item }
-            initial={ reducedMotion ? false : { opacity: 0.6, x: -10 } }
-            animate={ { opacity: 1, x: 0 } }
-            exit={ reducedMotion ? undefined : { opacity: 0, x: -10 } }
-            transition={ { duration: reducedMotion ? 0 : ENTER_DURATION_S, ease: MOTION_EASE_UI } }
+            className={styles.item}
+            initial={reducedMotion ? false : { opacity: 0.6, x: -10 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={reducedMotion ? undefined : { opacity: 0, x: -10 }}
+            transition={{ duration: reducedMotion ? 0 : ENTER_DURATION_S, ease: MOTION_EASE_UI }}
         >
             <Sep />
-            <span className={ cn(styles.page, className) } aria-current="page">
-                { children }
+            <span className={cn(styles.page, className)} aria-current="page">
+                {children}
             </span>
         </motion.li>
     );

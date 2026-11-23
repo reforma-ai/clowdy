@@ -29,17 +29,17 @@ export function SidePanelCorner() {
     };
 
     return (
-        <div className={ styles.corner }>
-            { available && (
-                <PopoverTrigger isOpen={ isOpen } onOpenChange={ setOpen }>
-                    <Button variant="filling" size="sm" iconOnly aria-label="Side panel" isPressed={ open }>
-                        <PanelIcon state={ panelIconState(size) } />
+        <div className={styles.corner}>
+            {available && (
+                <PopoverTrigger isOpen={isOpen} onOpenChange={setOpen}>
+                    <Button variant="filling" size="sm" iconOnly aria-label="Side panel" isPressed={open}>
+                        <PanelIcon state={panelIconState(size)} />
                     </Button>
                     <Popover placement="bottom end" spacing="md" aria-label="Side panel size">
-                        <SidePanelSizes size={ size } options={ panelSizeOptions(noHalf) } onSelect={ choose } />
+                        <SidePanelSizes size={size} options={panelSizeOptions(noHalf)} onSelect={choose} />
                     </Popover>
                 </PopoverTrigger>
-            ) }
+            )}
         </div>
     );
 }

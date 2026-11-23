@@ -1,9 +1,21 @@
 import { errorMessage } from '@clowdy/lib';
 import { makeAutoObservable, observableRef, runInAction } from 'mobx';
 
-import { TransportError, type PlaceRef, type Transport } from '../../daemon/transport';
+import { type PlaceRef, type Transport, TransportError } from '../../daemon/transport';
 
-import type { FolderId, GitBase, GitBaseState, GitChanges, GitHubAccess, GitHubRepo, GitPullRequest, GitPullRequestInfo, GitStatus, ProjectId, WorkspaceId } from '@clowdy/protocol';
+import type {
+    FolderId,
+    GitBase,
+    GitBaseState,
+    GitChanges,
+    GitHubAccess,
+    GitHubRepo,
+    GitPullRequest,
+    GitPullRequestInfo,
+    GitStatus,
+    ProjectId,
+    WorkspaceId,
+} from '@clowdy/protocol';
 
 /** How often the pull request is read again while one of its checks is not finished and the window is visible. */
 export const GIT_POLL_MS = 60_000;
@@ -24,10 +36,11 @@ export interface GitPlaceKey {
     workspaceId?: WorkspaceId;
 }
 
-const keyText = ({ projectId, folderId, workspaceId }: GitPlaceKey) => `${ projectId }/${ folderId }/${ workspaceId ?? '' }`;
+const keyText = ({ projectId, folderId, workspaceId }: GitPlaceKey) => `${projectId}/${folderId}/${workspaceId ?? ''}`;
 
 /** What the daemon takes of a place in a git read. */
-export const placeRef = ({ folderId, workspaceId }: GitPlaceKey): PlaceRef => (workspaceId === undefined ? { folderId } : { folderId, workspaceId });
+export const placeRef = ({ folderId, workspaceId }: GitPlaceKey): PlaceRef =>
+    workspaceId === undefined ? { folderId } : { folderId, workspaceId };
 
 /** What the app keeps of the changes of the branch (the `branch` scope: what is committed on it, against its base): the counts, never the files. */
 export interface BranchSummary {
@@ -45,7 +58,13 @@ export interface BranchSummary {
 export function summarize(changes: GitChanges): BranchSummary | null {
     if (!changes.isRepository) return null;
 
-    return { files: changes.fileCount, additions: changes.additions, deletions: changes.deletions, baseState: changes.baseState, complete: changes.statsComplete };
+    return {
+        files: changes.fileCount,
+        additions: changes.additions,
+        deletions: changes.deletions,
+        baseState: changes.baseState,
+        complete: changes.statsComplete,
+    };
 }
 
 /**
@@ -85,8 +104,7 @@ export class Fact<T> {
                 this.loading = false;
                 this.settled = true;
             });
-        }
-        catch (error) {
+        } catch (error) {
             if (request !== this.#request) return;
 
             runInAction(() => {
@@ -119,7 +137,10 @@ export class PlaceFacts {
      */
     switching = false;
 
-    constructor(readonly key: GitPlaceKey, transport: Pick<Transport, 'getGitStatus' | 'getGitChanges' | 'getGitPullRequest'>) {
+    constructor(
+        readonly key: GitPlaceKey,
+        transport: Pick<Transport, 'getGitStatus' | 'getGitChanges' | 'getGitPullRequest'>
+    ) {
         const place = placeRef(key);
 
         this.status = new Fact(() => transport.getGitStatus(key.projectId, place));
@@ -247,7 +268,8 @@ export class GitFacts {
         const known = facts.status.settled;
 
         // A first observer asks unless a read has just begun for another; a later one only when nothing was ever read (the window was hidden, or the read ended before it came).
-        if (!reading && (!known || (slot.observers === 1 && Date.now() - slot.startedAt >= GIT_COALESCE_MS))) this.#readAll(slot);
+        if (!reading && (!known || (slot.observers === 1 && Date.now() - slot.startedAt >= GIT_COALESCE_MS)))
+            this.#readAll(slot);
         // A place that is back within the second of its last read reads nothing, and the wait that its last observer's leaving ended is made again.
         else if (slot.observers === 1) this.#schedule(slot);
 
@@ -281,7 +303,12 @@ export class GitFacts {
         let slot = this.#slots.get(text);
 
         if (!slot) {
-            slot = { facts: new PlaceFacts({ ...key }, this.transport), observers: 0, startedAt: Number.NEGATIVE_INFINITY, timer: undefined };
+            slot = {
+                facts: new PlaceFacts({ ...key }, this.transport),
+                observers: 0,
+                startedAt: Number.NEGATIVE_INFINITY,
+                timer: undefined,
+            };
             this.#slots.set(text, slot);
         }
 
@@ -388,7 +415,9 @@ export class GitFacts {
 const stores = new WeakMap<object, GitFacts>();
 
 /** The git facts of a transport: made on first use and kept while the app runs, so the Info tab and the Changes tab read the same ones. */
-export function gitFactsOf(transport: Pick<Transport, 'getGitStatus' | 'getGitChanges' | 'getGitPullRequest'>): GitFacts {
+export function gitFactsOf(
+    transport: Pick<Transport, 'getGitStatus' | 'getGitChanges' | 'getGitPullRequest'>
+): GitFacts {
     let store = stores.get(transport);
 
     if (!store) {

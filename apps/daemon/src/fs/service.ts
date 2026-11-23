@@ -1,10 +1,17 @@
-import { MAX_FS_FILE_BYTES, MAX_FS_FIND } from '@clowdy/protocol';
 import { realpath } from 'node:fs/promises';
+import { MAX_FS_FILE_BYTES, MAX_FS_FIND } from '@clowdy/protocol';
 
 import { ownsPlace } from '../domain/places';
 import { invalid, notFound, unavailable } from '../errors';
 import { makeFolder, remove, transfer } from './batch';
-import { checkPreconditions, makeFolders, readBody, readFileBytes, removeFolders, writeFileAtomically } from './content';
+import {
+    checkPreconditions,
+    makeFolders,
+    readBody,
+    readFileBytes,
+    removeFolders,
+    writeFileAtomically,
+} from './content';
 import { matchPaths } from './find';
 import { exists, fsFailure, locate, missing, normalizeFsPath, versionOf } from './paths';
 import { ContentSearch } from './search';
@@ -29,8 +36,7 @@ const FIND_AHEAD = 64;
 async function isFile(root: string, path: string): Promise<boolean> {
     try {
         return (await locate(root, path, true)).stat?.isFile() === true;
-    }
-    catch {
+    } catch {
         return false;
     }
 }
@@ -66,7 +72,11 @@ export class FsService {
     private watches = new Map<string, FolderWatch>();
     private queues = new Map<string, Promise<void>>();
 
-    constructor(private files: FilesService, private watchOptions: WatchOptions = {}, searchOptions: SearchOptions = {}) {
+    constructor(
+        private files: FilesService,
+        private watchOptions: WatchOptions = {},
+        searchOptions: SearchOptions = {}
+    ) {
         this.contentSearch = new ContentSearch(searchOptions);
     }
 
@@ -82,14 +92,19 @@ export class FsService {
             }
 
             if (!target.stat.isDirectory()) {
-                throw invalid(`${ rel } is a file`, { path: rel });
+                throw invalid(`${rel} is a file`, { path: rel });
             }
 
-            const { items } = await walkTree({ root, start: rel, startReal: target.real, depth: depth ?? Number.POSITIVE_INFINITY, cap: this.maxListEntries });
+            const { items } = await walkTree({
+                root,
+                start: rel,
+                startReal: target.real,
+                depth: depth ?? Number.POSITIVE_INFINITY,
+                cap: this.maxListEntries,
+            });
 
             return items.map(item => item.entry);
-        }
-        catch (error) {
+        } catch (error) {
             throw fsFailure(error, rel);
         }
     }
@@ -115,7 +130,12 @@ export class FsService {
      * The lines of the folder's files that hold `request.query` (see `ContentSearch`), of the folder's own checkout or, given a `Place`, of its worktree. It needs
      * the folder on the disk (`unavailable`) and a valid request (`invalid`); `signal` is the client's, and a client that went away ends the search.
      */
-    async search(project: Project, request: FsSearchRequest, signal?: AbortSignal, at: FsTarget = request.folderId): Promise<FsSearchResult> {
+    async search(
+        project: Project,
+        request: FsSearchRequest,
+        signal?: AbortSignal,
+        at: FsTarget = request.folderId
+    ): Promise<FsSearchResult> {
         // A worktree asked for and not judged would be searched in the folder's own checkout under the worktree's name.
         if (request.workspaceId && (typeof at === 'string' || at.workspace?.id !== request.workspaceId)) {
             throw invalid('The worktree of the search was not resolved');
@@ -138,12 +158,11 @@ export class FsService {
             }
 
             if (!target.stat.isFile()) {
-                throw invalid(`${ rel === '' ? 'The folder' : rel } is a folder`, { path: rel });
+                throw invalid(`${rel === '' ? 'The folder' : rel} is a folder`, { path: rel });
             }
 
             return await readFileBytes(target.real, rel, this.maxFileBytes);
-        }
-        catch (error) {
+        } catch (error) {
             throw fsFailure(error, rel);
         }
     }
@@ -153,7 +172,13 @@ export class FsService {
      * taken, so a slow client holds nothing up; the version check and the write then follow each other as closely as the file system lets
      * them (the check is repeated right before the rename). A write over a folder, or below a file, is `conflict` (`exists`).
      */
-    async write(project: Project, at: FsTarget, path: string, body: AsyncIterable<Uint8Array> | null, options: FsWriteOptions): Promise<{ version: string }> {
+    async write(
+        project: Project,
+        at: FsTarget,
+        path: string,
+        body: AsyncIterable<Uint8Array> | null,
+        options: FsWriteOptions
+    ): Promise<{ version: string }> {
         const { root } = await this.open(project, at);
         const rel = normalizeFsPath(path);
         const bytes = await readBody(body, options.declaredLength, rel, this.maxFileBytes);
@@ -165,23 +190,22 @@ export class FsService {
                 const target = await locate(root, rel, true);
 
                 if (target.blockedBy) {
-                    throw exists(target.blockedBy, `A part of ${ rel } is a file`);
+                    throw exists(target.blockedBy, `A part of ${rel} is a file`);
                 }
 
                 if (rel === '' || target.stat?.isDirectory()) {
-                    throw exists(rel, `${ rel === '' ? 'The folder' : rel } is a folder`);
+                    throw exists(rel, `${rel === '' ? 'The folder' : rel} is a folder`);
                 }
 
                 if (target.stat && !target.stat.isFile()) {
-                    throw invalid(`${ rel } is not a regular file`, { path: rel });
+                    throw invalid(`${rel} is not a regular file`, { path: rel });
                 }
 
                 checkPreconditions(rel, target.stat ? versionOf(target.stat) : null, options);
                 made = await makeFolders(target.base, target.rest.slice(0, -1), rel);
 
                 return { version: await writeFileAtomically(target.real, rel, bytes, target.stat, options) };
-            }
-            catch (error) {
+            } catch (error) {
                 await removeFolders(made);
                 throw fsFailure(error, rel);
             }
@@ -226,10 +250,9 @@ export class FsService {
 
             try {
                 watcher.start();
-            }
-            catch (error) {
+            } catch (error) {
                 watcher.close();
-                throw unavailable(`This folder cannot be watched: ${ (error as Error).message }`);
+                throw unavailable(`This folder cannot be watched: ${(error as Error).message}`);
             }
 
             this.watches.set(root, watcher);
@@ -238,7 +261,7 @@ export class FsService {
         const shared = watcher;
 
         // Subscribed in the turn the watcher was found or made in, so a watcher that nobody listens to cannot be left open.
-        return watchStream((subscriber) => {
+        return watchStream(subscriber => {
             const leave = shared.subscribe(subscriber);
 
             return () => {
@@ -263,7 +286,13 @@ export class FsService {
         this.watches.clear();
     }
 
-    private async transfer(project: Project, at: FsTarget, mode: 'move' | 'copy', items: readonly FsMove[], overwrite: boolean): Promise<void> {
+    private async transfer(
+        project: Project,
+        at: FsTarget,
+        mode: 'move' | 'copy',
+        items: readonly FsMove[],
+        overwrite: boolean
+    ): Promise<void> {
         const { root } = await this.open(project, at);
 
         this.limit(items);
@@ -275,7 +304,7 @@ export class FsService {
 
     private limit(items: readonly unknown[]): void {
         if (items.length > MAX_BATCH) {
-            throw invalid(`At most ${ MAX_BATCH } items at a time`);
+            throw invalid(`At most ${MAX_BATCH} items at a time`);
         }
     }
 
@@ -308,9 +337,8 @@ export class FsService {
 
         try {
             return { path, root: await realpath(path) };
-        }
-        catch {
-            throw unavailable(`The ${ workspace ? 'worktree' : 'folder' } ${ path } is missing`);
+        } catch {
+            throw unavailable(`The ${workspace ? 'worktree' : 'folder'} ${path} is missing`);
         }
     }
 
@@ -318,7 +346,7 @@ export class FsService {
     private async exclusive<T>(root: string, work: () => Promise<T>): Promise<T> {
         const before = this.queues.get(root) ?? Promise.resolve();
         let release!: () => void;
-        const turn = new Promise<void>((resolve) => {
+        const turn = new Promise<void>(resolve => {
             release = resolve;
         });
         const tail = before.then(() => turn);
@@ -328,8 +356,7 @@ export class FsService {
 
         try {
             return await work();
-        }
-        finally {
+        } finally {
             release();
 
             if (this.queues.get(root) === tail) {

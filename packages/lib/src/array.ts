@@ -28,21 +28,21 @@ export function arrayUnique<T>(arr: T[]): T[] {
 /**
  * Groups array elements by a key function
  */
-export function arrayGroupBy<T, K extends string | number | symbol>(
-    arr: T[],
-    keyFn: (item: T) => K
-): Record<K, T[]> {
-    return arr.reduce((acc, item) => {
-        const key = keyFn(item);
+export function arrayGroupBy<T, K extends string | number | symbol>(arr: T[], keyFn: (item: T) => K): Record<K, T[]> {
+    return arr.reduce(
+        (acc, item) => {
+            const key = keyFn(item);
 
-        if (!acc[key]) {
-            acc[key] = [];
-        }
+            if (!acc[key]) {
+                acc[key] = [];
+            }
 
-        acc[key].push(item);
+            acc[key].push(item);
 
-        return acc;
-    }, {} as Record<K, T[]>);
+            return acc;
+        },
+        {} as Record<K, T[]>
+    );
 }
 
 /**

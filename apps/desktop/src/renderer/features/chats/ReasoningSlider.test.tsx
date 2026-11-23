@@ -28,27 +28,31 @@ function Held({ levels, initial }: { levels: readonly string[]; initial: string 
 
     return (
         <ReasoningSlider
-            levels={ levels }
-            value={ value }
-            onChange={ (level) => {
+            levels={levels}
+            value={value}
+            onChange={level => {
                 changes.push(level);
                 setValue(level);
-            } }
+            }}
         />
     );
 }
 
 // A new key makes a new slider that starts from `initial`, as the picker does for another model.
-const draw = (levels: readonly string[], initial: string | undefined) => act(async () => {
-    root.render(<Held key={ ++drawn } levels={ levels } initial={ initial } />);
-});
+const draw = (levels: readonly string[], initial: string | undefined) =>
+    act(async () => {
+        root.render(<Held key={++drawn} levels={levels} initial={initial} />);
+    });
 
 const slider = () => container.querySelector<HTMLElement>('[role="slider"]')!;
 const thumb = () => slider().lastElementChild as HTMLElement;
-const key = (name: string) => act(async () => {
-    slider().dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true }));
-});
-const progress = () => Number(slider().style.getPropertyValue('--level-anchor-p')) + Number(slider().style.getPropertyValue('--level-pointer-p'));
+const key = (name: string) =>
+    act(async () => {
+        slider().dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true }));
+    });
+const progress = () =>
+    Number(slider().style.getPropertyValue('--level-anchor-p')) +
+    Number(slider().style.getPropertyValue('--level-pointer-p'));
 
 /** A 300px track at the left edge of the page with a 30px thumb, and a pointer that can be captured. */
 function aim() {
@@ -65,9 +69,10 @@ function aim() {
     });
 }
 
-const pointer = (type: 'pointerdown' | 'pointermove' | 'pointerup', clientX: number) => act(async () => {
-    slider().dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 1, clientX }));
-});
+const pointer = (type: 'pointerdown' | 'pointermove' | 'pointerup', clientX: number) =>
+    act(async () => {
+        slider().dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 1, clientX }));
+    });
 
 beforeEach(() => {
     changes = [];
@@ -133,7 +138,7 @@ describe('the slider', () => {
         expect(slider().getAttribute('aria-valuenow')).toBe('0');
     });
 
-    describe.each([6, 5, 2] as const)('with %i levels', (count) => {
+    describe.each([6, 5, 2] as const)('with %i levels', count => {
         const levels: readonly string[] = LEVELS[count];
         const first = levels[0]!;
         const last = levels.at(-1)!;
@@ -260,7 +265,7 @@ describe('dragging', () => {
         expect(changes).toEqual(['max']);
     });
 
-    it.each(['pointercancel', 'lostpointercapture'])('lets go of the thumb on %s', async (type) => {
+    it.each(['pointercancel', 'lostpointercapture'])('lets go of the thumb on %s', async type => {
         await draw(LEVELS[4], 'none');
         aim();
         await pointer('pointerdown', 150);
@@ -279,7 +284,9 @@ describe('dragging', () => {
         await draw(LEVELS[4], 'none');
         aim();
         await act(async () => {
-            slider().dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1, clientX: 285, button: 2 }));
+            slider().dispatchEvent(
+                new PointerEvent('pointerdown', { bubbles: true, pointerId: 1, clientX: 285, button: 2 })
+            );
         });
 
         expect(changes).toEqual([]);
@@ -330,9 +337,10 @@ describe('dragging', () => {
 
     it('is not reset by the levels it passed coming back as the value, late and in turn, while the pointer is down', async () => {
         const onChange = vi.fn();
-        const draw = (value: string) => act(async () => {
-            root.render(<ReasoningSlider levels={ LEVELS[5] } value={ value } onChange={ onChange } />);
-        });
+        const draw = (value: string) =>
+            act(async () => {
+                root.render(<ReasoningSlider levels={LEVELS[5]} value={value} onChange={onChange} />);
+            });
 
         await draw('low');
         aim();
@@ -359,7 +367,7 @@ describe('dragging', () => {
         const onChange = vi.fn();
 
         await act(async () => {
-            root.render(<ReasoningSlider levels={ LEVELS[5] } value="low" onChange={ onChange } />);
+            root.render(<ReasoningSlider levels={LEVELS[5]} value="low" onChange={onChange} />);
         });
         aim();
         await pointer('pointerdown', 85);
@@ -376,7 +384,7 @@ describe('dragging', () => {
         const onChange = vi.fn();
 
         await act(async () => {
-            root.render(<ReasoningSlider levels={ LEVELS[5] } value="low" onChange={ onChange } />);
+            root.render(<ReasoningSlider levels={LEVELS[5]} value="low" onChange={onChange} />);
         });
         aim();
         await pointer('pointerdown', 285);

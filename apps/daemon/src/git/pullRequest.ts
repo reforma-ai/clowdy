@@ -1,13 +1,13 @@
-import { MAX_GIT_CHECKS } from '@clowdy/protocol';
 import { statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { MAX_GIT_CHECKS } from '@clowdy/protocol';
 
 import { gitAnswer, gitLine, gitRead } from '../domain/git';
 import { unavailable } from '../errors';
 import { runProgram } from '../providers/exec';
 import { parseRemote } from './githubRemote';
-import { asObject, assemblePullRequest, asString, choosePullRequest, readPullRequest } from './pullRequestRollup';
+import { asObject, asString, assemblePullRequest, choosePullRequest, readPullRequest } from './pullRequestRollup';
 import { workingTreeRoot } from './state';
 import { commitAt } from './status';
 
@@ -56,23 +56,25 @@ function queryOf(omitted: ReadonlySet<string>): string {
 
     return [
         'query($owner: String!, $name: String!, $head: String!) { repository(owner: $owner, name: $name) { defaultBranchRef { name }',
-        `pullRequests(headRefName: $head, first: ${ PULL_REQUESTS_READ }, orderBy: { field: CREATED_AT, direction: DESC }) { nodes {`,
-        `number title state url isDraft baseRefName headRefName headRefOid updatedAt isCrossRepository headRepositoryOwner { login } ${ optional }`,
-        `commits(last: 1) { nodes { commit { statusCheckRollup { state contexts(first: ${ MAX_GIT_CHECKS }) {`,
+        `pullRequests(headRefName: $head, first: ${PULL_REQUESTS_READ}, orderBy: { field: CREATED_AT, direction: DESC }) { nodes {`,
+        `number title state url isDraft baseRefName headRefName headRefOid updatedAt isCrossRepository headRepositoryOwner { login } ${optional}`,
+        `commits(last: 1) { nodes { commit { statusCheckRollup { state contexts(first: ${MAX_GIT_CHECKS}) {`,
         'nodes { __typename ... on CheckRun { name status conclusion detailsUrl startedAt } ... on StatusContext { context state targetUrl createdAt } }',
         'pageInfo { hasNextPage } } } } } } } } } }',
     ].join(' ');
 }
 
 /** What the app shows when GitHub cannot be read, in our own words. */
-const RATE_LIMIT = 'GitHub\'s rate limit is reached';
-const NOT_VISIBLE = 'GitHub doesn\'t show this repository to the signed-in account';
-const UNREADABLE = 'GitHub\'s answer couldn\'t be read';
+const RATE_LIMIT = "GitHub's rate limit is reached";
+const NOT_VISIBLE = "GitHub doesn't show this repository to the signed-in account";
+const UNREADABLE = "GitHub's answer couldn't be read";
 
 const RATE_LIMITED = /rate limit|abuse detection|secondary rate|HTTP 429/i;
-const NOT_SIGNED_IN = /gh auth login|not logged in|authentication required|HTTP 401|bad credentials|requires authentication/i;
+const NOT_SIGNED_IN =
+    /gh auth login|not logged in|authentication required|HTTP 401|bad credentials|requires authentication/i;
 const NOT_FOUND = /HTTP 404|could not resolve to a repository/i;
-const NO_ANSWER = /HTTP 5\d\d|time(?:d )?out|connection|no such host|dial tcp|\bEOF\b|network|unreachable|reset by peer/i;
+const NO_ANSWER =
+    /HTTP 5\d\d|time(?:d )?out|connection|no such host|dial tcp|\bEOF\b|network|unreachable|reset by peer/i;
 
 /** What a failed `gh` run came to: that its login is no good, or why the pull request could not be read. */
 type Failure = { signedIn: false } | { signedIn: true; message: string };
@@ -87,11 +89,11 @@ function failureOf(result: Pick<RunResult, 'code' | 'stderr'>): Failure {
 
     if (NOT_FOUND.test(said)) return { signedIn: true, message: NOT_VISIBLE };
 
-    if (NO_ANSWER.test(said)) return { signedIn: true, message: 'GitHub didn\'t answer' };
+    if (NO_ANSWER.test(said)) return { signedIn: true, message: "GitHub didn't answer" };
 
     if (/HTTP 403/i.test(said)) return { signedIn: true, message: 'GitHub refused the request' };
 
-    return { signedIn: true, message: 'Couldn\'t read the pull request' };
+    return { signedIn: true, message: "Couldn't read the pull request" };
 }
 
 /** `gh`'s answer to the read as the JSON GitHub sent, which it prints also when it exits with a failure for the errors in it. */
@@ -100,8 +102,7 @@ function bodyOf(stdout: string): Json | undefined {
 
     try {
         return asObject(JSON.parse(stdout));
-    }
-    catch {
+    } catch {
         return undefined;
     }
 }
@@ -109,7 +110,9 @@ function bodyOf(stdout: string): Json | undefined {
 /** The optional field a GraphQL error says the server does not have, nothing for any other error. */
 function missingField(error: unknown): string | undefined {
     const object = asObject(error);
-    const named = asString(asObject(object?.extensions)?.fieldName) ?? /Field '(\w+)' doesn't exist on type/.exec(asString(object?.message) ?? '')?.[1];
+    const named =
+        asString(asObject(object?.extensions)?.fieldName) ??
+        /Field '(\w+)' doesn't exist on type/.exec(asString(object?.message) ?? '')?.[1];
 
     return named !== undefined && OPTIONAL_FIELDS.includes(named) ? named : undefined;
 }
@@ -129,7 +132,10 @@ class Cache<V> {
     readonly #kept = new Map<string, { value: V; until: number }>();
     readonly #pending = new Map<string, Promise<V>>();
 
-    constructor(private readonly now: () => number, private readonly limit: number) {}
+    constructor(
+        private readonly now: () => number,
+        private readonly limit: number
+    ) {}
 
     /** The value kept for `key`, else what `load` finds, asked once for everyone who asks meanwhile. `load` says how long the value is kept (0: not at all); one that throws keeps nothing and fails all of them. */
     get(key: string, load: () => Promise<{ value: V; keepMs: number }>): Promise<V> {
@@ -195,30 +201,30 @@ function usualPaths(env: Env): string[] {
 function isFile(path: string): boolean {
     try {
         return statSync(path).isFile();
-    }
-    catch {
+    } catch {
         return false;
     }
 }
 
 /** Why a run of `gh` gave nothing to go on, when it did not: it did not answer in time, the daemon was stopping, or it could not be started. */
 function unanswered(run: RunResult, subject: string): CommandError | undefined {
-    if (run.timedOut) return unavailable(`${ subject } didn't answer in time`);
+    if (run.timedOut) return unavailable(`${subject} didn't answer in time`);
 
     if (run.error === 'stopped') return unavailable('The daemon is stopping');
 
-    return run.error === undefined ? undefined : unavailable('Couldn\'t run gh');
+    return run.error === undefined ? undefined : unavailable("Couldn't run gh");
 }
 
 /** What an answer about a branch is kept by: the repository, the branch and the commit the place is at (a new commit asks again). */
-const answerKey = (repo: GitHubRepo, branch: string, commit: string): string => `${ repo.host }/${ repo.owner }/${ repo.name }#${ branch }@${ commit }`;
+const answerKey = (repo: GitHubRepo, branch: string, commit: string): string =>
+    `${repo.host}/${repo.owner}/${repo.name}#${branch}@${commit}`;
 
 /**
  * Whether the place's HEAD has commits that the pull request's branch lacks, so the pull request is about work the branch has left behind. A commit the repository does
  * not have (the person has not fetched it), a git that cannot say, and a hash that is not one count as "not moved past", so the pull request stays.
  */
 async function movedPast(cwd: string, headCommit: string): Promise<boolean> {
-    if (!/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/i.test(headCommit) || !await commitAt(cwd, headCommit)) return false;
+    if (!/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/i.test(headCommit) || !(await commitAt(cwd, headCommit))) return false;
 
     const read = await gitRead(cwd, ['merge-base', '--is-ancestor', 'HEAD', headCommit]);
 
@@ -269,7 +275,7 @@ export class PullRequests {
         // Most places have none: git is not asked for those.
         if (!hint) return undefined;
 
-        return hint.branch === await gitLine(place.path, ['branch', '--show-current']) ? hint.base : undefined;
+        return hint.branch === (await gitLine(place.path, ['branch', '--show-current'])) ? hint.base : undefined;
     }
 
     /**
@@ -298,14 +304,15 @@ export class PullRequests {
     async read(place: Place): Promise<GitPullRequestInfo> {
         const cwd = place.path;
 
-        if (!await workingTreeRoot(cwd)) return this.#answer(cwd, { isRepository: false });
+        if (!(await workingTreeRoot(cwd))) return this.#answer(cwd, { isRepository: false });
 
         const { branch, commit, repo } = await this.#target(cwd);
 
         if (!repo) return this.#answer(cwd, { isRepository: true, access: 'no_remote' });
 
         // A detached HEAD and a branch with no commit have no branch to look up: `gh` is not asked.
-        if (branch === undefined || commit === undefined) return this.#answer(cwd, { isRepository: true, access: 'ready', repo });
+        if (branch === undefined || commit === undefined)
+            return this.#answer(cwd, { isRepository: true, access: 'ready', repo });
 
         const access = await this.#accessTo(repo.host);
 
@@ -323,7 +330,10 @@ export class PullRequests {
 
             const pullRequest = await this.#choose(cwd, repo, branch, found);
 
-            return { value: { isRepository: true, access: 'ready', repo, ...(pullRequest && { pullRequest }) }, keepMs: ANSWER_TTL_MS };
+            return {
+                value: { isRepository: true, access: 'ready', repo, ...(pullRequest && { pullRequest }) },
+                keepMs: ANSWER_TTL_MS,
+            };
         });
 
         return this.#answer(cwd, info, branch);
@@ -333,8 +343,7 @@ export class PullRequests {
     #answer(cwd: string, info: GitPullRequestInfo, branch?: string): GitPullRequestInfo {
         if (branch !== undefined && info.isRepository && info.pullRequest) {
             this.#hints.set(cwd, { branch, base: info.pullRequest.base }, HINT_TTL_MS);
-        }
-        else {
+        } else {
             this.#hints.delete(cwd);
         }
 
@@ -343,9 +352,17 @@ export class PullRequests {
 
     /** `gh`, run with the daemon's environment and nothing more, away from any repository. */
     #run(gh: string, args: string[], timeoutMs: number, maxChars?: number): Promise<RunResult> {
-        const env = Object.fromEntries(Object.entries(this.#env()).filter((entry): entry is [string, string] => entry[1] !== undefined));
+        const env = Object.fromEntries(
+            Object.entries(this.#env()).filter((entry): entry is [string, string] => entry[1] !== undefined)
+        );
 
-        return runProgram(gh, args, { env, cwd: tmpdir(), timeoutMs, ...(maxChars !== undefined && { maxChars }), signal: this.#stopper.signal });
+        return runProgram(gh, args, {
+            env,
+            cwd: tmpdir(),
+            timeoutMs,
+            ...(maxChars !== undefined && { maxChars }),
+            signal: this.#stopper.signal,
+        });
     }
 
     /** Where a `gh` that runs is, nothing when there is none. A `gh` that was started and did not answer is `unavailable`. */
@@ -383,7 +400,8 @@ export class PullRequests {
         const signedIn = await this.#logins.get(host, async () => {
             let run = await this.#run(gh, ['auth', 'status', '--hostname', host, '--active'], LOGIN_TIMEOUT_MS);
 
-            if (run.code !== 0 && /unknown flag/i.test(run.stderr)) run = await this.#run(gh, ['auth', 'status', '--hostname', host], LOGIN_TIMEOUT_MS);
+            if (run.code !== 0 && /unknown flag/i.test(run.stderr))
+                run = await this.#run(gh, ['auth', 'status', '--hostname', host], LOGIN_TIMEOUT_MS);
 
             const failed = unanswered(run, 'gh');
 
@@ -405,7 +423,22 @@ export class PullRequests {
         this.#omitted.set(repo.host, omitted);
 
         for (let attempt = 0; attempt <= OPTIONAL_FIELDS.length; attempt++) {
-            const args = ['api', 'graphql', '--hostname', repo.host, '--method', 'POST', '-f', `query=${ queryOf(omitted) }`, '-f', `owner=${ repo.owner }`, '-f', `name=${ repo.name }`, '-f', `head=${ branch }`];
+            const args = [
+                'api',
+                'graphql',
+                '--hostname',
+                repo.host,
+                '--method',
+                'POST',
+                '-f',
+                `query=${queryOf(omitted)}`,
+                '-f',
+                `owner=${repo.owner}`,
+                '-f',
+                `name=${repo.name}`,
+                '-f',
+                `head=${branch}`,
+            ];
             const run = await this.#run(gh, args, READ_TIMEOUT_MS, READ_MAX_CHARS);
 
             const failed = unanswered(run, 'GitHub');
@@ -413,8 +446,10 @@ export class PullRequests {
             if (failed) throw failed;
 
             const body = bodyOf(run.stdout);
-            const errors = Array.isArray(body?.errors) ? body.errors as unknown[] : [];
-            const lacking = errors.map(missingField).find((field): field is string => field !== undefined && !omitted.has(field));
+            const errors = Array.isArray(body?.errors) ? (body.errors as unknown[]) : [];
+            const lacking = errors
+                .map(missingField)
+                .find((field): field is string => field !== undefined && !omitted.has(field));
 
             if (lacking !== undefined) {
                 omitted.add(lacking);
@@ -449,20 +484,28 @@ export class PullRequests {
             return { signedIn: true, ...(defaultBranch && { defaultBranch }), pullRequests };
         }
 
-        throw unavailable('Couldn\'t read the pull request');
+        throw unavailable("Couldn't read the pull request");
     }
 
     /** The pull request that is the branch's own, or nothing: the choice among those found, less one that HEAD has moved past. */
-    async #choose(cwd: string, repo: GitHubRepo, branch: string, found: Extract<Found, { signedIn: true }>): Promise<GitPullRequest | undefined> {
-        const candidates = found.pullRequests.flatMap((node) => {
+    async #choose(
+        cwd: string,
+        repo: GitHubRepo,
+        branch: string,
+        found: Extract<Found, { signedIn: true }>
+    ): Promise<GitPullRequest | undefined> {
+        const candidates = found.pullRequests.flatMap(node => {
             const pr = readPullRequest(node, repo.owner);
 
             return pr ? [pr] : [];
         });
-        const chosen = choosePullRequest(candidates, { branch, ...(found.defaultBranch && { defaultBranch: found.defaultBranch }) });
+        const chosen = choosePullRequest(candidates, {
+            branch,
+            ...(found.defaultBranch && { defaultBranch: found.defaultBranch }),
+        });
 
         // A merged or closed pull request is about the work that was on the branch then: new commits since make it no pull request of what is checked out, and Create PR is offered again.
-        if (!chosen || (chosen.state !== 'OPEN' && await movedPast(cwd, chosen.headCommit))) return undefined;
+        if (!chosen || (chosen.state !== 'OPEN' && (await movedPast(cwd, chosen.headCommit)))) return undefined;
 
         return assemblePullRequest(chosen);
     }

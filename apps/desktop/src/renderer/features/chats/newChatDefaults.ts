@@ -1,7 +1,7 @@
 import { LAST_USED } from '@clowdy/protocol';
 import { makeAutoObservable } from 'mobx';
 
-import { browserStorage, readStored, writeStored, type KeyValueStorage } from '../../stores/storage';
+import { browserStorage, type KeyValueStorage, readStored, writeStored } from '../../stores/storage';
 
 import type { ChatMode, ProjectSettings } from '@clowdy/protocol';
 
@@ -45,7 +45,10 @@ export const newChatDefaults = new NewChatDefaults(browserStorage());
  * What a new chat in a project starts with: the project's own choice, the app's when the project follows it (nothing saved), and nothing for "Last used"
  * at either level, which the message box resolves from what was last picked on this computer.
  */
-export function startingChoice(settings: ProjectSettings, app: { engine?: string; mode?: ChatMode }): { engine?: string; mode?: ChatMode } {
+export function startingChoice(
+    settings: ProjectSettings,
+    app: { engine?: string; mode?: ChatMode }
+): { engine?: string; mode?: ChatMode } {
     const engine = settings.engine === undefined ? app.engine : settings.engine;
     const mode = settings.chatMode === undefined ? app.mode : settings.chatMode;
 

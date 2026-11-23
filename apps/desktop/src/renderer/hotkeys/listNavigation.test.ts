@@ -50,7 +50,8 @@ function setup({ ids = ['a', 'b', 'c'], openId = null as string | null, scope = 
         openId: () => state.openId,
         focusItem: id => element(id).focus(),
         follow,
-    })) registry.defineCommand(command);
+    }))
+        registry.defineCommand(command);
 
     uninstall = installDispatcher(registry);
 

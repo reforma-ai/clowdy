@@ -24,14 +24,22 @@ let store: RootStore;
 
 /** The window's part that registers the palette's keys, as `Shell` does, so the button has keys to show. */
 function Keyed() {
-    useCommands('app', quickSearchCommands({ available: () => store.showsProjectScreen, open: tab => openQuickSearch(store, tab) }));
+    useCommands(
+        'app',
+        quickSearchCommands({ available: () => store.showsProjectScreen, open: tab => openQuickSearch(store, tab) })
+    );
 
     return <TitleBand />;
 }
 
-const draw = () => act(async () => {
-    reactRoot.render(<RootStoreProvider value={ store }><Keyed /></RootStoreProvider>);
-});
+const draw = () =>
+    act(async () => {
+        reactRoot.render(
+            <RootStoreProvider value={store}>
+                <Keyed />
+            </RootStoreProvider>
+        );
+    });
 
 const searchButton = () => container.querySelector<HTMLElement>('button[aria-label="Search"]');
 const field = () => document.body.querySelector<HTMLInputElement>('input[role="combobox"]');
@@ -60,7 +68,7 @@ afterEach(async () => {
 });
 
 describe('the search button of the title band', () => {
-    it('shows the palette\'s keys at its end', async () => {
+    it("shows the palette's keys at its end", async () => {
         await draw();
         // The command is registered in an effect, so the keys are known for the draw after the first.
         await draw();
@@ -77,7 +85,7 @@ describe('the search button of the title band', () => {
         expect(field()!.placeholder).toBe('Search chats, files, documents and the text in them');
     });
 
-    it('is not there while Settings is over the project\'s screen, and the band keeps its middle', async () => {
+    it("is not there while Settings is over the project's screen, and the band keeps its middle", async () => {
         act(() => store.ui.openSettings());
         await draw();
 

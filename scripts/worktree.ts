@@ -31,12 +31,12 @@ export async function worktreeCommand(repoRoot: string, args: string[]): Promise
         const code = await install.exited;
 
         if (code !== 0) {
-            die(`Dependencies failed in ${ created.path }. The worktree is still there.`);
+            die(`Dependencies failed in ${created.path}. The worktree is still there.`);
         }
 
-        console.log(`Branch: ${ created.branch }`);
-        console.log(`From:   ${ created.from } (${ created.base })`);
-        console.log(`Path:   ${ created.path }`);
+        console.log(`Branch: ${created.branch}`);
+        console.log(`From:   ${created.from} (${created.base})`);
+        console.log(`Path:   ${created.path}`);
         return;
     }
 
@@ -45,7 +45,7 @@ export async function worktreeCommand(repoRoot: string, args: string[]): Promise
     }
 
     const removed = await removeWorktree(repoRoot, slug);
-    console.log(`Removed ${ removed }`);
+    console.log(`Removed ${removed}`);
 }
 
 /** The ref after `--from`, or nothing for the default base. */
@@ -66,7 +66,7 @@ export function nicknameFromGitName(name: string): string {
     const nick = name.trim().toLowerCase().replace(/\s+/g, '-');
 
     if (!SLUG.test(nick)) {
-        die(`git config user.name ${ JSON.stringify(name) } is not a single branch segment.`);
+        die(`git config user.name ${JSON.stringify(name)} is not a single branch segment.`);
     }
 
     return nick;
@@ -76,9 +76,9 @@ export async function addWorktree(
     repoRoot: string,
     slug: string,
     from = DEFAULT_BASE
-): Promise<{ branch: string, path: string, from: string, base: string }> {
+): Promise<{ branch: string; path: string; from: string; base: string }> {
     const nick = nicknameFromGitName(await gitName(repoRoot));
-    const branch = `${ nick }/${ slug }`;
+    const branch = `${nick}/${slug}`;
     const destination = worktreePath(repoRoot, slug);
 
     // A ref of origin is only as new as the last fetch. A fetch needs the owner's SSH key, which an agent session may
@@ -87,28 +87,28 @@ export async function addWorktree(
         const fetched = await gitResult(repoRoot, ['fetch', 'origin', '--prune']);
 
         if (fetched.code !== 0) {
-            const reason = fetched.stderr.trim().split('\n')[0] || `git fetch exited with ${ fetched.code }`;
+            const reason = fetched.stderr.trim().split('\n')[0] || `git fetch exited with ${fetched.code}`;
 
-            console.error(`Could not fetch origin, so ${ from } is as of the last fetch: ${ reason }`);
+            console.error(`Could not fetch origin, so ${from} is as of the last fetch: ${reason}`);
         }
     }
 
-    const base = await gitResult(repoRoot, ['rev-parse', '--verify', '--quiet', '--short', `${ from }^{commit}`]);
+    const base = await gitResult(repoRoot, ['rev-parse', '--verify', '--quiet', '--short', `${from}^{commit}`]);
 
     if (base.code !== 0) {
-        die(`There is no ${ from } to start from. Name another ref: ./clowdy worktree add ${ slug } --from <ref>`);
+        die(`There is no ${from} to start from. Name another ref: ./clowdy worktree add ${slug} --from <ref>`);
     }
 
-    if (await gitOk(repoRoot, ['show-ref', '--verify', '--quiet', `refs/heads/${ branch }`])) {
-        die(`Branch ${ branch } already exists.`);
+    if (await gitOk(repoRoot, ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`])) {
+        die(`Branch ${branch} already exists.`);
     }
 
-    if (await gitOk(repoRoot, ['show-ref', '--verify', '--quiet', `refs/remotes/origin/${ branch }`])) {
-        die(`Branch ${ branch } already exists on origin.`);
+    if (await gitOk(repoRoot, ['show-ref', '--verify', '--quiet', `refs/remotes/origin/${branch}`])) {
+        die(`Branch ${branch} already exists on origin.`);
     }
 
     if (existsSync(destination)) {
-        die(`Path already exists: ${ destination }`);
+        die(`Path already exists: ${destination}`);
     }
 
     // --no-track keeps the new branch off any upstream, which a start point of origin/... would set.
@@ -127,7 +127,7 @@ export async function removeWorktree(repoRoot: string, slug: string): Promise<st
 }
 
 export function worktreePath(repoRoot: string, slug: string): string {
-    return path.resolve(repoRoot, '..', `clowdy-${ slug }`);
+    return path.resolve(repoRoot, '..', `clowdy-${slug}`);
 }
 
 async function gitName(repoRoot: string): Promise<string> {
@@ -144,7 +144,7 @@ async function git(repoRoot: string, args: string[]): Promise<void> {
     const result = await gitResult(repoRoot, args);
 
     if (result.code !== 0) {
-        die(result.stderr.trim() || result.stdout.trim() || `git ${ args.join(' ') } failed`);
+        die(result.stderr.trim() || result.stdout.trim() || `git ${args.join(' ')} failed`);
     }
 }
 
@@ -152,10 +152,7 @@ async function gitOk(repoRoot: string, args: string[]): Promise<boolean> {
     return (await gitResult(repoRoot, args)).code === 0;
 }
 
-async function gitResult(
-    repoRoot: string,
-    args: string[]
-): Promise<{ code: number, stdout: string, stderr: string }> {
+async function gitResult(repoRoot: string, args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
     const child = Bun.spawn(['git', ...args], {
         cwd: repoRoot,
         stdout: 'pipe',

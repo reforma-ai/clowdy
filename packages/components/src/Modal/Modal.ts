@@ -99,18 +99,13 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
         const duplicate = opts.duplicate === true;
         const reuseExisting = opts.reuseExisting ?? !duplicate;
 
-        const sameIdModal = opts.id
-            ? modals.find(m => m.id === opts.id)
-            : undefined;
-        const sameNameModal = name
-            ? modals.find(m => m.name === name)
-            : undefined;
+        const sameIdModal = opts.id ? modals.find(m => m.id === opts.id) : undefined;
+        const sameNameModal = name ? modals.find(m => m.name === name) : undefined;
 
         if (sameIdModal) {
             if (sameIdModal.canReuseWith(createOptions, reuseExisting)) {
                 sameIdModal.reuse(createOptions);
-            }
-            else {
+            } else {
                 sameIdModal.show();
             }
 
@@ -156,9 +151,11 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
     @computed get currentOptions(): Opts {
         const tabOptions = this.tabOptions;
         const responsiveMode = this.responsiveMode;
-        const tabOptionsWithAdaptive = tabOptions as Partial<Opts> & { adaptive?: Partial<Record<ModalResponsiveMode, Partial<Opts>>> };
+        const tabOptionsWithAdaptive = tabOptions as Partial<Opts> & {
+            adaptive?: Partial<Record<ModalResponsiveMode, Partial<Opts>>>;
+        };
         const adaptiveOptions = tabOptionsWithAdaptive.adaptive
-            ? (tabOptionsWithAdaptive.adaptive[responsiveMode ?? 'all'] || tabOptionsWithAdaptive.adaptive.all || {})
+            ? tabOptionsWithAdaptive.adaptive[responsiveMode ?? 'all'] || tabOptionsWithAdaptive.adaptive.all || {}
             : {};
 
         return {
@@ -252,7 +249,7 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
         }
         // Merge all tab options + dynamic options + global window options
         else {
-            const activeTabOptions = tabs.find(tab => tab.id === activeTab) || {} as Partial<Opts>;
+            const activeTabOptions = tabs.find(tab => tab.id === activeTab) || ({} as Partial<Opts>);
             const activeTabDerivedOptions = activeTabOptions?.getOptions?.(this) || {};
 
             this.activeTab = activeTab;
@@ -296,7 +293,7 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
 
             class: [],
             overlayClass: [],
-            theme: (opts.fromModal)?.currentOptions.theme || 'light',
+            theme: opts.fromModal?.currentOptions.theme || 'light',
             tabs: [],
             modalActions: [],
 
@@ -361,7 +358,7 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
                 left: 15,
                 right: 15,
                 bottom: 15,
-                ...opts.limit || {},
+                ...(opts.limit || {}),
             },
         };
 
@@ -386,7 +383,7 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
         }
 
         if (typeof options.padding === 'number') {
-            options.padding = `${ options.padding }px`;
+            options.padding = `${options.padding}px`;
         }
 
         options.duplicate = options.duplicate === true;
@@ -401,8 +398,7 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
         if (options.fromModal && options.type !== 'overlay' && opts.overlay !== true) {
             options.shadow = false;
             options.overlay = false;
-        }
-        else if (options.shadow) {
+        } else if (options.shadow) {
             options.overlay = true;
         }
 
@@ -411,7 +407,7 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
         // Find adaptive modes and remove invalid ones
         options.tabs?.forEach((tab, index) => {
             if (!tab.id) {
-                tab.id = `tab-${ index }`;
+                tab.id = `tab-${index}`;
             }
 
             const adaptive = tab.adaptive;
@@ -443,9 +439,7 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
             };
         }
 
-        if (opts.fromModal === undefined
-            && (opts.type ?? 'window') !== 'overlay'
-            && opts.overlay !== true) {
+        if (opts.fromModal === undefined && (opts.type ?? 'window') !== 'overlay' && opts.overlay !== true) {
             const parent = Modal.parentOf(this);
             // Anchored outside the top dialog, it was opened from elsewhere and is not its child.
             const fromParent = !opts.target || Boolean(parent?.windowEl?.contains(opts.target));
@@ -460,7 +454,7 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
 
         this.options = options;
 
-        this.id = options.id || `modal:${ getRandomId(8) }`;
+        this.id = options.id || `modal:${getRandomId(8)}`;
         this.name = options.name ?? this.id;
         this.type = options.type;
         this.#clickOutInclude = options.clickOutInclude || [document];
@@ -557,10 +551,7 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
     }
 
     private canReuseWith(options: Partial<Opts>, reuseExisting = options.reuseExisting ?? !options.duplicate) {
-        return !!reuseExisting
-          && !options.reactHost
-          && !options.hideOnClose
-          && !this.currentOptions.hideOnClose;
+        return !!reuseExisting && !options.reactHost && !options.hideOnClose && !this.currentOptions.hideOnClose;
     }
 
     /**
@@ -583,8 +574,7 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
 
         if (this.options.loading) {
             this.setLoader();
-        }
-        else if (this.loading) {
+        } else if (this.loading) {
             this.removeLoader();
         }
 
@@ -639,10 +629,13 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
 
         this.syncTargetWatcher();
         this.updateBounds();
-        this.updateStyles({
-            width: this.currentOptions.width ?? '',
-            height: this.currentOptions.height ?? '',
-        }, true);
+        this.updateStyles(
+            {
+                width: this.currentOptions.width ?? '',
+                height: this.currentOptions.height ?? '',
+            },
+            true
+        );
         this.updateBounds();
         this.applyPosition();
     }
@@ -810,21 +803,26 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
             return element.closest(selector) !== null;
         };
 
-        const hasOpenClickoutBlockingLayer = (doc: Document): boolean => doc.querySelector(CLICKOUT_BLOCKING_LAYER_SELECTOR) !== null;
+        const hasOpenClickoutBlockingLayer = (doc: Document): boolean =>
+            doc.querySelector(CLICKOUT_BLOCKING_LAYER_SELECTOR) !== null;
 
         // ESC
-        overlay.addEventListener('keydown', (e: KeyboardEvent) => {
-            const options = this.currentOptions;
+        overlay.addEventListener(
+            'keydown',
+            (e: KeyboardEvent) => {
+                const options = this.currentOptions;
 
-            if (!options.closeOnEscape || e.key !== 'Escape') {
-                return;
-            }
+                if (!options.closeOnEscape || e.key !== 'Escape') {
+                    return;
+                }
 
-            this.cancel();
+                this.cancel();
 
-            e.preventDefault();
-            e.stopImmediatePropagation();
-        }, { signal: this.#eventsAbortController.signal });
+                e.preventDefault();
+                e.stopImmediatePropagation();
+            },
+            { signal: this.#eventsAbortController.signal }
+        );
 
         // CLOSE BTN
         const closeButtonSelector = '[data-modal-close], header .close, footer .close';
@@ -858,14 +856,17 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
                 }
 
                 this.#initialCoords = null;
-            }
-            else {
+            } else {
                 handleClose();
             }
         };
 
-        overlay.addEventListener('pointerdown', handleCloseButtonPointerDown, { signal: this.#eventsAbortController.signal });
-        overlay.addEventListener('pointerup', handleCloseButtonPointerUp, { signal: this.#eventsAbortController.signal });
+        overlay.addEventListener('pointerdown', handleCloseButtonPointerDown, {
+            signal: this.#eventsAbortController.signal,
+        });
+        overlay.addEventListener('pointerup', handleCloseButtonPointerUp, {
+            signal: this.#eventsAbortController.signal,
+        });
 
         // ClickOut modal
         let denyClose = false;
@@ -878,11 +879,15 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
         };
 
         // Prevent context menu on overlay (not needed)
-        overlay.addEventListener('contextmenu', (e: MouseEvent) => {
-            if (e.target === overlay) {
-                e.preventDefault();
-            }
-        }, { signal: this.#eventsAbortController.signal });
+        overlay.addEventListener(
+            'contextmenu',
+            (e: MouseEvent) => {
+                if (e.target === overlay) {
+                    e.preventDefault();
+                }
+            },
+            { signal: this.#eventsAbortController.signal }
+        );
 
         // Remember the start of the click
         const handlePointerDown = (e: PointerEvent) => {
@@ -901,18 +906,20 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
             const lastModal = modals[modals.length - 1];
             const clickStartedInsideWindow = windowEl?.contains(target) ?? false;
             const clickStartedOnAnchor = options.target?.contains(target) ?? false;
-            const clickStartedInExcludedArea = options.clickOutExclude?.some(selector => matchesSelector(target, selector)) ?? false;
+            const clickStartedInExcludedArea =
+                options.clickOutExclude?.some(selector => matchesSelector(target, selector)) ?? false;
             const clickStartedInBlockingLayer = matchesSelector(target, CLICKOUT_BLOCKING_LAYER_SELECTOR);
             const clickStartedWithBlockingLayerOpen = hasOpenClickoutBlockingLayer(target.ownerDocument);
 
             wasLastOnPointerDown = lastModal === this;
 
-            denyClose = e.button !== 0
-              || clickStartedInsideWindow
-              || clickStartedOnAnchor
-              || clickStartedInExcludedArea
-              || clickStartedInBlockingLayer
-              || clickStartedWithBlockingLayerOpen;
+            denyClose =
+                e.button !== 0 ||
+                clickStartedInsideWindow ||
+                clickStartedOnAnchor ||
+                clickStartedInExcludedArea ||
+                clickStartedInBlockingLayer ||
+                clickStartedWithBlockingLayerOpen;
         };
 
         // And the end of the click
@@ -962,12 +969,16 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
             // Closing by outside click is disabled - animate
             if (!options.clickOut) {
                 if (options.animate && windowEl) {
-                    animate(windowEl, {
-                        scale: [1, 1.02, 1],
-                    }, {
-                        duration: 0.18,
-                        ease: 'circInOut',
-                    });
+                    animate(
+                        windowEl,
+                        {
+                            scale: [1, 1.02, 1],
+                        },
+                        {
+                            duration: 0.18,
+                            ease: 'circInOut',
+                        }
+                    );
                 }
 
                 return;
@@ -990,7 +1001,7 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
             }, CLICKOUT_CLOSE_DELAY);
         };
 
-        this.#clickOutInclude.forEach((targetDoc) => {
+        this.#clickOutInclude.forEach(targetDoc => {
             targetDoc.addEventListener('pointerdown', (e: Event) => handlePointerDown(e as PointerEvent), {
                 capture: true,
                 signal: this.#eventsAbortController.signal,
@@ -1058,25 +1069,32 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
             overlay.style.visibility = 'visible';
 
             const animations = [
-                animate(overlay, {
-                    opacity: 1,
-                }, {
-                    duration: MODAL_OPEN_DURATION_S,
-                    ease: 'easeOut',
-                }),
-                animate(win, {
-                    scale: [0.98, 1],
-                    y: [10, 0],
-                }, {
-                    duration: MODAL_OPEN_DURATION_S,
-                    ease: 'circOut',
-                }),
+                animate(
+                    overlay,
+                    {
+                        opacity: 1,
+                    },
+                    {
+                        duration: MODAL_OPEN_DURATION_S,
+                        ease: 'easeOut',
+                    }
+                ),
+                animate(
+                    win,
+                    {
+                        scale: [0.98, 1],
+                        y: [10, 0],
+                    },
+                    {
+                        duration: MODAL_OPEN_DURATION_S,
+                        ease: 'circOut',
+                    }
+                ),
             ];
 
             await Promise.all(animations);
             complete();
-        }
-        else {
+        } else {
             complete();
         }
 
@@ -1119,20 +1137,28 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
 
         if (shouldAnimate) {
             await Promise.all([
-                animate(win, {
-                    scale: 0.98,
-                    y: 10,
-                    opacity: 0,
-                }, {
-                    duration: MODAL_CLOSE_DURATION_S,
-                    ease: 'circOut',
-                }),
-                animate(overlay, {
-                    opacity: 0,
-                }, {
-                    duration: MODAL_CLOSE_DURATION_S,
-                    ease: 'easeOut',
-                }),
+                animate(
+                    win,
+                    {
+                        scale: 0.98,
+                        y: 10,
+                        opacity: 0,
+                    },
+                    {
+                        duration: MODAL_CLOSE_DURATION_S,
+                        ease: 'circOut',
+                    }
+                ),
+                animate(
+                    overlay,
+                    {
+                        opacity: 0,
+                    },
+                    {
+                        duration: MODAL_CLOSE_DURATION_S,
+                        ease: 'easeOut',
+                    }
+                ),
             ]);
         }
 
@@ -1249,8 +1275,8 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
 
         // Offset cannot exceed the set limit
         if (options.position) {
-            styles.top = (styles.top > maxTop) ? maxTop : (styles.top < minTop) ? minTop : styles.top;
-            styles.left = (styles.left > maxLeft) ? maxLeft : (styles.left < minLeft) ? minLeft : styles.left;
+            styles.top = styles.top > maxTop ? maxTop : styles.top < minTop ? minTop : styles.top;
+            styles.left = styles.left > maxLeft ? maxLeft : styles.left < minLeft ? minLeft : styles.left;
         }
 
         const limit = options.limit ?? { top: 15, left: 15, right: 15, bottom: 15 };
@@ -1260,12 +1286,20 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
 
         Object.assign(modal.style, {
             position: styles.position || '',
-            top: typeof styles.top === 'number' ? `${ styles.top }px` : String(styles.top),
-            left: typeof styles.left === 'number' ? `${ styles.left }px` : String(styles.left),
-            width: typeof styles.width === 'number' ? `${ styles.width }px` : String(styles.width),
-            height: typeof styles.height === 'number' ? `${ styles.height }px` : String(styles.height),
-            maxWidth: styles.maxWidth ? (typeof styles.maxWidth === 'number' ? `${ styles.maxWidth }px` : String(styles.maxWidth)) : '',
-            maxHeight: styles.maxHeight ? (typeof styles.maxHeight === 'number' ? `${ styles.maxHeight }px` : String(styles.maxHeight)) : '',
+            top: typeof styles.top === 'number' ? `${styles.top}px` : String(styles.top),
+            left: typeof styles.left === 'number' ? `${styles.left}px` : String(styles.left),
+            width: typeof styles.width === 'number' ? `${styles.width}px` : String(styles.width),
+            height: typeof styles.height === 'number' ? `${styles.height}px` : String(styles.height),
+            maxWidth: styles.maxWidth
+                ? typeof styles.maxWidth === 'number'
+                    ? `${styles.maxWidth}px`
+                    : String(styles.maxWidth)
+                : '',
+            maxHeight: styles.maxHeight
+                ? typeof styles.maxHeight === 'number'
+                    ? `${styles.maxHeight}px`
+                    : String(styles.maxHeight)
+                : '',
         });
 
         this.styles = { ...styles, position: styles.position };
@@ -1325,7 +1359,7 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
             }
         }
 
-        const targetRect = ((options.positionFrom === 'target') && itemRect) || overlayRect;
+        const targetRect = (options.positionFrom === 'target' && itemRect) || overlayRect;
 
         if (!targetRect) {
             return;
@@ -1355,7 +1389,7 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
             start_around: targetRect.left - modalRect.width - offsetX,
             end: targetRect.left + targetRect.width - modalRect.width - offsetX,
             end_around: targetRect.left + targetRect.width + offsetX,
-            center: targetRect.left + (targetRect.width / 2) - (modalRect.width / 2) + offsetX,
+            center: targetRect.left + targetRect.width / 2 - modalRect.width / 2 + offsetX,
         };
 
         const positionMapY: Record<ModalPositionAxis, number> = {
@@ -1363,7 +1397,7 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
             start_around: targetRect.top - modalRect.height - offsetY,
             end: targetRect.top + targetRect.height - modalRect.height - offsetY,
             end_around: targetRect.top + targetRect.height + offsetY,
-            center: targetRect.top + (targetRect.height / 2) - (modalRect.height / 2) + offsetY,
+            center: targetRect.top + targetRect.height / 2 - modalRect.height / 2 + offsetY,
         };
 
         left = positionMapX[xPos];
@@ -1371,14 +1405,16 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
 
         // Try to open window from the other side if it doesn't fit
         if (
-            (left < 0 && (targetRect.left + modalRect.width + offsetX < docRect.width)) // Overflows left, though it fit on the right
-            || ((left + modalRect.width) > docRect.width && targetRect.left > modalRect.width + offsetX) // Cuts off right side of screen, though it fit on the left
+            (left < 0 && targetRect.left + modalRect.width + offsetX < docRect.width) || // Overflows left, though it fit on the right
+            (left + modalRect.width > docRect.width && targetRect.left > modalRect.width + offsetX) // Cuts off right side of screen, though it fit on the left
         ) {
             left = positionMapX[oppositePosition[xPos]];
         }
 
-        if ((top < 0 && targetRect.bottom + modalRect.height + offsetY < docRect.height)
-          || (((top + modalRect.height) > docRect.height) && targetRect.top - modalRect.height - offsetY > 0)) {
+        if (
+            (top < 0 && targetRect.bottom + modalRect.height + offsetY < docRect.height) ||
+            (top + modalRect.height > docRect.height && targetRect.top - modalRect.height - offsetY > 0)
+        ) {
             top = positionMapY[oppositePosition[yPos]];
         }
 
@@ -1580,7 +1616,6 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
         }
     }
 
-
     /**
      * Shake it
      */
@@ -1690,7 +1725,7 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
 
         // Show confirmation dialog if modal is not saved
         if (!this.isSaved) {
-            void this.showConfirm().then((confirmed) => {
+            void this.showConfirm().then(confirmed => {
                 if (confirmed) {
                     handleClose();
                 }
@@ -1705,7 +1740,6 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
         return true;
     }
 
-
     #fixOverflow() {
         const { limits } = this.bounds;
         const { top, left } = this.styles;
@@ -1715,15 +1749,13 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
 
         if (y < limits.minTop) {
             y = limits.minTop;
-        }
-        else if (y > limits.maxTop) {
+        } else if (y > limits.maxTop) {
             y = limits.maxTop;
         }
 
         if (x < limits.minLeft) {
             x = limits.minLeft;
-        }
-        else if (x > limits.maxLeft) {
+        } else if (x > limits.maxLeft) {
             x = limits.maxLeft;
         }
 
@@ -1736,7 +1768,7 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
     #saveScrollPosition() {
         this.#scrollableEl = Array.from(this.overlay.querySelectorAll('.scrollable-content'));
 
-        this.#scrollableEl.forEach((el) => {
+        this.#scrollableEl.forEach(el => {
             this.#scrollPositions.set(el, {
                 top: el.scrollTop || 0,
                 left: el.scrollLeft || 0,
@@ -1745,7 +1777,7 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
     }
 
     #restoreScrollPosition() {
-        this.#scrollableEl?.forEach((el) => {
+        this.#scrollableEl?.forEach(el => {
             const position = this.#scrollPositions.get(el);
 
             if (position) {

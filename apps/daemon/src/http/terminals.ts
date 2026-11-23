@@ -1,4 +1,9 @@
-import { isTerminalSize, MAX_TERMINAL_INPUT_BYTES, TERMINAL_SUBPROTOCOL, tokenFromTerminalProtocols } from '@clowdy/protocol';
+import {
+    isTerminalSize,
+    MAX_TERMINAL_INPUT_BYTES,
+    TERMINAL_SUBPROTOCOL,
+    tokenFromTerminalProtocols,
+} from '@clowdy/protocol';
 import { z } from 'zod';
 
 import { resolvePlace } from '../domain/places';
@@ -38,16 +43,22 @@ export function terminalRoutes(context: RouteContext): Route[] {
     const { store, terminals } = context.services;
 
     return [
-        { method: 'GET', pattern: /^\/v1\/terminals$/, handle: (_request, url) => json(terminals.list(url.searchParams.get('projectId') ?? undefined)) },
+        {
+            method: 'GET',
+            pattern: /^\/v1\/terminals$/,
+            handle: (_request, url) => json(terminals.list(url.searchParams.get('projectId') ?? undefined)),
+        },
         {
             method: 'POST',
             pattern: /^\/v1\/terminals$/,
-            handle: async (request) => {
+            handle: async request => {
                 const body = await readJson(request, createBody);
                 const project = requireProject(store, body.projectId);
 
                 // A worktree that is not this folder's, or not this project's, is refused here, before a shell is started in it.
-                return json(terminals.create(project, body, resolvePlace(store, project, body.folderId, body.workspaceId)));
+                return json(
+                    terminals.create(project, body, resolvePlace(store, project, body.folderId, body.workspaceId))
+                );
             },
         },
         {
@@ -72,8 +83,7 @@ export function terminalStreamId(request: Request, pathname: string): string | u
 
     try {
         return decodeURIComponent(match[1]);
-    }
-    catch {
+    } catch {
         // A malformed escape names no terminal; it is refused as `not_found`, after the token was checked, like any other id that is not there.
         return match[1];
     }
@@ -83,32 +93,45 @@ export function terminalStreamId(request: Request, pathname: string): string | u
  * Upgrades the request to the terminal's stream. Answers `undefined` when it did (Bun then owns the connection), and a refusal when not. The checks of `Host`
  * and `Origin` have run before this; the token is the one thing a WebSocket cannot send as a header from a page, so it also comes as a subprotocol.
  */
-export function openTerminalStream(request: Request, server: Server<TerminalSocketData>, terminals: TerminalService, token: string, id: string): Response | undefined {
+export function openTerminalStream(
+    request: Request,
+    server: Server<TerminalSocketData>,
+    terminals: TerminalService,
+    token: string,
+    id: string
+): Response | undefined {
     const offered = request.headers.get('sec-websocket-protocol');
     const bearer = tokenFromTerminalProtocols(offered);
 
-    if (!tokenMatches(bearer === undefined ? request.headers.get('authorization') : `Bearer ${ bearer }`, token)) {
+    if (!tokenMatches(bearer === undefined ? request.headers.get('authorization') : `Bearer ${bearer}`, token)) {
         return unauthorized();
     }
 
     if (!terminals.find(id)) {
-        return failure('not_found', `Terminal ${ id } does not exist`);
+        return failure('not_found', `Terminal ${id} does not exist`);
     }
 
     if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') {
         return failure('invalid', 'This route is a WebSocket: upgrade the connection');
     }
 
-    const answer = offered?.split(',').some(part => part.trim() === TERMINAL_SUBPROTOCOL) ? { 'sec-websocket-protocol': TERMINAL_SUBPROTOCOL } : undefined;
+    const answer = offered?.split(',').some(part => part.trim() === TERMINAL_SUBPROTOCOL)
+        ? { 'sec-websocket-protocol': TERMINAL_SUBPROTOCOL }
+        : undefined;
 
-    return server.upgrade(request, { data: { terminalId: id }, headers: answer }) ? undefined : failure('internal', 'The connection could not be upgraded');
+    return server.upgrade(request, { data: { terminalId: id }, headers: answer })
+        ? undefined
+        : failure('internal', 'The connection could not be upgraded');
 }
 
 /** One connected window: what the shell prints goes out as binary frames, and when the socket cannot keep up it is sent a fresh screen instead. */
 export class SocketClient implements TerminalListener {
     #behind = false;
 
-    constructor(readonly socket: ServerWebSocket<TerminalSocketData>, readonly attach: (listener: TerminalListener) => Promise<void>) {}
+    constructor(
+        readonly socket: ServerWebSocket<TerminalSocketData>,
+        readonly attach: (listener: TerminalListener) => Promise<void>
+    ) {}
 
     screen(message: ScreenMessage): void {
         this.#behind = false;
@@ -187,15 +210,13 @@ export function terminalSocket(terminals: TerminalService): WebSocketHandler<Ter
 
             try {
                 parsed = JSON.parse(message) as TerminalClientMessage;
-            }
-            catch {
+            } catch {
                 parsed = undefined;
             }
 
             if (parsed?.type === 'resize' && isTerminalSize(parsed.cols, parsed.rows)) {
                 session.resize(parsed.cols, parsed.rows);
-            }
-            else {
+            } else {
                 socket.close(1008, 'Not a message of the terminal protocol');
             }
         },

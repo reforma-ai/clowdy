@@ -13,6 +13,7 @@ export {
 } from './composerDoc';
 export { mentionAttrsFromNode } from './mentionRender';
 export { RichInput, type RichInputProps } from './RichInput';
+
 export type {
     ComposerDoc,
     ComposerMentionAttrs,

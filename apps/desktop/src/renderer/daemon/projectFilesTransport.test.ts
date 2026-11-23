@@ -5,7 +5,7 @@ import { FixtureTransport } from './fixtureTransport';
 import { HttpTransport } from './httpTransport';
 
 describe('HttpTransport.getProjectFiles', () => {
-    it('asks for the project\'s files with the words typed and the limit, when there is one', async () => {
+    it("asks for the project's files with the words typed and the limit, when there is one", async () => {
         const urls: string[] = [];
         const fetchImpl = (async (input: RequestInfo | URL) => {
             urls.push(String(input));
@@ -14,7 +14,9 @@ describe('HttpTransport.getProjectFiles', () => {
         }) as typeof fetch;
         const transport = new HttpTransport({ url: 'http://127.0.0.1:4310', token: 't', fetch: fetchImpl });
 
-        expect(await transport.getProjectFiles('prj 1', 'a b&c', 20)).toEqual([{ folderId: 'fld_1', path: 'src/a b.ts' }]);
+        expect(await transport.getProjectFiles('prj 1', 'a b&c', 20)).toEqual([
+            { folderId: 'fld_1', path: 'src/a b.ts' },
+        ]);
         await transport.getProjectFiles('prj 1', '');
 
         expect(urls).toEqual([
@@ -23,7 +25,7 @@ describe('HttpTransport.getProjectFiles', () => {
         ]);
     });
 
-    it('names the worktree when the files are those of a chat\'s worktree, and the documents and the file system of it', async () => {
+    it("names the worktree when the files are those of a chat's worktree, and the documents and the file system of it", async () => {
         const urls: string[] = [];
         const fetchImpl = (async (input: RequestInfo | URL) => {
             urls.push(String(input));
@@ -60,15 +62,25 @@ describe('FixtureTransport.getProjectFiles', () => {
         expect(await transport.getProjectFiles(FIXTURE_EMPTY_PROJECT_ID, '')).toEqual([]);
     });
 
-    it('lists the files of every folder of the project, the folder\'s name counting as part of the path', async () => {
+    it("lists the files of every folder of the project, the folder's name counting as part of the path", async () => {
         const transport = new FixtureTransport();
 
-        await transport.command({ type: 'project.update', projectId: FIXTURE_PROJECT_ID, folders: [{ id: 'fld_car_rental' }, { path: '/Users/dev/car-rental-api' }] });
+        await transport.command({
+            type: 'project.update',
+            projectId: FIXTURE_PROJECT_ID,
+            folders: [{ id: 'fld_car_rental' }, { path: '/Users/dev/car-rental-api' }],
+        });
 
         const found = await transport.getProjectFiles(FIXTURE_PROJECT_ID, 'price');
 
-        expect(found.map(file => file.path)).toEqual(['src/booking/price.ts', 'src/booking/price.test.ts', 'src/booking/price.ts']);
+        expect(found.map(file => file.path)).toEqual([
+            'src/booking/price.ts',
+            'src/booking/price.test.ts',
+            'src/booking/price.ts',
+        ]);
         expect(found[2]!.folderId).not.toBe('fld_car_rental');
-        expect((await transport.getProjectFiles(FIXTURE_PROJECT_ID, 'api limits')).map(file => file.path)).toEqual(['src/limits.ts']);
+        expect((await transport.getProjectFiles(FIXTURE_PROJECT_ID, 'api limits')).map(file => file.path)).toEqual([
+            'src/limits.ts',
+        ]);
     });
 });

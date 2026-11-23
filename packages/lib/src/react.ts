@@ -25,12 +25,10 @@ export function mount<T extends Record<string, unknown> = Record<string, never>>
     component: ComponentType<T>,
     container: HTMLElement | string
 ): void {
-    const element = typeof container === 'string'
-        ? document.querySelector<HTMLElement>(container)
-        : container;
+    const element = typeof container === 'string' ? document.querySelector<HTMLElement>(container) : container;
 
     if (!element) {
-        throw new Error(`Container not found: ${ typeof container === 'string' ? container : 'provided element' }`);
+        throw new Error(`Container not found: ${typeof container === 'string' ? container : 'provided element'}`);
     }
 
     let root = roots.get(element);
@@ -64,14 +62,12 @@ export function mount<T extends Record<string, unknown> = Record<string, never>>
  */
 export function mergeRefs<T>(...refs: Array<Ref<T> | null | undefined>): Ref<T> {
     return (value: T | null) => {
-        refs.flat().forEach((ref) => {
+        refs.flat().forEach(ref => {
             if (typeof ref === 'function') {
                 ref(value);
-            }
-            else if (ref != null && 'current' in ref) {
+            } else if (ref != null && 'current' in ref) {
                 (ref as { current: T | null }).current = value;
             }
         });
     };
 }
-

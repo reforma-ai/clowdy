@@ -10,7 +10,17 @@ import { use, useEffect, useRef, useState } from 'react';
 
 import { perform } from '../features/chats/commands';
 import { ProviderIcon } from '../features/settings/providers/ProviderIcon';
-import { accountLine, headlineWindow, isUsableProvider, providerAgents, scopedHotWindow, USAGE_DANGER_PERCENT, usageTone, weeklyMark, windowPercent } from '../features/settings/providers/providerView';
+import {
+    accountLine,
+    headlineWindow,
+    isUsableProvider,
+    providerAgents,
+    scopedHotWindow,
+    USAGE_DANGER_PERCENT,
+    usageTone,
+    weeklyMark,
+    windowPercent,
+} from '../features/settings/providers/providerView';
 import { RefreshUsageButton, UsageReading } from '../features/settings/providers/UsageRows';
 import { waitForRead } from '../features/settings/providers/useAgentCommands';
 import { describeRemaining, formatRemaining } from '../shared';
@@ -33,7 +43,8 @@ const POLL_MS = 5 * 60_000;
  * week line, which stays the primary color until 90%.
  * A fuller week does not turn the chip red either: the number on it is the nearest window, and a red chip would read as that window.
  */
-const badgeColor = (percent: number | undefined) => (percent !== undefined && usageTone(percent) === 'danger' ? 'danger' : 'secondary');
+const badgeColor = (percent: number | undefined) =>
+    percent !== undefined && usageTone(percent) === 'danger' ? 'danger' : 'secondary';
 
 /**
  * A window that comes back gets a `focus` and a `visibilitychange` together, and a tick can land right after them: one read answers
@@ -107,7 +118,7 @@ function useUsageRefresh(root: RootStore) {
 function markLabel(agent: AgentInfo): string {
     const week = weeklyMark(agent);
     const hot = scopedHotWindow(agent);
-    const parts = [week, hot].flatMap(window => window ? [`${ window.label } ${ windowPercent(window) }%`] : []);
+    const parts = [week, hot].flatMap(window => (window ? [`${window.label} ${windowPercent(window)}%`] : []));
 
     return parts.join(', ');
 }
@@ -118,16 +129,17 @@ function badgeLabel(agent: AgentInfo, now: number): string {
     const marks = markLabel(agent);
 
     if (headline) {
-        const reset = headline.resetsAt === undefined ? '' : `, resets in ${ describeRemaining(headline.resetsAt - now) }`;
+        const reset =
+            headline.resetsAt === undefined ? '' : `, resets in ${describeRemaining(headline.resetsAt - now)}`;
 
-        return `${ agent.name } usage ${ windowPercent(headline) }%${ reset }${ marks ? `, ${ marks }` : '' }`;
+        return `${agent.name} usage ${windowPercent(headline)}%${reset}${marks ? `, ${marks}` : ''}`;
     }
 
-    if (marks) return `${ agent.name } usage: ${ marks }`;
+    if (marks) return `${agent.name} usage: ${marks}`;
 
-    if (agent.signIn?.status === 'signed-out') return `${ agent.name } usage: not signed in`;
+    if (agent.signIn?.status === 'signed-out') return `${agent.name} usage: not signed in`;
 
-    return `${ agent.name } usage: ${ agent.usage ? 'not available' : 'being checked' }`;
+    return `${agent.name} usage: ${agent.usage ? 'not available' : 'being checked'}`;
 }
 
 /**
@@ -149,29 +161,40 @@ function UsageBadge({ agent, now }: { agent: AgentInfo; now: number }) {
         <Button
             variant="filling"
             size="sm"
-            color={ color }
-            className={ styles.badge }
-            data-muted={ (percent === undefined && !hot) || undefined }
-            aria-label={ label }
+            color={color}
+            className={styles.badge}
+            data-muted={(percent === undefined && !hot) || undefined}
+            aria-label={label}
         >
-            <ProviderIcon agentId={ agent.id } size={ 16 } />
-            <Show when={ headline }>
-                { reading => (
-                    <span className={ styles.figures }>
-                        <span>{ `${ windowPercent(reading) }%` }</span>
-                        { reading.resetsAt !== undefined && <Text color={ color === 'danger' ? 'inherit' : 'secondary' }>{ formatRemaining(reading.resetsAt - now) }</Text> }
-                        <Show when={ week }>
-                            { longer => {
+            <ProviderIcon agentId={agent.id} size={16} />
+            <Show when={headline}>
+                {reading => (
+                    <span className={styles.figures}>
+                        <span>{`${windowPercent(reading)}%`}</span>
+                        {reading.resetsAt !== undefined && (
+                            <Text color={color === 'danger' ? 'inherit' : 'secondary'}>
+                                {formatRemaining(reading.resetsAt - now)}
+                            </Text>
+                        )}
+                        <Show when={week}>
+                            {longer => {
                                 const used = windowPercent(longer);
 
-                                return <span className={ styles.week } data-week="" data-tone={ used >= USAGE_DANGER_PERCENT ? 'danger' : undefined } style={ { width: `${ used }%` } } />;
-                            } }
+                                return (
+                                    <span
+                                        className={styles.week}
+                                        data-week=""
+                                        data-tone={used >= USAGE_DANGER_PERCENT ? 'danger' : undefined}
+                                        style={{ width: `${used}%` }}
+                                    />
+                                );
+                            }}
                         </Show>
                     </span>
-                ) }
+                )}
             </Show>
-            <Show when={ hot }>
-                <span className={ styles.hot } data-hot="" />
+            <Show when={hot}>
+                <span className={styles.hot} data-hot="" />
             </Show>
         </Button>
     );
@@ -194,31 +217,48 @@ function ProviderUsage({ agent, now, onOpenProviders, isRefreshing, onRefresh }:
     const who = isSignedIn ? line.text : agent.name;
 
     return (
-        <section className={ styles.provider } aria-label={ agent.name }>
-            <header className={ styles.who }>
-                <ProviderIcon agentId={ agent.id } size={ 16 } />
-                <Text variant="sm" weight="medium" truncate className={ styles.account } title={ who }>{ who }</Text>
-                <Show when={ isSignedIn ? line.plan : undefined }>
-                    { plan => <Badge size="xs" color="secondary" textValue={ plan } className={ styles.plan }>{ plan }</Badge> }
+        <section className={styles.provider} aria-label={agent.name}>
+            <header className={styles.who}>
+                <ProviderIcon agentId={agent.id} size={16} />
+                <Text variant="sm" weight="medium" truncate className={styles.account} title={who}>
+                    {who}
+                </Text>
+                <Show when={isSignedIn ? line.plan : undefined}>
+                    {plan => (
+                        <Badge size="xs" color="secondary" textValue={plan} className={styles.plan}>
+                            {plan}
+                        </Badge>
+                    )}
                 </Show>
-                <RefreshUsageButton size="sm" isRefreshing={ isRefreshing } onRefresh={ onRefresh } className={ styles.refresh } />
+                <RefreshUsageButton
+                    size="sm"
+                    isRefreshing={isRefreshing}
+                    onRefresh={onRefresh}
+                    className={styles.refresh}
+                />
             </header>
 
-            { isSignedOut && (
-                <div className={ styles.note }>
-                    <Text variant="sm" color="secondary">Not signed in</Text>
-                    <Button variant="bordered" size="xs" onPress={ onOpenProviders }>Open Providers</Button>
+            {isSignedOut && (
+                <div className={styles.note}>
+                    <Text variant="sm" color="secondary">
+                        Not signed in
+                    </Text>
+                    <Button variant="bordered" size="xs" onPress={onOpenProviders}>
+                        Open Providers
+                    </Button>
                 </div>
-            ) }
+            )}
 
-            { !isSignedOut && !usage && (
+            {!isSignedOut && !usage && (
                 <Box direction="row" gap="md" align="center" role="status">
                     <Spinner size="xs" />
-                    <Text variant="sm" color="secondary">Checking…</Text>
+                    <Text variant="sm" color="secondary">
+                        Checking…
+                    </Text>
                 </Box>
-            ) }
+            )}
 
-            { !isSignedOut && usage && <UsageReading usage={ usage } now={ now } /> }
+            {!isSignedOut && usage && <UsageReading usage={usage} now={now} />}
         </section>
     );
 }
@@ -240,18 +280,18 @@ function UsagePopover({ agent, now, isRefreshing, onRefresh }: UsagePopoverProps
     const overlay = use(OverlayTriggerStateContext);
 
     return (
-        <Popover placement="bottom" spacing="none" aria-label={ `${ agent.name } plan usage` } className={ styles.popover }>
+        <Popover placement="bottom" spacing="none" aria-label={`${agent.name} plan usage`} className={styles.popover}>
             <PopoverScroll maxHeight="min(70vh, 34rem)">
-                <div className={ styles.panel }>
+                <div className={styles.panel}>
                     <ProviderUsage
-                        agent={ agent }
-                        now={ now }
-                        isRefreshing={ isRefreshing }
-                        onRefresh={ onRefresh }
-                        onOpenProviders={ () => {
+                        agent={agent}
+                        now={now}
+                        isRefreshing={isRefreshing}
+                        onRefresh={onRefresh}
+                        onOpenProviders={() => {
                             overlay?.close();
                             root.ui.openSettings('providers');
-                        } }
+                        }}
                     />
                 </div>
             </PopoverScroll>
@@ -266,14 +306,19 @@ function UsageBadges({ providers }: { providers: readonly AgentInfo[] }) {
     const { isRefreshing, refresh } = useUsageRefresh(root);
 
     return (
-        <div className={ styles.group } role="group" aria-label="Plan usage of the providers">
-            <For each={ providers }>
-                { agent => (
-                    <PopoverTrigger key={ agent.id }>
-                        <UsageBadge agent={ agent } now={ now } />
-                        <UsagePopover agent={ agent } now={ now } isRefreshing={ isRefreshing } onRefresh={ () => void refresh() } />
+        <div className={styles.group} role="group" aria-label="Plan usage of the providers">
+            <For each={providers}>
+                {agent => (
+                    <PopoverTrigger key={agent.id}>
+                        <UsageBadge agent={agent} now={now} />
+                        <UsagePopover
+                            agent={agent}
+                            now={now}
+                            isRefreshing={isRefreshing}
+                            onRefresh={() => void refresh()}
+                        />
                     </PopoverTrigger>
-                ) }
+                )}
             </For>
         </div>
     );
@@ -292,5 +337,5 @@ export function UsageStatus() {
 
     useUsagePolling(root);
 
-    return providers.length > 0 ? <UsageBadges providers={ providers } /> : null;
+    return providers.length > 0 ? <UsageBadges providers={providers} /> : null;
 }

@@ -35,31 +35,33 @@ export function OpeningTask({ reading, onRetry, onClose }: OpeningTaskProps) {
     if (reading.status === 'loading' && !isLate) return null;
 
     return (
-        <aside className={ panelStyles.panel } aria-label="Task" aria-busy={ reading.status === 'loading' }>
-            <div className={ panelStyles.head }>
+        <aside className={panelStyles.panel} aria-label="Task" aria-busy={reading.status === 'loading'}>
+            <div className={panelStyles.head}>
                 <span />
-                <Button iconOnly size="sm" variant="filling" aria-label="Close" tooltip="Close" onPress={ onClose }>
+                <Button iconOnly size="sm" variant="filling" aria-label="Close" tooltip="Close" onPress={onClose}>
                     <Close />
                 </Button>
             </div>
 
-            <div className={ styles.body }>
-                { reading.status === 'loading'
-                    ? (
-                        <div className={ styles.waiting } role="status">
-                            <Loader size="xs" />
-                            <Text color="secondary">Loading the task…</Text>
-                        </div>
-                    )
-                    : (
-                        <Alert color="danger">
-                            <AlertIcon><AttentionCircle /></AlertIcon>
-                            <AlertDescription>{ `The task could not be loaded. ${ reading.message }` }</AlertDescription>
-                            <AlertAction>
-                                <Button size="sm" variant="bordered" onPress={ onRetry }>Retry</Button>
-                            </AlertAction>
-                        </Alert>
-                    ) }
+            <div className={styles.body}>
+                {reading.status === 'loading' ? (
+                    <div className={styles.waiting} role="status">
+                        <Loader size="xs" />
+                        <Text color="secondary">Loading the task…</Text>
+                    </div>
+                ) : (
+                    <Alert color="danger">
+                        <AlertIcon>
+                            <AttentionCircle />
+                        </AlertIcon>
+                        <AlertDescription>{`The task could not be loaded. ${reading.message}`}</AlertDescription>
+                        <AlertAction>
+                            <Button size="sm" variant="bordered" onPress={onRetry}>
+                                Retry
+                            </Button>
+                        </AlertAction>
+                    </Alert>
+                )}
             </div>
         </aside>
     );

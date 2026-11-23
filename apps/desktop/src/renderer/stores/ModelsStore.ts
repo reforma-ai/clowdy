@@ -17,8 +17,15 @@ export class AgentModelList {
     /** The read of the newest request: what `load()` and a replaced `reload()` wait for. */
     #newest: Promise<void> = Promise.resolve();
 
-    constructor(readonly agentId: string, private readonly transport: Transport) {
-        makeAutoObservable<AgentModelList, 'transport'>(this, { agentId: false, transport: false, models: observableRef });
+    constructor(
+        readonly agentId: string,
+        private readonly transport: Transport
+    ) {
+        makeAutoObservable<AgentModelList, 'transport'>(this, {
+            agentId: false,
+            transport: false,
+            models: observableRef,
+        });
     }
 
     /**
@@ -58,8 +65,7 @@ export class AgentModelList {
                 this.status = 'ready';
                 this.error = '';
             });
-        }
-        catch (error) {
+        } catch (error) {
             if (request !== this.#request) return;
 
             runInAction(() => {

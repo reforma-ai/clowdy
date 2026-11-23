@@ -48,10 +48,14 @@ export class Scheduler {
             const waiter: Waiter = { runId, projectId, resolve, reject };
 
             this.waiting.push(waiter);
-            signal.addEventListener('abort', () => {
-                this.remove(waiter);
-                reject(signal.reason);
-            }, { once: true });
+            signal.addEventListener(
+                'abort',
+                () => {
+                    this.remove(waiter);
+                    reject(signal.reason);
+                },
+                { once: true }
+            );
             this.tick();
         });
     }
@@ -71,8 +75,7 @@ export class Scheduler {
                 this.again = false;
                 this.promoteWhatFits();
             } while (this.again);
-        }
-        finally {
+        } finally {
             this.ticking = false;
         }
 
@@ -93,19 +96,23 @@ export class Scheduler {
 
             if (run?.status !== 'queued') {
                 this.remove(waiter);
-                waiter.reject(new Error(`Run ${ waiter.runId } is no longer queued`));
+                waiter.reject(new Error(`Run ${waiter.runId} is no longer queued`));
                 continue;
             }
 
             const pausedUntil = this.limits.pausedUntil(run.engine);
             const projectLimit = getProject(this.store.db, waiter.projectId)?.settings.maxParallelRuns;
-            const fits = pausedUntil === undefined
-                && total.all < this.config.maxRuns
-                && (total.engines.get(run.engine) ?? 0) < this.limits.capOf(run.engine)
-                && (projectLimit === undefined || (total.projects.get(waiter.projectId) ?? 0) < projectLimit);
+            const fits =
+                pausedUntil === undefined &&
+                total.all < this.config.maxRuns &&
+                (total.engines.get(run.engine) ?? 0) < this.limits.capOf(run.engine) &&
+                (projectLimit === undefined || (total.projects.get(waiter.projectId) ?? 0) < projectLimit);
 
             if (!fits) {
-                const reason = pausedUntil === undefined ? QUEUE_REASON : `${ engineName(run.engine) } is at its usage limit until ${ formatMoment(pausedUntil, this.limits.now()) }`;
+                const reason =
+                    pausedUntil === undefined
+                        ? QUEUE_REASON
+                        : `${engineName(run.engine)} is at its usage limit until ${formatMoment(pausedUntil, this.limits.now())}`;
 
                 this.hold(waiter.runId, reason);
                 continue;
@@ -115,8 +122,7 @@ export class Scheduler {
 
             try {
                 this.promote(waiter.runId);
-            }
-            catch (error) {
+            } catch (error) {
                 // The run's driver hears of it and fails the run; one broken run must not strand the others.
                 waiter.reject(error);
                 continue;

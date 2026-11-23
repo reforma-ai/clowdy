@@ -41,15 +41,48 @@ describe('hotkeysToSymbols', () => {
         expect(hotkeysToSymbols('Esc')).toEqual(['Esc']);
         expect(hotkeysToSymbols('space')).toEqual(['Space']);
         expect(hotkeysToSymbols('tab')).toEqual(['Tab']);
-        expect(hotkeysToSymbols(['pageup', 'pagedown', 'home', 'end'])).toEqual(['Page Up', 'Page Down', 'Home', 'End']);
+        expect(hotkeysToSymbols(['pageup', 'pagedown', 'home', 'end'])).toEqual([
+            'Page Up',
+            'Page Down',
+            'Home',
+            'End',
+        ]);
     });
 
     it('shows punctuation as the character, whether it comes as a character or as a KeyboardEvent code', async () => {
         const hotkeysToSymbols = await symbolsFor(WINDOWS);
 
-        expect(hotkeysToSymbols(['?', '/', '.', ',', '\'', '`', '-', '=', ';', '[', ']', '\\'])).toEqual(['?', '/', '.', ',', '\'', '`', '-', '=', ';', '[', ']', '\\']);
-        expect(hotkeysToSymbols(['slash', 'period', 'comma', 'quote', 'backquote', 'semicolon', 'equal', 'bracketleft', 'bracketright', 'backslash', 'question', 'minus', 'plus']))
-            .toEqual(['/', '.', ',', '\'', '`', ';', '=', '[', ']', '\\', '?', '-', '+']);
+        expect(hotkeysToSymbols(['?', '/', '.', ',', "'", '`', '-', '=', ';', '[', ']', '\\'])).toEqual([
+            '?',
+            '/',
+            '.',
+            ',',
+            "'",
+            '`',
+            '-',
+            '=',
+            ';',
+            '[',
+            ']',
+            '\\',
+        ]);
+        expect(
+            hotkeysToSymbols([
+                'slash',
+                'period',
+                'comma',
+                'quote',
+                'backquote',
+                'semicolon',
+                'equal',
+                'bracketleft',
+                'bracketright',
+                'backslash',
+                'question',
+                'minus',
+                'plus',
+            ])
+        ).toEqual(['/', '.', ',', "'", '`', ';', '=', '[', ']', '\\', '?', '-', '+']);
     });
 
     it('splits a string on plus signs, spaces and underscores, and keeps a one-character string whole', async () => {
@@ -65,7 +98,7 @@ describe('hotkeysToSymbols', () => {
         const hotkeysToSymbols = await symbolsFor(MAC);
 
         expect(hotkeysToSymbols(['meta', '/'])).toEqual(['⌘', '/']);
-        expect(hotkeysToSymbols(['shift', 'meta', '\''])).toEqual(['⇧', '⌘', '\'']);
+        expect(hotkeysToSymbols(['shift', 'meta', "'"])).toEqual(['⇧', '⌘', "'"]);
         expect(hotkeysToSymbols(['escape'])).toEqual(['Esc']);
         expect(hotkeysToSymbols(['delete'])).toEqual(['⌫']);
     });

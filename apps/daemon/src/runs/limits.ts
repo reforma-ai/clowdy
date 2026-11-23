@@ -31,9 +31,12 @@ export function parseLimit(event: LimitEvent): LimitSignal {
         console.debug('[clowdy] limit event', JSON.stringify(event));
     }
 
-    const resetsAt = typeof event.resetsAt === 'number' && Number.isFinite(event.resetsAt) && event.resetsAt > 0
-        ? (event.resetsAt < MILLISECONDS_FROM ? event.resetsAt * 1000 : event.resetsAt)
-        : undefined;
+    const resetsAt =
+        typeof event.resetsAt === 'number' && Number.isFinite(event.resetsAt) && event.resetsAt > 0
+            ? event.resetsAt < MILLISECONDS_FROM
+                ? event.resetsAt * 1000
+                : event.resetsAt
+            : undefined;
 
     return {
         status: event.status,
@@ -48,7 +51,14 @@ export function backoffDelay(attempt: number, baseMs: number, random = Math.rand
     return Math.min(MAX_BACKOFF_MS, baseMs * 2 ** (attempt - 1)) * (0.5 + random() / 2);
 }
 
-const NAMES: Record<string, string> = { claude: 'Claude', codex: 'Codex', cursor: 'Cursor', opencode: 'OpenCode', gemini: 'Gemini', fake: 'The fake engine' };
+const NAMES: Record<string, string> = {
+    claude: 'Claude',
+    codex: 'Codex',
+    cursor: 'Cursor',
+    opencode: 'OpenCode',
+    gemini: 'Gemini',
+    fake: 'The fake engine',
+};
 
 /** What a person calls an engine in a message: a known name, else the id as the person typed it. */
 export const engineName = (engine: EngineId) => NAMES[engine] ?? engine;
@@ -58,7 +68,12 @@ export function formatMoment(at: number, now: number): string {
     const date = new Date(at);
     const sameDay = date.toDateString() === new Date(now).toDateString();
 
-    return new Intl.DateTimeFormat('en-GB', sameDay ? { hour: '2-digit', minute: '2-digit' } : { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(date);
+    return new Intl.DateTimeFormat(
+        'en-GB',
+        sameDay
+            ? { hour: '2-digit', minute: '2-digit' }
+            : { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }
+    ).format(date);
 }
 
 interface EngineState {
@@ -98,7 +113,10 @@ export class EngineLimits {
     private jitterMs: number;
     private defaultCap: number;
 
-    constructor(private caps: Record<EngineId, number>, options: LimitOptions = {}) {
+    constructor(
+        private caps: Record<EngineId, number>,
+        options: LimitOptions = {}
+    ) {
         this.store = options.store;
         this.clock = options.clock ?? Date.now;
         this.random = options.random ?? Math.random;
@@ -180,7 +198,11 @@ export class EngineLimits {
         for (const engine of [...this.states.keys()]) {
             const state = this.current(engine);
 
-            for (const at of [state.halvedUntil, state.pausedUntil, state.cap < this.baseCap(engine) ? state.capSince + QUIET_MS : 0]) {
+            for (const at of [
+                state.halvedUntil,
+                state.pausedUntil,
+                state.cap < this.baseCap(engine) ? state.capSince + QUIET_MS : 0,
+            ]) {
                 if (at > this.now()) {
                     times.push(at);
                 }
@@ -234,10 +256,13 @@ export function sleep(ms: number, signal: AbortSignal): Promise<void> {
             clearTimeout(timer);
             reject(signal.reason);
         };
-        const timer = setTimeout(() => {
-            signal.removeEventListener('abort', onAbort);
-            resolve();
-        }, Math.min(ms, MAX_TIMER_MS));
+        const timer = setTimeout(
+            () => {
+                signal.removeEventListener('abort', onAbort);
+                resolve();
+            },
+            Math.min(ms, MAX_TIMER_MS)
+        );
 
         signal.addEventListener('abort', onAbort, { once: true });
     });

@@ -25,7 +25,12 @@ export function releaseConfig(packaged: boolean, env: NodeJS.ProcessEnv = {}): R
         const { CLOWDY_UPDATE_FEED: feed = '', CLOWDY_UPDATE_PUBLIC_KEY: key = '' } = env;
         const testFeed = Boolean(feed && key);
 
-        return { repo: '', signed: false, otaPublicKey: testFeed ? key : '', otaFeed: testFeed ? feed.replace(/\/+$/, '') : '' };
+        return {
+            repo: '',
+            signed: false,
+            otaPublicKey: testFeed ? key : '',
+            otaFeed: testFeed ? feed.replace(/\/+$/, '') : '',
+        };
     }
 
     const repo = typeof __CLOWDY_RELEASE_REPO__ === 'string' ? __CLOWDY_RELEASE_REPO__ : '';
@@ -35,6 +40,6 @@ export function releaseConfig(packaged: boolean, env: NodeJS.ProcessEnv = {}): R
         signed: typeof __CLOWDY_SIGNED__ === 'boolean' && __CLOWDY_SIGNED__,
         otaPublicKey: typeof __CLOWDY_OTA_PUBLIC_KEY__ === 'string' ? __CLOWDY_OTA_PUBLIC_KEY__ : '',
         // A release asset's stable address; GitHub redirects it to the file. No token: the repository is public.
-        otaFeed: repo ? `https://github.com/${ repo }/releases/download/ota` : '',
+        otaFeed: repo ? `https://github.com/${repo}/releases/download/ota` : '',
     };
 }

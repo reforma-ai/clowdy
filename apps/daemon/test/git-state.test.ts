@@ -1,7 +1,7 @@
-import { MAX_GIT_BRANCHES } from '@clowdy/protocol';
 import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { MAX_GIT_BRANCHES } from '@clowdy/protocol';
 
 import { gitRead } from '../src/domain/git';
 import { CommandError } from '../src/errors';
@@ -18,7 +18,7 @@ type Repository = Extract<FolderGit, { isRepository: true }>;
 async function repository(folder: string): Promise<Repository> {
     const answer = await folderGit(folder);
 
-    if (!answer.isRepository) throw new Error(`${ folder } is not a repository`);
+    if (!answer.isRepository) throw new Error(`${folder} is not a repository`);
 
     return answer;
 }
@@ -34,8 +34,8 @@ function clone(head = 'main'): { work: string; origin: string; seed: string } {
 
     git(root, 'init', '--bare', '-q', '-b', 'main', origin);
     git(seed, 'remote', 'add', 'origin', origin);
-    git(seed, 'push', '-q', 'origin', 'main', 'main:dev', ...(head === 'main' ? [] : [`main:${ head }`]));
-    git(origin, 'symbolic-ref', 'HEAD', `refs/heads/${ head }`);
+    git(seed, 'push', '-q', 'origin', 'main', 'main:dev', ...(head === 'main' ? [] : [`main:${head}`]));
+    git(origin, 'symbolic-ref', 'HEAD', `refs/heads/${head}`);
     git(root, 'clone', '-q', origin, 'work');
 
     return { work: join(root, 'work'), origin, seed };
@@ -57,7 +57,7 @@ describe('folderGit', () => {
         await expect(folderGit(join(tempDir('git-state'), 'missing'))).rejects.toMatchObject({ code: 'unavailable' });
     });
 
-    test('lists the branches, local first and then the remote\'s without its HEAD, the default one and the folder\'s own worktree', async () => {
+    test("lists the branches, local first and then the remote's without its HEAD, the default one and the folder's own worktree", async () => {
         const { work } = clone();
 
         git(work, 'branch', 'feature');
@@ -75,11 +75,19 @@ describe('folderGit', () => {
             { name: 'origin/dev', remote: true },
             { name: 'origin/main', remote: true },
         ]);
-        expect(answer.worktrees).toEqual([{ path: realpathSync(work), branch: 'main', head: git(work, 'rev-parse', '--short=7', 'HEAD'), main: true, dirty: false }]);
+        expect(answer.worktrees).toEqual([
+            {
+                path: realpathSync(work),
+                branch: 'main',
+                head: git(work, 'rev-parse', '--short=7', 'HEAD'),
+                main: true,
+                dirty: false,
+            },
+        ]);
         expect(answer.truncated).toBeUndefined();
     });
 
-    test('lists a linked worktree, whoever made it, with its branch and whether it has changes, and the folder\'s own checkout flagged', async () => {
+    test("lists a linked worktree, whoever made it, with its branch and whether it has changes, and the folder's own checkout flagged", async () => {
         const { work } = clone();
         const linked = join(tempDir('git-state'), 'linked');
 
@@ -99,7 +107,10 @@ describe('folderGit', () => {
         expect((await repository(work)).worktrees.map(entry => entry.dirty)).toEqual([true, true]);
 
         // From inside the linked worktree it is the folder itself that is flagged.
-        expect((await repository(linked)).worktrees.map(entry => [entry.branch, entry.main])).toEqual([['main', false], ['topic', true]]);
+        expect((await repository(linked)).worktrees.map(entry => [entry.branch, entry.main])).toEqual([
+            ['main', false],
+            ['topic', true],
+        ]);
     });
 
     test('leaves out a worktree whose folder is gone, which git would prune', async () => {
@@ -132,11 +143,15 @@ describe('folderGit', () => {
 
         const answer = await repository(folder);
 
-        expect(answer).toMatchObject({ branch: 'main', branches: [], worktrees: [{ path: realpathSync(folder), main: true, head: '', dirty: false }] });
+        expect(answer).toMatchObject({
+            branch: 'main',
+            branches: [],
+            worktrees: [{ path: realpathSync(folder), main: true, head: '', dirty: false }],
+        });
         expect(answer.defaultBranch).toBeUndefined();
     });
 
-    test('says a new file is a change whatever the person\'s git says of untracked files', async () => {
+    test("says a new file is a change whatever the person's git says of untracked files", async () => {
         const repo = makeRepo(tempDir('git-state'), 'app');
 
         git(repo, 'config', 'status.showUntrackedFiles', 'no');
@@ -157,7 +172,7 @@ describe('folderGit', () => {
         expect((await repository(work)).worktrees.map(entry => entry.branch)).toEqual(['main']);
     });
 
-    test('finds the folder\'s own checkout in a repository that keeps its git directory elsewhere, where git names the git directory as the main worktree', async () => {
+    test("finds the folder's own checkout in a repository that keeps its git directory elsewhere, where git names the git directory as the main worktree", async () => {
         const root = tempDir('git-state');
         const folder = join(root, 'app');
 
@@ -170,12 +185,18 @@ describe('folderGit', () => {
 
         const answer = await repository(folder);
 
-        expect(answer.worktrees.map(entry => [entry.path, entry.branch, entry.main])).toEqual([[realpathSync(folder), 'main', true], [realpathSync(join(root, 'linked')), 'topic', false]]);
+        expect(answer.worktrees.map(entry => [entry.path, entry.branch, entry.main])).toEqual([
+            [realpathSync(folder), 'main', true],
+            [realpathSync(join(root, 'linked')), 'topic', false],
+        ]);
     });
 
     test('cuts a repository with more branches than it lists, the local ones kept first', async () => {
         const repo = makeRepo(tempDir('git-state'), 'app');
-        const refs = Array.from({ length: MAX_GIT_BRANCHES + 5 }, (_, index) => `create refs/heads/b${ String(index).padStart(5, '0') } HEAD\n`).join('');
+        const refs = Array.from(
+            { length: MAX_GIT_BRANCHES + 5 },
+            (_, index) => `create refs/heads/b${String(index).padStart(5, '0')} HEAD\n`
+        ).join('');
 
         Bun.spawnSync(['git', 'update-ref', '--stdin'], { cwd: repo, stdin: new TextEncoder().encode(refs) });
 
@@ -242,7 +263,11 @@ describe('defaultBranchOf', () => {
 });
 
 describe('baseOf', () => {
-    const folderOf = (path: string, settings?: FolderSettings): ProjectFolder => ({ id: 'fld_base', path, ...(settings && { settings }) });
+    const folderOf = (path: string, settings?: FolderSettings): ProjectFolder => ({
+        id: 'fld_base',
+        path,
+        ...(settings && { settings }),
+    });
 
     test('is the default branch for a folder with no settings or no base branch', async () => {
         const { work } = clone('next');
@@ -261,7 +286,7 @@ describe('baseOf', () => {
         expect(await baseOf(folderOf(work, { baseBranch: 'main' }))).toBe('main');
     });
 
-    test('accepts a branch of a remote, written with the remote\'s name, and a branch with a slash in it', async () => {
+    test("accepts a branch of a remote, written with the remote's name, and a branch with a slash in it", async () => {
         const { work } = clone();
 
         git(work, 'branch', 'team/next');
@@ -303,15 +328,24 @@ describe('baseOf', () => {
 });
 
 describe('gitRead', () => {
-    test('tells git\'s own no from a git that could not be asked', async () => {
-        expect(await gitRead(tempDir('git-state'), ['rev-parse', '--show-toplevel'])).toEqual({ ok: false, reason: 'failed' });
-        expect(await gitRead(join(tempDir('git-state'), 'missing'), ['status'])).toEqual({ ok: false, reason: 'unavailable' });
-        expect(await gitRead(makeRepo(tempDir('git-state'), 'app'), ['rev-parse', '--abbrev-ref', 'HEAD'])).toEqual({ ok: true, stdout: 'main\n' });
+    test("tells git's own no from a git that could not be asked", async () => {
+        expect(await gitRead(tempDir('git-state'), ['rev-parse', '--show-toplevel'])).toEqual({
+            ok: false,
+            reason: 'failed',
+        });
+        expect(await gitRead(join(tempDir('git-state'), 'missing'), ['status'])).toEqual({
+            ok: false,
+            reason: 'unavailable',
+        });
+        expect(await gitRead(makeRepo(tempDir('git-state'), 'app'), ['rev-parse', '--abbrev-ref', 'HEAD'])).toEqual({
+            ok: true,
+            stdout: 'main\n',
+        });
     });
 });
 
 describe('parseWorktrees', () => {
-    test('reads the blocks of git\'s porcelain list: branch, detached, bare, prunable, a path with spaces', () => {
+    test("reads the blocks of git's porcelain list: branch, detached, bare, prunable, a path with spaces", () => {
         const output = [
             'worktree /work/my app',
             'HEAD 1111111111111111111111111111111111111111',
@@ -333,9 +367,27 @@ describe('parseWorktrees', () => {
         ].join('\n');
 
         expect(parseWorktrees(output)).toEqual([
-            { path: '/work/my app', head: '1111111111111111111111111111111111111111', branch: 'main', bare: false, prunable: false },
-            { path: '/work/linked', head: '2222222222222222222222222222222222222222', bare: false, prunable: false, locked: 'reason' },
-            { path: '/work/gone', head: '3333333333333333333333333333333333333333', branch: 'feature/x', bare: false, prunable: true },
+            {
+                path: '/work/my app',
+                head: '1111111111111111111111111111111111111111',
+                branch: 'main',
+                bare: false,
+                prunable: false,
+            },
+            {
+                path: '/work/linked',
+                head: '2222222222222222222222222222222222222222',
+                bare: false,
+                prunable: false,
+                locked: 'reason',
+            },
+            {
+                path: '/work/gone',
+                head: '3333333333333333333333333333333333333333',
+                branch: 'feature/x',
+                bare: false,
+                prunable: true,
+            },
             { path: '/work/bare.git', head: '', bare: true, prunable: false },
         ]);
         expect(parseWorktrees('')).toEqual([]);
@@ -343,13 +395,20 @@ describe('parseWorktrees', () => {
 });
 
 describe('projectFolderGit', () => {
-    const projectOf = (folders: Project['folders']): Project => ({ id: 'prj_git', name: 'git', folders, taskPrefix: 'GIT', settings: {}, createdAt: 1, position: 1 });
+    const projectOf = (folders: Project['folders']): Project => ({
+        id: 'prj_git',
+        name: 'git',
+        folders,
+        taskPrefix: 'GIT',
+        settings: {},
+        createdAt: 1,
+        position: 1,
+    });
 
     async function failure(promise: Promise<unknown>): Promise<CommandError> {
         try {
             await promise;
-        }
-        catch (error) {
+        } catch (error) {
             if (error instanceof CommandError) return error;
 
             throw error;
@@ -361,15 +420,22 @@ describe('projectFolderGit', () => {
     test('answers for a folder of the project by its id, and refuses none, an unknown one and one gone from the disk', async () => {
         const repo = makeRepo(tempDir('git-state'), 'app');
         const gone = join(tempDir('git-state'), 'gone');
-        const project = projectOf([{ id: 'fld_app', path: repo }, { id: 'fld_gone', path: gone }]);
+        const project = projectOf([
+            { id: 'fld_app', path: repo },
+            { id: 'fld_gone', path: gone },
+        ]);
 
-        expect(await projectFolderGit(project, 'fld_app')).toMatchObject({ isRepository: true, branch: 'main', defaultBranch: 'main' });
+        expect(await projectFolderGit(project, 'fld_app')).toMatchObject({
+            isRepository: true,
+            branch: 'main',
+            defaultBranch: 'main',
+        });
         expect((await failure(projectFolderGit(project, ''))).code).toBe('invalid');
         expect((await failure(projectFolderGit(project, 'fld_other'))).code).toBe('not_found');
         expect((await failure(projectFolderGit(project, 'fld_gone'))).code).toBe('unavailable');
     });
 
-    test('answers the folder\'s own base as the default branch when its repository has it, and the default otherwise', async () => {
+    test("answers the folder's own base as the default branch when its repository has it, and the default otherwise", async () => {
         const { work } = clone();
         const other = makeRepo(tempDir('git-state'), 'other');
         const project = projectOf([
@@ -379,9 +445,18 @@ describe('projectFolderGit', () => {
         ]);
 
         // The same folder answers each entry by its own settings, as the same path in two projects would.
-        expect(await projectFolderGit(project, 'fld_dev')).toMatchObject({ isRepository: true, defaultBranch: 'origin/dev' });
-        expect(await projectFolderGit(project, 'fld_plain')).toMatchObject({ isRepository: true, defaultBranch: 'origin/main' });
-        expect(await projectFolderGit(project, 'fld_missing')).toMatchObject({ isRepository: true, defaultBranch: 'main' });
+        expect(await projectFolderGit(project, 'fld_dev')).toMatchObject({
+            isRepository: true,
+            defaultBranch: 'origin/dev',
+        });
+        expect(await projectFolderGit(project, 'fld_plain')).toMatchObject({
+            isRepository: true,
+            defaultBranch: 'origin/main',
+        });
+        expect(await projectFolderGit(project, 'fld_missing')).toMatchObject({
+            isRepository: true,
+            defaultBranch: 'main',
+        });
     });
 });
 
@@ -396,31 +471,39 @@ describe('GET /v1/projects/:id/git', () => {
         await h.stop();
     });
 
-    test('answers a folder\'s branches and worktrees over HTTP, behind the token, and says what is wrong with the request', async () => {
+    test("answers a folder's branches and worktrees over HTTP, behind the token, and says what is wrong with the request", async () => {
         const repo = realpathSync(makeRepo(tempDir('git-state'), 'app'));
         const plain = realpathSync(tempDir('git-state'));
         const { project } = h.ok('project.add', { folders: [repo, plain] });
         const [first, second] = project.folders;
-        const route = `/v1/projects/${ project.id }/git`;
+        const route = `/v1/projects/${project.id}/git`;
 
-        const answer = await (await h.fetch(`${ route }?folderId=${ first.id }`)).json() as Repository;
+        const answer = (await (await h.fetch(`${route}?folderId=${first.id}`)).json()) as Repository;
 
-        expect(answer).toMatchObject({ isRepository: true, branch: 'main', defaultBranch: 'main', branches: [{ name: 'main', remote: false }], worktrees: [{ path: repo, branch: 'main', main: true, dirty: false }] });
-        expect(await (await h.fetch(`${ route }?folderId=${ second.id }`)).json()).toEqual({ isRepository: false });
+        expect(answer).toMatchObject({
+            isRepository: true,
+            branch: 'main',
+            defaultBranch: 'main',
+            branches: [{ name: 'main', remote: false }],
+            worktrees: [{ path: repo, branch: 'main', main: true, dirty: false }],
+        });
+        expect(await (await h.fetch(`${route}?folderId=${second.id}`)).json()).toEqual({ isRepository: false });
         expect((await h.fetch(route)).status).toBe(400);
-        expect((await h.fetch(`${ route }?folderId=fld_unknown`)).status).toBe(404);
+        expect((await h.fetch(`${route}?folderId=fld_unknown`)).status).toBe(404);
 
         rmSync(plain, { recursive: true });
-        expect((await h.fetch(`${ route }?folderId=${ second.id }`)).status).toBe(503);
-        expect((await fetch(`${ h.url }${ route }?folderId=${ first.id }`)).status).toBe(401);
-        expect((await h.fetch(`/v1/projects/prj_unknown/git?folderId=${ first.id }`)).status).toBe(404);
+        expect((await h.fetch(`${route}?folderId=${second.id}`)).status).toBe(503);
+        expect((await fetch(`${h.url}${route}?folderId=${first.id}`)).status).toBe(401);
+        expect((await h.fetch(`/v1/projects/prj_unknown/git?folderId=${first.id}`)).status).toBe(404);
     });
 
-    test('answers the folder\'s base branch as its default once the person sets one, and the repository\'s own again once it is cleared or gone', async () => {
+    test("answers the folder's base branch as its default once the person sets one, and the repository's own again once it is cleared or gone", async () => {
         const repo = realpathSync(makeRepo(tempDir('git-state'), 'app'));
         const { project } = h.ok('project.add', { folders: [repo] });
         const folderId = project.folders[0].id as string;
-        const defaultOf = async () => (await (await h.fetch(`/v1/projects/${ project.id }/git?folderId=${ folderId }`)).json() as Repository).defaultBranch;
+        const defaultOf = async () =>
+            ((await (await h.fetch(`/v1/projects/${project.id}/git?folderId=${folderId}`)).json()) as Repository)
+                .defaultBranch;
 
         git(repo, 'branch', 'develop');
         expect(await defaultOf()).toBe('main');

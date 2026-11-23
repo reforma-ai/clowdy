@@ -30,7 +30,7 @@ export function summaryOf(changes: RepositoryChanges, shown: readonly GitChanged
     const deletions = filtered ? shown.reduce((sum, file) => sum + (file.deletions ?? 0), 0) : changes.deletions;
     const notes: string[] = [];
 
-    if (changes.truncated) notes.push(`Showing the first ${ changes.files.length } files`);
+    if (changes.truncated) notes.push(`Showing the first ${changes.files.length} files`);
 
     if (changes.scope === 'all') {
         const missing = baseStateWords(changes.baseState);
@@ -39,11 +39,11 @@ export function summaryOf(changes: RepositoryChanges, shown: readonly GitChanged
     }
 
     return {
-        files: filtered ? `${ shown.length } of ${ filesWords(changes.files.length) }` : filesWords(changes.fileCount),
-        additions: `+${ additions }`,
-        deletions: `−${ deletions }`,
+        files: filtered ? `${shown.length} of ${filesWords(changes.files.length)}` : filesWords(changes.fileCount),
+        additions: `+${additions}`,
+        deletions: `−${deletions}`,
         incomplete: !changes.statsComplete,
-        ...(viewed > 0 && { viewed: `${ viewed } of ${ changes.files.length } viewed` }),
+        ...(viewed > 0 && { viewed: `${viewed} of ${changes.files.length} viewed` }),
         notes,
     };
 }

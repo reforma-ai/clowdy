@@ -37,8 +37,11 @@ export function useCellEditMode(): CellEditModeProps {
         isFocusedRef.current = false;
     }, []);
 
-    return useMemo(() => ({
-        onFocus,
-        onBlur,
-    }), [onBlur, onFocus]);
+    return useMemo(
+        () => ({
+            onFocus,
+            onBlur,
+        }),
+        [onBlur, onFocus]
+    );
 }

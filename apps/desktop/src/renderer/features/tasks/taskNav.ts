@@ -14,7 +14,12 @@ export interface TaskNav extends Pick<ProjectUi, 'taskId'> {
  * The window state the Tasks screen and its detail panel navigate with (open a task, open a document). `reveal` is whether opening a task also puts the screen where
  * the task shows (`ProjectUi.openTask`): the screen turns it off for the tasks it draws itself, and the panel keeps it for the tasks its links name, which may be anywhere.
  */
-export function taskNav(root: RootStore, project: ProjectState, ui: ProjectUi, { reveal }: { reveal: boolean }): TaskNav {
+export function taskNav(
+    root: RootStore,
+    project: ProjectState,
+    ui: ProjectUi,
+    { reveal }: { reveal: boolean }
+): TaskNav {
     return {
         get taskId() {
             return ui.taskId;

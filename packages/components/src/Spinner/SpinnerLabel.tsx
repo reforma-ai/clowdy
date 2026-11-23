@@ -15,21 +15,11 @@ export interface SpinnerLabelProps extends HTMLAttributes<HTMLSpanElement> {
 /**
  * Inline loading row: spinner + label with the spacing from Spinner stories.
  */
-export function SpinnerLabel({
-    children,
-    size = 'inherit',
-    className,
-    ...props
-}: SpinnerLabelProps) {
+export function SpinnerLabel({ children, size = 'inherit', className, ...props }: SpinnerLabelProps) {
     return (
-        <span
-            role="status"
-            data-size={ size }
-            className={ cn(styles.labelRoot, className) }
-            { ...props }
-        >
+        <span role="status" data-size={size} className={cn(styles.labelRoot, className)} {...props}>
             <SpinnerMark />
-            <span className={ styles.label }>{ children }</span>
+            <span className={styles.label}>{children}</span>
         </span>
     );
 }

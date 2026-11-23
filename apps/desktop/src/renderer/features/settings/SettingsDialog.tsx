@@ -15,12 +15,12 @@ export const SettingsDialog = observer(function SettingsDialog() {
     return (
         <Dialog
             name="settings"
-            isOpen={ ui.settingsOpen }
-            onOpenChange={ (open) => {
+            isOpen={ui.settingsOpen}
+            onOpenChange={open => {
                 if (!open) ui.closeSettings();
-            } }
+            }}
             type="overlay"
-            class={ styles.window }
+            class={styles.window}
             scrollable="hidden"
             shadow
             clickOut

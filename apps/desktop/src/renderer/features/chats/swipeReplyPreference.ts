@@ -1,6 +1,6 @@
 import { makeAutoObservable } from 'mobx';
 
-import { browserStorage, readStored, writeStored, type KeyValueStorage } from '../../stores/storage';
+import { browserStorage, type KeyValueStorage, readStored, writeStored } from '../../stores/storage';
 
 const STORAGE_KEY = 'clowdy:swipe-to-reply';
 

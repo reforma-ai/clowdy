@@ -1,16 +1,26 @@
 import { cn } from '@clowdy/lib';
-import { createContext, use, useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react';
+import {
+    type ComponentProps,
+    createContext,
+    type ReactNode,
+    use,
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+} from 'react';
 import {
     Group,
+    type GroupImperativeHandle,
+    type Layout,
+    type LayoutStorage,
     Panel,
+    type PanelImperativeHandle,
     Separator,
     useDefaultLayout,
     useGroupRef,
     usePanelRef,
-    type GroupImperativeHandle,
-    type Layout,
-    type LayoutStorage,
-    type PanelImperativeHandle,
 } from 'react-resizable-panels';
 
 import { useMergedRef } from '../hooks/useMergedRef';
@@ -48,11 +58,7 @@ const ResizableGroupContext = createContext<ResizableGroupContextValue>({
     setDragging: () => {},
 });
 
-function ResizablePanelGroup({
-    className,
-    disabled = false,
-    ...props
-}: ResizablePanelGroupProps) {
+function ResizablePanelGroup({ className, disabled = false, ...props }: ResizablePanelGroupProps) {
     const [dragging, setDragging] = useState(false);
     const value = useMemo(
         () => ({
@@ -64,30 +70,29 @@ function ResizablePanelGroup({
     );
 
     return (
-        <ResizableGroupContext value={ value }>
+        <ResizableGroupContext value={value}>
             <Group
                 data-slot="resizable-panel-group"
-                className={ cn(styles.panelGroup, className) }
-                data-dragging={ dragging || undefined }
-                disabled={ disabled }
-                { ...props }
+                className={cn(styles.panelGroup, className)}
+                data-dragging={dragging || undefined}
+                disabled={disabled}
+                {...props}
             />
         </ResizableGroupContext>
     );
 }
 
-function ResizablePanel({
-    children,
-    onResize,
-    panelRef: panelRefProp,
-    ...props
-}: ResizablePanelProps) {
+function ResizablePanel({ children, onResize, panelRef: panelRefProp, ...props }: ResizablePanelProps) {
     const [state, setState] = useState<ResizablePanelState>(defaultPanelState);
     const internalRef = useRef<PanelImperativeHandle | null>(null);
     const panelRef = useMergedRef(internalRef, panelRefProp);
 
     const handleResize = useCallback(
-        (panelSize: { inPixels: number; asPercentage: number }, id: string | number | undefined, prevPanelSize: { inPixels: number; asPercentage: number } | undefined) => {
+        (
+            panelSize: { inPixels: number; asPercentage: number },
+            id: string | number | undefined,
+            prevPanelSize: { inPixels: number; asPercentage: number } | undefined
+        ) => {
             setState({
                 inPixels: panelSize.inPixels,
                 asPercentage: panelSize.asPercentage,
@@ -100,30 +105,24 @@ function ResizablePanel({
     );
 
     const content = useMemo(
-        (): ReactNode => (typeof children === 'function') ? children(state) : children,
+        (): ReactNode => (typeof children === 'function' ? children(state) : children),
         [children, state]
     );
 
     return (
         <Panel
             data-slot="resizable-panel"
-            panelRef={ panelRef }
-            data-collapsed={ state.isCollapsed || undefined }
-            onResize={ handleResize }
-            { ...props }
+            panelRef={panelRef}
+            data-collapsed={state.isCollapsed || undefined}
+            onResize={handleResize}
+            {...props}
         >
-            { content }
+            {content}
         </Panel>
     );
 }
 
-function ResizableHandle({
-    className,
-    onPointerDown,
-    onPointerUp,
-    onPointerCancel,
-    ...props
-}: ResizableHandleProps) {
+function ResizableHandle({ className, onPointerDown, onPointerUp, onPointerCancel, ...props }: ResizableHandleProps) {
     const { disabled, dragging, setDragging } = use(ResizableGroupContext);
 
     const handlePointerDown = useCallback(
@@ -178,14 +177,14 @@ function ResizableHandle({
     }, [dragging, setDragging]);
 
     return (
-        <Show when={ !disabled }>
+        <Show when={!disabled}>
             <Separator
                 data-slot="resizable-handle"
-                className={ cn(styles.handle, className) }
-                onPointerDown={ handlePointerDown }
-                onPointerUp={ handlePointerUp }
-                onPointerCancel={ handlePointerCancel }
-                { ...props }
+                className={cn(styles.handle, className)}
+                onPointerDown={handlePointerDown}
+                onPointerUp={handlePointerUp}
+                onPointerCancel={handlePointerCancel}
+                {...props}
             />
         </Show>
     );
@@ -196,13 +195,13 @@ ResizablePanel.displayName = 'ResizablePanel';
 ResizableHandle.displayName = 'ResizableHandle';
 
 export {
+    type GroupImperativeHandle,
+    type Layout,
+    type LayoutStorage,
     ResizableHandle,
     ResizablePanel,
     ResizablePanelGroup,
     useDefaultLayout,
     useGroupRef,
     usePanelRef,
-    type GroupImperativeHandle,
-    type Layout,
-    type LayoutStorage,
 };

@@ -24,36 +24,43 @@ export interface DraftFolderSelectProps {
  */
 export function DraftFolderSelect({ folders, selectedId, missing, onPick }: DraftFolderSelectProps) {
     const names = folderNames(folders);
-    const selected = Math.max(0, folders.findIndex(folder => folder.id === selectedId));
+    const selected = Math.max(
+        0,
+        folders.findIndex(folder => folder.id === selectedId)
+    );
 
     return (
         <MenuTrigger>
-            <FolderTrigger name={ names[selected] ?? folders[selected]?.path ?? '' } />
-            <Popover placement="bottom start" spacing="xs" width={ 240 }>
+            <FolderTrigger name={names[selected] ?? folders[selected]?.path ?? ''} />
+            <Popover placement="bottom start" spacing="xs" width={240}>
                 <Menu
                     aria-label="Folders"
                     size="md"
                     selectionMode="single"
-                    selectedKeys={ [folders[selected]?.id ?? ''] }
+                    selectedKeys={[folders[selected]?.id ?? '']}
                     disallowEmptySelection
-                    onSelectionChange={ (keys) => {
+                    onSelectionChange={keys => {
                         const folder = keys === 'all' ? undefined : folders.find(candidate => keys.has(candidate.id));
 
                         if (folder && !missing.has(folder.id)) onPick(folder);
-                    } }
+                    }}
                 >
-                    { folders.map((folder, index) => (
+                    {folders.map((folder, index) => (
                         <MenuItem
-                            key={ folder.id }
-                            id={ folder.id }
-                            text={ names[index] ?? folder.path }
-                            icon={ <Folder /> }
-                            isDisabled={ missing.has(folder.id) }
-                            endAffix={ folder.id === folders[selected]?.id ? <Check aria-hidden="true" /> : undefined }
+                            key={folder.id}
+                            id={folder.id}
+                            text={names[index] ?? folder.path}
+                            icon={<Folder />}
+                            isDisabled={missing.has(folder.id)}
+                            endAffix={folder.id === folders[selected]?.id ? <Check aria-hidden="true" /> : undefined}
                             // The name is all the list says, except why a folder cannot be picked.
-                            { ...(missing.has(folder.id) && { description: 'This folder no longer exists', stacked: true, 'data-align': 'center' }) }
+                            {...(missing.has(folder.id) && {
+                                description: 'This folder no longer exists',
+                                stacked: true,
+                                'data-align': 'center',
+                            })}
                         />
-                    )) }
+                    ))}
                 </Menu>
             </Popover>
         </MenuTrigger>
@@ -65,6 +72,22 @@ export function DraftFolderSelect({ folders, selectedId, missing, onPick }: Draf
  * of a new chat uses it to pick the folder, and `ChatFolder` to open the folder of a chat that is made in another program, in the warning colour when the folder
  * is gone from the disk. It goes inside a `MenuTrigger`.
  */
-export function FolderTrigger({ name, tooltip, missing = false }: { name: string; tooltip?: string; missing?: boolean }) {
-    return <ChipTrigger icon={ <Folder aria-hidden="true" /> } label={ name } aria-label={ `Folder: ${ name }` } tooltip={ tooltip } missing={ missing } />;
+export function FolderTrigger({
+    name,
+    tooltip,
+    missing = false,
+}: {
+    name: string;
+    tooltip?: string;
+    missing?: boolean;
+}) {
+    return (
+        <ChipTrigger
+            icon={<Folder aria-hidden="true" />}
+            label={name}
+            aria-label={`Folder: ${name}`}
+            tooltip={tooltip}
+            missing={missing}
+        />
+    );
 }

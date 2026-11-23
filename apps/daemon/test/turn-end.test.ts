@@ -4,7 +4,16 @@ import { join } from 'node:path';
 
 import { listItems } from '../src/db/items';
 import { getRun } from '../src/db/runs';
-import { cleanTempDirs, latch, restartHarness, ScriptEngine, scriptEngines, startHarness, untilAborted, waitFor } from './helpers';
+import {
+    cleanTempDirs,
+    latch,
+    restartHarness,
+    ScriptEngine,
+    scriptEngines,
+    startHarness,
+    untilAborted,
+    waitFor,
+} from './helpers';
 
 import type { StreamItemBody } from '@clowdy/protocol';
 import type { EngineEvent } from '../src/engine/types';
@@ -27,7 +36,8 @@ async function setup(script: Script) {
     const project = h.openRepo();
     const { chat } = h.ok('chat.create', { projectId: project.id });
     const runId = h.ok('chat.send', { chatId: chat.id, text: 'Look into it' }).runId as string;
-    const tools = (id: string) => listItems(h.store.db, id, 0).flatMap(item => (item.body.kind === 'tool' ? [item.body] : []));
+    const tools = (id: string) =>
+        listItems(h.store.db, id, 0).flatMap(item => (item.body.kind === 'tool' ? [item.body] : []));
 
     return { h, engine, chat, runId, tools };
 }
@@ -42,7 +52,8 @@ const call = (toolCallId: string, state: 'running' | 'done', agentId?: string): 
     ...(agentId !== undefined && { agentId }),
 });
 
-const states = (bodies: Extract<StreamItemBody, { kind: 'tool' }>[]) => bodies.map(body => [body.toolCallId, body.state, body.error]);
+const states = (bodies: Extract<StreamItemBody, { kind: 'tool' }>[]) =>
+    bodies.map(body => [body.toolCallId, body.state, body.error]);
 
 describe('a turn that ends with calls still running', () => {
     test('Stop fails the calls the agent never finished, so none is shown running afterwards', async () => {
@@ -62,7 +73,10 @@ describe('a turn that ends with calls still running', () => {
         await waitFor(() => tools(runId).every(body => body.state !== 'running'), 'the running call to be closed');
 
         expect(h.run(runId).status).toBe('cancelled');
-        expect(states(tools(runId))).toEqual([['c1', 'done', undefined], ['c2', 'error', 'Stopped before it finished']]);
+        expect(states(tools(runId))).toEqual([
+            ['c1', 'done', undefined],
+            ['c2', 'error', 'Stopped before it finished'],
+        ]);
     });
 
     test('Stop also fails the calls of a sub-agent, which the Stop ended before the turn did', async () => {
@@ -74,12 +88,16 @@ describe('a turn that ends with calls still running', () => {
             started.release();
             await untilAborted(signal);
         });
-        const childOf = () => h.store.db.query('SELECT id FROM runs WHERE parent_run_id = ?').get(runId) as { id: string } | null;
+        const childOf = () =>
+            h.store.db.query('SELECT id FROM runs WHERE parent_run_id = ?').get(runId) as { id: string } | null;
 
         await started.wait();
-        await waitFor(() => childOf() && tools(childOf()!.id).length === 1, 'the sub-agent\'s call in its stream');
+        await waitFor(() => childOf() && tools(childOf()!.id).length === 1, "the sub-agent's call in its stream");
         h.ok('run.cancel', { runId });
-        await waitFor(() => tools(childOf()!.id).every(body => body.state !== 'running'), 'the sub-agent\'s call to be closed');
+        await waitFor(
+            () => tools(childOf()!.id).every(body => body.state !== 'running'),
+            "the sub-agent's call to be closed"
+        );
 
         expect(h.run(childOf()!.id).status).toBe('cancelled');
         expect(states(tools(childOf()!.id))).toEqual([['c1', 'error', 'Stopped before it finished']]);
@@ -91,7 +109,12 @@ describe('a turn that ends with calls still running', () => {
 
             if (number === 1) {
                 yield call('c1', 'running');
-                yield { type: 'error', message: 'The conversation no longer fits the model\'s context window. Compact it or start a new chat.', code: 'context_too_long' };
+                yield {
+                    type: 'error',
+                    message:
+                        "The conversation no longer fits the model's context window. Compact it or start a new chat.",
+                    code: 'context_too_long',
+                };
 
                 return;
             }
@@ -101,7 +124,11 @@ describe('a turn that ends with calls still running', () => {
 
         await waitFor(() => h.run(runId).status === 'failed', 'the turn to fail');
         expect(states(tools(runId))).toEqual([['c1', 'error', 'The turn ended before this finished']]);
-        expect(h.run(runId)).toMatchObject({ status: 'failed', failureCode: 'context_too_long', error: expect.stringContaining('context window') });
+        expect(h.run(runId)).toMatchObject({
+            status: 'failed',
+            failureCode: 'context_too_long',
+            error: expect.stringContaining('context window'),
+        });
         // It is stored with the run, not only published.
         expect(getRun(h.store.db, runId)?.failureCode).toBe('context_too_long');
 
@@ -135,7 +162,9 @@ describe('a turn that ends with calls still running', () => {
 
         await waitFor(() => h.run(runId).status === 'succeeded', 'the turn to end');
 
-        const children = h.store.db.query('SELECT id FROM runs WHERE parent_run_id = ? ORDER BY created_at, id').all(runId) as { id: string }[];
+        const children = h.store.db
+            .query('SELECT id FROM runs WHERE parent_run_id = ? ORDER BY created_at, id')
+            .all(runId) as { id: string }[];
 
         expect(children.map(child => states(tools(child.id)))).toEqual([
             [['c1', 'error', 'The turn ended before this finished']],
@@ -159,16 +188,24 @@ describe('a turn that ends with calls still running', () => {
         // What a crash leaves behind: the run still `running`, and its call too, since the turn never got to close it.
         const db = new Database(join(h.config.dataDir, 'clowdy.db'));
 
-        db.query('UPDATE stream_items SET body = json_remove(json_set(body, \'$.state\', \'running\'), \'$.error\') WHERE run_id = ? AND json_extract(body, \'$.kind\') = \'tool\'').run(runId);
-        db.query('UPDATE runs SET status = \'running\' WHERE id = ?').run(runId);
+        db.query(
+            "UPDATE stream_items SET body = json_remove(json_set(body, '$.state', 'running'), '$.error') WHERE run_id = ? AND json_extract(body, '$.kind') = 'tool'"
+        ).run(runId);
+        db.query("UPDATE runs SET status = 'running' WHERE id = ?").run(runId);
         db.close();
 
-        const next = await restartHarness(h, { engines: scriptEngines(new ScriptEngine(async function* () {
-            yield { type: 'done' };
-        })) });
+        const next = await restartHarness(h, {
+            engines: scriptEngines(
+                new ScriptEngine(async function* () {
+                    yield { type: 'done' };
+                })
+            ),
+        });
 
         harnesses.push(next);
         expect(next.run(runId).status).toBe('interrupted');
-        expect(states(listItems(next.store.db, runId, 0).flatMap(item => (item.body.kind === 'tool' ? [item.body] : [])))).toEqual([['c1', 'error', 'Stopped before it finished']]);
+        expect(
+            states(listItems(next.store.db, runId, 0).flatMap(item => (item.body.kind === 'tool' ? [item.body] : [])))
+        ).toEqual([['c1', 'error', 'Stopped before it finished']]);
     });
 });

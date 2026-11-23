@@ -37,78 +37,74 @@ export function RawColorEditor({
     const rawValue = colorInputValueToString(currentValue);
     const parsed = parseColorInputValue(rawValue);
 
-    const handleChange = useCallback((nextValue: string) => {
-        const nextParsed = parseColorInputValue(nextValue);
+    const handleChange = useCallback(
+        (nextValue: string) => {
+            const nextParsed = parseColorInputValue(nextValue);
 
-        onValueChange(nextValue || null, {
-            value: nextValue || null,
-            color: nextParsed.color,
-            alpha: nextParsed.alpha,
-            format: requestedFormat,
-            inputValue: nextValue,
-        });
-    }, [onValueChange, requestedFormat]);
+            onValueChange(nextValue || null, {
+                value: nextValue || null,
+                color: nextParsed.color,
+                alpha: nextParsed.alpha,
+                format: requestedFormat,
+                inputValue: nextValue,
+            });
+        },
+        [onValueChange, requestedFormat]
+    );
 
-    const renderedChildren = typeof children === 'function'
-        ? children({
-            value: rawValue || null,
-            color: parsed.color,
-            alpha: parsed.alpha,
-            format: requestedFormat,
-            inputValue: rawValue,
-            isInvalid: Boolean(isInvalid),
-        } satisfies ColorInputRenderState)
-        : children;
+    const renderedChildren =
+        typeof children === 'function'
+            ? children({
+                  value: rawValue || null,
+                  color: parsed.color,
+                  alpha: parsed.alpha,
+                  format: requestedFormat,
+                  inputValue: rawValue,
+                  isInvalid: Boolean(isInvalid),
+              } satisfies ColorInputRenderState)
+            : children;
     const swatchSlot = filterSlots(
         renderedChildren,
         'swatch',
-        <Swatch
-            size={ size }
-            isDisabled={ isDisabled }
-            aria-label="Selected color"
-        >
-            <CssColorPreviewContent value={ rawValue } />
+        <Swatch size={size} isDisabled={isDisabled} aria-label="Selected color">
+            <CssColorPreviewContent value={rawValue} />
         </Swatch>
     );
 
     return (
         <div
-            ref={ ref }
-            className={ cn(styles.root, className) }
-            data-size={ size }
-            data-variant={ variant }
+            ref={ref}
+            className={cn(styles.root, className)}
+            data-size={size}
+            data-variant={variant}
             data-editor="raw"
-            data-disabled={ isDisabled || undefined }
-            data-readonly={ isReadOnly || undefined }
-            data-invalid={ isInvalid || undefined }
-            data-active={ isActive || undefined }
-            { ...props }
+            data-disabled={isDisabled || undefined}
+            data-readonly={isReadOnly || undefined}
+            data-invalid={isInvalid || undefined}
+            data-active={isActive || undefined}
+            {...props}
         >
             <Input
-                inputRef={ inputRef }
+                inputRef={inputRef}
                 type="text"
-                size={ size }
-                variant={ variant }
-                value={ rawValue }
-                placeholder={ placeholder }
-                isDisabled={ isDisabled }
-                isReadOnly={ isReadOnly }
-                isInvalid={ isInvalid }
-                isActive={ isActive }
-                autoFocus={ autoFocus }
-                aria-label={ placeholder ? undefined : ariaLabel }
-                onChange={ handleChange }
+                size={size}
+                variant={variant}
+                value={rawValue}
+                placeholder={placeholder}
+                isDisabled={isDisabled}
+                isReadOnly={isReadOnly}
+                isInvalid={isInvalid}
+                isActive={isActive}
+                autoFocus={autoFocus}
+                aria-label={placeholder ? undefined : ariaLabel}
+                onChange={handleChange}
             >
-                <span
-                    slot="prefix"
-                    className={ previewStyles.previewSlot }
-                    data-size={ size }
-                >
-                    { swatchSlot }
+                <span slot="prefix" className={previewStyles.previewSlot} data-size={size}>
+                    {swatchSlot}
                 </span>
             </Input>
 
-            <HiddenColorInput name={ name } form={ form } value={ rawValue } isDisabled={ isDisabled } />
+            <HiddenColorInput name={name} form={form} value={rawValue} isDisabled={isDisabled} />
         </div>
     );
 }

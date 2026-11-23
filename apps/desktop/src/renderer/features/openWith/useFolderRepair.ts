@@ -24,6 +24,7 @@ export function useFolderRepair(folder: ProjectFolder, missing: boolean): Folder
 
     return {
         locate: () => void locateFolderByDialog(root, state.project, folder),
-        remove: state.project.folders.length > 1 ? () => void removeFolder(root, state.project, folder, chats) : undefined,
+        remove:
+            state.project.folders.length > 1 ? () => void removeFolder(root, state.project, folder, chats) : undefined,
     };
 }

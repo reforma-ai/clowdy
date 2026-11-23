@@ -12,7 +12,7 @@ export const LAYOUT_GRID_CELL_KEYS = [
     'bottom-right',
 ] as const;
 
-export type LayoutGridCellKey = typeof LAYOUT_GRID_CELL_KEYS[number];
+export type LayoutGridCellKey = (typeof LAYOUT_GRID_CELL_KEYS)[number];
 export type LayoutGridCellKind = 'none' | 'spacer';
 export type LayoutGridValue = LayoutGridCellKey | string;
 export type LayoutGridOverlayKind = 'grid-stretch';
@@ -28,20 +28,20 @@ export type LayoutGridGlyphFlow = 'nowrap' | 'wrap' | 'wrap-reverse';
 export type LayoutGridGlyphPlacement = 'left' | 'center' | 'right' | 'top' | 'bottom';
 export type LayoutGridGlyphDistribution = 'space-between' | 'space-around' | 'space-evenly';
 export type LayoutGridGlyphConnection = 'start' | 'middle' | 'end';
-export type LayoutGridGlyphItem
-    = | 'line'
-      | 'line-start'
-      | 'line-center'
-      | 'line-end'
-      | 'wrap-first-1'
-      | 'wrap-first-2'
-      | 'wrap-first-3'
-      | 'wrap-second-1'
-      | 'wrap-second-2'
-      | 'marker-inline-start'
-      | 'marker-inline-end'
-      | 'marker-block-start'
-      | 'marker-block-end';
+export type LayoutGridGlyphItem =
+    | 'line'
+    | 'line-start'
+    | 'line-center'
+    | 'line-end'
+    | 'wrap-first-1'
+    | 'wrap-first-2'
+    | 'wrap-first-3'
+    | 'wrap-second-1'
+    | 'wrap-second-2'
+    | 'marker-inline-start'
+    | 'marker-inline-end'
+    | 'marker-block-start'
+    | 'marker-block-end';
 
 export interface LayoutGridGlyphDescriptor {
     variant: LayoutGridGlyphVariant;
@@ -153,19 +153,20 @@ export function createLayoutGridDistributionGlyph({
     isActive?: boolean;
     showMarker?: boolean;
 }): LayoutGridGlyphDescriptor {
-    const marker: LayoutGridGlyphItem[] = (!showMarker || distribution !== 'space-around')
-        ? []
-        : axis === 'vertical'
-            ? placement === 'left'
-                ? ['marker-inline-start']
-                : placement === 'right'
+    const marker: LayoutGridGlyphItem[] =
+        !showMarker || distribution !== 'space-around'
+            ? []
+            : axis === 'vertical'
+              ? placement === 'left'
+                  ? ['marker-inline-start']
+                  : placement === 'right'
                     ? ['marker-inline-end']
                     : []
-            : placement === 'top'
+              : placement === 'top'
                 ? ['marker-block-start']
                 : placement === 'bottom'
-                    ? ['marker-block-end']
-                    : [];
+                  ? ['marker-block-end']
+                  : [];
 
     return {
         variant: 'distribution',
@@ -244,8 +245,8 @@ export function createLayoutGridFlexAlignmentModel({
 
         cells[key] = {
             kind: 'none',
-            glyph: (isSimple && !isActive) ? undefined : glyph ?? undefined,
-            previewGlyph: (isSimple && !isActive) ? glyph ?? undefined : undefined,
+            glyph: isSimple && !isActive ? undefined : (glyph ?? undefined),
+            previewGlyph: isSimple && !isActive ? (glyph ?? undefined) : undefined,
             value: cellValue,
             ariaLabel: getCellAriaLabel?.(cellState),
         };
@@ -253,24 +254,23 @@ export function createLayoutGridFlexAlignmentModel({
 
     return {
         cells,
-        overlays: (state.x === 'stretch' && state.y === 'stretch' && value != null)
-            ? [{ kind: 'grid-stretch', value }]
-            : [],
+        overlays:
+            state.x === 'stretch' && state.y === 'stretch' && value != null ? [{ kind: 'grid-stretch', value }] : [],
         value,
     };
 }
 
 export function getLayoutGridFlexAlignmentValue({ x, y }: LayoutGridFlexAlignmentState): LayoutGridValue | null {
     if (isLayoutGridFlexSimpleAlignment(x) && isLayoutGridFlexSimpleAlignment(y)) {
-        return `${ x }:${ y }`;
+        return `${x}:${y}`;
     }
 
     if (x === 'stretch' && isLayoutGridFlexSimpleAlignment(y)) {
-        return `x-stretch-y-${ ROW_BY_SIMPLE_VALUE[y] }`;
+        return `x-stretch-y-${ROW_BY_SIMPLE_VALUE[y]}`;
     }
 
     if (isLayoutGridFlexSimpleAlignment(x) && y === 'stretch') {
-        return `x-${ COLUMN_BY_SIMPLE_VALUE[x] }-y-stretch`;
+        return `x-${COLUMN_BY_SIMPLE_VALUE[x]}-y-stretch`;
     }
 
     if (x === 'stretch' && y === 'stretch') {
@@ -278,11 +278,11 @@ export function getLayoutGridFlexAlignmentValue({ x, y }: LayoutGridFlexAlignmen
     }
 
     if (isLayoutGridFlexDistribution(x)) {
-        return `x-${ x }-y-${ y ?? 'stretch' }`;
+        return `x-${x}-y-${y ?? 'stretch'}`;
     }
 
     if (isLayoutGridFlexDistribution(y)) {
-        return `x-${ x ?? 'stretch' }-y-${ y }`;
+        return `x-${x ?? 'stretch'}-y-${y}`;
     }
 
     return null;
@@ -303,7 +303,7 @@ export function parseLayoutGridFlexAlignmentValue(value: LayoutGridValue): Layou
     const parsedX = parseLayoutGridFlexAlignmentToken(xToken);
     const parsedY = parseLayoutGridFlexAlignmentToken(yToken);
 
-    return (parsedX && parsedY) ? { x: parsedX, y: parsedY } : null;
+    return parsedX && parsedY ? { x: parsedX, y: parsedY } : null;
 }
 
 export function isLayoutGridFlexSimpleAlignment(
@@ -312,9 +312,7 @@ export function isLayoutGridFlexSimpleAlignment(
     return value === 'start' || value === 'center' || value === 'end';
 }
 
-export function getLayoutGridFlexAlignmentForCell(
-    key: LayoutGridCellKey
-): ResolvedLayoutGridFlexAlignmentState {
+export function getLayoutGridFlexAlignmentForCell(key: LayoutGridCellKey): ResolvedLayoutGridFlexAlignmentState {
     const [row, column] = layoutGridKeyParts(key);
 
     return layoutGridFlexAlignmentForPosition(row, column);
@@ -338,12 +336,8 @@ function layoutGridCellState(
     const cell = layoutGridFlexAlignmentForPosition(row, column);
 
     return {
-        x: (isLayoutGridFlexSimpleAlignment(current.x) || current.x == null)
-            ? cell.x
-            : current.x,
-        y: (isLayoutGridFlexSimpleAlignment(current.y) || current.y == null)
-            ? cell.y
-            : current.y,
+        x: isLayoutGridFlexSimpleAlignment(current.x) || current.x == null ? cell.x : current.x,
+        y: isLayoutGridFlexSimpleAlignment(current.y) || current.y == null ? cell.y : current.y,
     };
 }
 
@@ -420,11 +414,11 @@ function parseLayoutGridFlexAlignmentToken(value: string | undefined): LayoutGri
         return 'end';
     }
 
-    return (value === 'center'
-      || value === 'stretch'
-      || value === 'space-between'
-      || value === 'space-around'
-      || value === 'space-evenly')
+    return value === 'center' ||
+        value === 'stretch' ||
+        value === 'space-between' ||
+        value === 'space-around' ||
+        value === 'space-evenly'
         ? value
         : null;
 }

@@ -46,7 +46,7 @@ function readLines(stream: ReadableStream<Uint8Array>, onLine: (line: string) =>
                     break;
                 }
 
-                const lines = `${ rest }${ decoder.decode(value, { stream: true }) }`.split(/\r\n|\n|\r/);
+                const lines = `${rest}${decoder.decode(value, { stream: true })}`.split(/\r\n|\n|\r/);
 
                 rest = lines.pop() ?? '';
 
@@ -60,8 +60,7 @@ function readLines(stream: ReadableStream<Uint8Array>, onLine: (line: string) =>
             if (rest !== '') {
                 onLine(rest);
             }
-        }
-        finally {
+        } finally {
             reader.releaseLock();
         }
     })();
@@ -86,7 +85,16 @@ export async function runLines(argv: string[], options: LineRunOptions): Promise
     }
 
     const windows = process.platform === 'win32';
-    const child = Bun.spawn(argv, { cwd, env, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe', windowsHide: true, windowsVerbatimArguments, ...(!windows && { detached: true }) });
+    const child = Bun.spawn(argv, {
+        cwd,
+        env,
+        stdin: 'ignore',
+        stdout: 'pipe',
+        stderr: 'pipe',
+        windowsHide: true,
+        windowsVerbatimArguments,
+        ...(!windows && { detached: true }),
+    });
     let timedOut = false;
     let aborted = false;
     let exited = false;
@@ -94,13 +102,16 @@ export async function runLines(argv: string[], options: LineRunOptions): Promise
     const killTree = (force: boolean) => {
         try {
             if (windows) {
-                Bun.spawn(['taskkill', '/pid', String(child.pid), '/T', '/F'], { stdin: 'ignore', stdout: 'ignore', stderr: 'ignore', windowsHide: true });
-            }
-            else {
+                Bun.spawn(['taskkill', '/pid', String(child.pid), '/T', '/F'], {
+                    stdin: 'ignore',
+                    stdout: 'ignore',
+                    stderr: 'ignore',
+                    windowsHide: true,
+                });
+            } else {
                 process.kill(-child.pid, force ? 'SIGKILL' : 'SIGTERM');
             }
-        }
-        catch {
+        } catch {
             // The group is gone already, or never was one.
             child.kill(force ? 'SIGKILL' : 'SIGTERM');
         }
@@ -117,10 +128,13 @@ export async function runLines(argv: string[], options: LineRunOptions): Promise
         aborted = true;
         end();
     };
-    const timer = timeoutMs === undefined ? undefined : setTimeout(() => {
-        timedOut = true;
-        end();
-    }, timeoutMs);
+    const timer =
+        timeoutMs === undefined
+            ? undefined
+            : setTimeout(() => {
+                  timedOut = true;
+                  end();
+              }, timeoutMs);
 
     signal?.addEventListener('abort', stop, { once: true });
 
@@ -138,8 +152,7 @@ export async function runLines(argv: string[], options: LineRunOptions): Promise
         await Promise.race([reading, pause(PIPE_GRACE_MS)]);
 
         return { code: timedOut || aborted ? null : code, timedOut, aborted };
-    }
-    finally {
+    } finally {
         clearTimeout(timer);
         clearTimeout(hardKill);
         signal?.removeEventListener('abort', stop);

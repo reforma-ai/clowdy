@@ -35,7 +35,10 @@ export function DraftChat({ missing }: { missing: ReadonlySet<FolderId> }) {
     const ui = useProjectUi();
     // What the project asks a new chat to start with, or the app's choice where it follows the app; what neither names starts where the last chat left off. A page opened for an
     // agent (a hand-off to another one, `ui.draftEngine`) starts on it, whatever those say; the person's own pick in the box comes before all of them.
-    const defaults = { ...startingChoice(project.project.settings, newChatDefaults), ...(ui.draftEngine && { engine: ui.draftEngine }) };
+    const defaults = {
+        ...startingChoice(project.project.settings, newChatDefaults),
+        ...(ui.draftEngine && { engine: ui.draftEngine }),
+    };
     const composer = useRef<ComposerHandle>(null);
     const pending = ui.pendingFiles;
     const { folders } = project.project;
@@ -53,7 +56,10 @@ export function DraftChat({ missing }: { missing: ReadonlySet<FolderId> }) {
     const workspaceRow = currentPlace(project, ui).workspace;
 
     // A choice made for the folder (a worktree) is sent only once the read bears it out, so the first message waits for it rather than go to the folder itself.
-    const waiting = ui.draftWorkspace !== null && repository.status === 'loading' ? 'Wait until the folder\'s worktrees are read' : undefined;
+    const waiting =
+        ui.draftWorkspace !== null && repository.status === 'loading'
+            ? "Wait until the folder's worktrees are read"
+            : undefined;
 
     // Files a hand-off left here join the message as if they were picked: the box uploads them to this project. What the effect adds is
     // what the store hands over, so a second run of it (strict mode) finds nothing and adds nothing.
@@ -66,41 +72,63 @@ export function DraftChat({ missing }: { missing: ReadonlySet<FolderId> }) {
     }, [pending, ui]);
 
     return (
-        <ChatDropZone onFiles={ files => composer.current?.addFiles(files) }>
-            <div className={ styles.draft }>
-                <div className={ styles.center }>
+        <ChatDropZone onFiles={files => composer.current?.addFiles(files)}>
+            <div className={styles.draft}>
+                <div className={styles.center}>
                     <Text variant="heading-3">What should we work on?</Text>
 
-                    <ContentColumn className={ styles.composerSlot }>
+                    <ContentColumn className={styles.composerSlot}>
                         <Composer
-                            ref={ composer }
-                            chat={ undefined }
-                            run={ undefined }
-                            minLines={ 3 }
-                            start={ { projectId: project.id, folderId, workspace, ...(workspaceRow && { workspaceRow }), waiting, onStarted: chatId => ui.openChat(chatId), defaults } }
-                            controls={ (
+                            ref={composer}
+                            chat={undefined}
+                            run={undefined}
+                            minLines={3}
+                            start={{
+                                projectId: project.id,
+                                folderId,
+                                workspace,
+                                ...(workspaceRow && { workspaceRow }),
+                                waiting,
+                                onStarted: chatId => ui.openChat(chatId),
+                                defaults,
+                            }}
+                            controls={
                                 <>
-                                    { folders.length > 1
-                                        ? (
-                                            <DraftFolderSelect
-                                                folders={ folders }
-                                                selectedId={ target.folder.id }
-                                                missing={ missing }
-                                                // The main folder is the one a chat that names none works in.
-                                                onPick={ folder => ui.setDraftFolder(folder.id === mainFolder(project.project).id ? null : folder.id) }
-                                            />
-                                        )
+                                    {folders.length > 1 ? (
+                                        <DraftFolderSelect
+                                            folders={folders}
+                                            selectedId={target.folder.id}
+                                            missing={missing}
+                                            // The main folder is the one a chat that names none works in.
+                                            onPick={folder =>
+                                                ui.setDraftFolder(
+                                                    folder.id === mainFolder(project.project).id ? null : folder.id
+                                                )
+                                            }
+                                        />
+                                    ) : (
                                         // A project of one folder has nothing to pick: the line says where the chat will work, as the chat's own does.
-                                        : <DraftFolder name={ target.name } folder={ target.folder } missing={ missing.has(target.folder.id) } /> }
+                                        <DraftFolder
+                                            name={target.name}
+                                            folder={target.folder}
+                                            missing={missing.has(target.folder.id)}
+                                        />
+                                    )}
                                     <WorkspaceChips
-                                        repository={ repository }
-                                        choice={ workspace }
-                                        chats={ project.chats }
-                                        onChoose={ choice => ui.setDraftWorkspace(choice) }
-                                        onManage={ () => openManageWorktrees({ root, projectId: project.id, folderId: target.folder.id }) }
+                                        repository={repository}
+                                        choice={workspace}
+                                        chats={project.chats}
+                                        onChoose={choice => ui.setDraftWorkspace(choice)}
+                                        onManage={() =>
+                                            openManageWorktrees({
+                                                root,
+                                                projectId: project.id,
+                                                folderId: target.folder.id,
+                                            })
+                                        }
                                     />
                                 </>
-                            ) }
+                            }
                         />
                     </ContentColumn>
                 </div>

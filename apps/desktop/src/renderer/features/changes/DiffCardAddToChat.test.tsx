@@ -5,7 +5,12 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createFixtureData, FIXTURE_PROJECT_ID, FIXTURE_WORKSPACE_CHAT_ID, withFixtureWorkspace } from '../../daemon/fixtureData';
+import {
+    createFixtureData,
+    FIXTURE_PROJECT_ID,
+    FIXTURE_WORKSPACE_CHAT_ID,
+    withFixtureWorkspace,
+} from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { registerComposer } from '../chats/composerBridge';
@@ -22,12 +27,27 @@ import { changesSidebarLayout } from './sidebarLayout';
 // happy-dom has no layout: the view builds its resizable group once its box has a width, which it is told.
 vi.mock('./useBoxWidth', () => ({ useBoxWidth: () => [() => undefined, 900] }));
 // The babel plugin that makes the app's components observers does not run under Vitest: the parts of the tab are, to follow the model they read.
-vi.mock('./ChangesView', async importOriginal => ({ ...await importOriginal<typeof import('./ChangesView')>(), ChangesView: observer((await importOriginal<typeof import('./ChangesView')>()).ChangesView) }));
-vi.mock('./ChangesList', async importOriginal => ({ ChangesList: observer((await importOriginal<typeof import('./ChangesList')>()).ChangesList) }));
-vi.mock('./ChangesToolbar', async importOriginal => ({ ...await importOriginal<typeof import('./ChangesToolbar')>(), ChangesToolbar: observer((await importOriginal<typeof import('./ChangesToolbar')>()).ChangesToolbar) }));
-vi.mock('./ChangesSidebar', async importOriginal => ({ ...await importOriginal<typeof import('./ChangesSidebar')>(), ChangesSidebar: observer((await importOriginal<typeof import('./ChangesSidebar')>()).ChangesSidebar) }));
-vi.mock('./DiffCard', async importOriginal => ({ DiffCard: observer((await importOriginal<typeof import('./DiffCard')>()).DiffCard) }));
-vi.mock('./PullRequestChip', async importOriginal => ({ PullRequestChip: observer((await importOriginal<typeof import('./PullRequestChip')>()).PullRequestChip) }));
+vi.mock('./ChangesView', async importOriginal => ({
+    ...(await importOriginal<typeof import('./ChangesView')>()),
+    ChangesView: observer((await importOriginal<typeof import('./ChangesView')>()).ChangesView),
+}));
+vi.mock('./ChangesList', async importOriginal => ({
+    ChangesList: observer((await importOriginal<typeof import('./ChangesList')>()).ChangesList),
+}));
+vi.mock('./ChangesToolbar', async importOriginal => ({
+    ...(await importOriginal<typeof import('./ChangesToolbar')>()),
+    ChangesToolbar: observer((await importOriginal<typeof import('./ChangesToolbar')>()).ChangesToolbar),
+}));
+vi.mock('./ChangesSidebar', async importOriginal => ({
+    ...(await importOriginal<typeof import('./ChangesSidebar')>()),
+    ChangesSidebar: observer((await importOriginal<typeof import('./ChangesSidebar')>()).ChangesSidebar),
+}));
+vi.mock('./DiffCard', async importOriginal => ({
+    DiffCard: observer((await importOriginal<typeof import('./DiffCard')>()).DiffCard),
+}));
+vi.mock('./PullRequestChip', async importOriginal => ({
+    PullRequestChip: observer((await importOriginal<typeof import('./PullRequestChip')>()).PullRequestChip),
+}));
 
 /** What watches elements for the scroller's edge (the cards and the diff views): it says nothing until the test brings everything near. */
 const watchers = new Set<{ callback: IntersectionObserverCallback; targets: Set<Element> }>();
@@ -54,39 +74,54 @@ class FakeIntersectionObserver {
     }
 }
 
-const bringNear = () => act(async () => {
-    for (const { callback, targets } of [...watchers]) {
-        callback([...targets].map(target => ({ isIntersecting: true, target }) as IntersectionObserverEntry), {} as IntersectionObserver);
-    }
-});
+const bringNear = () =>
+    act(async () => {
+        for (const { callback, targets } of [...watchers]) {
+            callback(
+                [...targets].map(target => ({ isIntersecting: true, target }) as IntersectionObserverEntry),
+                {} as IntersectionObserver
+            );
+        }
+    });
 
-const settle = () => act(async () => {
-    await new Promise(resolve => setTimeout(resolve, 20));
-});
+const settle = () =>
+    act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 20));
+    });
 
 let container: HTMLDivElement;
 let root: Root;
 let store: RootStore;
 
 const Tab = observer(ChangesTab);
-const card = (path: string) => container.querySelector<HTMLElement>(`[data-card="${ path }"]`)!;
+const card = (path: string) => container.querySelector<HTMLElement>(`[data-card="${path}"]`)!;
 const editorOf = (path: string) => EditorView.findFromDOM(card(path).querySelector<HTMLElement>('.cm-editor')!)!;
 const button = (path: string) => card(path).querySelector<HTMLButtonElement>('.cm-tooltip button');
-const select = (editor: EditorView, from: number, to: number) => act(async () => editor.dispatch({ selection: { anchor: from, head: to } }));
+const select = (editor: EditorView, from: number, to: number) =>
+    act(async () => editor.dispatch({ selection: { anchor: from, head: to } }));
 
 async function draw() {
     store = new RootStore(new FixtureTransport({ data: withFixtureWorkspace(createFixtureData()) }));
     await store.load();
     store.selectProject(FIXTURE_PROJECT_ID);
     store.ui.forProject(FIXTURE_PROJECT_ID).openChat(FIXTURE_WORKSPACE_CHAT_ID);
-    act(() => root.render(<RootStoreProvider value={ store }><Tab /></RootStoreProvider>));
+    act(() =>
+        root.render(
+            <RootStoreProvider value={store}>
+                <Tab />
+            </RootStoreProvider>
+        )
+    );
     await settle();
     // The cards come near and ask for their texts, then the diff views come near and build their editors: each step waits on the daemon's answer or on a language.
-    await vi.waitFor(async () => {
-        await bringNear();
-        await settle();
-        expect(card('src/booking/price.ts').querySelector('.cm-editor')).not.toBeNull();
-    }, { timeout: 5000 });
+    await vi.waitFor(
+        async () => {
+            await bringNear();
+            await settle();
+            expect(card('src/booking/price.ts').querySelector('.cm-editor')).not.toBeNull();
+        },
+        { timeout: 5000 }
+    );
 }
 
 beforeEach(() => {
@@ -122,7 +157,7 @@ describe('Add to chat over a diff card', () => {
         expect(button('src/booking/price.ts')).toBeNull();
     });
 
-    it('quotes the words selected in a card with the file\'s path and their lines of the new text', async () => {
+    it("quotes the words selected in a card with the file's path and their lines of the new text", async () => {
         const quoted: string[] = [];
         const unregister = registerComposer(text => quoted.push(text));
 
@@ -137,7 +172,7 @@ describe('Add to chat over a diff card', () => {
 
         await act(async () => button('src/booking/price.ts')!.click());
 
-        expect(quoted).toEqual([`\`src/booking/price.ts:1-2\`\n\`\`\`ts\n${ lines[0] }\n${ lines[1] }\n\`\`\``]);
+        expect(quoted).toEqual([`\`src/booking/price.ts:1-2\`\n\`\`\`ts\n${lines[0]}\n${lines[1]}\n\`\`\``]);
         expect(editor.state.selection.main.empty).toBe(true);
 
         unregister();

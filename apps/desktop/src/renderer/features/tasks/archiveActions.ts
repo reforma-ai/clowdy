@@ -1,6 +1,6 @@
 import { toast } from '@clowdy/components/Toast';
 
-import { undoStack, type UndoStack } from '../../hotkeys/undo';
+import { type UndoStack, undoStack } from '../../hotkeys/undo';
 import { archiveReply, archiveWording, cancelDialog, openWork } from './archiveRules';
 import { sendEach } from './commands';
 import { TaskTree } from './taskTree';
@@ -41,7 +41,9 @@ async function unarchive(root: RootStore, done: readonly Archived[], label: stri
         }
 
         const { restored } = archiveReply(result.data);
-        const reopen: CommandInput[] = canceled.filter(entry => restored.includes(entry.taskId)).map(entry => ({ type: 'task.update', taskId: entry.taskId, statusId: entry.statusId }));
+        const reopen: CommandInput[] = canceled
+            .filter(entry => restored.includes(entry.taskId))
+            .map(entry => ({ type: 'task.update', taskId: entry.taskId, statusId: entry.statusId }));
         const reopened = await sendEach(root, reopen);
 
         isRestored ||= restored.length > 0;
@@ -60,14 +62,28 @@ async function unarchive(root: RootStore, done: readonly Archived[], label: stri
  * refuses (a run is active on the task or below it, work that is open without `cancel`) records nothing, and the daemon's reason is the toast; one that was archived already
  * changes nothing and records nothing. Resolves to the results in order, like `sendEach`.
  */
-export async function archiveWithUndo(root: RootStore, project: ProjectState, items: readonly ArchiveItem[], stack: UndoStack = undoStack): Promise<CommandResult[]> {
+export async function archiveWithUndo(
+    root: RootStore,
+    project: ProjectState,
+    items: readonly ArchiveItem[],
+    stack: UndoStack = undoStack
+): Promise<CommandResult[]> {
     const tree = new TaskTree(project.taskList, project.statuses);
     const before = items.map(({ taskId, cancel }) => {
         const task = project.tasks.get(taskId);
 
-        return { task, previous: task && cancel ? openWork(task, tree, project.statuses).map(open => ({ taskId: open.id, statusId: open.statusId })) : [] };
+        return {
+            task,
+            previous:
+                task && cancel
+                    ? openWork(task, tree, project.statuses).map(open => ({ taskId: open.id, statusId: open.statusId }))
+                    : [],
+        };
     });
-    const results = await sendEach(root, items.map(({ taskId, cancel }): CommandInput => ({ type: 'task.archive', taskId, ...(cancel && { cancel }) })));
+    const results = await sendEach(
+        root,
+        items.map(({ taskId, cancel }): CommandInput => ({ type: 'task.archive', taskId, ...(cancel && { cancel }) }))
+    );
     const taken = items.flatMap((_, index): Archived[] => {
         const { task, previous } = before[index];
         const result = results[index];
@@ -80,7 +96,10 @@ export async function archiveWithUndo(root: RootStore, project: ProjectState, it
     });
 
     if (taken.length > 0) {
-        const { done: label } = archiveWording(taken.map(({ task }) => task), taken.some(({ canceled }) => canceled.length > 0));
+        const { done: label } = archiveWording(
+            taken.map(({ task }) => task),
+            taken.some(({ canceled }) => canceled.length > 0)
+        );
 
         recordUndo(stack, project.id, label, () => unarchive(root, taken, label));
     }
@@ -89,7 +108,8 @@ export async function archiveWithUndo(root: RootStore, project: ProjectState, it
 }
 
 /** The ids of the tasks the results archived: what the daemon says went into the archive, the tasks inside each included. */
-const archivedIds = (results: readonly CommandResult[]): Set<TaskId> => new Set(results.flatMap(result => (result.ok ? archiveReply(result.data).archived : [])));
+const archivedIds = (results: readonly CommandResult[]): Set<TaskId> =>
+    new Set(results.flatMap(result => (result.ok ? archiveReply(result.data).archived : [])));
 
 export interface ArchiveContext {
     root: RootStore;
@@ -112,7 +132,12 @@ export function archiveTasks({ root, project, ui, confirm, stack }: ArchiveConte
     const openIds = new Set(plans.flatMap(({ open }) => open.map(task => task.id)));
 
     const run = async () => {
-        const results = await archiveWithUndo(root, project, plans.map(({ task, open }) => ({ taskId: task.id, cancel: open.length > 0 })), stack);
+        const results = await archiveWithUndo(
+            root,
+            project,
+            plans.map(({ task, open }) => ({ taskId: task.id, cancel: open.length > 0 })),
+            stack
+        );
 
         if (ui.taskId !== null && archivedIds(results).has(ui.taskId)) ui.openTask(null);
     };
@@ -132,14 +157,19 @@ export function archiveTasks({ root, project, ui, confirm, stack }: ArchiveConte
  * Restores an archived task with the tasks that were archived with it, and records the undo (`task.archive`) with its toast. The daemon refuses a task whose parent is
  * archived; that reason is the toast. Resolves to whether the daemon took it. A task that was restored already changes nothing and records nothing.
  */
-export async function restoreTask(root: RootStore, project: ProjectState, task: Pick<Task, 'id' | 'key'>, stack: UndoStack = undoStack): Promise<boolean> {
+export async function restoreTask(
+    root: RootStore,
+    project: ProjectState,
+    task: Pick<Task, 'id' | 'key'>,
+    stack: UndoStack = undoStack
+): Promise<boolean> {
     const [result] = await sendEach(root, [{ type: 'task.unarchive', taskId: task.id }]);
 
     if (!result?.ok) return false;
 
     if (archiveReply(result.data).restored.length === 0) return true;
 
-    const label = `Restored ${ task.key }`;
+    const label = `Restored ${task.key}`;
 
     recordUndo(stack, project.id, label, async () => {
         const [archived] = await sendEach(root, [{ type: 'task.archive', taskId: task.id }]);

@@ -7,21 +7,23 @@ export function evaluateValue<T>(v: T | (() => T)): T {
 }
 
 export function disableFocusByTab(area: HTMLElement | HTMLElement[] | NodeListOf<HTMLElement>) {
-    const elements = Array.isArray(area) ? area : (area instanceof NodeList ? Array.from(area) : [area]);
+    const elements = Array.isArray(area) ? area : area instanceof NodeList ? Array.from(area) : [area];
 
     if (!elements.length) {
         return;
     }
 
-    elements.forEach((element) => {
+    elements.forEach(element => {
         if (!element) {
             return;
         }
 
         element.setAttribute('data-tab-disabled', 'true');
-        const focusableElements = element.querySelectorAll('input:not([tabindex="-1"]), textarea:not([tabindex="-1"]), [tabindex]:not([tabindex="-1"])');
+        const focusableElements = element.querySelectorAll(
+            'input:not([tabindex="-1"]), textarea:not([tabindex="-1"]), [tabindex]:not([tabindex="-1"])'
+        );
 
-        focusableElements.forEach((el) => {
+        focusableElements.forEach(el => {
             (el as HTMLElement).setAttribute('tabindex', '-1');
             (el as HTMLElement).setAttribute('data-tab-disabled', 'true');
         });
@@ -29,13 +31,13 @@ export function disableFocusByTab(area: HTMLElement | HTMLElement[] | NodeListOf
 }
 
 export function enableFocusByTab(area: HTMLElement | HTMLElement[] | NodeListOf<HTMLElement>) {
-    const elements = Array.isArray(area) ? area : (area instanceof NodeList ? Array.from(area) : [area]);
+    const elements = Array.isArray(area) ? area : area instanceof NodeList ? Array.from(area) : [area];
 
     if (!elements.length) {
         return;
     }
 
-    elements.forEach((element) => {
+    elements.forEach(element => {
         if (!element) {
             return;
         }
@@ -43,7 +45,7 @@ export function enableFocusByTab(area: HTMLElement | HTMLElement[] | NodeListOf<
         element.removeAttribute('data-tab-disabled');
         const disabledByTabElements = element.querySelectorAll('[data-tab-disabled][tabindex]');
 
-        disabledByTabElements.forEach((el) => {
+        disabledByTabElements.forEach(el => {
             (el as HTMLElement).setAttribute('tabindex', '0');
             (el as HTMLElement).removeAttribute('data-tab-disabled');
         });

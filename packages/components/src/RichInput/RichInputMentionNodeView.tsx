@@ -1,7 +1,7 @@
 'use client';
 
-import { NodeViewWrapper, type NodeViewProps } from '@tiptap/react';
-import { use, type MouseEvent, type PointerEvent, type ReactNode } from 'react';
+import { type NodeViewProps, NodeViewWrapper } from '@tiptap/react';
+import { type MouseEvent, type PointerEvent, type ReactNode, use } from 'react';
 
 import { defaultRenderMention, mentionAttrsFromNode, RichInputMentionContext } from './mentionRender';
 
@@ -17,11 +17,11 @@ export function RichInputMentionNodeView({ node, deleteNode }: NodeViewProps): R
     return (
         <NodeViewWrapper
             as="span"
-            contentEditable={ false }
-            onPointerDown={ (event: PointerEvent) => event.stopPropagation() }
-            onClick={ (event: MouseEvent) => event.stopPropagation() }
+            contentEditable={false}
+            onPointerDown={(event: PointerEvent) => event.stopPropagation()}
+            onClick={(event: MouseEvent) => event.stopPropagation()}
         >
-            { renderMention({ mention, deleteNode }) }
+            {renderMention({ mention, deleteNode })}
         </NodeViewWrapper>
     );
 }

@@ -39,50 +39,39 @@ export function Avatar({
     const hasText = title != null || description != null;
 
     const avatarNode = (
-        <div
-            data-size={ size }
-            data-color={ color }
-            data-rounded={ rounded }
-            className={ styles.avatar }
-        >
-            <Show when={ shouldShowImage }>
-                <img
-                    src={ src }
-                    alt={ alt }
-                    className={ styles.image }
-                    onError={ () => setIsError(true) }
-                />
+        <div data-size={size} data-color={color} data-rounded={rounded} className={styles.avatar}>
+            <Show when={shouldShowImage}>
+                <img src={src} alt={alt} className={styles.image} onError={() => setIsError(true)} />
             </Show>
 
-            <Show when={ !shouldShowImage }>
-                <div className={ styles.fallback }>
-                    { fallback }
-                </div>
+            <Show when={!shouldShowImage}>
+                <div className={styles.fallback}>{fallback}</div>
             </Show>
         </div>
     );
 
     if (!hasText) {
         return (
-            <div className={ cn(styles.root, className) } { ...attrs }>
-                { avatarNode }
+            <div className={cn(styles.root, className)} {...attrs}>
+                {avatarNode}
             </div>
         );
     }
 
     return (
-        <div
-            className={ cn(styles.root, styles.withInfo, className) }
-            { ...attrs }
-        >
-            { avatarNode }
+        <div className={cn(styles.root, styles.withInfo, className)} {...attrs}>
+            {avatarNode}
 
-            <div className={ styles.infoBlock }>
-                <Show when={ title != null }>
-                    <Text variant="heading-5" truncate>{ title }</Text>
+            <div className={styles.infoBlock}>
+                <Show when={title != null}>
+                    <Text variant="heading-5" truncate>
+                        {title}
+                    </Text>
                 </Show>
-                <Show when={ description != null }>
-                    <Text variant="sm" color="secondary" truncate>{ description }</Text>
+                <Show when={description != null}>
+                    <Text variant="sm" color="secondary" truncate>
+                        {description}
+                    </Text>
                 </Show>
             </div>
         </div>
@@ -90,4 +79,3 @@ export function Avatar({
 }
 
 Avatar.displayName = 'Avatar';
-

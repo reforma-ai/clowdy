@@ -56,10 +56,20 @@ export function useChatStream(chat: Chat | undefined): RunStream | undefined {
 }
 
 /** The agents the daemon knows, kept current by the event feed. `status` is `loading` until the first answer and `failed` when the last fetch failed. */
-export function useAgents(): { agents: AgentInfo[]; status: RootStore['agentsStatus']; error: string; refresh: () => Promise<void> } {
+export function useAgents(): {
+    agents: AgentInfo[];
+    status: RootStore['agentsStatus'];
+    error: string;
+    refresh: () => Promise<void>;
+} {
     const root = useRootStore();
 
-    return { agents: root.agents, status: root.agentsStatus, error: root.agentsError, refresh: () => root.refreshAgents() };
+    return {
+        agents: root.agents,
+        status: root.agentsStatus,
+        error: root.agentsError,
+        refresh: () => root.refreshAgents(),
+    };
 }
 
 /** The models an agent offers, read the first time a component asks. */

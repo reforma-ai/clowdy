@@ -1,14 +1,14 @@
 import { Button } from '@clowdy/components/Button';
 import { Popover, PopoverTrigger } from '@clowdy/components/Popover';
 import { Text } from '@clowdy/components/Text';
-import { Version } from '@clowdy/icons/14';
 import { ChevronDown } from '@clowdy/icons/8';
+import { Version } from '@clowdy/icons/14';
 import { useState } from 'react';
 
 import { Unavailable } from '../../shared/Unavailable';
-import { newBranchStarts, WORKTREE_KEEPS_BRANCH } from './branchChoices';
 import { BranchList } from './BranchList';
 import styles from './BranchPicker.module.css';
+import { newBranchStarts, WORKTREE_KEEPS_BRANCH } from './branchChoices';
 import { NewBranchForm } from './NewBranchForm';
 import { useBranchSwitch } from './useBranchSwitch';
 
@@ -44,27 +44,29 @@ export function BranchPicker({ facts, place, label }: BranchPickerProps) {
             variant="transparent"
             color="secondary"
             size="sm"
-            className={ styles.trigger }
-            contentClassName={ styles.content }
-            isDisabled={ disabled }
-            isPending={ model.busy }
+            className={styles.trigger}
+            contentClassName={styles.content}
+            isDisabled={disabled}
+            isPending={model.busy}
             spinnerPlacement="start"
-            aria-label={ `Current branch: ${ label }` }
+            aria-label={`Current branch: ${label}`}
             // Constant while the popover is open or not: a button that gains or loses its tooltip is drawn in another place of the tree, and would lose the focus the popover gives back.
-            tooltip={ disabled ? undefined : `Current branch: ${ label }` }
+            tooltip={disabled ? undefined : `Current branch: ${label}`}
             tooltipPlacement="bottom"
         >
-            { !model.busy && <Version aria-hidden="true" className={ styles.icon } /> }
-            <Text weight="medium" truncate className={ styles.label }>{ label }</Text>
-            { !disabled && <ChevronDown aria-hidden="true" className={ styles.chevron } /> }
+            {!model.busy && <Version aria-hidden="true" className={styles.icon} />}
+            <Text weight="medium" truncate className={styles.label}>
+                {label}
+            </Text>
+            {!disabled && <ChevronDown aria-hidden="true" className={styles.chevron} />}
         </Button>
     );
 
     if (place.workspace) {
         return (
-            <span className={ styles.off }>
-                <Unavailable label={ `Current branch: ${ label }` } hint={ WORKTREE_KEEPS_BRANCH } placement="bottom">
-                    { trigger(true) }
+            <span className={styles.off}>
+                <Unavailable label={`Current branch: ${label}`} hint={WORKTREE_KEEPS_BRANCH} placement="bottom">
+                    {trigger(true)}
                 </Unavailable>
             </span>
         );
@@ -72,8 +74,8 @@ export function BranchPicker({ facts, place, label }: BranchPickerProps) {
 
     return (
         <PopoverTrigger
-            isOpen={ isOpen }
-            onOpenChange={ (open) => {
+            isOpen={isOpen}
+            onOpenChange={open => {
                 setIsOpen(open);
                 setCreating(false);
 
@@ -81,13 +83,25 @@ export function BranchPicker({ facts, place, label }: BranchPickerProps) {
                     model.dismiss();
                     void model.load();
                 }
-            } }
+            }}
         >
-            { trigger(false) }
-            <Popover placement="bottom start" width={ 288 } spacing="xs" aria-label="Branches">
-                { creating
-                    ? <NewBranchForm model={ model } starts={ newBranchStarts(model.listing, head) } onBack={ () => showCreate(false) } onSwitched={ () => setIsOpen(false) } />
-                    : <BranchList model={ model } current={ head?.kind === 'branch' ? head.name : undefined } onSwitched={ () => setIsOpen(false) } onCreate={ () => showCreate(true) } /> }
+            {trigger(false)}
+            <Popover placement="bottom start" width={288} spacing="xs" aria-label="Branches">
+                {creating ? (
+                    <NewBranchForm
+                        model={model}
+                        starts={newBranchStarts(model.listing, head)}
+                        onBack={() => showCreate(false)}
+                        onSwitched={() => setIsOpen(false)}
+                    />
+                ) : (
+                    <BranchList
+                        model={model}
+                        current={head?.kind === 'branch' ? head.name : undefined}
+                        onSwitched={() => setIsOpen(false)}
+                        onCreate={() => showCreate(true)}
+                    />
+                )}
             </Popover>
         </PopoverTrigger>
     );

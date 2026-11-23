@@ -1,6 +1,6 @@
 # Clowdy Daemon (`@clowdy/daemon`)
 
-The standalone Bun process that owns projects, chats, tasks, runs, documents and the SQLite store, and serves the loopback HTTP + SSE contract in `packages/protocol`. It never imports Electron or React. It imports `@clowdy/lib` only by subpath (`@clowdy/lib/checklist`): the root pulls in React and DOM code, and ESLint refuses it (`eslint.config.mjs`). The contract is the source of truth: read `packages/protocol/src/api.ts` for the routes.
+The standalone Bun process that owns projects, chats, tasks, runs, documents and the SQLite store, and serves the loopback HTTP + SSE contract in `packages/protocol`. It never imports Electron or React. It imports `@clowdy/lib` only by subpath (`@clowdy/lib/checklist`): the root pulls in React and DOM code, and Biome refuses it (an override in the root `biome.json`). The contract is the source of truth: read `packages/protocol/src/api.ts` for the routes.
 
 ## Run and test
 
@@ -9,7 +9,7 @@ The standalone Bun process that owns projects, chats, tasks, runs, documents and
 | `bun run dev` | `bun --watch src/main.ts`. |
 | `bun run start` | `bun src/main.ts`. |
 | `bun run test` | `bun test`. Daemon tests use `bun:sqlite`, so Vitest cannot run them. |
-| `bun run typecheck`, `bun run lint` | `tsc --noEmit`, `eslint .`. |
+| `bun run typecheck`, `bun run lint` | `tsc --noEmit`, `biome check`. |
 | `bun run bundle <outdir> [version]` | The daemon as JavaScript for a shipped Bun (`scripts/bundle.ts`): `main.js`, `mcp-stdio.js` and `clowdy.js` side by side, dependencies inlined, `version` reported in `Health.version`. The desktop release build calls it. |
 | `bun run probe [agent...]` | Starts each ACP agent found on this machine (or the ones named) as a run would (the client capabilities of `initialize` included, so Cursor lists the options a run gets), opens a session with the tool bridge, and prints its capabilities, modes and options. No prompt, so no model call. It speaks ACP v1 only, whatever the agent's `protocol`. Shows why a new agent does not work. Codex's adapter is fetched with `bun x` the first time. |
 

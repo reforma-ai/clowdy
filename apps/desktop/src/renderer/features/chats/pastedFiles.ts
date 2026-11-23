@@ -1,5 +1,5 @@
 import { pathInside } from '../files/systemClipboard';
-import { placePath, type Place } from '../sidePanel/currentPlace';
+import { type Place, placePath } from '../sidePanel/currentPlace';
 
 import type { ComposerMentionAttrs } from '@clowdy/components/RichInput';
 import type { ProjectFolder } from '@clowdy/protocol';
@@ -11,21 +11,33 @@ import type { ClipboardFile } from '../../../shared/bridge';
  * main one when no `place` is given) from there, since the agent works in it; another folder's by its absolute path. A file that is somewhere else is left for the message
  * to carry as an attachment.
  */
-export function mentionedFiles(clipboard: readonly ClipboardFile[], folders: readonly ProjectFolder[], place?: Place): ComposerMentionAttrs[] {
+export function mentionedFiles(
+    clipboard: readonly ClipboardFile[],
+    folders: readonly ProjectFolder[],
+    place?: Place
+): ComposerMentionAttrs[] {
     const home = place?.folder ?? folders[0];
     const root = place ? placePath(place) : home?.path;
-    const chip = (file: ClipboardFile, id: string, path: string): ComposerMentionAttrs[] => [{ id, label: file.name, kind: 'file', trigger: '@', data: { path, ...file.kind === 'directory' && { directory: true } } }];
+    const chip = (file: ClipboardFile, id: string, path: string): ComposerMentionAttrs[] => [
+        {
+            id,
+            label: file.name,
+            kind: 'file',
+            trigger: '@',
+            data: { path, ...(file.kind === 'directory' && { directory: true }) },
+        },
+    ];
 
     return clipboard.flatMap((file): ComposerMentionAttrs[] => {
         const here = home && root !== undefined ? pathInside(root, file.path) : undefined;
 
         // The worktree is not under any folder of the project, so it is asked first.
-        if (home && here !== undefined) return chip(file, `file:${ home.id }:${ here }`, here);
+        if (home && here !== undefined) return chip(file, `file:${home.id}:${here}`, here);
 
         for (const folder of folders) {
             const relative = pathInside(folder.path, file.path);
 
-            if (relative !== undefined) return chip(file, `file:${ folder.id }:${ relative }`, file.path);
+            if (relative !== undefined) return chip(file, `file:${folder.id}:${relative}`, file.path);
         }
 
         return [];
@@ -48,13 +60,15 @@ export interface PasteTargets {
  * in the Files tree, or in Finder or Explorer) is already there for the agent to read, so it becomes a chip with its path and is not uploaded. The rest, and every
  * file in a page that is not the desktop app, are attached, as the browser gives them.
  */
-export async function pasteFiles(files: readonly File[], { folders, place, mention, attach }: PasteTargets): Promise<void> {
+export async function pasteFiles(
+    files: readonly File[],
+    { folders, place, mention, attach }: PasteTargets
+): Promise<void> {
     let held: ClipboardFile[] = [];
 
     try {
         held = (await window.desktop?.readClipboardFiles?.()) ?? [];
-    }
-    catch {
+    } catch {
         // The clipboard cannot be read: the files go up as they are.
     }
 

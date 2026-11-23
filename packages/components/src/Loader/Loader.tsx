@@ -1,5 +1,5 @@
 import { cn } from '@clowdy/lib';
-import { lazy, Suspense, type ComponentType, type HTMLAttributes } from 'react';
+import { type ComponentType, type HTMLAttributes, lazy, Suspense } from 'react';
 
 import styles from './Loader.module.css';
 
@@ -20,12 +20,11 @@ const LottieMark = lazy<ComponentType>(async () => {
         const animationData = (animation as { default?: unknown }).default ?? animation;
 
         function Mark() {
-            return <Lottie animationData={ animationData } loop autoplay aria-hidden />;
+            return <Lottie animationData={animationData} loop autoplay aria-hidden />;
         }
 
         return { default: Mark };
-    }
-    catch {
+    } catch {
         return { default: () => null };
     }
 });
@@ -36,8 +35,8 @@ const LottieMark = lazy<ComponentType>(async () => {
  */
 export function Loader({ size = 'inherit', className, ...props }: LoaderProps) {
     return (
-        <div role="status" aria-label="Loading" className={ cn(styles.root, className) } data-size={ size } { ...props }>
-            <Suspense fallback={ null }>
+        <div role="status" aria-label="Loading" className={cn(styles.root, className)} data-size={size} {...props}>
+            <Suspense fallback={null}>
                 <LottieMark />
             </Suspense>
         </div>

@@ -31,24 +31,28 @@ export interface ScopeHeaderProps {
  */
 export function ScopeHeader({ task, status, rollUp, canHaveChildren, onCreate, onDetails }: ScopeHeaderProps) {
     return (
-        <section className={ styles.scope } aria-label={ `Inside ${ task.key }` }>
-            <span className={ styles.key }>
-                <Box aria-hidden width={ 12 } height={ 12 } />
-                { task.key }
+        <section className={styles.scope} aria-label={`Inside ${task.key}`}>
+            <span className={styles.key}>
+                <Box aria-hidden width={12} height={12} />
+                {task.key}
             </span>
-            <Text variant="heading-5" truncate className={ styles.title }>{ task.title }</Text>
-            <StatusPill status={ status } />
-            { rollUp && <RollUpChip rollUp={ rollUp } taskKey={ task.key } /> }
+            <Text variant="heading-5" truncate className={styles.title}>
+                {task.title}
+            </Text>
+            <StatusPill status={status} />
+            {rollUp && <RollUpChip rollUp={rollUp} taskKey={task.key} />}
 
-            <span className={ styles.spacer } />
+            <span className={styles.spacer} />
 
-            <Unavailable label="New sub-task" hint={ canHaveChildren ? undefined : DEPTH_LIMIT_HINT }>
-                <Button variant="bordered" size="sm" isDisabled={ !canHaveChildren } onPress={ onCreate }>
+            <Unavailable label="New sub-task" hint={canHaveChildren ? undefined : DEPTH_LIMIT_HINT}>
+                <Button variant="bordered" size="sm" isDisabled={!canHaveChildren} onPress={onCreate}>
                     <Plus />
                     New sub-task
                 </Button>
             </Unavailable>
-            <Button variant="bordered" size="sm" onPress={ onDetails }>Details</Button>
+            <Button variant="bordered" size="sm" onPress={onDetails}>
+                Details
+            </Button>
         </section>
     );
 }

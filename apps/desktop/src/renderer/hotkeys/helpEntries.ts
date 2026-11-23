@@ -41,5 +41,7 @@ export function groupHelpEntries(entries: readonly HelpEntry[]): HelpGroup[] {
     };
 
     // `sort` is stable, so groups of the same rank keep the order of their first command.
-    return [...groups].map(([name, grouped]) => ({ name, entries: grouped })).sort((a, b) => rank(a.name) - rank(b.name));
+    return [...groups]
+        .map(([name, grouped]) => ({ name, entries: grouped }))
+        .sort((a, b) => rank(a.name) - rank(b.name));
 }

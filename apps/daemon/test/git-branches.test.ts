@@ -1,7 +1,7 @@
-import { MAX_GIT_BRANCH_ENTRIES, MAX_GIT_RECENT_BRANCHES } from '@clowdy/protocol';
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, realpathSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
+import { MAX_GIT_BRANCH_ENTRIES, MAX_GIT_RECENT_BRANCHES } from '@clowdy/protocol';
 
 import { defaultOf, parseLocalBranches, parseRemoteBranches, recentBranches } from '../src/git/branches';
 import { bare, commitFile, commitFileAt, isolated, makeRefs, neighbour, refsOf, repository } from './gitRepos';
@@ -26,13 +26,14 @@ async function start(): Promise<Harness> {
     return h;
 }
 
-const json = async <T>(response: Response) => await response.json() as T;
+const json = async <T>(response: Response) => (await response.json()) as T;
 
 /** The project of a repository and the read of its branches (of a worktree of it, by `workspaceId`). */
 async function open(path: string, h: Harness) {
     const { project } = h.ok('project.add', { folders: [path] });
     const folderId = project.folders[0].id as string;
-    const call = (place: Record<string, string> = {}) => h.fetch(`/v1/projects/${ project.id }/git/branches?${ new URLSearchParams({ folderId, ...place }) }`);
+    const call = (place: Record<string, string> = {}) =>
+        h.fetch(`/v1/projects/${project.id}/git/branches?${new URLSearchParams({ folderId, ...place })}`);
     const read = async (place: Record<string, string> = {}) => {
         const response = await call(place);
 
@@ -53,9 +54,10 @@ function listing(answer: GitBranches) {
 
 describe('the parts of the listing', () => {
     test('parseLocalBranches reads the name, the upstream, the tip time and the checked out mark, and skips what is no local branch', () => {
-        const output = `${ ['refs/heads/main', 'origin/main', '1700000000', '*'].join('\x1F') }\n`
-            + `${ ['refs/heads/feature/x', '', '1700000100', ' '].join('\x1F') }\n`
-            + `${ ['refs/remotes/origin/main', '', '1', ''].join('\x1F') }\n\n`;
+        const output =
+            `${['refs/heads/main', 'origin/main', '1700000000', '*'].join('\x1F')}\n` +
+            `${['refs/heads/feature/x', '', '1700000100', ' '].join('\x1F')}\n` +
+            `${['refs/remotes/origin/main', '', '1', ''].join('\x1F')}\n\n`;
 
         expect(parseLocalBranches(output)).toEqual([
             { name: 'main', current: true, upstream: 'origin/main', committedAt: 1_700_000_000_000 },
@@ -63,8 +65,8 @@ describe('the parts of the listing', () => {
         ]);
     });
 
-    test('parseRemoteBranches reads the branches of origin and leaves out its HEAD and another remote\'s', () => {
-        const output = `${ ['refs/remotes/origin/HEAD', '5'].join('\x1F') }\n${ ['refs/remotes/origin/feature/x', '1700000100'].join('\x1F') }\n${ ['refs/remotes/upstream/y', '2'].join('\x1F') }\n`;
+    test("parseRemoteBranches reads the branches of origin and leaves out its HEAD and another remote's", () => {
+        const output = `${['refs/remotes/origin/HEAD', '5'].join('\x1F')}\n${['refs/remotes/origin/feature/x', '1700000100'].join('\x1F')}\n${['refs/remotes/upstream/y', '2'].join('\x1F')}\n`;
 
         expect(parseRemoteBranches(output)).toEqual([{ name: 'feature/x', committedAt: 1_700_000_100_000 }]);
     });
@@ -87,7 +89,7 @@ describe('the parts of the listing', () => {
         expect(recentBranches('', local, 'main')).toEqual([]);
     });
 
-    test('defaultOf names the branch the base means: a local branch first, then the remote\'s without its prefix, nothing for what the lists do not have', () => {
+    test("defaultOf names the branch the base means: a local branch first, then the remote's without its prefix, nothing for what the lists do not have", () => {
         const local = new Set(['main', 'dev']);
         const remote = new Set(['next']);
 
@@ -116,7 +118,11 @@ describe('GET /v1/projects/:id/git/branches', () => {
 
         expect(answer.defaultBranch).toBe('main');
         expect(answer.local.map(branch => branch.name)).toEqual(['feature/newer', 'older', 'main']);
-        expect(answer.local[0]).toMatchObject({ name: 'feature/newer', current: true, upstream: 'origin/feature/newer' });
+        expect(answer.local[0]).toMatchObject({
+            name: 'feature/newer',
+            current: true,
+            upstream: 'origin/feature/newer',
+        });
         expect(answer.local[0]!.committedAt).toBe(Date.parse('2040-03-01T10:00:00Z'));
         expect(answer.local[1]).toEqual({ name: 'older', committedAt: Date.parse('2040-01-01T10:00:00Z') });
         expect(answer.local[2]).toMatchObject({ name: 'main', default: true, upstream: 'origin/main' });
@@ -141,7 +147,9 @@ describe('GET /v1/projects/:id/git/branches', () => {
         const { read } = await open(path, h);
         const answer = listing(await read());
 
-        expect(answer.remote).toEqual([{ name: 'feature/only-there', committedAt: Date.parse('2026-02-01T10:00:00Z') }]);
+        expect(answer.remote).toEqual([
+            { name: 'feature/only-there', committedAt: Date.parse('2026-02-01T10:00:00Z') },
+        ]);
         expect(answer.local.map(branch => branch.name).sort()).toEqual(['also-here', 'main']);
     });
 
@@ -164,7 +172,7 @@ describe('GET /v1/projects/:id/git/branches', () => {
         expect(answer.local.some(branch => branch.default)).toBe(false);
     });
 
-    test('names the worktree that has a branch checked out: a chat\'s by its workspace id, one the person made by its path, and not the place\'s own branch', async () => {
+    test("names the worktree that has a branch checked out: a chat's by its workspace id, one the person made by its path, and not the place's own branch", async () => {
         const h = await start();
         const { path } = repository();
         // Git lists a worktree by its real place.
@@ -175,7 +183,10 @@ describe('GET /v1/projects/:id/git/branches', () => {
         git(path, 'worktree', 'add', '-q', '-b', 'own-branch', ownTree);
 
         const { project, read } = await open(path, h);
-        const workspaceId = (h.ok('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: chatTree } }).chat.workspace as { id: string }).id;
+        const workspaceId = (
+            h.ok('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: chatTree } }).chat
+                .workspace as { id: string }
+        ).id;
         const answer = listing(await read());
         const byName = (list: typeof answer, name: string) => list.local.find(branch => branch.name === name)!;
 
@@ -203,9 +214,14 @@ describe('GET /v1/projects/:id/git/branches', () => {
         symlinkSync(tree, link);
 
         const { project, read } = await open(path, h);
-        const workspaceId = (h.ok('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: link } }).chat.workspace as { id: string }).id;
+        const workspaceId = (
+            h.ok('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: link } }).chat
+                .workspace as { id: string }
+        ).id;
 
-        expect(listing(await read()).local.find(branch => branch.name === 'linked')!.heldBy).toMatchObject({ workspaceId });
+        expect(listing(await read()).local.find(branch => branch.name === 'linked')!.heldBy).toMatchObject({
+            workspaceId,
+        });
     });
 
     test('lists the branches HEAD was on lately from the reflog: newest first, the current one left out, a deleted one and a detached hash left out, at most five', async () => {
@@ -250,8 +266,14 @@ describe('GET /v1/projects/:id/git/branches', () => {
         const { path } = repository();
         const count = MAX_GIT_BRANCH_ENTRIES + 5;
 
-        makeRefs(path, Array.from({ length: count }, (_, index) => `refs/heads/b${ String(index).padStart(4, '0') }`));
-        makeRefs(path, Array.from({ length: count }, (_, index) => `refs/remotes/origin/r${ String(index).padStart(4, '0') }`));
+        makeRefs(
+            path,
+            Array.from({ length: count }, (_, index) => `refs/heads/b${String(index).padStart(4, '0')}`)
+        );
+        makeRefs(
+            path,
+            Array.from({ length: count }, (_, index) => `refs/remotes/origin/r${String(index).padStart(4, '0')}`)
+        );
         git(path, 'branch', 'zzz-current');
         git(path, 'switch', '-q', 'zzz-current');
 
@@ -273,7 +295,12 @@ describe('GET /v1/projects/:id/git/branches', () => {
         commitFile(path, 'dir/a.txt');
         mkdirSync(join(path, 'untracked'));
 
-        const state = () => [refsOf(path), git(path, 'status', '--porcelain', '--untracked-files=all'), git(path, 'rev-parse', 'HEAD'), git(path, 'reflog', 'show', 'HEAD')];
+        const state = () => [
+            refsOf(path),
+            git(path, 'status', '--porcelain', '--untracked-files=all'),
+            git(path, 'rev-parse', 'HEAD'),
+            git(path, 'reflog', 'show', 'HEAD'),
+        ];
         const before = state();
 
         await (await open(path, h)).read();
@@ -287,7 +314,12 @@ describe('GET /v1/projects/:id/git/branches', () => {
 
         git(unborn, 'init', '-q', '-b', 'main');
 
-        expect(listing(await (await open(unborn, h)).read())).toEqual({ isRepository: true, local: [], remote: [], recent: [] });
+        expect(listing(await (await open(unborn, h)).read())).toEqual({
+            isRepository: true,
+            local: [],
+            remote: [],
+            recent: [],
+        });
         expect(await (await open(tempDir('git-branches'), h)).read()).toEqual({ isRepository: false });
 
         const { path } = repository();
@@ -296,26 +328,29 @@ describe('GET /v1/projects/:id/git/branches', () => {
         expect(await (await open(join(path, 'inner'), h)).read()).toEqual({ isRepository: false });
     });
 
-    test('answers as the other place reads do: 400 for no folder, 404 for a folder or a workspace that is not the project\'s, 503 for a worktree that is gone', async () => {
+    test("answers as the other place reads do: 400 for no folder, 404 for a folder or a workspace that is not the project's, 503 for a worktree that is gone", async () => {
         const h = await start();
         const { path } = repository();
         const { project, call } = await open(path, h);
         const tree = join(tempDir('git-branches'), 'tree');
 
-        expect((await h.fetch(`/v1/projects/${ project.id }/git/branches`)).status).toBe(400);
-        expect((await h.fetch(`/v1/projects/${ project.id }/git/branches?folderId=fld_none`)).status).toBe(404);
+        expect((await h.fetch(`/v1/projects/${project.id}/git/branches`)).status).toBe(400);
+        expect((await h.fetch(`/v1/projects/${project.id}/git/branches?folderId=fld_none`)).status).toBe(404);
         expect((await call({ workspaceId: 'wks_none' })).status).toBe(404);
         expect((await h.fetch('/v1/projects/prj_none/git/branches?folderId=x')).status).toBe(404);
 
         git(path, 'worktree', 'add', '-q', '-b', 'gone-branch', tree);
 
-        const workspaceId = (h.ok('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: tree } }).chat.workspace as { id: string }).id;
+        const workspaceId = (
+            h.ok('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: tree } }).chat
+                .workspace as { id: string }
+        ).id;
 
         git(path, 'worktree', 'remove', '--force', tree);
         expect((await call({ workspaceId })).status).toBe(503);
     });
 
-    test('reads the branches of another folder\'s repository through its own place', async () => {
+    test("reads the branches of another folder's repository through its own place", async () => {
         const h = await start();
         const { path } = repository(bare());
         const second = makeRepo(tempDir('git-branches'), 'second');
@@ -324,7 +359,11 @@ describe('GET /v1/projects/:id/git/branches', () => {
 
         const { project } = h.ok('project.add', { folders: [path, second] });
         const folderId = project.folders[1].id as string;
-        const answer = listing(await json<GitBranches>(await h.fetch(`/v1/projects/${ project.id }/git/branches?${ new URLSearchParams({ folderId }) }`)));
+        const answer = listing(
+            await json<GitBranches>(
+                await h.fetch(`/v1/projects/${project.id}/git/branches?${new URLSearchParams({ folderId })}`)
+            )
+        );
 
         expect(answer.local.map(branch => branch.name).sort()).toEqual(['main', 'second-only']);
     });

@@ -16,11 +16,7 @@ export function ModalProvider(props: { value: ModalInstance; children: ReactNode
     const modal = props.value;
     const store = modal.currentOptions.store;
 
-    return (
-        <ModalContext value={ { modal, store } }>
-            { props.children }
-        </ModalContext>
-    );
+    return <ModalContext value={{ modal, store }}>{props.children}</ModalContext>;
 }
 
 export function useModalContext(): ModalContextValue {

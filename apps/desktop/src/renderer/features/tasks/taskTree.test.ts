@@ -10,18 +10,18 @@ import type { Task } from '@clowdy/protocol';
 /** A task with a number, a status and a parent; the key and id follow the number. */
 function task(number: number, statusId: string, parentId?: number, rest: Partial<Task> = {}): Task {
     return {
-        id: `t-${ number }`,
+        id: `t-${number}`,
         projectId: 'p',
         number,
-        key: `X-${ number }`,
-        title: `Task ${ number }`,
+        key: `X-${number}`,
+        title: `Task ${number}`,
         description: '',
         statusId,
         dependsOn: [],
         createdBy: { kind: 'user' },
         createdAt: 0,
         updatedAt: 0,
-        ...(parentId !== undefined && { parentId: `t-${ parentId }` }),
+        ...(parentId !== undefined && { parentId: `t-${parentId}` }),
         ...rest,
     };
 }
@@ -150,7 +150,11 @@ describe('descendantsOf', () => {
         const tasks = [task(1, 'todo', 2), task(2, 'todo', 1), task(3, 'todo')];
 
         expect(numbers(tree(tasks).descendantsOf('t-1'))).toEqual([2]);
-        expect(tree(tasks).rows('t-1').map(row => row.task.number)).toEqual([2]);
+        expect(
+            tree(tasks)
+                .rows('t-1')
+                .map(row => row.task.number)
+        ).toEqual([2]);
     });
 });
 
@@ -158,7 +162,17 @@ describe('rows', () => {
     it('draws the roots with everything inside them, depth first, each level in workflow status order and then number', () => {
         const rows = tree().rows(null);
 
-        expect(rows.map(row => [row.task.number, row.depth])).toEqual([[9, 0], [8, 0], [1, 0], [5, 1], [6, 1], [2, 1], [4, 2], [3, 2], [7, 1]]);
+        expect(rows.map(row => [row.task.number, row.depth])).toEqual([
+            [9, 0],
+            [8, 0],
+            [1, 0],
+            [5, 1],
+            [6, 1],
+            [2, 1],
+            [4, 2],
+            [3, 2],
+            [7, 1],
+        ]);
     });
 
     it('marks the rows that have tasks inside them, and none for a leaf', () => {
@@ -174,17 +188,32 @@ describe('rows', () => {
         expect(rows.map(row => row.task.number)).toEqual([9, 8, 1, 5, 6, 2, 7]);
         expect(rows.find(row => row.task.number === 2)).toMatchObject({ hasChildren: true, collapsed: true });
 
-        expect(tree().rows(null, new Set(['t-1'])).map(row => row.task.number)).toEqual([9, 8, 1]);
+        expect(
+            tree()
+                .rows(null, new Set(['t-1']))
+                .map(row => row.task.number)
+        ).toEqual([9, 8, 1]);
     });
 
     it('does not mark a task with nothing inside it as collapsed, whatever the set says', () => {
-        expect(tree().rows(null, ['t-8']).find(row => row.task.number === 8)).toMatchObject({ hasChildren: false, collapsed: false });
+        expect(
+            tree()
+                .rows(null, ['t-8'])
+                .find(row => row.task.number === 8)
+        ).toMatchObject({ hasChildren: false, collapsed: false });
     });
 
     it('starts at the scope: its tasks are depth 0, and the scope is not a row', () => {
         const rows = tree().rows('t-1');
 
-        expect(rows.map(row => [row.task.number, row.depth])).toEqual([[5, 0], [6, 0], [2, 0], [4, 1], [3, 1], [7, 0]]);
+        expect(rows.map(row => [row.task.number, row.depth])).toEqual([
+            [5, 0],
+            [6, 0],
+            [2, 0],
+            [4, 1],
+            [3, 1],
+            [7, 0],
+        ]);
         expect(tree().rows('t-8')).toEqual([]);
         expect(tree().rows('t-missing')).toEqual([]);
     });
@@ -192,7 +221,14 @@ describe('rows', () => {
     it('lists a root once, without a "no parent" group, even when no task has children', () => {
         const flat = [task(1, 'todo'), task(2, 'todo')];
 
-        expect(tree(flat).rows(null).map(row => [row.task.number, row.depth, row.hasChildren])).toEqual([[1, 0, false], [2, 0, false]]);
+        expect(
+            tree(flat)
+                .rows(null)
+                .map(row => [row.task.number, row.depth, row.hasChildren])
+        ).toEqual([
+            [1, 0, false],
+            [2, 0, false],
+        ]);
     });
 
     it('applies the filter: a kept task whose parent is dropped moves up to the nearest kept parent, or to the top', () => {
@@ -200,7 +236,16 @@ describe('rows', () => {
         const rows = tree().rows(null, [], keep);
 
         // CAR-3 and CAR-4 were inside the dropped 2, so they stand directly under 1.
-        expect(rows.map(row => [row.task.number, row.depth])).toEqual([[9, 0], [8, 0], [1, 0], [4, 1], [5, 1], [6, 1], [3, 1], [7, 1]]);
+        expect(rows.map(row => [row.task.number, row.depth])).toEqual([
+            [9, 0],
+            [8, 0],
+            [1, 0],
+            [4, 1],
+            [5, 1],
+            [6, 1],
+            [3, 1],
+            [7, 1],
+        ]);
 
         const rootless = tree().rows(null, [], candidate => candidate.number === 4);
 
@@ -215,7 +260,7 @@ describe('rows', () => {
         expect(tree().rows(null, [], candidate => candidate.number === 1)[0]).toMatchObject({ hasChildren: false });
     });
 
-    it('composes with the screen\'s filter through keepAmong', () => {
+    it("composes with the screen's filter through keepAmong", () => {
         const all = TASKS;
         const matching = filterTasks(all, { ...NO_FILTER, query: 'Task 3' }, new Map());
         const rows = tree().rows(null, [], keepAmong(matching));
@@ -243,12 +288,14 @@ describe('ancestors, depth and height', () => {
 
     it('counts levels from 1 for a root', () => {
         expect([1, 2, 3, 8].map(number => tree().depthOf(TASKS[number - 1]))).toEqual([1, 2, 3, 1]);
-        expect([1, 2, 3, 8].map(number => tree().heightOf(`t-${ number }`))).toEqual([2, 1, 0, 0]);
+        expect([1, 2, 3, 8].map(number => tree().heightOf(`t-${number}`))).toEqual([2, 1, 0, 0]);
         expect(tree().heightOf('t-missing')).toBe(0);
     });
 
     it('says whether a task can hold tasks: only below the depth the daemon allows', () => {
-        const deep = Array.from({ length: MAX_TASK_DEPTH }, (_, index) => task(index + 1, 'todo', index === 0 ? undefined : index));
+        const deep = Array.from({ length: MAX_TASK_DEPTH }, (_, index) =>
+            task(index + 1, 'todo', index === 0 ? undefined : index)
+        );
 
         expect(tree(deep).canHaveChildren(deep[MAX_TASK_DEPTH - 2])).toBe(true);
         expect(tree(deep).canHaveChildren(deep[MAX_TASK_DEPTH - 1])).toBe(false);
@@ -275,7 +322,11 @@ describe('rollUp', () => {
     });
 
     it('counts a task in the Done category as done whatever the status is called', () => {
-        const statuses = [{ id: 'a', name: 'Shipped', category: 'done' as const }, { id: 'b', name: 'Dropped', category: 'canceled' as const }, { id: 'c', name: 'Working', category: 'active' as const }];
+        const statuses = [
+            { id: 'a', name: 'Shipped', category: 'done' as const },
+            { id: 'b', name: 'Dropped', category: 'canceled' as const },
+            { id: 'c', name: 'Working', category: 'active' as const },
+        ];
         const tasks = [task(1, 'c'), task(2, 'a', 1), task(3, 'b', 1), task(4, 'c', 1)];
 
         expect(new TaskTree(tasks, statuses).rollUp({ id: 't-1' })).toEqual({ done: 1, total: 2 });
@@ -284,7 +335,10 @@ describe('rollUp', () => {
 
 describe('checklistOf', () => {
     it('reads the checklist of the description with the shared parser, and has none without items', () => {
-        expect(checklistOf({ description: 'Steps:\n\n- [x] one\n- [ ] two\n* [ ] three' })).toEqual({ done: 1, total: 3 });
+        expect(checklistOf({ description: 'Steps:\n\n- [x] one\n- [ ] two\n* [ ] three' })).toEqual({
+            done: 1,
+            total: 3,
+        });
         expect(checklistOf({ description: 'Nothing to tick\n\n- plain bullet' })).toBeUndefined();
         expect(checklistOf({ description: '' })).toBeUndefined();
     });
@@ -308,7 +362,9 @@ describe('parentCandidates', () => {
 
     it('counts the levels inside the task: an epic does not fit under a deep task, a leaf does', () => {
         // A chain of MAX_TASK_DEPTH - 1 levels, and a separate task with two levels inside it.
-        const chain = Array.from({ length: MAX_TASK_DEPTH - 1 }, (_, index) => task(index + 1, 'todo', index === 0 ? undefined : index));
+        const chain = Array.from({ length: MAX_TASK_DEPTH - 1 }, (_, index) =>
+            task(index + 1, 'todo', index === 0 ? undefined : index)
+        );
         const epic = [task(100, 'todo'), task(101, 'todo', 100), task(102, 'todo', 101)];
         const all = [...chain, ...epic];
         const candidates = numbers(parentCandidates(all, epic[0]));
@@ -317,14 +373,20 @@ describe('parentCandidates', () => {
         expect(candidates).toEqual(chain.slice(0, MAX_TASK_DEPTH - 3).map(link => link.number));
 
         // A task with nothing inside it fits under any of them, the last one making it level MAX_TASK_DEPTH.
-        expect(numbers(parentCandidates([...chain, task(200, 'todo')], task(200, 'todo')))).toEqual(chain.map(link => link.number));
+        expect(numbers(parentCandidates([...chain, task(200, 'todo')], task(200, 'todo')))).toEqual(
+            chain.map(link => link.number)
+        );
     });
 
     it('offers no task that is already at the deepest level, which is a full tree for anything below it', () => {
-        const full = Array.from({ length: MAX_TASK_DEPTH }, (_, index) => task(index + 1, 'todo', index === 0 ? undefined : index));
+        const full = Array.from({ length: MAX_TASK_DEPTH }, (_, index) =>
+            task(index + 1, 'todo', index === 0 ? undefined : index)
+        );
         const extra = task(99, 'todo');
 
-        expect(numbers(parentCandidates([...full, extra], extra))).toEqual(full.slice(0, MAX_TASK_DEPTH - 1).map(link => link.number));
+        expect(numbers(parentCandidates([...full, extra], extra))).toEqual(
+            full.slice(0, MAX_TASK_DEPTH - 1).map(link => link.number)
+        );
     });
 
     it('offers every task of the project for one that is not made yet, within the depth', () => {
@@ -334,7 +396,9 @@ describe('parentCandidates', () => {
 
 describe('the demo tree', () => {
     it('rolls up Payments from the fixture: the tasks inside it and below, a canceled one left out', () => {
-        const tasks = createFixtureData().tasks.filter(candidate => candidate.projectId === FIXTURE_PROJECT_ID && candidate.archivedAt === undefined);
+        const tasks = createFixtureData().tasks.filter(
+            candidate => candidate.projectId === FIXTURE_PROJECT_ID && candidate.archivedAt === undefined
+        );
         const demo = new TaskTree(tasks, DEFAULT_STATUSES);
         const payments = tasks.find(candidate => candidate.number === 31)!;
 

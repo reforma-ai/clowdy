@@ -17,7 +17,10 @@ interface Pending {
 
 /** The program refused a call: its message and, when it sent one, its JSON-RPC code (ACP's `-32000` is "authentication required"). */
 export class RpcError extends Error {
-    constructor(message: string, readonly code?: number) {
+    constructor(
+        message: string,
+        readonly code?: number
+    ) {
         super(message);
     }
 }
@@ -33,7 +36,12 @@ const METHOD_NOT_FOUND = -32601;
  * stops it. The whole conversation has one deadline. Rejects with what failed, with the end of the program's stderr when
  * that helps. Used for reads only: the program does its own authentication, so nothing here touches a token.
  */
-export async function withAppServer<T>(context: ProbeContext, run: (rpc: Rpc) => Promise<T>, timeoutMs: number, args: string[] = ['app-server']): Promise<T> {
+export async function withAppServer<T>(
+    context: ProbeContext,
+    run: (rpc: Rpc) => Promise<T>,
+    timeoutMs: number,
+    args: string[] = ['app-server']
+): Promise<T> {
     if (context.signal?.aborted) {
         throw new Error('stopped');
     }
@@ -54,24 +62,28 @@ export async function withAppServer<T>(context: ProbeContext, run: (rpc: Rpc) =>
     const tail = () => {
         const text = proc.stderr().trim().slice(-300);
 
-        return text ? ` (it wrote: ${ text })` : '';
+        return text ? ` (it wrote: ${text})` : '';
     };
 
     const write = (payload: object) => {
         if (!ended) {
-            proc.child.stdin?.write(`${ JSON.stringify({ jsonrpc: '2.0', ...payload }) }\n`);
+            proc.child.stdin?.write(`${JSON.stringify({ jsonrpc: '2.0', ...payload })}\n`);
         }
     };
 
     proc.child.stdin?.on('error', () => undefined);
 
-    createInterface({ input: proc.child.stdout! }).on('line', (line) => {
-        let message: { id?: unknown; method?: unknown; result?: unknown; error?: { message?: unknown; code?: unknown } };
+    createInterface({ input: proc.child.stdout! }).on('line', line => {
+        let message: {
+            id?: unknown;
+            method?: unknown;
+            result?: unknown;
+            error?: { message?: unknown; code?: unknown };
+        };
 
         try {
             message = JSON.parse(line);
-        }
-        catch {
+        } catch {
             return;
         }
 
@@ -94,30 +106,37 @@ export async function withAppServer<T>(context: ProbeContext, run: (rpc: Rpc) =>
         pending.delete(message.id);
 
         if (message.error) {
-            waiting.reject(new RpcError(typeof message.error.message === 'string' ? message.error.message : 'the program answered with an error', typeof message.error.code === 'number' ? message.error.code : undefined));
-        }
-        else {
+            waiting.reject(
+                new RpcError(
+                    typeof message.error.message === 'string'
+                        ? message.error.message
+                        : 'the program answered with an error',
+                    typeof message.error.code === 'number' ? message.error.code : undefined
+                )
+            );
+        } else {
             waiting.resolve(message.result);
         }
     });
     void proc.exited.then(() => {
-        ended = new Error(`the program ended before it answered${ tail() }`);
+        ended = new Error(`the program ended before it answered${tail()}`);
         failAll(ended);
     });
     const rpc: Rpc = {
-        call: (method, params) => new Promise((resolve, reject) => {
-            // Asked after the program ended, a call would wait for the deadline for an answer that cannot come.
-            if (ended) {
-                reject(ended);
+        call: (method, params) =>
+            new Promise((resolve, reject) => {
+                // Asked after the program ended, a call would wait for the deadline for an answer that cannot come.
+                if (ended) {
+                    reject(ended);
 
-                return;
-            }
+                    return;
+                }
 
-            const id = nextId++;
+                const id = nextId++;
 
-            pending.set(id, { resolve, reject });
-            write({ id, method, ...(params !== undefined && { params }) });
-        }),
+                pending.set(id, { resolve, reject });
+                write({ id, method, ...(params !== undefined && { params }) });
+            }),
         notify: (method, params) => write({ method, ...(params !== undefined && { params }) }),
     };
 
@@ -134,11 +153,13 @@ export async function withAppServer<T>(context: ProbeContext, run: (rpc: Rpc) =>
         return await Promise.race([
             run(rpc),
             new Promise<never>((_resolve, reject) => {
-                timer = setTimeout(() => reject(new RpcTimeout(`no answer in ${ Math.round(timeoutMs / 1000) } s${ tail() }`)), timeoutMs);
+                timer = setTimeout(
+                    () => reject(new RpcTimeout(`no answer in ${Math.round(timeoutMs / 1000)} s${tail()}`)),
+                    timeoutMs
+                );
             }),
         ]);
-    }
-    finally {
+    } finally {
         clearTimeout(timer);
         context.signal?.removeEventListener('abort', onAbort);
         failAll(new Error('stopped'));

@@ -3,7 +3,13 @@ import { useState } from 'react';
 
 import { browserStorage } from '../stores/storage';
 import styles from './SidebarLayout.module.css';
-import { MAIN_MIN_WIDTH, readSidebarWidth, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH, writeSidebarWidth } from './sidebarWidth';
+import {
+    MAIN_MIN_WIDTH,
+    readSidebarWidth,
+    SIDEBAR_MAX_WIDTH,
+    SIDEBAR_MIN_WIDTH,
+    writeSidebarWidth,
+} from './sidebarWidth';
 
 import type { ReactNode } from 'react';
 
@@ -29,28 +35,29 @@ export function SidebarLayout({ screen, defaultWidth, sidebar, children }: Sideb
     return (
         <ResizablePanelGroup
             orientation="horizontal"
-            className={ styles.layout }
+            className={styles.layout}
             // A window that is resized, or a width the range had to correct, changes the layout too: only the person's own drag is kept.
-            onLayoutChanged={ (_layout, meta) => {
-                if (meta.isUserInteraction && sidebarPanel.current) writeSidebarWidth(browserStorage(), screen, sidebarPanel.current.getSize().inPixels);
-            } }
+            onLayoutChanged={(_layout, meta) => {
+                if (meta.isUserInteraction && sidebarPanel.current)
+                    writeSidebarWidth(browserStorage(), screen, sidebarPanel.current.getSize().inPixels);
+            }}
         >
             <ResizablePanel
                 id="sidebar"
-                panelRef={ sidebarPanel }
-                className={ styles.sidebar }
-                defaultSize={ initialWidth }
-                minSize={ SIDEBAR_MIN_WIDTH }
-                maxSize={ SIDEBAR_MAX_WIDTH }
+                panelRef={sidebarPanel}
+                className={styles.sidebar}
+                defaultSize={initialWidth}
+                minSize={SIDEBAR_MIN_WIDTH}
+                maxSize={SIDEBAR_MAX_WIDTH}
                 groupResizeBehavior="preserve-pixel-size"
             >
-                { sidebar }
+                {sidebar}
             </ResizablePanel>
 
             <ResizableHandle aria-label="Resize the sidebar" />
 
-            <ResizablePanel id="main" className={ styles.main } minSize={ MAIN_MIN_WIDTH }>
-                { children }
+            <ResizablePanel id="main" className={styles.main} minSize={MAIN_MIN_WIDTH}>
+                {children}
             </ResizablePanel>
         </ResizablePanelGroup>
     );

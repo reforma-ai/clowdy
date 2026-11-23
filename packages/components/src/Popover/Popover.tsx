@@ -1,13 +1,13 @@
 import { cn } from '@clowdy/lib';
 import {
     DialogTrigger,
+    type DialogTriggerProps,
     OverlayTriggerStateContext,
     Popover as RACPopover,
-    type DialogTriggerProps,
     type PopoverProps as RACPopoverProps,
 } from 'react-aria-components';
 
-import { resolveOverlayWidth, type OverlayWidth } from '../utils/resolveOverlayWidth';
+import { type OverlayWidth, resolveOverlayWidth } from '../utils/resolveOverlayWidth';
 import styles from './Popover.module.css';
 
 import type { CSSProperties } from 'react';
@@ -37,7 +37,7 @@ export interface PopoverProps extends Omit<RACPopoverProps, 'className' | 'style
 }
 
 export function PopoverTrigger(props: DialogTriggerProps) {
-    return <DialogTrigger { ...props } />;
+    return <DialogTrigger {...props} />;
 }
 
 export function Popover({
@@ -55,20 +55,18 @@ export function Popover({
     const widthStyle = resolveOverlayWidth(width);
     const paddingClass = PADDING_CLASSES[spacing as Spacing];
 
-    const style = (widthStyle != null || styleProp != null)
-        ? { ...styleProp, ...widthStyle }
-        : undefined;
+    const style = widthStyle != null || styleProp != null ? { ...styleProp, ...widthStyle } : undefined;
 
     return (
         <RACPopover
-            className={ cn(styles.popover, paddingClass, className) }
-            style={ style }
-            offset={ offset }
-            containerPadding={ containerPadding }
-            { ...props }
+            className={cn(styles.popover, paddingClass, className)}
+            style={style}
+            offset={offset}
+            containerPadding={containerPadding}
+            {...props}
             data-modal-clickout-layer
         >
-            { children }
+            {children}
         </RACPopover>
     );
 }

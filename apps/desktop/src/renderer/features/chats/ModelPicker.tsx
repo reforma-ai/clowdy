@@ -10,11 +10,31 @@ import { Tooltip } from '@clowdy/components/Tooltip';
 import { ChevronDown } from '@clowdy/icons/10';
 import { Check, ChevronLeft, ChevronRight } from '@clowdy/icons/14';
 import { cn } from '@clowdy/lib';
-import { use, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode, type RefObject } from 'react';
+import {
+    type KeyboardEvent,
+    type PointerEvent,
+    type ReactNode,
+    type RefObject,
+    use,
+    useEffect,
+    useLayoutEffect,
+    useRef,
+    useState,
+} from 'react';
 
 import { ProviderIcon } from '../settings/providers/ProviderIcon';
 import styles from './ModelPicker.module.css';
-import { choiceForModel, legalEffort, levelLabel, mainModels, modelRow, moreModels, pickableModels, readRemembered, type ModelChoice } from './modelSelection';
+import {
+    choiceForModel,
+    legalEffort,
+    levelLabel,
+    type ModelChoice,
+    mainModels,
+    modelRow,
+    moreModels,
+    pickableModels,
+    readRemembered,
+} from './modelSelection';
 import { ReasoningSlider } from './ReasoningSlider';
 
 import type { AgentModel } from '@clowdy/protocol';
@@ -61,9 +81,12 @@ function holdOf(choice: ModelChoice, providers: readonly PickerProvider[]): Held
     const provider = providers.find(candidate => candidate.id === choice.engine);
     const answer = provider?.list.models;
     const model = answer && choice.model !== undefined ? modelRow(answer.models, choice.model) : undefined;
-    const loading = provider !== undefined && answer === undefined && (provider.list.status === 'idle' || provider.list.status === 'loading');
+    const loading =
+        provider !== undefined &&
+        answer === undefined &&
+        (provider.list.status === 'idle' || provider.list.status === 'loading');
     const level = model ? legalEffort(model, choice.effort) : undefined;
-    const title = model?.name ?? choice.model ?? (loading ? 'Model' : provider?.name ?? 'Model');
+    const title = model?.name ?? choice.model ?? (loading ? 'Model' : (provider?.name ?? 'Model'));
 
     return {
         provider,
@@ -78,7 +101,7 @@ function holdOf(choice: ModelChoice, providers: readonly PickerProvider[]): Held
 }
 
 /** The key of a row: models of two providers may share an id (Claude Code's `default`, Cursor's `default`). */
-const rowKey = (engine: string, model: string) => `${ engine }:${ model }`;
+const rowKey = (engine: string, model: string) => `${engine}:${model}`;
 
 /** The rows a provider offers, once its list has been read. */
 function rowsOf(provider: PickerProvider): AgentModel[] {
@@ -92,38 +115,36 @@ function noteOf(provider: PickerProvider): { busy: true } | { busy: false; text:
     const { list, name } = provider;
     const answer = list.models;
 
-    if (list.status === 'failed') return { busy: false, text: `The models could not be read. ${ list.error }`.trim() };
+    if (list.status === 'failed') return { busy: false, text: `The models could not be read. ${list.error}`.trim() };
 
     if (!answer) return { busy: true };
 
-    if (answer.state !== 'ok') return { busy: false, text: answer.detail ?? `${ name } cannot list its models.` };
+    if (answer.state !== 'ok') return { busy: false, text: answer.detail ?? `${name} cannot list its models.` };
 
-    return answer.models.length === 0 ? { busy: false, text: `${ name } lists no models.` } : undefined;
+    return answer.models.length === 0 ? { busy: false, text: `${name} lists no models.` } : undefined;
 }
 
 function Trigger({ choice, providers }: { choice: ModelChoice; providers: readonly PickerProvider[] }) {
     const isOpen = use(OverlayTriggerStateContext)!.isOpen;
     const held = holdOf(choice, providers);
-    const label = held.level ? `${ held.title } · ${ levelLabel(held.level) }` : held.title;
+    const label = held.level ? `${held.title} · ${levelLabel(held.level)}` : held.title;
 
     return (
         <Button
             size="sm"
             variant="filling"
             rounded
-            className={ styles.trigger }
-            contentClassName={ styles.triggerContent }
-            data-open={ isOpen || undefined }
-            aria-label={ `Model: ${ label }` }
+            className={styles.trigger}
+            contentClassName={styles.triggerContent}
+            data-open={isOpen || undefined}
+            aria-label={`Model: ${label}`}
         >
-            <ProviderIcon agentId={ choice.engine } size={ 16 } aria-hidden="true" />
-            <span className={ styles.modelLabel }>
-                <Text truncate>{ held.title }</Text>
-                <Show when={ held.level }>
-                    { level => <span className={ styles.level }>{ levelLabel(level) }</span> }
-                </Show>
+            <ProviderIcon agentId={choice.engine} size={16} aria-hidden="true" />
+            <span className={styles.modelLabel}>
+                <Text truncate>{held.title}</Text>
+                <Show when={held.level}>{level => <span className={styles.level}>{levelLabel(level)}</span>}</Show>
             </span>
-            <Show when={ held.loading }>
+            <Show when={held.loading}>
                 <Spinner size="xs" />
             </Show>
             <ChevronDown aria-hidden="true" />
@@ -148,19 +169,19 @@ function FrozenPopover({ children }: { children: ReactNode }) {
 
     return (
         <Popover
-            className={ styles.popover }
+            className={styles.popover}
             placement="top"
             spacing="none"
-            width={ 320 }
+            width={320}
             aria-label="Model and reasoning effort"
-            shouldCloseOnInteractOutside={ target => !(target instanceof Element && target.closest(OWN_LAYERS)) }
-            getTargetRect={ (target) => {
+            shouldCloseOnInteractOutside={target => !(target instanceof Element && target.closest(OWN_LAYERS))}
+            getTargetRect={target => {
                 frozen.current ??= target.getBoundingClientRect();
 
                 return frozen.current;
-            } }
+            }}
         >
-            { children }
+            {children}
         </Popover>
     );
 }
@@ -178,9 +199,12 @@ interface FaceProps {
 function faceNote(held: Held): string | undefined {
     if (held.levels.length > 0) return undefined;
 
-    if (held.defaulted) return `Runs on ${ held.provider?.name ?? 'the provider' }'s own default until you pick a model.`;
+    if (held.defaulted) return `Runs on ${held.provider?.name ?? 'the provider'}'s own default until you pick a model.`;
 
-    return held.model?.description ?? (held.missing ? `${ held.provider?.name ?? 'The provider' } does not list this model anymore.` : undefined);
+    return (
+        held.model?.description ??
+        (held.missing ? `${held.provider?.name ?? 'The provider'} does not list this model anymore.` : undefined)
+    );
 }
 
 /** The first pane: the model as a big button that opens the list, and under it what there is to say of the model's reasoning effort, if anything. */
@@ -188,39 +212,47 @@ function Face({ choice, held, running, buttonRef, onOpenList, onLevel }: FacePro
     const note = faceNote(held);
 
     return (
-        <div className={ styles.face }>
-            <Button ref={ buttonRef } variant="filling" color="secondary" size="md" className={ styles.modelButton } aria-label="Select model" onPress={ onOpenList }>
-                <ProviderIcon agentId={ choice.engine } size={ 16 } aria-hidden="true" />
-                <span className={ styles.modelLabel }>
-                    <span className={ styles.modelTitle }>{ held.defaulted ? 'Default model' : held.title }</span>
-                    <Show when={ held.level }>
-                        { level => <span className={ styles.level }>{ levelLabel(level) }</span> }
-                    </Show>
+        <div className={styles.face}>
+            <Button
+                ref={buttonRef}
+                variant="filling"
+                color="secondary"
+                size="md"
+                className={styles.modelButton}
+                aria-label="Select model"
+                onPress={onOpenList}
+            >
+                <ProviderIcon agentId={choice.engine} size={16} aria-hidden="true" />
+                <span className={styles.modelLabel}>
+                    <span className={styles.modelTitle}>{held.defaulted ? 'Default model' : held.title}</span>
+                    <Show when={held.level}>{level => <span className={styles.level}>{levelLabel(level)}</span>}</Show>
                 </span>
                 <ChevronDown aria-hidden="true" />
             </Button>
 
-            { /* Nothing to put here, no block: it would only add its padding to the face. */ }
-            <Show when={ held.level !== undefined || Boolean(note) || running }>
-                <div className={ styles.reasoning }>
-                    { /* The level is there for a model with levels: a slider to move along them, or its only one as text. */ }
-                    <Show when={ held.level }>
-                        { level => (
+            {/* Nothing to put here, no block: it would only add its padding to the face. */}
+            <Show when={held.level !== undefined || Boolean(note) || running}>
+                <div className={styles.reasoning}>
+                    {/* The level is there for a model with levels: a slider to move along them, or its only one as text. */}
+                    <Show when={held.level}>
+                        {level => (
                             <>
-                                <Text variant="label" color="secondary">Reasoning effort</Text>
-                                { held.levels.length > 1
-                                    ? <ReasoningSlider levels={ held.levels } value={ level } onChange={ onLevel } />
-                                    : <Text className={ styles.faceText }>{ levelLabel(level) }</Text> }
+                                <Text variant="label" color="secondary">
+                                    Reasoning effort
+                                </Text>
+                                {held.levels.length > 1 ? (
+                                    <ReasoningSlider levels={held.levels} value={level} onChange={onLevel} />
+                                ) : (
+                                    <Text className={styles.faceText}>{levelLabel(level)}</Text>
+                                )}
                             </>
-                        ) }
+                        )}
                     </Show>
 
-                    <Show when={ note }>
-                        { text => <Text className={ styles.faceText }>{ text }</Text> }
-                    </Show>
+                    <Show when={note}>{text => <Text className={styles.faceText}>{text}</Text>}</Show>
 
-                    <Show when={ running }>
-                        <Text className={ styles.footnote }>Applies from the next message</Text>
+                    <Show when={running}>
+                        <Text className={styles.footnote}>Applies from the next message</Text>
                     </Show>
                 </div>
             </Show>
@@ -248,7 +280,20 @@ function ProviderStrip({ providers, value, active, onChange }: StripProps) {
     const onKeyDown = (event: KeyboardEvent) => {
         const last = providers.length - 1;
         const index = providers.findIndex(provider => provider.id === value);
-        const next = event.key === 'ArrowRight' ? (index >= last ? 0 : index + 1) : event.key === 'ArrowLeft' ? (index <= 0 ? last : index - 1) : event.key === 'Home' ? 0 : event.key === 'End' ? last : undefined;
+        const next =
+            event.key === 'ArrowRight'
+                ? index >= last
+                    ? 0
+                    : index + 1
+                : event.key === 'ArrowLeft'
+                  ? index <= 0
+                      ? last
+                      : index - 1
+                  : event.key === 'Home'
+                    ? 0
+                    : event.key === 'End'
+                      ? last
+                      : undefined;
 
         if (next === undefined) return;
 
@@ -259,27 +304,33 @@ function ProviderStrip({ providers, value, active, onChange }: StripProps) {
     };
 
     return (
-        <div ref={ strip } className={ styles.strip } role="tablist" aria-label="Provider" onKeyDown={ onKeyDown }>
-            <For each={ providers }>
-                { (provider) => {
+        <div ref={strip} className={styles.strip} role="tablist" aria-label="Provider" onKeyDown={onKeyDown}>
+            <For each={providers}>
+                {provider => {
                     const tab = (
                         <button
-                            key={ provider.id }
+                            key={provider.id}
                             type="button"
                             role="tab"
-                            className={ styles.tab }
-                            aria-label={ provider.name }
-                            aria-selected={ provider.id === value }
-                            tabIndex={ provider.id === value ? 0 : -1 }
-                            data-tab={ provider.id }
-                            onClick={ () => onChange(provider.id) }
+                            className={styles.tab}
+                            aria-label={provider.name}
+                            aria-selected={provider.id === value}
+                            tabIndex={provider.id === value ? 0 : -1}
+                            data-tab={provider.id}
+                            onClick={() => onChange(provider.id)}
                         >
-                            <ProviderIcon agentId={ provider.id } size={ 16 } aria-hidden="true" />
+                            <ProviderIcon agentId={provider.id} size={16} aria-hidden="true" />
                         </button>
                     );
 
-                    return active ? <Tooltip key={ provider.id } content={ provider.name } placement="bottom">{ tab }</Tooltip> : tab;
-                } }
+                    return active ? (
+                        <Tooltip key={provider.id} content={provider.name} placement="bottom">
+                            {tab}
+                        </Tooltip>
+                    ) : (
+                        tab
+                    );
+                }}
             </For>
         </div>
     );
@@ -309,7 +360,11 @@ function FlyoutBody({ children, onKeyDown }: { children: ReactNode; onKeyDown: (
         return () => cancelAnimationFrame(frame);
     }, []);
 
-    return <div ref={ box } className={ styles.flyoutBody } onKeyDown={ onKeyDown }>{ children }</div>;
+    return (
+        <div ref={box} className={styles.flyoutBody} onKeyDown={onKeyDown}>
+            {children}
+        </div>
+    );
 }
 
 /** The row that opens the flyout. It is a row of the list (the arrows reach it) that picks nothing. */
@@ -351,7 +406,10 @@ function ModelList({ choice, held, providers, active, onBack, onPickModel }: Lis
         }
     }
 
-    const shown = providers.find(provider => provider.id === viewed) ?? providers.find(provider => provider.id === choice.engine) ?? providers[0];
+    const shown =
+        providers.find(provider => provider.id === viewed) ??
+        providers.find(provider => provider.id === choice.engine) ??
+        providers[0];
     const rows = shown ? rowsOf(shown) : [];
     const selectedId = shown && held.provider?.id === shown.id ? held.model?.id : undefined;
     const main = mainModels(rows, selectedId);
@@ -396,15 +454,15 @@ function ModelList({ choice, held, providers, active, onBack, onPickModel }: Lis
 
         return (
             <ListBoxItem
-                key={ key }
-                id={ key }
-                data-model-id={ model.id }
-                data-engine={ provider.id }
-                text={ model.name }
-                icon={ <ProviderIcon agentId={ provider.id } size={ 16 } aria-hidden="true" /> }
-                endAffix={ key === selected ? <Check aria-hidden="true" /> : undefined }
+                key={key}
+                id={key}
+                data-model-id={model.id}
+                data-engine={provider.id}
+                text={model.name}
+                icon={<ProviderIcon agentId={provider.id} size={16} aria-hidden="true" />}
+                endAffix={key === selected ? <Check aria-hidden="true" /> : undefined}
                 // A press on a row picks it as the pointer lets go, before the popover can read the press as one outside it.
-                onPointerUp={ primary(() => pickKey(key)) }
+                onPointerUp={primary(() => pickKey(key))}
             />
         );
     };
@@ -412,7 +470,8 @@ function ModelList({ choice, held, providers, active, onBack, onPickModel }: Lis
     // ArrowRight on "More models" opens the flyout, as it would a submenu. It is read here, on the rows, and not on the pane, which also
     // hears what happens in the flyout (a React event goes up through its portal).
     const onRowsKeyDown = (event: KeyboardEvent) => {
-        if (event.key !== 'ArrowRight' || !(event.target instanceof Element) || !event.target.closest('[data-more]')) return;
+        if (event.key !== 'ArrowRight' || !(event.target instanceof Element) || !event.target.closest('[data-more]'))
+            return;
 
         event.preventDefault();
         event.stopPropagation();
@@ -428,102 +487,104 @@ function ModelList({ choice, held, providers, active, onBack, onPickModel }: Lis
     };
 
     return (
-        <div className={ styles.models }>
-            <div className={ styles.listHead }>
-                <Button size="sm" iconOnly variant="filling" color="secondary" aria-label="Back" onPress={ onBack }>
+        <div className={styles.models}>
+            <div className={styles.listHead}>
+                <Button size="sm" iconOnly variant="filling" color="secondary" aria-label="Back" onPress={onBack}>
                     <ChevronLeft aria-hidden="true" />
                 </Button>
-                <Text className={ styles.listTitle }>Select model</Text>
+                <Text className={styles.listTitle}>Select model</Text>
 
-                <Show when={ providers.length > 1 && shown }>
-                    { current => <ProviderStrip providers={ providers } value={ current.id } active={ active } onChange={ setViewed } /> }
+                <Show when={providers.length > 1 && shown}>
+                    {current => (
+                        <ProviderStrip providers={providers} value={current.id} active={active} onChange={setViewed} />
+                    )}
                 </Show>
             </div>
 
-            <Scrollable className={ styles.modelScroll } onKeyDown={ onRowsKeyDown }>
-                <Show when={ shown && rows.length > 0 }>
-                    { /* One list per provider: the rows of another provider would otherwise be matched to the key the old list had focused, and Tab would land on its last row. */ }
+            <Scrollable className={styles.modelScroll} onKeyDown={onRowsKeyDown}>
+                <Show when={shown && rows.length > 0}>
+                    {/* One list per provider: the rows of another provider would otherwise be matched to the key the old list had focused, and Tab would land on its last row. */}
                     <ListBox
-                        key={ shown!.id }
-                        className={ styles.modelList }
+                        key={shown!.id}
+                        className={styles.modelList}
                         aria-label="Model"
                         size="sm"
                         selectionMode="single"
                         disallowEmptySelection
-                        selectedKeys={ selected !== undefined && byKey.has(selected) ? [selected] : [] }
-                        onSelectionChange={ (keys) => {
+                        selectedKeys={selected !== undefined && byKey.has(selected) ? [selected] : []}
+                        onSelectionChange={keys => {
                             if (keys !== 'all') pickKey([...keys][0]);
-                        } }
+                        }}
                     >
-                        <For each={ main }>{ model => renderRow(shown!, model) }</For>
+                        <For each={main}>{model => renderRow(shown!, model)}</For>
 
-                        <Show when={ more.length > 0 }>
+                        <Show when={more.length > 0}>
                             <ListBoxItem
-                                key={ MORE_KEY }
-                                id={ MORE_KEY }
-                                ref={ moreRow }
+                                key={MORE_KEY}
+                                id={MORE_KEY}
+                                ref={moreRow}
                                 data-more=""
                                 text="More models"
                                 // The room of a mark, so the words stand under the names above.
-                                icon={ <span className={ styles.markSlot } aria-hidden="true" /> }
-                                endAffix={ <ChevronRight aria-hidden="true" /> }
-                                onPointerUp={ primary(openFlyout) }
+                                icon={<span className={styles.markSlot} aria-hidden="true" />}
+                                endAffix={<ChevronRight aria-hidden="true" />}
+                                onPointerUp={primary(openFlyout)}
                             />
                         </Show>
                     </ListBox>
                 </Show>
 
-                <Show when={ shown && note }>
-                    { current => (
-                        <div className={ styles.note } data-provider={ shown!.id }>
-                            { current.busy
-                                ? (
-                                    <span className={ styles.noteBusy }>
-                                        <Spinner size="xs" />
-                                        <Text className={ styles.noteText }>Reading the models…</Text>
-                                    </span>
-                                )
-                                : (
-                                    <>
-                                        <Text className={ styles.noteText }>{ current.text }</Text>
-                                        <Button size="xs" variant="bordered" onPress={ () => void shown!.list.reload() }>Retry</Button>
-                                    </>
-                                ) }
+                <Show when={shown && note}>
+                    {current => (
+                        <div className={styles.note} data-provider={shown!.id}>
+                            {current.busy ? (
+                                <span className={styles.noteBusy}>
+                                    <Spinner size="xs" />
+                                    <Text className={styles.noteText}>Reading the models…</Text>
+                                </span>
+                            ) : (
+                                <>
+                                    <Text className={styles.noteText}>{current.text}</Text>
+                                    <Button size="xs" variant="bordered" onPress={() => void shown!.list.reload()}>
+                                        Retry
+                                    </Button>
+                                </>
+                            )}
                         </div>
-                    ) }
+                    )}
                 </Show>
             </Scrollable>
 
-            { /* The flyout is a popover of its own, beside the row, and may reach past the picker's edge: it is where there is room. */ }
-            <Show when={ shown && more.length > 0 }>
+            {/* The flyout is a popover of its own, beside the row, and may reach past the picker's edge: it is where there is room. */}
+            <Show when={shown && more.length > 0}>
                 <Popover
-                    isOpen={ flyoutOpen }
-                    onOpenChange={ (open) => {
+                    isOpen={flyoutOpen}
+                    onOpenChange={open => {
                         if (!open) closeFlyout(false);
-                    } }
-                    triggerRef={ moreRow }
+                    }}
+                    triggerRef={moreRow}
                     placement="right top"
-                    offset={ 16 }
+                    offset={16}
                     spacing="none"
-                    width={ 240 }
-                    className={ styles.flyout }
+                    width={240}
+                    className={styles.flyout}
                     aria-label="More models"
                     data-model-flyout=""
                 >
-                    <FlyoutBody onKeyDown={ onFlyoutKeyDown }>
-                        <Scrollable className={ styles.flyoutScroll }>
+                    <FlyoutBody onKeyDown={onFlyoutKeyDown}>
+                        <Scrollable className={styles.flyoutScroll}>
                             <ListBox
-                                className={ styles.modelList }
+                                className={styles.modelList}
                                 aria-label="More models"
                                 size="sm"
                                 selectionMode="single"
                                 disallowEmptySelection
-                                selectedKeys={ [] }
-                                onSelectionChange={ (keys) => {
+                                selectedKeys={[]}
+                                onSelectionChange={keys => {
                                     if (keys !== 'all') pickKey([...keys][0]);
-                                } }
+                                }}
                             >
-                                <For each={ more }>{ model => renderRow(shown!, model) }</For>
+                                <For each={more}>{model => renderRow(shown!, model)}</For>
                             </ListBox>
                         </Scrollable>
                     </FlyoutBody>
@@ -596,9 +657,12 @@ function ModelPanel({ choice, providers, running, onPick }: PanelProps) {
         if (picking) {
             const pane = listLayer.current;
 
-            (pane?.querySelector<HTMLElement>('[role="option"][aria-selected="true"]') ?? pane?.querySelector<HTMLElement>('[role="listbox"]') ?? pane?.querySelector<HTMLElement>('button'))?.focus();
-        }
-        else {
+            (
+                pane?.querySelector<HTMLElement>('[role="option"][aria-selected="true"]') ??
+                pane?.querySelector<HTMLElement>('[role="listbox"]') ??
+                pane?.querySelector<HTMLElement>('button')
+            )?.focus();
+        } else {
             modelButton.current?.focus();
         }
     }, [picking]);
@@ -614,7 +678,8 @@ function ModelPanel({ choice, providers, running, onPick }: PanelProps) {
         settled.current = true;
 
         // The model in force (Claude's `default` and `opus` are one) just goes back to the face; any other is a pick, with the level it takes there.
-        if (provider.id !== choice.engine || model.id !== held.model?.id) onPick(choiceForModel(provider.id, model, choice.effort, readRemembered()));
+        if (provider.id !== choice.engine || model.id !== held.model?.id)
+            onPick(choiceForModel(provider.id, model, choice.effort, readRemembered()));
 
         setPicking(false);
     };
@@ -626,12 +691,16 @@ function ModelPanel({ choice, providers, running, onPick }: PanelProps) {
         // A pick moves the focus to the model button while Enter is still down, and on a Mac neither the list nor the flyout cancels Enter's own
         // action, which is a click on whatever has the focus by then: it would press that button and open the list again. This is read
         // before the next check because the flyout's rows are meant too.
-        if (event.key === 'Enter' && event.target instanceof Element && event.target.closest('[role="option"]')) event.preventDefault();
+        if (event.key === 'Enter' && event.target instanceof Element && event.target.closest('[role="option"]'))
+            event.preventDefault();
 
         // What happens in the flyout comes up through its portal to here: it is the flyout's own (it closes itself on Escape).
         if (!event.currentTarget.contains(event.target as Node)) return;
 
-        const inForce = (event.key === 'Enter' || event.key === ' ') && event.target instanceof Element && event.target.closest('[role="option"][aria-selected="true"]') !== null;
+        const inForce =
+            (event.key === 'Enter' || event.key === ' ') &&
+            event.target instanceof Element &&
+            event.target.closest('[role="option"][aria-selected="true"]') !== null;
 
         if (event.key !== 'Escape' && !inForce) return;
 
@@ -641,12 +710,42 @@ function ModelPanel({ choice, providers, running, onPick }: PanelProps) {
     };
 
     return (
-        <div className={ styles.stage } data-measured={ height === null ? undefined : true } data-animate={ animate ? true : undefined } style={ height === null ? undefined : { height } }>
-            <div ref={ faceLayer } className={ cn(styles.layer, styles.faceLayer) } data-hidden={ picking || undefined } inert={ picking || undefined }>
-                <Face choice={ choice } held={ held } running={ running } buttonRef={ modelButton } onOpenList={ openList } onLevel={ level => onPick({ ...choice, effort: level }) } />
+        <div
+            className={styles.stage}
+            data-measured={height === null ? undefined : true}
+            data-animate={animate ? true : undefined}
+            style={height === null ? undefined : { height }}
+        >
+            <div
+                ref={faceLayer}
+                className={cn(styles.layer, styles.faceLayer)}
+                data-hidden={picking || undefined}
+                inert={picking || undefined}
+            >
+                <Face
+                    choice={choice}
+                    held={held}
+                    running={running}
+                    buttonRef={modelButton}
+                    onOpenList={openList}
+                    onLevel={level => onPick({ ...choice, effort: level })}
+                />
             </div>
-            <div ref={ listLayer } className={ cn(styles.layer, styles.listLayer) } data-open={ picking || undefined } inert={ !picking || undefined } onKeyDownCapture={ onListKeyDown }>
-                <ModelList choice={ choice } held={ held } providers={ providers } active={ picking } onBack={ () => setPicking(false) } onPickModel={ pickModel } />
+            <div
+                ref={listLayer}
+                className={cn(styles.layer, styles.listLayer)}
+                data-open={picking || undefined}
+                inert={!picking || undefined}
+                onKeyDownCapture={onListKeyDown}
+            >
+                <ModelList
+                    choice={choice}
+                    held={held}
+                    providers={providers}
+                    active={picking}
+                    onBack={() => setPicking(false)}
+                    onPickModel={pickModel}
+                />
             </div>
         </div>
     );
@@ -662,9 +761,9 @@ export function ModelPicker({ choice, providers, running = false, onPick }: Mode
 
     return (
         <PopoverTrigger>
-            <Trigger choice={ choice } providers={ providers } />
+            <Trigger choice={choice} providers={providers} />
             <FrozenPopover>
-                <ModelPanel choice={ choice } providers={ providers } running={ running } onPick={ onPick } />
+                <ModelPanel choice={choice} providers={providers} running={running} onPick={onPick} />
             </FrozenPopover>
         </PopoverTrigger>
     );
@@ -673,8 +772,16 @@ export function ModelPicker({ choice, providers, running = false, onPick }: Mode
 /** The pill of a composer with no provider to pick from: off, and the caller says why (see `Unavailable` in the composer). */
 export function ModelPickerOff() {
     return (
-        <Button size="sm" variant="filling" rounded isDisabled className={ styles.trigger } contentClassName={ styles.triggerContent } aria-label="No provider">
-            <span className={ styles.modelLabel }>
+        <Button
+            size="sm"
+            variant="filling"
+            rounded
+            isDisabled
+            className={styles.trigger}
+            contentClassName={styles.triggerContent}
+            aria-label="No provider"
+        >
+            <span className={styles.modelLabel}>
                 <Text truncate>No provider</Text>
             </span>
             <ChevronDown aria-hidden="true" />

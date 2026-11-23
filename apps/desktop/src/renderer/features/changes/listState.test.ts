@@ -10,13 +10,42 @@ import { PlaceChanges } from './PlaceChanges';
 import type { GitBase, GitChangedFile, GitChanges, GitScope, GitStatus } from '@clowdy/protocol';
 
 const KEY = { projectId: 'p1', folderId: 'f1' };
-const READY: GitBase = { state: 'ready', name: 'origin/main', commit: '2'.repeat(40), mergeBase: '3'.repeat(40), ahead: 2, behind: 0, commits: FIXTURE_GIT_COMMITS };
+const READY: GitBase = {
+    state: 'ready',
+    name: 'origin/main',
+    commit: '2'.repeat(40),
+    mergeBase: '3'.repeat(40),
+    ahead: 2,
+    behind: 0,
+    commits: FIXTURE_GIT_COMMITS,
+};
 
 const file = (path: string): GitChangedFile => ({ path, kind: 'modified', additions: 1, deletions: 1, revision: 'r' });
-const list = (scope: GitScope, files: GitChangedFile[], more: Partial<Extract<GitChanges, { isRepository: true }>> = {}): GitChanges => ({ isRepository: true, scope, files, fileCount: files.length, additions: 0, deletions: 0, statsComplete: true, ...more });
+const list = (
+    scope: GitScope,
+    files: GitChangedFile[],
+    more: Partial<Extract<GitChanges, { isRepository: true }>> = {}
+): GitChanges => ({
+    isRepository: true,
+    scope,
+    files,
+    fileCount: files.length,
+    additions: 0,
+    deletions: 0,
+    statsComplete: true,
+    ...more,
+});
 
 /** A model of a place whose status and list the test gives, read once. */
-async function stateOf({ status, changes, scope }: { status: GitStatus; changes: GitChanges | Error | undefined; scope?: GitScope }) {
+async function stateOf({
+    status,
+    changes,
+    scope,
+}: {
+    status: GitStatus;
+    changes: GitChanges | Error | undefined;
+    scope?: GitScope;
+}) {
     const transport = {
         getGitStatus: vi.fn(async () => status),
         getGitChanges: vi.fn(async () => {
@@ -45,7 +74,13 @@ async function stateOf({ status, changes, scope }: { status: GitStatus; changes:
     return model;
 }
 
-const repository = (base: GitBase): GitStatus => ({ isRepository: true, head: { kind: 'branch', name: 'feature', commit: '9'.repeat(40) }, origin: true, entries: [], base });
+const repository = (base: GitBase): GitStatus => ({
+    isRepository: true,
+    head: { kind: 'branch', name: 'feature', commit: '9'.repeat(40) },
+    origin: true,
+    entries: [],
+    base,
+});
 
 describe('what the reading area shows', () => {
     it('is loading until the first list has come', async () => {
@@ -62,47 +97,101 @@ describe('what the reading area shows', () => {
     });
 
     it('shows the cards when the scope has files', async () => {
-        const model = await stateOf({ status: repository(READY), changes: list('all', [file('a.ts'), file('b.ts')], { baseState: 'ready' }) });
+        const model = await stateOf({
+            status: repository(READY),
+            changes: list('all', [file('a.ts'), file('b.ts')], { baseState: 'ready' }),
+        });
 
         expect(listStateOf(model)).toEqual({ kind: 'files' });
     });
 
     it('says a failed first read failed, with the reason, and a retry reads again', async () => {
-        const model = await stateOf({ status: repository(READY), changes: new TransportError('The daemon answered 503', 503) });
+        const model = await stateOf({
+            status: repository(READY),
+            changes: new TransportError('The daemon answered 503', 503),
+        });
 
         expect(listStateOf(model)).toEqual({ kind: 'failed', message: 'The daemon answered 503' });
-        expect(LIST_TEXT.failed).toBe('Couldn\'t read the changes');
+        expect(LIST_TEXT.failed).toBe("Couldn't read the changes");
     });
 
     it('says a clean tree has no changes, and what it is clean against', async () => {
         const model = await stateOf({ status: repository(READY), changes: list('all', [], { baseState: 'ready' }) });
 
-        expect(listStateOf(model)).toEqual({ kind: 'empty', title: 'No changes', description: 'Nothing differs from origin/main' });
+        expect(listStateOf(model)).toEqual({
+            kind: 'empty',
+            title: 'No changes',
+            description: 'Nothing differs from origin/main',
+        });
     });
 
     it('says why a scope that is empty is, for each scope', async () => {
-        expect(listStateOf(await stateOf({ status: repository(READY), changes: list('branch', [], { baseState: 'ready' }), scope: 'branch' }))).toEqual({ kind: 'empty', title: 'No changes', description: 'Nothing is committed on the branch yet' });
-        expect(listStateOf(await stateOf({ status: repository(READY), changes: list('uncommitted', []), scope: 'uncommitted' }))).toEqual({ kind: 'empty', title: 'No changes', description: 'Everything is committed' });
+        expect(
+            listStateOf(
+                await stateOf({
+                    status: repository(READY),
+                    changes: list('branch', [], { baseState: 'ready' }),
+                    scope: 'branch',
+                })
+            )
+        ).toEqual({ kind: 'empty', title: 'No changes', description: 'Nothing is committed on the branch yet' });
+        expect(
+            listStateOf(
+                await stateOf({ status: repository(READY), changes: list('uncommitted', []), scope: 'uncommitted' })
+            )
+        ).toEqual({ kind: 'empty', title: 'No changes', description: 'Everything is committed' });
 
         const sha = FIXTURE_GIT_COMMITS[0]!.sha;
 
-        expect(listStateOf(await stateOf({ status: repository(READY), changes: list(commitScope(sha), []), scope: commitScope(sha) }))).toEqual({ kind: 'empty', title: 'No changes', description: 'This commit changes no files' });
+        expect(
+            listStateOf(
+                await stateOf({
+                    status: repository(READY),
+                    changes: list(commitScope(sha), []),
+                    scope: commitScope(sha),
+                })
+            )
+        ).toEqual({ kind: 'empty', title: 'No changes', description: 'This commit changes no files' });
     });
 
     it('says why there is nothing to compare with, when a branch has no base to be counted against', async () => {
-        const noBase = await stateOf({ status: repository({ state: 'no_base' }), changes: list('all', [], { baseState: 'no_base' }) });
-        const unborn = await stateOf({ status: repository({ state: 'unborn' }), changes: list('all', [], { baseState: 'unborn' }) });
-        const unrelated = await stateOf({ status: repository({ state: 'no_merge_base', name: 'origin/main', commit: '2'.repeat(40) }), changes: list('all', [], { baseState: 'no_merge_base' }) });
+        const noBase = await stateOf({
+            status: repository({ state: 'no_base' }),
+            changes: list('all', [], { baseState: 'no_base' }),
+        });
+        const unborn = await stateOf({
+            status: repository({ state: 'unborn' }),
+            changes: list('all', [], { baseState: 'unborn' }),
+        });
+        const unrelated = await stateOf({
+            status: repository({ state: 'no_merge_base', name: 'origin/main', commit: '2'.repeat(40) }),
+            changes: list('all', [], { baseState: 'no_merge_base' }),
+        });
 
-        expect(listStateOf(noBase)).toEqual({ kind: 'empty', title: 'No changes', description: 'There is no base branch to compare with yet' });
-        expect(listStateOf(unborn)).toEqual({ kind: 'empty', title: 'No changes', description: 'The branch has no commits yet' });
-        expect(listStateOf(unrelated)).toEqual({ kind: 'empty', title: 'No changes', description: 'The branch shares no history with its base' });
+        expect(listStateOf(noBase)).toEqual({
+            kind: 'empty',
+            title: 'No changes',
+            description: 'There is no base branch to compare with yet',
+        });
+        expect(listStateOf(unborn)).toEqual({
+            kind: 'empty',
+            title: 'No changes',
+            description: 'The branch has no commits yet',
+        });
+        expect(listStateOf(unrelated)).toEqual({
+            kind: 'empty',
+            title: 'No changes',
+            description: 'The branch shares no history with its base',
+        });
         expect(baseStateWords('ready')).toBeUndefined();
         expect(baseStateWords(undefined)).toBeUndefined();
     });
 
     it('says a filter that lets no file through has none to show, and the cards are back when it is cleared', async () => {
-        const model = await stateOf({ status: repository(READY), changes: list('all', [file('a.ts')], { baseState: 'ready' }) });
+        const model = await stateOf({
+            status: repository(READY),
+            changes: list('all', [file('a.ts')], { baseState: 'ready' }),
+        });
 
         model.setFilter('*.md');
         expect(listStateOf(model)).toEqual({ kind: 'filtered' });
@@ -112,7 +201,10 @@ describe('what the reading area shows', () => {
     });
 
     it('keeps the cards when a later read fails, and does not call the list failed', async () => {
-        const answers: Array<GitChanges | Error> = [list('all', [file('a.ts')], { baseState: 'ready' }), new Error('gone')];
+        const answers: Array<GitChanges | Error> = [
+            list('all', [file('a.ts')], { baseState: 'ready' }),
+            new Error('gone'),
+        ];
         const transport = {
             getGitStatus: vi.fn(async () => repository(READY)),
             getGitChanges: vi.fn(async () => {

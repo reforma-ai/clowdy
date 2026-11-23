@@ -18,9 +18,9 @@ import useResizeObserver from 'use-resize-observer';
 import { basename, dirname, isPathWithin, joinPath } from '../../paths';
 import { isMac } from '../platform';
 import styles from './Explorer.module.css';
-import { DRAFT_ID, ExplorerContext, folderOfNode, HEADING_PREFIX, hotkeyItem, targetsOf } from './explorerContext';
 import { ExplorerAreaMenu } from './ExplorerMenu';
 import { ExplorerDragPreview, ExplorerRow, ExplorerRowFrame } from './ExplorerRow';
+import { DRAFT_ID, ExplorerContext, folderOfNode, HEADING_PREFIX, hotkeyItem, targetsOf } from './explorerContext';
 import { matchedRoots, rootAtIndex } from './scopeRows';
 
 import type { DragEvent, KeyboardEvent, Ref } from 'react';
@@ -29,8 +29,14 @@ import type { FileManager } from '../../FileManager';
 import type { UploadItem } from '../../FileOperations';
 import type { FileEntry, FileKind } from '../../provider';
 import type { FileTree } from '../../tree/FileTree';
-import type { ExplorerActions, ExplorerFilter, ExplorerItem, ExplorerScope, ExplorerScopeRoot } from './explorerContext';
 import type { FileMenuItem } from './ExplorerMenu';
+import type {
+    ExplorerActions,
+    ExplorerFilter,
+    ExplorerItem,
+    ExplorerScope,
+    ExplorerScopeRoot,
+} from './explorerContext';
 
 const ROW_HEIGHT = 32;
 const INDENT = 14;
@@ -218,8 +224,7 @@ async function uploadItems(entries: readonly FileSystemEntry[], parent = ''): Pr
                     (entry as FileSystemFileEntry).file(resolve, reject)
                 ),
             });
-        }
-        else if (entry.isDirectory) {
+        } else if (entry.isDirectory) {
             items.push(
                 { path, file: null },
                 ...(await uploadItems(await readFolder((entry as FileSystemDirectoryEntry).createReader()), path))
@@ -258,7 +263,15 @@ export interface ExplorerProps {
  * create and rename, row menus, copy and paste, drag to move, files dropped from outside, and the
  * active tab revealed. Open folders are kept on the manager, so they open again when the tab shows again.
  */
-export const Explorer = observer(function Explorer({ manager, menuItems, dndManager, scope, filter, emptyText, ref }: ExplorerProps) {
+export const Explorer = observer(function Explorer({
+    manager,
+    menuItems,
+    dndManager,
+    scope,
+    filter,
+    emptyText,
+    ref,
+}: ExplorerProps) {
     const treeApi = useRef<TreeApi<ExplorerItem>>(null);
     const { width = 0, height = 0, ref: measure } = useResizeObserver<HTMLDivElement>();
     // The tree's own element is where react-dnd's HTML5 backend listens (see `dndRootElement`): on the window, the backend would also cancel the native drags of the
@@ -279,8 +292,14 @@ export const Explorer = observer(function Explorer({ manager, menuItems, dndMana
         Object.fromEntries([...manager.openFolders].map(path => [path, true]))
     );
     // A scope's rows are read from its roots as they are now (the list may change with the tree): the explorer is an observer, so a root is drawn when it comes.
-    const groups = useMemo(() => computed(() => (scope ? rootRowsOf(manager.tree, scope) : null)), [manager, scope]).get();
-    const items = useMemo(() => computed(() => (scope ? [] : itemsOf(manager.tree, '', undefined))), [manager, scope]).get();
+    const groups = useMemo(
+        () => computed(() => (scope ? rootRowsOf(manager.tree, scope) : null)),
+        [manager, scope]
+    ).get();
+    const items = useMemo(
+        () => computed(() => (scope ? [] : itemsOf(manager.tree, '', undefined))),
+        [manager, scope]
+    ).get();
     const roots = groups?.map(group => group.root) ?? NO_ROOTS;
     const hasRows = groups ? groups.some(group => group.rows.length > 0) : items.length > 0;
     // The folder a new row, a paste and a drop default to: the whole tree's, or the scope's first root that has rows (its first one when none has).
@@ -341,7 +360,8 @@ export const Explorer = observer(function Explorer({ manager, menuItems, dndMana
         // A row exists for a path the tree shows, or in a scope, for one below a root of it that it includes.
         const visible = (path: string, kind: FileKind = 'file') =>
             scope
-                ? roots.some(candidate => path !== candidate.root && isPathWithin(path, candidate.root)) && (scope.include?.(path, kind) ?? true)
+                ? roots.some(candidate => path !== candidate.root && isPathWithin(path, candidate.root)) &&
+                  (scope.include?.(path, kind) ?? true)
                 : manager.tree.isVisible(path);
         const ready = (path: string) => manager.tree.get(path) !== undefined || !visible(path);
 
@@ -451,24 +471,20 @@ export const Explorer = observer(function Explorer({ manager, menuItems, dndMana
                 event.preventDefault();
                 actions.copy(targets.map(target => target.path));
             }
-        }
-        else if (mod && event.code === 'KeyV' && manager.canPaste) {
+        } else if (mod && event.code === 'KeyV' && manager.canPaste) {
             event.preventDefault();
             void manager.paste(folderOfNode(node));
-        }
-        else if (event.key === 'F2' && node.id !== DRAFT_ID && node.data.heading === undefined && !manager.readonly) {
+        } else if (event.key === 'F2' && node.id !== DRAFT_ID && node.data.heading === undefined && !manager.readonly) {
             event.preventDefault();
             void api.edit(node);
-        }
-        else if ((event.key === 'Delete' || event.key === 'Backspace') && !manager.readonly) {
+        } else if ((event.key === 'Delete' || event.key === 'Backspace') && !manager.readonly) {
             const targets = targetsOf(node);
 
             if (targets.length > 0) {
                 event.preventDefault();
                 confirmDelete(manager, targets);
             }
-        }
-        else if (mod) {
+        } else if (mod) {
             const targets = targetsOf(node);
             const item = hotkeyItem(menuItems?.(targets) ?? [], event);
 
@@ -523,7 +539,8 @@ export const Explorer = observer(function Explorer({ manager, menuItems, dndMana
     useEffect(() => () => clearTimeout(springOpen.current?.timer), []);
 
     // Files dragged in from outside go in the folder under the pointer.
-    const isFileDrag = (event: DragEvent) => !manager.readonly && canCreate && event.dataTransfer.types.includes('Files');
+    const isFileDrag = (event: DragEvent) =>
+        !manager.readonly && canCreate && event.dataTransfer.types.includes('Files');
 
     const handleDrop = (event: DragEvent<HTMLDivElement>) => {
         holdOver(null);
@@ -617,7 +634,8 @@ export const Explorer = observer(function Explorer({ manager, menuItems, dndMana
                                 searchMatch={node =>
                                     node.id === DRAFT_ID ||
                                     (filterResult?.paths.has(node.id) ?? false) ||
-                                    (node.data.heading !== undefined && matchedHeadings.has(node.data.heading))}
+                                    (node.data.heading !== undefined && matchedHeadings.has(node.data.heading))
+                                }
                                 className={styles.list}
                                 aria-label={scope?.label ?? 'Files'}
                                 // A label row is neither selected, renamed nor dragged.
@@ -647,8 +665,7 @@ export const Explorer = observer(function Explorer({ manager, menuItems, dndMana
                                     if (api && !api.isFiltered) {
                                         if (open) {
                                             manager.openFolders.add(id);
-                                        }
-                                        else {
+                                        } else {
                                             manager.openFolders.delete(id);
                                         }
                                     }
@@ -667,9 +684,13 @@ export const Explorer = observer(function Explorer({ manager, menuItems, dndMana
                                 }}
                                 onRename={handleRename}
                                 onMove={({ dragIds, parentId, index }) => {
-                                    void manager.operations.move(dragIds, parentId ?? (scope ? rootAtIndex(data, index, root) : root), {
-                                        confirmReplace: names => askToReplace(manager, names),
-                                    });
+                                    void manager.operations.move(
+                                        dragIds,
+                                        parentId ?? (scope ? rootAtIndex(data, index, root) : root),
+                                        {
+                                            confirmReplace: names => askToReplace(manager, names),
+                                        }
+                                    );
                                 }}
                                 renderRow={ExplorerRowFrame}
                                 renderCursor={NoCursor}

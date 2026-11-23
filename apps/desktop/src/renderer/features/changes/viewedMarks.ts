@@ -1,7 +1,7 @@
 import { errorMessage } from '@clowdy/lib';
 import { makeAutoObservable, observable, runInAction } from 'mobx';
 
-import { placeRef, type GitPlaceKey } from './gitFacts';
+import { type GitPlaceKey, placeRef } from './gitFacts';
 
 import type { GitChangedFile, GitScope, GitViewedMark } from '@clowdy/protocol';
 import type { Transport } from '../../daemon/transport';
@@ -11,7 +11,7 @@ export type ViewedTransport = Pick<Transport, 'getGitViewed' | 'setGitViewed' | 
 
 /** What the tab says when the daemon refused a mark: a phrase, quietly, in the summary line; the daemon's own reason is its tooltip. */
 export const VIEWED_TEXT = {
-    notSaved: 'Couldn\'t save the viewed mark',
+    notSaved: "Couldn't save the viewed mark",
 } as const;
 
 /** The marks of one scope: what the daemon holds, and what the person has chosen that it has not yet answered. */
@@ -55,7 +55,7 @@ export class ViewedMarks {
     revisionOf(scope: GitScope, path: string): string | undefined {
         const marks = this.#marksOf(scope);
 
-        return marks.pending.has(path) ? marks.pending.get(path) ?? undefined : marks.kept.get(path);
+        return marks.pending.has(path) ? (marks.pending.get(path) ?? undefined) : marks.kept.get(path);
     }
 
     /** Whether the file is viewed: it is marked, and at the revision it has now. A file that was edited since it was marked is not. */
@@ -86,8 +86,7 @@ export class ViewedMarks {
 
         try {
             list = await this.transport.getGitViewed(projectId, placeRef(this.key), scope);
-        }
-        catch {
+        } catch {
             return false;
         }
 
@@ -125,7 +124,7 @@ export class ViewedMarks {
 
     async #write(scope: GitScope, path: string, revision: string | null): Promise<boolean> {
         const marks = this.#marksOf(scope);
-        const chain = `${ scope }\n${ path }`;
+        const chain = `${scope}\n${path}`;
 
         runInAction(() => {
             marks.pending.set(path, revision);
@@ -134,7 +133,9 @@ export class ViewedMarks {
 
         const before = this.#chains.get(chain);
         // The first write of a file goes out at once; a later one waits for the one before it to be answered.
-        const turn = before ? before.then(() => this.#send(marks, scope, path, revision)) : this.#send(marks, scope, path, revision);
+        const turn = before
+            ? before.then(() => this.#send(marks, scope, path, revision))
+            : this.#send(marks, scope, path, revision);
 
         this.#chains.set(chain, turn);
 
@@ -155,16 +156,14 @@ export class ViewedMarks {
         try {
             if (revision === null) {
                 await this.transport.clearGitViewed(projectId, place, scope, path);
-            }
-            else {
+            } else {
                 await this.transport.setGitViewed(projectId, place, scope, path, revision);
             }
 
             runInAction(() => {
                 if (revision === null) {
                     marks.kept.delete(path);
-                }
-                else {
+                } else {
                     marks.kept.set(path, revision);
                 }
 
@@ -175,8 +174,7 @@ export class ViewedMarks {
             });
 
             return true;
-        }
-        catch (error) {
+        } catch (error) {
             runInAction(() => {
                 if (marks.pending.has(path) && marks.pending.get(path) === revision) marks.pending.delete(path);
 

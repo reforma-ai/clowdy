@@ -1,8 +1,8 @@
 import { errorMessage } from '@clowdy/lib';
 import { makeAutoObservable, runInAction } from 'mobx';
 
-import { TransportError, type Transport } from '../../daemon/transport';
-import { placeRef, type PlaceFacts } from './gitFacts';
+import { type Transport, TransportError } from '../../daemon/transport';
+import { type PlaceFacts, placeRef } from './gitFacts';
 
 import type { GitSwitchRequest, GitSwitchResult } from '@clowdy/protocol';
 import type { BranchListing } from './branchChoices';
@@ -47,7 +47,11 @@ export class BranchSwitch {
         /** Asks for a new round of reads of the place's facts and of the folder's branch. */
         private readonly refresh: () => void
     ) {
-        makeAutoObservable<BranchSwitch, 'transport' | 'refresh'>(this, { facts: false, transport: false, refresh: false });
+        makeAutoObservable<BranchSwitch, 'transport' | 'refresh'>(this, {
+            facts: false,
+            transport: false,
+            refresh: false,
+        });
     }
 
     /** A switch is running. */
@@ -73,13 +77,11 @@ export class BranchSwitch {
                 this.listing = answer.isRepository ? answer : undefined;
                 this.listFailure = undefined;
             });
-        }
-        catch (error) {
+        } catch (error) {
             runInAction(() => {
                 if (request === this.#latest) this.listFailure = errorMessage(error);
             });
-        }
-        finally {
+        } finally {
             runInAction(() => {
                 if (request === this.#latest) this.loading = false;
             });
@@ -111,9 +113,11 @@ export class BranchSwitch {
             });
 
             return { ok: true, result };
-        }
-        catch (error) {
-            const failure: SwitchFailure = { message: errorMessage(error), ...(error instanceof TransportError && error.hint !== undefined && { hint: error.hint }) };
+        } catch (error) {
+            const failure: SwitchFailure = {
+                message: errorMessage(error),
+                ...(error instanceof TransportError && error.hint !== undefined && { hint: error.hint }),
+            };
 
             runInAction(() => {
                 this.failure = failure;
@@ -121,8 +125,7 @@ export class BranchSwitch {
             void this.load();
 
             return { ok: false, failure };
-        }
-        finally {
+        } finally {
             runInAction(() => {
                 this.running = undefined;
                 this.facts.switching = false;

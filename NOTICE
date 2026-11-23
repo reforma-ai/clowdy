@@ -7,9 +7,7 @@ Portions of this software are derived from Reforma, Copyright 2026 Reforma, Inc.
 which Reforma, Inc. licenses to Clowdy and its users under the Apache License,
 Version 2.0: the design system and its styles (packages/components, packages/styles),
 the icon packs (packages/icons), the file tree and text editor (packages/file-manager),
-and the Loader animation. The lint
-configuration in packages/eslint-config keeps its own MIT license, in
-packages/eslint-config/LICENSE.
+the Loader animation, and the Biome configuration (biome.json).
 
 The open source software that Clowdy is built with, and the licenses it comes under,
 is listed in THIRD-PARTY-LICENSES.md.

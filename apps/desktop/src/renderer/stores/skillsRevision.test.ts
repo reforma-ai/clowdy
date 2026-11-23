@@ -5,7 +5,9 @@ import { RootStore } from './RootStore';
 
 describe('RootStore skills', () => {
     it('counts skills.changed events from any project, so the Skills settings refetch', () => {
-        const root = new RootStore(new FixtureTransport(), { storage: { getItem: () => null, setItem: () => undefined } });
+        const root = new RootStore(new FixtureTransport(), {
+            storage: { getItem: () => null, setItem: () => undefined },
+        });
 
         expect(root.skillsRevision).toBe(0);
 

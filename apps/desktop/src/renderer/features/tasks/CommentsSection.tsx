@@ -4,11 +4,11 @@ import { Text } from '@clowdy/components/Text';
 import { useLayoutEffect, useRef, useState } from 'react';
 
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
-import { StreamLinksContext, type StreamLinks } from '../../stream/StreamLinks';
-import { sendCommand } from './commands';
+import { type StreamLinks, StreamLinksContext } from '../../stream/StreamLinks';
 import { Comment } from './Comment';
 import { CommentEditor } from './CommentEditor';
 import styles from './CommentsSection.module.css';
+import { sendCommand } from './commands';
 import { None, Section } from './DetailSections';
 import { createdCommentId } from './taskView';
 import { MAX_COMMENTS, useTaskComments } from './useTaskComments';
@@ -54,7 +54,12 @@ export function CommentsSection({ taskId, onOpenRun, onOpenTask, isReadOnly = fa
 
     // The daemon's reply and the list that holds the comment come in either order, so the effect looks again when either arrives.
     useLayoutEffect(() => {
-        if (sentId !== undefined && sentId !== broughtIntoView.current && state.status === 'ready' && state.comments.some(comment => comment.id === sentId)) {
+        if (
+            sentId !== undefined &&
+            sentId !== broughtIntoView.current &&
+            state.status === 'ready' &&
+            state.comments.some(comment => comment.id === sentId)
+        ) {
             broughtIntoView.current = sentId;
             composer.current?.scrollIntoView({ block: 'nearest' });
         }
@@ -68,9 +73,18 @@ export function CommentsSection({ taskId, onOpenRun, onOpenTask, isReadOnly = fa
         const run = project.runs.get(author.runId);
 
         // The run may have been deleted since: the comment stays, and the name is only "Agent".
-        return run
-            ? <button type="button" className={ styles.agent } title={ run.summary || run.name } onClick={ () => onOpenRun(run.id) }>{ run.name }</button>
-            : 'Agent';
+        return run ? (
+            <button
+                type="button"
+                className={styles.agent}
+                title={run.summary || run.name}
+                onClick={() => onOpenRun(run.id)}
+            >
+                {run.name}
+            </button>
+        ) : (
+            'Agent'
+        );
     };
 
     const send = async (body: string) => {
@@ -81,66 +95,72 @@ export function CommentsSection({ taskId, onOpenRun, onOpenTask, isReadOnly = fa
         return result.ok;
     };
 
-    const edit = async (comment: TaskComment, body: string) => (await sendCommand(root, { type: 'task.comment.edit', taskId, commentId: comment.id, body })).ok;
+    const edit = async (comment: TaskComment, body: string) =>
+        (await sendCommand(root, { type: 'task.comment.edit', taskId, commentId: comment.id, body })).ok;
 
-    const remove = async (comment: TaskComment) => void await sendCommand(root, { type: 'task.comment.delete', taskId, commentId: comment.id });
+    const remove = async (comment: TaskComment) =>
+        void (await sendCommand(root, { type: 'task.comment.delete', taskId, commentId: comment.id }));
 
     return (
-        <Section title="Comments" count={ state.status === 'ready' ? state.total : undefined }>
-            { state.status === 'loading' && (
-                <div className={ styles.loading }>
+        <Section title="Comments" count={state.status === 'ready' ? state.total : undefined}>
+            {state.status === 'loading' && (
+                <div className={styles.loading}>
                     <Loader size="xs" />
                     <Text color="secondary">Loading comments…</Text>
                 </div>
-            ) }
+            )}
 
-            { state.status === 'failed' && (
-                <div className={ styles.failed }>
+            {state.status === 'failed' && (
+                <div className={styles.failed}>
                     <None>Comments did not load</None>
-                    <Button size="xs" variant="bordered" onPress={ retry }>Retry</Button>
+                    <Button size="xs" variant="bordered" onPress={retry}>
+                        Retry
+                    </Button>
                 </div>
-            ) }
+            )}
 
-            { state.status === 'ready' && state.comments.length === 0 && <None>No comments yet</None> }
+            {state.status === 'ready' && state.comments.length === 0 && <None>No comments yet</None>}
 
-            { state.status === 'ready' && state.comments.length > 0 && (
-                <StreamLinksContext value={ links }>
-                    <div className={ styles.list }>
-                        { state.comments.map(comment => (
+            {state.status === 'ready' && state.comments.length > 0 && (
+                <StreamLinksContext value={links}>
+                    <div className={styles.list}>
+                        {state.comments.map(comment => (
                             <Comment
-                                key={ comment.id }
-                                comment={ comment }
-                                author={ authorOf(comment.author) }
-                                isOwn={ !isReadOnly && comment.author.kind === 'user' }
-                                onEdit={ body => edit(comment, body) }
-                                onDelete={ () => remove(comment) }
+                                key={comment.id}
+                                comment={comment}
+                                author={authorOf(comment.author)}
+                                isOwn={!isReadOnly && comment.author.kind === 'user'}
+                                onEdit={body => edit(comment, body)}
+                                onDelete={() => remove(comment)}
                             />
-                        )) }
+                        ))}
                     </div>
                 </StreamLinksContext>
-            ) }
+            )}
 
-            { state.status === 'ready' && state.isCut && <None>{ `Showing the first ${ MAX_COMMENTS } comments` }</None> }
+            {state.status === 'ready' && state.isCut && <None>{`Showing the first ${MAX_COMMENTS} comments`}</None>}
 
-            { state.status === 'ready' && state.refreshError !== undefined && (
-                <div className={ styles.failed } role="alert">
+            {state.status === 'ready' && state.refreshError !== undefined && (
+                <div className={styles.failed} role="alert">
                     <None>Comments did not refresh</None>
-                    <Button size="xs" variant="bordered" onPress={ retry }>Retry</Button>
+                    <Button size="xs" variant="bordered" onPress={retry}>
+                        Retry
+                    </Button>
                 </div>
-            ) }
+            )}
 
-            { !isReadOnly && (
-                <div ref={ composer }>
+            {!isReadOnly && (
+                <div ref={composer}>
                     <CommentEditor
-                        key={ taskId }
+                        key={taskId}
                         aria-label="Write a comment"
                         submitLabel="Send"
-                        draft={ ui.commentDraft(taskId) }
-                        onDraftChange={ text => ui.setCommentDraft(taskId, text) }
-                        onSubmit={ send }
+                        draft={ui.commentDraft(taskId)}
+                        onDraftChange={text => ui.setCommentDraft(taskId, text)}
+                        onSubmit={send}
                     />
                 </div>
-            ) }
+            )}
         </Section>
     );
 }

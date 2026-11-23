@@ -56,50 +56,112 @@ export function WorktreeRow({ projectId, group, folder, worktree, onNewChat, onO
 
     return (
         <>
-            <li className={ styles.row } data-worktree-path={ worktree.path } data-main={ worktree.main || undefined } data-missing={ worktree.missing || undefined } data-open={ isMenuOpen || contextMenu.isOpen || undefined } { ...contextMenu.areaProps }>
-                <span className={ styles.icon }>{ worktree.main ? <Folder aria-hidden="true" /> : <Version aria-hidden="true" /> }</span>
-                <span className={ styles.text }>
-                    <span className={ styles.title }>
-                        <Tooltip content={ tildePath(worktree.path, homeFolder.path) } placement="top start" wrapTrigger>
-                            <Text variant="md" weight="medium" truncate>{ label }</Text>
+            <li
+                className={styles.row}
+                data-worktree-path={worktree.path}
+                data-main={worktree.main || undefined}
+                data-missing={worktree.missing || undefined}
+                data-open={isMenuOpen || contextMenu.isOpen || undefined}
+                {...contextMenu.areaProps}
+            >
+                <span className={styles.icon}>
+                    {worktree.main ? <Folder aria-hidden="true" /> : <Version aria-hidden="true" />}
+                </span>
+                <span className={styles.text}>
+                    <span className={styles.title}>
+                        <Tooltip content={tildePath(worktree.path, homeFolder.path)} placement="top start" wrapTrigger>
+                            <Text variant="md" weight="medium" truncate>
+                                {label}
+                            </Text>
                         </Tooltip>
-                        { mark && <Badge size="xs" color={ mark.color } textValue={ mark.label } tooltip={ mark.tip }>{ mark.label }</Badge> }
+                        {mark && (
+                            <Badge size="xs" color={mark.color} textValue={mark.label} tooltip={mark.tip}>
+                                {mark.label}
+                            </Badge>
+                        )}
                     </span>
-                    <span className={ styles.facts }>
-                        { !worktree.missing && <Text variant="sm" color="secondary">{ changesLabel(worktree.changes) }</Text> }
+                    <span className={styles.facts}>
+                        {!worktree.missing && (
+                            <Text variant="sm" color="secondary">
+                                {changesLabel(worktree.changes)}
+                            </Text>
+                        )}
                     </span>
-                    { worktree.chats.length > 0 && (
-                        <span className={ styles.chats } role="group" aria-label="Chats">
-                            <For each={ worktree.chats }>
+                    {worktree.chats.length > 0 && (
+                        <span className={styles.chats} role="group" aria-label="Chats">
+                            <For each={worktree.chats}>
                                 {chat => (
-                                    <Button key={ chat.id } variant="filling" color="secondary" size="xs" truncate className={ styles.chat } onPress={ () => onOpenChat(chat) }>
-                                        <span className={ styles.chatTitle }>{ chat.title }</span>
-                                        { chat.archived && <span className={ styles.archived }>Archived</span> }
+                                    <Button
+                                        key={chat.id}
+                                        variant="filling"
+                                        color="secondary"
+                                        size="xs"
+                                        truncate
+                                        className={styles.chat}
+                                        onPress={() => onOpenChat(chat)}
+                                    >
+                                        <span className={styles.chatTitle}>{chat.title}</span>
+                                        {chat.archived && <span className={styles.archived}>Archived</span>}
                                     </Button>
                                 )}
                             </For>
                         </span>
-                    ) }
+                    )}
                 </span>
-                <span className={ styles.actions }>
-                    <Unavailable label={ `${ newChat }: ${ label }` } hint={ worktree.missing ? 'Its folder is gone from the disk' : undefined } placement="top">
-                        <Button variant="filling" color="secondary" size="sm" iconOnly aria-label={ `${ newChat }: ${ label }` } tooltip={ worktree.missing ? undefined : newChat } isDisabled={ worktree.missing } onPress={ () => onNewChat(folder, worktree) }>
+                <span className={styles.actions}>
+                    <Unavailable
+                        label={`${newChat}: ${label}`}
+                        hint={worktree.missing ? 'Its folder is gone from the disk' : undefined}
+                        placement="top"
+                    >
+                        <Button
+                            variant="filling"
+                            color="secondary"
+                            size="sm"
+                            iconOnly
+                            aria-label={`${newChat}: ${label}`}
+                            tooltip={worktree.missing ? undefined : newChat}
+                            isDisabled={worktree.missing}
+                            onPress={() => onNewChat(folder, worktree)}
+                        >
                             <NewChat />
                         </Button>
                     </Unavailable>
-                    <MenuTrigger isOpen={ isMenuOpen } onOpenChange={ setIsMenuOpen }>
-                        <Button variant="filling" color="secondary" size="sm" iconOnly aria-label={ `More for ${ label }` } tooltip="More">
+                    <MenuTrigger isOpen={isMenuOpen} onOpenChange={setIsMenuOpen}>
+                        <Button
+                            variant="filling"
+                            color="secondary"
+                            size="sm"
+                            iconOnly
+                            aria-label={`More for ${label}`}
+                            tooltip="More"
+                        >
                             <More />
                         </Button>
-                        <Popover placement="bottom end" spacing="xs" width={ 260 }>
-                            <WorktreeMenu projectId={ projectId } group={ group } folder={ folder } worktree={ worktree } onNewChat={ onNewChat } onRemove={ onRemove } />
+                        <Popover placement="bottom end" spacing="xs" width={260}>
+                            <WorktreeMenu
+                                projectId={projectId}
+                                group={group}
+                                folder={folder}
+                                worktree={worktree}
+                                onNewChat={onNewChat}
+                                onRemove={onRemove}
+                            />
                         </Popover>
                     </MenuTrigger>
                 </span>
             </li>
-            <Show when={ contextMenu.isOpen }>
-                <Popover { ...contextMenu.popoverProps } placement="bottom start" spacing="xs" width={ 260 }>
-                    <WorktreeMenu projectId={ projectId } group={ group } folder={ folder } worktree={ worktree } onNewChat={ onNewChat } onRemove={ onRemove } onClose={ contextMenu.close } />
+            <Show when={contextMenu.isOpen}>
+                <Popover {...contextMenu.popoverProps} placement="bottom start" spacing="xs" width={260}>
+                    <WorktreeMenu
+                        projectId={projectId}
+                        group={group}
+                        folder={folder}
+                        worktree={worktree}
+                        onNewChat={onNewChat}
+                        onRemove={onRemove}
+                        onClose={contextMenu.close}
+                    />
                 </Popover>
             </Show>
         </>
@@ -111,11 +173,22 @@ export function WorktreeGroup({ projectId, group, folder, ...actions }: Omit<Wor
     const headingId = useId();
 
     return (
-        <section className={ styles.group } aria-labelledby={ headingId } data-folder-id={ group.folderId }>
-            <Text as="h3" id={ headingId } variant="heading-5" truncate title={ group.name }>{ group.name }</Text>
-            <ul className={ styles.card }>
-                <For each={ group.worktrees }>
-                    {worktree => <WorktreeRow key={ worktree.path } projectId={ projectId } group={ group } folder={ folder } worktree={ worktree } { ...actions } />}
+        <section className={styles.group} aria-labelledby={headingId} data-folder-id={group.folderId}>
+            <Text as="h3" id={headingId} variant="heading-5" truncate title={group.name}>
+                {group.name}
+            </Text>
+            <ul className={styles.card}>
+                <For each={group.worktrees}>
+                    {worktree => (
+                        <WorktreeRow
+                            key={worktree.path}
+                            projectId={projectId}
+                            group={group}
+                            folder={folder}
+                            worktree={worktree}
+                            {...actions}
+                        />
+                    )}
                 </For>
             </ul>
         </section>

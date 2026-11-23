@@ -27,28 +27,35 @@ async function start(userRoots: string[] = []): Promise<Harness> {
 }
 
 async function catalogOf(h: Harness, projectId?: string): Promise<SkillCatalog> {
-    const response = await h.fetch(projectId === undefined ? '/v1/skills' : `/v1/skills?projectId=${ projectId }`);
+    const response = await h.fetch(projectId === undefined ? '/v1/skills' : `/v1/skills?projectId=${projectId}`);
 
     expect(response.status).toBe(200);
 
-    return await response.json() as SkillCatalog;
+    return (await response.json()) as SkillCatalog;
 }
 
-const skillEvents = (h: Harness, after: number) => h.events(after).filter(event => event.data.type === 'skills.changed');
+const skillEvents = (h: Harness, after: number) =>
+    h.events(after).filter(event => event.data.type === 'skills.changed');
 
 describe('GET /v1/skills', () => {
     test('needs the bearer token', async () => {
         const h = await start();
 
-        expect((await fetch(`${ h.url }/v1/skills`)).status).toBe(401);
+        expect((await fetch(`${h.url}/v1/skills`)).status).toBe(401);
     });
 
     test('serves the system skills, named clowdy:<skill>, with their cost and without a path', async () => {
         const h = await start();
         const { entries, tokens, warnings } = await catalogOf(h);
 
-        expect(entries.map(entry => entry.name)).toEqual(['autopilot', 'docs', 'orchestrate', 'scaffold', 'semi-manual', 'thread'].map(name => `clowdy:${ name }`));
-        expect(entries.every(entry => entry.source === 'system' && entry.enabled && entry.tokens > 0 && entry.path === undefined)).toBe(true);
+        expect(entries.map(entry => entry.name)).toEqual(
+            ['autopilot', 'docs', 'orchestrate', 'scaffold', 'semi-manual', 'thread'].map(name => `clowdy:${name}`)
+        );
+        expect(
+            entries.every(
+                entry => entry.source === 'system' && entry.enabled && entry.tokens > 0 && entry.path === undefined
+            )
+        ).toBe(true);
         expect(entries[0].engines).toEqual(['claude', 'codex']);
         expect(tokens).toBe(entries.reduce((sum, entry) => sum + entry.tokens, 0));
         expect(warnings).toEqual([]);
@@ -66,13 +73,21 @@ describe('GET /v1/skills', () => {
         const withoutProject = await catalogOf(h);
         const withProject = await catalogOf(h, project.id);
 
-        expect(withoutProject.entries.filter(entry => entry.source !== 'system').map(entry => entry.name)).toEqual(['user:deploy']);
-        expect(withProject.entries.filter(entry => entry.source !== 'system').map(entry => [entry.name, entry.source, entry.engines, entry.description])).toEqual([
+        expect(withoutProject.entries.filter(entry => entry.source !== 'system').map(entry => entry.name)).toEqual([
+            'user:deploy',
+        ]);
+        expect(
+            withProject.entries
+                .filter(entry => entry.source !== 'system')
+                .map(entry => [entry.name, entry.source, entry.engines, entry.description])
+        ).toEqual([
             ['user:deploy', 'user', ['claude', 'codex'], 'Ship it'],
             ['review', 'project', ['claude'], 'Review a change'],
             ['triage', 'project', ['codex'], 'Sort issues'],
         ]);
-        expect(withProject.entries.find(entry => entry.name === 'review')?.path).toBe(join(project.path, '.claude', 'skills', 'review'));
+        expect(withProject.entries.find(entry => entry.name === 'review')?.path).toBe(
+            join(project.path, '.claude', 'skills', 'review')
+        );
     });
 
     test('a project that does not exist is a 404', async () => {
@@ -176,7 +191,10 @@ describe('what the engines are given', () => {
 
         const h = await start([user]);
 
-        expect(readdirSync(join((h.config.extraPluginDirs as string[])[0], 'skills')).sort()).toEqual(['deploy', 'lint']);
+        expect(readdirSync(join((h.config.extraPluginDirs as string[])[0], 'skills')).sort()).toEqual([
+            'deploy',
+            'lint',
+        ]);
     });
 });
 
@@ -190,10 +208,22 @@ describe('skills.setEnabled', () => {
         const h = await start([user]);
         const carried = () => readdirSync(join((h.config.extraPluginDirs as string[])[0], 'skills')).sort();
 
-        expect(h.ok('skills.setEnabled', { name: 'user:deploy', enabled: false })).toEqual({ name: 'user:deploy', enabled: false });
-        expect(JSON.parse(readFileSync(join(h.config.dataDir, 'skills.json'), 'utf8'))).toEqual({ disabled: ['deploy'] });
+        expect(h.ok('skills.setEnabled', { name: 'user:deploy', enabled: false })).toEqual({
+            name: 'user:deploy',
+            enabled: false,
+        });
+        expect(JSON.parse(readFileSync(join(h.config.dataDir, 'skills.json'), 'utf8'))).toEqual({
+            disabled: ['deploy'],
+        });
         expect(carried()).toEqual(['lint']);
-        expect((await catalogOf(h)).entries.filter(entry => entry.source === 'user').map(entry => [entry.name, entry.enabled])).toEqual([['user:deploy', false], ['user:lint', true]]);
+        expect(
+            (await catalogOf(h)).entries
+                .filter(entry => entry.source === 'user')
+                .map(entry => [entry.name, entry.enabled])
+        ).toEqual([
+            ['user:deploy', false],
+            ['user:lint', true],
+        ]);
 
         h.ok('skills.setEnabled', { name: 'user:deploy', enabled: true });
 
@@ -234,7 +264,14 @@ describe('skills.setEnabled', () => {
         writeSkill(user, 'fresh');
         writeSkill(user, 'deploy');
 
-        expect((await catalogOf(h)).entries.filter(entry => entry.source === 'user').map(entry => [entry.name, entry.enabled])).toEqual([['user:deploy', false], ['user:fresh', true]]);
+        expect(
+            (await catalogOf(h)).entries
+                .filter(entry => entry.source === 'user')
+                .map(entry => [entry.name, entry.enabled])
+        ).toEqual([
+            ['user:deploy', false],
+            ['user:fresh', true],
+        ]);
     });
 
     test('refuses what is not a user skill, with a reason', async () => {
@@ -245,21 +282,44 @@ describe('skills.setEnabled', () => {
         writeSkill(user, 'deploy');
         writeSkill(join(project.path, '.claude', 'skills'), 'review');
 
-        expect(h.send('skills.setEnabled', { name: 'clowdy:docs', enabled: false })).toMatchObject({ ok: false, error: { code: 'invalid', message: 'System skills cannot be switched off' } });
-        expect(h.send('skills.setEnabled', { name: 'review', enabled: false })).toMatchObject({ ok: false, error: { code: 'invalid' } });
-        expect(h.send('skills.setEnabled', { name: 'deploy', enabled: false })).toMatchObject({ ok: false, error: { code: 'invalid' } });
-        expect(h.send('skills.setEnabled', { name: 'user:nope', enabled: false })).toMatchObject({ ok: false, error: { code: 'not_found' } });
+        expect(h.send('skills.setEnabled', { name: 'clowdy:docs', enabled: false })).toMatchObject({
+            ok: false,
+            error: { code: 'invalid', message: 'System skills cannot be switched off' },
+        });
+        expect(h.send('skills.setEnabled', { name: 'review', enabled: false })).toMatchObject({
+            ok: false,
+            error: { code: 'invalid' },
+        });
+        expect(h.send('skills.setEnabled', { name: 'deploy', enabled: false })).toMatchObject({
+            ok: false,
+            error: { code: 'invalid' },
+        });
+        expect(h.send('skills.setEnabled', { name: 'user:nope', enabled: false })).toMatchObject({
+            ok: false,
+            error: { code: 'not_found' },
+        });
         expect(existsSync(join(h.config.dataDir, 'skills.json'))).toBe(false);
     });
 
     test('rejects a malformed command over HTTP', async () => {
         const h = await start();
 
-        for (const body of [{ name: 'user:x' }, { enabled: true }, { name: '', enabled: true }, { name: 'user:x', enabled: 'yes' }]) {
-            const response = await h.fetch('/v1/commands', { method: 'POST', body: JSON.stringify(command('skills.setEnabled', body)) });
+        for (const body of [
+            { name: 'user:x' },
+            { enabled: true },
+            { name: '', enabled: true },
+            { name: 'user:x', enabled: 'yes' },
+        ]) {
+            const response = await h.fetch('/v1/commands', {
+                method: 'POST',
+                body: JSON.stringify(command('skills.setEnabled', body)),
+            });
 
             expect(response.status).toBe(400);
-            expect(await response.json()).toMatchObject({ ok: false, error: { code: 'invalid', message: 'The command is not valid' } });
+            expect(await response.json()).toMatchObject({
+                ok: false,
+                error: { code: 'invalid', message: 'The command is not valid' },
+            });
         }
     });
 
@@ -278,7 +338,11 @@ describe('skills.setEnabled', () => {
         const again = await h.fetch('/v1/commands', { method: 'POST', body: JSON.stringify(toggle) });
 
         expect(await again.json()).toEqual(await sent.json());
-        expect(skillEvents(h, before).map(event => event.projectId).sort()).toEqual([h.personal.id, first.id, second.id].sort());
+        expect(
+            skillEvents(h, before)
+                .map(event => event.projectId)
+                .sort()
+        ).toEqual([h.personal.id, first.id, second.id].sort());
 
         h.ok('skills.setEnabled', { name: 'user:deploy', enabled: false });
 
@@ -296,10 +360,15 @@ describe('watching the skill folders', () => {
 
         writeSkill(user, 'deploy', 'First version');
 
-        const events = await waitFor(() => skillEvents(h, before).length >= 3 && skillEvents(h, before), 'skills.changed for every project');
+        const events = await waitFor(
+            () => skillEvents(h, before).length >= 3 && skillEvents(h, before),
+            'skills.changed for every project'
+        );
 
         expect(events.map(event => event.projectId).sort()).toEqual([h.personal.id, first.id, second.id].sort());
-        expect((await catalogOf(h)).entries.find(entry => entry.name === 'user:deploy')?.description).toBe('First version');
+        expect((await catalogOf(h)).entries.find(entry => entry.name === 'user:deploy')?.description).toBe(
+            'First version'
+        );
         expect(readdirSync(join((h.config.extraPluginDirs as string[])[0], 'skills'))).toEqual(['deploy']);
 
         const afterAdd = h.store.headCursor();
@@ -307,7 +376,9 @@ describe('watching the skill folders', () => {
         writeSkill(user, 'deploy', 'Second version, a little longer');
         await waitFor(() => skillEvents(h, afterAdd).length >= 3, 'skills.changed after an edit');
 
-        expect((await catalogOf(h)).entries.find(entry => entry.name === 'user:deploy')?.description).toBe('Second version, a little longer');
+        expect((await catalogOf(h)).entries.find(entry => entry.name === 'user:deploy')?.description).toBe(
+            'Second version, a little longer'
+        );
     });
 
     test('a burst of writes is one announcement', async () => {
@@ -319,7 +390,7 @@ describe('watching the skill folders', () => {
         const before = h.store.headCursor();
 
         for (let index = 0; index < 5; index++) {
-            writeSkill(user, `skill-${ index }`);
+            writeSkill(user, `skill-${index}`);
         }
 
         await waitFor(() => skillEvents(h, before).length > 0, 'skills.changed');
@@ -336,13 +407,16 @@ describe('watching the skill folders', () => {
         const other = h.openRepo('other');
 
         mkdirSync(join(watched.path, '.claude', 'skills'), { recursive: true });
-        await h.fetch(`/v1/skills?projectId=${ watched.id }`);
+        await h.fetch(`/v1/skills?projectId=${watched.id}`);
 
         const before = h.store.headCursor();
 
         writeSkill(join(watched.path, '.claude', 'skills'), 'review');
 
-        const events = await waitFor(() => skillEvents(h, before).length > 0 && skillEvents(h, before), 'skills.changed');
+        const events = await waitFor(
+            () => skillEvents(h, before).length > 0 && skillEvents(h, before),
+            'skills.changed'
+        );
 
         expect(events.map(event => event.projectId)).toEqual([watched.id]);
         expect(skillEvents(h, before).some(event => event.projectId === other.id)).toBe(false);
@@ -361,7 +435,10 @@ describe('watching the skill folders', () => {
 
         const entries = (await catalogOf(h, web.id)).entries.filter(entry => entry.source === 'project');
 
-        expect(entries.map(entry => [entry.id, entry.engines])).toEqual([['project:web/.claude/skills/review', ['claude']], ['project:api/.agents/skills/triage', ['codex']]]);
+        expect(entries.map(entry => [entry.id, entry.engines])).toEqual([
+            ['project:web/.claude/skills/review', ['claude']],
+            ['project:api/.agents/skills/triage', ['codex']],
+        ]);
         expect(entries[1].path).toBe(join(api.path, '.agents', 'skills', 'triage'));
     });
 
@@ -370,7 +447,8 @@ describe('watching the skill folders', () => {
         const web = h.openRepo('web');
         const api = h.openRepo('api');
         const main = h.store.read(() => getProject(h.store.db, web.id))?.folders[0].id;
-        const projectSkills = async () => (await catalogOf(h, web.id)).entries.filter(entry => entry.source === 'project').map(entry => entry.name);
+        const projectSkills = async () =>
+            (await catalogOf(h, web.id)).entries.filter(entry => entry.source === 'project').map(entry => entry.name);
 
         writeSkill(join(api.path, '.agents', 'skills'), 'triage');
         expect(await projectSkills()).toEqual([]);
@@ -399,14 +477,17 @@ describe('watching the skill folders', () => {
         const both = h.ok('project.add', { folders: [other.path, shared.path] }).project as { id: string };
 
         mkdirSync(join(shared.path, '.claude', 'skills'), { recursive: true });
-        await h.fetch(`/v1/skills?projectId=${ shared.id }`);
-        await h.fetch(`/v1/skills?projectId=${ both.id }`);
+        await h.fetch(`/v1/skills?projectId=${shared.id}`);
+        await h.fetch(`/v1/skills?projectId=${both.id}`);
 
         const before = h.store.headCursor();
 
         writeSkill(join(shared.path, '.claude', 'skills'), 'review');
 
-        const events = await waitFor(() => skillEvents(h, before).length >= 2 && skillEvents(h, before), 'skills.changed for both projects');
+        const events = await waitFor(
+            () => skillEvents(h, before).length >= 2 && skillEvents(h, before),
+            'skills.changed for both projects'
+        );
 
         expect(events.map(event => event.projectId).sort()).toEqual([shared.id, both.id].sort());
         expect(skillEvents(h, before).some(event => event.projectId === other.id)).toBe(false);

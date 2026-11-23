@@ -20,7 +20,8 @@
     },
     "scripts": {
         "clean": "rm -rf node_modules/{*,.*} .turbo 2>/dev/null || true",
-        "lint": "eslint src",
+        "lint": "biome check",
+        "lint:fix": "biome check --write",
         "typecheck": "tsc --noEmit"
     }
 }

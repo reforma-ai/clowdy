@@ -11,18 +11,24 @@ export function SwitchReasons({ model }: { model: BranchSwitch }) {
 
     if (running !== undefined) {
         return (
-            <div className={ styles.status } role="status">
+            <div className={styles.status} role="status">
                 <Spinner size="xs" />
-                <Text variant="xs" color="secondary" truncate>{ `Switching to ${ running }` }</Text>
+                <Text variant="xs" color="secondary" truncate>{`Switching to ${running}`}</Text>
             </div>
         );
     }
 
     if (failure) {
         return (
-            <div className={ styles.reason } role="alert">
-                <Text variant="xs" color="danger" select="text">{ failure.message }</Text>
-                { failure.hint && <Text variant="xs" color="secondary" select="text">{ failure.hint }</Text> }
+            <div className={styles.reason} role="alert">
+                <Text variant="xs" color="danger" select="text">
+                    {failure.message}
+                </Text>
+                {failure.hint && (
+                    <Text variant="xs" color="secondary" select="text">
+                        {failure.hint}
+                    </Text>
+                )}
             </div>
         );
     }
@@ -30,17 +36,21 @@ export function SwitchReasons({ model }: { model: BranchSwitch }) {
     // What the daemon has to say of a switch that was made (a `post-checkout` hook that failed, commits left on no branch): the switch is made, and this is all that is left to say of it.
     if (warning) {
         return (
-            <div className={ styles.reason } role="status">
-                <Text variant="xs" color="secondary" select="text">{ `Switched to ${ warning.branch }` }</Text>
-                <Text variant="xs" color="warning" select="text">{ warning.line }</Text>
+            <div className={styles.reason} role="status">
+                <Text variant="xs" color="secondary" select="text">{`Switched to ${warning.branch}`}</Text>
+                <Text variant="xs" color="warning" select="text">
+                    {warning.line}
+                </Text>
             </div>
         );
     }
 
     if (listFailure) {
         return (
-            <div className={ styles.reason } role="alert">
-                <Text variant="xs" color="danger" select="text">{ listFailure }</Text>
+            <div className={styles.reason} role="alert">
+                <Text variant="xs" color="danger" select="text">
+                    {listFailure}
+                </Text>
             </div>
         );
     }

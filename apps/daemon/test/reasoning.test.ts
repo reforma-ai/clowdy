@@ -16,10 +16,16 @@ afterEach(async () => {
 });
 
 /** A thought in pieces, ending with the mark that closes it. */
-const think = (...pieces: string[]): EngineEvent[] => [...pieces.map((delta): EngineEvent => ({ type: 'thought', delta, done: false })), { type: 'thought', delta: '', done: true }];
+const think = (...pieces: string[]): EngineEvent[] => [
+    ...pieces.map((delta): EngineEvent => ({ type: 'thought', delta, done: false })),
+    { type: 'thought', delta: '', done: true },
+];
 
 /** A message the agent says whole and ends, with its id when it gives one. */
-const say = (text: string, messageId?: string): EngineEvent[] => [{ type: 'text', delta: text, done: false }, { type: 'text', delta: '', done: true, ...(messageId !== undefined && { messageId }) }];
+const say = (text: string, messageId?: string): EngineEvent[] => [
+    { type: 'text', delta: text, done: false },
+    { type: 'text', delta: '', done: true, ...(messageId !== undefined && { messageId }) },
+];
 
 async function setup(script: Script) {
     const engine = new ScriptEngine(script);
@@ -33,15 +39,16 @@ async function setup(script: Script) {
     const project = h.openRepo();
     const { chat } = h.ok('chat.create', { projectId: project.id, engine: 'fake' }) as { chat: Chat };
     const send = (text: string) => h.ok('chat.send', { chatId: chat.id, text }) as { runId: string };
-    const read = async () => await (await h.fetch(`/v1/chats/${ chat.id }/items`)).json() as StreamItem[];
-    const settled = (runId: string, turns: number) => waitFor(() => engine.turns.length === turns && h.run(runId).status === 'succeeded', `turn ${ turns } to end`);
+    const read = async () => (await (await h.fetch(`/v1/chats/${chat.id}/items`)).json()) as StreamItem[];
+    const settled = (runId: string, turns: number) =>
+        waitFor(() => engine.turns.length === turns && h.run(runId).status === 'succeeded', `turn ${turns} to end`);
 
     return { h, engine, chat, send, read, settled };
 }
 
 const reasoning = (item: StreamItem) => (item.body.kind === 'reasoning' ? item.body : undefined);
 
-describe('the agent\'s reasoning in the stream', () => {
+describe("the agent's reasoning in the stream", () => {
     test('is one item that streams in place, then ends with the time it took, before the message it led to', async () => {
         const { h, send, read, settled } = await setup(async function* () {
             yield { type: 'session', sessionId: 's1' };
@@ -60,7 +67,15 @@ describe('the agent\'s reasoning in the stream', () => {
         expect(reasoning(items[1])?.durationMs).toBeGreaterThanOrEqual(0);
 
         // One item changed in place: every publication of it is the same item.
-        const about = h.events().flatMap(event => event.data.type === 'stream.item' && event.data.item.runId === runId && event.data.item.body.kind === 'reasoning' ? [event.data.item] : []);
+        const about = h
+            .events()
+            .flatMap(event =>
+                event.data.type === 'stream.item' &&
+                event.data.item.runId === runId &&
+                event.data.item.body.kind === 'reasoning'
+                    ? [event.data.item]
+                    : []
+            );
 
         expect(new Set(about.map(item => item.id)).size).toBe(1);
         expect(about.at(-1)?.body).toMatchObject({ done: true });
@@ -70,7 +85,14 @@ describe('the agent\'s reasoning in the stream', () => {
         const { send, read, settled } = await setup(async function* () {
             yield { type: 'session', sessionId: 's1' };
             yield* think('First, read it.');
-            yield { type: 'tool', toolCallId: 'c1', name: 'Read', input: { file_path: 'a.ts' }, state: 'done', output: 'x' };
+            yield {
+                type: 'tool',
+                toolCallId: 'c1',
+                name: 'Read',
+                input: { file_path: 'a.ts' },
+                state: 'done',
+                output: 'x',
+            };
             yield* think('Now edit.');
             yield { type: 'tool', toolCallId: 'c2', name: 'Edit', input: { file_path: 'a.ts' }, state: 'done' };
             yield* say('Done.', 'm1');
@@ -82,7 +104,14 @@ describe('the agent\'s reasoning in the stream', () => {
 
         const items = await read();
 
-        expect(items.map(item => item.body.kind)).toEqual(['user', 'reasoning', 'tool', 'reasoning', 'tool', 'assistant']);
+        expect(items.map(item => item.body.kind)).toEqual([
+            'user',
+            'reasoning',
+            'tool',
+            'reasoning',
+            'tool',
+            'assistant',
+        ]);
         expect(items.flatMap(item => reasoning(item)?.text ?? [])).toEqual(['First, read it.', 'Now edit.']);
         expect(items.flatMap(item => reasoning(item)?.done ?? [])).toEqual([true, true]);
     });
@@ -95,8 +124,7 @@ describe('the agent\'s reasoning in the stream', () => {
                 yield { type: 'thought', delta: 'Never closed.', done: false };
                 yield { type: 'text', delta: 'Answer', done: false };
                 yield { type: 'text', delta: '', done: true };
-            }
-            else {
+            } else {
                 yield { type: 'thought', delta: 'Left open at the end.', done: false };
             }
 
@@ -131,12 +159,12 @@ describe('the agent\'s reasoning in the stream', () => {
     test('is no part of the story a turn is cut at: the answer still holds the point, and the next message can still be edited', async () => {
         const { send, read, settled } = await setup(async function* ({ number }) {
             yield { type: 'session', sessionId: 's1' };
-            yield* think(`Thought of turn ${ number }.`);
-            yield* say(`answer ${ number }`, `m${ number }`);
+            yield* think(`Thought of turn ${number}.`);
+            yield* say(`answer ${number}`, `m${number}`);
 
             // A thought that comes after the answer does not take the point away.
             yield* think('One more thing.');
-            yield { type: 'done', result: `answer ${ number }` };
+            yield { type: 'done', result: `answer ${number}` };
         });
         const { runId } = send('One');
 
@@ -146,7 +174,11 @@ describe('the agent\'s reasoning in the stream', () => {
 
         const items = await read();
 
-        expect(items.map(item => [item.body.kind, ...(item.canFork ? ['fork'] : []), ...(item.canEdit ? ['edit'] : [])].join(' '))).toEqual([
+        expect(
+            items.map(item =>
+                [item.body.kind, ...(item.canFork ? ['fork'] : []), ...(item.canEdit ? ['edit'] : [])].join(' ')
+            )
+        ).toEqual([
             'user edit',
             'reasoning',
             'assistant fork',
@@ -174,7 +206,9 @@ describe('the agent\'s reasoning in the stream', () => {
         const items = await read();
 
         expect(items.map(item => item.body.kind)).toEqual(['user', 'assistant', 'reasoning', 'assistant']);
-        expect(items.map(item => (item.body.kind === 'assistant' ? [item.body.text, item.body.done] : undefined))).toEqual([undefined, ['Before. ', true], undefined, ['After.', true]]);
+        expect(
+            items.map(item => (item.body.kind === 'assistant' ? [item.body.text, item.body.done] : undefined))
+        ).toEqual([undefined, ['Before. ', true], undefined, ['After.', true]]);
         // The mark that ends the message names its last piece, which is where the turn ends.
         expect(items.map(item => item.canFork === true)).toEqual([false, false, false, true]);
     });
@@ -225,17 +259,24 @@ describe('the agent\'s reasoning in the stream', () => {
         expect(thought?.done).toBe(true);
 
         // The first piece and the end: the pieces after the cut changed nothing.
-        const writes = h.events().filter(event => event.data.type === 'stream.item' && event.data.item.runId === runId && event.data.item.body.kind === 'reasoning');
+        const writes = h
+            .events()
+            .filter(
+                event =>
+                    event.data.type === 'stream.item' &&
+                    event.data.item.runId === runId &&
+                    event.data.item.body.kind === 'reasoning'
+            );
 
         expect(writes).toHaveLength(2);
     });
 
-    test('does not hide the point an edit cuts the session at: the message after a thought that trails the answer is edited from the answer\'s point', async () => {
+    test("does not hide the point an edit cuts the session at: the message after a thought that trails the answer is edited from the answer's point", async () => {
         const { h, engine, chat, send, read, settled } = await setup(async function* ({ number }) {
             yield { type: 'session', sessionId: 's1' };
-            yield* say(`answer ${ number }`, `m${ number }`);
+            yield* say(`answer ${number}`, `m${number}`);
             yield* think('One more thing.');
-            yield { type: 'done', result: `answer ${ number }` };
+            yield { type: 'done', result: `answer ${number}` };
         });
         const { runId } = send('One');
 
@@ -245,7 +286,14 @@ describe('the agent\'s reasoning in the stream', () => {
 
         const items = await read();
 
-        expect(items.map(item => item.body.kind)).toEqual(['user', 'assistant', 'reasoning', 'user', 'assistant', 'reasoning']);
+        expect(items.map(item => item.body.kind)).toEqual([
+            'user',
+            'assistant',
+            'reasoning',
+            'user',
+            'assistant',
+            'reasoning',
+        ]);
 
         const result = await h.sendAsync('chat.edit', { chatId: chat.id, itemId: items[3].id, text: 'Two, again' });
 

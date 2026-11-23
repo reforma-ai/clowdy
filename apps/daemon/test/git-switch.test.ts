@@ -28,10 +28,16 @@ function recording() {
     const log = join(dir, 'argv.log');
 
     mkdirSync(bin);
-    writeFileSync(join(bin, 'git'), ['#!/bin/sh', `echo "$@" >> '${ log }'`, `exec '${ Bun.which('git') as string }' "$@"`].join('\n'));
+    writeFileSync(
+        join(bin, 'git'),
+        ['#!/bin/sh', `echo "$@" >> '${log}'`, `exec '${Bun.which('git') as string}' "$@"`].join('\n')
+    );
     chmodSync(join(bin, 'git'), 0o755);
 
-    return { environment: isolated({ PATH: `${ bin }:${ process.env.PATH }` }), runs: () => (existsSync(log) ? readFileSync(log, 'utf8').trim().split('\n') : []) };
+    return {
+        environment: isolated({ PATH: `${bin}:${process.env.PATH}` }),
+        runs: () => (existsSync(log) ? readFileSync(log, 'utf8').trim().split('\n') : []),
+    };
 }
 
 async function start(options: Parameters<typeof startHarness>[1] = {}): Promise<Harness> {
@@ -42,15 +48,22 @@ async function start(options: Parameters<typeof startHarness>[1] = {}): Promise<
     return h;
 }
 
-const json = async <T>(response: Response) => await response.json() as T;
+const json = async <T>(response: Response) => (await response.json()) as T;
 
-interface Failure { ok: false; error: { code: string; message: string; details?: { hint?: string } } }
+interface Failure {
+    ok: false;
+    error: { code: string; message: string; details?: { hint?: string } };
+}
 
 /** The project of a repository and the calls of the switch in it (or in a worktree of it, by `workspaceId`). */
 async function open(path: string, h: Harness) {
     const { project } = h.ok('project.add', { folders: [path] });
     const folderId = project.folders[0].id as string;
-    const call = (branch: unknown, extra: Record<string, unknown> = {}) => h.fetch(`/v1/projects/${ project.id }/git/switch`, { method: 'POST', body: JSON.stringify({ folderId, branch, ...extra }) });
+    const call = (branch: unknown, extra: Record<string, unknown> = {}) =>
+        h.fetch(`/v1/projects/${project.id}/git/switch`, {
+            method: 'POST',
+            body: JSON.stringify({ folderId, branch, ...extra }),
+        });
     const result = async (branch: string, extra: Record<string, unknown> = {}) => {
         const response = await call(branch, extra);
 
@@ -74,7 +87,9 @@ function snapshot(path: string) {
     return {
         refs: refsOf(path),
         head: git(path, 'rev-parse', 'HEAD'),
-        branch: Bun.spawnSync(['git', 'symbolic-ref', '-q', 'HEAD'], { cwd: path, stdout: 'pipe' }).stdout.toString().trim(),
+        branch: Bun.spawnSync(['git', 'symbolic-ref', '-q', 'HEAD'], { cwd: path, stdout: 'pipe' })
+            .stdout.toString()
+            .trim(),
         reflog: git(path, 'reflog', 'show', 'HEAD'),
         index: git(path, 'ls-files', '-s'),
         status: left(path),
@@ -114,7 +129,10 @@ describe('POST /v1/projects/:id/git/switch: switching', () => {
 
         const back = await result('main');
 
-        expect(back).toMatchObject({ head: { kind: 'branch', name: 'main' }, upstream: { name: 'origin/main', ahead: 0, behind: 0 } });
+        expect(back).toMatchObject({
+            head: { kind: 'branch', name: 'main' },
+            upstream: { name: 'origin/main', ahead: 0, behind: 0 },
+        });
         expect(existsSync(join(path, 'on-other.txt'))).toBe(false);
     });
 
@@ -155,13 +173,16 @@ describe('POST /v1/projects/:id/git/switch: switching', () => {
 
         const first = commitFile(path, 'lonely-1.txt');
 
-        expect(await result('other')).toMatchObject({ head: { name: 'other' }, warning: `The commit ${ first.slice(0, 7) } is on no branch now` });
+        expect(await result('other')).toMatchObject({
+            head: { name: 'other' },
+            warning: `The commit ${first.slice(0, 7)} is on no branch now`,
+        });
 
         git(path, 'switch', '-q', '--detach', first);
 
         const second = commitFile(path, 'lonely-2.txt');
 
-        expect((await result('main')).warning).toBe(`${ second.slice(0, 7) } and 1 earlier commit are on no branch now`);
+        expect((await result('main')).warning).toBe(`${second.slice(0, 7)} and 1 earlier commit are on no branch now`);
 
         // A new branch from the detached HEAD is where its commits are kept.
         git(path, 'switch', '-q', '--detach', second);
@@ -188,11 +209,17 @@ describe('POST /v1/projects/:id/git/switch: switching', () => {
         const { result } = await open(path, h);
         const answer = await result('feature/remote-only');
 
-        expect(answer).toEqual({ head: { kind: 'branch', name: 'feature/remote-only', commit: tip }, upstream: { name: 'origin/feature/remote-only', ahead: 0, behind: 0 }, created: true });
+        expect(answer).toEqual({
+            head: { kind: 'branch', name: 'feature/remote-only', commit: tip },
+            upstream: { name: 'origin/feature/remote-only', ahead: 0, behind: 0 },
+            created: true,
+        });
         expect(git(path, 'config', '--get', 'branch.feature/remote-only.remote')).toBe('origin');
         expect(git(path, 'config', '--get', 'branch.feature/remote-only.merge')).toBe('refs/heads/feature/remote-only');
         expect(existsSync(join(path, 'remote.txt'))).toBe(true);
-        expect(recorded.runs()).toContain('switch --track -c feature/remote-only refs/remotes/origin/feature/remote-only');
+        expect(recorded.runs()).toContain(
+            'switch --track -c feature/remote-only refs/remotes/origin/feature/remote-only'
+        );
     });
 
     test('takes the local branch when a branch of that name is on origin too', async () => {
@@ -207,7 +234,10 @@ describe('POST /v1/projects/:id/git/switch: switching', () => {
 
         expect(await result('other')).toMatchObject({ head: { kind: 'branch', name: 'other' } });
         expect(await result('main')).not.toHaveProperty('created');
-        expect(recorded.runs().filter(line => line.startsWith('switch'))).toEqual(['switch --no-guess -- other', 'switch --no-guess -- main']);
+        expect(recorded.runs().filter(line => line.startsWith('switch'))).toEqual([
+            'switch --no-guess -- other',
+            'switch --no-guess -- main',
+        ]);
     });
 
     test('makes a new branch from the current one, with nothing to track', async () => {
@@ -222,8 +252,11 @@ describe('POST /v1/projects/:id/git/switch: switching', () => {
         const answer = await result('feature/new', { create: { start: 'current' } });
 
         expect(answer).toEqual({ head: { kind: 'branch', name: 'feature/new', commit: tip }, created: true });
-        expect(Bun.spawnSync(['git', 'config', '--get', 'branch.feature/new.merge'], { cwd: path, stdout: 'pipe' }).exitCode).toBe(1);
-        expect(recorded.runs()).toContain(`switch --no-track -c feature/new ${ tip }`);
+        expect(
+            Bun.spawnSync(['git', 'config', '--get', 'branch.feature/new.merge'], { cwd: path, stdout: 'pipe' })
+                .exitCode
+        ).toBe(1);
+        expect(recorded.runs()).toContain(`switch --no-track -c feature/new ${tip}`);
     });
 
     test('makes a new branch from the default branch, as origin has it, and a push of it can never go to the branch it was cut from', async () => {
@@ -242,12 +275,15 @@ describe('POST /v1/projects/:id/git/switch: switching', () => {
         const answer = await result('from-default', { create: { start: 'default' } });
 
         expect(answer).toEqual({ head: { kind: 'branch', name: 'from-default', commit: theirs }, created: true });
-        expect(Bun.spawnSync(['git', 'config', '--get', 'branch.from-default.merge'], { cwd: path, stdout: 'pipe' }).exitCode).toBe(1);
+        expect(
+            Bun.spawnSync(['git', 'config', '--get', 'branch.from-default.merge'], { cwd: path, stdout: 'pipe' })
+                .exitCode
+        ).toBe(1);
         expect(existsSync(join(path, 'on-other.txt'))).toBe(false);
         expect(existsSync(join(path, 'theirs.txt'))).toBe(true);
     });
 
-    test('starts a new branch from a detached HEAD\'s own commit when the current is asked for', async () => {
+    test("starts a new branch from a detached HEAD's own commit when the current is asked for", async () => {
         const h = await start();
         const { path } = withOther();
         const { result } = await open(path, h);
@@ -256,20 +292,27 @@ describe('POST /v1/projects/:id/git/switch: switching', () => {
 
         const tip = git(path, 'rev-parse', 'HEAD');
 
-        expect(await result('from-detached', { create: { start: 'current' } })).toMatchObject({ head: { kind: 'branch', name: 'from-detached', commit: tip }, created: true });
+        expect(await result('from-detached', { create: { start: 'current' } })).toMatchObject({
+            head: { kind: 'branch', name: 'from-detached', commit: tip },
+            created: true,
+        });
     });
 
-    test('runs the person\'s post-checkout hook, with git\'s own arguments, for a switch and for a new branch', async () => {
+    test("runs the person's post-checkout hook, with git's own arguments, for a switch and for a new branch", async () => {
         const h = await start();
         const { path } = withOther();
         const { result } = await open(path, h);
 
-        hook(path, 'post-checkout', `echo "$3" >> '${ join(path, '.git', 'ran.log') }'`);
+        hook(path, 'post-checkout', `echo "$3" >> '${join(path, '.git', 'ran.log')}'`);
         await result('other');
         await result('fresh', { create: { start: 'current' } });
 
         // `$3` is 1 for a checkout of a branch.
-        expect(readFileSync(join(path, '.git', 'ran.log'), 'utf8').trim().split('\n')).toEqual(['1', '1']);
+        expect(
+            readFileSync(join(path, '.git', 'ran.log'), 'utf8')
+                .trim()
+                .split('\n')
+        ).toEqual(['1', '1']);
     });
 
     test('answers a post-checkout hook that fails as a switch that was made, with its line as a warning', async () => {
@@ -281,7 +324,10 @@ describe('POST /v1/projects/:id/git/switch: switching', () => {
 
         const answer = await result('other');
 
-        expect(answer).toMatchObject({ head: { kind: 'branch', name: 'other' }, warning: 'post-checkout: the install failed' });
+        expect(answer).toMatchObject({
+            head: { kind: 'branch', name: 'other' },
+            warning: 'post-checkout: the install failed',
+        });
         expect(branchOf(path)).toBe('other');
     });
 
@@ -301,7 +347,9 @@ describe('POST /v1/projects/:id/git/switch: switching', () => {
 
         expect(switches).toHaveLength(5);
         expect(switches[0]).toBe('switch --no-guess -- other');
-        expect(switches.join('\n')).not.toMatch(/--force|\s-f\s|--discard-changes|--merge|\s-m\s|--ignore-other-worktrees|--no-verify|--detach|--orphan|--conflict|--guess\b/);
+        expect(switches.join('\n')).not.toMatch(
+            /--force|\s-f\s|--discard-changes|--merge|\s-m\s|--ignore-other-worktrees|--no-verify|--detach|--orphan|--conflict|--guess\b/
+        );
         expect(recorded.runs().join('\n')).not.toMatch(/\bstash\b|\breset\b|\bcheckout\b|--hard|\bclean\b|\brestore\b/);
     });
 });
@@ -310,21 +358,30 @@ describe('POST /v1/projects/:id/git/switch: refusals', () => {
     test('refuses a tree with a change of any kind, with the count of the files, and leaves the HEAD, the index, the files and the refs as they were', async () => {
         const changes: Record<string, (path: string) => void> = {
             'a modified file': path => writeFileSync(join(path, 'README.md'), 'edited\n'),
-            'a staged file': (path) => {
+            'a staged file': path => {
                 writeFileSync(join(path, 'staged.txt'), 'staged\n');
                 git(path, 'add', 'staged.txt');
             },
             'an untracked file': path => writeFileSync(join(path, 'untracked.txt'), 'new\n'),
             'a deleted file': path => Bun.spawnSync(['rm', join(path, 'README.md')]),
-            'a staged rename': (path) => {
+            'a staged rename': path => {
                 git(path, 'mv', 'README.md', 'MOVED.md');
             },
-            'a new folder with a file in it': (path) => {
+            'a new folder with a file in it': path => {
                 mkdirSync(join(path, 'fresh', 'deep'), { recursive: true });
                 writeFileSync(join(path, 'fresh', 'deep', 'file.txt'), 'new\n');
             },
-            'a submodule that has a file of its own that is not tracked': (path) => {
-                git(path, '-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', makeRepo(tempDir('git-switch'), 'sub'), 'sm');
+            'a submodule that has a file of its own that is not tracked': path => {
+                git(
+                    path,
+                    '-c',
+                    'protocol.file.allow=always',
+                    'submodule',
+                    'add',
+                    '-q',
+                    makeRepo(tempDir('git-switch'), 'sub'),
+                    'sm'
+                );
                 git(path, 'commit', '-q', '-m', 'Add a submodule');
                 writeFileSync(join(path, 'sm', 'loose.txt'), 'x\n');
             },
@@ -340,14 +397,18 @@ describe('POST /v1/projects/:id/git/switch: refusals', () => {
             const before = snapshot(path);
             const error = await failure(409, 'other');
 
-            expect({ what, code: error.code, message: error.message }).toEqual({ what, code: 'conflict', message: 'Commit or discard the changes first' });
+            expect({ what, code: error.code, message: error.message }).toEqual({
+                what,
+                code: 'conflict',
+                message: 'Commit or discard the changes first',
+            });
             expect(error.details?.hint).toMatch(/^\d+ files? changed$/);
             expect({ what, ...snapshot(path) }).toEqual({ what, ...before });
             expect(branchOf(path)).toBe('main');
         }
     });
 
-    test('leaves a file git was told to look away from to git, which refuses to overwrite it: nothing changes and the person is told git\'s line', async () => {
+    test("leaves a file git was told to look away from to git, which refuses to overwrite it: nothing changes and the person is told git's line", async () => {
         const h = await start();
         const { path } = repository();
         const { failure } = await open(path, h);
@@ -402,7 +463,7 @@ describe('POST /v1/projects/:id/git/switch: refusals', () => {
         const stops: Record<string, { message: string; setup: (path: string) => void }> = {
             merge: {
                 message: 'A merge is in progress',
-                setup: (path) => {
+                setup: path => {
                     git(path, 'switch', '-q', '-c', 'side');
                     commitFile(path, 'side.txt');
                     git(path, 'switch', '-q', 'main');
@@ -411,7 +472,7 @@ describe('POST /v1/projects/:id/git/switch: refusals', () => {
             },
             'cherry-pick': {
                 message: 'A cherry-pick is in progress',
-                setup: (path) => {
+                setup: path => {
                     git(path, 'switch', '-q', '-c', 'side');
                     commitFile(path, 'same.txt', 'side\n');
                     git(path, 'switch', '-q', 'main');
@@ -421,7 +482,7 @@ describe('POST /v1/projects/:id/git/switch: refusals', () => {
             },
             revert: {
                 message: 'A revert is in progress',
-                setup: (path) => {
+                setup: path => {
                     commitFile(path, 'same.txt', 'one\n');
 
                     const first = git(path, 'rev-parse', 'HEAD');
@@ -432,16 +493,21 @@ describe('POST /v1/projects/:id/git/switch: refusals', () => {
             },
             rebase: {
                 message: 'A rebase is in progress',
-                setup: (path) => {
+                setup: path => {
                     commitFile(path, 'first.txt');
                     commitFile(path, 'second.txt');
                     // Stops at the commit it is told to edit, with a clean tree.
-                    Bun.spawnSync(['git', 'rebase', '-i', 'HEAD~2'], { cwd: path, stdout: 'pipe', stderr: 'pipe', env: { ...process.env, GIT_SEQUENCE_EDITOR: 'sed -i.bak "1s/^pick/edit/"' } });
+                    Bun.spawnSync(['git', 'rebase', '-i', 'HEAD~2'], {
+                        cwd: path,
+                        stdout: 'pipe',
+                        stderr: 'pipe',
+                        env: { ...process.env, GIT_SEQUENCE_EDITOR: 'sed -i.bak "1s/^pick/edit/"' },
+                    });
                 },
             },
             bisect: {
                 message: 'A bisect is in progress',
-                setup: (path) => {
+                setup: path => {
                     const first = git(path, 'rev-parse', 'HEAD');
 
                     commitFile(path, 'a.txt');
@@ -463,7 +529,12 @@ describe('POST /v1/projects/:id/git/switch: refusals', () => {
             const before = snapshot(path);
             const error = await failure(409, 'other');
 
-            expect({ name, code: error.code, message: error.message, hint: error.details?.hint }).toEqual({ name, code: 'conflict', message, hint: 'Finish or abort it first' });
+            expect({ name, code: error.code, message: error.message, hint: error.details?.hint }).toEqual({
+                name,
+                code: 'conflict',
+                message,
+                hint: 'Finish or abort it first',
+            });
             expect({ name, ...snapshot(path) }).toEqual({ name, ...before });
         }
     }, 60_000);
@@ -480,13 +551,13 @@ describe('POST /v1/projects/:id/git/switch: refusals', () => {
         const before = snapshot(path);
         const error = await failure(409, 'held');
 
-        expect(error).toMatchObject({ code: 'conflict', message: `Checked out in ${ tree }` });
+        expect(error).toMatchObject({ code: 'conflict', message: `Checked out in ${tree}` });
         expect(snapshot(path)).toEqual(before);
         expect(recorded.runs().filter(line => line.startsWith('switch'))).toEqual([]);
         expect(branchOf(tree)).toBe('held');
     });
 
-    test('refuses a chat\'s worktree, whose branch it keeps, and runs nothing there', async () => {
+    test("refuses a chat's worktree, whose branch it keeps, and runs nothing there", async () => {
         const recorded = recording();
         const h = await start({ gitEnvironment: recorded.environment });
         const { path } = withOther();
@@ -495,19 +566,28 @@ describe('POST /v1/projects/:id/git/switch: refusals', () => {
         git(path, 'worktree', 'add', '-q', '-b', 'chat-branch', tree);
 
         const { project, folderId } = await open(path, h);
-        const workspaceId = (h.ok('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: tree } }).chat.workspace as { id: string }).id;
-        const response = await h.fetch(`/v1/projects/${ project.id }/git/switch`, { method: 'POST', body: JSON.stringify({ folderId, workspaceId, branch: 'other' }) });
+        const workspaceId = (
+            h.ok('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: tree } }).chat
+                .workspace as { id: string }
+        ).id;
+        const response = await h.fetch(`/v1/projects/${project.id}/git/switch`, {
+            method: 'POST',
+            body: JSON.stringify({ folderId, workspaceId, branch: 'other' }),
+        });
         const before = snapshot(tree);
 
         expect(response.status).toBe(400);
-        expect(((await json<Failure>(response)).error).message).toBe('A chat\'s worktree keeps its branch');
+        expect((await json<Failure>(response)).error.message).toBe("A chat's worktree keeps its branch");
         expect(snapshot(tree)).toEqual(before);
         expect(branchOf(tree)).toBe('chat-branch');
         expect(branchOf(path)).toBe('main');
         expect(recorded.runs().filter(line => line.startsWith('switch'))).toEqual([]);
 
         // A place that is not the project's is not found, as for the other routes.
-        const missing = await h.fetch(`/v1/projects/${ project.id }/git/switch`, { method: 'POST', body: JSON.stringify({ folderId, workspaceId: 'wks_none', branch: 'other' }) });
+        const missing = await h.fetch(`/v1/projects/${project.id}/git/switch`, {
+            method: 'POST',
+            body: JSON.stringify({ folderId, workspaceId: 'wks_none', branch: 'other' }),
+        });
 
         expect(missing.status).toBe(404);
     });
@@ -519,11 +599,45 @@ describe('POST /v1/projects/:id/git/switch: refusals', () => {
         const { failure } = await open(path, h);
         const before = snapshot(path);
 
-        for (const name of ['', '   ', '-x', '--force', '-', '--detach', '-c', '@{-1}', '@', 'HEAD', 'a b', 'a..b', 'x.lock', 'a/', '/a', 'a//b', 'a~1', 'a^', 'a:b', 'a?b', 'a*b', 'a[b', 'a\\b', 'a@{b', 'a\nb', 'a\u0000b', 'a\u007Fb', '.hidden', 'a.', 'x'.repeat(251)]) {
+        for (const name of [
+            '',
+            '   ',
+            '-x',
+            '--force',
+            '-',
+            '--detach',
+            '-c',
+            '@{-1}',
+            '@',
+            'HEAD',
+            'a b',
+            'a..b',
+            'x.lock',
+            'a/',
+            '/a',
+            'a//b',
+            'a~1',
+            'a^',
+            'a:b',
+            'a?b',
+            'a*b',
+            'a[b',
+            'a\\b',
+            'a@{b',
+            'a\nb',
+            'a\u0000b',
+            'a\u007Fb',
+            '.hidden',
+            'a.',
+            'x'.repeat(251),
+        ]) {
             for (const extra of [{}, { create: { start: 'current' } }]) {
                 const error = await failure(400, name, extra);
 
-                expect({ name: JSON.stringify(name), code: error.code }).toEqual({ name: JSON.stringify(name), code: 'invalid' });
+                expect({ name: JSON.stringify(name), code: error.code }).toEqual({
+                    name: JSON.stringify(name),
+                    code: 'invalid',
+                });
             }
         }
 
@@ -533,7 +647,7 @@ describe('POST /v1/projects/:id/git/switch: refusals', () => {
         expect(recorded.runs().filter(line => /^(switch|checkout)/.test(line))).toEqual([]);
     });
 
-    test('says a name that is not one in the person\'s words, without a control character', async () => {
+    test("says a name that is not one in the person's words, without a control character", async () => {
         const h = await start();
         const { path } = withOther();
         const { failure } = await open(path, h);
@@ -557,15 +671,27 @@ describe('POST /v1/projects/:id/git/switch: refusals', () => {
 
         const before = snapshot(path);
 
-        expect(await failure(400, 'nope')).toMatchObject({ code: 'invalid', message: 'There is no branch called nope' });
-        expect(await failure(400, 'other', { create: { start: 'current' } })).toMatchObject({ code: 'invalid', message: 'A branch called other exists already' });
-        expect(await failure(400, 'only-on-origin', { create: { start: 'current' } })).toMatchObject({ code: 'invalid', message: 'origin has a branch called only-on-origin already' });
-        expect(await failure(400, 'x', { create: { start: 'somewhere' } })).toMatchObject({ code: 'invalid', message: 'A new branch starts from the current branch or from the default branch' });
+        expect(await failure(400, 'nope')).toMatchObject({
+            code: 'invalid',
+            message: 'There is no branch called nope',
+        });
+        expect(await failure(400, 'other', { create: { start: 'current' } })).toMatchObject({
+            code: 'invalid',
+            message: 'A branch called other exists already',
+        });
+        expect(await failure(400, 'only-on-origin', { create: { start: 'current' } })).toMatchObject({
+            code: 'invalid',
+            message: 'origin has a branch called only-on-origin already',
+        });
+        expect(await failure(400, 'x', { create: { start: 'somewhere' } })).toMatchObject({
+            code: 'invalid',
+            message: 'A new branch starts from the current branch or from the default branch',
+        });
         expect(await failure(400, 'x', { create: {} })).toMatchObject({ code: 'invalid' });
         expect(snapshot(path)).toEqual(before);
     });
 
-    test('says what git says when it refuses a new branch for a name that clashes with another branch\'s folder', async () => {
+    test("says what git says when it refuses a new branch for a name that clashes with another branch's folder", async () => {
         const h = await start();
         const { path } = withOther();
         const { failure } = await open(path, h);
@@ -585,8 +711,14 @@ describe('POST /v1/projects/:id/git/switch: refusals', () => {
         const unborn = tempDir('git-switch');
 
         git(unborn, 'init', '-q', '-b', 'main');
-        expect(await (await open(unborn, h)).failure(400, 'main')).toMatchObject({ code: 'invalid', message: 'The repository has no commits yet' });
-        expect(await (await open(tempDir('git-switch'), h)).failure(400, 'main')).toMatchObject({ code: 'invalid', message: 'The folder is not the root of a git repository' });
+        expect(await (await open(unborn, h)).failure(400, 'main')).toMatchObject({
+            code: 'invalid',
+            message: 'The repository has no commits yet',
+        });
+        expect(await (await open(tempDir('git-switch'), h)).failure(400, 'main')).toMatchObject({
+            code: 'invalid',
+            message: 'The folder is not the root of a git repository',
+        });
 
         const { path } = repository();
 
@@ -598,13 +730,21 @@ describe('POST /v1/projects/:id/git/switch: refusals', () => {
         const h = await start();
         const { path } = withOther();
         const { project, folderId } = await open(path, h);
-        const post = (body: unknown) => h.fetch(`/v1/projects/${ project.id }/git/switch`, { method: 'POST', body: JSON.stringify(body) });
+        const post = (body: unknown) =>
+            h.fetch(`/v1/projects/${project.id}/git/switch`, { method: 'POST', body: JSON.stringify(body) });
 
         expect((await post({ folderId })).status).toBe(400);
         expect((await post({ branch: 'other' })).status).toBe(400);
         expect((await post({ folderId, branch: 7 })).status).toBe(400);
         expect((await post({ folderId: 'fld_none', branch: 'other' })).status).toBe(404);
-        expect((await h.fetch('/v1/projects/prj_none/git/switch', { method: 'POST', body: JSON.stringify({ folderId, branch: 'other' }) })).status).toBe(404);
+        expect(
+            (
+                await h.fetch('/v1/projects/prj_none/git/switch', {
+                    method: 'POST',
+                    body: JSON.stringify({ folderId, branch: 'other' }),
+                })
+            ).status
+        ).toBe(404);
         expect(branchOf(path)).toBe('main');
     });
 });
@@ -628,7 +768,11 @@ describe('POST /v1/projects/:id/git/switch: runs working in the place', () => {
 
         const before = snapshot(path);
 
-        expect(await failure(409, 'other')).toMatchObject({ code: 'conflict', message: '1 chat is working here', details: { hint: 'Stop them or wait until they finish' } });
+        expect(await failure(409, 'other')).toMatchObject({
+            code: 'conflict',
+            message: '1 chat is working here',
+            details: { hint: 'Stop them or wait until they finish' },
+        });
 
         const second = h.ok('chat.create', { projectId: project.id }).chat.id as string;
         const secondRun = h.ok('chat.send', { chatId: second, text: 'second job' }).runId as string;
@@ -669,7 +813,7 @@ describe('POST /v1/projects/:id/git/switch: runs working in the place', () => {
         const stall = join(tempDir('git-switch'), 'stall.sh');
 
         // A `git status` that takes a couple of seconds (the hook runs when git asks what changed), long enough for a message to come in.
-        writeFileSync(stall, ['#!/bin/sh', `touch '${ ready }'`, 'sleep 1', 'exit 1'].join('\n'));
+        writeFileSync(stall, ['#!/bin/sh', `touch '${ready}'`, 'sleep 1', 'exit 1'].join('\n'));
         chmodSync(stall, 0o755);
         git(path, 'config', 'core.fsmonitor', stall);
 
@@ -698,14 +842,21 @@ describe('POST /v1/projects/:id/git/switch: runs working in the place', () => {
 
         const { project } = h.ok('project.add', { folders: [path, second] });
         const [folderId, secondId] = project.folders.map((folder: { id: string }) => folder.id) as [string, string];
-        const inTree = h.ok('chat.create', { projectId: project.id, folderId, workspace: { mode: 'existing', path: tree } }).chat.id as string;
+        const inTree = h.ok('chat.create', {
+            projectId: project.id,
+            folderId,
+            workspace: { mode: 'existing', path: tree },
+        }).chat.id as string;
         const inSecond = h.ok('chat.create', { projectId: project.id, folderId: secondId }).chat.id as string;
 
         h.ok('chat.send', { chatId: inTree, text: 'in the tree' });
         h.ok('chat.send', { chatId: inSecond, text: 'in the second folder' });
         await waitFor(() => gate.isStarted('in the tree') && gate.isStarted('in the second folder'), 'both runs');
 
-        const response = await h.fetch(`/v1/projects/${ project.id }/git/switch`, { method: 'POST', body: JSON.stringify({ folderId, branch: 'other' }) });
+        const response = await h.fetch(`/v1/projects/${project.id}/git/switch`, {
+            method: 'POST',
+            body: JSON.stringify({ folderId, branch: 'other' }),
+        });
 
         expect(response.status).toBe(200);
         expect(branchOf(path)).toBe('other');
@@ -724,7 +875,10 @@ describe('POST /v1/projects/:id/git/switch: runs working in the place', () => {
         h.ok('chat.send', { chatId: chat, text: 'works in the checkout' });
         await waitFor(() => gate.isStarted('works in the checkout'), 'the run');
 
-        const response = await h.fetch(`/v1/projects/${ project.id }/git/switch`, { method: 'POST', body: JSON.stringify({ folderId, branch: 'other' }) });
+        const response = await h.fetch(`/v1/projects/${project.id}/git/switch`, {
+            method: 'POST',
+            body: JSON.stringify({ folderId, branch: 'other' }),
+        });
 
         expect(response.status).toBe(409);
         expect(secondId).toBeTruthy();
@@ -733,7 +887,7 @@ describe('POST /v1/projects/:id/git/switch: runs working in the place', () => {
 });
 
 describe('POST /v1/projects/:id/git/switch: the line of writes', () => {
-    test('judges the tree on the place\'s line, right before git runs: a commit in front of it leaves the tree clean, and the switch goes through', async () => {
+    test("judges the tree on the place's line, right before git runs: a commit in front of it leaves the tree clean, and the switch goes through", async () => {
         const h = await start();
         const { path } = withOther();
         const { project, folderId, call } = await open(path, h);
@@ -742,9 +896,12 @@ describe('POST /v1/projects/:id/git/switch: the line of writes', () => {
 
         writeFileSync(join(path, 'wip.txt'), 'wip\n');
         // The commit holds the line for a second; when the switch arrives the tree is not clean, and when it is the switch's turn it is.
-        hook(path, 'pre-commit', `touch '${ ready }'`, 'sleep 1');
+        hook(path, 'pre-commit', `touch '${ready}'`, 'sleep 1');
 
-        const commit = h.fetch(`/v1/projects/${ project.id }/git/commit`, { method: 'POST', body: JSON.stringify({ folderId, paths: ['wip.txt'], message: 'Add wip' }) });
+        const commit = h.fetch(`/v1/projects/${project.id}/git/commit`, {
+            method: 'POST',
+            body: JSON.stringify({ folderId, paths: ['wip.txt'], message: 'Add wip' }),
+        });
 
         await waitFor(() => existsSync(ready) || undefined, 'the commit to hold the line');
 
@@ -763,7 +920,7 @@ describe('POST /v1/projects/:id/git/switch: the line of writes', () => {
         const { project, folderId, call } = await open(path, h);
         const responses = await Promise.all([
             call('other'),
-            h.fetch(`/v1/projects/${ project.id }/git/fetch`, { method: 'POST', body: JSON.stringify({ folderId }) }),
+            h.fetch(`/v1/projects/${project.id}/git/fetch`, { method: 'POST', body: JSON.stringify({ folderId }) }),
             call('main'),
         ]);
 
@@ -785,7 +942,10 @@ describe('POST /v1/projects/:id/git/switch: the line of writes', () => {
         const late = await slow.switch(project, place, { branch: 'other' }).catch((caught: unknown) => caught);
 
         // HEAD had moved to the branch before the hook that did not end, so the switch was made and the hook is what is told.
-        expect(late).toMatchObject({ head: { kind: 'branch', name: 'other' }, warning: 'The post-checkout hook did not finish in time' });
+        expect(late).toMatchObject({
+            head: { kind: 'branch', name: 'other' },
+            warning: 'The post-checkout hook did not finish in time',
+        });
         expect(Date.now() - started).toBeLessThan(6000);
         await Bun.sleep(300);
         expect(existsSync(join(path, '.git', 'index.lock'))).toBe(false);
@@ -801,12 +961,14 @@ describe('POST /v1/projects/:id/git/switch: the line of writes', () => {
         running.stop();
 
         expect(await pending).toMatchObject({ code: 'unavailable', message: 'The daemon is stopping' });
-        expect(await running.switch(project, place, { branch: 'main' }).catch((caught: unknown) => caught)).toBeInstanceOf(Error);
+        expect(
+            await running.switch(project, place, { branch: 'main' }).catch((caught: unknown) => caught)
+        ).toBeInstanceOf(Error);
     });
 });
 
 describe('POST /v1/projects/:id/git/switch: a folder that is a linked worktree', () => {
-    test('is the folder\'s own checkout: it switches, and the main checkout\'s branch is held', async () => {
+    test("is the folder's own checkout: it switches, and the main checkout's branch is held", async () => {
         const h = await start();
         const { path } = withOther();
         const tree = join(realpathSync(tempDir('git-switch')), 'linked-folder');
@@ -819,12 +981,12 @@ describe('POST /v1/projects/:id/git/switch: a folder that is a linked worktree',
         expect(branchOf(tree)).toBe('other');
         expect(branchOf(path)).toBe('main');
         // The main checkout has `main`, which the linked folder may not take.
-        expect(await failure(409, 'main')).toMatchObject({ message: `Checked out in ${ realpathSync(path) }` });
+        expect(await failure(409, 'main')).toMatchObject({ message: `Checked out in ${realpathSync(path)}` });
     });
 });
 
 withScripts('POST /v1/projects/:id/git/switch: the origin the new branch is cut from', () => {
-    test('makes a branch from a default that is a remote\'s branch with no local one, and says so when there is nothing to start from', async () => {
+    test("makes a branch from a default that is a remote's branch with no local one, and says so when there is nothing to start from", async () => {
         const h = await start();
         const origin = bare();
         const { path } = repository(origin);
@@ -836,6 +998,9 @@ withScripts('POST /v1/projects/:id/git/switch: the origin the new branch is cut 
         const { result } = await open(path, h);
         const tip = git(path, 'rev-parse', 'origin/main');
 
-        expect(await result('fresh', { create: { start: 'default' } })).toMatchObject({ head: { kind: 'branch', name: 'fresh', commit: tip }, created: true });
+        expect(await result('fresh', { create: { start: 'default' } })).toMatchObject({
+            head: { kind: 'branch', name: 'fresh', commit: tip },
+            created: true,
+        });
     });
 });

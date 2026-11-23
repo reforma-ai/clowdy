@@ -53,7 +53,10 @@
     min-height: var(--lightbox-stage-size);
     max-width: 100%;
     background-color: var(--color-white);
-    background-image: repeating-conic-gradient(color-mix(in srgb, var(--color-black) 8%, transparent) 0% 25%, transparent 0% 50%);
+    background-image: repeating-conic-gradient(
+        color-mix(in srgb, var(--color-black) 8%, transparent) 0% 25%,
+        transparent 0% 50%
+    );
     background-size: 1rem 1rem;
 }
 

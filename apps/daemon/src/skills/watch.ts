@@ -33,12 +33,13 @@ export class FolderWatchers {
 
         try {
             const listeners = new Map([[key, onChange]]);
-            const watcher = watch(dir, { recursive: true }, () => listeners.forEach((listener, listenerKey) => this.schedule(listenerKey, listener)));
+            const watcher = watch(dir, { recursive: true }, () =>
+                listeners.forEach((listener, listenerKey) => this.schedule(listenerKey, listener))
+            );
 
             watcher.on('error', () => this.drop(dir));
             this.watchers.set(dir, { watcher, listeners });
-        }
-        catch {
+        } catch {
             // Missing or unwatchable.
         }
     }
@@ -73,15 +74,17 @@ export class FolderWatchers {
 
     private schedule(key: string, onChange: () => void): void {
         clearTimeout(this.timers.get(key));
-        this.timers.set(key, setTimeout(() => {
-            this.timers.delete(key);
+        this.timers.set(
+            key,
+            setTimeout(() => {
+                this.timers.delete(key);
 
-            try {
-                onChange();
-            }
-            catch (error) {
-                console.error('[clowdy] reading the skill folders failed:', error);
-            }
-        }, this.debounceMs));
+                try {
+                    onChange();
+                } catch (error) {
+                    console.error('[clowdy] reading the skill folders failed:', error);
+                }
+            }, this.debounceMs)
+        );
     }
 }

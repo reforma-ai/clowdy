@@ -15,7 +15,7 @@ export function resolveOverlayWidth(width: OverlayWidth | undefined): CSSPropert
         };
     }
 
-    const resolvedWidth = (typeof width === 'number') ? `${ width }px` : width;
+    const resolvedWidth = typeof width === 'number' ? `${width}px` : width;
 
     return { width: resolvedWidth, minWidth: resolvedWidth };
 }

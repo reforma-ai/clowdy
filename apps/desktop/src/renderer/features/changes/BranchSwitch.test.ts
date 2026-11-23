@@ -1,22 +1,40 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { TransportError } from '../../daemon/transport';
-import { branchSwitchOf, type BranchTransport } from './BranchSwitch';
+import { type BranchTransport, branchSwitchOf } from './BranchSwitch';
 import { PlaceFacts } from './gitFacts';
 
 import type { GitBranches, GitSwitchResult } from '@clowdy/protocol';
 
 const KEY = { projectId: 'p-1', folderId: 'f-1' };
-const LISTING: GitBranches = { isRepository: true, defaultBranch: 'main', local: [{ name: 'main', current: true, default: true }, { name: 'dev' }], remote: [], recent: ['dev'] };
+const LISTING: GitBranches = {
+    isRepository: true,
+    defaultBranch: 'main',
+    local: [{ name: 'main', current: true, default: true }, { name: 'dev' }],
+    remote: [],
+    recent: ['dev'],
+};
 const RESULT: GitSwitchResult = { head: { kind: 'branch', name: 'dev', commit: 'a'.repeat(40) } };
 
 /** A transport whose reads and switches are answered when the test says so. */
 function transport() {
     const reads: Array<{ resolve: (answer: GitBranches) => void; reject: (error: unknown) => void }> = [];
-    const switches: Array<{ branch: string; create?: unknown; resolve: (answer: GitSwitchResult) => void; reject: (error: unknown) => void }> = [];
+    const switches: Array<{
+        branch: string;
+        create?: unknown;
+        resolve: (answer: GitSwitchResult) => void;
+        reject: (error: unknown) => void;
+    }> = [];
     const stand: BranchTransport = {
-        getGitBranches: vi.fn(() => new Promise<GitBranches>((resolve, reject) => void reads.push({ resolve, reject }))),
-        switchGitBranch: vi.fn((_project, _place, branch, create) => new Promise<GitSwitchResult>((resolve, reject) => void switches.push({ branch, create, resolve, reject }))),
+        getGitBranches: vi.fn(
+            () => new Promise<GitBranches>((resolve, reject) => void reads.push({ resolve, reject }))
+        ),
+        switchGitBranch: vi.fn(
+            (_project, _place, branch, create) =>
+                new Promise<GitSwitchResult>(
+                    (resolve, reject) => void switches.push({ branch, create, resolve, reject })
+                )
+        ),
     };
 
     return { stand, reads, switches };
@@ -111,7 +129,9 @@ describe('BranchSwitch', () => {
         const { model: branches } = model(stand);
         const pending = branches.switchTo('feature/new', { start: 'current' });
 
-        expect(stand.switchGitBranch).toHaveBeenCalledWith('p-1', { folderId: 'f-1' }, 'feature/new', { start: 'current' });
+        expect(stand.switchGitBranch).toHaveBeenCalledWith('p-1', { folderId: 'f-1' }, 'feature/new', {
+            start: 'current',
+        });
         switches[0]!.resolve({ ...RESULT, created: true });
         await pending;
     });
@@ -138,7 +158,10 @@ describe('BranchSwitch', () => {
 
         switches[0]!.reject(new TransportError('Commit or discard the changes first', 409, '3 files changed'));
 
-        expect(await pending).toEqual({ ok: false, failure: { message: 'Commit or discard the changes first', hint: '3 files changed' } });
+        expect(await pending).toEqual({
+            ok: false,
+            failure: { message: 'Commit or discard the changes first', hint: '3 files changed' },
+        });
         expect(branches.failure).toEqual({ message: 'Commit or discard the changes first', hint: '3 files changed' });
         expect(branches.running).toBeUndefined();
         expect(refresh).toHaveBeenCalledTimes(1);
@@ -157,8 +180,8 @@ describe('BranchSwitch', () => {
         const { model: branches } = model(stand);
         const refused = branches.switchTo('dev');
 
-        switches[0]!.reject(new TransportError('A chat\'s worktree keeps its branch', 400));
-        expect(await refused).toEqual({ ok: false, failure: { message: 'A chat\'s worktree keeps its branch' } });
+        switches[0]!.reject(new TransportError("A chat's worktree keeps its branch", 400));
+        expect(await refused).toEqual({ ok: false, failure: { message: "A chat's worktree keeps its branch" } });
 
         const broken = branches.switchTo('dev');
 
@@ -183,7 +206,10 @@ describe('BranchSwitch', () => {
 
     it('is one model for a place, kept with its facts', () => {
         const { stand } = transport();
-        const facts = new PlaceFacts({ ...KEY, folderId: 'f-2' }, { getGitStatus: vi.fn(), getGitChanges: vi.fn(), getGitPullRequest: vi.fn() });
+        const facts = new PlaceFacts(
+            { ...KEY, folderId: 'f-2' },
+            { getGitStatus: vi.fn(), getGitChanges: vi.fn(), getGitPullRequest: vi.fn() }
+        );
 
         expect(branchSwitchOf(facts, stand, vi.fn())).toBe(branchSwitchOf(facts, stand, vi.fn()));
     });

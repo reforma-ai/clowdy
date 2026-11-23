@@ -1,7 +1,7 @@
 import { parseJson } from './json';
 
-import type { Artifact } from '@clowdy/protocol';
 import type { Database } from 'bun:sqlite';
+import type { Artifact } from '@clowdy/protocol';
 
 interface ArtifactRow {
     id: string;
@@ -15,7 +15,9 @@ interface ArtifactRow {
 }
 
 export function listArtifactsOfTask(db: Database, taskId: string): Artifact[] {
-    return (db.query('SELECT * FROM artifacts WHERE task_id = ? ORDER BY created_at, id').all(taskId) as ArtifactRow[]).map(row => ({
+    return (
+        db.query('SELECT * FROM artifacts WHERE task_id = ? ORDER BY created_at, id').all(taskId) as ArtifactRow[]
+    ).map(row => ({
         id: row.id,
         projectId: row.project_id,
         ...(row.run_id && { runId: row.run_id }),

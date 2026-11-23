@@ -23,7 +23,11 @@ export interface AccountProps {
 function CopyLinkButton({ url }: { url: string }) {
     const { copied, markCopied } = useCopyFeedback();
 
-    return <Button variant="inline" color="primary" onPress={ () => copyWithFeedback(url, markCopied) }>{ copied ? 'Copied' : 'Copy link' }</Button>;
+    return (
+        <Button variant="inline" color="primary" onPress={() => copyWithFeedback(url, markCopied)}>
+            {copied ? 'Copied' : 'Copy link'}
+        </Button>
+    );
 }
 
 /**
@@ -40,27 +44,45 @@ export function SignInPanel({ agent, commands, className }: AccountProps & { cla
     const starting = session.step === 'starting';
 
     return (
-        <div className={ cn(styles.panel, className) }>
-            <div className={ styles.panelText } role="status">
-                <Text variant="sm" weight="medium">{ starting ? 'Starting the sign-in…' : 'Continue in your browser' }</Text>
-                { !starting && <Text variant="sm" color="secondary">{ 'Once you sign in, you\'ll be connected automatically' }</Text> }
-                { code && (
-                    <div className={ styles.code }>
-                        <Text variant="sm" color="secondary">Enter this code on the page</Text>
-                        <CopyButton value={ code } variant="filling" size="xs" tooltip="Copy the code">{ code }</CopyButton>
+        <div className={cn(styles.panel, className)}>
+            <div className={styles.panelText} role="status">
+                <Text variant="sm" weight="medium">
+                    {starting ? 'Starting the sign-in…' : 'Continue in your browser'}
+                </Text>
+                {!starting && (
+                    <Text variant="sm" color="secondary">
+                        {"Once you sign in, you'll be connected automatically"}
+                    </Text>
+                )}
+                {code && (
+                    <div className={styles.code}>
+                        <Text variant="sm" color="secondary">
+                            Enter this code on the page
+                        </Text>
+                        <CopyButton value={code} variant="filling" size="xs" tooltip="Copy the code">
+                            {code}
+                        </CopyButton>
                     </div>
-                ) }
+                )}
             </div>
-            <div className={ styles.panelActions }>
-                { url && (url.startsWith('https://')
-                    ? (
-                        <Button variant="inline" color="primary" href={ url } target="_blank" rel="noreferrer">
+            <div className={styles.panelActions}>
+                {url &&
+                    (url.startsWith('https://') ? (
+                        <Button variant="inline" color="primary" href={url} target="_blank" rel="noreferrer">
                             <ArrowUpRight aria-hidden />
                             Reopen browser
                         </Button>
-                    )
-                    : <CopyLinkButton url={ url } />) }
-                <Button variant="bordered" size="sm" isPending={ commands.pending.has('cancelSignIn') } onPress={ () => void commands.cancelSignIn() }>Cancel</Button>
+                    ) : (
+                        <CopyLinkButton url={url} />
+                    ))}
+                <Button
+                    variant="bordered"
+                    size="sm"
+                    isPending={commands.pending.has('cancelSignIn')}
+                    onPress={() => void commands.cancelSignIn()}
+                >
+                    Cancel
+                </Button>
             </div>
         </div>
     );
@@ -73,12 +95,26 @@ export function AccountLine({ agent }: { agent: AgentInfo }) {
 
     return (
         <>
-            <div className={ styles.who }>
-                <Text variant="sm" color={ TONE_COLOR[line.tone] } truncate title={ line.text }>{ line.text }</Text>
-                { line.plan && <Badge size="xs" color="secondary" textValue={ line.plan } className={ styles.plan }>{ line.plan }</Badge> }
+            <div className={styles.who}>
+                <Text variant="sm" color={TONE_COLOR[line.tone]} truncate title={line.text}>
+                    {line.text}
+                </Text>
+                {line.plan && (
+                    <Badge size="xs" color="secondary" textValue={line.plan} className={styles.plan}>
+                        {line.plan}
+                    </Badge>
+                )}
             </div>
-            { line.detail && <Text variant="xs" color="secondary"><InlineCode text={ line.detail } /></Text> }
-            { session?.step === 'failed' && <Text variant="sm" color="danger" role="alert">{ session.message ?? 'Sign-in failed' }</Text> }
+            {line.detail && (
+                <Text variant="xs" color="secondary">
+                    <InlineCode text={line.detail} />
+                </Text>
+            )}
+            {session?.step === 'failed' && (
+                <Text variant="sm" color="danger" role="alert">
+                    {session.message ?? 'Sign-in failed'}
+                </Text>
+            )}
         </>
     );
 }
@@ -94,18 +130,26 @@ export function SignInAction({ agent, commands }: AccountProps) {
     if (agent.status !== 'ready' || !agent.enabled || isSignInRunning(agent.signInSession)) return null;
 
     if (!agent.canSignIn) {
-        return agent.login ? <Text variant="xs" color="secondary">Run <Text as="code" variant="code">{ agent.login }</Text> in a terminal</Text> : null;
+        return agent.login ? (
+            <Text variant="xs" color="secondary">
+                Run{' '}
+                <Text as="code" variant="code">
+                    {agent.login}
+                </Text>{' '}
+                in a terminal
+            </Text>
+        ) : null;
     }
 
     return (
         <Button
-            variant={ signedIn ? 'bordered' : 'filled' }
-            color={ signedIn ? 'secondary' : 'primary' }
+            variant={signedIn ? 'bordered' : 'filled'}
+            color={signedIn ? 'secondary' : 'primary'}
             size="sm"
-            isPending={ commands.pending.has('signIn') }
-            onPress={ () => void commands.signIn() }
+            isPending={commands.pending.has('signIn')}
+            onPress={() => void commands.signIn()}
         >
-            { signedIn ? 'Sign in again' : 'Sign in' }
+            {signedIn ? 'Sign in again' : 'Sign in'}
         </Button>
     );
 }

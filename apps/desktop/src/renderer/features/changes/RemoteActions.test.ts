@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { TransportError } from '../../daemon/transport';
-import { PlaceFacts, type GitPlaceKey } from './gitFacts';
-import { NOTICE_MS, RemoteActions, remoteActionsOf, type RemoteTransport } from './RemoteActions';
+import { type GitPlaceKey, PlaceFacts } from './gitFacts';
+import { NOTICE_MS, RemoteActions, type RemoteTransport, remoteActionsOf } from './RemoteActions';
 
 import type { GitRemoteResult } from '@clowdy/protocol';
 
@@ -18,9 +18,18 @@ function setup() {
         pushGit: vi.fn(async (): Promise<GitRemoteResult> => done('push')),
     };
     const refresh = vi.fn();
-    const facts = new PlaceFacts(KEY, { getGitStatus: vi.fn(), getGitChanges: vi.fn(), getGitPullRequest: vi.fn() } as never);
+    const facts = new PlaceFacts(KEY, {
+        getGitStatus: vi.fn(),
+        getGitChanges: vi.fn(),
+        getGitPullRequest: vi.fn(),
+    } as never);
 
-    return { transport, refresh, facts, actions: new RemoteActions(facts, transport as unknown as RemoteTransport, refresh) };
+    return {
+        transport,
+        refresh,
+        facts,
+        actions: new RemoteActions(facts, transport as unknown as RemoteTransport, refresh),
+    };
 }
 
 beforeEach(() => {
@@ -66,9 +75,18 @@ describe('the moves of a place to and from origin', () => {
         vi.advanceTimersByTime(1);
         expect(actions.notice).toBeUndefined();
 
-        transport.pushGit.mockRejectedValueOnce(new TransportError('! [rejected] main -> main (fetch first)', 409, 'Pull first'));
-        expect(await actions.run('push')).toEqual({ ok: false, failure: { action: 'push', message: '! [rejected] main -> main (fetch first)', hint: 'Pull first' } });
-        expect(actions.failure).toEqual({ action: 'push', message: '! [rejected] main -> main (fetch first)', hint: 'Pull first' });
+        transport.pushGit.mockRejectedValueOnce(
+            new TransportError('! [rejected] main -> main (fetch first)', 409, 'Pull first')
+        );
+        expect(await actions.run('push')).toEqual({
+            ok: false,
+            failure: { action: 'push', message: '! [rejected] main -> main (fetch first)', hint: 'Pull first' },
+        });
+        expect(actions.failure).toEqual({
+            action: 'push',
+            message: '! [rejected] main -> main (fetch first)',
+            hint: 'Pull first',
+        });
         vi.advanceTimersByTime(NOTICE_MS * 10);
         expect(actions.failure).toBeDefined();
 
@@ -81,15 +99,21 @@ describe('the moves of a place to and from origin', () => {
         const { actions, transport } = setup();
         let release: () => void = () => undefined;
 
-        transport.fetchGit.mockImplementationOnce(() => new Promise((resolve) => {
-            release = () => resolve({ state: 'done', action: 'fetch' });
-        }));
+        transport.fetchGit.mockImplementationOnce(
+            () =>
+                new Promise(resolve => {
+                    release = () => resolve({ state: 'done', action: 'fetch' });
+                })
+        );
 
         const running = actions.run('fetch');
 
         expect(actions.running).toBe('fetch');
         expect(actions.busy).toBe(true);
-        expect(await actions.run('push')).toEqual({ ok: false, failure: { action: 'push', message: 'An action is running' } });
+        expect(await actions.run('push')).toEqual({
+            ok: false,
+            failure: { action: 'push', message: 'An action is running' },
+        });
         expect(transport.pushGit).not.toHaveBeenCalled();
         // The refused one says nothing in place of the one that runs.
         expect(actions.failure).toBeUndefined();
@@ -99,14 +123,17 @@ describe('the moves of a place to and from origin', () => {
         expect(actions.busy).toBe(false);
     });
 
-    it('is busy while the place\'s branch is being changed, and refuses an action then, with nothing sent', async () => {
+    it("is busy while the place's branch is being changed, and refuses an action then, with nothing sent", async () => {
         const { actions, transport, facts } = setup();
 
         facts.switching = true;
 
         expect(actions.running).toBeUndefined();
         expect(actions.busy).toBe(true);
-        expect(await actions.run('push')).toEqual({ ok: false, failure: { action: 'push', message: 'The branch is being changed' } });
+        expect(await actions.run('push')).toEqual({
+            ok: false,
+            failure: { action: 'push', message: 'The branch is being changed' },
+        });
         expect(transport.pushGit).not.toHaveBeenCalled();
         expect(actions.failure).toBeUndefined();
 
@@ -119,7 +146,10 @@ describe('the moves of a place to and from origin', () => {
     it('says a diverged branch as a warning that is not a failure', async () => {
         const { actions, transport } = setup();
 
-        transport.pullGit.mockResolvedValueOnce({ state: 'diverged', upstream: { name: 'origin/main', ahead: 1, behind: 2 } });
+        transport.pullGit.mockResolvedValueOnce({
+            state: 'diverged',
+            upstream: { name: 'origin/main', ahead: 1, behind: 2 },
+        });
 
         const outcome = await actions.run('pull');
 
@@ -135,7 +165,10 @@ describe('the moves of a place to and from origin', () => {
         expect(actions.notice).toBeUndefined();
 
         transport.pushGit.mockRejectedValueOnce(new TransportError('hook said no', 409));
-        expect(await actions.run('push', { report: false })).toMatchObject({ ok: false, failure: { message: 'hook said no' } });
+        expect(await actions.run('push', { report: false })).toMatchObject({
+            ok: false,
+            failure: { message: 'hook said no' },
+        });
         expect(actions.failure).toBeUndefined();
         expect(refresh).toHaveBeenCalledTimes(2);
     });
@@ -158,6 +191,16 @@ describe('the moves of a place to and from origin', () => {
         const kept = remoteActionsOf(facts, transport as unknown as RemoteTransport, refresh);
 
         expect(remoteActionsOf(facts, transport as unknown as RemoteTransport, refresh)).toBe(kept);
-        expect(remoteActionsOf(new PlaceFacts(KEY, { getGitStatus: vi.fn(), getGitChanges: vi.fn(), getGitPullRequest: vi.fn() } as never), transport as unknown as RemoteTransport, refresh)).not.toBe(kept);
+        expect(
+            remoteActionsOf(
+                new PlaceFacts(KEY, {
+                    getGitStatus: vi.fn(),
+                    getGitChanges: vi.fn(),
+                    getGitPullRequest: vi.fn(),
+                } as never),
+                transport as unknown as RemoteTransport,
+                refresh
+            )
+        ).not.toBe(kept);
     });
 });

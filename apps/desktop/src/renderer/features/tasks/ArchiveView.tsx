@@ -2,14 +2,14 @@ import { Alert, AlertAction, AlertDescription, AlertIcon } from '@clowdy/compone
 import { Button } from '@clowdy/components/Button';
 import { Loader } from '@clowdy/components/Loader';
 import { Text } from '@clowdy/components/Text';
-import { AttentionCircle, Undo } from '@clowdy/icons/14';
 import { ChevronDown, ChevronRight } from '@clowdy/icons/8';
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { AttentionCircle, Undo } from '@clowdy/icons/14';
+import { type CSSProperties, useEffect, useRef, useState } from 'react';
 
 import { useProjectState, useRootStore } from '../../stores';
-import { restoreTask } from './archiveActions';
-import { archiveBatches, offersRestore, type ArchiveBatch } from './archiveBatches';
 import styles from './ArchiveView.module.css';
+import { restoreTask } from './archiveActions';
+import { type ArchiveBatch, archiveBatches, offersRestore } from './archiveBatches';
 import { StatusPill } from './status';
 import { TaskTree } from './taskTree';
 import { formatAgo } from './taskView';
@@ -34,10 +34,13 @@ interface Handoff {
 }
 
 /** The row of an archived task under `scope`. */
-const archivedRow = (scope: HTMLElement, taskId: TaskId) => [...scope.querySelectorAll<HTMLElement>('[data-archived-task]')].find(row => row.dataset.archivedTask === taskId) ?? null;
+const archivedRow = (scope: HTMLElement, taskId: TaskId) =>
+    [...scope.querySelectorAll<HTMLElement>('[data-archived-task]')].find(row => row.dataset.archivedTask === taskId) ??
+    null;
 
 /** "3 archived tasks", or "Showing 50 of 120 archived tasks" while the rest is not loaded. */
-const countLine = (shown: number, total: number) => `${ shown < total ? `Showing ${ shown } of ${ total }` : total } archived ${ total === 1 ? 'task' : 'tasks' }`;
+const countLine = (shown: number, total: number) =>
+    `${shown < total ? `Showing ${shown} of ${total}` : total} archived ${total === 1 ? 'task' : 'tasks'}`;
 
 /**
  * The project's archive in place of the board or the list: its tasks in the batches they were archived in, the latest batch first, each a tree as the list draws one
@@ -67,14 +70,18 @@ export function ArchiveView({ statuses, openId, onOpen, pageSize = ARCHIVE_PAGE_
 
         if (document.activeElement && document.activeElement !== document.body) return;
 
-        const next = (pending.nextId === undefined ? null : archivedRow(scope, pending.nextId)?.querySelector<HTMLElement>('[data-archive-open]')) ?? scope.querySelector<HTMLElement>('[data-archive-open], [data-archive-heading]');
+        const next =
+            (pending.nextId === undefined
+                ? null
+                : archivedRow(scope, pending.nextId)?.querySelector<HTMLElement>('[data-archive-open]')) ??
+            scope.querySelector<HTMLElement>('[data-archive-open], [data-archive-heading]');
 
         next?.focus();
     });
 
     if (state.status === 'loading') {
         return (
-            <div className={ styles.center } role="status">
+            <div className={styles.center} role="status">
                 <Loader size="xs" />
                 <Text color="secondary">Loading the archive…</Text>
             </div>
@@ -83,12 +90,16 @@ export function ArchiveView({ statuses, openId, onOpen, pageSize = ARCHIVE_PAGE_
 
     if (state.status === 'failed') {
         return (
-            <div className={ styles.center }>
-                <Alert color="danger" className={ styles.alert }>
-                    <AlertIcon><AttentionCircle /></AlertIcon>
-                    <AlertDescription>{ `The archive could not be loaded. ${ state.message }` }</AlertDescription>
+            <div className={styles.center}>
+                <Alert color="danger" className={styles.alert}>
+                    <AlertIcon>
+                        <AttentionCircle />
+                    </AlertIcon>
+                    <AlertDescription>{`The archive could not be loaded. ${state.message}`}</AlertDescription>
                     <AlertAction>
-                        <Button size="sm" variant="bordered" onPress={ retry }>Retry</Button>
+                        <Button size="sm" variant="bordered" onPress={retry}>
+                            Retry
+                        </Button>
                     </AlertAction>
                 </Alert>
             </div>
@@ -97,31 +108,39 @@ export function ArchiveView({ statuses, openId, onOpen, pageSize = ARCHIVE_PAGE_
 
     if (state.tasks.length === 0 && !state.hasMore) {
         return (
-            <div ref={ frame } className={ styles.center }>
-                <Text variant="heading-4" tabIndex={ -1 } className={ styles.heading } data-archive-heading>Nothing archived</Text>
+            <div ref={frame} className={styles.center}>
+                <Text variant="heading-4" tabIndex={-1} className={styles.heading} data-archive-heading>
+                    Nothing archived
+                </Text>
                 <Text color="secondary">Finished work you archive shows up here, and can be restored</Text>
             </div>
         );
     }
 
     const batches = archiveBatches(state.tasks);
-    const toggle = (taskId: TaskId) => setFolded((current) => {
-        const next = new Set(current);
+    const toggle = (taskId: TaskId) =>
+        setFolded(current => {
+            const next = new Set(current);
 
-        if (!next.delete(taskId)) next.add(taskId);
+            if (!next.delete(taskId)) next.add(taskId);
 
-        return next;
-    });
+            return next;
+        });
 
     const restore = async (task: Task, pressed: Element) => {
         const section = pressed.closest('section');
         const neighbour = section?.nextElementSibling ?? section?.previousElementSibling;
 
         // Only a focus that is on the batch has to follow it out.
-        handoff.current = section?.contains(document.activeElement) ? { taskId: task.id, nextId: neighbour?.querySelector<HTMLElement>('[data-archived-task]')?.dataset.archivedTask } : null;
+        handoff.current = section?.contains(document.activeElement)
+            ? {
+                  taskId: task.id,
+                  nextId: neighbour?.querySelector<HTMLElement>('[data-archived-task]')?.dataset.archivedTask,
+              }
+            : null;
         setRestoring(task.id);
 
-        if (!await restoreTask(root, project, task)) handoff.current = null;
+        if (!(await restoreTask(root, project, task))) handoff.current = null;
 
         setRestoring(null);
     };
@@ -130,67 +149,93 @@ export function ArchiveView({ statuses, openId, onOpen, pageSize = ARCHIVE_PAGE_
         const rows = new TaskTree(batch.tasks, statuses).rows(null, folded);
 
         return (
-            <section key={ batch.archivedAt } className={ styles.batch } aria-label={ `Archived ${ formatAgo(batch.archivedAt, Date.now()) }` }>
-                <header className={ styles.head }>
-                    <Text variant="heading-6">{ `Archived ${ formatAgo(batch.archivedAt, Date.now()) }` }</Text>
-                    <span className={ styles.count }>{ batch.tasks.length === 1 ? '1 task' : `${ batch.tasks.length } tasks` }</span>
+            <section
+                key={batch.archivedAt}
+                className={styles.batch}
+                aria-label={`Archived ${formatAgo(batch.archivedAt, Date.now())}`}
+            >
+                <header className={styles.head}>
+                    <Text variant="heading-6">{`Archived ${formatAgo(batch.archivedAt, Date.now())}`}</Text>
+                    <span className={styles.count}>
+                        {batch.tasks.length === 1 ? '1 task' : `${batch.tasks.length} tasks`}
+                    </span>
                 </header>
 
-                <ul className={ styles.rows }>
-                    { rows.map(({ task, depth, hasChildren, collapsed }) => (
-                        <li key={ task.id } className={ styles.row } data-archived-task={ task.id } data-open={ task.id === openId || undefined } data-depth={ depth } style={ { '--depth': depth } as CSSProperties }>
-                            <span className={ styles.fold }>
-                                { hasChildren && (
+                <ul className={styles.rows}>
+                    {rows.map(({ task, depth, hasChildren, collapsed }) => (
+                        <li
+                            key={task.id}
+                            className={styles.row}
+                            data-archived-task={task.id}
+                            data-open={task.id === openId || undefined}
+                            data-depth={depth}
+                            style={{ '--depth': depth } as CSSProperties}
+                        >
+                            <span className={styles.fold}>
+                                {hasChildren && (
                                     <button
                                         type="button"
-                                        className={ styles.chevron }
-                                        aria-expanded={ !collapsed }
-                                        aria-label={ `${ collapsed ? 'Expand' : 'Collapse' } ${ task.key }` }
-                                        onClick={ () => toggle(task.id) }
+                                        className={styles.chevron}
+                                        aria-expanded={!collapsed}
+                                        aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${task.key}`}
+                                        onClick={() => toggle(task.id)}
                                     >
-                                        { collapsed ? <ChevronRight /> : <ChevronDown /> }
+                                        {collapsed ? <ChevronRight /> : <ChevronDown />}
                                     </button>
-                                ) }
+                                )}
                             </span>
-                            <button type="button" className={ styles.open } data-archive-open aria-current={ task.id === openId || undefined } onClick={ () => onOpen(task.id) } title={ task.title }>
-                                <span className={ styles.key }>{ task.key }</span>
-                                <span className={ styles.title }>{ task.title }</span>
+                            <button
+                                type="button"
+                                className={styles.open}
+                                data-archive-open
+                                aria-current={task.id === openId || undefined}
+                                onClick={() => onOpen(task.id)}
+                                title={task.title}
+                            >
+                                <span className={styles.key}>{task.key}</span>
+                                <span className={styles.title}>{task.title}</span>
                             </button>
-                            <span className={ styles.status }><StatusPill status={ statuses.find(status => status.id === task.statusId) } /></span>
-                            <span className={ styles.action }>
-                                { depth === 0 && offersRestore(task, id => project.tasks.has(id)) && (
+                            <span className={styles.status}>
+                                <StatusPill status={statuses.find(status => status.id === task.statusId)} />
+                            </span>
+                            <span className={styles.action}>
+                                {depth === 0 && offersRestore(task, id => project.tasks.has(id)) && (
                                     <Button
                                         size="xs"
                                         variant="bordered"
-                                        className={ styles.restore }
-                                        aria-label={ `Restore ${ task.key }` }
-                                        isPending={ restoring === task.id }
-                                        onPress={ event => void restore(task, event.target) }
+                                        className={styles.restore}
+                                        aria-label={`Restore ${task.key}`}
+                                        isPending={restoring === task.id}
+                                        onPress={event => void restore(task, event.target)}
                                     >
                                         <Undo />
                                         Restore
                                     </Button>
-                                ) }
+                                )}
                             </span>
                         </li>
-                    )) }
+                    ))}
                 </ul>
             </section>
         );
     };
 
     return (
-        <div className={ styles.view }>
-            <div ref={ frame } className={ styles.batches }>
-                { batches.map(batch => renderBatch(batch)) }
+        <div className={styles.view}>
+            <div ref={frame} className={styles.batches}>
+                {batches.map(batch => renderBatch(batch))}
             </div>
 
-            <footer className={ styles.foot }>
-                <Text color="secondary">{ countLine(state.tasks.length, state.total) }</Text>
-                { state.moreFailed !== undefined && <Text color="secondary" role="alert">{ `Couldn't load more. ${ state.moreFailed }` }</Text> }
-                { state.hasMore && (
-                    <Button size="sm" variant="bordered" isPending={ state.isLoadingMore } onPress={ loadMore }>Show more</Button>
-                ) }
+            <footer className={styles.foot}>
+                <Text color="secondary">{countLine(state.tasks.length, state.total)}</Text>
+                {state.moreFailed !== undefined && (
+                    <Text color="secondary" role="alert">{`Couldn't load more. ${state.moreFailed}`}</Text>
+                )}
+                {state.hasMore && (
+                    <Button size="sm" variant="bordered" isPending={state.isLoadingMore} onPress={loadMore}>
+                        Show more
+                    </Button>
+                )}
             </footer>
         </div>
     );

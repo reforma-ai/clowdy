@@ -35,8 +35,7 @@ export function useFork(chat: Chat) {
 
         try {
             await forkChat({ root, project, ui, chatId: chat.id, itemId, stillOpen: () => shown.current });
-        }
-        finally {
+        } finally {
             busy.current = false;
             setForking(undefined);
         }

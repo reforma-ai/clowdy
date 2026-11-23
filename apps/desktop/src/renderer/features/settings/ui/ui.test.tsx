@@ -30,17 +30,28 @@ afterEach(() => {
 
 describe('SettingsPage', () => {
     it('is what the page is for, under a hairline, and then its blocks: the window draws the title and the action above it', () => {
-        draw(<SettingsPage description="Who is signed in."><p>block</p><p>another</p></SettingsPage>);
+        draw(
+            <SettingsPage description="Who is signed in.">
+                <p>block</p>
+                <p>another</p>
+            </SettingsPage>
+        );
 
         expect(container.textContent).toContain('Who is signed in.');
         expect(container.querySelector('[role="heading"]')).toBeNull();
         expect([...container.querySelectorAll('p')].map(item => item.textContent)).toEqual(['block', 'another']);
         // What it is for comes first.
-        expect(container.textContent!.indexOf('Who is signed in.')).toBeLessThan(container.textContent!.indexOf('block'));
+        expect(container.textContent!.indexOf('Who is signed in.')).toBeLessThan(
+            container.textContent!.indexOf('block')
+        );
     });
 
     it('has no line on what it is for when it has no description', () => {
-        draw(<SettingsPage><p>block</p></SettingsPage>);
+        draw(
+            <SettingsPage>
+                <p>block</p>
+            </SettingsPage>
+        );
 
         expect(container.querySelector('[class*="intro"]')).toBeNull();
         expect(container.querySelector('p')?.textContent).toBe('block');
@@ -49,7 +60,11 @@ describe('SettingsPage', () => {
 
 describe('SettingsSection', () => {
     it('is a named region with a heading, a line on what it is, and its card', () => {
-        draw(<SettingsSection title="Git" aside={ <span>2</span> } description="Where it lives."><SettingsCard>card</SettingsCard></SettingsSection>);
+        draw(
+            <SettingsSection title="Git" aside={<span>2</span>} description="Where it lives.">
+                <SettingsCard>card</SettingsCard>
+            </SettingsSection>
+        );
 
         const section = container.querySelector('section[aria-label="Git"]')!;
 
@@ -62,7 +77,12 @@ describe('SettingsSection', () => {
 
 describe('SettingsCard and its blocks', () => {
     it('can be a list of list items, with hairlines when divided', () => {
-        draw(<SettingsCard as="ul" divided><SettingsBlock as="li">one</SettingsBlock><SettingsBlock as="li">two</SettingsBlock></SettingsCard>);
+        draw(
+            <SettingsCard as="ul" divided>
+                <SettingsBlock as="li">one</SettingsBlock>
+                <SettingsBlock as="li">two</SettingsBlock>
+            </SettingsCard>
+        );
 
         const list = container.querySelector('ul')!;
 
@@ -80,7 +100,11 @@ describe('SettingsCard and its blocks', () => {
 
 describe('SettingsRow', () => {
     it('has the title, its description, the control, and a footer under them', () => {
-        draw(<SettingsRow title="Name" description="How it is listed." footer={ <em>note</em> }><input aria-label="Name" /></SettingsRow>);
+        draw(
+            <SettingsRow title="Name" description="How it is listed." footer={<em>note</em>}>
+                <input aria-label="Name" />
+            </SettingsRow>
+        );
 
         expect(container.textContent).toContain('Name');
         expect(container.textContent).toContain('How it is listed.');

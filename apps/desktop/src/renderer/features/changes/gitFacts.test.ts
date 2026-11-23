@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { fixtureGitChanges, fixtureGitPullRequest, fixtureGitStatus } from '../../daemon/fixtureData';
 import { TransportError } from '../../daemon/transport';
-import { GIT_COALESCE_MS, GIT_POLL_MS, GitFacts, summarize, type GitPlaceKey } from './gitFacts';
+import { GIT_COALESCE_MS, GIT_POLL_MS, GitFacts, type GitPlaceKey, summarize } from './gitFacts';
 
 import type { GitChanges, GitPullRequestInfo, GitStatus } from '@clowdy/protocol';
 
@@ -30,9 +30,13 @@ function stub() {
     const places: string[] = [];
     let fail: Partial<Record<keyof typeof calls, string>> = {};
     let hold: Array<() => void> | undefined;
-    const answer = async <T>(name: keyof typeof calls, value: () => T, place: { folderId: string; workspaceId?: string }): Promise<T> => {
+    const answer = async <T>(
+        name: keyof typeof calls,
+        value: () => T,
+        place: { folderId: string; workspaceId?: string }
+    ): Promise<T> => {
         calls[name]++;
-        places.push(`${ name }:${ place.workspaceId ?? place.folderId }`);
+        places.push(`${name}:${place.workspaceId ?? place.folderId}`);
 
         if (hold) await new Promise<void>(resolve => hold!.push(resolve));
 
@@ -41,9 +45,12 @@ function stub() {
         return structuredClone(value());
     };
     const transport = {
-        getGitStatus: (_project: string, place: { folderId: string; workspaceId?: string }) => answer('status', () => answers.status, place),
-        getGitChanges: (_project: string, place: { folderId: string; workspaceId?: string }) => answer('changes', () => answers.changes, place),
-        getGitPullRequest: (_project: string, place: { folderId: string; workspaceId?: string }) => answer('pullRequest', () => answers.pullRequest, place),
+        getGitStatus: (_project: string, place: { folderId: string; workspaceId?: string }) =>
+            answer('status', () => answers.status, place),
+        getGitChanges: (_project: string, place: { folderId: string; workspaceId?: string }) =>
+            answer('changes', () => answers.changes, place),
+        getGitPullRequest: (_project: string, place: { folderId: string; workspaceId?: string }) =>
+            answer('pullRequest', () => answers.pullRequest, place),
     };
 
     return {
@@ -99,7 +106,13 @@ describe('GitFacts', () => {
 
         expect(daemon.calls).toEqual({ status: 1, changes: 1, pullRequest: 1 });
         expect(facts.of(KEY).isRepository).toBe(true);
-        expect(facts.of(KEY).branch).toEqual({ files: 4, additions: 102, deletions: 5, baseState: 'ready', complete: true });
+        expect(facts.of(KEY).branch).toEqual({
+            files: 4,
+            additions: 102,
+            deletions: 5,
+            baseState: 'ready',
+            complete: true,
+        });
         expect(facts.of(KEY).pr?.number).toBe(128);
         // Another place of the project has read nothing, and shows nothing of this one's.
         expect(facts.of(OTHER).status.value).toBeUndefined();
@@ -129,7 +142,14 @@ describe('GitFacts', () => {
         await settle();
 
         expect(daemon.calls).toEqual({ status: 2, changes: 2, pullRequest: 2 });
-        expect(daemon.places.sort()).toEqual(['changes:f-1', 'changes:w-1', 'pullRequest:f-1', 'pullRequest:w-1', 'status:f-1', 'status:w-1']);
+        expect(daemon.places.sort()).toEqual([
+            'changes:f-1',
+            'changes:w-1',
+            'pullRequest:f-1',
+            'pullRequest:w-1',
+            'status:f-1',
+            'status:w-1',
+        ]);
     });
 
     it('is ready for drawing once the status and the changes have answered, and does not wait for the pull request', async () => {
@@ -230,7 +250,7 @@ describe('GitFacts', () => {
         expect(facts.of(KEY).generation).toBe(2);
     });
 
-    it('keeps the daemon\'s status of a read that failed with one, and none for another failure', async () => {
+    it("keeps the daemon's status of a read that failed with one, and none for another failure", async () => {
         const daemon = stub();
 
         facts = new GitFacts(daemon.transport);
@@ -427,7 +447,7 @@ describe('GitFacts', () => {
 
         const place = facts.of(KEY);
 
-        daemon.failWith({ status: 'The worktree is missing', pullRequest: 'GitHub didn\'t answer' });
+        daemon.failWith({ status: 'The worktree is missing', pullRequest: "GitHub didn't answer" });
         facts.refresh(KEY);
         await settle();
 
@@ -451,7 +471,11 @@ describe('GitFacts', () => {
     it('is ready, and shows nothing, for a place whose first read failed', async () => {
         const daemon = stub();
 
-        daemon.failWith({ status: 'The worktree is missing', changes: 'The worktree is missing', pullRequest: 'The worktree is missing' });
+        daemon.failWith({
+            status: 'The worktree is missing',
+            changes: 'The worktree is missing',
+            pullRequest: 'The worktree is missing',
+        });
         facts = new GitFacts(daemon.transport);
         facts.observe(KEY);
         await settle();
@@ -530,7 +554,7 @@ describe('GitFacts', () => {
         const stopKept = facts.observe(KEY);
         const first = facts.of(OTHER);
 
-        for (let index = 0; index < 10; index++) facts.observe({ projectId: 'p-1', folderId: `f-${ index + 10 }` })();
+        for (let index = 0; index < 10; index++) facts.observe({ projectId: 'p-1', folderId: `f-${index + 10}` })();
 
         await settle();
 
@@ -567,7 +591,13 @@ describe('GitFacts', () => {
 
 describe('summarize', () => {
     it('keeps the counts of a read and says nothing for a folder that is no repository', () => {
-        expect(summarize(changesOf())).toEqual({ files: 4, additions: 102, deletions: 5, baseState: 'ready', complete: true });
+        expect(summarize(changesOf())).toEqual({
+            files: 4,
+            additions: 102,
+            deletions: 5,
+            baseState: 'ready',
+            complete: true,
+        });
         expect(summarize({ isRepository: false })).toBeNull();
     });
 });

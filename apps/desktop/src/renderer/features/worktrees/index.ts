@@ -1,1 +1,1 @@
-export { openManageWorktrees, type ManageWorktreesProps } from './ManageWorktrees';
+export { type ManageWorktreesProps, openManageWorktrees } from './ManageWorktrees';

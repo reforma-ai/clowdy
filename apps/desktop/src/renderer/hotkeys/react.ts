@@ -1,7 +1,7 @@
 import { tooltipWithHotkey, tooltipWithSequence } from '@clowdy/components/Hotkey';
-import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
+import { type ReactNode, useEffect, useLayoutEffect, useRef } from 'react';
 
-import { hotkeys, type Command, type HotkeyRegistry } from './registry';
+import { type Command, type HotkeyRegistry, hotkeys } from './registry';
 
 /** A command as a component writes it: the scope comes from `useCommands`. */
 export type ScopedCommand = Omit<Command, 'scope'>;
@@ -53,9 +53,23 @@ export function useHotkeyScope(name: string, registry: HotkeyRegistry = hotkeys)
  * Defines commands in a scope while the component is mounted. The commands are registered again only when their id, title, group, keys or flags change,
  * so a new array or new closures on every render are fine: the latest `handler` and `when` always run. Does not push the scope, see `useHotkeyScope`.
  */
-export function useCommands(scope: string, commands: readonly ScopedCommand[], registry: HotkeyRegistry = hotkeys): void {
+export function useCommands(
+    scope: string,
+    commands: readonly ScopedCommand[],
+    registry: HotkeyRegistry = hotkeys
+): void {
     const latest = useRef(commands);
-    const signature = JSON.stringify(commands.map(({ id, title, group, keys, inInputs, inOverlays, repeat }) => [id, title, group, keys, inInputs, inOverlays, repeat]));
+    const signature = JSON.stringify(
+        commands.map(({ id, title, group, keys, inInputs, inOverlays, repeat }) => [
+            id,
+            title,
+            group,
+            keys,
+            inInputs,
+            inOverlays,
+            repeat,
+        ])
+    );
 
     useLayoutEffect(() => {
         latest.current = commands;
@@ -63,13 +77,15 @@ export function useCommands(scope: string, commands: readonly ScopedCommand[], r
 
     useEffect(() => {
         const current = (id: string) => latest.current.find(command => command.id === id);
-        const disposers = latest.current.map(command => registry.defineCommand({
-            ...command,
-            scope,
-            when: () => current(command.id)?.when?.() ?? true,
-            focus: () => current(command.id)?.focus?.() ?? true,
-            handler: event => current(command.id)?.handler(event),
-        }));
+        const disposers = latest.current.map(command =>
+            registry.defineCommand({
+                ...command,
+                scope,
+                when: () => current(command.id)?.when?.() ?? true,
+                focus: () => current(command.id)?.focus?.() ?? true,
+                handler: event => current(command.id)?.handler(event),
+            })
+        );
 
         return () => disposers.forEach(dispose => dispose());
     }, [scope, signature, registry]);

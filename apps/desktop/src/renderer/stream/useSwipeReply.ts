@@ -1,7 +1,17 @@
 import { normalizeWheelDelta } from '@clowdy/lib';
-import { useEffect, useEffectEvent, useRef, type RefObject } from 'react';
+import { type RefObject, useEffect, useEffectEvent, useRef } from 'react';
 
-import { dragStep, IDLE, isArmed, progressOf, releaseStep, sidewaysRoom, SWIPE, wheelStep, type SwipeState } from './swipeReply';
+import {
+    dragStep,
+    IDLE,
+    isArmed,
+    progressOf,
+    releaseStep,
+    SWIPE,
+    type SwipeState,
+    sidewaysRoom,
+    wheelStep,
+} from './swipeReply';
 
 export interface SwipeReplyOptions {
     /** Off, the hook does nothing: the setting is off, or the message has no Reply. */
@@ -24,7 +34,8 @@ function scrollerBelow(target: EventTarget | null, message: HTMLElement, pull: n
     for (let node = target instanceof Element ? target : null; node && node !== message; node = node.parentElement) {
         const { overflowX } = getComputedStyle(node);
 
-        if ((overflowX === 'auto' || overflowX === 'scroll' || overflowX === 'overlay') && sidewaysRoom(node, pull)) return true;
+        if ((overflowX === 'auto' || overflowX === 'scroll' || overflowX === 'overlay') && sidewaysRoom(node, pull))
+            return true;
     }
 
     return false;
@@ -59,18 +70,22 @@ export function useSwipeReply<T extends HTMLElement>({ enabled, onReply }: Swipe
         const draw = (pulled: SwipeState, pointerY = 0) => {
             const { offset } = pulled;
             const pulling = pulled.phase === 'pulling';
-            const settle = offset === 0 && shown !== 0 && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            const settle =
+                offset === 0 && shown !== 0 && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
             // The mark stands at the height of the pointer, where the swipe is: the middle of a tall answer can be out of view. Measured once, as the pull starts.
             if (offset !== 0 && shown === 0) {
                 const { top, height } = message.getBoundingClientRect();
 
-                message.style.setProperty('--swipe-y', `${ Math.max(MARK_HALF, Math.min(pointerY - top, height - MARK_HALF)) }px`);
+                message.style.setProperty(
+                    '--swipe-y',
+                    `${Math.max(MARK_HALF, Math.min(pointerY - top, height - MARK_HALF))}px`
+                );
             }
 
             // A settle animates, a pull follows the fingers at once.
-            message.style.transition = settle ? `translate ${ SETTLE_MS }ms cubic-bezier(0.22, 1, 0.36, 1)` : '';
-            message.style.translate = offset === 0 ? '' : `${ offset }px 0`;
+            message.style.transition = settle ? `translate ${SETTLE_MS}ms cubic-bezier(0.22, 1, 0.36, 1)` : '';
+            message.style.translate = offset === 0 ? '' : `${offset}px 0`;
             message.style.setProperty('--swipe-progress', String(pulling ? progressOf(pulled.x) : 0));
             // Armed: letting go now replies. The mark says so, and takes it back when the pull is.
             message.toggleAttribute('data-swipe-armed', pulling && isArmed(pulled.x));
@@ -110,9 +125,18 @@ export function useSwipeReply<T extends HTMLElement>({ enabled, onReply }: Swipe
             // The wheel went quiet before this event and its timer has not run yet (a page that is busy takes input first): that swipe ends here, with its Reply.
             if (state.phase !== 'idle' && at - state.at > SWIPE.idleMs) end(true);
 
-            const { dx, dy } = normalizeWheelDelta({ deltaX: event.deltaX, deltaY: event.deltaY, deltaMode: event.deltaMode });
+            const { dx, dy } = normalizeWheelDelta({
+                deltaX: event.deltaX,
+                deltaY: event.deltaY,
+                deltaMode: event.deltaMode,
+            });
             // The wheel reports where the content would go; the message goes where the fingers do.
-            const result = wheelStep(state, { dx: -dx, dy: -dy, at, scrolls: pull => scrollerBelow(event.target, message, pull) });
+            const result = wheelStep(state, {
+                dx: -dx,
+                dy: -dy,
+                at,
+                scrolls: pull => scrollerBelow(event.target, message, pull),
+            });
 
             follow(result.state, event.clientY);
 

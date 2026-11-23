@@ -1,6 +1,6 @@
 'use client';
 
-import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { type CSSProperties, type ReactNode, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import { For } from '../For';
@@ -132,13 +132,13 @@ export function RichInputTriggerMenu({
 
         const next = clampMenuPosition(anchor, el.offsetWidth || MENU_MIN_WIDTH, placement);
 
-        setPos((prev) => {
+        setPos(prev => {
             if (
-                prev?.left === next.left
-                && prev.top === next.top
-                && prev.bottom === next.bottom
-                && prev.width === next.width
-                && prev.maxHeight === next.maxHeight
+                prev?.left === next.left &&
+                prev.top === next.top &&
+                prev.bottom === next.bottom &&
+                prev.width === next.width &&
+                prev.maxHeight === next.maxHeight
             ) {
                 return prev;
             }
@@ -160,31 +160,29 @@ export function RichInputTriggerMenu({
         bottom: placed.bottom,
         zIndex: 1000,
         maxHeight: placed.maxHeight,
-        ...(placed.width != null
-            ? { width: placed.width, minWidth: placed.width, maxWidth: placed.width }
-            : {}),
+        ...(placed.width != null ? { width: placed.width, minWidth: placed.width, maxWidth: placed.width } : {}),
     };
 
     return createPortal(
         <Scrollable
-            ref={ menuRef }
-            className={ styles.menu }
-            containerClass={ listStyles.scrollableContainer }
+            ref={menuRef}
+            className={styles.menu}
+            containerClass={listStyles.scrollableContainer}
             vertical
             role="presentation"
-            style={ style }
-            onMouseDown={ (e) => {
+            style={style}
+            onMouseDown={e => {
                 // Keep editor selection; don't steal focus into the panel chrome.
                 e.preventDefault();
-            } }
+            }}
         >
             <ListBox
-                aria-label={ accessibilityLabel }
+                aria-label={accessibilityLabel}
                 selectionMode="single"
-                selectedKeys={ selectedKey ? [selectedKey] : [] }
+                selectedKeys={selectedKey ? [selectedKey] : []}
                 // Selection is the pick: RAC drops `onAction` on click while a row is selected,
                 // and the highlighted row always is.
-                onSelectionChange={ (keys) => {
+                onSelectionChange={keys => {
                     if (keys === 'all') {
                         return;
                     }
@@ -196,40 +194,35 @@ export function RichInputTriggerMenu({
                     if (item) {
                         onSelect(item);
                     }
-                } }
+                }}
             >
-                <For each={ sections }>
-                    { (section): ReactNode => (
-                        <ListBoxSection
-                            key={ section.key }
-                            id={ section.key }
-                        >
-                            <Show when={ section.key !== '_' }>
-                                <ListBoxHeader>
-                                    { section.key }
-                                </ListBoxHeader>
+                <For each={sections}>
+                    {(section): ReactNode => (
+                        <ListBoxSection key={section.key} id={section.key}>
+                            <Show when={section.key !== '_'}>
+                                <ListBoxHeader>{section.key}</ListBoxHeader>
                             </Show>
-                            <For each={ section.items }>
-                                { (item): ReactNode => {
+                            <For each={section.items}>
+                                {(item): ReactNode => {
                                     const title = item.displayText ?? item.label;
 
                                     return (
                                         <ListBoxItem
-                                            key={ item.value }
-                                            id={ item.value }
-                                            textValue={ title }
-                                            text={ title }
-                                            icon={ item.icon }
-                                            description={ item.description }
-                                            stacked={ item.kind === 'command' }
-                                            endAffix={ item.endAffix }
-                                            data-highlighted={ item.value === selectedKey || undefined }
+                                            key={item.value}
+                                            id={item.value}
+                                            textValue={title}
+                                            text={title}
+                                            icon={item.icon}
+                                            description={item.description}
+                                            stacked={item.kind === 'command'}
+                                            endAffix={item.endAffix}
+                                            data-highlighted={item.value === selectedKey || undefined}
                                         />
                                     );
-                                } }
+                                }}
                             </For>
                         </ListBoxSection>
-                    ) }
+                    )}
                 </For>
             </ListBox>
         </Scrollable>,

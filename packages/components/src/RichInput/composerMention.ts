@@ -14,7 +14,7 @@ export const ComposerMention = Mention.extend({
             kind: {
                 default: 'file',
                 parseHTML: element => element.getAttribute('data-kind'),
-                renderHTML: (attributes) => {
+                renderHTML: attributes => {
                     if (!attributes.kind) {
                         return {};
                     }
@@ -24,7 +24,7 @@ export const ComposerMention = Mention.extend({
             },
             data: {
                 default: null,
-                parseHTML: (element) => {
+                parseHTML: element => {
                     const raw = element.getAttribute('data-payload');
 
                     if (!raw) {
@@ -33,20 +33,18 @@ export const ComposerMention = Mention.extend({
 
                     try {
                         return JSON.parse(raw) as unknown;
-                    }
-                    catch {
+                    } catch {
                         return null;
                     }
                 },
-                renderHTML: (attributes) => {
+                renderHTML: attributes => {
                     if (attributes.data == null) {
                         return {};
                     }
 
                     try {
                         return { 'data-payload': JSON.stringify(attributes.data) };
-                    }
-                    catch {
+                    } catch {
                         return {};
                     }
                 },

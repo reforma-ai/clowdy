@@ -8,11 +8,12 @@ const BATCH = 200;
 
 const encoder = new TextEncoder();
 
-export const frame = (event: ClowdyEvent) => encoder.encode(`id: ${ event.cursor }\nevent: ${ SSE_EVENT }\ndata: ${ JSON.stringify(event) }\n\n`);
+export const frame = (event: ClowdyEvent) =>
+    encoder.encode(`id: ${event.cursor}\nevent: ${SSE_EVENT}\ndata: ${JSON.stringify(event)}\n\n`);
 
 /** Resolves true when a transaction commits, false after `ms`, and true at once if `signal` aborts. */
 function nextCommit(store: Store, ms: number, signal: AbortSignal): Promise<boolean> {
-    return new Promise((resolve) => {
+    return new Promise(resolve => {
         const finish = (woken: boolean) => {
             clearTimeout(timer);
             unsubscribe();
@@ -31,7 +32,12 @@ function nextCommit(store: Store, ms: number, signal: AbortSignal): Promise<bool
  * The event stream from `cursor` on: the stored events first, then live ones as they commit. The consumer's pace
  * sets the pace (`pull`), a comment line goes out every 15 s so idle connections stay open.
  */
-export function eventStream(store: Store, cursor: number, projectId: string | undefined, heartbeatMs = HEARTBEAT_MS): ReadableStream<Uint8Array> {
+export function eventStream(
+    store: Store,
+    cursor: number,
+    projectId: string | undefined,
+    heartbeatMs = HEARTBEAT_MS
+): ReadableStream<Uint8Array> {
     const closed = new AbortController();
     let position = cursor;
 

@@ -1,11 +1,28 @@
-import { branchNameProblem, branchPrefixOf, branchPrefixProblem, folderNames, mainFolder, MAX_BRANCH_NAME_LENGTH, STOPPED_TOOL } from '@clowdy/protocol';
 import { existsSync, realpathSync } from 'node:fs';
 import { lstat } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
+import {
+    branchNameProblem,
+    branchPrefixOf,
+    branchPrefixProblem,
+    folderNames,
+    MAX_BRANCH_NAME_LENGTH,
+    mainFolder,
+    STOPPED_TOOL,
+} from '@clowdy/protocol';
 
 import { getChat } from '../db/chats';
 import { getProject } from '../db/projects';
-import { chatsOfWorkspace, deleteWorkspace, getWorkspace, insertWorkspace, listWorkspacesOfProject, renameWorkspaceBase, toChatWorkspace, updateWorkspace } from '../db/workspaces';
+import {
+    chatsOfWorkspace,
+    deleteWorkspace,
+    getWorkspace,
+    insertWorkspace,
+    listWorkspacesOfProject,
+    renameWorkspaceBase,
+    toChatWorkspace,
+    updateWorkspace,
+} from '../db/workspaces';
 import { invalid, notFound } from '../errors';
 import { parseBranches, parseWorktrees, pickBase, pickDefaultBranch } from '../git/state';
 import { newId } from '../ids';
@@ -14,7 +31,14 @@ import { appendItem, updateItem } from './items';
 import { runLines } from './lines';
 import { runSetup } from './workspaceSetup';
 
-import type { Chat, ChatWorkspace, ChatWorkspaceChoice, Project, ProjectFolder, StreamItemBody } from '@clowdy/protocol';
+import type {
+    Chat,
+    ChatWorkspace,
+    ChatWorkspaceChoice,
+    Project,
+    ProjectFolder,
+    StreamItemBody,
+} from '@clowdy/protocol';
 import type { Config } from '../config';
 import type { ListedWorktree } from '../git/state';
 import type { Store } from '../store';
@@ -82,8 +106,7 @@ export function placeOf(path: string): string {
 
     try {
         return realpathSync.native(full);
-    }
-    catch {
+    } catch {
         const parent = dirname(full);
 
         return parent === full ? full : join(placeOf(parent), basename(full));
@@ -102,15 +125,16 @@ async function isThere(path: string): Promise<boolean> {
         await lstat(path);
 
         return true;
-    }
-    catch (error) {
+    } catch (error) {
         const { code } = error as { code?: string };
 
         if (code === 'ENOENT' || code === 'ENOTDIR') {
             return false;
         }
 
-        throw new WorkspaceError(`Couldn't look at ${ path }: ${ code ?? (error instanceof Error ? error.message : String(error)) }`);
+        throw new WorkspaceError(
+            `Couldn't look at ${path}: ${code ?? (error instanceof Error ? error.message : String(error))}`
+        );
     }
 }
 
@@ -118,13 +142,20 @@ async function isThere(path: string): Promise<boolean> {
 
 /** The project's name as a folder name: lower-case letters and digits with dashes, cut short; the project's id for a name that has none (and not a name Windows reserves). */
 export function projectSlug(project: Pick<Project, 'id' | 'name'>): string {
-    const slug = project.name.normalize('NFKD').replace(/\p{M}+/gu, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, MAX_SLUG_LENGTH).replace(/-+$/, '');
+    const slug = project.name
+        .normalize('NFKD')
+        .replace(/\p{M}+/gu, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, MAX_SLUG_LENGTH)
+        .replace(/-+$/, '');
 
     if (!slug) {
         return project.id;
     }
 
-    return RESERVED_NAMES.test(slug) ? `${ slug }-project` : slug;
+    return RESERVED_NAMES.test(slug) ? `${slug}-project` : slug;
 }
 
 /** The random end of a chat's id (the front of a ULID is the time), which names its worktree and its branch: the last 8 characters. */
@@ -132,13 +163,16 @@ export const chatKey = (chatId: string): string => chatId.slice(-8);
 
 /** A folder's name for a path: `folderNames` gives it, and a character a file system does not take in a name is turned into a dash. */
 function folderSegment(name: string): string {
-    const clean = [...name.replace(/[<>:"/\\|?*]/g, '-')].map(character => (character.charCodeAt(0) < 32 ? '-' : character)).join('').replace(/[. ]+$/, '');
+    const clean = [...name.replace(/[<>:"/\\|?*]/g, '-')]
+        .map(character => (character.charCodeAt(0) < 32 ? '-' : character))
+        .join('')
+        .replace(/[. ]+$/, '');
 
     if (clean === '' || clean === '.' || clean === '..') {
         return 'folder';
     }
 
-    return RESERVED_NAMES.test(clean.toLowerCase()) ? `${ clean }-folder` : clean;
+    return RESERVED_NAMES.test(clean.toLowerCase()) ? `${clean}-folder` : clean;
 }
 
 /**
@@ -147,10 +181,22 @@ function folderSegment(name: string): string {
  * title). The folder is named by the id8 alone, and is never renamed: an agent keeps its sessions by folder. The folder's own name is the last part, so a shell prompt and a
  * window title read as the project does. Nothing is made.
  */
-export function workspaceLayout(config: Pick<Config, 'workspacesDir'>, project: Project, folder: ProjectFolder, chatId: string, branchPrefix?: string, branchName?: string): { path: string; branch: string } {
-    const name = folderNames(project.folders)[project.folders.findIndex(candidate => candidate.id === folder.id)] ?? basename(folder.path);
+export function workspaceLayout(
+    config: Pick<Config, 'workspacesDir'>,
+    project: Project,
+    folder: ProjectFolder,
+    chatId: string,
+    branchPrefix?: string,
+    branchName?: string
+): { path: string; branch: string } {
+    const name =
+        folderNames(project.folders)[project.folders.findIndex(candidate => candidate.id === folder.id)] ??
+        basename(folder.path);
 
-    return { path: join(config.workspacesDir, projectSlug(project), chatKey(chatId), folderSegment(name)), branch: `${ branchPrefixOf(branchPrefix) }/${ branchName ?? chatKey(chatId) }` };
+    return {
+        path: join(config.workspacesDir, projectSlug(project), chatKey(chatId), folderSegment(name)),
+        branch: `${branchPrefixOf(branchPrefix)}/${branchName ?? chatKey(chatId)}`,
+    };
 }
 
 /**
@@ -158,7 +204,8 @@ export function workspaceLayout(config: Pick<Config, 'workspacesDir'>, project: 
  * `workspaceLayout` makes and nothing renames), whatever its branch is called. A thread that shares its parent's worktree stands in one with the parent's id8, and a worktree that
  * was found is not managed.
  */
-export const ownsWorktree = (chat: { id: string }, workspace: Pick<ChatWorkspace, 'managed' | 'path'>): boolean => workspace.managed && basename(dirname(workspace.path)) === chatKey(chat.id);
+export const ownsWorktree = (chat: { id: string }, workspace: Pick<ChatWorkspace, 'managed' | 'path'>): boolean =>
+    workspace.managed && basename(dirname(workspace.path)) === chatKey(chat.id);
 
 /* --------------------------- Reading a repository -------------------------- */
 
@@ -205,12 +252,19 @@ function baseOfSync(folder: ProjectFolder): string | undefined {
         const remoteHead = readGit(folder.path, ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD']);
         const head = headOf(folder.path);
 
-        return pickDefaultBranch(remoteHead.ok && remoteHead.stdout ? remoteHead.stdout : undefined, branches, head && { branch: head.branch, ...(head.detached && { detached: true as const }) });
+        return pickDefaultBranch(
+            remoteHead.ok && remoteHead.stdout ? remoteHead.stdout : undefined,
+            branches,
+            head && { branch: head.branch, ...(head.detached && { detached: true as const }) }
+        );
     });
 }
 
 /** The refs a base may be, in the order they are tried: a local branch, then a remote's (`origin/main`). Never the bare name: a tag called `main` would make it ambiguous. */
-const baseRefs = (base: string): [ref: string, remote: boolean][] => [[`refs/heads/${ base }`, false], [`refs/remotes/${ base }`, true]];
+const baseRefs = (base: string): [ref: string, remote: boolean][] => [
+    [`refs/heads/${base}`, false],
+    [`refs/remotes/${base}`, true],
+];
 
 /** A base that is a commit's hash (the short one a detached HEAD gives). */
 const isHash = (text: string): boolean => /^[0-9a-f]{7,40}$/i.test(text);
@@ -234,7 +288,9 @@ function resolveBaseSync(folder: string, base: string): ResolvedBase | undefined
 
     const head = headOf(folder);
 
-    return isHash(base) && head?.detached && head.commit.startsWith(base.toLowerCase()) ? { commit: head.commit, remote: false } : undefined;
+    return isHash(base) && head?.detached && head.commit.startsWith(base.toLowerCase())
+        ? { commit: head.commit, remote: false }
+        : undefined;
 }
 
 /** A base resolved in the repository when the worktree is made. A hash is any commit of it: it was checked when the chat was made. */
@@ -247,14 +303,16 @@ async function resolveBase(folder: string, base: string): Promise<ResolvedBase |
         }
     }
 
-    const commit = isHash(base) ? (await gitOutput(folder, ['rev-parse', '--verify', '--quiet', `${ base }^{commit}`]))?.trim() : undefined;
+    const commit = isHash(base)
+        ? (await gitOutput(folder, ['rev-parse', '--verify', '--quiet', `${base}^{commit}`]))?.trim()
+        : undefined;
 
     return commit ? { commit, remote: false } : undefined;
 }
 
 /** The remote a remote-tracking base belongs to, and the branch on it: `origin/feature/x` is `origin` and `feature/x` (a remote's name may hold a slash, so the longest one that starts it wins). */
 function remoteOf(base: string, remotes: readonly string[]): { remote: string; branch: string } | undefined {
-    const remote = remotes.filter(name => base.startsWith(`${ name }/`)).sort((a, b) => b.length - a.length)[0];
+    const remote = remotes.filter(name => base.startsWith(`${name}/`)).sort((a, b) => b.length - a.length)[0];
 
     return remote === undefined ? undefined : { remote, branch: base.slice(remote.length + 1) };
 }
@@ -277,23 +335,30 @@ export interface WorkspaceRequest {
  * and may remove it) and not `ready`; one that was found is the reverse, and the row of a worktree that has one already is the one shared (`chatsOfWorkspace`
  * tells who uses it). Call it inside a transaction: it is the first part of making the chat.
  */
-export function createWorkspace(store: Store, config: Pick<Config, 'workspacesDir'>, request: WorkspaceRequest): ChatWorkspace {
+export function createWorkspace(
+    store: Store,
+    config: Pick<Config, 'workspacesDir'>,
+    request: WorkspaceRequest
+): ChatWorkspace {
     const { project, chatId, choice } = request;
     const folder = repositoryFolder(project, request.folderId);
 
-    return choice.mode === 'new' ? createNewWorkspace(store, config, project, folder, chatId, choice) : openExistingWorkspace(store, project, folder, choice.path);
+    return choice.mode === 'new'
+        ? createNewWorkspace(store, config, project, folder, chatId, choice)
+        : openExistingWorkspace(store, project, folder, choice.path);
 }
 
 /** The folder a worktree is made from: the given folder of the project, else its main one, and it has to be on the disk and the root of a repository (`invalid` otherwise). */
 function repositoryFolder(project: Project, folderId: string | undefined): ProjectFolder {
-    const folder = folderId === undefined ? mainFolder(project) : project.folders.find(candidate => candidate.id === folderId);
+    const folder =
+        folderId === undefined ? mainFolder(project) : project.folders.find(candidate => candidate.id === folderId);
 
     if (!folder) {
-        throw invalid(`Folder ${ folderId } does not belong to project ${ project.id }`);
+        throw invalid(`Folder ${folderId} does not belong to project ${project.id}`);
     }
 
     if (!existsSync(folder.path)) {
-        throw invalid(`The folder ${ folder.path } is missing`);
+        throw invalid(`The folder ${folder.path} is missing`);
     }
 
     if (!isRepositoryRoot(folder.path)) {
@@ -313,7 +378,13 @@ export const IDLE_WORKSPACE_MS = 24 * 60 * 60_000;
  * was left) would stay for good, since a row goes only with its last chat: the ones that Clowdy did not make and that are older than `IDLE_WORKSPACE_MS` are dropped first.
  * Call it inside a transaction.
  */
-export function openWorkspace(store: Store, project: Project, folderId: string | undefined, path: string, now = Date.now()): ChatWorkspace {
+export function openWorkspace(
+    store: Store,
+    project: Project,
+    folderId: string | undefined,
+    path: string,
+    now = Date.now()
+): ChatWorkspace {
     const folder = repositoryFolder(project, folderId);
 
     dropIdleWorkspaces(store, project.id, now);
@@ -324,14 +395,27 @@ export function openWorkspace(store: Store, project: Project, folderId: string |
 /** Drops the project's rows that nobody uses and Clowdy did not make: the worktree on the disk is not touched, and a managed one is kept for whoever removes it. */
 function dropIdleWorkspaces(store: Store, projectId: string, now: number): void {
     for (const record of listWorkspacesOfProject(store.db, projectId)) {
-        if (!record.managed && now - record.createdAt > IDLE_WORKSPACE_MS && chatsOfWorkspace(store.db, record.id).length === 0) {
+        if (
+            !record.managed &&
+            now - record.createdAt > IDLE_WORKSPACE_MS &&
+            chatsOfWorkspace(store.db, record.id).length === 0
+        ) {
             deleteWorkspace(store.db, record.id);
         }
     }
 }
 
-function createNewWorkspace(store: Store, config: Pick<Config, 'workspacesDir'>, project: Project, folder: ProjectFolder, chatId: string, choice: Extract<ChatWorkspaceChoice, { mode: 'new' }>): ChatWorkspace {
-    const problem = branchPrefixProblem(choice.branchPrefix) ?? (choice.branchName === undefined ? undefined : branchNameProblem(choice.branchName));
+function createNewWorkspace(
+    store: Store,
+    config: Pick<Config, 'workspacesDir'>,
+    project: Project,
+    folder: ProjectFolder,
+    chatId: string,
+    choice: Extract<ChatWorkspaceChoice, { mode: 'new' }>
+): ChatWorkspace {
+    const problem =
+        branchPrefixProblem(choice.branchPrefix) ??
+        (choice.branchName === undefined ? undefined : branchNameProblem(choice.branchName));
 
     if (problem) {
         throw invalid(problem);
@@ -344,22 +428,35 @@ function createNewWorkspace(store: Store, config: Pick<Config, 'workspacesDir'>,
     }
 
     if (!resolveBaseSync(folder.path, base)) {
-        throw invalid(`${ base } is not a branch of this repository`);
+        throw invalid(`${base} is not a branch of this repository`);
     }
 
     const layout = workspaceLayout(config, project, folder, chatId, choice.branchPrefix, choice.branchName);
     const clash = branchInTheWay(folder.path, layout.branch);
 
     if (clash) {
-        throw invalid(`This repository has a branch called ${ clash }, so ${ choice.branchName === undefined ? `the branch prefix cannot be ${ branchPrefixOf(choice.branchPrefix) }` : `the branch ${ layout.branch } cannot be made` }`);
+        throw invalid(
+            `This repository has a branch called ${clash}, so ${choice.branchName === undefined ? `the branch prefix cannot be ${branchPrefixOf(choice.branchPrefix)}` : `the branch ${layout.branch} cannot be made`}`
+        );
     }
 
     // The id8 is unique by itself; a name someone chose is not, and is taken by a branch of the repository or by a worktree another chat is still to make.
     if (choice.branchName !== undefined && branchTaken(store, project, folder, layout.branch)) {
-        throw invalid(`The branch name ${ layout.branch } is taken, by a branch of the repository, one below it, or a worktree still to be made: name this one differently`);
+        throw invalid(
+            `The branch name ${layout.branch} is taken, by a branch of the repository, one below it, or a worktree still to be made: name this one differently`
+        );
     }
 
-    const record = { id: newId('wks'), projectId: project.id, folderId: folder.id, ...layout, base, managed: true, ready: false, createdAt: Date.now() };
+    const record = {
+        id: newId('wks'),
+        projectId: project.id,
+        folderId: folder.id,
+        ...layout,
+        base,
+        managed: true,
+        ready: false,
+        createdAt: Date.now(),
+    };
 
     insertWorkspace(store.db, record);
 
@@ -371,16 +468,31 @@ function createNewWorkspace(store: Store, config: Pick<Config, 'workspacesDir'>,
  * a file), or a worktree row of the project that is not made yet is to have it or one below or above it. (`branchInTheWay` is the branches above it, in the repository.)
  */
 function branchTaken(store: Store, project: Project, folder: ProjectFolder, branch: string): boolean {
-    const found = readGit(folder.path, ['show-ref', '--verify', '--hash', `refs/heads/${ branch }`]);
-    const below = readGit(folder.path, ['for-each-ref', '--count=1', '--format=%(refname)', `refs/heads/${ branch }/`]);
+    const found = readGit(folder.path, ['show-ref', '--verify', '--hash', `refs/heads/${branch}`]);
+    const below = readGit(folder.path, ['for-each-ref', '--count=1', '--format=%(refname)', `refs/heads/${branch}/`]);
 
-    return (found.ok && found.stdout !== '') || (below.ok && below.stdout !== '')
-        || listWorkspacesOfProject(store.db, project.id).some(record => record.folderId === folder.id && record.branch !== undefined && (record.branch === branch || record.branch.startsWith(`${ branch }/`) || branch.startsWith(`${ record.branch }/`)));
+    return (
+        (found.ok && found.stdout !== '') ||
+        (below.ok && below.stdout !== '') ||
+        listWorkspacesOfProject(store.db, project.id).some(
+            record =>
+                record.folderId === folder.id &&
+                record.branch !== undefined &&
+                (record.branch === branch ||
+                    record.branch.startsWith(`${branch}/`) ||
+                    branch.startsWith(`${record.branch}/`))
+        )
+    );
 }
 
 /** The words of a text as a branch name: ASCII, lower case, joined with dashes, cut at a word to leave room for `-xxxx`; empty for a text with no letter or digit in ASCII. */
 function branchSlug(text: string): string {
-    const words = text.normalize('NFKD').replace(/\p{M}+/gu, '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+    const words = text
+        .normalize('NFKD')
+        .replace(/\p{M}+/gu, '')
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter(Boolean);
     const kept: string[] = [];
 
     for (const word of words) {
@@ -393,10 +505,24 @@ function branchSlug(text: string): string {
 }
 
 /** The slug, or the slug with the end of the chat's id when the slug is taken (or is a name Windows keeps for a device); `undefined` when neither can be a new branch. */
-function freeBranchName(store: Store, project: Project, folder: ProjectFolder, prefix: string, slug: string, chatId: string): string | undefined {
-    const candidates = [...RESERVED_NAMES.test(slug) ? [] : [slug], `${ slug }-${ chatKey(chatId).slice(-4).toLowerCase() }`];
+function freeBranchName(
+    store: Store,
+    project: Project,
+    folder: ProjectFolder,
+    prefix: string,
+    slug: string,
+    chatId: string
+): string | undefined {
+    const candidates = [
+        ...(RESERVED_NAMES.test(slug) ? [] : [slug]),
+        `${slug}-${chatKey(chatId).slice(-4).toLowerCase()}`,
+    ];
 
-    return candidates.find(name => !branchTaken(store, project, folder, `${ prefix }/${ name }`) && branchInTheWay(folder.path, `${ prefix }/${ name }`) === undefined);
+    return candidates.find(
+        name =>
+            !branchTaken(store, project, folder, `${prefix}/${name}`) &&
+            branchInTheWay(folder.path, `${prefix}/${name}`) === undefined
+    );
 }
 
 /**
@@ -404,10 +530,27 @@ function freeBranchName(store: Store, project: Project, folder: ProjectFolder, p
  * branch of that name is there already. `undefined` for a title that has no letter or digit in ASCII (a name in another script), so the branch keeps the id8 for a name.
  * Call it inside a transaction: the rows it reads are the ones the chat's own is written with.
  */
-export function branchNameFor(store: Store, config: Pick<Config, 'workspacesDir'>, project: Project, folderId: string | undefined, chatId: string, branchPrefix: string | undefined, title: string): string | undefined {
+export function branchNameFor(
+    store: Store,
+    config: Pick<Config, 'workspacesDir'>,
+    project: Project,
+    folderId: string | undefined,
+    chatId: string,
+    branchPrefix: string | undefined,
+    title: string
+): string | undefined {
     const slug = branchSlug(title);
 
-    return slug ? freeBranchName(store, project, repositoryFolder(project, folderId), branchPrefixOf(branchPrefix), slug, chatId) : undefined;
+    return slug
+        ? freeBranchName(
+              store,
+              project,
+              repositoryFolder(project, folderId),
+              branchPrefixOf(branchPrefix),
+              slug,
+              chatId
+          )
+        : undefined;
 }
 
 /**
@@ -417,7 +560,13 @@ export function branchNameFor(store: Store, config: Pick<Config, 'workspacesDir'
 export function canNameBranch(chat: Pick<Chat, 'id' | 'parentChatId' | 'workspace'>): boolean {
     const { workspace } = chat;
 
-    return chat.parentChatId === undefined && workspace !== undefined && workspace.ready && ownsWorktree(chat, workspace) && workspace.branch?.endsWith(`/${ chatKey(chat.id) }`) === true;
+    return (
+        chat.parentChatId === undefined &&
+        workspace !== undefined &&
+        workspace.ready &&
+        ownsWorktree(chat, workspace) &&
+        workspace.branch?.endsWith(`/${chatKey(chat.id)}`) === true
+    );
 }
 
 /**
@@ -427,7 +576,12 @@ export function canNameBranch(chat: Pick<Chat, 'id' | 'parentChatId' | 'workspac
  * act on) for a chat that cannot (`canNameBranch`), words with no ASCII letter in them, a worktree that is on another branch than the one it was made with, and a branch
  * that has an upstream (it was pushed: a new name would leave the remote's behind).
  */
-export function nameWorkspaceBranch(store: Store, project: Project, chat: Chat, words: string): { branch: string; previous: string } {
+export function nameWorkspaceBranch(
+    store: Store,
+    project: Project,
+    chat: Chat,
+    words: string
+): { branch: string; previous: string } {
     const { workspace } = chat;
 
     if (!workspace) {
@@ -435,7 +589,11 @@ export function nameWorkspaceBranch(store: Store, project: Project, chat: Chat, 
     }
 
     if (!canNameBranch(chat) || workspace.branch === undefined) {
-        throw invalid(chat.parentChatId === undefined && ownsWorktree(chat, workspace) && workspace.branch !== undefined ? `Your branch ${ workspace.branch } has a name already` : 'This worktree is not made for this chat alone, or its branch is not one of the daemon\'s to rename');
+        throw invalid(
+            chat.parentChatId === undefined && ownsWorktree(chat, workspace) && workspace.branch !== undefined
+                ? `Your branch ${workspace.branch} has a name already`
+                : "This worktree is not made for this chat alone, or its branch is not one of the daemon's to rename"
+        );
     }
 
     const folder = project.folders.find(candidate => candidate.id === workspace.folderId);
@@ -447,41 +605,49 @@ export function nameWorkspaceBranch(store: Store, project: Project, chat: Chat, 
     const slug = branchSlug(words);
 
     if (!slug) {
-        throw invalid(`Give the name as words in English: letters a-z and digits, short words, such as fix login redirect (the name is ${ MAX_BRANCH_NAME_LENGTH - 5 } characters at most)`);
+        throw invalid(
+            `Give the name as words in English: letters a-z and digits, short words, such as fix login redirect (the name is ${MAX_BRANCH_NAME_LENGTH - 5} characters at most)`
+        );
     }
 
     if (!existsSync(workspace.path)) {
-        throw invalid(`Your worktree folder ${ workspace.path } is gone from the disk`);
+        throw invalid(`Your worktree folder ${workspace.path} is gone from the disk`);
     }
 
     const previous = workspace.branch;
     const live = readGit(workspace.path, ['branch', '--show-current']);
 
     if (!live.ok || live.stdout !== previous) {
-        throw invalid(`Your worktree is on ${ live.ok && live.stdout ? live.stdout : 'a detached HEAD' }, not on ${ previous }, the branch it was made with: rename a branch you made yourself with git`);
+        throw invalid(
+            `Your worktree is on ${live.ok && live.stdout ? live.stdout : 'a detached HEAD'}, not on ${previous}, the branch it was made with: rename a branch you made yourself with git`
+        );
     }
 
-    const upstream = readGit(folder.path, ['config', '--get', `branch.${ previous }.remote`]);
+    const upstream = readGit(folder.path, ['config', '--get', `branch.${previous}.remote`]);
 
     if (upstream.ok && upstream.stdout !== '') {
-        throw invalid(`Your branch ${ previous } has an upstream (${ upstream.stdout }), so a new name would leave the remote's branch behind: keep it`);
+        throw invalid(
+            `Your branch ${previous} has an upstream (${upstream.stdout}), so a new name would leave the remote's branch behind: keep it`
+        );
     }
 
     // Pushed without `-u` there is no upstream, but a branch of that name is on the remote as last fetched, or was pushed and its remote-tracking ref is made by the push.
     const remotes = readGit(folder.path, ['for-each-ref', '--format=%(refname:lstrip=3)', 'refs/remotes']);
 
     if (remotes.ok && remotes.stdout.split('\n').includes(previous)) {
-        throw invalid(`A remote has a branch called ${ previous }, so a new name would leave it behind: keep it`);
+        throw invalid(`A remote has a branch called ${previous}, so a new name would leave it behind: keep it`);
     }
 
     const prefix = previous.slice(0, previous.lastIndexOf('/'));
     const name = freeBranchName(store, project, folder, prefix, slug, chat.id);
 
     if (name === undefined) {
-        throw invalid(`The name ${ prefix }/${ slug } is taken, and so is the same with the end of your id: give other words`);
+        throw invalid(
+            `The name ${prefix}/${slug} is taken, and so is the same with the end of your id: give other words`
+        );
     }
 
-    const branch = `${ prefix }/${ name }`;
+    const branch = `${prefix}/${name}`;
     const renamed = git(workspace.path, ['branch', '-m', previous, branch], SYNC_READ_TIMEOUT_MS);
 
     if (!renamed.ok) {
@@ -489,10 +655,10 @@ export function nameWorkspaceBranch(store: Store, project: Project, chat: Chat, 
         const now = readGit(workspace.path, ['branch', '--show-current']);
 
         if (!now.ok || now.stdout !== branch) {
-            throw invalid(`git could not rename the branch: ${ renamed.stderr || renamed.stdout }`);
+            throw invalid(`git could not rename the branch: ${renamed.stderr || renamed.stdout}`);
         }
 
-        readGit(folder.path, ['config', '--rename-section', `branch.${ previous }`, `branch.${ branch }`]);
+        readGit(folder.path, ['config', '--rename-section', `branch.${previous}`, `branch.${branch}`]);
     }
 
     store.tx(() => {
@@ -516,11 +682,13 @@ export function nameWorkspaceBranch(store: Store, project: Project, chat: Chat, 
 function branchInTheWay(folder: string, branch: string): string | undefined {
     const parents = branch.split('/').slice(0, -1);
 
-    return parents.map((_, index) => parents.slice(0, index + 1).join('/')).find(name => {
-        const found = readGit(folder, ['show-ref', '--verify', '--hash', `refs/heads/${ name }`]);
+    return parents
+        .map((_, index) => parents.slice(0, index + 1).join('/'))
+        .find(name => {
+            const found = readGit(folder, ['show-ref', '--verify', '--hash', `refs/heads/${name}`]);
 
-        return found.ok && found.stdout !== '';
-    });
+            return found.ok && found.stdout !== '';
+        });
 }
 
 function openExistingWorkspace(store: Store, project: Project, folder: ProjectFolder, path: string): ChatWorkspace {
@@ -529,10 +697,12 @@ function openExistingWorkspace(store: Store, project: Project, folder: ProjectFo
     }
 
     const listed = readGit(folder.path, ['worktree', 'list', '--porcelain']);
-    const entry = parseWorktrees(listed.ok ? listed.stdout : '').find(candidate => !candidate.bare && samePlace(candidate.path, path));
+    const entry = parseWorktrees(listed.ok ? listed.stdout : '').find(
+        candidate => !candidate.bare && samePlace(candidate.path, path)
+    );
 
     if (!entry) {
-        throw invalid(`${ path } is not a worktree of this repository`);
+        throw invalid(`${path} is not a worktree of this repository`);
     }
 
     if (samePlace(entry.path, folder.path)) {
@@ -540,17 +710,28 @@ function openExistingWorkspace(store: Store, project: Project, folder: ProjectFo
     }
 
     if (entry.prunable || !existsSync(entry.path)) {
-        throw invalid(`The worktree ${ path } is gone from the disk`);
+        throw invalid(`The worktree ${path} is gone from the disk`);
     }
 
     // Chats that pick the same worktree share its row, so whoever asks who uses it gets them all, and a worktree Clowdy made stays its own.
-    const shared = listWorkspacesOfProject(store.db, project.id).find(record => record.folderId === folder.id && samePlace(record.path, entry.path));
+    const shared = listWorkspacesOfProject(store.db, project.id).find(
+        record => record.folderId === folder.id && samePlace(record.path, entry.path)
+    );
 
     if (shared) {
         return toChatWorkspace(shared);
     }
 
-    const record = { id: newId('wks'), projectId: project.id, folderId: folder.id, path: resolve(entry.path), ...(entry.branch !== undefined && { branch: entry.branch }), managed: false, ready: true, createdAt: Date.now() };
+    const record = {
+        id: newId('wks'),
+        projectId: project.id,
+        folderId: folder.id,
+        path: resolve(entry.path),
+        ...(entry.branch !== undefined && { branch: entry.branch }),
+        managed: false,
+        ready: true,
+        createdAt: Date.now(),
+    };
 
     insertWorkspace(store.db, record);
 
@@ -561,7 +742,12 @@ function openExistingWorkspace(store: Store, project: Project, folder: ProjectFo
  * The worktree a thread or a fork takes from its parent: the same row, not a copy, so the chats that share it are all known. It has to belong to the project
  * and to the folder the new chat works in (`invalid` otherwise, `not_found` for a row that is gone).
  */
-export function inheritWorkspace(store: Store, project: Project, workspaceId: string, folderId: string | undefined): ChatWorkspace {
+export function inheritWorkspace(
+    store: Store,
+    project: Project,
+    workspaceId: string,
+    folderId: string | undefined
+): ChatWorkspace {
     const record = getWorkspace(store.db, workspaceId);
 
     if (!record) {
@@ -569,7 +755,7 @@ export function inheritWorkspace(store: Store, project: Project, workspaceId: st
     }
 
     if (record.projectId !== project.id || (folderId !== undefined && record.folderId !== folderId)) {
-        throw invalid(`Workspace ${ workspaceId } is not a worktree of the folder the chat works in`);
+        throw invalid(`Workspace ${workspaceId} is not a worktree of the folder the chat works in`);
     }
 
     return toChatWorkspace(record);
@@ -593,13 +779,15 @@ export function threadBase(store: Store, project: Project, workspace: ChatWorksp
     const head = existsSync(workspace.path) && isRepositoryRoot(workspace.path) ? headOf(workspace.path) : undefined;
 
     if (head?.detached || (head === undefined && workspace.branch === undefined)) {
-        throw invalid('Your worktree is on a detached HEAD, so there is no branch of yours to start the thread from: name the branch to start it from with base');
+        throw invalid(
+            'Your worktree is on a detached HEAD, so there is no branch of yours to start the thread from: name the branch to start it from with base'
+        );
     }
 
     const branch = head?.branch ?? workspace.branch;
 
     if (branch !== undefined) {
-        const found = readGit(folder.path, ['show-ref', '--verify', '--hash', `refs/heads/${ branch }`]);
+        const found = readGit(folder.path, ['show-ref', '--verify', '--hash', `refs/heads/${branch}`]);
 
         if (found.ok && found.stdout) {
             return branch;
@@ -612,7 +800,9 @@ export function threadBase(store: Store, project: Project, workspace: ChatWorksp
         return base;
     }
 
-    throw invalid(`Your branch ${ branch } is not in the repository any more, so there is nothing to start the thread from`);
+    throw invalid(
+        `Your branch ${branch} is not in the repository any more, so there is nothing to start the thread from`
+    );
 }
 
 /**
@@ -649,9 +839,15 @@ interface Step {
 
 /** The reason in what git printed, as a person reads it: its first `fatal:` or `error:` line (a later `hint:` or `use … to override` is advice for someone at a terminal), with no prefix and no closing period. */
 function reasonOf(lines: readonly string[]): string {
-    const line = lines.find(candidate => /^(fatal|error): /.test(candidate)) ?? lines.filter(candidate => !candidate.startsWith('hint:')).at(-1) ?? '';
+    const line =
+        lines.find(candidate => /^(fatal|error): /.test(candidate)) ??
+        lines.filter(candidate => !candidate.startsWith('hint:')).at(-1) ??
+        '';
 
-    return line.replace(/^(fatal|error): /, '').trim().replace(/\.+$/, '');
+    return line
+        .replace(/^(fatal|error): /, '')
+        .trim()
+        .replace(/\.+$/, '');
 }
 
 async function runGit(cwd: string, args: string[], step: Step, timeoutMs: number): Promise<GitRun> {
@@ -673,10 +869,11 @@ async function runGit(cwd: string, args: string[], step: Step, timeoutMs: number
         });
 
         return { ok: result.code === 0, reason: reasonOf(lines), aborted: result.aborted, timedOut: result.timedOut };
-    }
-    catch (error) {
+    } catch (error) {
         // A program that is not there; anything else (the stream's own write failing, say) is not a reason to blame git.
-        throw (error as { code?: unknown } | undefined)?.code === 'ENOENT' ? new WorkspaceError('git is not installed or not on the PATH') : error;
+        throw (error as { code?: unknown } | undefined)?.code === 'ENOENT'
+            ? new WorkspaceError('git is not installed or not on the PATH')
+            : error;
     }
 }
 
@@ -689,11 +886,11 @@ export async function mustGit(cwd: string, args: string[], step: Step, timeoutMs
     }
 
     if (result.timedOut) {
-        throw new WorkspaceError(`Couldn't ${ what }: it took too long`);
+        throw new WorkspaceError(`Couldn't ${what}: it took too long`);
     }
 
     if (!result.ok) {
-        throw new WorkspaceError(`Couldn't ${ what }: ${ result.reason || 'git gave no reason' }`);
+        throw new WorkspaceError(`Couldn't ${what}: ${result.reason || 'git gave no reason'}`);
     }
 }
 
@@ -701,7 +898,9 @@ async function listWorktrees(folder: string): Promise<ListedWorktree[]> {
     const read = await gitRead(folder, ['worktree', 'list', '--porcelain']);
 
     if (!read.ok) {
-        throw new WorkspaceError(read.reason === 'unavailable' ? 'git did not answer' : `${ folder } is not a git repository`);
+        throw new WorkspaceError(
+            read.reason === 'unavailable' ? 'git did not answer' : `${folder} is not a git repository`
+        );
     }
 
     return parseWorktrees(read.stdout);
@@ -746,32 +945,34 @@ export async function ensureWorktree(options: EnsureWorktreeOptions): Promise<'t
         if (entry && !entry.prunable) {
             // Git locks a worktree while it makes it, and a crash leaves the lock: what is in the folder may be a checkout that stopped half way.
             if (entry.locked === 'initializing') {
-                throw new WorkspaceError(`A previous attempt to make the worktree ${ path } was cut off, and git still has it locked, so it was left alone`);
+                throw new WorkspaceError(
+                    `A previous attempt to make the worktree ${path} was cut off, and git still has it locked, so it was left alone`
+                );
             }
 
-            options.log(`The worktree ${ path } is there already, left as it is`);
+            options.log(`The worktree ${path} is there already, left as it is`);
 
             return 'there';
         }
 
-        throw new WorkspaceError(`${ path } exists and is not a worktree of ${ folder }, so it was left alone`);
+        throw new WorkspaceError(`${path} exists and is not a worktree of ${folder}, so it was left alone`);
     }
 
     if (!managed) {
-        throw new WorkspaceError(`The worktree ${ path } no longer exists`);
+        throw new WorkspaceError(`The worktree ${path} no longer exists`);
     }
 
     if (!branch) {
-        throw new WorkspaceError(`The worktree ${ path } has no branch to make it from`);
+        throw new WorkspaceError(`The worktree ${path} has no branch to make it from`);
     }
 
     const holder = listed.find(candidate => candidate !== entry && !candidate.bare && candidate.branch === branch);
 
     if (holder) {
-        throw new WorkspaceError(`The branch ${ branch } is already checked out in ${ resolve(holder.path) }`);
+        throw new WorkspaceError(`The branch ${branch} is already checked out in ${resolve(holder.path)}`);
     }
 
-    const exists = await gitRead(folder, ['rev-parse', '--verify', '--quiet', `refs/heads/${ branch }^{commit}`]);
+    const exists = await gitRead(folder, ['rev-parse', '--verify', '--quiet', `refs/heads/${branch}^{commit}`]);
 
     if (!exists.ok && exists.reason === 'unavailable') {
         throw new WorkspaceError('git did not answer');
@@ -783,16 +984,34 @@ export async function ensureWorktree(options: EnsureWorktreeOptions): Promise<'t
         // The fetch above may have taken minutes: whatever was put at the path meanwhile is somebody's, and neither the record's removal (which deletes a tree that is
         // there and clean, ignored files included) nor the checkout is run over it.
         if (await isThere(path)) {
-            throw new WorkspaceError(`${ path } appeared while the worktree was being made, so it was left alone`);
+            throw new WorkspaceError(`${path} appeared while the worktree was being made, so it was left alone`);
         }
 
         if (entry) {
-            options.log(`Forgetting the record of the worktree ${ path }, which is gone from the disk`);
-            await mustGit(folder, ['worktree', 'remove', entry.path], options, FORGET_TIMEOUT_MS, 'forget the missing worktree');
+            options.log(`Forgetting the record of the worktree ${path}, which is gone from the disk`);
+            await mustGit(
+                folder,
+                ['worktree', 'remove', entry.path],
+                options,
+                FORGET_TIMEOUT_MS,
+                'forget the missing worktree'
+            );
         }
 
         // The branch stays as it is when the repository has it; a new one starts at the commit the base had a moment ago.
-        await mustGit(folder, ['-c', 'core.longpaths=true', 'worktree', 'add', ...(commit ? ['-b', branch, path, commit] : [path, branch])], options, ADD_TIMEOUT_MS, 'make the worktree');
+        await mustGit(
+            folder,
+            [
+                '-c',
+                'core.longpaths=true',
+                'worktree',
+                'add',
+                ...(commit ? ['-b', branch, path, commit] : [path, branch]),
+            ],
+            options,
+            ADD_TIMEOUT_MS,
+            'make the worktree'
+        );
 
         return 'made' as const;
     });
@@ -811,11 +1030,15 @@ async function baseCommit(folder: string, base: string | undefined, step: Step):
 
     // A remote's branch: the one the repository has as such, or one it has none of yet (the ref was pruned, or the chat was made before the first fetch).
     if (before === undefined || before.remote) {
-        const remotes = (await gitOutput(folder, ['remote']))?.split('\n').map(name => name.trim()).filter(Boolean) ?? [];
+        const remotes =
+            (await gitOutput(folder, ['remote']))
+                ?.split('\n')
+                .map(name => name.trim())
+                .filter(Boolean) ?? [];
         const target = remoteOf(base, remotes);
 
         if (target) {
-            step.log(`Fetching ${ base }`);
+            step.log(`Fetching ${base}`);
 
             const fetched = await runGit(folder, ['fetch', '--', target.remote, target.branch], step, FETCH_TIMEOUT_MS);
 
@@ -825,10 +1048,12 @@ async function baseCommit(folder: string, base: string | undefined, step: Step):
 
             if (!fetched.ok) {
                 if (!before) {
-                    throw new WorkspaceError(`Couldn't fetch ${ base }: ${ fetched.timedOut ? 'it took too long' : fetched.reason || 'git gave no reason' }`);
+                    throw new WorkspaceError(
+                        `Couldn't fetch ${base}: ${fetched.timedOut ? 'it took too long' : fetched.reason || 'git gave no reason'}`
+                    );
                 }
 
-                step.log(`Could not fetch, using the last fetched ${ base }`);
+                step.log(`Could not fetch, using the last fetched ${base}`);
             }
         }
     }
@@ -836,7 +1061,7 @@ async function baseCommit(folder: string, base: string | undefined, step: Step):
     const after = await resolveBase(folder, base);
 
     if (!after) {
-        throw new WorkspaceError(`${ base } is not a branch of this repository any more`);
+        throw new WorkspaceError(`${base} is not a branch of this repository any more`);
     }
 
     return after.commit;
@@ -858,14 +1083,25 @@ class StepItem {
     private writtenAt = 0;
     private startedAt = Date.now();
 
-    constructor(private store: Store, private runId: string, workspaceId: string, input: unknown) {
-        this.body = { kind: 'tool', toolCallId: `workspace:${ workspaceId }`, name: WORKSPACE_TOOL, input, state: 'running' };
+    constructor(
+        private store: Store,
+        private runId: string,
+        workspaceId: string,
+        input: unknown
+    ) {
+        this.body = {
+            kind: 'tool',
+            toolCallId: `workspace:${workspaceId}`,
+            name: WORKSPACE_TOOL,
+            input,
+            state: 'running',
+        };
         this.seq = appendItem(store, runId, this.body).seq;
         this.writtenAt = Date.now();
     }
 
     log(line: string): void {
-        this.lines.push(line.length > MAX_LOG_LINE_LENGTH ? `${ line.slice(0, MAX_LOG_LINE_LENGTH) }…` : line);
+        this.lines.push(line.length > MAX_LOG_LINE_LENGTH ? `${line.slice(0, MAX_LOG_LINE_LENGTH)}…` : line);
 
         if (this.lines.length > MAX_LOG_LINES) {
             this.lines.splice(0, this.lines.length - MAX_LOG_LINES);
@@ -875,12 +1111,14 @@ class StepItem {
             return;
         }
 
-        const wait = this.writtenAt + (Date.now() - this.startedAt > SLOW_STEP_MS ? SLOW_LOG_THROTTLE_MS : LOG_THROTTLE_MS) - Date.now();
+        const wait =
+            this.writtenAt +
+            (Date.now() - this.startedAt > SLOW_STEP_MS ? SLOW_LOG_THROTTLE_MS : LOG_THROTTLE_MS) -
+            Date.now();
 
         if (wait <= 0) {
             this.write();
-        }
-        else {
+        } else {
             this.timer = setTimeout(() => {
                 this.timer = undefined;
                 this.write();
@@ -905,9 +1143,10 @@ class StepItem {
 
         try {
             updateItem(this.store, this.runId, this.seq, this.body);
-        }
-        catch (error) {
-            console.warn(`[clowdy] the log of the workspace step could not be written: ${ error instanceof Error ? error.message : String(error) }`);
+        } catch (error) {
+            console.warn(
+                `[clowdy] the log of the workspace step could not be written: ${error instanceof Error ? error.message : String(error)}`
+            );
         }
     }
 }
@@ -939,7 +1178,12 @@ function until<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise
  * Runs `work` once nothing else holds `key`, one after another in the order they asked. A caller whose `signal` aborts while it waits leaves the line without
  * running, and the ones behind it still wait for whoever it was waiting for.
  */
-export async function exclusive<T>(store: Store, key: string, signal: AbortSignal | undefined, work: () => Promise<T>): Promise<T> {
+export async function exclusive<T>(
+    store: Store,
+    key: string,
+    signal: AbortSignal | undefined,
+    work: () => Promise<T>
+): Promise<T> {
     const queue = preparing.get(store) ?? new Map<string, Promise<unknown>>();
     const before = (queue.get(key) ?? Promise.resolve()).catch(() => undefined);
     const run = until(before, signal).then(work);
@@ -950,8 +1194,7 @@ export async function exclusive<T>(store: Store, key: string, signal: AbortSigna
 
     try {
         return await run;
-    }
-    finally {
+    } finally {
         void tail.then(() => {
             if (queue.get(key) === tail) {
                 queue.delete(key);
@@ -995,7 +1238,7 @@ export async function prepareWorkspace(store: Store, workspaceId: string, option
     const first = getWorkspace(store.db, workspaceId);
 
     if (!first) {
-        throw new WorkspaceError(`The workspace ${ workspaceId } is gone`);
+        throw new WorkspaceError(`The workspace ${workspaceId} is gone`);
     }
 
     await exclusive(store, pathKey(first.path), options.signal, async () => {
@@ -1006,8 +1249,14 @@ export async function prepareWorkspace(store: Store, workspaceId: string, option
             return;
         }
 
-        const folder = getProject(store.db, record.projectId)?.folders.find(candidate => candidate.id === record.folderId);
-        const item = new StepItem(store, options.runId, record.id, { path: record.path, ...(record.branch !== undefined && { branch: record.branch }), ...(record.base !== undefined && { base: record.base }) });
+        const folder = getProject(store.db, record.projectId)?.folders.find(
+            candidate => candidate.id === record.folderId
+        );
+        const item = new StepItem(store, options.runId, record.id, {
+            path: record.path,
+            ...(record.branch !== undefined && { branch: record.branch }),
+            ...(record.base !== undefined && { base: record.base }),
+        });
 
         try {
             if (!folder) {
@@ -1015,13 +1264,23 @@ export async function prepareWorkspace(store: Store, workspaceId: string, option
             }
 
             if (!existsSync(folder.path)) {
-                throw new WorkspaceError(`The folder ${ folder.path } no longer exists`);
+                throw new WorkspaceError(`The folder ${folder.path} no longer exists`);
             }
 
             // The worktrees of one repository are added one at a time: the key is the folder's real place, whichever project holds it.
-            const serialize = <T>(work: () => Promise<T>) => exclusive(store, `repository:${ pathKey(placeOf(folder.path)) }`, options.signal, work);
+            const serialize = <T>(work: () => Promise<T>) =>
+                exclusive(store, `repository:${pathKey(placeOf(folder.path))}`, options.signal, work);
 
-            const made = await ensureWorktree({ folder: folder.path, path: record.path, branch: record.branch, base: record.base, managed: record.managed, log: line => item.log(line), signal: options.signal, serialize });
+            const made = await ensureWorktree({
+                folder: folder.path,
+                path: record.path,
+                branch: record.branch,
+                base: record.base,
+                managed: record.managed,
+                log: line => item.log(line),
+                signal: options.signal,
+                serialize,
+            });
 
             // The folder's setup, for a worktree Clowdy made that is not set up yet: a step that failed here comes back with the worktree there and `ready` still false, so
             // only this part runs again (a copy never overwrites). A worktree that is ready and still there is never set up again, and one that was found never is. One that was
@@ -1034,14 +1293,26 @@ export async function prepareWorkspace(store: Store, workspaceId: string, option
                     markReady(store, record.id, false);
                 }
 
-                await runSetup({ root: folder.path, workspace: record.path, branch: record.branch, setup: folder.settings.setup, log: line => item.log(line), signal: options.signal, timeoutMs: options.setupTimeoutMs });
+                await runSetup({
+                    root: folder.path,
+                    workspace: record.path,
+                    branch: record.branch,
+                    setup: folder.settings.setup,
+                    log: line => item.log(line),
+                    signal: options.signal,
+                    timeoutMs: options.setupTimeoutMs,
+                });
             }
 
             markReady(store, record.id);
             item.end();
-        }
-        catch (error) {
-            const reason = error instanceof WorkspaceError ? error.message : error instanceof Error ? error.message : String(error);
+        } catch (error) {
+            const reason =
+                error instanceof WorkspaceError
+                    ? error.message
+                    : error instanceof Error
+                      ? error.message
+                      : String(error);
 
             item.end(reason);
             throw error instanceof WorkspaceError ? error : new WorkspaceError(reason);

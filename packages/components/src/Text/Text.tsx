@@ -1,5 +1,5 @@
 import { cn } from '@clowdy/lib';
-import { createElement, type ComponentPropsWithoutRef, type HTMLAttributes, type ReactNode, type Ref } from 'react';
+import { type ComponentPropsWithoutRef, createElement, type HTMLAttributes, type ReactNode, type Ref } from 'react';
 import { TextContext } from 'react-aria-components';
 
 import { useSlotContextProps } from '../Slot';
@@ -71,7 +71,7 @@ const DECORATION_CLASS: Record<TextDecoration, string> = {
 /** Named weights map to Tailwind font utilities. When set, overrides {@link TextProps.bold}. */
 export type TextWeightNamed = 'normal' | 'medium' | 'semibold' | 'bold';
 export type TextWeightNumericString = '100' | '200' | '300' | '400' | '500' | '600' | '700' | '800' | '900' | '950';
-export type TextWeightNumeric = | 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900 | 950 | TextWeightNumericString;
+export type TextWeightNumeric = 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900 | 950 | TextWeightNumericString;
 export type TextWeight = TextWeightNamed | TextWeightNumeric;
 
 /**
@@ -110,39 +110,39 @@ function weightClass(weight: TextWeight): string {
 }
 
 /** Supported `as` tags — props follow the chosen element. */
-export type TextElement
-    = | 'a'
-      | 'b'
-      | 'blockquote'
-      | 'button'
-      | 'caption'
-      | 'code'
-      | 'dd'
-      | 'div'
-      | 'dt'
-      | 'em'
-      | 'figcaption'
-      | 'h1'
-      | 'h2'
-      | 'h3'
-      | 'h4'
-      | 'h5'
-      | 'h6'
-      | 'i'
-      | 'kbd'
-      | 'label'
-      | 'legend'
-      | 'li'
-      | 'mark'
-      | 'p'
-      | 'pre'
-      | 'samp'
-      | 'small'
-      | 'span'
-      | 'strong'
-      | 'sub'
-      | 'sup'
-      | 'time';
+export type TextElement =
+    | 'a'
+    | 'b'
+    | 'blockquote'
+    | 'button'
+    | 'caption'
+    | 'code'
+    | 'dd'
+    | 'div'
+    | 'dt'
+    | 'em'
+    | 'figcaption'
+    | 'h1'
+    | 'h2'
+    | 'h3'
+    | 'h4'
+    | 'h5'
+    | 'h6'
+    | 'i'
+    | 'kbd'
+    | 'label'
+    | 'legend'
+    | 'li'
+    | 'mark'
+    | 'p'
+    | 'pre'
+    | 'samp'
+    | 'small'
+    | 'span'
+    | 'strong'
+    | 'sub'
+    | 'sup'
+    | 'time';
 
 type TextOwnProps = {
     variant?: TextVariant;
@@ -200,29 +200,26 @@ export function Text<E extends TextElement = 'span'>({
     /** Only forward user-provided string slot to the DOM; RAC's internal Symbol slot breaks React 19. */
     const slotProp = typeof props.slot === 'string' ? { slot: props.slot } : {};
 
-    return createElement(
-        Component,
-        {
-            ...restMerged,
-            ...slotProp,
-            className: cn(
-                variant && styles[variant],
-                truncate && 'truncate',
-                italic && 'italic',
-                weight && weightClass(weight),
-                bold && 'font-bold',
-                decoration && DECORATION_CLASS[decoration],
-                transform && TRANSFORM_CLASS[transform],
-                select && SELECT_CLASS[select],
-                align && ALIGN_CLASS[align],
-                wrap && WRAP_CLASS[wrap],
-                whitespace && WHITESPACE_CLASS[whitespace],
-                color && color !== 'inherit' && COLOR_CLASS[color],
-                mergedClassName
-            ),
-            children,
-        } as HTMLAttributes<HTMLElement>
-    );
+    return createElement(Component, {
+        ...restMerged,
+        ...slotProp,
+        className: cn(
+            variant && styles[variant],
+            truncate && 'truncate',
+            italic && 'italic',
+            weight && weightClass(weight),
+            bold && 'font-bold',
+            decoration && DECORATION_CLASS[decoration],
+            transform && TRANSFORM_CLASS[transform],
+            select && SELECT_CLASS[select],
+            align && ALIGN_CLASS[align],
+            wrap && WRAP_CLASS[wrap],
+            whitespace && WHITESPACE_CLASS[whitespace],
+            color && color !== 'inherit' && COLOR_CLASS[color],
+            mergedClassName
+        ),
+        children,
+    } as HTMLAttributes<HTMLElement>);
 }
 
 Text.displayName = 'Text';

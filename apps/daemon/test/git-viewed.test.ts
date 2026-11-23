@@ -1,10 +1,18 @@
-import { MAX_GIT_REVISION_LENGTH, MAX_GIT_VIEWED_MARKS, MAX_GIT_VIEWED_PATH_LENGTH } from '@clowdy/protocol';
 import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { MAX_GIT_REVISION_LENGTH, MAX_GIT_VIEWED_MARKS, MAX_GIT_VIEWED_PATH_LENGTH } from '@clowdy/protocol';
 
 import { openDatabase } from '../src/db/connection';
-import { clearViewed, countViewed, deleteViewedOfProject, deleteViewedOfWorkspace, deleteViewedOutsideFolders, listViewed, setViewed } from '../src/db/viewed';
+import {
+    clearViewed,
+    countViewed,
+    deleteViewedOfProject,
+    deleteViewedOfWorkspace,
+    deleteViewedOutsideFolders,
+    listViewed,
+    setViewed,
+} from '../src/db/viewed';
 import { checkRevision, viewedScopeKey } from '../src/git/viewed';
 import { cleanTempDirs, git, makeRepo, startHarness, tempDir } from './helpers';
 
@@ -14,7 +22,7 @@ import type { Harness } from './helpers';
 
 afterAll(cleanTempDirs);
 
-const lines = (...text: string[]) => `${ text.join('\n') }\n`;
+const lines = (...text: string[]) => `${text.join('\n')}\n`;
 
 /** Writes files (and the folders above them) under `root`. */
 function put(root: string, files: Record<string, string>): void {
@@ -89,41 +97,55 @@ describe('over HTTP', () => {
         await h.stop();
     });
 
-    const json = async <T>(response: Response) => await response.json() as T;
+    const json = async <T>(response: Response) => (await response.json()) as T;
 
     /** A project of the folders `paths`, and what a test asks of its places. */
     function open(...paths: string[]) {
         const { project } = h.ok('project.add', { name: 'Shop', folders: paths });
         const folderId = project.folders[0].id as string;
-        const route = `/v1/projects/${ project.id }/git`;
-        const at = (extra: string, workspaceId?: string, folder = folderId) => `?folderId=${ folder }${ workspaceId ? `&workspaceId=${ workspaceId }` : '' }${ extra }`;
+        const route = `/v1/projects/${project.id}/git`;
+        const at = (extra: string, workspaceId?: string, folder = folderId) =>
+            `?folderId=${folder}${workspaceId ? `&workspaceId=${workspaceId}` : ''}${extra}`;
         const changes = async (scope: string, workspaceId?: string): Promise<GitChangedFile[]> => {
-            const answer = await json<Extract<GitChanges, { isRepository: true }>>(await h.fetch(`${ route }/changes${ at(`&scope=${ scope }`, workspaceId) }`));
+            const answer = await json<Extract<GitChanges, { isRepository: true }>>(
+                await h.fetch(`${route}/changes${at(`&scope=${scope}`, workspaceId)}`)
+            );
 
             return answer.files;
         };
         const fileOf = async (scope: string, path: string, workspaceId?: string): Promise<GitChangedFile> => {
             const found = (await changes(scope, workspaceId)).find(file => file.path === path);
 
-            if (!found) throw new Error(`${ path } is not changed in ${ scope }`);
+            if (!found) throw new Error(`${path} is not changed in ${scope}`);
 
             return found;
         };
-        const marks = async (scope: string, workspaceId?: string, folder = folderId) => json<GitViewedMark[]>(await h.fetch(`${ route }/viewed${ at(`&scope=${ scope }`, workspaceId, folder) }`));
-        const mark = (scope: string, path: string, revision: string, workspaceId?: string, folder = folderId) => h.fetch(`${ route }/viewed`, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ folderId: folder, ...(workspaceId && { workspaceId }), scope, path, revision }),
-        });
-        const clear = (scope: string, path: string, workspaceId?: string) => h.fetch(`${ route }/viewed${ at(`&scope=${ scope }&path=${ encodeURIComponent(path) }`, workspaceId) }`, { method: 'DELETE' });
-        const rows = () => h.store.db.query('SELECT workspace_id, scope_key, path, revision FROM viewed_files ORDER BY workspace_id, scope_key, path').all() as Row[];
+        const marks = async (scope: string, workspaceId?: string, folder = folderId) =>
+            json<GitViewedMark[]>(await h.fetch(`${route}/viewed${at(`&scope=${scope}`, workspaceId, folder)}`));
+        const mark = (scope: string, path: string, revision: string, workspaceId?: string, folder = folderId) =>
+            h.fetch(`${route}/viewed`, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ folderId: folder, ...(workspaceId && { workspaceId }), scope, path, revision }),
+            });
+        const clear = (scope: string, path: string, workspaceId?: string) =>
+            h.fetch(`${route}/viewed${at(`&scope=${scope}&path=${encodeURIComponent(path)}`, workspaceId)}`, {
+                method: 'DELETE',
+            });
+        const rows = () =>
+            h.store.db
+                .query(
+                    'SELECT workspace_id, scope_key, path, revision FROM viewed_files ORDER BY workspace_id, scope_key, path'
+                )
+                .all() as Row[];
         /** What the client does with a list and the marks: a file is viewed while its own revision is the one stored. */
-        const viewed = (file: GitChangedFile, kept: GitViewedMark[]) => kept.find(entry => entry.path === file.path)?.revision === file.revision;
+        const viewed = (file: GitChangedFile, kept: GitViewedMark[]) =>
+            kept.find(entry => entry.path === file.path)?.revision === file.revision;
 
         return { project, folderId, route, at, changes, fileOf, marks, mark, clear, rows, viewed };
     }
 
-    test('keeps the revision a file was marked at, which holds across reads and is not the file\'s once it is edited, and is the file\'s again when the edit is undone', async () => {
+    test("keeps the revision a file was marked at, which holds across reads and is not the file's once it is edited, and is the file's again when the edit is undone", async () => {
         const { work: repo } = work();
         const { fileOf, marks, mark, rows, viewed, changes } = open(repo);
         const first = await fileOf('all', 'lib.ts');
@@ -142,7 +164,11 @@ describe('over HTTP', () => {
         }
 
         // The other files of the list were never marked.
-        expect((await changes('all')).filter(file => viewed(file, [{ path: 'lib.ts', revision: first.revision }])).map(file => file.path)).toEqual(['lib.ts']);
+        expect(
+            (await changes('all'))
+                .filter(file => viewed(file, [{ path: 'lib.ts', revision: first.revision }]))
+                .map(file => file.path)
+        ).toEqual(['lib.ts']);
 
         // An edit makes another revision; the daemon still holds what it was sent, and the comparison is false.
         put(repo, { 'lib.ts': lines('a', 'B', 'c', 'd') });
@@ -165,7 +191,7 @@ describe('over HTTP', () => {
         expect(rows()).toHaveLength(1);
     });
 
-    test('holds a mark of a new, a renamed and a binary file while it is left alone and loses it when the file changes, and a commit\'s mark holds as the branch moves on', async () => {
+    test("holds a mark of a new, a renamed and a binary file while it is left alone and loses it when the file changes, and a commit's mark holds as the branch moves on", async () => {
         const { work: repo, featureCommit } = work();
         const { fileOf, marks, mark, viewed } = open(repo);
 
@@ -198,15 +224,17 @@ describe('over HTTP', () => {
         }
 
         // A commit's files never change, so its mark holds when the branch gets another commit and the files of the work move on.
-        const inCommit = await fileOf(`commit:${ featureCommit }`, 'feature.ts');
+        const inCommit = await fileOf(`commit:${featureCommit}`, 'feature.ts');
 
-        await mark(`commit:${ featureCommit }`, 'feature.ts', inCommit.revision);
+        await mark(`commit:${featureCommit}`, 'feature.ts', inCommit.revision);
         put(repo, { 'lib.ts': lines('a', 'B', 'c', 'later') });
         commit(repo, 'Move on');
-        expect(viewed(await fileOf(`commit:${ featureCommit }`, 'feature.ts'), await marks(`commit:${ featureCommit }`))).toBe(true);
+        expect(
+            viewed(await fileOf(`commit:${featureCommit}`, 'feature.ts'), await marks(`commit:${featureCommit}`))
+        ).toBe(true);
     });
 
-    test('clears one file\'s mark and nothing else, and clearing a file that has none is not an error', async () => {
+    test("clears one file's mark and nothing else, and clearing a file that has none is not an error", async () => {
         const { work: repo } = work();
         const { fileOf, marks, mark, clear } = open(repo);
         const lib = await fileOf('all', 'lib.ts');
@@ -233,18 +261,18 @@ describe('over HTTP', () => {
         const libAll = await fileOf('all', 'lib.ts');
         const featureBranch = await fileOf('branch', 'feature.ts');
         const libUncommitted = await fileOf('uncommitted', 'lib.ts');
-        const featureInCommit = await fileOf(`commit:${ featureCommit }`, 'feature.ts');
+        const featureInCommit = await fileOf(`commit:${featureCommit}`, 'feature.ts');
 
         await mark('all', 'lib.ts', libAll.revision);
         await mark('branch', 'feature.ts', featureBranch.revision);
         await mark('uncommitted', 'lib.ts', libUncommitted.revision);
         // A short hash names the same commit as the whole one.
-        await mark(`commit:${ featureCommit.slice(0, 9) }`, 'feature.ts', featureInCommit.revision);
+        await mark(`commit:${featureCommit.slice(0, 9)}`, 'feature.ts', featureInCommit.revision);
 
-        expect(rows().map(row => `${ row.scope_key } ${ row.path }`)).toEqual([
+        expect(rows().map(row => `${row.scope_key} ${row.path}`)).toEqual([
             'all:origin/main lib.ts',
             'branch:origin/main feature.ts',
-            `commit:${ featureCommit } feature.ts`,
+            `commit:${featureCommit} feature.ts`,
             'uncommitted lib.ts',
         ]);
         expect(rows().every(row => row.workspace_id === '')).toBe(true);
@@ -252,19 +280,26 @@ describe('over HTTP', () => {
         expect(await marks('all')).toEqual([{ path: 'lib.ts', revision: libAll.revision }]);
         expect(await marks('branch')).toEqual([{ path: 'feature.ts', revision: featureBranch.revision }]);
         expect(await marks('uncommitted')).toEqual([{ path: 'lib.ts', revision: libUncommitted.revision }]);
-        expect(await marks(`commit:${ featureCommit }`)).toEqual([{ path: 'feature.ts', revision: featureInCommit.revision }]);
-        expect(await marks(`commit:${ featureCommit.slice(0, 7) }`)).toEqual(await marks(`commit:${ featureCommit }`));
+        expect(await marks(`commit:${featureCommit}`)).toEqual([
+            { path: 'feature.ts', revision: featureInCommit.revision },
+        ]);
+        expect(await marks(`commit:${featureCommit.slice(0, 7)}`)).toEqual(await marks(`commit:${featureCommit}`));
         // The scope that is left out is `all`, as it is for the changes.
-        expect(await json<GitViewedMark[]>(await h.fetch(`${ route }/viewed?folderId=${ folderId }`))).toEqual(await marks('all'));
+        expect(await json<GitViewedMark[]>(await h.fetch(`${route}/viewed?folderId=${folderId}`))).toEqual(
+            await marks('all')
+        );
     });
 
-    test('keeps a place\'s marks apart from another worktree\'s, another folder\'s and the checkout\'s of the same folder', async () => {
+    test("keeps a place's marks apart from another worktree's, another folder's and the checkout's of the same folder", async () => {
         const { root, work: repo } = work();
         const tree = worktree(repo);
         const other = makeRepo(root, 'other');
         const { project, folderId, marks, mark, fileOf, rows } = open(repo, other);
         const otherId = project.folders[1].id as string;
-        const workspaceId = (h.ok('chat.create', { projectId: project.id, folderId, workspace: { mode: 'existing', path: tree } }).chat.workspace as { id: string }).id;
+        const workspaceId = (
+            h.ok('chat.create', { projectId: project.id, folderId, workspace: { mode: 'existing', path: tree } }).chat
+                .workspace as { id: string }
+        ).id;
         const libInCheckout = await fileOf('all', 'lib.ts');
         const libInTree = await fileOf('all', 'lib.ts', workspaceId);
 
@@ -279,18 +314,19 @@ describe('over HTTP', () => {
         // The worktree has a mark of its own where the checkout has none.
         expect(await marks('branch', workspaceId)).toEqual([]);
         // The other folder has no remote: its base is its own `main`.
-        expect(rows().map(row => `${ row.workspace_id === '' ? 'checkout' : 'worktree' } ${ row.scope_key } ${ row.path }`)).toEqual([
-            'checkout all:main lib.ts',
-            'checkout all:origin/main lib.ts',
-            'worktree all:origin/main lib.ts',
-        ]);
+        expect(
+            rows().map(row => `${row.workspace_id === '' ? 'checkout' : 'worktree'} ${row.scope_key} ${row.path}`)
+        ).toEqual(['checkout all:main lib.ts', 'checkout all:origin/main lib.ts', 'worktree all:origin/main lib.ts']);
     });
 
     test('makes the key of the base the place is compared with, so a place that is compared with another base has its own marks, and gets them back with the first', async () => {
         const { work: repo } = work();
         const tree = worktree(repo);
         const { project, folderId, marks, mark, rows } = open(repo);
-        const workspaceId = (h.ok('chat.create', { projectId: project.id, folderId, workspace: { mode: 'existing', path: tree } }).chat.workspace as { id: string }).id;
+        const workspaceId = (
+            h.ok('chat.create', { projectId: project.id, folderId, workspace: { mode: 'existing', path: tree } }).chat
+                .workspace as { id: string }
+        ).id;
 
         await mark('all', 'lib.ts', 'rev-on-main', workspaceId);
         await mark('branch', 'tree.ts', 'rev-branch-on-main', workspaceId);
@@ -313,18 +349,31 @@ describe('over HTTP', () => {
         const { work: repo } = work();
         const tree = worktree(repo);
         const { project, folderId, marks, mark, rows } = open(repo);
-        const workspaceId = (h.ok('chat.create', { projectId: project.id, folderId, workspace: { mode: 'existing', path: tree } }).chat.workspace as { id: string }).id;
+        const workspaceId = (
+            h.ok('chat.create', { projectId: project.id, folderId, workspace: { mode: 'existing', path: tree } }).chat
+                .workspace as { id: string }
+        ).id;
         const { db } = h.store;
-        const insert = db.query('INSERT INTO viewed_files (project_id, folder_id, workspace_id, scope_key, path, revision, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)');
+        const insert = db.query(
+            'INSERT INTO viewed_files (project_id, folder_id, workspace_id, scope_key, path, revision, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+        );
 
         db.transaction(() => {
             // The checkout's place is full: half in one scope, half in another, the oldest first.
             for (let at = 1; at <= MAX_GIT_VIEWED_MARKS; at++) {
-                insert.run(project.id, folderId, '', at % 2 === 0 ? 'uncommitted' : 'all:origin/main', `old/file-${ at }.ts`, `rev-${ at }`, at);
+                insert.run(
+                    project.id,
+                    folderId,
+                    '',
+                    at % 2 === 0 ? 'uncommitted' : 'all:origin/main',
+                    `old/file-${at}.ts`,
+                    `rev-${at}`,
+                    at
+                );
             }
 
             for (let at = 1; at <= 10; at++) {
-                insert.run(project.id, folderId, workspaceId, 'uncommitted', `old/file-${ at }.ts`, `rev-${ at }`, at);
+                insert.run(project.id, folderId, workspaceId, 'uncommitted', `old/file-${at}.ts`, `rev-${at}`, at);
             }
         })();
 
@@ -344,13 +393,19 @@ describe('over HTTP', () => {
         expect(kept.some(entry => entry.path === 'old/file-2.ts')).toBe(true);
     });
 
-    test('drops the marks of a worktree that is removed, with its row, and of a chat\'s worktree when its last chat is deleted, and leaves the checkout\'s', async () => {
+    test("drops the marks of a worktree that is removed, with its row, and of a chat's worktree when its last chat is deleted, and leaves the checkout's", async () => {
         const { work: repo } = work();
         const tree = worktree(repo, 'removed-tree');
         const second = worktree(repo, 'chat-tree');
         const { project, folderId, marks, mark, rows, route, at } = open(repo);
-        const opened = (h.ok('workspace.open', { projectId: project.id, folderId, path: tree }) as { workspace: { id: string } }).workspace.id;
-        const { chat } = h.ok('chat.create', { projectId: project.id, folderId, workspace: { mode: 'existing', path: second } });
+        const opened = (
+            h.ok('workspace.open', { projectId: project.id, folderId, path: tree }) as { workspace: { id: string } }
+        ).workspace.id;
+        const { chat } = h.ok('chat.create', {
+            projectId: project.id,
+            folderId,
+            workspace: { mode: 'existing', path: second },
+        });
         const chatsWorkspace = chat.workspace.id as string;
 
         await mark('uncommitted', 'lib.ts', 'rev-checkout');
@@ -360,27 +415,40 @@ describe('over HTTP', () => {
         expect(rows()).toHaveLength(4);
 
         // The tree is clean but for `lib.ts`, which the person may throw away; its commit stays on its branch.
-        const result = await h.sendAsync('workspace.remove', { projectId: project.id, folderId, path: tree, discard: true });
+        const result = await h.sendAsync('workspace.remove', {
+            projectId: project.id,
+            folderId,
+            path: tree,
+            discard: true,
+        });
 
         expect(result.ok).toBe(true);
-        expect(rows().map(row => `${ row.workspace_id || 'checkout' } ${ row.scope_key } ${ row.path }`)).toEqual([
+        expect(rows().map(row => `${row.workspace_id || 'checkout'} ${row.scope_key} ${row.path}`)).toEqual([
             'checkout uncommitted lib.ts',
-            `${ chatsWorkspace } uncommitted lib.ts`,
+            `${chatsWorkspace} uncommitted lib.ts`,
         ]);
-        expect((await h.fetch(`${ route }/viewed${ at('&scope=branch', opened) }`)).status).toBe(404);
+        expect((await h.fetch(`${route}/viewed${at('&scope=branch', opened)}`)).status).toBe(404);
 
         h.ok('chat.delete', { chatId: chat.id });
-        expect(rows().map(row => `${ row.workspace_id || 'checkout' } ${ row.scope_key } ${ row.path }`)).toEqual(['checkout uncommitted lib.ts']);
+        expect(rows().map(row => `${row.workspace_id || 'checkout'} ${row.scope_key} ${row.path}`)).toEqual([
+            'checkout uncommitted lib.ts',
+        ]);
         expect(await marks('uncommitted')).toEqual([{ path: 'lib.ts', revision: 'rev-checkout' }]);
     });
 
-    test('drops the marks of a folder that leaves the project, with its worktrees\', and of a project that is deleted', async () => {
+    test("drops the marks of a folder that leaves the project, with its worktrees', and of a project that is deleted", async () => {
         const { root, work: repo } = work();
         const other = makeRepo(root, 'other');
         const tree = worktree(other, 'other-tree', 'main');
         const { project, folderId, mark, rows } = open(repo, other);
         const otherId = project.folders[1].id as string;
-        const workspaceId = (h.ok('chat.create', { projectId: project.id, folderId: otherId, workspace: { mode: 'existing', path: tree } }).chat.workspace as { id: string }).id;
+        const workspaceId = (
+            h.ok('chat.create', {
+                projectId: project.id,
+                folderId: otherId,
+                workspace: { mode: 'existing', path: tree },
+            }).chat.workspace as { id: string }
+        ).id;
 
         await mark('uncommitted', 'lib.ts', 'rev-main');
         await mark('uncommitted', 'lib.ts', 'rev-other', undefined, otherId);
@@ -406,12 +474,22 @@ describe('over HTTP', () => {
         }
 
         expect(await statusOf(mark('commit:0123456789abcdef', 'lib.ts', revision))).toBe(404);
-        expect((await h.fetch(`${ route }/viewed${ at('&scope=sideways') }`)).status).toBe(400);
-        expect((await h.fetch(`${ route }/viewed${ at('&scope=commit:0123456789abcdef') }`)).status).toBe(404);
+        expect((await h.fetch(`${route}/viewed${at('&scope=sideways')}`)).status).toBe(400);
+        expect((await h.fetch(`${route}/viewed${at('&scope=commit:0123456789abcdef')}`)).status).toBe(404);
         expect((await clear('commit:0123456789abcdef', 'lib.ts')).status).toBe(404);
 
         // A path the file route would not take, and one too long.
-        for (const path of ['', '/etc/passwd', '../lib.ts', 'a/../b', 'a//b', './lib.ts', 'docs/', 'a\u0000b', 'x'.repeat(MAX_GIT_VIEWED_PATH_LENGTH + 1)]) {
+        for (const path of [
+            '',
+            '/etc/passwd',
+            '../lib.ts',
+            'a/../b',
+            'a//b',
+            './lib.ts',
+            'docs/',
+            'a\u0000b',
+            'x'.repeat(MAX_GIT_VIEWED_PATH_LENGTH + 1),
+        ]) {
             expect(await statusOf(mark('all', path, revision))).toBe(400);
         }
 
@@ -420,26 +498,49 @@ describe('over HTTP', () => {
         }
 
         // A revision that is empty, long, or has a character a revision never has.
-        for (const text of ['', 'x'.repeat(MAX_GIT_REVISION_LENGTH + 1), 'ABCDEF', 'a b', 'a;b', 'a\nb', '$(id)', '../x', 'é']) {
+        for (const text of [
+            '',
+            'x'.repeat(MAX_GIT_REVISION_LENGTH + 1),
+            'ABCDEF',
+            'a b',
+            'a;b',
+            'a\nb',
+            '$(id)',
+            '../x',
+            'é',
+        ]) {
             expect(await statusOf(mark('all', 'lib.ts', text))).toBe(400);
         }
 
         // A body that is not the one asked for.
-        const post = (body: string) => h.fetch(`${ route }/viewed`, { method: 'POST', body });
+        const post = (body: string) => h.fetch(`${route}/viewed`, { method: 'POST', body });
 
         expect((await post('not json')).status).toBe(400);
         expect((await post('{}')).status).toBe(400);
-        expect((await post(JSON.stringify({ folderId: 'x', scope: 'all', path: 'lib.ts', revision: 5 }))).status).toBe(400);
-        expect((await h.fetch(`${ route }/viewed`, { method: 'POST', body: JSON.stringify({ scope: 'all', path: 'lib.ts', revision }) })).status).toBe(400);
-        expect((await h.fetch(`${ route }/viewed${ at('&scope=all') }`.replace(/folderId=[^&]*/, 'folderId='))).status).toBe(400);
+        expect((await post(JSON.stringify({ folderId: 'x', scope: 'all', path: 'lib.ts', revision: 5 }))).status).toBe(
+            400
+        );
+        expect(
+            (
+                await h.fetch(`${route}/viewed`, {
+                    method: 'POST',
+                    body: JSON.stringify({ scope: 'all', path: 'lib.ts', revision }),
+                })
+            ).status
+        ).toBe(400);
+        expect(
+            (await h.fetch(`${route}/viewed${at('&scope=all')}`.replace(/folderId=[^&]*/, 'folderId='))).status
+        ).toBe(400);
 
         expect(rows()).toEqual([]);
         expect(await marks('all')).toEqual([]);
 
         // The longest a path and a revision may be are taken.
-        expect(await statusOf(mark('all', `${ 'a/'.repeat(MAX_GIT_VIEWED_PATH_LENGTH / 2 - 1) }b`, revision))).toBe(200);
+        expect(await statusOf(mark('all', `${'a/'.repeat(MAX_GIT_VIEWED_PATH_LENGTH / 2 - 1)}b`, revision))).toBe(200);
         expect(await statusOf(mark('all', 'lib.ts', 'a'.repeat(MAX_GIT_REVISION_LENGTH)))).toBe(200);
-        expect(await statusOf(mark('all', 'docs/readme.md', `100644:${ '0'.repeat(64) }:100644:${ 'f'.repeat(64) }`))).toBe(200);
+        expect(await statusOf(mark('all', 'docs/readme.md', `100644:${'0'.repeat(64)}:100644:${'f'.repeat(64)}`))).toBe(
+            200
+        );
         expect(await statusOf(mark('all', 'docs/other.md', 'stat-120-1764000000000'))).toBe(200);
     });
 
@@ -448,22 +549,38 @@ describe('over HTTP', () => {
         const plain = tempDir('git-viewed');
         const { project, folderId, mark, rows, route, at } = open(repo);
         const { project: plainProject } = h.ok('project.add', { name: 'Notes', folders: [plain] });
-        const plainRoute = `/v1/projects/${ plainProject.id }/git/viewed`;
-        const plainAt = `?folderId=${ plainProject.folders[0].id }&scope=all`;
-        const body = (extra: Record<string, unknown> = {}) => JSON.stringify({ folderId, scope: 'all', path: 'lib.ts', revision: 'abc', ...extra });
+        const plainRoute = `/v1/projects/${plainProject.id}/git/viewed`;
+        const plainAt = `?folderId=${plainProject.folders[0].id}&scope=all`;
+        const body = (extra: Record<string, unknown> = {}) =>
+            JSON.stringify({ folderId, scope: 'all', path: 'lib.ts', revision: 'abc', ...extra });
         const post = (path: string, payload: string) => h.fetch(path, { method: 'POST', body: payload });
 
-        expect((await h.fetch(`${ plainRoute }${ plainAt }`)).status).toBe(400);
-        expect((await post(plainRoute, JSON.stringify({ folderId: plainProject.folders[0].id, scope: 'all', path: 'lib.ts', revision: 'abc' }))).status).toBe(400);
-        expect((await h.fetch(`${ plainRoute }${ plainAt }&path=lib.ts`, { method: 'DELETE' })).status).toBe(400);
+        expect((await h.fetch(`${plainRoute}${plainAt}`)).status).toBe(400);
+        expect(
+            (
+                await post(
+                    plainRoute,
+                    JSON.stringify({
+                        folderId: plainProject.folders[0].id,
+                        scope: 'all',
+                        path: 'lib.ts',
+                        revision: 'abc',
+                    })
+                )
+            ).status
+        ).toBe(400);
+        expect((await h.fetch(`${plainRoute}${plainAt}&path=lib.ts`, { method: 'DELETE' })).status).toBe(400);
 
-        expect((await h.fetch(`${ route }/viewed`)).status).toBe(400);
-        expect((await h.fetch(`${ route }/viewed?folderId=fld_unknown&scope=all`)).status).toBe(404);
-        expect((await post(`${ route }/viewed`, body({ folderId: 'fld_unknown' }))).status).toBe(404);
-        expect((await post(`${ route }/viewed`, body({ workspaceId: 'wks_unknown' }))).status).toBe(404);
-        expect((await h.fetch(`/v1/projects/prj_unknown/git/viewed${ at('&scope=all') }`)).status).toBe(404);
+        expect((await h.fetch(`${route}/viewed`)).status).toBe(400);
+        expect((await h.fetch(`${route}/viewed?folderId=fld_unknown&scope=all`)).status).toBe(404);
+        expect((await post(`${route}/viewed`, body({ folderId: 'fld_unknown' }))).status).toBe(404);
+        expect((await post(`${route}/viewed`, body({ workspaceId: 'wks_unknown' }))).status).toBe(404);
+        expect((await h.fetch(`/v1/projects/prj_unknown/git/viewed${at('&scope=all')}`)).status).toBe(404);
         expect((await post('/v1/projects/prj_unknown/git/viewed', body())).status).toBe(404);
-        expect((await h.fetch(`/v1/projects/prj_unknown/git/viewed${ at('&scope=all&path=lib.ts') }`, { method: 'DELETE' })).status).toBe(404);
+        expect(
+            (await h.fetch(`/v1/projects/prj_unknown/git/viewed${at('&scope=all&path=lib.ts')}`, { method: 'DELETE' }))
+                .status
+        ).toBe(404);
 
         // A worktree of another project's folder is not this folder's place.
         const stranger = makeRepo(tempDir('git-viewed'), 'stranger');
@@ -472,23 +589,36 @@ describe('over HTTP', () => {
         git(stranger, 'worktree', 'add', '-q', '-b', 'theirs', strangerTree);
 
         const { project: other } = h.ok('project.add', { name: 'Other', folders: [stranger] });
-        const strangerId = (h.ok('chat.create', { projectId: other.id, workspace: { mode: 'existing', path: strangerTree } }).chat.workspace as { id: string }).id;
+        const strangerId = (
+            h.ok('chat.create', { projectId: other.id, workspace: { mode: 'existing', path: strangerTree } }).chat
+                .workspace as { id: string }
+        ).id;
 
-        expect((await post(`${ route }/viewed`, body({ workspaceId: strangerId }))).status).toBe(404);
+        expect((await post(`${route}/viewed`, body({ workspaceId: strangerId }))).status).toBe(404);
 
         // A worktree that is not made yet or is gone from the disk is unavailable, as for the other reads.
         const tree = worktree(repo);
-        const workspaceId = (h.ok('chat.create', { projectId: project.id, folderId, workspace: { mode: 'existing', path: tree } }).chat.workspace as { id: string }).id;
+        const workspaceId = (
+            h.ok('chat.create', { projectId: project.id, folderId, workspace: { mode: 'existing', path: tree } }).chat
+                .workspace as { id: string }
+        ).id;
 
         h.store.db.query('UPDATE workspaces SET ready = 0 WHERE id = ?').run(workspaceId);
         expect((await mark('all', 'lib.ts', 'abc', workspaceId)).status).toBe(503);
         h.store.db.query('UPDATE workspaces SET ready = 1 WHERE id = ?').run(workspaceId);
         rmSync(tree, { recursive: true });
         expect((await mark('all', 'lib.ts', 'abc', workspaceId)).status).toBe(503);
-        expect((await h.fetch(`${ route }/viewed${ at('&scope=all', workspaceId) }`)).status).toBe(503);
+        expect((await h.fetch(`${route}/viewed${at('&scope=all', workspaceId)}`)).status).toBe(503);
 
         for (const method of ['GET', 'POST', 'DELETE']) {
-            expect((await fetch(`${ h.url }${ route }/viewed${ at('&scope=all&path=lib.ts') }`, { method, ...(method === 'POST' && { body: body() }) })).status).toBe(401);
+            expect(
+                (
+                    await fetch(`${h.url}${route}/viewed${at('&scope=all&path=lib.ts')}`, {
+                        method,
+                        ...(method === 'POST' && { body: body() }),
+                    })
+                ).status
+            ).toBe(401);
         }
 
         expect(rows()).toEqual([]);
@@ -500,7 +630,18 @@ describe('the scope key', () => {
     const placeAt = (path: string, base?: string): Place => ({
         folder: { id: 'fld_test', path },
         path,
-        ...(base !== undefined && { workspace: { id: 'wks_test', projectId: 'prj_test', folderId: 'fld_test', path, base, managed: false, ready: true, createdAt: 1 } }),
+        ...(base !== undefined && {
+            workspace: {
+                id: 'wks_test',
+                projectId: 'prj_test',
+                folderId: 'fld_test',
+                path,
+                base,
+                managed: false,
+                ready: true,
+                createdAt: 1,
+            },
+        }),
     });
 
     test('is the name of the base the compare picked for `all` and `branch`, so `main` that is ahead of `origin/main` is its own base, and nothing for `uncommitted`', async () => {
@@ -509,7 +650,9 @@ describe('the scope key', () => {
         expect(await viewedScopeKey(placeAt(repo), 'all')).toBe('all:origin/main');
         expect(await viewedScopeKey(placeAt(repo), 'branch')).toBe('branch:origin/main');
         expect(await viewedScopeKey(placeAt(repo), 'uncommitted')).toBe('uncommitted');
-        expect(await viewedScopeKey(placeAt(repo), `commit:${ featureCommit.slice(0, 8) }`)).toBe(`commit:${ featureCommit }`);
+        expect(await viewedScopeKey(placeAt(repo), `commit:${featureCommit.slice(0, 8)}`)).toBe(
+            `commit:${featureCommit}`
+        );
         expect(await viewedScopeKey(placeAt(repo), 'all', { base: 'dev' })).toBe('all:origin/dev');
         expect(await viewedScopeKey(placeAt(repo, 'dev'), 'all')).toBe('all:origin/dev');
 
@@ -525,7 +668,9 @@ describe('the scope key', () => {
         expect(await viewedScopeKey(placeAt(unborn), 'all')).toBe('all:');
         expect(await viewedScopeKey(placeAt(unborn), 'branch')).toBe('branch:');
         // Nothing is committed, so no commit scope has a commit to name.
-        await expect(viewedScopeKey(placeAt(unborn), `commit:${ 'a'.repeat(40) }`)).rejects.toMatchObject({ code: 'not_found' });
+        await expect(viewedScopeKey(placeAt(unborn), `commit:${'a'.repeat(40)}`)).rejects.toMatchObject({
+            code: 'not_found',
+        });
 
         const alone = makeRepo(tempDir('git-viewed'), 'alone');
 
@@ -556,7 +701,11 @@ describe('the table', () => {
         setViewed(db, place, 'branch:origin/main', { path: 'a.ts', revision: 'r4' }, 4);
         setViewed(db, place, 'uncommitted', { path: 'b.ts', revision: 'r5' }, 5);
 
-        expect(listViewed(db, place, 'uncommitted')).toEqual([{ path: 'B.ts', revision: 'r2' }, { path: 'a.ts', revision: 'r3' }, { path: 'b.ts', revision: 'r5' }]);
+        expect(listViewed(db, place, 'uncommitted')).toEqual([
+            { path: 'B.ts', revision: 'r2' },
+            { path: 'a.ts', revision: 'r3' },
+            { path: 'b.ts', revision: 'r5' },
+        ]);
         expect(listViewed(db, place, 'branch:origin/main')).toEqual([{ path: 'a.ts', revision: 'r4' }]);
         expect(listViewed(db, place, 'all:origin/main')).toEqual([]);
         expect(countViewed(db, place)).toBe(4);
@@ -573,7 +722,8 @@ describe('the table', () => {
 
         setViewed(db, worktree, 'uncommitted', { path: 'tree.ts', revision: 'rt' }, 1, 3);
 
-        for (const [at, path] of ['one.ts', 'two.ts', 'three.ts'].entries()) setViewed(db, place, 'uncommitted', { path, revision: `r${ at }` }, 10 + at, 3);
+        for (const [at, path] of ['one.ts', 'two.ts', 'three.ts'].entries())
+            setViewed(db, place, 'uncommitted', { path, revision: `r${at}` }, 10 + at, 3);
 
         // Marked again, `one.ts` is the newest, so `two.ts` is the oldest when a fourth comes.
         setViewed(db, place, 'uncommitted', { path: 'one.ts', revision: 'r-again' }, 20, 3);
@@ -592,21 +742,24 @@ describe('the table', () => {
         const other = { ...place, folderId: 'fld_2' };
         const otherProject = { ...place, projectId: 'prj_2' };
 
-        for (const target of [place, tree, other, otherProject]) setViewed(db, target, 'uncommitted', { path: 'a.ts', revision: 'r' }, 1);
+        for (const target of [place, tree, other, otherProject])
+            setViewed(db, target, 'uncommitted', { path: 'a.ts', revision: 'r' }, 1);
 
         deleteViewedOfWorkspace(db, 'wks_1');
         expect([place, tree, other, otherProject].map(target => countViewed(db, target))).toEqual([1, 0, 1, 1]);
 
         setViewed(db, { ...other, workspaceId: 'wks_2' }, 'uncommitted', { path: 'a.ts', revision: 'r' }, 1);
         deleteViewedOutsideFolders(db, 'prj_1', ['fld_1']);
-        expect([place, other, { ...other, workspaceId: 'wks_2' }, otherProject].map(target => countViewed(db, target))).toEqual([1, 0, 0, 1]);
+        expect(
+            [place, other, { ...other, workspaceId: 'wks_2' }, otherProject].map(target => countViewed(db, target))
+        ).toEqual([1, 0, 0, 1]);
 
         deleteViewedOfProject(db, 'prj_1');
         expect([place, otherProject].map(target => countViewed(db, target))).toEqual([0, 1]);
         db.close();
     });
 
-    test('never takes the checkout\'s marks for a worktree\'s: an empty worktree id drops nothing', () => {
+    test("never takes the checkout's marks for a worktree's: an empty worktree id drops nothing", () => {
         const db = openDatabase(':memory:');
         const tree = { ...place, workspaceId: 'wks_1' };
 

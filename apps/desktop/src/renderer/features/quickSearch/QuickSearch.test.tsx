@@ -17,7 +17,10 @@ let store: RootStore;
 const memoryStorage = () => {
     const data: Record<string, string> = {};
 
-    return { getItem: (key: string) => data[key] ?? null, setItem: (key: string, value: string) => void (data[key] = value) };
+    return {
+        getItem: (key: string) => data[key] ?? null,
+        setItem: (key: string, value: string) => void (data[key] = value),
+    };
 };
 
 /** The window draws on the next animation frame and its content mounts a little later; a search waits out the pause of typing and a round trip. */
@@ -31,7 +34,10 @@ const field = () => document.body.querySelector<HTMLInputElement>('input[role="c
 const rows = () => [...document.body.querySelectorAll<HTMLElement>('[role="option"]')];
 const names = () => rows().map(row => row.textContent);
 const note = () => document.body.querySelector('[role="status"], [role="alert"]')?.textContent;
-const tabs = () => [...document.body.querySelectorAll<HTMLElement>('[role="radio"], [role="tab"], button[aria-pressed]')].filter(button => ['All', 'Files', 'Text'].includes(button.textContent ?? ''));
+const tabs = () =>
+    [...document.body.querySelectorAll<HTMLElement>('[role="radio"], [role="tab"], button[aria-pressed]')].filter(
+        button => ['All', 'Files', 'Text'].includes(button.textContent ?? '')
+    );
 const selected = () => rows().find(row => row.hasAttribute('data-active'));
 
 function type(value: string) {
@@ -42,9 +48,10 @@ function type(value: string) {
     });
 }
 
-const press = (key: string, init: KeyboardEventInit = {}) => act(() => {
-    field().dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init }));
-});
+const press = (key: string, init: KeyboardEventInit = {}) =>
+    act(() => {
+        field().dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init }));
+    });
 
 async function search(value: string) {
     type(value);
@@ -87,7 +94,14 @@ describe('the quick search palette', () => {
         expect(document.activeElement).toBe(field());
         expect(field().placeholder).toBe('Search files by name');
         expect(note()).toBe('Type the name of a file, or a part of its path');
-        expect(tabs().find(tab => tab.getAttribute('aria-pressed') === 'true' || tab.getAttribute('aria-checked') === 'true' || tab.getAttribute('aria-selected') === 'true')?.textContent).toBe('Files');
+        expect(
+            tabs().find(
+                tab =>
+                    tab.getAttribute('aria-pressed') === 'true' ||
+                    tab.getAttribute('aria-checked') === 'true' ||
+                    tab.getAttribute('aria-selected') === 'true'
+            )?.textContent
+        ).toBe('Files');
     });
 
     it('lists the files whose names have what was typed, the best first, and marks the part that matched', async () => {
@@ -103,7 +117,9 @@ describe('the quick search palette', () => {
         await open('text');
         await search('weekend');
 
-        expect(rows().map(row => row.textContent)).toEqual(expect.arrayContaining([expect.stringContaining('price.ts:1')]));
+        expect(rows().map(row => row.textContent)).toEqual(
+            expect.arrayContaining([expect.stringContaining('price.ts:1')])
+        );
         expect(rows().every(row => row.querySelector('mark'))).toBe(true);
 
         await search('no such words in any file');
@@ -116,7 +132,9 @@ describe('the quick search palette', () => {
         await open('all');
         await search('booking');
 
-        const headings = [...document.body.querySelectorAll('[role="listbox"] [role="group"]')].map(group => group.getAttribute('aria-label'));
+        const headings = [...document.body.querySelectorAll('[role="listbox"] [role="group"]')].map(group =>
+            group.getAttribute('aria-label')
+        );
 
         expect(headings).toEqual(['Chats', 'Docs', 'Files', 'Text']);
     });
@@ -124,7 +142,10 @@ describe('the quick search palette', () => {
     it('lists the latest chats of the project before anything is typed, and finds the ones whose title has the words', async () => {
         await open('chats');
 
-        const latest = [...store.selectedProject!.chats.values()].filter(chat => chat.archivedAt === undefined && chat.parentChatId === undefined).toSorted((a, b) => b.updatedAt - a.updatedAt).map(chat => chat.title);
+        const latest = [...store.selectedProject!.chats.values()]
+            .filter(chat => chat.archivedAt === undefined && chat.parentChatId === undefined)
+            .toSorted((a, b) => b.updatedAt - a.updatedAt)
+            .map(chat => chat.title);
 
         expect(names()).toEqual(latest);
         expect(field().placeholder).toBe('Search chats by title');
@@ -144,26 +165,41 @@ describe('the quick search palette', () => {
         const project = store.selectedProject!;
         const archived = [...project.chats.values()].find(chat => chat.title === 'First version')!;
 
-        act(() => void project.chats.set(archived.id, { ...archived, title: 'Booking first version', archivedAt: Date.now() }));
+        act(
+            () =>
+                void project.chats.set(archived.id, {
+                    ...archived,
+                    title: 'Booking first version',
+                    archivedAt: Date.now(),
+                })
+        );
         await open('chats');
         await search('booking');
 
         const groups = [...document.body.querySelectorAll('[role="listbox"] [role="group"]')];
 
         expect(groups.map(group => group.getAttribute('aria-label'))).toEqual(['Chats', 'Archived chats']);
-        expect([...groups[1]!.querySelectorAll('[role="option"]')].map(row => row.textContent)).toEqual(['Booking first version']);
+        expect([...groups[1]!.querySelectorAll('[role="option"]')].map(row => row.textContent)).toEqual([
+            'Booking first version',
+        ]);
     });
 
     it('shows the latest chats on the All tab while nothing is typed, and nothing of the files', async () => {
         await open('all');
 
         expect(names().length).toBeGreaterThan(0);
-        expect([...document.body.querySelectorAll('[role="listbox"] [role="group"]')].map(group => group.getAttribute('aria-label'))).toEqual(['Recent chats']);
+        expect(
+            [...document.body.querySelectorAll('[role="listbox"] [role="group"]')].map(group =>
+                group.getAttribute('aria-label')
+            )
+        ).toEqual(['Recent chats']);
     });
 
     it('opens the chat of the row on Enter, and leaves the side panel as it was', async () => {
         const ui = store.ui.forProject(FIXTURE_PROJECT_ID);
-        const target = [...store.selectedProject!.chats.values()].find(chat => chat.title === 'Architecture questions')!;
+        const target = [...store.selectedProject!.chats.values()].find(
+            chat => chat.title === 'Architecture questions'
+        )!;
 
         await open('chats');
         await search('architecture');
@@ -175,7 +211,7 @@ describe('the quick search palette', () => {
         expect(ui.sidePanelOpen).toBe(false);
     });
 
-    it('moves the row with the arrows, and opens the file of the row on Enter in the side panel\'s Files tab, which it shows', async () => {
+    it("moves the row with the arrows, and opens the file of the row on Enter in the side panel's Files tab, which it shows", async () => {
         await open('files');
         await search('price');
         press('ArrowDown');
@@ -265,7 +301,12 @@ describe('the quick search palette', () => {
         await search('pricing');
 
         // The name that starts with the word first, then the files of a folder that has it, the shorter name first: each with the folder it is in, from the folder of the project.
-        expect(names()).toEqual(['pricing.md.clowdy/docs/decisions', 'plan.md.briefback/weekend-pricing', 'handoff.md.briefback/weekend-pricing', 'competitors.md.briefback/weekend-pricing/research']);
+        expect(names()).toEqual([
+            'pricing.md.clowdy/docs/decisions',
+            'plan.md.briefback/weekend-pricing',
+            'handoff.md.briefback/weekend-pricing',
+            'competitors.md.briefback/weekend-pricing/research',
+        ]);
         expect(rows()[0]!.querySelector('mark')?.textContent).toBe('pricing');
 
         const ui = store.ui.forProject(FIXTURE_PROJECT_ID);
@@ -277,7 +318,9 @@ describe('the quick search palette', () => {
         expect(ui.sidePanelOpen).toBe(true);
         expect(ui.sidePanelTab).toBe('docs');
         expect(manager('docs').tabs.active?.path).toBe('.clowdy/docs/decisions/pricing.md');
-        expect(manager().tabs.documents.map(document => document.path)).not.toContain('.clowdy/docs/decisions/pricing.md');
+        expect(manager().tabs.documents.map(document => document.path)).not.toContain(
+            '.clowdy/docs/decisions/pricing.md'
+        );
     });
 
     it('finds the files of .briefback by their path, in the sources in the order of the registry, and nothing of a source the folder does not have', async () => {
@@ -301,7 +344,9 @@ describe('the quick search palette', () => {
         await open('all');
         await search('plan');
 
-        const groups = [...document.body.querySelectorAll('[role="listbox"] [role="group"]')].map(group => group.getAttribute('aria-label'));
+        const groups = [...document.body.querySelectorAll('[role="listbox"] [role="group"]')].map(group =>
+            group.getAttribute('aria-label')
+        );
 
         expect(groups.indexOf('Docs')).toBeGreaterThanOrEqual(0);
         expect(groups.indexOf('Docs')).toBeLessThan(groups.includes('Files') ? groups.indexOf('Files') : Infinity);
@@ -317,7 +362,7 @@ describe('the quick search palette', () => {
         expect(manager('docs').tabs.active?.path).toBe('.briefback/weekend-pricing/plan.md');
     });
 
-    it('finds a file the tree shows although the project\'s list of files leaves it out, as it does one that git ignores', async () => {
+    it("finds a file the tree shows although the project's list of files leaves it out, as it does one that git ignores", async () => {
         // The fixture's list has no tsconfig.json, its folder has.
         await open('files');
         await search('tsconfig');

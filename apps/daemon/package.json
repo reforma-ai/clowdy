@@ -9,8 +9,8 @@
         "dev": "bun --watch src/main.ts",
         "start": "bun src/main.ts",
         "test": "bun test",
-        "lint": "eslint .",
-        "lint:fix": "eslint . --fix",
+        "lint": "biome check",
+        "lint:fix": "biome check --write",
         "typecheck": "tsc --noEmit",
         "clean": "rm -rf node_modules/{*,.*} .turbo 2>/dev/null || true",
         "stop": "bun src/stop.ts",
@@ -27,7 +27,6 @@
     },
     "devDependencies": {
         "@clowdy/config-typescript": "workspace:*",
-        "@clowdy/eslint-config": "workspace:*",
         "@modelcontextprotocol/sdk": "1.32.2"
     }
 }

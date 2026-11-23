@@ -24,7 +24,14 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-import { applyPatches, cleanupEfficiency, cleanupSemantic, makeDiff, makePatches, type Patch } from '@sanity/diff-match-patch';
+import {
+    applyPatches,
+    cleanupEfficiency,
+    cleanupSemantic,
+    makeDiff,
+    makePatches,
+    type Patch,
+} from '@sanity/diff-match-patch';
 
 /** Longer documents emit the editor's markdown: the reparse that proves a patch runs on every edit. */
 export const RECONCILE_MAX_LENGTH = 50_000;
@@ -130,8 +137,8 @@ function hasRepeatedHalfMatchSeed(textA: string, textB: string): boolean {
     let suffixLength = 0;
 
     while (
-        suffixLength < minimumLength - prefixLength
-        && textA.charCodeAt(textA.length - suffixLength - 1) === textB.charCodeAt(textB.length - suffixLength - 1)
+        suffixLength < minimumLength - prefixLength &&
+        textA.charCodeAt(textA.length - suffixLength - 1) === textB.charCodeAt(textB.length - suffixLength - 1)
     ) {
         suffixLength += 1;
     }

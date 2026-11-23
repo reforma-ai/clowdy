@@ -26,13 +26,34 @@ export function SidePanel() {
     const { sidePanelTab: chosen, sidePanelCoversChat } = useProjectUi();
 
     return (
-        <aside className={ styles.panel } aria-label="Panel" data-side-panel="" data-expanded={ sidePanelCoversChat || undefined }>
-            <section className={ styles.plate } data-tab={ chosen } aria-label={ SIDE_PANEL_TAB_LABELS[chosen] }>
-                { (chosen === 'files' || chosen === 'docs') && <Suspense fallback={ <PanelLoadingState /> }><FilesTab variant={ chosen } /></Suspense> }
-                { chosen === 'terminal' && <Suspense fallback={ <PanelLoadingState /> }><TerminalTab /></Suspense> }
-                { chosen === 'tasks' && <Suspense fallback={ <PanelLoadingState /> }><TasksTab /></Suspense> }
-                { chosen === 'changes' && <Suspense fallback={ <PanelLoadingState /> }><ChangesTab /></Suspense> }
-                { chosen === 'info' && <InfoTab /> }
+        <aside
+            className={styles.panel}
+            aria-label="Panel"
+            data-side-panel=""
+            data-expanded={sidePanelCoversChat || undefined}
+        >
+            <section className={styles.plate} data-tab={chosen} aria-label={SIDE_PANEL_TAB_LABELS[chosen]}>
+                {(chosen === 'files' || chosen === 'docs') && (
+                    <Suspense fallback={<PanelLoadingState />}>
+                        <FilesTab variant={chosen} />
+                    </Suspense>
+                )}
+                {chosen === 'terminal' && (
+                    <Suspense fallback={<PanelLoadingState />}>
+                        <TerminalTab />
+                    </Suspense>
+                )}
+                {chosen === 'tasks' && (
+                    <Suspense fallback={<PanelLoadingState />}>
+                        <TasksTab />
+                    </Suspense>
+                )}
+                {chosen === 'changes' && (
+                    <Suspense fallback={<PanelLoadingState />}>
+                        <ChangesTab />
+                    </Suspense>
+                )}
+                {chosen === 'info' && <InfoTab />}
             </section>
         </aside>
     );

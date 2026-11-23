@@ -12,10 +12,8 @@ export function HiddenColorInput({
     isDisabled?: boolean;
 }) {
     return (
-        <Show when={ name }>
-            { inputName => (
-                <input type="hidden" name={ inputName } form={ form } value={ value } disabled={ isDisabled } />
-            ) }
+        <Show when={name}>
+            {inputName => <input type="hidden" name={inputName} form={form} value={value} disabled={isDisabled} />}
         </Show>
     );
 }

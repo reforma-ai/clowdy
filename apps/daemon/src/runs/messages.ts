@@ -53,7 +53,9 @@ export type Delivery = 'started' | 'queued';
 /** Says now, with the agent's name, that it is switched off: a run that failed on it later would only show a failed chat. */
 export function requireEnabled(agents: AgentRegistry, engine: string): void {
     if (!agents.isEnabled(engine)) {
-        throw unavailable(`${ agents.nameOf(engine) } is switched off in Clowdy. Turn it on in Settings > Providers, or continue in a new chat with another provider.`);
+        throw unavailable(
+            `${agents.nameOf(engine)} is switched off in Clowdy. Turn it on in Settings > Providers, or continue in a new chat with another provider.`
+        );
     }
 }
 
@@ -68,7 +70,11 @@ export function requireEnabled(agents: AgentRegistry, engine: string): void {
  * the text and, after a blank line, the list of where the files are (`messageWithFiles`), unless `content` says what it gets. That one string goes down
  * every path below. Call it inside a transaction; it starts the turn once that commits.
  */
-export function sendMessage(deps: MessageDeps, chatId: string, input: MessageInput): { chatId: string; runId: string; delivery: Delivery } {
+export function sendMessage(
+    deps: MessageDeps,
+    chatId: string,
+    input: MessageInput
+): { chatId: string; runId: string; delivery: Delivery } {
     const { store, runs, driver, attachments, agents, queue } = deps;
     const text = input.text.trim();
     const attachmentIds = input.attachmentIds ?? [];
@@ -85,9 +91,19 @@ export function sendMessage(deps: MessageDeps, chatId: string, input: MessageInp
     requireEnabled(agents, engine);
 
     const files = attachments.claim(chat.projectId, attachmentIds);
-    const content = input.content ?? messageWithFiles(text, files.map(file => ({ path: attachments.pathOf(file), mediaType: file.mediaType, size: file.size })));
+    const content =
+        input.content ??
+        messageWithFiles(
+            text,
+            files.map(file => ({ path: attachments.pathOf(file), mediaType: file.mediaType, size: file.size }))
+        );
     const attached = files.length > 0 ? files.map(toAttachment) : undefined;
-    const body: StreamItemBody = { kind: 'user', text, ...(attached && { attachments: attached }), ...(input.from && { from: input.from }) };
+    const body: StreamItemBody = {
+        kind: 'user',
+        text,
+        ...(attached && { attachments: attached }),
+        ...(input.from && { from: input.from }),
+    };
     const now = Date.now();
 
     if (!chat.orchestratorRunId) {
@@ -116,7 +132,13 @@ export function sendMessage(deps: MessageDeps, chatId: string, input: MessageInp
     const run = runs.require(chat.orchestratorRunId);
 
     if (!isAtRest(run)) {
-        queue.enqueue({ ...chat, updatedAt: now }, run, { mode: input.mode ?? 'queue', text, files, content, from: input.from });
+        queue.enqueue({ ...chat, updatedAt: now }, run, {
+            mode: input.mode ?? 'queue',
+            text,
+            files,
+            content,
+            from: input.from,
+        });
 
         return { chatId, runId: run.id, delivery: 'queued' };
     }
@@ -129,7 +151,7 @@ export function sendMessage(deps: MessageDeps, chatId: string, input: MessageInp
     // thread told to try again still has its brief.
     const unsent = run.sessionId === undefined ? getRunWork(store.db, run.id).nextPrompt : undefined;
 
-    runs.resume(run.id, unsent ? `${ unsent }\n\n${ content }` : input.fresh ? firstMessage(chat.mode, content) : content);
+    runs.resume(run.id, unsent ? `${unsent}\n\n${content}` : input.fresh ? firstMessage(chat.mode, content) : content);
     driver.launch(run.id);
 
     return { chatId, runId: run.id, delivery: 'started' };

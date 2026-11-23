@@ -7,8 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CommandHotkey } from './CommandHotkey';
 import { installDispatcher } from './dispatcher';
-import { commandHint, commandTooltip, useCommands, useHotkeyScope, type ScopedCommand } from './react';
-import { createRegistry, hotkeys, type HotkeyRegistry } from './registry';
+import { commandHint, commandTooltip, type ScopedCommand, useCommands, useHotkeyScope } from './react';
+import { createRegistry, type HotkeyRegistry, hotkeys } from './registry';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -24,8 +24,10 @@ function Probe({ scope, commands }: { scope: string; commands: ScopedCommand[] }
     return null;
 }
 
-const render = (scope: string, commands: ScopedCommand[]) => act(() => root.render(<Probe scope={ scope } commands={ commands } />));
-const press = (key: string) => document.body.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+const render = (scope: string, commands: ScopedCommand[]) =>
+    act(() => root.render(<Probe scope={scope} commands={commands} />));
+const press = (key: string) =>
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
 
 beforeEach(() => {
     registry = createRegistry('darwin');
@@ -110,12 +112,15 @@ describe('useCommands and useHotkeyScope', () => {
         const picker = vi.fn();
         const tasksCommands = [{ id: 'tasks.enter', title: 'Open', group: 'Tasks', keys: 'Enter', handler: tasks }];
         const pickerCommands = [{ id: 'picker.enter', title: 'Pick', group: 'Picker', keys: 'Enter', handler: picker }];
-        const renderScreen = (pickerOpen: boolean) => act(() => root.render(
-            <>
-                <Probe scope="tasks" commands={ tasksCommands } />
-                { pickerOpen && <Probe scope="picker" commands={ pickerCommands } /> }
-            </>
-        ));
+        const renderScreen = (pickerOpen: boolean) =>
+            act(() =>
+                root.render(
+                    <>
+                        <Probe scope="tasks" commands={tasksCommands} />
+                        {pickerOpen && <Probe scope="picker" commands={pickerCommands} />}
+                    </>
+                )
+            );
 
         renderScreen(false);
         press('Enter');
@@ -137,7 +142,10 @@ describe('useCommands and useHotkeyScope', () => {
         const handler = vi.fn();
 
         render('tasks', [{ id: 'tasks.x', title: 'X', group: 'Tasks', keys: 'x', handler }]);
-        render('tasks', [{ id: 'tasks.x', title: 'X', group: 'Tasks', keys: 'y', handler }, { id: 'tasks.z', title: 'Z', group: 'Tasks', keys: 'z', handler }]);
+        render('tasks', [
+            { id: 'tasks.x', title: 'X', group: 'Tasks', keys: 'y', handler },
+            { id: 'tasks.z', title: 'Z', group: 'Tasks', keys: 'z', handler },
+        ]);
 
         expect(define).toHaveBeenCalledTimes(3);
         expect(registry.listCommands().all.map(({ id }) => id)).toEqual(['tasks.x', 'tasks.z']);
@@ -152,7 +160,9 @@ describe('useCommands and useHotkeyScope', () => {
 describe('the app registry', () => {
     function Standalone() {
         useHotkeyScope('modal');
-        useCommands('modal', [{ id: 'modal.singleton-check', title: 'Close', group: 'Modal', keys: 'x', handler: () => undefined }]);
+        useCommands('modal', [
+            { id: 'modal.singleton-check', title: 'Close', group: 'Modal', keys: 'x', handler: () => undefined },
+        ]);
 
         return null;
     }
@@ -181,19 +191,20 @@ describe('the app registry', () => {
  */
 describe('commandHint', () => {
     const hint = (id: string) => commandHint(id, registry);
-    const define = (command: Partial<ScopedCommand> & { scope?: string } = {}) => registry.defineCommand({
-        id: 'nav.tasks',
-        title: 'Go to Tasks',
-        group: 'Navigation',
-        keys: 'g t',
-        scope: 'app',
-        handler: () => undefined,
-        ...command,
-    });
+    const define = (command: Partial<ScopedCommand> & { scope?: string } = {}) =>
+        registry.defineCommand({
+            id: 'nav.tasks',
+            title: 'Go to Tasks',
+            group: 'Navigation',
+            keys: 'g t',
+            scope: 'app',
+            handler: () => undefined,
+            ...command,
+        });
 
-    const Hint = observer(({ id }: { id: string }) => <span data-hint>{ JSON.stringify(hint(id) ?? null) }</span>);
+    const Hint = observer(({ id }: { id: string }) => <span data-hint>{JSON.stringify(hint(id) ?? null)}</span>);
     const shown = () => container.querySelector('[data-hint]')?.textContent;
-    const renderHint = (id = 'nav.tasks') => act(() => root.render(<Hint id={ id } />));
+    const renderHint = (id = 'nav.tasks') => act(() => root.render(<Hint id={id} />));
 
     it('gives the first keys of a command that can run, as presses of key names', () => {
         define();
@@ -203,10 +214,17 @@ describe('commandHint', () => {
         expect(hint('help.open')).toEqual([['?']]);
     });
 
-    it('gives the keys of the registry\'s platform', () => {
+    it("gives the keys of the registry's platform", () => {
         const windows = createRegistry('win32');
 
-        windows.defineCommand({ id: 'help.open', title: 'Help', group: 'General', keys: '$mod+/', scope: 'app', handler: () => undefined });
+        windows.defineCommand({
+            id: 'help.open',
+            title: 'Help',
+            group: 'General',
+            keys: '$mod+/',
+            scope: 'app',
+            handler: () => undefined,
+        });
         define({ id: 'help.open', keys: '$mod+/', title: 'Help' });
 
         expect(commandHint('help.open', windows)).toEqual([['ctrl', '/']]);
@@ -258,15 +276,19 @@ describe('commandHint', () => {
 
         expect(shown()).toBe('null');
 
-        act(() => runInAction(() => {
-            state.project = 'p';
-        }));
+        act(() =>
+            runInAction(() => {
+                state.project = 'p';
+            })
+        );
 
         expect(shown()).toBe('[["g"],["t"]]');
 
-        act(() => runInAction(() => {
-            state.project = null;
-        }));
+        act(() =>
+            runInAction(() => {
+                state.project = null;
+            })
+        );
 
         expect(shown()).toBe('null');
     });
@@ -316,13 +338,15 @@ describe('commandHint', () => {
             const state = observable({ project: null as string | null });
 
             define({ when: () => state.project !== null });
-            act(() => root.render(<Keyed id="nav.tasks" registry={ registry } />));
+            act(() => root.render(<Keyed id="nav.tasks" registry={registry} />));
 
             expect(container.innerHTML).toBe('');
 
-            act(() => runInAction(() => {
-                state.project = 'p';
-            }));
+            act(() =>
+                runInAction(() => {
+                    state.project = 'p';
+                })
+            );
 
             expect(capsules()).toEqual(['G', 'T']);
             expect(container.textContent).toBe('GthenT');
@@ -330,7 +354,7 @@ describe('commandHint', () => {
 
         it('draws one capsule for one press', () => {
             define({ id: 'tasks.escape', keys: 'Escape' });
-            act(() => root.render(<Keyed id="tasks.escape" registry={ registry } />));
+            act(() => root.render(<Keyed id="tasks.escape" registry={registry} />));
 
             expect(capsules()).toEqual(['Esc']);
             expect(container.querySelector('[data-hotkey-sequence]')).toBeNull();
@@ -348,7 +372,7 @@ describe('commandHint', () => {
 
         it('is the label and the keys once the command can run', () => {
             define();
-            act(() => root.render(<div>{ commandTooltip('Tasks', 'nav.tasks', registry) }</div>));
+            act(() => root.render(<div>{commandTooltip('Tasks', 'nav.tasks', registry)}</div>));
 
             expect(container.textContent).toBe('Tasks GthenT');
         });

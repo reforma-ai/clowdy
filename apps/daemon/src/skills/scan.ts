@@ -56,7 +56,9 @@ export class SkillScanner {
             return EMPTY_SCAN;
         }
 
-        const fingerprint = JSON.stringify(found.map(({ folder, real, mtimeMs, size }) => [folder, real, mtimeMs, size]));
+        const fingerprint = JSON.stringify(
+            found.map(({ folder, real, mtimeMs, size }) => [folder, real, mtimeMs, size])
+        );
         const cached = this.cache.get(root);
 
         if (cached?.fingerprint === fingerprint) {
@@ -79,8 +81,7 @@ function candidates(root: string): Candidate[] | undefined {
     try {
         names = readdirSync(root).sort();
         rootReal = realpathSync(root);
-    }
-    catch {
+    } catch {
         return undefined;
     }
 
@@ -102,8 +103,7 @@ function candidates(root: string): Candidate[] | undefined {
                 seen.add(real);
                 found.push({ folder, dir, real, mtimeMs: file.mtimeMs, size: file.size });
             }
-        }
-        catch {
+        } catch {
             // Not a folder, no SKILL.md, or a link that leads nowhere: not a skill.
         }
     }
@@ -116,7 +116,7 @@ function read(found: Candidate[], fingerprint: string): RootScan {
     const warnings: string[] = [];
 
     if (found.length > MAX_SKILLS_PER_ROOT) {
-        warnings.push(`This folder holds ${ found.length } skills; only the first ${ MAX_SKILLS_PER_ROOT } are listed`);
+        warnings.push(`This folder holds ${found.length} skills; only the first ${MAX_SKILLS_PER_ROOT} are listed`);
     }
 
     for (const candidate of found.slice(0, MAX_SKILLS_PER_ROOT)) {
@@ -128,7 +128,9 @@ function read(found: Candidate[], fingerprint: string): RootScan {
         }
 
         if (result.truncated) {
-            warnings.push(`"${ candidate.folder }": the description is cut to its first ${ MAX_DESCRIPTION_CHARS } characters, as the engines do`);
+            warnings.push(
+                `"${candidate.folder}": the description is cut to its first ${MAX_DESCRIPTION_CHARS} characters, as the engines do`
+            );
         }
 
         skills.push(result.skill);
@@ -138,27 +140,32 @@ function read(found: Candidate[], fingerprint: string): RootScan {
 }
 
 /** The skill, or why it is skipped. */
-function readSkill({ folder, dir, real, mtimeMs, size }: Candidate): { skill: ScannedSkill; truncated: boolean } | string {
+function readSkill({
+    folder,
+    dir,
+    real,
+    mtimeMs,
+    size,
+}: Candidate): { skill: ScannedSkill; truncated: boolean } | string {
     if (!isValidSkillName(folder)) {
-        return `Skipped "${ folder }": the folder name may only use letters, digits, ".", "_" and "-" (at most 64)`;
+        return `Skipped "${folder}": the folder name may only use letters, digits, ".", "_" and "-" (at most 64)`;
     }
 
     if (size > MAX_SKILL_BYTES) {
-        return `Skipped "${ folder }": its ${ SKILL_FILE } is larger than ${ MAX_SKILL_BYTES / 1024 } KB`;
+        return `Skipped "${folder}": its ${SKILL_FILE} is larger than ${MAX_SKILL_BYTES / 1024} KB`;
     }
 
     let raw: string;
 
     try {
         raw = readFileSync(join(real, SKILL_FILE), 'utf8');
-    }
-    catch {
-        return `Skipped "${ folder }": its ${ SKILL_FILE } cannot be read`;
+    } catch {
+        return `Skipped "${folder}": its ${SKILL_FILE} cannot be read`;
     }
 
     const parsed = parseSkillFile(raw, folder);
 
     return parsed.ok
         ? { skill: { folder, dir, real, description: parsed.description, mtimeMs, size }, truncated: parsed.truncated }
-        : `Skipped "${ folder }": ${ parsed.reason }`;
+        : `Skipped "${folder}": ${parsed.reason}`;
 }

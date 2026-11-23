@@ -91,8 +91,12 @@ export class GitSwitch {
     /**
      * The switch of a request: `request.create.start` is whatever the client sent, and judged here (`startOf`), so a body that says another word is `invalid` and not a crash.
      */
-    async switch(project: Project, place: Place, request: { branch: string; create?: { start: string } }): Promise<GitSwitchResult> {
-        if (place.workspace) throw invalid('A chat\'s worktree keeps its branch');
+    async switch(
+        project: Project,
+        place: Place,
+        request: { branch: string; create?: { start: string } }
+    ): Promise<GitSwitchResult> {
+        if (place.workspace) throw invalid("A chat's worktree keeps its branch");
 
         const start = request.create === undefined ? undefined : startOf(request.create);
         const name = await this.#nameOf(place, request.branch);
@@ -101,7 +105,7 @@ export class GitSwitch {
         return exclusive(this.#store, writeLine(place), this.#stopper.signal, async () => {
             const cwd = place.path;
 
-            if (!await workingTreeRoot(cwd)) throw invalid('The folder is not the root of a git repository');
+            if (!(await workingTreeRoot(cwd))) throw invalid('The folder is not the root of a git repository');
 
             const head = await gitAnswer(cwd, ['rev-parse', '--verify', '--quiet', 'HEAD']);
 
@@ -127,17 +131,20 @@ export class GitSwitch {
 
         if (branch.startsWith('-')) throw invalid('A branch name cannot start with a dash');
 
-        if (branch.length > MAX_BRANCH_CHARS) throw invalid(`A branch name is at most ${ MAX_BRANCH_CHARS } characters`);
+        if (branch.length > MAX_BRANCH_CHARS) throw invalid(`A branch name is at most ${MAX_BRANCH_CHARS} characters`);
 
         // A line break or a NUL can be in no name, and a NUL cannot be in an argument of a program at all.
-        if (CONTROL.test(branch)) throw invalid(`${ printable(branch) } is not a branch name`);
+        if (CONTROL.test(branch)) throw invalid(`${printable(branch)} is not a branch name`);
 
         // `@` alone is a name `check-ref-format` allows and no branch can have; `@{-1}` is the branch before this one, which `--branch` expands: it is no name, so what it prints must be what it was given.
-        const checked = branch === '@' ? undefined : await gitRead(place.path, ['check-ref-format', '--branch', branch]);
+        const checked =
+            branch === '@' ? undefined : await gitRead(place.path, ['check-ref-format', '--branch', branch]);
 
-        if (checked !== undefined && !checked.ok && checked.reason === 'unavailable') throw unavailable('git did not answer');
+        if (checked !== undefined && !checked.ok && checked.reason === 'unavailable')
+            throw unavailable('git did not answer');
 
-        if (checked === undefined || !checked.ok || checked.stdout.trim() !== branch) throw invalid(`${ printable(branch) } is not a branch name`);
+        if (checked === undefined || !checked.ok || checked.stdout.trim() !== branch)
+            throw invalid(`${printable(branch)} is not a branch name`);
 
         return branch;
     }
@@ -146,16 +153,30 @@ export class GitSwitch {
      * What to run for the request, judged against the repository now: `undefined` when the place is on the branch already. A new branch is refused where its name is taken, an existing one where
      * it is not there, or where another worktree has it (git would say so too; this says where).
      */
-    async #plan(place: Place, name: string, start: GitSwitchStart | undefined, head: string): Promise<Plan | undefined> {
+    async #plan(
+        place: Place,
+        name: string,
+        start: GitSwitchStart | undefined,
+        head: string
+    ): Promise<Plan | undefined> {
         const cwd = place.path;
-        const [local, remote, current] = await Promise.all([refExists(cwd, `refs/heads/${ name }`), refExists(cwd, `refs/remotes/${ ORIGIN }/${ name }`), gitAnswer(cwd, ['symbolic-ref', '--quiet', '--short', 'HEAD'])]);
+        const [local, remote, current] = await Promise.all([
+            refExists(cwd, `refs/heads/${name}`),
+            refExists(cwd, `refs/remotes/${ORIGIN}/${name}`),
+            gitAnswer(cwd, ['symbolic-ref', '--quiet', '--short', 'HEAD']),
+        ]);
 
         if (start !== undefined) {
-            if (local) throw invalid(`A branch called ${ name } exists already`);
+            if (local) throw invalid(`A branch called ${name} exists already`);
 
-            if (remote) throw invalid(`${ ORIGIN } has a branch called ${ name } already`);
+            if (remote) throw invalid(`${ORIGIN} has a branch called ${name} already`);
 
-            return { args: ['switch', '--no-track', '-c', name, await startCommit(place, start, head)], branch: name, created: true, ...(current === undefined && { leaving: head }) };
+            return {
+                args: ['switch', '--no-track', '-c', name, await startCommit(place, start, head)],
+                branch: name,
+                created: true,
+                ...(current === undefined && { leaving: head }),
+            };
         }
 
         if (local) {
@@ -163,14 +184,25 @@ export class GitSwitch {
 
             const holder = await heldBy(cwd, name);
 
-            if (holder !== undefined) throw conflict(`Checked out in ${ holder }`);
+            if (holder !== undefined) throw conflict(`Checked out in ${holder}`);
 
-            return { args: ['switch', '--no-guess', '--', name], branch: name, created: false, ...(current === undefined && { leaving: head }) };
+            return {
+                args: ['switch', '--no-guess', '--', name],
+                branch: name,
+                created: false,
+                ...(current === undefined && { leaving: head }),
+            };
         }
 
-        if (remote) return { args: ['switch', '--track', '-c', name, `refs/remotes/${ ORIGIN }/${ name }`], branch: name, created: true, ...(current === undefined && { leaving: head }) };
+        if (remote)
+            return {
+                args: ['switch', '--track', '-c', name, `refs/remotes/${ORIGIN}/${name}`],
+                branch: name,
+                created: true,
+                ...(current === undefined && { leaving: head }),
+            };
 
-        throw invalid(`There is no branch called ${ name }`);
+        throw invalid(`There is no branch called ${name}`);
     }
 
     /**
@@ -184,24 +216,41 @@ export class GitSwitch {
         const changes = await countChanges(cwd);
         const working = chatsWorkingIn(this.#store, project, cwd);
 
-        if (working > 0) throw conflict(`${ working } ${ working === 1 ? 'chat is' : 'chats are' } working here`, { hint: 'Stop them or wait until they finish' } satisfies GitErrorDetails);
+        if (working > 0)
+            throw conflict(`${working} ${working === 1 ? 'chat is' : 'chats are'} working here`, {
+                hint: 'Stop them or wait until they finish',
+            } satisfies GitErrorDetails);
 
-        if (underWay !== undefined) throw conflict(`${ underWay } is in progress`, { hint: 'Finish or abort it first' } satisfies GitErrorDetails);
+        if (underWay !== undefined)
+            throw conflict(`${underWay} is in progress`, {
+                hint: 'Finish or abort it first',
+            } satisfies GitErrorDetails);
 
         if (changes === undefined) throw unavailable('git did not answer');
 
-        if (changes > 0) throw conflict('Commit or discard the changes first', { hint: `${ changes } ${ changes === 1 ? 'file' : 'files' } changed` } satisfies GitErrorDetails);
+        if (changes > 0)
+            throw conflict('Commit or discard the changes first', {
+                hint: `${changes} ${changes === 1 ? 'file' : 'files'} changed`,
+            } satisfies GitErrorDetails);
     }
 
     /** Runs the switch and tells where HEAD is after it. */
     async #run(cwd: string, plan: Plan, env: Record<string, string>): Promise<GitSwitchResult> {
-        const run = await runProgram('git', plan.args, { env, cwd, timeoutMs: this.#timeoutMs, maxChars: MAX_PRINTED_CHARS, signal: this.#stopper.signal, stopSignal: 'SIGTERM' });
+        const run = await runProgram('git', plan.args, {
+            env,
+            cwd,
+            timeoutMs: this.#timeoutMs,
+            maxChars: MAX_PRINTED_CHARS,
+            signal: this.#stopper.signal,
+            stopSignal: 'SIGTERM',
+        });
 
         if (run.error === 'stopped') throw unavailable('The daemon is stopping');
 
         // HEAD moves once the files are checked out and before the `post-checkout` hook runs, so a switch that was cut off with HEAD on the branch was cut off in the hook.
         if (run.timedOut) {
-            if (await this.#isOn(cwd, plan.branch)) return await this.#made(cwd, plan, 'The post-checkout hook did not finish in time');
+            if (await this.#isOn(cwd, plan.branch))
+                return await this.#made(cwd, plan, 'The post-checkout hook did not finish in time');
 
             throw unavailable('The switch did not finish in time');
         }
@@ -218,7 +267,7 @@ export class GitSwitch {
 
     /** HEAD is on the branch. */
     async #isOn(cwd: string, branch: string): Promise<boolean> {
-        return await gitAnswer(cwd, ['symbolic-ref', '--quiet', '--short', 'HEAD']) === branch;
+        return (await gitAnswer(cwd, ['symbolic-ref', '--quiet', '--short', 'HEAD'])) === branch;
     }
 
     /**
@@ -229,32 +278,44 @@ export class GitSwitch {
         const left = plan.leaving === undefined ? undefined : await commitsLeftBehind(cwd, plan.leaving);
         const warning = [hook, left].filter(line => line !== undefined).join('; ');
 
-        return { ...await this.#where(cwd), ...(plan.created && { created: true as const }), ...(warning !== '' && { warning }) };
+        return {
+            ...(await this.#where(cwd)),
+            ...(plan.created && { created: true as const }),
+            ...(warning !== '' && { warning }),
+        };
     }
 
     /** Where HEAD is now, and the upstream of the branch it is on. */
     async #where(cwd: string): Promise<GitSwitchResult> {
-        const read = await gitRead(cwd, ['status', '--porcelain=v2', '--branch', '--untracked-files=no', '-z'], { parsed: true });
+        const read = await gitRead(cwd, ['status', '--porcelain=v2', '--branch', '--untracked-files=no', '-z'], {
+            parsed: true,
+        });
 
         if (!read.ok) throw unavailable('git did not say where HEAD is');
 
         const { commit, branch, upstream } = parseStatus(read.stdout.split('\0'));
-        const head: GitHead = branch === undefined ? { kind: 'detached', commit: commit ?? '' } : commit === undefined ? { kind: 'unborn', name: branch } : { kind: 'branch', name: branch, commit };
+        const head: GitHead =
+            branch === undefined
+                ? { kind: 'detached', commit: commit ?? '' }
+                : commit === undefined
+                  ? { kind: 'unborn', name: branch }
+                  : { kind: 'branch', name: branch, commit };
 
         return { head, ...(upstream && { upstream }) };
     }
 }
 
 /** A control character: none is in a branch name. */
-// eslint-disable-next-line no-control-regex
+// biome-ignore lint/suspicious/noControlCharactersInRegex: the control characters are what it looks for
 const CONTROL = /[\x00-\x1F\x7F]/;
 
 /** A name as it is shown in a message: what a person typed may hold a control character (a line break), which would break the line. */
-// eslint-disable-next-line no-control-regex
+// biome-ignore lint/suspicious/noControlCharactersInRegex: the control characters are what it replaces
 const printable = (text: string): string => text.replace(/[\x00-\x1F\x7F]/g, ' ').trim();
 
 /** What git itself says on a switch that worked, which is not what a hook that failed after it said. */
-const GIT_SAYS = /^(?:Switched to |Already on |Your branch |branch '.*' set up to track|Note: |HEAD is now |Previous HEAD|Updating files|Warning: you are leaving )/;
+const GIT_SAYS =
+    /^(?:Switched to |Already on |Your branch |branch '.*' set up to track|Note: |HEAD is now |Previous HEAD|Updating files|Warning: you are leaving )/;
 
 /** The line of a hook that failed after a switch: the first thing printed that is not git's own report of it; a hook that said nothing is still named. */
 function hookLine(stderr: string, stdout: string): string {
@@ -267,7 +328,8 @@ function hookLine(stderr: string, stdout: string): string {
 function startOf(create: unknown): GitSwitchStart {
     const start = (create as { start?: unknown } | null)?.start;
 
-    if (start !== 'current' && start !== 'default') throw invalid('A new branch starts from the current branch or from the default branch');
+    if (start !== 'current' && start !== 'default')
+        throw invalid('A new branch starts from the current branch or from the default branch');
 
     return start;
 }
@@ -297,7 +359,9 @@ async function commitsLeftBehind(cwd: string, commit: string): Promise<string | 
 
     const short = commit.slice(0, 7);
 
-    return count === 1 ? `The commit ${ short } is on no branch now` : `${ short } and ${ count - 1 } earlier ${ count === 2 ? 'commit are' : 'commits are' } on no branch now`;
+    return count === 1
+        ? `The commit ${short} is on no branch now`
+        : `${short} and ${count - 1} earlier ${count === 2 ? 'commit are' : 'commits are'} on no branch now`;
 }
 
 /** Whether the repository has a ref. A git that cannot be asked is `unavailable`, never "no". */
@@ -322,7 +386,7 @@ async function heldBy(cwd: string, branch: string): Promise<string | undefined> 
     const own = await placeOf(cwd);
 
     for (const entry of parseWorktrees(read.stdout)) {
-        if (entry.branch === branch && await placeOf(entry.path) !== own) return resolve(entry.path);
+        if (entry.branch === branch && (await placeOf(entry.path)) !== own) return resolve(entry.path);
     }
 
     return undefined;
@@ -338,7 +402,7 @@ async function operationUnderWay(cwd: string): Promise<string | undefined> {
 
     for (const [index, { name }] of UNDER_WAY.entries()) {
         // `--git-path` is relative to where git runs (the working tree's own `.git`, or the linked worktree's git directory).
-        if (lines[index] && await isOnDisk(resolve(cwd, lines[index]))) return name;
+        if (lines[index] && (await isOnDisk(resolve(cwd, lines[index])))) return name;
     }
 
     return undefined;

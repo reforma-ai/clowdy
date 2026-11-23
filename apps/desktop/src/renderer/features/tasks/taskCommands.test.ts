@@ -1,13 +1,13 @@
 // @vitest-environment happy-dom
-import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 
 import { commandHint, findKeyConflicts } from '../../hotkeys';
 import { installDispatcher } from '../../hotkeys/dispatcher';
 import { groupHelpEntries, helpEntries } from '../../hotkeys/helpEntries';
-import { ListCursor, type Grid } from '../../hotkeys/listCursor';
+import { type Grid, ListCursor } from '../../hotkeys/listCursor';
 import { createRegistry, type HotkeyRegistry } from '../../hotkeys/registry';
 import { createUndoStack, type UndoStack } from '../../hotkeys/undo';
-import { focusZoneOf, taskCommands, TASKS_SCOPE, type FocusZone, type TaskCommandDeps } from './taskCommands';
+import { type FocusZone, focusZoneOf, TASKS_SCOPE, type TaskCommandDeps, taskCommands } from './taskCommands';
 import { TaskTree } from './taskTree';
 
 import type { OpenConfirmModalOptions } from '@clowdy/components/modals';
@@ -37,7 +37,7 @@ function fakeTask(id: string, rest: Partial<Task> = {}): Task {
         projectId: 'p',
         number: 1,
         key: id.toUpperCase(),
-        title: `Task ${ id }`,
+        title: `Task ${id}`,
         description: '',
         statusId: 'todo',
         dependsOn: [],
@@ -113,7 +113,12 @@ let uninstall: (() => void) | undefined;
  * The commands in an isolated registry with the dispatcher on `document`, and the scope pushed as `Screen` does.
  * The focus zone is `state.zone` unless `zoneOf` reads it from the DOM.
  */
-function setup(grid: Grid, view: TasksView = 'board', zoneOf?: () => FocusZone, tasks: Task[] = grid.flat().map((id, index) => fakeTask(id, { number: index + 1 }))): Harness {
+function setup(
+    grid: Grid,
+    view: TasksView = 'board',
+    zoneOf?: () => FocusZone,
+    tasks: Task[] = grid.flat().map((id, index) => fakeTask(id, { number: index + 1 }))
+): Harness {
     // A test that sets up twice must not leave the first dispatcher listening.
     uninstall?.();
 
@@ -121,19 +126,33 @@ function setup(grid: Grid, view: TasksView = 'board', zoneOf?: () => FocusZone, 
     const cursor = new ListCursor();
     const ui: Harness['ui'] = {
         taskId: null,
-        openTask: vi.fn<(taskId: string | null) => void>((id) => {
+        openTask: vi.fn<(taskId: string | null) => void>(id => {
             ui.taskId = id;
         }),
         openChat: vi.fn<(chatId: string | null) => void>(),
         openDoc: vi.fn<(path: string | null) => void>(),
     };
-    const setView = vi.fn<(view: TasksView) => void>((next) => {
+    const setView = vi.fn<(view: TasksView) => void>(next => {
         state.view = next;
     });
     const scoped: Harness['scoped'] = { opened: [], up: 0 };
     const folds: Harness['folds'] = [];
     const known = new Set(grid.flat());
-    const state: Harness['state'] = { view, scope: null, archive: false, rows: [], full: new Set(), zone: 'list', focused: true, tasks, refused: new Set(), blocked: new Map(), chats: new Map(), docs: new Map(), docsFail: false };
+    const state: Harness['state'] = {
+        view,
+        scope: null,
+        archive: false,
+        rows: [],
+        full: new Set(),
+        zone: 'list',
+        focused: true,
+        tasks,
+        refused: new Set(),
+        blocked: new Map(),
+        chats: new Map(),
+        docs: new Map(),
+        docsFail: false,
+    };
     const reveal = vi.fn<() => void>();
     const sent: CommandInput[][] = [];
     const pickers: PickerRequest[] = [];
@@ -164,16 +183,19 @@ function setup(grid: Grid, view: TasksView = 'board', zoneOf?: () => FocusZone, 
         tasks: () => state.tasks,
         statuses: () => STATUSES,
         startBlocked: id => state.blocked.get(id) ?? null,
-        send: async (inputs) => {
+        send: async inputs => {
             sent.push([...inputs]);
 
-            return inputs.map((input): CommandResult => ('taskId' in input && state.refused.has(input.taskId)
-                ? { ok: false, requestId: 'r', error: { code: 'invalid', message: 'No' } }
-                : { ok: true, requestId: 'r', data: {} }));
+            return inputs.map(
+                (input): CommandResult =>
+                    'taskId' in input && state.refused.has(input.taskId)
+                        ? { ok: false, requestId: 'r', error: { code: 'invalid', message: 'No' } }
+                        : { ok: true, requestId: 'r', data: {} }
+            );
         },
         undo: { canUndo: () => undo.canUndo(UNDO_SCOPE), undoLatest: () => undo.undoLatest(UNDO_SCOPE) },
         archive: tasks => void archived.push(tasks.map(task => task.id)),
-        start: async (id) => {
+        start: async id => {
             started.push(id);
         },
         openPicker: request => pickers.push(request),
@@ -184,7 +206,7 @@ function setup(grid: Grid, view: TasksView = 'board', zoneOf?: () => FocusZone, 
         focusSearch: () => void asked.search++,
         openChat: chatId => ui.openChat(chatId),
         chatsOf: id => state.chats.get(id) ?? [],
-        docPathOf: async (id) => {
+        docPathOf: async id => {
             if (state.docsFail) throw new Error('No answer');
 
             return state.docs.get(id) ?? null;
@@ -200,7 +222,28 @@ function setup(grid: Grid, view: TasksView = 'board', zoneOf?: () => FocusZone, 
 
     uninstall = installDispatcher(registry);
 
-    return { cursor, ui, setView, scoped, folds, reveal, known, state, sent, pickers, confirms, archived, started, titles, registry, undo, asked, copied, notices, deps };
+    return {
+        cursor,
+        ui,
+        setView,
+        scoped,
+        folds,
+        reveal,
+        known,
+        state,
+        sent,
+        pickers,
+        confirms,
+        archived,
+        started,
+        titles,
+        registry,
+        undo,
+        asked,
+        copied,
+        notices,
+        deps,
+    };
 }
 
 /** Returns whether a command took the key (the dispatcher calls `preventDefault`). */
@@ -543,8 +586,9 @@ describe('where the keys apply', () => {
             expect(zone()).toBe('other');
         });
 
-        it('is the nav only for the shell\'s navigation, and other for a nav inside the screen', () => {
-            document.body.innerHTML = '<nav><button id="rail"></button></nav><main><nav><button id="crumb"></button></nav><div id="region"></div></main>';
+        it("is the nav only for the shell's navigation, and other for a nav inside the screen", () => {
+            document.body.innerHTML =
+                '<nav><button id="rail"></button></nav><main><nav><button id="crumb"></button></nav><div id="region"></div></main>';
 
             const region = document.getElementById('region');
 
@@ -618,12 +662,19 @@ describe('Change status', () => {
     it('opens a picker with every status in workflow order, with the cursor task current', () => {
         const harness = setup(list, 'list');
 
-        harness.state.tasks = harness.state.tasks.map(task => (task.id === 'a1' ? { ...task, statusId: 'review' } : task));
+        harness.state.tasks = harness.state.tasks.map(task =>
+            task.id === 'a1' ? { ...task, statusId: 'review' } : task
+        );
         press('s');
 
         const [picker] = harness.pickers;
 
-        expect(picker.options.map(option => [option.id, option.label])).toEqual([['todo', 'To do'], ['active', 'In progress'], ['review', 'In review'], ['done', 'Done']]);
+        expect(picker.options.map(option => [option.id, option.label])).toEqual([
+            ['todo', 'To do'],
+            ['active', 'In progress'],
+            ['review', 'In review'],
+            ['done', 'Done'],
+        ]);
         expect(picker.selectedIds).toEqual(['review']);
     });
 
@@ -638,7 +689,9 @@ describe('Change status', () => {
     it('acts on the selection, in the order of the list, and marks no status when the tasks disagree', () => {
         const harness = setup(list, 'list');
 
-        harness.state.tasks = harness.state.tasks.map(task => (task.id === 'a3' ? { ...task, statusId: 'active' } : task));
+        harness.state.tasks = harness.state.tasks.map(task =>
+            task.id === 'a3' ? { ...task, statusId: 'active' } : task
+        );
         press('x');
         press('j');
         press('j');
@@ -649,10 +702,12 @@ describe('Change status', () => {
 
         harness.pickers[0].onPick('done');
 
-        expect(harness.sent).toEqual([[
-            { type: 'task.update', taskId: 'a1', statusId: 'done' },
-            { type: 'task.update', taskId: 'a3', statusId: 'done' },
-        ]]);
+        expect(harness.sent).toEqual([
+            [
+                { type: 'task.update', taskId: 'a1', statusId: 'done' },
+                { type: 'task.update', taskId: 'a3', statusId: 'done' },
+            ],
+        ]);
     });
 
     it('marks the status the selected tasks share', () => {
@@ -669,7 +724,9 @@ describe('Change status', () => {
     it('skips the tasks that are already in the status', () => {
         const harness = setup(list, 'list');
 
-        harness.state.tasks = harness.state.tasks.map(task => (task.id === 'a2' ? { ...task, statusId: 'done' } : task));
+        harness.state.tasks = harness.state.tasks.map(task =>
+            task.id === 'a2' ? { ...task, statusId: 'done' } : task
+        );
         press('a', { metaKey: true });
         press('s');
         harness.pickers[0].onPick('done');
@@ -801,7 +858,7 @@ describe('the tree list', () => {
         expect(harness.folds).toEqual([]);
     });
 
-    it('keeps the board\'s columns for the arrows when the screen shows a board', () => {
+    it("keeps the board's columns for the arrows when the screen shows a board", () => {
         const { cursor } = setup(board);
 
         cursor.setCursor('a1');
@@ -814,7 +871,12 @@ describe('the tree list', () => {
         const { registry } = setupTree();
         const titles = helpEntries(registry).map(({ command }) => command.title);
 
-        expect(titles).toEqual(expect.arrayContaining(['Move to the column on the left, or fold the row', 'Move to the column on the right, or unfold the row']));
+        expect(titles).toEqual(
+            expect.arrayContaining([
+                'Move to the column on the left, or fold the row',
+                'Move to the column on the right, or unfold the row',
+            ])
+        );
     });
 });
 
@@ -857,7 +919,9 @@ describe('the scope of the screen', () => {
 
         expect(scoped.opened).toEqual([]);
         expect(pickers).toEqual([]);
-        expect(notices).toEqual([{ message: 'A1 cannot hold sub-tasks: tasks go only 8 levels deep', tone: undefined }]);
+        expect(notices).toEqual([
+            { message: 'A1 cannot hold sub-tasks: tasks go only 8 levels deep', tone: undefined },
+        ]);
     });
 
     it('is off while the focus is in a widget of the screen that keeps its keys', () => {
@@ -870,7 +934,7 @@ describe('the scope of the screen', () => {
         expect(scoped.opened).toEqual([]);
     });
 
-    it('U goes up one level inside a task, and at the roots the key is the page\'s', () => {
+    it("U goes up one level inside a task, and at the roots the key is the page's", () => {
         const { scoped, state } = setup(list, 'list');
 
         expect(press('u')).toBe(false);
@@ -898,7 +962,9 @@ describe('Move to the next or previous status', () => {
     it('moves the cursor task one status on, with Option+Right on macOS, and one back with Option+Left', () => {
         const harness = setup(list, 'list');
 
-        harness.state.tasks = harness.state.tasks.map(task => (task.id === 'a1' ? { ...task, statusId: 'active' } : task));
+        harness.state.tasks = harness.state.tasks.map(task =>
+            task.id === 'a1' ? { ...task, statusId: 'active' } : task
+        );
 
         expect(press('ArrowRight', { altKey: true })).toBe(true);
         expect(harness.sent).toEqual([[{ type: 'task.update', taskId: 'a1', statusId: 'review' }]]);
@@ -911,7 +977,10 @@ describe('Move to the next or previous status', () => {
     it('moves every selected task, each from its own status, and leaves the ones at the end where they are', () => {
         const harness = setup(list, 'list');
 
-        harness.state.tasks = harness.state.tasks.map(task => ({ ...task, statusId: ({ a1: 'todo', a2: 'active', a3: 'done' } as Record<string, string>)[task.id] ?? 'todo' }));
+        harness.state.tasks = harness.state.tasks.map(task => ({
+            ...task,
+            statusId: ({ a1: 'todo', a2: 'active', a3: 'done' } as Record<string, string>)[task.id] ?? 'todo',
+        }));
         press('x');
         press('j');
         press('x');
@@ -919,10 +988,12 @@ describe('Move to the next or previous status', () => {
         press('x');
         press('ArrowRight', { altKey: true });
 
-        expect(harness.sent).toEqual([[
-            { type: 'task.update', taskId: 'a1', statusId: 'active' },
-            { type: 'task.update', taskId: 'a2', statusId: 'review' },
-        ]]);
+        expect(harness.sent).toEqual([
+            [
+                { type: 'task.update', taskId: 'a1', statusId: 'active' },
+                { type: 'task.update', taskId: 'a2', statusId: 'review' },
+            ],
+        ]);
     });
 
     it('does nothing at the ends of the workflow, and takes the key all the same', () => {
@@ -998,7 +1069,12 @@ describe('Move to the next or previous status', () => {
 
 describe('Blocked by and blocking', () => {
     // a2 depends on a1, a3 on a2.
-    const chain = () => [fakeTask('a1', { number: 1 }), fakeTask('a2', { number: 2, dependsOn: ['a1'] }), fakeTask('a3', { number: 3, dependsOn: ['a2'] }), fakeTask('b1', { number: 4 })];
+    const chain = () => [
+        fakeTask('a1', { number: 1 }),
+        fakeTask('a2', { number: 2, dependsOn: ['a1'] }),
+        fakeTask('a3', { number: 3, dependsOn: ['a2'] }),
+        fakeTask('b1', { number: 4 }),
+    ];
     const open = (keys: string, cursorOn: string) => {
         const harness = setup([['a1', 'a2', 'a3', 'b1']], 'list', undefined, chain());
 
@@ -1343,7 +1419,11 @@ describe('Delete', () => {
 
         expect(press('Backspace', { metaKey: true })).toBe(true);
         expect(harness.confirms).toHaveLength(1);
-        expect(harness.confirms[0]).toMatchObject({ title: 'Delete 3 tasks?', confirmLabel: 'Delete', destructive: true });
+        expect(harness.confirms[0]).toMatchObject({
+            title: 'Delete 3 tasks?',
+            confirmLabel: 'Delete',
+            destructive: true,
+        });
         expect(harness.confirms[0].message).toContain('3 selected tasks');
         expect(harness.sent).toEqual([]);
     });
@@ -1368,7 +1448,12 @@ describe('Delete', () => {
         press('Backspace', { metaKey: true });
         await harness.confirms[0].onConfirm();
 
-        expect(harness.sent).toEqual([[{ type: 'task.delete', taskId: 'a1' }, { type: 'task.delete', taskId: 'a2' }]]);
+        expect(harness.sent).toEqual([
+            [
+                { type: 'task.delete', taskId: 'a1' },
+                { type: 'task.delete', taskId: 'a2' },
+            ],
+        ]);
         expect(harness.ui.openTask).toHaveBeenCalledTimes(1);
         expect(harness.ui.openTask).toHaveBeenCalledWith(null);
     });
@@ -1458,7 +1543,14 @@ describe('while a picker or a dialog is open, or a text field has focus', () => 
 
         for (const [key, init] of keys) expect(press(key, init, input)).toBe(false);
 
-        expect([harness.sent, harness.pickers, harness.confirms, harness.archived, harness.started, harness.titles]).toEqual([[], [], [], [], [], []]);
+        expect([
+            harness.sent,
+            harness.pickers,
+            harness.confirms,
+            harness.archived,
+            harness.started,
+            harness.titles,
+        ]).toEqual([[], [], [], [], [], []]);
     });
 
     it('leaves every key of Stage 5 alone, because the dispatcher treats them as an overlay', () => {
@@ -1644,7 +1736,13 @@ describe('New task, view, filter and search', () => {
         dialog.setAttribute('data-modal-overlay', '');
         document.body.append(dialog);
 
-        for (const [key, init] of [['c', {}], ['f', {}], ['/', {}], ['b', { metaKey: true }]] as [string, KeyboardEventInit][]) expect(press(key, init)).toBe(false);
+        for (const [key, init] of [
+            ['c', {}],
+            ['f', {}],
+            ['/', {}],
+            ['b', { metaKey: true }],
+        ] as [string, KeyboardEventInit][])
+            expect(press(key, init)).toBe(false);
 
         expect(harness.asked).toEqual({ created: 0, filter: 0, search: 0 });
     });
@@ -1660,7 +1758,7 @@ describe('Copy the key or the title', () => {
         expect(harness.copied).toEqual([{ text: 'A2', message: 'Copied A2' }]);
     });
 
-    it('Cmd+Shift+\' copies the title, by the physical key because Shift types a double quote', () => {
+    it("Cmd+Shift+' copies the title, by the physical key because Shift types a double quote", () => {
         const harness = setup(list, 'list');
 
         press('j');
@@ -1721,7 +1819,7 @@ describe('Copy the key or the title', () => {
         const { registry } = setup(list, 'list');
 
         expect(commandHint('tasks.copy.key', registry)).toEqual([['meta', '.']]);
-        expect(commandHint('tasks.copy.title', registry)).toEqual([['shift', 'meta', '\'']]);
+        expect(commandHint('tasks.copy.title', registry)).toEqual([['shift', 'meta', "'"]]);
     });
 });
 
@@ -1729,7 +1827,11 @@ describe('Open the linked chat and document', () => {
     it('O then C opens the newest chat of the cursor task', () => {
         const harness = setup(list, 'list');
 
-        harness.state.chats.set('a2', [{ id: 'older', updatedAt: 5 }, { id: 'newest', updatedAt: 9 }, { id: 'middle', updatedAt: 7 }]);
+        harness.state.chats.set('a2', [
+            { id: 'older', updatedAt: 5 },
+            { id: 'newest', updatedAt: 9 },
+            { id: 'middle', updatedAt: 7 },
+        ]);
         press('j');
         press('o');
 
@@ -1846,7 +1948,11 @@ describe('Open the linked chat and document', () => {
 
 describe('Undo', () => {
     /** An entry that counts its runs, and resolves to `worked`. */
-    const entryOf = (label: string, worked = true) => ({ scope: UNDO_SCOPE, label, undo: vi.fn<() => Promise<boolean>>(async () => worked) });
+    const entryOf = (label: string, worked = true) => ({
+        scope: UNDO_SCOPE,
+        label,
+        undo: vi.fn<() => Promise<boolean>>(async () => worked),
+    });
 
     it('leaves the changes of another project alone: no key, no hint, nothing taken back', async () => {
         const harness = setup(list, 'list');
@@ -1922,7 +2028,7 @@ describe('Undo', () => {
         expect(press('z', { metaKey: true })).toBe(false);
     });
 
-    it('does not need the list to have the focus: the history is the window\'s', async () => {
+    it("does not need the list to have the focus: the history is the window's", async () => {
         const harness = setup(list, 'list');
         const entry = entryOf('change');
 
@@ -2001,10 +2107,15 @@ describe('where the focus is, and the shortcuts page and the key hints', () => {
 
         harness.state.zone = 'other';
 
-        const dead = harness.registry.listCommands().all.filter(command => !harness.registry.listCommands().live.includes(command)).map(command => command.id);
+        const dead = harness.registry
+            .listCommands()
+            .all.filter(command => !harness.registry.listCommands().live.includes(command))
+            .map(command => command.id);
 
         // Only what has nothing to act on: the column keys with no row to fold in a flat list, Escape with nothing open or selected, Go up at the roots, and Undo with nothing to take back.
-        expect(dead.sort()).toEqual(['tasks.cursor.left', 'tasks.cursor.right', 'tasks.escape', 'tasks.scope.up', 'tasks.undo'].sort());
+        expect(dead.sort()).toEqual(
+            ['tasks.cursor.left', 'tasks.cursor.right', 'tasks.escape', 'tasks.scope.up', 'tasks.undo'].sort()
+        );
     });
 });
 
@@ -2019,7 +2130,20 @@ describe('the shortcuts page', () => {
 
         expect(new Set(titles).size).toBe(titles.length);
         expect(titles.every(title => title.trim().length >= 4 && !title.endsWith('.'))).toBe(true);
-        expect(titles).toEqual(expect.arrayContaining(['New task', 'Switch between board and list', 'Filter tasks', 'Search tasks', 'Copy task key', 'Copy task title', 'Open linked chat', 'Open latest document', 'Open sub-tasks', 'Go up one level']));
+        expect(titles).toEqual(
+            expect.arrayContaining([
+                'New task',
+                'Switch between board and list',
+                'Filter tasks',
+                'Search tasks',
+                'Copy task key',
+                'Copy task title',
+                'Open linked chat',
+                'Open latest document',
+                'Open sub-tasks',
+                'Go up one level',
+            ])
+        );
     });
 
     it('writes the new keys as the capsules read them', () => {

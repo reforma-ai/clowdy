@@ -41,8 +41,12 @@ const DEFAULT_MAX_CHARS = 4 * 1024 * 1024;
  * its own process group so the deadline takes its children down too, and nothing is thrown: a program that cannot be
  * started is a result with `error`.
  */
-export function runProgram(command: string, args: string[], { env, cwd, timeoutMs, maxChars = DEFAULT_MAX_CHARS, input, signal, stopSignal = 'SIGKILL' }: RunOptions): Promise<RunResult> {
-    return new Promise((resolve) => {
+export function runProgram(
+    command: string,
+    args: string[],
+    { env, cwd, timeoutMs, maxChars = DEFAULT_MAX_CHARS, input, signal, stopSignal = 'SIGKILL' }: RunOptions
+): Promise<RunResult> {
+    return new Promise(resolve => {
         let child: ReturnType<typeof spawn>;
 
         if (signal?.aborted) {
@@ -52,16 +56,27 @@ export function runProgram(command: string, args: string[], { env, cwd, timeoutM
         }
 
         try {
-            child = spawn(command, args, { cwd, env, stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'], detached: process.platform !== 'win32', windowsHide: true });
+            child = spawn(command, args, {
+                cwd,
+                env,
+                stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
+                detached: process.platform !== 'win32',
+                windowsHide: true,
+            });
 
             if (input !== undefined) {
                 // A program that exits before it reads its input must not take the daemon down with an EPIPE.
                 child.stdin?.on('error', () => undefined);
                 child.stdin?.end(input);
             }
-        }
-        catch (error) {
-            resolve({ code: null, stdout: '', stderr: '', timedOut: false, error: error instanceof Error ? error.message : String(error) });
+        } catch (error) {
+            resolve({
+                code: null,
+                stdout: '',
+                stderr: '',
+                timedOut: false,
+                error: error instanceof Error ? error.message : String(error),
+            });
 
             return;
         }
@@ -83,8 +98,7 @@ export function runProgram(command: string, args: string[], { env, cwd, timeoutM
         const killGroup = (name: NodeJS.Signals = 'SIGKILL') => {
             if (child.pid !== undefined) {
                 killProcessGroup(child.pid, name);
-            }
-            else {
+            } else {
                 child.kill(name);
             }
         };
@@ -124,7 +138,7 @@ export function runProgram(command: string, args: string[], { env, cwd, timeoutM
         child.once('error', error => finish({ code: null, error: error.message }));
         // What the program left running goes with it, at once: a leftover that holds the pipes open would keep `close` from ever coming.
         child.once('exit', () => killGroup());
-        child.once('close', (code) => {
+        child.once('close', code => {
             clearTimeout(grace);
             killGroup();
             finish({ code });

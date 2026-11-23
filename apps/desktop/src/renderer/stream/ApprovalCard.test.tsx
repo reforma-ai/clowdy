@@ -34,7 +34,8 @@ const approval = (fields: Partial<Approval> = {}): Approval => ({
     state: 'open',
     ...fields,
 });
-const draw = (fields?: Partial<Approval>, onDecide?: (decision: ApprovalDecision) => void | Promise<void>) => act(async () => root.render(<ApprovalCard approval={ approval(fields) } onDecide={ onDecide } />));
+const draw = (fields?: Partial<Approval>, onDecide?: (decision: ApprovalDecision) => void | Promise<void>) =>
+    act(async () => root.render(<ApprovalCard approval={approval(fields)} onDecide={onDecide} />));
 const buttons = () => [...container.querySelectorAll<HTMLButtonElement>('button')];
 const button = (label: string) => buttons().find(candidate => candidate.textContent === label);
 const labels = () => buttons().map(candidate => candidate.textContent);
@@ -60,7 +61,7 @@ describe('ApprovalCard', () => {
 
             await act(async () => button('Show 2 more lines')!.click());
 
-            expect(code()).toBe(`$ ${ command }`);
+            expect(code()).toBe(`$ ${command}`);
             expect(button('Show less')?.getAttribute('aria-expanded')).toBe('true');
 
             await act(async () => button('Show less')!.click());
@@ -79,10 +80,16 @@ describe('ApprovalCard', () => {
         });
 
         it('lists the files a change touches, one to a line', async () => {
-            await draw({ subject: { kind: 'file_change', paths: ['src/booking/price.ts', 'src/booking/steps.tsx'] } }, vi.fn());
+            await draw(
+                { subject: { kind: 'file_change', paths: ['src/booking/price.ts', 'src/booking/steps.tsx'] } },
+                vi.fn()
+            );
 
             expect(container.textContent).toContain('Change these files');
-            expect([...container.querySelectorAll('li')].map(row => row.textContent)).toEqual(['src/booking/price.ts', 'src/booking/steps.tsx']);
+            expect([...container.querySelectorAll('li')].map(row => row.textContent)).toEqual([
+                'src/booking/price.ts',
+                'src/booking/steps.tsx',
+            ]);
 
             await draw({ subject: { kind: 'file_change', paths: ['src/booking/price.ts'] } }, vi.fn());
 
@@ -90,18 +97,30 @@ describe('ApprovalCard', () => {
         });
 
         it('names a tool and says what it does, from its detail or else from what the agent calls the request', async () => {
-            await draw({ title: 'Publish', subject: { kind: 'tool_use', tool: 'mcp__docs__publish', detail: 'Publish "Rules" to the docs' } }, vi.fn());
+            await draw(
+                {
+                    title: 'Publish',
+                    subject: { kind: 'tool_use', tool: 'mcp__docs__publish', detail: 'Publish "Rules" to the docs' },
+                },
+                vi.fn()
+            );
 
             expect(container.textContent).toContain('Use mcp__docs__publish');
             expect(container.textContent).toContain('Publish "Rules" to the docs');
             expect(container.textContent).not.toContain('Publish.');
 
-            await draw({ title: 'Create a page in the docs', subject: { kind: 'tool_use', tool: 'mcp__docs__create' } }, vi.fn());
+            await draw(
+                { title: 'Create a page in the docs', subject: { kind: 'tool_use', tool: 'mcp__docs__create' } },
+                vi.fn()
+            );
 
             expect(container.textContent).toContain('Create a page in the docs');
 
             // A title that only repeats the tool's name adds nothing.
-            await draw({ title: 'mcp__docs__create', subject: { kind: 'tool_use', tool: 'mcp__docs__create' } }, vi.fn());
+            await draw(
+                { title: 'mcp__docs__create', subject: { kind: 'tool_use', tool: 'mcp__docs__create' } },
+                vi.fn()
+            );
 
             expect(container.textContent?.match(/mcp__docs__create/g)).toHaveLength(1);
         });
@@ -111,7 +130,9 @@ describe('ApprovalCard', () => {
         it('has a button for each answer the agent allows, Deny first and Allow once last', async () => {
             await draw({}, vi.fn());
 
-            expect(labels().filter(label => ['Deny', 'Allow for session', 'Allow once'].includes(label ?? ''))).toEqual(['Deny', 'Allow for session', 'Allow once']);
+            expect(labels().filter(label => ['Deny', 'Allow for session', 'Allow once'].includes(label ?? ''))).toEqual(
+                ['Deny', 'Allow for session', 'Allow once']
+            );
 
             await draw({ decisions: ['allow_once', 'reject'] }, vi.fn());
 
@@ -135,9 +156,12 @@ describe('ApprovalCard', () => {
 
         it('spins the button that was pressed and holds the others until the answer is taken, then lets the person try again', async () => {
             let finish: () => void = () => undefined;
-            const onDecide = vi.fn(() => new Promise<void>((resolve) => {
-                finish = resolve;
-            }));
+            const onDecide = vi.fn(
+                () =>
+                    new Promise<void>(resolve => {
+                        finish = resolve;
+                    })
+            );
 
             await draw({}, onDecide);
             await act(async () => button('Allow once')!.click());
@@ -159,9 +183,12 @@ describe('ApprovalCard', () => {
 
         it('shows what another window decided while this one still waits for its own answer', async () => {
             let finish: () => void = () => undefined;
-            const onDecide = vi.fn(() => new Promise<void>((resolve) => {
-                finish = resolve;
-            }));
+            const onDecide = vi.fn(
+                () =>
+                    new Promise<void>(resolve => {
+                        finish = resolve;
+                    })
+            );
 
             await draw({}, onDecide);
             await act(async () => button('Allow once')!.click());

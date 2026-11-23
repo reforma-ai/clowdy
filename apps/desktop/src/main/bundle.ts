@@ -25,8 +25,12 @@ export function updatesDir(dataDir: string): string {
 export function parseBundleInfo(text: string): BundleInfo {
     const value = JSON.parse(text) as Partial<BundleInfo>;
 
-    if (!Number.isSafeInteger(value.version) || (value.version ?? 0) <= 0
-        || typeof value.minShell !== 'string' || !Number.isSafeInteger(value.protocol)) {
+    if (
+        !Number.isSafeInteger(value.version) ||
+        (value.version ?? 0) <= 0 ||
+        typeof value.minShell !== 'string' ||
+        !Number.isSafeInteger(value.protocol)
+    ) {
         throw new Error('bundle.json does not describe a bundle');
     }
 
@@ -38,7 +42,10 @@ export async function readBundleInfo(file: string): Promise<BundleInfo> {
 }
 
 async function exists(file: string): Promise<boolean> {
-    return access(file).then(() => true, () => false);
+    return access(file).then(
+        () => true,
+        () => false
+    );
 }
 
 /**
@@ -46,7 +53,7 @@ async function exists(file: string): Promise<boolean> {
  * `executables`, files in it, are made executable before the rename.
  */
 async function copyFolder(source: string, dest: string, executables: readonly string[] = []): Promise<void> {
-    const temp = `${ dest }.tmp-${ randomBytes(4).toString('hex') }`;
+    const temp = `${dest}.tmp-${randomBytes(4).toString('hex')}`;
 
     try {
         await cp(source, temp, { recursive: true });
@@ -54,8 +61,7 @@ async function copyFolder(source: string, dest: string, executables: readonly st
         for (const executable of executables) await chmod(path.join(temp, executable), 0o755);
 
         await renameWhenFree(temp, dest);
-    }
-    finally {
+    } finally {
         await rm(temp, { recursive: true, force: true });
     }
 }
@@ -70,8 +76,7 @@ export async function renameWhenFree(from: string, to: string): Promise<void> {
             await rename(from, to);
 
             return;
-        }
-        catch (error) {
+        } catch (error) {
             const busy = ['EPERM', 'EACCES', 'EBUSY'].includes((error as NodeJS.ErrnoException).code ?? '');
 
             if (!busy || delay === undefined) throw error;
@@ -109,43 +114,64 @@ export interface InstallBunOptions {
  * reused; it is complete, because it appears in one rename. Ripgrep is in the folder's name, so a shell that adds or
  * raises it makes a new copy instead of reusing an older shell's, which has none.
  */
-export async function installBun({ resources, updates, platform = process.platform, arch = process.arch }: InstallBunOptions): Promise<string> {
+export async function installBun({
+    resources,
+    updates,
+    platform = process.platform,
+    arch = process.arch,
+}: InstallBunOptions): Promise<string> {
     const exe = platform === 'win32' ? 'bun.exe' : 'bun';
     const source = path.join(resources, 'bun');
     const version = (await readFile(path.join(source, 'VERSION'), 'utf8')).trim();
     const rgVersion = (await readFile(path.join(source, RG_VERSION_FILE), 'utf8').catch(() => '')).trim();
     // Per arch too: a folder moved from an Intel Mac to Apple silicon must not hand over its x64 Bun.
-    const dir = path.join(updates, 'bun', `${ version }${ rgVersion ? `-rg${ rgVersion }` : '' }-${ arch }`);
+    const dir = path.join(updates, 'bun', `${version}${rgVersion ? `-rg${rgVersion}` : ''}-${arch}`);
     const bun = path.join(dir, exe);
 
-    if (!await exists(bun)) {
+    if (!(await exists(bun))) {
         const rg = rgName(platform);
 
-        await copyFolder(source, dir, await exists(path.join(source, rg)) ? [exe, rg] : [exe]);
+        await copyFolder(source, dir, (await exists(path.join(source, rg))) ? [exe, rg] : [exe]);
     }
 
     return bun;
 }
 
 /** The ripgrep beside `bun` (what `installBun` copied), or undefined when the runtime has none: the daemon then searches without it. */
-export async function installedRipgrep(bun: string, platform: NodeJS.Platform = process.platform): Promise<string | undefined> {
+export async function installedRipgrep(
+    bun: string,
+    platform: NodeJS.Platform = process.platform
+): Promise<string | undefined> {
     const rg = path.join(path.dirname(bun), rgName(platform));
 
-    return await exists(rg) ? rg : undefined;
+    return (await exists(rg)) ? rg : undefined;
 }
 
 /** The app's own bundle (its daemon and system skills), copied to `<updates>/bundles/<version>/` like Bun; resolves to that folder. */
-export async function installOwnBundle({ resources, updates, version }: { resources: string; updates: string; version: number }): Promise<string> {
+export async function installOwnBundle({
+    resources,
+    updates,
+    version,
+}: {
+    resources: string;
+    updates: string;
+    version: number;
+}): Promise<string> {
     const dir = path.join(updates, 'bundles', String(version));
 
-    if (!await exists(path.join(dir, 'daemon/main.js'))) await copyFolder(path.join(resources, 'bundle'), dir);
+    if (!(await exists(path.join(dir, 'daemon/main.js')))) await copyFolder(path.join(resources, 'bundle'), dir);
 
     return dir;
 }
 
 /** The daemon of a bundle folder (the app's own copy or an installed OTA bundle), run by `bun`, with `rg` to search files when the app has one. */
 export function bundleRuntime(bun: string, dir: string, rg?: string): DaemonRuntime {
-    return { bun, entry: path.join(dir, 'daemon/main.js'), skillsDir: path.join(dir, 'system-skills'), ...(rg && { rg }) };
+    return {
+        bun,
+        entry: path.join(dir, 'daemon/main.js'),
+        skillsDir: path.join(dir, 'system-skills'),
+        ...(rg && { rg }),
+    };
 }
 
 /**

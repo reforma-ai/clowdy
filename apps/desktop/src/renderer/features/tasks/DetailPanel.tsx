@@ -5,23 +5,23 @@ import { openConfirmModal } from '@clowdy/components/modals';
 import { Select } from '@clowdy/components/Select';
 import { Text } from '@clowdy/components/Text';
 import { Archive, ArrowUpRight, Box, Close, Layers } from '@clowdy/icons/14';
-import { useState, type Ref } from 'react';
+import { type Ref, useState } from 'react';
 
 import { commandTooltip } from '../../hotkeys';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { openChat, openRun as openRunInAgents } from '../chats/archiveChat';
 import { archiveTasks } from './archiveActions';
 import { archiveWording, openWork } from './archiveRules';
-import { sendCommand, startTask } from './commands';
 import { CommentsSection } from './CommentsSection';
+import { sendCommand, startTask } from './commands';
 import { DependencyList } from './DependencyList';
 import { DescriptionField } from './DescriptionField';
 import styles from './DetailPanel.module.css';
 import { Executors, LatestActivity, RelatedChats, Results, Section } from './DetailSections';
 import { EditableText } from './EditableText';
 import { ParentRow } from './ParentRow';
-import { StatusIcon } from './status';
 import { SubtasksSection } from './SubtasksSection';
+import { StatusIcon } from './status';
 import { ChecklistChip } from './TaskChips';
 import { taskNav } from './taskNav';
 import { checklistOf, parentCandidates, type TaskTree } from './taskTree';
@@ -46,7 +46,12 @@ export interface DetailPanelProps {
     onCreateSubtask: () => void;
 }
 
-type TaskChanges = Partial<Pick<Extract<CommandInput, { type: 'task.update' }>, 'title' | 'description' | 'statusId' | 'dependsOn' | 'parentId'>>;
+type TaskChanges = Partial<
+    Pick<
+        Extract<CommandInput, { type: 'task.update' }>,
+        'title' | 'description' | 'statusId' | 'dependsOn' | 'parentId'
+    >
+>;
 
 /**
  * The selected task, on the right of the section: edit it, see where it sits (its parent and the tasks inside it), who works on it and what came out, read and write
@@ -67,7 +72,8 @@ export function DetailPanel({ task, taskRuns, titleRef, onOpenSubtasks, tree, on
     const checklist = checklistOf(task);
 
     // The panel's edits (title, description, status, dependencies, parent) are the ones the person can take back.
-    const update = async (changes: TaskChanges) => (await sendWithUndo(root, project, [{ type: 'task.update', taskId: task.id, ...changes }]))[0].ok;
+    const update = async (changes: TaskChanges) =>
+        (await sendWithUndo(root, project, [{ type: 'task.update', taskId: task.id, ...changes }]))[0].ok;
 
     const start = async () => {
         setIsStarting(true);
@@ -79,7 +85,8 @@ export function DetailPanel({ task, taskRuns, titleRef, onOpenSubtasks, tree, on
 
     // A closed task goes to the archive with everything inside it; one with open work asks first, and says how many open tasks it cancels.
     const { action: archiveLabel } = archiveWording([task], openWork(task, tree, project.statuses).length > 0);
-    const archive = () => archiveTasks({ root, project, ui: nav, confirm: options => openConfirmModal(options) }, [task]);
+    const archive = () =>
+        archiveTasks({ root, project, ui: nav, confirm: options => openConfirmModal(options) }, [task]);
 
     const remove = async () => {
         const result = await sendCommand(root, { type: 'task.delete', taskId: task.id });
@@ -88,117 +95,164 @@ export function DetailPanel({ task, taskRuns, titleRef, onOpenSubtasks, tree, on
     };
 
     return (
-        <aside className={ styles.panel } aria-label={ `Task ${ task.key }` }>
-            <div className={ styles.head }>
-                <span className={ styles.key }>
-                    <Box aria-hidden width={ 12 } height={ 12 } />
-                    { task.key }
+        <aside className={styles.panel} aria-label={`Task ${task.key}`}>
+            <div className={styles.head}>
+                <span className={styles.key}>
+                    <Box aria-hidden width={12} height={12} />
+                    {task.key}
                 </span>
-                <Button iconOnly size="sm" variant="filling" aria-label="Close" tooltip="Close" onPress={ () => nav.openTask(null) }>
+                <Button
+                    iconOnly
+                    size="sm"
+                    variant="filling"
+                    aria-label="Close"
+                    tooltip="Close"
+                    onPress={() => nav.openTask(null)}
+                >
                     <Close />
                 </Button>
             </div>
 
-            <div className={ styles.body }>
-                <div className={ styles.top }>
+            <div className={styles.body}>
+                <div className={styles.top}>
                     <EditableText
-                        ref={ titleRef }
+                        ref={titleRef}
                         variant="title"
                         aria-label="Title"
                         required
-                        value={ task.title }
-                        onCommit={ title => update({ title }) }
+                        value={task.title}
+                        onCommit={title => update({ title })}
                     />
-                    { checklist && (
-                        <div className={ styles.chips }>
-                            <ChecklistChip checklist={ checklist } />
+                    {checklist && (
+                        <div className={styles.chips}>
+                            <ChecklistChip checklist={checklist} />
                         </div>
-                    ) }
+                    )}
                     <Select
                         aria-label="Status"
                         size="sm"
                         variant="bordered"
-                        className={ styles.status }
-                        popoverClassName={ styles.statusList }
-                        icon={ status && <StatusIcon category={ status.category } /> }
-                        items={ project.statuses }
-                        selectedKey={ task.statusId }
-                        onSelectionChange={ (key: unknown) => typeof key === 'string' && key !== task.statusId && void update({ statusId: key }) }
+                        className={styles.status}
+                        popoverClassName={styles.statusList}
+                        icon={status && <StatusIcon category={status.category} />}
+                        items={project.statuses}
+                        selectedKey={task.statusId}
+                        onSelectionChange={(key: unknown) =>
+                            typeof key === 'string' && key !== task.statusId && void update({ statusId: key })
+                        }
                     >
-                        { item => <ListBoxItem id={ item.id } text={ item.name } icon={ <StatusIcon category={ item.category } /> } /> }
+                        {item => (
+                            <ListBoxItem id={item.id} text={item.name} icon={<StatusIcon category={item.category} />} />
+                        )}
                     </Select>
-                    <DescriptionField value={ task.description } onSave={ description => update({ description }) } />
-                    { onOpenSubtasks && (
-                        <Button variant="bordered" size="sm" className={ styles.subtasks } tooltip={ commandTooltip('Open sub-tasks', 'tasks.subtasks.open') } onPress={ onOpenSubtasks }>
+                    <DescriptionField value={task.description} onSave={description => update({ description })} />
+                    {onOpenSubtasks && (
+                        <Button
+                            variant="bordered"
+                            size="sm"
+                            className={styles.subtasks}
+                            tooltip={commandTooltip('Open sub-tasks', 'tasks.subtasks.open')}
+                            onPress={onOpenSubtasks}
+                        >
                             <Layers />
                             Open sub-tasks
                         </Button>
-                    ) }
+                    )}
                 </div>
 
                 <ParentRow
-                    task={ task }
-                    parent={ tree.parentOf(task) }
-                    candidates={ parentCandidates(project.taskList, task) }
-                    statuses={ project.statuses }
-                    onOpen={ id => nav.openTask(id) }
-                    onChange={ parentId => void update({ parentId }) }
+                    task={task}
+                    parent={tree.parentOf(task)}
+                    candidates={parentCandidates(project.taskList, task)}
+                    statuses={project.statuses}
+                    onOpen={id => nav.openTask(id)}
+                    onChange={parentId => void update({ parentId })}
                 />
 
                 <SubtasksSection
-                    task={ task }
-                    subtasks={ tree.childrenOf(task.id) }
-                    rollUp={ tree.rollUp(task) }
-                    statuses={ project.statuses }
-                    canHaveChildren={ tree.canHaveChildren(task) }
-                    onOpen={ id => nav.openTask(id) }
-                    onCreate={ onCreateSubtask }
+                    task={task}
+                    subtasks={tree.childrenOf(task.id)}
+                    rollUp={tree.rollUp(task)}
+                    statuses={project.statuses}
+                    canHaveChildren={tree.canHaveChildren(task)}
+                    onOpen={id => nav.openTask(id)}
+                    onCreate={onCreateSubtask}
                 />
 
-                <Executors taskRuns={ taskRuns } onOpen={ openRun } />
+                <Executors taskRuns={taskRuns} onOpen={openRun} />
 
-                <Section title="Dependencies" count={ task.dependsOn.length }>
+                <Section title="Dependencies" count={task.dependsOn.length}>
                     <DependencyList
-                        ids={ task.dependsOn }
-                        tasks={ project.tasks }
-                        readings={ dependencies }
-                        statuses={ project.statuses }
-                        candidates={ dependencyCandidates(project.taskList, { taskId: task.id, taken: task.dependsOn }) }
-                        onAdd={ id => void update({ dependsOn: [...task.dependsOn, id] }) }
-                        onRemove={ id => void update({ dependsOn: task.dependsOn.filter(candidate => candidate !== id) }) }
-                        onOpen={ id => nav.openTask(id) }
+                        ids={task.dependsOn}
+                        tasks={project.tasks}
+                        readings={dependencies}
+                        statuses={project.statuses}
+                        candidates={dependencyCandidates(project.taskList, { taskId: task.id, taken: task.dependsOn })}
+                        onAdd={id => void update({ dependsOn: [...task.dependsOn, id] })}
+                        onRemove={id =>
+                            void update({ dependsOn: task.dependsOn.filter(candidate => candidate !== id) })
+                        }
+                        onOpen={id => nav.openTask(id)}
                     />
                 </Section>
 
                 <RelatedChats
-                    chats={ project.chatsOfTask(task.id) }
-                    onOpen={ chatId => void openChat(root, project, ui, chatId) }
+                    chats={project.chatsOfTask(task.id)}
+                    onOpen={chatId => void openChat(root, project, ui, chatId)}
                 />
 
-                <Results taskId={ task.id } expectChecks={ activeExecutors(taskRuns).length > 0 } onOpenDoc={ path => nav.openDoc(path) } />
+                <Results
+                    taskId={task.id}
+                    expectChecks={activeExecutors(taskRuns).length > 0}
+                    onOpenDoc={path => nav.openDoc(path)}
+                />
 
-                <LatestActivity activity={ taskActivity(task, taskRuns, project.runs) } />
+                <LatestActivity activity={taskActivity(task, taskRuns, project.runs)} />
 
-                <CommentsSection taskId={ task.id } onOpenRun={ openRun } onOpenTask={ id => nav.openTask(id) } />
+                <CommentsSection taskId={task.id} onOpenRun={openRun} onOpenTask={id => nav.openTask(id)} />
             </div>
 
-            <div className={ styles.foot }>
-                { blocked && <Text color="secondary">{ blocked }</Text> }
-                <div className={ styles.actions }>
+            <div className={styles.foot}>
+                {blocked && <Text color="secondary">{blocked}</Text>}
+                <div className={styles.actions}>
                     {/* The keys act on the cursor task, which is this one while the panel follows the cursor. A task that cannot start has no hint (the command is off). */}
-                    <Button color="primary" size="sm" isDisabled={ blocked !== null } isPending={ isStarting } tooltip={ commandTooltip('Start with an agent', 'tasks.start') } onPress={ () => void start() }>Start</Button>
-                    { link && (
-                        <Button variant="bordered" size="sm" href={ link.url } target="_blank" rel="noreferrer">
-                            { `Open in ${ link.label }` }
+                    <Button
+                        color="primary"
+                        size="sm"
+                        isDisabled={blocked !== null}
+                        isPending={isStarting}
+                        tooltip={commandTooltip('Start with an agent', 'tasks.start')}
+                        onPress={() => void start()}
+                    >
+                        Start
+                    </Button>
+                    {link && (
+                        <Button variant="bordered" size="sm" href={link.url} target="_blank" rel="noreferrer">
+                            {`Open in ${link.label}`}
                             <ArrowUpRight />
                         </Button>
-                    ) }
-                    <span className={ styles.spacer } />
-                    <Button variant="bordered" size="sm" tooltip={ commandTooltip(archiveLabel, 'tasks.archive') } onPress={ archive }>
+                    )}
+                    <span className={styles.spacer} />
+                    <Button
+                        variant="bordered"
+                        size="sm"
+                        tooltip={commandTooltip(archiveLabel, 'tasks.archive')}
+                        onPress={archive}
+                    >
                         <Archive />
-                        { archiveLabel }
+                        {archiveLabel}
                     </Button>
-                    <ConfirmButton variant="filling" color="danger" size="sm" confirmColor="danger" confirmVariant="filled" tooltip={ commandTooltip('Delete task', 'tasks.delete') } onConfirm={ remove }>Delete</ConfirmButton>
+                    <ConfirmButton
+                        variant="filling"
+                        color="danger"
+                        size="sm"
+                        confirmColor="danger"
+                        confirmVariant="filled"
+                        tooltip={commandTooltip('Delete task', 'tasks.delete')}
+                        onConfirm={remove}
+                    >
+                        Delete
+                    </ConfirmButton>
                 </div>
             </div>
         </aside>

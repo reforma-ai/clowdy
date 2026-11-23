@@ -5,8 +5,8 @@ import { Menu, MenuItem, MenuSection, MenuSeparator, SubmenuTrigger } from '@clo
 import { PanelHeader } from '@clowdy/components/Panel';
 import { Popover, PopoverScroll, PopoverTrigger, type UseContextMenuResult } from '@clowdy/components/Popover';
 import { Show } from '@clowdy/components/Show';
-import { Check, Copy, EditPen, Eye, Folder, More, Page, Paste, Trash } from '@clowdy/icons/14';
 import { ChevronRight } from '@clowdy/icons/8';
+import { Check, Copy, EditPen, Eye, Folder, More, Page, Paste, Trash } from '@clowdy/icons/14';
 import { observer } from 'mobx-react-lite';
 import { useState } from 'react';
 
@@ -45,12 +45,19 @@ function HostMenuItem({ item, onAction }: { item: FileMenuItem; onAction: (key: 
     if (item.children) {
         return (
             <SubmenuTrigger>
-                <MenuItem id={HOST_PREFIX + item.id} icon={item.icon} textValue={item.label} endAffix={<ChevronRight />}>
+                <MenuItem
+                    id={HOST_PREFIX + item.id}
+                    icon={item.icon}
+                    textValue={item.label}
+                    endAffix={<ChevronRight />}
+                >
                     {item.label}
                 </MenuItem>
                 <Popover spacing="xs">
                     <Menu aria-label={item.label} size="sm" onAction={key => onAction(String(key))}>
-                        <For each={item.children}>{child => <HostMenuItem key={child.id} item={child} onAction={onAction} />}</For>
+                        <For each={item.children}>
+                            {child => <HostMenuItem key={child.id} item={child} onAction={onAction} />}
+                        </For>
                     </Menu>
                 </Popover>
             </SubmenuTrigger>
@@ -79,7 +86,9 @@ function RowMenuContent({ targets, onClose }: { targets: readonly FileEntry[]; o
         onClose();
 
         if (key.startsWith(HOST_PREFIX)) {
-            actionItems(hostItems).find(item => HOST_PREFIX + item.id === key)?.onAction();
+            actionItems(hostItems)
+                .find(item => HOST_PREFIX + item.id === key)
+                ?.onAction();
 
             return;
         }
@@ -133,7 +142,12 @@ function RowMenuContent({ targets, onClose }: { targets: readonly FileEntry[]; o
                         </MenuItem>
                     </Show>
                     <Show when={manager.canCopy}>
-                        <MenuItem id="copy" icon={<Copy />} textValue="Copy" endAffix={<Hotkey hotkey={['mod', 'c']} />}>
+                        <MenuItem
+                            id="copy"
+                            icon={<Copy />}
+                            textValue="Copy"
+                            endAffix={<Hotkey hotkey={['mod', 'c']} />}
+                        >
                             Copy
                         </MenuItem>
                     </Show>
@@ -147,7 +161,9 @@ function RowMenuContent({ targets, onClose }: { targets: readonly FileEntry[]; o
                             Paste
                         </MenuItem>
                     </Show>
-                    <For each={hostItems}>{item => <HostMenuItem key={item.id} item={item} onAction={handleAction} />}</For>
+                    <For each={hostItems}>
+                        {item => <HostMenuItem key={item.id} item={item} onAction={handleAction} />}
+                    </For>
                 </MenuSection>
                 <Show when={!manager.readonly}>
                     <MenuSeparator />
@@ -216,8 +232,7 @@ export function ExplorerAreaMenu({ contextMenu, folder }: { contextMenu: UseCont
 
         if (key === 'paste') {
             void manager.paste(target);
-        }
-        else {
+        } else {
             create(target, key === 'new-file' ? 'file' : 'directory');
         }
     };

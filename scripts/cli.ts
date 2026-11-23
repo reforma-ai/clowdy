@@ -61,7 +61,7 @@ switch (command) {
         console.log(HELP);
         break;
     default:
-        console.error(`Unknown command: ${ command }\n`);
+        console.error(`Unknown command: ${command}\n`);
         console.error(HELP);
         process.exit(1);
 }

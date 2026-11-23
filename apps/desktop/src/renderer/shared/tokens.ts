@@ -12,7 +12,7 @@ export function formatTokens(count: number): string {
 
     const thousands = Math.round(tokens / 100) / 10;
 
-    if (thousands < 1_000) return `${ thousands }K`;
+    if (thousands < 1_000) return `${thousands}K`;
 
-    return `${ Math.round(tokens / 100_000) / 10 }M`;
+    return `${Math.round(tokens / 100_000) / 10}M`;
 }

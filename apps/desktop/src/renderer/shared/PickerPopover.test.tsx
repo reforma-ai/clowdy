@@ -1,11 +1,11 @@
 // @vitest-environment happy-dom
 import { act, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 
 import { installDispatcher } from '../hotkeys/dispatcher';
 import { createRegistry } from '../hotkeys/registry';
-import { PickerPopover, type PickerOption } from './PickerPopover';
+import { type PickerOption, PickerPopover } from './PickerPopover';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -23,22 +23,30 @@ let picks: string[];
 let closes: number;
 
 /** The owner of a picker: renders it while it is open, as a screen does. */
-function Owner({ selectedIds = [], anchor = true, options = OPTIONS }: { selectedIds?: string[]; anchor?: boolean; options?: PickerOption[] }) {
+function Owner({
+    selectedIds = [],
+    anchor = true,
+    options = OPTIONS,
+}: {
+    selectedIds?: string[];
+    anchor?: boolean;
+    options?: PickerOption[];
+}) {
     const [isOpen, setIsOpen] = useState(true);
 
     return (
         isOpen && (
             <PickerPopover
-                anchor={ anchor ? opener : null }
-                options={ options }
-                selectedIds={ selectedIds }
+                anchor={anchor ? opener : null}
+                options={options}
+                selectedIds={selectedIds}
                 aria-label="Change status"
                 placeholder="Change status…"
-                onPick={ id => picks.push(id) }
-                onClose={ () => {
+                onPick={id => picks.push(id)}
+                onClose={() => {
                     closes++;
                     setIsOpen(false);
-                } }
+                }}
             />
         )
     );
@@ -50,7 +58,7 @@ async function open(props: Parameters<typeof Owner>[0] = {}) {
     document.body.append(opener);
     opener.focus();
 
-    await act(async () => root.render(<Owner { ...props } />));
+    await act(async () => root.render(<Owner {...props} />));
 
     // The popover places itself on the next frame, and the search field takes focus after 50 ms.
     await act(async () => {
@@ -123,15 +131,18 @@ describe('PickerPopover', () => {
     });
 
     it('moves the mark when the current option changes while the list is open, though its options are the same', async () => {
-        const marked = () => rows().filter(row => row.querySelector('[aria-label="Current"]')).map(row => row.textContent);
+        const marked = () =>
+            rows()
+                .filter(row => row.querySelector('[aria-label="Current"]'))
+                .map(row => row.textContent);
 
         await open({ selectedIds: ['todo'] });
         expect(marked()).toEqual(['To do']);
 
-        await act(async () => root.render(<Owner selectedIds={ ['done'] } />));
+        await act(async () => root.render(<Owner selectedIds={['done']} />));
         expect(marked()).toEqual(['Done']);
 
-        await act(async () => root.render(<Owner selectedIds={ [] } />));
+        await act(async () => root.render(<Owner selectedIds={[]} />));
         expect(marked()).toEqual([]);
     });
 
@@ -263,7 +274,14 @@ describe('PickerPopover and the hotkey dispatcher', () => {
     beforeEach(() => {
         registry = createRegistry('darwin');
         handler = vi.fn<(event: KeyboardEvent) => void>();
-        registry.defineCommand({ id: 'tasks.x', title: 'X', group: 'Tasks', keys: ['x', 'ArrowDown', 'Enter', 'Escape'], scope: 'app', handler });
+        registry.defineCommand({
+            id: 'tasks.x',
+            title: 'X',
+            group: 'Tasks',
+            keys: ['x', 'ArrowDown', 'Enter', 'Escape'],
+            scope: 'app',
+            handler,
+        });
         uninstall = installDispatcher(registry);
     });
 

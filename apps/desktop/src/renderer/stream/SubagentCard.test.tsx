@@ -36,7 +36,10 @@ let fixtureCall: (toolCallId: string) => ToolBody;
 beforeEach(async () => {
     const data = createFixtureData();
 
-    fixtureCall = toolCallId => data.items['r-orch-1'].map(entry => entry.body).find((body): body is ToolBody => body.kind === 'tool' && body.toolCallId === toolCallId)!;
+    fixtureCall = toolCallId =>
+        data.items['r-orch-1']
+            .map(entry => entry.body)
+            .find((body): body is ToolBody => body.kind === 'tool' && body.toolCallId === toolCallId)!;
     store = new RootStore(new FixtureTransport({ data }), { storage: memoryStorage() });
     await store.load();
     container = document.createElement('div');
@@ -64,14 +67,27 @@ function text(): string | null {
 
 /** Draws the calls as a stream of r-orch-1, then again once the streams the cards read have been fetched. */
 async function draw(calls: ToolBody[], active = true) {
-    const items: StreamItem[] = calls.map((body, index) => ({ id: `i-${ index }`, runId: 'r-orch-1', seq: index + 1, at: index, body }));
-    const render = () => act(async () => reactRoot.render(<RootStoreProvider value={ store }><StreamView items={ items } active={ active } /></RootStoreProvider>));
+    const items: StreamItem[] = calls.map((body, index) => ({
+        id: `i-${index}`,
+        runId: 'r-orch-1',
+        seq: index + 1,
+        at: index,
+        body,
+    }));
+    const render = () =>
+        act(async () =>
+            reactRoot.render(
+                <RootStoreProvider value={store}>
+                    <StreamView items={items} active={active} />
+                </RootStoreProvider>
+            )
+        );
 
     await render();
     await render();
 }
 
-describe('the card of an agent\'s own sub-agent', () => {
+describe("the card of an agent's own sub-agent", () => {
     it('reads `Ran Explore agent` and Finished once its call is done, and opens the native child the call started', async () => {
         await draw([fixtureCall('tc-agent-1')]);
 
@@ -91,22 +107,39 @@ describe('the card of an agent\'s own sub-agent', () => {
         expect(opener()!.getAttribute('aria-label')).toBe('Exploring. Searching useBookingPrice');
     });
 
-    it('says the agent did not finish when the stream\'s run is over and the call never ended', async () => {
+    it("says the agent did not finish when the stream's run is over and the call never ended", async () => {
         await draw([fixtureCall('tc-agent-2')], false);
 
         expect(text()).toBe('The agent did not finish');
         expect(card().getAttribute('aria-busy')).toBeNull();
     });
 
-    it('shows a failed call\'s error, and is not pressable when the agent reported no child', async () => {
-        await draw([{ kind: 'tool', toolCallId: 'tc-lonely', name: 'Task', input: { subagent_type: 'Plan' }, state: 'error', error: 'The sub-agent stopped' }]);
+    it("shows a failed call's error, and is not pressable when the agent reported no child", async () => {
+        await draw([
+            {
+                kind: 'tool',
+                toolCallId: 'tc-lonely',
+                name: 'Task',
+                input: { subagent_type: 'Plan' },
+                state: 'error',
+                error: 'The sub-agent stopped',
+            },
+        ]);
 
         expect(text()).toBe('Ran Plan agentThe sub-agent stopped');
         expect(opener()).toBeNull();
     });
 
     it('stays a plain card, starting, for a running call of an agent that reports nothing about it', async () => {
-        await draw([{ kind: 'tool', toolCallId: 'tc-codex', name: 'spawnAgent', input: { prompt: 'Look around' }, state: 'running' }]);
+        await draw([
+            {
+                kind: 'tool',
+                toolCallId: 'tc-codex',
+                name: 'spawnAgent',
+                input: { prompt: 'Look around' },
+                state: 'running',
+            },
+        ]);
 
         expect(text()).toBe('Running agentStarting…');
         expect(opener()).toBeNull();
@@ -116,7 +149,13 @@ describe('the card of an agent\'s own sub-agent', () => {
         const runs = store.selectedProject!.runs;
 
         // The turn was stopped mid-call and the person wrote again: the run is going, the old call is still `running`, its child was cancelled.
-        runInAction(() => runs.set('r-na-02', { ...runs.get('r-na-02')!, status: 'cancelled', statusReason: 'The parent run ended its turn' }));
+        runInAction(() =>
+            runs.set('r-na-02', {
+                ...runs.get('r-na-02')!,
+                status: 'cancelled',
+                statusReason: 'The parent run ended its turn',
+            })
+        );
         await draw([fixtureCall('tc-agent-2')]);
 
         expect(text()).toBe('The agent did not finish');
@@ -126,8 +165,24 @@ describe('the card of an agent\'s own sub-agent', () => {
     it('is named by the call alone, not by the placeholder name the daemon gives a child the call does not name', async () => {
         const runs = store.selectedProject!.runs;
 
-        runInAction(() => runs.set('r-na-x', { ...runs.get('r-na-01')!, id: 'r-na-x', name: 'Sub-agent', parentToolCallId: 'tc-unnamed' }));
-        await draw([{ kind: 'tool', toolCallId: 'tc-unnamed', name: 'Agent', input: { description: 'Look around', prompt: 'Look around' }, state: 'done', output: 'Done' }]);
+        runInAction(() =>
+            runs.set('r-na-x', {
+                ...runs.get('r-na-01')!,
+                id: 'r-na-x',
+                name: 'Sub-agent',
+                parentToolCallId: 'tc-unnamed',
+            })
+        );
+        await draw([
+            {
+                kind: 'tool',
+                toolCallId: 'tc-unnamed',
+                name: 'Agent',
+                input: { description: 'Look around', prompt: 'Look around' },
+                state: 'done',
+                output: 'Done',
+            },
+        ]);
 
         expect(text()).toBe('Ran agentFinished');
         expect(opener()).not.toBeNull();

@@ -4,7 +4,7 @@ import { makeAutoObservable, observable, runInAction } from 'mobx';
 import { compileChangeFilter } from './changeFilter';
 import { isCommitScope, usableScope } from './changeScopes';
 import { SidesCache, type SidesRequest } from './fileSides';
-import { Fact, placeRef, type PlaceFacts } from './gitFacts';
+import { Fact, type PlaceFacts, placeRef } from './gitFacts';
 import { ViewedMarks, type ViewedTransport } from './viewedMarks';
 
 import type { GitBase, GitChangedFile, GitChanges, GitScope } from '@clowdy/protocol';
@@ -55,9 +55,18 @@ export class PlaceChanges {
         const { key } = facts;
         const place = placeRef(key);
 
-        this.sides = new SidesCache(({ scope, path, oldPath, from }) => transport.getGitFile(key.projectId, place, scope, path, oldPath, from));
+        this.sides = new SidesCache(({ scope, path, oldPath, from }) =>
+            transport.getGitFile(key.projectId, place, scope, path, oldPath, from)
+        );
         this.viewed = new ViewedMarks(key, transport);
-        makeAutoObservable<PlaceChanges, 'transport'>(this, { facts: false, transport: false, sides: false, folded: false, openedViewed: false, viewed: false });
+        makeAutoObservable<PlaceChanges, 'transport'>(this, {
+            facts: false,
+            transport: false,
+            sides: false,
+            folded: false,
+            openedViewed: false,
+            viewed: false,
+        });
     }
 
     /** The place's base, as the status read says: the branch it is compared with and the commits of its work. */
@@ -114,7 +123,9 @@ export class PlaceChanges {
     get viewedPaths(): ReadonlySet<string> {
         const scope = this.effectiveScope;
 
-        return new Set((this.changes?.files ?? []).filter(file => this.viewed.isViewed(scope, file)).map(file => file.path));
+        return new Set(
+            (this.changes?.files ?? []).filter(file => this.viewed.isViewed(scope, file)).map(file => file.path)
+        );
     }
 
     /** Whether the file of the list is viewed. */
@@ -160,7 +171,13 @@ export class PlaceChanges {
     requestOf(file: GitChangedFile): SidesRequest {
         const from = this.changes?.from;
 
-        return { scope: this.effectiveScope, path: file.path, ...(file.oldPath !== undefined && { oldPath: file.oldPath }), revision: file.revision, ...(from !== undefined && { from }) };
+        return {
+            scope: this.effectiveScope,
+            path: file.path,
+            ...(file.oldPath !== undefined && { oldPath: file.oldPath }),
+            revision: file.revision,
+            ...(from !== undefined && { from }),
+        };
     }
 
     /** Whether the card of the file is shut: the person shut it, or the file is viewed and the person has not opened it since. */
@@ -171,8 +188,7 @@ export class PlaceChanges {
     toggleFolded(path: string): void {
         if (this.isFolded(path)) {
             this.reveal(path);
-        }
-        else {
+        } else {
             this.#fold(path);
         }
     }
@@ -181,8 +197,7 @@ export class PlaceChanges {
     #fold(path: string): void {
         if (this.isViewed(path)) {
             this.openedViewed.delete(path);
-        }
-        else {
+        } else {
             this.folded.add(path);
         }
     }
@@ -244,7 +259,7 @@ export class PlaceChanges {
      * when the scope changes and when the facts start a round, which is what makes one read of a first round and not two.
      */
     sync(generation: number): void {
-        const stamp = `${ this.effectiveScope }@${ generation }`;
+        const stamp = `${this.effectiveScope}@${generation}`;
 
         if (stamp === this.#stamp) return;
 
@@ -329,7 +344,7 @@ export function placeChangesOf(transport: PlaceChangesTransport, facts: PlaceFac
     }
 
     const { projectId, folderId, workspaceId } = facts.key;
-    const name = `${ projectId }/${ folderId }/${ workspaceId ?? '' }`;
+    const name = `${projectId}/${folderId}/${workspaceId ?? ''}`;
     const found = places.get(name);
     const model = found?.facts === facts ? found : new PlaceChanges(facts, transport);
 

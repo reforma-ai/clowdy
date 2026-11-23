@@ -1,5 +1,5 @@
-import { MAX_GIT_BRANCH_ENTRIES, MAX_GIT_RECENT_BRANCHES } from '@clowdy/protocol';
 import { resolve } from 'node:path';
+import { MAX_GIT_BRANCH_ENTRIES, MAX_GIT_RECENT_BRANCHES } from '@clowdy/protocol';
 
 import { listWorkspacesOfProject } from '../db/workspaces';
 import { gitRead } from '../domain/git';
@@ -44,7 +44,11 @@ function timeOf(field: string | undefined): number | undefined {
 }
 
 /** The records of `git for-each-ref --format=<fields joined by SEPARATOR>`: one line each, newest commit first. */
-const recordsOf = (output: string): string[][] => output.split('\n').filter(line => line !== '').map(line => line.split(SEPARATOR));
+const recordsOf = (output: string): string[][] =>
+    output
+        .split('\n')
+        .filter(line => line !== '')
+        .map(line => line.split(SEPARATOR));
 
 /** The local branches in the output of `for-each-ref refs/heads` with the format of `readRefs`: name, upstream, tip time and the `*` of the checked out one. */
 export function parseLocalBranches(output: string): ListedLocal[] {
@@ -53,16 +57,23 @@ export function parseLocalBranches(output: string): ListedLocal[] {
 
         const committedAt = timeOf(time);
 
-        return [{ name: ref.slice('refs/heads/'.length), current: head === '*', ...(upstream !== '' && { upstream }), ...(committedAt !== undefined && { committedAt }) }];
+        return [
+            {
+                name: ref.slice('refs/heads/'.length),
+                current: head === '*',
+                ...(upstream !== '' && { upstream }),
+                ...(committedAt !== undefined && { committedAt }),
+            },
+        ];
     });
 }
 
 /** The branches of `origin` in the output of `for-each-ref refs/remotes/origin` (name and tip time), without the remote's `HEAD`, which is an alias and no branch. */
 export function parseRemoteBranches(output: string): Array<{ name: string; committedAt?: number }> {
-    const prefix = `refs/remotes/${ ORIGIN }/`;
+    const prefix = `refs/remotes/${ORIGIN}/`;
 
     return recordsOf(output).flatMap(([ref = '', time]) => {
-        if (!ref.startsWith(prefix) || ref === `${ prefix }HEAD`) return [];
+        if (!ref.startsWith(prefix) || ref === `${prefix}HEAD`) return [];
 
         const committedAt = timeOf(time);
 
@@ -94,24 +105,37 @@ export function recentBranches(reflog: string, local: ReadonlySet<string>, curre
  * Which branch of the lists is the default one: `baseOf` writes it as the repository's branch list does (`main` for a local branch, `origin/main` for a remote's), and a local
  * branch of that name comes first, so a folder that has `main` and `origin/main` has `main`. Nothing when the base is another remote's or a branch the lists do not have.
  */
-export function defaultOf(base: string | undefined, local: ReadonlySet<string>, remote: ReadonlySet<string>): string | undefined {
+export function defaultOf(
+    base: string | undefined,
+    local: ReadonlySet<string>,
+    remote: ReadonlySet<string>
+): string | undefined {
     if (base === undefined) return undefined;
 
     if (local.has(base)) return base;
 
-    const name = base.startsWith(`${ ORIGIN }/`) ? base.slice(ORIGIN.length + 1) : undefined;
+    const name = base.startsWith(`${ORIGIN}/`) ? base.slice(ORIGIN.length + 1) : undefined;
 
     return name !== undefined && (local.has(name) || remote.has(name)) ? name : undefined;
 }
 
 /** A list cut at `MAX_GIT_BRANCH_ENTRIES`, newest first: the current branch and the default one are kept whatever their age, since they are what the person looks for first. */
 function cut<T extends { current?: true; default?: true }>(branches: readonly T[]): T[] {
-    return [...branches.slice(0, MAX_GIT_BRANCH_ENTRIES), ...branches.slice(MAX_GIT_BRANCH_ENTRIES).filter(branch => branch.current || branch.default)];
+    return [
+        ...branches.slice(0, MAX_GIT_BRANCH_ENTRIES),
+        ...branches.slice(MAX_GIT_BRANCH_ENTRIES).filter(branch => branch.current || branch.default),
+    ];
 }
 
 /** `git for-each-ref` over some refs, newest tip first (the name second, so the order is the same on every run), with the fields joined by `SEPARATOR`. `unavailable` when git cannot answer. */
 async function readRefs(cwd: string, fields: string[], patterns: string[]): Promise<string> {
-    const read = await gitRead(cwd, ['for-each-ref', '--sort=refname', '--sort=-committerdate', `--format=${ fields.join(FORMAT_SEPARATOR) }`, ...patterns]);
+    const read = await gitRead(cwd, [
+        'for-each-ref',
+        '--sort=refname',
+        '--sort=-committerdate',
+        `--format=${fields.join(FORMAT_SEPARATOR)}`,
+        ...patterns,
+    ]);
 
     if (!read.ok) throw unavailable('git did not answer');
 
@@ -130,7 +154,11 @@ async function heldBranches(store: Store, project: Project, place: Place): Promi
 
     const [own, folder] = await Promise.all([placeOf(place.path), placeOf(place.folder.path)]);
     // The worktrees Clowdy keeps a record of for this folder, by where they really are, so the chat's worktree and a link to it are one.
-    const records = await Promise.all(listWorkspacesOfProject(store.db, project.id).filter(record => record.folderId === place.folder.id).map(async record => ({ id: record.id, at: await placeOf(record.path) })));
+    const records = await Promise.all(
+        listWorkspacesOfProject(store.db, project.id)
+            .filter(record => record.folderId === place.folder.id)
+            .map(async record => ({ id: record.id, at: await placeOf(record.path) }))
+    );
     const held = new Map<string, GitBranchHolder>();
 
     for (const entry of parseWorktrees(read.stdout)) {
@@ -143,7 +171,11 @@ async function heldBranches(store: Store, project: Project, place: Place): Promi
 
         const workspace = at === undefined ? undefined : records.find(record => record.at === at);
 
-        held.set(entry.branch, { path: resolve(entry.path), ...(at !== undefined && at === folder && { main: true as const }), ...(workspace && { workspaceId: workspace.id }) });
+        held.set(entry.branch, {
+            path: resolve(entry.path),
+            ...(at !== undefined && at === folder && { main: true as const }),
+            ...(workspace && { workspaceId: workspace.id }),
+        });
     }
 
     return held;
@@ -159,11 +191,11 @@ async function heldBranches(store: Store, project: Project, place: Place): Promi
 export async function placeBranches(store: Store, project: Project, place: Place): Promise<GitBranches> {
     const cwd = place.path;
 
-    if (!await workingTreeRoot(cwd)) return { isRepository: false };
+    if (!(await workingTreeRoot(cwd))) return { isRepository: false };
 
     const [localOutput, remoteOutput, reflog, held, base] = await Promise.all([
         readRefs(cwd, ['%(refname)', '%(upstream:short)', '%(committerdate:unix)', '%(HEAD)'], ['refs/heads']),
-        readRefs(cwd, ['%(refname)', '%(committerdate:unix)'], [`refs/remotes/${ ORIGIN }`]),
+        readRefs(cwd, ['%(refname)', '%(committerdate:unix)'], [`refs/remotes/${ORIGIN}`]),
         gitRead(cwd, ['reflog', 'show', '--format=%gs', '-n', String(REFLOG_LINES), 'HEAD', '--']),
         heldBranches(store, project, place),
         baseOf({ ...place.folder, path: cwd }),
@@ -181,7 +213,10 @@ export async function placeBranches(store: Store, project: Project, place: Place
         ...(!rest.current && held.has(name) && { heldBy: held.get(name) }),
         ...(rest.committedAt !== undefined && { committedAt: rest.committedAt }),
     }));
-    const remote: GitRemoteBranch[] = remoteOnly.map(branch => ({ ...branch, ...(branch.name === defaultBranch && { default: true as const }) }));
+    const remote: GitRemoteBranch[] = remoteOnly.map(branch => ({
+        ...branch,
+        ...(branch.name === defaultBranch && { default: true as const }),
+    }));
 
     const truncated = local.length > MAX_GIT_BRANCH_ENTRIES || remote.length > MAX_GIT_BRANCH_ENTRIES;
 

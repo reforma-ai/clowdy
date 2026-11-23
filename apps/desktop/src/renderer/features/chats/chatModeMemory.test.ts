@@ -7,9 +7,12 @@ import type { KeyValueStorage } from '../../stores/storage';
 const memory = (): KeyValueStorage => {
     const data: Record<string, string> = {};
 
-    return { getItem: key => data[key] ?? null, setItem: (key, value) => {
-        data[key] = value;
-    } };
+    return {
+        getItem: key => data[key] ?? null,
+        setItem: (key, value) => {
+            data[key] = value;
+        },
+    };
 };
 
 describe('chatModeMemory', () => {
@@ -34,11 +37,16 @@ describe('chatModeMemory', () => {
         storage.setItem('clowdy:chat-mode', '{not json');
         expect(readRememberedMode(storage)).toBeUndefined();
 
-        expect(readRememberedMode({ getItem: () => {
-            throw new Error('blocked');
-        }, setItem: () => {
-            throw new Error('blocked');
-        } })).toBeUndefined();
+        expect(
+            readRememberedMode({
+                getItem: () => {
+                    throw new Error('blocked');
+                },
+                setItem: () => {
+                    throw new Error('blocked');
+                },
+            })
+        ).toBeUndefined();
     });
 
     it('starts a chat in the mode its project asks for, else the last one picked, else Hands-off', () => {

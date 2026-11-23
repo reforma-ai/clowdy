@@ -12,12 +12,13 @@
  *
  * Arguments go to Electron.
  */
-import { daemonDataDir } from '@clowdy/protocol';
-import { $, type Subprocess } from 'bun';
+
 import { readFileSync, watch } from 'node:fs';
 import { mkdir, rename, rm } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
+import { daemonDataDir } from '@clowdy/protocol';
+import { $, type Subprocess } from 'bun';
 
 import { DEV_BUILD_MARKER } from '../src/shared/dev';
 import { buildMain } from './main-bundle';
@@ -42,7 +43,9 @@ const env = {
     CLOWDY_DAEMON_ENTRY: path.join(repoRoot, 'apps/daemon/src/main.ts'),
     // The app replaces the daemon when these change and it has no runs in progress. The daemon imports `@clowdy/lib/checklist` from `packages/lib` (only by subpath:
     // its lint refuses the root, which pulls in React), and the watch is by folder, so the package is watched whole.
-    CLOWDY_DAEMON_WATCH: ['apps/daemon/src', 'packages/protocol/src', 'packages/lib/src'].map(folder => path.join(repoRoot, folder)).join(path.delimiter),
+    CLOWDY_DAEMON_WATCH: ['apps/daemon/src', 'packages/protocol/src', 'packages/lib/src']
+        .map(folder => path.join(repoRoot, folder))
+        .join(path.delimiter),
 };
 // Vite's own script, run with Node: a `bunx` wrapper would be the process a stop kills on Windows, leaving Vite behind.
 const viteBin = path.join(path.dirname(Bun.resolveSync('vite/package.json', desktopRoot)), 'bin/vite.js');
@@ -65,11 +68,13 @@ process.on('exit', () => {
 
 // The daemon outlives the app and keeps the engine it started with, so the engine asked for reaches only a daemon this run starts.
 if (process.env.CLOWDY_ENGINE && daemonRunning()) {
-    console.warn(`A daemon is already running and keeps its own engine, so CLOWDY_ENGINE=${ process.env.CLOWDY_ENGINE } does not apply to it. To switch: CLOWDY_PROFILE=dev bun run --cwd apps/daemon stop`);
+    console.warn(
+        `A daemon is already running and keeps its own engine, so CLOWDY_ENGINE=${process.env.CLOWDY_ENGINE} does not apply to it. To switch: CLOWDY_PROFILE=dev bun run --cwd apps/daemon stop`
+    );
 }
 
 // The packages the renderer imports, built first (the icon pack is generated); turbo's cache makes a repeat run cheap.
-await $`bunx turbo run dev:prepare --filter=${ '@clowdy/desktop^...' }`.cwd(repoRoot);
+await $`bunx turbo run dev:prepare --filter=${'@clowdy/desktop^...'}`.cwd(repoRoot);
 
 // Start from an empty folder, then never empty it again: files the open page still loads stay in place while a rebuild runs.
 await rm(rendererDir, { recursive: true, force: true });
@@ -83,7 +88,18 @@ watch(rendererDir, { recursive: true }, () => {
 
 // Development mode (readable class names, React's own warnings) and unminified, so a rebuild takes a moment.
 const build = Bun.spawn(
-    ['node', viteBin, 'build', '--watch', '--config', path.join(desktopRoot, 'vite.config.ts'), '--outDir', rendererDir, '--emptyOutDir=false', '--minify=false'],
+    [
+        'node',
+        viteBin,
+        'build',
+        '--watch',
+        '--config',
+        path.join(desktopRoot, 'vite.config.ts'),
+        '--outDir',
+        rendererDir,
+        '--emptyOutDir=false',
+        '--minify=false',
+    ],
     { cwd: desktopRoot, env: { ...env, NODE_ENV: 'development' }, stdout: 'pipe', stderr: 'inherit' }
 );
 let builds = 0;
@@ -93,8 +109,8 @@ const firstBuild = new Promise<void>(resolve => {
 });
 
 renderer = build;
-void build.exited.then((code) => {
-    console.error(`The renderer build stopped with code ${ code }.`);
+void build.exited.then(code => {
+    console.error(`The renderer build stopped with code ${code}.`);
     stop(1);
 });
 void echoBuilds(build.stdout, async () => {
@@ -108,8 +124,8 @@ void echoBuilds(build.stdout, async () => {
     }
 
     // A rename is one event in the folder itself, which every OS reports to a plain watch.
-    await Bun.write(path.join(rendererDir, `${ DEV_BUILD_MARKER }.tmp`), String(builds));
-    await rename(path.join(rendererDir, `${ DEV_BUILD_MARKER }.tmp`), path.join(rendererDir, DEV_BUILD_MARKER));
+    await Bun.write(path.join(rendererDir, `${DEV_BUILD_MARKER}.tmp`), String(builds));
+    await rename(path.join(rendererDir, `${DEV_BUILD_MARKER}.tmp`), path.join(rendererDir, DEV_BUILD_MARKER));
     console.info('The renderer was rebuilt; reloading the window');
 });
 await firstBuild;
@@ -124,11 +140,13 @@ for (const folder of ['main', 'preload', 'shared']) {
 
         clearTimeout(pending);
         pending = setTimeout(() => {
-            restarts = restarts.then(async () => {
-                console.info(`${ folder }/${ file } changed; restarting Clowdy`);
-                await quitApp();
-                await startApp();
-            }).catch((error: unknown) => console.error('Restart failed:', error));
+            restarts = restarts
+                .then(async () => {
+                    console.info(`${folder}/${file} changed; restarting Clowdy`);
+                    await quitApp();
+                    await startApp();
+                })
+                .catch((error: unknown) => console.error('Restart failed:', error));
         }, 200);
     });
 }
@@ -136,15 +154,18 @@ for (const folder of ['main', 'preload', 'shared']) {
 async function startApp(): Promise<void> {
     try {
         await buildMain(path.join(desktopRoot, 'dist'));
-    }
-    catch (error) {
+    } catch (error) {
         console.error(error);
         console.error('Main or preload did not build; save a fix to try again.');
 
         return;
     }
 
-    const started = Bun.spawn([electronBinary, '.', ...process.argv.slice(2)], { cwd: desktopRoot, env, stdio: ['inherit', 'inherit', 'inherit'] });
+    const started = Bun.spawn([electronBinary, '.', ...process.argv.slice(2)], {
+        cwd: desktopRoot,
+        env,
+        stdio: ['inherit', 'inherit', 'inherit'],
+    });
 
     app = started;
     void started.exited.then(code => {
@@ -156,7 +177,9 @@ async function startApp(): Promise<void> {
         // Quitting the app ends the session; a crash waits for a fix.
         if (code === 0) process.exit(0);
 
-        console.error(`Clowdy exited with code ${ code }; save a fix under src/main, src/preload, or src/shared to start it again.`);
+        console.error(
+            `Clowdy exited with code ${code}; save a fix under src/main, src/preload, or src/shared to start it again.`
+        );
     });
 }
 
@@ -183,8 +206,7 @@ function daemonRunning(): boolean {
         process.kill((JSON.parse(readFileSync(file, 'utf8')) as { pid: number }).pid, 0);
 
         return true;
-    }
-    catch {
+    } catch {
         return false;
     }
 }

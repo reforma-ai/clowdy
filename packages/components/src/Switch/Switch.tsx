@@ -18,33 +18,26 @@ export interface SwitchProps extends Omit<RACSwitchProps, 'children'> {
 }
 
 export function Switch(props: SwitchProps) {
-    const {
-        size = 'md',
-        className,
-        children,
-        isPending,
-        isReadOnly,
-        ...switchProps
-    } = useSlotContextProps(props);
+    const { size = 'md', className, children, isPending, isReadOnly, ...switchProps } = useSlotContextProps(props);
 
     return (
         <RACSwitch
-            { ...switchProps }
-            className={ cn(styles.root, className) }
-            data-size={ size }
-            data-pending={ isPending || undefined }
-            isReadOnly={ isReadOnly || isPending }
-            aria-busy={ isPending || undefined }
+            {...switchProps}
+            className={cn(styles.root, className)}
+            data-size={size}
+            data-pending={isPending || undefined}
+            isReadOnly={isReadOnly || isPending}
+            aria-busy={isPending || undefined}
         >
-            <span className={ styles.track }>
-                <span className={ styles.handle }>
-                    <Show when={ isPending }>
-                        <Spinner size="inherit" className={ styles.spinner } aria-hidden="true" />
+            <span className={styles.track}>
+                <span className={styles.handle}>
+                    <Show when={isPending}>
+                        <Spinner size="inherit" className={styles.spinner} aria-hidden="true" />
                     </Show>
                 </span>
             </span>
 
-            { children }
+            {children}
         </RACSwitch>
     );
 }

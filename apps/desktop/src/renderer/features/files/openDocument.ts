@@ -12,7 +12,12 @@ import type { ProjectState, RootStore } from '../../stores';
  * the window is working in, which is that folder's own checkout or the worktree of the open chat, so a document of another folder is not shown and a toast says so, as does
  * a path that is not there. Resolves whether it opened.
  */
-export async function openDocument(root: RootStore, project: ProjectState, path: string, folderId: FolderId | null = null): Promise<boolean> {
+export async function openDocument(
+    root: RootStore,
+    project: ProjectState,
+    path: string,
+    folderId: FolderId | null = null
+): Promise<boolean> {
     const [main] = project.project.folders;
     const folder = project.project.folders.find(candidate => candidate.id === folderId) ?? main;
     const current = currentPlace(project, root.ui.forProject(project.id));
@@ -30,9 +35,12 @@ export async function openDocument(root: RootStore, project: ProjectState, path:
         return false;
     }
 
-    const opened = await openInFiles(root, project.id, current, `${ DOCS_ROOT }/${ path }`);
+    const opened = await openInFiles(root, project.id, current, `${DOCS_ROOT}/${path}`);
 
-    if (!opened) toast.error({ message: current.workspace ? 'That document is not in this worktree' : 'That document is not on the disk' });
+    if (!opened)
+        toast.error({
+            message: current.workspace ? 'That document is not in this worktree' : 'That document is not on the disk',
+        });
 
     return opened;
 }

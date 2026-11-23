@@ -24,14 +24,18 @@ function holding(hold = latch()): { script: Script; hold: ReturnType<typeof latc
     return {
         hold,
         script: async function* ({ options, number }) {
-            yield { type: 'session', sessionId: `s-${ number }` };
+            yield { type: 'session', sessionId: `s-${number}` };
             await hold.wait(options.signal);
             yield { type: 'done', result: 'finished' };
         },
     };
 }
 
-async function setup(script: Script = holding().script, overrides: Parameters<typeof startHarness>[0] = {}, mode?: 'semi') {
+async function setup(
+    script: Script = holding().script,
+    overrides: Parameters<typeof startHarness>[0] = {},
+    mode?: 'semi'
+) {
     const engine = new ScriptEngine(script);
     const h = await startHarness(overrides, { engines: scriptEngines(engine) });
 
@@ -47,12 +51,13 @@ async function setup(script: Script = holding().script, overrides: Parameters<ty
         const tool = toolsOf(run).find(candidate => candidate.name === name);
 
         if (!tool) {
-            throw new Error(`${ run.name } has no ${ name } tool`);
+            throw new Error(`${run.name} has no ${name} tool`);
         }
 
         return tool.execute(input, new AbortController().signal);
     };
-    const task = async (title: string, extra: Record<string, unknown> = {}) => (await exec(orchestrator, 'task_create', { title, ...extra })).task;
+    const task = async (title: string, extra: Record<string, unknown> = {}) =>
+        (await exec(orchestrator, 'task_create', { title, ...extra })).task;
 
     return { h, engine, project, chat, entity, orchestrator, toolsOf, exec, task };
 }
@@ -61,13 +66,42 @@ describe('the tool vocabulary', () => {
     test('an orchestrator has the task tools, the thread tools, and ask_user only in semi-manual', async () => {
         const { orchestrator, toolsOf } = await setup();
         const names = (run: Run) => toolsOf(run).map(tool => tool.name);
-        const threads = ['thread_spawn', 'thread_tell', 'thread_stop', 'thread_wait', 'thread_output', 'thread_log', 'thread_list'];
+        const threads = [
+            'thread_spawn',
+            'thread_tell',
+            'thread_stop',
+            'thread_wait',
+            'thread_output',
+            'thread_log',
+            'thread_list',
+        ];
 
-        expect(names(orchestrator)).toEqual(['task_get', 'task_list', 'task_comments', 'task_create', 'task_update', 'task_comment', 'task_archive', 'task_unarchive', ...threads]);
+        expect(names(orchestrator)).toEqual([
+            'task_get',
+            'task_list',
+            'task_comments',
+            'task_create',
+            'task_update',
+            'task_comment',
+            'task_archive',
+            'task_unarchive',
+            ...threads,
+        ]);
 
         const semi = await setup(undefined, {}, 'semi');
 
-        expect(semi.toolsOf(semi.orchestrator).map(tool => tool.name)).toEqual(['task_get', 'task_list', 'task_comments', 'task_create', 'task_update', 'task_comment', 'task_archive', 'task_unarchive', ...threads, 'ask_user']);
+        expect(semi.toolsOf(semi.orchestrator).map(tool => tool.name)).toEqual([
+            'task_get',
+            'task_list',
+            'task_comments',
+            'task_create',
+            'task_update',
+            'task_comment',
+            'task_archive',
+            'task_unarchive',
+            ...threads,
+            'ask_user',
+        ]);
 
         // Every tool brings its schema in both forms and says how to use it.
         for (const tool of toolsOf(orchestrator)) {
@@ -81,9 +115,29 @@ describe('the tool vocabulary', () => {
         const { h, orchestrator } = await setup();
         const { store, runs, threads } = h.daemon.services;
         const tools = (channel?: 'cli' | 'mcp') => toolsFor({ store, runs, threads }, orchestrator, 'semi', channel);
-        const shell = (channel?: 'cli' | 'mcp') => tools(channel).filter(tool => tool.cli).map(tool => tool.name);
-        const taskTools = ['task_get', 'task_list', 'task_comments', 'task_create', 'task_update', 'task_comment', 'task_archive', 'task_unarchive'];
-        const threadTools = ['thread_spawn', 'thread_tell', 'thread_stop', 'thread_wait', 'thread_output', 'thread_log', 'thread_list'];
+        const shell = (channel?: 'cli' | 'mcp') =>
+            tools(channel)
+                .filter(tool => tool.cli)
+                .map(tool => tool.name);
+        const taskTools = [
+            'task_get',
+            'task_list',
+            'task_comments',
+            'task_create',
+            'task_update',
+            'task_comment',
+            'task_archive',
+            'task_unarchive',
+        ];
+        const threadTools = [
+            'thread_spawn',
+            'thread_tell',
+            'thread_stop',
+            'thread_wait',
+            'thread_output',
+            'thread_log',
+            'thread_list',
+        ];
 
         expect(shell()).toEqual([...taskTools, ...threadTools]);
         expect(shell('cli')).toEqual([...taskTools, ...threadTools]);
@@ -96,17 +150,30 @@ describe('the tool vocabulary', () => {
 
         try {
             const signal = new AbortController().signal;
-            const viaShell = bridge.register(toolsFor({ store, runs, threads }, orchestrator, 'autopilot', 'cli'), signal);
-            const viaMcp = bridge.register(toolsFor({ store, runs, threads }, orchestrator, 'autopilot', 'mcp'), signal);
-            const listed = async (url: string, auth: string, path: string) => ((await (await fetch(`${ url }${ path }`, { headers: { authorization: `Bearer ${ auth }` } })).json()) as { tools: { name: string }[] }).tools.map(tool => tool.name);
+            const viaShell = bridge.register(
+                toolsFor({ store, runs, threads }, orchestrator, 'autopilot', 'cli'),
+                signal
+            );
+            const viaMcp = bridge.register(
+                toolsFor({ store, runs, threads }, orchestrator, 'autopilot', 'mcp'),
+                signal
+            );
+            const listed = async (url: string, auth: string, path: string) =>
+                (
+                    (await (await fetch(`${url}${path}`, { headers: { authorization: `Bearer ${auth}` } })).json()) as {
+                        tools: { name: string }[];
+                    }
+                ).tools.map(tool => tool.name);
 
             expect(viaShell.server).toBeUndefined();
             expect(viaMcp.server).toBeDefined();
-            expect(viaShell.cli && await listed(viaShell.cli.url, viaShell.cli.auth, '/cli/tools')).toEqual([...taskTools, ...threadTools]);
-            expect(viaMcp.cli && await listed(viaMcp.cli.url, viaMcp.cli.auth, '/cli/tools')).toEqual(threadTools);
-            expect(viaMcp.cli && await listed(viaMcp.cli.url, viaMcp.cli.auth, '/tools')).toEqual(taskTools);
-        }
-        finally {
+            expect(viaShell.cli && (await listed(viaShell.cli.url, viaShell.cli.auth, '/cli/tools'))).toEqual([
+                ...taskTools,
+                ...threadTools,
+            ]);
+            expect(viaMcp.cli && (await listed(viaMcp.cli.url, viaMcp.cli.auth, '/cli/tools'))).toEqual(threadTools);
+            expect(viaMcp.cli && (await listed(viaMcp.cli.url, viaMcp.cli.auth, '/tools'))).toEqual(taskTools);
+        } finally {
             bridge.stop();
         }
     });
@@ -117,7 +184,13 @@ describe('the tool vocabulary', () => {
         const second = await task('Build', { dependsOn: [first.key] });
         const { statuses, tasks } = await exec(orchestrator, 'task_list', { sort: 'number' });
 
-        expect(statuses.map((status: { name: string; category: string }) => [status.name, status.category])).toEqual([['To do', 'todo'], ['In progress', 'active'], ['Review', 'review'], ['Done', 'done'], ['Canceled', 'canceled']]);
+        expect(statuses.map((status: { name: string; category: string }) => [status.name, status.category])).toEqual([
+            ['To do', 'todo'],
+            ['In progress', 'active'],
+            ['Review', 'review'],
+            ['Done', 'done'],
+            ['Canceled', 'canceled'],
+        ]);
         expect(statuses.every((status: { id: string }) => status.id.startsWith('sts_'))).toBe(true);
         expect(tasks.map((item: { key: string }) => item.key)).toEqual(['REP-1', 'REP-2']);
 
@@ -137,27 +210,46 @@ describe('the tool vocabulary', () => {
             createdAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/),
             updatedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/),
         });
-        expect((await exec(orchestrator, 'task_get', { taskId: first.id })).task).toMatchObject({ description: 'Outcome: x', blocks: [{ key: 'REP-2', title: 'Build', status: 'To do' }] });
+        expect((await exec(orchestrator, 'task_get', { taskId: first.id })).task).toMatchObject({
+            description: 'Outcome: x',
+            blocks: [{ key: 'REP-2', title: 'Build', status: 'To do' }],
+        });
 
         // The run of a chat started from the task shows up under activeRuns, and its start moves the task to In progress.
         const started = h.ok('task.start', { taskId: first.id });
 
-        await waitFor(() => h.run(started.runId).status === 'running', 'the task\'s chat to start');
-        expect((await exec(orchestrator, 'task_get', { taskId: first.key })).task.activeRuns).toEqual([{ runId: started.runId, name: 'Orchestrator 02', role: 'orchestrator', status: 'running' }]);
+        await waitFor(() => h.run(started.runId).status === 'running', "the task's chat to start");
+        expect((await exec(orchestrator, 'task_get', { taskId: first.key })).task.activeRuns).toEqual([
+            { runId: started.runId, name: 'Orchestrator 02', role: 'orchestrator', status: 'running' },
+        ]);
 
         // A run with a request open to the person reads waiting_user to the agent that asks, whatever its own status.
         const working = h.run(started.runId);
 
         upsertRun(h.store.db, { ...working, awaitingUser: true });
-        expect((await exec(orchestrator, 'task_get', { taskId: first.key })).task.activeRuns).toEqual([{ runId: started.runId, name: 'Orchestrator 02', role: 'orchestrator', status: 'waiting_user' }]);
+        expect((await exec(orchestrator, 'task_get', { taskId: first.key })).task.activeRuns).toEqual([
+            { runId: started.runId, name: 'Orchestrator 02', role: 'orchestrator', status: 'waiting_user' },
+        ]);
         upsertRun(h.store.db, working);
 
         // Filters
-        expect((await exec(orchestrator, 'task_list', { query: 'BUILD' })).tasks.map((item: { key: string }) => item.key)).toEqual(['REP-2']);
-        expect((await exec(orchestrator, 'task_list', { status: ['In progress'] })).tasks.map((item: { key: string }) => item.key)).toEqual(['REP-1']);
-        expect((await exec(orchestrator, 'task_list', { running: true })).tasks.map((item: { key: string }) => item.key)).toEqual(['REP-1']);
-        expect((await exec(orchestrator, 'task_list', { ready: true })).tasks.map((item: { key: string }) => item.key)).toEqual(['REP-1']);
-        expect((await exec(orchestrator, 'task_list', { blocked: true })).tasks).toMatchObject([{ key: 'REP-2', blockedBy: ['REP-1'] }]);
+        expect(
+            (await exec(orchestrator, 'task_list', { query: 'BUILD' })).tasks.map((item: { key: string }) => item.key)
+        ).toEqual(['REP-2']);
+        expect(
+            (await exec(orchestrator, 'task_list', { status: ['In progress'] })).tasks.map(
+                (item: { key: string }) => item.key
+            )
+        ).toEqual(['REP-1']);
+        expect(
+            (await exec(orchestrator, 'task_list', { running: true })).tasks.map((item: { key: string }) => item.key)
+        ).toEqual(['REP-1']);
+        expect(
+            (await exec(orchestrator, 'task_list', { ready: true })).tasks.map((item: { key: string }) => item.key)
+        ).toEqual(['REP-1']);
+        expect((await exec(orchestrator, 'task_list', { blocked: true })).tasks).toMatchObject([
+            { key: 'REP-2', blockedBy: ['REP-1'] },
+        ]);
         expect(project.id).toBeTruthy();
         expect(h.store.headCursor()).toBeGreaterThan(0);
     });
@@ -169,7 +261,7 @@ describe('the tool vocabulary', () => {
         const closed = statuses.find((status: { category: string }) => status.category === 'done').id;
 
         for (let index = 0; index < 30; index++) {
-            await task(`Finished ${ index }`, { status: closed });
+            await task(`Finished ${index}`, { status: closed });
         }
 
         const open = await task('Open one');
@@ -189,10 +281,18 @@ describe('the tool vocabulary', () => {
         expect(rest).toMatchObject({ total: 31, shown: 11 });
         expect(rest.statuses).toBeUndefined();
         expect(rest.nextCursor).toBeUndefined();
-        expect((await exec(orchestrator, 'task_list', { status: ['done'], sort: 'number', limit: 2 })).tasks.map((item: { key: string }) => item.key)).toEqual(['REP-1', 'REP-2']);
+        expect(
+            (await exec(orchestrator, 'task_list', { status: ['done'], sort: 'number', limit: 2 })).tasks.map(
+                (item: { key: string }) => item.key
+            )
+        ).toEqual(['REP-1', 'REP-2']);
         expect((await exec(orchestrator, 'task_list', { all: true, status: ['Done', 'todo'] })).total).toBe(31);
         expect((await exec(orchestrator, 'task_list', { all: true, status: ['review'] })).total).toBe(0);
-        expect((await exec(orchestrator, 'task_list', { query: 'finished 7' })).tasks.map((item: { title: string }) => item.title)).toEqual(['Finished 7']);
+        expect(
+            (await exec(orchestrator, 'task_list', { query: 'finished 7' })).tasks.map(
+                (item: { title: string }) => item.title
+            )
+        ).toEqual(['Finished 7']);
         expect((await exec(orchestrator, 'task_list', { mine: true, all: true, limit: 1 })).total).toBe(31);
         await expect(exec(orchestrator, 'task_list', { updatedSince: 'last week' })).rejects.toThrow(/is not a time/);
         await expect(exec(orchestrator, 'task_list', { limit: 500 })).rejects.toThrow(/Invalid input for task_list/);
@@ -210,7 +310,8 @@ describe('the tool vocabulary', () => {
     test('a status may be given as an id, a name or a category, in any case; a wrong one lists what exists; the old statusId is refused', async () => {
         const { exec, orchestrator, task } = await setup();
         const { statuses } = await exec(orchestrator, 'task_list');
-        const byCategory = (category: string) => statuses.find((status: { category: string }) => status.category === category);
+        const byCategory = (category: string) =>
+            statuses.find((status: { category: string }) => status.category === category);
         const first = await task('A', { status: byCategory('active').id });
 
         expect(first.category).toBe('active');
@@ -221,8 +322,12 @@ describe('the tool vocabulary', () => {
         const moved = await exec(orchestrator, 'task_update', { taskId: first.key, status: 'canceled' });
 
         expect(moved.task.category).toBe('canceled');
-        await expect(exec(orchestrator, 'task_update', { taskId: first.key, status: 'sts_nope' })).rejects.toThrow(/Unknown status "sts_nope"\. Use the id of one of: sts_\w+ \(To do, todo\); .*\(Canceled, canceled\)/);
-        await expect(exec(orchestrator, 'task_update', { taskId: first.key, statusId: byCategory('done').id })).rejects.toThrow(/Invalid input for task_update.*statusId/s);
+        await expect(exec(orchestrator, 'task_update', { taskId: first.key, status: 'sts_nope' })).rejects.toThrow(
+            /Unknown status "sts_nope"\. Use the id of one of: sts_\w+ \(To do, todo\); .*\(Canceled, canceled\)/
+        );
+        await expect(
+            exec(orchestrator, 'task_update', { taskId: first.key, statusId: byCategory('done').id })
+        ).rejects.toThrow(/Invalid input for task_update.*statusId/s);
         await expect(task('E', { dependsOn: ['REP-99'] })).rejects.toThrow(/does not exist/);
         await expect(exec(orchestrator, 'task_get', {})).rejects.toThrow(/Invalid input for task_get/);
     });
@@ -231,19 +336,32 @@ describe('the tool vocabulary', () => {
         const { exec, orchestrator, task } = await setup();
         const a = await task('A');
         const b = await task('B', { dependsOn: [a.key] });
-        const { task: updated } = await exec(orchestrator, 'task_update', { taskId: a.key, title: 'A2', description: 'new text', dependsOn: [] });
+        const { task: updated } = await exec(orchestrator, 'task_update', {
+            taskId: a.key,
+            title: 'A2',
+            description: 'new text',
+            dependsOn: [],
+        });
 
         expect(updated).toMatchObject({ title: 'A2', description: 'new text', dependsOn: [] });
-        await expect(exec(orchestrator, 'task_update', { taskId: a.key, dependsOn: [b.key] })).rejects.toThrow(/Circular dependency/);
-        await expect(exec(orchestrator, 'task_update', { taskId: a.key, addDependsOn: [b.key] })).rejects.toThrow(/Circular dependency/);
+        await expect(exec(orchestrator, 'task_update', { taskId: a.key, dependsOn: [b.key] })).rejects.toThrow(
+            /Circular dependency/
+        );
+        await expect(exec(orchestrator, 'task_update', { taskId: a.key, addDependsOn: [b.key] })).rejects.toThrow(
+            /Circular dependency/
+        );
     });
 
     test('task_update has no append: a stale call is an error of the strict schema, and a note goes in a comment', async () => {
         const { exec, orchestrator, task } = await setup();
         const a = await task('A', { description: 'Outcome: x\n' });
 
-        await expect(exec(orchestrator, 'task_update', { taskId: a.key, append: 'Verification: passed' })).rejects.toThrow(/Invalid input for task_update.*append/s);
-        await expect(exec(orchestrator, 'task_update', { taskId: a.key, description: 'x', append: 'y' })).rejects.toThrow(/Invalid input for task_update.*append/s);
+        await expect(
+            exec(orchestrator, 'task_update', { taskId: a.key, append: 'Verification: passed' })
+        ).rejects.toThrow(/Invalid input for task_update.*append/s);
+        await expect(
+            exec(orchestrator, 'task_update', { taskId: a.key, description: 'x', append: 'y' })
+        ).rejects.toThrow(/Invalid input for task_update.*append/s);
         expect((await exec(orchestrator, 'task_get', { taskId: a.key })).task.description).toBe('Outcome: x\n');
 
         await exec(orchestrator, 'task_comment', { taskId: a.key, body: 'Verification: passed' });
@@ -258,13 +376,30 @@ describe('the tool vocabulary', () => {
         const { exec, orchestrator, task } = await setup();
         const [a, b, c] = [await task('A'), await task('B'), await task('C')];
         const target = await task('Target', { dependsOn: [a.key] });
-        const keysOf = (result: { task: { dependsOn: { key: string }[] } }) => result.task.dependsOn.map(item => item.key);
+        const keysOf = (result: { task: { dependsOn: { key: string }[] } }) =>
+            result.task.dependsOn.map(item => item.key);
 
-        expect(keysOf(await exec(orchestrator, 'task_update', { taskId: target.key, addDependsOn: [b.key, a.key] }))).toEqual(['REP-1', 'REP-2']);
-        expect(keysOf(await exec(orchestrator, 'task_update', { taskId: target.key, removeDependsOn: [a.key, c.key] }))).toEqual(['REP-2']);
-        expect(keysOf(await exec(orchestrator, 'task_update', { taskId: target.key, addDependsOn: [c.key], removeDependsOn: [b.key] }))).toEqual(['REP-3']);
-        expect(keysOf(await exec(orchestrator, 'task_update', { taskId: target.key, dependsOn: [a.key] }))).toEqual(['REP-1']);
-        await expect(exec(orchestrator, 'task_update', { taskId: target.key, dependsOn: [a.key], addDependsOn: [b.key] })).rejects.toThrow(/do not combine it/);
+        expect(
+            keysOf(await exec(orchestrator, 'task_update', { taskId: target.key, addDependsOn: [b.key, a.key] }))
+        ).toEqual(['REP-1', 'REP-2']);
+        expect(
+            keysOf(await exec(orchestrator, 'task_update', { taskId: target.key, removeDependsOn: [a.key, c.key] }))
+        ).toEqual(['REP-2']);
+        expect(
+            keysOf(
+                await exec(orchestrator, 'task_update', {
+                    taskId: target.key,
+                    addDependsOn: [c.key],
+                    removeDependsOn: [b.key],
+                })
+            )
+        ).toEqual(['REP-3']);
+        expect(keysOf(await exec(orchestrator, 'task_update', { taskId: target.key, dependsOn: [a.key] }))).toEqual([
+            'REP-1',
+        ]);
+        await expect(
+            exec(orchestrator, 'task_update', { taskId: target.key, dependsOn: [a.key], addDependsOn: [b.key] })
+        ).rejects.toThrow(/do not combine it/);
     });
 
     test('blocks makes existing tasks wait for the new one, and a task that already feeds the new one is refused', async () => {
@@ -273,13 +408,19 @@ describe('the tool vocabulary', () => {
         const base = await task('Base');
         const prerequisite = await task('Prerequisite', { blocks: [waiting.key] });
 
-        expect((await exec(orchestrator, 'task_get', { taskId: waiting.key })).task.dependsOn).toEqual([{ key: prerequisite.key, title: 'Prerequisite', status: 'To do' }]);
+        expect((await exec(orchestrator, 'task_get', { taskId: waiting.key })).task.dependsOn).toEqual([
+            { key: prerequisite.key, title: 'Prerequisite', status: 'To do' },
+        ]);
         expect(prerequisite.blocks).toEqual([{ key: waiting.key, title: 'Waiting', status: 'To do' }]);
-        expect((await exec(orchestrator, 'task_get', { taskId: prerequisite.key })).task.blocks).toEqual([{ key: waiting.key, title: 'Waiting', status: 'To do' }]);
+        expect((await exec(orchestrator, 'task_get', { taskId: prerequisite.key })).task.blocks).toEqual([
+            { key: waiting.key, title: 'Waiting', status: 'To do' },
+        ]);
         // The refusal comes on the second entry: the first one's new dependency and the task itself are rolled back with it.
         const other = await task('Other');
 
-        await expect(task('Loop', { dependsOn: [base.key], blocks: [other.key, base.key] })).rejects.toThrow(/Circular dependency/);
+        await expect(task('Loop', { dependsOn: [base.key], blocks: [other.key, base.key] })).rejects.toThrow(
+            /Circular dependency/
+        );
         expect((await exec(orchestrator, 'task_list', { query: 'Loop', all: true })).total).toBe(0);
         expect((await exec(orchestrator, 'task_get', { taskId: other.key })).task.dependsOn).toEqual([]);
     });
@@ -288,8 +429,12 @@ describe('the tool vocabulary', () => {
         const { h, task, chat, orchestrator } = await setup();
         const created = await task('Linked');
 
-        expect(h.store.db.query('SELECT chat_id FROM chat_task_links WHERE task_id = ?').all(created.id)).toEqual([{ chat_id: chat.id }]);
-        expect(h.store.db.query('SELECT run_id, relation FROM run_task_links WHERE task_id = ?').all(created.id)).toEqual([{ run_id: orchestrator.id, relation: 'created' }]);
+        expect(h.store.db.query('SELECT chat_id FROM chat_task_links WHERE task_id = ?').all(created.id)).toEqual([
+            { chat_id: chat.id },
+        ]);
+        expect(
+            h.store.db.query('SELECT run_id, relation FROM run_task_links WHERE task_id = ?').all(created.id)
+        ).toEqual([{ run_id: orchestrator.id, relation: 'created' }]);
     });
 });
 
@@ -304,11 +449,20 @@ describe('tasks inside tasks', () => {
 
         expect(stage.parent).toEqual({ key: epic.key, title: 'Epic' });
         expect(epic).not.toHaveProperty('parent');
-        expect((await exec(orchestrator, 'task_update', { taskId: stage.key, parent: other.key })).task.parent).toEqual({ key: other.key, title: 'Other epic' });
-        expect((await exec(orchestrator, 'task_update', { taskId: stage.key, clearParent: true })).task).not.toHaveProperty('parent');
-        expect((await exec(orchestrator, 'task_update', { taskId: stage.id, parent: epic.id })).task.parent.key).toBe(epic.key);
+        expect((await exec(orchestrator, 'task_update', { taskId: stage.key, parent: other.key })).task.parent).toEqual(
+            { key: other.key, title: 'Other epic' }
+        );
+        expect(
+            (await exec(orchestrator, 'task_update', { taskId: stage.key, clearParent: true })).task
+        ).not.toHaveProperty('parent');
+        expect((await exec(orchestrator, 'task_update', { taskId: stage.id, parent: epic.id })).task.parent.key).toBe(
+            epic.key
+        );
         // clearParent: false leaves the parent alone.
-        expect((await exec(orchestrator, 'task_update', { taskId: stage.key, clearParent: false, title: 'Stage 2' })).task.parent.key).toBe(epic.key);
+        expect(
+            (await exec(orchestrator, 'task_update', { taskId: stage.key, clearParent: false, title: 'Stage 2' })).task
+                .parent.key
+        ).toBe(epic.key);
     });
 
     test('a parent that is the task, its descendant, too deep, missing or in both fields is refused with the reason', async () => {
@@ -316,22 +470,32 @@ describe('tasks inside tasks', () => {
         const a = await task('A');
         const child = await task('B', { parent: a.key });
 
-        await expect(exec(orchestrator, 'task_update', { taskId: a.key, parent: a.key })).rejects.toThrow('cannot be its own parent');
-        await expect(exec(orchestrator, 'task_update', { taskId: a.key, parent: child.key })).rejects.toThrow(`Task ${ child.key } is inside ${ a.key }, so it cannot be its parent`);
+        await expect(exec(orchestrator, 'task_update', { taskId: a.key, parent: a.key })).rejects.toThrow(
+            'cannot be its own parent'
+        );
+        await expect(exec(orchestrator, 'task_update', { taskId: a.key, parent: child.key })).rejects.toThrow(
+            `Task ${child.key} is inside ${a.key}, so it cannot be its parent`
+        );
         await expect(task('x', { parent: 'REP-99' })).rejects.toThrow(/does not exist/);
-        await expect(exec(orchestrator, 'task_update', { taskId: a.key, parent: 'REP-99' })).rejects.toThrow(/does not exist/);
-        await expect(exec(orchestrator, 'task_update', { taskId: a.key, parent: child.key, clearParent: true })).rejects.toThrow('give one of them');
+        await expect(exec(orchestrator, 'task_update', { taskId: a.key, parent: 'REP-99' })).rejects.toThrow(
+            /does not exist/
+        );
+        await expect(
+            exec(orchestrator, 'task_update', { taskId: a.key, parent: child.key, clearParent: true })
+        ).rejects.toThrow('give one of them');
 
         let last = a;
 
         for (let level = 2; level <= 8; level++) {
-            last = await task(`Level ${ level }`, { parent: last.key });
+            last = await task(`Level ${level}`, { parent: last.key });
         }
 
-        await expect(task('Level 9', { parent: last.key })).rejects.toThrow(/would reach level 9, and a tree has at most 8 levels/);
+        await expect(task('Level 9', { parent: last.key })).rejects.toThrow(
+            /would reach level 9, and a tree has at most 8 levels/
+        );
     });
 
-    test('a parent from another project is refused, by key as unknown and by id as another project\'s, and no task is left behind', async () => {
+    test("a parent from another project is refused, by key as unknown and by id as another project's, and no task is left behind", async () => {
         const { exec, orchestrator, task, h } = await setup();
         const other = h.openRepo('other');
         const foreign = h.ok('task.create', { projectId: other.id, title: 'Foreign' }).task;
@@ -353,14 +517,24 @@ describe('tasks inside tasks', () => {
 
         expect(got).toMatchObject({
             checklist: { done: 1, total: 2 },
-            children: [{ key: stage.key, title: 'Stage', status: 'To do' }, { key: done.key, title: 'Done stage', status: 'Done' }],
+            children: [
+                { key: stage.key, title: 'Stage', status: 'To do' },
+                { key: done.key, title: 'Done stage', status: 'Done' },
+            ],
             childrenTotal: 2,
             descendants: { todo: 1, active: 1, done: 1 },
         });
         expect(got).not.toHaveProperty('parent');
-        expect((await exec(orchestrator, 'task_get', { taskId: step.key })).task).toMatchObject({ parent: { key: stage.key, title: 'Stage' } });
+        expect((await exec(orchestrator, 'task_get', { taskId: step.key })).task).toMatchObject({
+            parent: { key: stage.key, title: 'Stage' },
+        });
         expect((await exec(orchestrator, 'task_get', { taskId: step.key })).task).not.toHaveProperty('children');
-        expect((await exec(orchestrator, 'task_get', { taskId: stage.key })).task).toMatchObject({ parent: { key: epic.key, title: 'Epic' }, children: [{ key: step.key, status: 'In progress' }], childrenTotal: 1, descendants: { active: 1 } });
+        expect((await exec(orchestrator, 'task_get', { taskId: stage.key })).task).toMatchObject({
+            parent: { key: epic.key, title: 'Epic' },
+            children: [{ key: step.key, status: 'In progress' }],
+            childrenTotal: 1,
+            descendants: { active: 1 },
+        });
 
         for (const field of ['parent', 'children', 'childrenTotal', 'descendants', 'checklist']) {
             expect((await exec(orchestrator, 'task_get', { taskId: leaf.key })).task).not.toHaveProperty(field);
@@ -372,7 +546,7 @@ describe('tasks inside tasks', () => {
         const epic = await task('Epic');
 
         for (let index = 0; index < 52; index++) {
-            await task(`Child ${ index }`, { parent: epic.key, status: index < 10 ? 'done' : 'todo' });
+            await task(`Child ${index}`, { parent: epic.key, status: index < 10 ? 'done' : 'todo' });
         }
 
         const { task: got } = await exec(orchestrator, 'task_get', { taskId: epic.key });
@@ -397,7 +571,12 @@ describe('tasks inside tasks', () => {
         expect(keysOf(whole.tasks)).toEqual([epic.key, stage.key, step.key, root.key]);
         expect(whole.tasks[0]).toMatchObject({ key: epic.key, children: { todo: 1, done: 1 } });
         expect(whole.tasks[0]).not.toHaveProperty('parent');
-        expect(whole.tasks[1]).toMatchObject({ key: stage.key, parent: epic.key, children: { todo: 1 }, checklist: { done: 1, total: 2 } });
+        expect(whole.tasks[1]).toMatchObject({
+            key: stage.key,
+            parent: epic.key,
+            children: { todo: 1 },
+            checklist: { done: 1, total: 2 },
+        });
         expect(whole.tasks[2]).toMatchObject({ key: step.key, parent: stage.key });
         expect(whole.tasks[2]).not.toHaveProperty('children');
         expect(whole.counts).toMatchObject({ todo: 3, active: 1, done: 1 });
@@ -406,24 +585,47 @@ describe('tasks inside tasks', () => {
 
         expect(keysOf(direct.tasks)).toEqual([stage.key]);
         expect(direct).toMatchObject({ total: 1, counts: { todo: 1, done: 1, active: 0 } });
-        expect(keysOf((await exec(orchestrator, 'task_list', { parent: epic.key, all: true, sort: 'number' })).tasks)).toEqual([stage.key, closed.key]);
-        expect(keysOf((await exec(orchestrator, 'task_list', { under: epic.key, all: true, sort: 'number' })).tasks)).toEqual([stage.key, closed.key, step.key]);
-        expect(keysOf((await exec(orchestrator, 'task_list', { under: epic.key, sort: 'number' })).tasks)).toEqual([stage.key, step.key]);
-        expect((await exec(orchestrator, 'task_list', { under: epic.id, all: true })).counts).toMatchObject({ todo: 2, done: 1, active: 0 });
-        expect(keysOf((await exec(orchestrator, 'task_list', { roots: true, sort: 'number' })).tasks)).toEqual([epic.key, root.key]);
-        expect((await exec(orchestrator, 'task_list', { roots: true })).counts).toMatchObject({ todo: 1, active: 1, done: 0 });
-        await expect(exec(orchestrator, 'task_list', { parent: epic.key, roots: true })).rejects.toThrow('give one of them');
+        expect(
+            keysOf((await exec(orchestrator, 'task_list', { parent: epic.key, all: true, sort: 'number' })).tasks)
+        ).toEqual([stage.key, closed.key]);
+        expect(
+            keysOf((await exec(orchestrator, 'task_list', { under: epic.key, all: true, sort: 'number' })).tasks)
+        ).toEqual([stage.key, closed.key, step.key]);
+        expect(keysOf((await exec(orchestrator, 'task_list', { under: epic.key, sort: 'number' })).tasks)).toEqual([
+            stage.key,
+            step.key,
+        ]);
+        expect((await exec(orchestrator, 'task_list', { under: epic.id, all: true })).counts).toMatchObject({
+            todo: 2,
+            done: 1,
+            active: 0,
+        });
+        expect(keysOf((await exec(orchestrator, 'task_list', { roots: true, sort: 'number' })).tasks)).toEqual([
+            epic.key,
+            root.key,
+        ]);
+        expect((await exec(orchestrator, 'task_list', { roots: true })).counts).toMatchObject({
+            todo: 1,
+            active: 1,
+            done: 0,
+        });
+        await expect(exec(orchestrator, 'task_list', { parent: epic.key, roots: true })).rejects.toThrow(
+            'give one of them'
+        );
         await expect(exec(orchestrator, 'task_list', { under: 'REP-99' })).rejects.toThrow(/does not exist/);
     });
 
-    test('deleting a parent shows in the list at once: its children are roots or the grandparent\'s', async () => {
+    test("deleting a parent shows in the list at once: its children are roots or the grandparent's", async () => {
         const { exec, orchestrator, task, h } = await setup();
         const epic = await task('Epic');
         const stage = await task('Stage', { parent: epic.key });
         const step = await task('Step', { parent: stage.key });
 
         h.ok('task.delete', { taskId: stage.id });
-        expect((await exec(orchestrator, 'task_get', { taskId: step.key })).task.parent).toEqual({ key: epic.key, title: 'Epic' });
+        expect((await exec(orchestrator, 'task_get', { taskId: step.key })).task.parent).toEqual({
+            key: epic.key,
+            title: 'Epic',
+        });
         h.ok('task.delete', { taskId: epic.id });
         expect(keysOf((await exec(orchestrator, 'task_list', { roots: true })).tasks)).toEqual([step.key]);
     });
@@ -433,7 +635,9 @@ describe('tasks inside tasks', () => {
         const first = await task('First');
         const second = await task('Second', { dependsOn: [first.key] });
 
-        expect((await exec(orchestrator, 'task_list', { blocked: true })).tasks).toMatchObject([{ key: second.key, blockedBy: [first.key] }]);
+        expect((await exec(orchestrator, 'task_list', { blocked: true })).tasks).toMatchObject([
+            { key: second.key, blockedBy: [first.key] },
+        ]);
         await exec(orchestrator, 'task_update', { taskId: first.key, status: 'canceled' });
         expect((await exec(orchestrator, 'task_list', { blocked: true })).tasks).toEqual([]);
         expect(keysOf((await exec(orchestrator, 'task_list', { ready: true })).tasks)).toEqual([second.key]);
@@ -443,38 +647,70 @@ describe('tasks inside tasks', () => {
     test('the tools say how to spell the parent, and refuse a field they do not have', async () => {
         const { orchestrator, toolsOf } = await setup();
         const tool = (name: string) => toolsOf(orchestrator).find(candidate => candidate.name === name)!;
-        const properties = (name: string) => (tool(name).inputSchema as { properties: Record<string, { description?: string }> }).properties;
+        const properties = (name: string) =>
+            (tool(name).inputSchema as { properties: Record<string, { description?: string }> }).properties;
 
         expect(Object.keys(properties('task_create'))).toContain('parent');
         expect(Object.keys(properties('task_update'))).toEqual(expect.arrayContaining(['parent', 'clearParent']));
         expect(Object.keys(properties('task_list'))).toEqual(expect.arrayContaining(['parent', 'under', 'roots']));
         expect(properties('task_update').clearParent.description).toContain('top-level');
-        await expect(tool('task_update').execute({ taskId: 'REP-1', parentId: 'REP-2' }, new AbortController().signal)).rejects.toThrow(/Invalid input for task_update.*parentId/s);
+        await expect(
+            tool('task_update').execute({ taskId: 'REP-1', parentId: 'REP-2' }, new AbortController().signal)
+        ).rejects.toThrow(/Invalid input for task_update.*parentId/s);
     });
 });
 
 describe('task comments', () => {
     const iso = expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
 
-    test('task_comment writes the comment as the run, and the person\'s comments from the app read as user', async () => {
+    test("task_comment writes the comment as the run, and the person's comments from the app read as user", async () => {
         const { exec, orchestrator, task, h } = await setup();
         const epic = await task('Epic');
-        const answer = await exec(orchestrator, 'task_comment', { taskId: epic.key, body: 'Found the cause.\n\n- the cache key' });
+        const answer = await exec(orchestrator, 'task_comment', {
+            taskId: epic.key,
+            body: 'Found the cause.\n\n- the cache key',
+        });
 
-        expect(answer).toEqual({ comment: { id: expect.stringMatching(/^cmt_/), author: 'agent', createdAt: iso, body: 'Found the cause.\n\n- the cache key' }, total: 1 });
+        expect(answer).toEqual({
+            comment: {
+                id: expect.stringMatching(/^cmt_/),
+                author: 'agent',
+                createdAt: iso,
+                body: 'Found the cause.\n\n- the cache key',
+            },
+            total: 1,
+        });
         expect(answer.comment).not.toHaveProperty('editedAt');
 
         const stored = taskCommentsPage(h.store, epic.id).comments;
 
-        expect(stored).toEqual([expect.objectContaining({ id: answer.comment.id, taskId: epic.id, author: { kind: 'run', runId: orchestrator.id }, body: 'Found the cause.\n\n- the cache key' })]);
-        expect(h.events().filter(event => event.data.type === 'task.comment.upserted').map(event => event.data)).toEqual([{ type: 'task.comment.upserted', comment: stored[0] }]);
+        expect(stored).toEqual([
+            expect.objectContaining({
+                id: answer.comment.id,
+                taskId: epic.id,
+                author: { kind: 'run', runId: orchestrator.id },
+                body: 'Found the cause.\n\n- the cache key',
+            }),
+        ]);
+        expect(
+            h
+                .events()
+                .filter(event => event.data.type === 'task.comment.upserted')
+                .map(event => event.data)
+        ).toEqual([{ type: 'task.comment.upserted', comment: stored[0] }]);
 
         h.ok('task.comment.add', { taskId: epic.id, body: 'Thanks' });
 
         const { comments } = await exec(orchestrator, 'task_comments', { taskId: epic.key });
 
-        expect(comments.map((comment: { author: string; body: string }) => [comment.author, comment.body])).toEqual([['agent', 'Found the cause.\n\n- the cache key'], ['user', 'Thanks']]);
-        expect(taskCommentsPage(h.store, epic.id).comments.map(comment => comment.author)).toEqual([{ kind: 'run', runId: orchestrator.id }, { kind: 'user' }]);
+        expect(comments.map((comment: { author: string; body: string }) => [comment.author, comment.body])).toEqual([
+            ['agent', 'Found the cause.\n\n- the cache key'],
+            ['user', 'Thanks'],
+        ]);
+        expect(taskCommentsPage(h.store, epic.id).comments.map(comment => comment.author)).toEqual([
+            { kind: 'run', runId: orchestrator.id },
+            { kind: 'user' },
+        ]);
     });
 
     test('task_comment takes a key or an id, refuses an empty body, a task that does not exist, a task of another project and a field it does not have', async () => {
@@ -484,16 +720,32 @@ describe('task comments', () => {
         const foreign = h.ok('task.create', { projectId: elsewhere.id, title: 'Foreign' }).task;
 
         expect((await exec(orchestrator, 'task_comment', { taskId: epic.id, body: 'By id' })).total).toBe(1);
-        await expect(exec(orchestrator, 'task_comment', { taskId: epic.key, body: '' })).rejects.toThrow('A comment cannot be empty');
-        await expect(exec(orchestrator, 'task_comment', { taskId: epic.key, body: '  \n ' })).rejects.toThrow('A comment cannot be empty');
-        await expect(exec(orchestrator, 'task_comment', { taskId: 'REP-99', body: 'x' })).rejects.toThrow(/does not exist/);
-        await expect(exec(orchestrator, 'task_comment', { taskId: foreign.id, body: 'x' })).rejects.toThrow(/belongs to another project/);
-        await expect(exec(orchestrator, 'task_comment', { taskId: epic.key, text: 'x', body: 'y' })).rejects.toThrow(/Invalid input for task_comment.*text/s);
-        await expect(exec(orchestrator, 'task_comment', { taskId: epic.key })).rejects.toThrow(/Invalid input for task_comment/);
+        await expect(exec(orchestrator, 'task_comment', { taskId: epic.key, body: '' })).rejects.toThrow(
+            'A comment cannot be empty'
+        );
+        await expect(exec(orchestrator, 'task_comment', { taskId: epic.key, body: '  \n ' })).rejects.toThrow(
+            'A comment cannot be empty'
+        );
+        await expect(exec(orchestrator, 'task_comment', { taskId: 'REP-99', body: 'x' })).rejects.toThrow(
+            /does not exist/
+        );
+        await expect(exec(orchestrator, 'task_comment', { taskId: foreign.id, body: 'x' })).rejects.toThrow(
+            /belongs to another project/
+        );
+        await expect(exec(orchestrator, 'task_comment', { taskId: epic.key, text: 'x', body: 'y' })).rejects.toThrow(
+            /Invalid input for task_comment.*text/s
+        );
+        await expect(exec(orchestrator, 'task_comment', { taskId: epic.key })).rejects.toThrow(
+            /Invalid input for task_comment/
+        );
         expect(taskCommentsPage(h.store, epic.id).total).toBe(1);
 
         // Agents write and read; the person edits and deletes.
-        expect(toolsOf(orchestrator).map(tool => tool.name).filter(name => name.includes('comment'))).toEqual(['task_comments', 'task_comment']);
+        expect(
+            toolsOf(orchestrator)
+                .map(tool => tool.name)
+                .filter(name => name.includes('comment'))
+        ).toEqual(['task_comments', 'task_comment']);
     });
 
     test('task_get names no comments for a task without any, and with some gives their count and the last three, oldest first', async () => {
@@ -525,14 +777,24 @@ describe('task comments', () => {
         const after = (await exec(orchestrator, 'task_get', { taskId: epic.key })).task;
 
         expect(after.commentCount).toBe(4);
-        expect(after.latestComments.map((comment: { body: string }) => comment.body)).toEqual(['Two', 'Three, edited', 'Four']);
-        expect(after.latestComments[1]).toEqual({ id: three.id, author: 'agent', createdAt: iso, editedAt: iso, body: 'Three, edited' });
+        expect(after.latestComments.map((comment: { body: string }) => comment.body)).toEqual([
+            'Two',
+            'Three, edited',
+            'Four',
+        ]);
+        expect(after.latestComments[1]).toEqual({
+            id: three.id,
+            author: 'agent',
+            createdAt: iso,
+            editedAt: iso,
+            body: 'Three, edited',
+        });
     });
 
     test('task_get cuts a long comment to a short preview with an ellipsis and task_comments gives it whole', async () => {
         const { exec, orchestrator, task } = await setup();
         const epic = await task('Epic');
-        const long = `${ 'word '.repeat(200) }end`;
+        const long = `${'word '.repeat(200)}end`;
         const short = 'y'.repeat(300);
 
         await exec(orchestrator, 'task_comment', { taskId: epic.key, body: long });
@@ -556,11 +818,11 @@ describe('task comments', () => {
         const epic = await task('Epic');
 
         // The emoji is two UTF-16 units at 298 and 299; the preview keeps 299 units less the ellipsis.
-        await exec(orchestrator, 'task_comment', { taskId: epic.key, body: `${ 'x'.repeat(298) }\u{1F600} and more` });
+        await exec(orchestrator, 'task_comment', { taskId: epic.key, body: `${'x'.repeat(298)}\u{1F600} and more` });
 
         const [preview] = (await exec(orchestrator, 'task_get', { taskId: epic.key })).task.latestComments;
 
-        expect(preview.body).toBe(`${ 'x'.repeat(298) }…`);
+        expect(preview.body).toBe(`${'x'.repeat(298)}…`);
         expect(preview.body.isWellFormed()).toBe(true);
     });
 
@@ -574,14 +836,17 @@ describe('task comments', () => {
 
         await exec(orchestrator, 'task_comment', { taskId: epic.key, body: 'Note' });
 
-        const { commentCount, latestComments, ...rest } = (await exec(orchestrator, 'task_get', { taskId: epic.key })).task;
+        const { commentCount, latestComments, ...rest } = (await exec(orchestrator, 'task_get', { taskId: epic.key }))
+            .task;
 
         expect(commentCount).toBe(1);
         expect(latestComments).toHaveLength(1);
         expect(rest).toEqual(plain);
 
         // The answers of the tools that change a task do not carry comments: only a read does.
-        expect((await exec(orchestrator, 'task_update', { taskId: epic.key, title: 'Epic 2' })).task).not.toHaveProperty('commentCount');
+        expect(
+            (await exec(orchestrator, 'task_update', { taskId: epic.key, title: 'Epic 2' })).task
+        ).not.toHaveProperty('commentCount');
     });
 
     test('task_comments pages oldest first with total, shown and a cursor, the body whole, 25 a page unless limit says otherwise, at most 100', async () => {
@@ -591,7 +856,10 @@ describe('task comments', () => {
         const long = 'z'.repeat(5000);
 
         for (let index = 1; index <= 30; index++) {
-            await exec(orchestrator, 'task_comment', { taskId: epic.key, body: index === 1 ? long : `Comment ${ index }` });
+            await exec(orchestrator, 'task_comment', {
+                taskId: epic.key,
+                body: index === 1 ? long : `Comment ${index}`,
+            });
         }
 
         await exec(orchestrator, 'task_comment', { taskId: other.key, body: 'Elsewhere' });
@@ -600,24 +868,47 @@ describe('task comments', () => {
 
         expect(Object.keys(first)).toEqual(['comments', 'total', 'shown', 'nextCursor']);
         expect(first).toMatchObject({ total: 30, shown: 25 });
-        expect(first.comments[0]).toEqual({ id: expect.stringMatching(/^cmt_/), author: 'agent', createdAt: iso, body: long });
+        expect(first.comments[0]).toEqual({
+            id: expect.stringMatching(/^cmt_/),
+            author: 'agent',
+            createdAt: iso,
+            body: long,
+        });
         expect(first.comments.at(-1).body).toBe('Comment 25');
 
         const rest = await exec(orchestrator, 'task_comments', { taskId: epic.key, cursor: first.nextCursor });
 
         expect(Object.keys(rest)).toEqual(['comments', 'total', 'shown']);
         expect(rest).toMatchObject({ total: 30, shown: 5 });
-        expect(rest.comments.map((comment: { body: string }) => comment.body)).toEqual(['Comment 26', 'Comment 27', 'Comment 28', 'Comment 29', 'Comment 30']);
+        expect(rest.comments.map((comment: { body: string }) => comment.body)).toEqual([
+            'Comment 26',
+            'Comment 27',
+            'Comment 28',
+            'Comment 29',
+            'Comment 30',
+        ]);
 
         const small = await exec(orchestrator, 'task_comments', { taskId: epic.key, limit: 2 });
 
         expect(small).toMatchObject({ total: 30, shown: 2, nextCursor: expect.any(String) });
-        expect((await exec(orchestrator, 'task_comments', { taskId: epic.key, limit: 100 }))).toMatchObject({ shown: 30 });
-        expect(await exec(orchestrator, 'task_comments', { taskId: other.key })).toEqual({ comments: [expect.objectContaining({ body: 'Elsewhere' })], total: 1, shown: 1 });
+        expect(await exec(orchestrator, 'task_comments', { taskId: epic.key, limit: 100 })).toMatchObject({
+            shown: 30,
+        });
+        expect(await exec(orchestrator, 'task_comments', { taskId: other.key })).toEqual({
+            comments: [expect.objectContaining({ body: 'Elsewhere' })],
+            total: 1,
+            shown: 1,
+        });
 
-        await expect(exec(orchestrator, 'task_comments', { taskId: epic.key, limit: 101 })).rejects.toThrow(/Invalid input for task_comments/);
-        await expect(exec(orchestrator, 'task_comments', { taskId: epic.key, limit: 0 })).rejects.toThrow(/Invalid input for task_comments/);
-        await expect(exec(orchestrator, 'task_comments', { taskId: epic.key, cursor: 'nope' })).rejects.toThrow('is not a cursor');
+        await expect(exec(orchestrator, 'task_comments', { taskId: epic.key, limit: 101 })).rejects.toThrow(
+            /Invalid input for task_comments/
+        );
+        await expect(exec(orchestrator, 'task_comments', { taskId: epic.key, limit: 0 })).rejects.toThrow(
+            /Invalid input for task_comments/
+        );
+        await expect(exec(orchestrator, 'task_comments', { taskId: epic.key, cursor: 'nope' })).rejects.toThrow(
+            'is not a cursor'
+        );
         await expect(exec(orchestrator, 'task_comments', { taskId: 'REP-99' })).rejects.toThrow(/does not exist/);
     });
 
@@ -625,7 +916,11 @@ describe('task comments', () => {
         const { exec, orchestrator, task } = await setup();
         const epic = await task('Epic');
 
-        expect(await exec(orchestrator, 'task_comments', { taskId: epic.key })).toEqual({ comments: [], total: 0, shown: 0 });
+        expect(await exec(orchestrator, 'task_comments', { taskId: epic.key })).toEqual({
+            comments: [],
+            total: 0,
+            shown: 0,
+        });
     });
 });
 
@@ -640,11 +935,20 @@ describe('the archive', () => {
         const step = await task('Step', { parent: stage.key, status: 'canceled' });
         const live = await task('Live');
 
-        expect(await exec(orchestrator, 'task_archive', { taskId: [epic.key] })).toEqual({ archived: [epic.key, stage.key, step.key] });
+        expect(await exec(orchestrator, 'task_archive', { taskId: [epic.key] })).toEqual({
+            archived: [epic.key, stage.key, step.key],
+        });
         expect(keysOf((await exec(orchestrator, 'task_list', { all: true })).tasks)).toEqual([live.key]);
         expect(await exec(orchestrator, 'task_archive', { taskId: [epic.key] })).toEqual({ archived: [] });
-        expect(await exec(orchestrator, 'task_unarchive', { taskId: [epic.key] })).toEqual({ restored: [epic.key, stage.key, step.key] });
-        expect(keysOf((await exec(orchestrator, 'task_list', { all: true, sort: 'number' })).tasks)).toEqual([epic.key, stage.key, step.key, live.key]);
+        expect(await exec(orchestrator, 'task_unarchive', { taskId: [epic.key] })).toEqual({
+            restored: [epic.key, stage.key, step.key],
+        });
+        expect(keysOf((await exec(orchestrator, 'task_list', { all: true, sort: 'number' })).tasks)).toEqual([
+            epic.key,
+            stage.key,
+            step.key,
+            live.key,
+        ]);
         expect(await exec(orchestrator, 'task_unarchive', { taskId: [epic.key] })).toEqual({ restored: [] });
         // An id works as a key does.
         expect(await exec(orchestrator, 'task_archive', { taskId: [step.id] })).toEqual({ archived: [step.key] });
@@ -655,12 +959,26 @@ describe('the archive', () => {
         const epic = await task('Epic');
         const stage = await task('Stage', { parent: epic.key, status: 'active' });
 
-        await expect(exec(orchestrator, 'task_archive', { taskId: [epic.key] })).rejects.toThrow(`${ epic.key } (To do), ${ stage.key } (In progress) are not closed: close them first, or archive with cancel`);
+        await expect(exec(orchestrator, 'task_archive', { taskId: [epic.key] })).rejects.toThrow(
+            `${epic.key} (To do), ${stage.key} (In progress) are not closed: close them first, or archive with cancel`
+        );
         expect((await exec(orchestrator, 'task_list', { all: true })).total).toBe(2);
-        expect(await exec(orchestrator, 'task_archive', { taskId: [epic.key], cancel: true })).toEqual({ archived: [epic.key, stage.key], canceled: [epic.key, stage.key] });
-        expect((await exec(orchestrator, 'task_get', { taskId: stage.key })).task).toMatchObject({ status: 'Canceled', category: 'canceled', archived: true });
+        expect(await exec(orchestrator, 'task_archive', { taskId: [epic.key], cancel: true })).toEqual({
+            archived: [epic.key, stage.key],
+            canceled: [epic.key, stage.key],
+        });
+        expect((await exec(orchestrator, 'task_get', { taskId: stage.key })).task).toMatchObject({
+            status: 'Canceled',
+            category: 'canceled',
+            archived: true,
+        });
         // Nothing to cancel: the answer does not mention it.
-        expect(await exec(orchestrator, 'task_archive', { taskId: [await task('Done', { status: 'done' }).then(done => done.key)], cancel: true })).not.toHaveProperty('canceled');
+        expect(
+            await exec(orchestrator, 'task_archive', {
+                taskId: [await task('Done', { status: 'done' }).then(done => done.key)],
+                cancel: true,
+            })
+        ).not.toHaveProperty('canceled');
     });
 
     test('several tasks go in one call, all of them or none, and a task given with one inside it goes in one batch whatever the order of the words', async () => {
@@ -668,19 +986,30 @@ describe('the archive', () => {
         const [first, second] = [await task('First', { status: 'done' }), await task('Second', { status: 'done' })];
         const open = await task('Open');
 
-        await expect(exec(orchestrator, 'task_archive', { taskId: [first.key, open.key, second.key] })).rejects.toThrow(`${ open.key } (To do) is not closed`);
+        await expect(exec(orchestrator, 'task_archive', { taskId: [first.key, open.key, second.key] })).rejects.toThrow(
+            `${open.key} (To do) is not closed`
+        );
         expect((await exec(orchestrator, 'task_list', { archived: true })).total).toBe(0);
-        expect(await exec(orchestrator, 'task_archive', { taskId: [first.key, second.key, first.key] })).toEqual({ archived: [first.key, second.key] });
+        expect(await exec(orchestrator, 'task_archive', { taskId: [first.key, second.key, first.key] })).toEqual({
+            archived: [first.key, second.key],
+        });
         await expect(exec(orchestrator, 'task_archive', { taskId: ['REP-99'] })).rejects.toThrow(/does not exist/);
 
         // The child first and the parent after: one batch, so restoring the parent brings the child along.
         const epic = await task('Epic', { status: 'done' });
         const stage = await task('Stage', { parent: epic.key, status: 'done' });
 
-        expect(await exec(orchestrator, 'task_archive', { taskId: [stage.key, epic.key] })).toEqual({ archived: [epic.key, stage.key] });
+        expect(await exec(orchestrator, 'task_archive', { taskId: [stage.key, epic.key] })).toEqual({
+            archived: [epic.key, stage.key],
+        });
         // Restoring the child first is refused by itself, but in one call the parent goes first.
-        expect(await exec(orchestrator, 'task_unarchive', { taskId: [stage.key, epic.key] })).toEqual({ restored: [epic.key, stage.key] });
-        expect(keysOf((await exec(orchestrator, 'task_list', { archived: true, sort: 'number' })).tasks)).toEqual([first.key, second.key]);
+        expect(await exec(orchestrator, 'task_unarchive', { taskId: [stage.key, epic.key] })).toEqual({
+            restored: [epic.key, stage.key],
+        });
+        expect(keysOf((await exec(orchestrator, 'task_list', { archived: true, sort: 'number' })).tasks)).toEqual([
+            first.key,
+            second.key,
+        ]);
     });
 
     test('a task whose parent is archived is refused on its own, with the reason', async () => {
@@ -689,7 +1018,9 @@ describe('the archive', () => {
         const stage = await task('Stage', { parent: epic.key, status: 'done' });
 
         await exec(orchestrator, 'task_archive', { taskId: [epic.key] });
-        await expect(exec(orchestrator, 'task_unarchive', { taskId: [stage.key] })).rejects.toThrow(`Task ${ stage.key } is inside ${ epic.key }, which is archived: restore ${ epic.key } first`);
+        await expect(exec(orchestrator, 'task_unarchive', { taskId: [stage.key] })).rejects.toThrow(
+            `Task ${stage.key} is inside ${epic.key}, which is archived: restore ${epic.key} first`
+        );
         expect((await exec(orchestrator, 'task_list', { archived: true })).total).toBe(2);
     });
 
@@ -700,13 +1031,26 @@ describe('the archive', () => {
         const epic = await task('Epic', { status: 'done' });
         const inside = await task('Inside', { parent: epic.key, status: 'done' });
         const { runs } = h.daemon.services;
-        const assign = (summary: string, ...ids: string[]) => runs.createRun({ project: entity, role: 'orchestrator', chatId: chat.id, summary, assigned: ids.map(id => getTask(h.store.db, id) as NonNullable<ReturnType<typeof getTask>>) });
+        const assign = (summary: string, ...ids: string[]) =>
+            runs.createRun({
+                project: entity,
+                role: 'orchestrator',
+                chatId: chat.id,
+                summary,
+                assigned: ids.map(id => getTask(h.store.db, id) as NonNullable<ReturnType<typeof getTask>>),
+            });
         const callerRun = assign('Own', own.id);
         const otherRun = assign('Other', other.id, inside.id);
 
-        await expect(exec(orchestrator, 'task_archive', { taskId: [own.key] })).rejects.toThrow(`Task ${ own.key } has an active run (${ callerRun.name }): stop it first`);
-        await expect(exec(orchestrator, 'task_archive', { taskId: [other.key], cancel: true })).rejects.toThrow(`Task ${ other.key } has an active run (${ otherRun.name }): stop it first`);
-        await expect(exec(orchestrator, 'task_archive', { taskId: [epic.key] })).rejects.toThrow(`Task ${ inside.key }, inside ${ epic.key }, has an active run`);
+        await expect(exec(orchestrator, 'task_archive', { taskId: [own.key] })).rejects.toThrow(
+            `Task ${own.key} has an active run (${callerRun.name}): stop it first`
+        );
+        await expect(exec(orchestrator, 'task_archive', { taskId: [other.key], cancel: true })).rejects.toThrow(
+            `Task ${other.key} has an active run (${otherRun.name}): stop it first`
+        );
+        await expect(exec(orchestrator, 'task_archive', { taskId: [epic.key] })).rejects.toThrow(
+            `Task ${inside.key}, inside ${epic.key}, has an active run`
+        );
         expect((await exec(orchestrator, 'task_list', { archived: true })).total).toBe(0);
         // The run that archives the task it works on is not in its own way.
         expect(await exec(callerRun, 'task_archive', { taskId: [own.key] })).toEqual({ archived: [own.key] });
@@ -720,7 +1064,10 @@ describe('the archive', () => {
         const live = await task('Live');
         const earlier = await task('Earlier', { status: 'done' });
 
-        expect(await exec(orchestrator, 'task_list')).toMatchObject({ archived: 0, counts: { todo: 1, done: 2, canceled: 1 } });
+        expect(await exec(orchestrator, 'task_list')).toMatchObject({
+            archived: 0,
+            counts: { todo: 1, done: 2, canceled: 1 },
+        });
         await exec(orchestrator, 'task_archive', { taskId: [earlier.key] });
         await exec(orchestrator, 'task_archive', { taskId: [epic.key] });
 
@@ -736,18 +1083,39 @@ describe('the archive', () => {
 
         expect(keysOf(archive.tasks)).toEqual([epic.key, stage.key, earlier.key]);
         expect(archive).toMatchObject({ total: 3, shown: 3, archived: 3, counts: { done: 2, canceled: 1, todo: 0 } });
-        expect(archive.tasks[1]).toMatchObject({ key: stage.key, status: 'Canceled', category: 'canceled', parent: epic.key, archivedAt: iso });
+        expect(archive.tasks[1]).toMatchObject({
+            key: stage.key,
+            status: 'Canceled',
+            category: 'canceled',
+            parent: epic.key,
+            archivedAt: iso,
+        });
         expect(archive.tasks[0]).toMatchObject({ children: { canceled: 1 }, archivedAt: iso });
-        expect(keysOf((await exec(orchestrator, 'task_list', { archived: true, query: 'stage' })).tasks)).toEqual([stage.key]);
-        expect(keysOf((await exec(orchestrator, 'task_list', { archived: true, status: ['canceled'] })).tasks)).toEqual([stage.key]);
-        expect(keysOf((await exec(orchestrator, 'task_list', { archived: true, parent: epic.key })).tasks)).toEqual([stage.key]);
-        expect(keysOf((await exec(orchestrator, 'task_list', { archived: true, under: epic.key })).tasks)).toEqual([stage.key]);
-        expect(keysOf((await exec(orchestrator, 'task_list', { archived: true, roots: true, sort: 'number' })).tasks)).toEqual([epic.key, earlier.key]);
+        expect(keysOf((await exec(orchestrator, 'task_list', { archived: true, query: 'stage' })).tasks)).toEqual([
+            stage.key,
+        ]);
+        expect(keysOf((await exec(orchestrator, 'task_list', { archived: true, status: ['canceled'] })).tasks)).toEqual(
+            [stage.key]
+        );
+        expect(keysOf((await exec(orchestrator, 'task_list', { archived: true, parent: epic.key })).tasks)).toEqual([
+            stage.key,
+        ]);
+        expect(keysOf((await exec(orchestrator, 'task_list', { archived: true, under: epic.key })).tasks)).toEqual([
+            stage.key,
+        ]);
+        expect(
+            keysOf((await exec(orchestrator, 'task_list', { archived: true, roots: true, sort: 'number' })).tasks)
+        ).toEqual([epic.key, earlier.key]);
         expect(keysOf((await exec(orchestrator, 'task_list', { parent: epic.key, all: true })).tasks)).toEqual([]);
 
         // The first page lists the statuses, a later one does not, and the archive pages like any listing.
         const first = await exec(orchestrator, 'task_list', { archived: true, sort: 'number', limit: 2 });
-        const rest = await exec(orchestrator, 'task_list', { archived: true, sort: 'number', limit: 2, cursor: first.nextCursor });
+        const rest = await exec(orchestrator, 'task_list', {
+            archived: true,
+            sort: 'number',
+            limit: 2,
+            cursor: first.nextCursor,
+        });
 
         expect([keysOf(first.tasks), keysOf(rest.tasks)]).toEqual([[epic.key, stage.key], [earlier.key]]);
         expect(first.statuses).toHaveLength(5);
@@ -766,8 +1134,21 @@ describe('the archive', () => {
 
         const got = (await exec(orchestrator, 'task_get', { taskId: stage.key })).task;
 
-        expect(got).toMatchObject({ key: stage.key, archived: true, archivedAt: iso, status: 'Done', parent: { key: epic.key, title: 'Epic' }, children: [{ key: step.key }], childrenTotal: 1, descendants: { done: 1 } });
-        expect((await exec(orchestrator, 'task_get', { taskId: epic.key })).task).toMatchObject({ children: [{ key: kept.key }], childrenTotal: 1, descendants: { done: 1 } });
+        expect(got).toMatchObject({
+            key: stage.key,
+            archived: true,
+            archivedAt: iso,
+            status: 'Done',
+            parent: { key: epic.key, title: 'Epic' },
+            children: [{ key: step.key }],
+            childrenTotal: 1,
+            descendants: { done: 1 },
+        });
+        expect((await exec(orchestrator, 'task_get', { taskId: epic.key })).task).toMatchObject({
+            children: [{ key: kept.key }],
+            childrenTotal: 1,
+            descendants: { done: 1 },
+        });
         expect((await exec(orchestrator, 'task_get', { taskId: epic.key })).task).not.toHaveProperty('archived');
         expect((await exec(orchestrator, 'task_get', { taskId: kept.key })).task).not.toHaveProperty('archivedAt');
         expect((await exec(orchestrator, 'task_get', { taskId: step.key })).task).toMatchObject({ archived: true });
@@ -790,10 +1171,16 @@ describe('the archive', () => {
 
         expect(row).toMatchObject({ key: second.key, dependsOn: [first.key] });
         expect(row).not.toHaveProperty('blockedBy');
-        expect((await exec(orchestrator, 'task_get', { taskId: second.key })).task.dependsOn).toEqual([{ key: first.key, title: 'First', status: 'Done' }]);
-        expect((await exec(orchestrator, 'task_get', { taskId: first.key })).task.blocks).toEqual([{ key: second.key, title: 'Second', status: 'To do' }]);
+        expect((await exec(orchestrator, 'task_get', { taskId: second.key })).task.dependsOn).toEqual([
+            { key: first.key, title: 'First', status: 'Done' },
+        ]);
+        expect((await exec(orchestrator, 'task_get', { taskId: first.key })).task.blocks).toEqual([
+            { key: second.key, title: 'Second', status: 'To do' },
+        ]);
         // A new dependency on an archived task is accepted, by key.
-        expect((await exec(orchestrator, 'task_create', { title: 'Third', dependsOn: [first.key] })).task.dependsOn).toHaveLength(1);
+        expect(
+            (await exec(orchestrator, 'task_create', { title: 'Third', dependsOn: [first.key] })).task.dependsOn
+        ).toHaveLength(1);
     });
 
     test('an archived task stays closed: task_update refuses to reopen it and still edits its words; new tasks cannot go inside it', async () => {
@@ -801,15 +1188,26 @@ describe('the archive', () => {
         const epic = await task('Epic', { status: 'done' });
 
         await exec(orchestrator, 'task_archive', { taskId: [epic.key] });
-        await expect(exec(orchestrator, 'task_update', { taskId: epic.key, status: 'todo' })).rejects.toThrow(`Task ${ epic.key } is archived: restore it before reopening it`);
-        expect((await exec(orchestrator, 'task_update', { taskId: epic.key, title: 'Renamed epic' })).task).toMatchObject({ title: 'Renamed epic', archived: true });
-        await expect(exec(orchestrator, 'task_create', { title: 'Inside', parent: epic.key })).rejects.toThrow(`Task ${ epic.key } is archived: restore it before putting tasks inside it`);
+        await expect(exec(orchestrator, 'task_update', { taskId: epic.key, status: 'todo' })).rejects.toThrow(
+            `Task ${epic.key} is archived: restore it before reopening it`
+        );
+        expect(
+            (await exec(orchestrator, 'task_update', { taskId: epic.key, title: 'Renamed epic' })).task
+        ).toMatchObject({ title: 'Renamed epic', archived: true });
+        await expect(exec(orchestrator, 'task_create', { title: 'Inside', parent: epic.key })).rejects.toThrow(
+            `Task ${epic.key} is archived: restore it before putting tasks inside it`
+        );
     });
 
     test('the tools list the tasks as bare words, say what they do, and refuse a field they do not have, an empty list and a single key', async () => {
         const { exec, orchestrator, toolsOf, task } = await setup();
         const tool = (name: string) => toolsOf(orchestrator).find(candidate => candidate.name === name)!;
-        const properties = (name: string) => (tool(name).inputSchema as { properties: Record<string, { type?: string; items?: { type?: string }; description?: string }> }).properties;
+        const properties = (name: string) =>
+            (
+                tool(name).inputSchema as {
+                    properties: Record<string, { type?: string; items?: { type?: string }; description?: string }>;
+                }
+            ).properties;
         const closed = await task('Closed', { status: 'done' });
 
         expect(tool('task_archive').cli).toEqual({ positional: ['taskId'] });
@@ -822,7 +1220,8 @@ describe('the archive', () => {
         expect(tool('task_archive').description).toContain('cancel');
         expect(tool('task_get').description).toContain('archived');
 
-        const refused = (name: string, input: unknown) => expect(exec(orchestrator, name, input)).rejects.toThrow(new RegExp(`Invalid input for ${ name }`));
+        const refused = (name: string, input: unknown) =>
+            expect(exec(orchestrator, name, input)).rejects.toThrow(new RegExp(`Invalid input for ${name}`));
 
         await refused('task_archive', { taskId: closed.key });
         await refused('task_archive', { taskId: [] });
@@ -846,10 +1245,12 @@ describe('ask_user', () => {
 
             const ask = options.tools.find(tool => tool.name === 'ask_user')!;
             const first = ask.execute({ question: 'First?', options: [{ id: 'a', label: 'A' }] }, options.signal);
-            const second = await ask.execute({ question: 'Second?', options: [{ id: 'b', label: 'B' }] }, options.signal).catch((error: Error) => error.message);
+            const second = await ask
+                .execute({ question: 'Second?', options: [{ id: 'b', label: 'B' }] }, options.signal)
+                .catch((error: Error) => error.message);
 
-            outcomes.push(`second: ${ second }`);
-            outcomes.push(`first: ${ JSON.stringify(await first) }`);
+            outcomes.push(`second: ${second}`);
+            outcomes.push(`first: ${JSON.stringify(await first)}`);
             yield { type: 'done', result: 'ok' };
         });
         const h = await startHarness({}, { engines: scriptEngines(engine) });
@@ -862,12 +1263,24 @@ describe('ask_user', () => {
 
         await waitFor(() => h.run(runId).status === 'waiting_user', 'the first question');
 
-        const [question] = h.store.db.query('SELECT body FROM stream_items WHERE run_id = ? ORDER BY seq').all(runId).map((row: any) => JSON.parse(row.body)).filter((body: any) => body.kind === 'question');
+        const [question] = h.store.db
+            .query('SELECT body FROM stream_items WHERE run_id = ? ORDER BY seq')
+            .all(runId)
+            .map((row: any) => JSON.parse(row.body))
+            .filter((body: any) => body.kind === 'question');
 
         expect(h.ok('run.answer', { runId, questionId: question.questionId, answer: 'A' })).toEqual({ runId });
         await waitFor(() => h.run(runId).status === 'succeeded', 'the run to finish');
-        expect(outcomes).toEqual(['second: Another question is waiting for the user. Ask one question at a time and wait for its answer.', 'first: {"answer":"A"}']);
-        expect(h.store.db.query('SELECT body FROM stream_items WHERE run_id = ?').all(runId).filter((row: any) => JSON.parse(row.body).kind === 'question')).toHaveLength(1);
+        expect(outcomes).toEqual([
+            'second: Another question is waiting for the user. Ask one question at a time and wait for its answer.',
+            'first: {"answer":"A"}',
+        ]);
+        expect(
+            h.store.db
+                .query('SELECT body FROM stream_items WHERE run_id = ?')
+                .all(runId)
+                .filter((row: any) => JSON.parse(row.body).kind === 'question')
+        ).toHaveLength(1);
     });
 });
 

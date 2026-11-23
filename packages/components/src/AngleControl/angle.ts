@@ -1,18 +1,11 @@
-import {
-    angleFromDegrees,
-    angleToDegrees,
-    clamp,
-    isAngleUnit,
-    parseAngleValue,
-    UNIT_PRECISION,
-} from '@clowdy/lib';
+import { angleFromDegrees, angleToDegrees, clamp, isAngleUnit, parseAngleValue, UNIT_PRECISION } from '@clowdy/lib';
 
 import type { AngleUnit, AngleUnitValue } from '@clowdy/lib';
 import type { CSSProperties, Ref } from 'react';
 
 export type { AngleUnit } from '@clowdy/lib';
 
-export type AngleString = `${ number }${ AngleUnit }`;
+export type AngleString = `${number}${AngleUnit}`;
 
 export interface AngleValue extends AngleUnitValue {}
 
@@ -98,11 +91,14 @@ const RADIAN_PI_DENOMINATORS = [1, 2, 3, 4, 6, 8, 12] as const;
 const PI_FRACTION_TOLERANCE_RADIANS = 0.001;
 const PI_COEFFICIENT_PRECISION = 2;
 
-export const ANGLE_PREVIEW_GEOMETRY: Record<AngleControlSize, {
-    size: number;
-    handleRadius: number;
-    handleSize: number;
-}> = {
+export const ANGLE_PREVIEW_GEOMETRY: Record<
+    AngleControlSize,
+    {
+        size: number;
+        handleRadius: number;
+        handleSize: number;
+    }
+> = {
     sm: { size: 30, handleRadius: 9 - ANGLE_RING_WIDTH, handleSize: 6 },
     md: { size: 36, handleRadius: 11 - ANGLE_RING_WIDTH, handleSize: 8 },
     lg: { size: 56, handleRadius: 18 - ANGLE_RING_WIDTH, handleSize: 10 },
@@ -143,9 +139,7 @@ export function applyAngleValueRange(degrees: number, range: AngleValueRange = '
 }
 
 export function getAnglePrecision(unit: AngleUnit, precision?: AnglePrecision): number {
-    const value = typeof precision === 'number'
-        ? precision
-        : precision?.[unit] ?? DEFAULT_ANGLE_PRECISION[unit];
+    const value = typeof precision === 'number' ? precision : (precision?.[unit] ?? DEFAULT_ANGLE_PRECISION[unit]);
 
     return Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : DEFAULT_ANGLE_PRECISION[unit];
 }
@@ -182,18 +176,19 @@ export function roundAngleValueInRange(
     };
 }
 
-export function formatAngle(value: AngleValue, options: {
-    precision?: AnglePrecision;
-    trimTrailingZeros?: boolean;
-} = {}): string {
+export function formatAngle(
+    value: AngleValue,
+    options: {
+        precision?: AnglePrecision;
+        trimTrailingZeros?: boolean;
+    } = {}
+): string {
     const precision = getAnglePrecision(value.unit, options.precision);
     const trimTrailingZeros = options.trimTrailingZeros ?? true;
     const fixed = roundAngleValue(value, precision).value.toFixed(precision);
-    const formatted = trimTrailingZeros
-        ? fixed.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '')
-        : fixed;
+    const formatted = trimTrailingZeros ? fixed.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '') : fixed;
 
-    return `${ formatted === '-0' ? '0' : formatted }${ value.unit }`;
+    return `${formatted === '-0' ? '0' : formatted}${value.unit}`;
 }
 
 export function formatAngleNumber(value: AngleValue, options?: Parameters<typeof formatAngle>[1]): string {
@@ -244,17 +239,14 @@ function formatPiRadianNumber(value: number): string | null {
     const denominator = bestDenominator / divisor;
     const sign = numerator < 0 ? '-' : '';
     const absoluteNumerator = Math.abs(numerator);
-    const piPart = absoluteNumerator === 1 ? 'π' : `${ absoluteNumerator }π`;
+    const piPart = absoluteNumerator === 1 ? 'π' : `${absoluteNumerator}π`;
 
-    return denominator === 1
-        ? `${ sign }${ piPart }`
-        : `${ sign }${ piPart }/${ denominator }`;
+    return denominator === 1 ? `${sign}${piPart}` : `${sign}${piPart}/${denominator}`;
 }
 
 function formatPiCoefficientRadianNumber(value: number, precision?: AnglePrecision): string {
-    const coefficientPrecision = typeof precision === 'number'
-        ? precision
-        : precision?.rad ?? PI_COEFFICIENT_PRECISION;
+    const coefficientPrecision =
+        typeof precision === 'number' ? precision : (precision?.rad ?? PI_COEFFICIENT_PRECISION);
     const coefficient = roundAngleNumber(value / Math.PI, coefficientPrecision);
 
     if (coefficient === 0) {
@@ -269,11 +261,12 @@ function formatPiCoefficientRadianNumber(value: number, precision?: AnglePrecisi
         return '-π';
     }
 
-    const formatted = coefficient.toFixed(coefficientPrecision)
+    const formatted = coefficient
+        .toFixed(coefficientPrecision)
         .replace(/(\.\d*?)0+$/, '$1')
         .replace(/\.$/, '');
 
-    return `${ formatted }π`;
+    return `${formatted}π`;
 }
 
 export function formatAngleDisplayNumber(value: AngleValue, options?: Parameters<typeof formatAngle>[1]): string {
@@ -285,7 +278,7 @@ export function formatAngleDisplayNumber(value: AngleValue, options?: Parameters
 }
 
 export function formatAngleDisplay(value: AngleValue, options?: Parameters<typeof formatAngle>[1]): string {
-    return `${ formatAngleDisplayNumber(value, options) }${ value.unit }`;
+    return `${formatAngleDisplayNumber(value, options)}${value.unit}`;
 }
 
 export function angleDistance(leftDeg: number, rightDeg: number): number {
@@ -294,18 +287,12 @@ export function angleDistance(leftDeg: number, rightDeg: number): number {
     return Math.min(diff, 360 - diff);
 }
 
-export function getAngleFromPoint(
-    point: AnglePoint,
-    center: AnglePoint,
-    options: AngleGeometryOptions = {}
-): number {
+export function getAngleFromPoint(point: AnglePoint, center: AnglePoint, options: AngleGeometryOptions = {}): number {
     const dx = point.x - center.x;
     const dy = point.y - center.y;
     const zero = options.zero ?? 'top';
     const direction = options.direction ?? 'clockwise';
-    const rawDeg = zero === 'top'
-        ? Math.atan2(dx, -dy) * (180 / Math.PI)
-        : Math.atan2(dy, dx) * (180 / Math.PI);
+    const rawDeg = zero === 'top' ? Math.atan2(dx, -dy) * (180 / Math.PI) : Math.atan2(dy, dx) * (180 / Math.PI);
 
     return normalizeDegrees(direction === 'clockwise' ? rawDeg : -rawDeg);
 }
@@ -323,23 +310,23 @@ export function getPointOnCircle(
 
     if (zero === 'right') {
         return {
-            x: center.x + (Math.cos(radians) * radius),
-            y: center.y + (Math.sin(radians) * radius),
+            x: center.x + Math.cos(radians) * radius,
+            y: center.y + Math.sin(radians) * radius,
         };
     }
 
     return {
-        x: center.x + (Math.sin(radians) * radius),
-        y: center.y - (Math.cos(radians) * radius),
+        x: center.x + Math.sin(radians) * radius,
+        y: center.y - Math.cos(radians) * radius,
     };
 }
 
 export function getAngleDialGeometry(controlSize = DEFAULT_ANGLE_EXPANDED_SIZE): AngleDialGeometry {
     return {
         controlSize,
-        handleRadius: (controlSize * 0.375) - ANGLE_RING_WIDTH,
+        handleRadius: controlSize * 0.375 - ANGLE_RING_WIDTH,
         handleSize: Math.max(10, controlSize * 0.125),
-        presetRadius: (controlSize * 0.4) - ANGLE_RING_WIDTH,
+        presetRadius: controlSize * 0.4 - ANGLE_RING_WIDTH,
     };
 }
 
@@ -366,11 +353,7 @@ export function getPresetForAngle(angleDeg: number, presets: readonly number[] =
 export function applyPresetKeepingRevolution(currentDeg: number, presetDeg: number): number {
     const normalizedPreset = normalizeDegrees(presetDeg);
     const base = Math.trunc(currentDeg / 360) * 360;
-    const candidates = [
-        base - 360 + normalizedPreset,
-        base + normalizedPreset,
-        base + 360 + normalizedPreset,
-    ];
+    const candidates = [base - 360 + normalizedPreset, base + normalizedPreset, base + 360 + normalizedPreset];
 
     return candidates.reduce((best, candidate) => {
         const bestDistance = Math.abs(best - currentDeg);
@@ -421,8 +404,7 @@ export function shortestAngleDelta(fromDeg: number, toDeg: number): number {
 
     if (delta > 180) {
         delta -= 360;
-    }
-    else if (delta < -180) {
+    } else if (delta < -180) {
         delta += 360;
     }
 

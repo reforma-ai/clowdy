@@ -1,6 +1,6 @@
-import { isTerminalSize, MAX_TERMINALS } from '@clowdy/protocol';
 import { realpathSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { isTerminalSize, MAX_TERMINALS } from '@clowdy/protocol';
 
 import { ownsPlace } from '../domain/places';
 import { CommandError, conflict, errorMessage, invalid, notFound, unavailable } from '../errors';
@@ -58,7 +58,7 @@ export class TerminalService {
         const limit = this.#options.maxTerminals ?? MAX_TERMINALS;
 
         if ([...this.#sessions.values()].filter(session => session.isRunning).length >= limit) {
-            throw conflict(`This machine already runs ${ limit } terminals`, { reason: 'limit' });
+            throw conflict(`This machine already runs ${limit} terminals`, { reason: 'limit' });
         }
 
         // A worktree asked for and not judged would start the shell in the folder's own checkout under the worktree's name.
@@ -89,11 +89,10 @@ export class TerminalService {
 
         try {
             session.start(this.#options.spawn ?? spawnPty);
-        }
-        catch (error) {
+        } catch (error) {
             session.dispose();
 
-            throw unavailable(`The shell could not be started: ${ errorMessage(error) }`);
+            throw unavailable(`The shell could not be started: ${errorMessage(error)}`);
         }
 
         this.#sessions.set(session.id, session);
@@ -157,9 +156,8 @@ function directoryIn(root: string, path = '', what: 'folder' | 'worktree' = 'fol
 
     try {
         base = realpathSync(root);
-    }
-    catch {
-        throw unavailable(`The ${ what } ${ root } is missing`);
+    } catch {
+        throw unavailable(`The ${what} ${root} is missing`);
     }
 
     const wanted = join(base, normalizeFsPath(path));
@@ -167,9 +165,8 @@ function directoryIn(root: string, path = '', what: 'folder' | 'worktree' = 'fol
 
     try {
         real = realpathSync(wanted);
-    }
-    catch {
-        throw new CommandError('not_found', `${ path } does not exist`, { path });
+    } catch {
+        throw new CommandError('not_found', `${path} does not exist`, { path });
     }
 
     if (!isInside(base, real)) {
@@ -177,7 +174,7 @@ function directoryIn(root: string, path = '', what: 'folder' | 'worktree' = 'fol
     }
 
     if (!statSync(real).isDirectory()) {
-        throw invalid(`${ path } is not a folder`, { path });
+        throw invalid(`${path} is not a folder`, { path });
     }
 
     return real;

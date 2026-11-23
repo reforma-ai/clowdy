@@ -17,8 +17,7 @@ export function clamp(min: number, value: number, max: number): number {
  * @param b - Second number
  * @param ratio - Ratio
  */
-export const lerp = (a: number, b: number, ratio: number): number => (a * (1 - ratio)) + (b * ratio);
-
+export const lerp = (a: number, b: number, ratio: number): number => a * (1 - ratio) + b * ratio;
 
 /**
  * Returns the number of decimal places for a step value (e.g. 0.01 → 2, 1 → 0).
@@ -31,7 +30,6 @@ export function getPrecision(step: number): number {
     return Math.max(0, Math.ceil(-Math.log10(step)));
 }
 
-
 /**
  * Rounds value to the nearest multiple of step.
  * When base is given, rounds to step values offset by base (e.g. step 5, base 2 → 2, 7, 12...).
@@ -41,7 +39,7 @@ export function roundNumber(value: number, step: number, base = 0): number {
         return value;
     }
 
-    return base + (Math.round(((value - base) / step) + Number.EPSILON) * step);
+    return base + Math.round((value - base) / step + Number.EPSILON) * step;
 }
 
 /**
@@ -63,8 +61,7 @@ export function normalizeFloat(number: string | number, precision = 2, asString?
  * Get random number between min and max (inclusive)
  * Similar to PHP's getRandomNumber(1,100)
  */
-export const getRandomNumber = (min: number, max: number): number => Math.floor((Math.random() * (max - min + 1)) + min);
-
+export const getRandomNumber = (min: number, max: number): number => Math.floor(Math.random() * (max - min + 1) + min);
 
 /**
  * Returns a random ID
@@ -75,7 +72,15 @@ export const getRandomNumber = (min: number, max: number): number => Math.floor(
  * @param suffix - Suffix
  * @param radix - Number system (default: 10)
  */
-export const getRandomId = (num = 6, { exclude, prefix = '', suffix = '', radix = 10 }: { exclude?: string[] | Set<string>; prefix?: string; suffix?: string; radix?: number } = {}): string => {
+export const getRandomId = (
+    num = 6,
+    {
+        exclude,
+        prefix = '',
+        suffix = '',
+        radix = 10,
+    }: { exclude?: string[] | Set<string>; prefix?: string; suffix?: string; radix?: number } = {}
+): string => {
     let id = '';
 
     if (Array.isArray(exclude)) {
@@ -83,7 +88,7 @@ export const getRandomId = (num = 6, { exclude, prefix = '', suffix = '', radix 
     }
 
     for (let i = 0; i < num; i++) {
-        const num = getRandomNumber((i === 0) ? 1 : 0, radix - 1);
+        const num = getRandomNumber(i === 0 ? 1 : 0, radix - 1);
 
         id += num.toString(radix).toUpperCase();
     }

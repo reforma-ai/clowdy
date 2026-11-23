@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useRef, type RefObject } from 'react';
+import { type RefObject, useCallback, useLayoutEffect, useRef } from 'react';
 
 const ACTIVE_ROW = '[data-highlighted], [data-selected], [data-focus-visible]';
 
@@ -44,19 +44,22 @@ export function useScrollActiveListItem<T extends HTMLElement>(
 
     useLayoutEffect(schedule);
 
-    return useCallback((node) => {
-        if (node) {
-            ref.current = node;
-            schedule();
+    return useCallback(
+        node => {
+            if (node) {
+                ref.current = node;
+                schedule();
 
-            return;
-        }
+                return;
+            }
 
-        // The collection clears the ref on the visible row without unmounting it.
-        if (ref.current?.isConnected) {
-            return;
-        }
+            // The collection clears the ref on the visible row without unmounting it.
+            if (ref.current?.isConnected) {
+                return;
+            }
 
-        ref.current = null;
-    }, [ref, schedule]);
+            ref.current = null;
+        },
+        [ref, schedule]
+    );
 }

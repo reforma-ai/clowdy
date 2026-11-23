@@ -29,16 +29,16 @@ import type { Command } from './registry';
 export { ChordHud } from './ChordHud';
 export { CommandHotkey, PressesHotkey } from './CommandHotkey';
 export { installDispatcher } from './dispatcher';
-export { commandHint, commandTooltip, useCommands, useHotkeyScope, type ScopedCommand } from './react';
+export { commandHint, commandTooltip, type ScopedCommand, useCommands, useHotkeyScope } from './react';
 export {
+    type Command,
+    type CommandKeys,
     commandPresses,
     commandSequences,
     createRegistry,
     findKeyConflicts,
     HotkeyRegistry,
     hotkeys,
-    type Command,
-    type CommandKeys,
     type KeyConflict,
     type Keys,
     type PendingChord,

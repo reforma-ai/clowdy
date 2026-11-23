@@ -1,7 +1,7 @@
 import { reaction } from 'mobx';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { createUndoStack, UNDO_LIMIT, undoStack, type UndoEntry } from './undo';
+import { createUndoStack, UNDO_LIMIT, type UndoEntry, undoStack } from './undo';
 
 /** The scope the tests record in: a project. */
 const SCOPE = 'p1';
@@ -12,9 +12,9 @@ function entry(label: string, ran: string[], outcome = true, gate?: Promise<void
         scope,
         label,
         undo: async () => {
-            ran.push(`start ${ label }`);
+            ran.push(`start ${label}`);
             await gate;
-            ran.push(`end ${ label }`);
+            ran.push(`end ${label}`);
 
             return outcome;
         },
@@ -90,11 +90,11 @@ describe('UndoStack', () => {
 
         expect(UNDO_LIMIT).toBe(50);
 
-        for (let index = 0; index < UNDO_LIMIT + 5; index++) stack.push(entry(`e${ index }`, []));
+        for (let index = 0; index < UNDO_LIMIT + 5; index++) stack.push(entry(`e${index}`, []));
 
         expect(stack.entries).toHaveLength(UNDO_LIMIT);
         expect(stack.entries[0].label).toBe('e5');
-        expect(stack.entries.at(-1)?.label).toBe(`e${ UNDO_LIMIT + 4 }`);
+        expect(stack.entries.at(-1)?.label).toBe(`e${UNDO_LIMIT + 4}`);
     });
 
     it('takes its own limit, for a part of the app with a shorter history', () => {
@@ -120,7 +120,7 @@ describe('UndoStack', () => {
         const stack = createUndoStack();
         const ran: string[] = [];
         let release: () => void = () => undefined;
-        const gate = new Promise<void>((resolve) => {
+        const gate = new Promise<void>(resolve => {
             release = resolve;
         });
 
@@ -165,7 +165,11 @@ describe('UndoStack', () => {
     it('tells an observer when there starts to be something to undo and when there stops', async () => {
         const stack = createUndoStack();
         const seen: boolean[] = [];
-        const stop = reaction(() => stack.canUndo(SCOPE), value => seen.push(value), { fireImmediately: true });
+        const stop = reaction(
+            () => stack.canUndo(SCOPE),
+            value => seen.push(value),
+            { fireImmediately: true }
+        );
 
         stack.push(entry('a', []));
         stack.push(entry('b', []));
@@ -176,7 +180,7 @@ describe('UndoStack', () => {
         expect(seen).toEqual([false, true, false]);
     });
 
-    it('keeps the history of each scope apart, so Cmd+Z never takes back another project\'s change', async () => {
+    it("keeps the history of each scope apart, so Cmd+Z never takes back another project's change", async () => {
         const stack = createUndoStack();
         const ran: string[] = [];
 
@@ -199,7 +203,7 @@ describe('UndoStack', () => {
         expect(ran.slice(2)).toEqual(['start later in a', 'end later in a']);
     });
 
-    it('caps each scope on its own, so a busy project does not push out another\'s history', () => {
+    it("caps each scope on its own, so a busy project does not push out another's history", () => {
         const stack = createUndoStack(2);
         const ran: string[] = [];
 
@@ -214,7 +218,11 @@ describe('UndoStack', () => {
     it('tells a reaction when the scope it asked about gains or loses an entry, and only then', async () => {
         const stack = createUndoStack();
         const seen: boolean[] = [];
-        const stop = reaction(() => stack.canUndo('a'), value => seen.push(value), { fireImmediately: true });
+        const stop = reaction(
+            () => stack.canUndo('a'),
+            value => seen.push(value),
+            { fireImmediately: true }
+        );
 
         stack.push(entry('in b', [], true, undefined, 'b'));
         stack.push(entry('in a', [], true, undefined, 'a'));

@@ -1,6 +1,6 @@
 import { useRootStore } from '../../stores';
 import { refreshFolderGit } from '../openWith';
-import { branchSwitchOf, type BranchSwitch } from './BranchSwitch';
+import { type BranchSwitch, branchSwitchOf } from './BranchSwitch';
 import { gitFactsOf, type PlaceFacts } from './gitFacts';
 
 /** The branch switch of a place of the Changes sidebar. When a switch ends the place's facts are read again (the status, the changes and the Info rows) and so is the folder's branch (the chats' folder chips). */

@@ -16,8 +16,7 @@ export function killProcessGroup(pgid: number, signal: NodeJS.Signals): void {
 
     try {
         process.kill(-pgid, signal);
-    }
-    catch {
+    } catch {
         // The group is already gone.
     }
 }
@@ -42,14 +41,19 @@ export function processesBelow(root: number): Below[] {
         return [];
     }
 
-    const listed = spawnSync('ps', ['-axo', 'pid=,ppid=,pgid='], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: LIST_TIMEOUT_MS }).stdout ?? '';
+    const listed =
+        spawnSync('ps', ['-axo', 'pid=,ppid=,pgid='], {
+            encoding: 'utf8',
+            stdio: ['ignore', 'pipe', 'ignore'],
+            timeout: LIST_TIMEOUT_MS,
+        }).stdout ?? '';
     const children = new Map<number, Below[]>();
 
     for (const line of listed.split('\n')) {
         const [pid, ppid, pgid] = line.trim().split(/\s+/).map(Number);
 
         if (Number.isInteger(pid) && Number.isInteger(ppid) && Number.isInteger(pgid)) {
-            children.set(ppid, [...children.get(ppid) ?? [], { pid, pgid }]);
+            children.set(ppid, [...(children.get(ppid) ?? []), { pid, pgid }]);
         }
     }
 
@@ -57,7 +61,7 @@ export function processesBelow(root: number): Below[] {
     // A process is met once, so a listing that contradicts itself (a pid reused while it was read) cannot loop.
     const seen = new Set([root]);
 
-    for (const queue = [root]; queue.length > 0;) {
+    for (const queue = [root]; queue.length > 0; ) {
         for (const child of children.get(queue.shift() as number) ?? []) {
             if (!seen.has(child.pid)) {
                 seen.add(child.pid);
@@ -88,8 +92,7 @@ export function signalBelow(below: readonly Below[], root: number, signal: NodeJ
 
         try {
             process.kill(leaders.has(pgid) ? -pgid : pid, signal);
-        }
-        catch {
+        } catch {
             // Already gone.
         }
     }
@@ -128,7 +131,13 @@ export interface AgentProcess {
  */
 export function spawnInOwnGroup({ command, args, cwd, env }: ProcessSpec): Promise<AgentProcess> {
     return new Promise((resolve, reject) => {
-        const child = spawn(command, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'], detached: process.platform !== 'win32', windowsHide: true });
+        const child = spawn(command, args, {
+            cwd,
+            env,
+            stdio: ['pipe', 'pipe', 'pipe'],
+            detached: process.platform !== 'win32',
+            windowsHide: true,
+        });
         let stderr = '';
         let alive = true;
         let timer: ReturnType<typeof setTimeout> | undefined;
@@ -147,7 +156,7 @@ export function spawnInOwnGroup({ command, args, cwd, env }: ProcessSpec): Promi
             stderr = (stderr + text).slice(-STDERR_TAIL_CHARS);
         });
 
-        const exited = new Promise<void>((done) => {
+        const exited = new Promise<void>(done => {
             child.once('exit', () => {
                 alive = false;
                 clearTimeout(timer);

@@ -3,12 +3,8 @@ import { useMemo, useRef, useState } from 'react';
 
 import { For } from '../For';
 import { Tooltip } from '../Tooltip';
-import {
-    getLayoutGridCellValue,
-    isLayoutGridCellActionable,
-    normalizeLayoutGridCells,
-} from './layoutGrid';
 import styles from './LayoutGridControl.module.css';
+import { getLayoutGridCellValue, isLayoutGridCellActionable, normalizeLayoutGridCells } from './layoutGrid';
 
 import type { FocusEvent, HTMLAttributes, KeyboardEvent, MouseEvent, Ref } from 'react';
 import type {
@@ -19,7 +15,8 @@ import type {
     ResolvedLayoutGridCell,
 } from './layoutGrid';
 
-export interface LayoutGridControlProps extends Omit<HTMLAttributes<HTMLDivElement>, 'children' | 'defaultValue' | 'onChange'> {
+export interface LayoutGridControlProps
+    extends Omit<HTMLAttributes<HTMLDivElement>, 'children' | 'defaultValue' | 'onChange'> {
     ref?: Ref<HTMLDivElement>;
     cells?: LayoutGridCellsInput;
     overlays?: readonly LayoutGridOverlayConfig[];
@@ -67,10 +64,7 @@ function getLastActionableCell(cells: readonly ResolvedLayoutGridCell[]): Resolv
     return cells.findLast(isLayoutGridCellActionable) ?? null;
 }
 
-function LayoutGridGlyph({
-    kind,
-    glyph,
-}: Pick<ResolvedLayoutGridCell, 'kind' | 'glyph'>) {
+function LayoutGridGlyph({ kind, glyph }: Pick<ResolvedLayoutGridCell, 'kind' | 'glyph'>) {
     if (kind === 'spacer') {
         return null;
     }
@@ -78,7 +72,7 @@ function LayoutGridGlyph({
     const descriptor = glyph;
 
     if (!descriptor && kind === 'none') {
-        return <span className={ styles.dot } aria-hidden />;
+        return <span className={styles.dot} aria-hidden />;
     }
 
     if (!descriptor) {
@@ -87,25 +81,17 @@ function LayoutGridGlyph({
 
     return (
         <span
-            className={ styles.glyph }
-            data-variant={ descriptor.variant }
-            data-axis={ descriptor.axis }
-            data-flow={ descriptor.flow }
-            data-placement={ descriptor.placement }
-            data-distribution={ descriptor.distribution }
-            data-connection={ descriptor.connection }
-            data-active={ descriptor.isActive || undefined }
+            className={styles.glyph}
+            data-variant={descriptor.variant}
+            data-axis={descriptor.axis}
+            data-flow={descriptor.flow}
+            data-placement={descriptor.placement}
+            data-distribution={descriptor.distribution}
+            data-connection={descriptor.connection}
+            data-active={descriptor.isActive || undefined}
             aria-hidden
         >
-            <For each={ descriptor.items }>
-                { item => (
-                    <i
-                        key={ item }
-                        className={ styles.glyphItem }
-                        data-item={ item }
-                    />
-                ) }
-            </For>
+            <For each={descriptor.items}>{item => <i key={item} className={styles.glyphItem} data-item={item} />}</For>
         </span>
     );
 }
@@ -121,35 +107,29 @@ function LayoutGridCellContent({
     const previewGlyph = cell.previewGlyph;
 
     if (!isPreviewVisible || (previewKind == null && previewGlyph == null)) {
-        return <LayoutGridGlyph kind={ cell.kind } glyph={ cell.glyph } />;
+        return <LayoutGridGlyph kind={cell.kind} glyph={cell.glyph} />;
     }
 
     return (
         <>
-            <LayoutGridGlyph kind={ cell.kind } glyph={ cell.glyph } />
-            <span className={ styles.previewGlyph } aria-hidden>
-                <LayoutGridGlyph kind={ previewKind ?? 'none' } glyph={ previewGlyph } />
+            <LayoutGridGlyph kind={cell.kind} glyph={cell.glyph} />
+            <span className={styles.previewGlyph} aria-hidden>
+                <LayoutGridGlyph kind={previewKind ?? 'none'} glyph={previewGlyph} />
             </span>
         </>
     );
 }
 
-function LayoutGridOverlay({
-    overlay,
-    isPreview,
-}: {
-    overlay: LayoutGridOverlayConfig;
-    isPreview: boolean;
-}) {
+function LayoutGridOverlay({ overlay, isPreview }: { overlay: LayoutGridOverlayConfig; isPreview: boolean }) {
     return (
         <span
-            className={ styles.overlay }
-            data-kind={ overlay.kind }
-            data-preview={ isPreview || undefined }
-            data-value={ overlay.value }
+            className={styles.overlay}
+            data-kind={overlay.kind}
+            data-preview={isPreview || undefined}
+            data-value={overlay.value}
             aria-hidden
         >
-            <i className={ styles.overlayBox } />
+            <i className={styles.overlayBox} />
         </span>
     );
 }
@@ -177,13 +157,16 @@ export function LayoutGridControl({
     const [hoveredValue, setHoveredValue] = useState<LayoutGridValue | null>(null);
     const buttonRefs = useRef(new Map<LayoutGridCellKey, HTMLButtonElement>());
     const resolvedCells = useMemo(() => normalizeLayoutGridCells(cells), [cells]);
-    const overlayValues = useMemo(() => new Set(overlays.map(overlay => overlay.value).filter(value => value != null)), [overlays]);
+    const overlayValues = useMemo(
+        () => new Set(overlays.map(overlay => overlay.value).filter(value => value != null)),
+        [overlays]
+    );
     const selectedValue = value === undefined ? uncontrolledValue : value;
     const hasPreviewValue = hoveredValue != null && hoveredValue !== selectedValue;
     const previewValue = hasPreviewValue ? hoveredValue : null;
     const isSelectionControl = onChange != null || onCellPress != null || onCellDoublePress != null;
     const isInteractive = isSelectionControl && !isDisabled && !isReadOnly;
-    const renderedOverlays = overlays.filter((overlay) => {
+    const renderedOverlays = overlays.filter(overlay => {
         if (overlay.value == null) {
             return true;
         }
@@ -264,19 +247,16 @@ export function LayoutGridControl({
         const shouldRenderButton = isSelectionControl && isLayoutGridCellActionable(cell);
         const isActionable = isInteractive && isLayoutGridCellActionable(cell);
         const isSelected = selectedValue != null && selectedValue === cellValue;
-        const hasPreview = (cell.previewKind != null || cell.previewGlyph != null) && (cell.kind === 'none' || isSpacer);
+        const hasPreview =
+            (cell.previewKind != null || cell.previewGlyph != null) && (cell.kind === 'none' || isSpacer);
         const hasOverlayPreview = overlayValues.has(cellValue);
-        const isPreviewable = !isDisabled && !isReadOnly && isLayoutGridCellActionable(cell) && (hasPreview || hasOverlayPreview);
+        const isPreviewable =
+            !isDisabled && !isReadOnly && isLayoutGridCellActionable(cell) && (hasPreview || hasOverlayPreview);
         const isPreviewVisible = previewValue === cellValue;
         const isCellPreviewVisible = hasPreview && isPreviewVisible;
         const isOverlaySelectedVisible = hasOverlayPreview && isSelected;
         const isOverlayPreviewVisible = hasOverlayPreview && isPreviewVisible;
-        const content = (
-            <LayoutGridCellContent
-                cell={ cell }
-                isPreviewVisible={ isCellPreviewVisible }
-            />
-        );
+        const content = <LayoutGridCellContent cell={cell} isPreviewVisible={isCellPreviewVisible} />;
 
         function handleCellMouseEnter() {
             if (isPreviewable) {
@@ -287,68 +267,67 @@ export function LayoutGridControl({
         if (!shouldRenderButton) {
             return (
                 <span
-                    key={ cell.key }
-                    className={ cellClassName }
-                    data-cell={ cell.key }
-                    data-kind={ cell.kind }
-                    data-value={ cell.value }
-                    data-readonly={ isReadOnly || undefined }
-                    data-disabled={ isCellDisabled || undefined }
-                    data-selected={ isSelected || undefined }
-                    data-preview={ hasPreview || undefined }
-                    data-preview-visible={ isCellPreviewVisible || undefined }
-                    data-overlay-selected-visible={ isOverlaySelectedVisible || undefined }
-                    data-overlay-preview-visible={ isOverlayPreviewVisible || undefined }
-                    aria-hidden={ isSpacer ? true : undefined }
-                    onMouseEnter={ isPreviewable ? handleCellMouseEnter : undefined }
+                    key={cell.key}
+                    className={cellClassName}
+                    data-cell={cell.key}
+                    data-kind={cell.kind}
+                    data-value={cell.value}
+                    data-readonly={isReadOnly || undefined}
+                    data-disabled={isCellDisabled || undefined}
+                    data-selected={isSelected || undefined}
+                    data-preview={hasPreview || undefined}
+                    data-preview-visible={isCellPreviewVisible || undefined}
+                    data-overlay-selected-visible={isOverlaySelectedVisible || undefined}
+                    data-overlay-preview-visible={isOverlayPreviewVisible || undefined}
+                    aria-hidden={isSpacer ? true : undefined}
+                    onMouseEnter={isPreviewable ? handleCellMouseEnter : undefined}
                 >
-                    { content }
+                    {content}
                 </span>
             );
         }
 
         const button = (
             <button
-                key={ cell.key }
-                ref={ (node) => {
+                key={cell.key}
+                ref={node => {
                     if (node) {
                         buttonRefs.current.set(cell.key, node);
-                    }
-                    else {
+                    } else {
                         buttonRefs.current.delete(cell.key);
                     }
-                } }
+                }}
                 type="button"
-                className={ cellClassName }
-                data-cell={ cell.key }
-                data-kind={ cell.kind }
-                data-value={ cell.value }
-                data-disabled={ isCellDisabled || undefined }
-                data-readonly={ isReadOnly || undefined }
-                data-selected={ isSelected || undefined }
-                data-preview={ hasPreview || undefined }
-                data-preview-visible={ isCellPreviewVisible || undefined }
-                data-overlay-selected-visible={ isOverlaySelectedVisible || undefined }
-                data-overlay-preview-visible={ isOverlayPreviewVisible || undefined }
-                disabled={ isCellDisabled || undefined }
-                aria-label={ cell.ariaLabel }
-                aria-pressed={ isSelected || undefined }
-                aria-disabled={ isReadOnly || undefined }
-                tabIndex={ isReadOnly ? -1 : undefined }
-                onFocus={ isPreviewable ? () => setHoveredValue(cellValue) : undefined }
-                onMouseEnter={ isPreviewable ? handleCellMouseEnter : undefined }
-                onClick={ isActionable ? () => handleCellPress(cell) : undefined }
-                onDoubleClick={ (isActionable && onCellDoublePress) ? () => handleCellDoublePress(cell) : undefined }
-                onKeyDown={ isActionable ? event => handleCellKeyDown(event, cell) : undefined }
+                className={cellClassName}
+                data-cell={cell.key}
+                data-kind={cell.kind}
+                data-value={cell.value}
+                data-disabled={isCellDisabled || undefined}
+                data-readonly={isReadOnly || undefined}
+                data-selected={isSelected || undefined}
+                data-preview={hasPreview || undefined}
+                data-preview-visible={isCellPreviewVisible || undefined}
+                data-overlay-selected-visible={isOverlaySelectedVisible || undefined}
+                data-overlay-preview-visible={isOverlayPreviewVisible || undefined}
+                disabled={isCellDisabled || undefined}
+                aria-label={cell.ariaLabel}
+                aria-pressed={isSelected || undefined}
+                aria-disabled={isReadOnly || undefined}
+                tabIndex={isReadOnly ? -1 : undefined}
+                onFocus={isPreviewable ? () => setHoveredValue(cellValue) : undefined}
+                onMouseEnter={isPreviewable ? handleCellMouseEnter : undefined}
+                onClick={isActionable ? () => handleCellPress(cell) : undefined}
+                onDoubleClick={isActionable && onCellDoublePress ? () => handleCellDoublePress(cell) : undefined}
+                onKeyDown={isActionable ? event => handleCellKeyDown(event, cell) : undefined}
             >
-                { content }
+                {content}
             </button>
         );
 
         if (cell.tooltip) {
             return (
-                <Tooltip key={ cell.key } content={ cell.tooltip }>
-                    { button }
+                <Tooltip key={cell.key} content={cell.tooltip}>
+                    {button}
                 </Tooltip>
             );
         }
@@ -358,31 +337,29 @@ export function LayoutGridControl({
 
     return (
         <div
-            { ...props }
-            ref={ ref }
-            className={ cn(styles.root, className) }
-            style={ style }
-            role={ props.role ?? (isSelectionControl ? 'group' : 'img') }
-            aria-label={ ariaLabelledBy ? undefined : ariaLabel }
-            aria-labelledby={ ariaLabelledBy }
-            aria-disabled={ isDisabled || isReadOnly || undefined }
-            data-disabled={ isDisabled || undefined }
-            data-readonly={ isReadOnly || undefined }
-            onBlur={ handleRootBlur }
-            onMouseLeave={ handleRootMouseLeave }
+            {...props}
+            ref={ref}
+            className={cn(styles.root, className)}
+            style={style}
+            role={props.role ?? (isSelectionControl ? 'group' : 'img')}
+            aria-label={ariaLabelledBy ? undefined : ariaLabel}
+            aria-labelledby={ariaLabelledBy}
+            aria-disabled={isDisabled || isReadOnly || undefined}
+            data-disabled={isDisabled || undefined}
+            data-readonly={isReadOnly || undefined}
+            onBlur={handleRootBlur}
+            onMouseLeave={handleRootMouseLeave}
         >
-            <For each={ renderedOverlays }>
-                { (overlay, index) => (
+            <For each={renderedOverlays}>
+                {(overlay, index) => (
                     <LayoutGridOverlay
-                        key={ `${ overlay.kind }-${ index }` }
-                        overlay={ overlay }
-                        isPreview={ overlay.value != null && overlay.value === previewValue }
+                        key={`${overlay.kind}-${index}`}
+                        overlay={overlay}
+                        isPreview={overlay.value != null && overlay.value === previewValue}
                     />
-                ) }
+                )}
             </For>
-            <For each={ resolvedCells }>
-                { cell => renderCell(cell) }
-            </For>
+            <For each={resolvedCells}>{cell => renderCell(cell)}</For>
         </div>
     );
 }

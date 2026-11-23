@@ -15,8 +15,34 @@ export interface FindActions {
  */
 export function findCommands({ open, next, previous }: FindActions): ScopedCommand[] {
     return [
-        { id: 'find.open', title: 'Find', group: 'General', keys: '$mod+f', inInputs: true, inOverlays: true, handler: () => open() },
-        { id: 'find.next', title: 'Find next', group: 'General', keys: '$mod+g', inInputs: true, inOverlays: true, repeat: true, handler: () => next() },
-        { id: 'find.previous', title: 'Find previous', group: 'General', keys: '$mod+Shift+g', inInputs: true, inOverlays: true, repeat: true, handler: () => previous() },
+        {
+            id: 'find.open',
+            title: 'Find',
+            group: 'General',
+            keys: '$mod+f',
+            inInputs: true,
+            inOverlays: true,
+            handler: () => open(),
+        },
+        {
+            id: 'find.next',
+            title: 'Find next',
+            group: 'General',
+            keys: '$mod+g',
+            inInputs: true,
+            inOverlays: true,
+            repeat: true,
+            handler: () => next(),
+        },
+        {
+            id: 'find.previous',
+            title: 'Find previous',
+            group: 'General',
+            keys: '$mod+Shift+g',
+            inInputs: true,
+            inOverlays: true,
+            repeat: true,
+            handler: () => previous(),
+        },
     ];
 }

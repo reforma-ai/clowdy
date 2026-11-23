@@ -110,40 +110,43 @@ export const ROUTES = {
     health: '/v1/health',
     snapshot: '/v1/snapshot',
     projectsInfo: '/v1/projects/info',
-    projectSnapshot: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/snapshot`,
+    projectSnapshot: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/snapshot`,
     events: '/v1/events',
     commands: '/v1/commands',
-    runItems: (runId: string) => `/v1/runs/${ encodeURIComponent(runId) }/items`,
-    chatItems: (chatId: string) => `/v1/chats/${ encodeURIComponent(chatId) }/items`,
-    chatWorkspace: (chatId: string) => `/v1/chats/${ encodeURIComponent(chatId) }/workspace`,
-    taskDetail: (taskId: string) => `/v1/tasks/${ encodeURIComponent(taskId) }/detail`,
-    projectTaskDetail: (projectId: string, key: string) => `/v1/projects/${ encodeURIComponent(projectId) }/tasks/${ encodeURIComponent(key) }/detail`,
-    taskComments: (taskId: string) => `/v1/tasks/${ encodeURIComponent(taskId) }/comments`,
-    projectArchivedTasks: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/archived-tasks`,
-    docsTree: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/docs`,
-    projectGit: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/git`,
-    projectGitStatus: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/git/status`,
-    projectGitChanges: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/git/changes`,
-    projectGitFile: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/git/file`,
-    projectGitViewed: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/git/viewed`,
-    projectWorktrees: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/worktrees`,
-    projectGitPullRequest: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/git/pull-request`,
-    projectGitCommit: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/git/commit`,
-    projectGitMessage: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/git/message`,
-    projectGitBranches: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/git/branches`,
-    projectGitSwitch: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/git/switch`,
-    projectGitRemote: (projectId: string, action: GitRemoteAction) => `/v1/projects/${ encodeURIComponent(projectId) }/git/${ action }`,
-    projectFiles: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/files`,
-    projectAttachments: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/attachments`,
-    projectAttachment: (projectId: string, attachmentId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/attachments/${ encodeURIComponent(attachmentId) }`,
-    projectIcon: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/icon`,
-    projectFs: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/fs`,
+    runItems: (runId: string) => `/v1/runs/${encodeURIComponent(runId)}/items`,
+    chatItems: (chatId: string) => `/v1/chats/${encodeURIComponent(chatId)}/items`,
+    chatWorkspace: (chatId: string) => `/v1/chats/${encodeURIComponent(chatId)}/workspace`,
+    taskDetail: (taskId: string) => `/v1/tasks/${encodeURIComponent(taskId)}/detail`,
+    projectTaskDetail: (projectId: string, key: string) =>
+        `/v1/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(key)}/detail`,
+    taskComments: (taskId: string) => `/v1/tasks/${encodeURIComponent(taskId)}/comments`,
+    projectArchivedTasks: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/archived-tasks`,
+    docsTree: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/docs`,
+    projectGit: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git`,
+    projectGitStatus: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git/status`,
+    projectGitChanges: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git/changes`,
+    projectGitFile: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git/file`,
+    projectGitViewed: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git/viewed`,
+    projectWorktrees: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/worktrees`,
+    projectGitPullRequest: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git/pull-request`,
+    projectGitCommit: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git/commit`,
+    projectGitMessage: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git/message`,
+    projectGitBranches: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git/branches`,
+    projectGitSwitch: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git/switch`,
+    projectGitRemote: (projectId: string, action: GitRemoteAction) =>
+        `/v1/projects/${encodeURIComponent(projectId)}/git/${action}`,
+    projectFiles: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/files`,
+    projectAttachments: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/attachments`,
+    projectAttachment: (projectId: string, attachmentId: string) =>
+        `/v1/projects/${encodeURIComponent(projectId)}/attachments/${encodeURIComponent(attachmentId)}`,
+    projectIcon: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/icon`,
+    projectFs: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/fs`,
     terminals: '/v1/terminals',
-    terminal: (terminalId: string) => `/v1/terminals/${ encodeURIComponent(terminalId) }`,
-    terminalStream: (terminalId: string) => `/v1/terminals/${ encodeURIComponent(terminalId) }/stream`,
+    terminal: (terminalId: string) => `/v1/terminals/${encodeURIComponent(terminalId)}`,
+    terminalStream: (terminalId: string) => `/v1/terminals/${encodeURIComponent(terminalId)}/stream`,
     skills: '/v1/skills',
     agents: '/v1/agents',
-    agentModels: (agentId: string) => `/v1/agents/${ encodeURIComponent(agentId) }/models`,
+    agentModels: (agentId: string) => `/v1/agents/${encodeURIComponent(agentId)}/models`,
     shutdown: '/v1/shutdown',
 } as const;
 
@@ -197,18 +200,20 @@ export interface GitWorktree {
 }
 
 /** What `GET /v1/projects/:id/git` says about a folder: a repository's branches and worktrees, or that the folder is no repository. */
-export type FolderGit = { isRepository: false } | {
-    isRepository: true;
-    /** The branch the folder has checked out, or on a detached HEAD the short hash of its commit (with `detached`); in a repository with no commit yet, the name its first branch will have. */
-    branch?: string;
-    detached?: true;
-    /** The ref a new worktree starts from unless the person picks another (a `GitBranch.name`, or a short hash on a detached HEAD); absent in a repository with no commit yet. */
-    defaultBranch?: string;
-    branches: GitBranch[];
-    /** `branches` was cut at `MAX_GIT_BRANCHES`. */
-    truncated?: true;
-    worktrees: GitWorktree[];
-};
+export type FolderGit =
+    | { isRepository: false }
+    | {
+          isRepository: true;
+          /** The branch the folder has checked out, or on a detached HEAD the short hash of its commit (with `detached`); in a repository with no commit yet, the name its first branch will have. */
+          branch?: string;
+          detached?: true;
+          /** The ref a new worktree starts from unless the person picks another (a `GitBranch.name`, or a short hash on a detached HEAD); absent in a repository with no commit yet. */
+          defaultBranch?: string;
+          branches: GitBranch[];
+          /** `branches` was cut at `MAX_GIT_BRANCHES`. */
+          truncated?: true;
+          worktrees: GitWorktree[];
+      };
 
 /** Why a worktree has no Remove: it is the folder's own checkout (or the repository's primary working tree, which git never removes, or another folder of the project), git has it locked, or a chat works in it. The first that holds, in that order. */
 export type WorktreeBlock = 'main' | 'locked' | 'chats';

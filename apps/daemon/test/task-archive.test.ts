@@ -34,11 +34,19 @@ const failure = (result: ReturnType<Harness['send']>) => {
 function setup(name?: string) {
     const project = h.openRepo(name);
     // A project starts with no parked status; a test that needs one adds it first.
-    const addBacklog = () => insertStatus(h.store.db, project.id, { id: `sts_backlog_${ project.id }`, name: 'Backlog', category: 'backlog' }, 99);
+    const addBacklog = () =>
+        insertStatus(
+            h.store.db,
+            project.id,
+            { id: `sts_backlog_${project.id}`, name: 'Backlog', category: 'backlog' },
+            99
+        );
     const status = (category: string) => h.statuses(project.id).find(candidate => candidate.category === category)!.id;
-    const create = (title: string, extra: Record<string, unknown> = {}): Task => h.ok('task.create', { projectId: project.id, title, ...extra }).task;
+    const create = (title: string, extra: Record<string, unknown> = {}): Task =>
+        h.ok('task.create', { projectId: project.id, title, ...extra }).task;
     const get = (taskId: string): Task => getTask(h.store.db, taskId)!;
-    const archive = (taskId: string, cancel?: boolean) => h.ok('task.archive', { taskId, ...(cancel !== undefined && { cancel }) });
+    const archive = (taskId: string, cancel?: boolean) =>
+        h.ok('task.archive', { taskId, ...(cancel !== undefined && { cancel }) });
     const unarchive = (taskId: string) => h.ok('task.unarchive', { taskId });
     const archivedIds = () => archivedTasksPage(h.store, project.id, { limit: 100 }).tasks.map(task => task.id);
 
@@ -47,7 +55,7 @@ function setup(name?: string) {
 
 /** A task that a run works on now: the run waits for an open dependency, which keeps it active with no engine to drive. Returns the run's id. */
 function busy(create: ReturnType<typeof setup>['create'], title: string, extra: Record<string, unknown> = {}) {
-    const dependency = create(`${ title } needs this`);
+    const dependency = create(`${title} needs this`);
     const task = create(title, { dependsOn: [dependency.id], ...extra });
     const { runId } = h.ok('task.start', { taskId: task.id });
 
@@ -61,12 +69,16 @@ describe('task.archive', () => {
         const { status, create, get, archive } = setup();
 
         for (const category of ['done', 'canceled']) {
-            const task = create(`Finished as ${ category }`, { statusId: status(category) });
+            const task = create(`Finished as ${category}`, { statusId: status(category) });
             const before = get(task.id);
             const cursor = h.store.headCursor();
             const answer = archive(task.id);
 
-            expect(answer).toEqual({ task: { ...before, archivedAt: expect.any(Number) }, archived: [task.id], canceled: [] });
+            expect(answer).toEqual({
+                task: { ...before, archivedAt: expect.any(Number) },
+                archived: [task.id],
+                canceled: [],
+            });
             expect(answer.task.archivedAt).toBeGreaterThan(0);
             expect(h.events(cursor).map(event => event.data)).toEqual([{ type: 'task.upserted', task: answer.task }]);
             // A flag, not an edit: the place in the order of changes, the status and the closing time stay.
@@ -82,11 +94,19 @@ describe('task.archive', () => {
 
         addBacklog();
 
-        for (const [category, name] of [['backlog', 'Backlog'], ['todo', 'To do'], ['active', 'In progress'], ['review', 'Review']]) {
-            const task = create(`In ${ category }`, { statusId: status(category) });
+        for (const [category, name] of [
+            ['backlog', 'Backlog'],
+            ['todo', 'To do'],
+            ['active', 'In progress'],
+            ['review', 'Review'],
+        ]) {
+            const task = create(`In ${category}`, { statusId: status(category) });
             const cursor = h.store.headCursor();
 
-            expect(failure(h.send('task.archive', { taskId: task.id }))).toMatchObject({ code: 'invalid', message: `${ task.key } (${ name }) is not closed: close it first, or archive with cancel` });
+            expect(failure(h.send('task.archive', { taskId: task.id }))).toMatchObject({
+                code: 'invalid',
+                message: `${task.key} (${name}) is not closed: close it first, or archive with cancel`,
+            });
             expect(h.store.headCursor()).toBe(cursor);
             expect(get(task.id)).not.toHaveProperty('archivedAt');
         }
@@ -99,11 +119,19 @@ describe('task.archive', () => {
         const review = create('In review', { parentId: epic.id, statusId: status('review') });
 
         create('Done stage', { parentId: epic.id, statusId: status('done') });
-        expect(failure(h.send('task.archive', { taskId: epic.id }))).toMatchObject({ code: 'invalid', message: `${ open.key } (To do), ${ review.key } (Review) are not closed: close them first, or archive with cancel` });
+        expect(failure(h.send('task.archive', { taskId: epic.id }))).toMatchObject({
+            code: 'invalid',
+            message: `${open.key} (To do), ${review.key} (Review) are not closed: close them first, or archive with cancel`,
+        });
 
-        const crowd = Array.from({ length: 7 }, (_, index) => create(`Open ${ index }`, { parentId: epic.id }));
+        const crowd = Array.from({ length: 7 }, (_, index) => create(`Open ${index}`, { parentId: epic.id }));
 
-        expect(failure(h.send('task.archive', { taskId: epic.id })).message).toBe(`${ [open, review, ...crowd].slice(0, 5).map(task => `${ task.key } (${ task.id === review.id ? 'Review' : 'To do' })`).join(', ') } and 4 more are not closed: close them first, or archive with cancel`);
+        expect(failure(h.send('task.archive', { taskId: epic.id })).message).toBe(
+            `${[open, review, ...crowd]
+                .slice(0, 5)
+                .map(task => `${task.key} (${task.id === review.id ? 'Review' : 'To do'})`)
+                .join(', ')} and 4 more are not closed: close them first, or archive with cancel`
+        );
         // Nothing went in, not even the closed tasks the refusal did not name.
         expect(get(epic.id)).not.toHaveProperty('archivedAt');
         expect(archive(epic.id, true).archived).toHaveLength(1 + 1 + 1 + 1 + 7);
@@ -128,7 +156,9 @@ describe('task.archive', () => {
 
         const events = h.events(cursor);
 
-        expect(events.map(event => event.data)).toEqual([epic, stage, other, step].map(task => ({ type: 'task.upserted', task: get(task.id) })));
+        expect(events.map(event => event.data)).toEqual(
+            [epic, stage, other, step].map(task => ({ type: 'task.upserted', task: get(task.id) }))
+        );
         // One transaction: the events follow each other with nothing between them, and the project saw no other change.
         expect(events.map(event => event.cursor)).toEqual([cursor + 1, cursor + 2, cursor + 3, cursor + 4]);
         expect(events.every(event => event.projectId === project.id)).toBe(true);
@@ -153,7 +183,11 @@ describe('task.archive', () => {
         expect(answer.canceled).toEqual([epic.id, stage.id, parked.id, step.id]);
 
         for (const task of [epic, stage, step, parked]) {
-            expect(get(task.id)).toMatchObject({ statusId: status('canceled'), archivedAt: expect.any(Number), closedAt: expect.any(Number) });
+            expect(get(task.id)).toMatchObject({
+                statusId: status('canceled'),
+                archivedAt: expect.any(Number),
+                closedAt: expect.any(Number),
+            });
             expect(get(task.id).closedAt).toBeGreaterThanOrEqual(before);
             expect(get(task.id).updatedAt).toBeGreaterThanOrEqual(before);
         }
@@ -162,7 +196,9 @@ describe('task.archive', () => {
         expect(get(done.id)).toEqual({ ...doneBefore, archivedAt: get(epic.id).archivedAt });
         expect(new Set([epic, stage, step, parked, done].map(task => get(task.id).archivedAt)).size).toBe(1);
         // One event per task, not one for the cancel and another for the archive.
-        expect(h.events(cursor).map(event => event.data)).toEqual([epic, stage, parked, done, step].map(task => ({ type: 'task.upserted', task: get(task.id) })));
+        expect(h.events(cursor).map(event => event.data)).toEqual(
+            [epic, stage, parked, done, step].map(task => ({ type: 'task.upserted', task: get(task.id) }))
+        );
     });
 
     test('cancel on a task that is closed already, and cancel false, change nothing beyond the archive; cancel false refuses open work like no cancel', () => {
@@ -183,12 +219,23 @@ describe('task.archive', () => {
         const inside = busy(create, 'Inside', { parentId: epic.id, statusId: status('done') });
         const cursor = h.store.headCursor();
 
-        expect(failure(h.send('task.archive', { taskId: own.task.id }))).toMatchObject({ code: 'conflict', message: expect.stringContaining(`Task ${ own.task.key } has an active run (Orchestrator`) });
+        expect(failure(h.send('task.archive', { taskId: own.task.id }))).toMatchObject({
+            code: 'conflict',
+            message: expect.stringContaining(`Task ${own.task.key} has an active run (Orchestrator`),
+        });
         expect(failure(h.send('task.archive', { taskId: own.task.id, cancel: true })).code).toBe('conflict');
-        expect(failure(h.send('task.archive', { taskId: epic.id })).message).toMatch(new RegExp(`^Task ${ inside.task.key }, inside ${ epic.key }, has an active run \\(Orchestrator \\d+\\): stop it first$`));
+        expect(failure(h.send('task.archive', { taskId: epic.id })).message).toMatch(
+            new RegExp(
+                `^Task ${inside.task.key}, inside ${epic.key}, has an active run \\(Orchestrator \\d+\\): stop it first$`
+            )
+        );
         expect(failure(h.send('task.archive', { taskId: epic.id, cancel: true })).code).toBe('conflict');
         // Closed or open, the refusal leaves everything where it was: not the epic, not a task before the busy one in the order.
-        expect([own.task, epic, inside.task].map(task => get(task.id).archivedAt)).toEqual([undefined, undefined, undefined]);
+        expect([own.task, epic, inside.task].map(task => get(task.id).archivedAt)).toEqual([
+            undefined,
+            undefined,
+            undefined,
+        ]);
         expect(h.store.headCursor()).toBe(cursor);
 
         // Once the run has stopped the archive goes through.
@@ -234,7 +281,11 @@ describe('task.archive', () => {
 
     test('a batch never takes the archivedAt of an earlier one, whatever the clock says, so a restore cannot take the other batch along', () => {
         const { status, create, get, archive, unarchive } = setup();
-        const [first, second, third] = [create('First', { statusId: status('done') }), create('Second', { statusId: status('done') }), create('Third', { statusId: status('done') })];
+        const [first, second, third] = [
+            create('First', { statusId: status('done') }),
+            create('Second', { statusId: status('done') }),
+            create('Third', { statusId: status('done') }),
+        ];
         const ahead = Date.now() + 3_600_000;
 
         // The first batch carries a time the clock has not reached yet, as after a clock set back: the next ones must still come after it.
@@ -265,7 +316,7 @@ describe('task.archive', () => {
         const outsider = create('Outside', { dependsOn: [waitingOn.id] });
         const { runId } = h.ok('task.start', { taskId: outsider.id });
 
-        expect(h.run(runId)).toMatchObject({ status: 'blocked', statusReason: `Waiting for ${ waitingOn.key }` });
+        expect(h.run(runId)).toMatchObject({ status: 'blocked', statusReason: `Waiting for ${waitingOn.key}` });
         archive(closed.id);
         expect(get(dependent.id).dependsOn).toEqual([closed.id]);
 
@@ -306,7 +357,9 @@ describe('task.unarchive', () => {
 
         // A canceled task comes back canceled: restoring is not reopening.
         expect(get(epic.id).statusId).toBe(status('canceled'));
-        expect(h.events(cursor).map(event => event.data)).toEqual([epic, stage, step].map(task => ({ type: 'task.upserted', task: get(task.id) })));
+        expect(h.events(cursor).map(event => event.data)).toEqual(
+            [epic, stage, step].map(task => ({ type: 'task.upserted', task: get(task.id) }))
+        );
         expect(h.events(cursor).map(event => event.cursor)).toEqual([cursor + 1, cursor + 2, cursor + 3]);
     });
 
@@ -327,7 +380,10 @@ describe('task.unarchive', () => {
 
     test('a task archived on its own later stays archived when its parent comes back with an earlier batch, and batches of separate trees do not mix', () => {
         const { status, create, get, archive, unarchive } = setup();
-        const [first, second] = [create('First epic', { statusId: status('done') }), create('Second epic', { statusId: status('done') })];
+        const [first, second] = [
+            create('First epic', { statusId: status('done') }),
+            create('Second epic', { statusId: status('done') }),
+        ];
         const child = create('Child', { parentId: first.id, statusId: status('done') });
         const other = create('Other child', { parentId: second.id, statusId: status('done') });
 
@@ -355,7 +411,7 @@ describe('task.unarchive', () => {
         expect(unarchive(stray.id).restored).toEqual([stray.id]);
     });
 
-    test('is refused while the task\'s parent is archived, in the same batch or not, with nothing changed; the parent first brings it back', () => {
+    test("is refused while the task's parent is archived, in the same batch or not, with nothing changed; the parent first brings it back", () => {
         const { status, create, get, archive, unarchive } = setup();
         const epic = create('Epic', { statusId: status('done') });
         const stage = create('Stage', { parentId: epic.id, statusId: status('done') });
@@ -365,8 +421,13 @@ describe('task.unarchive', () => {
 
         const cursor = h.store.headCursor();
 
-        expect(failure(h.send('task.unarchive', { taskId: stage.id }))).toMatchObject({ code: 'invalid', message: `Task ${ stage.key } is inside ${ epic.key }, which is archived: restore ${ epic.key } first` });
-        expect(failure(h.send('task.unarchive', { taskId: step.id })).message).toBe(`Task ${ step.key } is inside ${ stage.key }, which is archived: restore ${ stage.key } first`);
+        expect(failure(h.send('task.unarchive', { taskId: stage.id }))).toMatchObject({
+            code: 'invalid',
+            message: `Task ${stage.key} is inside ${epic.key}, which is archived: restore ${epic.key} first`,
+        });
+        expect(failure(h.send('task.unarchive', { taskId: step.id })).message).toBe(
+            `Task ${step.key} is inside ${stage.key}, which is archived: restore ${stage.key} first`
+        );
         expect(h.store.headCursor()).toBe(cursor);
         expect(get(stage.id).archivedAt).toBeDefined();
         expect(unarchive(epic.id).restored).toEqual([epic.id, stage.id, step.id]);
@@ -414,7 +475,7 @@ describe('what an archived task leaves and what it keeps', () => {
         archive(closed.id);
         expect(projectSnapshot(h.store, project.id).tasks.map(task => task.id)).toEqual([live.id]);
 
-        const snapshot = await (await h.fetch(`/v1/projects/${ project.id }/snapshot`)).json() as { tasks: Task[] };
+        const snapshot = (await (await h.fetch(`/v1/projects/${project.id}/snapshot`)).json()) as { tasks: Task[] };
 
         expect(snapshot.tasks.map(task => task.id)).toEqual([live.id]);
     });
@@ -434,7 +495,9 @@ describe('what an archived task leaves and what it keeps', () => {
         h.ok('task.update', { taskId: later.id, dependsOn: [closed.id] });
         expect(get(waiting.id).dependsOn).toEqual([closed.id]);
         expect(get(later.id).dependsOn).toEqual([closed.id]);
-        expect(projectSnapshot(h.store, project.id).tasks.find(task => task.id === waiting.id)?.dependsOn).toEqual([closed.id]);
+        expect(projectSnapshot(h.store, project.id).tasks.find(task => task.id === waiting.id)?.dependsOn).toEqual([
+            closed.id,
+        ]);
         h.ok('run.cancel', { runId: h.ok('task.start', { taskId: waiting.id }).runId });
     });
 
@@ -447,7 +510,10 @@ describe('what an archived task leaves and what it keeps', () => {
         const chats = (h.store.db.query('SELECT COUNT(*) AS n FROM chats').get() as { n: number }).n;
         const runs = (h.store.db.query('SELECT COUNT(*) AS n FROM runs').get() as { n: number }).n;
 
-        expect(failure(h.send('task.start', { taskId: task.id }))).toMatchObject({ code: 'invalid', message: `Task ${ task.key } is archived: restore it first` });
+        expect(failure(h.send('task.start', { taskId: task.id }))).toMatchObject({
+            code: 'invalid',
+            message: `Task ${task.key} is archived: restore it first`,
+        });
         expect(failure(h.send('task.start', { taskId: task.id, force: true })).code).toBe('invalid');
         expect((h.store.db.query('SELECT COUNT(*) AS n FROM chats').get() as { n: number }).n).toBe(chats);
         expect((h.store.db.query('SELECT COUNT(*) AS n FROM runs').get() as { n: number }).n).toBe(runs);
@@ -460,10 +526,14 @@ describe('what an archived task leaves and what it keeps', () => {
         const task = create('Closed', { statusId: status('done') });
 
         archive(task.id);
-        expect(failure(h.send('task.update', { taskId: task.id, statusId: status('todo') }))).toMatchObject({ code: 'invalid', message: `Task ${ task.key } is archived: restore it before reopening it` });
+        expect(failure(h.send('task.update', { taskId: task.id, statusId: status('todo') }))).toMatchObject({
+            code: 'invalid',
+            message: `Task ${task.key} is archived: restore it before reopening it`,
+        });
         expect(get(task.id).statusId).toBe(status('done'));
 
-        const edited = h.ok('task.update', { taskId: task.id, title: 'Renamed', statusId: status('canceled') }).task as Task;
+        const edited = h.ok('task.update', { taskId: task.id, title: 'Renamed', statusId: status('canceled') })
+            .task as Task;
 
         expect(edited).toMatchObject({ title: 'Renamed', statusId: status('canceled') });
         expect(get(task.id).archivedAt).toBeDefined();
@@ -479,16 +549,24 @@ describe('what an archived task leaves and what it keeps', () => {
         archive(epic.id);
         archive(other.id);
 
-        const message = `Task ${ epic.key } is archived: restore it before putting tasks inside it`;
+        const message = `Task ${epic.key} is archived: restore it before putting tasks inside it`;
 
-        expect(failure(h.send('task.create', { projectId: epic.projectId, title: 'New', parentId: epic.id }))).toMatchObject({ code: 'invalid', message });
-        expect(failure(h.send('task.update', { taskId: live.id, parentId: epic.id }))).toMatchObject({ code: 'invalid', message });
+        expect(
+            failure(h.send('task.create', { projectId: epic.projectId, title: 'New', parentId: epic.id }))
+        ).toMatchObject({ code: 'invalid', message });
+        expect(failure(h.send('task.update', { taskId: live.id, parentId: epic.id }))).toMatchObject({
+            code: 'invalid',
+            message,
+        });
         expect(get(live.id)).not.toHaveProperty('parentId');
 
         // An archived task moves under a live parent (it stays archived) or under another archived one.
         archive(closed.id);
         expect(h.ok('task.update', { taskId: closed.id, parentId: other.id }).task.parentId).toBe(other.id);
-        expect(h.ok('task.update', { taskId: closed.id, parentId: live.id }).task).toMatchObject({ parentId: live.id, archivedAt: expect.any(Number) });
+        expect(h.ok('task.update', { taskId: closed.id, parentId: live.id }).task).toMatchObject({
+            parentId: live.id,
+            archivedAt: expect.any(Number),
+        });
     });
 
     test('the tree rules still see the archived tasks: depth and loops are checked through them', () => {
@@ -496,7 +574,12 @@ describe('what an archived task leaves and what it keeps', () => {
         const tasks: Task[] = [];
 
         for (let level = 1; level <= 8; level++) {
-            tasks.push(create(`Level ${ level }`, { statusId: status('done'), ...(level > 1 && { parentId: tasks[level - 2].id }) }));
+            tasks.push(
+                create(`Level ${level}`, {
+                    statusId: status('done'),
+                    ...(level > 1 && { parentId: tasks[level - 2].id }),
+                })
+            );
         }
 
         archive(tasks[0].id);
@@ -504,8 +587,12 @@ describe('what an archived task leaves and what it keeps', () => {
         const spare = create('Spare', { statusId: status('done') });
 
         archive(spare.id);
-        expect(failure(h.send('task.update', { taskId: spare.id, parentId: tasks[7].id })).message).toContain('Too deep');
-        expect(failure(h.send('task.update', { taskId: tasks[0].id, parentId: tasks[3].id })).message).toBe(`Task ${ tasks[3].key } is inside ${ tasks[0].key }, so it cannot be its parent`);
+        expect(failure(h.send('task.update', { taskId: spare.id, parentId: tasks[7].id })).message).toContain(
+            'Too deep'
+        );
+        expect(failure(h.send('task.update', { taskId: tasks[0].id, parentId: tasks[3].id })).message).toBe(
+            `Task ${tasks[3].key} is inside ${tasks[0].key}, so it cannot be its parent`
+        );
     });
 
     test('deleting an archived task works: its archived children go up to its parent and keep their archivedAt, the dependents lose the dependency, and nothing else is touched', () => {
@@ -535,7 +622,7 @@ describe('what an archived task leaves and what it keeps', () => {
         expect(h.ok('task.unarchive', { taskId: stage.id }).restored).toEqual([stage.id]);
     });
 
-    test('deleting a live task whose child is archived leaves that child archived under the task\'s parent; deleting a root makes it a root', () => {
+    test("deleting a live task whose child is archived leaves that child archived under the task's parent; deleting a root makes it a root", () => {
         const { status, create, get, archive } = setup();
         const root = create('Root');
         const middle = create('Middle', { parentId: root.id });
@@ -551,9 +638,10 @@ describe('what an archived task leaves and what it keeps', () => {
 });
 
 describe('the archive route', () => {
-    const page = async (projectId: string, query = '') => (await h.fetch(`/v1/projects/${ projectId }/archived-tasks${ query }`)).json() as Promise<TaskArchivePage>;
+    const page = async (projectId: string, query = '') =>
+        (await h.fetch(`/v1/projects/${projectId}/archived-tasks${query}`)).json() as Promise<TaskArchivePage>;
 
-    test('an empty archive is an empty page, and a project\'s archive holds its own tasks only', async () => {
+    test("an empty archive is an empty page, and a project's archive holds its own tasks only", async () => {
         const { project, status, create, archive } = setup();
         const other = setup('other');
 
@@ -561,7 +649,11 @@ describe('the archive route', () => {
         create('Live');
 
         const mine = create('Mine', { statusId: status('done') });
-        const theirs = h.ok('task.create', { projectId: other.project.id, title: 'Theirs', statusId: other.status('done') }).task as Task;
+        const theirs = h.ok('task.create', {
+            projectId: other.project.id,
+            title: 'Theirs',
+            statusId: other.status('done'),
+        }).task as Task;
 
         archive(mine.id);
         other.archive(theirs.id);
@@ -584,7 +676,13 @@ describe('the archive route', () => {
 
         const everything = await page(project.id);
 
-        expect(everything.tasks.map(task => task.id)).toEqual([third.id, second.id, secondChild.id, first.id, firstChild.id]);
+        expect(everything.tasks.map(task => task.id)).toEqual([
+            third.id,
+            second.id,
+            secondChild.id,
+            first.id,
+            firstChild.id,
+        ]);
         expect(everything).toMatchObject({ total: 5 });
         expect(everything).not.toHaveProperty('nextCursor');
         expect(everything.tasks.every(task => typeof task.archivedAt === 'number')).toBe(true);
@@ -593,7 +691,7 @@ describe('the archive route', () => {
         let cursor: string | undefined;
 
         do {
-            const next: TaskArchivePage = await page(project.id, `?limit=2${ cursor ? `&cursor=${ cursor }` : '' }`);
+            const next: TaskArchivePage = await page(project.id, `?limit=2${cursor ? `&cursor=${cursor}` : ''}`);
 
             expect(next.total).toBe(5);
             expect(next.tasks.length).toBeLessThanOrEqual(2);
@@ -606,7 +704,7 @@ describe('the archive route', () => {
 
     test('a task archived between two pages neither repeats nor shifts the rest, and the limit is kept between 1 and 100', async () => {
         const { project, status, create, archive } = setup();
-        const tasks = Array.from({ length: 4 }, (_, index) => create(`Task ${ index }`, { statusId: status('done') }));
+        const tasks = Array.from({ length: 4 }, (_, index) => create(`Task ${index}`, { statusId: status('done') }));
 
         for (const task of tasks) {
             archive(task.id);
@@ -620,7 +718,7 @@ describe('the archive route', () => {
 
         archive(newer.id);
 
-        const second = await page(project.id, `?limit=2&cursor=${ first.nextCursor }`);
+        const second = await page(project.id, `?limit=2&cursor=${first.nextCursor}`);
 
         expect(second.tasks.map(task => task.id)).toEqual([tasks[1].id, tasks[0].id]);
         expect(second.total).toBe(5);
@@ -633,12 +731,18 @@ describe('the archive route', () => {
     test('the cursor and limit are checked, an unknown project is not found, and the route needs the token', async () => {
         const { project } = setup();
 
-        expect((await h.fetch(`/v1/projects/${ project.id }/archived-tasks?limit=ten`)).status).toBe(400);
-        expect((await h.fetch(`/v1/projects/${ project.id }/archived-tasks?limit=-1`)).status).toBe(400);
-        expect((await h.fetch(`/v1/projects/${ project.id }/archived-tasks?cursor=nope`)).status).toBe(400);
+        expect((await h.fetch(`/v1/projects/${project.id}/archived-tasks?limit=ten`)).status).toBe(400);
+        expect((await h.fetch(`/v1/projects/${project.id}/archived-tasks?limit=-1`)).status).toBe(400);
+        expect((await h.fetch(`/v1/projects/${project.id}/archived-tasks?cursor=nope`)).status).toBe(400);
         expect((await h.fetch('/v1/projects/prj_nope/archived-tasks')).status).toBe(404);
-        expect((await fetch(`${ h.url }/v1/projects/${ project.id }/archived-tasks`)).status).toBe(401);
-        expect((await fetch(`${ h.url }/v1/projects/${ project.id }/archived-tasks`, { headers: { authorization: 'Bearer wrong' } })).status).toBe(401);
+        expect((await fetch(`${h.url}/v1/projects/${project.id}/archived-tasks`)).status).toBe(401);
+        expect(
+            (
+                await fetch(`${h.url}/v1/projects/${project.id}/archived-tasks`, {
+                    headers: { authorization: 'Bearer wrong' },
+                })
+            ).status
+        ).toBe(401);
     });
 
     test('a task of the page is the whole task: its dependencies, parent and times', async () => {
@@ -651,7 +755,13 @@ describe('the archive route', () => {
 
         const { tasks } = await page(project.id);
 
-        expect(tasks.find(task => task.id === epic.id)).toMatchObject({ key: epic.key, dependsOn: [dependency.id], closedAt: epic.closedAt, updatedAt: epic.updatedAt, createdAt: epic.createdAt });
+        expect(tasks.find(task => task.id === epic.id)).toMatchObject({
+            key: epic.key,
+            dependsOn: [dependency.id],
+            closedAt: epic.closedAt,
+            updatedAt: epic.updatedAt,
+            createdAt: epic.createdAt,
+        });
         expect(tasks.find(task => task.id === stage.id)?.parentId).toBe(epic.id);
     });
 });

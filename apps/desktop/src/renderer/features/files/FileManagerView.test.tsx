@@ -12,22 +12,42 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // happy-dom has no layout: the tree measures its host to know how many rows to draw, so it is told a size. The view measures its own box too, and a test can take the width away.
 const box = vi.hoisted(() => ({ width: 240, height: 320 }));
 
-vi.mock('use-resize-observer', () => ({ default: () => ({ ref: () => undefined, width: box.width, height: box.height }) }));
+vi.mock('use-resize-observer', () => ({
+    default: () => ({ ref: () => undefined, width: box.width, height: box.height }),
+}));
 
 let container: HTMLDivElement;
 let root: Root;
 let manager: FileManager;
 
-const draw = (props: Partial<ComponentProps<typeof FileManagerView>> = {}) => act(() => root.render(<><div id="foreign" draggable="true" /><FileManagerView manager={ manager } { ...props } /></>));
+const draw = (props: Partial<ComponentProps<typeof FileManagerView>> = {}) =>
+    act(() =>
+        root.render(
+            <>
+                <div id="foreign" draggable="true" />
+                <FileManagerView manager={manager} {...props} />
+            </>
+        )
+    );
 
-const settle = () => act(async () => {
-    await new Promise(resolve => setTimeout(resolve, 20));
-});
+const settle = () =>
+    act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 20));
+    });
 
 /** A drag event with a data transfer that records what the handlers set on it, as the browser's own would. */
 function dragEvent(type: string, types: string[]) {
     const event = new Event(type, { bubbles: true, cancelable: true });
-    const dataTransfer = { types, files: [], items: [], dropEffect: 'none', effectAllowed: 'uninitialized', getData: () => '', setData: () => undefined, setDragImage: () => undefined };
+    const dataTransfer = {
+        types,
+        files: [],
+        items: [],
+        dropEffect: 'none',
+        effectAllowed: 'uninitialized',
+        getData: () => '',
+        setData: () => undefined,
+        setDragImage: () => undefined,
+    };
 
     Object.defineProperty(event, 'dataTransfer', { value: dataTransfer });
 
@@ -75,7 +95,7 @@ describe('the layout of the view', () => {
 });
 
 describe('the rows of the tree', () => {
-    it('are drawn once the tree\'s host has a height, not before: a list built with none could be asked to scroll to a row and end up out of step with its element', async () => {
+    it("are drawn once the tree's host has a height, not before: a list built with none could be asked to scroll to a row and end up out of step with its element", async () => {
         act(() => root.unmount());
         root = createRoot(container);
         box.height = 0;
@@ -112,17 +132,17 @@ describe('the empty text of the tree', () => {
     });
 });
 
-describe('the file tree\'s drag and drop', () => {
+describe("the file tree's drag and drop", () => {
     it('is on the tree, which has its rows to drag', () => {
         expect(container.querySelectorAll('[role="treeitem"]').length).toBe(2);
         expect(container.querySelector('[role="treeitem"] [draggable="true"]')).not.toBeNull();
     });
 
-    it('leaves a drag that starts outside the tree alone: the window\'s other screens (the task board) drag natively', () => {
+    it("leaves a drag that starts outside the tree alone: the window's other screens (the task board) drag natively", () => {
         const foreign = container.querySelector('#foreign')!;
         const start = dragEvent('dragstart', ['application/x-clowdy-task']);
 
-        foreign.addEventListener('dragover', (event) => {
+        foreign.addEventListener('dragover', event => {
             (event as unknown as { dataTransfer: { dropEffect: string } }).dataTransfer.dropEffect = 'move';
         });
         foreign.dispatchEvent(start.event);
@@ -139,19 +159,24 @@ describe('the file tree\'s drag and drop', () => {
 
 describe('the button that shows and hides the file tree', () => {
     const buttons = () => [...container.querySelectorAll<HTMLButtonElement>('button[aria-label="File tree"]')];
-    const press = (target: HTMLElement) => act(async () => {
-        target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
-        target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
-        target.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
-        target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
-        target.click();
-    });
+    const press = (target: HTMLElement) =>
+        act(async () => {
+            target.dispatchEvent(
+                new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true })
+            );
+            target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+            target.dispatchEvent(
+                new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true })
+            );
+            target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
+            target.click();
+        });
 
     it('is not there when the host gives no way to toggle the tree', () => {
         expect(buttons()).toHaveLength(0);
     });
 
-    it('is one button, pressed in the sidebar\'s header while the tree shows, and in the editor\'s strip while it is hidden', async () => {
+    it("is one button, pressed in the sidebar's header while the tree shows, and in the editor's strip while it is hidden", async () => {
         const onSidebarToggle = vi.fn();
 
         await manager.open('a.ts');
@@ -179,7 +204,7 @@ describe('the button that shows and hides the file tree', () => {
 describe('the tree while no file is open', () => {
     const buttons = () => [...container.querySelectorAll<HTMLButtonElement>('button[aria-label="File tree"]')];
 
-    it('is shown whatever the host asks for, with no button to hide it, since a hidden tree leaves nothing in the panel; the host\'s choice applies again once a file is open', async () => {
+    it("is shown whatever the host asks for, with no button to hide it, since a hidden tree leaves nothing in the panel; the host's choice applies again once a file is open", async () => {
         const onSidebarToggle = vi.fn();
 
         draw({ onSidebarToggle, sidebarOpen: false });
@@ -189,7 +214,7 @@ describe('the tree while no file is open', () => {
         expect(container.querySelectorAll('[role="treeitem"]')).toHaveLength(2);
         expect(buttons()).toHaveLength(0);
 
-        await act(async () => void await manager.open('a.ts'));
+        await act(async () => void (await manager.open('a.ts')));
         await settle();
 
         expect(container.querySelector('aside')).toBeNull();
@@ -216,16 +241,24 @@ describe('the tree while no file is open', () => {
 });
 
 describe('the menu of a row', () => {
-    const press = (target: HTMLElement) => act(async () => {
-        target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
-        target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
-        target.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
-        target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
-        target.click();
-    });
-    const rightClick = (target: HTMLElement) => act(async () => {
-        target.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 20, clientY: 20 }));
-    });
+    const press = (target: HTMLElement) =>
+        act(async () => {
+            target.dispatchEvent(
+                new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true })
+            );
+            target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+            target.dispatchEvent(
+                new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true })
+            );
+            target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
+            target.click();
+        });
+    const rightClick = (target: HTMLElement) =>
+        act(async () => {
+            target.dispatchEvent(
+                new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 20, clientY: 20 })
+            );
+        });
     const menuItems = () => [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')];
     const menuItem = (text: string) => menuItems().find(item => item.textContent === text);
 
@@ -235,12 +268,18 @@ describe('the menu of a row', () => {
         const parent = vi.fn();
 
         draw({
-            menuItems: targets => (targets.length === 1
-                ? [
-                    { id: 'open-in', label: 'Open in…', onAction: parent, children: [{ id: 'editor', label: 'Open in Cursor', onAction: open }] },
-                    { id: 'copy-path', label: 'Copy path', onAction: copy },
-                ]
-                : []),
+            menuItems: targets =>
+                targets.length === 1
+                    ? [
+                          {
+                              id: 'open-in',
+                              label: 'Open in…',
+                              onAction: parent,
+                              children: [{ id: 'editor', label: 'Open in Cursor', onAction: open }],
+                          },
+                          { id: 'copy-path', label: 'Copy path', onAction: copy },
+                      ]
+                    : [],
         });
         await settle();
         await rightClick(container.querySelector<HTMLElement>('[role="treeitem"] [draggable="true"]')!);
@@ -285,7 +324,7 @@ describe('the filter in the header of the file tree', () => {
         });
     }
 
-    it('is the header\'s title, in place of a name for it, with the button that hides the tree after it', async () => {
+    it("is the header's title, in place of a name for it, with the button that hides the tree after it", async () => {
         await manager.open('a.ts');
         draw({ onSidebarToggle: () => undefined });
         await settle();
@@ -314,7 +353,12 @@ describe('the filter in the header of the file tree', () => {
     it('opens the first file it shows on Enter', async () => {
         type('b.t');
         await settle();
-        act(() => void field().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })));
+        act(
+            () =>
+                void field().dispatchEvent(
+                    new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+                )
+        );
         await settle();
 
         expect(manager.tabs.active?.path).toBe('b.ts');
@@ -325,7 +369,7 @@ describe('a part of the tree, drawn by rules of its own', () => {
     const scope = {
         roots: [{ id: 'documents', label: 'Documents', root: '.clowdy/docs' }],
         include: (path: string, kind: string) => kind === 'directory' || /\.md$/i.test(path),
-        fileName: (name: string) => (/\.md$/i.test(name) ? name : `${ name }.md`),
+        fileName: (name: string) => (/\.md$/i.test(name) ? name : `${name}.md`),
     };
     const field = () => container.querySelector<HTMLInputElement>('input[aria-label="Filter documents"]')!;
     const rows = () => [...container.querySelectorAll('[role="treeitem"]')].map(row => row.textContent);
@@ -340,7 +384,12 @@ describe('a part of the tree, drawn by rules of its own', () => {
     beforeEach(async () => {
         manager.dispose();
         manager = new FileManager({
-            provider: new MemoryFileSystem({ '.clowdy/docs/a.md': '# A', '.clowdy/docs/plans/b.md': '# B', '.clowdy/docs/x.png': '', 'src/a.ts': '' }),
+            provider: new MemoryFileSystem({
+                '.clowdy/docs/a.md': '# A',
+                '.clowdy/docs/plans/b.md': '# B',
+                '.clowdy/docs/x.png': '',
+                'src/a.ts': '',
+            }),
             hidden: ['**/.*'],
         });
         await manager.start();
@@ -353,7 +402,7 @@ describe('a part of the tree, drawn by rules of its own', () => {
         expect(field().placeholder).toBe('Filter documents');
     });
 
-    it('filters its own rows by name, the folders below its root included, and opens the first on Enter in the manager\'s tabs', async () => {
+    it("filters its own rows by name, the folders below its root included, and opens the first on Enter in the manager's tabs", async () => {
         type('b');
         await settle();
 
@@ -362,7 +411,12 @@ describe('a part of the tree, drawn by rules of its own', () => {
 
         type('a.m');
         await settle();
-        act(() => void field().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })));
+        act(
+            () =>
+                void field().dispatchEvent(
+                    new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+                )
+        );
         await settle();
 
         expect(manager.tabs.active?.path).toBe('.clowdy/docs/a.md');
@@ -403,28 +457,47 @@ describe('a part of the tree, drawn by rules of its own', () => {
                 nameInput().dispatchEvent(new Event('input', { bubbles: true }));
             });
         };
-        const press = (key: string) => act(() => void nameInput().dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })));
+        const press = (key: string) =>
+            act(
+                () =>
+                    void nameInput().dispatchEvent(
+                        new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
+                    )
+            );
 
         await manager.operations.createFile('.clowdy/docs', 'taken.md');
         await settle();
 
-        act(() => void [...container.querySelectorAll<HTMLElement>('[role="treeitem"]')].find(row => row.textContent === 'a.md')!.click());
-        act(() => void tree.dispatchEvent(new KeyboardEvent('keydown', { key: 'F2', bubbles: true, cancelable: true })));
+        act(
+            () =>
+                void [...container.querySelectorAll<HTMLElement>('[role="treeitem"]')]
+                    .find(row => row.textContent === 'a.md')!
+                    .click()
+        );
+        act(
+            () => void tree.dispatchEvent(new KeyboardEvent('keydown', { key: 'F2', bubbles: true, cancelable: true }))
+        );
         await settle();
 
         // `taken` is `taken.md` once completed, which is a name in the folder already.
         typeName('taken');
         press('Enter');
         await settle();
-        expect(await manager.provider.list('.clowdy/docs', 1).then(entries => entries.map(entry => entry.path).sort())).toEqual(['.clowdy/docs/a.md', '.clowdy/docs/plans', '.clowdy/docs/taken.md', '.clowdy/docs/x.png']);
+        expect(
+            await manager.provider.list('.clowdy/docs', 1).then(entries => entries.map(entry => entry.path).sort())
+        ).toEqual(['.clowdy/docs/a.md', '.clowdy/docs/plans', '.clowdy/docs/taken.md', '.clowdy/docs/x.png']);
 
-        act(() => void tree.dispatchEvent(new KeyboardEvent('keydown', { key: 'F2', bubbles: true, cancelable: true })));
+        act(
+            () => void tree.dispatchEvent(new KeyboardEvent('keydown', { key: 'F2', bubbles: true, cancelable: true }))
+        );
         await settle();
         typeName('idea');
         press('Enter');
         await settle();
 
-        expect(await manager.provider.list('.clowdy/docs', 1).then(entries => entries.map(entry => entry.path).sort())).toEqual(['.clowdy/docs/idea.md', '.clowdy/docs/plans', '.clowdy/docs/taken.md', '.clowdy/docs/x.png']);
+        expect(
+            await manager.provider.list('.clowdy/docs', 1).then(entries => entries.map(entry => entry.path).sort())
+        ).toEqual(['.clowdy/docs/idea.md', '.clowdy/docs/plans', '.clowdy/docs/taken.md', '.clowdy/docs/x.png']);
     });
 
     it('does not say it is empty while the tree is still being listed', async () => {
@@ -489,7 +562,8 @@ describe('a scope with several roots, each under a gray label', () => {
         '.kiro/specs/feat/deep/er/x.md': '# X',
         'src/a.ts': '',
     };
-    const heading = (element: Element) => (element.hasAttribute('data-heading') ? `# ${ element.textContent }` : element.textContent);
+    const heading = (element: Element) =>
+        element.hasAttribute('data-heading') ? `# ${element.textContent}` : element.textContent;
     /** The labels and the rows of the tree, top to bottom. */
     const layout = () => [...container.querySelectorAll('[data-heading], [role="treeitem"]')].map(heading);
     const labels = () => [...container.querySelectorAll('[data-heading]')].map(element => element.textContent);
@@ -510,11 +584,15 @@ describe('a scope with several roots, each under a gray label', () => {
                 return roots();
             },
             include: markdown,
-            fileName: (name: string) => (/\.md$/i.test(name) ? name : `${ name }.md`),
+            fileName: (name: string) => (/\.md$/i.test(name) ? name : `${name}.md`),
         };
     }
 
-    const props = (scope: ReturnType<typeof scopeOf>) => ({ scope, filterPlaceholder: 'Filter documents', emptyText: 'No documents yet' });
+    const props = (scope: ReturnType<typeof scopeOf>) => ({
+        scope,
+        filterPlaceholder: 'Filter documents',
+        emptyText: 'No documents yet',
+    });
 
     beforeEach(async () => {
         manager.dispose();
@@ -546,7 +624,12 @@ describe('a scope with several roots, each under a gray label', () => {
         expect(manager.tabs.active).toBeNull();
 
         // A file below it is an item as before.
-        act(() => void [...container.querySelectorAll<HTMLElement>('[role="treeitem"]')].find(row => row.textContent === 'index.md')!.click());
+        act(
+            () =>
+                void [...container.querySelectorAll<HTMLElement>('[role="treeitem"]')]
+                    .find(row => row.textContent === 'index.md')!
+                    .click()
+        );
         await settle();
 
         expect(manager.tabs.active?.path).toBe('.briefback/index.md');
@@ -557,11 +640,23 @@ describe('a scope with several roots, each under a gray label', () => {
         draw(props(scopeOf(() => [BRIEFBACK, SPECS])));
         await settle();
 
-        const press = (key: string) => act(() => void treeHost().dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })));
-        const selected = () => [...container.querySelectorAll('[role="treeitem"][aria-selected="true"]')].map(row => row.textContent);
+        const press = (key: string) =>
+            act(
+                () =>
+                    void treeHost().dispatchEvent(
+                        new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
+                    )
+            );
+        const selected = () =>
+            [...container.querySelectorAll('[role="treeitem"][aria-selected="true"]')].map(row => row.textContent);
 
         // A row of the first folder is the one the keys are on; the key up goes to the label above it.
-        act(() => void [...container.querySelectorAll<HTMLElement>('[role="treeitem"]')].find(row => row.textContent === 'acp')!.click());
+        act(
+            () =>
+                void [...container.querySelectorAll<HTMLElement>('[role="treeitem"]')]
+                    .find(row => row.textContent === 'acp')!
+                    .click()
+        );
         await settle();
         press('ArrowUp');
 
@@ -613,7 +708,16 @@ describe('a scope with several roots, each under a gray label', () => {
         draw(props(scopeOf(() => [BRIEFBACK, SPECS])));
         await settle();
 
-        expect(layout()).toEqual(['# Briefback', 'acp', 'index.md', '# Specs', '001-a', 'spec.md', 'tasks.md', 'readme.md']);
+        expect(layout()).toEqual([
+            '# Briefback',
+            'acp',
+            'index.md',
+            '# Specs',
+            '001-a',
+            'spec.md',
+            'tasks.md',
+            'readme.md',
+        ]);
         expect(container.querySelector('[role="treeitem"][aria-selected="true"]')?.textContent).toBe('tasks.md');
     });
 
@@ -666,7 +770,12 @@ describe('a scope with several roots, each under a gray label', () => {
         expect(container.textContent).toContain('No documents yet');
 
         // No folder to put anything in: the empty area has no menu.
-        act(() => void treeHost().dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 })));
+        act(
+            () =>
+                void treeHost().dispatchEvent(
+                    new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 })
+                )
+        );
         await settle();
         expect(document.body.querySelector('[role="menu"]')).toBeNull();
     });
@@ -677,7 +786,12 @@ describe('a scope with several roots, each under a gray label', () => {
 
         const choose = async (label: string) => {
             await settle();
-            act(() => void [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(item => item.textContent === label)!.click());
+            act(
+                () =>
+                    void [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')]
+                        .find(item => item.textContent === label)!
+                        .click()
+            );
             await settle();
         };
         const nameInput = () => container.querySelector<HTMLInputElement>('input[aria-label="New file name"]')!;
@@ -686,12 +800,22 @@ describe('a scope with several roots, each under a gray label', () => {
                 Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(nameInput(), value);
                 nameInput().dispatchEvent(new Event('input', { bubbles: true }));
             });
-            act(() => void nameInput().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })));
+            act(
+                () =>
+                    void nameInput().dispatchEvent(
+                        new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+                    )
+            );
             await settle();
         };
 
         // The area below the rows is the first root.
-        act(() => void treeHost().dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 })));
+        act(
+            () =>
+                void treeHost().dispatchEvent(
+                    new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 })
+                )
+        );
         await choose('New file');
 
         // The inline row is under the first label, after its folders.
@@ -702,7 +826,14 @@ describe('a scope with several roots, each under a gray label', () => {
         expect(manager.tabs.active?.path).toBe('.briefback/idea.md');
 
         // The label of the second root has a menu of its own.
-        act(() => void container.querySelectorAll<HTMLElement>('[data-heading] > *')[1]!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 })));
+        act(
+            () =>
+                void container
+                    .querySelectorAll<HTMLElement>('[data-heading] > *')[1]!
+                    .dispatchEvent(
+                        new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 })
+                    )
+        );
         await choose('New file');
         await submit('plan.md');
 
@@ -721,4 +852,3 @@ describe('a scope with several roots, each under a gray label', () => {
 
 /** A root with nothing in it, under a name nothing has. */
 const KIRO_EMPTY = () => ({ id: 'empty', label: 'Empty', root: 'nowhere/at/all' });
-

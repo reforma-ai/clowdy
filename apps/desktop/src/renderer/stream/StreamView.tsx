@@ -8,8 +8,8 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 
 import { ApprovalCard } from './ApprovalCard';
 import { AssistantMessage } from './AssistantMessage';
-import { COMPACT_TOOL } from './compaction';
 import { CompactionLine } from './CompactionLine';
+import { COMPACT_TOOL } from './compaction';
 import { EditMessage } from './EditMessage';
 import { ErrorLine } from './ErrorLine';
 import { ForkDivider, type ForkOrigin } from './ForkDivider';
@@ -17,16 +17,23 @@ import { NoteLine } from './NoteLine';
 import { QuestionCard } from './QuestionCard';
 import { ReasoningLine } from './ReasoningLine';
 import { SelectionReply } from './SelectionReply';
-import { NO_LINKS, StreamLinksContext, type StreamLinks } from './StreamLinks';
+import { NO_LINKS, type StreamLinks, StreamLinksContext } from './StreamLinks';
 import styles from './StreamView.module.css';
 import { SubagentCard } from './SubagentCard';
 import { isSubagentTool } from './subagents';
 import { ThreadMessageCard, ThreadNoticeCards } from './ThreadCards';
 import { ToolCard } from './ToolCard';
 import { ToolGroup } from './ToolGroup';
-import { turnMarks } from './turnMarks';
 import { TurnRail } from './TurnRail';
-import { foldFinishedWork, forkPointId, groupToolRuns, hasMessageActions, type ItemBlock, type StreamBlock } from './turns';
+import { turnMarks } from './turnMarks';
+import {
+    foldFinishedWork,
+    forkPointId,
+    groupToolRuns,
+    hasMessageActions,
+    type ItemBlock,
+    type StreamBlock,
+} from './turns';
 import { UserBubble } from './UserBubble';
 import { Worked } from './Worked';
 import { WorkingLine } from './WorkingLine';
@@ -39,7 +46,8 @@ import type { MessageActionsConfig, ReplyMessage } from './MessageActions';
  * What `StreamView` is given for the row under a message: `MessageActionsConfig`, except that a reply names who wrote the message and a fork and an edit are told
  * by the item they are made at.
  */
-export interface StreamMessageActions extends Omit<MessageActionsConfig, 'show' | 'onReply' | 'onFork' | 'forkState' | 'onHandoff' | 'onEdit'> {
+export interface StreamMessageActions
+    extends Omit<MessageActionsConfig, 'show' | 'onReply' | 'onFork' | 'forkState' | 'onHandoff' | 'onEdit'> {
     /** Reply to a whole message, from its row or by swiping it: called with who wrote it and its source Markdown. */
     onReply?: (message: ReplyMessage) => void;
     /** Quote the words selected inside one message (the floating Reply button of `SelectionReply`): called with them as they are drawn. Not drawn without it. */
@@ -112,7 +120,20 @@ export interface StreamViewProps {
  * while it is there. A turn that is over shows what was asked and the answer, and the work between them under one
  * "Worked for" line.
  */
-export function StreamView({ items, active = false, working, onAnswer, onDecide, emptyState, decorate, links = NO_LINKS, errorAction, messageActions, editing, forkedFrom }: StreamViewProps) {
+export function StreamView({
+    items,
+    active = false,
+    working,
+    onAnswer,
+    onDecide,
+    emptyState,
+    decorate,
+    links = NO_LINKS,
+    errorAction,
+    messageActions,
+    editing,
+    forkedFrom,
+}: StreamViewProps) {
     const scroller = useRef<HTMLDivElement>(null);
     const { scrollRef: stickScrollRef, contentRef, isAtBottom, scrollToBottom } = useStickToBottom();
     const scrollRef = useMemo(
@@ -127,7 +148,9 @@ export function StreamView({ items, active = false, working, onAnswer, onDecide,
     const forkPoint = forkedFrom && forkPointId(items, forkedFrom.atSeq);
     const last = items.at(-1)?.body;
     // A message or a thought that is still arriving carries its own marker, and so does a compaction that runs (Reforma hides its pending line the same way).
-    const live = ((last?.kind === 'assistant' || last?.kind === 'reasoning') && !last.done) || (last?.kind === 'tool' && last.name === COMPACT_TOOL && last.state === 'running');
+    const live =
+        ((last?.kind === 'assistant' || last?.kind === 'reasoning') && !last.done) ||
+        (last?.kind === 'tool' && last.name === COMPACT_TOOL && last.state === 'running');
     const showWorking = Boolean(working) && !live;
 
     // The frame of an edit stands in for a bubble that is drawn again when the frame goes. That bubble is no news, so it must not rise into place a second time,
@@ -149,7 +172,7 @@ export function StreamView({ items, active = false, working, onAnswer, onDecide,
         // A focus that is somewhere else (the box at the bottom, typed in while a message went) is not taken back.
         if (was === undefined || (document.activeElement && document.activeElement !== document.body)) return;
 
-        [...scroller.current?.querySelectorAll<HTMLElement>('[data-turn]') ?? []]
+        [...(scroller.current?.querySelectorAll<HTMLElement>('[data-turn]') ?? [])]
             .find(row => row.dataset.turn === was)
             ?.querySelector<HTMLElement>('[aria-label="Edit message"]')
             ?.focus();
@@ -159,7 +182,17 @@ export function StreamView({ items, active = false, working, onAnswer, onDecide,
     const actionsOf = (block: StreamBlock): MessageActionsConfig | undefined => {
         if (!messageActions || !hasMessageActions(block)) return undefined;
 
-        const { onFork, forkingId, onHandoff, ownAgent, onEdit, editBusy, onReply, onQuote: _onQuote, ...shared } = messageActions;
+        const {
+            onFork,
+            forkingId,
+            onHandoff,
+            ownAgent,
+            onEdit,
+            editBusy,
+            onReply,
+            onQuote: _onQuote,
+            ...shared
+        } = messageActions;
         const { id, canFork, canEdit, body } = block.item;
         const actions: MessageActionsConfig = { ...shared, show: id === lastWithActions ? 'always' : 'hover' };
 
@@ -172,8 +205,7 @@ export function StreamView({ items, active = false, working, onAnswer, onDecide,
             if (onHandoff) actions.onHandoff = agentId => onHandoff(id, agentId);
 
             if (forkingId !== undefined) actions.forkState = forkingId === id ? 'pending' : 'blocked';
-        }
-        else if (onHandoff && ownAgent && block.answer) {
+        } else if (onHandoff && ownAgent && block.answer) {
             // The agent cannot cut its session at this answer, so Fork does what a hand-off does: a new-chat page on the same agent with the conversation attached. It asks nothing
             // of the daemon, so it waits for no fork that is being made.
             actions.onFork = () => onHandoff(id, ownAgent);
@@ -186,10 +218,12 @@ export function StreamView({ items, active = false, working, onAnswer, onDecide,
         return actions;
     };
 
-    const divider = forkedFrom && <ForkDivider title={ forkedFrom.title } onOpen={ forkedFrom.onOpen } />;
+    const divider = forkedFrom && <ForkDivider title={forkedFrom.title} onOpen={forkedFrom.onOpen} />;
 
     /** The divider of a fork goes after the block that holds its fork point: the answer itself, or the fold the point is inside. */
-    const endsHistory = (block: StreamBlock) => forkPoint !== undefined && (block.kind === 'item' ? block.item.id === forkPoint : block.items.some(item => item.id === forkPoint));
+    const endsHistory = (block: StreamBlock) =>
+        forkPoint !== undefined &&
+        (block.kind === 'item' ? block.item.id === forkPoint : block.items.some(item => item.id === forkPoint));
 
     const renderItem = (item: StreamItem, actions?: MessageActionsConfig): ReactNode => {
         const { body } = item;
@@ -197,78 +231,124 @@ export function StreamView({ items, active = false, working, onAnswer, onDecide,
         switch (body.kind) {
             case 'user':
                 // A message another thread wrote, or threads that stopped, is a card: the person did not write it.
-                if (body.from?.kind === 'thread') return <ThreadMessageCard turn={ item.id } chatId={ body.from.chatId } title={ body.from.title } text={ body.text } />;
+                if (body.from?.kind === 'thread')
+                    return (
+                        <ThreadMessageCard
+                            turn={item.id}
+                            chatId={body.from.chatId}
+                            title={body.from.title}
+                            text={body.text}
+                        />
+                    );
 
-                if (body.from?.kind === 'threadNotice') return <ThreadNoticeCards turn={ item.id } threads={ body.from.threads } />;
+                if (body.from?.kind === 'threadNotice')
+                    return <ThreadNoticeCards turn={item.id} threads={body.from.threads} />;
 
-                if (editing?.itemId === item.id) return <EditMessage turn={ item.id } onCancel={ editing.onCancel }>{ editing.editor }</EditMessage>;
+                if (editing?.itemId === item.id)
+                    return (
+                        <EditMessage turn={item.id} onCancel={editing.onCancel}>
+                            {editing.editor}
+                        </EditMessage>
+                    );
 
-                return <UserBubble turn={ item.id } text={ body.text } attachments={ body.attachments } at={ item.at } actions={ actions } animate={ !shown.has(item.id) } />;
+                return (
+                    <UserBubble
+                        turn={item.id}
+                        text={body.text}
+                        attachments={body.attachments}
+                        at={item.at}
+                        actions={actions}
+                        animate={!shown.has(item.id)}
+                    />
+                );
             case 'assistant':
-                return <AssistantMessage text={ body.text } streaming={ !body.done } at={ item.at } actions={ actions } />;
+                return <AssistantMessage text={body.text} streaming={!body.done} at={item.at} actions={actions} />;
             case 'reasoning':
-                return <ReasoningLine body={ body } />;
+                return <ReasoningLine body={body} />;
             case 'tool':
                 // A call that started a sub-agent is that agent's card, a compaction is a quiet line of its own; every other call is a tool line.
-                if (body.name === COMPACT_TOOL) return <CompactionLine call={ body } active={ active } />;
+                if (body.name === COMPACT_TOOL) return <CompactionLine call={body} active={active} />;
 
-                return isSubagentTool(body.name) ? <SubagentCard call={ body } active={ active } /> : <ToolCard call={ body } />;
+                return isSubagentTool(body.name) ? (
+                    <SubagentCard call={body} active={active} />
+                ) : (
+                    <ToolCard call={body} />
+                );
             case 'note':
-                return <NoteLine text={ body.text } at={ item.at } />;
+                return <NoteLine text={body.text} at={item.at} />;
             case 'question':
-                return <QuestionCard question={ body } onAnswer={ onAnswer && (answer => onAnswer(body.questionId, answer)) } />;
+                return (
+                    <QuestionCard
+                        question={body}
+                        onAnswer={onAnswer && (answer => onAnswer(body.questionId, answer))}
+                    />
+                );
             case 'approval':
-                return <ApprovalCard approval={ body } onDecide={ onDecide && (decision => onDecide(body.approvalId, decision)) } />;
+                return (
+                    <ApprovalCard
+                        approval={body}
+                        onDecide={onDecide && (decision => onDecide(body.approvalId, decision))}
+                    />
+                );
             case 'error':
-                return <ErrorLine text={ body.text } action={ errorAction?.(item) } />;
+                return <ErrorLine text={body.text} action={errorAction?.(item)} />;
         }
     };
 
     return (
-        <StreamLinksContext value={ links }>
-            <div className={ styles.root }>
-                <div ref={ scrollRef } className={ styles.scroll }>
-                    <ContentColumn ref={ contentRef } className={ styles.content }>
-                        { items.length === 0 && emptyState }
-                        { blocks.map((block, index) => {
+        <StreamLinksContext value={links}>
+            <div className={styles.root}>
+                <div ref={scrollRef} className={styles.scroll}>
+                    <ContentColumn ref={contentRef} className={styles.content}>
+                        {items.length === 0 && emptyState}
+                        {blocks.map((block, index) => {
                             switch (block.kind) {
                                 case 'worked':
                                     return (
-                                        <Fragment key={ block.key }>
-                                            <Worked label={ block.label }>
-                                                { groupToolRuns(block.items.map((item): ItemBlock => ({ kind: 'item', item }))).map(part => (part.kind === 'tools'
-                                                    ? <ToolGroup key={ part.key } items={ part.items } />
-                                                    : <Fragment key={ part.item.id }>{ renderItem(part.item) }</Fragment>)) }
+                                        <Fragment key={block.key}>
+                                            <Worked label={block.label}>
+                                                {groupToolRuns(
+                                                    block.items.map((item): ItemBlock => ({ kind: 'item', item }))
+                                                ).map(part =>
+                                                    part.kind === 'tools' ? (
+                                                        <ToolGroup key={part.key} items={part.items} />
+                                                    ) : (
+                                                        <Fragment key={part.item.id}>{renderItem(part.item)}</Fragment>
+                                                    )
+                                                )}
                                             </Worked>
-                                            { endsHistory(block) && divider }
+                                            {endsHistory(block) && divider}
                                         </Fragment>
                                     );
                                 case 'tools':
                                     // The run at the end, while the agent is at work, is what it is doing now: it stays open, and closes when the agent goes on or waits for something else.
                                     return (
-                                        <Fragment key={ block.key }>
-                                            <ToolGroup items={ block.items } live={ working === true && index === blocks.length - 1 } />
-                                            { endsHistory(block) && divider }
+                                        <Fragment key={block.key}>
+                                            <ToolGroup
+                                                items={block.items}
+                                                live={working === true && index === blocks.length - 1}
+                                            />
+                                            {endsHistory(block) && divider}
                                         </Fragment>
                                     );
                                 case 'item':
                                     return (
-                                        <Fragment key={ block.item.id }>
-                                            { renderItem(block.item, actionsOf(block)) }
-                                            { endsHistory(block) && divider }
-                                            { decorate?.(block.item) }
+                                        <Fragment key={block.item.id}>
+                                            {renderItem(block.item, actionsOf(block))}
+                                            {endsHistory(block) && divider}
+                                            {decorate?.(block.item)}
                                         </Fragment>
                                     );
                             }
-                        }) }
-                        { showWorking && <WorkingLine text={ typeof working === 'string' ? working : undefined } /> }
+                        })}
+                        {showWorking && <WorkingLine text={typeof working === 'string' ? working : undefined} />}
                     </ContentColumn>
                 </div>
 
-                <TurnRail marks={ marks } scroller={ scroller } />
+                <TurnRail marks={marks} scroller={scroller} />
 
-                <Show when={ messageActions?.onQuote }>
-                    { onQuote => <SelectionReply scope={ scroller } onReply={ onQuote } /> }
+                <Show when={messageActions?.onQuote}>
+                    {onQuote => <SelectionReply scope={scroller} onReply={onQuote} />}
                 </Show>
 
                 <Button
@@ -277,11 +357,11 @@ export function StreamView({ items, active = false, working, onAnswer, onDecide,
                     size="sm"
                     iconOnly
                     rounded
-                    className={ styles.toLatest }
-                    data-hidden={ isAtBottom || undefined }
+                    className={styles.toLatest}
+                    data-hidden={isAtBottom || undefined}
                     tooltip="Scroll to latest messages"
                     aria-label="Scroll to latest messages"
-                    onPress={ () => scrollToBottom() }
+                    onPress={() => scrollToBottom()}
                 >
                     <ArrowDown />
                 </Button>

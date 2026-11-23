@@ -37,7 +37,9 @@ function migrate(db: Database, migrations: Migration[], path: string): void {
     const latest = migrations.at(-1)?.version ?? 0;
 
     if (current > latest) {
-        throw new Error(`The database is at version ${ current }, newer than this daemon understands (${ latest }). Update the daemon.`);
+        throw new Error(
+            `The database is at version ${current}, newer than this daemon understands (${latest}). Update the daemon.`
+        );
     }
 
     const pending = migrations.filter(migration => migration.version > current);
@@ -47,10 +49,10 @@ function migrate(db: Database, migrations: Migration[], path: string): void {
     }
 
     if (current > 0 && path !== MEMORY) {
-        const backup = `${ path }.bak-v${ current }`;
+        const backup = `${path}.bak-v${current}`;
 
         rmSync(backup, { force: true });
-        db.run(`VACUUM INTO '${ backup.replaceAll('\'', '\'\'') }'`);
+        db.run(`VACUUM INTO '${backup.replaceAll("'", "''")}'`);
     }
 
     for (const migration of pending) {
@@ -64,13 +66,12 @@ function migrate(db: Database, migrations: Migration[], path: string): void {
                 migration.up(db);
 
                 if (migration.rebuildsTables && db.query('PRAGMA foreign_key_check').all().length > 0) {
-                    throw new Error(`Migration ${ migration.version } left rows that point at nothing`);
+                    throw new Error(`Migration ${migration.version} left rows that point at nothing`);
                 }
 
-                db.run(`PRAGMA user_version = ${ migration.version }`);
+                db.run(`PRAGMA user_version = ${migration.version}`);
             })();
-        }
-        finally {
+        } finally {
             if (migration.rebuildsTables) {
                 db.run('PRAGMA foreign_keys = ON');
             }

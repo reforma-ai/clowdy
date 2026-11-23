@@ -1,13 +1,13 @@
 // @vitest-environment happy-dom
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 
-import { RootStoreProvider, type RootStore } from '../../stores';
+import { type RootStore, RootStoreProvider } from '../../stores';
 import { busyEnter } from './busyEnter';
 import { Composer, type EditMode } from './Composer';
 import { docOfMessage, draftOf, dropDraft, editDraftKey, messageOf, saveDraft } from './composerDrafts';
-import { filesOf, setFiles, type DraftFile } from './composerFiles';
+import { type DraftFile, filesOf, setFiles } from './composerFiles';
 import { modelStore } from './modelTestKit';
 
 import type { Attachment, Chat, CommandResult, QueuedMessage, Run } from '@clowdy/protocol';
@@ -19,7 +19,15 @@ import type { CommandInput } from '../../daemon/transport';
 const accepted: CommandResult = { ok: true, requestId: 'request-1', data: {} };
 const sentFile = (id: string, name: string): Attachment => ({ id, name, mediaType: 'text/plain', size: 5 });
 /** A file of the message being edited, as an edit session seeds it. */
-const seeded = (attachment: Attachment): DraftFile => ({ key: `k-${ attachment.id }`, name: attachment.name, mediaType: attachment.mediaType, size: attachment.size, status: 'ready', attachment, sent: true });
+const seeded = (attachment: Attachment): DraftFile => ({
+    key: `k-${attachment.id}`,
+    name: attachment.name,
+    mediaType: attachment.mediaType,
+    size: attachment.size,
+    status: 'ready',
+    attachment,
+    sent: true,
+});
 
 let container: HTMLDivElement;
 let root: Root;
@@ -47,14 +55,24 @@ async function mount(options: { editMode?: Partial<EditMode> | false; status?: R
 
         return accepted;
     });
-    const store = { command, transport, skillsRevision: 0, selectedProject: { project: { id: 'p', folders: [{ id: 'f1', path: '/Users/dev/web' }] }, taskList: [] }, ...await modelStore() };
+    const store = {
+        command,
+        transport,
+        skillsRevision: 0,
+        selectedProject: { project: { id: 'p', folders: [{ id: 'f1', path: '/Users/dev/web' }] }, taskList: [] },
+        ...(await modelStore()),
+    };
     const target = options.chat ?? chat;
-    const run = options.status ? { id: 'r-1', status: options.status } as Run : undefined;
+    const run = options.status ? ({ id: 'r-1', status: options.status } as Run) : undefined;
 
     await act(async () => {
         root.render(
-            <RootStoreProvider value={ store as unknown as RootStore }>
-                <Composer chat={ target } run={ run } editMode={ options.editMode === false ? undefined : { ...edit, ...options.editMode } } />
+            <RootStoreProvider value={store as unknown as RootStore}>
+                <Composer
+                    chat={target}
+                    run={run}
+                    editMode={options.editMode === false ? undefined : { ...edit, ...options.editMode }}
+                />
             </RootStoreProvider>
         );
     });
@@ -67,7 +85,7 @@ async function mount(options: { editMode?: Partial<EditMode> | false; status?: R
 const field = () => container.querySelector<HTMLElement>('[contenteditable="true"]')!;
 const editor = () => (field() as HTMLElement & { editor: Editor }).editor;
 const text = () => editor().getText({ blockSeparator: '\n' });
-const button = (label: string) => container.querySelector<HTMLButtonElement>(`button[aria-label="${ label }"]`);
+const button = (label: string) => container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
 const tiles = () => [...container.querySelectorAll('[data-slot="attachments"] > *')];
 const placeholder = () => field().querySelector('[data-placeholder]')?.getAttribute('data-placeholder');
 
@@ -94,12 +112,20 @@ async function pick(...files: File[]) {
 
 beforeEach(() => {
     sent = [];
-    chat = { id: `c-edit-${ ++chatNumber }`, projectId: 'p', title: 'Chat', mode: 'autopilot', orchestratorRunId: 'r-1', createdAt: 0, updatedAt: 0 };
+    chat = {
+        id: `c-edit-${++chatNumber}`,
+        projectId: 'p',
+        title: 'Chat',
+        mode: 'autopilot',
+        orchestratorRunId: 'r-1',
+        createdAt: 0,
+        updatedAt: 0,
+    };
     key = editDraftKey(chat.id, 'i-1');
     onSubmit = vi.fn();
     onCancel = vi.fn();
     edit = { draftKey: key, onSubmit, onCancel, isPending: false };
-    uploads = vi.fn(async (_projectId: string, file: File) => sentFile(`a-${ file.name }`, file.name));
+    uploads = vi.fn(async (_projectId: string, file: File) => sentFile(`a-${file.name}`, file.name));
     deletions = vi.fn(async () => undefined);
     saveDraft(key, docOfMessage('Make the title bigger'));
     container = document.createElement('div');
@@ -119,14 +145,14 @@ afterEach(() => {
 
 describe('the message box in edit mode', () => {
     describe('its own session', () => {
-        it('starts from the words of the session, not from the chat\'s draft', async () => {
+        it("starts from the words of the session, not from the chat's draft", async () => {
             saveDraft(chat.id, docOfMessage('what I was typing below'));
             await mount();
 
             expect(text()).toBe('Make the title bigger');
         });
 
-        it('keeps what is typed in the session out of the chat\'s draft, and the other way round', async () => {
+        it("keeps what is typed in the session out of the chat's draft, and the other way round", async () => {
             saveDraft(chat.id, docOfMessage('what I was typing below'));
             await mount();
             type(' and blue');
@@ -145,7 +171,7 @@ describe('the message box in edit mode', () => {
             expect(messageOf(draftOf(key))).toBe('Make the title bigger and blue');
         });
 
-        it('keeps the files of the session apart from the files of the chat\'s draft', async () => {
+        it("keeps the files of the session apart from the files of the chat's draft", async () => {
             setFiles(chat.id, [seeded(sentFile('a-draft', 'draft.txt'))]);
             setFiles(key, [seeded(sentFile('a-sent', 'form.txt'))]);
             await mount();
@@ -162,7 +188,9 @@ describe('the message box in edit mode', () => {
     });
 
     describe('what it leaves out', () => {
-        const queue: QueuedMessage[] = [{ id: 'q-1', mode: 'queue', text: 'Then the footer', content: 'Then the footer', createdAt: 0 }];
+        const queue: QueuedMessage[] = [
+            { id: 'q-1', mode: 'queue', text: 'Then the footer', content: 'Then the footer', createdAt: 0 },
+        ];
 
         it('has no queue, which belongs to the box at the bottom', async () => {
             const waiting = { ...chat, queue };
@@ -184,7 +212,12 @@ describe('the message box in edit mode', () => {
             await mount();
 
             expect(container.textContent).not.toContain('Hands-off');
-            expect([...container.querySelectorAll('button')].map(node => node.getAttribute('aria-label')).filter(Boolean).sort()).toEqual(['Attach files', 'Submit edit']);
+            expect(
+                [...container.querySelectorAll('button')]
+                    .map(node => node.getAttribute('aria-label'))
+                    .filter(Boolean)
+                    .sort()
+            ).toEqual(['Attach files', 'Submit edit']);
         });
     });
 
@@ -226,7 +259,10 @@ describe('the message box in edit mode', () => {
             type(' now');
             await press('Enter');
 
-            expect(onSubmit).toHaveBeenCalledExactlyOnceWith({ text: 'Make the title bigger now', attachmentIds: ['a-1', 'a-2'] });
+            expect(onSubmit).toHaveBeenCalledExactlyOnceWith({
+                text: 'Make the title bigger now',
+                attachmentIds: ['a-1', 'a-2'],
+            });
             expect(sent).toEqual([]);
         });
 
@@ -254,7 +290,9 @@ describe('the message box in edit mode', () => {
 
             await act(async () => {
                 document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
-                container.querySelector<HTMLElement>('[role="button"][aria-disabled][aria-label="Submit edit"]')!.focus();
+                container
+                    .querySelector<HTMLElement>('[role="button"][aria-disabled][aria-label="Submit edit"]')!
+                    .focus();
             });
             await act(async () => new Promise(resolve => setTimeout(resolve, 0)));
 
@@ -330,9 +368,12 @@ describe('the message box in edit mode', () => {
         it('holds the message back until the upload is done, as a message is', async () => {
             let finish!: (attachment: Attachment) => void;
 
-            uploads.mockImplementation(() => new Promise<Attachment>((resolve) => {
-                finish = resolve;
-            }));
+            uploads.mockImplementation(
+                () =>
+                    new Promise<Attachment>(resolve => {
+                        finish = resolve;
+                    })
+            );
             await mount();
             await pick(new File(['a'], 'new.txt', { type: 'text/plain' }));
             await press('Enter');
@@ -343,7 +384,10 @@ describe('the message box in edit mode', () => {
             await act(async () => finish(sentFile('a-new', 'new.txt')));
             await press('Enter');
 
-            expect(onSubmit).toHaveBeenCalledExactlyOnceWith({ text: 'Make the title bigger', attachmentIds: ['a-new'] });
+            expect(onSubmit).toHaveBeenCalledExactlyOnceWith({
+                text: 'Make the title bigger',
+                attachmentIds: ['a-new'],
+            });
         });
 
         it('holds it back for a file that did not go up too', async () => {
@@ -413,7 +457,9 @@ describe('the message box in edit mode', () => {
 
             expect(filesOf(key)).toHaveLength(2);
 
-            const removeNew = [...container.querySelectorAll<HTMLButtonElement>('[data-slot="attachments"] button')].at(-1)!;
+            const removeNew = [...container.querySelectorAll<HTMLButtonElement>('[data-slot="attachments"] button')].at(
+                -1
+            )!;
 
             await act(async () => removeNew.click());
 

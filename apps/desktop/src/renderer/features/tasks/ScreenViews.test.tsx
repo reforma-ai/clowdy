@@ -5,7 +5,32 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FIXTURE_EMPTY_PROJECT_ID, FIXTURE_PROJECT_ID } from '../../daemon/fixtureData';
 import { hotkeys } from '../../hotkeys';
 import { openCreateTask } from './CreateTaskDialog';
-import { buttonNamed, change, click, closePage, columnOf, draw, drawn, drawnKeys, drop, focusableOf, focusTask, isOn, itemOf, memoryStorage, mountScreen, openPage, page, pathText, pressOn, project, reloadScreen, search, ui, wait } from './screenHarness';
+import {
+    buttonNamed,
+    change,
+    click,
+    closePage,
+    columnOf,
+    draw,
+    drawn,
+    drawnKeys,
+    drop,
+    focusableOf,
+    focusTask,
+    isOn,
+    itemOf,
+    memoryStorage,
+    mountScreen,
+    openPage,
+    page,
+    pathText,
+    pressOn,
+    project,
+    reloadScreen,
+    search,
+    ui,
+    wait,
+} from './screenHarness';
 
 import type { ProjectUi } from '../../stores';
 
@@ -25,10 +50,18 @@ afterEach(() => {
     vi.mocked(openCreateTask).mockClear();
 });
 
-const chipOf = (taskId: string) => itemOf(taskId)!.querySelector<HTMLElement>('button[aria-label^="Open sub-tasks of"]');
+const chipOf = (taskId: string) =>
+    itemOf(taskId)!.querySelector<HTMLElement>('button[aria-label^="Open sub-tasks of"]');
 const checklistOf = (taskId: string) => itemOf(taskId)!.querySelector<HTMLElement>('[title$="steps done"]');
-const rowDepths = () => [...page.container.querySelectorAll<HTMLElement>('tr[data-task-id]')].map(row => [row.dataset.taskId, Number(row.dataset.depth)]);
-const selected = () => [...page.container.querySelectorAll<HTMLElement>('[data-task-id]')].filter(item => item.hasAttribute('data-selected') || item.getAttribute('aria-selected') === 'true').map(item => item.dataset.taskId);
+const rowDepths = () =>
+    [...page.container.querySelectorAll<HTMLElement>('tr[data-task-id]')].map(row => [
+        row.dataset.taskId,
+        Number(row.dataset.depth),
+    ]);
+const selected = () =>
+    [...page.container.querySelectorAll<HTMLElement>('[data-task-id]')]
+        .filter(item => item.hasAttribute('data-selected') || item.getAttribute('aria-selected') === 'true')
+        .map(item => item.dataset.taskId);
 const chevronOf = (taskId: string) => itemOf(taskId)!.querySelector<HTMLElement>('button[aria-expanded]')!;
 const isTable = () => page.container.querySelector('table') !== null;
 
@@ -58,7 +91,12 @@ describe('the board of one level', () => {
     it('puts the tasks in the columns of their status', async () => {
         await mountScreen({ prepare: window => window.setTasksScope('t-31') });
 
-        expect([columnOf('t-35'), columnOf('t-32'), columnOf('t-36'), columnOf('t-37')]).toEqual(['To do', 'In progress', 'Review', 'Canceled']);
+        expect([columnOf('t-35'), columnOf('t-32'), columnOf('t-36'), columnOf('t-37')]).toEqual([
+            'To do',
+            'In progress',
+            'Review',
+            'Canceled',
+        ]);
     });
 
     it('moves a card to another column by dropping it, and the status is all it changes', async () => {
@@ -69,7 +107,11 @@ describe('the board of one level', () => {
         await drop('t-35', 'Review');
 
         expect(columnOf('t-35')).toBe('Review');
-        expect(project().tasks.get('t-35')).toMatchObject({ statusId: 'review', parentId: before.parentId, title: before.title });
+        expect(project().tasks.get('t-35')).toMatchObject({
+            statusId: 'review',
+            parentId: before.parentId,
+            title: before.title,
+        });
     });
 });
 
@@ -136,14 +178,28 @@ describe('the list as a tree', () => {
         await click(buttonNamed('List'));
 
         expect(isTable()).toBe(true);
-        expect(rowDepths()).toEqual([['t-35', 0], ['t-32', 0], ['t-34', 1], ['t-33', 1], ['t-36', 0], ['t-37', 0]]);
+        expect(rowDepths()).toEqual([
+            ['t-35', 0],
+            ['t-32', 0],
+            ['t-34', 1],
+            ['t-33', 1],
+            ['t-36', 0],
+            ['t-37', 0],
+        ]);
 
         const status = (taskId: string) => itemOf(taskId)!.querySelectorAll('td')[2].textContent;
 
-        expect([status('t-35'), status('t-32'), status('t-34'), status('t-33'), status('t-36'), status('t-37')]).toEqual(['To do', 'In progress', 'To do', 'Done', 'Review', 'Canceled']);
+        expect([
+            status('t-35'),
+            status('t-32'),
+            status('t-34'),
+            status('t-33'),
+            status('t-36'),
+            status('t-37'),
+        ]).toEqual(['To do', 'In progress', 'To do', 'Done', 'Review', 'Canceled']);
     });
 
-    it('draws the roots with every task inside them at the project\'s root', async () => {
+    it("draws the roots with every task inside them at the project's root", async () => {
         await mountScreen({ prepare: window => window.setTasksView('list') });
 
         const depths = rowDepths();
@@ -159,14 +215,21 @@ describe('the list as a tree', () => {
         // The first cell of the title is the words for a screen reader: not drawn, before the line the title is on.
         const level = (taskId: string) => itemOf(taskId)!.querySelector<HTMLElement>('td:nth-of-type(2) > span');
 
-        expect([level('t-24'), level('t-31'), level('t-32'), level('t-33')].map(item => item?.textContent)).toEqual(['Level 1', 'Level 1', 'Level 2', 'Level 3']);
+        expect([level('t-24'), level('t-31'), level('t-32'), level('t-33')].map(item => item?.textContent)).toEqual([
+            'Level 1',
+            'Level 1',
+            'Level 2',
+            'Level 3',
+        ]);
         expect(itemOf('t-33')!.querySelector('td:nth-of-type(2) > div')?.textContent).not.toContain('Level');
     });
 
     it('counts the levels from the scope: the tasks inside a task start at Level 1', async () => {
         await mountScreen(listInside());
 
-        expect(['t-32', 't-33'].map(taskId => itemOf(taskId)!.querySelector('td:nth-of-type(2) > span')?.textContent)).toEqual(['Level 1', 'Level 2']);
+        expect(
+            ['t-32', 't-33'].map(taskId => itemOf(taskId)!.querySelector('td:nth-of-type(2) > span')?.textContent)
+        ).toEqual(['Level 1', 'Level 2']);
     });
 
     it('has no sub-tasks toggle, since it is always a tree', async () => {
@@ -248,7 +311,7 @@ describe('the list as a tree', () => {
 });
 
 describe('the view of each place', () => {
-    it('writes the project\'s view at the roots and the task page\'s view inside a task', async () => {
+    it("writes the project's view at the roots and the task page's view inside a task", async () => {
         await mountScreen();
         await click(buttonNamed('List'));
 
@@ -269,10 +332,12 @@ describe('the view of each place', () => {
     });
 
     it('shows each place in its own view when the person goes between them', async () => {
-        await mountScreen({ prepare: (window) => {
-            window.setTasksView('list');
-            window.setTaskPageView('board');
-        } });
+        await mountScreen({
+            prepare: window => {
+                window.setTasksView('list');
+                window.setTaskPageView('board');
+            },
+        });
 
         expect(isTable()).toBe(true);
 
@@ -316,13 +381,24 @@ describe('persistence', () => {
 
         await reloadScreen(storage);
 
-        expect(ui()).toMatchObject({ tasksScope: 't-31', tasksSubtasks: true, taskPageView: 'list', tasksView: 'board', tasksCollapsed: ['t-32'] });
+        expect(ui()).toMatchObject({
+            tasksScope: 't-31',
+            tasksSubtasks: true,
+            taskPageView: 'list',
+            tasksView: 'board',
+            tasksCollapsed: ['t-32'],
+        });
         expect(isTable()).toBe(true);
-        expect(rowDepths()).toEqual([['t-35', 0], ['t-32', 0], ['t-36', 0], ['t-37', 0]]);
+        expect(rowDepths()).toEqual([
+            ['t-35', 0],
+            ['t-32', 0],
+            ['t-36', 0],
+            ['t-37', 0],
+        ]);
         expect(page.container.querySelector('nav[aria-label="Task path"]')?.textContent).toContain('CAR-31');
     });
 
-    it('keeps each project\'s place while the person switches between projects', async () => {
+    it("keeps each project's place while the person switches between projects", async () => {
         await mountScreen();
         await click(chipOf('t-31'));
         await click(buttonNamed('Sub-tasks'));
@@ -403,10 +479,12 @@ describe('the chips', () => {
     });
 
     it('draws the chips on a row of the list too', async () => {
-        await mountScreen({ prepare: (window) => {
-            window.setTasksScope('t-31');
-            window.setTasksView('list');
-        } });
+        await mountScreen({
+            prepare: window => {
+                window.setTasksScope('t-31');
+                window.setTasksView('list');
+            },
+        });
 
         expect(chipOf('t-32')?.textContent).toBe('1/2');
         expect(checklistOf('t-35')?.textContent).toBe('2/5');
@@ -469,7 +547,13 @@ describe('the search and the filters', () => {
         await search('card');
 
         // Payments matches by its description, and so do the tasks inside Card checkout and the one about two cards: each under the task it is inside.
-        expect(rowDepths()).toEqual([['t-31', 0], ['t-32', 1], ['t-34', 2], ['t-33', 2], ['t-37', 1]]);
+        expect(rowDepths()).toEqual([
+            ['t-31', 0],
+            ['t-32', 1],
+            ['t-34', 2],
+            ['t-33', 2],
+            ['t-37', 1],
+        ]);
     });
 
     it('apply inside a scope, and only to what the scope holds', async () => {
@@ -545,8 +629,19 @@ describe('the cursor and the keys', () => {
         await mountScreen(listInside());
         await focusTask('t-35');
 
-        for (const [key, expected] of [['j', 't-32'], ['j', 't-34'], ['j', 't-33'], ['j', 't-36'], ['k', 't-33']] as const) {
-            await act(async () => void document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })));
+        for (const [key, expected] of [
+            ['j', 't-32'],
+            ['j', 't-34'],
+            ['j', 't-33'],
+            ['j', 't-36'],
+            ['k', 't-33'],
+        ] as const) {
+            await act(
+                async () =>
+                    void document.activeElement!.dispatchEvent(
+                        new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
+                    )
+            );
             await wait(0);
 
             expect(document.activeElement).toBe(focusableOf(expected));
@@ -554,11 +649,13 @@ describe('the cursor and the keys', () => {
     });
 
     it('skips what is folded', async () => {
-        await mountScreen({ prepare: (window) => {
-            window.setTasksScope('t-31');
-            window.setTaskPageView('list');
-            window.toggleTaskCollapsed('t-32');
-        } });
+        await mountScreen({
+            prepare: window => {
+                window.setTasksScope('t-31');
+                window.setTaskPageView('list');
+                window.toggleTaskCollapsed('t-32');
+            },
+        });
         await focusTask('t-32');
         await pressOn('t-32', 'j');
 
@@ -600,7 +697,11 @@ describe('the cursor and the keys', () => {
 
         expect(selected()).toEqual(['t-35', 't-32', 't-34']);
 
-        await act(async () => itemOf('t-36')!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, metaKey: true, ctrlKey: true })));
+        await act(async () =>
+            itemOf('t-36')!.dispatchEvent(
+                new MouseEvent('click', { bubbles: true, cancelable: true, metaKey: true, ctrlKey: true })
+            )
+        );
         await draw();
 
         expect(selected()).toEqual(['t-35', 't-32', 't-34', 't-36']);
@@ -610,7 +711,9 @@ describe('the cursor and the keys', () => {
     it('extends the selection from the anchor with a Shift click over the rows between', async () => {
         await mountScreen(listInside());
         await click(itemOf('t-35'));
-        await act(async () => itemOf('t-33')!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, shiftKey: true })));
+        await act(async () =>
+            itemOf('t-33')!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, shiftKey: true }))
+        );
         await draw();
 
         expect(selected()).toEqual(['t-35', 't-32', 't-34', 't-33']);
@@ -641,7 +744,11 @@ describe('the cursor and the keys', () => {
     it('keeps the arrows to the page on a row of the list that has nothing to fold or to go to, and takes them where it has', async () => {
         await mountScreen(listInside());
 
-        const isLive = () => hotkeys.listCommands().live.map(command => command.id).filter(id => id === 'tasks.cursor.left' || id === 'tasks.cursor.right');
+        const isLive = () =>
+            hotkeys
+                .listCommands()
+                .live.map(command => command.id)
+                .filter(id => id === 'tasks.cursor.left' || id === 'tasks.cursor.right');
 
         // CAR-35 stands at the top with nothing inside it.
         await focusTask('t-35');
@@ -664,12 +771,14 @@ describe('the cursor and the keys', () => {
     });
 
     it('opens the folds above a task opened from elsewhere in the list, so its row shows', async () => {
-        await mountScreen({ prepare: (window) => {
-            window.setTasksScope(null);
-            window.setTasksView('list');
-            window.toggleTaskCollapsed('t-31');
-            window.toggleTaskCollapsed('t-32');
-        } });
+        await mountScreen({
+            prepare: window => {
+                window.setTasksScope(null);
+                window.setTasksView('list');
+                window.toggleTaskCollapsed('t-31');
+                window.toggleTaskCollapsed('t-32');
+            },
+        });
 
         expect(itemOf('t-33')).toBeNull();
 
@@ -683,16 +792,24 @@ describe('the cursor and the keys', () => {
 
 describe('a task that is deleted or archived while it is drawn', () => {
     it('leaves the tree, with the rows inside a folded one gone and the folds of tasks that are gone forgotten', async () => {
-        await mountScreen({ prepare: (window) => {
-            window.setTasksScope('t-31');
-            window.setTaskPageView('list');
-            window.toggleTaskCollapsed('t-32');
-        } });
+        await mountScreen({
+            prepare: window => {
+                window.setTasksScope('t-31');
+                window.setTaskPageView('list');
+                window.toggleTaskCollapsed('t-32');
+            },
+        });
         await change({ type: 'task.delete', taskId: 't-32' });
 
         // The tasks inside CAR-32 go to its parent, and the fold of a task that is gone is let go.
         expect(ui().tasksCollapsed).toEqual([]);
         // All at the top of the scope now, in workflow order: To do, Review, Done, Canceled.
-        expect(rowDepths()).toEqual([['t-34', 0], ['t-35', 0], ['t-36', 0], ['t-33', 0], ['t-37', 0]]);
+        expect(rowDepths()).toEqual([
+            ['t-34', 0],
+            ['t-35', 0],
+            ['t-36', 0],
+            ['t-33', 0],
+            ['t-37', 0],
+        ]);
     });
 });

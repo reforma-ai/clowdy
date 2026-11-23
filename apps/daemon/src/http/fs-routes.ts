@@ -32,16 +32,29 @@ const moves = z.array(z.object({ from: z.string(), to: z.string() })).max(MAX_BA
 const moveBody = z.object({ ...at, moves, overwrite: z.boolean().optional() });
 const copyBody = z.object({ ...at, copies: moves, overwrite: z.boolean().optional() });
 const deleteBody = z.object({ ...at, paths: z.array(z.string()).max(MAX_BATCH) });
-const searchBody = z.object({ ...at, query: z.string(), matchCase: z.boolean().optional(), wholeWord: z.boolean().optional(), exclude: z.array(z.string()).optional() });
+const searchBody = z.object({
+    ...at,
+    query: z.string(),
+    matchCase: z.boolean().optional(),
+    wholeWord: z.boolean().optional(),
+    exclude: z.array(z.string()).optional(),
+});
 
 /** A version as a client sends it in `If-Match`: bare, or quoted the way HTTP quotes an entity tag. */
-const versionFrom = (header: string) => header.trim().replace(/^W\//, '').replace(/^"(.*)"$/, '$1');
+const versionFrom = (header: string) =>
+    header
+        .trim()
+        .replace(/^W\//, '')
+        .replace(/^"(.*)"$/, '$1');
 
 /** The routes under `/v1/projects/:id/fs/`, described in `packages/protocol/src/fs.ts`. */
 export function fsRoutes(context: RouteContext): FsRoute[] {
     const { store, fs } = context.services;
     /** The folder a request names and its worktree, if it names one: an empty `workspaceId` is none (`resolvePlace`). */
-    const target = (url: URL) => ({ folderId: url.searchParams.get('folderId') ?? '', workspaceId: url.searchParams.get('workspaceId') ?? undefined });
+    const target = (url: URL) => ({
+        folderId: url.searchParams.get('folderId') ?? '',
+        workspaceId: url.searchParams.get('workspaceId') ?? undefined,
+    });
     const location = (url: URL) => ({ ...target(url), path: url.searchParams.get('path') ?? '' });
     /** The project and the place (the folder's own checkout, or the worktree) that a request reads: judged here, so no route reaches a path the project does not own. */
     const placed = (projectId: string, folderId: string, workspaceId: string | undefined) => {
@@ -53,7 +66,7 @@ export function fsRoutes(context: RouteContext): FsRoute[] {
     return [
         {
             method: 'GET',
-            pattern: new RegExp(`${ PREFIX }list$`),
+            pattern: new RegExp(`${PREFIX}list$`),
             handle: async (_request, url, [id]) => {
                 const { folderId, workspaceId, path } = location(url);
                 const raw = url.searchParams.get('depth');
@@ -70,7 +83,7 @@ export function fsRoutes(context: RouteContext): FsRoute[] {
         },
         {
             method: 'GET',
-            pattern: new RegExp(`${ PREFIX }find$`),
+            pattern: new RegExp(`${PREFIX}find$`),
             handle: async (_request, url, [id]) => {
                 const { folderId, workspaceId } = target(url);
                 const { project, place } = placed(id, folderId, workspaceId);
@@ -80,7 +93,7 @@ export function fsRoutes(context: RouteContext): FsRoute[] {
         },
         {
             method: 'GET',
-            pattern: new RegExp(`${ PREFIX }file$`),
+            pattern: new RegExp(`${PREFIX}file$`),
             handle: async (_request, url, [id]) => {
                 const { folderId, workspaceId, path } = location(url);
                 const { project, place } = placed(id, folderId, workspaceId);
@@ -100,7 +113,7 @@ export function fsRoutes(context: RouteContext): FsRoute[] {
         },
         {
             method: 'PUT',
-            pattern: new RegExp(`${ PREFIX }file$`),
+            pattern: new RegExp(`${PREFIX}file$`),
             maxBody: MAX_FS_FILE_BYTES + BODY_SLACK,
             handle: async (request, url, [id]) => {
                 const { folderId, workspaceId, path } = location(url);
@@ -117,16 +130,18 @@ export function fsRoutes(context: RouteContext): FsRoute[] {
 
                 const { project, place } = placed(id, folderId, workspaceId);
 
-                return json(await fs.write(project, place, path, request.body, {
-                    create: ifNoneMatch === '*',
-                    version: ifMatch === null ? undefined : versionFrom(ifMatch),
-                    declaredLength: declaredLength(request),
-                }));
+                return json(
+                    await fs.write(project, place, path, request.body, {
+                        create: ifNoneMatch === '*',
+                        version: ifMatch === null ? undefined : versionFrom(ifMatch),
+                        declaredLength: declaredLength(request),
+                    })
+                );
             },
         },
         {
             method: 'POST',
-            pattern: new RegExp(`${ PREFIX }folder$`),
+            pattern: new RegExp(`${PREFIX}folder$`),
             handle: async (request, _url, [id]) => {
                 const { folderId, workspaceId, path } = await readJson(request, folderBody);
                 const { project, place } = placed(id, folderId, workspaceId);
@@ -138,7 +153,7 @@ export function fsRoutes(context: RouteContext): FsRoute[] {
         },
         {
             method: 'POST',
-            pattern: new RegExp(`${ PREFIX }move$`),
+            pattern: new RegExp(`${PREFIX}move$`),
             handle: async (request, _url, [id]) => {
                 const { folderId, workspaceId, moves, overwrite } = await readJson(request, moveBody);
                 const { project, place } = placed(id, folderId, workspaceId);
@@ -150,7 +165,7 @@ export function fsRoutes(context: RouteContext): FsRoute[] {
         },
         {
             method: 'POST',
-            pattern: new RegExp(`${ PREFIX }copy$`),
+            pattern: new RegExp(`${PREFIX}copy$`),
             handle: async (request, _url, [id]) => {
                 const { folderId, workspaceId, copies, overwrite } = await readJson(request, copyBody);
                 const { project, place } = placed(id, folderId, workspaceId);
@@ -162,7 +177,7 @@ export function fsRoutes(context: RouteContext): FsRoute[] {
         },
         {
             method: 'POST',
-            pattern: new RegExp(`${ PREFIX }delete$`),
+            pattern: new RegExp(`${PREFIX}delete$`),
             handle: async (request, _url, [id]) => {
                 const { folderId, workspaceId, paths } = await readJson(request, deleteBody);
                 const { project, place } = placed(id, folderId, workspaceId);
@@ -174,7 +189,7 @@ export function fsRoutes(context: RouteContext): FsRoute[] {
         },
         {
             method: 'POST',
-            pattern: new RegExp(`${ PREFIX }search$`),
+            pattern: new RegExp(`${PREFIX}search$`),
             handle: async (request, _url, [id]) => {
                 const body = await readJson(request, searchBody);
                 const { project, place } = placed(id, body.folderId, body.workspaceId);
@@ -187,7 +202,7 @@ export function fsRoutes(context: RouteContext): FsRoute[] {
         },
         {
             method: 'GET',
-            pattern: new RegExp(`${ PREFIX }watch$`),
+            pattern: new RegExp(`${PREFIX}watch$`),
             handle: async (request, url, [id]) => {
                 const { folderId, workspaceId } = target(url);
                 const { project, place } = placed(id, folderId, workspaceId);
@@ -196,7 +211,11 @@ export function fsRoutes(context: RouteContext): FsRoute[] {
                 context.keepOpen(request);
 
                 return new Response(stream, {
-                    headers: { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache, no-transform', 'x-accel-buffering': 'no' },
+                    headers: {
+                        'content-type': 'text/event-stream; charset=utf-8',
+                        'cache-control': 'no-cache, no-transform',
+                        'x-accel-buffering': 'no',
+                    },
                 });
             },
         },

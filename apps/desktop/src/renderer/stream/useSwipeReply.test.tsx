@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 
 import { AssistantMessage } from './AssistantMessage';
 import { SWIPE } from './swipeReply';
@@ -10,8 +10,10 @@ import { UserBubble } from './UserBubble';
 import type { MessageActionsConfig } from './MessageActions';
 
 // Streamdown highlights code with Shiki, whose WebAssembly cannot load under happy-dom; the message's own root is what is checked here.
-vi.mock('./Markdown', () => ({ Markdown: ({ text }: { text: string }) => <div data-testid="rendered">{ text }</div> }));
-vi.mock('@clowdy/components/Toast', () => ({ toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn(), show: vi.fn() } }));
+vi.mock('./Markdown', () => ({ Markdown: ({ text }: { text: string }) => <div data-testid="rendered">{text}</div> }));
+vi.mock('@clowdy/components/Toast', () => ({
+    toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn(), show: vi.fn() },
+}));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -32,10 +34,15 @@ let clock: number;
 const at = new Date(2025, 10, 19, 22, 54).getTime();
 const TEXT = 'Make the title bigger';
 
-const config = (extra: Partial<MessageActionsConfig> = {}): MessageActionsConfig => ({ show: 'hover', onReply, swipeToReply: true, ...extra });
+const config = (extra: Partial<MessageActionsConfig> = {}): MessageActionsConfig => ({
+    show: 'hover',
+    onReply,
+    swipeToReply: true,
+    ...extra,
+});
 // `null` is a message with no row of actions at all (an `undefined` would take the default).
 const person = (actions: MessageActionsConfig | null = config(), text = TEXT) => (
-    <UserBubble text={ text } at={ at } turn="i-3" actions={ actions ?? undefined } />
+    <UserBubble text={text} at={at} turn="i-3" actions={actions ?? undefined} />
 );
 
 const draw = (element: React.ReactElement) => act(async () => root.render(element));
@@ -45,21 +52,32 @@ const pulled = () => Number.parseFloat(row().style.translate);
 const armed = () => row().hasAttribute('data-swipe-armed');
 
 /** Time passes for `ms`: the timers run, and the next event comes that much later. */
-const elapse = (ms: number) => act(() => {
-    clock += ms;
-    vi.advanceTimersByTime(ms);
-});
+const elapse = (ms: number) =>
+    act(() => {
+        clock += ms;
+        vi.advanceTimersByTime(ms);
+    });
 
 /** The wheel goes quiet: the timer that ends a swipe runs. */
 const quiet = () => elapse(SWIPE.idleMs + 1);
 
 /** A wheel event on `target`; `deltaX` is where the content would scroll, as the browser reports it, so a positive one pulls the message to the left. */
-function wheel(deltaX: number, deltaY = 0, target: Element = row(), init: WheelEventInit & { ctrlKey?: boolean; shiftKey?: boolean } = {}) {
+function wheel(
+    deltaX: number,
+    deltaY = 0,
+    target: Element = row(),
+    init: WheelEventInit & { ctrlKey?: boolean; shiftKey?: boolean } = {}
+) {
     const { ctrlKey, shiftKey, clientY, ...rest } = init;
     const event = new WheelEvent('wheel', { deltaX, deltaY, bubbles: true, cancelable: true, ...rest });
 
     // happy-dom's wheel event has no modifier keys or pointer position of its own, and stamps the real time, which is not the test's.
-    Object.defineProperties(event, { ctrlKey: { value: ctrlKey ?? false }, shiftKey: { value: shiftKey ?? false }, clientY: { value: clientY ?? 0 }, timeStamp: { value: clock } });
+    Object.defineProperties(event, {
+        ctrlKey: { value: ctrlKey ?? false },
+        shiftKey: { value: shiftKey ?? false },
+        clientY: { value: clientY ?? 0 },
+        timeStamp: { value: clock },
+    });
 
     target.dispatchEvent(event);
     clock += 16;
@@ -68,10 +86,12 @@ function wheel(deltaX: number, deltaY = 0, target: Element = row(), init: WheelE
 }
 
 /** A swipe of `count` events of `deltaX` each (positive: the fingers go left), with the events it made. */
-const swipe = (count: number, deltaX = 10, target?: Element) => Array.from({ length: count }, () => wheel(deltaX, 0, target));
+const swipe = (count: number, deltaX = 10, target?: Element) =>
+    Array.from({ length: count }, () => wheel(deltaX, 0, target));
 
 /** The same swipe with the pointer at `clientY`. */
-const swipeAt = (count: number, clientY: number) => Array.from({ length: count }, () => wheel(10, 0, row(), { clientY }));
+const swipeAt = (count: number, clientY: number) =>
+    Array.from({ length: count }, () => wheel(10, 0, row(), { clientY }));
 
 beforeEach(() => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
@@ -324,7 +344,7 @@ describe('swipe to reply', () => {
         });
 
         it('replies to an answer the same way', async () => {
-            await draw(<AssistantMessage text="The table is done." at={ at } actions={ config() } />);
+            await draw(<AssistantMessage text="The table is done." at={at} actions={config()} />);
             swipe(30);
             quiet();
 
@@ -358,7 +378,10 @@ describe('swipe to reply', () => {
         it('ignores a pinch (the wheel with Ctrl) and a Shift scroll, which are not swipes', async () => {
             await draw(person());
 
-            const events = [...Array.from({ length: 20 }, () => wheel(10, 0, row(), { ctrlKey: true })), ...Array.from({ length: 20 }, () => wheel(10, 0, row(), { shiftKey: true }))];
+            const events = [
+                ...Array.from({ length: 20 }, () => wheel(10, 0, row(), { ctrlKey: true })),
+                ...Array.from({ length: 20 }, () => wheel(10, 0, row(), { shiftKey: true })),
+            ];
 
             quiet();
 
@@ -384,7 +407,7 @@ describe('swipe to reply', () => {
             expect(onReply).toHaveBeenCalledOnce();
         });
 
-        it('keeps the message\'s turn and its row of actions', async () => {
+        it("keeps the message's turn and its row of actions", async () => {
             await draw(person());
             swipe(4);
 
@@ -448,7 +471,7 @@ describe('swipe to reply', () => {
             expect(onReply).not.toHaveBeenCalled();
         });
 
-        it('takes the swipe for the message at the scroller\'s end, the way it cannot scroll', async () => {
+        it("takes the swipe for the message at the scroller's end, the way it cannot scroll", async () => {
             await draw(person());
             swipe(30, 10, withScroller({ scrollLeft: 500, scrollWidth: 800, clientWidth: 300 }));
             quiet();
@@ -495,7 +518,14 @@ describe('swipe to reply', () => {
             await draw(person(config({ onReply: undefined })));
             nothingHappens();
 
-            await draw(<UserBubble text="" attachments={ [{ id: 'a-1', name: 'shot.png', mediaType: 'image/png', size: 10 }] } at={ at } actions={ config() } />);
+            await draw(
+                <UserBubble
+                    text=""
+                    attachments={[{ id: 'a-1', name: 'shot.png', mediaType: 'image/png', size: 10 }]}
+                    at={at}
+                    actions={config()}
+                />
+            );
             nothingHappens();
         });
 
@@ -579,7 +609,13 @@ describe('swipe to reply', () => {
 
     describe('with a finger or a pen', () => {
         const pointer = (type: string, init: PointerEventInit) => {
-            const event = new PointerEvent(type, { bubbles: true, cancelable: true, isPrimary: true, pointerId: 1, ...init });
+            const event = new PointerEvent(type, {
+                bubbles: true,
+                cancelable: true,
+                isPrimary: true,
+                pointerId: 1,
+                ...init,
+            });
 
             row().dispatchEvent(event);
 
@@ -591,7 +627,8 @@ describe('swipe to reply', () => {
 
             pointer('pointerdown', { pointerType, clientX: 300, clientY: 100 });
 
-            for (let moved = 10; moved <= Math.abs(by); moved += 10) moves.push(pointer('pointermove', { pointerType, clientX: 300 + Math.sign(by) * moved, clientY: 100 }));
+            for (let moved = 10; moved <= Math.abs(by); moved += 10)
+                moves.push(pointer('pointermove', { pointerType, clientX: 300 + Math.sign(by) * moved, clientY: 100 }));
 
             return moves;
         };
@@ -675,7 +712,8 @@ describe('swipe to reply', () => {
             expect(row().style.translate).toBe('');
             expect(armed()).toBe(false);
 
-            for (let moved = 10; moved <= 150; moved += 10) pointer('pointermove', { pointerType: 'touch', clientX: 300 - moved, clientY: 100 });
+            for (let moved = 10; moved <= 150; moved += 10)
+                pointer('pointermove', { pointerType: 'touch', clientX: 300 - moved, clientY: 100 });
             // The timer of the wheel swipe would run here.
             quiet();
 

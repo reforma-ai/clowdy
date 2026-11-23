@@ -1,5 +1,5 @@
-import { mainFolder } from '@clowdy/protocol';
 import { statSync } from 'node:fs';
+import { mainFolder } from '@clowdy/protocol';
 
 import { getChat } from '../db/chats';
 import { getRunWork, listActiveRuns } from '../db/runs';
@@ -28,8 +28,7 @@ export interface Place {
 function isDirectory(path: string): boolean {
     try {
         return statSync(path).isDirectory();
-    }
-    catch {
+    } catch {
         return false;
     }
 }
@@ -64,11 +63,11 @@ export function resolvePlace(store: Store, project: Project, folderId: FolderId,
     }
 
     if (!workspace.ready) {
-        throw unavailable(`The worktree ${ workspace.path } is not made yet`);
+        throw unavailable(`The worktree ${workspace.path} is not made yet`);
     }
 
     if (!isDirectory(workspace.path)) {
-        throw unavailable(`The worktree ${ workspace.path } is missing`);
+        throw unavailable(`The worktree ${workspace.path} is missing`);
     }
 
     return { folder, workspace, path: workspace.path };
@@ -101,7 +100,11 @@ export function ownsPlace(project: Project, place: Place): boolean {
         return place.path === folder.path;
     }
 
-    return place.workspace.projectId === project.id && place.workspace.folderId === folder.id && place.path === place.workspace.path;
+    return (
+        place.workspace.projectId === project.id &&
+        place.workspace.folderId === folder.id &&
+        place.path === place.workspace.path
+    );
 }
 
 /**
@@ -118,7 +121,8 @@ export function workingFolder(project: Project, chat: Chat | undefined, own: str
         return chat.workspace.path;
     }
 
-    const folder = chat?.folderId === undefined ? undefined : project.folders.find(candidate => candidate.id === chat.folderId);
+    const folder =
+        chat?.folderId === undefined ? undefined : project.folders.find(candidate => candidate.id === chat.folderId);
 
     return (folder ?? mainFolder(project)).path;
 }
@@ -136,7 +140,8 @@ export function chatsWorkingIn(store: Store, project: Project, path: string): nu
 
         const chat = run.chatId === undefined ? undefined : getChat(store.db, run.chatId);
 
-        if (samePlace(workingFolder(project, chat, getRunWork(store.db, run.id).cwd), path)) working.add(chat?.id ?? run.id);
+        if (samePlace(workingFolder(project, chat, getRunWork(store.db, run.id).cwd), path))
+            working.add(chat?.id ?? run.id);
     }
 
     return working.size;

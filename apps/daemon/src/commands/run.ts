@@ -1,6 +1,9 @@
 import type { Handlers } from './context';
 
-export const runHandlers: Pick<Handlers, 'run.cancel' | 'run.stopAgents' | 'run.stopBackground' | 'run.answer' | 'run.decide'> = {
+export const runHandlers: Pick<
+    Handlers,
+    'run.cancel' | 'run.stopAgents' | 'run.stopBackground' | 'run.answer' | 'run.decide'
+> = {
     /** Stopping a chat's orchestrator holds its queue: what the person wrote for the stopped work waits until they send it. */
     'run.cancel': ({ runs, queue }, command) => {
         const cancelled = runs.cancel(command.runId);

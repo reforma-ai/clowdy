@@ -9,6 +9,7 @@ import type { ToolDefinition } from '../engine/types';
 import type { ToolDeps } from './tool-kit';
 
 export { ASK_USER } from './run-tools';
+
 export type { ToolDeps } from './tool-kit';
 
 /** The tool as an MCP tool: without `cli` the bridge lists it for the session's MCP server, not for the `clowdy` command. */
@@ -24,5 +25,9 @@ const asMcp = ({ cli: _shell, ...tool }: ToolDefinition): ToolDefinition => tool
 export function toolsFor(deps: ToolDeps, run: Run, mode: ChatMode, taskChannel: TaskChannel = 'cli'): ToolDefinition[] {
     const tasks = orchestratorTaskTools(deps, run);
 
-    return [...(taskChannel === 'mcp' ? tasks.map(asMcp) : tasks), ...(run.chatId ? [...threadTools(deps, run), ...worktreeTools(deps, run)] : []), ...(mode === 'semi' ? [askUserTool(deps, run)] : [])];
+    return [
+        ...(taskChannel === 'mcp' ? tasks.map(asMcp) : tasks),
+        ...(run.chatId ? [...threadTools(deps, run), ...worktreeTools(deps, run)] : []),
+        ...(mode === 'semi' ? [askUserTool(deps, run)] : []),
+    ];
 }

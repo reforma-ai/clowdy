@@ -26,7 +26,8 @@ export function useRefreshGitFactsAtRunEnd(chat: Chat, run: Run | undefined): vo
     const wasBusy = useRef(busy);
 
     useEffect(() => {
-        if (wasBusy.current && !busy && ready) store.refresh({ projectId, folderId, ...(workspaceId !== undefined && { workspaceId }) });
+        if (wasBusy.current && !busy && ready)
+            store.refresh({ projectId, folderId, ...(workspaceId !== undefined && { workspaceId }) });
 
         wasBusy.current = busy;
     }, [busy, ready, store, projectId, folderId, workspaceId]);

@@ -29,7 +29,10 @@ export function locate(columns: Grid, id: string | null): Position | null {
 }
 
 export function sameGrid(a: Grid, b: Grid): boolean {
-    return a.length === b.length && a.every((column, index) => column.length === b[index].length && column.every((id, row) => id === b[index][row]));
+    return (
+        a.length === b.length &&
+        a.every((column, index) => column.length === b[index].length && column.every((id, row) => id === b[index][row]))
+    );
 }
 
 /**
@@ -159,7 +162,8 @@ export class ListCursor {
 
         this.cursorId = survivingCursor(previous, this.columns, this.cursorId);
 
-        if (this.cursorId === null) this.cursorId = prefer != null && ids.has(prefer) ? prefer : (flatten(this.columns)[0] ?? null);
+        if (this.cursorId === null)
+            this.cursorId = prefer != null && ids.has(prefer) ? prefer : (flatten(this.columns)[0] ?? null);
 
         if ([...this.selected].some(id => !ids.has(id))) this.selected = keep(this.selected, this.columns);
 

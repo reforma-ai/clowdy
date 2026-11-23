@@ -8,16 +8,18 @@ describe('docToPlainText', () => {
     it('should emit markdown for bold italic and inline code marks', () => {
         const doc: ComposerDoc = {
             type: 'doc',
-            content: [{
-                type: 'paragraph',
-                content: [
-                    { type: 'text', text: 'bold', marks: [{ type: 'bold' }] },
-                    { type: 'text', text: ' ' },
-                    { type: 'text', text: 'italic', marks: [{ type: 'italic' }] },
-                    { type: 'text', text: ' ' },
-                    { type: 'text', text: 'code', marks: [{ type: 'code' }] },
-                ],
-            }],
+            content: [
+                {
+                    type: 'paragraph',
+                    content: [
+                        { type: 'text', text: 'bold', marks: [{ type: 'bold' }] },
+                        { type: 'text', text: ' ' },
+                        { type: 'text', text: 'italic', marks: [{ type: 'italic' }] },
+                        { type: 'text', text: ' ' },
+                        { type: 'text', text: 'code', marks: [{ type: 'code' }] },
+                    ],
+                },
+            ],
         };
 
         expect(docToPlainText(doc)).toBe('**bold** *italic* `code`');
@@ -38,13 +40,21 @@ describe('docToPlainText', () => {
     it('should prefix bullet list items', () => {
         const doc: ComposerDoc = {
             type: 'doc',
-            content: [{
-                type: 'bulletList',
-                content: [
-                    { type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'alpha' }] }] },
-                    { type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'beta' }] }] },
-                ],
-            }],
+            content: [
+                {
+                    type: 'bulletList',
+                    content: [
+                        {
+                            type: 'listItem',
+                            content: [{ type: 'paragraph', content: [{ type: 'text', text: 'alpha' }] }],
+                        },
+                        {
+                            type: 'listItem',
+                            content: [{ type: 'paragraph', content: [{ type: 'text', text: 'beta' }] }],
+                        },
+                    ],
+                },
+            ],
         };
 
         expect(docToPlainText(doc)).toBe('- alpha\n- beta');

@@ -1,7 +1,7 @@
 import { autorun } from 'mobx';
 import { describe, expect, it } from 'vitest';
 
-import { ListCursor, rangeBetween, sameGrid, stepTo, survivingCursor, type Grid } from './listCursor';
+import { type Grid, ListCursor, rangeBetween, sameGrid, stepTo, survivingCursor } from './listCursor';
 
 const list: Grid = [['a', 'b', 'c', 'd']];
 const board: Grid = [['a1', 'a2', 'a3'], ['b1'], [], ['c1', 'c2']];

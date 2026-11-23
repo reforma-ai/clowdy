@@ -10,7 +10,7 @@ export function SyncBanner() {
     if (!root.bannerVisible) return null;
 
     return (
-        <div className={ styles.banner } role="status">
+        <div className={styles.banner} role="status">
             <Spinner size="xs" />
             Can&apos;t reach the daemon. Retrying…
         </div>

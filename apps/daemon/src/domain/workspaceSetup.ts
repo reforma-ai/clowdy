@@ -1,7 +1,7 @@
-import { STOPPED_TOOL } from '@clowdy/protocol';
 import { constants } from 'node:fs';
 import { copyFile, lstat, mkdir, readdir, realpath, stat } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, sep } from 'node:path';
+import { STOPPED_TOOL } from '@clowdy/protocol';
 
 import { DEFAULT_TIMINGS } from '../config';
 import { NEVER_INHERITED } from '../engine/acp/env';
@@ -47,7 +47,7 @@ const isGitName = (part: string): boolean => {
 function leavesFolder(base: string, path: string): boolean {
     const inside = relative(base, path);
 
-    return inside === '..' || inside.startsWith(`..${ sep }`) || isAbsolute(inside);
+    return inside === '..' || inside.startsWith(`..${sep}`) || isAbsolute(inside);
 }
 
 /** Whether the way from `base` down to `path` goes through a git name. */
@@ -60,8 +60,7 @@ const namesIn = (path: string): Promise<string[]> => readdir(path);
 async function look<T>(path: string, read: (path: string) => Promise<T>): Promise<T | undefined> {
     try {
         return await read(path);
-    }
-    catch (error) {
+    } catch (error) {
         const { code } = error as { code?: string };
 
         if (code === 'ENOENT' || code === 'ENOTDIR') {
@@ -104,16 +103,13 @@ function matcherOf(pattern: string): (name: string) => boolean {
             if (glob[at] === '*') {
                 star = at++;
                 resume = from;
-            }
-            else if (at < glob.length && glob[at] === text[from]) {
+            } else if (at < glob.length && glob[at] === text[from]) {
                 at++;
                 from++;
-            }
-            else if (star >= 0) {
+            } else if (star >= 0) {
                 at = star + 1;
                 from = ++resume;
-            }
-            else {
+            } else {
                 return false;
             }
         }
@@ -135,7 +131,12 @@ class Copier {
     ) {}
 
     /** The real places of the two checkouts, which every path is judged against. */
-    static async open(root: string, workspace: string, log: (line: string) => void, signal?: AbortSignal): Promise<Copier> {
+    static async open(
+        root: string,
+        workspace: string,
+        log: (line: string) => void,
+        signal?: AbortSignal
+    ): Promise<Copier> {
         return new Copier(await realpath(root), await realpath(workspace), log, signal);
     }
 
@@ -146,14 +147,17 @@ class Copier {
     async copyEntry(entry: string): Promise<void> {
         const parts = entry.split('/');
 
-        if (isAbsolute(entry) || parts.some(part => part === '' || part === '.' || part === '..' || /[\\:\0]/.test(part))) {
-            this.log(`Skipped ${ entry }: it is not a path inside the folder`);
+        if (
+            isAbsolute(entry) ||
+            parts.some(part => part === '' || part === '.' || part === '..' || /[\\:\0]/.test(part))
+        ) {
+            this.log(`Skipped ${entry}: it is not a path inside the folder`);
 
             return;
         }
 
         if (parts.some(isGitName)) {
-            this.log(`Skipped ${ entry }: it is in .git`);
+            this.log(`Skipped ${entry}: it is in .git`);
 
             return;
         }
@@ -174,7 +178,7 @@ class Copier {
         }
 
         if (leavesFolder(this.root, place) || reachesGit(this.root, place)) {
-            this.log(`Skipped ${ entry }: it leads out of the folder`);
+            this.log(`Skipped ${entry}: it leads out of the folder`);
 
             return;
         }
@@ -194,8 +198,7 @@ class Copier {
     private async copyOne(parts: string[], matched: boolean): Promise<void> {
         try {
             await this.transfer(parts, matched);
-        }
-        catch (error) {
+        } catch (error) {
             if (error instanceof SetupError) {
                 throw error;
             }
@@ -204,10 +207,10 @@ class Copier {
             const reason = code ?? (error instanceof Error ? error.message : String(error));
 
             if (!matched) {
-                throw new SetupError(`Couldn't copy ${ parts.join('/') }: ${ reason }`);
+                throw new SetupError(`Couldn't copy ${parts.join('/')}: ${reason}`);
             }
 
-            this.log(`Skipped ${ parts.join('/') }: couldn't copy it (${ reason })`);
+            this.log(`Skipped ${parts.join('/')}: couldn't copy it (${reason})`);
         }
     }
 
@@ -237,27 +240,27 @@ class Copier {
         }
 
         if (leavesFolder(this.root, source) || reachesGit(this.root, source)) {
-            this.log(`Skipped ${ name }: it leads out of the folder`);
+            this.log(`Skipped ${name}: it leads out of the folder`);
 
             return;
         }
 
         if (!(await stat(source)).isFile()) {
             if (!matched) {
-                this.log(`Skipped ${ name }: it is not a file`);
+                this.log(`Skipped ${name}: it is not a file`);
             }
 
             return;
         }
 
         if (await look(to, lstat)) {
-            this.log(`Kept ${ name }: the worktree has it already`);
+            this.log(`Kept ${name}: the worktree has it already`);
 
             return;
         }
 
         // The worktree may have a link on the way (a tracked one): the file lands where the links lead, which has to be inside it.
-        const outOfTree = `Skipped ${ name }: the worktree has a link on its way that leads out of it`;
+        const outOfTree = `Skipped ${name}: the worktree has a link on its way that leads out of it`;
 
         if (leavesFolder(this.workspace, await nearestReal(dirname(to)))) {
             this.log(outOfTree);
@@ -265,12 +268,11 @@ class Copier {
             return;
         }
 
-        const blocked = `Skipped ${ name }: the worktree has something else on its way`;
+        const blocked = `Skipped ${name}: the worktree has something else on its way`;
 
         try {
             await mkdir(dirname(to), { recursive: true });
-        }
-        catch (error) {
+        } catch (error) {
             // A file where the folder should be, or a link with nothing behind it: the worktree's own, left as it is.
             if (['EEXIST', 'ENOTDIR', 'ENOENT'].includes((error as { code?: string }).code ?? '')) {
                 this.log(blocked);
@@ -290,10 +292,9 @@ class Copier {
         try {
             // Never over a file: the flag fails where something appeared at the path meanwhile.
             await copyFile(source, to, constants.COPYFILE_EXCL);
-        }
-        catch (error) {
+        } catch (error) {
             if ((error as { code?: string }).code === 'EEXIST') {
-                this.log(`Kept ${ name }: the worktree has it already`);
+                this.log(`Kept ${name}: the worktree has it already`);
 
                 return;
             }
@@ -301,7 +302,7 @@ class Copier {
             throw error;
         }
 
-        this.log(`Copied ${ name }`);
+        this.log(`Copied ${name}`);
     }
 }
 
@@ -309,7 +310,9 @@ class Copier {
  * Copies the files a folder's setup lists from its main checkout into the same place of a new worktree. An entry is a relative path written with `/` (turned into
  * the machine's own with `node:path`, and judged by where it really leads) or has a `*` in its last part. Nothing that exists in the worktree is changed.
  */
-export async function copySetupFiles(run: Pick<SetupRun, 'root' | 'workspace' | 'log' | 'signal'> & { files: readonly string[] }): Promise<void> {
+export async function copySetupFiles(
+    run: Pick<SetupRun, 'root' | 'workspace' | 'log' | 'signal'> & { files: readonly string[] }
+): Promise<void> {
     const copier = await Copier.open(run.root, run.workspace, run.log, run.signal);
 
     for (const entry of run.files) {
@@ -324,11 +327,19 @@ export async function copySetupFiles(run: Pick<SetupRun, 'root' | 'workspace' | 
  * lines are joined with `&` (each runs whatever the one before came to, as in `sh`, and the last one's exit code is the command's); the line is handed over
  * whole between quotes (`/s` takes the outer pair off, so quotes inside stay as written), and Bun is told not to quote it again.
  */
-export function setupShell(command: string, platform: NodeJS.Platform = process.platform, env: Record<string, string | undefined> = process.env): { argv: string[]; verbatim: boolean } {
+export function setupShell(
+    command: string,
+    platform: NodeJS.Platform = process.platform,
+    env: Record<string, string | undefined> = process.env
+): { argv: string[]; verbatim: boolean } {
     if (platform === 'win32') {
-        const line = command.split(/\r?\n/).map(each => each.trim()).filter(Boolean).join(' & ');
+        const line = command
+            .split(/\r?\n/)
+            .map(each => each.trim())
+            .filter(Boolean)
+            .join(' & ');
 
-        return { argv: [env.ComSpec || env.COMSPEC || 'cmd.exe', '/d', '/s', '/c', `"${ line }"`], verbatim: true };
+        return { argv: [env.ComSpec || env.COMSPEC || 'cmd.exe', '/d', '/s', '/c', `"${line}"`], verbatim: true };
     }
 
     return { argv: ['sh', '-c', command], verbatim: false };
@@ -347,7 +358,12 @@ function setupEnvironment(run: Pick<SetupRun, 'root' | 'workspace' | 'branch'>):
         }
     }
 
-    return { ...env, CLOWDY_ROOT_PATH: run.root, CLOWDY_WORKSPACE_PATH: run.workspace, CLOWDY_BRANCH: run.branch ?? '' };
+    return {
+        ...env,
+        CLOWDY_ROOT_PATH: run.root,
+        CLOWDY_WORKSPACE_PATH: run.workspace,
+        CLOWDY_BRANCH: run.branch ?? '',
+    };
 }
 
 /** A length of time for a person: whole minutes, else seconds. */
@@ -355,12 +371,12 @@ function lasting(ms: number): string {
     const minutes = ms / 60_000;
 
     if (Number.isInteger(minutes)) {
-        return minutes === 1 ? '1 minute' : `${ minutes } minutes`;
+        return minutes === 1 ? '1 minute' : `${minutes} minutes`;
     }
 
     const seconds = Math.max(1, Math.round(ms / 1000));
 
-    return seconds === 1 ? '1 second' : `${ seconds } seconds`;
+    return seconds === 1 ? '1 second' : `${seconds} seconds`;
 }
 
 async function runCommand(run: SetupRun, command: string): Promise<void> {
@@ -384,11 +400,12 @@ async function runCommand(run: SetupRun, command: string): Promise<void> {
                 }
             },
         });
-    }
-    catch (error) {
+    } catch (error) {
         // A shell that is not there; anything else (the stream's own write failing, say) is thrown as it is.
         if ((error as { code?: unknown } | undefined)?.code === 'ENOENT') {
-            throw new SetupError(`Couldn't run the setup command: ${ shell.argv[0] } is not installed or not on the PATH`);
+            throw new SetupError(
+                `Couldn't run the setup command: ${shell.argv[0]} is not installed or not on the PATH`
+            );
         }
 
         throw error;
@@ -399,11 +416,15 @@ async function runCommand(run: SetupRun, command: string): Promise<void> {
     }
 
     if (result.timedOut) {
-        throw new SetupError(`The setup command was stopped after ${ lasting(timeoutMs) }`);
+        throw new SetupError(`The setup command was stopped after ${lasting(timeoutMs)}`);
     }
 
     if (result.code !== 0) {
-        throw new SetupError(result.code === null ? 'The setup command was killed' : `The setup command failed with exit code ${ result.code }`);
+        throw new SetupError(
+            result.code === null
+                ? 'The setup command was killed'
+                : `The setup command failed with exit code ${result.code}`
+        );
     }
 }
 

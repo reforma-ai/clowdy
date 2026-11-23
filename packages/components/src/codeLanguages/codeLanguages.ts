@@ -31,14 +31,14 @@ const languageByName = new Map<string, LanguageId>([
 
 // Each pack is its own chunk, loaded once for every editor.
 const loaders: Record<LanguageId, () => Promise<LanguageSupport>> = {
-    javascript: async() => (await import('@codemirror/lang-javascript')).javascript(),
-    jsx: async() => (await import('@codemirror/lang-javascript')).javascript({ jsx: true }),
-    typescript: async() => (await import('@codemirror/lang-javascript')).javascript({ typescript: true }),
-    tsx: async() => (await import('@codemirror/lang-javascript')).javascript({ jsx: true, typescript: true }),
-    css: async() => (await import('@codemirror/lang-css')).css(),
-    html: async() => (await import('@codemirror/lang-html')).html(),
-    json: async() => (await import('@codemirror/lang-json')).json(),
-    markdown: async() => (await import('@codemirror/lang-markdown')).markdown(),
+    javascript: async () => (await import('@codemirror/lang-javascript')).javascript(),
+    jsx: async () => (await import('@codemirror/lang-javascript')).javascript({ jsx: true }),
+    typescript: async () => (await import('@codemirror/lang-javascript')).javascript({ typescript: true }),
+    tsx: async () => (await import('@codemirror/lang-javascript')).javascript({ jsx: true, typescript: true }),
+    css: async () => (await import('@codemirror/lang-css')).css(),
+    html: async () => (await import('@codemirror/lang-html')).html(),
+    json: async () => (await import('@codemirror/lang-json')).json(),
+    markdown: async () => (await import('@codemirror/lang-markdown')).markdown(),
 };
 
 const loaded = new Map<LanguageId, LanguageSupport>();
@@ -66,7 +66,7 @@ export function codeLanguage(name: string): LanguageSupport | Promise<LanguageSu
 
     if (!pending) {
         pending = loaders[id]().then(
-            (support) => {
+            support => {
                 loaded.set(id, support);
 
                 return support;
@@ -86,7 +86,14 @@ export function codeLanguage(name: string): LanguageSupport | Promise<LanguageSu
 /** Syntax colors on Clowdy's semantic text tokens, for the Code view and rich text code blocks. */
 export const codeHighlighter = tagHighlighter([
     {
-        tag: [tags.keyword, tags.modifier, tags.controlKeyword, tags.operatorKeyword, tags.definitionKeyword, tags.moduleKeyword],
+        tag: [
+            tags.keyword,
+            tags.modifier,
+            tags.controlKeyword,
+            tags.operatorKeyword,
+            tags.definitionKeyword,
+            tags.moduleKeyword,
+        ],
         class: styles.keyword,
     },
     { tag: [tags.string, tags.special(tags.string), tags.regexp, tags.character], class: styles.string },

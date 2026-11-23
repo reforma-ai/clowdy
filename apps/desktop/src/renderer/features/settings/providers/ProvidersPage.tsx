@@ -16,7 +16,7 @@ import { providerAgents } from './providerView';
 /** How often the page asks for the agents while it is open; the daemon reads again only what is older than its own freshness. */
 const POLL_MS = 60_000;
 
-const INTRO = 'The agents Clowdy can run. Each one uses the account you\'re already signed in with on this computer.';
+const INTRO = "The agents Clowdy can run. Each one uses the account you're already signed in with on this computer.";
 
 /** Settings > Providers: one card per provider, with its account, its usage and its settings. */
 export function ProvidersPage() {
@@ -39,7 +39,7 @@ export function ProvidersPage() {
 
     if (status === 'loading' && agents.length === 0) {
         return (
-            <SettingsPage description={ INTRO }>
+            <SettingsPage description={INTRO}>
                 <Box direction="row" gap="md" align="center">
                     <Loader size="xs" />
                     <Text color="secondary">Looking for agents…</Text>
@@ -50,27 +50,41 @@ export function ProvidersPage() {
 
     if (status === 'failed' && agents.length === 0) {
         return (
-            <SettingsPage description={ INTRO }>
+            <SettingsPage description={INTRO}>
                 <Box gap="md" align="start">
-                    <Text color="danger">The agents could not be loaded. { error }</Text>
-                    <Button variant="bordered" size="sm" onPress={ () => void refresh() }>Try again</Button>
+                    <Text color="danger">The agents could not be loaded. {error}</Text>
+                    <Button variant="bordered" size="sm" onPress={() => void refresh()}>
+                        Try again
+                    </Button>
                 </Box>
             </SettingsPage>
         );
     }
 
     return (
-        <SettingsPage description={ INTRO }>
-            { status === 'failed' && (
+        <SettingsPage description={INTRO}>
+            {status === 'failed' && (
                 <Alert color="danger">
-                    <AlertIcon><AttentionCircle /></AlertIcon>
-                    <AlertDescription>{ `The agents could not be read again, so what is shown may be out of date. ${ error }` }</AlertDescription>
-                    <AlertAction><Button size="sm" variant="bordered" onPress={ () => void refresh() }>Try again</Button></AlertAction>
+                    <AlertIcon>
+                        <AttentionCircle />
+                    </AlertIcon>
+                    <AlertDescription>{`The agents could not be read again, so what is shown may be out of date. ${error}`}</AlertDescription>
+                    <AlertAction>
+                        <Button size="sm" variant="bordered" onPress={() => void refresh()}>
+                            Try again
+                        </Button>
+                    </AlertAction>
                 </Alert>
-            ) }
-            { providers.length === 0
-                ? <SettingsEmpty>The daemon lists none of Claude Code, Codex or Cursor</SettingsEmpty>
-                : <div className={ styles.cards }>{ providers.map(agent => <ProviderCard key={ agent.id } agent={ agent } />) }</div> }
+            )}
+            {providers.length === 0 ? (
+                <SettingsEmpty>The daemon lists none of Claude Code, Codex or Cursor</SettingsEmpty>
+            ) : (
+                <div className={styles.cards}>
+                    {providers.map(agent => (
+                        <ProviderCard key={agent.id} agent={agent} />
+                    ))}
+                </div>
+            )}
         </SettingsPage>
     );
 }

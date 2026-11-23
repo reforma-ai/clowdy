@@ -21,7 +21,7 @@ afterEach(() => {
 });
 
 describe('what the Docs tab draws', () => {
-    it('is the sources the folder has, each under a label of its own, in the registry\'s order, and says so to a screen reader', async () => {
+    it("is the sources the folder has, each under a label of its own, in the registry's order, and says so to a screen reader", async () => {
         const manager = await managerOf({
             'src/a.ts': '',
             '.clowdy/docs/a.md': '',
@@ -45,7 +45,7 @@ describe('what the Docs tab draws', () => {
         expect(docsScopeOf(manager)).toBe(scope);
     });
 
-    it('has .clowdy/docs for its only root where the folder has no source, so that the first document can be made, and takes a bare specs folder for nobody\'s', async () => {
+    it("has .clowdy/docs for its only root where the folder has no source, so that the first document can be made, and takes a bare specs folder for nobody's", async () => {
         const manager = await managerOf({ 'src/a.ts': '', 'specs/readme.md': '', 'docs/guide.md': '' });
 
         expect(docsScopeOf(manager).roots).toEqual([{ id: 'documents', label: 'Documents', root: DOCS_ROOT }]);
@@ -55,7 +55,11 @@ describe('what the Docs tab draws', () => {
         const manager = await managerOf({ 'src/a.ts': '' });
         const scope = docsScopeOf(manager);
         const seen: string[][] = [];
-        const stop = reaction(() => scope.roots.map(({ id }) => id), ids => seen.push(ids), { equals: (a, b) => a.join() === b.join() });
+        const stop = reaction(
+            () => scope.roots.map(({ id }) => id),
+            ids => seen.push(ids),
+            { equals: (a, b) => a.join() === b.join() }
+        );
 
         manager.tree.applyChanges([{ type: 'created', path: '.briefback', kind: 'directory' }]);
         manager.tree.applyChanges([{ type: 'created', path: '.briefback/acp', kind: 'directory' }]);

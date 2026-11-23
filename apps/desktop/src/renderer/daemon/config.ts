@@ -5,7 +5,7 @@ import { FIXTURE_BRANCH_SCRIPTS } from './fixtureGitBranches';
 import { FIXTURE_REMOTE_SCRIPTS } from './fixtureGitRemote';
 import { FixtureTransport } from './fixtureTransport';
 import { HttpTransport } from './httpTransport';
-import { TransportError, type ProjectFileSystem, type Transport } from './transport';
+import { type ProjectFileSystem, type Transport, TransportError } from './transport';
 
 import type { FixturePullRequestScript } from './fixtureData';
 import type { FixtureBranchScript } from './fixtureGitBranches';
@@ -14,14 +14,36 @@ import type { FixtureCommitScript, FixtureMessageScript } from './fixtureGitWrit
 
 export type DaemonConfig =
     | { kind: 'daemon'; url: string; token: string }
-    | { kind: 'fixtures'; timeline: boolean; worktree?: true; clean?: true; base?: true; commit?: FixtureCommitScript; message?: FixtureMessageScript; remote?: FixtureRemoteScript; pr?: FixturePullRequestScript; branches?: FixtureBranchScript[] }
+    | {
+          kind: 'fixtures';
+          timeline: boolean;
+          worktree?: true;
+          clean?: true;
+          base?: true;
+          commit?: FixtureCommitScript;
+          message?: FixtureMessageScript;
+          remote?: FixtureRemoteScript;
+          pr?: FixturePullRequestScript;
+          branches?: FixtureBranchScript[];
+      }
     | { kind: 'none' };
 
 /** The words the page's `&pr=` switch knows: what `GET git/pull-request` says of the fixture's worktree. */
-const PULL_REQUEST_SCRIPTS = ['none', 'open', 'draft', 'merged', 'closed', 'no_gh', 'not_signed_in', 'no_remote', 'unavailable'] as const satisfies readonly FixturePullRequestScript[];
+const PULL_REQUEST_SCRIPTS = [
+    'none',
+    'open',
+    'draft',
+    'merged',
+    'closed',
+    'no_gh',
+    'not_signed_in',
+    'no_remote',
+    'unavailable',
+] as const satisfies readonly FixturePullRequestScript[];
 
 /** The value of a switch of the page's address when it is one of the words the switch knows. */
-const oneOf = <T extends string>(value: string | null, words: readonly T[]): T | undefined => words.find(word => word === value);
+const oneOf = <T extends string>(value: string | null, words: readonly T[]): T | undefined =>
+    words.find(word => word === value);
 
 /**
  * Where the UI gets its data, in order of precedence:
@@ -49,7 +71,9 @@ export function resolveDaemonConfig(search: string, bridge?: { url: string; toke
         const message = oneOf(params.get('message'), ['failed', 'slow'] as const);
         const remote = oneOf(params.get('remote'), FIXTURE_REMOTE_SCRIPTS);
         const pr = oneOf(params.get('pr'), PULL_REQUEST_SCRIPTS);
-        const branches = (params.get('branches') ?? '').split(',').flatMap(word => oneOf(word.trim(), FIXTURE_BRANCH_SCRIPTS) ?? []);
+        const branches = (params.get('branches') ?? '')
+            .split(',')
+            .flatMap(word => oneOf(word.trim(), FIXTURE_BRANCH_SCRIPTS) ?? []);
 
         return {
             kind: 'fixtures',
@@ -141,5 +165,10 @@ export function createTransport(config: DaemonConfig): Transport {
     // What GitHub says of the worktree's branch, for the states of Create PR to be looked at.
     if (pr) for (const scripts of Object.values(data.pullRequests)) scripts.worktree = pr;
 
-    return new FixtureTransport({ timeline, data, gitWrites: { commit, message, remote, ...(clean && { clean }) }, branches });
+    return new FixtureTransport({
+        timeline,
+        data,
+        gitWrites: { commit, message, remote, ...(clean && { clean }) },
+        branches,
+    });
 }

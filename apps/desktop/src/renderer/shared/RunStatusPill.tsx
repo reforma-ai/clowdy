@@ -1,8 +1,8 @@
 import { cn } from '@clowdy/lib';
 import { shownRunReason, shownRunStatus } from '@clowdy/protocol';
 
-import { RUN_STATUS_VIEW } from './runStatus';
 import styles from './RunStatusPill.module.css';
+import { RUN_STATUS_VIEW } from './runStatus';
 import { StatusDot } from './StatusDot';
 
 import type { Run } from '@clowdy/protocol';
@@ -21,9 +21,9 @@ export function RunStatusPill({ run, plain, className }: RunStatusPillProps) {
     const { label, tone } = RUN_STATUS_VIEW[status];
 
     return (
-        <span className={ cn(styles.pill, className) } data-tone={ tone } title={ shownRunReason(run) }>
-            { !plain && <StatusDot status={ status } /> }
-            { label }
+        <span className={cn(styles.pill, className)} data-tone={tone} title={shownRunReason(run)}>
+            {!plain && <StatusDot status={status} />}
+            {label}
         </span>
     );
 }

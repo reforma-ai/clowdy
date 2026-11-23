@@ -36,11 +36,11 @@ export function codeQuote(path: string, { from, to, text }: SelectedLines): stri
     const cut = text.length > MAX_QUOTED_CHARS;
     const quoted = cut ? cutText(text) : text;
     const last = cut ? from + (quoted.match(/\n/g)?.length ?? 0) : to;
-    const range = from === last ? `${ from }` : `${ from }-${ last }`;
+    const range = from === last ? `${from}` : `${from}-${last}`;
     const fence = fenceOf(quoted);
     // Trailing blank space is no part of the code, and a leading line break would open the fence on an empty line.
     const code = quoted.replace(/^(?:[ \t]*\n)+/, '').trimEnd();
-    const rest = cut ? `\n… the selection goes on to line ${ to }` : '';
+    const rest = cut ? `\n… the selection goes on to line ${to}` : '';
 
-    return `\`${ path }:${ range }\`\n${ fence }${ languageOf(path) }\n${ code }\n${ fence }${ rest }`;
+    return `\`${path}:${range}\`\n${fence}${languageOf(path)}\n${code}\n${fence}${rest}`;
 }

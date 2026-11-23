@@ -10,7 +10,7 @@ import { TransportError } from '../../daemon/transport';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { openEffects } from '../openWith';
 import { ChangesSidebar } from './ChangesSidebar';
-import { gitFactsOf, type GitPlaceKey } from './gitFacts';
+import { type GitPlaceKey, gitFactsOf } from './gitFacts';
 import { placeChangesOf } from './PlaceChanges';
 
 import type { GitSwitchResult } from '@clowdy/protocol';
@@ -21,12 +21,24 @@ import type { PlaceChanges } from './PlaceChanges';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 // The babel plugin that makes the app's components observers does not run under Vitest: the parts of the picker are, to follow the model they read.
-vi.mock('./BranchPicker', async importOriginal => ({ BranchPicker: observer((await importOriginal<typeof import('./BranchPicker')>()).BranchPicker) }));
-vi.mock('./BranchList', async importOriginal => ({ BranchList: observer((await importOriginal<typeof import('./BranchList')>()).BranchList) }));
-vi.mock('./NewBranchForm', async importOriginal => ({ NewBranchForm: observer((await importOriginal<typeof import('./NewBranchForm')>()).NewBranchForm) }));
-vi.mock('./SwitchReasons', async importOriginal => ({ SwitchReasons: observer((await importOriginal<typeof import('./SwitchReasons')>()).SwitchReasons) }));
+vi.mock('./BranchPicker', async importOriginal => ({
+    BranchPicker: observer((await importOriginal<typeof import('./BranchPicker')>()).BranchPicker),
+}));
+vi.mock('./BranchList', async importOriginal => ({
+    BranchList: observer((await importOriginal<typeof import('./BranchList')>()).BranchList),
+}));
+vi.mock('./NewBranchForm', async importOriginal => ({
+    NewBranchForm: observer((await importOriginal<typeof import('./NewBranchForm')>()).NewBranchForm),
+}));
+vi.mock('./SwitchReasons', async importOriginal => ({
+    SwitchReasons: observer((await importOriginal<typeof import('./SwitchReasons')>()).SwitchReasons),
+}));
 
-const WORKTREE: GitPlaceKey = { projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' };
+const WORKTREE: GitPlaceKey = {
+    projectId: FIXTURE_PROJECT_ID,
+    folderId: 'fld_car_rental',
+    workspaceId: 'wks_ab12cd34',
+};
 const CHECKOUT: GitPlaceKey = { projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental' };
 
 const Sidebar = observer(ChangesSidebar);
@@ -38,49 +50,89 @@ let transport: FixtureTransport;
 let model: PlaceChanges;
 let stop: () => void;
 
-const settle = () => act(async () => {
-    await new Promise(resolve => setTimeout(resolve, 0));
-});
-const press = (target: Element) => act(async () => {
-    target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
-    target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
-    target.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
-    target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
-    (target as HTMLElement).click();
-});
-const keyOn = (target: Element, key: string) => act(async () => {
-    target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
-    target.dispatchEvent(new KeyboardEvent('keyup', { key, bubbles: true, cancelable: true }));
-});
-const type = (input: HTMLInputElement, text: string) => act(async () => {
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, text);
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-});
+const settle = () =>
+    act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 0));
+    });
+const press = (target: Element) =>
+    act(async () => {
+        target.dispatchEvent(
+            new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true })
+        );
+        target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+        target.dispatchEvent(
+            new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true })
+        );
+        target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
+        (target as HTMLElement).click();
+    });
+const keyOn = (target: Element, key: string) =>
+    act(async () => {
+        target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+        target.dispatchEvent(new KeyboardEvent('keyup', { key, bubbles: true, cancelable: true }));
+    });
+const type = (input: HTMLInputElement, text: string) =>
+    act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, text);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
 
 /** The button (or, for a worktree, the stand-in of the off button) that names the branch in the sidebar's header. */
-const trigger = () => container.querySelector<HTMLElement>('button[aria-label^="Current branch"], [role="button"][aria-label^="Current branch"]');
+const trigger = () =>
+    container.querySelector<HTMLElement>(
+        'button[aria-label^="Current branch"], [role="button"][aria-label^="Current branch"]'
+    );
 const popover = () => document.querySelector<HTMLElement>('[data-modal-clickout-layer]');
 const search = () => document.querySelector<HTMLInputElement>('input[placeholder="Filter branches"]')!;
 const rows = () => [...document.querySelectorAll<HTMLElement>('[role="option"][data-key]')];
 const row = (name: string) => rows().find(candidate => candidate.dataset.key === name)!;
-const headings = () => [...document.querySelectorAll('[role="listbox"] header, [role="listbox"] [role="presentation"] > div')].map(heading => heading.textContent);
+const headings = () =>
+    [...document.querySelectorAll('[role="listbox"] header, [role="listbox"] [role="presentation"] > div')].map(
+        heading => heading.textContent
+    );
 const alert = () => document.querySelector('[role="alert"]');
-const fieldNamed = (label: string) => document.querySelector<HTMLInputElement>(`input[aria-label="${ label }"]`)!;
-const buttonOf = (text: string) => [...document.querySelectorAll<HTMLButtonElement>('button')].find(candidate => candidate.textContent?.trim() === text);
+const fieldNamed = (label: string) => document.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)!;
+const buttonOf = (text: string) =>
+    [...document.querySelectorAll<HTMLButtonElement>('button')].find(
+        candidate => candidate.textContent?.trim() === text
+    );
 const radios = () => [...document.querySelectorAll<HTMLInputElement>('input[type="radio"]')];
 
 let currentPlace: Place;
 
 async function draw(place = currentPlace) {
     currentPlace = place;
-    act(() => root.render(<RootStoreProvider value={ store }><Sidebar model={ model } place={ place } projectId={ FIXTURE_PROJECT_ID } onOpenFile={ () => undefined } toggle={ null } /></RootStoreProvider>));
+    act(() =>
+        root.render(
+            <RootStoreProvider value={store}>
+                <Sidebar
+                    model={model}
+                    place={place}
+                    projectId={FIXTURE_PROJECT_ID}
+                    onOpenFile={() => undefined}
+                    toggle={null}
+                />
+            </RootStoreProvider>
+        )
+    );
     await settle();
     await settle();
 }
 
 /** The sidebar of the folder's own checkout (or, with `key`, of the chat's worktree) on the fixtures, with the scripts of `&branches=` the test says. */
-async function start({ branches, key = CHECKOUT, worktree = key.workspaceId !== undefined }: { branches?: FixtureBranchScript[]; key?: GitPlaceKey; worktree?: boolean } = {}) {
-    transport = new FixtureTransport({ data: worktree ? withFixtureWorkspace(createFixtureData()) : createFixtureData(), branches });
+async function start({
+    branches,
+    key = CHECKOUT,
+    worktree = key.workspaceId !== undefined,
+}: {
+    branches?: FixtureBranchScript[];
+    key?: GitPlaceKey;
+    worktree?: boolean;
+} = {}) {
+    transport = new FixtureTransport({
+        data: worktree ? withFixtureWorkspace(createFixtureData()) : createFixtureData(),
+        branches,
+    });
     store = new RootStore(transport);
     await store.load();
     store.selectProject(FIXTURE_PROJECT_ID);
@@ -121,7 +173,7 @@ afterEach(() => {
     vi.useRealTimers();
 });
 
-describe('the branch of the Changes sidebar, for the folder\'s own checkout', () => {
+describe("the branch of the Changes sidebar, for the folder's own checkout", () => {
     it('is a button that names the branch the checkout is on, and opens nothing until it is pressed', async () => {
         await start();
 
@@ -142,7 +194,13 @@ describe('the branch of the Changes sidebar, for the folder\'s own checkout', ()
         expect(popover()?.textContent).toContain('Current branch');
         expect(search()).not.toBeNull();
         expect(document.activeElement).toBe(search());
-        expect(rows().map(candidate => candidate.dataset.key)).toEqual(['main', 'dev', 'feature/search', 'release/2.1', 'chore/deps']);
+        expect(rows().map(candidate => candidate.dataset.key)).toEqual([
+            'main',
+            'dev',
+            'feature/search',
+            'release/2.1',
+            'chore/deps',
+        ]);
         expect(popover()?.textContent).toMatch(/Default.*main.*Recent.*dev.*Remote.*feature\/search/s);
         expect(row('main').querySelector('[aria-label="Current"]')).not.toBeNull();
         expect(row('dev').querySelector('[aria-label="Current"]')).toBeNull();
@@ -186,7 +244,7 @@ describe('the branch of the Changes sidebar, for the folder\'s own checkout', ()
         expect(popover()?.textContent).toContain('Nothing found');
     });
 
-    it('switches on a press: the popover shuts, the button names the new branch, and the status, the changes and the folder\'s branch are read again', async () => {
+    it("switches on a press: the popover shuts, the button names the new branch, and the status, the changes and the folder's branch are read again", async () => {
         await start();
 
         const info = vi.spyOn(transport, 'getProjectsInfo');
@@ -215,7 +273,12 @@ describe('the branch of the Changes sidebar, for the folder\'s own checkout', ()
         await settle();
         await settle();
 
-        expect(switchTo).toHaveBeenCalledExactlyOnceWith(FIXTURE_PROJECT_ID, { folderId: 'fld_car_rental' }, 'feature/search', undefined);
+        expect(switchTo).toHaveBeenCalledExactlyOnceWith(
+            FIXTURE_PROJECT_ID,
+            { folderId: 'fld_car_rental' },
+            'feature/search',
+            undefined
+        );
         expect(trigger()?.textContent).toBe('feature/search');
 
         await open();
@@ -257,7 +320,9 @@ describe('the branch of the Changes sidebar, for the folder\'s own checkout', ()
         await settle();
 
         expect(popover()).not.toBeNull();
-        expect(alert()?.textContent).toBe('Commit or discard the changes firstthree files changed'.replace('three', '3'));
+        expect(alert()?.textContent).toBe(
+            'Commit or discard the changes firstthree files changed'.replace('three', '3')
+        );
         expect(trigger()?.textContent).toBe('main');
         // Another try is possible, and what is said goes with the next press.
         await press(row('dev'));
@@ -305,10 +370,13 @@ describe('the branch of the Changes sidebar, for the folder\'s own checkout', ()
         expect(trigger()?.textContent).toBe('dev');
     });
 
-    it('keeps the popover open on a hook\'s complaint after a switch that was made, and says both', async () => {
+    it("keeps the popover open on a hook's complaint after a switch that was made, and says both", async () => {
         await start();
 
-        const result: GitSwitchResult = { head: { kind: 'branch', name: 'dev', commit: 'a'.repeat(40) }, warning: 'post-checkout: the install failed' };
+        const result: GitSwitchResult = {
+            head: { kind: 'branch', name: 'dev', commit: 'a'.repeat(40) },
+            warning: 'post-checkout: the install failed',
+        };
 
         vi.spyOn(transport, 'switchGitBranch').mockResolvedValue(result);
         await open();
@@ -317,7 +385,9 @@ describe('the branch of the Changes sidebar, for the folder\'s own checkout', ()
         await settle();
 
         expect(popover()).not.toBeNull();
-        expect(popover()?.querySelector('[role="status"]')?.textContent).toBe('Switched to devpost-checkout: the install failed');
+        expect(popover()?.querySelector('[role="status"]')?.textContent).toBe(
+            'Switched to devpost-checkout: the install failed'
+        );
     });
 
     it('says why the branches could not be read, and offers no list', async () => {
@@ -339,15 +409,19 @@ describe('the form of a new branch in the popover', () => {
         await settle();
     }
 
-    it('asks for a name and, in GitHub Desktop\'s words, what the branch is based on, the default branch chosen', async () => {
+    it("asks for a name and, in GitHub Desktop's words, what the branch is based on, the default branch chosen", async () => {
         await openForm();
 
         expect(popover()?.textContent).toContain('Create a branch');
         expect(popover()?.textContent).toContain('Create branch based on…');
         expect(popover()?.textContent).toContain('The default branch (main)');
         expect(popover()?.textContent).toContain('The current branch (main)');
-        expect(popover()?.textContent).toContain('The default branch in your repository. Pick this to start on something new that\'s not dependent on your current branch.');
-        expect(popover()?.textContent).toContain('The currently checked out branch. Pick this if you need to build on work done on this branch.');
+        expect(popover()?.textContent).toContain(
+            "The default branch in your repository. Pick this to start on something new that's not dependent on your current branch."
+        );
+        expect(popover()?.textContent).toContain(
+            'The currently checked out branch. Pick this if you need to build on work done on this branch.'
+        );
         expect(radios().map(radio => radio.checked)).toEqual([true, false]);
         expect(buttonOf('Create branch')?.disabled).toBe(true);
     });
@@ -363,7 +437,12 @@ describe('the form of a new branch in the popover', () => {
         await settle();
         await settle();
 
-        expect(switchTo).toHaveBeenCalledExactlyOnceWith(FIXTURE_PROJECT_ID, { folderId: 'fld_car_rental' }, 'feature/weekend', { start: 'default' });
+        expect(switchTo).toHaveBeenCalledExactlyOnceWith(
+            FIXTURE_PROJECT_ID,
+            { folderId: 'fld_car_rental' },
+            'feature/weekend',
+            { start: 'default' }
+        );
         expect(popover()).toBeNull();
         expect(trigger()?.textContent).toBe('feature/weekend');
     });
@@ -383,7 +462,9 @@ describe('the form of a new branch in the popover', () => {
         await settle();
         await settle();
 
-        expect(switchTo).toHaveBeenCalledExactlyOnceWith(FIXTURE_PROJECT_ID, { folderId: 'fld_car_rental' }, 'wip', { start: 'current' });
+        expect(switchTo).toHaveBeenCalledExactlyOnceWith(FIXTURE_PROJECT_ID, { folderId: 'fld_car_rental' }, 'wip', {
+            start: 'current',
+        });
         expect(trigger()?.textContent).toBe('wip');
     });
 
@@ -428,7 +509,7 @@ describe('the form of a new branch in the popover', () => {
     });
 });
 
-describe('the branch of the Changes sidebar, for a chat\'s worktree', () => {
+describe("the branch of the Changes sidebar, for a chat's worktree", () => {
     it('shows the branch the worktree is on and is off: a stand-in that names the button and says why in its tooltip, and nothing opens', async () => {
         await start({ key: WORKTREE });
 
@@ -460,14 +541,20 @@ describe('the branch of the Changes sidebar, for a chat\'s worktree', () => {
             await new Promise(resolve => setTimeout(resolve, 1600));
         });
 
-        expect(document.querySelector('[role="tooltip"]')?.textContent).toBe('A chat\'s worktree keeps its branch');
+        expect(document.querySelector('[role="tooltip"]')?.textContent).toBe("A chat's worktree keeps its branch");
     });
 });
 
 describe('the title of the Changes sidebar where there is no branch to change', () => {
     it('is the name alone for a branch that has no commit, and nothing to press', async () => {
         await start();
-        vi.spyOn(transport, 'getGitStatus').mockResolvedValue({ isRepository: true, head: { kind: 'unborn', name: 'main' }, origin: false, entries: [], base: { state: 'unborn' } });
+        vi.spyOn(transport, 'getGitStatus').mockResolvedValue({
+            isRepository: true,
+            head: { kind: 'unborn', name: 'main' },
+            origin: false,
+            entries: [],
+            base: { state: 'unborn' },
+        });
         await act(async () => gitFactsOf(transport).refresh(CHECKOUT));
         await settle();
         await settle();

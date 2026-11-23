@@ -8,7 +8,7 @@ export const JSON_BODY_LIMIT = 8 * 1024 * 1024;
 /** A request body ran past the limit of the route that reads it. */
 export class BodyTooLarge extends Error {
     constructor(readonly limit: number) {
-        super(`The request body is over ${ limit } bytes`);
+        super(`The request body is over ${limit} bytes`);
         this.name = 'BodyTooLarge';
     }
 }
@@ -46,8 +46,7 @@ export async function readJson<S extends z.ZodType>(request: Request, schema: S)
 
     try {
         body = JSON.parse(await readText(request, JSON_BODY_LIMIT));
-    }
-    catch (error) {
+    } catch (error) {
         if (error instanceof BodyTooLarge) {
             throw error;
         }
@@ -58,7 +57,10 @@ export async function readJson<S extends z.ZodType>(request: Request, schema: S)
     const parsed = schema.safeParse(body);
 
     if (!parsed.success) {
-        throw invalid('The request is not valid', parsed.error.issues.map(issue => ({ path: issue.path.join('.'), message: issue.message })));
+        throw invalid(
+            'The request is not valid',
+            parsed.error.issues.map(issue => ({ path: issue.path.join('.'), message: issue.message }))
+        );
     }
 
     return parsed.data;

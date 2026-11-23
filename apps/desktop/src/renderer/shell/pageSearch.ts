@@ -11,7 +11,19 @@ const ACTIVE = 'find-active';
  * Elements whose text is not drawn as text of the page: a field's value, code, a template, an SVG's title and description. Matched by `localName`,
  * which is lower case for HTML and for SVG alike (`tagName` of an SVG element is not upper case, and Chromium gives its `style` and `title` `display: inline`).
  */
-const SKIPPED_TAGS = new Set(['script', 'style', 'noscript', 'template', 'textarea', 'input', 'select', 'option', 'title', 'desc', 'metadata']);
+const SKIPPED_TAGS = new Set([
+    'script',
+    'style',
+    'noscript',
+    'template',
+    'textarea',
+    'input',
+    'select',
+    'option',
+    'title',
+    'desc',
+    'metadata',
+]);
 
 const WHITESPACE = /\s/u;
 
@@ -25,7 +37,11 @@ function foldQuery(query: string): string {
  * space, as it is drawn, and none after another space or at the start of a line; `map` then says where each character of the result stood in the node.
  * Otherwise each character maps to one character, so `map` is `null` and a position in the folded text is a position in the node.
  */
-function foldText(text: string, collapse: boolean, afterSpace: boolean): { folded: string; map: number[] | null; endsWithSpace: boolean } {
+function foldText(
+    text: string,
+    collapse: boolean,
+    afterSpace: boolean
+): { folded: string; map: number[] | null; endsWithSpace: boolean } {
     let folded = '';
     let map: number[] | null = null;
     let index = 0;
@@ -42,12 +58,10 @@ function foldText(text: string, collapse: boolean, afterSpace: boolean): { folde
                 index += char.length;
 
                 continue;
-            }
-            else next = ' ';
+            } else next = ' ';
 
             space = collapse;
-        }
-        else {
+        } else {
             const lower = char.toLowerCase();
 
             next = lower.length === char.length ? lower : char;
@@ -74,7 +88,14 @@ interface Piece {
 
 /** Display values whose text runs on into the next text: a hit may cross them (`wor<b>ld</b>`). Everything else, a paragraph, a cell, a flex item, ends the run. */
 function isInline(display: string): boolean {
-    return display === '' || display === 'inline' || display === 'contents' || display.startsWith('inline-') || display === 'ruby' || display === 'ruby-text';
+    return (
+        display === '' ||
+        display === 'inline' ||
+        display === 'contents' ||
+        display.startsWith('inline-') ||
+        display === 'ruby' ||
+        display === 'ruby-text'
+    );
 }
 
 function collapsesSpace(whiteSpace: string): boolean {
@@ -121,7 +142,9 @@ function collect(root: Node, skip: Element | null): { text: string; pieces: Piec
 
                 const { visibility } = styleOf(parent);
 
-                return visibility === 'hidden' || visibility === 'collapse' ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+                return visibility === 'hidden' || visibility === 'collapse'
+                    ? NodeFilter.FILTER_REJECT
+                    : NodeFilter.FILTER_ACCEPT;
             }
 
             const element = node as Element;
@@ -168,7 +191,11 @@ function collect(root: Node, skip: Element | null): { text: string; pieces: Piec
         // Another block than the last text's: a line break between them, which no query has.
         if (block !== undefined && block !== next) lineBreak();
 
-        const { folded, map, endsWithSpace } = foldText(text.data, collapsesSpace(styleOf(text.parentElement!).whiteSpace), space);
+        const { folded, map, endsWithSpace } = foldText(
+            text.data,
+            collapsesSpace(styleOf(text.parentElement!).whiteSpace),
+            space
+        );
 
         block = next;
 
@@ -185,11 +212,20 @@ function collect(root: Node, skip: Element | null): { text: string; pieces: Piec
 }
 
 /** The node and offset that a position in the folded text stands for. `pieces` ascend, and so do the positions asked for. */
-function pointAt(pieces: Piece[], from: number, position: number, atEnd: boolean): { index: number; node: Text; offset: number } {
+function pointAt(
+    pieces: Piece[],
+    from: number,
+    position: number,
+    atEnd: boolean
+): { index: number; node: Text; offset: number } {
     let index = from;
 
     // A start at the end of one node is the start of the next; an end at the end of one node stays in it.
-    while (index < pieces.length - 1 && (atEnd ? position > pieces[index + 1].start : position >= pieces[index + 1].start)) index += 1;
+    while (
+        index < pieces.length - 1 &&
+        (atEnd ? position > pieces[index + 1].start : position >= pieces[index + 1].start)
+    )
+        index += 1;
 
     const { node, start, map } = pieces[index];
     const inside = position - start;
@@ -274,7 +310,10 @@ export function stepFrom(matches: readonly Range[], from: Range | null, forward:
 function scrolls(element: Element): boolean {
     const { overflowY } = getComputedStyle(element);
 
-    return (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') && element.scrollHeight > element.clientHeight;
+    return (
+        (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') &&
+        element.scrollHeight > element.clientHeight
+    );
 }
 
 /** Scrolls what holds the hit, the nearest scroller first, so it is in the middle of each. A hit that is in view stays where it is. */
@@ -292,7 +331,9 @@ export function revealMatch(range: Range): void {
 }
 
 function highlights(): HighlightRegistry | null {
-    return typeof CSS !== 'undefined' && 'highlights' in CSS && typeof Highlight !== 'undefined' ? CSS.highlights : null;
+    return typeof CSS !== 'undefined' && 'highlights' in CSS && typeof Highlight !== 'undefined'
+        ? CSS.highlights
+        : null;
 }
 
 /** Paints every hit, and the active one over them (`::highlight(find)` and `::highlight(find-active)` in the find bar's stylesheet). */

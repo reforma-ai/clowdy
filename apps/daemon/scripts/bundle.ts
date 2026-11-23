@@ -11,7 +11,11 @@ import path from 'node:path';
 export async function bundleDaemon(outdir: string, version: string): Promise<void> {
     const src = path.resolve(import.meta.dir, '../src');
     const result = await Bun.build({
-        entrypoints: [path.join(src, 'main.ts'), path.join(src, 'engine/acp/mcp-stdio.ts'), path.join(src, 'cli/clowdy.ts')],
+        entrypoints: [
+            path.join(src, 'main.ts'),
+            path.join(src, 'engine/acp/mcp-stdio.ts'),
+            path.join(src, 'cli/clowdy.ts'),
+        ],
         outdir,
         // Flat: the bridge finds `mcp-stdio.js`, and the shim `clowdy.js`, next to `main.js`.
         naming: '[name].[ext]',
@@ -30,8 +34,8 @@ if (import.meta.main) {
         process.exit(1);
     }
 
-    const pkg = await Bun.file(path.resolve(import.meta.dir, '../package.json')).json() as { version: string };
+    const pkg = (await Bun.file(path.resolve(import.meta.dir, '../package.json')).json()) as { version: string };
 
     await bundleDaemon(path.resolve(outdir), version ?? pkg.version);
-    console.log(`Bundled the daemon into ${ path.resolve(outdir) }`);
+    console.log(`Bundled the daemon into ${path.resolve(outdir)}`);
 }

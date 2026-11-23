@@ -47,9 +47,17 @@ const CAPTURE_LIMIT = 64 * 1024;
  * program that leaves a process behind holding its pipes open never ends as far as `close` is concerned, and neither
  * may the daemon wait on it for ever. `undefined` when the program cannot be started.
  */
-function capture(command: string, args: string[], { env, timeoutMs, stderr = false }: { env: Env; timeoutMs: number; stderr?: boolean }): Promise<string | undefined> {
-    return new Promise((resolve) => {
-        const child = spawn(command, args, { stdio: ['ignore', 'pipe', stderr ? 'pipe' : 'ignore'], env, windowsHide: true });
+function capture(
+    command: string,
+    args: string[],
+    { env, timeoutMs, stderr = false }: { env: Env; timeoutMs: number; stderr?: boolean }
+): Promise<string | undefined> {
+    return new Promise(resolve => {
+        const child = spawn(command, args, {
+            stdio: ['ignore', 'pipe', stderr ? 'pipe' : 'ignore'],
+            env,
+            windowsHide: true,
+        });
         let out = '';
         const timer = setTimeout(() => {
             child.kill('SIGKILL');
@@ -76,9 +84,12 @@ function capture(command: string, args: string[], { env, timeoutMs, stderr = fal
 
 /** The `PATH` of the user's login shell. An app started from the dock has a bare one, and agents live in what the shell adds. */
 export async function readLoginPath(env: Env, timeoutMs = SHELL_TIMEOUT_MS): Promise<string | undefined> {
-    const out = await capture(env.SHELL || '/bin/zsh', ['-ilc', `printf '${ MARKER }%s${ MARKER }' "$PATH"`], { env: { ...env, TERM: 'dumb' }, timeoutMs });
+    const out = await capture(env.SHELL || '/bin/zsh', ['-ilc', `printf '${MARKER}%s${MARKER}' "$PATH"`], {
+        env: { ...env, TERM: 'dumb' },
+        timeoutMs,
+    });
 
-    return out === undefined ? undefined : new RegExp(`${ MARKER }(.*?)${ MARKER }`, 's').exec(out)?.[1] || undefined;
+    return out === undefined ? undefined : new RegExp(`${MARKER}(.*?)${MARKER}`, 's').exec(out)?.[1] || undefined;
 }
 
 /**
@@ -105,7 +116,9 @@ export class Discovery {
     dirs(): Promise<string[]> {
         this.dirsPromise ??= (async () => {
             const login = this.platform === 'win32' ? undefined : await this.readLogin().catch(() => undefined);
-            const all = [login, this.env.PATH, this.extraDirs.join(delimiter)].flatMap(path => path?.split(delimiter) ?? []);
+            const all = [login, this.env.PATH, this.extraDirs.join(delimiter)].flatMap(
+                path => path?.split(delimiter) ?? []
+            );
 
             return [...new Set(all.filter(Boolean))];
         })();
@@ -141,7 +154,11 @@ export class Discovery {
     /** What `<program> --version` prints as a version, or `undefined` when it prints nothing usable in time. */
     async version(program: string): Promise<string | undefined> {
         // The program is the user's, possibly one they pointed us at by hand: it gets what an agent gets, not the daemon's secrets.
-        const out = await capture(program, ['--version'], { env: buildAgentEnv({ daemonEnv: this.env, path: await this.path() }), timeoutMs: VERSION_TIMEOUT_MS, stderr: true });
+        const out = await capture(program, ['--version'], {
+            env: buildAgentEnv({ daemonEnv: this.env, path: await this.path() }),
+            timeoutMs: VERSION_TIMEOUT_MS,
+            stderr: true,
+        });
 
         return out === undefined ? undefined : parseVersion(out);
     }
@@ -149,7 +166,10 @@ export class Discovery {
 
 /** `2.1.325 (Claude Code)` is `2.1.325`; `2026.09.01-abcdef` is itself; a line of prose is cut short. */
 export function parseVersion(output: string): string | undefined {
-    const line = output.split('\n').map(text => text.trim()).find(Boolean);
+    const line = output
+        .split('\n')
+        .map(text => text.trim())
+        .find(Boolean);
 
     if (!line) {
         return undefined;

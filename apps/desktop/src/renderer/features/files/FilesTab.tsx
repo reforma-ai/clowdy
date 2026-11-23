@@ -5,12 +5,12 @@ import { useCommands, useHotkeyScope } from '../../hotkeys';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { useAddToChat } from '../chats/useAddToChat';
 import { chosenPrograms, useFolderGit, useOpenApps } from '../openWith';
-import { currentPlace, isPlaceReady, placeKey, type Place } from '../sidePanel/currentPlace';
+import { currentPlace, isPlaceReady, type Place, placeKey } from '../sidePanel/currentPlace';
 import { PlaceWaiting } from '../sidePanel/PlaceWaiting';
 import { openInTerminal } from '../terminal/openInTerminal';
 import { docsScopeOf } from './docsScope';
-import { FILES_SCOPE, filesCommands } from './filesCommands';
 import styles from './FilesTab.module.css';
+import { FILES_SCOPE, filesCommands } from './filesCommands';
 import { openInMenuItems } from './openInMenuItems';
 import { treeLayout } from './treeLayout';
 import { useFilesStore } from './useFilesStore';
@@ -34,18 +34,24 @@ function PlaceFiles({ place, variant }: { place: Place; variant: 'files' | 'docs
 
     return (
         <FileManagerView
-            className={ styles.view }
-            key={ `${ project.project.id }/${ placeKey(place) }/${ variant }` }
-            manager={ manager }
-            scope={ variant === 'docs' ? docsScopeOf(manager) : undefined }
-            filterPlaceholder={ variant === 'docs' ? 'Filter documents' : undefined }
-            emptyText={ variant === 'docs' ? 'No documents found' : 'No files found' }
-            editorExtensions={ addToChat }
-            menuItems={ openInMenuItems({ projectId: project.id, place, programs: chosenPrograms(apps), git, inTerminal: relative => void openInTerminal(root, project.id, place, relative) }) }
-            sidebarOpen={ treeLayout.open }
-            sidebarWidth={ treeLayout.width }
-            onSidebarToggle={ () => treeLayout.toggle() }
-            onSidebarWidthChange={ width => treeLayout.setWidth(width) }
+            className={styles.view}
+            key={`${project.project.id}/${placeKey(place)}/${variant}`}
+            manager={manager}
+            scope={variant === 'docs' ? docsScopeOf(manager) : undefined}
+            filterPlaceholder={variant === 'docs' ? 'Filter documents' : undefined}
+            emptyText={variant === 'docs' ? 'No documents found' : 'No files found'}
+            editorExtensions={addToChat}
+            menuItems={openInMenuItems({
+                projectId: project.id,
+                place,
+                programs: chosenPrograms(apps),
+                git,
+                inTerminal: relative => void openInTerminal(root, project.id, place, relative),
+            })}
+            sidebarOpen={treeLayout.open}
+            sidebarWidth={treeLayout.width}
+            onSidebarToggle={() => treeLayout.toggle()}
+            onSidebarWidthChange={width => treeLayout.setWidth(width)}
         />
     );
 }
@@ -65,5 +71,5 @@ export default function FilesTab({ variant = 'files' }: { variant?: 'files' | 'd
     const ui = useProjectUi();
     const place = currentPlace(project, ui);
 
-    return isPlaceReady(place) ? <PlaceFiles place={ place } variant={ variant } /> : <PlaceWaiting />;
+    return isPlaceReady(place) ? <PlaceFiles place={place} variant={variant} /> : <PlaceWaiting />;
 }

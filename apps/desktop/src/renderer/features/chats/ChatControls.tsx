@@ -9,9 +9,9 @@ import type { ReactNode } from 'react';
  */
 export function ChatControls({ children, end }: { children?: ReactNode; end?: ReactNode }) {
     return (
-        <div className={ styles.controls }>
-            { children }
-            { end && <div className={ styles.end }>{ end }</div> }
+        <div className={styles.controls}>
+            {children}
+            {end && <div className={styles.end}>{end}</div>}
         </div>
     );
 }

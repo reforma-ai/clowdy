@@ -27,7 +27,12 @@ export async function sendEach(root: RootStore, inputs: readonly CommandInput[])
     const refused = results.flatMap(result => (result.ok ? [] : [result.error.message]));
 
     if (refused.length > 0) {
-        toast.error({ message: inputs.length === 1 ? refused[0] : `${ refused.length } of ${ inputs.length } changes failed: ${ refused[0] }` });
+        toast.error({
+            message:
+                inputs.length === 1
+                    ? refused[0]
+                    : `${refused.length} of ${inputs.length} changes failed: ${refused[0]}`,
+        });
     }
 
     return results;
@@ -44,8 +49,7 @@ export async function startTask(root: RootStore, taskId: TaskId): Promise<boolea
 
     try {
         return (await sendCommand(root, { type: 'task.start', taskId })).ok;
-    }
-    finally {
+    } finally {
         starting.delete(taskId);
     }
 }

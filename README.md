@@ -57,7 +57,9 @@ packages/icons        Icon packs
 packages/lib, constants
 ```
 
-Checks: `bun run lint`, `bun run typecheck`, `bun run test` (daemon tests run with `bun test`). The design system package has known failing tests and lint errors inherited from Reforma.
+Checks: `bun run lint`, `bun run typecheck`, `bun run test` (daemon tests run with `bun test`). The design system package has known failing tests inherited from Reforma.
+
+Lint, formatting and import order are Biome (`biome.json`); `bun run lint:fix` in a package applies them. The repository was reformatted in one commit, which `git blame` skips once you run `git config blame.ignoreRevsFile .git-blame-ignore-revs` (GitHub reads the file by itself).
 
 ## License
 

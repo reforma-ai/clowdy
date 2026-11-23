@@ -1,6 +1,6 @@
 import { makeAutoObservable } from 'mobx';
 
-import { browserStorage, readStored, writeStored, type KeyValueStorage } from '../../stores/storage';
+import { browserStorage, type KeyValueStorage, readStored, writeStored } from '../../stores/storage';
 import { CHANGES_SIDEBAR_DEFAULT_WIDTH, CHANGES_SIDEBAR_MIN_WIDTH } from './layout';
 
 const OPEN_KEY = 'clowdy:changes-sidebar-open';
@@ -21,7 +21,8 @@ export class ChangesSidebarLayout {
         const width = readStored(storage, WIDTH_KEY);
 
         this.open = open !== false;
-        this.width = typeof width === 'number' && Number.isFinite(width) ? clampWidth(width) : CHANGES_SIDEBAR_DEFAULT_WIDTH;
+        this.width =
+            typeof width === 'number' && Number.isFinite(width) ? clampWidth(width) : CHANGES_SIDEBAR_DEFAULT_WIDTH;
         makeAutoObservable<ChangesSidebarLayout, 'storage'>(this, { storage: false });
     }
 

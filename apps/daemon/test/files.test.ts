@@ -19,7 +19,14 @@ function put(root: string, files: Record<string, string>) {
 }
 
 describe('searchPaths', () => {
-    const paths = ['docs/notebook/x.md', 'src/booking/index.ts', 'lib/rebook.ts', 'README.md', 'src/app/Book.tsx', 'src/booking/BookingForm.tsx'];
+    const paths = [
+        'docs/notebook/x.md',
+        'src/booking/index.ts',
+        'lib/rebook.ts',
+        'README.md',
+        'src/app/Book.tsx',
+        'src/booking/BookingForm.tsx',
+    ];
 
     test('puts a file name that starts with the word first, then one that contains it, then a folder, then the rest', () => {
         expect(searchPaths(paths, 'book', 10)).toEqual([
@@ -46,13 +53,14 @@ describe('FilesService', () => {
     const project = (...paths: string[]): Project => ({
         id: 'prj_files',
         name: 'Files',
-        folders: paths.map((path, index) => ({ id: `fld_${ index }`, path })),
+        folders: paths.map((path, index) => ({ id: `fld_${index}`, path })),
         taskPrefix: 'FIL',
         settings: {},
         createdAt: 1,
         position: 1,
     });
-    const found = async (of: Project, query: string, limit: number) => (await service.search(of, query, limit)).map(match => match.path);
+    const found = async (of: Project, query: string, limit: number) =>
+        (await service.search(of, query, limit)).map(match => match.path);
 
     test('in a repository offers tracked and new files, not ignored or deleted ones, and none of .clowdy', async () => {
         const root = tempDir('repo');
@@ -88,20 +96,29 @@ describe('FilesService', () => {
         expect((await found(project(root), '', 50)).sort()).toEqual(['a.ts', 'inner']);
     });
 
-    test.skipIf(process.platform === 'win32')('keeps names with accents and spaces and leaves out one a message cannot carry', async () => {
-        const root = tempDir('names');
+    test.skipIf(process.platform === 'win32')(
+        'keeps names with accents and spaces and leaves out one a message cannot carry',
+        async () => {
+            const root = tempDir('names');
 
-        git(root, 'init', '-q', '-b', 'main');
-        put(root, { 'ünï cödé.txt': '1', 'plain.txt': '2', 'two\nlines.txt': '3' });
+            git(root, 'init', '-q', '-b', 'main');
+            put(root, { 'ünï cödé.txt': '1', 'plain.txt': '2', 'two\nlines.txt': '3' });
 
-        expect((await found(project(root), '', 50)).sort()).toEqual(['plain.txt', 'ünï cödé.txt']);
-    });
+            expect((await found(project(root), '', 50)).sort()).toEqual(['plain.txt', 'ünï cödé.txt']);
+        }
+    );
 
     test('outside a repository walks the folder and skips node_modules, .git, .clowdy and links', async () => {
         const root = tempDir('plain');
         const outside = tempDir('outside');
 
-        put(root, { 'a.txt': '1', 'deep/er/b.txt': '2', 'node_modules/x/index.js': '3', '.git/HEAD': '4', '.clowdy/docs/plan.md': '5' });
+        put(root, {
+            'a.txt': '1',
+            'deep/er/b.txt': '2',
+            'node_modules/x/index.js': '3',
+            '.git/HEAD': '4',
+            '.clowdy/docs/plan.md': '5',
+        });
         put(outside, { 'secret.txt': 'no' });
 
         if (process.platform !== 'win32') {
@@ -124,7 +141,7 @@ describe('FilesService', () => {
         const [webName, apiName] = [web, api].map(path => path.split(/[\\/]/).at(-1) as string);
 
         expect((await service.search(shop, 'app', 10)).map(match => match.folderId).sort()).toEqual(['fld_0', 'fld_1']);
-        expect(await service.search(shop, `${ apiName } app`, 10)).toEqual([{ folderId: 'fld_1', path: 'src/app.ts' }]);
+        expect(await service.search(shop, `${apiName} app`, 10)).toEqual([{ folderId: 'fld_1', path: 'src/app.ts' }]);
         expect(await found(shop, webName, 10)).toEqual(['src/app.ts']);
     });
 
@@ -154,14 +171,19 @@ describe('GET /v1/projects/:id/files', () => {
 
         const folderId = h.store.read(() => getProject(h.store.db, id))?.folders[0].id;
 
-        expect(await (await h.fetch(`/v1/projects/${ id }/files?query=book`)).json()).toEqual([{ folderId, path: 'src/booking/BookingForm.tsx' }, { folderId, path: 'lib/rebook.ts' }]);
-        expect(await (await h.fetch(`/v1/projects/${ id }/files?query=book&limit=1`)).json()).toEqual([{ folderId, path: 'src/booking/BookingForm.tsx' }]);
+        expect(await (await h.fetch(`/v1/projects/${id}/files?query=book`)).json()).toEqual([
+            { folderId, path: 'src/booking/BookingForm.tsx' },
+            { folderId, path: 'lib/rebook.ts' },
+        ]);
+        expect(await (await h.fetch(`/v1/projects/${id}/files?query=book&limit=1`)).json()).toEqual([
+            { folderId, path: 'src/booking/BookingForm.tsx' },
+        ]);
     });
 
     test('refuses a limit that is not a number and an unknown project', async () => {
         const { id } = h.openRepo();
 
-        expect((await h.fetch(`/v1/projects/${ id }/files?limit=many`)).status).toBe(400);
+        expect((await h.fetch(`/v1/projects/${id}/files?limit=many`)).status).toBe(400);
         expect((await h.fetch('/v1/projects/prj_nope/files')).status).toBe(404);
     });
 });

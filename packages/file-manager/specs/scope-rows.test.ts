@@ -20,7 +20,10 @@ describe('the filter of a scope with several roots', () => {
         return tree;
     }
 
-    const scope = (...roots: ExplorerScopeRoot[]): ExplorerScope => ({ roots, include: (path, kind) => kind === 'directory' || isMarkdown(path) });
+    const scope = (...roots: ExplorerScopeRoot[]): ExplorerScope => ({
+        roots,
+        include: (path, kind) => kind === 'directory' || isMarkdown(path),
+    });
 
     it('finds a file in any root by every word of its path below that root, and leaves out what no root holds or the scope does not include', async () => {
         const tree = await treeOf({
@@ -33,7 +36,9 @@ describe('the filter of a scope with several roots', () => {
 
         expect(scopeFilter(tree, scope(BRIEFBACK, SPECS), 'plan')?.paths).toEqual(new Set(['.briefback/acp/plan.md']));
         expect(scopeFilter(tree, scope(BRIEFBACK, SPECS), 'a tasks')?.paths).toEqual(new Set(['specs/001-a/tasks.md']));
-        expect(scopeFilter(tree, scope(BRIEFBACK, SPECS), 'md')?.paths).toEqual(new Set(['.briefback/acp/plan.md', 'specs/001-a/spec.md', 'specs/001-a/tasks.md']));
+        expect(scopeFilter(tree, scope(BRIEFBACK, SPECS), 'md')?.paths).toEqual(
+            new Set(['.briefback/acp/plan.md', 'specs/001-a/spec.md', 'specs/001-a/tasks.md'])
+        );
         expect(scopeFilter(tree, scope(BRIEFBACK), 'tasks')?.paths).toEqual(new Set());
     });
 
@@ -47,9 +52,21 @@ describe('the filter of a scope with several roots', () => {
 });
 
 describe('the roots of a scope in the rows', () => {
-    const row = (id: string, heading?: string): ExplorerItem => ({ id, name: id, kind: heading === undefined ? 'file' : 'directory', children: null, ...(heading === undefined ? {} : { heading }) });
+    const row = (id: string, heading?: string): ExplorerItem => ({
+        id,
+        name: id,
+        kind: heading === undefined ? 'file' : 'directory',
+        children: null,
+        ...(heading === undefined ? {} : { heading }),
+    });
     // The top level of a drawn scope: a label, its rows, the next label, its rows.
-    const data = [row('/root:briefback', '.briefback'), row('.briefback/a.md'), row('.briefback/b.md'), row('/root:specs', 'specs'), row('specs/c.md')];
+    const data = [
+        row('/root:briefback', '.briefback'),
+        row('.briefback/a.md'),
+        row('.briefback/b.md'),
+        row('/root:specs', 'specs'),
+        row('specs/c.md'),
+    ];
 
     it('puts a drop in the root whose label is nearest above the place, the first root above them all', () => {
         expect(rootAtIndex(data, 0, 'x')).toBe('.briefback');
@@ -69,7 +86,9 @@ describe('the roots of a scope in the rows', () => {
         const filter = { query: 'c', paths: new Set(['specs/c.md']) };
 
         expect(matchedRoots(filter, [BRIEFBACK, SPECS])).toEqual(new Set(['specs']));
-        expect(matchedRoots({ query: 'x', paths: new Set(['.briefback/a.md', 'specs/c.md']) }, [BRIEFBACK, SPECS])).toEqual(new Set(['.briefback', 'specs']));
+        expect(
+            matchedRoots({ query: 'x', paths: new Set(['.briefback/a.md', 'specs/c.md']) }, [BRIEFBACK, SPECS])
+        ).toEqual(new Set(['.briefback', 'specs']));
         expect(matchedRoots({ query: 'x', paths: new Set() }, [BRIEFBACK, SPECS])).toEqual(new Set());
         expect(matchedRoots(null, [BRIEFBACK, SPECS])).toEqual(new Set());
     });

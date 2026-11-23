@@ -1,18 +1,29 @@
 import { Gauges, isRecord, Message, Thought, ToolLedger, usageEvent } from './mapper-core';
 
-import type { PromptResponse, SessionUpdate, ToolCall, ToolCallContent, ToolCallUpdate } from '@agentclientprotocol/sdk/unstable';
+import type {
+    PromptResponse,
+    SessionUpdate,
+    ToolCall,
+    ToolCallContent,
+    ToolCallUpdate,
+} from '@agentclientprotocol/sdk/unstable';
 import type { EngineEvent } from '../types';
 import type { Json } from './mapper-core';
 
 /** The text of the content a tool call showed: the text blocks, and a diff as the file it changed. */
 function shownOf(content: ToolCallContent[] | null | undefined): string | undefined {
-    return (content ?? []).map((item) => {
-        if (item.type === 'content') {
-            return item.content.type === 'text' ? item.content.text : '';
-        }
+    return (
+        (content ?? [])
+            .map(item => {
+                if (item.type === 'content') {
+                    return item.content.type === 'text' ? item.content.text : '';
+                }
 
-        return item.type === 'diff' ? `Changed ${ item.path }` : '';
-    }).filter(Boolean).join('\n') || undefined;
+                return item.type === 'diff' ? `Changed ${item.path}` : '';
+            })
+            .filter(Boolean)
+            .join('\n') || undefined
+    );
 }
 
 /** A sub-agent the agent reported inside this prompt, known by the id of the call that started it. */
@@ -49,7 +60,9 @@ function identityOf(input: unknown): { name: string; description?: string } {
 
     return {
         name: field('name') ?? field('subagent_type') ?? 'Sub-agent',
-        description: field('description') ?? (brief && brief.length > MAX_BRIEF_CHARS ? `${ brief.slice(0, MAX_BRIEF_CHARS) }…` : brief),
+        description:
+            field('description') ??
+            (brief && brief.length > MAX_BRIEF_CHARS ? `${brief.slice(0, MAX_BRIEF_CHARS)}…` : brief),
     };
 }
 
@@ -104,9 +117,16 @@ export class UpdateMapper {
 
         switch (update.sessionUpdate) {
             case 'agent_message_chunk':
-                return update.content.type === 'text' ? [...this.thought.close(), ...this.message.append(update.content.text, update.messageId ?? undefined)] : [];
+                return update.content.type === 'text'
+                    ? [
+                          ...this.thought.close(),
+                          ...this.message.append(update.content.text, update.messageId ?? undefined),
+                      ]
+                    : [];
             case 'agent_thought_chunk':
-                return update.content.type === 'text' ? this.thought.append(update.content.text, update.messageId ?? undefined) : [];
+                return update.content.type === 'text'
+                    ? this.thought.append(update.content.text, update.messageId ?? undefined)
+                    : [];
             case 'tool_call':
                 return [...this.close(), ...this.tool(update)];
             case 'tool_call_update':
@@ -128,7 +148,7 @@ export class UpdateMapper {
     close(agentId?: string): EngineEvent[] {
         const thought = agentId === undefined ? this.thought : this.children.get(agentId)?.thought;
 
-        return [...thought?.close(agentId) ?? [], ...this.messageOf(agentId).close(agentId)];
+        return [...(thought?.close(agentId) ?? []), ...this.messageOf(agentId).close(agentId)];
     }
 
     /**
@@ -164,7 +184,14 @@ export class UpdateMapper {
 
             child = { name, message: new Message(), thought: new Thought(), ended: false };
             this.children.set(agentId, child);
-            events.push({ type: 'subagent', agentId, parentToolCallId: agentId, name, ...(description !== undefined && { description }), state: 'running' });
+            events.push({
+                type: 'subagent',
+                agentId,
+                parentToolCallId: agentId,
+                name,
+                ...(description !== undefined && { description }),
+                state: 'running',
+            });
         }
 
         if (child.ended) {
@@ -174,7 +201,10 @@ export class UpdateMapper {
         switch (update.sessionUpdate) {
             case 'agent_message_chunk':
                 if (update.content.type === 'text') {
-                    events.push(...child.thought.close(agentId), ...child.message.append(update.content.text, update.messageId ?? undefined, agentId));
+                    events.push(
+                        ...child.thought.close(agentId),
+                        ...child.message.append(update.content.text, update.messageId ?? undefined, agentId)
+                    );
                 }
 
                 break;
@@ -203,7 +233,10 @@ export class UpdateMapper {
      * the stamp is dropped too instead of landing in the session's stream.
      */
     private drop(agentId: string, update: SessionUpdate): EngineEvent[] {
-        if ((update.sessionUpdate === 'tool_call' || update.sessionUpdate === 'tool_call_update') && !this.tools.has(update.toolCallId)) {
+        if (
+            (update.sessionUpdate === 'tool_call' || update.sessionUpdate === 'tool_call_update') &&
+            !this.tools.has(update.toolCallId)
+        ) {
             this.tools.set(update.toolCallId, { name: '', input: undefined, state: 'running', agentId });
         }
 
@@ -234,7 +267,14 @@ export class UpdateMapper {
         const events = this.close(id);
 
         child.ended = true;
-        events.push({ type: 'subagent', agentId: id, parentToolCallId: id, name: child.name, state: call.state, ...(summary !== undefined && { summary }) });
+        events.push({
+            type: 'subagent',
+            agentId: id,
+            parentToolCallId: id,
+            name: child.name,
+            state: call.state,
+            ...(summary !== undefined && { summary }),
+        });
 
         return events;
     }

@@ -6,10 +6,7 @@
  * - Same year: "Mon, Jul 21"
  * - Other year: "Jul 21, 2025"
  */
-export function formatChatDayLabel(
-    date: Date | string | number,
-    now: Date = new Date()
-): string | null {
+export function formatChatDayLabel(date: Date | string | number, now: Date = new Date()): string | null {
     const resolved = toDate(date);
 
     if (!resolved) {
@@ -65,15 +62,15 @@ export function formatRelativeDate(date: Date | string): string {
     }
 
     if (minutes < 60) {
-        return `${ minutes }m ago`;
+        return `${minutes}m ago`;
     }
 
     if (hours < 24) {
-        return `${ hours }h ago`;
+        return `${hours}h ago`;
     }
 
     if (days < 7) {
-        return `${ days }d ago`;
+        return `${days}d ago`;
     }
 
     return new Date(date).toLocaleDateString('en-US', {
@@ -131,10 +128,13 @@ function pad2(value: number): string {
 
 function getDateParts(date: Date, locale?: Intl.LocalesArgument): DateParts {
     const hours24 = date.getHours();
-    const dayPeriod = new Intl.DateTimeFormat(locale, {
-        hour: 'numeric',
-        hour12: true,
-    }).formatToParts(date).find(part => part.type === 'dayPeriod')?.value ?? '';
+    const dayPeriod =
+        new Intl.DateTimeFormat(locale, {
+            hour: 'numeric',
+            hour12: true,
+        })
+            .formatToParts(date)
+            .find(part => part.type === 'dayPeriod')?.value ?? '';
 
     return {
         year: date.getFullYear(),
@@ -224,7 +224,7 @@ export function formatDate(
 /**
  * Converts time string (e.g., "7d", "5h", "30m") to milliseconds
  */
-export function convertToMilliseconds(timeStr: `${ number }${ 'd' | 'h' | 'm' | 's' | 'ms' }`): number {
+export function convertToMilliseconds(timeStr: `${number}${'d' | 'h' | 'm' | 's' | 'ms'}`): number {
     const match = timeStr.match(/^(\d+)([dhms]*)$/);
 
     if (!match) {

@@ -3,9 +3,23 @@ import { dirname, isAbsolute, relative, resolve } from 'node:path';
 
 import { getChat, listChatDescendants } from '../db/chats';
 import { getProject } from '../db/projects';
-import { chatsOfWorkspace, deleteWorkspace, getWorkspace, listWorkspacesOfProject, updateWorkspace } from '../db/workspaces';
+import {
+    chatsOfWorkspace,
+    deleteWorkspace,
+    getWorkspace,
+    listWorkspacesOfProject,
+    updateWorkspace,
+} from '../db/workspaces';
 import { conflict, invalid } from '../errors';
-import { commitOf, countChanges, hasCheckedOutSubmodules, isMerged, isOnDisk, parseWorktrees, workingTreeRoot } from '../git/state';
+import {
+    commitOf,
+    countChanges,
+    hasCheckedOutSubmodules,
+    isMerged,
+    isOnDisk,
+    parseWorktrees,
+    workingTreeRoot,
+} from '../git/state';
 import { requireChat, stoppedSubtree } from './chats';
 import { gitRead } from './git';
 import { exclusive, mustGit, openWorkspace, pathKey, placeOf, samePlace, WorkspaceError } from './workspaces';
@@ -50,7 +64,11 @@ interface Refused {
 
 type Verdict = Removable | Refused;
 
-const refused = (reason: string, record?: WorkspaceRecord): Refused => ({ removable: false, reason, ...(record && { record }) });
+const refused = (reason: string, record?: WorkspaceRecord): Refused => ({
+    removable: false,
+    reason,
+    ...(record && { record }),
+});
 
 /** The worktree a removal is asked for, and who may work in it. */
 interface Target {
@@ -79,7 +97,9 @@ interface Choices {
 function busyChat(store: Store, target: Pick<Target, 'record' | 'allowed'>): string | undefined {
     const other = target.record && chatsOfWorkspace(store.db, target.record.id).find(id => !target.allowed.has(id));
 
-    return other === undefined ? undefined : `The chat "${ getChat(store.db, other)?.title ?? other }" works in this worktree${ target.allowed.size > 0 ? ' too' : '' }`;
+    return other === undefined
+        ? undefined
+        : `The chat "${getChat(store.db, other)?.title ?? other}" works in this worktree${target.allowed.size > 0 ? ' too' : ''}`;
 }
 
 /**
@@ -92,7 +112,7 @@ async function unsaved(path: string): Promise<string | undefined> {
     const changes = await countChanges(path);
 
     if (changes === undefined) {
-        return 'Couldn\'t tell what is changed in the worktree';
+        return "Couldn't tell what is changed in the worktree";
     }
 
     if (changes > 0) {
@@ -102,7 +122,7 @@ async function unsaved(path: string): Promise<string | undefined> {
     const submodules = await hasCheckedOutSubmodules(path);
 
     if (submodules === undefined) {
-        return 'Couldn\'t tell whether the worktree has submodules';
+        return "Couldn't tell whether the worktree has submodules";
     }
 
     return submodules ? 'The worktree has submodules checked out' : undefined;
@@ -128,7 +148,7 @@ async function checkWorkspaceRemoval(store: Store, target: Target, choices: Choi
         return no(busy);
     }
 
-    if (!await isOnDisk(folder)) {
+    if (!(await isOnDisk(folder))) {
         return no('The folder of this worktree is gone');
     }
 
@@ -141,7 +161,7 @@ async function checkWorkspaceRemoval(store: Store, target: Target, choices: Choi
     const listed = await gitRead(folder, ['worktree', 'list', '--porcelain']);
 
     if (!listed.ok) {
-        return no('Couldn\'t read the list of worktrees from git');
+        return no("Couldn't read the list of worktrees from git");
     }
 
     const all = parseWorktrees(listed.stdout);
@@ -153,7 +173,7 @@ async function checkWorkspaceRemoval(store: Store, target: Target, choices: Choi
     }
 
     if (samePlace(entry.path, folder)) {
-        return no('That is the folder\'s own checkout');
+        return no("That is the folder's own checkout");
     }
 
     if (target.siblings.some(sibling => samePlace(entry.path, sibling))) {
@@ -162,7 +182,7 @@ async function checkWorkspaceRemoval(store: Store, target: Target, choices: Choi
 
     // The first entry git prints is the repository's primary working tree, which the folder is when it is not a linked worktree.
     if (entry === all[0]) {
-        return no('That is the repository\'s main working tree');
+        return no("That is the repository's main working tree");
     }
 
     if (entry.locked !== undefined) {
@@ -173,7 +193,10 @@ async function checkWorkspaceRemoval(store: Store, target: Target, choices: Choi
 
     // Another worktree inside this one (Claude Code makes them under `.claude/worktrees`) is deleted with it when `.gitignore` hides it from the status, with its uncommitted work and
     // past its chats and its lock: the checks here are of this worktree alone, so the inner one has to go first.
-    const inside = [...entries.filter(candidate => candidate !== entry).map(candidate => candidate.path), ...target.siblings];
+    const inside = [
+        ...entries.filter(candidate => candidate !== entry).map(candidate => candidate.path),
+        ...target.siblings,
+    ];
 
     if (!missing && inside.some(inner => isBelow(placeOf(entry.path), placeOf(inner)))) {
         return no('Another worktree or a folder of the project is inside this one');
@@ -182,7 +205,7 @@ async function checkWorkspaceRemoval(store: Store, target: Target, choices: Choi
     const name = choices.branch?.(entry);
 
     if (name !== undefined && entries.some(candidate => candidate !== entry && candidate.branch === name)) {
-        return no(`The branch ${ name } is checked out in another worktree`);
+        return no(`The branch ${name} is checked out in another worktree`);
     }
 
     const changed = missing ? undefined : await unsaved(path);
@@ -191,10 +214,10 @@ async function checkWorkspaceRemoval(store: Store, target: Target, choices: Choi
         return no(changed);
     }
 
-    const commit = name === undefined ? null : await commitOf(folder, `refs/heads/${ name }`);
+    const commit = name === undefined ? null : await commitOf(folder, `refs/heads/${name}`);
 
     if (commit === undefined) {
-        return no('Couldn\'t read the branch from git');
+        return no("Couldn't read the branch from git");
     }
 
     return {
@@ -237,8 +260,13 @@ async function checkRemoval(store: Store, chat: Chat): Promise<Verdict> {
     }
 
     const below = new Set([chat.id, ...listChatDescendants(store.db, chat.id).map(entry => entry.chat.id)]);
-    const siblings = project?.folders.filter(candidate => candidate.path !== folder).map(candidate => candidate.path) ?? [];
-    const verdict = await checkWorkspaceRemoval(store, { folder, siblings, path: record.path, record, allowed: below }, { allowMissing: false, discard: false, branch: () => record.branch });
+    const siblings =
+        project?.folders.filter(candidate => candidate.path !== folder).map(candidate => candidate.path) ?? [];
+    const verdict = await checkWorkspaceRemoval(
+        store,
+        { folder, siblings, path: record.path, record, allowed: below },
+        { allowMissing: false, discard: false, branch: () => record.branch }
+    );
 
     if (!verdict.removable) {
         return verdict;
@@ -248,20 +276,22 @@ async function checkRemoval(store: Store, chat: Chat): Promise<Verdict> {
         return refused('The worktree has no base branch to compare its work with', record);
     }
 
-    const base = (await commitOf(folder, `refs/heads/${ record.base }`)) ?? (await commitOf(folder, `refs/remotes/${ record.base }`));
+    const base =
+        (await commitOf(folder, `refs/heads/${record.base}`)) ??
+        (await commitOf(folder, `refs/remotes/${record.base}`));
 
     if (!base) {
-        return refused(`The base ${ record.base } is not a branch of the repository`, record);
+        return refused(`The base ${record.base} is not a branch of the repository`, record);
     }
 
     // The commit the tree is on counts as well as the branch it was made with: an agent may have moved the tree to another branch or to a detached HEAD, whose commits
     // would be left with nothing to find them by.
-    if (!await isMerged(record.path, 'HEAD', base)) {
-        return refused(`The worktree has commits that are not in ${ record.base }`, record);
+    if (!(await isMerged(record.path, 'HEAD', base))) {
+        return refused(`The worktree has commits that are not in ${record.base}`, record);
     }
 
-    if (verdict.branch && !await isMerged(folder, verdict.branch.commit, base)) {
-        return refused(`The branch ${ verdict.branch.name } has commits that are not in ${ record.base }`, record);
+    if (verdict.branch && !(await isMerged(folder, verdict.branch.commit, base))) {
+        return refused(`The branch ${verdict.branch.name} has commits that are not in ${record.base}`, record);
     }
 
     return verdict;
@@ -272,7 +302,10 @@ export async function workspaceRemoval(store: Store, chatId: string): Promise<Ch
     const verdict = await checkRemoval(store, requireChat(store, chatId));
     const record = verdict.record;
 
-    return { removable: verdict.removable, ...(record && { path: record.path, ...(record.branch !== undefined && { branch: record.branch }) }) };
+    return {
+        removable: verdict.removable,
+        ...(record && { path: record.path, ...(record.branch !== undefined && { branch: record.branch }) }),
+    };
 }
 
 /** Whether `path` is below `root`, by their names. */
@@ -292,8 +325,7 @@ async function pruneEmptyParents(root: string, path: string): Promise<void> {
     for (let dir = dirname(path); isBelow(place, dir); dir = dirname(dir)) {
         try {
             await rmdir(dir);
-        }
-        catch {
+        } catch {
             return;
         }
     }
@@ -319,8 +351,7 @@ function markRemoving(store: Store, workspaceId: string, on: boolean): void {
 
     if (next > 0) {
         counts.set(workspaceId, next);
-    }
-    else {
+    } else {
         counts.delete(workspaceId);
     }
 }
@@ -334,9 +365,10 @@ function markRemoving(store: Store, workspaceId: string, on: boolean): void {
 async function failedRemoval(store: Store, verdict: Removable, reason: string): Promise<never> {
     const { record, folder, path } = verdict;
     const listed = await gitRead(folder, ['worktree', 'list', '--porcelain']);
-    const forgotten = listed.ok && !parseWorktrees(listed.stdout).some(entry => !entry.bare && samePlace(entry.path, path));
+    const forgotten =
+        listed.ok && !parseWorktrees(listed.stdout).some(entry => !entry.bare && samePlace(entry.path, path));
 
-    if (forgotten && await isOnDisk(path)) {
+    if (forgotten && (await isOnDisk(path))) {
         if (record) {
             store.tx(() => {
                 const chats = chatsOfWorkspace(store.db, record.id);
@@ -359,7 +391,9 @@ async function failedRemoval(store: Store, verdict: Removable, reason: string): 
             });
         }
 
-        throw conflict(`${ reason }. Git no longer lists ${ path }, so what is left of the folder has to be deleted by hand.`);
+        throw conflict(
+            `${reason}. Git no longer lists ${path}, so what is left of the folder has to be deleted by hand.`
+        );
     }
 
     throw conflict(reason);
@@ -371,14 +405,31 @@ async function failedRemoval(store: Store, verdict: Removable, reason: string): 
  * person agreed (`force`): otherwise git itself still says no to a tree that changed since the check. A worktree whose folder is gone has git forget that one record
  * (`git worktree remove <path>`; `git worktree prune` would forget every stale record of the repository, which are not ours to touch).
  */
-async function removeWorktreeAndBranch(store: Store, config: Pick<Config, 'workspacesDir'>, verdict: Removable, afterTree?: () => void): Promise<void> {
+async function removeWorktreeAndBranch(
+    store: Store,
+    config: Pick<Config, 'workspacesDir'>,
+    verdict: Removable,
+    afterTree?: () => void
+): Promise<void> {
     const step = { log: () => undefined };
 
     try {
         // `core.longpaths` as the checkout has it: a deep `node_modules` made by the setup is still removable on Windows.
-        await mustGit(verdict.folder, ['-c', 'core.longpaths=true', 'worktree', 'remove', ...verdict.force ? ['--force'] : [], verdict.listedPath], step, REMOVE_TIMEOUT_MS, 'remove the worktree');
-    }
-    catch (error) {
+        await mustGit(
+            verdict.folder,
+            [
+                '-c',
+                'core.longpaths=true',
+                'worktree',
+                'remove',
+                ...(verdict.force ? ['--force'] : []),
+                verdict.listedPath,
+            ],
+            step,
+            REMOVE_TIMEOUT_MS,
+            'remove the worktree'
+        );
+    } catch (error) {
         if (error instanceof WorkspaceError) {
             await failedRemoval(store, verdict, error.message);
         }
@@ -392,10 +443,15 @@ async function removeWorktreeAndBranch(store: Store, config: Pick<Config, 'works
     // The tree is gone and the branch is still named by the repository: a chat that stays after this has the branch it can make the worktree from again.
     if (verdict.branch) {
         try {
-            await mustGit(verdict.folder, ['branch', '-D', '--', verdict.branch.name], step, BRANCH_TIMEOUT_MS, 'delete the branch');
-        }
-        catch (error) {
-            throw error instanceof WorkspaceError ? conflict(`The worktree was removed. ${ error.message }`) : error;
+            await mustGit(
+                verdict.folder,
+                ['branch', '-D', '--', verdict.branch.name],
+                step,
+                BRANCH_TIMEOUT_MS,
+                'delete the branch'
+            );
+        } catch (error) {
+            throw error instanceof WorkspaceError ? conflict(`The worktree was removed. ${error.message}`) : error;
         }
     }
 }
@@ -412,7 +468,11 @@ async function removeWorktreeAndBranch(store: Store, config: Pick<Config, 'works
  * tree gone when it gets its turn and makes the worktree again, as it does for any Clowdy-made worktree that is gone (its work was merged, so nothing is lost); the delete
  * itself is then refused, as the chat is busy.
  */
-export async function removeChatWorkspace(store: Store, config: Pick<Config, 'workspacesDir'>, chatId: string): Promise<void> {
+export async function removeChatWorkspace(
+    store: Store,
+    config: Pick<Config, 'workspacesDir'>,
+    chatId: string
+): Promise<void> {
     const chat = requireChat(store, chatId);
 
     stoppedSubtree(store, chat);
@@ -436,8 +496,7 @@ export async function removeChatWorkspace(store: Store, config: Pick<Config, 'wo
             stoppedSubtree(store, requireChat(store, chatId));
             await removeWorktreeAndBranch(store, config, verdict);
         });
-    }
-    finally {
+    } finally {
         markRemoving(store, record.id, false);
     }
 }
@@ -475,11 +534,16 @@ export interface RemovedWorktree {
  * gets one (`openWorkspace`, the row the new-chat page would make) for the length of the removal, and it is deleted with the worktree, with the row of one that had it, unless a
  * chat points at it by then.
  */
-export async function removeWorktree(store: Store, config: Pick<Config, 'workspacesDir'>, project: Project, request: WorktreeRemoval): Promise<RemovedWorktree> {
+export async function removeWorktree(
+    store: Store,
+    config: Pick<Config, 'workspacesDir'>,
+    project: Project,
+    request: WorktreeRemoval
+): Promise<RemovedWorktree> {
     const folder = project.folders.find(candidate => candidate.id === request.folderId);
 
     if (!folder) {
-        throw invalid(`Folder ${ request.folderId } does not belong to project ${ project.id }`);
+        throw invalid(`Folder ${request.folderId} does not belong to project ${project.id}`);
     }
 
     if (!isAbsolute(request.path)) {
@@ -487,9 +551,22 @@ export async function removeWorktree(store: Store, config: Pick<Config, 'workspa
     }
 
     const siblings = project.folders.filter(candidate => candidate.id !== folder.id).map(candidate => candidate.path);
-    const recordOf = () => listWorkspacesOfProject(store.db, project.id).find(candidate => candidate.folderId === folder.id && samePlace(candidate.path, request.path));
-    const choices: Choices = { allowMissing: true, discard: request.discard === true, ...(request.deleteBranch === true && { branch: (listed: ListedWorktree) => listed.branch }) };
-    const target = (): Target => ({ folder: folder.path, siblings, path: request.path, record: recordOf(), allowed: new Set() });
+    const recordOf = () =>
+        listWorkspacesOfProject(store.db, project.id).find(
+            candidate => candidate.folderId === folder.id && samePlace(candidate.path, request.path)
+        );
+    const choices: Choices = {
+        allowMissing: true,
+        discard: request.discard === true,
+        ...(request.deleteBranch === true && { branch: (listed: ListedWorktree) => listed.branch }),
+    };
+    const target = (): Target => ({
+        folder: folder.path,
+        siblings,
+        path: request.path,
+        record: recordOf(),
+        allowed: new Set(),
+    });
     let marked: string | undefined;
     const mark = (workspaceId: string) => {
         if (marked === undefined) {
@@ -505,11 +582,11 @@ export async function removeWorktree(store: Store, config: Pick<Config, 'workspa
     }
 
     try {
-        if (!await isOnDisk(folder.path)) {
-            throw invalid(`The folder ${ folder.path } is missing`);
+        if (!(await isOnDisk(folder.path))) {
+            throw invalid(`The folder ${folder.path} is missing`);
         }
 
-        if (!await workingTreeRoot(folder.path)) {
+        if (!(await workingTreeRoot(folder.path))) {
             throw invalid('A worktree needs the root of a git repository, and this folder is not one');
         }
 
@@ -528,7 +605,13 @@ export async function removeWorktree(store: Store, config: Pick<Config, 'workspa
                 throw conflict(busy);
             }
 
-            const record = current.record ?? (verdict.missing ? undefined : store.tx(() => getWorkspace(store.db, openWorkspace(store, project, folder.id, request.path).id)));
+            const record =
+                current.record ??
+                (verdict.missing
+                    ? undefined
+                    : store.tx(() =>
+                          getWorkspace(store.db, openWorkspace(store, project, folder.id, request.path).id)
+                      ));
 
             if (record) {
                 mark(record.id);
@@ -548,8 +631,7 @@ export async function removeWorktree(store: Store, config: Pick<Config, 'workspa
             // Git prints `C:/work/app` on Windows; the app's paths are written as the machine writes them.
             return { path: resolve(verdict.listedPath), branchDeleted: verdict.branch !== undefined };
         });
-    }
-    finally {
+    } finally {
         if (marked !== undefined) {
             markRemoving(store, marked, false);
         }

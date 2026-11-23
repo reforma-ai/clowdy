@@ -7,6 +7,7 @@ export {
     TableHeader,
     TableRow,
 } from './Table';
+
 export type {
     TableAlign,
     TableBodyProps,

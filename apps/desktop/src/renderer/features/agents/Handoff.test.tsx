@@ -18,7 +18,7 @@ import type { KeyValueStorage } from '../../stores/storage';
 // `Modal` cannot load under the desktop's Vitest (decorators), and no confirmation is opened here.
 vi.mock('@clowdy/components/modals', () => ({ openConfirmModal: vi.fn() }));
 // Streamdown highlights code with Shiki, whose WebAssembly cannot load under happy-dom and fails after the test that drew a fence; the messages' words are what is checked here.
-vi.mock('../../stream/Markdown', () => ({ Markdown: ({ text }: { text: string }) => <div>{ text }</div> }));
+vi.mock('../../stream/Markdown', () => ({ Markdown: ({ text }: { text: string }) => <div>{text}</div> }));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -32,7 +32,7 @@ vi.mock('../../stream/Markdown', () => ({ Markdown: ({ text }: { text: string })
 const DRAFT_KEY = newChatDraftKey(FIXTURE_PROJECT_ID);
 const OTHER_DRAFT_KEY = newChatDraftKey(FIXTURE_EMPTY_PROJECT_ID);
 const FILE_NAME = 'simplify-booking-conversation.md';
-const SENTENCE = `Continue the work from the chat "Simplify booking". The conversation so far is attached as ${ FILE_NAME }.`;
+const SENTENCE = `Continue the work from the chat "Simplify booking". The conversation so far is attached as ${FILE_NAME}.`;
 
 const memoryStorage = (): KeyValueStorage => {
     const data: Record<string, string> = {};
@@ -49,14 +49,21 @@ let strict = false;
 
 const ui = () => store.ui.forProject(FIXTURE_PROJECT_ID);
 
-const draw = () => act(async () => {
-    const screen = <RootStoreProvider value={ store }><Screen /></RootStoreProvider>;
+const draw = () =>
+    act(async () => {
+        const screen = (
+            <RootStoreProvider value={store}>
+                <Screen />
+            </RootStoreProvider>
+        );
 
-    reactRoot.render(strict ? <StrictMode>{ screen }</StrictMode> : screen);
-});
+        reactRoot.render(strict ? <StrictMode>{screen}</StrictMode> : screen);
+    });
 
-const button = (label: string) => [...container.querySelectorAll<HTMLButtonElement>('button')].find(candidate => candidate.textContent === label);
-const field = () => container.querySelector<HTMLElement>('[contenteditable="true"]') as (HTMLElement & { editor: Editor }) | null;
+const button = (label: string) =>
+    [...container.querySelectorAll<HTMLButtonElement>('button')].find(candidate => candidate.textContent === label);
+const field = () =>
+    container.querySelector<HTMLElement>('[contenteditable="true"]') as (HTMLElement & { editor: Editor }) | null;
 
 /** Opens the chat that ran on Claude Code, with Claude Code switched off, and presses the hand-off button. */
 async function handOff() {
@@ -138,7 +145,7 @@ describe('handing a read-only chat off', () => {
 
         await handOff();
 
-        expect(field()!.editor.getText()).toBe(`Also check the footer\n\n${ SENTENCE }`);
+        expect(field()!.editor.getText()).toBe(`Also check the footer\n\n${SENTENCE}`);
         expect(filesOf(DRAFT_KEY).map(file => file.name)).toEqual([FILE_NAME]);
     });
 
@@ -164,7 +171,7 @@ describe('handing a read-only chat off', () => {
         expect(upload).toHaveBeenCalledTimes(1);
     });
 
-    it('attaches the file once when React runs the page\'s effects twice', async () => {
+    it("attaches the file once when React runs the page's effects twice", async () => {
         strict = true;
         await draw();
         await draw();
@@ -178,7 +185,7 @@ describe('handing a read-only chat off', () => {
         expect(ui().pendingFiles).toEqual([]);
     });
 
-    it('keeps the file with the project of the chat: another project\'s new-chat page does not get it', async () => {
+    it("keeps the file with the project of the chat: another project's new-chat page does not get it", async () => {
         const upload = vi.spyOn(transport, 'uploadAttachment');
 
         await handOff();

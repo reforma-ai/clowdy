@@ -9,8 +9,8 @@ import { PathText } from '../shared/PathText';
 import { ProjectIcon } from '../shared/ProjectIcon';
 import { SCREEN_TITLE } from '../shared/screenTitle';
 import { useRootStore } from '../stores';
-import { openAddProject } from './projectDialogs';
 import styles from './ProjectSelect.module.css';
+import { openAddProject } from './projectDialogs';
 
 import type { Project } from '@clowdy/protocol';
 
@@ -22,9 +22,9 @@ function Where({ project }: { project: Pick<Project, 'folders'> }) {
     const more = project.folders.length - 1;
 
     return (
-        <span className={ styles.where }>
-            <PathText path={ mainFolder(project).path } />
-            { more > 0 && <span className={ styles.more }>{ `+${ more }` }</span> }
+        <span className={styles.where}>
+            <PathText path={mainFolder(project).path} />
+            {more > 0 && <span className={styles.more}>{`+${more}`}</span>}
         </span>
     );
 }
@@ -43,38 +43,50 @@ export function ProjectSelect() {
 
     return (
         <MenuTrigger>
-            <Button variant="filling" size="sm" className={ styles.trigger } aria-label="Project">
-                { selected ? <ProjectIcon project={ selected } /> : <Folder /> }
-                <Text variant={ SCREEN_TITLE } truncate>{ selected?.name ?? 'No project' }</Text>
+            <Button variant="filling" size="sm" className={styles.trigger} aria-label="Project">
+                {selected ? <ProjectIcon project={selected} /> : <Folder />}
+                <Text variant={SCREEN_TITLE} truncate>
+                    {selected?.name ?? 'No project'}
+                </Text>
                 <ChevronDown />
             </Button>
-            <Popover placement="bottom start" width={ 280 }>
+            <Popover placement="bottom start" width={280}>
                 <Menu
                     aria-label="Projects"
                     size="md"
-                    onAction={ (key) => {
+                    onAction={key => {
                         if (key === ADD) openAddProject(root);
                         else if (key === MANAGE) root.ui.openProjectSettings();
                         else root.selectProject(String(key));
-                    } }
+                    }}
                 >
-                    { personal && <MenuItem id={ personal.id } text={ personal.name } description="Chats without a project" icon={ <Home /> } stacked data-align="center" endAffix={ check(personal.id) } /> }
-                    { personal && own.length > 0 && <MenuSeparator /> }
-                    { own.map(project => (
+                    {personal && (
                         <MenuItem
-                            key={ project.id }
-                            id={ project.id }
-                            text={ project.name }
-                            description={ <Where project={ project } /> }
-                            icon={ <ProjectIcon project={ project } /> }
+                            id={personal.id}
+                            text={personal.name}
+                            description="Chats without a project"
+                            icon={<Home />}
                             stacked
                             data-align="center"
-                            endAffix={ check(project.id) }
+                            endAffix={check(personal.id)}
                         />
-                    )) }
-                    { root.projects.length > 0 && <MenuSeparator /> }
-                    <MenuItem id={ ADD } text="Add project…" icon={ <AddFolder /> } />
-                    <MenuItem id={ MANAGE } text="Manage projects…" icon={ <Sliders /> } />
+                    )}
+                    {personal && own.length > 0 && <MenuSeparator />}
+                    {own.map(project => (
+                        <MenuItem
+                            key={project.id}
+                            id={project.id}
+                            text={project.name}
+                            description={<Where project={project} />}
+                            icon={<ProjectIcon project={project} />}
+                            stacked
+                            data-align="center"
+                            endAffix={check(project.id)}
+                        />
+                    ))}
+                    {root.projects.length > 0 && <MenuSeparator />}
+                    <MenuItem id={ADD} text="Add project…" icon={<AddFolder />} />
+                    <MenuItem id={MANAGE} text="Manage projects…" icon={<Sliders />} />
                 </Menu>
             </Popover>
         </MenuTrigger>

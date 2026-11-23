@@ -14,56 +14,73 @@ export function useComposerFiles(key: string, projectId: ProjectId | undefined) 
     const { transport } = useRootStore();
     const files = useDraftFiles(key);
 
-    const upload = useCallback(async (fileKey: string, source: File) => {
-        if (!projectId) return;
+    const upload = useCallback(
+        async (fileKey: string, source: File) => {
+            if (!projectId) return;
 
-        try {
-            const attachment = await transport.uploadAttachment(projectId, source);
+            try {
+                const attachment = await transport.uploadAttachment(projectId, source);
 
-            // Taken off while it was going up: nobody will send it, so the daemon need not keep it.
-            if (!patchFile(key, fileKey, { status: 'ready', error: undefined, attachment })) void transport.deleteAttachment(projectId, attachment.id).catch(() => undefined);
-        }
-        catch (error) {
-            const reason = error instanceof Error ? error.message : 'The file could not be uploaded';
+                // Taken off while it was going up: nobody will send it, so the daemon need not keep it.
+                if (!patchFile(key, fileKey, { status: 'ready', error: undefined, attachment }))
+                    void transport.deleteAttachment(projectId, attachment.id).catch(() => undefined);
+            } catch (error) {
+                const reason = error instanceof Error ? error.message : 'The file could not be uploaded';
 
-            if (patchFile(key, fileKey, { status: 'error', error: reason })) toast.error({ title: `${ source.name } was not uploaded`, message: reason });
-        }
-    }, [transport, projectId, key]);
+                if (patchFile(key, fileKey, { status: 'error', error: reason }))
+                    toast.error({ title: `${source.name} was not uploaded`, message: reason });
+            }
+        },
+        [transport, projectId, key]
+    );
 
-    const add = useCallback((incoming: readonly File[]) => {
-        const { accepted, refusals } = admitFiles(filesOf(key), incoming);
+    const add = useCallback(
+        (incoming: readonly File[]) => {
+            const { accepted, refusals } = admitFiles(filesOf(key), incoming);
 
-        for (const message of refusals) toast.warning({ title: 'File not attached', message });
+            for (const message of refusals) toast.warning({ title: 'File not attached', message });
 
-        const added = accepted.map(draftFileOf);
+            const added = accepted.map(draftFileOf);
 
-        if (added.length === 0) return;
+            if (added.length === 0) return;
 
-        setFiles(key, [...filesOf(key), ...added]);
+            setFiles(key, [...filesOf(key), ...added]);
 
-        for (const file of added) void upload(file.key, file.source!);
-    }, [key, upload]);
+            for (const file of added) void upload(file.key, file.source!);
+        },
+        [key, upload]
+    );
 
-    const remove = useCallback((fileKey: string) => {
-        const gone = filesOf(key).find(file => file.key === fileKey);
+    const remove = useCallback(
+        (fileKey: string) => {
+            const gone = filesOf(key).find(file => file.key === fileKey);
 
-        if (!gone) return;
+            if (!gone) return;
 
-        setFiles(key, filesOf(key).filter(file => file.key !== fileKey));
-        releaseFiles([gone]);
+            setFiles(
+                key,
+                filesOf(key).filter(file => file.key !== fileKey)
+            );
+            releaseFiles([gone]);
 
-        // A file of a message that was sent stays with that message, which is still there until an edit goes through.
-        if (gone.attachment && !gone.sent && projectId) void transport.deleteAttachment(projectId, gone.attachment.id).catch(() => undefined);
-    }, [key, projectId, transport]);
+            // A file of a message that was sent stays with that message, which is still there until an edit goes through.
+            if (gone.attachment && !gone.sent && projectId)
+                void transport.deleteAttachment(projectId, gone.attachment.id).catch(() => undefined);
+        },
+        [key, projectId, transport]
+    );
 
-    const retry = useCallback((fileKey: string) => {
-        const file = filesOf(key).find(candidate => candidate.key === fileKey);
+    const retry = useCallback(
+        (fileKey: string) => {
+            const file = filesOf(key).find(candidate => candidate.key === fileKey);
 
-        if (!file?.source) return;
+            if (!file?.source) return;
 
-        patchFile(key, fileKey, { status: 'uploading', error: undefined });
-        void upload(fileKey, file.source);
-    }, [key, upload]);
+            patchFile(key, fileKey, { status: 'uploading', error: undefined });
+            void upload(fileKey, file.source);
+        },
+        [key, upload]
+    );
 
     return {
         files,

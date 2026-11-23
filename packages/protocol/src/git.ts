@@ -101,19 +101,22 @@
  * - `commit:<sha>`: that commit alone, against its first parent (a root commit against nothing).
  * With no base branch to compare with, `all` counts as `uncommitted` and `branch` is empty (`GitChanges.baseState` says so).
  */
-export type GitScope = 'all' | 'branch' | 'uncommitted' | `commit:${ string }`;
+export type GitScope = 'all' | 'branch' | 'uncommitted' | `commit:${string}`;
 
 /** What a commit scope's text starts with. */
 export const GIT_COMMIT_SCOPE_PREFIX = 'commit:';
 
 /** The scope of one commit, by the hash `GitCommit.sha` gives. */
-export const commitScope = (sha: string): GitScope => `${ GIT_COMMIT_SCOPE_PREFIX }${ sha }`;
+export const commitScope = (sha: string): GitScope => `${GIT_COMMIT_SCOPE_PREFIX}${sha}`;
 
 /** A scope as a route's query writes it: one of the three words, or `commit:` and 7 to 64 hexadecimal digits (a hash, short or whole). Nothing for anything else. */
 export function parseGitScope(text: string): GitScope | undefined {
     if (text === 'all' || text === 'branch' || text === 'uncommitted') return text;
 
-    return text.startsWith(GIT_COMMIT_SCOPE_PREFIX) && /^[0-9a-f]{7,64}$/i.test(text.slice(GIT_COMMIT_SCOPE_PREFIX.length)) ? commitScope(text.slice(GIT_COMMIT_SCOPE_PREFIX.length).toLowerCase()) : undefined;
+    return text.startsWith(GIT_COMMIT_SCOPE_PREFIX) &&
+        /^[0-9a-f]{7,64}$/i.test(text.slice(GIT_COMMIT_SCOPE_PREFIX.length))
+        ? commitScope(text.slice(GIT_COMMIT_SCOPE_PREFIX.length).toLowerCase())
+        : undefined;
 }
 
 /** The most entries `GitStatus.entries` lists: a working tree with more is cut, and `truncated` says so. */
@@ -188,20 +191,20 @@ export interface GitCommit {
  */
 export type GitBase =
     | {
-        state: 'ready';
-        /** The ref compared with, short: `origin/main`, or `main`. */
-        name: string;
-        /** The commit it is at. */
-        commit: string;
-        /** The last commit that HEAD and the base have in common. */
-        mergeBase: string;
-        /** Commits HEAD has that the base does not: the branch's own work. */
-        ahead: number;
-        /** Commits the base has that HEAD does not. */
-        behind: number;
-        /** The branch's own work, newest first, at most `MAX_GIT_COMMITS`: shorter than `ahead` when it was cut. */
-        commits: GitCommit[];
-    }
+          state: 'ready';
+          /** The ref compared with, short: `origin/main`, or `main`. */
+          name: string;
+          /** The commit it is at. */
+          commit: string;
+          /** The last commit that HEAD and the base have in common. */
+          mergeBase: string;
+          /** Commits HEAD has that the base does not: the branch's own work. */
+          ahead: number;
+          /** Commits the base has that HEAD does not. */
+          behind: number;
+          /** The branch's own work, newest first, at most `MAX_GIT_COMMITS`: shorter than `ahead` when it was cut. */
+          commits: GitCommit[];
+      }
     /** HEAD has no commit yet, so there is nothing to compare. */
     | { state: 'unborn' }
     /** The repository has no ref to compare with (no other branch, no remote); `name` is the branch that was asked for and is not there. */
@@ -213,27 +216,29 @@ export type GitBase =
 export type GitBaseState = GitBase['state'];
 
 /** What `GET /v1/projects/:id/git/status` says of a place: its branch, its uncommitted files and how far it is from its base, or that it is no repository. */
-export type GitStatus = { isRepository: false } | {
-    isRepository: true;
-    head: GitHead;
-    /** The branch's upstream; absent on a branch that tracks nothing, on a detached HEAD and on an unborn branch. */
-    upstream?: GitUpstream;
-    /** The repository has a remote called `origin`, the only remote the app pushes to. */
-    origin: boolean;
-    /**
-     * When the repository last fetched, in milliseconds: the newest `FETCH_HEAD` of the repository that has something in it, so a fetch made in any worktree of it, by the app
-     * or by the person in a terminal or another program, counts (the remote-tracking refs, and with them `GitUpstream`'s counts, are shared by every worktree), or the time of the
-     * daemon's own last fetch that went through, which it keeps in memory because a fetch that fails afterwards empties the files (git empties `FETCH_HEAD` before it connects). Absent
-     * when nothing has fetched yet, when the repository has no `origin`, and when the only fetch since is a failed one that the daemon did not make or did before it started. A fetch of
-     * another remote counts too, as the file's time.
-     */
-    lastFetchedAt?: number;
-    /** The uncommitted paths, sorted as git lists them, at most `MAX_GIT_STATUS_ENTRIES`. Empty for a clean tree. */
-    entries: GitStatusEntry[];
-    /** `entries` was cut: the tree has more uncommitted paths than are listed. */
-    truncated?: true;
-    base: GitBase;
-};
+export type GitStatus =
+    | { isRepository: false }
+    | {
+          isRepository: true;
+          head: GitHead;
+          /** The branch's upstream; absent on a branch that tracks nothing, on a detached HEAD and on an unborn branch. */
+          upstream?: GitUpstream;
+          /** The repository has a remote called `origin`, the only remote the app pushes to. */
+          origin: boolean;
+          /**
+           * When the repository last fetched, in milliseconds: the newest `FETCH_HEAD` of the repository that has something in it, so a fetch made in any worktree of it, by the app
+           * or by the person in a terminal or another program, counts (the remote-tracking refs, and with them `GitUpstream`'s counts, are shared by every worktree), or the time of the
+           * daemon's own last fetch that went through, which it keeps in memory because a fetch that fails afterwards empties the files (git empties `FETCH_HEAD` before it connects). Absent
+           * when nothing has fetched yet, when the repository has no `origin`, and when the only fetch since is a failed one that the daemon did not make or did before it started. A fetch of
+           * another remote counts too, as the file's time.
+           */
+          lastFetchedAt?: number;
+          /** The uncommitted paths, sorted as git lists them, at most `MAX_GIT_STATUS_ENTRIES`. Empty for a clean tree. */
+          entries: GitStatusEntry[];
+          /** `entries` was cut: the tree has more uncommitted paths than are listed. */
+          truncated?: true;
+          base: GitBase;
+      };
 
 /** One file that changed in a scope. */
 export interface GitChangedFile {
@@ -260,37 +265,39 @@ export interface GitChangedFile {
 }
 
 /** What `GET /v1/projects/:id/git/changes` says: the files that changed in a scope, or that the place is no repository. */
-export type GitChanges = { isRepository: false } | {
-    isRepository: true;
-    scope: GitScope;
-    /** The commit the changes are counted from: the merge base for `all` and `branch`, HEAD for `uncommitted`, the parent for one commit. Absent when it is counted from nothing (a root commit, an unborn branch, no base). */
-    from?: string;
-    /** For `all` and `branch`: how the base stood. Anything but `ready` means there was no merge base to count from. */
-    baseState?: GitBaseState;
-    /** Sorted by path, at most `MAX_GIT_CHANGED_FILES`. */
-    files: GitChangedFile[];
-    /** Files that changed, whether or not they are listed. At least the number listed. */
-    fileCount: number;
-    /** Lines added and removed in all of them. */
-    additions: number;
-    deletions: number;
-    /** False when some file's lines were not counted (a new file past the budget the daemon spends on those, or one too big to read), so the totals are a lower bound. */
-    statsComplete: boolean;
-    /** `files` was cut, or the new files were more than the daemon lists: there are more changed files than `fileCount` says. */
-    truncated?: true;
-};
+export type GitChanges =
+    | { isRepository: false }
+    | {
+          isRepository: true;
+          scope: GitScope;
+          /** The commit the changes are counted from: the merge base for `all` and `branch`, HEAD for `uncommitted`, the parent for one commit. Absent when it is counted from nothing (a root commit, an unborn branch, no base). */
+          from?: string;
+          /** For `all` and `branch`: how the base stood. Anything but `ready` means there was no merge base to count from. */
+          baseState?: GitBaseState;
+          /** Sorted by path, at most `MAX_GIT_CHANGED_FILES`. */
+          files: GitChangedFile[];
+          /** Files that changed, whether or not they are listed. At least the number listed. */
+          fileCount: number;
+          /** Lines added and removed in all of them. */
+          additions: number;
+          deletions: number;
+          /** False when some file's lines were not counted (a new file past the budget the daemon spends on those, or one too big to read), so the totals are a lower bound. */
+          statsComplete: boolean;
+          /** `files` was cut, or the new files were more than the daemon lists: there are more changed files than `fileCount` says. */
+          truncated?: true;
+      };
 
 /** What `GET /v1/projects/:id/git/file` says of one file: its text before and after, or why it sends none. */
 export type GitFileSides =
     | {
-        state: 'text';
-        /** The file before the change; null when it was not there (a new file). On a working-tree scope it has gone through git's checkout filters, so its line endings match the file on disk. */
-        original: string | null;
-        /** The file after the change; null when it is not there any more (a deleted file). For a working-tree scope, the file on disk. */
-        modified: string | null;
-        /** The file's `GitChangedFile.revision`. */
-        revision: string;
-    }
+          state: 'text';
+          /** The file before the change; null when it was not there (a new file). On a working-tree scope it has gone through git's checkout filters, so its line endings match the file on disk. */
+          original: string | null;
+          /** The file after the change; null when it is not there any more (a deleted file). For a working-tree scope, the file on disk. */
+          modified: string | null;
+          /** The file's `GitChangedFile.revision`. */
+          revision: string;
+      }
     /** Git takes it for a binary file, or it is a submodule or a link to nothing git can read: no text. */
     | { state: 'binary'; revision: string }
     /** A side is over `MAX_GIT_SIDE_BYTES`, or the file changes more than `MAX_GIT_DIFF_LINES` lines: no text. */
@@ -404,12 +411,14 @@ export interface GitPullRequest {
  * or with a merged or closed one that its HEAD has moved past, has none: `pullRequest` is absent. A detached HEAD and a branch with no commit have nothing to look up, so
  * `gh` is not run for them: `access` is `ready` (nothing known is in the way) and there is no `pullRequest`.
  */
-export type GitPullRequestInfo = { isRepository: false } | {
-    isRepository: true;
-    access: GitHubAccess;
-    repo?: GitHubRepo;
-    pullRequest?: GitPullRequest;
-};
+export type GitPullRequestInfo =
+    | { isRepository: false }
+    | {
+          isRepository: true;
+          access: GitHubAccess;
+          repo?: GitHubRepo;
+          pullRequest?: GitPullRequest;
+      };
 
 /** The three ways a branch is moved to and from `origin`. Publishing a branch is a `push` of one that is not on origin under its own name. */
 export type GitRemoteAction = 'fetch' | 'pull' | 'push';
@@ -490,19 +499,21 @@ export interface GitRemoteBranch {
 }
 
 /** What `GET /v1/projects/:id/git/branches` says: the branches a place can switch to, or that the folder is no repository. */
-export type GitBranches = { isRepository: false } | {
-    isRepository: true;
-    /** The branch the folder's default branch is, without `origin/`: the base a new worktree starts from (`FolderGit.defaultBranch`), as a branch name. Absent in a repository with no commit. */
-    defaultBranch?: string;
-    /** Newest commit first. */
-    local: GitLocalBranch[];
-    /** Newest commit first; the branches of `origin` that have no local branch of their name. */
-    remote: GitRemoteBranch[];
-    /** The branches the place's HEAD was on lately, newest first, at most `MAX_GIT_RECENT_BRANCHES`: local branches that still exist, the current one left out. */
-    recent: string[];
-    /** A list was cut at `MAX_GIT_BRANCH_ENTRIES`. */
-    truncated?: true;
-};
+export type GitBranches =
+    | { isRepository: false }
+    | {
+          isRepository: true;
+          /** The branch the folder's default branch is, without `origin/`: the base a new worktree starts from (`FolderGit.defaultBranch`), as a branch name. Absent in a repository with no commit. */
+          defaultBranch?: string;
+          /** Newest commit first. */
+          local: GitLocalBranch[];
+          /** Newest commit first; the branches of `origin` that have no local branch of their name. */
+          remote: GitRemoteBranch[];
+          /** The branches the place's HEAD was on lately, newest first, at most `MAX_GIT_RECENT_BRANCHES`: local branches that still exist, the current one left out. */
+          recent: string[];
+          /** A list was cut at `MAX_GIT_BRANCH_ENTRIES`. */
+          truncated?: true;
+      };
 
 /** Where a new branch starts: at the place's HEAD, or at the repository's default branch. */
 export type GitSwitchStart = 'current' | 'default';

@@ -2,7 +2,7 @@ import { Autocomplete, useAutocompleteEnterAction } from '@clowdy/components/Aut
 import { ListBox, ListBoxHeader, ListBoxItem, ListBoxSection } from '@clowdy/components/List';
 import { Popover } from '@clowdy/components/Popover';
 import { Check } from '@clowdy/icons/14';
-import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { type KeyboardEvent, type ReactNode, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Collection } from 'react-aria-components';
 
 import styles from './PickerPopover.module.css';
@@ -64,7 +64,9 @@ function groupsOf(options: readonly PickerOption[]): Array<{ id: string; title?:
 
     for (const option of options) {
         const id = option.group ?? '';
-        const group = groups.find(candidate => candidate.id === id) ?? (groups[groups.push({ id, title: option.group, items: [] }) - 1] as (typeof groups)[number]);
+        const group =
+            groups.find(candidate => candidate.id === id) ??
+            (groups[groups.push({ id, title: option.group, items: [] }) - 1] as (typeof groups)[number]);
 
         group.items.push(option);
     }
@@ -73,7 +75,12 @@ function groupsOf(options: readonly PickerOption[]): Array<{ id: string; title?:
 }
 
 /** Every word typed has to be in the label, in any order, so `car 12` finds `CAR-12 Fix login`. */
-const matches = (label: string, query: string) => query.toLowerCase().split(/\s+/).filter(Boolean).every(word => label.toLowerCase().includes(word));
+const matches = (label: string, query: string) =>
+    query
+        .toLowerCase()
+        .split(/\s+/)
+        .filter(Boolean)
+        .every(word => label.toLowerCase().includes(word));
 
 /**
  * The searchable list of a picker, with no popover of its own, for an owner that draws more around it (a title, a reason, a button). Typing filters, the arrows move, `Enter` picks the
@@ -81,10 +88,19 @@ const matches = (label: string, query: string) => query.toLowerCase().split(/\s+
  * drawn (inside a popover, a layer of the hotkey dispatcher). It closes nothing and picks as often as it is told to: `PickerPopover` closes after a pick, a caller that keeps its popover
  * open (a switch that may be refused) says what happened itself.
  */
-export function PickerList({ options, selectedIds = [], 'aria-label': ariaLabel, placeholder, onPick }: PickerListProps) {
+export function PickerList({
+    options,
+    selectedIds = [],
+    'aria-label': ariaLabel,
+    placeholder,
+    onPick,
+}: PickerListProps) {
     const [query, setQuery] = useState('');
     const list = useRef<HTMLDivElement>(null);
-    const disabled = useMemo(() => new Set(options.filter(option => option.isDisabled).map(option => option.id)), [options]);
+    const disabled = useMemo(
+        () => new Set(options.filter(option => option.isDisabled).map(option => option.id)),
+        [options]
+    );
 
     const pick = (id: string) => {
         if (!disabled.has(id)) onPick(id);
@@ -111,50 +127,52 @@ export function PickerList({ options, selectedIds = [], 'aria-label': ariaLabel,
 
     return (
         <Autocomplete
-            inputValue={ query }
-            onInputChange={ setQuery }
-            filter={ matches }
+            inputValue={query}
+            onInputChange={setQuery}
+            filter={matches}
             maxHeight="16rem"
-            placeholder={ placeholder }
-            aria-label={ ariaLabel }
-            onKeyDown={ onKeyDown }
+            placeholder={placeholder}
+            aria-label={ariaLabel}
+            onKeyDown={onKeyDown}
         >
             <ListBox
-                aria-label={ ariaLabel }
-                ref={ list }
+                aria-label={ariaLabel}
+                ref={list}
                 size="sm"
-                className={ styles.list }
-                autoFocus={ false }
-                items={ groups }
-                dependencies={ dependencies }
-                onAction={ key => pick(String(key)) }
-                renderEmptyState={ () => <div className={ styles.empty }>Nothing found</div> }
+                className={styles.list}
+                autoFocus={false}
+                items={groups}
+                dependencies={dependencies}
+                onAction={key => pick(String(key))}
+                renderEmptyState={() => <div className={styles.empty}>Nothing found</div>}
             >
-                { group => (
-                    <ListBoxSection id={ group.id } aria-label={ group.title ?? ariaLabel }>
-                        { group.title !== undefined && <ListBoxHeader>{ group.title }</ListBoxHeader> }
-                        <Collection items={ group.items } dependencies={ dependencies }>
-                            { option => (
+                {group => (
+                    <ListBoxSection id={group.id} aria-label={group.title ?? ariaLabel}>
+                        {group.title !== undefined && <ListBoxHeader>{group.title}</ListBoxHeader>}
+                        <Collection items={group.items} dependencies={dependencies}>
+                            {option => (
                                 <ListBoxItem
-                                    id={ option.id }
-                                    text={ option.label }
-                                    icon={ option.icon }
-                                    description={ option.description }
-                                    stacked={ option.stacked }
-                                    isDisabled={ option.isDisabled }
-                                    endAffix={ option.trailing || current.has(option.id)
-                                        ? (
+                                    id={option.id}
+                                    text={option.label}
+                                    icon={option.icon}
+                                    description={option.description}
+                                    stacked={option.stacked}
+                                    isDisabled={option.isDisabled}
+                                    endAffix={
+                                        option.trailing || current.has(option.id) ? (
                                             <>
-                                                { option.trailing }
-                                                { current.has(option.id) && <Check className={ styles.current } aria-label="Current" /> }
+                                                {option.trailing}
+                                                {current.has(option.id) && (
+                                                    <Check className={styles.current} aria-label="Current" />
+                                                )}
                                             </>
-                                        )
-                                        : undefined }
+                                        ) : undefined
+                                    }
                                 />
-                            ) }
+                            )}
                         </Collection>
                     </ListBoxSection>
-                ) }
+                )}
             </ListBox>
         </Autocomplete>
     );
@@ -167,7 +185,16 @@ export function PickerList({ options, selectedIds = [], 'aria-label': ariaLabel,
  * card that moved to another column, nothing has focus and the owner has to put it somewhere.
  * The popover is a modal layer for the hotkey dispatcher (`data-modal-clickout-layer`), so no command of the page behind it runs while it is open.
  */
-export function PickerPopover({ anchor, options, selectedIds = [], 'aria-label': ariaLabel, placeholder, placement, onPick, onClose }: PickerPopoverProps) {
+export function PickerPopover({
+    anchor,
+    options,
+    selectedIds = [],
+    'aria-label': ariaLabel,
+    placeholder,
+    placement,
+    onPick,
+    onClose,
+}: PickerPopoverProps) {
     const fallback = useRef<HTMLSpanElement>(null);
     const anchorRef = useMemo(() => (anchor ? { current: anchor } : fallback), [anchor]);
     // A pick can arrive twice, from the key and from the list's own action.
@@ -183,18 +210,24 @@ export function PickerPopover({ anchor, options, selectedIds = [], 'aria-label':
 
     return (
         <>
-            { !anchor && <span ref={ fallback } className={ styles.fallbackAnchor } aria-hidden /> }
+            {!anchor && <span ref={fallback} className={styles.fallbackAnchor} aria-hidden />}
             <Popover
-                triggerRef={ anchorRef }
+                triggerRef={anchorRef}
                 isOpen
-                onOpenChange={ (isOpen) => {
+                onOpenChange={isOpen => {
                     if (!isOpen) onClose();
-                } }
-                placement={ placement ?? (anchor ? 'bottom start' : 'bottom') }
-                className={ styles.popover }
+                }}
+                placement={placement ?? (anchor ? 'bottom start' : 'bottom')}
+                className={styles.popover}
                 data-picker-popover=""
             >
-                <PickerList options={ options } selectedIds={ selectedIds } aria-label={ ariaLabel } placeholder={ placeholder } onPick={ pick } />
+                <PickerList
+                    options={options}
+                    selectedIds={selectedIds}
+                    aria-label={ariaLabel}
+                    placeholder={placeholder}
+                    onPick={pick}
+                />
             </Popover>
         </>
     );

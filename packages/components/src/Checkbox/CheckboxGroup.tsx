@@ -25,8 +25,8 @@ export interface CheckboxGroupProps extends Omit<RACCheckboxGroupProps, 'childre
 
 function defaultRenderCheckbox(item: CheckboxGroupItem) {
     return (
-        <Checkbox key={ item.value } value={ item.value } isDisabled={ item.isDisabled }>
-            { item.label }
+        <Checkbox key={item.value} value={item.value} isDisabled={item.isDisabled}>
+            {item.label}
         </Checkbox>
     );
 }
@@ -44,11 +44,8 @@ export function CheckboxGroup({ className, items, children, ...props }: Checkbox
     })();
 
     return (
-        <RACCheckboxGroup
-            { ...props }
-            className={ cn(styles.root, className) }
-        >
-            { content }
+        <RACCheckboxGroup {...props} className={cn(styles.root, className)}>
+            {content}
         </RACCheckboxGroup>
     );
 }

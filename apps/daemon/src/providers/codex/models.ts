@@ -27,7 +27,9 @@ export function codexModel(row: CodexModel): AgentModel | undefined {
         return undefined;
     }
 
-    const efforts = (row.supportedReasoningEfforts ?? []).map(effort => text(effort.reasoningEffort)).filter((effort): effort is string => effort !== undefined);
+    const efforts = (row.supportedReasoningEfforts ?? [])
+        .map(effort => text(effort.reasoningEffort))
+        .filter((effort): effort is string => effort !== undefined);
 
     return {
         id,
@@ -42,30 +44,50 @@ export function codexModel(row: CodexModel): AgentModel | undefined {
 
 export async function codexModels(context: ProbeContext): Promise<AgentModels> {
     try {
-        const models = await withAppServer(context, async (rpc) => {
-            await rpc.call('initialize', { clientInfo: { name: 'clowdy', title: 'Clowdy', version: '0' }, capabilities: null });
-            rpc.notify('initialized');
+        const models = await withAppServer(
+            context,
+            async rpc => {
+                await rpc.call('initialize', {
+                    clientInfo: { name: 'clowdy', title: 'Clowdy', version: '0' },
+                    capabilities: null,
+                });
+                rpc.notify('initialized');
 
-            const listed: AgentModel[] = [];
-            let cursor: string | null = null;
+                const listed: AgentModel[] = [];
+                let cursor: string | null = null;
 
-            for (let page = 0; page < MAX_PAGES; page++) {
-                const answer = await rpc.call('model/list', { limit: 100, includeHidden: false, ...(cursor && { cursor }) }) as { data?: CodexModel[]; nextCursor?: string | null };
+                for (let page = 0; page < MAX_PAGES; page++) {
+                    const answer = (await rpc.call('model/list', {
+                        limit: 100,
+                        includeHidden: false,
+                        ...(cursor && { cursor }),
+                    })) as { data?: CodexModel[]; nextCursor?: string | null };
 
-                listed.push(...(answer.data ?? []).map(codexModel).filter((model): model is AgentModel => model !== undefined));
-                cursor = answer.nextCursor ?? null;
+                    listed.push(
+                        ...(answer.data ?? [])
+                            .map(codexModel)
+                            .filter((model): model is AgentModel => model !== undefined)
+                    );
+                    cursor = answer.nextCursor ?? null;
 
-                if (!cursor) {
-                    break;
+                    if (!cursor) {
+                        break;
+                    }
                 }
-            }
 
-            return listed;
-        }, CODEX_TIMEOUT_MS);
+                return listed;
+            },
+            CODEX_TIMEOUT_MS
+        );
 
-        return models.length > 0 ? { state: 'ok', models, fetchedAt: context.now() } : { state: 'error', models: [], detail: 'Codex listed no models' };
-    }
-    catch (error) {
-        return { state: 'error', models: [], detail: `Codex did not list its models: ${ error instanceof Error ? error.message : String(error) }` };
+        return models.length > 0
+            ? { state: 'ok', models, fetchedAt: context.now() }
+            : { state: 'error', models: [], detail: 'Codex listed no models' };
+    } catch (error) {
+        return {
+            state: 'error',
+            models: [],
+            detail: `Codex did not list its models: ${error instanceof Error ? error.message : String(error)}`,
+        };
     }
 }

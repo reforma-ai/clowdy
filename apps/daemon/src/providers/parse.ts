@@ -1,7 +1,8 @@
 /** What a vendor's program printed, read the way more than one provider needs. */
 
 /** A non-empty string, trimmed; anything else is `undefined`. */
-export const text = (value: unknown): string | undefined => typeof value === 'string' && value.trim() ? value.trim() : undefined;
+export const text = (value: unknown): string | undefined =>
+    typeof value === 'string' && value.trim() ? value.trim() : undefined;
 
 /** The plan as a badge: `max` is `Max`, `team` is `Team`. */
 export function planLabel(plan: string | null | undefined): string | undefined {
@@ -28,9 +29,10 @@ export function jsonObject(text: string): Record<string, unknown> | undefined {
     try {
         const value: unknown = JSON.parse(text.slice(start, end + 1));
 
-        return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
-    }
-    catch {
+        return value && typeof value === 'object' && !Array.isArray(value)
+            ? (value as Record<string, unknown>)
+            : undefined;
+    } catch {
         return undefined;
     }
 }

@@ -27,10 +27,16 @@ function program(name: string): string {
     return path;
 }
 
-const registry = () => new AgentRegistry({
-    discovery: new Discovery({ env: { PATH: bin }, home: join(root, 'home'), loginPath: async () => undefined, installDirs: [] }),
-    runtime: async () => process.execPath,
-});
+const registry = () =>
+    new AgentRegistry({
+        discovery: new Discovery({
+            env: { PATH: bin },
+            home: join(root, 'home'),
+            loginPath: async () => undefined,
+            installDirs: [],
+        }),
+        runtime: async () => process.execPath,
+    });
 
 beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'clowdy-layers-'));
@@ -65,12 +71,10 @@ describe('the protocol of an agent', () => {
 
             spec.protocol = 'v2';
             expect(await protocolOf()).toBe('v2');
-        }
-        finally {
+        } finally {
             if (named) {
                 spec.protocol = named;
-            }
-            else {
+            } else {
                 delete spec.protocol;
             }
         }
@@ -95,12 +99,10 @@ describe('the protocol of an agent', () => {
 
             spec.wakesOnBackgroundEnd = true;
             expect(await flagOf()).toBe(true);
-        }
-        finally {
+        } finally {
             if (named) {
                 spec.wakesOnBackgroundEnd = named;
-            }
-            else {
+            } else {
                 delete spec.wakesOnBackgroundEnd;
             }
         }
@@ -135,7 +137,7 @@ describe('the protocol of an agent', () => {
         expect(resolved.ok && resolved.agent.protocol).toBe('v1');
     });
 
-    test('an agent set to v2 is spoken to in v2: the handshake carries the client\'s info and no file access or terminal', async () => {
+    test("an agent set to v2 is spoken to in v2: the handshake carries the client's info and no file access or terminal", async () => {
         const { session } = (current = rig({ protocol: 'v2' })).start('capabilities\nsay hello world');
         const events = await collect(session);
 
@@ -169,7 +171,8 @@ describe('an agent that is asked for v2 and speaks v1', () => {
     afterEach(() => warn.mockRestore());
 
     /** The agent is the v1 fake, set to v2: it answers `initialize` with version 1, or (FAKE_ACP_REFUSE_V2) with an error. */
-    const v1Agent = (agentEnv: Record<string, string> = {}) => (current = rig({ protocol: 'v2', args: [FAKE_AGENT], agentEnv }));
+    const v1Agent = (agentEnv: Record<string, string> = {}) =>
+        (current = rig({ protocol: 'v2', args: [FAKE_AGENT], agentEnv }));
     const processes = (events: EngineEvent[]) => events.filter(event => event.type === 'process');
 
     test('is stopped and started again on v1, with the first attempt telling the runtime nothing but its process', async () => {
@@ -195,7 +198,9 @@ describe('an agent that is asked for v2 and speaks v1', () => {
         await session.close();
 
         expect(types(events)).toEqual(['process', 'process', 'session', 'text', 'text', 'text', 'done']);
-        expect(warn).toHaveBeenCalledWith(expect.stringContaining('does not speak ACP v2 (Unsupported protocol version 2)'));
+        expect(warn).toHaveBeenCalledWith(
+            expect.stringContaining('does not speak ACP v2 (Unsupported protocol version 2)')
+        );
     });
 
     test('is remembered for the life of the engine: the next session starts it on v1 at once', async () => {
@@ -222,24 +227,32 @@ describe('an agent that is asked for v2 and speaks v1', () => {
 
             await again.session.close();
             expect(processes(seen)).toHaveLength(2);
-        }
-        finally {
+        } finally {
             other.stop();
         }
     });
 
-    test('has none of the first attempt\'s doings repeated: one live bridge token for the session, one title taken', async () => {
+    test("has none of the first attempt's doings repeated: one live bridge token for the session, one title taken", async () => {
         const rigged = v1Agent({ FAKE_ACP_TITLES: '1' });
         const register = spyOn(rigged.bridge, 'register');
         const titles: string[] = [];
-        const { session } = rigged.start('title Dark mode toggle\ncall task_list\nsay done', { tools: [tool('task_list', async () => 'ok')], title: { onTitle: title => titles.push(title) > 0 } });
+        const { session } = rigged.start('title Dark mode toggle\ncall task_list\nsay done', {
+            tools: [tool('task_list', async () => 'ok')],
+            title: { onTitle: title => titles.push(title) > 0 },
+        });
         const events = await collect(session);
         // Each start of the process has a token of its own, since its environment carries the credential of the `clowdy` command.
-        const [first, second] = register.mock.results.map(result => result.value as ReturnType<typeof rigged.bridge.register>);
+        const [first, second] = register.mock.results.map(
+            result => result.value as ReturnType<typeof rigged.bridge.register>
+        );
         const status = async (access: typeof first) => {
             const env = Object.fromEntries((access.server?.env ?? []).map(({ name, value }) => [name, value]));
 
-            return (await fetch(`${ env.CLOWDY_BRIDGE_URL }/tools`, { headers: { authorization: `Bearer ${ env.CLOWDY_BRIDGE_TOKEN }` } })).status;
+            return (
+                await fetch(`${env.CLOWDY_BRIDGE_URL}/tools`, {
+                    headers: { authorization: `Bearer ${env.CLOWDY_BRIDGE_TOKEN}` },
+                })
+            ).status;
         };
 
         expect(register).toHaveBeenCalledTimes(2);
@@ -255,17 +268,29 @@ describe('an agent that is asked for v2 and speaks v1', () => {
     });
 
     test('is not mistaken for one that is slow to answer: silence is a failure, with no second attempt', async () => {
-        const { session } = (current = rig({ protocol: 'v2', command: '/bin/sh', args: ['-c', 'echo not an agent >&2; sleep 30'], initializeTimeoutMs: 400 })).start('say hi');
+        const { session } = (current = rig({
+            protocol: 'v2',
+            command: '/bin/sh',
+            args: ['-c', 'echo not an agent >&2; sleep 30'],
+            initializeTimeoutMs: 400,
+        })).start('say hi');
         const events = await collect(session);
 
         await session.close();
 
         expect(types(events)).toEqual(['process', 'error']);
-        expect(events.at(-1)).toMatchObject({ type: 'error', message: expect.stringMatching(/did not answer the ACP handshake.*not an agent/s) });
+        expect(events.at(-1)).toMatchObject({
+            type: 'error',
+            message: expect.stringMatching(/did not answer the ACP handshake.*not an agent/s),
+        });
     });
 
     test('is not mistaken for one that crashed: a program that exits is a failure, with no second attempt', async () => {
-        const { session } = (current = rig({ protocol: 'v2', command: process.execPath, args: ['-e', 'process.exit(2)'] })).start('say hi');
+        const { session } = (current = rig({
+            protocol: 'v2',
+            command: process.execPath,
+            args: ['-e', 'process.exit(2)'],
+        })).start('say hi');
         const events = await collect(session);
 
         await session.close();
@@ -275,8 +300,11 @@ describe('an agent that is asked for v2 and speaks v1', () => {
     });
 
     test('is not mistaken for one that wants a sign-in: asking for it at the handshake is a failure, with no second attempt', async () => {
-        const answer = 'process.stdin.on("data", (chunk) => { const request = JSON.parse(String(chunk).split("\\n")[0]); process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: request.id, error: { code: -32000, message: "Authentication required" } }) + "\\n"); });';
-        const { session } = (current = rig({ protocol: 'v2', command: process.execPath, args: ['-e', answer] })).start('say hi');
+        const answer =
+            'process.stdin.on("data", (chunk) => { const request = JSON.parse(String(chunk).split("\\n")[0]); process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: request.id, error: { code: -32000, message: "Authentication required" } }) + "\\n"); });';
+        const { session } = (current = rig({ protocol: 'v2', command: process.execPath, args: ['-e', answer] })).start(
+            'say hi'
+        );
         const events = await collect(session);
 
         await session.close();

@@ -127,20 +127,15 @@ export function Select<T extends object>(props: SelectProps<T>) {
     const renderListBox = (autoFocus: boolean, showEmptyState = false) => {
         const listBox = (
             <ListBox
-                aria-label={ ariaLabel }
-                size={ listBoxSize }
-                autoFocus={ autoFocus }
-                className={ cn(
-                    styles.listBox,
-                    isVirtualized && styles.virtualizedListBox
-                ) }
-                items={ items }
-                renderEmptyState={ showEmptyState
-                    ? () => <div className={ styles.empty }>Nothing found</div>
-                    : undefined }
-                style={ isVirtualized ? { maxHeight: SEARCH_LIST_MAX_HEIGHT } : undefined }
+                aria-label={ariaLabel}
+                size={listBoxSize}
+                autoFocus={autoFocus}
+                className={cn(styles.listBox, isVirtualized && styles.virtualizedListBox)}
+                items={items}
+                renderEmptyState={showEmptyState ? () => <div className={styles.empty}>Nothing found</div> : undefined}
+                style={isVirtualized ? { maxHeight: SEARCH_LIST_MAX_HEIGHT } : undefined}
             >
-                { children }
+                {children}
             </ListBox>
         );
 
@@ -149,78 +144,72 @@ export function Select<T extends object>(props: SelectProps<T>) {
         }
 
         return (
-            <Virtualizer
-                layout={ ListLayout }
-                layoutOptions={ VIRTUALIZED_LIST_LAYOUT_OPTIONS[listBoxSize] }
-            >
-                { listBox }
+            <Virtualizer layout={ListLayout} layoutOptions={VIRTUALIZED_LIST_LAYOUT_OPTIONS[listBoxSize]}>
+                {listBox}
             </Virtualizer>
         );
     };
 
     return (
         <RACSelect
-            { ...selectFieldProps }
-            aria-label={ ariaLabel }
-            className={ cn(styles.select, className) }
-            placeholder={ placeholder }
-            data-size={ size }
-            data-show-search={ showSearch || undefined }
-            onOpenChange={ (isOpen) => {
+            {...selectFieldProps}
+            aria-label={ariaLabel}
+            className={cn(styles.select, className)}
+            placeholder={placeholder}
+            data-size={size}
+            data-show-search={showSearch || undefined}
+            onOpenChange={isOpen => {
                 if (!isOpen) {
                     setSearchQuery('');
                 }
 
                 onOpenChange?.(isOpen);
-            } }
+            }}
         >
-            { label != null && (
-                <RACLabel className={ styles.label }>{ label }</RACLabel>
-            ) }
+            {label != null && <RACLabel className={styles.label}>{label}</RACLabel>}
             <Button
-                className={ cn(styles.trigger, triggerClassName) }
-                data-size={ size }
-                data-variant={ variant }
-                data-color={ color }
-                data-active={ isActive || undefined }
+                className={cn(styles.trigger, triggerClassName)}
+                data-size={size}
+                data-variant={variant}
+                data-color={color}
+                data-active={isActive || undefined}
             >
-                <Show when={ icon != null }>
-                    <span className={ styles.icon } data-color={ iconColor }>{ icon }</span>
+                <Show when={icon != null}>
+                    <span className={styles.icon} data-color={iconColor}>
+                        {icon}
+                    </span>
                 </Show>
                 <Show
-                    when={ icon != null || valueDisplay === 'text' }
-                    fallback={ <SelectValue className={ styles.value } /> }
+                    when={icon != null || valueDisplay === 'text'}
+                    fallback={<SelectValue className={styles.value} />}
                 >
-                    <SelectValue className={ styles.value }>
-                        { ({ selectedText, isPlaceholder }) => (isPlaceholder ? placeholder : selectedText) }
+                    <SelectValue className={styles.value}>
+                        {({ selectedText, isPlaceholder }) => (isPlaceholder ? placeholder : selectedText)}
                     </SelectValue>
                 </Show>
-                <ChevronDown className={ styles.chevron } aria-hidden />
+                <ChevronDown className={styles.chevron} aria-hidden />
             </Button>
 
             <Popover
-                className={ cn(styles.popover, showSearch && styles.popoverOverlay, popoverClassName) }
+                className={cn(styles.popover, showSearch && styles.popoverOverlay, popoverClassName)}
                 spacing="xs"
-                placement={ placement }
+                placement={placement}
                 // Width is trigger+8px; bottom (center) placement already overhangs ±4px — no crossOffset.
-                offset={ showSearch ? -(OVERLAY_OFFSET_PX[size] + OVERLAY_INSET_PX) : (popoverOffset ?? MENU_OFFSET_PX) }
-                shouldFlip={ shouldFlip ?? !showSearch }
-                maxHeight={ maxHeight }
+                offset={showSearch ? -(OVERLAY_OFFSET_PX[size] + OVERLAY_INSET_PX) : (popoverOffset ?? MENU_OFFSET_PX)}
+                shouldFlip={shouldFlip ?? !showSearch}
+                maxHeight={maxHeight}
             >
-                <Show
-                    when={ showSearch }
-                    fallback={ renderListBox(true) }
-                >
+                <Show when={showSearch} fallback={renderListBox(true)}>
                     <Autocomplete
-                        inputValue={ searchQuery }
-                        onInputChange={ setSearchQuery }
-                        filter={ contains }
-                        maxHeight={ SEARCH_LIST_MAX_HEIGHT }
-                        placeholder={ searchPlaceholder }
-                        inputClassName={ styles.overlaySearch }
-                        childrenOwnScroll={ isVirtualized }
+                        inputValue={searchQuery}
+                        onInputChange={setSearchQuery}
+                        filter={contains}
+                        maxHeight={SEARCH_LIST_MAX_HEIGHT}
+                        placeholder={searchPlaceholder}
+                        inputClassName={styles.overlaySearch}
+                        childrenOwnScroll={isVirtualized}
                     >
-                        { renderListBox(false, true) }
+                        {renderListBox(false, true)}
                     </Autocomplete>
                 </Show>
             </Popover>

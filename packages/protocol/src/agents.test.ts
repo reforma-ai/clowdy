@@ -23,7 +23,9 @@ describe('writesCommitMessages', () => {
 
     test('is a no when the switch is off, there is no such switch, nobody is signed in or the daemon could not tell', () => {
         expect(writesCommitMessages(codex({}, false))).toBe(false);
-        expect(writesCommitMessages(codex({ settings: [{ id: 'memory', label: 'Memory', value: true, default: false }] }))).toBe(false);
+        expect(
+            writesCommitMessages(codex({ settings: [{ id: 'memory', label: 'Memory', value: true, default: false }] }))
+        ).toBe(false);
         expect(writesCommitMessages(codex({ settings: undefined }))).toBe(false);
         expect(writesCommitMessages(codex({ signIn: { status: 'signed-out', checkedAt: 1 } }))).toBe(false);
         expect(writesCommitMessages(codex({ signIn: { status: 'unknown', checkedAt: 1 } }))).toBe(false);

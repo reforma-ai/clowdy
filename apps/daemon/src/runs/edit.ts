@@ -37,10 +37,12 @@ const editing = new WeakMap<object, Set<string>>();
  * Whether the chat's orchestrator is at rest as an edit needs it: its work is over. A run that waits for background work still has its session open, and one
  * that was stopped only to send a queued message is about to start that turn (`STOPPED_TO_SEND_REASON`), so neither rests.
  */
-const restsForEdit = (run: Run): boolean => isTerminalRunStatus(run.status) && run.statusReason !== STOPPED_TO_SEND_REASON;
+const restsForEdit = (run: Run): boolean =>
+    isTerminalRunStatus(run.status) && run.statusReason !== STOPPED_TO_SEND_REASON;
 
 /** The ids of the files the messages among `items` carry. */
-const filesOf = (items: readonly StreamItem[]): string[] => items.flatMap(item => item.body.kind === 'user' ? (item.body.attachments ?? []).map(file => file.id) : []);
+const filesOf = (items: readonly StreamItem[]): string[] =>
+    items.flatMap(item => (item.body.kind === 'user' ? (item.body.attachments ?? []).map(file => file.id) : []));
 
 /**
  * Everything that can be refused without asking the agent, in the order a person meets it: the chat has a conversation, the item is a message of its
@@ -78,7 +80,11 @@ function planEdit(services: Services, chatId: string, itemId: string, input: Edi
     }
 
     // The agent is asked before anything changes, so a request that the rewrite would refuse anyway must not cost a fork: the files are checked as the send will.
-    attachments.claim(chat.projectId, attachmentIds, new Set(attachments.sentIn(chat.id, filesOf(listItems(store.db, run.id, item.seq - 1))).map(file => file.id)));
+    attachments.claim(
+        chat.projectId,
+        attachmentIds,
+        new Set(attachments.sentIn(chat.id, filesOf(listItems(store.db, run.id, item.seq - 1))).map(file => file.id))
+    );
     requireEnabled(agents, run.engine);
 
     const before = itemBefore(store.db, run.id, item.seq);
@@ -113,7 +119,12 @@ function planEdit(services: Services, chatId: string, itemId: string, input: Edi
  * changed (it is not told). A chat that is still named for the first words of its first message, when that message is the one rewritten, is named for the
  * first words of the new one. A fork whose inherited history the cut reaches into ends that history where the cut begins (`forkedFrom.atSeq`).
  */
-export async function prepareEdit(services: Services, chatId: string, itemId: string, input: EditInput): Promise<() => { chatId: string; runId: string }> {
+export async function prepareEdit(
+    services: Services,
+    chatId: string,
+    itemId: string,
+    input: EditInput
+): Promise<() => { chatId: string; runId: string }> {
     const { store, runs, driver, attachments } = services;
     const plan = planEdit(services, chatId, itemId, input);
     const busy = editing.get(store) ?? new Set<string>();
@@ -131,12 +142,11 @@ export async function prepareEdit(services: Services, chatId: string, itemId: st
         if (plan.ref !== undefined) {
             sessionId = await driver.forkSession(plan.run.id, plan.ref);
         }
-    }
-    catch (error) {
+    } catch (error) {
         busy.delete(plan.chat.id);
 
         if (error instanceof EngineFailure) {
-            throw unavailable(`Couldn't rewind the conversation: ${ reasonOf(error) }`);
+            throw unavailable(`Couldn't rewind the conversation: ${reasonOf(error)}`);
         }
 
         throw error;
@@ -155,7 +165,8 @@ export async function prepareEdit(services: Services, chatId: string, itemId: st
             }
 
             const first = firstUserItem(store.db, run.id);
-            const unnamed = first?.id === item.id && first.body.kind === 'user' && source.title === firstWords(first.body);
+            const unnamed =
+                first?.id === item.id && first.body.kind === 'user' && source.title === firstWords(first.body);
             const dropped = cutStream(store, run, item.seq);
             const files = attachments.sentIn(source.id, filesOf(dropped)).map(file => file.id);
             const carried = new Set(input.attachmentIds ?? []);
@@ -170,17 +181,23 @@ export async function prepareEdit(services: Services, chatId: string, itemId: st
                 setForkPoint(store.db, source.id, item.seq - 1);
             }
 
-            const sent = sendMessage(services, source.id, { text: input.text, attachmentIds: input.attachmentIds, fresh: sessionId === undefined });
+            const sent = sendMessage(services, source.id, {
+                text: input.text,
+                attachmentIds: input.attachmentIds,
+                fresh: sessionId === undefined,
+            });
 
             if (unnamed) {
                 const { body } = firstUserItem(store.db, run.id) as StreamItem;
 
-                saveChat(store, { ...requireChat(store, source.id), title: body.kind === 'user' ? firstWords(body) : source.title });
+                saveChat(store, {
+                    ...requireChat(store, source.id),
+                    title: body.kind === 'user' ? firstWords(body) : source.title,
+                });
             }
 
             return { chatId: sent.chatId, runId: sent.runId };
-        }
-        finally {
+        } finally {
             busy.delete(plan.chat.id);
         }
     };

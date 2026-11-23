@@ -2,7 +2,7 @@ import { toast } from '@clowdy/components/Toast';
 
 import { createTransport, resolveDaemonConfig } from './daemon/config';
 import { HttpTransport } from './daemon/httpTransport';
-import { RootStore, type Notice } from './stores/RootStore';
+import { type Notice, RootStore } from './stores/RootStore';
 import { initialUiFromSearch } from './stores/UiStore';
 
 const TOAST_KIND = { info: 'info', warn: 'warning', error: 'error' } as const;
@@ -17,7 +17,7 @@ const transport = createTransport(config);
 
 // A daemon that was replaced listens elsewhere: the transport follows it and its feed resumes where it was. A window that
 // loaded without one (the running daemon spoke another protocol) is handed the new one by a reload.
-const stopFollowing = window.desktop?.onDaemonChange((address) => {
+const stopFollowing = window.desktop?.onDaemonChange(address => {
     if (transport instanceof HttpTransport) transport.setAddress(address);
     else if (config.kind === 'none') location.reload();
 });

@@ -8,9 +8,29 @@ if (typeof window !== 'undefined') {
 
     window.matchMedia = (query: string): MediaQueryList => {
         if (!query.includes('prefers-reduced-motion')) {
-            return original ? original(query) : { matches: false, media: query, onchange: null, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent: () => false };
+            return original
+                ? original(query)
+                : {
+                      matches: false,
+                      media: query,
+                      onchange: null,
+                      addEventListener() {},
+                      removeEventListener() {},
+                      addListener() {},
+                      removeListener() {},
+                      dispatchEvent: () => false,
+                  };
         }
 
-        return { matches: true, media: query, onchange: null, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent: () => false };
+        return {
+            matches: true,
+            media: query,
+            onchange: null,
+            addEventListener() {},
+            removeEventListener() {},
+            addListener() {},
+            removeListener() {},
+            dispatchEvent: () => false,
+        };
     };
 }

@@ -1,14 +1,19 @@
-import { GIT_COMMIT_SCOPE_PREFIX, MAX_GIT_CHANGED_FILES, MAX_GIT_DIFF_LINES, MAX_GIT_SIDE_BYTES } from '@clowdy/protocol';
 import { lstat, readFile, readlink, realpath } from 'node:fs/promises';
 import { isAbsolute, join, relative, sep } from 'node:path';
+import {
+    GIT_COMMIT_SCOPE_PREFIX,
+    MAX_GIT_CHANGED_FILES,
+    MAX_GIT_DIFF_LINES,
+    MAX_GIT_SIDE_BYTES,
+} from '@clowdy/protocol';
 
 import { gitLine, gitRead, gitRecords } from '../domain/git';
 import { invalid, notFound, unavailable } from '../errors';
 import { workingTreeRoot } from './state';
 import { commitAt, headCommit, kindOf, mergeBaseOf } from './status';
 
-import type { GitBaseState, GitChangedFile, GitChangeKind, GitChanges, GitFileSides, GitScope } from '@clowdy/protocol';
 import type { Stats } from 'node:fs';
+import type { GitBaseState, GitChangedFile, GitChangeKind, GitChanges, GitFileSides, GitScope } from '@clowdy/protocol';
 import type { Place } from '../domain/places';
 import type { BaseOptions } from './status';
 
@@ -80,12 +85,19 @@ export function parseDiff(output: string): DiffEntry[] {
 
             if (path === undefined) break;
 
-            const entry: DiffEntry = { path, ...(oldPath !== undefined && { oldPath }), kind: kindOf(status[0]) ?? 'modified', oldMode, newMode, oldBlob, newBlob };
+            const entry: DiffEntry = {
+                path,
+                ...(oldPath !== undefined && { oldPath }),
+                kind: kindOf(status[0]) ?? 'modified',
+                oldMode,
+                newMode,
+                oldBlob,
+                newBlob,
+            };
 
             entries.push(entry);
             byPath.set(path, entry);
-        }
-        else {
+        } else {
             const found = /^(\d+|-)\t(\d+|-)\t([\s\S]*)$/.exec(token);
 
             if (!found) continue;
@@ -104,8 +116,7 @@ export function parseDiff(output: string): DiffEntry[] {
 
             if (found[1] === '-') {
                 entry.binary = true;
-            }
-            else {
+            } else {
                 entry.additions = Number(found[1]);
                 entry.deletions = Number(found[2]);
             }
@@ -216,7 +227,9 @@ async function planOf(place: Place, scope: GitScope, options: FileOptions): Prom
     const merged = await mergeBaseOf(place, options);
 
     if (merged.state === 'ready') {
-        return scope === 'all' ? { from: merged.mergeBase, untracked: true, baseState: 'ready' } : { from: merged.mergeBase, to: merged.head, untracked: false, baseState: 'ready' };
+        return scope === 'all'
+            ? { from: merged.mergeBase, untracked: true, baseState: 'ready' }
+            : { from: merged.mergeBase, to: merged.head, untracked: false, baseState: 'ready' };
     }
 
     if (scope === 'all') {
@@ -232,8 +245,23 @@ async function planOf(place: Place, scope: GitScope, options: FileOptions): Prom
 async function trackedChanges(cwd: string, plan: Plan, pathspecs: string[] = []): Promise<DiffEntry[]> {
     if (plan.empty) return [];
 
-    const from = plan.from ?? await emptyTree(cwd);
-    const args = ['diff', '--raw', '--numstat', '-z', '--no-abbrev', '-M', '--no-ext-diff', '--no-textconv', '--no-color', '--ignore-submodules=dirty', from, ...(plan.to ? [plan.to] : []), '--', ...pathspecs];
+    const from = plan.from ?? (await emptyTree(cwd));
+    const args = [
+        'diff',
+        '--raw',
+        '--numstat',
+        '-z',
+        '--no-abbrev',
+        '-M',
+        '--no-ext-diff',
+        '--no-textconv',
+        '--no-color',
+        '--ignore-submodules=dirty',
+        from,
+        ...(plan.to ? [plan.to] : []),
+        '--',
+        ...pathspecs,
+    ];
     const read = await gitRead(cwd, args, { parsed: true, timeoutMs: DIFF_TIMEOUT_MS, maxBytes: DIFF_MAX_BYTES });
 
     if (!read.ok) throw unavailable('git did not answer');
@@ -243,8 +271,18 @@ async function trackedChanges(cwd: string, plan: Plan, pathspecs: string[] = [])
 
 /** The new files git does not track and does not ignore, in git's order (a folder that is a repository of its own is left out); `truncated` when there are more than are read. */
 async function newFiles(cwd: string, pathspecs: string[] = []): Promise<{ paths: string[]; truncated: boolean }> {
-    const args = ['ls-files', '-z', '--others', '--exclude-standard', ...(pathspecs.length > 0 ? ['--', ...pathspecs] : [])];
-    const read = await gitRecords(cwd, args, { maxRecords: MAX_NEW_FILES_LISTED, timeoutMs: DIFF_TIMEOUT_MS, parsed: true });
+    const args = [
+        'ls-files',
+        '-z',
+        '--others',
+        '--exclude-standard',
+        ...(pathspecs.length > 0 ? ['--', ...pathspecs] : []),
+    ];
+    const read = await gitRecords(cwd, args, {
+        maxRecords: MAX_NEW_FILES_LISTED,
+        timeoutMs: DIFF_TIMEOUT_MS,
+        parsed: true,
+    });
 
     if (!read.ok) throw unavailable('git did not answer');
 
@@ -252,7 +290,15 @@ async function newFiles(cwd: string, pathspecs: string[] = []): Promise<{ paths:
 }
 
 /** A new file as a change: added, with no old side. Its mode and content id are filled in from the file (`settle`). */
-const newFileEntry = (path: string): DiffEntry => ({ path, kind: 'added', untracked: true, oldMode: ABSENT_MODE, newMode: '100644', oldBlob: '', newBlob: '' });
+const newFileEntry = (path: string): DiffEntry => ({
+    path,
+    kind: 'added',
+    untracked: true,
+    oldMode: ABSENT_MODE,
+    newMode: '100644',
+    oldBlob: '',
+    newBlob: '',
+});
 
 /** A new file with the lines `countNewFiles` found in it: all of them added, or none and binary. A file it did not count has neither. */
 function withLines(entry: DiffEntry, count: { additions: number } | { binary: true } | undefined): DiffEntry {
@@ -276,7 +322,10 @@ function countLines(content: Buffer): { additions: number } | { binary: true } {
  * The lines of new files, which git has no numbers for until they are added: each file is read and its lines counted, in path order, within a budget of files, bytes and
  * time. The first file past it, and every one after, is left uncounted, and `complete` is false.
  */
-async function countNewFiles(cwd: string, paths: string[]): Promise<{ counts: Map<string, { additions: number } | { binary: true }>; complete: boolean }> {
+async function countNewFiles(
+    cwd: string,
+    paths: string[]
+): Promise<{ counts: Map<string, { additions: number } | { binary: true }>; complete: boolean }> {
     const counts = new Map<string, { additions: number } | { binary: true }>();
     const deadline = Date.now() + COUNT_BUDGET_MS;
     let bytes = 0;
@@ -289,8 +338,7 @@ async function countNewFiles(cwd: string, paths: string[]): Promise<{ counts: Ma
         // A link is one line, as git counts it: its target. A folder or a file that went since the listing has none.
         if (info?.isSymbolicLink()) {
             counts.set(path, { additions: 1 });
-        }
-        else if (info?.isFile()) {
+        } else if (info?.isFile()) {
             bytes += info.size;
 
             if (bytes > MAX_NEW_BYTES_COUNTED) return { counts, complete: false };
@@ -324,24 +372,29 @@ const factOf = (info: Stats): WorkingFact => ({
 async function inspectWorking(cwd: string, paths: string[]): Promise<Map<string, WorkingFact>> {
     const facts = new Map<string, WorkingFact>();
 
-    await Promise.all(paths.map(async (path) => {
-        const info = await lstat(join(cwd, path)).catch(() => undefined);
+    await Promise.all(
+        paths.map(async path => {
+            const info = await lstat(join(cwd, path)).catch(() => undefined);
 
-        if (info) facts.set(path, factOf(info));
-    }));
+            if (info) facts.set(path, factOf(info));
+        })
+    );
 
     return facts;
 }
 
 /** What stands for a file's content id when git could not hash it in time: its size and its modification time, which an edit changes. */
-const stampOf = (fact: WorkingFact) => `stat-${ fact.size }-${ Math.trunc(fact.mtimeMs) }`;
+const stampOf = (fact: WorkingFact) => `stat-${fact.size}-${Math.trunc(fact.mtimeMs)}`;
 
 /**
  * The commit a submodule's own checkout is at, which is what git records for it. Only a folder with a `.git` of its own is asked: git would answer for an empty folder (a
  * submodule that is not set up) with the HEAD of the repository around it.
  */
 async function submoduleHead(directory: string): Promise<string | undefined> {
-    return lstat(join(directory, '.git')).then(() => gitLine(directory, ['rev-parse', '--verify', '--quiet', 'HEAD']), () => undefined);
+    return lstat(join(directory, '.git')).then(
+        () => gitLine(directory, ['rev-parse', '--verify', '--quiet', 'HEAD']),
+        () => undefined
+    );
 }
 
 /**
@@ -349,7 +402,11 @@ async function submoduleHead(directory: string): Promise<string | undefined> {
  * target, a submodule by the commit it is at. What git could not hash (too slow, a file that went) has `stampOf` in its place. Nothing is written to the repository:
  * `hash-object` without `-w` stores nothing.
  */
-async function hashWorking(cwd: string, facts: Map<string, WorkingFact>, paths: string[]): Promise<Map<string, string>> {
+async function hashWorking(
+    cwd: string,
+    facts: Map<string, WorkingFact>,
+    paths: string[]
+): Promise<Map<string, string>> {
     const ids = new Map<string, string>();
     const files = paths.filter(path => facts.get(path)?.kind === 'file');
     const chunks: string[][] = [];
@@ -359,14 +416,13 @@ async function hashWorking(cwd: string, facts: Map<string, WorkingFact>, paths: 
 
         if (last && last.length < HASH_CHUNK_PATHS && last.join('').length + path.length <= HASH_CHUNK_CHARS) {
             last.push(path);
-        }
-        else {
+        } else {
             chunks.push([path]);
         }
     }
 
     await Promise.all([
-        ...chunks.map(async (chunk) => {
+        ...chunks.map(async chunk => {
             const read = await gitRead(cwd, ['hash-object', '--', ...chunk], { timeoutMs: HASH_TIMEOUT_MS });
             const lines = read.ok ? read.stdout.split('\n').filter(line => line !== '') : [];
 
@@ -374,17 +430,24 @@ async function hashWorking(cwd: string, facts: Map<string, WorkingFact>, paths: 
                 if (lines.length === chunk.length) ids.set(path, lines[index]!);
             }
         }),
-        ...paths.filter(path => facts.get(path)?.kind === 'link').map(async (path) => {
-            const target = await readlink(join(cwd, path)).catch(() => undefined);
-            const read = target === undefined ? undefined : await gitRead(cwd, ['hash-object', '--stdin'], { input: target, timeoutMs: HASH_TIMEOUT_MS });
+        ...paths
+            .filter(path => facts.get(path)?.kind === 'link')
+            .map(async path => {
+                const target = await readlink(join(cwd, path)).catch(() => undefined);
+                const read =
+                    target === undefined
+                        ? undefined
+                        : await gitRead(cwd, ['hash-object', '--stdin'], { input: target, timeoutMs: HASH_TIMEOUT_MS });
 
-            if (read?.ok) ids.set(path, read.stdout.trim());
-        }),
-        ...paths.filter(path => facts.get(path)?.kind === 'other').map(async (path) => {
-            const head = await submoduleHead(join(cwd, path));
+                if (read?.ok) ids.set(path, read.stdout.trim());
+            }),
+        ...paths
+            .filter(path => facts.get(path)?.kind === 'other')
+            .map(async path => {
+                const head = await submoduleHead(join(cwd, path));
 
-            if (head) ids.set(path, head);
-        }),
+                if (head) ids.set(path, head);
+            }),
     ]);
 
     for (const path of paths) {
@@ -403,7 +466,10 @@ async function blobSizes(cwd: string, ids: string[]): Promise<Map<string, number
 
     if (unique.length === 0) return sizes;
 
-    const read = await gitRead(cwd, ['cat-file', '--batch-check'], { input: `${ unique.join('\n') }\n`, timeoutMs: HASH_TIMEOUT_MS });
+    const read = await gitRead(cwd, ['cat-file', '--batch-check'], {
+        input: `${unique.join('\n')}\n`,
+        timeoutMs: HASH_TIMEOUT_MS,
+    });
 
     for (const line of read.ok ? read.stdout.split('\n') : []) {
         const [id, type, size] = line.split(' ');
@@ -430,33 +496,67 @@ interface Settled {
  */
 async function settle(cwd: string, plan: Plan, entries: DiffEntry[]): Promise<Settled[]> {
     const working = plan.to === undefined;
-    const facts = working ? await inspectWorking(cwd, entries.filter(entry => entry.untracked || entry.newMode !== ABSENT_MODE).map(entry => entry.path)) : new Map<string, WorkingFact>();
+    const facts = working
+        ? await inspectWorking(
+              cwd,
+              entries.filter(entry => entry.untracked || entry.newMode !== ABSENT_MODE).map(entry => entry.path)
+          )
+        : new Map<string, WorkingFact>();
     const present = entries.filter(entry => !entry.untracked || facts.has(entry.path));
     const zeros = '0'.repeat(entries.find(entry => entry.oldBlob !== '')?.oldBlob.length ?? 40);
-    const hashed = await hashWorking(cwd, facts, present.filter(entry => working && entry.newMode !== ABSENT_MODE && (entry.untracked || isZeros(entry.newBlob))).map(entry => entry.path));
-    const stored = (id: string, mode: string) => (mode === ABSENT_MODE || mode === SUBMODULE_MODE || id === '' || isZeros(id) ? undefined : id);
-    const sizes = await blobSizes(cwd, present.flatMap(entry => [stored(entry.oldBlob, entry.oldMode), working ? undefined : stored(entry.newBlob, entry.newMode)]).filter((id): id is string => id !== undefined));
+    const hashed = await hashWorking(
+        cwd,
+        facts,
+        present
+            .filter(entry => working && entry.newMode !== ABSENT_MODE && (entry.untracked || isZeros(entry.newBlob)))
+            .map(entry => entry.path)
+    );
+    const stored = (id: string, mode: string) =>
+        mode === ABSENT_MODE || mode === SUBMODULE_MODE || id === '' || isZeros(id) ? undefined : id;
+    const sizes = await blobSizes(
+        cwd,
+        present
+            .flatMap(entry => [
+                stored(entry.oldBlob, entry.oldMode),
+                working ? undefined : stored(entry.newBlob, entry.newMode),
+            ])
+            .filter((id): id is string => id !== undefined)
+    );
 
-    return present.map((original) => {
+    return present.map(original => {
         const fact = facts.get(original.path);
         const entry: DiffEntry = {
             ...original,
             ...(original.untracked && fact && { newMode: fact.mode }),
             oldBlob: original.oldBlob === '' ? zeros : original.oldBlob,
-            newBlob: working && original.newMode !== ABSENT_MODE && (original.untracked || isZeros(original.newBlob)) ? hashed.get(original.path) ?? zeros : original.newBlob,
+            newBlob:
+                working && original.newMode !== ABSENT_MODE && (original.untracked || isZeros(original.newBlob))
+                    ? (hashed.get(original.path) ?? zeros)
+                    : original.newBlob,
         };
         const oldId = stored(entry.oldBlob, entry.oldMode);
         const newId = working ? undefined : stored(entry.newBlob, entry.newMode);
         const oldSize = oldId === undefined ? undefined : sizes.get(oldId);
         const newSize = newId === undefined ? fact?.size : sizes.get(newId);
 
-        return { entry, ...(oldSize !== undefined && { oldSize }), ...(newSize !== undefined && { newSize }), ...(fact && { fact }), revision: `${ entry.oldMode }:${ entry.oldBlob }:${ entry.newMode }:${ entry.newBlob }` };
+        return {
+            entry,
+            ...(oldSize !== undefined && { oldSize }),
+            ...(newSize !== undefined && { newSize }),
+            ...(fact && { fact }),
+            revision: `${entry.oldMode}:${entry.oldBlob}:${entry.newMode}:${entry.newBlob}`,
+        };
     });
 }
 
 /** Whether a change is too big to draw: more changed lines than `MAX_GIT_DIFF_LINES`, or a side over `MAX_GIT_SIDE_BYTES`. A binary file is none: it has no text to be too big. */
 function isTooLarge({ entry, oldSize = 0, newSize = 0 }: Settled): boolean {
-    return !entry.binary && ((entry.additions ?? 0) + (entry.deletions ?? 0) > MAX_GIT_DIFF_LINES || oldSize > MAX_GIT_SIDE_BYTES || newSize > MAX_GIT_SIDE_BYTES);
+    return (
+        !entry.binary &&
+        ((entry.additions ?? 0) + (entry.deletions ?? 0) > MAX_GIT_DIFF_LINES ||
+            oldSize > MAX_GIT_SIDE_BYTES ||
+            newSize > MAX_GIT_SIDE_BYTES)
+    );
 }
 
 /** Paths in the order git sorts them: by bytes, not by the locale's rules, so a list is the same on every machine. */
@@ -470,15 +570,20 @@ const byPath = (a: { path: string }, b: { path: string }) => (a.path < b.path ? 
 export async function placeChanges(place: Place, scope: GitScope, options: BaseOptions = {}): Promise<GitChanges> {
     const cwd = place.path;
 
-    if (!await workingTreeRoot(cwd)) return { isRepository: false };
+    if (!(await workingTreeRoot(cwd))) return { isRepository: false };
 
     const plan = await planOf(place, scope, options);
-    const [tracked, fresh] = await Promise.all([trackedChanges(cwd, plan), plan.untracked ? newFiles(cwd) : { paths: [], truncated: false }]);
+    const [tracked, fresh] = await Promise.all([
+        trackedChanges(cwd, plan),
+        plan.untracked ? newFiles(cwd) : { paths: [], truncated: false },
+    ]);
     // A path a staged deletion took out of the index and the person put back on the disk is listed by both: it is the deletion.
     const known = new Set(tracked.map(entry => entry.path));
     const newPaths = fresh.paths.filter(path => !known.has(path));
     const counted = await countNewFiles(cwd, newPaths);
-    const entries = [...tracked, ...newPaths.map(path => withLines(newFileEntry(path), counted.counts.get(path)))].sort(byPath);
+    const entries = [...tracked, ...newPaths.map(path => withLines(newFileEntry(path), counted.counts.get(path)))].sort(
+        byPath
+    );
     const listed = await settle(cwd, plan, entries.slice(0, MAX_GIT_CHANGED_FILES));
     let additions = 0;
     let deletions = 0;
@@ -521,19 +626,27 @@ export async function placeChanges(place: Place, scope: GitScope, options: BaseO
 
 /** A path as a client writes it: one the repository can have, relative, with `/` separators and no `.` or `..` in it. */
 export function checkPath(path: string): void {
-    if (path === '' || path.includes('\0') || isAbsolute(path) || path.endsWith('/') || path.split('/').some(part => part === '' || part === '.' || part === '..')) {
+    if (
+        path === '' ||
+        path.includes('\0') ||
+        isAbsolute(path) ||
+        path.endsWith('/') ||
+        path.split('/').some(part => part === '' || part === '.' || part === '..')
+    ) {
         throw invalid('The path is not a path inside the repository');
     }
 }
 
 /** A path given to git as a path, whatever it has in it: `*`, `[`, a leading `:` or `!` are not pattern characters. */
-const literal = (path: string) => `:(literal)${ path }`;
+const literal = (path: string) => `:(literal)${path}`;
 
 /** The text of a blob, as it is stored, or as a checkout would write it for the path `filters` names. */
 async function blobText(cwd: string, id: string, filters?: string): Promise<string> {
     // The checkout filters (a Windows person's `core.autocrlf`) make the old side's lines end as the file on disk's do; a filter that cannot run leaves the stored text.
     if (filters !== undefined) {
-        const filtered = await gitRead(cwd, ['cat-file', '--filters', `--path=${ filters }`, id], { maxBytes: TEXT_MAX_BYTES });
+        const filtered = await gitRead(cwd, ['cat-file', '--filters', `--path=${filters}`, id], {
+            maxBytes: TEXT_MAX_BYTES,
+        });
 
         if (filtered.ok) return filtered.stdout;
     }
@@ -555,7 +668,14 @@ async function workingText(cwd: string, path: string, fact: WorkingFact): Promis
 
     const inside = real === undefined ? undefined : relative(root, real);
 
-    if (real === undefined || inside === undefined || inside === '..' || inside.startsWith(`..${ sep }`) || isAbsolute(inside)) throw notFound('File', path);
+    if (
+        real === undefined ||
+        inside === undefined ||
+        inside === '..' ||
+        inside.startsWith(`..${sep}`) ||
+        isAbsolute(inside)
+    )
+        throw notFound('File', path);
 
     return (await readFile(real).catch(() => undefined))?.toString('utf8') ?? null;
 }
@@ -567,14 +687,20 @@ async function workingText(cwd: string, path: string, fact: WorkingFact): Promis
  * changes more than `MAX_GIT_DIFF_LINES` lines carries no text. `oldPath` is the path before a rename: without it the file is read as a new one. `options.from` is the commit the
  * list was counted from (`GitChanges.from`): a card passes it, so the file is read against the list's own start and costs no base lookup.
  */
-export async function placeFile(place: Place, scope: GitScope, path: string, oldPath: string | undefined, options: FileOptions = {}): Promise<GitFileSides> {
+export async function placeFile(
+    place: Place,
+    scope: GitScope,
+    path: string,
+    oldPath: string | undefined,
+    options: FileOptions = {}
+): Promise<GitFileSides> {
     checkPath(path);
 
     if (oldPath !== undefined) checkPath(oldPath);
 
     const cwd = place.path;
 
-    if (!await workingTreeRoot(cwd)) throw invalid('The folder is not the root of a git repository');
+    if (!(await workingTreeRoot(cwd))) throw invalid('The folder is not the root of a git repository');
 
     const plan = await planOf(place, scope, options);
     const pathspecs = oldPath !== undefined && oldPath !== path ? [literal(path), literal(oldPath)] : [literal(path)];
@@ -590,14 +716,21 @@ export async function placeFile(place: Place, scope: GitScope, path: string, old
 
     const { entry, revision, fact } = settled;
 
-    if (entry.binary || entry.oldMode === SUBMODULE_MODE || entry.newMode === SUBMODULE_MODE) return { state: 'binary', revision };
+    if (entry.binary || entry.oldMode === SUBMODULE_MODE || entry.newMode === SUBMODULE_MODE)
+        return { state: 'binary', revision };
 
     if (isTooLarge(settled)) return { state: 'too_large', revision };
 
     const hasOld = entry.oldMode !== ABSENT_MODE && !isZeros(entry.oldBlob);
     const [original, modified] = await Promise.all([
-        hasOld ? blobText(cwd, entry.oldBlob, plan.to === undefined ? entry.oldPath ?? entry.path : undefined) : null,
-        entry.newMode === ABSENT_MODE ? null : plan.to !== undefined ? blobText(cwd, entry.newBlob) : fact ? workingText(cwd, entry.path, fact) : null,
+        hasOld ? blobText(cwd, entry.oldBlob, plan.to === undefined ? (entry.oldPath ?? entry.path) : undefined) : null,
+        entry.newMode === ABSENT_MODE
+            ? null
+            : plan.to !== undefined
+              ? blobText(cwd, entry.newBlob)
+              : fact
+                ? workingText(cwd, entry.path, fact)
+                : null,
     ]);
 
     if (original?.includes('\0') || modified?.includes('\0')) return { state: 'binary', revision };

@@ -16,8 +16,7 @@ export function useCompact(chatId: string) {
 
         try {
             return await perform(root, { type: 'chat.compact', chatId });
-        }
-        finally {
+        } finally {
             setIsPending(false);
         }
     };

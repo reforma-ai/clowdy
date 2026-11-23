@@ -37,22 +37,35 @@ const WATCH_RECONNECT_MAX_MS = 10_000;
 const sleepFor = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
 interface ErrorBody {
-    error?: { code?: unknown; message?: unknown; details?: { reason?: unknown; path?: unknown; currentVersion?: unknown } };
+    error?: {
+        code?: unknown;
+        message?: unknown;
+        details?: { reason?: unknown; path?: unknown; currentVersion?: unknown };
+    };
 }
 
 /** What a refused request is to the file manager: the code it acts on, with the daemon's own words. */
 function refusal(status: number, body: ErrorBody | undefined, path: string): FileSystemError {
     const { code, message, details } = body?.error ?? {};
-    const text = typeof message === 'string' ? message : `The daemon answered ${ status }`;
-    const failed = (fileSystemCode: FileSystemErrorCode, options: { path?: string; currentVersion?: string | null } = { path }) => new FileSystemError(fileSystemCode, text, options);
+    const text = typeof message === 'string' ? message : `The daemon answered ${status}`;
+    const failed = (
+        fileSystemCode: FileSystemErrorCode,
+        options: { path?: string; currentVersion?: string | null } = { path }
+    ) => new FileSystemError(fileSystemCode, text, options);
 
     if (status === 404 || code === 'not_found') return failed('NotFound');
 
-    if (details?.reason === 'exists') return failed('Exists', { path: typeof details.path === 'string' ? details.path : path });
+    if (details?.reason === 'exists')
+        return failed('Exists', { path: typeof details.path === 'string' ? details.path : path });
 
-    if (details?.reason === 'version') return failed('Conflict', { path, currentVersion: typeof details.currentVersion === 'string' ? details.currentVersion : null });
+    if (details?.reason === 'version')
+        return failed('Conflict', {
+            path,
+            currentVersion: typeof details.currentVersion === 'string' ? details.currentVersion : null,
+        });
 
-    if (details?.reason === 'outside' || details?.reason === 'permission' || status === 403) return failed('NoPermission');
+    if (details?.reason === 'outside' || details?.reason === 'permission' || status === 403)
+        return failed('NoPermission');
 
     return failed('Unavailable');
 }
@@ -65,8 +78,7 @@ function watchEvent(data: string): WatchEvent | undefined {
         if (event?.type === 'resync') return { type: 'resync' };
 
         if (event?.type === 'changes' && Array.isArray(event.changes)) return event as WatchEvent;
-    }
-    catch {
+    } catch {
         // Not JSON.
     }
 
@@ -84,15 +96,19 @@ export class HttpFileSystem implements FileSystemProvider {
     }
 
     async list(path = '', depth = Number.POSITIVE_INFINITY): Promise<FileEntry[]> {
-        const response = await this.#request('list', { path, ...(Number.isFinite(depth) ? { depth: String(depth) } : {}) }, path);
+        const response = await this.#request(
+            'list',
+            { path, ...(Number.isFinite(depth) ? { depth: String(depth) } : {}) },
+            path
+        );
 
-        return await response.json() as FileEntry[];
+        return (await response.json()) as FileEntry[];
     }
 
     async findFiles(query: string): Promise<readonly string[]> {
         const response = await this.#request('find', { query }, '');
 
-        return await response.json() as string[];
+        return (await response.json()) as string[];
     }
 
     async read(path: string): Promise<FileContent> {
@@ -112,7 +128,7 @@ export class HttpFileSystem implements FileSystemProvider {
 
         const response = await this.#request('file', { path }, path, { method: 'PUT', headers, body: content });
 
-        return (await response.json() as { version: string }).version;
+        return ((await response.json()) as { version: string }).version;
     }
 
     async createDirectory(path: string): Promise<void> {
@@ -132,10 +148,13 @@ export class HttpFileSystem implements FileSystemProvider {
     }
 
     /** Searches the contents of the folder's files on the daemon, which stops when `signal` aborts the request. A rejection's message is what the Search tab shows. */
-    search = async ({ query, matchCase, wholeWord, exclude }: SearchQuery, signal: AbortSignal): Promise<SearchResult> => {
+    search = async (
+        { query, matchCase, wholeWord, exclude }: SearchQuery,
+        signal: AbortSignal
+    ): Promise<SearchResult> => {
         const response = await this.#post('search', { query, matchCase, wholeWord, exclude }, '', signal);
 
-        return await response.json() as SearchResult;
+        return (await response.json()) as SearchResult;
     };
 
     watch(listener: (event: WatchEvent) => void): () => void {
@@ -163,22 +182,34 @@ export class HttpFileSystem implements FileSystemProvider {
     }
 
     /** A request to one route: `query` goes in the address with the place (a read, a write, the lists), without it the body names the place. */
-    async #request(action: string, query: Record<string, string> | undefined, path: string, init: RequestInit = {}): Promise<Response> {
+    async #request(
+        action: string,
+        query: Record<string, string> | undefined,
+        path: string,
+        init: RequestInit = {}
+    ): Promise<Response> {
         const { base, headers } = this.#options.target();
-        const search = query ? `?${ new URLSearchParams({ ...this.#place(), ...query }) }` : '';
+        const search = query ? `?${new URLSearchParams({ ...this.#place(), ...query })}` : '';
         let response: Response;
 
         try {
-            response = await this.#options.fetch(`${ base }${ this.#options.route }/${ action }${ search }`, { ...init, headers: { ...headers, ...init.headers } });
-        }
-        catch (error) {
+            response = await this.#options.fetch(`${base}${this.#options.route}/${action}${search}`, {
+                ...init,
+                headers: { ...headers, ...init.headers },
+            });
+        } catch (error) {
             // A request the caller gave up is not a failure of the daemon.
             if (init.signal?.aborted) throw error;
 
             throw new FileSystemError('Unavailable', 'The daemon cannot be reached', { path, cause: error });
         }
 
-        if (!response.ok) throw refusal(response.status, await response.json().catch(() => undefined) as ErrorBody | undefined, path);
+        if (!response.ok)
+            throw refusal(
+                response.status,
+                (await response.json().catch(() => undefined)) as ErrorBody | undefined,
+                path
+            );
 
         return response;
     }
@@ -194,10 +225,13 @@ export class HttpFileSystem implements FileSystemProvider {
         while (!signal.aborted) {
             try {
                 const { base, headers } = this.#options.target();
-                const response = await this.#options.fetch(`${ base }${ this.#options.route }/watch?${ new URLSearchParams(this.#place()) }`, {
-                    headers: { ...headers, accept: 'text/event-stream' },
-                    signal,
-                });
+                const response = await this.#options.fetch(
+                    `${base}${this.#options.route}/watch?${new URLSearchParams(this.#place())}`,
+                    {
+                        headers: { ...headers, accept: 'text/event-stream' },
+                        signal,
+                    }
+                );
 
                 // Whatever way a stream is left (an answer that refuses, a listener that threw, an abort), it is closed and not left open to the daemon while the next one is made.
                 // A stream that has a reader is cancelled through it.
@@ -210,7 +244,7 @@ export class HttpFileSystem implements FileSystemProvider {
                 if (!response.ok || !response.body) {
                     close();
 
-                    throw new Error(`The daemon answered ${ response.status } for the watch`);
+                    throw new Error(`The daemon answered ${response.status} for the watch`);
                 }
 
                 try {
@@ -230,12 +264,10 @@ export class HttpFileSystem implements FileSystemProvider {
                             if (event) listener(event);
                         }
                     }
-                }
-                finally {
+                } finally {
                     close();
                 }
-            }
-            catch {
+            } catch {
                 // Dropped or refused: the retry below.
             }
 

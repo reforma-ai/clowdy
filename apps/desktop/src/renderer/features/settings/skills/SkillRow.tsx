@@ -24,24 +24,53 @@ export function SkillRow({ skill, isPending, onToggle }: SkillRowProps) {
     const { name, source, description, enabled, path, tokens, engines } = skill;
 
     return (
-        <SettingsBlock as="li" className={ styles.row } data-off={ !enabled || undefined }>
-            <div className={ styles.body }>
-                <div className={ styles.titleLine }>
-                    <Text weight="medium" truncate className={ styles.name }>{ name }</Text>
-                    <Badge size="xs" color={ source === 'system' ? 'primary' : 'secondary' } textValue={ SOURCE_LABEL[source] }>{ SOURCE_LABEL[source] }</Badge>
+        <SettingsBlock as="li" className={styles.row} data-off={!enabled || undefined}>
+            <div className={styles.body}>
+                <div className={styles.titleLine}>
+                    <Text weight="medium" truncate className={styles.name}>
+                        {name}
+                    </Text>
+                    <Badge
+                        size="xs"
+                        color={source === 'system' ? 'primary' : 'secondary'}
+                        textValue={SOURCE_LABEL[source]}
+                    >
+                        {SOURCE_LABEL[source]}
+                    </Badge>
                 </div>
-                <Text variant="sm" color="secondary" className={ styles.description }>{ description }</Text>
-                <span className={ styles.source }>
-                    <Text variant="xs" color="secondary" className={ styles.engines }>{ path ? `${ engineLabel(engines) } ·` : engineLabel(engines) }</Text>
-                    { path && <PathText path={ path } variant="xs" color="secondary" /> }
+                <Text variant="sm" color="secondary" className={styles.description}>
+                    {description}
+                </Text>
+                <span className={styles.source}>
+                    <Text variant="xs" color="secondary" className={styles.engines}>
+                        {path ? `${engineLabel(engines)} ·` : engineLabel(engines)}
+                    </Text>
+                    {path && <PathText path={path} variant="xs" color="secondary" />}
                 </span>
             </div>
 
-            <div className={ styles.side }>
-                <Text variant="xs" color="secondary" className={ styles.cost } title="What this skill adds to every run while it is on">{ tokenLabel(tokens) }</Text>
-                { source === 'user'
-                    ? <Switch size="sm" isSelected={ enabled } isPending={ isPending } aria-label={ `Use ${ name }` } onChange={ onToggle } />
-                    : <span className={ styles.lock } role="img" aria-label="Always on" title="Always on"><Lock /></span> }
+            <div className={styles.side}>
+                <Text
+                    variant="xs"
+                    color="secondary"
+                    className={styles.cost}
+                    title="What this skill adds to every run while it is on"
+                >
+                    {tokenLabel(tokens)}
+                </Text>
+                {source === 'user' ? (
+                    <Switch
+                        size="sm"
+                        isSelected={enabled}
+                        isPending={isPending}
+                        aria-label={`Use ${name}`}
+                        onChange={onToggle}
+                    />
+                ) : (
+                    <span className={styles.lock} role="img" aria-label="Always on" title="Always on">
+                        <Lock />
+                    </span>
+                )}
             </div>
         </SettingsBlock>
     );

@@ -61,8 +61,7 @@ export class ProjectIconsStore {
             const blob = await this.transport.getProjectIcon(projectId);
 
             url = blob ? URL.createObjectURL(blob) : null;
-        }
-        catch {
+        } catch {
             url = undefined;
         }
 

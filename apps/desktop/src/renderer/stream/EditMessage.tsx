@@ -22,15 +22,27 @@ export interface EditMessageProps {
  */
 export function EditMessage({ turn, onCancel, children }: EditMessageProps) {
     return (
-        <div className={ styles.root } role="group" aria-label="Editing message" data-turn={ turn }>
-            <div className={ styles.cap }>
-                <EditPen aria-hidden className={ styles.icon } />
-                <Text variant="xs" className={ styles.title }>Editing message</Text>
-                <Button size="xs" variant="ghost" color="secondary" iconOnly className={ styles.close } aria-label="Stop editing" tooltip="Stop editing" tooltipPlacement="bottom" onPress={ onCancel }>
+        <div className={styles.root} role="group" aria-label="Editing message" data-turn={turn}>
+            <div className={styles.cap}>
+                <EditPen aria-hidden className={styles.icon} />
+                <Text variant="xs" className={styles.title}>
+                    Editing message
+                </Text>
+                <Button
+                    size="xs"
+                    variant="ghost"
+                    color="secondary"
+                    iconOnly
+                    className={styles.close}
+                    aria-label="Stop editing"
+                    tooltip="Stop editing"
+                    tooltipPlacement="bottom"
+                    onPress={onCancel}
+                >
                     <Close />
                 </Button>
             </div>
-            { children }
+            {children}
         </div>
     );
 }

@@ -1,2 +1,2 @@
-export * from './layoutGrid';
 export * from './LayoutGridControl';
+export * from './layoutGrid';
