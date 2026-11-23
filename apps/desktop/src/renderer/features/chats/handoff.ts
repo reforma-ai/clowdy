@@ -232,7 +232,8 @@ const handingOff = new Set<ChatId>();
  * attached and a sentence in the message box. Nothing is sent: the person picks the provider and presses Send. The words go into
  * the new-chat page's draft of this project, which its box reads when it opens; the file waits in `ui.pendingFiles` for the page to
  * attach it, so it is uploaded to the project like a file picked there. The draft is for the folder the chat works in (the main folder
- * for a chat with none), which the page shows while the list is grouped by folder. Says why and stays where it is when there is nothing to hand
+ * for a chat with none), which the page shows while the list is grouped by folder, and for the worktree the chat works in, if it does and the worktree is made: the new chat
+ * picks that worktree as an existing one, so the hand-off goes on where the old chat left off. Says why and stays where it is when there is nothing to hand
  * over, the conversation cannot be loaded, or the new-chat box has no room for the file. Resolves to whether the new-chat page was opened.
  *
  * A full box (the files of one message are limited in number and in size, and the daemon refuses a message that carries more) does
@@ -290,7 +291,8 @@ export async function startHandoff({ root, ui, chat, run, stillOpen = () => true
         }
 
         saveDraft(draftKey, withSentence(draftOf(draftKey), handoffSentence(chat.title, fileName)));
-        ui.openDraft([file], chat.folderId ?? null);
+        // A chat in a worktree hands over to a chat in the same worktree, which is made and the folder the chat is pinned to. One whose worktree is not made yet has none to share.
+        ui.openDraft([file], chat.folderId ?? null, chat.workspace?.ready ? { mode: 'existing', path: chat.workspace.path } : null);
 
         return true;
     }
