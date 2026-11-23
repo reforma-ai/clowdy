@@ -1,0 +1,85 @@
+@reference '@clowdy/styles/rulesets';
+
+/* One row on the plate: the pull request at the start, the size of the branch at the end. The end keeps its width and the start gives way, so a long hint is cut and the numbers are not. */
+.row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-lg);
+    min-height: var(--spacing-30);
+    /* The inset of the other rows: the text of a row starts a `lg` from the plate's edge, and a button of 24px sits 3px from the end of one. */
+    padding: var(--spacing-2) calc(var(--spacing-xs) + (var(--spacing-30) - var(--spacing-24)) / 2) var(--spacing-2) var(--spacing-xs);
+    /* The row is as wide as the message box under its plate, which the window decides: the words give way in a narrow one, before the chip is cut. */
+    container-type: inline-size;
+}
+
+.start {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    min-width: 0;
+    /* A chip that does not fit is cut at its end, and never drawn over the numbers. The cut stands a `xs` off the box, so the focus ring of the chip's buttons is not cut with it. */
+    overflow: clip;
+    overflow-clip-margin: var(--spacing-xs);
+}
+
+/* The hint is where the chip would be: its words start where those of the rows above do, a `lg` from the plate's edge. */
+.hint {
+    margin-inline-start: calc(var(--spacing-lg) - var(--spacing-xs));
+}
+
+.end {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+.chip {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+
+.chip[data-stale] {
+    opacity: var(--opacity-inactive);
+}
+
+.pr {
+    gap: var(--spacing-sm);
+    min-width: 0;
+}
+
+.checks {
+    flex-shrink: 0;
+}
+
+.files {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    white-space: nowrap;
+}
+
+/* In a narrow message box the numbers are what is left of `Files changed 13 +104 −38`; the group still says the whole of it to a screen reader. */
+@container (max-width: 21rem) {
+    .filesLabel {
+        display: none;
+    }
+}
+
+/* The dot has a 24px box to hover and focus in, so the tooltip has something to point at. */
+.dirty {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--spacing-24);
+    height: var(--spacing-24);
+    border-radius: var(--radius-full);
+    outline: none;
+}
+
+.dirty:focus-visible {
+    outline: var(--spacing-4) solid var(--color-primary-muted-border);
+    outline-offset: calc(var(--spacing-4) * -1);
+}

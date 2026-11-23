@@ -97,3 +97,9 @@
         opacity: 1;
     }
 }
+
+/* A plate right under another one (the git row under the work in progress) goes on from it: square corners, so the two read as one plate. */
+.root + .root {
+    border-radius: 0;
+    corner-shape: square;
+}

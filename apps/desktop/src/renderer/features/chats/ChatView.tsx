@@ -18,6 +18,7 @@ import { isRunActive, liveLine, overflowed } from './chatRun';
 import styles from './ChatView.module.css';
 import { perform } from './commands';
 import { Composer, type ComposerHandle } from './Composer';
+import { GitStrip } from './GitStrip';
 import { chatProgress } from './progress';
 import { ProgressCard } from './ProgressCard';
 import { ReadOnlyNotice } from './ReadOnlyNotice';
@@ -143,6 +144,8 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
 
             <ContentColumn className={ styles.composer }>
                 <RunningAgents chat={ chat } />
+                { /* Under the work in progress and over the message box, for a chat that is read only too: the pull request of the branch and how far it is from its base. */ }
+                <GitStrip chat={ chat } run={ run } />
                 { /* The composer draws the line under its box itself, with the mode at the end of it; a chat that is read only has no mode to show. */ }
                 { writability.writable
                     ? <Composer ref={ composer } chat={ chat } run={ run } controls={ controls } />

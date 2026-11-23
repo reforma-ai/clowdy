@@ -129,6 +129,41 @@ describe('the line under the message box', () => {
     });
 });
 
+describe('the strip of git over the message box', () => {
+    const strip = () => container.querySelector<HTMLElement>('[aria-label="Pull request and changes"]');
+    const withPullRequest = (data: FixtureData) => {
+        data.pullRequests['/Users/dev/car-rental'] = { checkout: 'open' };
+    };
+
+    it('stands over the message box, under the agents at work', async () => {
+        await start(undefined, withPullRequest);
+        await draw('c-1');
+        await render('c-1');
+
+        expect(strip()?.textContent).toContain('PR #128Open');
+        expect(strip()!.compareDocumentPosition(field()!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(container.querySelector('[aria-label="Work in progress"]')!.compareDocumentPosition(strip()!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it('is there over the notice of a chat that is read only, as the line under it is', async () => {
+        await start(claudeOff, withPullRequest);
+        await draw('c-1');
+        await render('c-1');
+
+        expect(notice()).not.toBeNull();
+        expect(strip()?.textContent).toContain('PR #128Open');
+        expect(strip()!.compareDocumentPosition(notice()!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it('is not there when the branch has nothing to say', async () => {
+        await start();
+        await draw('c-1');
+        await render('c-1');
+
+        expect(strip()).toBeNull();
+    });
+});
+
 describe('a chat on a provider that cannot run', () => {
     it('shows the notice in place of the message box and keeps the conversation readable', async () => {
         await start(claudeOff);
