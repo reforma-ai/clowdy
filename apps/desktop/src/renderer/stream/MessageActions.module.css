@@ -21,8 +21,10 @@
     transition: opacity var(--transition-duration-fast) ease;
 }
 
+/* A menu of the row (Fork) that is open keeps it: its popover stands outside the message, so the pointer and the focus have left, and the button it hangs from must stay. */
 :is(:hover, :has(:focus-visible)) > .row,
-.row[data-show='always'] {
+.row[data-show='always'],
+.row:has([aria-expanded='true']) {
     opacity: 1;
     pointer-events: auto;
 }

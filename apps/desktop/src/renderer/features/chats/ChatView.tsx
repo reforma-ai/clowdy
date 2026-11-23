@@ -8,11 +8,12 @@ import { shownRunStatus } from '@clowdy/protocol';
 import { useMemo, useRef } from 'react';
 
 import { useAgents, useChatStream, useProjectState, useProjectUi, useRootStore } from '../../stores';
-import { StreamView } from '../../stream';
+import { StreamView, type ForkAgent } from '../../stream';
+import { ProviderIcon } from '../settings/providers/ProviderIcon';
 import { openChat } from './archiveChat';
 import { ChatControls } from './ChatControls';
 import { ChatDropZone } from './ChatDropZone';
-import { canCompactChat, chatWritability } from './chatProvider';
+import { canCompactChat, chatWritability, handoffAgents } from './chatProvider';
 import { isRunActive, liveLine, overflowed } from './chatRun';
 import styles from './ChatView.module.css';
 import { perform } from './commands';
@@ -25,6 +26,7 @@ import { swipeToReply } from './swipeReplyPreference';
 import { useCompact } from './useCompact';
 import { useEditMessage } from './useEditMessage';
 import { useFork } from './useFork';
+import { useHandoff } from './useHandoff';
 
 import type { Attachment, Chat } from '@clowdy/protocol';
 import type { ReactNode } from 'react';
@@ -56,7 +58,10 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
     const composer = useRef<ComposerHandle>(null);
     const stream = useChatStream(chat);
     const run = chat.orchestratorRunId ? project.runs.get(chat.orchestratorRunId) : undefined;
+    const handOff = useHandoff(chat, run);
     const { agents, status: agentsStatus } = useAgents();
+    // The agents an answer's Fork menu can hand the conversation to: the signed-in ones other than this chat's own.
+    const handoffTargets = handoffAgents(agents, chat, run).map((agent): ForkAgent => ({ id: agent.id, name: agent.name, icon: <ProviderIcon agentId={ agent.id } size={ 14 } /> }));
     const writability = chatWritability(chat, run, agents, agentsStatus);
     const progress = chatProgress(project.tasksOfChat(chat.id), project.statuses);
     const items = stream?.items ?? [];
@@ -104,6 +109,8 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
                             swipeToReply: swipeToReply.enabled,
                             onFork: fork,
                             forkingId: forking,
+                            onHandoff: (itemId, engine) => void handOff({ itemId, engine }),
+                            handoffAgents: handoffTargets,
                             onEdit: edit.begin,
                             editBusy: isRunActive(run),
                         }

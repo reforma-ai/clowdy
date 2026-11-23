@@ -1103,6 +1103,48 @@ describe('UiStore', () => {
         });
     });
 
+    describe('the agent the new chat starts on', () => {
+        it('is none unless the page was opened for one, and the next page opened starts over', () => {
+            const ui = new UiStore().forProject('p1');
+
+            ui.openDraft();
+            expect(ui.draftEngine).toBeNull();
+
+            ui.openDraft([], null, null, 'codex');
+            expect(ui.draftEngine).toBe('codex');
+
+            // The page opened from the list again is not for the agent a hand-off named.
+            ui.openDraft();
+            expect(ui.draftEngine).toBeNull();
+        });
+
+        it('is part of the place (`view`): forgotten once a chat or a run opens, and brought back with the page by back and forward', () => {
+            const ui = new UiStore().forProject('p1');
+
+            ui.openDraft([], 'fld-api', { mode: 'existing', path: '/work/api-fix' }, 'codex');
+            expect(ui.view).toMatchObject({ draft: true, draftFolderId: 'fld-api', draftEngine: 'codex' });
+
+            const view = ui.view;
+
+            ui.openChat('c1');
+            expect(ui.draftEngine).toBeNull();
+
+            ui.show(view);
+            expect([ui.draft, ui.draftEngine]).toEqual([true, 'codex']);
+
+            ui.openRun('r1');
+            expect(ui.draftEngine).toBeNull();
+        });
+
+        it('stays when the folder of the page changes: the agent is no choice about a folder', () => {
+            const ui = new UiStore().forProject('p1');
+
+            ui.openDraft([], 'fld-api', null, 'cursor');
+            ui.setDraftFolder('fld-notes');
+            expect(ui.draftEngine).toBe('cursor');
+        });
+    });
+
     it('ignores URL values that name no view, and a section, which is gone', () => {
         expect(initialUiFromSearch('?section=tasks&view=cards')).toEqual({});
         expect(initialUiFromSearch('')).toEqual({});
