@@ -413,20 +413,24 @@ describe('GET /v1/projects/:id/worktrees', () => {
         expect(await at(plain)).toMatchObject({ submodules: false });
     });
 
-    test('names a project\'s folders in its order: a repository, a plain folder, a folder that is gone and one inside a repository', async () => {
+    test('names a project\'s folders in its order: a repository, a plain folder, a folder that is gone, one a file replaced and one inside a repository', async () => {
         const root = tempDir('worktrees-folders');
         const plain = join(root, 'notes');
         const inside = join(makeRepo(root, 'other'), 'packages');
         const gone = join(root, 'gone');
+        const replaced = join(root, 'replaced');
 
         mkdirSync(plain);
         mkdirSync(inside);
         mkdirSync(gone);
+        mkdirSync(replaced);
 
-        const { worktrees, project } = await setup([plain, inside, gone]);
+        const { worktrees, project } = await setup([plain, inside, gone, replaced]);
 
-        // A folder the project holds and the disk lost.
+        // Folders the project holds and the disk lost: one is gone, one is a file now. Neither stops the read of the others.
         rmSync(gone, { recursive: true });
+        rmSync(replaced, { recursive: true });
+        writeFileSync(replaced, 'now a file\n');
 
         const groups = await worktrees();
 
@@ -435,6 +439,7 @@ describe('GET /v1/projects/:id/worktrees', () => {
             [project.folders[1].id, 'notes', false],
             [project.folders[2].id, 'packages', false],
             [project.folders[3].id, 'gone', false],
+            [project.folders[4].id, 'replaced', false],
         ]);
         expect(groups.slice(1).every(group => group.worktrees.length === 0)).toBe(true);
     });

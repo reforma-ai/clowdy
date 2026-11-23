@@ -1,4 +1,5 @@
 import { folderNames } from '@clowdy/protocol';
+import { stat } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 
 import { getChat } from '../db/chats';
@@ -35,6 +36,9 @@ export interface WorktreeOwner {
     record?: WorkspaceRecord;
     chats?: WorktreeChat[];
 }
+
+/** Whether a folder is there: a file in its place (a folder replaced by a file) is no folder, and git cannot be run in it. */
+const isFolder = (path: string): Promise<boolean> => stat(path).then(entry => entry.isDirectory(), () => false);
 
 /**
  * A path as a key to compare it with another, as `samePlace` reads paths: its real place, and for a worktree whose folder is gone the real place of the nearest folder that is
@@ -153,14 +157,14 @@ function readWorkspaces(store: Store, projectId: string): { records: WorkspaceRe
 }
 
 /**
- * One folder's group: nothing for a folder gone from the disk or that is no repository (a folder inside one has no worktree of its own), else the folder's own checkout first and
+ * One folder's group: nothing for a folder gone from the disk (or replaced by a file) or that is no repository (a folder inside one has no worktree of its own), else the folder's own checkout first and
  * every worktree git lists after it, git's own order. Git lists the folder's checkout by its real place, so the row carries the folder's path as the project holds it; when the
  * folder is itself a linked worktree, the repository's primary one is among the others, flagged because git never removes it. A git that does not answer is `unavailable` for the
  * whole read, as for `GET /v1/projects/:id/git`.
  */
 async function folderWorktrees(folder: ProjectFolder, name: string, records: readonly WorkspaceRecord[], chatsOf: ReadonlyMap<string, WorktreeChat[]>): Promise<FolderWorktrees> {
     const none: FolderWorktrees = { folderId: folder.id, name, isRepository: false, worktrees: [] };
-    const root = await isOnDisk(folder.path) ? await repositoryRoot(folder.path) : undefined;
+    const root = await isFolder(folder.path) ? await repositoryRoot(folder.path) : undefined;
 
     if (!root) {
         return none;
