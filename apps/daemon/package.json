@@ -27,7 +27,6 @@
     },
     "devDependencies": {
         "@clowdy/config-typescript": "workspace:*",
-        "@clowdy/eslint-config": "workspace:*",
         "@modelcontextprotocol/sdk": "1.32.2"
     }
 }
