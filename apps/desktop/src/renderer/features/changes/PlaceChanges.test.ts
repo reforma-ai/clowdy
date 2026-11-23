@@ -1,0 +1,378 @@
+import { commitScope } from '@clowdy/protocol';
+import { runInAction } from 'mobx';
+import { describe, expect, it, vi } from 'vitest';
+
+import { FIXTURE_GIT_COMMITS } from '../../daemon/fixtureData';
+import { TransportError } from '../../daemon/transport';
+import { PlaceFacts } from './gitFacts';
+import { listStateOf } from './listState';
+import { PlaceChanges, placeChangesOf, type RepositoryChanges } from './PlaceChanges';
+
+import type { GitBase, GitChangedFile, GitChanges, GitFileSides, GitScope, GitStatus } from '@clowdy/protocol';
+
+const KEY = { projectId: 'p1', folderId: 'f1', workspaceId: 'w1' };
+const NEWEST = FIXTURE_GIT_COMMITS[0]!;
+const OLDEST = FIXTURE_GIT_COMMITS[1]!;
+
+const file = (path: string, revision = 'r1', more: Partial<GitChangedFile> = {}): GitChangedFile => ({ path, kind: 'modified', additions: 1, deletions: 1, revision, ...more });
+
+const list = (scope: GitScope, files: GitChangedFile[], more: Partial<RepositoryChanges> = {}): GitChanges => ({
+    isRepository: true,
+    scope,
+    from: 'f'.repeat(40),
+    files,
+    fileCount: files.length,
+    additions: files.length,
+    deletions: files.length,
+    statsComplete: true,
+    ...(scope === 'all' || scope === 'branch' ? { baseState: 'ready' as const } : {}),
+    ...more,
+});
+
+const readyBase: GitBase = { state: 'ready', name: 'origin/main', commit: '2'.repeat(40), mergeBase: '3'.repeat(40), ahead: 2, behind: 1, commits: FIXTURE_GIT_COMMITS };
+
+const statusOf = (base: GitBase): GitStatus => ({ isRepository: true, head: { kind: 'branch', name: 'feature', commit: '9'.repeat(40) }, origin: true, entries: [], base });
+
+/** A transport whose lists and files the test decides, which counts what it is asked. */
+function transportOf(answers: Partial<Record<GitScope, GitChanges | (() => GitChanges | Promise<GitChanges>)>>, status: GitStatus = statusOf(readyBase)) {
+    const changes = vi.fn(async (_project: string, _place: unknown, scope: GitScope) => {
+        const answer = answers[scope];
+
+        if (answer === undefined) throw new TransportError(`Commit ${ scope } does not exist`, 404);
+
+        return typeof answer === 'function' ? answer() : answer;
+    });
+    const fileRead = vi.fn(async (_project: string, _place: unknown, _scope: GitScope, _path: string, _oldPath?: string, _from?: string): Promise<GitFileSides> => ({ state: 'text', original: 'a\n', modified: 'b\n', revision: 'r' }));
+
+    return {
+        getGitStatus: vi.fn(async () => status),
+        getGitChanges: changes,
+        getGitFile: fileRead,
+        getGitPullRequest: vi.fn(async () => ({ isRepository: true as const, access: 'ready' as const })),
+    };
+}
+
+/** The changes model of a place, with its status read so that its base is known. */
+async function modelOf(transport: ReturnType<typeof transportOf>) {
+    const facts = new PlaceFacts(KEY, transport);
+
+    await facts.status.refresh();
+
+    return { facts, model: new PlaceChanges(facts, transport) };
+}
+
+const tick = () => new Promise(resolve => setTimeout(resolve, 0));
+
+describe('the list of the scope', () => {
+    it('is read for the scope that was chosen, with the place the facts are of, and is the last good list of that scope', async () => {
+        const transport = transportOf({ all: list('all', [file('a.ts')]), uncommitted: list('uncommitted', [file('b.ts')]) });
+        const { model } = await modelOf(transport);
+
+        expect(model.changes).toBeUndefined();
+
+        model.sync(1);
+        await tick();
+
+        expect(transport.getGitChanges).toHaveBeenCalledWith('p1', { folderId: 'f1', workspaceId: 'w1' }, 'all');
+        expect(model.changes?.files.map(entry => entry.path)).toEqual(['a.ts']);
+
+        model.setScope('uncommitted');
+        // Never the other scope's list while this one is on its way.
+        expect(model.changes).toBeUndefined();
+
+        model.sync(1);
+        await tick();
+
+        expect(model.changes?.files.map(entry => entry.path)).toEqual(['b.ts']);
+
+        // Back to the first, which shows its last list while it is read again.
+        let release: (answer: GitChanges) => void = () => undefined;
+
+        transport.getGitChanges.mockImplementationOnce(() => new Promise<GitChanges>((resolve) => {
+            release = resolve;
+        }));
+        model.setScope('all');
+        model.sync(1);
+
+        expect(model.changes?.files.map(entry => entry.path)).toEqual(['a.ts']);
+        expect(model.list.loading).toBe(true);
+
+        release(list('all', [file('a.ts'), file('c.ts')]));
+        await tick();
+
+        expect(model.changes?.files.map(entry => entry.path)).toEqual(['a.ts', 'c.ts']);
+    });
+
+    it('is read once for a round of the facts, and again when the facts start another or the scope changes', async () => {
+        const transport = transportOf({ all: list('all', [file('a.ts')]), uncommitted: list('uncommitted', []) });
+        const { model } = await modelOf(transport);
+
+        model.sync(1);
+        model.sync(1);
+        model.sync(1);
+        expect(transport.getGitChanges).toHaveBeenCalledTimes(1);
+
+        model.sync(2);
+        expect(transport.getGitChanges).toHaveBeenCalledTimes(2);
+
+        model.setScope('uncommitted');
+        model.sync(2);
+        expect(transport.getGitChanges).toHaveBeenCalledTimes(3);
+        expect(transport.getGitChanges).toHaveBeenLastCalledWith('p1', expect.anything(), 'uncommitted');
+
+        // A retry reads whatever the round is.
+        model.reload();
+        expect(transport.getGitChanges).toHaveBeenCalledTimes(4);
+    });
+
+    it('follows the facts\' rounds: a refresh of the store reaches it through the generation, with no timer of its own', async () => {
+        const transport = transportOf({ all: list('all', [file('a.ts')]) });
+        const { facts, model } = await modelOf(transport);
+
+        expect(facts.generation).toBe(0);
+
+        model.sync(facts.generation);
+        await tick();
+        runInAction(() => facts.startRound());
+        model.sync(facts.generation);
+        await tick();
+
+        expect(facts.generation).toBe(1);
+        expect(transport.getGitChanges).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps the last list when a later read fails, and says so', async () => {
+        const answers: Array<GitChanges | Error> = [list('all', [file('a.ts')]), new Error('The daemon answered 503')];
+        const transport = transportOf({
+            all: () => {
+                const next = answers.shift()!;
+
+                if (next instanceof Error) throw next;
+
+                return next;
+            },
+        });
+        const { model } = await modelOf(transport);
+
+        model.sync(1);
+        await tick();
+        model.sync(2);
+        await tick();
+
+        expect(model.changes?.files.map(entry => entry.path)).toEqual(['a.ts']);
+        expect(model.list.stale).toBe(true);
+        expect(model.list.error).toBe('The daemon answered 503');
+        expect(listStateOf(model)).toEqual({ kind: 'files' });
+    });
+
+    it('drops an answer that comes after a newer read was made', async () => {
+        const slow: Array<(answer: GitChanges) => void> = [];
+        const transport = transportOf({ all: () => new Promise<GitChanges>(resolve => slow.push(resolve)) });
+        const { model } = await modelOf(transport);
+
+        model.sync(1);
+        model.sync(2);
+
+        slow[1]!(list('all', [file('new.ts')]));
+        await tick();
+        slow[0]!(list('all', [file('old.ts')]));
+        await tick();
+
+        expect(model.changes?.files.map(entry => entry.path)).toEqual(['new.ts']);
+    });
+});
+
+describe('the scope', () => {
+    it('shows one commit of the branch alone on a press, and all changes again on a second press on it or on a press on all changes', async () => {
+        const transport = transportOf({ all: list('all', [file('a.ts')]), [commitScope(NEWEST.sha)]: list(commitScope(NEWEST.sha), [file('b.ts')], { from: OLDEST.sha }) });
+        const { model } = await modelOf(transport);
+
+        model.pickCommit(NEWEST.sha);
+        expect(model.effectiveScope).toBe(commitScope(NEWEST.sha));
+
+        model.sync(1);
+        await tick();
+        expect(model.changes?.files.map(entry => entry.path)).toEqual(['b.ts']);
+
+        model.pickCommit(NEWEST.sha);
+        expect(model.effectiveScope).toBe('all');
+
+        model.pickCommit(OLDEST.sha);
+        model.setScope('all');
+        expect(model.effectiveScope).toBe('all');
+    });
+
+    it('reads all changes where the branch has no base to be counted against, and the branch again once there is one', async () => {
+        const noBase = transportOf({ all: list('all', []) }, statusOf({ state: 'no_base' }));
+        const { model } = await modelOf(noBase);
+
+        model.setScope('branch');
+
+        expect(model.scope).toBe('branch');
+        expect(model.effectiveScope).toBe('all');
+
+        const withBase = await modelOf(transportOf({ branch: list('branch', []) }));
+
+        withBase.model.setScope('branch');
+        expect(withBase.model.effectiveScope).toBe('branch');
+    });
+
+    it('goes back to all changes when the commit it was on is gone, as after a rewrite of the branch', async () => {
+        const transport = transportOf({ all: list('all', [file('a.ts')]) });
+        const { model } = await modelOf(transport);
+
+        model.setScope(commitScope('e'.repeat(40)));
+        model.sync(1);
+        await tick();
+
+        expect(model.scope).toBe('all');
+
+        model.sync(1);
+        await tick();
+
+        expect(model.changes?.files.map(entry => entry.path)).toEqual(['a.ts']);
+    });
+
+    it('does not leave a scope it cannot read for a failure that is not a missing commit', async () => {
+        const transport = transportOf({ [commitScope(NEWEST.sha)]: () => {
+            throw new TransportError('The daemon answered 503', 503);
+        } });
+        const { model } = await modelOf(transport);
+
+        model.pickCommit(NEWEST.sha);
+        model.sync(1);
+        await tick();
+
+        expect(model.scope).toBe(commitScope(NEWEST.sha));
+        expect(listStateOf(model)).toEqual({ kind: 'failed', message: 'The daemon answered 503' });
+    });
+});
+
+describe('the filter and the cards', () => {
+    const files = [file('docs/guide.md'), file('src/a.ts'), file('src/a.test.ts'), file('README.md')];
+
+    async function filled() {
+        const { model } = await modelOf(transportOf({ all: list('all', files) }));
+
+        model.sync(1);
+        await tick();
+
+        return model;
+    }
+
+    it('narrows the files by the filter text, for the cards and the sidebar alike', async () => {
+        const model = await filled();
+
+        expect(model.files).toHaveLength(4);
+
+        model.setFilter('src/**, !*.test.ts');
+        expect(model.files.map(entry => entry.path)).toEqual(['src/a.ts']);
+
+        model.setFilter('');
+        expect(model.files).toHaveLength(4);
+    });
+
+    it('has every card open, shuts them all and opens them all, and a press on a file in the sidebar opens its card', async () => {
+        const model = await filled();
+
+        expect([model.isFolded('src/a.ts'), model.allFolded, model.noneFolded]).toEqual([false, false, true]);
+
+        model.toggleFolded('src/a.ts');
+        expect([model.isFolded('src/a.ts'), model.noneFolded]).toEqual([true, false]);
+
+        model.foldAll();
+        expect(model.allFolded).toBe(true);
+
+        model.reveal('README.md');
+        expect([model.isFolded('README.md'), model.isFolded('docs/guide.md'), model.allFolded]).toEqual([false, true, false]);
+
+        model.unfoldAll();
+        expect(model.noneFolded).toBe(true);
+    });
+
+    it('shuts only the cards the filter shows, and opens every card the filter hides too', async () => {
+        const model = await filled();
+
+        model.setFilter('*.md');
+        model.foldAll();
+        expect([...model.folded].sort()).toEqual(['README.md', 'docs/guide.md']);
+        expect(model.allFolded).toBe(true);
+
+        model.setFilter('');
+        expect(model.allFolded).toBe(false);
+
+        model.unfoldAll();
+        expect(model.folded.size).toBe(0);
+    });
+
+    it('asks the cache for a file with the list\'s own start and the file\'s revision, and a refresh reads only the files whose revision changed', async () => {
+        let current = list('all', files);
+        const transport = transportOf({ all: () => current });
+        const { model } = await modelOf(transport);
+
+        model.sync(1);
+        await tick();
+
+        for (const entry of model.files) model.sides.want(model.requestOf(entry));
+
+        await tick();
+
+        expect(transport.getGitFile).toHaveBeenCalledTimes(4);
+        expect(transport.getGitFile).toHaveBeenCalledWith('p1', { folderId: 'f1', workspaceId: 'w1' }, 'all', 'docs/guide.md', undefined, 'f'.repeat(40));
+
+        // The list is read again: one file was edited.
+        current = list('all', files.map(entry => (entry.path === 'src/a.ts' ? { ...entry, revision: 'r2' } : entry)));
+        model.sync(2);
+        await tick();
+
+        for (const entry of model.files) model.sides.want(model.requestOf(entry));
+
+        await tick();
+
+        expect(transport.getGitFile).toHaveBeenCalledTimes(5);
+        expect(transport.getGitFile).toHaveBeenLastCalledWith('p1', expect.anything(), 'all', 'src/a.ts', undefined, 'f'.repeat(40));
+        expect(model.files.map(entry => model.sides.entryOf(model.requestOf(entry))?.status)).toEqual(['ready', 'ready', 'ready', 'ready']);
+    });
+
+    it('sends the old path of a renamed file along', async () => {
+        const { model } = await modelOf(transportOf({ all: list('all', [file('b.ts', 'r1', { kind: 'renamed', oldPath: 'a.ts' })]) }));
+
+        model.sync(1);
+        await tick();
+
+        expect(model.requestOf(model.files[0]!)).toMatchObject({ path: 'b.ts', oldPath: 'a.ts' });
+
+        model.sides.want(model.requestOf(model.files[0]!));
+        await tick();
+        expect(model.sides.entryOf(model.requestOf(model.files[0]!))?.status).toBe('ready');
+    });
+});
+
+describe('the model of a place', () => {
+    it('is the same one for the same facts, and another for facts that were made again; the latest places are kept', () => {
+        const transport = transportOf({});
+        const facts = new PlaceFacts(KEY, transport);
+        const model = placeChangesOf(transport, facts);
+
+        expect(placeChangesOf(transport, facts)).toBe(model);
+        expect(placeChangesOf(transport, new PlaceFacts(KEY, transport))).not.toBe(model);
+
+        const other = transportOf({});
+        const first = new PlaceFacts(KEY, other);
+        const kept = placeChangesOf(other, first);
+
+        for (const name of ['a', 'b', 'c', 'd']) placeChangesOf(other, new PlaceFacts({ ...KEY, folderId: name }, other));
+
+        expect(placeChangesOf(other, first)).not.toBe(kept);
+    });
+
+    it('keeps its scope and its filter for the next time the tab is on show', () => {
+        const transport = transportOf({});
+        const facts = new PlaceFacts(KEY, transport);
+
+        placeChangesOf(transport, facts).setScope('uncommitted');
+        placeChangesOf(transport, facts).setFilter('*.md');
+
+        expect(placeChangesOf(transport, facts)).toMatchObject({ scope: 'uncommitted', filter: '*.md' });
+    });
+});
