@@ -123,6 +123,26 @@ describe('the moves of a place to and from origin', () => {
         expect(actions.busy).toBe(false);
     });
 
+    it("is busy while the place's branch is being changed, and refuses an action then, with nothing sent", async () => {
+        const { actions, transport, facts } = setup();
+
+        facts.switching = true;
+
+        expect(actions.running).toBeUndefined();
+        expect(actions.busy).toBe(true);
+        expect(await actions.run('push')).toEqual({
+            ok: false,
+            failure: { action: 'push', message: 'The branch is being changed' },
+        });
+        expect(transport.pushGit).not.toHaveBeenCalled();
+        expect(actions.failure).toBeUndefined();
+
+        facts.switching = false;
+
+        expect(actions.busy).toBe(false);
+        expect(await actions.run('push')).toMatchObject({ ok: true });
+    });
+
     it('says a diverged branch as a warning that is not a failure', async () => {
         const { actions, transport } = setup();
 

@@ -34,6 +34,7 @@ import {
 } from './fixtureData';
 import { fixtureFileContents } from './fixtureFiles';
 import { applyFolderSettings } from './fixtureFolderSettings';
+import { type FixtureBranchPlace, type FixtureBranchScript, FixtureGitBranches } from './fixtureGitBranches';
 import { FixtureGitRemote, type FixtureRemotePlace } from './fixtureGitRemote';
 import { FixtureGitWrites, type FixtureGitWritesOptions } from './fixtureGitWrites';
 import { fail, type Outcome, ok } from './fixtureOutcome';
@@ -67,6 +68,7 @@ import type {
     FolderGit,
     FolderId,
     FolderWorktrees,
+    GitBranches,
     GitChanges,
     GitCommitResult,
     GitFileSides,
@@ -76,6 +78,8 @@ import type {
     GitRemoteResult,
     GitScope,
     GitStatus,
+    GitSwitchRequest,
+    GitSwitchResult,
     GitViewedMark,
     Health,
     Project,
@@ -112,6 +116,8 @@ export interface FixtureTransportOptions {
     timeline?: boolean;
     /** How a commit and a request for a commit message end (`fixtureGitWrites.ts`): they go through unless a script says otherwise. */
     gitWrites?: FixtureGitWritesOptions;
+    /** What the folder's branches and a switch are like (`fixtureGitBranches.ts`): a plain list and a switch that goes through unless a script says otherwise. */
+    branches?: readonly FixtureBranchScript[];
 }
 
 /** What the fixture keeps of a file: its bytes, and whether a message carries it already. */
@@ -254,12 +260,14 @@ export class FixtureTransport implements Transport {
     readonly #gitWrites: FixtureGitWrites;
     /** Where each place's branch stands against its upstream, which a fetch, a pull, a push and a commit move. */
     readonly #gitRemote: FixtureGitRemote;
+    readonly #branches: FixtureGitBranches;
 
-    constructor({ data = createFixtureData(), timeline = false, gitWrites }: FixtureTransportOptions = {}) {
+    constructor({ data = createFixtureData(), timeline = false, gitWrites, branches }: FixtureTransportOptions = {}) {
         this.#data = data;
         this.#timeline = timeline;
         this.#gitWrites = new FixtureGitWrites(gitWrites);
         this.#gitRemote = new FixtureGitRemote(gitWrites?.remote);
+        this.#branches = new FixtureGitBranches(branches);
         this.#tasks = new FixtureTasks(data, {
             emit: (projectId, event) => this.#emit(projectId, event),
             id: prefix => this.#id(prefix),
@@ -349,14 +357,14 @@ export class FixtureTransport implements Transport {
         const upstream = this.#gitRemote.upstreamOf(this.#remotePlace(head, workspace, place));
         const { lastFetchedAt, hasOrigin, head: script } = this.#gitRemote;
 
-        return structuredClone(
-            fixtureGitStatus(head, workspace, this.#gitWrites.committedOf(place.workspaceId ?? ''), {
-                ...(upstream && { upstream }),
-                ...(lastFetchedAt !== undefined && { lastFetchedAt }),
-                ...(!hasOrigin && { origin: false }),
-                ...(script && { head: script }),
-            })
-        );
+        const status = fixtureGitStatus(head, workspace, this.#gitWrites.committedOf(place.workspaceId ?? ''), {
+            ...(upstream && { upstream }),
+            ...(lastFetchedAt !== undefined && { lastFetchedAt }),
+            ...(!hasOrigin && { origin: false }),
+            ...(script && { head: script }),
+        });
+
+        return structuredClone(workspace ? status : this.#branches.dirtied(status));
     }
 
     /** The place as the fixture's remote keeps it: a checkout is level with its upstream, a worktree's branch is not published until a push says so. */
@@ -396,14 +404,71 @@ export class FixtureTransport implements Transport {
         return this.#remote('push', projectId, place);
     }
 
+    /** The place as the fixture's branches keep it: the folder's head, or the worktree's branch. */
+    #branchPlace(
+        head: { branch?: string; detached?: true } | undefined,
+        workspace: Pick<ChatWorkspace, 'branch'> | undefined,
+        place: PlaceRef
+    ): FixtureBranchPlace {
+        return {
+            key: `${place.folderId}/${place.workspaceId ?? ''}`,
+            branch: head?.detached ? undefined : head?.branch,
+            worktree: workspace !== undefined,
+            ...(workspace && { worktreeBranch: workspace.branch ?? 'clowdy/ab12cd34' }),
+        };
+    }
+
+    async getGitBranches(projectId: ProjectId, place: PlaceRef): Promise<GitBranches> {
+        const { head, workspace } = this.#gitPlace(projectId, place);
+
+        if (!head?.branch) return { isRepository: false };
+
+        return structuredClone(this.#branches.list(this.#branchPlace(head, workspace, place)));
+    }
+
+    async switchGitBranch(
+        projectId: ProjectId,
+        place: PlaceRef,
+        branch: string,
+        create?: GitSwitchRequest['create']
+    ): Promise<GitSwitchResult> {
+        const { folder, head, workspace } = this.#gitPlace(projectId, place);
+
+        if (!head?.branch) throw new TransportError('The folder is not the root of a git repository', 400);
+
+        const answer = structuredClone(
+            await this.#branches.switch(this.#branchPlace(head, workspace, place), {
+                branch,
+                ...(create && { create }),
+            })
+        );
+
+        // The folder's checkout is on the branch from now on, which every read of its head says.
+        if (answer.head.kind === 'branch')
+            this.#data.git[folder.path] = {
+                ...(head.remoteUrl !== undefined && { remoteUrl: head.remoteUrl }),
+                branch: answer.head.name,
+            };
+
+        return answer;
+    }
+
     async getGitChanges(projectId: ProjectId, place: PlaceRef, scope: GitScope): Promise<GitChanges> {
         const { head, workspace } = this.#gitPlace(projectId, place);
-        const changes = fixtureGitChanges(
+        const committed = this.#gitWrites.committedOf(place.workspaceId ?? '');
+        // A checkout that has uncommitted files (`&branches=dirty`) has the worktree's, in the scopes that list them.
+        const dirtyCheckout =
+            workspace === undefined && this.#branches.dirty && (scope === 'all' || scope === 'uncommitted');
+        const found = fixtureGitChanges(
             head,
-            workspace !== undefined,
-            scope,
-            this.#gitWrites.committedOf(place.workspaceId ?? '')
+            workspace !== undefined || dirtyCheckout,
+            dirtyCheckout ? 'uncommitted' : scope,
+            committed
         );
+        const changes =
+            dirtyCheckout && found?.isRepository
+                ? { ...found, scope, ...(scope === 'all' && { baseState: 'ready' as const }) }
+                : found;
 
         if (!changes) throw new TransportError(`Commit ${scope.slice('commit:'.length)} does not exist`, 404);
 
@@ -429,7 +494,7 @@ export class FixtureTransport implements Transport {
         if (from !== undefined && !fixtureHasCommit(from))
             throw new TransportError(`Commit ${from} does not exist`, 404);
 
-        const sides = workspace && fixtureGitFile(scope, path);
+        const sides = (workspace !== undefined || this.#branches.dirty) && fixtureGitFile(scope, path);
 
         if (!sides) throw new TransportError(`Changed file ${path} does not exist`, 404);
 

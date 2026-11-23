@@ -16,6 +16,7 @@ import { GitWrites } from './git/commit';
 import { CommitMessages } from './git/message';
 import { PullRequests } from './git/pullRequest';
 import { GitRemote } from './git/remote';
+import { GitSwitch } from './git/switch';
 import { WriteEnvironment } from './git/writeEnv';
 import { startServer } from './http/server';
 import { acquireLock, writeDaemonInfo } from './instance';
@@ -144,6 +145,7 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
             pullRequests: options.pullRequests ?? new PullRequests(),
             gitWrites: new GitWrites({ store, environment: gitEnvironment }),
             gitRemote: new GitRemote({ store, environment: gitEnvironment }),
+            gitSwitch: new GitSwitch({ store, environment: gitEnvironment }),
             commitMessages: new CommitMessages({ store, agents, providers, generation: textGeneration }),
         };
 
@@ -166,6 +168,7 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
                 services.pullRequests.stop();
                 services.gitWrites.stop();
                 services.gitRemote.stop();
+                services.gitSwitch.stop();
                 services.commitMessages.stop();
                 await driver.stop();
                 created?.stop();

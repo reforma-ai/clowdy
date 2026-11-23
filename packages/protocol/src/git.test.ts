@@ -38,6 +38,15 @@ describe('ROUTES git reads', () => {
     });
 });
 
+describe('ROUTES git branches', () => {
+    test('are beside the reads and the writes of the place, with the project id made safe for a path', () => {
+        expect(ROUTES.projectGitBranches('prj_1')).toBe('/v1/projects/prj_1/git/branches');
+        expect(ROUTES.projectGitBranches('a/b?c')).toBe('/v1/projects/a%2Fb%3Fc/git/branches');
+        expect(ROUTES.projectGitSwitch('prj_1')).toBe('/v1/projects/prj_1/git/switch');
+        expect(ROUTES.projectGitSwitch('a/b?c')).toBe('/v1/projects/a%2Fb%3Fc/git/switch');
+    });
+});
+
 describe('ROUTES git writes', () => {
     test('are beside the reads of the place', () => {
         expect(ROUTES.projectGitCommit('prj_1')).toBe('/v1/projects/prj_1/git/commit');

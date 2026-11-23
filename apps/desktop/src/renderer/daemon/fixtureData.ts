@@ -969,7 +969,7 @@ export function fixtureGitPullRequest(
 }
 
 /** The commit the fixture's `origin/main` is at, and the one the worktree's branch started from: 40 hexadecimal digits of one digit, which is all a fixture needs of an id. */
-const FIXTURE_BASE_COMMIT = '3'.repeat(40);
+export const FIXTURE_BASE_COMMIT = '3'.repeat(40);
 
 /** The commits of the fixture worktree's branch, newest first: what `GitBase.commits` lists, each a `commit:<sha>` scope with the files below. */
 export const FIXTURE_GIT_COMMITS: GitCommit[] = [

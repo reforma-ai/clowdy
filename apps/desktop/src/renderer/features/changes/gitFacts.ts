@@ -131,6 +131,11 @@ export class PlaceFacts {
      * the Changes tab's files, reads again when this changes, so it has no triggers of its own. Not counted while the window is hidden, since nothing is read then.
      */
     generation = 0;
+    /**
+     * A change of the place's branch is under way (`BranchSwitch`). The daemon runs a switch and the moves to and from `origin` one at a time, so a fetch, pull or push pressed meanwhile would
+     * act on the NEW branch once the switch ended: while this is set the buttons of those moves are off (`RemoteActions.busy`).
+     */
+    switching = false;
 
     constructor(
         readonly key: GitPlaceKey,

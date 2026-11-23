@@ -52,9 +52,9 @@ export class RemoteActions {
         });
     }
 
-    /** An action is running. */
+    /** An action is running, or the place's branch is being changed: the daemon would run the action after the switch, on the new branch. */
     get busy(): boolean {
-        return this.running !== undefined;
+        return this.running !== undefined || this.facts.switching;
     }
 
     /**
@@ -63,6 +63,8 @@ export class RemoteActions {
      */
     async run(id: RemoteActionId, { report = true }: { report?: boolean } = {}): Promise<RemoteOutcome> {
         if (this.running !== undefined) return { ok: false, failure: { action: id, message: 'An action is running' } };
+
+        if (this.facts.switching) return { ok: false, failure: { action: id, message: 'The branch is being changed' } };
 
         const { key } = this.facts;
         const place = placeRef(key);

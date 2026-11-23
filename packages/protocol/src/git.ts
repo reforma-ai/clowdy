@@ -3,7 +3,8 @@
  * one of them, and the pull request of its branch. A place is a folder's own checkout or a worktree of it (`resolvePlace`), named by `folderId` and an optional
  * `workspaceId` as the file routes name it. The reads (status, changes, file, pull request) write nothing to a repository and take no index lock, and only the pull request
  * goes to the network, through the person's own `gh` (no token is kept or read by the daemon). The writes (`POST .../git/commit`, `.../git/fetch`, `.../git/pull` and `.../git/push`) run the
- * person's own `git` with their configuration, signing included, one at a time for a place; the last three are the only routes that reach `origin`.
+ * person's own `git` with their configuration, signing included, one at a time for a place; fetch, pull and push are the only routes that reach `origin`. `POST .../git/switch` changes the
+ * branch of the folder's own checkout and nothing else.
  *
  * GET  /v1/projects/:id/git/status?folderId=&workspaceId=
  *                                      -> GitStatus. The branch (or the detached or unborn HEAD), its upstream with ahead and behind and when the repository last
@@ -73,6 +74,20 @@
  *                                         with git's own line as the message (the line that says what went wrong, not the summary that follows it), and a `details.hint` when it names the
  *                                         signing agent; one that does not end in about two minutes (a fingerprint that is waited for, a network that does not answer) is stopped and
  *                                         `unavailable`. They run on the place's one line of writes, so a commit and a push never overlap.
+ *
+ * GET  /v1/projects/:id/git/branches?folderId=&workspaceId=
+ *                                      -> GitBranches. The branches of the place's repository a person may switch to: the local ones (the place's own, the default one, the upstream, the
+ *                                         place that holds a branch another place has checked out, when the tip was committed), the branches of `origin` that have no local branch
+ *                                         of their name, and the last few branches the place's HEAD was on (from its reflog). Read only, nothing fetched; no ahead and behind per branch.
+ *                                         A folder that is not the root of a working tree answers `isRepository: false`. The lists are cut at `MAX_GIT_BRANCH_ENTRIES` (`truncated`).
+ * POST /v1/projects/:id/git/switch   -> GitSwitchResult. Body `GitSwitchRequest` (`folderId`, `workspaceId?`, `branch`, `create?`). Changes the branch the folder's own checkout is on with
+ *                                         `git switch`: to a local branch, to one that only `origin` has (a local branch of that name that tracks it), or to a new branch cut from the current
+ *                                         HEAD or from the default branch (`create`). **Only the folder's own checkout**: a chat's worktree keeps its branch (`invalid`). It is refused, and
+ *                                         nothing is changed, while the tree has a change of any kind (tracked, staged or untracked), a merge, rebase, cherry-pick, revert or bisect is under
+ *                                         way, a run is working in the place, or another worktree has the branch checked out; the person's hooks run as ever (a `post-checkout` that fails
+ *                                         or hangs leaves the branch switched and is told as `warning`, as are the commits a detached HEAD left on no branch). A name that is no branch name, a branch that does not exist, one that is there already
+ *                                         (`create`) and a folder that is not a repository are `invalid`; a refusal that is the repository's state and a switch git refused are `conflict`
+ *                                         with a short reason as the message (and, for a change count or a way out, `details.hint`); one that did not end in time is `unavailable`.
  *
  * The first three reads answer `invalid` for no `folderId`, `not_found` for a folder or a workspace that is not the project's, and `unavailable` for a folder or a worktree
  * that is gone from the disk or not made yet and for a git that does not answer in time; the fourth and the viewed routes answer the same.
@@ -440,6 +455,93 @@ export interface GitRemoteDiverged {
 
 /** What `POST .../git/fetch`, `.../pull` and `.../push` answer. */
 export type GitRemoteResult = GitRemoteDone | GitRemoteDiverged;
+
+/** The most entries each list of `GitBranches` (the local branches, the remote ones) holds: a repository with more is cut at the newest, and `truncated` says so. */
+export const MAX_GIT_BRANCH_ENTRIES = 300;
+
+/** How many of the branches the place's HEAD was on lately `GitBranches.recent` names. */
+export const MAX_GIT_RECENT_BRANCHES = 5;
+
+/** The place that has a branch checked out when it is not the one that asked: the folder's own checkout or a worktree a chat works in. */
+export interface GitBranchHolder {
+    /** Where the worktree is, as the machine writes it. */
+    path: string;
+    /** It is the folder's own checkout. */
+    main?: true;
+    /** The chat's worktree (`WorkspaceRecord.id`) when Clowdy keeps a record of it; absent for one that the person made. */
+    workspaceId?: string;
+}
+
+/** A local branch of the place's repository. */
+export interface GitLocalBranch {
+    /** `feature/x`, as git names the branch (no `refs/heads/`). */
+    name: string;
+    /** The place's HEAD is on it. */
+    current?: true;
+    /** It is the default branch (`GitBranches.defaultBranch`). */
+    default?: true;
+    /** The branch it tracks, as git writes it (`origin/feature/x`); absent for a branch that tracks nothing. */
+    upstream?: string;
+    /** Another worktree has it checked out, so git would refuse a second checkout of it. Never set for the place's own branch. */
+    heldBy?: GitBranchHolder;
+    /** When the commit it points at was made, in milliseconds. */
+    committedAt?: number;
+}
+
+/** A branch of `origin` that no local branch of the same name tracks yet: switching to it makes the local branch. */
+export interface GitRemoteBranch {
+    /** The branch's name on `origin`, without `origin/`: `feature/x`. */
+    name: string;
+    /** It is the default branch (`GitBranches.defaultBranch`), which has no local branch. */
+    default?: true;
+    /** When the commit it points at was made, in milliseconds. */
+    committedAt?: number;
+}
+
+/** What `GET /v1/projects/:id/git/branches` says: the branches a place can switch to, or that the folder is no repository. */
+export type GitBranches =
+    | { isRepository: false }
+    | {
+          isRepository: true;
+          /** The branch the folder's default branch is, without `origin/`: the base a new worktree starts from (`FolderGit.defaultBranch`), as a branch name. Absent in a repository with no commit. */
+          defaultBranch?: string;
+          /** Newest commit first. */
+          local: GitLocalBranch[];
+          /** Newest commit first; the branches of `origin` that have no local branch of their name. */
+          remote: GitRemoteBranch[];
+          /** The branches the place's HEAD was on lately, newest first, at most `MAX_GIT_RECENT_BRANCHES`: local branches that still exist, the current one left out. */
+          recent: string[];
+          /** A list was cut at `MAX_GIT_BRANCH_ENTRIES`. */
+          truncated?: true;
+      };
+
+/** Where a new branch starts: at the place's HEAD, or at the repository's default branch. */
+export type GitSwitchStart = 'current' | 'default';
+
+/** The body of `POST /v1/projects/:id/git/switch`. */
+export interface GitSwitchRequest {
+    folderId: string;
+    /** A worktree is refused: it is here so the daemon, not the client, judges the place. */
+    workspaceId?: string;
+    /** The branch to be on: an existing one (local, or one that only `origin` has) or, with `create`, the name of the new one. */
+    branch: string;
+    /** Makes the branch from `start` and switches to it. It tracks nothing, so a push of it never goes to the branch it was cut from. */
+    create?: { start: GitSwitchStart };
+}
+
+/** What a switch did: where the place's HEAD is now, so the client reads the rest again. */
+export interface GitSwitchResult {
+    head: GitHead;
+    /** The branch's upstream: set when the branch was made from one on `origin`. */
+    upstream?: GitUpstream;
+    /** The branch was made by this switch (a new one, or a local one made for a branch of `origin`). */
+    created?: true;
+    /**
+     * What the person is told of a switch that was made: what their `post-checkout` hook said when it failed after the switch (git reports its exit status as the switch's, though the branch has
+     * changed) or that it did not finish in time, and the commits a detached HEAD left on no branch. Several are joined with `; `.
+     */
+    warning?: string;
+}
 
 /** The most paths a commit takes: the files `GitChanges.files` lists, which are what the person ticks from. */
 export const MAX_GIT_COMMIT_PATHS = MAX_GIT_CHANGED_FILES;

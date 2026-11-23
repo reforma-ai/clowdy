@@ -26,6 +26,7 @@ import type {
     FolderGit,
     FolderId,
     FolderWorktrees,
+    GitBranches,
     GitChanges,
     GitCommitResult,
     GitErrorDetails,
@@ -36,6 +37,8 @@ import type {
     GitRemoteResult,
     GitScope,
     GitStatus,
+    GitSwitchRequest,
+    GitSwitchResult,
     GitViewedMark,
     GitViewedSet,
     Health,
@@ -229,6 +232,23 @@ export class HttpTransport implements Transport {
 
     pushGit(projectId: ProjectId, place: PlaceRef): Promise<GitRemoteResult> {
         return this.#write(ROUTES.projectGitRemote(projectId, 'push'), { ...place } satisfies GitRemoteRequest);
+    }
+
+    getGitBranches(projectId: ProjectId, place: PlaceRef): Promise<GitBranches> {
+        return this.#read(`${ROUTES.projectGitBranches(projectId)}?${placeQuery(place)}`);
+    }
+
+    switchGitBranch(
+        projectId: ProjectId,
+        place: PlaceRef,
+        branch: string,
+        create?: GitSwitchRequest['create']
+    ): Promise<GitSwitchResult> {
+        return this.#write(ROUTES.projectGitSwitch(projectId), {
+            ...place,
+            branch,
+            ...(create && { create }),
+        } satisfies GitSwitchRequest);
     }
 
     getProjectWorktrees(projectId: ProjectId): Promise<FolderWorktrees[]> {

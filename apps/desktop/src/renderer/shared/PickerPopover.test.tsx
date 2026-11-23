@@ -23,14 +23,22 @@ let picks: string[];
 let closes: number;
 
 /** The owner of a picker: renders it while it is open, as a screen does. */
-function Owner({ selectedIds = [], anchor = true }: { selectedIds?: string[]; anchor?: boolean }) {
+function Owner({
+    selectedIds = [],
+    anchor = true,
+    options = OPTIONS,
+}: {
+    selectedIds?: string[];
+    anchor?: boolean;
+    options?: PickerOption[];
+}) {
     const [isOpen, setIsOpen] = useState(true);
 
     return (
         isOpen && (
             <PickerPopover
                 anchor={anchor ? opener : null}
-                options={OPTIONS}
+                options={options}
                 selectedIds={selectedIds}
                 aria-label="Change status"
                 placeholder="Change status…"
@@ -122,6 +130,22 @@ describe('PickerPopover', () => {
         expect(marked.map(row => row.textContent)).toEqual(['In progress']);
     });
 
+    it('moves the mark when the current option changes while the list is open, though its options are the same', async () => {
+        const marked = () =>
+            rows()
+                .filter(row => row.querySelector('[aria-label="Current"]'))
+                .map(row => row.textContent);
+
+        await open({ selectedIds: ['todo'] });
+        expect(marked()).toEqual(['To do']);
+
+        await act(async () => root.render(<Owner selectedIds={['done']} />));
+        expect(marked()).toEqual(['Done']);
+
+        await act(async () => root.render(<Owner selectedIds={[]} />));
+        expect(marked()).toEqual([]);
+    });
+
     it('picks the highlighted row on Enter, and closes', async () => {
         await open();
         await press('ArrowDown');
@@ -204,6 +228,41 @@ describe('PickerPopover', () => {
 
         expect(labels()).toHaveLength(4);
         expect(document.querySelector('[data-modal-clickout-layer]')).not.toBeNull();
+    });
+});
+
+describe('PickerPopover with options that are off', () => {
+    const WITH_OFF: PickerOption[] = [
+        { id: 'held', label: 'Held branch', isDisabled: true, stacked: true, description: 'Checked out in ~/work/app' },
+        { id: 'free', label: 'Free branch' },
+        { id: 'held-too', label: 'Held again', isDisabled: true },
+    ];
+
+    it('draws an option that is off dimmed with its reason, and the arrows pass it by', async () => {
+        await open({ options: WITH_OFF });
+
+        expect(labels()).toEqual(['Held branch' + 'Checked out in ~/work/app', 'Free branch', 'Held again']);
+        expect(rows()[0].getAttribute('aria-disabled')).toBe('true');
+        expect(rows()[1].getAttribute('aria-disabled')).toBeNull();
+
+        await press('ArrowDown');
+        await press('Enter');
+
+        expect(picks).toEqual(['free']);
+    });
+
+    it('does not pick an option that is off, pressed or on Enter as the first row that matches, and stays open', async () => {
+        await open({ options: WITH_OFF });
+        await act(async () => rows()[0].click());
+
+        expect(picks).toEqual([]);
+
+        await type('held');
+        await press('Enter');
+
+        expect(picks).toEqual([]);
+        expect(closes).toBe(0);
+        expect(document.querySelector('[role="listbox"]')).not.toBeNull();
     });
 });
 
