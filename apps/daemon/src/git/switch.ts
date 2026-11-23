@@ -68,8 +68,8 @@ interface Plan {
  * change, tracked, staged or untracked (`Commit or discard the changes first`, with how many files). Switching to the branch that is checked out is the answer it already is.
  *
  * A hook (`post-checkout`) runs as the person's git runs it. git's exit status for the switch is the hook's, though the branch has changed: when HEAD is on the branch after a failed
- * run, the switch is answered as made with the hook's line as `warning`; when it is not, the failure is git's first `fatal:` or `error:` line, as `conflict`. Nothing here can be told to
- * skip a hook.
+ * run, or after one that was cut off at the limit, the switch is answered as made with the hook's line as `warning`; when it is not, the failure is git's first `fatal:` or `error:` line,
+ * as `conflict` (`unavailable` for the limit). Nothing here can be told to skip a hook. A switch away from a detached HEAD whose commits no ref reaches any more says so as a `warning` too.
  */
 export class GitSwitch {
     readonly environment: WriteEnvironment;
