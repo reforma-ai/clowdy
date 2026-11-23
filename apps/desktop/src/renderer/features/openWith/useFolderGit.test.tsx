@@ -93,6 +93,59 @@ describe('useFolderGit', () => {
         expect(shown()).toBe('new');
     });
 
+    describe('for the worktree of a chat', () => {
+        const worktreeInfo = (workspaces: ProjectInfo['workspaces']): ProjectInfo[] => [{ ...info({ 'f-a': 'main' })[0]!, workspaces }];
+        const Head = ({ workspace }: { workspace: { id: string; branch?: string; ready: boolean } }) => <span>{ useFolderGit('p-1', 'f-a', workspace)?.branch ?? 'none' }</span>;
+        const drawHead = (store: RootStore, workspace: { id: string; branch?: string; ready: boolean }) => act(() => root.render(<RootStoreProvider value={ store }><Head workspace={ workspace } /></RootStoreProvider>));
+
+        it('answers the branch the worktree has now, read like the folder\'s, and again when the window gets focus', async () => {
+            const daemon = transport();
+            const store = { transport: daemon } as unknown as RootStore;
+
+            drawHead(store, { id: 'wks_1', branch: 'clowdy/ab12cd34', ready: true });
+            // The branch the chat was made with is not shown in the read's place.
+            expect(shown()).toBe('none');
+            expect(daemon.getProjectsInfo).toHaveBeenCalledExactlyOnceWith('p-1');
+
+            await daemon.answer(0, worktreeInfo([{ workspaceId: 'wks_1', exists: true, branch: 'feature/menu' }]));
+            expect(shown()).toBe('feature/menu');
+
+            act(() => void window.dispatchEvent(new Event('focus')));
+            await daemon.answer(1, worktreeInfo([{ workspaceId: 'wks_1', exists: true, branch: 'feature/other' }]));
+            expect(shown()).toBe('feature/other');
+        });
+
+        it('shows the branch it will be made on while it is not made, and reads again once it is', async () => {
+            const daemon = transport();
+            const store = { transport: daemon } as unknown as RootStore;
+
+            drawHead(store, { id: 'wks_1', branch: 'clowdy/ab12cd34', ready: false });
+            expect(shown()).toBe('clowdy/ab12cd34');
+
+            drawHead(store, { id: 'wks_1', branch: 'clowdy/ab12cd34', ready: true });
+            expect(daemon.getProjectsInfo).toHaveBeenCalledTimes(2);
+            expect(shown()).toBe('none');
+
+            await daemon.answer(1, worktreeInfo([{ workspaceId: 'wks_1', exists: true, branch: 'feature/menu' }]));
+            expect(shown()).toBe('feature/menu');
+        });
+
+        it('shows nothing of the worktree it had when the answer for another comes, and for one the answer does not know', async () => {
+            const daemon = transport();
+            const store = { transport: daemon } as unknown as RootStore;
+
+            drawHead(store, { id: 'wks_1', ready: true });
+            await daemon.answer(0, worktreeInfo([{ workspaceId: 'wks_1', exists: true, branch: 'feature/menu' }]));
+            expect(shown()).toBe('feature/menu');
+
+            drawHead(store, { id: 'wks_2', ready: true });
+            expect(shown()).toBe('none');
+
+            await daemon.answer(1, worktreeInfo([{ workspaceId: 'wks_1', exists: true, branch: 'feature/menu' }]));
+            expect(shown()).toBe('none');
+        });
+    });
+
     it('keeps what it knew when a read fails, and shows nothing for a folder the answer does not have', async () => {
         const daemon = { getProjectsInfo: vi.fn().mockResolvedValueOnce(info({ 'f-a': 'main' })).mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce(info({})) };
         const store = { transport: daemon } as unknown as RootStore;

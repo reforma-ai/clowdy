@@ -1,13 +1,9 @@
-import { Button } from '@clowdy/components/Button';
 import { Menu, MenuItem, MenuTrigger } from '@clowdy/components/List';
 import { Popover } from '@clowdy/components/Popover';
-import { Text } from '@clowdy/components/Text';
-import { Check, ChevronDown, Folder } from '@clowdy/icons/14';
+import { Check, Folder } from '@clowdy/icons/14';
 import { folderNames } from '@clowdy/protocol';
-import { use } from 'react';
-import { OverlayTriggerStateContext } from 'react-aria-components';
 
-import styles from './DraftFolderSelect.module.css';
+import { ChipTrigger } from './ChipTrigger';
 
 import type { FolderId, ProjectFolder } from '@clowdy/protocol';
 
@@ -70,24 +66,5 @@ export function DraftFolderSelect({ folders, selectedId, missing, onPick }: Draf
  * is gone from the disk. It goes inside a `MenuTrigger`.
  */
 export function FolderTrigger({ name, tooltip, missing = false }: { name: string; tooltip?: string; missing?: boolean }) {
-    const isOpen = use(OverlayTriggerStateContext)!.isOpen;
-
-    return (
-        <Button
-            size="sm"
-            variant="filling"
-            color={ missing ? 'warning' : undefined }
-            rounded
-            className={ styles.trigger }
-            contentClassName={ styles.triggerContent }
-            data-open={ isOpen || undefined }
-            data-missing={ missing || undefined }
-            aria-label={ `Folder: ${ name }` }
-            tooltip={ tooltip }
-        >
-            <Folder aria-hidden="true" />
-            <Text truncate>{ name }</Text>
-            <ChevronDown aria-hidden="true" className={ styles.chevron } />
-        </Button>
-    );
+    return <ChipTrigger icon={ <Folder aria-hidden="true" /> } label={ name } aria-label={ `Folder: ${ name }` } tooltip={ tooltip } missing={ missing } />;
 }

@@ -6,61 +6,89 @@ import { Folder } from '@clowdy/icons/14';
 import { tildePath } from '../../shared/displayPath';
 import { homeFolder } from '../../shared/homeFolder';
 import { useProjectState } from '../../stores';
-import { canOpenPaths, OpenWithMenu, useFolderGit, type FolderGit, type OpenTarget } from '../openWith';
+import { canOpenPaths, OpenWithMenu, useFolderGit, useFolderRepair, type FolderGit, type OpenTarget } from '../openWith';
 import styles from './ChatFolder.module.css';
 import { FolderTrigger } from './DraftFolderSelect';
+import { WorkspaceLabels } from './WorkspaceChips';
 
-import type { ProjectFolder } from '@clowdy/protocol';
+import type { ChatWorkspace, ProjectFolder } from '@clowdy/protocol';
 
-export interface ChatFolderProps {
+export interface FolderPillProps {
     name: string;
     folder: ProjectFolder;
     /** The folder is gone from the disk. */
     missing: boolean;
-}
-
-/** The branch that is checked out, in the muted type of the line: its name, or the short hash of a detached HEAD. Nothing for a folder that is not a repository. */
-function Branch({ git }: { git: FolderGit | undefined }) {
-    if (!git?.branch) return null;
-
-    return <Text truncate className={ styles.branch } title={ git.detached ? 'Detached HEAD' : 'Branch' }>{ git.branch }</Text>;
+    /** What git says where the pill opens its menu (the link to GitHub names the branch). */
+    git: FolderGit | undefined;
+    /** Where the menu acts: the worktree of a chat that works in one. The folder's own path when absent. */
+    worktree?: string;
 }
 
 /**
  * The folder a chat works in, in the place the new-chat page's select (`DraftFolderSelect`) had it, and the same size and name. In the desktop app it is the
  * same pill, and a press opens the menu of the folder (`OpenWithMenu`: Open in Files, the file manager, the editor and the terminal, each with the program's own
  * icon, GitHub when the folder is a GitHub repository, and Copy path), and the pill tells the path on hover, or that the folder is gone from the disk, when
- * the items are off. The branch that is checked out stands after the name. Anywhere else, a page in a browser, it is read only: no plate and no chevron, since
- * the folder of a chat never changes and there is nothing to open it in.
+ * the items are off. Anywhere else, a page in a browser, it is read only: no plate and no chevron, since the folder of a chat never changes and there is nothing to open it in.
+ * A chat in a worktree has the menu act on the worktree: its path is what the pill tells and the menu copies or opens.
  */
-export function ChatFolder({ name, folder, missing }: ChatFolderProps) {
+export function FolderPill({ name, folder, missing, git, worktree }: FolderPillProps) {
     const project = useProjectState();
-    const git = useFolderGit(project.id, folder.id);
-    const title = missing ? 'This folder no longer exists' : tildePath(folder.path, homeFolder.path);
+    const path = worktree ?? folder.path;
+    // A worktree that is gone is not what Locate and Remove from project put right: they act on the folder, which is there.
+    const repair = useFolderRepair(folder, missing && worktree === undefined);
+    const title = missing ? 'This folder no longer exists' : tildePath(path, homeFolder.path);
 
     if (!canOpenPaths()) {
         return (
-            <>
-                <div role="group" aria-label="Folder" className={ styles.folder } data-missing={ missing || undefined } title={ title }>
-                    <Folder aria-hidden="true" />
-                    <Text truncate>{ name }</Text>
-                </div>
-                <Branch git={ git } />
-            </>
+            <div role="group" aria-label="Folder" className={ styles.folder } data-missing={ missing || undefined } title={ title }>
+                <Folder aria-hidden="true" />
+                <Text truncate>{ name }</Text>
+            </div>
         );
     }
 
-    const target: OpenTarget = { projectId: project.id, folder, path: folder.path, relative: '', kind: 'directory' };
+    const target: OpenTarget = { projectId: project.id, folder, path, relative: '', kind: 'directory', ...(worktree !== undefined && { inWorktree: true as const }) };
+
+    return (
+        <MenuTrigger>
+            <FolderTrigger name={ name } tooltip={ title } missing={ missing } />
+            <Popover placement="bottom start" spacing="xs">
+                <OpenWithMenu target={ target } missing={ missing } repair={ repair } git={ git } aria-label="Open folder" />
+            </Popover>
+        </MenuTrigger>
+    );
+}
+
+export interface ChatFolderProps {
+    name: string;
+    folder: ProjectFolder;
+    /** The folder is gone from the disk. */
+    missing: boolean;
+    /** The worktree the chat works in, if it does. */
+    workspace?: ChatWorkspace;
+}
+
+/**
+ * The line under the message box of a chat that has started, read only: its folder (`FolderPill`), where it works (`Project checkout` or `Worktree`) and the branch the tree
+ * has checked out now, as the new-chat page's chips (`WorkspaceChips`) had them. The branch is read live, with the folder's `git` (see `useFolderGit`): an agent may switch
+ * branches in a worktree, so the name the chat was made with is not shown once the worktree exists. A worktree that is gone from the disk makes the folder pill the warning colour.
+ */
+export function ChatFolder({ name, folder, missing, workspace }: ChatFolderProps) {
+    const project = useProjectState();
+    const git = useFolderGit(project.id, folder.id, workspace);
 
     return (
         <>
-            <MenuTrigger>
-                <FolderTrigger name={ name } tooltip={ title } missing={ missing } />
-                <Popover placement="bottom start" spacing="xs">
-                    <OpenWithMenu target={ target } missing={ missing } git={ git } aria-label="Open folder" />
-                </Popover>
-            </MenuTrigger>
-            <Branch git={ git } />
+            <FolderPill name={ name } folder={ folder } missing={ missing || git?.gone === true } git={ git } worktree={ workspace?.path } />
+            <WorkspaceLabels worktree={ workspace?.path } git={ git } />
         </>
     );
+}
+
+/** The folder of a new chat in a project of one folder: nothing to pick, so the pill only says where the chat will work, as the chat's own does. */
+export function DraftFolder({ name, folder, missing }: Omit<ChatFolderProps, 'workspace'>) {
+    const project = useProjectState();
+    const git = useFolderGit(project.id, folder.id);
+
+    return <FolderPill name={ name } folder={ folder } missing={ missing } git={ git } />;
 }

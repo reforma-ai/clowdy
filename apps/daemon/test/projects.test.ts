@@ -531,15 +531,68 @@ describe('project.update', () => {
         expect(pathsOf(h.ok('project.update', { projectId: both.id, folders: [{ id: both.folders[1].id }, { id: both.folders[0].id }] }).project)).toEqual([api.path, shop.path]);
     });
 
-    test('over HTTP an entry is a folder to keep or a path to add, never both', async () => {
+    test('over HTTP an entry is a folder to keep, a path to add, or a folder with its new path, and nothing else', async () => {
         const h = await setup();
         const project = h.openRepo('both');
         const main = projectOf(h, project.id).folders[0];
-        const body = command('project.update', { projectId: project.id, folders: [{ id: main.id, path: project.path }] });
-        const response = await h.fetch('/v1/commands', { method: 'POST', body: JSON.stringify(body) });
+        const send = (entry: object) => h.fetch('/v1/commands', { method: 'POST', body: JSON.stringify(command('project.update', { projectId: project.id, folders: [entry] })) });
 
-        expect(response.status).toBe(400);
-        expect(await response.json()).toMatchObject({ ok: false, error: { code: 'invalid' } });
+        for (const entry of [{}, { id: main.id, path: project.path, extra: true }, { id: main.id, path: '' }]) {
+            const response = await send(entry);
+
+            expect(response.status).toBe(400);
+            expect(await response.json()).toMatchObject({ ok: false, error: { code: 'invalid' } });
+        }
+
+        expect((await send({ id: main.id, path: project.path })).status).toBe(200);
+    });
+
+    test('a folder is moved by its id and its new path: it keeps its id and its place in the order, and the new path takes the checks of a new folder', async () => {
+        const h = await setup();
+        const project = h.openRepo('web');
+        const main = projectOf(h, project.id).folders[0];
+        const api = realpathSync.native(makeRepo(h.config.projectsDir, 'api'));
+        const { project: two } = h.ok('project.update', { projectId: project.id, folders: [{ id: main.id }, { path: api }] });
+        const second = two.folders[1];
+        const next = realpathSync.native(makeRepo(h.config.projectsDir, 'api-next'));
+        const cursor = h.store.headCursor();
+
+        const moved = h.ok('project.update', { projectId: project.id, folders: [{ id: main.id }, { id: second.id, path: next }] }).project as Project;
+
+        expect(moved.folders).toEqual([main, { id: second.id, path: next }]);
+        expect(pathsOf(projectOf(h, project.id))).toEqual([project.path, next]);
+        expect(upserted(h.events(cursor)).map(event => pathsOf((event.data as { project: Project }).project))).toEqual([[project.path, next]]);
+
+        // The checks of a new folder: it exists, is a folder, and neither repeats nor lies inside (or around) another folder of the project.
+        mkdirSync(join(project.path, 'src'));
+        writeFileSync(join(tempDir(), 'file'), '');
+
+        const move = (path: string) => h.send('project.update', { projectId: project.id, folders: [{ id: main.id }, { id: second.id, path }] });
+
+        expect(failure(move(join(project.path, 'src'))).message).toContain('inside');
+        expect(failure(move(project.path)).message).toContain('twice');
+        expect(failure(move(join(next, 'missing'))).code).toBe('invalid');
+        expect(failure(move('relative/path')).code).toBe('invalid');
+        expect(failure(h.send('project.update', { projectId: project.id, folders: [{ id: 'fld_nope', path: next }] })).message).toContain('not one of the project');
+        expect(pathsOf(projectOf(h, project.id))).toEqual([project.path, next]);
+    });
+
+    test('a move of the main folder waits for the agents, as a new main folder does, and a move of another folder does not', async () => {
+        const { h, gate, project, task } = await busyProject('busy');
+        const main = projectOf(h, project.id).folders[0];
+        const api = realpathSync.native(makeRepo(h.config.projectsDir, 'api'));
+        const apiNext = realpathSync.native(makeRepo(h.config.projectsDir, 'api-next'));
+        const mainNext = realpathSync.native(makeRepo(h.config.projectsDir, 'busy-next'));
+        const working = { code: 'conflict', message: 'The agents of this project are still working. Stop them first.' };
+        const { project: grown } = h.ok('project.update', { projectId: project.id, folders: [{ id: main.id }, { path: api }] });
+        const second = grown.folders[1].id;
+
+        expect(failure(h.send('project.update', { projectId: project.id, folders: [{ id: main.id, path: mainNext }, { id: second }] }))).toMatchObject(working);
+        expect(pathsOf(projectOf(h, project.id))).toEqual([project.path, api]);
+
+        expect(pathsOf(h.ok('project.update', { projectId: project.id, folders: [{ id: main.id }, { id: second, path: apiNext }] }).project)).toEqual([project.path, apiNext]);
+
+        gate.release(task.key);
     });
 
     test('a new main folder waits for the agents, while other folders, a rename and the same list do not', async () => {
@@ -603,6 +656,282 @@ describe('project.update', () => {
         const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'Say hello' });
 
         await waitFor(() => h.run(runId).status === 'succeeded', 'the orchestrator to succeed', 8000);
+    });
+});
+
+describe('project.updateFolder', () => {
+    /** A project of two repositories, whose folders' settings the tests set. */
+    async function twoFolders() {
+        const h = await setup();
+        const web = h.openRepo('web');
+        const infra = h.openRepo('infra');
+        const { project } = h.ok('project.add', { folders: [web.path, infra.path], name: 'Both' }) as { project: Project };
+
+        return { h, project, web: project.folders[0], infra: project.folders[1] };
+    }
+
+    const update = (h: Harness, projectId: string, folderId: string, settings: unknown) => h.send('project.updateFolder', { projectId, folderId, settings });
+    const settingsOf = (h: Harness, projectId: string, folderId: string) => projectOf(h, projectId).folders.find(folder => folder.id === folderId)?.settings;
+
+    test('sets the base branch and the setup of one folder, answers the project and publishes it', async () => {
+        const { h, project, web, infra } = await twoFolders();
+        const cursor = h.store.headCursor();
+        const settings = { baseBranch: 'origin/next', setup: { files: ['.env', '.env.*'], command: 'bun install' } };
+        const answer = h.ok('project.updateFolder', { projectId: project.id, folderId: web.id, settings }).project as Project;
+
+        expect(answer.folders).toEqual([{ ...web, settings }, infra]);
+        expect(projectOf(h, project.id).folders).toEqual([{ ...web, settings }, infra]);
+        expect(projectSnapshot(h.store, project.id).project.folders[0]).toEqual({ ...web, settings });
+        expect(upserted(h.events(cursor)).map(event => (event.data as { project: Project }).project.folders[0]?.settings)).toEqual([settings]);
+    });
+
+    test('a field that is left out stays, one set to null is cleared, and a folder with none left has no settings at all', async () => {
+        const { h, project, web } = await twoFolders();
+
+        h.ok('project.updateFolder', { projectId: project.id, folderId: web.id, settings: { baseBranch: 'develop', setup: { files: ['.env'], command: 'make' } } });
+
+        h.ok('project.updateFolder', { projectId: project.id, folderId: web.id, settings: { baseBranch: 'main' } });
+        expect(settingsOf(h, project.id, web.id)).toEqual({ baseBranch: 'main', setup: { files: ['.env'], command: 'make' } });
+
+        h.ok('project.updateFolder', { projectId: project.id, folderId: web.id, settings: { setup: { files: ['.npmrc'] } } });
+        expect(settingsOf(h, project.id, web.id)).toEqual({ baseBranch: 'main', setup: { files: ['.npmrc'] } });
+
+        h.ok('project.updateFolder', { projectId: project.id, folderId: web.id, settings: { baseBranch: null } });
+        expect(settingsOf(h, project.id, web.id)).toEqual({ setup: { files: ['.npmrc'] } });
+
+        const cleared = h.ok('project.updateFolder', { projectId: project.id, folderId: web.id, settings: { setup: null } }).project as Project;
+
+        expect(cleared.folders[0]).toEqual({ id: web.id, path: web.path });
+        expect(cleared.folders[0]).not.toHaveProperty('settings');
+        expect(projectOf(h, project.id).folders[0]).not.toHaveProperty('settings');
+        expect(h.store.db.query('SELECT settings FROM project_folders WHERE id = ?').get(web.id)).toEqual({ settings: null });
+
+        // Clearing what is not there, and saying nothing, are fine.
+        expect(update(h, project.id, web.id, { baseBranch: null, setup: null }).ok).toBe(true);
+        expect(update(h, project.id, web.id, {}).ok).toBe(true);
+    });
+
+    test('keeps a setup as it is read: the lines trimmed and listed once, and a setup with no files and no command is none', async () => {
+        const { h, project, web } = await twoFolders();
+
+        h.ok('project.updateFolder', { projectId: project.id, folderId: web.id, settings: { baseBranch: '  next  ', setup: { files: ['  .env ', '.env', 'apps/web/.env*'], command: '\n  bun install\nbun run build  \n' } } });
+        expect(settingsOf(h, project.id, web.id)).toEqual({ baseBranch: 'next', setup: { files: ['.env', 'apps/web/.env*'], command: 'bun install\nbun run build' } });
+
+        h.ok('project.updateFolder', { projectId: project.id, folderId: web.id, settings: { setup: { files: [], command: '   ' } } });
+        expect(settingsOf(h, project.id, web.id)).toEqual({ baseBranch: 'next' });
+
+        h.ok('project.updateFolder', { projectId: project.id, folderId: web.id, settings: { setup: { files: [], command: 'touch ready' } } });
+        expect(settingsOf(h, project.id, web.id)).toEqual({ baseBranch: 'next', setup: { files: [], command: 'touch ready' } });
+    });
+
+    test('refuses a file outside the folder, however a system writes it, and changes nothing', async () => {
+        const { h, project, web } = await twoFolders();
+        const before = { baseBranch: 'main', setup: { files: ['.env'] } };
+
+        h.ok('project.updateFolder', { projectId: project.id, folderId: web.id, settings: before });
+
+        const cursor = h.store.headCursor();
+        const refused = [
+            '/etc/passwd', '/.env', '..', '../secrets', 'a/../../b', 'a/..', './.env', 'a/./b', '.', '...', '.. ', 'a/.. /b',
+            'C:/Users/me/.env', 'C:.env', 'c:\\Users\\.env', '\\\\server\\share\\.env', '\\.env', 'a\\b', '.env:stream',
+            'a//b', 'a/', '/', '*/.env', 'config/*/x', '.env\0', '.env\n.npmrc', ' ', '',
+            // The repository's own entry, however a system spells it; a file in a linked worktree that points at the repository.
+            '.git', '.git/config', '.GIT/hooks/pre-commit', 'a/.git/config', '.Git.', '.git ', '.git/*',
+            // What no file is named with: DEL, a C1 control, a line separator, a mark that turns the text round, and a name too long.
+            '.env\u007f', '.env\u0085', '.en\u2028v', '\u202Eexe.txt', 'a'.repeat(501),
+        ];
+
+        for (const file of refused) {
+            expect(failure(update(h, project.id, web.id, { setup: { files: [file] } })), JSON.stringify(file)).toMatchObject({ code: 'invalid' });
+        }
+
+        expect(failure(update(h, project.id, web.id, { setup: { files: Array.from({ length: 51 }, (_, index) => `f${ index }`) } })).code).toBe('invalid');
+        expect(failure(update(h, project.id, web.id, { setup: { files: [], command: 'x'.repeat(4001) } })).code).toBe('invalid');
+        expect(settingsOf(h, project.id, web.id)).toEqual(before);
+        expect(h.store.headCursor()).toBe(cursor);
+
+        // What is fine: a name with a dot or a space in it, a nested path, a pattern in the last part, and the limits themselves.
+        const fine = ['.env', '.env.local', '.env*', 'my notes.txt', 'apps/web/.env', 'apps/web/*', 'a..b', '..hidden', '.config/app.json', 'ünï/ф.txt', '*', '.gitignore', '.github/workflows/ci.yml', 'my.git/x', 'a'.repeat(500)];
+
+        expect(update(h, project.id, web.id, { setup: { files: fine } }).ok).toBe(true);
+        expect(settingsOf(h, project.id, web.id)?.setup?.files).toEqual(fine);
+        expect(update(h, project.id, web.id, { setup: { files: Array.from({ length: 50 }, (_, index) => `f${ index }`), command: 'x'.repeat(4000) } }).ok).toBe(true);
+    });
+
+    test('checks the limits on the text as it is kept, and says which limit a refusal is', async () => {
+        const { h, project, web } = await twoFolders();
+        const message = (settings: unknown) => failure(update(h, project.id, web.id, settings)).message;
+
+        expect(message({ setup: { files: Array.from({ length: 51 }, (_, index) => `f${ index }`) } })).toBe('A setup lists at most 50 files');
+        expect(message({ setup: { files: [], command: 'x'.repeat(4001) } })).toBe('The command is longer than 4000 characters');
+        expect(message({ setup: { files: [], command: 'a\0b' } })).toBe('The command has a NUL character');
+        expect(message({ baseBranch: 'b'.repeat(301) })).toBe('The base branch is longer than 300 characters');
+        expect(message({ baseBranch: '-x' })).toBe('The base branch cannot start with -');
+        expect(message({ baseBranch: '--upload-pack=x' })).toBe('The base branch cannot start with -');
+        expect(message({ baseBranch: '' })).toBe('The base branch is empty');
+        expect(message({ setup: { files: ['.git/config'] } })).toBe('The file ".git/config" must not name .git');
+        expect(message({ setup: { files: ['a'.repeat(501)] } })).toContain('is longer than 500 characters');
+
+        // 51 lines with one repeated are 50 files, and spaces round a command do not count against its limit.
+        const lines = Array.from({ length: 50 }, (_, index) => `f${ index }`);
+
+        expect(update(h, project.id, web.id, { setup: { files: [...lines, 'f0'], command: `\n  ${ 'x'.repeat(4000) }  \n` } }).ok).toBe(true);
+        expect(settingsOf(h, project.id, web.id)?.setup?.files).toEqual(lines);
+        expect(settingsOf(h, project.id, web.id)?.setup?.command).toHaveLength(4000);
+    });
+
+    test('refuses a base branch that is empty, has no name, is too long, starts with a dash or holds a control character', async () => {
+        const { h, project, web } = await twoFolders();
+
+        for (const baseBranch of ['', '   ', 'b'.repeat(301), 'dev\nelop', 'dev\u007f', 'dev\u202E', '-x']) {
+            expect(failure(update(h, project.id, web.id, { baseBranch })), JSON.stringify(baseBranch)).toMatchObject({ code: 'invalid' });
+        }
+
+        expect(settingsOf(h, project.id, web.id)).toBeUndefined();
+        expect(update(h, project.id, web.id, { baseBranch: 'b'.repeat(300) }).ok).toBe(true);
+    });
+
+    test('a folder the project does not have is not found, even when another project has it, and the personal space is a conflict', async () => {
+        const { h, project, web } = await twoFolders();
+        const other = h.openRepo('other');
+        const otherFolder = projectOf(h, other.id).folders[0];
+        const settings = { baseBranch: 'main' };
+
+        expect(failure(update(h, project.id, otherFolder.id, settings)).code).toBe('not_found');
+        expect(failure(update(h, project.id, 'fld_nope', settings)).code).toBe('not_found');
+        expect(failure(update(h, 'prj_nope', web.id, settings)).code).toBe('not_found');
+
+        const { id, folders } = h.personal;
+
+        expect(failure(update(h, id, folders[0].id, settings)).code).toBe('conflict');
+        expect(failure(update(h, id, 'fld_nope', settings)).code).toBe('conflict');
+        expect(h.personal.folders).toEqual(folders);
+        expect(projectOf(h, other.id).folders[0]).toEqual(otherFolder);
+        expect(settingsOf(h, project.id, web.id)).toBeUndefined();
+    });
+
+    test('settings stay through the other changes of a project: a rename, a reorder of folders, a removal and an addition of one, another folder\'s update, a reorder of projects, and a restart', async () => {
+        const { h, project, web, infra } = await twoFolders();
+        const webSettings = { baseBranch: 'origin/main', setup: { files: ['.env'], command: 'bun install' } };
+        const infraSettings = { setup: { files: ['terraform.tfvars'] } };
+
+        h.ok('project.updateFolder', { projectId: project.id, folderId: web.id, settings: webSettings });
+        h.ok('project.updateFolder', { projectId: project.id, folderId: infra.id, settings: infraSettings });
+        expect(settingsOf(h, project.id, web.id)).toEqual(webSettings);
+
+        h.ok('project.update', { projectId: project.id, name: 'Renamed', settings: { engine: 'fake' } });
+        expect(projectOf(h, project.id).folders).toEqual([{ ...web, settings: webSettings }, { ...infra, settings: infraSettings }]);
+
+        const reordered = h.ok('project.update', { projectId: project.id, folders: [{ id: infra.id }, { id: web.id }] }).project as Project;
+
+        expect(reordered.folders).toEqual([{ ...infra, settings: infraSettings }, { ...web, settings: webSettings }]);
+        expect(projectOf(h, project.id).folders).toEqual([{ ...infra, settings: infraSettings }, { ...web, settings: webSettings }]);
+
+        // A path the project has already keeps its folder, so its settings; a new folder has none.
+        const notes = realpathSync.native(tempDir());
+        const grown = h.ok('project.update', { projectId: project.id, folders: [{ path: web.path }, { id: infra.id }, { path: notes }] }).project as Project;
+
+        expect(grown.folders.map(folder => folder.settings)).toEqual([webSettings, infraSettings, undefined]);
+
+        h.ok('project.updateFolder', { projectId: project.id, folderId: grown.folders[2].id, settings: { baseBranch: 'trunk' } });
+        expect(settingsOf(h, project.id, web.id)).toEqual(webSettings);
+        expect(settingsOf(h, project.id, infra.id)).toEqual(infraSettings);
+
+        const shrunk = h.ok('project.update', { projectId: project.id, folders: [{ id: web.id }, { id: infra.id }] }).project as Project;
+
+        expect(shrunk.folders.map(folder => folder.settings)).toEqual([webSettings, infraSettings]);
+
+        const other = h.openRepo('other');
+
+        h.ok('project.reorder', { projectIds: [other.id, project.id] });
+        expect(settingsOf(h, project.id, web.id)).toEqual(webSettings);
+
+        await h.stop();
+
+        const second = await restartHarness(h);
+
+        harnesses.push(second);
+        expect(projectOf(second, project.id).folders).toEqual([{ ...web, settings: webSettings }, { ...infra, settings: infraSettings }]);
+    });
+
+    test('go with a folder that is moved to another place on the disk: it is the same folder of the project', async () => {
+        const { h, project, web, infra } = await twoFolders();
+        const settings = { baseBranch: 'origin/main', setup: { files: ['.env'], command: 'bun install' } };
+        const elsewhere = realpathSync.native(tempDir());
+
+        h.ok('project.updateFolder', { projectId: project.id, folderId: infra.id, settings });
+
+        const moved = h.ok('project.update', { projectId: project.id, folders: [{ id: web.id }, { id: infra.id, path: elsewhere }] }).project as Project;
+
+        expect(moved.folders[1]).toEqual({ id: infra.id, path: elsewhere, settings });
+        expect(settingsOf(h, project.id, infra.id)).toEqual(settings);
+    });
+
+    test('belong to the project\'s row of the folder: the same folder in two projects has two sets, and removing one project leaves the other\'s', async () => {
+        const h = await setup();
+        const shared = h.openRepo('shared');
+        const a = h.ok('project.add', { folders: [shared.path, h.openRepo('a-only').path], name: 'A' }).project as Project;
+        const b = h.ok('project.add', { folders: [shared.path, h.openRepo('b-only').path], name: 'B' }).project as Project;
+
+        expect([a.folders[0].path, b.folders[0].path]).toEqual([shared.path, shared.path]);
+        expect(a.folders[0].id).not.toBe(b.folders[0].id);
+
+        h.ok('project.updateFolder', { projectId: a.id, folderId: a.folders[0].id, settings: { baseBranch: 'develop', setup: { files: ['.env'] } } });
+        h.ok('project.updateFolder', { projectId: b.id, folderId: b.folders[0].id, settings: { baseBranch: 'release' } });
+
+        expect(settingsOf(h, a.id, a.folders[0].id)).toEqual({ baseBranch: 'develop', setup: { files: ['.env'] } });
+        expect(settingsOf(h, b.id, b.folders[0].id)).toEqual({ baseBranch: 'release' });
+
+        // A change of one project's folders writes that project's rows only.
+        h.ok('project.update', { projectId: a.id, folders: [{ id: a.folders[1].id }, { id: a.folders[0].id }] });
+        expect(settingsOf(h, b.id, b.folders[0].id)).toEqual({ baseBranch: 'release' });
+
+        h.ok('project.delete', { projectId: a.id });
+        expect(settingsOf(h, b.id, b.folders[0].id)).toEqual({ baseBranch: 'release' });
+        expect(h.ok('project.add', { folders: [shared.path, a.folders[1].path], name: 'A again' }).project.folders[0].settings).toBeUndefined();
+    });
+
+    test('a project that never had settings reads as it did: its folders have an id and a path only', async () => {
+        const h = await setup();
+        const project = h.openRepo('plain');
+
+        expect(projectOf(h, project.id).folders).toEqual([{ id: expect.stringMatching(/^fld_/), path: project.path }]);
+        expect(projectOf(h, project.id).folders[0]).not.toHaveProperty('settings');
+    });
+
+    test('over HTTP the schema keeps null, drops what is not a setting, refuses a malformed command, and the limits answer with their own message', async () => {
+        const { h, project, web } = await twoFolders();
+        const post = async (settings: unknown) => {
+            const response = await h.fetch('/v1/commands', { method: 'POST', body: JSON.stringify(command('project.updateFolder', { projectId: project.id, folderId: web.id, settings })) });
+
+            return { status: response.status, body: await response.json() };
+        };
+
+        expect((await post({ baseBranch: 'dev', setup: { files: ['.env'], command: 'make' }, engine: 'x' })).body).toMatchObject({ ok: true, data: { project: { folders: [{ settings: { baseBranch: 'dev', setup: { files: ['.env'], command: 'make' } } }, {}] } } });
+        expect((await post({ baseBranch: null, setup: null })).body).toMatchObject({ ok: true, data: { project: { id: project.id } } });
+        expect(settingsOf(h, project.id, web.id)).toBeUndefined();
+
+        for (const settings of [{ baseBranch: 3 }, { setup: { command: 'x' } }, { setup: { files: 'a' } }, 'main']) {
+            const { status, body } = await post(settings);
+
+            expect(status, JSON.stringify(settings)).toBe(400);
+            expect(body).toMatchObject({ ok: false, error: { code: 'invalid', message: 'The command is not valid' } });
+        }
+
+        // The limits and the paths are the daemon's to refuse, with a message that says which and that the person sees.
+        const refusals: [unknown, string][] = [
+            [{ baseBranch: '' }, 'The base branch is empty'],
+            [{ setup: { files: ['../x'] } }, 'The file "../x" must not have a . or .. part'],
+            [{ setup: { files: Array.from({ length: 51 }, (_, index) => `f${ index }`) } }, 'A setup lists at most 50 files'],
+            [{ setup: { files: [], command: 'x'.repeat(4001) } }, 'The command is longer than 4000 characters'],
+        ];
+
+        for (const [settings, message] of refusals) {
+            const { status, body } = await post(settings);
+
+            expect(status, message).toBe(400);
+            expect(body).toMatchObject({ ok: false, error: { code: 'invalid', message } });
+        }
     });
 });
 

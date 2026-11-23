@@ -107,8 +107,14 @@ export class HttpTransport implements Transport {
         return this.#get(projectId === undefined ? ROUTES.projectsInfo : `${ ROUTES.projectsInfo }?project=${ encodeURIComponent(projectId) }`);
     }
 
-    getFolderGit(projectId: ProjectId, folderId: FolderId): Promise<FolderGit> {
-        return this.#get(`${ ROUTES.projectGit(projectId) }?folderId=${ encodeURIComponent(folderId) }`);
+    async getFolderGit(projectId: ProjectId, folderId: FolderId): Promise<FolderGit> {
+        const route = `${ ROUTES.projectGit(projectId) }?folderId=${ encodeURIComponent(folderId) }`;
+        const response = await this.#fetch(this.#base + route, { headers: this.#headers });
+
+        // The daemon says why it cannot read a folder (git is not there, the folder is gone) and the new-chat page tells the person.
+        if (!response.ok) throw await refusal(response, route);
+
+        return await response.json() as FolderGit;
     }
 
     getProjectSnapshot(projectId: ProjectId): Promise<ProjectSnapshot> {

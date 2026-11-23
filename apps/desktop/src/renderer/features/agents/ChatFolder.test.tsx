@@ -3,7 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { FIXTURE_PERSONAL_PROJECT_ID, FIXTURE_PROJECT_ID } from '../../daemon/fixtureData';
+import { createFixtureData, FIXTURE_EMPTY_PROJECT_ID, FIXTURE_PERSONAL_PROJECT_ID, FIXTURE_PROJECT_ID, FIXTURE_WORKSPACE_CHAT_ID, withFixtureWorkspace } from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { openInFiles } from '../files/openInFiles';
@@ -11,6 +11,7 @@ import { openWithPreferences } from '../openWith';
 import { openInTerminal } from '../terminal/openInTerminal';
 import { ChatFolder } from './ChatFolder';
 
+import type { ChatWorkspace, ProjectInfo } from '@clowdy/protocol';
 import type { OpenApps } from '../../../shared/bridge';
 
 const toasts = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn() }));
@@ -52,10 +53,10 @@ const outsideItems = () => [...document.body.querySelectorAll<HTMLElement>('[rol
 const outside = (text: string) => outsideItems().find(row => row.textContent === text)!;
 const openOutside = () => press(item('Open in…'));
 
-async function draw({ bridge, missing = false, project = FIXTURE_PROJECT_ID, folder = FOLDER }: { bridge?: Partial<NonNullable<Window['desktop']>>; missing?: boolean; project?: string; folder?: typeof FOLDER }) {
+async function draw({ bridge, missing = false, project = FIXTURE_PROJECT_ID, folder = FOLDER, workspace }: { bridge?: Partial<NonNullable<Window['desktop']>>; missing?: boolean; project?: string; folder?: typeof FOLDER; workspace?: ChatWorkspace }) {
     window.desktop = bridge as never;
     store.selectProject(project);
-    act(() => root.render(<RootStoreProvider value={ store }><ChatFolder name="web" folder={ folder } missing={ missing } /></RootStoreProvider>));
+    act(() => root.render(<RootStoreProvider value={ store }><ChatFolder name="web" folder={ folder } missing={ missing } workspace={ workspace } /></RootStoreProvider>));
     await settle();
 }
 
@@ -80,14 +81,14 @@ afterEach(() => {
 });
 
 describe('the folder of a chat', () => {
-    it('tells the branch that is checked out after its name, and nothing for a folder git does not know', async () => {
+    it('tells where the chat works and the branch that is checked out after its name, and no branch for a folder git does not know', async () => {
         await draw({});
 
-        expect(container.textContent).toBe('webmain');
+        expect(container.textContent).toBe('webProject checkoutmain');
 
         await draw({ project: FIXTURE_PERSONAL_PROJECT_ID, folder: { id: 'fld_personal', path: '/Users/dev/Clowdy/Personal' } });
 
-        expect(container.textContent).toBe('web');
+        expect(container.textContent).toBe('webProject checkout');
     });
 
     it('is read only outside the desktop app: its name, the path on hover, and nothing to press', async () => {
@@ -190,6 +191,35 @@ describe('the folder of a chat', () => {
         expect(openPath).not.toHaveBeenCalled();
     });
 
+    it('offers Locate… for a folder that is gone, which moves the folder where the person picks; no Remove for the only folder of a project, nothing at all for the personal space', async () => {
+        const choose = vi.fn(async () => ['/Users/dev/car-rental-moved']);
+        const bridge = { getOpenApps: async () => APPS, openPath: vi.fn(async () => undefined), chooseDirectories: choose };
+
+        // The Clowdy project: no agent at work in it, so its main folder can move.
+        const clowdy = { id: 'fld_clowdy', path: '/Users/dev/clowdy' };
+
+        await draw({ bridge, missing: true, project: FIXTURE_EMPTY_PROJECT_ID, folder: clowdy });
+        await press(pill()!);
+
+        expect(items().map(row => row.textContent)).toEqual(['Locate…', 'Open in Files', 'Open in Terminal', 'Copy path', 'Open in…']);
+
+        await press(item('Locate…'));
+
+        expect(choose).toHaveBeenCalledOnce();
+        await vi.waitFor(() => expect(store.projects.find(project => project.id === FIXTURE_EMPTY_PROJECT_ID)?.folders).toEqual([{ id: clowdy.id, path: '/Users/dev/car-rental-moved' }]));
+
+        // A folder that is there has no repair.
+        await draw({ bridge });
+        await press(pill()!);
+
+        expect(items().map(row => row.textContent)).not.toContain('Locate…');
+
+        await draw({ project: FIXTURE_PERSONAL_PROJECT_ID, folder: { id: 'fld_personal', path: '/Users/dev/Clowdy/Personal' }, bridge, missing: true });
+        await press(pill()!);
+
+        expect(items().map(row => row.textContent)).not.toContain('Locate…');
+    });
+
     it('draws each program with its own icon, and a plain one of its kind for a program that has none', async () => {
         const icon = 'data:image/png;base64,Y3Vyc29y';
 
@@ -222,7 +252,7 @@ describe('the folder of a chat', () => {
         await draw({ bridge: { getOpenApps: async () => APPS, openPath: vi.fn(async () => undefined) } });
 
         expect(pill()?.textContent).toBe('web');
-        expect(container.textContent).toBe('webmain');
+        expect(container.textContent).toBe('webProject checkoutmain');
     });
 
     it('opens the folder in the built-in file manager', async () => {
@@ -272,5 +302,123 @@ describe('the folder of a chat', () => {
         await openOutside();
 
         expect(outsideItems().map(row => row.textContent)).not.toContain('Open in GitHub');
+    });
+});
+
+describe('the folder of a chat that works in a worktree', () => {
+    const APP = { getOpenApps: async () => APPS, openPath: vi.fn(async () => undefined) };
+    let workspace: ChatWorkspace;
+
+    /** The read of what the daemon knows about the project, with the worktree's entry as the test says. */
+    const reads = (entry: ProjectInfo['workspaces']) => {
+        const info = vi.spyOn(store.transport, 'getProjectsInfo');
+
+        info.mockImplementation(async () => [{ projectId: FIXTURE_PROJECT_ID, folders: [{ folderId: FOLDER.id, exists: true, remoteUrl: 'git@github.com:acme/car-rental.git', branch: 'main', chats: 0 }], chats: 0, tasks: 0, activeRuns: 0, workspaces: entry }]);
+
+        return info;
+    };
+
+    beforeEach(async () => {
+        store.dispose();
+
+        const data = withFixtureWorkspace(createFixtureData());
+
+        workspace = data.chats.find(chat => chat.id === FIXTURE_WORKSPACE_CHAT_ID)!.workspace!;
+        store = new RootStore(new FixtureTransport({ data }));
+        await store.load();
+    });
+
+    it('says it is a worktree, with its path on hover, and the branch the tree has checked out now', async () => {
+        await draw({ workspace });
+
+        expect(container.textContent).toBe('webWorktreeclowdy/ab12cd34');
+        expect(container.querySelector<HTMLElement>('[aria-label="Where it runs: Worktree"]')?.title).toBe('~/Clowdy/workspaces/car-rental/ab12cd34/car-rental');
+        expect(container.querySelector('[data-missing]')).toBeNull();
+    });
+
+    it('shows the branch the agent switched to, and reads it again when the window gets focus', async () => {
+        const info = reads([{ workspaceId: workspace.id, exists: true, branch: 'feature/other' }]);
+
+        await draw({ workspace });
+
+        expect(container.textContent).toBe('webWorktreefeature/other');
+
+        info.mockImplementation(async () => [{ projectId: FIXTURE_PROJECT_ID, folders: [], chats: 0, tasks: 0, activeRuns: 0, workspaces: [{ workspaceId: workspace.id, exists: true, branch: '5c4d3e2', detached: true }] }]);
+        act(() => void window.dispatchEvent(new Event('focus')));
+        await settle();
+
+        expect(container.textContent).toBe('webWorktree5c4d3e2');
+        expect(container.querySelector('[title="Detached HEAD"]')).not.toBeNull();
+    });
+
+    it('names no branch until the read has answered, and none that the read does not know once the worktree is made', async () => {
+        const never = vi.spyOn(store.transport, 'getProjectsInfo').mockReturnValue(new Promise(() => undefined));
+
+        await draw({ workspace });
+
+        // The name the chat was made with may be out of date by now: it is not shown in its place.
+        expect(container.textContent).toBe('webWorktree');
+
+        never.mockRestore();
+        reads([]);
+        await draw({ workspace: { ...workspace, id: 'wks_other' } });
+
+        expect(container.textContent).toBe('webWorktree');
+    });
+
+    it('shows the branch it will be made on while the worktree is not made yet, whatever the read says', async () => {
+        reads([]);
+        await draw({ workspace: { ...workspace, ready: false } });
+
+        expect(container.textContent).toBe('webWorktreeclowdy/ab12cd34');
+    });
+
+    it('reads the branch again when the worktree gets made', async () => {
+        const info = reads([{ workspaceId: workspace.id, exists: true, branch: 'feature/other' }]);
+
+        await draw({ workspace: { ...workspace, ready: false } });
+        expect(container.textContent).toBe('webWorktreeclowdy/ab12cd34');
+
+        info.mockClear();
+        await draw({ workspace });
+
+        expect(info).toHaveBeenCalled();
+        expect(container.textContent).toBe('webWorktreefeature/other');
+    });
+
+    it('marks the folder as gone when the worktree is no longer on the disk', async () => {
+        reads([{ workspaceId: workspace.id, exists: false }]);
+        await draw({ workspace, bridge: APP });
+
+        expect(pill()?.hasAttribute('data-missing')).toBe(true);
+        expect(container.textContent).toBe('webWorktree');
+    });
+
+    it('opens the menu on the worktree, whose path it copies and opens, and offers neither Files nor the Terminal, which show the main checkout', async () => {
+        const openPath = vi.fn(async () => undefined);
+        const writeText = vi.fn(async () => undefined);
+
+        Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+        await draw({ workspace, bridge: { getOpenApps: async () => APPS, openPath } });
+        await press(pill()!);
+
+        expect(items().map(row => row.textContent)).toEqual(['Copy path', 'Open in…']);
+
+        await press(item('Copy path'));
+
+        expect(writeText).toHaveBeenCalledExactlyOnceWith(workspace.path);
+
+        await press(pill()!);
+        await openOutside();
+        await press(outside('Open in Cursor'));
+
+        expect(openPath).toHaveBeenCalledExactlyOnceWith(workspace.path, { kind: 'editor', id: 'cursor' });
+    });
+
+    it('is read only outside the desktop app, with the worktree\'s path on hover', async () => {
+        await draw({ workspace });
+
+        expect(container.querySelector<HTMLElement>('[role="group"][aria-label="Folder"]')?.title).toBe('~/Clowdy/workspaces/car-rental/ab12cd34/car-rental');
+        expect(container.querySelector('button')).toBeNull();
     });
 });

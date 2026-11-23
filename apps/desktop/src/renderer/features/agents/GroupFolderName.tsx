@@ -6,7 +6,7 @@ import { cn } from '@clowdy/lib';
 import { tildePath } from '../../shared/displayPath';
 import { homeFolder } from '../../shared/homeFolder';
 import { useProjectState } from '../../stores';
-import { canOpenPaths, OpenWithMenu, useFolderGit, type OpenTarget } from '../openWith';
+import { canOpenPaths, OpenWithMenu, useFolderGit, useFolderRepair, type OpenTarget } from '../openWith';
 import styles from './AgentList.module.css';
 
 import type { ProjectFolder } from '@clowdy/protocol';
@@ -15,9 +15,10 @@ import type { ProjectFolder } from '@clowdy/protocol';
 function GroupFolderMenu({ folder, missing }: { folder: ProjectFolder; missing: boolean }) {
     const project = useProjectState();
     const git = useFolderGit(project.id, folder.id);
+    const repair = useFolderRepair(folder, missing);
     const target: OpenTarget = { projectId: project.id, folder, path: folder.path, relative: '', kind: 'directory' };
 
-    return <OpenWithMenu target={ target } missing={ missing } git={ git } aria-label="Open folder" />;
+    return <OpenWithMenu target={ target } missing={ missing } repair={ repair } git={ git } aria-label="Open folder" />;
 }
 
 /**

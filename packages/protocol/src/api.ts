@@ -105,6 +105,11 @@ export const ROUTES = {
 /** How many folders one project may have. */
 export const MAX_PROJECT_FOLDERS = 50;
 
+/** The limits of a folder's workspace settings (`project.updateFolder`): the branch's name, the files a setup copies, and the setup's command in characters. */
+export const MAX_BASE_BRANCH_LENGTH = 300;
+export const MAX_SETUP_FILES = 50;
+export const MAX_SETUP_COMMAND_LENGTH = 4000;
+
 /** The longest `ProjectSettings.icon`: a 64px PNG the app made is a few kilobytes as a data URL. */
 export const MAX_PROJECT_ICON_LENGTH = 64 * 1024;
 

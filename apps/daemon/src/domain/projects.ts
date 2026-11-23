@@ -20,6 +20,7 @@ import {
 import { conflict, invalid, notFound, unavailable } from '../errors';
 import { folderHead } from '../git/state';
 import { newId } from '../ids';
+import { mergeFolderSettings } from './folderSettings';
 import { git, gitLine } from './git';
 
 import type { Project, ProjectFolder, ProjectFolderInfo, ProjectInfo, ProjectSettings, TaskStatus, TaskStatusCategory } from '@clowdy/protocol';
@@ -27,6 +28,7 @@ import type { AttachmentsService } from '../attachments/service';
 import type { Config } from '../config';
 import type { SkillsService } from '../skills/service';
 import type { Store } from '../store';
+import type { FolderSettingsPatch } from './folderSettings';
 
 /** The folder of the personal space inside the daemon's data folder. */
 const PERSONAL_NAME = 'Personal';
@@ -289,8 +291,8 @@ export function ensurePersonalProject(store: Store, config: Config): Project | u
 /** A settings field set to `null` is cleared. */
 type SettingsPatch = { [K in keyof ProjectSettings]?: ProjectSettings[K] | null };
 
-/** An entry of a project's new folder list: `{ id }` keeps a folder the project has, `{ path }` adds one. */
-export type FolderEntry = { id: string } | { path: string };
+/** An entry of a project's new folder list: `{ id }` keeps a folder the project has, `{ path }` adds one, `{ id, path }` keeps the folder at another place. */
+export type FolderEntry = { id: string } | { path: string } | { id: string; path: string };
 
 export interface ProjectPatch {
     name?: string;
@@ -321,7 +323,10 @@ function mergeSettings(current: ProjectSettings, patch: SettingsPatch = {}): Pro
 
 const stillWorking = () => conflict('The agents of this project are still working. Stop them first.');
 
-/** The folders `entries` describe: the project's own for an id, a new folder for a path (the one it has when it has that path already). */
+/**
+ * The folders `entries` describe: the project's own for an id (at the path it is given with the id, when it is moved: it keeps its id, and so its chats), a new folder
+ * for a path (the one it has when it has that path already).
+ */
 function nextFolders(current: Project, entries: readonly FolderEntry[]): ProjectFolder[] {
     if (entries.length === 0) {
         throw invalid('A project needs at least one folder');
@@ -335,7 +340,8 @@ function nextFolders(current: Project, entries: readonly FolderEntry[]): Project
                 throw invalid(`Folder ${ entry.id } is not one of the project's`);
             }
 
-            return folder;
+            // The folder is the same one at another place, so what it was given (its settings) stays with it.
+            return 'path' in entry ? { ...folder, path: realDirectory(entry.path) } : folder;
         }
 
         const path = realDirectory(entry.path);
@@ -351,8 +357,8 @@ function nextFolders(current: Project, entries: readonly FolderEntry[]): Project
 const sameFolders = (a: readonly ProjectFolder[], b: readonly ProjectFolder[]) => a.length === b.length && a.every((folder, index) => folder.id === b[index]?.id && folder.path === b[index]?.path);
 
 /**
- * Renames the project, gives it another list of folders, or changes its settings. New folders take the checks of `addProject`; a new main
- * folder waits until no agent of the project is working, as the agents work in it. The personal space keeps its name and its one folder.
+ * Renames the project, gives it another list of folders, or changes its settings. New folders, and a folder moved to another path, take the checks of `addProject`;
+ * a new main folder, or the main folder moved, waits until no agent of the project is working, as the agents work in it. The personal space keeps its name and its one folder.
  */
 export function updateProject(store: Store, projectId: string, patch: ProjectPatch, { skills }: ProjectWatchers): Project {
     return store.tx(() => {
@@ -376,7 +382,8 @@ export function updateProject(store: Store, projectId: string, patch: ProjectPat
             throw conflict(`${ twin.name } has these folders already`);
         }
 
-        const mainChanged = mainFolder({ folders }).id !== mainFolder(current).id;
+        // A new main folder, and the main folder at another place: the agents work in it.
+        const mainChanged = mainFolder({ folders }).id !== mainFolder(current).id || mainFolder({ folders }).path !== mainFolder(current).path;
 
         if (mainChanged && hasUnfinishedRuns(store.db, projectId)) {
             throw stillWorking();
@@ -398,6 +405,36 @@ export function updateProject(store: Store, projectId: string, patch: ProjectPat
             // The skills watchers hold the old folders; the next request for skills watches the new ones.
             store.afterCommit(() => skills.forgetProject(current));
         }
+
+        return next;
+    });
+}
+
+/**
+ * Changes the settings of one folder of the project (see `FolderSettings`; a field set to `null` is cleared). The settings belong to the project's row of the folder, so
+ * the same path in another project is not touched. `conflict` for the personal space, `not_found` for a folder the project does not have, `invalid` for a branch or a
+ * setup that is refused. The agents need not be stopped: a worktree reads the settings when it is made.
+ */
+export function updateProjectFolder(store: Store, projectId: string, folderId: string, patch: FolderSettingsPatch): Project {
+    return store.tx(() => {
+        const current = requireProject(store, projectId);
+
+        if (current.personal) {
+            throw conflict('The personal space has no worktrees to set up');
+        }
+
+        const folder = current.folders.find(candidate => candidate.id === folderId);
+
+        if (!folder) {
+            throw notFound('Folder', folderId);
+        }
+
+        const { settings: _, ...bare } = folder;
+        const settings = mergeFolderSettings(folder.settings, patch);
+        const next: Project = { ...current, folders: current.folders.map(candidate => (candidate.id === folderId ? { ...bare, ...(settings && { settings }) } : candidate)) };
+
+        upsertProject(store.db, next);
+        publishProject(store, next);
 
         return next;
     });

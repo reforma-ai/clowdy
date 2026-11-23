@@ -73,4 +73,52 @@ describe('ToolCard', () => {
 
         expect(header().innerHTML).toMatch(/shimmer/i);
     });
+
+    describe('the step that makes the chat\'s worktree', () => {
+        const step = (fields: Partial<Call> = {}): Partial<Call> => ({
+            name: 'workspace',
+            input: { path: '/work/api', branch: 'clowdy/ab12cd34', base: 'origin/main' },
+            output: 'Fetching origin/main\nPreparing worktree (new branch \'clowdy/ab12cd34\')',
+            ...fields,
+        });
+
+        it('is Preparing workspace while it runs, with the branch as its chip, and Prepared workspace when it is over', async () => {
+            await draw(step({ state: 'running', output: undefined }));
+
+            expect(header().textContent).toContain('Preparing workspace');
+            expect(header().querySelector('code')?.textContent).toBe('clowdy/ab12cd34');
+            expect(header().innerHTML).toMatch(/shimmer/i);
+
+            await draw(step());
+
+            expect(header().textContent).toContain('Prepared workspace');
+            expect(header().innerHTML).not.toMatch(/shimmer/i);
+        });
+
+        it('folds its log under it, with no input to show', async () => {
+            await draw(step());
+
+            expect(container.textContent).not.toContain('Fetching origin/main');
+
+            await act(async () => header().click());
+
+            expect(container.textContent).toContain('Log');
+            expect(container.textContent).toContain('Fetching origin/main');
+            expect(container.textContent).toContain('Preparing worktree');
+            expect(container.textContent).not.toContain('Input');
+            expect(container.textContent).not.toContain('Output');
+        });
+
+        it('shows the reason it failed, struck through on the title and in full once opened', async () => {
+            await draw(step({ state: 'error', error: '\'clowdy/ab12cd34\' is already used by worktree at \'/work/other\'' }));
+
+            expect(header().textContent).toContain('Prepare workspace');
+            expect(header().innerHTML).toContain('line-through');
+
+            await act(async () => header().click());
+
+            expect(container.textContent).toContain('Error');
+            expect(container.textContent).toContain('is already used by worktree');
+        });
+    });
 });

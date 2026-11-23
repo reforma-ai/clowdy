@@ -474,6 +474,14 @@ export const MIGRATIONS: Migration[] = [
     {
         version: 24,
         up(db) {
+            // What the worktrees made from a folder need (see `ProjectFolder.settings`): `FolderSettings` as JSON, NULL while the folder has none, which is every folder of
+            // an older database. It sits on the project's row of the folder, not on the path: the same folder in two projects has two sets.
+            db.run('ALTER TABLE project_folders ADD COLUMN settings TEXT');
+        },
+    },
+    {
+        version: 25,
+        up(db) {
             // The worktrees chats work in (see `ChatWorkspace`): one row per worktree, which chats point at through `chats.workspace_id` (NULL for a chat that
             // works in its folder itself, which every chat of an older database is), so several chats, their threads and their forks can share one. `managed` is 1
             // for a worktree Clowdy made (under the workspaces folder), which it may remove; `ready` is 0 until the first turn has made it. No foreign keys: a project

@@ -23,16 +23,3 @@
 .folder svg {
     flex-shrink: 0;
 }
-
-/* The branch after the folder: the same line and type as the folder, in the muted colour, with nothing to press. */
-.branch {
-    @ruleset typography-button-sm;
-
-    display: flex;
-    align-items: center;
-    min-width: 0;
-    max-width: 12rem;
-    height: var(--spacing-30);
-    color: var(--color-secondary-muted-text);
-    cursor: default;
-}

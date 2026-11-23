@@ -130,6 +130,18 @@ describe('NavHistory recording', () => {
         expect(ui().draftFolderId).toBe('fld_other');
     });
 
+    it('brings the new-chat page back with the worktree it was set to work in', () => {
+        ui().openDraft([], 'fld_other');
+        ui().setDraftWorkspace({ mode: 'new', base: 'origin/dev' });
+        ui().openChat('c-1');
+
+        root.history.back();
+        expect([ui().draft, ui().draftFolderId, ui().draftWorkspace]).toEqual([true, 'fld_other', { mode: 'new', base: 'origin/dev' }]);
+
+        root.history.forward();
+        expect([ui().draft, ui().draftWorkspace]).toEqual([false, null]);
+    });
+
     it('does not record Settings, which is a window over a place and not one, and a step through the history shuts it', () => {
         root.ui.openSettings('providers');
         root.ui.showSettingsPage('skills');

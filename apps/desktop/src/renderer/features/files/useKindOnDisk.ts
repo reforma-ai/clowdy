@@ -8,19 +8,20 @@ import type { ProjectFolder, ProjectId } from '@clowdy/protocol';
 
 /**
  * What a path inside a folder is on the disk, a file or a folder, read when the component is drawn and again for another path: for a path that was written without
- * a trailing slash and is a folder after all. Nothing until the answer for this path comes (never another path's), and nothing when it is not there.
+ * a trailing slash and is a folder after all. `undefined` until the answer for this path comes (never another path's), and `null` when the disk says it is not there.
+ * A read that fails leaves it `undefined`: nothing is known.
  */
-export function useKindOnDisk(projectId: ProjectId, folder: ProjectFolder, relative: string): FileKind | undefined {
+export function useKindOnDisk(projectId: ProjectId, folder: ProjectFolder, relative: string): FileKind | null | undefined {
     const root = useRootStore();
     const key = `${ projectId }/${ folder.id }/${ relative }`;
-    const [read, setRead] = useState<{ key: string; kind: FileKind | undefined }>();
+    const [read, setRead] = useState<{ key: string; kind: FileKind | null }>();
 
     useEffect(() => {
         let isCurrent = true;
 
         kindOnDisk(root, projectId, folder, relative).then(
             (kind) => {
-                if (isCurrent) setRead({ key, kind });
+                if (isCurrent) setRead({ key, kind: kind ?? null });
             },
             () => undefined
         );
