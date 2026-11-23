@@ -1,35 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
-import { branchWarning, changesLabel, discardLabel, lockTip, mergedMark, removalPlan, removeHint, repositoryGroups, sortWorktrees, worktreeMark } from './worktreeView';
+import { branchWarning, changesLabel, discardLabel, lockTip, mergedMark, removalPlan, removeHint, repositoryGroups, worktreeMark } from './worktreeView';
 
-import type { FolderWorktrees, ProjectFolder, WorktreeInfo } from '@clowdy/protocol';
+import type { FolderWorktrees, ProjectFolder } from '@clowdy/protocol';
 
 describe('changesLabel', () => {
     it('says a tree with nothing changed has no local changes, and else how many changes', () => {
         expect(changesLabel(0)).toBe('No local changes');
         expect(changesLabel(1)).toBe('1 change');
         expect(changesLabel(12)).toBe('12 changes');
-    });
-});
-
-describe('sortWorktrees', () => {
-    const tree = (path: string, over: Partial<WorktreeInfo> = {}): WorktreeInfo => ({ path, head: '', main: false, missing: false, changes: 0, submodules: false, managed: false, chats: [], ...over });
-    const chat = { id: 'c-1', title: 'A chat', archived: false };
-
-    it('puts the folder\'s own checkout first, then ours, then the others, and one gone from the disk last, each kind in the order git lists it', () => {
-        const listed = [
-            tree('/agents/a'),
-            tree('/gone', { missing: true, managed: true }),
-            tree('/made-by-clowdy', { managed: true }),
-            tree('/main', { main: true }),
-            tree('/agents/b'),
-            tree('/with-a-chat', { chats: [chat] }),
-            tree('/with-an-archived-chat', { chats: [{ ...chat, archived: true }] }),
-        ];
-
-        expect(sortWorktrees(listed).map(worktree => worktree.path)).toEqual(['/main', '/made-by-clowdy', '/with-a-chat', '/with-an-archived-chat', '/agents/a', '/agents/b', '/gone']);
-        // The list it was given is not touched.
-        expect(listed[0]!.path).toBe('/agents/a');
     });
 });
 

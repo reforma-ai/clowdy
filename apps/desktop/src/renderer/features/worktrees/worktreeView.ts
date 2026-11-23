@@ -153,30 +153,11 @@ export function branchWarning({ standing }: BranchChoice): string | undefined {
 export const STRANDED_WARNING = 'Its commits may be in no branch, so they can be lost with the worktree';
 
 /**
- * How a worktree stands in the list, from the top: the folder's own checkout, then the ones that are ours (Clowdy made it, or a chat works in it, archived ones too), then the
- * ones that are not (an agent's own worktree, one made by hand or by another program), and last one whose folder is gone, of which only the record is left.
- */
-function rank({ main, missing, managed, chats }: Pick<WorktreeInfo, 'main' | 'missing' | 'managed' | 'chats'>): number {
-    if (main) return 0;
-
-    if (missing) return 3;
-
-    return managed || chats.length > 0 ? 1 : 2;
-}
-
-/** The worktrees of a folder, ours above the others (`rank`), each kind in the order git lists them. */
-export function sortWorktrees(worktrees: readonly WorktreeInfo[]): WorktreeInfo[] {
-    return worktrees.map((worktree, index) => ({ worktree, index })).sort((a, b) => rank(a.worktree) - rank(b.worktree) || a.index - b.index).map(({ worktree }) => worktree);
-}
-
-/**
- * The groups of the project that are repositories and whose folder is still in the project, each with its folder, in the project's order, and its worktrees sorted so that the
- * ones that are ours come first (`sortWorktrees`).
- */
+/** The groups of the project that are repositories and whose folder is still in the project, each with its folder, in the project's order. */
 export function repositoryGroups(groups: readonly FolderWorktrees[], folders: readonly ProjectFolder[]): { group: FolderWorktrees; folder: ProjectFolder }[] {
     return groups.flatMap((group) => {
         const folder = folders.find(candidate => candidate.id === group.folderId);
 
-        return group.isRepository && folder ? [{ group: { ...group, worktrees: sortWorktrees(group.worktrees) }, folder }] : [];
+        return group.isRepository && folder ? [{ group, folder }] : [];
     });
 }

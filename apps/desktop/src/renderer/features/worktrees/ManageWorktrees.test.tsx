@@ -427,32 +427,6 @@ describe('Manage worktrees', () => {
         expect(await openIn()).toEqual(['Open in GitHub']);
     });
 
-    it('lists the worktrees that are ours above the others, whatever order git gave them in', async () => {
-        const base = { head: 'a1b2c3d', missing: false, changes: 0, submodules: false, managed: false, chats: [] };
-        const getProjectWorktrees = async (): Promise<FolderWorktrees[]> => [{
-            folderId: 'fld_car_rental',
-            name: 'car-rental',
-            isRepository: true,
-            worktrees: [
-                { ...base, path: '/Users/dev/car-rental', branch: 'main', main: true, blocked: 'main' },
-                { ...base, path: '/Users/dev/.claude/worktrees/agent-1', branch: 'worktree-agent-1', main: false, locked: '' },
-                { ...base, path: '/Users/dev/Clowdy/workspaces/car-rental/ab12cd34/car-rental', branch: 'clowdy/ab12cd34', main: false, managed: true },
-                { ...base, path: '/Users/dev/orca/car-rental/search', branch: 'search', main: false },
-                { ...base, path: '/Users/dev/orca/car-rental/with-chat', branch: 'with-chat', main: false, chats: [{ id: 'c-1', title: 'A chat', archived: false }], blocked: 'chats' },
-            ],
-        }];
-
-        await open({ overrides: { getProjectWorktrees } });
-
-        expect(rowsOf(group('car-rental')).map(item => item.dataset.worktreePath)).toEqual([
-            '/Users/dev/car-rental',
-            '/Users/dev/Clowdy/workspaces/car-rental/ab12cd34/car-rental',
-            '/Users/dev/orca/car-rental/with-chat',
-            '/Users/dev/.claude/worktrees/agent-1',
-            '/Users/dev/orca/car-rental/search',
-        ]);
-    });
-
     it('marks a row open while its More menu or its right-click menu is, so its buttons stay shown after the pointer has left', async () => {
         await open();
 
