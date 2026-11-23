@@ -20,14 +20,19 @@ export interface AppIconSources {
  * `app.getFileIcon` is no use for an app on macOS: it gives the icon of the file's type, the same blank one for every `.app`, so the thumbnail
  * of the bundle is read there. On Windows the executable carries its icon, and `getFileIcon` reads it.
  */
-export function createAppIcon({ platform, thumbnail, fileIcon }: AppIconSources, timeoutMs = APP_ICON_TIMEOUT_MS): (path: string) => Promise<string | undefined> {
-    return async (path) => {
+export function createAppIcon(
+    { platform, thumbnail, fileIcon }: AppIconSources,
+    timeoutMs = APP_ICON_TIMEOUT_MS
+): (path: string) => Promise<string | undefined> {
+    return async path => {
         try {
-            const image = await within(platform === 'darwin' ? thumbnail(path, APP_ICON_SIZE) : fileIcon(path), timeoutMs);
+            const image = await within(
+                platform === 'darwin' ? thumbnail(path, APP_ICON_SIZE) : fileIcon(path),
+                timeoutMs
+            );
 
             return image.isEmpty() ? undefined : image.toDataURL();
-        }
-        catch {
+        } catch {
             return undefined;
         }
     };

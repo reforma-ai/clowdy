@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { installDispatcher } from '../../hotkeys/dispatcher';
 import { createRegistry } from '../../hotkeys/registry';
-import { agentCommands, AGENTS_SCOPE } from './agentCommands';
+import { AGENTS_SCOPE, agentCommands } from './agentCommands';
 
 import type { HotkeyRegistry } from '../../hotkeys/registry';
 
@@ -35,7 +35,12 @@ function setup(openId: string | undefined = 'c1') {
     registry = createRegistry('darwin');
     registry.pushScope(AGENTS_SCOPE);
 
-    for (const command of agentCommands({ list: () => element('list'), ids: () => ['c1', 'c2', 'c3'], openId: () => openId })) registry.defineCommand(command);
+    for (const command of agentCommands({
+        list: () => element('list'),
+        ids: () => ['c1', 'c2', 'c3'],
+        openId: () => openId,
+    }))
+        registry.defineCommand(command);
 
     uninstall = installDispatcher(registry);
 }
@@ -61,7 +66,9 @@ describe('agent commands', () => {
     it('register J and K in the Agents group for the agents scope', () => {
         setup();
 
-        expect(registry.listCommands().all.map(({ id, title, group, keys, scope }) => [id, title, group, keys, scope])).toEqual([
+        expect(
+            registry.listCommands().all.map(({ id, title, group, keys, scope }) => [id, title, group, keys, scope])
+        ).toEqual([
             ['agents.cursor.down', 'Move down', 'Agents', 'j', AGENTS_SCOPE],
             ['agents.cursor.up', 'Move up', 'Agents', 'k', AGENTS_SCOPE],
         ]);
@@ -99,7 +106,7 @@ describe('agent commands', () => {
         expect(focused()).toBe('c2');
     });
 
-    it('never take a key from the composer, the rename field, a row\'s button or the header button', () => {
+    it("never take a key from the composer, the rename field, a row's button or the header button", () => {
         setup();
 
         for (const id of ['composer', 'rename', 'more1', 'new']) {

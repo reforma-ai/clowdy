@@ -45,9 +45,9 @@ export function progressScript(fraction: number): string {
     const percent = Number.isFinite(fraction) ? Math.round(Math.min(Math.max(fraction, 0), 1) * 100) : 0;
 
     return `(() => {
-    document.getElementById('bar').setAttribute('aria-valuenow', '${ percent }');
-    document.getElementById('fill').style.width = '${ percent }%';
-    document.getElementById('percent').textContent = '${ percent }%';
+    document.getElementById('bar').setAttribute('aria-valuenow', '${percent}');
+    document.getElementById('fill').style.width = '${percent}%';
+    document.getElementById('percent').textContent = '${percent}%';
 })()`;
 }
 
@@ -90,7 +90,7 @@ export function showBootWindow(): BootWindow {
         loaded = true;
         apply();
     });
-    void window.loadURL(`data:text/html;charset=utf-8,${ encodeURIComponent(bootPage()) }`);
+    void window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(bootPage())}`);
 
     return {
         progress(fraction) {

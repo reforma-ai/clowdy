@@ -9,7 +9,18 @@ import { openRunInChanges } from '../changes/openRunInChanges';
 import { chatPlace, isPlaceReady } from '../sidePanel/currentPlace';
 import { ComposerBanner } from './ComposerBanner';
 import styles from './LastRunPlate.module.css';
-import { chevronWords, hiddenRows, isLastRunCurrent, lastRunScope, plateFilesOf, plateTitle, plateTotals, rowCounts, rowLabel, visibleRows } from './lastRunRows';
+import {
+    chevronWords,
+    hiddenRows,
+    isLastRunCurrent,
+    lastRunScope,
+    plateFilesOf,
+    plateTitle,
+    plateTotals,
+    rowCounts,
+    rowLabel,
+    visibleRows,
+} from './lastRunRows';
 import { useLastRunChanges } from './useLastRunChanges';
 
 import type { Chat, GitChangedFile, GitScope, Run, StreamItem } from '@clowdy/protocol';
@@ -20,10 +31,14 @@ function PathLabel({ path }: { path: string }) {
     const { folder, name } = splitPath(path);
 
     return (
-        <span className={ styles.path } dir="rtl" title={ path }>
+        <span className={styles.path} dir="rtl" title={path}>
             <bdi dir="ltr">
-                { folder && <Text variant="xs" color="secondary">{ folder }</Text> }
-                <Text variant="xs">{ name }</Text>
+                {folder && (
+                    <Text variant="xs" color="secondary">
+                        {folder}
+                    </Text>
+                )}
+                <Text variant="xs">{name}</Text>
             </bdi>
         </span>
     );
@@ -35,15 +50,21 @@ function Row({ file, onOpen }: { file: GitChangedFile; onOpen: (path: string) =>
     const counts = rowCounts(file);
 
     return (
-        <button type="button" className={ styles.row } aria-label={ rowLabel(file) } onClick={ () => onOpen(file.path) }>
-            <Text variant="xs" weight="medium" color={ kind.color } className={ styles.glyph } aria-hidden>{ kind.glyph }</Text>
-            <PathLabel path={ file.path } />
-            { counts && (
-                <span className={ styles.counts } aria-hidden>
-                    <Text variant="xs" color="success">{ counts.additions }</Text>
-                    <Text variant="xs" color="danger">{ counts.deletions }</Text>
+        <button type="button" className={styles.row} aria-label={rowLabel(file)} onClick={() => onOpen(file.path)}>
+            <Text variant="xs" weight="medium" color={kind.color} className={styles.glyph} aria-hidden>
+                {kind.glyph}
+            </Text>
+            <PathLabel path={file.path} />
+            {counts && (
+                <span className={styles.counts} aria-hidden>
+                    <Text variant="xs" color="success">
+                        {counts.additions}
+                    </Text>
+                    <Text variant="xs" color="danger">
+                        {counts.deletions}
+                    </Text>
                 </span>
-            ) }
+            )}
         </button>
     );
 }
@@ -57,23 +78,43 @@ function RunPlate({ changes, onOpen }: { changes: RepositoryChanges; onOpen: (pa
 
     return (
         <ComposerBanner role="group" aria-label="Last run">
-            <div className={ styles.header }>
-                <span className={ styles.icon } aria-hidden><ChatChanged /></span>
-                <Text variant="xs" color="secondary" className={ styles.title }>{ plateTitle(changes) }</Text>
-                <span className={ styles.counts }>
-                    <Text variant="xs" color="success">{ totals.additions }</Text>
-                    <Text variant="xs" color="danger">{ totals.deletions }</Text>
+            <div className={styles.header}>
+                <span className={styles.icon} aria-hidden>
+                    <ChatChanged />
+                </span>
+                <Text variant="xs" color="secondary" className={styles.title}>
+                    {plateTitle(changes)}
+                </Text>
+                <span className={styles.counts}>
+                    <Text variant="xs" color="success">
+                        {totals.additions}
+                    </Text>
+                    <Text variant="xs" color="danger">
+                        {totals.deletions}
+                    </Text>
                 </span>
             </div>
-            <div id={ rows } className={ unfolded ? styles.unfolded : styles.rows }>
-                { visibleRows(changes.files, unfolded).map(file => <Row key={ file.path } file={ file } onOpen={ onOpen } />) }
+            <div id={rows} className={unfolded ? styles.unfolded : styles.rows}>
+                {visibleRows(changes.files, unfolded).map(file => (
+                    <Row key={file.path} file={file} onOpen={onOpen} />
+                ))}
             </div>
-            { hidden > 0 && (
-                <button type="button" className={ styles.more } aria-expanded={ unfolded } aria-controls={ rows } onClick={ () => setUnfolded(value => !value) }>
-                    <span className={ styles.icon } aria-hidden>{ unfolded ? <ChevronUp /> : <ChevronDown /> }</span>
-                    <Text variant="xs" color="secondary">{ chevronWords(changes, unfolded) }</Text>
+            {hidden > 0 && (
+                <button
+                    type="button"
+                    className={styles.more}
+                    aria-expanded={unfolded}
+                    aria-controls={rows}
+                    onClick={() => setUnfolded(value => !value)}
+                >
+                    <span className={styles.icon} aria-hidden>
+                        {unfolded ? <ChevronUp /> : <ChevronDown />}
+                    </span>
+                    <Text variant="xs" color="secondary">
+                        {chevronWords(changes, unfolded)}
+                    </Text>
                 </button>
-            ) }
+            )}
         </ComposerBanner>
     );
 }
@@ -86,7 +127,15 @@ function RunPlate({ changes, onOpen }: { changes: RepositoryChanges; onOpen: (pa
  * list of the run cannot be read (git has pruned the trees). It is drawn for a chat that cannot be written to as well. A press on a file opens the Changes tab on the run's scope with that file's
  * card up (`openRunInChanges`).
  */
-export function LastRunPlate({ chat, run, items }: { chat: Chat; run: Run | undefined; items: readonly StreamItem[] | undefined }) {
+export function LastRunPlate({
+    chat,
+    run,
+    items,
+}: {
+    chat: Chat;
+    run: Run | undefined;
+    items: readonly StreamItem[] | undefined;
+}) {
     const root = useRootStore();
     const project = useProjectState();
     const { folders } = project.project;
@@ -98,5 +147,11 @@ export function LastRunPlate({ chat, run, items }: { chat: Chat; run: Run | unde
 
     if (!current || !changes) return null;
 
-    return <RunPlate key={ scope } changes={ changes } onOpen={ path => openRunInChanges(root, project.id, place, chat.id, scope, path) } />;
+    return (
+        <RunPlate
+            key={scope}
+            changes={changes}
+            onOpen={path => openRunInChanges(root, project.id, place, chat.id, scope, path)}
+        />
+    );
 }

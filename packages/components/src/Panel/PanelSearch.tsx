@@ -35,23 +35,21 @@ export function PanelSearch({
     onKeyDown,
 }: PanelSearchProps) {
     return (
-        <Show when={ isOpen }>
-            <div className={ styles.panelSearch }>
+        <Show when={isOpen}>
+            <div className={styles.panelSearch}>
                 <SearchInput
                     size="sm"
                     variant="inline"
-                    value={ value }
-                    onChange={ onChange }
-                    onKeyDown={ onKeyDown }
-                    placeholder={ placeholder }
-                    aria-label={ ariaLabel }
-                    autoFocus={ autoFocus }
-                    inputRef={ inputRef }
-                    className={ styles.panelSearchInput }
+                    value={value}
+                    onChange={onChange}
+                    onKeyDown={onKeyDown}
+                    placeholder={placeholder}
+                    aria-label={ariaLabel}
+                    autoFocus={autoFocus}
+                    inputRef={inputRef}
+                    className={styles.panelSearchInput}
                 >
-                    { isPending
-                        ? <Spinner slot="suffix" size="xs" aria-label="Searching" />
-                        : null }
+                    {isPending ? <Spinner slot="suffix" size="xs" aria-label="Searching" /> : null}
                 </SearchInput>
             </div>
         </Show>
@@ -71,11 +69,7 @@ export function PanelSearchButton({
     tooltip?: string;
 }) {
     return (
-        <PanelHeader.Button
-            isPressed={ isOpen }
-            tooltip={ tooltip }
-            onPress={ onPress }
-        >
+        <PanelHeader.Button isPressed={isOpen} tooltip={tooltip} onPress={onPress}>
             <Search />
         </PanelHeader.Button>
     );

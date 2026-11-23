@@ -4,7 +4,7 @@ import { Show } from '@clowdy/components/Show';
 import { EditPen, Reply } from '@clowdy/icons/14';
 
 import { formatFullTime, formatMessageTime } from '../shared/time';
-import { ForkMenu, type ForkAgent } from './ForkMenu';
+import { type ForkAgent, ForkMenu } from './ForkMenu';
 import styles from './MessageActions.module.css';
 
 /** A whole message handed to Reply: who wrote it (the person, or the agent whose answer it is), and its source Markdown. */
@@ -59,38 +59,67 @@ export interface MessageActionsProps {
  */
 export function MessageActions({ text, at, align, actions }: MessageActionsProps) {
     const { show, onReply, onEdit, onFork, forkState, onHandoff, handoffAgents } = actions;
-    const time = <time className={ styles.time } dateTime={ new Date(at).toISOString() } title={ formatFullTime(at) }>{ formatMessageTime(at) }</time>;
+    const time = (
+        <time className={styles.time} dateTime={new Date(at).toISOString()} title={formatFullTime(at)}>
+            {formatMessageTime(at)}
+        </time>
+    );
     const hasText = text.trim() !== '';
 
     return (
-        <div className={ styles.row } data-align={ align } data-show={ show }>
-            { align === 'end' && time }
-            { /* A message of files alone has nothing to copy or quote, so no group of those: its empty box would still move the time. Edit stays, since it can be given words. */ }
-            <Show when={ hasText || onEdit }>
-                <div className={ styles.buttons }>
-                    <Show when={ hasText && onReply }>
-                        { reply => (
-                            <Button variant="filling" size="xs" iconOnly tooltip="Reply" tooltipPlacement="bottom" aria-label="Reply" onPress={ () => reply(text) }>
+        <div className={styles.row} data-align={align} data-show={show}>
+            {align === 'end' && time}
+            {/* A message of files alone has nothing to copy or quote, so no group of those: its empty box would still move the time. Edit stays, since it can be given words. */}
+            <Show when={hasText || onEdit}>
+                <div className={styles.buttons}>
+                    <Show when={hasText && onReply}>
+                        {reply => (
+                            <Button
+                                variant="filling"
+                                size="xs"
+                                iconOnly
+                                tooltip="Reply"
+                                tooltipPlacement="bottom"
+                                aria-label="Reply"
+                                onPress={() => reply(text)}
+                            >
                                 <Reply />
                             </Button>
-                        ) }
+                        )}
                     </Show>
-                    <Show when={ onEdit }>
-                        { edit => (
-                            <Button variant="filling" size="xs" iconOnly tooltip="Edit message" tooltipPlacement="bottom" aria-label="Edit message" onPress={ edit }>
+                    <Show when={onEdit}>
+                        {edit => (
+                            <Button
+                                variant="filling"
+                                size="xs"
+                                iconOnly
+                                tooltip="Edit message"
+                                tooltipPlacement="bottom"
+                                aria-label="Edit message"
+                                onPress={edit}
+                            >
                                 <EditPen />
                             </Button>
-                        ) }
+                        )}
                     </Show>
-                    <Show when={ hasText }>
-                        <CopyButton value={ text } variant="filling" size="xs" tooltip="Copy message" tooltipPlacement="bottom" aria-label="Copy message" />
+                    <Show when={hasText}>
+                        <CopyButton
+                            value={text}
+                            variant="filling"
+                            size="xs"
+                            tooltip="Copy message"
+                            tooltipPlacement="bottom"
+                            aria-label="Copy message"
+                        />
                     </Show>
-                    <Show when={ onFork }>
-                        { fork => <ForkMenu onFork={ fork } state={ forkState } onHandoff={ onHandoff } agents={ handoffAgents } /> }
+                    <Show when={onFork}>
+                        {fork => (
+                            <ForkMenu onFork={fork} state={forkState} onHandoff={onHandoff} agents={handoffAgents} />
+                        )}
                     </Show>
                 </div>
             </Show>
-            { align === 'start' && time }
+            {align === 'start' && time}
         </div>
     );
 }

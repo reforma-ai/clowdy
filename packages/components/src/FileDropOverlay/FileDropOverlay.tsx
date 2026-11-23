@@ -31,26 +31,18 @@ export function FileDropOverlay({
     }
 
     return (
-        <div className={ cn(styles.overlay, className) } { ...props }>
-            { children ?? (
-                <Box
-                    direction="column"
-                    align="center"
-                    gap="lg"
-                    padding="md"
-                    className="text-center"
-                >
-                    { icon != null
-                        ? (
-                            <span className={ styles.iconRing } aria-hidden>
-                                { icon }
-                            </span>
-                        )
-                        : null }
+        <div className={cn(styles.overlay, className)} {...props}>
+            {children ?? (
+                <Box direction="column" align="center" gap="lg" padding="md" className="text-center">
+                    {icon != null ? (
+                        <span className={styles.iconRing} aria-hidden>
+                            {icon}
+                        </span>
+                    ) : null}
 
-                    { label != null ? <Text>{ label }</Text> : null }
+                    {label != null ? <Text>{label}</Text> : null}
                 </Box>
-            ) }
+            )}
         </div>
     );
 }

@@ -19,7 +19,12 @@ async function loadedProject() {
     return { data, transport, state };
 }
 
-const event = (cursor: number, data: EventData): ClowdyEvent => ({ cursor, at: 0, projectId: FIXTURE_PROJECT_ID, data });
+const event = (cursor: number, data: EventData): ClowdyEvent => ({
+    cursor,
+    at: 0,
+    projectId: FIXTURE_PROJECT_ID,
+    data,
+});
 
 describe('ProjectState', () => {
     it('loads the snapshot and starts its cursor there', async () => {
@@ -112,7 +117,9 @@ describe('ProjectState', () => {
             const { state } = await loadedProject();
 
             for (const [index, id] of ['t-31', 't-32', 't-33'].entries()) {
-                state.applyEvent(event(1001 + index, { type: 'task.upserted', task: { ...state.tasks.get(id)!, archivedAt: 7000 } }));
+                state.applyEvent(
+                    event(1001 + index, { type: 'task.upserted', task: { ...state.tasks.get(id)!, archivedAt: 7000 } })
+                );
             }
 
             expect(['t-31', 't-32', 't-33'].map(id => state.tasks.has(id))).toEqual([false, false, false]);
@@ -166,7 +173,8 @@ describe('ProjectState', () => {
     });
 
     describe('the archived tasks the window knows', () => {
-        const archive = (state: ProjectState, id: string, cursor: number, archivedAt = 5000) => state.applyEvent(event(cursor, { type: 'task.upserted', task: { ...state.tasks.get(id)!, archivedAt } }));
+        const archive = (state: ProjectState, id: string, cursor: number, archivedAt = 5000) =>
+            state.applyEvent(event(cursor, { type: 'task.upserted', task: { ...state.tasks.get(id)!, archivedAt } }));
 
         it('remembers a task that is archived by its event, and resolves it by id and by key, which the board no longer does', async () => {
             const { state } = await loadedProject();
@@ -227,7 +235,13 @@ describe('ProjectState', () => {
 
         it('lets the ones read longest ago go past its limit, and moves a task read again to the end', async () => {
             const { state } = await loadedProject();
-            const many = (from: number, count: number): Task[] => Array.from({ length: count }, (_, index) => ({ ...state.tasks.get('t-22')!, id: `x-${ from + index }`, key: `X-${ from + index }`, archivedAt: 9 }));
+            const many = (from: number, count: number): Task[] =>
+                Array.from({ length: count }, (_, index) => ({
+                    ...state.tasks.get('t-22')!,
+                    id: `x-${from + index}`,
+                    key: `X-${from + index}`,
+                    archivedAt: 9,
+                }));
 
             state.rememberArchived(many(0, ARCHIVED_MEMORY_LIMIT));
             state.rememberArchived(many(0, 1));
@@ -237,13 +251,17 @@ describe('ProjectState', () => {
             expect(state.archivedKnown.has('x-0')).toBe(true);
             expect(state.archivedKnown.has('x-1')).toBe(false);
             expect(state.archivedKnown.has('x-2')).toBe(false);
-            expect(state.archivedKnown.has(`x-${ ARCHIVED_MEMORY_LIMIT + 1 }`)).toBe(true);
+            expect(state.archivedKnown.has(`x-${ARCHIVED_MEMORY_LIMIT + 1}`)).toBe(true);
         });
 
         it('does not remember a task that is not archived, or one the board holds', async () => {
             const { state } = await loadedProject();
 
-            state.rememberArchived([state.tasks.get('t-22')!, { ...state.tasks.get('t-22')!, archivedAt: 5 }, { ...state.tasks.get('t-21')!, id: 'x-1' }]);
+            state.rememberArchived([
+                state.tasks.get('t-22')!,
+                { ...state.tasks.get('t-22')!, archivedAt: 5 },
+                { ...state.tasks.get('t-21')!, id: 'x-1' },
+            ]);
 
             expect(state.archivedKnown.size).toBe(0);
         });
@@ -265,11 +283,16 @@ describe('ProjectState', () => {
                 const data = createFixtureData();
                 const transport = new FixtureTransport({ data });
                 const reads: string[] = [];
-                const state = new ProjectState(overrideTransport(transport, { getTaskDetail: (taskId) => {
-                    reads.push(taskId);
+                const state = new ProjectState(
+                    overrideTransport(transport, {
+                        getTaskDetail: taskId => {
+                            reads.push(taskId);
 
-                    return transport.getTaskDetail(taskId);
-                } }), data.projects[0]);
+                            return transport.getTaskDetail(taskId);
+                        },
+                    }),
+                    data.projects[0]
+                );
 
                 await state.load();
 
@@ -296,7 +319,11 @@ describe('ProjectState', () => {
                 const data = createFixtureData();
                 const transport = new FixtureTransport({ data });
                 const other = data.projects.find(project => project.id !== FIXTURE_PROJECT_ID)!;
-                const foreign: Task = { ...data.tasks.find(task => task.id === 't-38')!, id: 'x-foreign', projectId: other.id };
+                const foreign: Task = {
+                    ...data.tasks.find(task => task.id === 't-38')!,
+                    id: 'x-foreign',
+                    projectId: other.id,
+                };
 
                 data.tasks.push(foreign);
 
@@ -312,11 +339,16 @@ describe('ProjectState', () => {
                 const data = createFixtureData();
                 const transport = new FixtureTransport({ data });
                 let offline = true;
-                const state = new ProjectState(overrideTransport(transport, { getTaskDetail: (taskId) => {
-                    if (offline) return Promise.reject(new Error('offline'));
+                const state = new ProjectState(
+                    overrideTransport(transport, {
+                        getTaskDetail: taskId => {
+                            if (offline) return Promise.reject(new Error('offline'));
 
-                    return transport.getTaskDetail(taskId);
-                } }), data.projects[0]);
+                            return transport.getTaskDetail(taskId);
+                        },
+                    }),
+                    data.projects[0]
+                );
 
                 await state.load();
                 await expect(state.readTask('t-38')).rejects.toThrow('offline');
@@ -353,7 +385,10 @@ describe('ProjectState', () => {
             it('answers nothing at once, reads the archived task from the daemon, remembers it, and lets an observer see it', async () => {
                 const { state, reads } = await readingKeys();
                 const seen: (string | undefined)[] = [];
-                const stop = reaction(() => state.taskOfKey('CAR-38')?.key, key => seen.push(key));
+                const stop = reaction(
+                    () => state.taskOfKey('CAR-38')?.key,
+                    key => seen.push(key)
+                );
 
                 expect(state.taskOfKey('CAR-38')).toBeUndefined();
                 expect(reads).toEqual(['CAR-38']);
@@ -391,7 +426,25 @@ describe('ProjectState', () => {
                 expect(state.taskOfKey('CAR-24')?.id).toBe('t-24');
 
                 // Another project's prefix, no number, a number with a leading zero or none, a longer key, a path, a sentence, nothing.
-                const text = ['CLW-1', 'XYZ-12', 'CAR', 'CAR-', '-38', '38', 'CAR-abc', 'CAR-038', 'CAR-0', 'CAR-1-2', 'CAR-1.5', ' CAR-38', 'src/a.ts', 'npm run build', 'a-b-1', '', '-'];
+                const text = [
+                    'CLW-1',
+                    'XYZ-12',
+                    'CAR',
+                    'CAR-',
+                    '-38',
+                    '38',
+                    'CAR-abc',
+                    'CAR-038',
+                    'CAR-0',
+                    'CAR-1-2',
+                    'CAR-1.5',
+                    ' CAR-38',
+                    'src/a.ts',
+                    'npm run build',
+                    'a-b-1',
+                    '',
+                    '-',
+                ];
 
                 for (const key of text) expect(state.taskOfKey(key), key).toBeUndefined();
 
@@ -402,17 +455,22 @@ describe('ProjectState', () => {
                 const data = createFixtureData();
                 const transport = new FixtureTransport({ data });
                 const reads: string[] = [];
-                const state = new ProjectState(overrideTransport(transport, { getTaskDetailByKey: (_projectId, key) => {
-                    reads.push(key);
+                const state = new ProjectState(
+                    overrideTransport(transport, {
+                        getTaskDetailByKey: (_projectId, key) => {
+                            reads.push(key);
 
-                    return Promise.reject(new Error('asked too early'));
-                } }), data.projects[0]);
+                            return Promise.reject(new Error('asked too early'));
+                        },
+                    }),
+                    data.projects[0]
+                );
 
                 expect(state.taskOfKey('CAR-38')).toBeUndefined();
                 expect(reads).toEqual([]);
             });
 
-            it('takes the prefix in any case, and asks once for a key in another case than the task\'s, which stays text', async () => {
+            it("takes the prefix in any case, and asks once for a key in another case than the task's, which stays text", async () => {
                 const { state, reads } = await readingKeys();
 
                 expect(state.taskOfKey('car-38')).toBeUndefined();
@@ -441,7 +499,12 @@ describe('ProjectState', () => {
 
             it('forgets the keys it asked in vain once the daemon has the task, so a restart of the feed finds it', async () => {
                 const { data, state, transport, reads } = await readingKeys();
-                const later: Task = { ...data.tasks.find(task => task.id === 't-38')!, id: 't-90', key: 'CAR-90', number: 90 };
+                const later: Task = {
+                    ...data.tasks.find(task => task.id === 't-38')!,
+                    id: 't-90',
+                    key: 'CAR-90',
+                    number: 90,
+                };
 
                 state.taskOfKey('CAR-90');
                 await settle();
@@ -487,15 +550,19 @@ describe('ProjectState', () => {
                     expect(reads).toEqual(['CAR-38', 'CAR-38']);
                     await settle();
                     expect(failures).toEqual([]);
-                }
-                finally {
+                } finally {
                     process.off('unhandledRejection', onRejection);
                 }
             });
 
             it('leaves a task that is not archived to the board, which its event brings in, and does not ask for it again', async () => {
                 const { data, state, reads } = await readingKeys();
-                const made: Task = { ...data.tasks.find(task => task.id === 't-24')!, id: 't-91', key: 'CAR-91', number: 91 };
+                const made: Task = {
+                    ...data.tasks.find(task => task.id === 't-24')!,
+                    id: 't-91',
+                    key: 'CAR-91',
+                    number: 91,
+                };
 
                 data.tasks.push(made);
 
@@ -515,7 +582,10 @@ describe('ProjectState', () => {
             it('does not remember a task of another project', async () => {
                 const { data, state, reads } = await readingKeys({
                     getTaskDetailByKey: async (_projectId, key) => {
-                        const task = { ...data.tasks.find(candidate => candidate.id === 't-38')!, projectId: 'p-other' };
+                        const task = {
+                            ...data.tasks.find(candidate => candidate.id === 't-38')!,
+                            projectId: 'p-other',
+                        };
 
                         reads.push(key);
 
@@ -534,12 +604,13 @@ describe('ProjectState', () => {
             it('reads at most KEY_READS_AT_ONCE keys at a time, the rest in the order they were asked, each once', async () => {
                 const replies: (() => void)[] = [];
                 const { state, reads, transport } = await readingKeys({
-                    getTaskDetailByKey: (projectId, key) => new Promise((resolve, reject) => {
-                        reads.push(key);
-                        replies.push(() => void transport.getTaskDetailByKey(projectId, key).then(resolve, reject));
-                    }),
+                    getTaskDetailByKey: (projectId, key) =>
+                        new Promise((resolve, reject) => {
+                            reads.push(key);
+                            replies.push(() => void transport.getTaskDetailByKey(projectId, key).then(resolve, reject));
+                        }),
                 });
-                const keys = Array.from({ length: KEY_READS_AT_ONCE * 2 + 1 }, (_, index) => `CAR-${ 2000 + index }`);
+                const keys = Array.from({ length: KEY_READS_AT_ONCE * 2 + 1 }, (_, index) => `CAR-${2000 + index}`);
 
                 // A long chat draws all of its keys, more than once.
                 for (let draw = 0; draw < 3; draw++) keys.forEach(key => state.taskOfKey(key));
@@ -598,7 +669,7 @@ describe('ProjectState', () => {
 
             it('remembers at most UNRESOLVED_KEYS_LIMIT keys it asked in vain, the ones asked longest ago going first', async () => {
                 const { state, reads } = await readingKeys();
-                const keys = Array.from({ length: UNRESOLVED_KEYS_LIMIT + 1 }, (_, index) => `CAR-${ 1000 + index }`);
+                const keys = Array.from({ length: UNRESOLVED_KEYS_LIMIT + 1 }, (_, index) => `CAR-${1000 + index}`);
 
                 keys.forEach(key => state.taskOfKey(key));
                 await settle();
@@ -617,7 +688,13 @@ describe('ProjectState', () => {
     });
 
     describe('comment revisions', () => {
-        const comment = (taskId: string): TaskComment => ({ id: 'cmt_X', taskId, author: { kind: 'user' }, body: 'Hello', createdAt: 1 });
+        const comment = (taskId: string): TaskComment => ({
+            id: 'cmt_X',
+            taskId,
+            author: { kind: 'user' },
+            body: 'Hello',
+            createdAt: 1,
+        });
 
         it('counts the changes to the comments of each task apart: an added, an edited and a deleted comment', async () => {
             const { state } = await loadedProject();
@@ -627,7 +704,12 @@ describe('ProjectState', () => {
             expect(state.commentsRevision('t-24')).toBe(before[0] + 1);
             expect(state.commentsRevision('t-25')).toBe(before[1]);
 
-            state.applyEvent(event(1002, { type: 'task.comment.upserted', comment: { ...comment('t-24'), body: 'Edited', editedAt: 2 } }));
+            state.applyEvent(
+                event(1002, {
+                    type: 'task.comment.upserted',
+                    comment: { ...comment('t-24'), body: 'Edited', editedAt: 2 },
+                })
+            );
             state.applyEvent(event(1003, { type: 'task.comment.deleted', taskId: 't-24', commentId: 'cmt_X' }));
             expect(state.commentsRevision('t-24')).toBe(before[0] + 3);
             expect(state.commentsRevision('t-25')).toBe(before[1]);
@@ -661,10 +743,13 @@ describe('ProjectState', () => {
             expect(state.commentsRevision('t-99')).toBeGreaterThan(before[1]);
         });
 
-        it('is observable: a reaction on the revision of a task runs for that task\'s comment events only', async () => {
+        it("is observable: a reaction on the revision of a task runs for that task's comment events only", async () => {
             const { state } = await loadedProject();
             const seen: number[] = [];
-            const stop = reaction(() => state.commentsRevision('t-24'), revision => seen.push(revision));
+            const stop = reaction(
+                () => state.commentsRevision('t-24'),
+                revision => seen.push(revision)
+            );
 
             state.applyEvent(event(1001, { type: 'task.comment.upserted', comment: comment('t-25') }));
             expect(seen).toEqual([]);
@@ -678,7 +763,9 @@ describe('ProjectState', () => {
     it('drops a deleted chat with its runs and their task links, and keeps the tasks', async () => {
         const { state } = await loadedProject();
         const chat = state.chats.get('c-1')!;
-        const runIds = [...state.runs.values()].filter(run => run.chatId === 'c-1' || run.rootRunId === chat.orchestratorRunId).map(run => run.id);
+        const runIds = [...state.runs.values()]
+            .filter(run => run.chatId === 'c-1' || run.rootRunId === chat.orchestratorRunId)
+            .map(run => run.id);
 
         expect(runIds.length).toBeGreaterThan(1);
         expect(state.tasksOfChat('c-1').length).toBeGreaterThan(0);
@@ -695,15 +782,28 @@ describe('ProjectState', () => {
 
     it('drops the sub-agent runs a truncation removed, with their links, and leaves the run whose stream was cut', async () => {
         const { state } = await loadedProject();
-        const runIds = [...state.runs.values()].filter(run => run.parentRunId !== undefined).slice(0, 2).map(run => run.id);
+        const runIds = [...state.runs.values()]
+            .filter(run => run.parentRunId !== undefined)
+            .slice(0, 2)
+            .map(run => run.id);
         const orchestrator = 'r-orch-1';
 
         expect(runIds).toHaveLength(2);
 
-        runIds.forEach((runId, index) => state.applyEvent(event(1001 + index, { type: 'link.runTask', link: { runId, taskId: 't-24', relation: 'created' }, present: true })));
+        runIds.forEach((runId, index) =>
+            state.applyEvent(
+                event(1001 + index, {
+                    type: 'link.runTask',
+                    link: { runId, taskId: 't-24', relation: 'created' },
+                    present: true,
+                })
+            )
+        );
         expect(runIds.flatMap(runId => state.linksOfRun(runId))).toHaveLength(2);
 
-        state.applyEvent(event(1003, { type: 'stream.truncated', runId: orchestrator, fromSeq: 4, removedRunIds: runIds }));
+        state.applyEvent(
+            event(1003, { type: 'stream.truncated', runId: orchestrator, fromSeq: 4, removedRunIds: runIds })
+        );
 
         expect(runIds.some(runId => state.runs.has(runId))).toBe(false);
         expect(runIds.flatMap(runId => state.linksOfRun(runId))).toEqual([]);
@@ -731,7 +831,12 @@ describe('ProjectState', () => {
 
         state.applyEvent(event(1001, { type: 'link.chatTask', link, present: true }));
         expect(state.tasksOfChat('c-4').map(task => task.key)).toEqual(['CAR-28']);
-        expect(state.chatsOfTask('t-28').map(chat => chat.id).sort()).toEqual(['c-2', 'c-4']);
+        expect(
+            state
+                .chatsOfTask('t-28')
+                .map(chat => chat.id)
+                .sort()
+        ).toEqual(['c-2', 'c-4']);
 
         state.applyEvent(event(1002, { type: 'link.chatTask', link, present: false }));
         expect(state.tasksOfChat('c-4')).toEqual([]);
@@ -751,7 +856,13 @@ describe('ProjectState', () => {
     it('does not list a run twice when it is linked to one task under two relations', async () => {
         const { state } = await loadedProject();
 
-        state.applyEvent(event(1001, { type: 'link.runTask', link: { runId: 'r-orch-5', taskId: 't-24', relation: 'created' }, present: true }));
+        state.applyEvent(
+            event(1001, {
+                type: 'link.runTask',
+                link: { runId: 'r-orch-5', taskId: 't-24', relation: 'created' },
+                present: true,
+            })
+        );
 
         expect(state.runsOfTask('t-24').filter(run => run.id === 'r-orch-5')).toHaveLength(1);
         expect(state.linksOfRun('r-orch-5')).toHaveLength(2);
@@ -788,7 +899,19 @@ describe('ProjectState', () => {
     it('notes artifacts for the screens that show them', async () => {
         const { state } = await loadedProject();
 
-        state.applyEvent(event(1002, { type: 'artifact.added', artifact: { id: 'a', projectId: FIXTURE_PROJECT_ID, kind: 'diff', title: 'Diff', ref: {}, createdAt: 0 } }));
+        state.applyEvent(
+            event(1002, {
+                type: 'artifact.added',
+                artifact: {
+                    id: 'a',
+                    projectId: FIXTURE_PROJECT_ID,
+                    kind: 'diff',
+                    title: 'Diff',
+                    ref: {},
+                    createdAt: 0,
+                },
+            })
+        );
 
         expect(state.cursor).toBe(1002);
         expect(state.artifactsRevision).toBe(1);
@@ -797,7 +920,10 @@ describe('ProjectState', () => {
     it('records a failed load and ignores events until a load succeeds', async () => {
         const data = createFixtureData();
         const transport = new FixtureTransport({ data });
-        const state = new ProjectState(overrideTransport(transport, { getProjectSnapshot: () => Promise.reject(new Error('offline')) }), data.projects[0]);
+        const state = new ProjectState(
+            overrideTransport(transport, { getProjectSnapshot: () => Promise.reject(new Error('offline')) }),
+            data.projects[0]
+        );
 
         expect(await state.load()).toBe(false);
         expect(state.status).toBe('failed');

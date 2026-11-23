@@ -3,7 +3,7 @@ import { ToggleButtonGroup, ToggleButtonGroupItem } from '@clowdy/components/Tog
 import { LAST_USED, type QueuedMessageMode } from '@clowdy/protocol';
 
 import { hotkeys } from '../../hotkeys/registry';
-import { chatListPreferences, type ChatSort } from '../agents/chatListPreferences';
+import { type ChatSort, chatListPreferences } from '../agents/chatListPreferences';
 import { busyEnter } from '../chats/busyEnter';
 import { newChatDefaults } from '../chats/newChatDefaults';
 import { swipeToReply } from '../chats/swipeReplyPreference';
@@ -42,36 +42,44 @@ export function ChatPage() {
         <SettingsPage description="Choose how chats look and behave">
             <SettingsSection title="Messages">
                 <SettingsCard>
-                    <SettingsRow title={ LABEL } description={ `Steer it into the current turn, or queue it for the next one. Press ${ OTHER_KEY } to use the other option.` }>
+                    <SettingsRow
+                        title={LABEL}
+                        description={`Steer it into the current turn, or queue it for the next one. Press ${OTHER_KEY} to use the other option.`}
+                    >
                         <ToggleButtonGroup
-                            aria-label={ LABEL }
+                            aria-label={LABEL}
                             size="sm"
-                            selectedKeys={ [busyEnter.mode] }
-                            onSelectionChange={ (keys) => {
+                            selectedKeys={[busyEnter.mode]}
+                            onSelectionChange={keys => {
                                 const next = CHOICES.find(choice => keys.has(choice.id));
 
                                 if (next) busyEnter.setMode(next.id);
-                            } }
+                            }}
                         >
-                            { CHOICES.map(choice => (
-                                <ToggleButtonGroupItem key={ choice.id } value={ choice.id } tooltip={ choice.tip }>
-                                    { choice.label }
+                            {CHOICES.map(choice => (
+                                <ToggleButtonGroupItem key={choice.id} value={choice.id} tooltip={choice.tip}>
+                                    {choice.label}
                                 </ToggleButtonGroupItem>
-                            )) }
+                            ))}
                         </ToggleButtonGroup>
                     </SettingsRow>
 
-                    <SettingsRow title={ SWIPE_LABEL } description="Swipe left over a message and let go to reply to it">
-                        <Switch size="sm" isSelected={ swipeToReply.enabled } aria-label={ SWIPE_LABEL } onChange={ enabled => swipeToReply.setEnabled(enabled) } />
+                    <SettingsRow title={SWIPE_LABEL} description="Swipe left over a message and let go to reply to it">
+                        <Switch
+                            size="sm"
+                            isSelected={swipeToReply.enabled}
+                            aria-label={SWIPE_LABEL}
+                            onChange={enabled => swipeToReply.setEnabled(enabled)}
+                        />
                     </SettingsRow>
                 </SettingsCard>
             </SettingsSection>
 
             <NewChatChoices
-                engine={ newChatDefaults.engine ?? LAST_USED }
-                mode={ newChatDefaults.mode ?? LAST_USED }
-                onEngineChange={ next => newChatDefaults.setEngine(next === LAST_USED ? undefined : next) }
-                onModeChange={ next => newChatDefaults.setMode(modeOf(next)) }
+                engine={newChatDefaults.engine ?? LAST_USED}
+                mode={newChatDefaults.mode ?? LAST_USED}
+                onEngineChange={next => newChatDefaults.setEngine(next === LAST_USED ? undefined : next)}
+                onModeChange={next => newChatDefaults.setMode(modeOf(next))}
             />
 
             <SettingsSection title="New worktrees">
@@ -82,31 +90,37 @@ export function ChatPage() {
 
             <SettingsSection title="Agents list">
                 <SettingsCard divided>
-                    <SettingsRow title={ SORT_LABEL } description="The order of the chats in the Agents list, in every project">
+                    <SettingsRow
+                        title={SORT_LABEL}
+                        description="The order of the chats in the Agents list, in every project"
+                    >
                         <ToggleButtonGroup
-                            aria-label={ SORT_LABEL }
+                            aria-label={SORT_LABEL}
                             size="sm"
-                            selectedKeys={ [chatListPreferences.sort] }
-                            onSelectionChange={ (keys) => {
+                            selectedKeys={[chatListPreferences.sort]}
+                            onSelectionChange={keys => {
                                 const next = SORTS.find(choice => keys.has(choice.id));
 
                                 if (next) chatListPreferences.setSort(next.id);
-                            } }
+                            }}
                         >
-                            { SORTS.map(choice => (
-                                <ToggleButtonGroupItem key={ choice.id } value={ choice.id } tooltip={ choice.tip }>
-                                    { choice.label }
+                            {SORTS.map(choice => (
+                                <ToggleButtonGroupItem key={choice.id} value={choice.id} tooltip={choice.tip}>
+                                    {choice.label}
                                 </ToggleButtonGroupItem>
-                            )) }
+                            ))}
                         </ToggleButtonGroup>
                     </SettingsRow>
 
-                    <SettingsRow title={ FINISHED_LABEL } description="List the threads whose run is over, below the chat that started them">
+                    <SettingsRow
+                        title={FINISHED_LABEL}
+                        description="List the threads whose run is over, below the chat that started them"
+                    >
                         <Switch
                             size="sm"
-                            aria-label={ FINISHED_LABEL }
-                            isSelected={ chatListPreferences.showFinishedThreads }
-                            onChange={ show => chatListPreferences.setShowFinishedThreads(show) }
+                            aria-label={FINISHED_LABEL}
+                            isSelected={chatListPreferences.showFinishedThreads}
+                            onChange={show => chatListPreferences.setShowFinishedThreads(show)}
                         />
                     </SettingsRow>
                 </SettingsCard>

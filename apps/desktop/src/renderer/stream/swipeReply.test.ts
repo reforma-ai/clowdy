@@ -1,9 +1,27 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { dragStep, IDLE, isArmed, progressOf, pullOf, reachOf, releaseStep, sidewaysRoom, SWIPE, wheelStep, type SwipeInput, type SwipeState, type SwipeStep } from './swipeReply';
+import {
+    dragStep,
+    IDLE,
+    isArmed,
+    progressOf,
+    pullOf,
+    reachOf,
+    releaseStep,
+    SWIPE,
+    type SwipeInput,
+    type SwipeState,
+    type SwipeStep,
+    sidewaysRoom,
+    wheelStep,
+} from './swipeReply';
 
 /** Feeds events into a wheel gesture, one every 16 ms from `from`, and keeps every step. */
-function wheel(events: Array<Pick<SwipeInput, 'dx' | 'dy' | 'scrolls'>>, start: SwipeState = IDLE, from = 1000): SwipeStep[] {
+function wheel(
+    events: Array<Pick<SwipeInput, 'dx' | 'dy' | 'scrolls'>>,
+    start: SwipeState = IDLE,
+    from = 1000
+): SwipeStep[] {
     const steps: SwipeStep[] = [];
     let state = start;
 
@@ -21,7 +39,11 @@ function wheel(events: Array<Pick<SwipeInput, 'dx' | 'dy' | 'scrolls'>>, start: 
 const sideways = (count: number, dx = -10) => Array.from({ length: count }, () => ({ dx, dy: 0 }));
 
 /** Where a wheel gesture ends up after the events. */
-const after = (events: Array<Pick<SwipeInput, 'dx' | 'dy' | 'scrolls'>>, start: SwipeState = IDLE, from = 1000): SwipeState => wheel(events, start, from).at(-1)!.state;
+const after = (
+    events: Array<Pick<SwipeInput, 'dx' | 'dy' | 'scrolls'>>,
+    start: SwipeState = IDLE,
+    from = 1000
+): SwipeState => wheel(events, start, from).at(-1)!.state;
 
 describe('the numbers', () => {
     it('ask for a long swipe: 100 to 150 px of travel', () => {
@@ -29,7 +51,7 @@ describe('the numbers', () => {
         expect(SWIPE.threshold).toBeLessThanOrEqual(150);
     });
 
-    it('arm Reply on the travel of the fingers, not on how far the message is shown pulled, which is less and never reaches the band\'s limit', () => {
+    it("arm Reply on the travel of the fingers, not on how far the message is shown pulled, which is less and never reaches the band's limit", () => {
         expect(pullOf(-SWIPE.threshold)).toBeGreaterThan(-SWIPE.maxPull);
         expect(Math.abs(pullOf(-SWIPE.threshold))).toBeLessThan(SWIPE.threshold);
     });
@@ -63,12 +85,24 @@ describe('the rubber band', () => {
     });
 
     it('arms Reply at the threshold of a pull to the left, and never for one to the right', () => {
-        expect([isArmed(-(SWIPE.threshold - 1)), isArmed(-SWIPE.threshold), isArmed(-SWIPE.threshold * 3), isArmed(0), isArmed(SWIPE.threshold), isArmed(SWIPE.threshold * 3)])
-            .toEqual([false, true, true, false, false, false]);
+        expect([
+            isArmed(-(SWIPE.threshold - 1)),
+            isArmed(-SWIPE.threshold),
+            isArmed(-SWIPE.threshold * 3),
+            isArmed(0),
+            isArmed(SWIPE.threshold),
+            isArmed(SWIPE.threshold * 3),
+        ]).toEqual([false, true, true, false, false, false]);
     });
 
     it('shows how near Reply is: nothing at rest, whole at the threshold and no more beyond it, and nothing for the right', () => {
-        expect([progressOf(0), progressOf(-SWIPE.threshold / 2), progressOf(-SWIPE.threshold), progressOf(-SWIPE.threshold * 3), progressOf(50)]).toEqual([0, 0.5, 1, 1, 0]);
+        expect([
+            progressOf(0),
+            progressOf(-SWIPE.threshold / 2),
+            progressOf(-SWIPE.threshold),
+            progressOf(-SWIPE.threshold * 3),
+            progressOf(50),
+        ]).toEqual([0, 0.5, 1, 1, 0]);
     });
 });
 
@@ -79,7 +113,7 @@ describe('a scroller inside the message', () => {
         expect(sidewaysRoom(code, -10)).toBe(true);
     });
 
-    it('has none to the left at its start: a pull to the right is the message\'s', () => {
+    it("has none to the left at its start: a pull to the right is the message's", () => {
         expect(sidewaysRoom(code, 10)).toBe(false);
     });
 
@@ -96,7 +130,10 @@ describe('a scroller inside the message', () => {
     });
 
     it('is no scroller at all when its content fits', () => {
-        expect([sidewaysRoom({ scrollLeft: 0, scrollWidth: 300, clientWidth: 300 }, 10), sidewaysRoom({ scrollLeft: 0, scrollWidth: 300.5, clientWidth: 300 }, -10)]).toEqual([false, false]);
+        expect([
+            sidewaysRoom({ scrollLeft: 0, scrollWidth: 300, clientWidth: 300 }, 10),
+            sidewaysRoom({ scrollLeft: 0, scrollWidth: 300.5, clientWidth: 300 }, -10),
+        ]).toEqual([false, false]);
     });
 });
 
@@ -169,7 +206,10 @@ describe('a wheel gesture', () => {
     });
 
     it('counts what was travelled while deciding as part of the pull', () => {
-        const steps = wheel([{ dx: -3, dy: 0 }, { dx: -4, dy: 0 }]);
+        const steps = wheel([
+            { dx: -3, dy: 0 },
+            { dx: -4, dy: 0 },
+        ]);
 
         expect(steps[1].state.phase).toBe('pulling');
         expect(steps[1].state.x).toBe(-7);

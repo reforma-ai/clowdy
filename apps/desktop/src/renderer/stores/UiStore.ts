@@ -1,20 +1,38 @@
 import { makeAutoObservable, observableRef, reaction } from 'mobx';
 
-import { readStored, removeStored, writeStored, type KeyValueStorage } from './storage';
-import { revealTask, type RevealTasks } from './taskReveal';
+import { type KeyValueStorage, readStored, removeStored, writeStored } from './storage';
+import { type RevealTasks, revealTask } from './taskReveal';
 
-import type { ChatId, ChatWorkspace, ChatWorkspaceChoice, FolderId, ProjectId, RunId, Task, TaskId } from '@clowdy/protocol';
+import type {
+    ChatId,
+    ChatWorkspace,
+    ChatWorkspaceChoice,
+    FolderId,
+    ProjectId,
+    RunId,
+    Task,
+    TaskId,
+} from '@clowdy/protocol';
 
 /** The pages of the global Settings window, in the order they appear in its sidebar. */
-export const SETTINGS_PAGES = ['appearance', 'chat', 'files', 'shortcuts', 'projects', 'providers', 'skills', 'about'] as const;
+export const SETTINGS_PAGES = [
+    'appearance',
+    'chat',
+    'files',
+    'shortcuts',
+    'projects',
+    'providers',
+    'skills',
+    'about',
+] as const;
 
-export type SettingsPage = typeof SETTINGS_PAGES[number];
+export type SettingsPage = (typeof SETTINGS_PAGES)[number];
 export type TasksView = 'board' | 'list';
 
 /** The tabs of the side panel's header, in the order they appear there. */
 export const SIDE_PANEL_TABS = ['info', 'files', 'docs', 'terminal', 'tasks', 'changes'] as const;
 
-export type SidePanelTab = typeof SIDE_PANEL_TABS[number];
+export type SidePanelTab = (typeof SIDE_PANEL_TABS)[number];
 
 /** The sizes of the side panel the corner button offers: not shown, beside the chat, and in the chat's place. */
 export type SidePanelSize = 'hide' | 'half' | 'wide';
@@ -66,12 +84,26 @@ export const COLLAPSED_TASKS_LIMIT = 200;
 /** The most tasks a project holds an unsent comment for: past it, the draft written longest ago goes. */
 export const COMMENT_DRAFTS_LIMIT = 20;
 
-const uiKey = (projectId: ProjectId) => `clowdy:ui:${ projectId }`;
+const uiKey = (projectId: ProjectId) => `clowdy:ui:${projectId}`;
 
 const idOrNull = (value: unknown): string | null => (typeof value === 'string' ? value : null);
 
 /** What a page URL may preselect in fixtures mode, for screenshots and demos: `?panel=open&panelTab=tasks&task=t-24&view=list`. */
-export type InitialProjectUi = Partial<Pick<StoredProjectUi, 'chatId' | 'taskId' | 'runId' | 'expandedChats' | 'groupByFolder' | 'collapsedFolders' | 'agentsFolded' | 'sidePanelOpen' | 'sidePanelTab' | 'tasksView'>>;
+export type InitialProjectUi = Partial<
+    Pick<
+        StoredProjectUi,
+        | 'chatId'
+        | 'taskId'
+        | 'runId'
+        | 'expandedChats'
+        | 'groupByFolder'
+        | 'collapsedFolders'
+        | 'agentsFolded'
+        | 'sidePanelOpen'
+        | 'sidePanelTab'
+        | 'tasksView'
+    >
+>;
 
 export function initialUiFromSearch(search: string): InitialProjectUi {
     const params = new URLSearchParams(search);
@@ -178,7 +210,13 @@ export class ProjectUi {
     /** Tasks: the comment each task's composer holds and has not sent, the one written last at the end. Not kept between sessions, and no place of the history. */
     readonly #commentDrafts = new Map<TaskId, string>();
 
-    constructor(readonly projectId: ProjectId, storage?: KeyValueStorage, initial: InitialProjectUi = {}, tasks?: () => RevealTasks | undefined, windowFitsHalf: () => boolean = () => true) {
+    constructor(
+        readonly projectId: ProjectId,
+        storage?: KeyValueStorage,
+        initial: InitialProjectUi = {},
+        tasks?: () => RevealTasks | undefined,
+        windowFitsHalf: () => boolean = () => true
+    ) {
         const key = uiKey(projectId);
 
         this.#tasks = tasks;
@@ -189,9 +227,13 @@ export class ProjectUi {
             this.chatId = idOrNull(stored.chatId);
             this.taskId = idOrNull(stored.taskId);
             this.runId = idOrNull(stored.runId);
-            this.expandedChats = Array.isArray(stored.expandedChats) ? stored.expandedChats.filter(id => typeof id === 'string') : [];
+            this.expandedChats = Array.isArray(stored.expandedChats)
+                ? stored.expandedChats.filter(id => typeof id === 'string')
+                : [];
             this.groupByFolder = stored.groupByFolder !== false;
-            this.collapsedFolders = Array.isArray(stored.collapsedFolders) ? stored.collapsedFolders.filter(id => typeof id === 'string') : [];
+            this.collapsedFolders = Array.isArray(stored.collapsedFolders)
+                ? stored.collapsedFolders.filter(id => typeof id === 'string')
+                : [];
             this.agentsFolded = stored.agentsFolded === true;
             this.sidePanelOpen = stored.sidePanelOpen === true;
             this.sidePanelTab = SIDE_PANEL_TABS.find(tab => tab === stored.sidePanelTab) ?? this.sidePanelTab;
@@ -200,11 +242,21 @@ export class ProjectUi {
             this.tasksScope = idOrNull(stored.tasksScope);
             this.tasksSubtasks = stored.tasksSubtasks === true;
             this.taskPageView = stored.taskPageView === 'list' ? 'list' : 'board';
-            this.tasksCollapsed = Array.isArray(stored.tasksCollapsed) ? [...new Set(stored.tasksCollapsed.filter(id => typeof id === 'string'))].slice(-COLLAPSED_TASKS_LIMIT) : [];
+            this.tasksCollapsed = Array.isArray(stored.tasksCollapsed)
+                ? [...new Set(stored.tasksCollapsed.filter(id => typeof id === 'string'))].slice(-COLLAPSED_TASKS_LIMIT)
+                : [];
         }
 
         Object.assign(this, initial);
-        makeAutoObservable(this, { projectId: false, pendingFiles: observableRef, draftWorkspace: observableRef, draftWorkspaceRow: observableRef, expandedChats: observableRef, collapsedFolders: observableRef, tasksCollapsed: observableRef });
+        makeAutoObservable(this, {
+            projectId: false,
+            pendingFiles: observableRef,
+            draftWorkspace: observableRef,
+            draftWorkspaceRow: observableRef,
+            expandedChats: observableRef,
+            collapsedFolders: observableRef,
+            tasksCollapsed: observableRef,
+        });
         reaction(
             (): StoredProjectUi => ({
                 chatId: this.chatId,
@@ -271,7 +323,12 @@ export class ProjectUi {
      * of the project the chat is made for, `null` for the main folder, and `workspace` where it works in that folder (a hand-off from a chat in a worktree keeps working in it),
      * `null` for the folder's own checkout. `engine` is the agent the chat starts on (a hand-off to another agent names one), `null` for the one the project and the last pick say.
      */
-    openDraft(attach: readonly File[] = [], folderId: FolderId | null = null, workspace: ChatWorkspaceChoice | null = null, engine: string | null = null): void {
+    openDraft(
+        attach: readonly File[] = [],
+        folderId: FolderId | null = null,
+        workspace: ChatWorkspaceChoice | null = null,
+        engine: string | null = null
+    ): void {
         this.showChat();
         this.runId = null;
         this.draft = true;
@@ -303,7 +360,10 @@ export class ProjectUi {
         if (!this.draft) return;
 
         // The row answers for one worktree: it stays only while the choice is that same worktree again.
-        const same = choice?.mode === 'existing' && this.draftWorkspace?.mode === 'existing' && choice.path === this.draftWorkspace.path;
+        const same =
+            choice?.mode === 'existing' &&
+            this.draftWorkspace?.mode === 'existing' &&
+            choice.path === this.draftWorkspace.path;
 
         if (!same) this.draftWorkspaceRow = null;
 
@@ -333,7 +393,10 @@ export class ProjectUi {
      * from its parent, and opening it must not move the screen. `madeIn` is for a task that was just made inside a task (`null`: a root) and may not have reached the
      * project yet, since the daemon's event can come after the reply to the command: the screen is put where the task will show, and not left where it is.
      */
-    openTask(taskId: TaskId | null, { reveal = true, madeIn }: { reveal?: boolean; madeIn?: TaskId | null } = {}): void {
+    openTask(
+        taskId: TaskId | null,
+        { reveal = true, madeIn }: { reveal?: boolean; madeIn?: TaskId | null } = {}
+    ): void {
         this.taskId = taskId;
 
         if (taskId !== null) this.openSidePanelTab('tasks');
@@ -372,7 +435,9 @@ export class ProjectUi {
 
     /** Opens or folds the threads of a chat in the list. */
     toggleChatExpanded(chatId: ChatId): void {
-        this.expandedChats = this.expandedChats.includes(chatId) ? this.expandedChats.filter(id => id !== chatId) : [...this.expandedChats, chatId];
+        this.expandedChats = this.expandedChats.includes(chatId)
+            ? this.expandedChats.filter(id => id !== chatId)
+            : [...this.expandedChats, chatId];
     }
 
     /** Opens the threads of these chats, for a chat below them that was opened from elsewhere. Nothing changes when all are open already. */
@@ -388,12 +453,15 @@ export class ProjectUi {
 
     /** Folds the group of a folder in the list, or opens it again. */
     toggleFolderCollapsed(folderId: FolderId): void {
-        this.collapsedFolders = this.collapsedFolders.includes(folderId) ? this.collapsedFolders.filter(id => id !== folderId) : [...this.collapsedFolders, folderId];
+        this.collapsedFolders = this.collapsedFolders.includes(folderId)
+            ? this.collapsedFolders.filter(id => id !== folderId)
+            : [...this.collapsedFolders, folderId];
     }
 
     /** Opens the group of a folder, for a chat in it that was opened from elsewhere. Nothing changes when it is open already. */
     expandFolder(folderId: FolderId): void {
-        if (this.collapsedFolders.includes(folderId)) this.collapsedFolders = this.collapsedFolders.filter(id => id !== folderId);
+        if (this.collapsedFolders.includes(folderId))
+            this.collapsedFolders = this.collapsedFolders.filter(id => id !== folderId);
     }
 
     /** Folds the rows of the running-agents strip under its line, or shows them again. */
@@ -481,8 +549,7 @@ export class ProjectUi {
     toggleSidePanelTab(tab: SidePanelTab): void {
         if (this.sidePanelOpen && this.sidePanelTab === tab) {
             this.sidePanelOpen = false;
-        }
-        else {
+        } else {
             this.sidePanelOpen = true;
             this.sidePanelTab = tab;
         }
@@ -527,7 +594,9 @@ export class ProjectUi {
 
     /** Folds the insides of a task in the tree list, or opens them again. */
     toggleTaskCollapsed(taskId: TaskId): void {
-        this.tasksCollapsed = this.tasksCollapsed.includes(taskId) ? this.tasksCollapsed.filter(id => id !== taskId) : [...this.tasksCollapsed, taskId].slice(-COLLAPSED_TASKS_LIMIT);
+        this.tasksCollapsed = this.tasksCollapsed.includes(taskId)
+            ? this.tasksCollapsed.filter(id => id !== taskId)
+            : [...this.tasksCollapsed, taskId].slice(-COLLAPSED_TASKS_LIMIT);
     }
 
     /** The comment the person started on the task and has not sent, `''` when there is none. */
@@ -555,12 +624,14 @@ export class ProjectUi {
 
     /** Opens the insides of these tasks, for a task below them that was opened from elsewhere. Nothing changes when all are open already. */
     expandTasks(taskIds: readonly TaskId[]): void {
-        if (taskIds.some(id => this.tasksCollapsed.includes(id))) this.tasksCollapsed = this.tasksCollapsed.filter(id => !taskIds.includes(id));
+        if (taskIds.some(id => this.tasksCollapsed.includes(id)))
+            this.tasksCollapsed = this.tasksCollapsed.filter(id => !taskIds.includes(id));
     }
 
     /** Lets go of the folds of tasks the project no longer holds (deleted ones, archived ones), so what is kept stays as small as the folds that matter. */
     forgetCollapsedTasks(tasks: ReadonlyMap<TaskId, unknown>): void {
-        if (this.tasksCollapsed.some(id => !tasks.has(id))) this.tasksCollapsed = this.tasksCollapsed.filter(id => tasks.has(id));
+        if (this.tasksCollapsed.some(id => !tasks.has(id)))
+            this.tasksCollapsed = this.tasksCollapsed.filter(id => tasks.has(id));
     }
 }
 
@@ -575,15 +646,29 @@ export class UiStore {
     windowFitsHalf = true;
 
     /** `tasksOf` gives the tasks a project holds, which `ProjectUi.openTask` needs to reveal a task: the root store hands them over, a test of the window state alone has none. */
-    constructor(private readonly storage?: KeyValueStorage, private readonly initial?: InitialProjectUi, private readonly tasksOf?: (projectId: ProjectId) => RevealTasks | undefined) {
-        makeAutoObservable<UiStore, 'storage' | 'initial' | 'tasksOf'>(this, { storage: false, initial: false, tasksOf: false });
+    constructor(
+        private readonly storage?: KeyValueStorage,
+        private readonly initial?: InitialProjectUi,
+        private readonly tasksOf?: (projectId: ProjectId) => RevealTasks | undefined
+    ) {
+        makeAutoObservable<UiStore, 'storage' | 'initial' | 'tasksOf'>(this, {
+            storage: false,
+            initial: false,
+            tasksOf: false,
+        });
     }
 
     forProject(projectId: ProjectId): ProjectUi {
         let ui = this.#projects.get(projectId);
 
         if (!ui) {
-            ui = new ProjectUi(projectId, this.storage, this.initial, () => this.tasksOf?.(projectId), () => this.windowFitsHalf);
+            ui = new ProjectUi(
+                projectId,
+                this.storage,
+                this.initial,
+                () => this.tasksOf?.(projectId),
+                () => this.windowFitsHalf
+            );
             this.#projects.set(projectId, ui);
         }
 

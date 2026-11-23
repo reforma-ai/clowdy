@@ -33,7 +33,9 @@ export function searchMatch(line: number, text: string, ranges: readonly LineRan
         line,
         column: first + 1,
         preview: text.slice(from, to),
-        ranges: ranges.filter(range => range.start < to).map(range => ({ start: range.start - from, end: Math.min(range.end, to) - from })),
+        ranges: ranges
+            .filter(range => range.start < to)
+            .map(range => ({ start: range.start - from, end: Math.min(range.end, to) - from })),
     };
 }
 
@@ -91,7 +93,9 @@ export class Collector {
 
     /** The files in path order, the lines of each in file order (the order they were added in). */
     result(): FsSearchResult {
-        const files = [...this.files].sort(([a], [b]) => byPath(a, b)).map(([path, matches]) => ({ path, matches: matches.sort((a, b) => a.line - b.line) }));
+        const files = [...this.files]
+            .sort(([a], [b]) => byPath(a, b))
+            .map(([path, matches]) => ({ path, matches: matches.sort((a, b) => a.line - b.line) }));
 
         return { files, truncated: this.truncated };
     }

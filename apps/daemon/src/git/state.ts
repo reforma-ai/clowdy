@@ -1,6 +1,6 @@
-import { MAX_GIT_BRANCHES } from '@clowdy/protocol';
 import { realpath, stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
+import { MAX_GIT_BRANCHES } from '@clowdy/protocol';
 
 import { gitLine, gitOutput, gitRead } from '../domain/git';
 import { CommandError, invalid, notFound, unavailable } from '../errors';
@@ -34,22 +34,17 @@ export function parseWorktrees(output: string): ListedWorktree[] {
         if (line.startsWith('worktree ')) {
             current = { path: line.slice('worktree '.length), head: '', bare: false, prunable: false };
             found.push(current);
-        }
-        else if (current && line.startsWith('HEAD ')) {
+        } else if (current && line.startsWith('HEAD ')) {
             current.head = line.slice('HEAD '.length);
-        }
-        else if (current && line.startsWith('branch ')) {
+        } else if (current && line.startsWith('branch ')) {
             const ref = line.slice('branch '.length);
 
             current.branch = ref.startsWith('refs/heads/') ? ref.slice('refs/heads/'.length) : ref;
-        }
-        else if (current && line === 'bare') {
+        } else if (current && line === 'bare') {
             current.bare = true;
-        }
-        else if (current && (line === 'locked' || line.startsWith('locked '))) {
+        } else if (current && (line === 'locked' || line.startsWith('locked '))) {
             current.locked = line.slice('locked'.length).trim();
-        }
-        else if (current && (line === 'prunable' || line.startsWith('prunable '))) {
+        } else if (current && (line === 'prunable' || line.startsWith('prunable '))) {
             current.prunable = true;
         }
     }
@@ -61,8 +56,7 @@ export function parseWorktrees(output: string): ListedWorktree[] {
 export async function placeOf(path: string): Promise<string | undefined> {
     try {
         return await realpath(path);
-    }
-    catch {
+    } catch {
         return undefined;
     }
 }
@@ -93,8 +87,7 @@ export function parseBranches(output: string): GitBranch[] {
     for (const ref of output.split('\n')) {
         if (ref.startsWith('refs/heads/')) {
             branches.push({ name: ref.slice('refs/heads/'.length), remote: false });
-        }
-        else if (ref.startsWith('refs/remotes/') && !/^refs\/remotes\/[^/]+\/HEAD$/.test(ref)) {
+        } else if (ref.startsWith('refs/remotes/') && !/^refs\/remotes\/[^/]+\/HEAD$/.test(ref)) {
             branches.push({ name: ref.slice('refs/remotes/'.length), remote: true });
         }
     }
@@ -115,9 +108,20 @@ async function readBranches(folder: string): Promise<GitBranch[]> {
  * The first of what `origin/HEAD` names, `origin/main`, `origin/master`, a local `main` and a local `master` that the repository has as a branch, else the branch that is
  * checked out (a short hash on a detached HEAD), which an unborn branch is not: it has nothing to start from. Nothing in a repository with no commit.
  */
-export function pickDefaultBranch(remoteHead: string | undefined, branches: readonly GitBranch[], head: Awaited<ReturnType<typeof folderHead>>): string | undefined {
-    const has = (name: string, remote: boolean) => branches.some(branch => branch.name === name && branch.remote === remote);
-    const candidates: Array<[string | undefined, boolean]> = [[remoteHead, true], ['origin/main', true], ['origin/master', true], ['main', false], ['master', false]];
+export function pickDefaultBranch(
+    remoteHead: string | undefined,
+    branches: readonly GitBranch[],
+    head: Awaited<ReturnType<typeof folderHead>>
+): string | undefined {
+    const has = (name: string, remote: boolean) =>
+        branches.some(branch => branch.name === name && branch.remote === remote);
+    const candidates: Array<[string | undefined, boolean]> = [
+        [remoteHead, true],
+        ['origin/main', true],
+        ['origin/master', true],
+        ['main', false],
+        ['master', false],
+    ];
 
     for (const [name, remote] of candidates) {
         if (name && has(name, remote)) return name;
@@ -133,7 +137,11 @@ export function pickDefaultBranch(remoteHead: string | undefined, branches: read
  * always take bare (a tag may be called `main` too): whoever starts a worktree from it spells it `refs/heads/<name>` or `refs/remotes/<name>`.
  */
 export async function defaultBranchOf(folder: string): Promise<string | undefined> {
-    const [remoteHead, branches, head] = await Promise.all([originHead(folder), readBranches(folder), folderHead(folder)]);
+    const [remoteHead, branches, head] = await Promise.all([
+        originHead(folder),
+        readBranches(folder),
+        folderHead(folder),
+    ]);
 
     return pickDefaultBranch(remoteHead, branches, head);
 }
@@ -144,7 +152,11 @@ export async function defaultBranchOf(folder: string): Promise<string | undefine
  * repository now) must not stop a worktree from being made. The rule is one function over the branch list, so the async read (`baseOf`) and the synchronous one
  * `chat.create` makes (`createWorkspace`) cannot drift apart.
  */
-export function pickBase(configured: string | undefined, branches: readonly GitBranch[], pickDefault: () => string | undefined): string | undefined {
+export function pickBase(
+    configured: string | undefined,
+    branches: readonly GitBranch[],
+    pickDefault: () => string | undefined
+): string | undefined {
     return configured !== undefined && branches.some(branch => branch.name === configured) ? configured : pickDefault();
 }
 
@@ -154,7 +166,11 @@ export function pickBase(configured: string | undefined, branches: readonly GitB
  * no network.
  */
 export async function baseOf(folder: ProjectFolder): Promise<string | undefined> {
-    const [remoteHead, branches, head] = await Promise.all([originHead(folder.path), readBranches(folder.path), folderHead(folder.path)]);
+    const [remoteHead, branches, head] = await Promise.all([
+        originHead(folder.path),
+        readBranches(folder.path),
+        folderHead(folder.path),
+    ]);
 
     return pickBase(folder.settings?.baseBranch, branches, () => pickDefaultBranch(remoteHead, branches, head));
 }
@@ -165,8 +181,7 @@ export async function isOnDisk(path: string): Promise<boolean> {
         await stat(path);
 
         return true;
-    }
-    catch {
+    } catch {
         return false;
     }
 }
@@ -176,19 +191,26 @@ export async function isOnDisk(path: string): Promise<boolean> {
  * submodules (a renamed file is one, and a new folder is one: `--untracked-files=normal`). Nothing when the `status` fails, is cut short or does not answer in time.
  */
 export async function countChanges(path: string): Promise<number | undefined> {
-    const output = await gitOutput(path, ['-c', 'core.longpaths=true', 'status', '--porcelain', '--untracked-files=normal', '--ignore-submodules=none']);
+    const output = await gitOutput(path, [
+        '-c',
+        'core.longpaths=true',
+        'status',
+        '--porcelain',
+        '--untracked-files=normal',
+        '--ignore-submodules=none',
+    ]);
 
     return output?.split('\n').filter(line => line !== '').length;
 }
 
 /** `countChanges`, where a `status` git could not give counts as one: the answer is a reason to keep a tree, so it errs toward "changed" and never says clean on a guess. */
 export async function changedFiles(path: string): Promise<number> {
-    return await countChanges(path) ?? 1;
+    return (await countChanges(path)) ?? 1;
 }
 
 /** Whether a worktree has anything uncommitted (`changedFiles`). */
 async function isDirty(path: string): Promise<boolean> {
-    return await changedFiles(path) > 0;
+    return (await changedFiles(path)) > 0;
 }
 
 /**
@@ -222,7 +244,11 @@ export async function isMerged(cwd: string, commit: string, base: string): Promi
  * gone though git has not pruned it, and the git directory git names as the main entry when the repository keeps it apart from the checkout are left out; the folder's
  * own entry is then made from what git says in the folder).
  */
-async function worktreesOf(folder: string, root: string, head: Awaited<ReturnType<typeof folderHead>>): Promise<GitWorktree[]> {
+async function worktreesOf(
+    folder: string,
+    root: string,
+    head: Awaited<ReturnType<typeof folderHead>>
+): Promise<GitWorktree[]> {
     const read = await gitRead(folder, ['worktree', 'list', '--porcelain']);
 
     // A git too old to list worktrees says no: the folder's own entry below is then the whole list.
@@ -233,7 +259,7 @@ async function worktreesOf(folder: string, root: string, head: Awaited<ReturnTyp
     for (const entry of parseWorktrees(read.ok ? read.stdout : '')) {
         const place = entry.bare || entry.prunable ? undefined : await placeOf(entry.path);
 
-        if (place && await isOnDisk(join(place, '.git'))) {
+        if (place && (await isOnDisk(join(place, '.git')))) {
             worktrees.push({
                 // Git prints `C:/work/app` on Windows; the project's folders and the app's paths are written as the machine writes them.
                 path: resolve(entry.path),
@@ -246,9 +272,15 @@ async function worktreesOf(folder: string, root: string, head: Awaited<ReturnTyp
     }
 
     if (!worktrees.some(entry => entry.main)) {
-        const commit = await gitLine(folder, ['rev-parse', 'HEAD']) ?? '';
+        const commit = (await gitLine(folder, ['rev-parse', 'HEAD'])) ?? '';
 
-        worktrees.unshift({ path: root, ...(head && !head.detached && { branch: head.branch }), head: shortHash(commit), main: true, dirty: await isDirty(folder) });
+        worktrees.unshift({
+            path: root,
+            ...(head && !head.detached && { branch: head.branch }),
+            head: shortHash(commit),
+            main: true,
+            dirty: await isDirty(folder),
+        });
     }
 
     return worktrees;
@@ -273,7 +305,7 @@ export async function workingTreeRoot(folder: string): Promise<string | undefine
     }
 
     // `/var` and `/private/var` are one place on a Mac, and git prints `C:/work` on Windows: the places are compared by their real paths.
-    return root !== undefined && await placeOf(top.stdout.trim()) === root ? root : undefined;
+    return root !== undefined && (await placeOf(top.stdout.trim())) === root ? root : undefined;
 }
 
 /**
@@ -314,11 +346,10 @@ export async function projectFolderGit(project: Project, folderId: string): Prom
 
     try {
         if ((await stat(folder.path)).isDirectory()) return await folderGit(folder.path, folder.settings?.baseBranch);
-    }
-    catch (error) {
+    } catch (error) {
         // A git that did not answer is its own failure; the rest is a folder that is not there, or cannot be read.
         if (error instanceof CommandError) throw error;
     }
 
-    throw unavailable(`The folder ${ folder.path } is missing`);
+    throw unavailable(`The folder ${folder.path} is missing`);
 }

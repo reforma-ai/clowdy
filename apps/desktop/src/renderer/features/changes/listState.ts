@@ -25,7 +25,7 @@ export const LIST_TEXT = {
     loading: 'Loading',
     notRepository: 'Not a git repository',
     notRepositoryHint: 'Changes show here once the folder is one',
-    failed: 'Couldn\'t read the changes',
+    failed: "Couldn't read the changes",
     noChanges: 'No changes',
     filtered: 'No files match the filter',
     filteredHint: 'Try another pattern, or clear the filter',
@@ -57,22 +57,31 @@ export function listStateOf(model: PlaceChanges): ListState {
 
     const { changes, list } = model;
 
-    if (!changes) return list.settled && list.error !== undefined ? { kind: 'failed', message: list.error } : { kind: 'loading' };
+    if (!changes)
+        return list.settled && list.error !== undefined ? { kind: 'failed', message: list.error } : { kind: 'loading' };
 
     if (changes.fileCount === 0 && changes.files.length === 0) {
         const { scope } = changes;
         const base = model.base?.state === 'ready' ? model.base : undefined;
         const missing = baseStateWords(changes.baseState);
 
-        if (scope === 'branch') return { kind: 'empty', title: LIST_TEXT.noChanges, description: 'Nothing is committed on the branch yet' };
+        if (scope === 'branch')
+            return { kind: 'empty', title: LIST_TEXT.noChanges, description: 'Nothing is committed on the branch yet' };
 
-        if (scope === 'uncommitted') return { kind: 'empty', title: LIST_TEXT.noChanges, description: 'Everything is committed' };
+        if (scope === 'uncommitted')
+            return { kind: 'empty', title: LIST_TEXT.noChanges, description: 'Everything is committed' };
 
-        if (isCommitScope(scope)) return { kind: 'empty', title: LIST_TEXT.noChanges, description: 'This commit changes no files' };
+        if (isCommitScope(scope))
+            return { kind: 'empty', title: LIST_TEXT.noChanges, description: 'This commit changes no files' };
 
-        if (isRunScope(scope)) return { kind: 'empty', title: LIST_TEXT.noChanges, description: 'That run changed no files' };
+        if (isRunScope(scope))
+            return { kind: 'empty', title: LIST_TEXT.noChanges, description: 'That run changed no files' };
 
-        return { kind: 'empty', title: LIST_TEXT.noChanges, ...(missing ? { description: missing } : base ? { description: `Nothing differs from ${ base.name }` } : {}) };
+        return {
+            kind: 'empty',
+            title: LIST_TEXT.noChanges,
+            ...(missing ? { description: missing } : base ? { description: `Nothing differs from ${base.name}` } : {}),
+        };
     }
 
     if (model.files.length > 0) return { kind: 'files' };

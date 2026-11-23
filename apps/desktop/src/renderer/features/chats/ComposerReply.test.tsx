@@ -3,10 +3,10 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { RootStoreProvider, type RootStore } from '../../stores';
+import { type RootStore, RootStoreProvider } from '../../stores';
 import { Composer, type ComposerHandle } from './Composer';
 import { draftOf, editDraftKey, messageOf } from './composerDrafts';
-import { setFiles, type DraftFile } from './composerFiles';
+import { type DraftFile, setFiles } from './composerFiles';
 import { dropReplyQuote, replyQuoteOf, setReplyQuote } from './composerQuotes';
 import { modelStore } from './modelTestKit';
 
@@ -23,7 +23,11 @@ import type { ReplyMessage } from '../../stream/MessageActions';
  */
 
 const accepted: CommandResult = { ok: true, requestId: 'request-1', data: {} };
-const refused: CommandResult = { ok: false, requestId: 'request-1', error: { code: 'unavailable', message: 'The daemon cannot be reached' } };
+const refused: CommandResult = {
+    ok: false,
+    requestId: 'request-1',
+    error: { code: 'unavailable', message: 'The daemon cannot be reached' },
+};
 
 const person: ReplyMessage = { role: 'user', text: 'Use the blue one' };
 const answer: ReplyMessage = { role: 'assistant', text: 'The form is fixed.' };
@@ -37,7 +41,16 @@ let chat: Chat;
 let other: Chat;
 let chatNumber = 0;
 
-const chatOf = (id: string, engine?: string): Chat => ({ id, projectId: 'p', title: 'Chat', mode: 'autopilot', orchestratorRunId: 'r-1', createdAt: 0, updatedAt: 0, ...(engine && { engine }) });
+const chatOf = (id: string, engine?: string): Chat => ({
+    id,
+    projectId: 'p',
+    title: 'Chat',
+    mode: 'autopilot',
+    orchestratorRunId: 'r-1',
+    createdAt: 0,
+    updatedAt: 0,
+    ...(engine && { engine }),
+});
 
 type Page = { chat?: Chat; edit?: { draftKey: string; onSubmit?: () => void } };
 
@@ -54,18 +67,30 @@ async function mount(page: Page = { chat }, ...answers: Array<CommandResult | Pr
         getProjectFiles: vi.fn(async () => []),
         getSkills: vi.fn(async () => ({ entries: [], tokens: 0, warnings: [] })),
     };
-    const store = { command, transport, skillsRevision: 0, selectedProject: { project: { id: 'p', folders: [{ id: 'f1', path: '/Users/dev/web' }] }, taskList: [] }, ...await modelStore() };
+    const store = {
+        command,
+        transport,
+        skillsRevision: 0,
+        selectedProject: { project: { id: 'p', folders: [{ id: 'f1', path: '/Users/dev/web' }] }, taskList: [] },
+        ...(await modelStore()),
+    };
 
     await act(async () => {
         root.render(
-            <RootStoreProvider value={ store as unknown as RootStore }>
+            <RootStoreProvider value={store as unknown as RootStore}>
                 <Composer
-                    ref={ (value) => {
+                    ref={value => {
                         handle = value;
-                    } }
-                    chat={ page.chat }
-                    run={ undefined }
-                    editMode={ page.edit && { draftKey: page.edit.draftKey, onSubmit: page.edit.onSubmit ?? (() => undefined), onCancel: () => undefined } }
+                    }}
+                    chat={page.chat}
+                    run={undefined}
+                    editMode={
+                        page.edit && {
+                            draftKey: page.edit.draftKey,
+                            onSubmit: page.edit.onSubmit ?? (() => undefined),
+                            onCancel: () => undefined,
+                        }
+                    }
                 />
             </RootStoreProvider>
         );
@@ -78,9 +103,10 @@ const card = () => container.querySelector<HTMLElement>('[role="group"][aria-lab
 const cardWords = () => card()?.querySelector('p')?.textContent;
 const sendButton = () => container.querySelector<HTMLButtonElement>('button[aria-label="Send"]')!;
 const reply = (message: ReplyMessage) => act(async () => handle!.reply(message));
-const pressEnter = () => act(async () => {
-    field().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
-});
+const pressEnter = () =>
+    act(async () => {
+        field().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    });
 
 function type(value: string) {
     act(() => {
@@ -88,14 +114,21 @@ function type(value: string) {
     });
 }
 
-const readyFile = (name: string): DraftFile => ({ key: `k-${ name }`, name, mediaType: 'text/plain', size: 1, status: 'ready', attachment: { id: `a-${ name }`, name, mediaType: 'text/plain', size: 1 } });
+const readyFile = (name: string): DraftFile => ({
+    key: `k-${name}`,
+    name,
+    mediaType: 'text/plain',
+    size: 1,
+    status: 'ready',
+    attachment: { id: `a-${name}`, name, mediaType: 'text/plain', size: 1 },
+});
 
 beforeEach(() => {
     sent = [];
     handle = null;
     chatNumber += 1;
-    chat = chatOf(`c-reply-${ chatNumber }`, 'claude');
-    other = chatOf(`c-reply-other-${ chatNumber }`);
+    chat = chatOf(`c-reply-${chatNumber}`, 'claude');
+    other = chatOf(`c-reply-other-${chatNumber}`);
     container = document.createElement('div');
     document.body.append(container);
     root = createRoot(container);
@@ -227,7 +260,9 @@ describe('sending a reply', () => {
         type('Why?');
         await pressEnter();
 
-        expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: '> Use the blue one\n\nWhy?', mode: 'steer' }]);
+        expect(sent).toEqual([
+            { type: 'chat.send', chatId: chat.id, text: '> Use the blue one\n\nWhy?', mode: 'steer' },
+        ]);
         expect(card()).toBeNull();
         expect(replyQuoteOf(chat.id)).toBeUndefined();
         expect(editor().getText()).toBe('');
@@ -239,7 +274,10 @@ describe('sending a reply', () => {
         type('Nice');
         await act(async () => sendButton().click());
 
-        expect(sent[0]).toMatchObject({ type: 'chat.send', text: expect.stringMatching(/^> ## Done {2}\n>[ ]{2}\n> - one {2}\n> - two\n\nNice$/) });
+        expect(sent[0]).toMatchObject({
+            type: 'chat.send',
+            text: expect.stringMatching(/^> ## Done {2}\n>[ ]{2}\n> - one {2}\n> - two\n\nNice$/),
+        });
     });
 
     it('sends the words after a card that is in front of a quote of a selection', async () => {
@@ -270,7 +308,15 @@ describe('sending a reply', () => {
         await reply(person);
         await act(async () => sendButton().click());
 
-        expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: '> Use the blue one', attachmentIds: ['a-shot.txt'], mode: 'steer' }]);
+        expect(sent).toEqual([
+            {
+                type: 'chat.send',
+                chatId: chat.id,
+                text: '> Use the blue one',
+                attachmentIds: ['a-shot.txt'],
+                mode: 'steer',
+            },
+        ]);
         expect(card()).toBeNull();
     });
 
@@ -294,7 +340,7 @@ describe('sending a reply', () => {
 
     it('keeps the card for the message the person picked while the send was on its way, and gives the old one up', async () => {
         let refuse!: (result: CommandResult) => void;
-        const slow = new Promise<CommandResult>((resolve) => {
+        const slow = new Promise<CommandResult>(resolve => {
             refuse = resolve;
         });
 
@@ -323,7 +369,7 @@ describe('sending a reply', () => {
         expect(sent[0]).toMatchObject({ text: 'Never mind' });
     });
 
-    it('does not carry a card to another chat\'s message', async () => {
+    it("does not carry a card to another chat's message", async () => {
         await mount();
         await reply(person);
         await mount({ chat: other });

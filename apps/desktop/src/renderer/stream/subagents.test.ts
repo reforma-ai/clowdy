@@ -1,11 +1,32 @@
 import { describe, expect, it } from 'vitest';
 
-import { activityOf, agentStatusLine, childOfCall, isSubagentTool, latestActivity, subagentLabel, subagentName, subagentTitle, toolActivity } from './subagents';
+import {
+    activityOf,
+    agentStatusLine,
+    childOfCall,
+    isSubagentTool,
+    latestActivity,
+    subagentLabel,
+    subagentName,
+    subagentTitle,
+    toolActivity,
+} from './subagents';
 
 import type { Run, StreamItem, StreamItemBody } from '@clowdy/protocol';
 
-const run = (id: string, rest: Partial<Run> = {}): Run => ({ id, projectId: 'p', rootRunId: 'orch', role: 'executor', name: id, summary: '', status: 'running', engine: 'claude', createdAt: 1, ...rest });
-const item = (seq: number, body: StreamItemBody): StreamItem => ({ id: `i-${ seq }`, runId: 'r', seq, at: seq, body });
+const run = (id: string, rest: Partial<Run> = {}): Run => ({
+    id,
+    projectId: 'p',
+    rootRunId: 'orch',
+    role: 'executor',
+    name: id,
+    summary: '',
+    status: 'running',
+    engine: 'claude',
+    createdAt: 1,
+    ...rest,
+});
+const item = (seq: number, body: StreamItemBody): StreamItem => ({ id: `i-${seq}`, runId: 'r', seq, at: seq, body });
 
 describe('what a sub-agent call is called', () => {
     it('knows the sub-agent tools of the agents, and nothing else', () => {
@@ -39,9 +60,11 @@ describe('what a sub-agent call is called', () => {
     });
 });
 
-describe('a working agent\'s activity', () => {
-    it('reads a tool call the way the stream names it, with the file\'s name rather than its path', () => {
-        expect(toolActivity('Read', { file_path: 'apps/desktop/src/renderer/stream/StreamView.tsx' })).toBe('Reading StreamView.tsx');
+describe("a working agent's activity", () => {
+    it("reads a tool call the way the stream names it, with the file's name rather than its path", () => {
+        expect(toolActivity('Read', { file_path: 'apps/desktop/src/renderer/stream/StreamView.tsx' })).toBe(
+            'Reading StreamView.tsx'
+        );
         expect(toolActivity('Edit', { file_path: 'src/a.ts' })).toBe('Editing a.ts');
         expect(toolActivity('Write', {})).toBe('Writing file');
         expect(toolActivity('Grep', { pattern: 'useBookingPrice' })).toBe('Searching useBookingPrice');
@@ -58,14 +81,27 @@ describe('a working agent\'s activity', () => {
         // What it thinks is for its own stream, not the card's line.
         expect(activityOf({ kind: 'reasoning', text: 'Hm.', done: false })).toBeUndefined();
         expect(activityOf({ kind: 'question', questionId: 'q', text: 'Which?', options: [] })).toBe('Waiting for you');
-        expect(activityOf({ kind: 'question', questionId: 'q', text: 'Which?', options: [], answer: 'a' })).toBeUndefined();
+        expect(
+            activityOf({ kind: 'question', questionId: 'q', text: 'Which?', options: [], answer: 'a' })
+        ).toBeUndefined();
         expect(activityOf(undefined)).toBeUndefined();
     });
 
     it('comes from the latest thing the agent did, past the notes about it, and from nothing before its first step', () => {
-        expect(latestActivity([item(1, { kind: 'user', text: 'Go' }), item(2, { kind: 'tool', toolCallId: 't', name: 'Read', input: { path: 'a.ts' }, state: 'running' }), item(3, { kind: 'note', text: 'Noted' })])).toBe('Reading a.ts');
+        expect(
+            latestActivity([
+                item(1, { kind: 'user', text: 'Go' }),
+                item(2, { kind: 'tool', toolCallId: 't', name: 'Read', input: { path: 'a.ts' }, state: 'running' }),
+                item(3, { kind: 'note', text: 'Noted' }),
+            ])
+        ).toBe('Reading a.ts');
         // A thought after a call changes nothing: the card says the call, not the musing.
-        expect(latestActivity([item(1, { kind: 'tool', toolCallId: 't', name: 'Read', input: { path: 'a.ts' }, state: 'running' }), item(2, { kind: 'reasoning', text: 'Hm.', done: false })])).toBe('Reading a.ts');
+        expect(
+            latestActivity([
+                item(1, { kind: 'tool', toolCallId: 't', name: 'Read', input: { path: 'a.ts' }, state: 'running' }),
+                item(2, { kind: 'reasoning', text: 'Hm.', done: false }),
+            ])
+        ).toBe('Reading a.ts');
         expect(latestActivity([item(1, { kind: 'user', text: 'Go' })])).toBeUndefined();
         expect(latestActivity([])).toBeUndefined();
     });
@@ -73,7 +109,11 @@ describe('a working agent\'s activity', () => {
 
 describe('the sub-agent a call started', () => {
     it('finds the native child of a call by its parent tool call id', () => {
-        const runs = [run('a', { parentToolCallId: 'call-1', createdAt: 1 }), run('b', { parentToolCallId: 'call-2' }), run('c', { parentToolCallId: 'call-1', createdAt: 5 })];
+        const runs = [
+            run('a', { parentToolCallId: 'call-1', createdAt: 1 }),
+            run('b', { parentToolCallId: 'call-2' }),
+            run('c', { parentToolCallId: 'call-1', createdAt: 5 }),
+        ];
 
         expect(childOfCall(runs, 'call-2')?.id).toBe('b');
         // Two runs never share a call in practice; should they, the newest is the one that is going.

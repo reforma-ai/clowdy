@@ -4,18 +4,34 @@ import { classifyTool, describeTool } from './toolView';
 
 describe('describeTool', () => {
     it('reads a file by its path', () => {
-        expect(describeTool('Read', { file_path: 'src/booking/form.tsx' })).toEqual({ icon: 'file', verb: 'Reading file', target: 'src/booking/form.tsx' });
+        expect(describeTool('Read', { file_path: 'src/booking/form.tsx' })).toEqual({
+            icon: 'file',
+            verb: 'Reading file',
+            target: 'src/booking/form.tsx',
+        });
         expect(describeTool('read_file', { path: 'a.ts' }).target).toBe('a.ts');
     });
 
     it('counts the lines of an edit as its diff stat', () => {
-        const view = describeTool('Edit', { file_path: 'a.ts', old_string: 'one\ntwo', new_string: 'one\ntwo\nthree\nfour' });
+        const view = describeTool('Edit', {
+            file_path: 'a.ts',
+            old_string: 'one\ntwo',
+            new_string: 'one\ntwo\nthree\nfour',
+        });
 
-        expect(view).toMatchObject({ icon: 'code', verb: 'Editing file', target: 'a.ts', diff: { added: 4, removed: 2 } });
+        expect(view).toMatchObject({
+            icon: 'code',
+            verb: 'Editing file',
+            target: 'a.ts',
+            diff: { added: 4, removed: 2 },
+        });
     });
 
     it('prefers the counts a tool reports in its output', () => {
-        expect(describeTool('Edit', { file_path: 'a.ts' }, { added: 42, removed: 18 }).diff).toEqual({ added: 42, removed: 18 });
+        expect(describeTool('Edit', { file_path: 'a.ts' }, { added: 42, removed: 18 }).diff).toEqual({
+            added: 42,
+            removed: 18,
+        });
     });
 
     it('counts a written file as added lines, and gives no diff when there is nothing to count', () => {
@@ -24,16 +40,29 @@ describe('describeTool', () => {
     });
 
     it('shows a command as its own chip, with no verb', () => {
-        expect(describeTool('Bash', { command: 'bun run typecheck' })).toEqual({ icon: 'terminal', verb: '', target: 'bun run typecheck' });
+        expect(describeTool('Bash', { command: 'bun run typecheck' })).toEqual({
+            icon: 'terminal',
+            verb: '',
+            target: 'bun run typecheck',
+        });
     });
 
     it('titles a command with what the agent says it does and keeps the command beside it', () => {
-        expect(describeTool('Bash', { command: 'bun install', description: 'Install package dependencies' })).toEqual({ icon: 'terminal', verb: 'Install package dependencies', target: 'bun install' });
-        expect(describeTool('shell', { cmd: 'ls', description: 'List files' })).toMatchObject({ verb: 'List files', target: 'ls' });
+        expect(describeTool('Bash', { command: 'bun install', description: 'Install package dependencies' })).toEqual({
+            icon: 'terminal',
+            verb: 'Install package dependencies',
+            target: 'bun install',
+        });
+        expect(describeTool('shell', { cmd: 'ls', description: 'List files' })).toMatchObject({
+            verb: 'List files',
+            target: 'ls',
+        });
     });
 
     it('keeps one line of a description, and none when it is blank or only repeats the command', () => {
-        expect(describeTool('Bash', { command: 'make', description: 'Build the app\nthen test it' }).verb).toBe('Build the app');
+        expect(describeTool('Bash', { command: 'make', description: 'Build the app\nthen test it' }).verb).toBe(
+            'Build the app'
+        );
         expect(describeTool('Bash', { command: 'make', description: '   ' }).verb).toBe('');
         expect(describeTool('Bash', { command: 'make test', description: 'make test' }).verb).toBe('');
     });
@@ -41,24 +70,50 @@ describe('describeTool', () => {
     it('reads the step that makes a worktree as Preparing workspace while it runs and Prepared workspace once it is over', () => {
         const input = { path: '/work/api', branch: 'clowdy/ab12cd34', base: 'origin/main' };
 
-        expect(describeTool('workspace', input, undefined, { state: 'running' })).toEqual({ icon: 'workspace', verb: 'Preparing workspace', target: 'clowdy/ab12cd34', log: true });
-        expect(describeTool('workspace', input, 'Preparing worktree', { state: 'done' })).toMatchObject({ verb: 'Prepared workspace', target: 'clowdy/ab12cd34' });
+        expect(describeTool('workspace', input, undefined, { state: 'running' })).toEqual({
+            icon: 'workspace',
+            verb: 'Preparing workspace',
+            target: 'clowdy/ab12cd34',
+            log: true,
+        });
+        expect(describeTool('workspace', input, 'Preparing worktree', { state: 'done' })).toMatchObject({
+            verb: 'Prepared workspace',
+            target: 'clowdy/ab12cd34',
+        });
         // A view made with no word on the call's state reads as a call that is over.
         expect(describeTool('workspace', input).verb).toBe('Prepared workspace');
     });
 
     it('keeps the imperative for a workspace step that failed, since the card strikes it through with the reason, and has no chip when the input names no branch', () => {
-        expect(describeTool('workspace', {}, undefined, { state: 'error', error: 'The branch is checked out elsewhere' })).toEqual({ icon: 'workspace', verb: 'Prepare workspace', target: undefined, log: true });
+        expect(
+            describeTool('workspace', {}, undefined, { state: 'error', error: 'The branch is checked out elsewhere' })
+        ).toEqual({ icon: 'workspace', verb: 'Prepare workspace', target: undefined, log: true });
     });
 
     it('searches by pattern and finds files by glob', () => {
-        expect(describeTool('Grep', { pattern: 'BookingStep', path: 'src' })).toMatchObject({ icon: 'search', verb: 'Searching', target: 'BookingStep' });
-        expect(describeTool('Glob', { pattern: 'src/**/mail*' })).toMatchObject({ icon: 'search', verb: 'Finding files', target: 'src/**/mail*' });
+        expect(describeTool('Grep', { pattern: 'BookingStep', path: 'src' })).toMatchObject({
+            icon: 'search',
+            verb: 'Searching',
+            target: 'BookingStep',
+        });
+        expect(describeTool('Glob', { pattern: 'src/**/mail*' })).toMatchObject({
+            icon: 'search',
+            verb: 'Finding files',
+            target: 'src/**/mail*',
+        });
     });
 
     it('names an unknown tool from its own name and shows its first short text argument', () => {
-        expect(describeTool('create_task', { dependsOn: ['CAR-22'], title: 'Update the booking form' })).toEqual({ icon: 'tool', verb: 'Create task', target: 'Update the booking form' });
-        expect(describeTool('spawnExecutor', 'not an object')).toEqual({ icon: 'tool', verb: 'Spawn executor', target: undefined });
+        expect(describeTool('create_task', { dependsOn: ['CAR-22'], title: 'Update the booking form' })).toEqual({
+            icon: 'tool',
+            verb: 'Create task',
+            target: 'Update the booking form',
+        });
+        expect(describeTool('spawnExecutor', 'not an object')).toEqual({
+            icon: 'tool',
+            verb: 'Spawn executor',
+            target: undefined,
+        });
     });
 
     it('does not show a very long argument as a chip', () => {

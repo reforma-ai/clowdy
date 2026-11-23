@@ -78,7 +78,7 @@ export function folderNames(folders: readonly Pick<ProjectFolder, 'path'>[]): st
         let name = base;
 
         for (let count = 2; taken.has(name); count++) {
-            name = `${ base }-${ count }`;
+            name = `${base}-${count}`;
         }
 
         taken.add(name);
@@ -280,7 +280,9 @@ export interface ChatWorkspace {
  * `<branchPrefix>/<branchName>` (`DEFAULT_BRANCH_PREFIX` when the prefix is absent or empty; the chat's id8 when there is no name, which is what a chat the person starts
  * has), or in a worktree that exists. The folder of the worktree is named by its chat's id8 whatever the branch is called.
  */
-export type ChatWorkspaceChoice = { mode: 'new'; base?: string; branchPrefix?: string; branchName?: string } | { mode: 'existing'; path: string };
+export type ChatWorkspaceChoice =
+    | { mode: 'new'; base?: string; branchPrefix?: string; branchName?: string }
+    | { mode: 'existing'; path: string };
 
 /** What the branch of a new worktree starts with when none is chosen: `clowdy/<chat id8>`. */
 export const DEFAULT_BRANCH_PREFIX = 'clowdy';
@@ -300,7 +302,8 @@ export const branchPrefixOf = (text: string | undefined): string => text?.trim()
 export function branchPrefixProblem(text: string | undefined): string | undefined {
     const prefix = branchPrefixOf(text);
 
-    if (prefix.length > MAX_BRANCH_PREFIX_LENGTH) return `The branch prefix is longer than ${ MAX_BRANCH_PREFIX_LENGTH } characters`;
+    if (prefix.length > MAX_BRANCH_PREFIX_LENGTH)
+        return `The branch prefix is longer than ${MAX_BRANCH_PREFIX_LENGTH} characters`;
 
     // `\s` is the spaces, `Cc` the control characters and `Cf` the invisible ones (a zero-width space, a right-to-left override).
     if (/[\s\p{Cc}\p{Cf}]/u.test(prefix)) return 'The branch prefix cannot have a space or a control character';
@@ -334,14 +337,19 @@ export const MAX_BRANCH_NAME_LENGTH = 48;
 export function branchNameProblem(text: string): string | undefined {
     if (text === '') return 'The branch name is empty';
 
-    if (text.length > MAX_BRANCH_NAME_LENGTH) return `The branch name is longer than ${ MAX_BRANCH_NAME_LENGTH } characters`;
+    if (text.length > MAX_BRANCH_NAME_LENGTH)
+        return `The branch name is longer than ${MAX_BRANCH_NAME_LENGTH} characters`;
 
-    if (!/^[a-z0-9]([a-z0-9._-]*[a-z0-9])?$/.test(text)) return 'The branch name takes lower-case letters, digits, -, _ and . only, and starts and ends with a letter or a digit';
+    if (!/^[a-z0-9]([a-z0-9._-]*[a-z0-9])?$/.test(text))
+        return 'The branch name takes lower-case letters, digits, -, _ and . only, and starts and ends with a letter or a digit';
 
-    if (text.includes('..') || text.endsWith('.lock')) return 'The branch name cannot have two dots in a row or end with .lock';
+    if (text.includes('..') || text.endsWith('.lock'))
+        return 'The branch name cannot have two dots in a row or end with .lock';
 
     // A name Windows keeps for a device (`con`, `nul`, `com1`) cannot be a file there, and git keeps a branch as one.
-    return /^(con|prn|aux|nul|com\d|lpt\d)$/.test(text) ? 'The branch name cannot be a name Windows keeps for a device, such as con or nul' : undefined;
+    return /^(con|prn|aux|nul|com\d|lpt\d)$/.test(text)
+        ? 'The branch name cannot be a name Windows keeps for a device, such as con or nul'
+        : undefined;
 }
 
 /** How a thread ended its turn, as its parent is told. */
@@ -501,7 +509,13 @@ export type RunStatus =
     | 'cancelled'
     | 'interrupted';
 
-export const ACTIVE_RUN_STATUSES: readonly RunStatus[] = ['queued', 'running', 'waiting_background', 'waiting_user', 'blocked'];
+export const ACTIVE_RUN_STATUSES: readonly RunStatus[] = [
+    'queued',
+    'running',
+    'waiting_background',
+    'waiting_user',
+    'blocked',
+];
 export const TERMINAL_RUN_STATUSES: readonly RunStatus[] = ['succeeded', 'failed', 'cancelled', 'interrupted'];
 
 export function isTerminalRunStatus(status: RunStatus): boolean {
@@ -524,7 +538,9 @@ export function isBusyRunStatus(status: RunStatus): boolean {
  * can be stopped) by `status`.
  */
 export function shownRunStatus(run: Pick<Run, 'status' | 'awaitingUser'>): RunStatus {
-    return run.awaitingUser === true && (run.status === 'running' || run.status === 'waiting_background') ? 'waiting_user' : run.status;
+    return run.awaitingUser === true && (run.status === 'running' || run.status === 'waiting_background')
+        ? 'waiting_user'
+        : run.status;
 }
 
 /** Why the run waits, as it reads beside `shownRunStatus`: its own reason, except where the card open to the person overrides a status that says otherwise. */
@@ -689,17 +705,41 @@ export type StreamItemBody =
      * (`durationMs`, set with `done`). Not part of the story the agent is told again, and not an answer: it is shown folded, as the work of a turn.
      */
     | { kind: 'reasoning'; text: string; done: boolean; durationMs?: number }
-    | { kind: 'tool'; toolCallId: string; name: string; input: unknown; state: ToolState; output?: unknown; error?: string }
+    | {
+          kind: 'tool';
+          toolCallId: string;
+          name: string;
+          input: unknown;
+          state: ToolState;
+          output?: unknown;
+          error?: string;
+      }
     /** A system line such as "Background command finished: bun test". */
     | { kind: 'note'; text: string }
     /** A question the run is waiting on (semi-manual mode); `answer` is set once the user replied. */
-    | { kind: 'question'; questionId: string; text: string; options: QuestionOption[]; recommended?: string; answer?: string }
+    | {
+          kind: 'question';
+          questionId: string;
+          text: string;
+          options: QuestionOption[];
+          recommended?: string;
+          answer?: string;
+      }
     /**
      * A request of the agent for permission to do something, put to the person (an agent on a preset that asks). The run waits in `waiting_user` while any
      * is `open`. `decisions` are the answers the agent's options allow, by kind; `decision` is set once the person answered (`run.decide`) or Clowdy
      * answered from a grant. `cancelled`: the agent withdrew it or the run was stopped; `expired`: the daemon restarted and the agent is gone.
      */
-    | { kind: 'approval'; approvalId: string; toolCallId?: string; title: string; subject: ApprovalSubject; decisions: ApprovalDecision[]; state: ApprovalState; decision?: ApprovalDecision }
+    | {
+          kind: 'approval';
+          approvalId: string;
+          toolCallId?: string;
+          title: string;
+          subject: ApprovalSubject;
+          decisions: ApprovalDecision[];
+          state: ApprovalState;
+          decision?: ApprovalDecision;
+      }
     | { kind: 'error'; text: string };
 
 /** What an agent asks to do: a command, a change to files, or any other tool. The daemon classifies the request, so a client draws it with no knowledge of the agent. */

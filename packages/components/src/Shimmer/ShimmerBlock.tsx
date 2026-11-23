@@ -17,25 +17,19 @@ export type ShimmerBlockProps = Omit<ComponentPropsWithoutRef<'div'>, 'children'
 };
 
 /** Block-level loading skeleton (image/card placeholders). Text shine → {@link Shimmer}. */
-export function ShimmerBlock({
-    className,
-    style,
-    variant = 'sweep',
-    duration,
-    ...rest
-}: ShimmerBlockProps) {
+export function ShimmerBlock({ className, style, variant = 'sweep', duration, ...rest }: ShimmerBlockProps) {
     const resolvedDuration = duration ?? (variant === 'dots' ? 7.5 : 1.6);
 
     return (
         <div
-            { ...rest }
+            {...rest}
             aria-hidden
-            className={ cn(styles.block, className) }
-            data-variant={ variant }
+            className={cn(styles.block, className)}
+            data-variant={variant}
             style={
                 {
                     ...style,
-                    '--shimmer-block-duration': `${ resolvedDuration }s`,
+                    '--shimmer-block-duration': `${resolvedDuration}s`,
                 } as CSSProperties
             }
         />

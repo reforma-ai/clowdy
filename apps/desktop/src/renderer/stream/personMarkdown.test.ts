@@ -7,7 +7,9 @@ const taskOfKey = (key: string) => tasks.get(key);
 
 describe('personMarkdown', () => {
     it('turns a mentioned file into inline code, which the stream draws as a chip', () => {
-        expect(personMarkdown('Look at @src/booking/price.ts now', taskOfKey)).toBe('Look at `src/booking/price.ts` now');
+        expect(personMarkdown('Look at @src/booking/price.ts now', taskOfKey)).toBe(
+            'Look at `src/booking/price.ts` now'
+        );
     });
 
     it('leaves the dot that ends a sentence outside the path', () => {
@@ -48,11 +50,15 @@ describe('personMarkdown', () => {
     it('does not touch inline code, where a branch name or a command may hold a key', () => {
         const text = 'use `feature/CAR-24-form` or `git checkout CAR-24` or ``@src/a.ts`` then @src/a.ts';
 
-        expect(personMarkdown(text, taskOfKey)).toBe('use `feature/CAR-24-form` or `git checkout CAR-24` or ``@src/a.ts`` then `src/a.ts`');
+        expect(personMarkdown(text, taskOfKey)).toBe(
+            'use `feature/CAR-24-form` or `git checkout CAR-24` or ``@src/a.ts`` then `src/a.ts`'
+        );
     });
 
     it('takes a task key at the start of a word or in brackets and quotes, not in the middle of a name', () => {
-        expect(personMarkdown('(CAR-24) and "CAR-24" and CAR-24-form and foo-CAR-24', taskOfKey)).toBe('(`CAR-24`) and "`CAR-24`" and CAR-24-form and foo-CAR-24');
+        expect(personMarkdown('(CAR-24) and "CAR-24" and CAR-24-form and foo-CAR-24', taskOfKey)).toBe(
+            '(`CAR-24`) and "`CAR-24`" and CAR-24-form and foo-CAR-24'
+        );
     });
 
     it('closes a fenced block only with a fence of the same kind and length', () => {

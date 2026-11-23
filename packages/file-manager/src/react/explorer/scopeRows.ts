@@ -19,7 +19,10 @@ export function rootAtIndex(data: readonly ExplorerItem[], index: number, fallba
 }
 
 /** The roots (their folders) that hold a file a filter found: the labels of the others are filtered out with their rows. */
-export function matchedRoots(filter: ExplorerFilter | null, roots: ReadonlyArray<ExplorerScopeRoot>): ReadonlySet<string> {
+export function matchedRoots(
+    filter: ExplorerFilter | null,
+    roots: ReadonlyArray<ExplorerScopeRoot>
+): ReadonlySet<string> {
     const matched = new Set<string>();
 
     if (filter) {

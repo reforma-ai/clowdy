@@ -39,12 +39,17 @@ let store: RootStore;
 let uninstall: () => void;
 
 /** Draws the screen, after `before` if there is one, in the same step: the observer does that in the app, where a key that changes the store is drawn before the next frame. */
-const draw = (before?: () => void) => act(async () => {
-    before?.();
-    reactRoot.render(<RootStoreProvider value={ store }><Screen /></RootStoreProvider>);
-});
+const draw = (before?: () => void) =>
+    act(async () => {
+        before?.();
+        reactRoot.render(
+            <RootStoreProvider value={store}>
+                <Screen />
+            </RootStoreProvider>
+        );
+    });
 
-const cardOf = (taskId: string) => container.querySelector<HTMLElement>(`[data-task-id="${ taskId }"]`)!;
+const cardOf = (taskId: string) => container.querySelector<HTMLElement>(`[data-task-id="${taskId}"]`)!;
 
 /** The title button holds the focus of a card. */
 const titleOf = (taskId: string) => cardOf(taskId).querySelector<HTMLElement>('button')!;
@@ -84,7 +89,11 @@ afterEach(() => {
 });
 
 /** A key as the dispatcher sees it, from the body or from an element, with the platform's Cmd or Ctrl for `mod`. */
-function press(key: string, { mod = false, ...init }: KeyboardEventInit & { mod?: boolean } = {}, target: Element = document.body) {
+function press(
+    key: string,
+    { mod = false, ...init }: KeyboardEventInit & { mod?: boolean } = {},
+    target: Element = document.body
+) {
     const modifier = hotkeys.platform === 'darwin' ? { metaKey: mod } : { ctrlKey: mod };
     const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...modifier, ...init });
 
@@ -94,9 +103,10 @@ function press(key: string, { mod = false, ...init }: KeyboardEventInit & { mod?
 }
 
 /** Real time: the screen hands the keyboard back a tick after a dialog closes, and after a frame for the title field. */
-const wait = (ms = 40) => act(async () => {
-    await new Promise(resolve => setTimeout(resolve, ms));
-});
+const wait = (ms = 40) =>
+    act(async () => {
+        await new Promise(resolve => setTimeout(resolve, ms));
+    });
 
 /** The commands register in an effect, so the first draw has no hints; the second has them. */
 const mountWithHints = async () => {
@@ -167,11 +177,15 @@ describe('keys that open something', () => {
     it('a dialog opened with the header button hands the keyboard back as it was', async () => {
         await mountWithHints();
 
-        const button = [...container.querySelectorAll('button')].find(candidate => candidate.textContent?.trim() === 'Task')!;
+        const button = [...container.querySelectorAll('button')].find(
+            candidate => candidate.textContent?.trim() === 'Task'
+        )!;
 
         await act(async () => button.focus());
 
-        const [, options] = (await act(async () => button.click()), vi.mocked(openCreateTask).mock.calls[0]);
+        await act(async () => button.click());
+
+        const [, options] = vi.mocked(openCreateTask).mock.calls[0];
 
         options?.onClose?.();
         await wait();
@@ -368,8 +382,10 @@ describe('undo', () => {
     async function drop(taskId: string, column: string) {
         const event = new Event('drop', { bubbles: true, cancelable: true });
 
-        Object.defineProperty(event, 'dataTransfer', { value: { types: ['application/x-clowdy-task'], getData: () => taskId } });
-        await act(async () => void container.querySelector(`section[aria-label="${ column }"]`)!.dispatchEvent(event));
+        Object.defineProperty(event, 'dataTransfer', {
+            value: { types: ['application/x-clowdy-task'], getData: () => taskId },
+        });
+        await act(async () => void container.querySelector(`section[aria-label="${column}"]`)!.dispatchEvent(event));
         await draw();
     }
 
@@ -439,7 +455,9 @@ describe('undo', () => {
         await mountWithHints();
         await act(async () => titleOf('t-26').click());
         await draw();
-        await act(async () => container.querySelector<HTMLElement>('button[aria-label="Remove dependency CAR-24"]')!.click());
+        await act(async () =>
+            container.querySelector<HTMLElement>('button[aria-label="Remove dependency CAR-24"]')!.click()
+        );
         await draw();
 
         expect(task('t-26').dependsOn).toEqual(['t-25']);

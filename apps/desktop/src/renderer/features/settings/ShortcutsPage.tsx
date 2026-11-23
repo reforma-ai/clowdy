@@ -19,17 +19,17 @@ export function ShortcutsPage() {
 
     return (
         <SettingsPage description="The keys that run commands in Clowdy">
-            { groups.map(group => (
-                <SettingsSection key={ group.name } title={ group.name }>
+            {groups.map(group => (
+                <SettingsSection key={group.name} title={group.name}>
                     <SettingsCard divided>
-                        { group.entries.map(({ command, sequences }) => (
-                            <SettingsRow key={ command.id } title={ command.title }>
-                                <Keys sequences={ sequences } />
+                        {group.entries.map(({ command, sequences }) => (
+                            <SettingsRow key={command.id} title={command.title}>
+                                <Keys sequences={sequences} />
                             </SettingsRow>
-                        )) }
+                        ))}
                     </SettingsCard>
                 </SettingsSection>
-            )) }
+            ))}
         </SettingsPage>
     );
 }
@@ -37,14 +37,18 @@ export function ShortcutsPage() {
 /** The ways to type a command, side by side in one box, so the capsules keep their square size. */
 function Keys({ sequences }: { sequences: HelpEntry['sequences'] }) {
     return (
-        <span className={ styles.keys }>
-            { sequences.map((presses, index) => (
+        <span className={styles.keys}>
+            {sequences.map((presses, index) => (
                 // The alternatives of a command keep their order, so the position is their identity.
-                <Fragment key={ index }>
-                    { index > 0 && <Text variant="xs" color="secondary">or</Text> }
-                    <PressesHotkey presses={ presses } />
+                <Fragment key={index}>
+                    {index > 0 && (
+                        <Text variant="xs" color="secondary">
+                            or
+                        </Text>
+                    )}
+                    <PressesHotkey presses={presses} />
                 </Fragment>
-            )) }
+            ))}
         </span>
     );
 }

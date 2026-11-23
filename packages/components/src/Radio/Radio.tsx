@@ -1,5 +1,5 @@
 import { cn } from '@clowdy/lib';
-import { use, type ReactNode } from 'react';
+import { type ReactNode, use } from 'react';
 import { Radio as RACRadio, type RadioProps as RACRadioProps } from 'react-aria-components';
 
 import styles from './Radio.module.css';
@@ -19,18 +19,17 @@ export function Radio({ size: sizeProp, className, children, ...props }: RadioPr
 
     return (
         <RACRadio
-            { ...props }
-            className={ renderProps => cn(
-                styles.root,
-                typeof className === 'function' ? className(renderProps) : className
-            ) }
-            data-size={ size }
+            {...props}
+            className={renderProps =>
+                cn(styles.root, typeof className === 'function' ? className(renderProps) : className)
+            }
+            data-size={size}
         >
-            <span className={ styles.box } aria-hidden>
-                <span className={ styles.dot } />
+            <span className={styles.box} aria-hidden>
+                <span className={styles.dot} />
             </span>
 
-            { children != null ? <span className={ styles.label }>{ children }</span> : null }
+            {children != null ? <span className={styles.label}>{children}</span> : null}
         </RACRadio>
     );
 }

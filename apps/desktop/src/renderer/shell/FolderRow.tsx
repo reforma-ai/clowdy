@@ -28,28 +28,52 @@ export interface FolderRowProps {
  * row. The sizes are the list row's, as `ProjectRow` and the worktrees' rows have them: the name body (`md`) medium, the path `sm` and dim, the mark `xs`; a bare `Text` would
  * take the page's 16px, which the row's height (`--folder-row-min`, from `--leading-md`) does not count on. `data-folder-path` lets a list find the row of a folder, to move the focus there.
  */
-export function FolderRow({ name, path, isMain = false, children, actions, onRemove, isRemoveDisabled = false }: FolderRowProps) {
+export function FolderRow({
+    name,
+    path,
+    isMain = false,
+    children,
+    actions,
+    onRemove,
+    isRemoveDisabled = false,
+}: FolderRowProps) {
     return (
-        <div className={ styles.row } data-folder-path={ path }>
-            <span className={ styles.icon }><Folder /></span>
-            <span className={ styles.text }>
-                <span className={ styles.title }>
-                    <Text variant="md" weight="medium" truncate>{ name }</Text>
-                    { isMain && <Badge size="xs" textValue="Main">Main</Badge> }
-                </span>
-                <PathText path={ path } variant="sm" color="secondary" />
-                { children }
+        <div className={styles.row} data-folder-path={path}>
+            <span className={styles.icon}>
+                <Folder />
             </span>
-            { (actions || onRemove) && (
-                <span className={ styles.actions }>
-                    { actions }
-                    { onRemove && (
-                        <Button iconOnly size="sm" variant="filling" color="secondary" aria-label={ `Remove ${ name }` } isDisabled={ isRemoveDisabled } onPress={ onRemove }>
+            <span className={styles.text}>
+                <span className={styles.title}>
+                    <Text variant="md" weight="medium" truncate>
+                        {name}
+                    </Text>
+                    {isMain && (
+                        <Badge size="xs" textValue="Main">
+                            Main
+                        </Badge>
+                    )}
+                </span>
+                <PathText path={path} variant="sm" color="secondary" />
+                {children}
+            </span>
+            {(actions || onRemove) && (
+                <span className={styles.actions}>
+                    {actions}
+                    {onRemove && (
+                        <Button
+                            iconOnly
+                            size="sm"
+                            variant="filling"
+                            color="secondary"
+                            aria-label={`Remove ${name}`}
+                            isDisabled={isRemoveDisabled}
+                            onPress={onRemove}
+                        >
                             <Close />
                         </Button>
-                    ) }
+                    )}
                 </span>
-            ) }
+            )}
         </div>
     );
 }

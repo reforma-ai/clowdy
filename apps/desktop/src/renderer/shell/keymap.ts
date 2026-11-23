@@ -1,9 +1,9 @@
 import { agentCommands } from '../features/agents/agentCommands';
 import { filesCommands } from '../features/files/filesCommands';
 import { quickSearchCommands } from '../features/quickSearch/quickSearchCommands';
-import { taskCommands, type TaskCommandDeps } from '../features/tasks/taskCommands';
-import { createRegistry, hotkeys, type Command, type Platform } from '../hotkeys';
-import { helpEntries, type HelpEntry } from '../hotkeys/helpEntries';
+import { type TaskCommandDeps, taskCommands } from '../features/tasks/taskCommands';
+import { type Command, createRegistry, hotkeys, type Platform } from '../hotkeys';
+import { type HelpEntry, helpEntries } from '../hotkeys/helpEntries';
 import { findCommands } from './findCommands';
 import { shellCommands } from './shellCommands';
 

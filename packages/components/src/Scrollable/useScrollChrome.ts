@@ -61,11 +61,7 @@ const HORIZONTAL_EDGES: AxisEdgeKeys = {
     showAttr: 'data-scroll-show-h',
 };
 
-function clearAxisEdges(
-    root: HTMLDivElement | null,
-    edges: ScrollChromeEdges,
-    keys: AxisEdgeKeys
-) {
+function clearAxisEdges(root: HTMLDivElement | null, edges: ScrollChromeEdges, keys: AxisEdgeKeys) {
     edges[keys.start] = false;
     edges[keys.end] = false;
 
@@ -101,15 +97,15 @@ function drawAxis(
     const { offset, scrollSize, clientSize } = metrics;
     const edgeEpsilon = 1;
     const gapPercent = (gap / clientSize) * 100;
-    const thumbLength = (clientSize / scrollSize * 100) - (gapPercent * 2);
-    const thumbOffset = (offset / scrollSize * 100) + gapPercent;
-    const show = thumbLength < 100 - (gapPercent * 2);
+    const thumbLength = (clientSize / scrollSize) * 100 - gapPercent * 2;
+    const thumbOffset = (offset / scrollSize) * 100 + gapPercent;
+    const show = thumbLength < 100 - gapPercent * 2;
     const atStart = show ? offset <= edgeEpsilon : true;
     const atEnd = show ? offset + clientSize >= scrollSize - edgeEpsilon : true;
 
     if (scrollbar) {
-        scrollbar.style.setProperty('--ms-thumb-length', `${ thumbLength }%`);
-        scrollbar.style.setProperty('--ms-thumb-offset', `${ thumbOffset }%`);
+        scrollbar.style.setProperty('--ms-thumb-length', `${thumbLength}%`);
+        scrollbar.style.setProperty('--ms-thumb-offset', `${thumbOffset}%`);
     }
 
     edges[keys.start] = atStart;
@@ -189,44 +185,33 @@ export function useScrollChrome({
         const root = rootRef.current;
         const edges = edgesRef.current;
 
-        drawAxis(
-            root,
-            verticalSourceRef.current,
-            scrollbarVRef.current,
-            edges,
-            VERTICAL_EDGES,
-            gap
-        );
-        drawAxis(
-            root,
-            horizontalSourceRef.current,
-            scrollbarHRef.current,
-            edges,
-            HORIZONTAL_EDGES,
-            gap
-        );
+        drawAxis(root, verticalSourceRef.current, scrollbarVRef.current, edges, VERTICAL_EDGES, gap);
+        drawAxis(root, horizontalSourceRef.current, scrollbarHRef.current, edges, HORIZONTAL_EDGES, gap);
     }, [gap]);
 
-    const startDrag = useCallback((e: React.PointerEvent, isVertical: boolean) => {
-        const source = isVertical ? verticalSourceRef.current : horizontalSourceRef.current;
-        const metrics = source?.getMetrics();
+    const startDrag = useCallback(
+        (e: React.PointerEvent, isVertical: boolean) => {
+            const source = isVertical ? verticalSourceRef.current : horizontalSourceRef.current;
+            const metrics = source?.getMetrics();
 
-        if (!source || !metrics || metrics.clientSize <= 0) {
-            return;
-        }
+            if (!source || !metrics || metrics.clientSize <= 0) {
+                return;
+            }
 
-        e.preventDefault();
-        e.stopPropagation();
+            e.preventDefault();
+            e.stopPropagation();
 
-        dragMetaRef.current = {
-            source,
-            isVertical,
-            fromScrollOffset: metrics.offset,
-            fromScrollSize: metrics.scrollSize,
-            fromOffset: isVertical ? e.screenY : e.screenX,
-            totalDistance: metrics.clientSize - (gap * 2),
-        };
-    }, [gap]);
+            dragMetaRef.current = {
+                source,
+                isVertical,
+                fromScrollOffset: metrics.offset,
+                fromScrollSize: metrics.scrollSize,
+                fromOffset: isVertical ? e.screenY : e.screenX,
+                totalDistance: metrics.clientSize - gap * 2,
+            };
+        },
+        [gap]
+    );
 
     const processDrag = useCallback((e: PointerEvent) => {
         const dragMeta = dragMetaRef.current;
@@ -243,7 +228,7 @@ export function useScrollChrome({
         const toOffset = isVertical ? e.screenY : e.screenX;
         const movePercent = (toOffset - fromOffset) / totalDistance;
 
-        source.setOffset(fromScrollOffset + (fromScrollSize * movePercent));
+        source.setOffset(fromScrollOffset + fromScrollSize * movePercent);
     }, []);
 
     const endDrag = useCallback((e: PointerEvent) => {
@@ -254,33 +239,44 @@ export function useScrollChrome({
         dragMetaRef.current = null;
     }, []);
 
-    const handlePointerDown = useCallback((e: React.PointerEvent) => {
-        const isVertical = (e.target as HTMLElement).classList.contains(styles.scrollbarV);
+    const handlePointerDown = useCallback(
+        (e: React.PointerEvent) => {
+            const isVertical = (e.target as HTMLElement).classList.contains(styles.scrollbarV);
 
-        startDrag(e, isVertical);
-        chromeRef.current.dragging = true;
-        applyChromeClasses();
-
-        const abortController = new AbortController();
-
-        document.addEventListener('pointermove', (ev: PointerEvent) => {
-            processDrag(ev);
-        }, {
-            signal: abortController.signal,
-            capture: true,
-        });
-
-        document.addEventListener('pointerup', (ev: PointerEvent) => {
-            abortController.abort();
-            processDrag(ev);
-            endDrag(ev);
-            chromeRef.current.dragging = false;
+            startDrag(e, isVertical);
+            chromeRef.current.dragging = true;
             applyChromeClasses();
-        }, {
-            signal: abortController.signal,
-            capture: true,
-        });
-    }, [startDrag, processDrag, endDrag, applyChromeClasses]);
+
+            const abortController = new AbortController();
+
+            document.addEventListener(
+                'pointermove',
+                (ev: PointerEvent) => {
+                    processDrag(ev);
+                },
+                {
+                    signal: abortController.signal,
+                    capture: true,
+                }
+            );
+
+            document.addEventListener(
+                'pointerup',
+                (ev: PointerEvent) => {
+                    abortController.abort();
+                    processDrag(ev);
+                    endDrag(ev);
+                    chromeRef.current.dragging = false;
+                    applyChromeClasses();
+                },
+                {
+                    signal: abortController.signal,
+                    capture: true,
+                }
+            );
+        },
+        [startDrag, processDrag, endDrag, applyChromeClasses]
+    );
 
     const rootPointerHandlers = useMemo(
         () => ({
@@ -360,12 +356,13 @@ export function useScrollChrome({
             }
         }
 
-        const mo = typeof MutationObserver === 'undefined'
-            ? null
-            : new MutationObserver(() => {
-                watch();
-                draw();
-            });
+        const mo =
+            typeof MutationObserver === 'undefined'
+                ? null
+                : new MutationObserver(() => {
+                      watch();
+                      draw();
+                  });
 
         for (const el of ports) {
             mo?.observe(el, { childList: true });

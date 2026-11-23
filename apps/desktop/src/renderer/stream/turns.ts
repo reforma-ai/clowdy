@@ -29,15 +29,15 @@ export function workedForLabel(startedAt: number, endedAt: number): string {
 
     const seconds = Math.max(1, Math.round((endedAt - startedAt) / 1000));
 
-    if (seconds < 60) return `Worked for ${ seconds }s`;
+    if (seconds < 60) return `Worked for ${seconds}s`;
 
     const minutes = Math.floor(seconds / 60);
 
-    if (minutes < 60) return seconds % 60 === 0 ? `Worked for ${ minutes }m` : `Worked for ${ minutes }m ${ seconds % 60 }s`;
+    if (minutes < 60) return seconds % 60 === 0 ? `Worked for ${minutes}m` : `Worked for ${minutes}m ${seconds % 60}s`;
 
     const hours = Math.floor(minutes / 60);
 
-    return minutes % 60 === 0 ? `Worked for ${ hours }h` : `Worked for ${ hours }h ${ minutes % 60 }m`;
+    return minutes % 60 === 0 ? `Worked for ${hours}h` : `Worked for ${hours}h ${minutes % 60}m`;
 }
 
 /** The answer of a turn: its last message with text in it, written out. */
@@ -46,7 +46,10 @@ const isAnswer = (item: StreamItem) => item.body.kind === 'assistant' && item.bo
 const isThought = (item: StreamItem) => item.body.kind === 'reasoning';
 
 /** What the person must see even in a turn that is over: a failure, a question put to them, and a request for permission that still waits (an answered one is work like any call). */
-const needsAttention = (item: StreamItem) => item.body.kind === 'error' || item.body.kind === 'question' || (item.body.kind === 'approval' && item.body.state === 'open');
+const needsAttention = (item: StreamItem) =>
+    item.body.kind === 'error' ||
+    item.body.kind === 'question' ||
+    (item.body.kind === 'approval' && item.body.state === 'open');
 
 function plain(turn: StreamItem[], answer?: StreamItem): StreamBlock[] {
     return turn.map(item => (item === answer ? { kind: 'item', item, answer: true } : { kind: 'item', item }));
@@ -76,9 +79,12 @@ function foldTurn(turn: StreamItem[], answered: boolean): StreamBlock[] {
 
     return [
         ...plain(turn.slice(0, head)),
-        { kind: 'worked', key: `worked-${ work[0].id }`, label, items: work },
+        { kind: 'worked', key: `worked-${work[0].id}`, label, items: work },
         ...plain(between.filter(needsAttention)),
-        ...plain(after.filter(item => !isThought(item)), answer),
+        ...plain(
+            after.filter(item => !isThought(item)),
+            answer
+        ),
     ];
 }
 
@@ -123,7 +129,12 @@ export function foldFinishedWork(items: readonly StreamItem[], active: boolean):
 }
 
 /** What a group may hold: a call that is not a sub-agent's card, a compaction or the step that makes the chat's worktree (lines of their own), and what the agent thought. */
-const isRunItem = (item: StreamItem) => item.body.kind === 'reasoning' || (item.body.kind === 'tool' && item.body.name !== COMPACT_TOOL && item.body.name !== WORKSPACE_TOOL && !isSubagentTool(item.body.name));
+const isRunItem = (item: StreamItem) =>
+    item.body.kind === 'reasoning' ||
+    (item.body.kind === 'tool' &&
+        item.body.name !== COMPACT_TOOL &&
+        item.body.name !== WORKSPACE_TOOL &&
+        !isSubagentTool(item.body.name));
 
 /**
  * Puts tool calls that follow one another under one block, with the thoughts of the agent before, between and after them (thoughts that follow one another
@@ -138,7 +149,8 @@ export function groupToolRuns(blocks: readonly StreamBlock[]): StreamBlock[] {
     let run: ItemBlock[] = [];
 
     const flush = () => {
-        if (run.filter(block => block.item.body.kind === 'tool').length >= 2) grouped.push({ kind: 'tools', key: `tools-${ run[0].item.id }`, items: run.map(block => block.item) });
+        if (run.filter(block => block.item.body.kind === 'tool').length >= 2)
+            grouped.push({ kind: 'tools', key: `tools-${run[0].item.id}`, items: run.map(block => block.item) });
         else grouped.push(...run);
 
         run = [];
@@ -170,7 +182,12 @@ export function mergeThoughts(blocks: readonly StreamBlock[]): StreamBlock[] {
     let pieces: ItemBlock[] = [];
 
     const flush = () => {
-        if (pieces.length > 0) merged.push(pieces.length === 1 ? pieces[0] : { kind: 'item', item: { ...pieces[0].item, body: joined(pieces.map(piece => piece.item.body)) } });
+        if (pieces.length > 0)
+            merged.push(
+                pieces.length === 1
+                    ? pieces[0]
+                    : { kind: 'item', item: { ...pieces[0].item, body: joined(pieces.map(piece => piece.item.body)) } }
+            );
 
         pieces = [];
     };
@@ -200,8 +217,12 @@ function joined(bodies: readonly StreamItem['body'][]): ReasoningBody {
 
     return {
         kind: 'reasoning',
-        text: thoughts.map(thought => thought.text.trim()).filter(Boolean).join('\n\n'),
+        text: thoughts
+            .map(thought => thought.text.trim())
+            .filter(Boolean)
+            .join('\n\n'),
         done,
-        ...(done && timed.length > 0 && { durationMs: timed.reduce((total, thought) => total + (thought.durationMs ?? 0), 0) }),
+        ...(done &&
+            timed.length > 0 && { durationMs: timed.reduce((total, thought) => total + (thought.durationMs ?? 0), 0) }),
     };
 }

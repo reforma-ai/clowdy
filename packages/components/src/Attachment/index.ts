@@ -1,9 +1,9 @@
 export {
     Attachment,
-    Attachments,
-    PreviewableAttachment,
     type AttachmentData,
     type AttachmentProps,
+    Attachments,
     type AttachmentsProps,
     type AttachmentsSize,
+    PreviewableAttachment,
 } from './Attachment';

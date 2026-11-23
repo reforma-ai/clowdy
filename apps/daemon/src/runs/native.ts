@@ -50,7 +50,12 @@ export class NativeAgents {
     private listed = new Set<string>();
 
     /** `canStop` says whether the session can end one sub-agent alone (it has `EngineSession.stopItem`), asked each time a sub-agent is made: the session exists only after this. */
-    constructor(private store: Store, private runs: RunService, private parent: Run, private canStop: () => boolean = () => false) {}
+    constructor(
+        private store: Store,
+        private runs: RunService,
+        private parent: Run,
+        private canStop: () => boolean = () => false
+    ) {}
 
     /** A sub-agent started, changed or ended. */
     state(event: SubagentEvent): void {
@@ -101,7 +106,12 @@ export class NativeAgents {
     wasStopped(item: BackgroundItem): boolean {
         this.flush();
 
-        return [...this.agents].some(([agentId, agent]) => (agentId === item.id || agent.run.parentToolCallId === item.id) && agent.stopReason !== undefined && this.runs.require(agent.run.id).status === 'cancelled');
+        return [...this.agents].some(
+            ([agentId, agent]) =>
+                (agentId === item.id || agent.run.parentToolCallId === item.id) &&
+                agent.stopReason !== undefined &&
+                this.runs.require(agent.run.id).status === 'cancelled'
+        );
     }
 
     /** Whether `toolCallId` is the call that started a sub-agent, which the engine draws a card for: a call the sub-agent's state is, not something the agent did. */
@@ -116,7 +126,13 @@ export class NativeAgents {
     openCalls(): Set<string> {
         this.flush();
 
-        return new Set([...this.agents].flatMap(([agentId, agent]) => agent.run.parentToolCallId !== undefined && this.isListed(agentId, agent) ? [agent.run.parentToolCallId] : []));
+        return new Set(
+            [...this.agents].flatMap(([agentId, agent]) =>
+                agent.run.parentToolCallId !== undefined && this.isListed(agentId, agent)
+                    ? [agent.run.parentToolCallId]
+                    : []
+            )
+        );
     }
 
     /**
@@ -139,8 +155,7 @@ export class NativeAgents {
                 // Its item went away before the turn ended: it finished, whatever the turn does.
                 if (agent.left) {
                     this.close(agent, 'done', agent.last);
-                }
-                else {
+                } else {
                     this.close(agent, 'cancelled', 'The parent run ended its turn');
                 }
 
@@ -149,7 +164,7 @@ export class NativeAgents {
             }
 
             if (this.skipped.size > 0) {
-                this.runs.note(this.parent.id, `${ this.skipped.size } more sub-agents ran and are not listed here`);
+                this.runs.note(this.parent.id, `${this.skipped.size} more sub-agents ran and are not listed here`);
                 this.skipped.clear();
             }
         });
@@ -174,15 +189,23 @@ export class NativeAgents {
             for (const apply of batch) {
                 try {
                     apply();
-                }
-                catch (error) {
-                    console.error(`[clowdy] a sub-agent event of ${ this.parent.id } was dropped: ${ errorMessage(error) }`);
+                } catch (error) {
+                    console.error(
+                        `[clowdy] a sub-agent event of ${this.parent.id} was dropped: ${errorMessage(error)}`
+                    );
                 }
             }
         });
     }
 
-    private open(agentId: string, name: string, description?: string, parentToolCallId?: string, canStopAlone?: boolean, parentAgentId?: string): Agent | undefined {
+    private open(
+        agentId: string,
+        name: string,
+        description?: string,
+        parentToolCallId?: string,
+        canStopAlone?: boolean,
+        parentAgentId?: string
+    ): Agent | undefined {
         if (this.gone.has(agentId)) {
             return undefined;
         }
@@ -195,8 +218,17 @@ export class NativeAgents {
 
         // A sub-agent of a sub-agent is a child run of that one's run, so the tree shows who started whom; one whose starter is not known (it was cut off by the cap) hangs from the session's run.
         const starter = parentAgentId === undefined ? undefined : this.agents.get(parentAgentId);
-        const run = this.runs.createNative(starter?.run ?? this.parent, { name, summary: description ?? name, parentToolCallId, canStopAlone });
-        const agent: Agent = { run, writer: new TurnWriter(this.store, run.id, TEXT_THROTTLE_MS), ...(starter && { parentAgentId }) };
+        const run = this.runs.createNative(starter?.run ?? this.parent, {
+            name,
+            summary: description ?? name,
+            parentToolCallId,
+            canStopAlone,
+        });
+        const agent: Agent = {
+            run,
+            writer: new TurnWriter(this.store, run.id, TEXT_THROTTLE_MS),
+            ...(starter && { parentAgentId }),
+        };
 
         // The list may have named it before its first event came.
         agent.seen = this.isListed(agentId, agent);
@@ -212,8 +244,7 @@ export class NativeAgents {
             if (this.isListed(agentId, agent)) {
                 agent.seen = true;
                 agent.left = false;
-            }
-            else if (agent.seen) {
+            } else if (agent.seen) {
                 // Its item is gone: it finished, unless the item is back before anything else happens. A failure or a cancel was reported by its own
                 // `subagent` event, which closed it already.
                 agent.left = true;
@@ -233,7 +264,10 @@ export class NativeAgents {
 
     /** Whether the latest list names the sub-agent, or the one that started it: a sub-agent of a listed sub-agent is part of that open work, which the list does not spell out. */
     private isListed(agentId: string, agent: Agent): boolean {
-        if (this.listed.has(agentId) || (agent.run.parentToolCallId !== undefined && this.listed.has(agent.run.parentToolCallId))) {
+        if (
+            this.listed.has(agentId) ||
+            (agent.run.parentToolCallId !== undefined && this.listed.has(agent.run.parentToolCallId))
+        ) {
             return true;
         }
 
@@ -243,7 +277,16 @@ export class NativeAgents {
     }
 
     private applyState(event: SubagentEvent): void {
-        const agent = this.agents.get(event.agentId) ?? this.open(event.agentId, event.name, event.description, event.parentToolCallId, event.stoppable && this.canStop(), event.parentAgentId);
+        const agent =
+            this.agents.get(event.agentId) ??
+            this.open(
+                event.agentId,
+                event.name,
+                event.description,
+                event.parentToolCallId,
+                event.stoppable && this.canStop(),
+                event.parentAgentId
+            );
 
         if (!agent || !this.isRunning(agent)) {
             return;
@@ -258,7 +301,11 @@ export class NativeAgents {
             return;
         }
 
-        this.close(agent, event.state, event.state === 'cancelled' ? agent.stopReason ?? event.summary : event.summary);
+        this.close(
+            agent,
+            event.state,
+            event.state === 'cancelled' ? (agent.stopReason ?? event.summary) : event.summary
+        );
     }
 
     private applyStream(event: StreamEvent): void {
@@ -277,11 +324,9 @@ export class NativeAgents {
             }
 
             agent.writer.text(event.delta, event.done);
-        }
-        else if (event.type === 'thought') {
+        } else if (event.type === 'thought') {
             agent.writer.reasoning(event.delta, event.done);
-        }
-        else {
+        } else {
             agent.writer.tool(event);
         }
     }
@@ -301,11 +346,9 @@ export class NativeAgents {
 
         if (state === 'done') {
             this.runs.setStatus(agent.run.id, 'succeeded', { result: summary });
-        }
-        else if (state === 'error') {
+        } else if (state === 'error') {
             this.runs.setStatus(agent.run.id, 'failed', { error: summary ?? 'The sub-agent failed' });
-        }
-        else {
+        } else {
             this.runs.setStatus(agent.run.id, 'cancelled', { reason: summary ?? 'The sub-agent was cancelled' });
         }
     }

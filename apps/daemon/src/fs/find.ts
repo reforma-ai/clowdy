@@ -14,11 +14,10 @@ function matcher(query: string): (lowerPath: string) => boolean {
     const glob = new Bun.Glob(lower);
     const baseOnly = !lower.includes('/');
 
-    return (path) => {
+    return path => {
         try {
             return glob.match(baseOnly ? path.slice(path.lastIndexOf('/') + 1) : path);
-        }
-        catch {
+        } catch {
             return false;
         }
     };
@@ -53,10 +52,20 @@ export function matchPaths(paths: readonly string[], query: string): string[] {
     for (const path of paths) {
         const lower = path.toLowerCase();
 
-        if (matches(lower) && isListed(path.slice(path.lastIndexOf('/') + 1)) && isAddressable(path) && !path.split('/').some(name => CUTOFF_NAMES.has(name))) {
+        if (
+            matches(lower) &&
+            isListed(path.slice(path.lastIndexOf('/') + 1)) &&
+            isAddressable(path) &&
+            !path.split('/').some(name => CUTOFF_NAMES.has(name))
+        ) {
             found.push({ path, score: scoreOf(lower, word) });
         }
     }
 
-    return found.sort((a, b) => a.score - b.score || a.path.length - b.path.length || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)).map(match => match.path);
+    return found
+        .sort(
+            (a, b) =>
+                a.score - b.score || a.path.length - b.path.length || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)
+        )
+        .map(match => match.path);
 }

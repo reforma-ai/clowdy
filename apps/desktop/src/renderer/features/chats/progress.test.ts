@@ -13,11 +13,11 @@ const statuses: TaskStatus[] = [
 ];
 
 const task = (number: number, statusId: string): Task => ({
-    id: `t-${ number }`,
+    id: `t-${number}`,
     projectId: 'p',
     number,
-    key: `CAR-${ number }`,
-    title: `Task ${ number }`,
+    key: `CAR-${number}`,
+    title: `Task ${number}`,
     description: '',
     statusId,
     dependsOn: [],
@@ -28,7 +28,10 @@ const task = (number: number, statusId: string): Task => ({
 
 describe('chatProgress', () => {
     it('counts the done tasks against all of them', () => {
-        const progress = chatProgress([task(1, 'done'), task(2, 'active'), task(3, 'review'), task(4, 'done')], statuses);
+        const progress = chatProgress(
+            [task(1, 'done'), task(2, 'active'), task(3, 'review'), task(4, 'done')],
+            statuses
+        );
 
         expect(progress).toMatchObject({ done: 2, total: 4 });
         expect(progress?.tasks.map(item => item.key)).toEqual(['CAR-1', 'CAR-2', 'CAR-3', 'CAR-4']);
@@ -42,7 +45,10 @@ describe('chatProgress', () => {
     });
 
     it('treats a task whose status left the workflow as not done', () => {
-        expect(chatProgress([task(1, 'done'), task(2, 'removed-status')], statuses)).toMatchObject({ done: 1, total: 2 });
+        expect(chatProgress([task(1, 'done'), task(2, 'removed-status')], statuses)).toMatchObject({
+            done: 1,
+            total: 2,
+        });
     });
 
     it('has no progress without tasks, or with only canceled ones', () => {

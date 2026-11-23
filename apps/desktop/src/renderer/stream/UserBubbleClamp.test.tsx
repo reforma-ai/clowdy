@@ -14,13 +14,22 @@ let layout = { scrollHeight: 0, clientHeight: 0 };
 
 beforeEach(() => {
     layout = { scrollHeight: 0, clientHeight: 0 };
-    vi.stubGlobal('ResizeObserver', class {
-        observe = () => undefined;
-        disconnect = () => undefined;
-        unobserve = () => undefined;
+    vi.stubGlobal(
+        'ResizeObserver',
+        class {
+            observe = () => undefined;
+            disconnect = () => undefined;
+            unobserve = () => undefined;
+        }
+    );
+    Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
+        configurable: true,
+        get: () => layout.scrollHeight,
     });
-    Object.defineProperty(HTMLElement.prototype, 'scrollHeight', { configurable: true, get: () => layout.scrollHeight });
-    Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => layout.clientHeight });
+    Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+        configurable: true,
+        get: () => layout.clientHeight,
+    });
     container = document.createElement('div');
     document.body.append(container);
     root = createRoot(container);
@@ -34,7 +43,7 @@ afterEach(() => {
     Reflect.deleteProperty(HTMLElement.prototype, 'clientHeight');
 });
 
-const draw = (text: string) => act(async () => root.render(<UserBubble text={ text } at={ 0 } />));
+const draw = (text: string) => act(async () => root.render(<UserBubble text={text} at={0} />));
 const toggle = () => [...container.querySelectorAll('button')].find(button => button.textContent?.includes('Show'));
 const long = 'word '.repeat(200);
 

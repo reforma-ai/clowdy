@@ -30,7 +30,10 @@ import { buildMain } from './main-bundle';
 const desktopRoot = path.resolve(import.meta.dir, '..');
 const appDir = path.join(desktopRoot, 'app');
 const bundleDir = path.join(desktopRoot, 'bundle');
-const manifest = await Bun.file(path.join(desktopRoot, 'package.json')).json() as { version: string; description: string };
+const manifest = (await Bun.file(path.join(desktopRoot, 'package.json')).json()) as {
+    version: string;
+    description: string;
+};
 
 const targets = runtimeTargets(process.argv.slice(2));
 
@@ -44,30 +47,38 @@ const info = await bundleInfo();
 await buildRenderer(path.join(appDir, 'renderer'));
 await buildMain(path.join(appDir, 'dist'), constants);
 await layoutDaemonPart(bundleDir, info);
-await Bun.write(path.join(appDir, 'bundle.json'), `${ JSON.stringify(info, null, 4) }\n`);
+await Bun.write(path.join(appDir, 'bundle.json'), `${JSON.stringify(info, null, 4)}\n`);
 await fetchBunRuntimes(targets);
 
 // The packaged app's own manifest: `productName` names its `userData` folder. `name` names the Windows packages
 // (`clowdy-<version>-<arch>.nsis.7z`) and the updater's cache folder. Not the scoped `@clowdy/desktop`: electron-builder
 // would name them `@clowdydesktop-…`, and GitHub renames release assets with special characters, so the web installer
 // and the updater, which ask for the name electron-builder wrote, would not find the package.
-await Bun.write(path.join(appDir, 'package.json'), `${ JSON.stringify({
-    name: 'clowdy',
-    productName: 'Clowdy',
-    version: manifest.version,
-    description: manifest.description,
-    author: 'Clowdy',
-    main: 'dist/main/index.cjs',
-    private: true,
-}, null, 4) }\n`);
+await Bun.write(
+    path.join(appDir, 'package.json'),
+    `${JSON.stringify(
+        {
+            name: 'clowdy',
+            productName: 'Clowdy',
+            version: manifest.version,
+            description: manifest.description,
+            author: 'Clowdy',
+            main: 'dist/main/index.cjs',
+            private: true,
+        },
+        null,
+        4
+    )}\n`
+);
 
-console.log(`Built ${ appDir } with bundle ${ info.version }`);
+console.log(`Built ${appDir} with bundle ${info.version}`);
 
 /** What `src/main/releaseConfig.ts` reads, from the environment of a release build. */
 function releaseConstants(): Record<string, string> {
     const repo = process.env.CLOWDY_RELEASE_REPO ?? '';
 
-    if (repo && !/^[\w.-]+\/[\w.-]+$/.test(repo)) throw new Error(`CLOWDY_RELEASE_REPO must be owner/name, got ${ repo }`);
+    if (repo && !/^[\w.-]+\/[\w.-]+$/.test(repo))
+        throw new Error(`CLOWDY_RELEASE_REPO must be owner/name, got ${repo}`);
 
     return {
         __CLOWDY_RELEASE_REPO__: JSON.stringify(repo),
@@ -87,7 +98,8 @@ function otaPublicKey(): string {
 
     const key = createPublicKey(pem);
 
-    if (key.asymmetricKeyType !== 'ed25519') throw new Error(`CLOWDY_OTA_PUBLIC_KEY must be an Ed25519 key, got ${ key.asymmetricKeyType }`);
+    if (key.asymmetricKeyType !== 'ed25519')
+        throw new Error(`CLOWDY_OTA_PUBLIC_KEY must be an Ed25519 key, got ${key.asymmetricKeyType}`);
 
     return key.export({ type: 'spki', format: 'pem' }).toString();
 }

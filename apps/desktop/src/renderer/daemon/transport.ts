@@ -12,6 +12,7 @@ import type {
     FolderGit,
     FolderId,
     FolderWorktrees,
+    GitBranches,
     GitChanges,
     GitCommitResult,
     GitFileSides,
@@ -20,6 +21,8 @@ import type {
     GitRemoteResult,
     GitScope,
     GitStatus,
+    GitSwitchRequest,
+    GitSwitchResult,
     GitViewedMark,
     Health,
     ProjectFileMatch,
@@ -109,7 +112,14 @@ export interface Transport {
      * card cannot be drawn against another start than its list. Rejects as `getGitChanges` does, and with 404 for a path that did not change in the scope or a `from` that is no
      * commit, and 400 for a `from` that is no hash.
      */
-    getGitFile: (projectId: ProjectId, place: PlaceRef, scope: GitScope, path: string, oldPath?: string, from?: string) => Promise<GitFileSides>;
+    getGitFile: (
+        projectId: ProjectId,
+        place: PlaceRef,
+        scope: GitScope,
+        path: string,
+        oldPath?: string,
+        from?: string
+    ) => Promise<GitFileSides>;
     /**
      * The files the person marked as viewed in a scope of a place, each with the revision (`GitChangedFile.revision`) the file had when it was marked, in path order. The daemon only
      * keeps them: a file is viewed only while its revision in the scope's list is the stored one, which the caller decides, so an edit clears the mark with no read. Read when asked,
@@ -117,7 +127,13 @@ export interface Transport {
      */
     getGitViewed: (projectId: ProjectId, place: PlaceRef, scope: GitScope) => Promise<GitViewedMark[]>;
     /** Marks a file as viewed at the revision the list gave it, replacing the mark it had, and answers what was kept. Rejects as `getGitViewed` does, and with 400 for a path or a revision that cannot be one. */
-    setGitViewed: (projectId: ProjectId, place: PlaceRef, scope: GitScope, path: string, revision: string) => Promise<GitViewedMark>;
+    setGitViewed: (
+        projectId: ProjectId,
+        place: PlaceRef,
+        scope: GitScope,
+        path: string,
+        revision: string
+    ) => Promise<GitViewedMark>;
     /** Clears a file's mark; a file with none is cleared all the same. Rejects as `setGitViewed` does. */
     clearGitViewed: (projectId: ProjectId, place: PlaceRef, scope: GitScope, path: string) => Promise<void>;
     /**
@@ -151,6 +167,25 @@ export interface Transport {
      */
     pushGit: (projectId: ProjectId, place: PlaceRef) => Promise<GitRemoteResult>;
     /**
+     * The branches a place can switch to (`GET git/branches`): the local ones with the current and the default one, the upstream and the worktree that has one checked out, the branches
+     * only `origin` has, and the last few the place was on, newest first; or that the folder is no repository. Read when asked, never pushed, nothing fetched: a branch changes in a
+     * terminal or by an agent. Rejects as `getGitStatus` does.
+     */
+    getGitBranches: (projectId: ProjectId, place: PlaceRef) => Promise<GitBranches>;
+    /**
+     * Changes the branch of the folder's own checkout (`POST git/switch`): to an existing local branch, to one only `origin` has (a local branch that tracks it), or with `create` to a new branch
+     * cut from the current branch or the default one. Never for a chat's worktree. Nothing is stashed or carried along: a change in the tree, a merge or rebase under way, a run working in the
+     * place and a branch that another worktree has checked out are refused with the daemon's short reason. Rejects with a `TransportError`: 400 for a worktree place, a name that is no branch name, a
+     * branch that does not exist or a new one that does, 409 for a refusal that is the repository's state (its `message` is the reason, and `hint` says how many files or what to do) or a switch git
+     * refused, 503 for one that did not end in time. Not retried: a switch is not asked for twice. `warning` in the answer is what the person is told of a switch that was made: what a failed `post-checkout` hook said, or the commits a detached HEAD left on no branch.
+     */
+    switchGitBranch: (
+        projectId: ProjectId,
+        place: PlaceRef,
+        branch: string,
+        create?: GitSwitchRequest['create']
+    ) => Promise<GitSwitchResult>;
+    /**
      * Every worktree of every folder of a project, with the chats that work in each, how many files are changed and whether its work is in the base: what the Manage worktrees
      * dialog lists. One entry per folder in the project's order, a folder that is no repository (or is gone) with no worktrees. Read when asked, never pushed: worktrees change
      * in a terminal or by an agent. Rejects with a `TransportError` of status 404 for a project the daemon does not have.
@@ -170,7 +205,11 @@ export interface Transport {
      */
     getChatWorkspaceRemoval: (chatId: ChatId) => Promise<ChatWorkspaceRemoval>;
     /** Follows the change feed after `cursor`. Returns what ends the subscription. */
-    subscribe: (cursor: number, onEvent: (event: ClowdyEvent) => void, onStatus: (status: FeedStatus) => void) => () => void;
+    subscribe: (
+        cursor: number,
+        onEvent: (event: ClowdyEvent) => void,
+        onStatus: (status: FeedStatus) => void
+    ) => () => void;
     /**
      * Sends a command. The request id is made once per call and kept across the transport's own retries, so the
      * daemon acts once. A command the daemon refused resolves with `ok: false`; a daemon out of reach rejects.
@@ -196,7 +235,12 @@ export interface Transport {
      * Files of the project's folders whose path contains every word of `query`, best match first, each with its folder and its path relative to that folder. With a `workspaceId`
      * (a worktree of one of the folders, made) the worktree's files are listed in place of its folder's own checkout's, the other folders as before.
      */
-    getProjectFiles: (projectId: ProjectId, query: string, limit?: number, workspaceId?: WorkspaceId) => Promise<ProjectFileMatch[]>;
+    getProjectFiles: (
+        projectId: ProjectId,
+        query: string,
+        limit?: number,
+        workspaceId?: WorkspaceId
+    ) => Promise<ProjectFileMatch[]>;
     /**
      * One folder of the project as a file system, for the file manager to browse and edit; the daemon checks every path against the folder. Nothing is asked until the file system is used.
      * With a `workspaceId` (a worktree of that folder, made) it is the worktree's files, not the folder's own checkout's.
@@ -231,7 +275,11 @@ export interface Transport {
 /** The daemon could not be reached, or answered something other than the contract. */
 export class TransportError extends Error {
     /** `hint` is a short sentence beside the daemon's own `message`, for a failure it can explain (a git line that names the signing key). */
-    constructor(message: string, readonly status?: number, readonly hint?: string) {
+    constructor(
+        message: string,
+        readonly status?: number,
+        readonly hint?: string
+    ) {
         super(message);
         this.name = 'TransportError';
     }

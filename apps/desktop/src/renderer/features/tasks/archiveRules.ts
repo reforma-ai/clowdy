@@ -20,26 +20,32 @@ export function openWork(task: Task, tree: TaskTree, statuses: readonly TaskStat
 }
 
 /** What a task is called in a sentence: its key for one task, a count for several. */
-const subject = (tasks: readonly Pick<Task, 'key'>[]) => (tasks.length === 1 ? tasks[0].key : `${ tasks.length } tasks`);
+const subject = (tasks: readonly Pick<Task, 'key'>[]) => (tasks.length === 1 ? tasks[0].key : `${tasks.length} tasks`);
 
 /** The wording of the archive action over some tasks: a menu item, a button, the offer to undo. `isOpen` is whether any of them has open work, which the archive cancels. */
 export function archiveWording(tasks: readonly Pick<Task, 'key'>[], isOpen: boolean) {
     return {
         /** The menu item and the panel's button: "Archive", with the count for several tasks. */
-        action: `${ isOpen ? 'Cancel and archive' : 'Archive' }${ tasks.length > 1 ? ` ${ tasks.length } tasks` : '' }`,
+        action: `${isOpen ? 'Cancel and archive' : 'Archive'}${tasks.length > 1 ? ` ${tasks.length} tasks` : ''}`,
         /** The offer to undo, after the archive. */
-        done: `${ isOpen ? 'Canceled and archived' : 'Archived' } ${ subject(tasks) }`,
+        done: `${isOpen ? 'Canceled and archived' : 'Archived'} ${subject(tasks)}`,
     };
 }
 
 /** The question before work that is open is canceled: what goes to the archive and how many open tasks are canceled, as the daemon will do it. */
-export function cancelDialog(tasks: readonly Pick<Task, 'key' | 'title'>[], openCount: number): { title: string; message: string; confirmLabel: string } {
-    const what = tasks.length === 1 ? `"${ tasks[0].title }" and everything inside it` : `The ${ tasks.length } selected tasks and everything inside them`;
-    const open = openCount === 1 ? '1 open task' : `${ openCount } open tasks`;
+export function cancelDialog(
+    tasks: readonly Pick<Task, 'key' | 'title'>[],
+    openCount: number
+): { title: string; message: string; confirmLabel: string } {
+    const what =
+        tasks.length === 1
+            ? `"${tasks[0].title}" and everything inside it`
+            : `The ${tasks.length} selected tasks and everything inside them`;
+    const open = openCount === 1 ? '1 open task' : `${openCount} open tasks`;
 
     return {
-        title: `Cancel and archive ${ subject(tasks) }?`,
-        message: `${ what } will go to the archive. ${ open } will be canceled first.`,
+        title: `Cancel and archive ${subject(tasks)}?`,
+        message: `${what} will go to the archive. ${open} will be canceled first.`,
         confirmLabel: 'Cancel and archive',
     };
 }
@@ -51,7 +57,8 @@ export interface ArchiveReply {
     restored: TaskId[];
 }
 
-const idsOf = (value: unknown): TaskId[] => (Array.isArray(value) ? value.filter((id): id is TaskId => typeof id === 'string') : []);
+const idsOf = (value: unknown): TaskId[] =>
+    Array.isArray(value) ? value.filter((id): id is TaskId => typeof id === 'string') : [];
 
 /** The lists of an answer; nothing for what is not there. The daemon and the fixture daemon answer `{ task, archived, canceled }` and `{ task, restored }`. */
 export function archiveReply(data: unknown): ArchiveReply {

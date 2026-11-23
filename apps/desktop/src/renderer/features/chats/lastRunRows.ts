@@ -11,7 +11,8 @@ export const MAX_PLATE_ROWS = 5;
 type RepositoryChanges = Extract<GitChanges, { isRepository: true }>;
 
 /** The scope of what the chat's latest turn changed, and nothing for a chat that has none. */
-export const lastRunScope = (chat: Pick<Chat, 'lastRun'>): GitScope | undefined => (chat.lastRun ? turnScope(chat.lastRun.startTree, chat.lastRun.endTree) : undefined);
+export const lastRunScope = (chat: Pick<Chat, 'lastRun'>): GitScope | undefined =>
+    chat.lastRun ? turnScope(chat.lastRun.startTree, chat.lastRun.endTree) : undefined;
 
 /** What the plate asks to be sure of that the chat says: the run and the stream that tell whether the person has gone on since. */
 export interface PlateFacts {
@@ -44,30 +45,43 @@ export function plateFilesOf(changes: GitChanges | undefined): RepositoryChanges
 }
 
 /** The rows the plate draws: the first few files, or all of them once it is unfolded. */
-export const visibleRows = (files: readonly GitChangedFile[], unfolded: boolean): readonly GitChangedFile[] => (unfolded ? files : files.slice(0, MAX_PLATE_ROWS));
+export const visibleRows = (files: readonly GitChangedFile[], unfolded: boolean): readonly GitChangedFile[] =>
+    unfolded ? files : files.slice(0, MAX_PLATE_ROWS);
 
 /** How many files the chevron has behind it. */
 export const hiddenRows = (files: readonly GitChangedFile[]): number => Math.max(0, files.length - MAX_PLATE_ROWS);
 
 /** The header's words: `Last run · 7 files`, the counts of lines after it are drawn in their own colours (`plateTotals`). */
-export const plateTitle = (changes: Pick<RepositoryChanges, 'fileCount'>): string => `Last run · ${ filesWords(changes.fileCount) }`;
+export const plateTitle = (changes: Pick<RepositoryChanges, 'fileCount'>): string =>
+    `Last run · ${filesWords(changes.fileCount)}`;
 
 /** The totals of the header as the Changes tab writes them: `+152` and `−22` with a real minus sign. */
-export const plateTotals = (changes: Pick<RepositoryChanges, 'additions' | 'deletions'>): { additions: string; deletions: string } => ({ additions: `+${ changes.additions }`, deletions: `−${ changes.deletions }` });
+export const plateTotals = (
+    changes: Pick<RepositoryChanges, 'additions' | 'deletions'>
+): { additions: string; deletions: string } => ({
+    additions: `+${changes.additions}`,
+    deletions: `−${changes.deletions}`,
+});
 
 /** What the chevron says: how many files are behind it, or that they can be folded away again. */
-export const chevronWords = (changes: Pick<RepositoryChanges, 'files'>, unfolded: boolean): string => (unfolded ? 'Show fewer' : `${ hiddenRows(changes.files) } more ${ hiddenRows(changes.files) === 1 ? 'file' : 'files' }`);
+export const chevronWords = (changes: Pick<RepositoryChanges, 'files'>, unfolded: boolean): string =>
+    unfolded ? 'Show fewer' : `${hiddenRows(changes.files)} more ${hiddenRows(changes.files) === 1 ? 'file' : 'files'}`;
 
 /** The lines of a file as the row writes them (`+101`, `−15`), none for a binary file and for one whose lines were not counted. */
-export function rowCounts(file: Pick<GitChangedFile, 'additions' | 'deletions'>): { additions: string; deletions: string } | undefined {
-    return file.additions !== undefined && file.deletions !== undefined ? { additions: `+${ file.additions }`, deletions: `−${ file.deletions }` } : undefined;
+export function rowCounts(
+    file: Pick<GitChangedFile, 'additions' | 'deletions'>
+): { additions: string; deletions: string } | undefined {
+    return file.additions !== undefined && file.deletions !== undefined
+        ? { additions: `+${file.additions}`, deletions: `−${file.deletions}` }
+        : undefined;
 }
 
 /** What a screen reader hears of a row: how the file changed, its path and its lines. `Modified, apps/daemon/src/db.ts, 101 added, 15 removed`. */
 export function rowLabel(file: GitChangedFile): string {
     const parts = [CHANGE_KIND_VIEW[file.kind].label, file.path];
 
-    if (file.additions !== undefined && file.deletions !== undefined) parts.push(`${ file.additions } added`, `${ file.deletions } removed`);
+    if (file.additions !== undefined && file.deletions !== undefined)
+        parts.push(`${file.additions} added`, `${file.deletions} removed`);
     else if (file.binary) parts.push('binary');
 
     return parts.join(', ');

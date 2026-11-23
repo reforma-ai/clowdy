@@ -1,8 +1,18 @@
-import { PROTOCOL_VERSION, type Health } from '@clowdy/protocol';
 import path from 'node:path';
+import { type Health, PROTOCOL_VERSION } from '@clowdy/protocol';
 import { describe, expect, test } from 'vitest';
 
-import { attachDaemon, daemonAddress, daemonEnvironment, DaemonError, ensureDaemon, environmentRuntime, tailLines, type DaemonContext, type DaemonRuntime } from './daemon';
+import {
+    attachDaemon,
+    type DaemonContext,
+    DaemonError,
+    type DaemonRuntime,
+    daemonAddress,
+    daemonEnvironment,
+    ensureDaemon,
+    environmentRuntime,
+    tailLines,
+} from './daemon';
 
 import type { DaemonExit, DaemonHost, DaemonLaunch } from './daemonHost';
 
@@ -16,7 +26,14 @@ const PATH = (...folders: string[]) => folders.join(path.delimiter);
 
 const CHECKOUT: DaemonRuntime = { bun: '/usr/local/bin/bun', entry: '/repo/apps/daemon/src/main.ts' };
 
-const healthOf = (info = INFO, overrides: Partial<Health> = {}): Health => ({ ok: true, protocol: info.protocol, version: '0.0.1', pid: info.pid, startedAt: info.startedAt, ...overrides });
+const healthOf = (info = INFO, overrides: Partial<Health> = {}): Health => ({
+    ok: true,
+    protocol: info.protocol,
+    version: '0.0.1',
+    pid: info.pid,
+    startedAt: info.startedAt,
+    ...overrides,
+});
 
 interface World {
     files: Map<string, string>;
@@ -38,18 +55,26 @@ function publish(world: World, info = INFO, delay = 0): void {
  * A machine in memory. `onLaunch` plays the daemon process: it may publish a daemon and returns how the process exits.
  * Without it the launched process runs forever and never answers.
  */
-function setup(options: {
-    env?: NodeJS.ProcessEnv;
-    /** What runs the daemon; a checkout's by default, `null` for an app without one. */
-    runtime?: DaemonRuntime | null;
-    platform?: NodeJS.Platform;
-    files?: Record<string, string>;
-    running?: typeof INFO;
-    loginPath?: string;
-    onLaunch?: (world: World) => Promise<DaemonExit> | void;
-    launchError?: Error;
-} = {}) {
-    const world: World = { files: new Map(Object.entries(options.files ?? {})), daemons: new Map(), launches: [], logins: 0, clock: 0 };
+function setup(
+    options: {
+        env?: NodeJS.ProcessEnv;
+        /** What runs the daemon; a checkout's by default, `null` for an app without one. */
+        runtime?: DaemonRuntime | null;
+        platform?: NodeJS.Platform;
+        files?: Record<string, string>;
+        running?: typeof INFO;
+        loginPath?: string;
+        onLaunch?: (world: World) => Promise<DaemonExit> | void;
+        launchError?: Error;
+    } = {}
+) {
+    const world: World = {
+        files: new Map(Object.entries(options.files ?? {})),
+        daemons: new Map(),
+        launches: [],
+        logins: 0,
+        clock: 0,
+    };
 
     if (options.running) publish(world, options.running);
 
@@ -88,14 +113,17 @@ function setup(options: {
         platform: options.platform ?? 'darwin',
         env: { PATH: PATH('/opt/bin', '/usr/bin'), ...options.env },
         dataDir: DATA_DIR,
-        runtime: options.runtime === null ? undefined : options.runtime ?? CHECKOUT,
+        runtime: options.runtime === null ? undefined : (options.runtime ?? CHECKOUT),
     };
 
     return { world, context };
 }
 
 async function failureOf(promise: Promise<unknown>): Promise<DaemonError> {
-    const error = await promise.then(() => undefined, (reason: unknown) => reason);
+    const error = await promise.then(
+        () => undefined,
+        (reason: unknown) => reason
+    );
 
     expect(error).toBeInstanceOf(DaemonError);
 
@@ -119,7 +147,10 @@ describe('ensureDaemon: attach or start', () => {
 
     test('replaces a stale daemon.json whose process is gone', async () => {
         const fresh = { ...INFO, pid: 9999, port: 52000 };
-        const { world, context } = setup({ files: { [INFO_FILE]: JSON.stringify(INFO) }, onLaunch: state => void publish(state, fresh) });
+        const { world, context } = setup({
+            files: { [INFO_FILE]: JSON.stringify(INFO) },
+            onLaunch: state => void publish(state, fresh),
+        });
 
         expect(await ensureDaemon(context)).toEqual(fresh);
         expect(world.launches).toHaveLength(1);
@@ -146,7 +177,7 @@ describe('ensureDaemon: attach or start', () => {
         const { world, context } = setup({ running: { ...INFO, protocol: PROTOCOL_VERSION + 1 } });
         const error = await failureOf(ensureDaemon(context));
 
-        expect(error.message).toContain(`speaks protocol ${ PROTOCOL_VERSION + 1 }`);
+        expect(error.message).toContain(`speaks protocol ${PROTOCOL_VERSION + 1}`);
         expect(world.launches).toEqual([]);
     });
 
@@ -160,7 +191,7 @@ describe('ensureDaemon: attach or start', () => {
 });
 
 describe('ensureDaemon: how the daemon is started', () => {
-    test('runs bun on the entry from the daemon\'s folder, logging to daemon.log in the data folder', async () => {
+    test("runs bun on the entry from the daemon's folder, logging to daemon.log in the data folder", async () => {
         const { world, context } = setup({ onLaunch: state => void publish(state) });
 
         await ensureDaemon(context);
@@ -174,7 +205,10 @@ describe('ensureDaemon: how the daemon is started', () => {
     });
 
     test('pins the data folder the app computed, so both sides use the same one', async () => {
-        const { world, context } = setup({ env: { CLOWDY_DATA_DIR: '/elsewhere' }, onLaunch: state => void publish(state) });
+        const { world, context } = setup({
+            env: { CLOWDY_DATA_DIR: '/elsewhere' },
+            onLaunch: state => void publish(state),
+        });
 
         await ensureDaemon(context);
 
@@ -184,19 +218,31 @@ describe('ensureDaemon: how the daemon is started', () => {
     test('runs a bundled daemon from its bundle folder and names its system skills', async () => {
         const bundle = '/updates/bundles/412';
         const { world, context } = setup({
-            runtime: { bun: '/updates/bun/1.4.4/bun', entry: `${ bundle }/daemon/main.js`, skillsDir: `${ bundle }/system-skills` },
+            runtime: {
+                bun: '/updates/bun/1.4.4/bun',
+                entry: `${bundle}/daemon/main.js`,
+                skillsDir: `${bundle}/system-skills`,
+            },
             onLaunch: state => void publish(state),
         });
 
         await ensureDaemon(context);
 
-        expect(world.launches[0]).toMatchObject({ bun: '/updates/bun/1.4.4/bun', entry: `${ bundle }/daemon/main.js`, cwd: bundle });
-        expect(world.launches[0].env.CLOWDY_SYSTEM_SKILLS_DIR).toBe(`${ bundle }/system-skills`);
+        expect(world.launches[0]).toMatchObject({
+            bun: '/updates/bun/1.4.4/bun',
+            entry: `${bundle}/daemon/main.js`,
+            cwd: bundle,
+        });
+        expect(world.launches[0].env.CLOWDY_SYSTEM_SKILLS_DIR).toBe(`${bundle}/system-skills`);
     });
 
     test('hands the ripgrep the app ships to the daemon', async () => {
         const { world, context } = setup({
-            runtime: { bun: '/updates/bun/1.4.4-rg15.2.0-arm64/bun', entry: '/updates/bundles/412/daemon/main.js', rg: '/updates/bun/1.4.4-rg15.2.0-arm64/rg' },
+            runtime: {
+                bun: '/updates/bun/1.4.4-rg15.2.0-arm64/bun',
+                entry: '/updates/bundles/412/daemon/main.js',
+                rg: '/updates/bun/1.4.4-rg15.2.0-arm64/rg',
+            },
             onLaunch: state => void publish(state),
         });
 
@@ -206,7 +252,10 @@ describe('ensureDaemon: how the daemon is started', () => {
     });
 
     test('sets no ripgrep for a runtime that has none, and leaves one the person set', async () => {
-        const bare = setup({ runtime: { bun: '/updates/bun/1.4.4-arm64/bun', entry: '/updates/bundles/412/daemon/main.js' }, onLaunch: state => void publish(state) });
+        const bare = setup({
+            runtime: { bun: '/updates/bun/1.4.4-arm64/bun', entry: '/updates/bundles/412/daemon/main.js' },
+            onLaunch: state => void publish(state),
+        });
         const own = setup({ env: { CLOWDY_RG: '/opt/rg' }, runtime: CHECKOUT, onLaunch: state => void publish(state) });
 
         await ensureDaemon(bare.context);
@@ -225,18 +274,27 @@ describe('ensureDaemon: how the daemon is started', () => {
     });
 
     test('a development run names its daemon in the environment', () => {
-        expect(environmentRuntime({ CLOWDY_BUN: '/bin/bun', CLOWDY_DAEMON_ENTRY: '/repo/main.ts' })).toEqual({ bun: '/bin/bun', entry: '/repo/main.ts' });
+        expect(environmentRuntime({ CLOWDY_BUN: '/bin/bun', CLOWDY_DAEMON_ENTRY: '/repo/main.ts' })).toEqual({
+            bun: '/bin/bun',
+            entry: '/repo/main.ts',
+        });
         expect(environmentRuntime({ CLOWDY_BUN: '/bin/bun' })).toBeUndefined();
         expect(environmentRuntime({ CLOWDY_DAEMON_ENTRY: '/repo/main.ts' })).toBeUndefined();
     });
 
     test('resolves the login-shell PATH only for an app started from Finder', async () => {
-        const finder = setup({ env: { PATH: PATH('/usr/bin', '/bin', '/usr/sbin', '/sbin') }, loginPath: PATH('/opt/homebrew/bin', '/usr/bin', '/bin'), onLaunch: state => void publish(state) });
+        const finder = setup({
+            env: { PATH: PATH('/usr/bin', '/bin', '/usr/sbin', '/sbin') },
+            loginPath: PATH('/opt/homebrew/bin', '/usr/bin', '/bin'),
+            onLaunch: state => void publish(state),
+        });
 
         await ensureDaemon(finder.context);
 
         expect(finder.world.logins).toBe(1);
-        expect(finder.world.launches[0].env.PATH).toBe(PATH('/opt/homebrew/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin'));
+        expect(finder.world.launches[0].env.PATH).toBe(
+            PATH('/opt/homebrew/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin')
+        );
 
         const terminal = setup({ loginPath: '/never', onLaunch: state => void publish(state) });
 
@@ -246,8 +304,11 @@ describe('ensureDaemon: how the daemon is started', () => {
         expect(terminal.world.launches[0].env.PATH).toBe(PATH('/opt/bin', '/usr/bin'));
     });
 
-    test('keeps the app\'s PATH when the login shell gives none', async () => {
-        const { world, context } = setup({ env: { PATH: PATH('/usr/bin', '/bin') }, onLaunch: state => void publish(state) });
+    test("keeps the app's PATH when the login shell gives none", async () => {
+        const { world, context } = setup({
+            env: { PATH: PATH('/usr/bin', '/bin') },
+            onLaunch: state => void publish(state),
+        });
 
         await ensureDaemon(context);
 
@@ -256,7 +317,11 @@ describe('ensureDaemon: how the daemon is started', () => {
     });
 
     test('does not ask a login shell on Windows', async () => {
-        const { world, context } = setup({ platform: 'win32', env: { PATH: '' }, onLaunch: state => void publish(state) });
+        const { world, context } = setup({
+            platform: 'win32',
+            env: { PATH: '' },
+            onLaunch: state => void publish(state),
+        });
 
         await ensureDaemon(context);
 
@@ -280,8 +345,11 @@ describe('ensureDaemon: failures and races', () => {
     });
 
     test('a daemon that exits for good ends with the end of its log', async () => {
-        const lines = Array.from({ length: 30 }, (_value, index) => `line ${ index + 1 }`).join('\n');
-        const { world, context } = setup({ files: { [LOG_FILE]: `${ lines }\n` }, onLaunch: () => Promise.resolve({ code: 1 }) });
+        const lines = Array.from({ length: 30 }, (_value, index) => `line ${index + 1}`).join('\n');
+        const { world, context } = setup({
+            files: { [LOG_FILE]: `${lines}\n` },
+            onLaunch: () => Promise.resolve({ code: 1 }),
+        });
         const error = await failureOf(ensureDaemon(context));
 
         expect(error.message).toBe('The daemon exited with code 1.');
@@ -294,9 +362,13 @@ describe('ensureDaemon: failures and races', () => {
     });
 
     test('a bun that cannot be started is reported with the reason, without waiting for a winner', async () => {
-        const { world, context } = setup({ onLaunch: () => Promise.resolve({ code: null, error: 'spawn /usr/local/bin/bun ENOENT' }) });
+        const { world, context } = setup({
+            onLaunch: () => Promise.resolve({ code: null, error: 'spawn /usr/local/bin/bun ENOENT' }),
+        });
 
-        expect((await failureOf(ensureDaemon(context))).message).toBe('The daemon could not be started: spawn /usr/local/bin/bun ENOENT');
+        expect((await failureOf(ensureDaemon(context))).message).toBe(
+            'The daemon could not be started: spawn /usr/local/bin/bun ENOENT'
+        );
         expect(world.clock).toBeLessThan(500);
     });
 
@@ -343,35 +415,55 @@ describe('attachDaemon', () => {
 
 describe('daemonEnvironment', () => {
     test('removes what only makes sense inside Electron and keeps the rest', () => {
-        const env = daemonEnvironment({
-            ELECTRON_RUN_AS_NODE: '1',
-            electron_no_attach_console: '1',
-            CHROME_DESKTOP: 'clowdy.desktop',
+        const env = daemonEnvironment(
+            {
+                ELECTRON_RUN_AS_NODE: '1',
+                electron_no_attach_console: '1',
+                CHROME_DESKTOP: 'clowdy.desktop',
+                CHROME_PATH: '/Applications/Chrome',
+                HOME: '/Users/a',
+                LANG: 'en_US.UTF-8',
+                UNSET: undefined,
+            },
+            DATA_DIR
+        );
+
+        expect(env).toEqual({
             CHROME_PATH: '/Applications/Chrome',
             HOME: '/Users/a',
             LANG: 'en_US.UTF-8',
-            UNSET: undefined,
-        }, DATA_DIR);
-
-        expect(env).toEqual({ CHROME_PATH: '/Applications/Chrome', HOME: '/Users/a', LANG: 'en_US.UTF-8', CLOWDY_DATA_DIR: DATA_DIR });
+            CLOWDY_DATA_DIR: DATA_DIR,
+        });
     });
 
     test('names the system skills and the ripgrep of a bundled daemon', () => {
-        expect(daemonEnvironment({}, DATA_DIR, undefined, '/updates/bundles/412/system-skills', '/updates/bun/1.4.4-rg15.2.0-arm64/rg')).toEqual({
+        expect(
+            daemonEnvironment(
+                {},
+                DATA_DIR,
+                undefined,
+                '/updates/bundles/412/system-skills',
+                '/updates/bun/1.4.4-rg15.2.0-arm64/rg'
+            )
+        ).toEqual({
             CLOWDY_DATA_DIR: DATA_DIR,
             CLOWDY_SYSTEM_SKILLS_DIR: '/updates/bundles/412/system-skills',
             CLOWDY_RG: '/updates/bun/1.4.4-rg15.2.0-arm64/rg',
         });
     });
 
-    test('the ripgrep the app ships wins over one in the app\'s environment, and none leaves it alone', () => {
-        expect(daemonEnvironment({ CLOWDY_RG: '/opt/rg' }, DATA_DIR, undefined, undefined, '/updates/rg').CLOWDY_RG).toBe('/updates/rg');
+    test("the ripgrep the app ships wins over one in the app's environment, and none leaves it alone", () => {
+        expect(
+            daemonEnvironment({ CLOWDY_RG: '/opt/rg' }, DATA_DIR, undefined, undefined, '/updates/rg').CLOWDY_RG
+        ).toBe('/updates/rg');
         expect(daemonEnvironment({ CLOWDY_RG: '/opt/rg' }, DATA_DIR).CLOWDY_RG).toBe('/opt/rg');
         expect(daemonEnvironment({}, DATA_DIR)).not.toHaveProperty('CLOWDY_RG');
     });
 
-    test('puts the login-shell PATH in front of the app\'s', () => {
-        expect(daemonEnvironment({ PATH: '/usr/bin' }, DATA_DIR, PATH('/opt/homebrew/bin', '/usr/bin')).PATH).toBe(PATH('/opt/homebrew/bin', '/usr/bin'));
+    test("puts the login-shell PATH in front of the app's", () => {
+        expect(daemonEnvironment({ PATH: '/usr/bin' }, DATA_DIR, PATH('/opt/homebrew/bin', '/usr/bin')).PATH).toBe(
+            PATH('/opt/homebrew/bin', '/usr/bin')
+        );
     });
 });
 

@@ -1,5 +1,5 @@
-import { isTerminalRunStatus, shownRunReason, shownRunStatus } from '@clowdy/protocol';
 import { isAbsolute } from 'node:path';
+import { isTerminalRunStatus, shownRunReason, shownRunStatus } from '@clowdy/protocol';
 
 import { getChat, listChatDescendants, listChildChats } from '../db/chats';
 import { lastUserSeq, listItems, nextSeq } from '../db/items';
@@ -15,8 +15,17 @@ import { sendMessage } from './messages';
 import { clip, cut } from './tool-kit';
 import { STOPPED_TO_SEND_REASON } from './transitions';
 
-import type { Chat, ChatMode, MessageSource, Project, QueuedMessageMode, Run, StreamItem, Task } from '@clowdy/protocol';
 import type { Database } from 'bun:sqlite';
+import type {
+    Chat,
+    ChatMode,
+    MessageSource,
+    Project,
+    QueuedMessageMode,
+    Run,
+    StreamItem,
+    Task,
+} from '@clowdy/protocol';
 import type { AttachmentsService } from '../attachments/service';
 import type { Config } from '../config';
 import type { NewChat } from '../domain/chats';
@@ -73,7 +82,7 @@ export function clipOutput(text: string): string {
 
     const kept = cut(text, THREAD_OUTPUT_CHARS);
 
-    return `${ kept }\n\n[... ${ text.length - kept.length } more characters cut ...]`;
+    return `${kept}\n\n[... ${text.length - kept.length} more characters cut ...]`;
 }
 
 /**
@@ -89,7 +98,7 @@ export function lastTurnText(db: Database, runId: string, after = 0): string | u
 
 /** What the agent of a chat is told before a message another thread of its tree sent it; the stream shows the message alone, with who sent it. */
 export function threadMessage(sender: Chat, text: string): string {
-    return `[Message from thread "${ sender.title }" (${ sender.id })]\n\n${ text }`;
+    return `[Message from thread "${sender.title}" (${sender.id})]\n\n${text}`;
 }
 
 const oneLine = (text: string) => text.replace(/\s+/g, ' ').trim();
@@ -102,22 +111,24 @@ export function describeItem({ body }: StreamItem): string {
 
             // A notice of threads that stopped has no words of its own: the line says how each thread stopped.
             if (from?.kind === 'threadNotice') {
-                return `notice: ${ from.threads.map(thread => `"${ thread.title }" ${ thread.outcome }`).join(', ') }`;
+                return `notice: ${from.threads.map(thread => `"${thread.title}" ${thread.outcome}`).join(', ')}`;
             }
 
-            const writer = from ? `thread "${ from.title }" (${ from.chatId })` : 'person';
-            const files = body.attachments?.length ? ` [files: ${ body.attachments.map(file => file.name).join(', ') }]` : '';
+            const writer = from ? `thread "${from.title}" (${from.chatId})` : 'person';
+            const files = body.attachments?.length
+                ? ` [files: ${body.attachments.map(file => file.name).join(', ')}]`
+                : '';
 
-            return `${ writer }: ${ clip(oneLine(body.text), 300) }${ files }`;
+            return `${writer}: ${clip(oneLine(body.text), 300)}${files}`;
         }
         case 'tool':
-            return `tool ${ body.name } (${ body.state })${ body.error ? `: ${ clip(oneLine(body.error), 200) }` : '' }`;
+            return `tool ${body.name} (${body.state})${body.error ? `: ${clip(oneLine(body.error), 200)}` : ''}`;
         case 'question':
-            return `question: ${ clip(oneLine(body.text), 200) }${ body.answer === undefined ? '' : ` (answered: ${ clip(oneLine(body.answer), 100) })` }`;
+            return `question: ${clip(oneLine(body.text), 200)}${body.answer === undefined ? '' : ` (answered: ${clip(oneLine(body.answer), 100)})`}`;
         case 'approval':
-            return `approval: ${ clip(oneLine(body.title), 200) } (${ body.state === 'decided' ? `decided: ${ body.decision }` : body.state })`;
+            return `approval: ${clip(oneLine(body.title), 200)} (${body.state === 'decided' ? `decided: ${body.decision}` : body.state})`;
         default:
-            return `${ body.kind }: ${ clip(oneLine(body.text), 300) }`;
+            return `${body.kind}: ${clip(oneLine(body.text), 300)}`;
     }
 }
 
@@ -208,31 +219,41 @@ export class ThreadService {
             const depth = chatDepth(store, parent);
 
             if (depth + 1 > config.maxThreadDepth) {
-                throw conflict(`Threads nest ${ config.maxThreadDepth } levels deep at most, counting the chat the person started, and this chat is level ${ depth }: it cannot start threads. Do this work yourself or with your own sub-agents.`);
+                throw conflict(
+                    `Threads nest ${config.maxThreadDepth} levels deep at most, counting the chat the person started, and this chat is level ${depth}: it cannot start threads. Do this work yourself or with your own sub-agents.`
+                );
             }
 
             const threads = listChildChats(store.db, parent.id);
 
             if (threads.length >= config.maxThreads) {
-                throw conflict(`This chat has started ${ config.maxThreads } threads, the most one chat may start (finished ones count too). Give more work to the threads you have with thread_tell, or do it yourself.`);
+                throw conflict(
+                    `This chat has started ${config.maxThreads} threads, the most one chat may start (finished ones count too). Give more work to the threads you have with thread_tell, or do it yourself.`
+                );
             }
 
             const working = threads.filter(thread => !this.isOver(thread)).length;
 
             if (working >= config.maxActiveThreads) {
-                throw conflict(`This chat has ${ working } threads at work, the most it may have at once; a thread whose turn is over counts while its background work runs. Start the next when one is done (you are told each time one stops), or stop one with thread_stop.`);
+                throw conflict(
+                    `This chat has ${working} threads at work, the most it may have at once; a thread whose turn is over counts while its background work runs. Start the next when one is done (you are told each time one stops), or stop one with thread_stop.`
+                );
             }
 
             // The fake engine is for demos and tests: a model that picked it would report work nobody did.
             if (input.engine === 'fake') {
-                throw invalid('The fake engine is not available to agents. Leave engine unset to use your own agent, or name an installed one.');
+                throw invalid(
+                    'The fake engine is not available to agents. Leave engine unset to use your own agent, or name an installed one.'
+                );
             }
 
             const engine = runs.resolveEngine(project, input.engine ?? current.engine);
             const inherits = engine === current.engine && input.model === undefined;
 
             if (input.worktree && input.cwd !== undefined) {
-                throw invalid('worktree and cwd both say where the thread works, so give one: cwd is a folder you made yourself (a git worktree, say), worktree has the daemon make a git worktree for the thread');
+                throw invalid(
+                    'worktree and cwd both say where the thread works, so give one: cwd is a folder you made yourself (a git worktree, say), worktree has the daemon make a git worktree for the thread'
+                );
             }
 
             // A model sends an empty string for an option it leaves out.
@@ -240,16 +261,20 @@ export class ThreadService {
             const branch = input.branch?.trim() || undefined;
 
             if (!input.worktree && (base !== undefined || branch !== undefined)) {
-                throw invalid('base and branch say where the thread\'s own worktree starts and what its branch is called, so they go with worktree');
+                throw invalid(
+                    "base and branch say where the thread's own worktree starts and what its branch is called, so they go with worktree"
+                );
             }
 
             if (input.cwd !== undefined && !(isAbsolute(input.cwd) && isFolder(input.cwd))) {
-                throw invalid(`cwd must be the absolute path of an existing folder: ${ input.cwd }`);
+                throw invalid(`cwd must be the absolute path of an existing folder: ${input.cwd}`);
             }
 
             // A caller that works in a folder it was started in (`cwd`) has no branch of its own to start from: the one its chat has is not where it works.
             if (input.worktree && getRunWork(store.db, current.id).cwd !== undefined) {
-                throw invalid('You work in a folder that was named with cwd, so there is no branch of yours to start the thread from. Start the thread with cwd, or without worktree');
+                throw invalid(
+                    'You work in a folder that was named with cwd, so there is no branch of yours to start the thread from. Start the thread with cwd, or without worktree'
+                );
             }
 
             const tasks = this.freeTasks(current, input.tasks ?? []);
@@ -270,7 +295,11 @@ export class ThreadService {
                 linkChatTask(store, project.id, { chatId: chat.id, taskId: task.id });
             }
 
-            const { runId } = sendMessage(this.deps, chat.id, { text: input.prompt, from: fromChat(parent), start: { cwd: input.cwd, assigned: tasks } });
+            const { runId } = sendMessage(this.deps, chat.id, {
+                text: input.prompt,
+                from: fromChat(parent),
+                start: { cwd: input.cwd, assigned: tasks },
+            });
 
             const { workspace } = chat;
 
@@ -278,7 +307,14 @@ export class ThreadService {
                 threadId: chat.id,
                 title: requireChat(store, chat.id).title,
                 state: threadState(runs.require(runId)),
-                ...(input.worktree && workspace && { worktree: { path: workspace.path, ...(workspace.branch !== undefined && { branch: workspace.branch }), base: getWorkspace(store.db, workspace.id)?.base } }),
+                ...(input.worktree &&
+                    workspace && {
+                        worktree: {
+                            path: workspace.path,
+                            ...(workspace.branch !== undefined && { branch: workspace.branch }),
+                            base: getWorkspace(store.db, workspace.id)?.base,
+                        },
+                    }),
             };
         });
     }
@@ -289,7 +325,12 @@ export class ThreadService {
      * else from the folder's default branch. Its branch is `own.branch`, else made of the thread's title (`branchNameFor`), else the thread's id. A refusal of the repository
      * (not the root of one, no commit, a base or a name that is not right) is said as the reason there is no worktree for the thread.
      */
-    private createThreadChat(parent: Chat, project: Project, own: false | { base?: string; branch?: string }, input: NewChat): Chat {
+    private createThreadChat(
+        parent: Chat,
+        project: Project,
+        own: false | { base?: string; branch?: string },
+        input: NewChat
+    ): Chat {
         const { store, config } = this.deps;
 
         if (!own) {
@@ -297,15 +338,36 @@ export class ThreadService {
         }
 
         try {
-            const base = own.base ?? (parent.workspace ? threadBase(store, project, parent.workspace) : checkoutBranch(project, parent.folderId));
+            const base =
+                own.base ??
+                (parent.workspace
+                    ? threadBase(store, project, parent.workspace)
+                    : checkoutBranch(project, parent.folderId));
             // The chat is made with the id it will have, so the branch is made of the title before the chat exists: the id is only a tie-breaker in it.
             const chatId = newId('cht');
-            const branchName = own.branch ?? (input.title?.trim() ? branchNameFor(store, config, project, parent.folderId, chatId, undefined, input.title) : undefined);
+            const branchName =
+                own.branch ??
+                (input.title?.trim()
+                    ? branchNameFor(store, config, project, parent.folderId, chatId, undefined, input.title)
+                    : undefined);
 
-            return createChat(store, { ...input, id: chatId, workspace: { mode: 'new', ...(base !== undefined && { base }), ...(branchName !== undefined && { branchName }) } }, config);
-        }
-        catch (error) {
-            throw error instanceof CommandError && error.code === 'invalid' ? invalid(`Cannot give the thread a worktree of its own. ${ error.message }`) : error;
+            return createChat(
+                store,
+                {
+                    ...input,
+                    id: chatId,
+                    workspace: {
+                        mode: 'new',
+                        ...(base !== undefined && { base }),
+                        ...(branchName !== undefined && { branchName }),
+                    },
+                },
+                config
+            );
+        } catch (error) {
+            throw error instanceof CommandError && error.code === 'invalid'
+                ? invalid(`Cannot give the thread a worktree of its own. ${error.message}`)
+                : error;
         }
     }
 
@@ -324,15 +386,21 @@ export class ThreadService {
             const target = this.thread(input.thread);
 
             if (target.id === sender.id) {
-                throw invalid('That is your own chat. thread_tell sends a message to another chat of your thread tree.');
+                throw invalid(
+                    'That is your own chat. thread_tell sends a message to another chat of your thread tree.'
+                );
             }
 
             if (!inSameTree(store, sender, target)) {
-                throw invalid(`Chat ${ target.id } is not in your thread tree. You can message only your parent chain, your threads and theirs, and their siblings; thread_list shows your threads.`);
+                throw invalid(
+                    `Chat ${target.id} is not in your thread tree. You can message only your parent chain, your threads and theirs, and their siblings; thread_list shows your threads.`
+                );
             }
 
             if (target.archivedAt !== undefined) {
-                throw conflict(`"${ target.title }" (${ target.id }) is archived and takes no messages from threads. Start a new thread for the work instead.`);
+                throw conflict(
+                    `"${target.title}" (${target.id}) is archived and takes no messages from threads. Start a new thread for the work instead.`
+                );
             }
 
             const { delivery } = sendMessage(this.deps, target.id, {
@@ -358,7 +426,9 @@ export class ThreadService {
             const target = this.thread(threadId);
 
             if (!isBelow(store, stopper.id, target)) {
-                throw invalid(`"${ target.title }" (${ target.id }) is not below you. You can stop only your own threads and theirs.`);
+                throw invalid(
+                    `"${target.title}" (${target.id}) is not below you. You can stop only your own threads and theirs.`
+                );
             }
 
             const run = this.runOf(target);
@@ -367,7 +437,7 @@ export class ThreadService {
                 return { stopped: false, state: threadState(run) };
             }
 
-            const stopped = runs.cancel(run.id, `Stopped by ${ stopper.title }`).includes(run.id);
+            const stopped = runs.cancel(run.id, `Stopped by ${stopper.title}`).includes(run.id);
 
             if (stopped) {
                 queue.pause(target.id, 'stopped');
@@ -390,7 +460,11 @@ export class ThreadService {
         const reason = run && shownRunReason(run);
         const text = run ? lastTurnText(this.deps.store.db, run.id) : undefined;
 
-        if (target.parentChatId !== undefined && target.parentChatId === caller.chatId && (state === 'idle' || state === 'failed' || state === 'interrupted')) {
+        if (
+            target.parentChatId !== undefined &&
+            target.parentChatId === caller.chatId &&
+            (state === 'idle' || state === 'failed' || state === 'interrupted')
+        ) {
             this.deps.notices.consume(target.parentChatId, target.id);
         }
 
@@ -414,11 +488,16 @@ export class ThreadService {
         const target = this.thread(input.thread);
 
         if (!isBelow(this.deps.store, this.callerChat(caller).id, target)) {
-            throw invalid(`"${ target.title }" (${ target.id }) is not below you. You can wait only for your own threads and theirs.`);
+            throw invalid(
+                `"${target.title}" (${target.id}) is not below you. You can wait only for your own threads and theirs.`
+            );
         }
 
         const run = this.runOf(target);
-        const timedOut = run !== undefined && threadState(run) === 'working' && !await this.untilRest(run.id, (input.timeoutSeconds ?? WAIT_SECONDS) * 1000, signal);
+        const timedOut =
+            run !== undefined &&
+            threadState(run) === 'working' &&
+            !(await this.untilRest(run.id, (input.timeoutSeconds ?? WAIT_SECONDS) * 1000, signal));
 
         return { ...this.output(caller, target.id), timedOut };
     }
@@ -430,7 +509,8 @@ export class ThreadService {
         const run = this.runOf(target);
         // What the thread thought is not for the agent that reads its log (it is a good deal of words, and not what the thread did or said): the last `limit`
         // lines are of the rest, so the window widens until it holds that many or reaches the start.
-        const shown = (from: number) => run ? listItems(db, run.id, from).filter(item => item.body.kind !== 'reasoning') : [];
+        const shown = (from: number) =>
+            run ? listItems(db, run.id, from).filter(item => item.body.kind !== 'reasoning') : [];
         let from = run ? Math.max(0, nextSeq(db, run.id) - 1 - limit) : 0;
         let items = shown(from);
 
@@ -439,14 +519,21 @@ export class ThreadService {
             items = shown(from);
         }
 
-        return { threadId: target.id, title: target.title, state: threadState(run), lines: items.slice(-limit).map(item => `#${ item.seq } ${ describeItem(item) }`) };
+        return {
+            threadId: target.id,
+            title: target.title,
+            state: threadState(run),
+            lines: items.slice(-limit).map(item => `#${item.seq} ${describeItem(item)}`),
+        };
     }
 
     /** The caller's threads: the ones its chat started, or with `all` every chat below it, a parent before its threads. */
     list(caller: Run, all: boolean): { threads: ThreadSummary[] } {
         const { store } = this.deps;
         const chat = this.callerChat(caller);
-        const entries = all ? listChatDescendants(store.db, chat.id) : listChildChats(store.db, chat.id).map(thread => ({ chat: thread, depth: 1 }));
+        const entries = all
+            ? listChatDescendants(store.db, chat.id)
+            : listChildChats(store.db, chat.id).map(thread => ({ chat: thread, depth: 1 }));
 
         return { threads: entries.map(entry => this.summary(entry.chat, all ? entry.depth : undefined)) };
     }
@@ -469,8 +556,13 @@ export class ThreadService {
                 finish();
                 reject(signal.reason);
             };
-            const unsubscribe = this.deps.store.subscribe((events) => {
-                if (events.some(({ data }) => data.type === 'run.upserted' && data.run.id === runId && threadState(data.run) !== 'working')) {
+            const unsubscribe = this.deps.store.subscribe(events => {
+                if (
+                    events.some(
+                        ({ data }) =>
+                            data.type === 'run.upserted' && data.run.id === runId && threadState(data.run) !== 'working'
+                    )
+                ) {
                     finish();
                     resolve(true);
                 }
@@ -482,8 +574,7 @@ export class ThreadService {
 
             if (signal.aborted) {
                 onAbort();
-            }
-            else {
+            } else {
                 signal.addEventListener('abort', onAbort, { once: true });
             }
         });
@@ -513,7 +604,7 @@ export class ThreadService {
         const current = this.deps.runs.require(caller.id);
 
         if (isTerminalRunStatus(current.status)) {
-            throw conflict(`${ current.name } is ${ current.status } and cannot start threads or message them`);
+            throw conflict(`${current.name} is ${current.status} and cannot start threads or message them`);
         }
 
         return current;
@@ -543,7 +634,7 @@ export class ThreadService {
         const target = this.thread(threadId);
 
         if (!inSameTree(this.deps.store, chat, target)) {
-            throw invalid(`Chat ${ target.id } is not in your thread tree. thread_list shows your threads.`);
+            throw invalid(`Chat ${target.id} is not in your thread tree. thread_list shows your threads.`);
         }
 
         return target;
@@ -566,7 +657,9 @@ export class ThreadService {
      */
     private freeTasks(caller: Run, references: readonly string[]): Task[] {
         const { store, runs } = this.deps;
-        const tasks = new Map(references.map(reference => resolveTask(store, caller.projectId, reference)).map(task => [task.id, task]));
+        const tasks = new Map(
+            references.map(reference => resolveTask(store, caller.projectId, reference)).map(task => [task.id, task])
+        );
 
         for (const task of tasks.values()) {
             requireNotArchived(task);
@@ -576,7 +669,10 @@ export class ThreadService {
             if (active) {
                 const chat = active.chatId ? getChat(store.db, active.chatId) : undefined;
 
-                throw new CommandError('already_running', `Task ${ task.key } already has an active run (${ active.name }${ chat ? ` of "${ chat.title }"` : '' }). Leave the task to it, or stop that work first.`);
+                throw new CommandError(
+                    'already_running',
+                    `Task ${task.key} already has an active run (${active.name}${chat ? ` of "${chat.title}"` : ''}). Leave the task to it, or stop that work first.`
+                );
             }
         }
 

@@ -42,7 +42,11 @@ export interface ClipboardFiles {
 }
 
 /** The deps for the real clipboard and disk. `clipboard` and `ClipboardItem` are Electron's. */
-export function systemClipboardFilesDeps(clipboard: Pick<Clipboard, 'read' | 'write'>, Item: typeof ClipboardItem, platform: NodeJS.Platform = process.platform): ClipboardFilesDeps {
+export function systemClipboardFilesDeps(
+    clipboard: Pick<Clipboard, 'read' | 'write'>,
+    Item: typeof ClipboardItem,
+    platform: NodeJS.Platform = process.platform
+): ClipboardFilesDeps {
     return {
         platform,
         readUris: async () => {
@@ -58,18 +62,22 @@ export function systemClipboardFilesDeps(clipboard: Pick<Clipboard, 'read' | 'wr
 
             return uris;
         },
-        writeUris: (uris, text) => clipboard.write([new Item({ 'text/plain': text, 'text/uri-list': uris.join('\r\n') })]),
-        kindOf: async (path) => {
+        writeUris: (uris, text) =>
+            clipboard.write([new Item({ 'text/plain': text, 'text/uri-list': uris.join('\r\n') })]),
+        kindOf: async path => {
             try {
                 const found = await stat(path);
 
                 return found.isDirectory() ? 'directory' : found.isFile() ? 'file' : undefined;
-            }
-            catch {
+            } catch {
                 return undefined;
             }
         },
-        exists: path => lstat(path).then(() => true, () => false),
+        exists: path =>
+            lstat(path).then(
+                () => true,
+                () => false
+            ),
         realPath: path => realpath(path).catch(() => path),
         copy: (from, to) => cp(from, to, { recursive: true, errorOnExist: true, force: false, verbatimSymlinks: true }),
     };
@@ -78,26 +86,40 @@ export function systemClipboardFilesDeps(clipboard: Pick<Clipboard, 'read' | 'wr
 /** The names Windows keeps for devices, which a file cannot be named, with or without an extension. */
 const DEVICE_NAME = /^(?:con|prn|aux|nul|com\d|lpt\d)(?:\..*)?$/i;
 
-export function createClipboardFiles({ platform, readUris, writeUris, kindOf, exists, realPath, copy }: ClipboardFilesDeps): ClipboardFiles {
+export function createClipboardFiles({
+    platform,
+    readUris,
+    writeUris,
+    kindOf,
+    exists,
+    realPath,
+    copy,
+}: ClipboardFilesDeps): ClipboardFiles {
     const api = platform === 'win32' ? win32 : posix;
     const windows = platform === 'win32';
 
     /** `path` without the separator at its end that a folder's address may have, a root (`/`, `C:\`) excepted. */
-    const withoutTrailingSeparator = (path: string) => (windows ? !/^[A-Za-z]:[\\/]*$/.test(path) && /[\\/]$/.test(path) : path.length > 1 && path.endsWith('/'))
-        ? path.replace(windows ? /[\\/]+$/ : /\/+$/, '')
-        : path;
+    const withoutTrailingSeparator = (path: string) =>
+        (windows ? !/^[A-Za-z]:[\\/]*$/.test(path) && /[\\/]$/.test(path) : path.length > 1 && path.endsWith('/'))
+            ? path.replace(windows ? /[\\/]+$/ : /\/+$/, '')
+            : path;
 
     /** Whether `name` is one plain name: nothing that would take it out of the folder it is made in, or onto a device or into a stream of another file on Windows. */
-    const isPlainName = (name: unknown): name is string => typeof name === 'string'
-        && name !== '' && name !== '.' && name !== '..'
-        && !/[\\/\0]/.test(name)
-        && (!windows || !(/[<>:"|?*]/.test(name) || /[. ]$/.test(name) || DEVICE_NAME.test(name)));
+    const isPlainName = (name: unknown): name is string =>
+        typeof name === 'string' &&
+        name !== '' &&
+        name !== '.' &&
+        name !== '..' &&
+        !/[\\/\0]/.test(name) &&
+        (!windows || !(/[<>:"|?*]/.test(name) || /[. ]$/.test(name) || DEVICE_NAME.test(name)));
 
     /** Whether `path` is inside the folder `parent`. */
     const isInside = (path: string, parent: string) => {
         const relative = api.relative(parent, path);
 
-        return relative !== '' && relative !== '..' && !relative.startsWith(`..${ api.sep }`) && !api.isAbsolute(relative);
+        return (
+            relative !== '' && relative !== '..' && !relative.startsWith(`..${api.sep}`) && !api.isAbsolute(relative)
+        );
     };
 
     async function read(): Promise<ClipboardFile[]> {
@@ -109,8 +131,7 @@ export function createClipboardFiles({ platform, readUris, writeUris, kindOf, ex
 
             try {
                 path = fileURLToPath(uri, { windows });
-            }
-            catch {
+            } catch {
                 // An address that is not a file's.
                 continue;
             }
@@ -130,20 +151,37 @@ export function createClipboardFiles({ platform, readUris, writeUris, kindOf, ex
     }
 
     async function write(paths: unknown): Promise<void> {
-        if (!Array.isArray(paths) || paths.length === 0 || paths.length > MAX_COPIED || !paths.every((path): path is string => typeof path === 'string' && api.isAbsolute(path))) {
+        if (
+            !Array.isArray(paths) ||
+            paths.length === 0 ||
+            paths.length > MAX_COPIED ||
+            !paths.every((path): path is string => typeof path === 'string' && api.isAbsolute(path))
+        ) {
             throw new Error('Bad paths');
         }
 
-        await writeUris(paths.map(path => pathToFileURL(path, { windows }).href), paths.join('\n'));
+        await writeUris(
+            paths.map(path => pathToFileURL(path, { windows }).href),
+            paths.join('\n')
+        );
     }
 
     async function paste(folder: unknown, items: unknown): Promise<void> {
-        if (typeof folder !== 'string' || !api.isAbsolute(folder) || !Array.isArray(items) || items.length === 0 || items.length > MAX_COPIED) {
+        if (
+            typeof folder !== 'string' ||
+            !api.isAbsolute(folder) ||
+            !Array.isArray(items) ||
+            items.length === 0 ||
+            items.length > MAX_COPIED
+        ) {
             throw new Error('Bad paste');
         }
 
         const wanted = items.map((item: unknown) => {
-            const { path, name } = (typeof item === 'object' && item !== null ? item : {}) as { path?: unknown; name?: unknown };
+            const { path, name } = (typeof item === 'object' && item !== null ? item : {}) as {
+                path?: unknown;
+                name?: unknown;
+            };
 
             if (typeof path !== 'string' || !isPlainName(name)) throw new Error('Bad paste');
 
@@ -152,7 +190,7 @@ export function createClipboardFiles({ platform, readUris, writeUris, kindOf, ex
 
         if (new Set(wanted.map(item => item.name)).size < wanted.length) throw new Error('Bad paste');
 
-        if (await kindOf(folder) !== 'directory') throw new Error('The folder is gone');
+        if ((await kindOf(folder)) !== 'directory') throw new Error('The folder is gone');
 
         const held = await read();
 
@@ -171,10 +209,11 @@ export function createClipboardFiles({ platform, readUris, writeUris, kindOf, ex
             if (source.kind === 'directory') {
                 const from = await realPath(source.path);
 
-                if (real === from || isInside(real, from) || isInside(to, source.path)) throw new Error(`${ source.name } can’t be copied into itself`);
+                if (real === from || isInside(real, from) || isInside(to, source.path))
+                    throw new Error(`${source.name} can’t be copied into itself`);
             }
 
-            if (await exists(to)) throw new Error(`${ api.basename(to) } already exists`);
+            if (await exists(to)) throw new Error(`${api.basename(to)} already exists`);
         }
 
         for (const { source, to } of copies) await copy(source.path, to);

@@ -23,5 +23,6 @@ export function useHandoff(chat: Chat, run: Run | undefined) {
         };
     }, []);
 
-    return (at?: { itemId: string; engine: string }) => startHandoff({ root, ui, chat, run, stillOpen: () => shown.current, ...at });
+    return (at?: { itemId: string; engine: string }) =>
+        startHandoff({ root, ui, chat, run, stillOpen: () => shown.current, ...at });
 }

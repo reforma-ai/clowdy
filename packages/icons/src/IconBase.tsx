@@ -16,7 +16,15 @@ export type IconWrapperProps = IconProps & {
  * Wraps an SVG element and applies normalized props (className, title or hidden, spread rest).
  * Default width/height come from the generated component's default prop values, not from IconWrapper.
  */
-export function IconWrapper({ children, title, className, size, width, height, ...rest }: IconWrapperProps): React.ReactElement {
+export function IconWrapper({
+    children,
+    title,
+    className,
+    size,
+    width,
+    height,
+    ...rest
+}: IconWrapperProps): React.ReactElement {
     const mergedProps: React.SVGProps<SVGSVGElement> = {
         className: cn('clowdy-icon', className),
         ...(title ? { title } : { 'aria-hidden': true as const }),

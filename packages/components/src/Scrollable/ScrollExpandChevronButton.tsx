@@ -23,19 +23,15 @@ export const ScrollExpandChevronButton: FC<ScrollExpandChevronButtonProps> = ({
     ...buttonRest
 }) => (
     <Button
-        { ...buttonRest }
+        {...buttonRest}
         type="button"
-        variant={ variant }
-        size={ size }
-        className={ className }
-        aria-expanded={ expanded }
-        aria-label={ expanded ? labelCollapse : labelExpand }
+        variant={variant}
+        size={size}
+        className={className}
+        aria-expanded={expanded}
+        aria-label={expanded ? labelCollapse : labelExpand}
         fullWidth
     >
-        <ChevronDown
-            aria-hidden
-            aria-expanded={ expanded }
-            className="chevron"
-        />
+        <ChevronDown aria-hidden aria-expanded={expanded} className="chevron" />
     </Button>
 );

@@ -83,7 +83,7 @@ export function parseHexInput(value: string): Color | null {
         return null;
     }
 
-    return parseColorValue(`#${ normalized }`);
+    return parseColorValue(`#${normalized}`);
 }
 
 export function parseHexAlphaInput(value: string): ParsedHexAlphaInput | null {
@@ -93,7 +93,7 @@ export function parseHexAlphaInput(value: string): ParsedHexAlphaInput | null {
         return null;
     }
 
-    const color = parseColorValue(`#${ normalized }`);
+    const color = parseColorValue(`#${normalized}`);
 
     if (!color) {
         return null;
@@ -121,8 +121,7 @@ export function withAlpha(color: Color | null, alpha: number): Color | null {
 
     try {
         return color.withChannelValue('alpha', normalizeAlphaInput(alpha) / 100);
-    }
-    catch {
+    } catch {
         return color;
     }
 }
@@ -139,9 +138,7 @@ export function serializeColorInputValue(
     }
 
     if (format === 'css' || format === 'hexa') {
-        return normalizeAlphaInput(alpha) < 100
-            ? colorWithAlpha.toString('hexa')
-            : colorWithAlpha.toString('hex');
+        return normalizeAlphaInput(alpha) < 100 ? colorWithAlpha.toString('hexa') : colorWithAlpha.toString('hex');
     }
 
     if (format === 'rgba') {
@@ -159,14 +156,13 @@ export function shiftHexColor(color: Color | null, delta: number): Color | null 
     const current = color?.toHexInt() ?? 0;
     const next = Math.min(MAX_HEX, Math.max(0, current + delta));
 
-    return parseColorValue(`#${ next.toString(16).padStart(6, '0') }`);
+    return parseColorValue(`#${next.toString(16).padStart(6, '0')}`);
 }
 
 function alphaFromColor(color: Color): number {
     try {
         return normalizeAlphaInput(color.getChannelValue('alpha') * 100);
-    }
-    catch {
+    } catch {
         return 100;
     }
 }

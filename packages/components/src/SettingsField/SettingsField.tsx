@@ -11,13 +11,7 @@ export type SettingsFieldProps = Omit<FormFieldProps, 'size'> & {
 };
 
 function SettingsFieldRoot({ className, size = 'md', ...props }: SettingsFieldProps) {
-    return (
-        <FormField
-            { ...props }
-            size="md"
-            className={ cn(styles.field, size === 'sm' && styles.sizeSm, className) }
-        />
-    );
+    return <FormField {...props} size="md" className={cn(styles.field, size === 'sm' && styles.sizeSm, className)} />;
 }
 
 export const SettingsField = Object.assign(SettingsFieldRoot, {

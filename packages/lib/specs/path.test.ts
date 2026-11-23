@@ -11,10 +11,10 @@ import {
 
 describe('replaceHomeDir', () => {
     it('should replace the home folder at the start of each path', () => {
-        expect(replaceHomeDir('at /Users/ann/app/x.ts:1 and /Users/ann', '/Users/ann/'))
-            .toBe('at ~/app/x.ts:1 and ~');
-        expect(replaceHomeDir('cd "/root/app" (/root/x) HOME=/root:/root/bin file:///root/y', '/root'))
-            .toBe('cd "~/app" (~/x) HOME=~:~/bin file://~/y');
+        expect(replaceHomeDir('at /Users/ann/app/x.ts:1 and /Users/ann', '/Users/ann/')).toBe('at ~/app/x.ts:1 and ~');
+        expect(replaceHomeDir('cd "/root/app" (/root/x) HOME=/root:/root/bin file:///root/y', '/root')).toBe(
+            'cd "~/app" (~/x) HOME=~:~/bin file://~/y'
+        );
         expect(replaceHomeDir('C:\\Users\\ann\\app and C:/Users/ann/app', 'C:\\Users\\ann')).toBe('~\\app and ~/app');
     });
 

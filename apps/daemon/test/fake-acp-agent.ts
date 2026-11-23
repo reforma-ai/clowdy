@@ -1,3 +1,5 @@
+import { appendFileSync } from 'node:fs';
+import { Readable, Writable } from 'node:stream';
 import { agent, methods, ndJsonStream, PROTOCOL_VERSION, RequestError } from '@agentclientprotocol/sdk/unstable';
 /**
  * A scripted ACP agent for tests: `bun test/fake-acp-agent.ts`. Each line of a prompt is one directive, run in order:
@@ -37,8 +39,6 @@ import { agent, methods, ndJsonStream, PROTOCOL_VERSION, RequestError } from '@a
  */
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { appendFileSync } from 'node:fs';
-import { Readable, Writable } from 'node:stream';
 
 import type { McpServer, SessionUpdate } from '@agentclientprotocol/sdk/unstable';
 
@@ -84,8 +84,31 @@ function systemText(content: unknown): string | undefined {
     return Array.isArray(content) ? content.map(block => (block as { text?: string }).text ?? '').join('') : undefined;
 }
 
-function open(id: string, params: { cwd: string; additionalDirectories?: string[]; mcpServers?: McpServer[]; systemPrompt?: { content?: unknown } | null; _meta?: unknown }): FakeSession {
-    const session: FakeSession = { cwd: params.cwd, directories: params.additionalDirectories, mcpServers: params.mcpServers ?? [], systemPrompt: systemText(params.systemPrompt?.content), meta: params._meta, model: 'fast', effort: 'high', sets: 0, cancel: new AbortController(), count: 0, cost: 0, prompting: false, steers: [] };
+function open(
+    id: string,
+    params: {
+        cwd: string;
+        additionalDirectories?: string[];
+        mcpServers?: McpServer[];
+        systemPrompt?: { content?: unknown } | null;
+        _meta?: unknown;
+    }
+): FakeSession {
+    const session: FakeSession = {
+        cwd: params.cwd,
+        directories: params.additionalDirectories,
+        mcpServers: params.mcpServers ?? [],
+        systemPrompt: systemText(params.systemPrompt?.content),
+        meta: params._meta,
+        model: 'fast',
+        effort: 'high',
+        sets: 0,
+        cancel: new AbortController(),
+        count: 0,
+        cost: 0,
+        prompting: false,
+        steers: [],
+    };
 
     sessions.set(id, session);
 
@@ -109,45 +132,60 @@ const modelOptions = (model: string, effort = 'high', mode = 'default') => [
         category: 'model',
         type: 'select' as const,
         currentValue: model,
-        options: [{ value: 'fast', name: 'Fast' }, { value: 'smart', name: 'Smart' }],
+        options: [
+            { value: 'fast', name: 'Fast' },
+            { value: 'smart', name: 'Smart' },
+        ],
     },
     ...(process.env.FAKE_ACP_EFFORT === 'thinking'
-        ? [{
-            id: 'thinking',
-            name: 'Thinking',
-            category: 'thought_level',
-            type: 'select' as const,
-            currentValue: 'on',
-            options: [{ value: 'on', name: 'On' }, { value: 'off', name: 'Off' }],
-        }]
+        ? [
+              {
+                  id: 'thinking',
+                  name: 'Thinking',
+                  category: 'thought_level',
+                  type: 'select' as const,
+                  currentValue: 'on',
+                  options: [
+                      { value: 'on', name: 'On' },
+                      { value: 'off', name: 'Off' },
+                  ],
+              },
+          ]
         : []),
     ...(process.env.FAKE_ACP_EFFORT === '1' || process.env.FAKE_ACP_EFFORT === 'thinking'
-        ? [{
-            id: 'effort',
-            name: 'Effort',
-            category: 'thought_level',
-            type: 'select' as const,
-            currentValue: effort,
-            options: (LEVELS[model] ?? LEVELS.fast).map(value => ({ value, name: LEVEL_NAMES[value] ?? value })),
-        }]
+        ? [
+              {
+                  id: 'effort',
+                  name: 'Effort',
+                  category: 'thought_level',
+                  type: 'select' as const,
+                  currentValue: effort,
+                  options: (LEVELS[model] ?? LEVELS.fast).map(value => ({ value, name: LEVEL_NAMES[value] ?? value })),
+              },
+          ]
         : []),
     // `FAKE_ACP_MODES=1`: the permission modes Claude's adapter offers, as one option of category `mode`.
     ...(process.env.FAKE_ACP_MODES === '1'
-        ? [{
-            id: 'mode',
-            name: 'Mode',
-            category: 'mode',
-            type: 'select' as const,
-            currentValue: mode,
-            options: ['default', 'acceptEdits', 'auto', 'bypassPermissions'].map(value => ({ value, name: value })),
-        }]
+        ? [
+              {
+                  id: 'mode',
+                  name: 'Mode',
+                  category: 'mode',
+                  type: 'select' as const,
+                  currentValue: mode,
+                  options: ['default', 'acceptEdits', 'auto', 'bypassPermissions'].map(value => ({
+                      value,
+                      name: value,
+                  })),
+              },
+          ]
         : []),
 ];
 
 const app = agent({ name: 'fake-acp-agent' })
     .onRequest(methods.agent.initialize, ({ params }) => {
         if (process.env.FAKE_ACP_REFUSE_V2 === '1' && params.protocolVersion > PROTOCOL_VERSION) {
-            throw new RequestError(-32602, `Unsupported protocol version ${ params.protocolVersion }`);
+            throw new RequestError(-32602, `Unsupported protocol version ${params.protocolVersion}`);
         }
 
         clientCapabilities = params.clientCapabilities;
@@ -168,28 +206,32 @@ const app = agent({ name: 'fake-acp-agent' })
             ...(process.env.FAKE_ACP_STEERING === '1' && { _meta: { steering: { supported: true } } }),
         };
     })
-    .onRequest('_session/steering', params => params as { sessionId: string; prompt: { type: string; text?: string }[] }, ({ params }) => {
-        const session = sessions.get(params.sessionId);
-        const text = params.prompt.map(block => block.text ?? '').join('\n');
+    .onRequest(
+        '_session/steering',
+        params => params as { sessionId: string; prompt: { type: string; text?: string }[] },
+        ({ params }) => {
+            const session = sessions.get(params.sessionId);
+            const text = params.prompt.map(block => block.text ?? '').join('\n');
 
-        if (process.env.FAKE_ACP_LOG) {
-            appendFileSync(process.env.FAKE_ACP_LOG, `steer ${ text.replaceAll('\n', ' | ') }\n`);
+            if (process.env.FAKE_ACP_LOG) {
+                appendFileSync(process.env.FAKE_ACP_LOG, `steer ${text.replaceAll('\n', ' | ')}\n`);
+            }
+
+            if (!session?.prompting) {
+                return { outcome: 'promptRequired', reason: 'noRunningTurn' };
+            }
+
+            session.steers.push(text);
+
+            return { outcome: 'injected' };
         }
-
-        if (!session?.prompting) {
-            return { outcome: 'promptRequired', reason: 'noRunningTurn' };
-        }
-
-        session.steers.push(text);
-
-        return { outcome: 'injected' };
-    })
+    )
     .onRequest(methods.agent.session.new, ({ params }) => {
         if (process.env.FAKE_ACP_AUTH === '1') {
             throw new RequestError(-32000, 'Authentication required');
         }
 
-        const id = `fake-${ ++counter }`;
+        const id = `fake-${++counter}`;
 
         open(id, params);
 
@@ -201,7 +243,19 @@ const app = agent({ name: 'fake-acp-agent' })
 
         // Codex's adapter warns right after the response when the session was recorded with another model.
         if (process.env.FAKE_ACP_RESUME_WARNING === '1') {
-            setImmediate(() => void client.notify(methods.client.session.update, { sessionId: params.sessionId, update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Warning: This session was recorded with model `gpt-5.6-luna` but is resuming with `gpt-6-sol`.\n\n' } } }));
+            setImmediate(
+                () =>
+                    void client.notify(methods.client.session.update, {
+                        sessionId: params.sessionId,
+                        update: {
+                            sessionUpdate: 'agent_message_chunk',
+                            content: {
+                                type: 'text',
+                                text: 'Warning: This session was recorded with model `gpt-5.6-luna` but is resuming with `gpt-6-sol`.\n\n',
+                            },
+                        },
+                    })
+            );
         }
 
         return { configOptions: modelOptions('fast') };
@@ -211,7 +265,10 @@ const app = agent({ name: 'fake-acp-agent' })
         open(params.sessionId, params);
 
         for (const text of ['replayed one', 'replayed two']) {
-            await client.notify(methods.client.session.update, { sessionId: params.sessionId, update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text } } });
+            await client.notify(methods.client.session.update, {
+                sessionId: params.sessionId,
+                update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text } },
+            });
         }
 
         return { configOptions: modelOptions('fast') };
@@ -224,13 +281,13 @@ const app = agent({ name: 'fake-acp-agent' })
 
             if (params.configId === 'effort') {
                 session.effort = params.value;
-            }
-            else if (params.configId === 'model') {
+            } else if (params.configId === 'model') {
                 session.model = params.value;
                 // A model keeps the level when it has it, and goes back to its own default when it has not.
-                session.effort = (LEVELS[session.model] ?? LEVELS.fast).includes(session.effort) ? session.effort : 'high';
-            }
-            else if (params.configId === 'mode') {
+                session.effort = (LEVELS[session.model] ?? LEVELS.fast).includes(session.effort)
+                    ? session.effort
+                    : 'high';
+            } else if (params.configId === 'mode') {
                 session.mode = params.value;
             }
         }
@@ -245,17 +302,20 @@ const app = agent({ name: 'fake-acp-agent' })
         }
 
         if (process.env.FAKE_ACP_LOG) {
-            appendFileSync(process.env.FAKE_ACP_LOG, `title ${ params.sessionId } ${ params.title }\n`);
+            appendFileSync(process.env.FAKE_ACP_LOG, `title ${params.sessionId} ${params.title}\n`);
         }
 
         session.title = params.title;
-        await client.notify(methods.client.session.update, { sessionId: params.sessionId, update: { sessionUpdate: 'session_info_update', title: params.title } });
+        await client.notify(methods.client.session.update, {
+            sessionId: params.sessionId,
+            update: { sessionUpdate: 'session_info_update', title: params.title },
+        });
 
         return { title: params.title };
     })
     .onNotification(methods.agent.session.cancel, ({ params }) => {
         if (process.env.FAKE_ACP_LOG) {
-            appendFileSync(process.env.FAKE_ACP_LOG, `cancel ${ params.sessionId }\n`);
+            appendFileSync(process.env.FAKE_ACP_LOG, `cancel ${params.sessionId}\n`);
         }
 
         sessions.get(params.sessionId)?.cancel.abort();
@@ -278,7 +338,11 @@ const app = agent({ name: 'fake-acp-agent' })
 
             for (const part of [text.slice(0, middle), text.slice(middle)]) {
                 if (part) {
-                    await send({ sessionUpdate: 'agent_message_chunk', messageId, content: { type: 'text', text: part } });
+                    await send({
+                        sessionUpdate: 'agent_message_chunk',
+                        messageId,
+                        content: { type: 'text', text: part },
+                    });
                 }
             }
         };
@@ -310,25 +374,71 @@ const app = agent({ name: 'fake-acp-agent' })
                         break;
                     case 'tool': {
                         const [name, ...json] = rest;
-                        const toolCallId = `t${ session.count }-${ ++calls }`;
+                        const toolCallId = `t${session.count}-${++calls}`;
                         const input = json.length > 0 ? JSON.parse(json.join(' ')) : {};
 
-                        await send({ sessionUpdate: 'tool_call', toolCallId, title: name, kind: 'read', status: 'in_progress', rawInput: input });
-                        await send({ sessionUpdate: 'tool_call_update', toolCallId, status: 'completed', rawOutput: { output: `${ name } finished` } });
+                        await send({
+                            sessionUpdate: 'tool_call',
+                            toolCallId,
+                            title: name,
+                            kind: 'read',
+                            status: 'in_progress',
+                            rawInput: input,
+                        });
+                        await send({
+                            sessionUpdate: 'tool_call_update',
+                            toolCallId,
+                            status: 'completed',
+                            rawOutput: { output: `${name} finished` },
+                        });
                         break;
                     }
                     case 'subagent': {
                         const [type, ...brief] = rest;
-                        const agentId = `a${ session.count }-${ ++calls }`;
-                        const readId = `${ agentId }-read`;
+                        const agentId = `a${session.count}-${++calls}`;
+                        const readId = `${agentId}-read`;
                         const child = { claudeCode: { parentToolUseId: agentId } };
 
-                        await send({ sessionUpdate: 'tool_call', toolCallId: agentId, title: brief.join(' '), kind: 'think', status: 'in_progress', rawInput: { subagent_type: type, description: brief.join(' '), prompt: 'Look around' }, _meta: { claudeCode: { toolName: 'Agent' } } });
-                        await send({ sessionUpdate: 'agent_message_chunk', messageId: crypto.randomUUID(), content: { type: 'text', text: 'Looking around.' }, _meta: child });
-                        await send({ sessionUpdate: 'tool_call', toolCallId: readId, title: 'Read README.md', kind: 'read', status: 'in_progress', rawInput: { file_path: 'README.md' }, _meta: { claudeCode: { toolName: 'Read', parentToolUseId: agentId } } });
+                        await send({
+                            sessionUpdate: 'tool_call',
+                            toolCallId: agentId,
+                            title: brief.join(' '),
+                            kind: 'think',
+                            status: 'in_progress',
+                            rawInput: { subagent_type: type, description: brief.join(' '), prompt: 'Look around' },
+                            _meta: { claudeCode: { toolName: 'Agent' } },
+                        });
+                        await send({
+                            sessionUpdate: 'agent_message_chunk',
+                            messageId: crypto.randomUUID(),
+                            content: { type: 'text', text: 'Looking around.' },
+                            _meta: child,
+                        });
+                        await send({
+                            sessionUpdate: 'tool_call',
+                            toolCallId: readId,
+                            title: 'Read README.md',
+                            kind: 'read',
+                            status: 'in_progress',
+                            rawInput: { file_path: 'README.md' },
+                            _meta: { claudeCode: { toolName: 'Read', parentToolUseId: agentId } },
+                        });
                         // A later update of the sub-agent's call can lose the stamp.
-                        await send({ sessionUpdate: 'tool_call_update', toolCallId: readId, status: 'completed', rawOutput: '# Readme' });
-                        await send({ sessionUpdate: 'tool_call_update', toolCallId: agentId, status: 'completed', content: [{ type: 'content', content: { type: 'text', text: `${ type } found the readme.` } }], _meta: { claudeCode: { toolName: 'Agent' } } });
+                        await send({
+                            sessionUpdate: 'tool_call_update',
+                            toolCallId: readId,
+                            status: 'completed',
+                            rawOutput: '# Readme',
+                        });
+                        await send({
+                            sessionUpdate: 'tool_call_update',
+                            toolCallId: agentId,
+                            status: 'completed',
+                            content: [
+                                { type: 'content', content: { type: 'text', text: `${type} found the readme.` } },
+                            ],
+                            _meta: { claudeCode: { toolName: 'Agent' } },
+                        });
                         break;
                     }
                     case 'call': {
@@ -340,19 +450,39 @@ const app = agent({ name: 'fake-acp-agent' })
                             break;
                         }
 
-                        const toolCallId = `c${ session.count }-${ ++calls }`;
+                        const toolCallId = `c${session.count}-${++calls}`;
                         const input = json.length > 0 ? JSON.parse(json.join(' ')) : {};
                         const mcp = new Client({ name: 'fake-agent', version: '1' });
 
-                        await send({ sessionUpdate: 'tool_call', toolCallId, title: `Tool: ${ server.name }/${ tool }`, kind: 'other', status: 'in_progress', rawInput: input });
-                        await mcp.connect(new StdioClientTransport({ command: server.command, args: server.args, env: Object.fromEntries(server.env.map(({ name, value }) => [name, value])) }));
+                        await send({
+                            sessionUpdate: 'tool_call',
+                            toolCallId,
+                            title: `Tool: ${server.name}/${tool}`,
+                            kind: 'other',
+                            status: 'in_progress',
+                            rawInput: input,
+                        });
+                        await mcp.connect(
+                            new StdioClientTransport({
+                                command: server.command,
+                                args: server.args,
+                                env: Object.fromEntries(server.env.map(({ name, value }) => [name, value])),
+                            })
+                        );
 
                         const result = await mcp.callTool({ name: tool, arguments: input });
                         const content = result.content as { type: string; text?: string }[];
 
                         await mcp.close();
-                        await send({ sessionUpdate: 'tool_call_update', toolCallId, status: result.isError ? 'failed' : 'completed', rawOutput: content.map(block => block.text).join('') });
-                        await say(`${ result.isError ? 'error' : 'result' }: ${ content.map(block => block.text).join('') }`);
+                        await send({
+                            sessionUpdate: 'tool_call_update',
+                            toolCallId,
+                            status: result.isError ? 'failed' : 'completed',
+                            rawOutput: content.map(block => block.text).join(''),
+                        });
+                        await say(
+                            `${result.isError ? 'error' : 'result'}: ${content.map(block => block.text).join('')}`
+                        );
                         break;
                     }
                     case 'perm': {
@@ -360,7 +490,12 @@ const app = agent({ name: 'fake-acp-agent' })
                         const [kind, ...extra] = rest;
                         const answer = await client.request(methods.client.session.requestPermission, {
                             sessionId,
-                            toolCall: { toolCallId: `p${ ++calls }`, title: 'Run a command', ...(kind && { kind: kind as 'execute' }), ...(extra.length > 0 ? JSON.parse(extra.join(' ')) as Record<string, unknown> : {}) },
+                            toolCall: {
+                                toolCallId: `p${++calls}`,
+                                title: 'Run a command',
+                                ...(kind && { kind: kind as 'execute' }),
+                                ...(extra.length > 0 ? (JSON.parse(extra.join(' ')) as Record<string, unknown>) : {}),
+                            },
                             options: [
                                 { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
                                 { optionId: 'always', name: 'Always allow', kind: 'allow_always' },
@@ -368,49 +503,81 @@ const app = agent({ name: 'fake-acp-agent' })
                             ],
                         });
 
-                        await say(`permission: ${ answer.outcome.outcome === 'selected' ? answer.outcome.optionId : answer.outcome.outcome }`);
+                        await say(
+                            `permission: ${answer.outcome.outcome === 'selected' ? answer.outcome.optionId : answer.outcome.outcome}`
+                        );
                         break;
                     }
                     case 'permcancel': {
                         // The agent takes its request back after a moment (`$/cancel_request`); the client answers it `cancelled`.
                         const withdraw = new AbortController();
-                        const asked = client.request(methods.client.session.requestPermission, {
-                            sessionId,
-                            toolCall: { toolCallId: `p${ ++calls }`, title: 'Run a command', kind: 'execute', rawInput: { command: 'ls' } },
-                            options: [
-                                { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
-                                { optionId: 'once', name: 'Allow once', kind: 'allow_once' },
-                            ],
-                        }, { cancellationSignal: withdraw.signal });
+                        const asked = client.request(
+                            methods.client.session.requestPermission,
+                            {
+                                sessionId,
+                                toolCall: {
+                                    toolCallId: `p${++calls}`,
+                                    title: 'Run a command',
+                                    kind: 'execute',
+                                    rawInput: { command: 'ls' },
+                                },
+                                options: [
+                                    { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
+                                    { optionId: 'once', name: 'Allow once', kind: 'allow_once' },
+                                ],
+                            },
+                            { cancellationSignal: withdraw.signal }
+                        );
 
                         setTimeout(() => withdraw.abort(), 150);
 
                         const answer = await asked;
 
-                        await say(`permission: ${ answer.outcome.outcome === 'selected' ? answer.outcome.optionId : answer.outcome.outcome }`);
+                        await say(
+                            `permission: ${answer.outcome.outcome === 'selected' ? answer.outcome.optionId : answer.outcome.outcome}`
+                        );
                         break;
                     }
                     case 'perm2': {
                         // Two requests at once, as an agent that runs two tools in parallel sends them.
-                        const ask = (title: string) => client.request(methods.client.session.requestPermission, {
-                            sessionId,
-                            toolCall: { toolCallId: `p${ ++calls }`, title, kind: 'execute', rawInput: { command: title } },
-                            options: [
-                                { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
-                                { optionId: 'once', name: 'Allow once', kind: 'allow_once' },
-                            ],
-                        });
-                        const answers = await Promise.all([ask('first'), ask('second')]) as { outcome: { outcome: string; optionId?: string } }[];
+                        const ask = (title: string) =>
+                            client.request(methods.client.session.requestPermission, {
+                                sessionId,
+                                toolCall: {
+                                    toolCallId: `p${++calls}`,
+                                    title,
+                                    kind: 'execute',
+                                    rawInput: { command: title },
+                                },
+                                options: [
+                                    { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
+                                    { optionId: 'once', name: 'Allow once', kind: 'allow_once' },
+                                ],
+                            });
+                        const answers = (await Promise.all([ask('first'), ask('second')])) as {
+                            outcome: { outcome: string; optionId?: string };
+                        }[];
 
-                        await say(`permissions: ${ answers.map(answer => (answer.outcome.outcome === 'selected' ? answer.outcome.optionId : answer.outcome.outcome)).join(',') }`);
+                        await say(
+                            `permissions: ${answers.map(answer => (answer.outcome.outcome === 'selected' ? answer.outcome.optionId : answer.outcome.outcome)).join(',')}`
+                        );
                         break;
                     }
                     case 'usage': {
                         const [input, output, cost] = rest.map(Number);
 
-                        usage = { inputTokens: (usage?.inputTokens ?? 0) + input, outputTokens: (usage?.outputTokens ?? 0) + output, totalTokens: (usage?.totalTokens ?? 0) + input + output };
+                        usage = {
+                            inputTokens: (usage?.inputTokens ?? 0) + input,
+                            outputTokens: (usage?.outputTokens ?? 0) + output,
+                            totalTokens: (usage?.totalTokens ?? 0) + input + output,
+                        };
                         session.cost += cost;
-                        await send({ sessionUpdate: 'usage_update', used: input + output, size: 200_000, cost: { amount: session.cost, currency: 'USD' } });
+                        await send({
+                            sessionUpdate: 'usage_update',
+                            used: input + output,
+                            size: 200_000,
+                            cost: { amount: session.cost, currency: 'USD' },
+                        });
                         break;
                     }
                     case 'context': {
@@ -420,19 +587,44 @@ const app = agent({ name: 'fake-acp-agent' })
                         break;
                     }
                     case '/compact': {
-                    // What Claude's adapter reports for its own command: a tool call with the counts, a smaller window, and no words.
-                        const toolCallId = `k${ session.count }`;
+                        // What Claude's adapter reports for its own command: a tool call with the counts, a smaller window, and no words.
+                        const toolCallId = `k${session.count}`;
                         const rawOutput = { trigger: 'manual', preTokens: 22_062, postTokens: 6111, durationMs: 4200 };
 
-                        await send({ sessionUpdate: 'tool_call', toolCallId, title: 'Compact conversation', kind: 'think', status: 'in_progress', _meta: { claudeCode: { toolName: 'compact' } } });
-                        await send({ sessionUpdate: 'tool_call_update', toolCallId, status: 'completed', rawOutput, _meta: { claudeCode: { toolName: 'compact' } } });
+                        await send({
+                            sessionUpdate: 'tool_call',
+                            toolCallId,
+                            title: 'Compact conversation',
+                            kind: 'think',
+                            status: 'in_progress',
+                            _meta: { claudeCode: { toolName: 'compact' } },
+                        });
+                        await send({
+                            sessionUpdate: 'tool_call_update',
+                            toolCallId,
+                            status: 'completed',
+                            rawOutput,
+                            _meta: { claudeCode: { toolName: 'compact' } },
+                        });
                         await send({ sessionUpdate: 'usage_update', used: 6111, size: 1_000_000 });
                         break;
                     }
                     case 'limit': {
                         const [status, resetsAt] = rest;
 
-                        await send({ sessionUpdate: 'usage_update', used: 1, size: 200_000, _meta: { '_claude/rateLimit': { status, rateLimitType: 'five_hour', utilization: 0.95, resetsAt: Number(resetsAt) } } });
+                        await send({
+                            sessionUpdate: 'usage_update',
+                            used: 1,
+                            size: 200_000,
+                            _meta: {
+                                '_claude/rateLimit': {
+                                    status,
+                                    rateLimitType: 'five_hour',
+                                    utilization: 0.95,
+                                    resetsAt: Number(resetsAt),
+                                },
+                            },
+                        });
                         break;
                     }
                     case 'title':
@@ -449,23 +641,51 @@ const app = agent({ name: 'fake-acp-agent' })
                         later.push({ ms: Number(rest[0]), title: rest.slice(1).join(' ') });
                         break;
                     case 'info':
-                        await say(JSON.stringify({ title: session.title, cwd: session.cwd, directories: session.directories, servers: session.mcpServers.map(server => server.name), systemPrompt: session.systemPrompt, meta: session.meta, model: session.model, prompts: session.count }));
+                        await say(
+                            JSON.stringify({
+                                title: session.title,
+                                cwd: session.cwd,
+                                directories: session.directories,
+                                servers: session.mcpServers.map(server => server.name),
+                                systemPrompt: session.systemPrompt,
+                                meta: session.meta,
+                                model: session.model,
+                                prompts: session.count,
+                            })
+                        );
                         break;
                     case 'capabilities':
                         await say(JSON.stringify(clientCapabilities));
                         break;
                     case 'choice':
-                        await say(JSON.stringify({ model: session.model, effort: session.effort, sets: session.sets, ...(session.mode && { mode: session.mode }) }));
+                        await say(
+                            JSON.stringify({
+                                model: session.model,
+                                effort: session.effort,
+                                sets: session.sets,
+                                ...(session.mode && { mode: session.mode }),
+                            })
+                        );
                         break;
                     case 'prompt':
                         await say(JSON.stringify(text));
                         break;
                     case 'env':
-                        await say(`${ argument }=${ process.env[argument] ?? '' }`);
+                        await say(`${argument}=${process.env[argument] ?? ''}`);
                         break;
                     case 'shell': {
-                        const child = Bun.spawn(['sh', '-c', argument], { cwd: session.cwd, env: process.env, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' });
-                        const [stdout, stderr, code] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
+                        const child = Bun.spawn(['sh', '-c', argument], {
+                            cwd: session.cwd,
+                            env: process.env,
+                            stdin: 'ignore',
+                            stdout: 'pipe',
+                            stderr: 'pipe',
+                        });
+                        const [stdout, stderr, code] = await Promise.all([
+                            new Response(child.stdout).text(),
+                            new Response(child.stderr).text(),
+                            child.exited,
+                        ]);
 
                         await say(JSON.stringify({ code, stdout, stderr }));
                         break;
@@ -480,7 +700,13 @@ const app = agent({ name: 'fake-acp-agent' })
 
                         const mcp = new Client({ name: 'fake-agent', version: '1' });
 
-                        await mcp.connect(new StdioClientTransport({ command: server.command, args: server.args, env: Object.fromEntries(server.env.map(({ name, value }) => [name, value])) }));
+                        await mcp.connect(
+                            new StdioClientTransport({
+                                command: server.command,
+                                args: server.args,
+                                env: Object.fromEntries(server.env.map(({ name, value }) => [name, value])),
+                            })
+                        );
                         await say(JSON.stringify((await mcp.listTools()).tools.map(entry => entry.name)));
                         await mcp.close();
                         break;
@@ -493,13 +719,17 @@ const app = agent({ name: 'fake-acp-agent' })
                     case 'sleep': {
                         const { signal } = session.cancel;
 
-                        await new Promise<void>((resolve) => {
+                        await new Promise<void>(resolve => {
                             const timer = setTimeout(resolve, Number(argument));
 
-                            signal.addEventListener('abort', () => {
-                                clearTimeout(timer);
-                                resolve();
-                            }, { once: true });
+                            signal.addEventListener(
+                                'abort',
+                                () => {
+                                    clearTimeout(timer);
+                                    resolve();
+                                },
+                                { once: true }
+                            );
                         });
 
                         if (signal.aborted) {
@@ -518,15 +748,17 @@ const app = agent({ name: 'fake-acp-agent' })
                         }
                 }
             }
-        }
-        finally {
+        } finally {
             session.prompting = false;
         }
 
         // What an agent gives once the prompt is answered: its first message as the title, then a name of its own a moment later.
         if (session.title === undefined) {
             if (echoed) {
-                setTimeout(() => void send({ sessionUpdate: 'session_info_update', title: text.replace(/\s+/g, ' ').trim() }), 5);
+                setTimeout(
+                    () => void send({ sessionUpdate: 'session_info_update', title: text.replace(/\s+/g, ' ').trim() }),
+                    5
+                );
             }
 
             for (const { ms, title } of later) {
@@ -537,4 +769,9 @@ const app = agent({ name: 'fake-acp-agent' })
         return { stopReason: 'end_turn' as const, ...(usage && { usage }) };
     });
 
-app.connect(ndJsonStream(Writable.toWeb(process.stdout) as WritableStream<Uint8Array>, Readable.toWeb(process.stdin) as ReadableStream<Uint8Array>));
+app.connect(
+    ndJsonStream(
+        Writable.toWeb(process.stdout) as WritableStream<Uint8Array>,
+        Readable.toWeb(process.stdin) as ReadableStream<Uint8Array>
+    )
+);

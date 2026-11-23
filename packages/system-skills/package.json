@@ -1,12 +1,14 @@
 {
     "name": "@clowdy/system-skills",
     "private": true,
+    "license": "Apache-2.0",
     "description": "Skills that ship with Clowdy and teach agents how to work in it. One Claude-format plugin directory that Claude and Codex both load.",
     "version": "0.1.0",
     "type": "module",
     "scripts": {
         "clean": "rm -rf node_modules/{*,.*} .turbo 2>/dev/null || true",
-        "lint": "eslint .",
+        "lint": "biome check",
+        "lint:fix": "biome check --write",
         "test": "bun scripts/validate.ts",
         "typecheck": "tsc --noEmit"
     }

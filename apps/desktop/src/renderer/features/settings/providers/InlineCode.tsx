@@ -7,9 +7,15 @@ export function InlineCode({ text }: { text: string }) {
     // An odd count of backticks leaves the last one open: it is plain text then.
     return (
         <>
-            { parts.map((part, index) => (index % 2 === 1 && index < parts.length - 1
-                ? <Text key={ index } as="code" variant="code">{ part }</Text>
-                : part)) }
+            {parts.map((part, index) =>
+                index % 2 === 1 && index < parts.length - 1 ? (
+                    <Text key={index} as="code" variant="code">
+                        {part}
+                    </Text>
+                ) : (
+                    part
+                )
+            )}
         </>
     );
 }

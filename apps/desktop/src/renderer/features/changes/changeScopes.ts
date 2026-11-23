@@ -21,10 +21,12 @@ export const ALL_CHANGES_LABEL = 'All changes';
  */
 export const LAST_RUN_LABEL = 'Last run';
 export const LAST_RUN_NOTE = 'Edits of others in the place are in it too';
-export const LAST_RUN_TOOLTIP = 'What the latest run of this chat changed. Edits that others made in the place meanwhile are in it too.';
+export const LAST_RUN_TOOLTIP =
+    'What the latest run of this chat changed. Edits that others made in the place meanwhile are in it too.';
 
 /** How a commit is named in the menu: its short hash and the first line of its message. */
-export const commitLabel = ({ shortSha, subject }: Pick<GitCommit, 'shortSha' | 'subject'>): string => `${ shortSha } ${ subject }`;
+export const commitLabel = ({ shortSha, subject }: Pick<GitCommit, 'shortSha' | 'subject'>): string =>
+    `${shortSha} ${subject}`;
 
 /** The base the branch is compared with is there: the branch's own scope and its commits make sense. */
 const hasBase = (base: GitBase | undefined): base is Extract<GitBase, { state: 'ready' }> => base?.state === 'ready';
@@ -40,7 +42,9 @@ export function scopeOptions(base: GitBase | undefined, runScope?: GitScope): Sc
         ...(hasBase(base) ? [{ scope: 'branch' as const, label: 'Branch' }] : []),
         { scope: 'uncommitted', label: 'Uncommitted' },
         ...(runScope ? [{ scope: runScope, label: LAST_RUN_LABEL, note: LAST_RUN_NOTE }] : []),
-        ...(hasBase(base) ? base.commits.map(commit => ({ scope: commitScope(commit.sha), label: commitLabel(commit), commit })) : []),
+        ...(hasBase(base)
+            ? base.commits.map(commit => ({ scope: commitScope(commit.sha), label: commitLabel(commit), commit }))
+            : []),
     ];
 }
 

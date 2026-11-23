@@ -14,23 +14,33 @@ const STEPS = { ...BOUNDS, step: 0.01, shiftStep: 0.1 };
 
 describe('GradientStopRange utilities', () => {
     it('sorts visible stops and leaves out-of-range stops out of thumb rendering', () => {
-        expect(visibleGradientStops([
-            { id: 'after', position: 1.2 },
-            { id: 'middle', position: 0.5 },
-            { id: 'before', position: -0.2 },
-            { id: 'start', position: 0 },
-        ], BOUNDS)).toEqual([
+        expect(
+            visibleGradientStops(
+                [
+                    { id: 'after', position: 1.2 },
+                    { id: 'middle', position: 0.5 },
+                    { id: 'before', position: -0.2 },
+                    { id: 'start', position: 0 },
+                ],
+                BOUNDS
+            )
+        ).toEqual([
             { id: 'start', position: 0 },
             { id: 'middle', position: 0.5 },
         ]);
     });
 
     it('keeps out-of-range stops in the track background', () => {
-        expect(gradientStopRangeBackground([
-            { color: '#f00', position: -0.5 },
-            { color: '#0f0', position: 0.5 },
-            { color: '#00f', position: 1.5 },
-        ], BOUNDS)).toBe('linear-gradient(to right, #f00 -50%, #0f0 50%, #00f 150%)');
+        expect(
+            gradientStopRangeBackground(
+                [
+                    { color: '#f00', position: -0.5 },
+                    { color: '#0f0', position: 0.5 },
+                    { color: '#00f', position: 1.5 },
+                ],
+                BOUNDS
+            )
+        ).toBe('linear-gradient(to right, #f00 -50%, #0f0 50%, #00f 150%)');
     });
 
     it('clamps track press positions to the editable range', () => {

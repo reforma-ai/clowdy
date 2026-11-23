@@ -1,30 +1,30 @@
 import { clamp, cn, mergeRefs, roundNumber } from '@clowdy/lib';
 import { useRunner } from '@clowdy/lib/useRunner';
 import {
+    type MouseEventHandler,
+    type PointerEventHandler,
+    type ReactNode,
+    type Ref,
+    type RefObject,
     use,
     useCallback,
     useEffect,
     useLayoutEffect,
     useMemo,
     useRef,
-    type MouseEventHandler,
-    type PointerEventHandler,
-    type ReactNode,
-    type Ref,
-    type RefObject,
 } from 'react';
 import { type AriaTextFieldOptions } from 'react-aria';
 import {
     Input as AriaInput,
     NumberField as AriaNumberField,
+    type NumberFieldProps as AriaNumberFieldProps,
     TextField as AriaTextField,
+    type TextFieldProps as AriaTextFieldProps,
     Group,
     InputContext,
     NumberFieldStateContext,
     Provider,
     useContextProps,
-    type NumberFieldProps as AriaNumberFieldProps,
-    type TextFieldProps as AriaTextFieldProps,
 } from 'react-aria-components';
 
 import { Show } from '../Show';
@@ -135,29 +135,27 @@ function NumberInput({
     // `value` as uncontrolled; NaN is NumberField's empty sentinel.
     const isControlled = Object.hasOwn(props, 'value');
     const rawValue = props.value;
-    const value = (isControlled && (rawValue == null || Number.isNaN(rawValue)))
-        ? Number.NaN
-        : rawValue;
+    const value = isControlled && (rawValue == null || Number.isNaN(rawValue)) ? Number.NaN : rawValue;
 
     return (
         <AriaNumberField
-            formatOptions={ formatOptions }
-            slot={ slot }
-            { ...props }
-            step={ interactionStep ?? step }
-            { ...(isControlled ? { value } : {}) }
+            formatOptions={formatOptions}
+            slot={slot}
+            {...props}
+            step={interactionStep ?? step}
+            {...(isControlled ? { value } : {})}
         >
             <NumberInputInner
-                inputRef={ inputRef }
-                fieldRef={ fieldRef }
-                htmlSize={ htmlSize }
-                placeholder={ placeholder }
-                onSubmit={ onSubmit }
-                step={ step }
-                interactionStep={ interactionStep }
-                shiftStep={ shiftStep }
-                roundTo={ roundTo }
-                { ...props }
+                inputRef={inputRef}
+                fieldRef={fieldRef}
+                htmlSize={htmlSize}
+                placeholder={placeholder}
+                onSubmit={onSubmit}
+                step={step}
+                interactionStep={interactionStep}
+                shiftStep={shiftStep}
+                roundTo={roundTo}
+                {...props}
             />
         </AriaNumberField>
     );
@@ -196,27 +194,24 @@ function NumberInputInner({
         disabled: isDisabled || isReadOnly,
     });
 
-    const snapToStep = useCallback(
-        () => {
-            if (roundTo == null || roundTo <= 0 || !Number.isFinite(roundTo) || !state) {
-                return;
-            }
+    const snapToStep = useCallback(() => {
+        if (roundTo == null || roundTo <= 0 || !Number.isFinite(roundTo) || !state) {
+            return;
+        }
 
-            const current = state.numberValue;
+        const current = state.numberValue;
 
-            if (!Number.isFinite(current)) {
-                return;
-            }
+        if (!Number.isFinite(current)) {
+            return;
+        }
 
-            const rounded = roundNumber(current, roundTo, minValue ?? 0);
-            const finalValue = clamp(minValue ?? -Infinity, rounded, maxValue ?? Infinity);
+        const rounded = roundNumber(current, roundTo, minValue ?? 0);
+        const finalValue = clamp(minValue ?? -Infinity, rounded, maxValue ?? Infinity);
 
-            if (finalValue !== state.numberValue) {
-                state.setNumberValue(finalValue);
-            }
-        },
-        [roundTo, minValue, maxValue, state]
-    );
+        if (finalValue !== state.numberValue) {
+            state.setNumberValue(finalValue);
+        }
+    }, [roundTo, minValue, maxValue, state]);
 
     const handleKeyDown = useCallback(
         (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -245,11 +240,7 @@ function NumberInputInner({
                 return;
             }
 
-            if (e.shiftKey
-                && !e.altKey
-                && !e.ctrlKey
-                && !e.metaKey
-                && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+            if (e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
                 e.preventDefault();
                 const current = Number.isFinite(state.numberValue) ? state.numberValue : 0;
                 const direction = e.key === 'ArrowUp' ? 1 : -1;
@@ -268,12 +259,12 @@ function NumberInputInner({
     // NOTE: Any other props AriaInput receives from AriaNumberField (context)
     return (
         <AriaInput
-            className={ styles.input }
-            ref={ inputRef }
-            size={ htmlSize }
-            placeholder={ placeholder }
-            onBlur={ snapToStep }
-            onKeyDown={ handleKeyDown }
+            className={styles.input}
+            ref={inputRef}
+            size={htmlSize}
+            placeholder={placeholder}
+            onBlur={snapToStep}
+            onKeyDown={handleKeyDown}
         />
     );
 }
@@ -309,30 +300,33 @@ function TextInput({
     htmlSize: number;
     spellCheck?: boolean;
 }) {
-    const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (e.key === 'Enter' && onSubmit) {
-            e.preventDefault();
+    const handleKeyDown = useCallback(
+        (e: React.KeyboardEvent<HTMLInputElement>) => {
+            if (e.key === 'Enter' && onSubmit) {
+                e.preventDefault();
 
-            // Defer to let keyup fire inside the current DOM before any parent unmounts
-            requestAnimationFrame(() => onSubmit());
-        }
+                // Defer to let keyup fire inside the current DOM before any parent unmounts
+                requestAnimationFrame(() => onSubmit());
+            }
 
-        onKeyDown?.(e);
-    }, [onSubmit, onKeyDown]);
+            onKeyDown?.(e);
+        },
+        [onSubmit, onKeyDown]
+    );
 
     return (
-        <AriaTextField { ...props }>
+        <AriaTextField {...props}>
             <AriaInput
-                ref={ inputRef }
-                className={ styles.input }
-                size={ htmlSize }
-                inputMode={ inputMode }
-                autoComplete={ autoComplete }
-                onKeyDown={ handleKeyDown }
-                onKeyUp={ onKeyUp }
-                onPaste={ onPaste }
-                spellCheck={ spellCheck }
-                { ...inputDataAttributes(props) }
+                ref={inputRef}
+                className={styles.input}
+                size={htmlSize}
+                inputMode={inputMode}
+                autoComplete={autoComplete}
+                onKeyDown={handleKeyDown}
+                onKeyUp={onKeyUp}
+                onPaste={onPaste}
+                spellCheck={spellCheck}
+                {...inputDataAttributes(props)}
             />
         </AriaTextField>
     );
@@ -347,7 +341,6 @@ export function Input(props: InputProps) {
 
     // <input> ref
     const _inputRef = useRef<HTMLInputElement>(null);
-    // eslint-disable-next-line react-hooks/refs -- mergeRefs composes; it does not read `.current`
     const inputRef = mergeRefs(_inputRef, mergedInputRef);
 
     // <Group> ref — exposed so useRunner can attach pointer listeners to the whole field
@@ -376,7 +369,7 @@ export function Input(props: InputProps) {
         isReadOnly,
         ...inputProps
     } = mergedProps as InputProps & { slot?: unknown };
-    const domSlot = (typeof slot === 'string' || typeof slot === 'number') ? slot : undefined;
+    const domSlot = typeof slot === 'string' || typeof slot === 'number' ? slot : undefined;
 
     const fieldRef = mergeRefs(_fieldRef, ref as Ref<HTMLDivElement>);
 
@@ -419,10 +412,7 @@ export function Input(props: InputProps) {
         }
 
         const sync = () => {
-            field.style.setProperty(
-                '--clowdy-input-hug-ch',
-                String(Math.max(htmlSize, input.value.length, 1))
-            );
+            field.style.setProperty('--clowdy-input-hug-ch', String(Math.max(htmlSize, input.value.length, 1)));
         };
 
         sync();
@@ -435,23 +425,33 @@ export function Input(props: InputProps) {
     }, [hug, htmlSize, inputProps.value, inputProps.defaultValue]);
 
     const prefixSlot = useMemo(
-        (): ReactNode => filterSlots(
-            children,
-            'prefix',
-            prefix ? <Text slot="prefix" className={ styles.textPrefix }>{prefix}</Text> : undefined
-        ),
+        (): ReactNode =>
+            filterSlots(
+                children,
+                'prefix',
+                prefix ? (
+                    <Text slot="prefix" className={styles.textPrefix}>
+                        {prefix}
+                    </Text>
+                ) : undefined
+            ),
         [children, prefix]
     );
     const suffixSlot = useMemo(
-        (): ReactNode => filterSlots(
-            children,
-            'suffix',
-            suffix ? <Text slot="suffix" className={ styles.textSuffix }>{suffix}</Text> : undefined
-        ),
+        (): ReactNode =>
+            filterSlots(
+                children,
+                'suffix',
+                suffix ? (
+                    <Text slot="suffix" className={styles.textSuffix}>
+                        {suffix}
+                    </Text>
+                ) : undefined
+            ),
         [children, suffix]
     );
 
-    const handleContainerPointerDown: PointerEventHandler<HTMLDivElement> = (event) => {
+    const handleContainerPointerDown: PointerEventHandler<HTMLDivElement> = event => {
         const input = _inputRef.current;
 
         if (event.button !== 0 || !input || isDisabled || shouldKeepTargetFocus(event.target, event.currentTarget)) {
@@ -472,58 +472,56 @@ export function Input(props: InputProps) {
     };
 
     return (
-        <Provider values={ [[SlotContext, { slots: INPUT_SLOTS }]] }>
+        <Provider values={[[SlotContext, { slots: INPUT_SLOTS }]]}>
             <Group
-                ref={ fieldRef }
-                slot={ domSlot }
-                className={ cn(styles.field, className) }
-                data-variant={ variant }
-                data-size={ size }
-                data-active={ isActive || undefined }
-                data-disabled={ isDisabled || undefined }
-                data-invalid={ isInvalid || undefined }
-                data-readonly={ isReadOnly || undefined }
-                data-hug={ hug || undefined }
-                data-pressable={ (onPress && !isDisabled) || undefined }
+                ref={fieldRef}
+                slot={domSlot}
+                className={cn(styles.field, className)}
+                data-variant={variant}
+                data-size={size}
+                data-active={isActive || undefined}
+                data-disabled={isDisabled || undefined}
+                data-invalid={isInvalid || undefined}
+                data-readonly={isReadOnly || undefined}
+                data-hug={hug || undefined}
+                data-pressable={(onPress && !isDisabled) || undefined}
                 data-modal-drag-exclude
-                isDisabled={ isDisabled }
-                isInvalid={ isInvalid }
-                isReadOnly={ isReadOnly }
-                onPointerDown={ handleContainerPointerDown }
-                onClick={ handleContainerClick }
+                isDisabled={isDisabled}
+                isInvalid={isInvalid}
+                isReadOnly={isReadOnly}
+                onPointerDown={handleContainerPointerDown}
+                onClick={handleContainerClick}
             >
-                <Show when={ scrubHandle }>
-                    <div className={ styles.scrubHandle } data-scrub-handle />
+                <Show when={scrubHandle}>
+                    <div className={styles.scrubHandle} data-scrub-handle />
                 </Show>
 
                 {prefixSlot}
 
-                {inputProps.type === 'number'
-                    ? (
-                        <NumberInput
-                            inputRef={ inputRef }
-                            fieldRef={ _fieldRef }
-                            htmlSize={ htmlSize }
-                            className="contents"
-                            isDisabled={ isDisabled }
-                            isInvalid={ isInvalid }
-                            isReadOnly={ isReadOnly }
-                            onSubmit={ onSubmit }
-                            { ...inputProps }
-                        />
-                    )
-                    : (
-                        <TextInput
-                            inputRef={ inputRef }
-                            className="contents"
-                            onSubmit={ onSubmit }
-                            htmlSize={ htmlSize }
-                            isDisabled={ isDisabled }
-                            isInvalid={ isInvalid }
-                            isReadOnly={ isReadOnly }
-                            { ...inputProps }
-                        />
-                    )}
+                {inputProps.type === 'number' ? (
+                    <NumberInput
+                        inputRef={inputRef}
+                        fieldRef={_fieldRef}
+                        htmlSize={htmlSize}
+                        className="contents"
+                        isDisabled={isDisabled}
+                        isInvalid={isInvalid}
+                        isReadOnly={isReadOnly}
+                        onSubmit={onSubmit}
+                        {...inputProps}
+                    />
+                ) : (
+                    <TextInput
+                        inputRef={inputRef}
+                        className="contents"
+                        onSubmit={onSubmit}
+                        htmlSize={htmlSize}
+                        isDisabled={isDisabled}
+                        isInvalid={isInvalid}
+                        isReadOnly={isReadOnly}
+                        {...inputProps}
+                    />
+                )}
 
                 {suffixSlot}
             </Group>
@@ -532,9 +530,11 @@ export function Input(props: InputProps) {
 }
 
 function shouldKeepTargetFocus(target: EventTarget, field: HTMLElement): boolean {
-    return target instanceof Element
-      && Boolean(target.closest(INTERACTIVE_FIELD_TARGET_SELECTOR))
-      && field.contains(target);
+    return (
+        target instanceof Element &&
+        Boolean(target.closest(INTERACTIVE_FIELD_TARGET_SELECTOR)) &&
+        field.contains(target)
+    );
 }
 
 const gridCaretInputs = new Set<HTMLInputElement>();
@@ -547,7 +547,11 @@ function bindGridCaret(input: HTMLInputElement): () => void {
         const onKeyDown = (event: KeyboardEvent) => {
             const target = event.target;
 
-            if (!(target instanceof HTMLInputElement) || !gridCaretInputs.has(target) || !arrowMovesCaret(target, event)) {
+            if (
+                !(target instanceof HTMLInputElement) ||
+                !gridCaretInputs.has(target) ||
+                !arrowMovesCaret(target, event)
+            ) {
                 return;
             }
 
@@ -609,8 +613,7 @@ function moveCaret(input: HTMLInputElement, event: KeyboardEvent) {
                     direction < 0 ? end : length,
                     direction < 0 ? 'backward' : 'forward'
                 );
-            }
-            else {
+            } else {
                 const edge = direction < 0 ? 0 : length;
 
                 input.setSelectionRange(edge, edge);
@@ -628,8 +631,7 @@ function moveCaret(input: HTMLInputElement, event: KeyboardEvent) {
                     backward && start !== end ? end : Math.min(length, end + 1),
                     backward && start + 1 < end ? 'backward' : 'forward'
                 );
-            }
-            else {
+            } else {
                 input.setSelectionRange(
                     backward || start === end ? Math.max(0, start - 1) : start,
                     backward || start === end ? end : end - 1,
@@ -643,8 +645,7 @@ function moveCaret(input: HTMLInputElement, event: KeyboardEvent) {
         const next = start === end ? start + direction : direction > 0 ? end : start;
 
         input.setSelectionRange(next, next);
-    }
-    catch {
+    } catch {
         // Some browsers reject selection APIs for non-text controls despite input.type checks.
     }
 }
@@ -659,8 +660,7 @@ function placeCaretAtFieldEdge(input: HTMLInputElement, clientX: number) {
 
     try {
         input.setSelectionRange(offset, offset);
-    }
-    catch {
+    } catch {
         // Some browsers reject selection APIs for non-text controls despite input.type checks.
     }
 }

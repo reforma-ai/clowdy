@@ -1,7 +1,7 @@
-import { STOPPED_TOOL } from '@clowdy/protocol';
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { STOPPED_TOOL } from '@clowdy/protocol';
 
 import { getChat } from '../src/db/chats';
 import { listItems } from '../src/db/items';
@@ -10,7 +10,16 @@ import { projectSnapshot } from '../src/domain/snapshots';
 import { STOPPED_TURN_MESSAGE } from '../src/runs/prompts';
 import { isAtRest } from '../src/runs/queue';
 import { STOPPED_TO_SEND_REASON } from '../src/runs/transitions';
-import { cleanTempDirs, latch, restartHarness, ScriptEngine, scriptEngines, startHarness, untilAborted, waitFor } from './helpers';
+import {
+    cleanTempDirs,
+    latch,
+    restartHarness,
+    ScriptEngine,
+    scriptEngines,
+    startHarness,
+    untilAborted,
+    waitFor,
+} from './helpers';
 
 import type { Attachment, Chat, QueuedMessage, Run, StreamItemBody } from '@clowdy/protocol';
 import type { Harness, Script } from './helpers';
@@ -32,7 +41,7 @@ function gatedTurns(fail: (turn: number) => boolean = () => false) {
     const gate = (turn: number) => (gates[turn - 1] ??= latch());
     const script: Script = async function* ({ number, signal }) {
         yield { type: 'session', sessionId: 's1' };
-        yield { type: 'text', delta: `before ${ number }`, done: false };
+        yield { type: 'text', delta: `before ${number}`, done: false };
         await gate(number).wait(signal);
 
         if (fail(number)) {
@@ -41,14 +50,18 @@ function gatedTurns(fail: (turn: number) => boolean = () => false) {
             return;
         }
 
-        yield { type: 'text', delta: ` after ${ number }`, done: true };
-        yield { type: 'done', result: `turn ${ number }` };
+        yield { type: 'text', delta: ` after ${number}`, done: true };
+        yield { type: 'done', result: `turn ${number}` };
     };
 
     return { script, release: (turn: number) => gate(turn).release() };
 }
 
-async function setup(fail?: (turn: number) => boolean, overrides = {}, engineOptions: { script?: Script; closeMs?: number } = {}) {
+async function setup(
+    fail?: (turn: number) => boolean,
+    overrides = {},
+    engineOptions: { script?: Script; closeMs?: number } = {}
+) {
     const turns = gatedTurns(fail);
     const engine = new ScriptEngine(engineOptions.script ?? turns.script, engineOptions.closeMs);
     const h = await startHarness(overrides, { engines: scriptEngines(engine) });
@@ -57,7 +70,8 @@ async function setup(fail?: (turn: number) => boolean, overrides = {}, engineOpt
 
     const project = h.openRepo();
     const { chat } = h.ok('chat.create', { projectId: project.id }) as { chat: Chat };
-    const send = (text: string, fields: Record<string, unknown> = {}) => h.ok('chat.send', { chatId: chat.id, text, ...fields }) as { chatId: string; runId: string };
+    const send = (text: string, fields: Record<string, unknown> = {}) =>
+        h.ok('chat.send', { chatId: chat.id, text, ...fields }) as { chatId: string; runId: string };
     const chatNow = () => getChat(h.store.db, chat.id) as Chat;
     const queue = () => chatNow().queue ?? [];
     const bodies = (runId: string): StreamItemBody[] => listItems(h.store.db, runId, 0).map(item => item.body);
@@ -83,7 +97,15 @@ describe('a message to a busy orchestrator', () => {
         const runId = await start();
 
         expect(send('And the footer', { mode: 'queue' })).toEqual({ chatId: expect.any(String), runId });
-        expect(queue()).toEqual([{ id: expect.stringMatching(/^que_/), mode: 'queue', text: 'And the footer', content: 'And the footer', createdAt: expect.any(Number) }]);
+        expect(queue()).toEqual([
+            {
+                id: expect.stringMatching(/^que_/),
+                mode: 'queue',
+                text: 'And the footer',
+                content: 'And the footer',
+                createdAt: expect.any(Number),
+            },
+        ]);
         expect(people(runId)).toEqual(['Start']);
 
         release(1);
@@ -107,11 +129,19 @@ describe('a message to a busy orchestrator', () => {
         // The agent of this engine takes no steer, so the steer waits with the others, ahead of them.
         await waitFor(() => engine.steered.length === 1, 'the steer to be tried');
 
-        expect(queue().map(brief)).toEqual([['steer', 'urgent'], ['queue', 'first'], ['queue', 'second']]);
+        expect(queue().map(brief)).toEqual([
+            ['steer', 'urgent'],
+            ['queue', 'first'],
+            ['queue', 'second'],
+        ]);
 
-        for (const [turn, prompt] of [[2, 'urgent'], [3, 'first'], [4, 'second']] as const) {
+        for (const [turn, prompt] of [
+            [2, 'urgent'],
+            [3, 'first'],
+            [4, 'second'],
+        ] as const) {
             release(turn - 1);
-            await waitFor(() => engine.turns.length === turn, `turn ${ turn }`);
+            await waitFor(() => engine.turns.length === turn, `turn ${turn}`);
 
             expect(engine.turns[turn - 1].prompt).toBe(prompt);
         }
@@ -132,14 +162,24 @@ describe('a message to a busy orchestrator', () => {
         expect(queue()).toEqual([]);
     });
 
-    test('keeps its files for the message, and puts them in the bubble and the agent\'s text when it goes out', async () => {
+    test("keeps its files for the message, and puts them in the bubble and the agent's text when it goes out", async () => {
         const { h, engine, project, send, queue, bodies, start, release } = await setup();
         const runId = await start();
-        const file = await (await h.fetch(`/v1/projects/${ project.id }/attachments?name=notes.txt`, { method: 'POST', body: 'hello', headers: { 'content-type': 'text/plain' } })).json() as Attachment;
+        const file = (await (
+            await h.fetch(`/v1/projects/${project.id}/attachments?name=notes.txt`, {
+                method: 'POST',
+                body: 'hello',
+                headers: { 'content-type': 'text/plain' },
+            })
+        ).json()) as Attachment;
 
         send('See the notes', { attachmentIds: [file.id] });
 
-        expect(queue()[0]).toMatchObject({ text: 'See the notes', attachments: [file], content: expect.stringContaining('Attached files:') });
+        expect(queue()[0]).toMatchObject({
+            text: 'See the notes',
+            attachments: [file],
+            content: expect.stringContaining('Attached files:'),
+        });
 
         release(1);
         await waitFor(() => engine.turns.length === 2, 'the queued turn');
@@ -161,7 +201,10 @@ describe('Stop and failure', () => {
         await Bun.sleep(30);
 
         expect(chatNow().queuePaused).toBe('stopped');
-        expect(queue().map(brief)).toEqual([['queue', 'first'], ['queue', 'second']]);
+        expect(queue().map(brief)).toEqual([
+            ['queue', 'first'],
+            ['queue', 'second'],
+        ]);
         expect(engine.turns).toHaveLength(1);
 
         const second = queue()[1];
@@ -234,19 +277,29 @@ describe('Stop and failure', () => {
 
         harnesses.push(restarted);
 
-        expect(getChat(restarted.store.db, chat.id)).toMatchObject({ queuePaused: 'failed', queue: [{ text: 'after the restart' }] });
+        expect(getChat(restarted.store.db, chat.id)).toMatchObject({
+            queuePaused: 'failed',
+            queue: [{ text: 'after the restart' }],
+        });
 
         // A queue that holds already is not written again by the next start.
         const head = restarted.store.headCursor();
 
         await restarted.stop();
 
-        const again = await restartHarness(restarted, { engines: scriptEngines(new ScriptEngine(gatedTurns().script)) });
+        const again = await restartHarness(restarted, {
+            engines: scriptEngines(new ScriptEngine(gatedTurns().script)),
+        });
 
         harnesses.push(again);
 
-        expect(again.store.eventsAfter(head, undefined, 100).filter(event => event.data.type === 'chat.upserted')).toEqual([]);
-        expect(getChat(again.store.db, chat.id)).toMatchObject({ queuePaused: 'failed', queue: [{ text: 'after the restart' }] });
+        expect(
+            again.store.eventsAfter(head, undefined, 100).filter(event => event.data.type === 'chat.upserted')
+        ).toEqual([]);
+        expect(getChat(again.store.db, chat.id)).toMatchObject({
+            queuePaused: 'failed',
+            queue: [{ text: 'after the restart' }],
+        });
     });
 });
 
@@ -305,7 +358,10 @@ describe('steering', () => {
         send('steered later', { mode: 'steer' });
         await waitFor(() => engine.steered.length === 1, 'the steer to be tried');
 
-        expect(queue().map(brief)).toEqual([['steer', 'steered later'], ['queue', 'queued first']]);
+        expect(queue().map(brief)).toEqual([
+            ['steer', 'steered later'],
+            ['queue', 'queued first'],
+        ]);
 
         release(1);
         await waitFor(() => engine.turns.length === 2, 'the next turn');
@@ -321,9 +377,10 @@ describe('steering', () => {
             const { h, engine, chat, send, queue, start, release } = harness;
             let answer!: (taken: boolean) => void;
 
-            engine.steerAnswer = () => new Promise<boolean>((resolve) => {
-                answer = resolve;
-            });
+            engine.steerAnswer = () =>
+                new Promise<boolean>(resolve => {
+                    answer = resolve;
+                });
 
             const runId = await start();
 
@@ -377,9 +434,10 @@ describe('steering', () => {
         const { h, engine, chat, send, chatNow, queue, start, release } = await setup(turn => turn === 1);
         let answer!: (taken: boolean) => void;
 
-        engine.steerAnswer = () => new Promise<boolean>((resolve) => {
-            answer = resolve;
-        });
+        engine.steerAnswer = () =>
+            new Promise<boolean>(resolve => {
+                answer = resolve;
+            });
 
         const runId = await start();
 
@@ -434,7 +492,9 @@ describe('steering', () => {
         // A question holds the turn: a steer would push the agent past it.
         expect(engine.steered).toEqual([]);
 
-        const question = listItems(h.store.db, runId, 0).find(item => item.body.kind === 'question')!.body as { questionId: string };
+        const question = listItems(h.store.db, runId, 0).find(item => item.body.kind === 'question')!.body as {
+            questionId: string;
+        };
 
         h.ok('run.answer', { runId, questionId: question.questionId, answer: 'blue' });
         await waitFor(() => getChat(h.store.db, chat.id)?.queue === undefined, 'the steer to be taken');
@@ -468,20 +528,38 @@ describe('steering', () => {
         expect(engine.steered).toEqual([]);
 
         turns.release(1);
-        await waitFor(() => getChat(h.store.db, second.id)?.queue === undefined, 'the steer to reach the second chat\'s turn');
+        await waitFor(
+            () => getChat(h.store.db, second.id)?.queue === undefined,
+            "the steer to reach the second chat's turn"
+        );
 
         expect(engine.turns[1].prompt).toContain('Wait for it');
         expect(engine.steered).toEqual(['And steer this']);
-        expect(listItems(h.store.db, runId, 0).flatMap(item => (item.body.kind === 'user' ? [item.body.text] : []))).toEqual(['Wait for it', 'And steer this']);
+        expect(
+            listItems(h.store.db, runId, 0).flatMap(item => (item.body.kind === 'user' ? [item.body.text] : []))
+        ).toEqual(['Wait for it', 'And steer this']);
     });
 });
 
 describe('stop and send for an agent that cannot steer', () => {
     /** The statuses a run went through, in order, as the daemon published them. */
-    const trail = (h: Harness, runId: string) => h.events()
-        .flatMap(event => (event.data.type === 'run.upserted' && event.data.run.id === runId ? [event.data.run.status] : []))
-        .filter((status, index, all) => status !== all[index - 1]);
-    const stoppedToSend = (h: Harness, runId: string) => h.events().some(event => event.data.type === 'run.upserted' && event.data.run.id === runId && event.data.run.status === 'cancelled' && event.data.run.statusReason === STOPPED_TO_SEND_REASON);
+    const trail = (h: Harness, runId: string) =>
+        h
+            .events()
+            .flatMap(event =>
+                event.data.type === 'run.upserted' && event.data.run.id === runId ? [event.data.run.status] : []
+            )
+            .filter((status, index, all) => status !== all[index - 1]);
+    const stoppedToSend = (h: Harness, runId: string) =>
+        h
+            .events()
+            .some(
+                event =>
+                    event.data.type === 'run.upserted' &&
+                    event.data.run.id === runId &&
+                    event.data.run.status === 'cancelled' &&
+                    event.data.run.statusReason === STOPPED_TO_SEND_REASON
+            );
 
     test('Send now ends the running turn, and the message is the next turn of the same session, told that the last one was stopped', async () => {
         const { h, engine, chat, send, chatNow, queue, bodies, people, start, release } = await setup();
@@ -493,10 +571,14 @@ describe('stop and send for an agent that cannot steer', () => {
         await waitFor(() => engine.turns.length === 2, 'the message as the next turn');
 
         // The agent is told the runtime ended its turn; the person's bubble is their words alone.
-        expect(engine.turns[1]).toMatchObject({ prompt: `${ STOPPED_TURN_MESSAGE }\n\nsecond`, resumeSessionId: 's1' });
+        expect(engine.turns[1]).toMatchObject({ prompt: `${STOPPED_TURN_MESSAGE}\n\nsecond`, resumeSessionId: 's1' });
         expect(people(runId)).toEqual(['Start', 'second']);
         // What the stopped turn had said stays, closed, before the bubble.
-        expect(bodies(runId).slice(0, 3)).toEqual([{ kind: 'user', text: 'Start' }, { kind: 'assistant', text: 'before 1', done: true }, { kind: 'user', text: 'second' }]);
+        expect(bodies(runId).slice(0, 3)).toEqual([
+            { kind: 'user', text: 'Start' },
+            { kind: 'assistant', text: 'before 1', done: true },
+            { kind: 'user', text: 'second' },
+        ]);
         expect(engine.steered).toEqual([]);
         expect(queue().map(brief)).toEqual([['queue', 'first']]);
         expect(chatNow().queuePaused).toBeUndefined();
@@ -517,45 +599,66 @@ describe('stop and send for an agent that cannot steer', () => {
     });
 
     test('a call the stopped turn left running is shown as stopped', async () => {
-        const { h, engine, chat, send, queue, bodies, start } = await setup(undefined, {}, {
-            script: async function* ({ number, signal }) {
-                yield { type: 'session', sessionId: 's1' };
+        const { h, engine, chat, send, queue, bodies, start } = await setup(
+            undefined,
+            {},
+            {
+                script: async function* ({ number, signal }) {
+                    yield { type: 'session', sessionId: 's1' };
 
-                if (number === 1) {
-                    yield { type: 'tool', toolCallId: 'call-1', name: 'Bash', input: { command: 'sleep 60' }, state: 'running' };
-                    await untilAborted(signal);
-                }
+                    if (number === 1) {
+                        yield {
+                            type: 'tool',
+                            toolCallId: 'call-1',
+                            name: 'Bash',
+                            input: { command: 'sleep 60' },
+                            state: 'running',
+                        };
+                        await untilAborted(signal);
+                    }
 
-                yield { type: 'done', result: `turn ${ number }` };
-            },
-        });
+                    yield { type: 'done', result: `turn ${number}` };
+                },
+            }
+        );
         const runId = await start();
 
         send('now please');
         h.ok('chat.sendQueued', { chatId: chat.id, itemId: queue()[0].id });
         await waitFor(() => engine.turns.length === 2 && h.run(runId).status === 'succeeded', 'the sent turn to end');
 
-        expect(bodies(runId)[1]).toEqual({ kind: 'tool', toolCallId: 'call-1', name: 'Bash', input: { command: 'sleep 60' }, state: 'error', error: STOPPED_TOOL });
+        expect(bodies(runId)[1]).toEqual({
+            kind: 'tool',
+            toolCallId: 'call-1',
+            name: 'Bash',
+            input: { command: 'sleep 60' },
+            state: 'error',
+            error: STOPPED_TOOL,
+        });
         expect(bodies(runId).some(body => body.kind === 'error')).toBe(false);
         expect(trail(h, runId)).not.toContain('failed');
     });
 
     test('an engine that errors on its way out is not a failure either, and the turn is not repeated', async () => {
-        const { h, engine, chat, send, queue, bodies, start } = await setup(undefined, {}, {
-            script: async function* ({ number, signal }) {
-                yield { type: 'session', sessionId: 's1' };
+        const { h, engine, chat, send, queue, bodies, start } = await setup(
+            undefined,
+            {},
+            {
+                script: async function* ({ number, signal }) {
+                    yield { type: 'session', sessionId: 's1' };
 
-                if (number === 1) {
-                    await untilAborted(signal).catch(() => undefined);
-                    // A process that was told to stop reports it as a passing engine failure, which would be retried after a wait.
-                    yield { type: 'error', message: 'The agent process exited', retryable: true };
+                    if (number === 1) {
+                        await untilAborted(signal).catch(() => undefined);
+                        // A process that was told to stop reports it as a passing engine failure, which would be retried after a wait.
+                        yield { type: 'error', message: 'The agent process exited', retryable: true };
 
-                    return;
-                }
+                        return;
+                    }
 
-                yield { type: 'done', result: `turn ${ number }` };
-            },
-        });
+                    yield { type: 'done', result: `turn ${number}` };
+                },
+            }
+        );
         const runId = await start();
 
         send('now please');
@@ -563,7 +666,7 @@ describe('stop and send for an agent that cannot steer', () => {
         await waitFor(() => h.run(runId).status === 'succeeded', 'the sent turn to end');
 
         expect(engine.turns).toHaveLength(2);
-        expect(engine.turns[1].prompt).toBe(`${ STOPPED_TURN_MESSAGE }\n\nnow please`);
+        expect(engine.turns[1].prompt).toBe(`${STOPPED_TURN_MESSAGE}\n\nnow please`);
         expect(trail(h, runId)).not.toContain('failed');
         expect(trail(h, runId)).not.toContain('blocked');
         expect(bodies(runId).some(body => body.kind === 'error')).toBe(false);
@@ -579,7 +682,7 @@ describe('stop and send for an agent that cannot steer', () => {
         h.ok('chat.sendQueued', { chatId: chat.id, itemId: queue()[1].id });
         await waitFor(() => engine.turns.length === 2, 'the first message as the next turn');
 
-        expect(engine.turns[1].prompt).toBe(`${ STOPPED_TURN_MESSAGE }\n\none`);
+        expect(engine.turns[1].prompt).toBe(`${STOPPED_TURN_MESSAGE}\n\none`);
 
         release(2);
         await waitFor(() => engine.turns.length === 3, 'the second message as the turn after it');
@@ -613,18 +716,22 @@ describe('stop and send for an agent that cannot steer', () => {
 
     test('an agent that answers while it is being stopped has finished: the run succeeds, and the message goes as an ordinary next turn', async () => {
         const answer = latch();
-        const { h, engine, chat, send, queue, start } = await setup(undefined, {}, {
-            script: async function* ({ number }) {
-                yield { type: 'session', sessionId: 's1' };
+        const { h, engine, chat, send, queue, start } = await setup(
+            undefined,
+            {},
+            {
+                script: async function* ({ number }) {
+                    yield { type: 'session', sessionId: 's1' };
 
-                if (number === 1) {
-                    // Does not notice the abort: its answer was on its way.
-                    await answer.wait();
-                }
+                    if (number === 1) {
+                        // Does not notice the abort: its answer was on its way.
+                        await answer.wait();
+                    }
 
-                yield { type: 'done', result: `turn ${ number }` };
-            },
-        });
+                    yield { type: 'done', result: `turn ${number}` };
+                },
+            }
+        );
         const runId = await start();
 
         send('now please');
@@ -690,10 +797,21 @@ describe('stop and send for an agent that cannot steer', () => {
 
         expect(message.runId).toBe(runId);
         h.ok('chat.sendQueued', { chatId, itemId });
-        await waitFor(() => engine.turns.length === 2 && h.run(runId).status === 'running', 'the message as the next turn');
+        await waitFor(
+            () => engine.turns.length === 2 && h.run(runId).status === 'running',
+            'the message as the next turn'
+        );
 
-        const columns = new Map(projectSnapshot(h.store, project.id).statuses.map(status => [status.id, status.category]));
-        const trail = h.events().flatMap(event => (event.data.type === 'task.upserted' && event.data.task.id === task.id ? [columns.get(event.data.task.statusId)] : []));
+        const columns = new Map(
+            projectSnapshot(h.store, project.id).statuses.map(status => [status.id, status.category])
+        );
+        const trail = h
+            .events()
+            .flatMap(event =>
+                event.data.type === 'task.upserted' && event.data.task.id === task.id
+                    ? [columns.get(event.data.task.statusId)]
+                    : []
+            );
 
         expect(trail.filter((category, index) => category !== trail[index - 1])).toEqual(['todo', 'active']);
 
@@ -701,7 +819,11 @@ describe('stop and send for an agent that cannot steer', () => {
         h.ok('run.cancel', { runId });
         await waitFor(() => h.run(runId).status === 'cancelled', 'the stop');
 
-        expect(columns.get(projectSnapshot(h.store, project.id).tasks.find(candidate => candidate.id === task.id)!.statusId)).toBe('todo');
+        expect(
+            columns.get(
+                projectSnapshot(h.store, project.id).tasks.find(candidate => candidate.id === task.id)!.statusId
+            )
+        ).toBe('todo');
     });
 });
 
@@ -711,7 +833,10 @@ describe('the queue commands', () => {
 
         await start();
 
-        const upload = async (name: string) => await (await h.fetch(`/v1/projects/${ project.id }/attachments?name=${ name }`, { method: 'POST', body: 'data' })).json() as Attachment;
+        const upload = async (name: string) =>
+            (await (
+                await h.fetch(`/v1/projects/${project.id}/attachments?name=${name}`, { method: 'POST', body: 'data' })
+            ).json()) as Attachment;
         const dropped = await upload('dropped.txt');
         const kept = await upload('kept.txt');
 
@@ -723,8 +848,13 @@ describe('the queue commands', () => {
         expect(h.store.db.query('SELECT id FROM attachments WHERE id = ?').get(dropped.id)).toBeNull();
         expect(existsSync(join(h.config.dataDir, 'attachments', dropped.id))).toBe(false);
 
-        expect(h.ok('chat.removeQueued', { chatId: chat.id, itemId: queue()[0].id, keepFiles: true }).chat.queue).toBeUndefined();
-        expect(h.store.db.query('SELECT chat_id, run_id FROM attachments WHERE id = ?').get(kept.id)).toEqual({ chat_id: null, run_id: null });
+        expect(
+            h.ok('chat.removeQueued', { chatId: chat.id, itemId: queue()[0].id, keepFiles: true }).chat.queue
+        ).toBeUndefined();
+        expect(h.store.db.query('SELECT chat_id, run_id FROM attachments WHERE id = ?').get(kept.id)).toEqual({
+            chat_id: null,
+            run_id: null,
+        });
 
         // Unsent again, so the next message can carry it.
         send('edited', { attachmentIds: [kept.id] });
@@ -762,13 +892,28 @@ describe('the queue commands', () => {
 });
 
 describe('queue rules', () => {
-    const item = (id: string, mode: QueuedMessage['mode']): QueuedMessage => ({ id, mode, text: id, content: id, createdAt: 0 });
+    const item = (id: string, mode: QueuedMessage['mode']): QueuedMessage => ({
+        id,
+        mode,
+        text: id,
+        content: id,
+        createdAt: 0,
+    });
 
     test('busy is any status but the terminal ones and waiting for background work', () => {
         const at = (status: Run['status']) => isAtRest({ status } as Run);
 
-        expect(['succeeded', 'failed', 'cancelled', 'interrupted', 'waiting_background'].map(status => at(status as Run['status']))).toEqual([true, true, true, true, true]);
-        expect(['queued', 'running', 'waiting_user', 'blocked'].map(status => at(status as Run['status']))).toEqual([false, false, false, false]);
+        expect(
+            ['succeeded', 'failed', 'cancelled', 'interrupted', 'waiting_background'].map(status =>
+                at(status as Run['status'])
+            )
+        ).toEqual([true, true, true, true, true]);
+        expect(['queued', 'running', 'waiting_user', 'blocked'].map(status => at(status as Run['status']))).toEqual([
+            false,
+            false,
+            false,
+            false,
+        ]);
     });
 
     test('a message goes to the end of its own kind, the steers first', () => {
@@ -777,10 +922,22 @@ describe('queue rules', () => {
         expect(placeQueued(queue, item('c', 'steer')).map(entry => entry.id)).toEqual(['a', 'c', 'b']);
         expect(placeQueued(queue, item('d', 'queue')).map(entry => entry.id)).toEqual(['a', 'b', 'd']);
         // Becoming a steer moves it to the end of the steers.
-        expect(placeQueued(queue, { ...queue[1], mode: 'steer' }).map(entry => [entry.id, entry.mode])).toEqual([['a', 'steer'], ['b', 'steer']]);
+        expect(placeQueued(queue, { ...queue[1], mode: 'steer' }).map(entry => [entry.id, entry.mode])).toEqual([
+            ['a', 'steer'],
+            ['b', 'steer'],
+        ]);
     });
 
     test('at rest the steers become the next turns, in their order', () => {
-        expect(settleSteers([item('a', 'steer'), item('b', 'steer'), item('c', 'queue')]).map(entry => [entry.id, entry.mode])).toEqual([['a', 'queue'], ['b', 'queue'], ['c', 'queue']]);
+        expect(
+            settleSteers([item('a', 'steer'), item('b', 'steer'), item('c', 'queue')]).map(entry => [
+                entry.id,
+                entry.mode,
+            ])
+        ).toEqual([
+            ['a', 'queue'],
+            ['b', 'queue'],
+            ['c', 'queue'],
+        ]);
     });
 });

@@ -17,5 +17,14 @@ export default function ChangesTab() {
     const chat = ui.draft || !ui.chatId ? undefined : project.chats.get(ui.chatId);
 
     // Each place has its own view, so one place's cards are never drawn for another.
-    return isPlaceReady(place) ? <ChangesView key={ `${ project.id }/${ place.workspace?.id ?? place.folder.id }` } projectId={ project.id } place={ place } chat={ chat } /> : <PlaceWaiting />;
+    return isPlaceReady(place) ? (
+        <ChangesView
+            key={`${project.id}/${place.workspace?.id ?? place.folder.id}`}
+            projectId={project.id}
+            place={place}
+            chat={chat}
+        />
+    ) : (
+        <PlaceWaiting />
+    );
 }

@@ -17,7 +17,10 @@ export class RunStream {
     /** Live items and cuts that arrived while the fetch was in flight, in arrival order; they are newer than, or equal to, what it returns. */
     #pending: Array<{ item: StreamItem } | { fromSeq: number }> = [];
 
-    constructor(readonly runId: RunId, private readonly transport: Transport) {
+    constructor(
+        readonly runId: RunId,
+        private readonly transport: Transport
+    ) {
         makeAutoObservable<RunStream, 'transport'>(this, { runId: false, transport: false, byId: observableShallow });
     }
 
@@ -43,12 +46,15 @@ export class RunStream {
             runInAction(() => {
                 this.byId = new Map(fetched.map(item => [item.id, item]));
                 // Replayed in arrival order over the fetched state, so the newest version of an item wins and a cut takes what was cut after it.
-                this.#pending.splice(0).forEach(change => ('item' in change ? this.byId.set(change.item.id, change.item) : this.#cut(change.fromSeq)));
+                this.#pending
+                    .splice(0)
+                    .forEach(change =>
+                        'item' in change ? this.byId.set(change.item.id, change.item) : this.#cut(change.fromSeq)
+                    );
                 this.status = 'ready';
                 this.error = '';
             });
-        }
-        catch (error) {
+        } catch (error) {
             runInAction(() => {
                 this.status = 'failed';
                 this.error = error instanceof Error ? error.message : String(error);
@@ -108,6 +114,8 @@ export class StreamStore {
 
     /** After a resync: every opened stream may have missed items. */
     async reloadAll(): Promise<void> {
-        await Promise.all([...this.#streams.values()].filter(stream => stream.status !== 'idle').map(stream => stream.reload()));
+        await Promise.all(
+            [...this.#streams.values()].filter(stream => stream.status !== 'idle').map(stream => stream.reload())
+        );
     }
 }

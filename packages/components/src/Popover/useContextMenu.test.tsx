@@ -15,10 +15,16 @@ function Area() {
 
     return (
         <>
-            <button type="button" data-area { ...menu.areaProps }>area</button>
-            <output data-open>{ String(menu.isOpen) }</output>
-            <button type="button" data-open-at onClick={ () => menu.openAt(30, 40) }>open at</button>
-            <button type="button" data-close onClick={ menu.close }>close</button>
+            <button type="button" data-area {...menu.areaProps}>
+                area
+            </button>
+            <output data-open>{String(menu.isOpen)}</output>
+            <button type="button" data-open-at onClick={() => menu.openAt(30, 40)}>
+                open at
+            </button>
+            <button type="button" data-close onClick={menu.close}>
+                close
+            </button>
         </>
     );
 }

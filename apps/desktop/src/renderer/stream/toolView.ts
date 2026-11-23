@@ -20,7 +20,8 @@ export interface ToolStatus {
     error?: string;
 }
 
-export const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
+export const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null && !Array.isArray(value);
 
 const lineCount = (text: string) => (text === '' ? 0 : text.split('\n').length);
 
@@ -39,7 +40,11 @@ export function firstString(value: unknown, keys: string[]): string | undefined 
 
 /** `create_task` becomes `Create task`. */
 function humanize(name: string): string {
-    const words = name.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/[_-]+/g, ' ').trim().toLowerCase();
+    const words = name
+        .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+        .replace(/[_-]+/g, ' ')
+        .trim()
+        .toLowerCase();
 
     return words.charAt(0).toUpperCase() + words.slice(1);
 }
@@ -88,7 +93,12 @@ function commandTitle(input: unknown, command?: string): string {
  */
 export function describeTool(name: string, input: unknown, output?: unknown, status?: ToolStatus): ToolView {
     if (name === WORKSPACE_TOOL) {
-        const verb = status?.state === 'running' ? 'Preparing workspace' : status?.state === 'error' ? 'Prepare workspace' : 'Prepared workspace';
+        const verb =
+            status?.state === 'running'
+                ? 'Preparing workspace'
+                : status?.state === 'error'
+                  ? 'Prepare workspace'
+                  : 'Prepared workspace';
 
         return { icon: 'workspace', verb, target: firstString(input, ['branch']), log: true };
     }
@@ -98,16 +108,28 @@ export function describeTool(name: string, input: unknown, output?: unknown, sta
     if (READ_TOOLS.includes(key)) return { icon: 'file', verb: 'Reading file', target: firstString(input, PATH_KEYS) };
 
     if (EDIT_TOOLS.includes(key)) {
-        return { icon: 'code', verb: 'Editing file', target: firstString(input, PATH_KEYS), diff: diffStat(input, output) };
+        return {
+            icon: 'code',
+            verb: 'Editing file',
+            target: firstString(input, PATH_KEYS),
+            diff: diffStat(input, output),
+        };
     }
 
     if (WRITE_TOOLS.includes(key)) {
-        return { icon: 'code', verb: 'Writing file', target: firstString(input, PATH_KEYS), diff: diffStat(input, output) };
+        return {
+            icon: 'code',
+            verb: 'Writing file',
+            target: firstString(input, PATH_KEYS),
+            diff: diffStat(input, output),
+        };
     }
 
-    if (SEARCH_TOOLS.includes(key)) return { icon: 'search', verb: 'Searching', target: firstString(input, ['pattern', 'query', 'q']) };
+    if (SEARCH_TOOLS.includes(key))
+        return { icon: 'search', verb: 'Searching', target: firstString(input, ['pattern', 'query', 'q']) };
 
-    if ([...GLOB_TOOLS, ...LIST_TOOLS].includes(key)) return { icon: 'search', verb: 'Finding files', target: firstString(input, ['pattern', 'path']) };
+    if ([...GLOB_TOOLS, ...LIST_TOOLS].includes(key))
+        return { icon: 'search', verb: 'Finding files', target: firstString(input, ['pattern', 'path']) };
 
     if (COMMAND_TOOLS.includes(key)) {
         const command = firstString(input, ['command', 'cmd']);
@@ -115,7 +137,11 @@ export function describeTool(name: string, input: unknown, output?: unknown, sta
         return { icon: 'terminal', verb: commandTitle(input, command), target: command };
     }
 
-    const target = isRecord(input) ? Object.values(input).find((value): value is string => typeof value === 'string' && value !== '' && value.length <= 80) : undefined;
+    const target = isRecord(input)
+        ? Object.values(input).find(
+              (value): value is string => typeof value === 'string' && value !== '' && value.length <= 80
+          )
+        : undefined;
 
     return { icon: 'tool', verb: humanize(name), target };
 }
@@ -132,12 +158,14 @@ export function classifyTool(name: string, input: unknown): { activity: ToolActi
 
     if (READ_TOOLS.includes(key)) return { activity: 'read', target: firstString(input, PATH_KEYS) };
 
-    if ([...EDIT_TOOLS, ...WRITE_TOOLS, 'delete', 'remove', 'move'].includes(key)) return { activity: 'edit', target: firstString(input, PATH_KEYS) };
+    if ([...EDIT_TOOLS, ...WRITE_TOOLS, 'delete', 'remove', 'move'].includes(key))
+        return { activity: 'edit', target: firstString(input, PATH_KEYS) };
 
     if ([...SEARCH_TOOLS, ...GLOB_TOOLS, 'webfetch', 'fetch'].includes(key)) return { activity: 'search' };
 
     // A listing with no folder named is the working folder.
-    if (LIST_TOOLS.includes(key)) return { activity: 'list', target: firstString(input, ['path', 'dir', 'directory']) ?? '.' };
+    if (LIST_TOOLS.includes(key))
+        return { activity: 'list', target: firstString(input, ['path', 'dir', 'directory']) ?? '.' };
 
     if (COMMAND_TOOLS.includes(key)) return { activity: 'command' };
 

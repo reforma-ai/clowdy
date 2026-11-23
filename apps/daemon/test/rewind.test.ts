@@ -17,7 +17,11 @@ afterEach(async () => {
 });
 
 /** Waits until `check`, which may read the stream over HTTP, comes back with something. */
-async function eventually<T>(check: () => Promise<T | undefined | false | null>, what: string, timeoutMs = 4000): Promise<T> {
+async function eventually<T>(
+    check: () => Promise<T | undefined | false | null>,
+    what: string,
+    timeoutMs = 4000
+): Promise<T> {
     const deadline = Date.now() + timeoutMs;
 
     for (;;) {
@@ -28,7 +32,7 @@ async function eventually<T>(check: () => Promise<T | undefined | false | null>,
         }
 
         if (Date.now() > deadline) {
-            throw new Error(`Timed out waiting for ${ what }`);
+            throw new Error(`Timed out waiting for ${what}`);
         }
 
         await new Promise(resolve => setTimeout(resolve, 5));
@@ -36,13 +40,16 @@ async function eventually<T>(check: () => Promise<T | undefined | false | null>,
 }
 
 /** A message the agent says whole and ends, with its id when it gives one. */
-const say = (text: string, messageId?: string): EngineEvent[] => [{ type: 'text', delta: text, done: false }, { type: 'text', delta: '', done: true, ...(messageId !== undefined && { messageId }) }];
+const say = (text: string, messageId?: string): EngineEvent[] => [
+    { type: 'text', delta: text, done: false },
+    { type: 'text', delta: '', done: true, ...(messageId !== undefined && { messageId }) },
+];
 
 /** A turn that says one message named `m<turn>` and ends. */
 const answering: Script = async function* ({ number }) {
     yield { type: 'session', sessionId: 's1' };
-    yield* say(`answer ${ number }`, `m${ number }`);
-    yield { type: 'done', result: `answer ${ number }` };
+    yield* say(`answer ${number}`, `m${number}`);
+    yield { type: 'done', result: `answer ${number}` };
 };
 
 /** `agent`: the agent the chat is made for. The script stands in for the program, which is not on this machine; Claude's is the one with a compact command. */
@@ -57,19 +64,22 @@ async function setup(script: Script = answering, flagged = true, agent = 'fake')
 
     const project = h.openRepo();
     const { chat } = h.ok('chat.create', { projectId: project.id, engine: agent }) as { chat: Chat };
-    const send = (text: string, fields: Record<string, unknown> = {}) => h.ok('chat.send', { chatId: chat.id, text, ...fields }) as { runId: string };
+    const send = (text: string, fields: Record<string, unknown> = {}) =>
+        h.ok('chat.send', { chatId: chat.id, text, ...fields }) as { runId: string };
     /** The stream as a client reads it. */
-    const read = async () => await (await h.fetch(`/v1/chats/${ chat.id }/items`)).json() as StreamItem[];
-    const settled = (runId: string, turns: number) => waitFor(() => engine.turns.length === turns && h.run(runId).status === 'succeeded', `turn ${ turns } to end`);
+    const read = async () => (await (await h.fetch(`/v1/chats/${chat.id}/items`)).json()) as StreamItem[];
+    const settled = (runId: string, turns: number) =>
+        waitFor(() => engine.turns.length === turns && h.run(runId).status === 'succeeded', `turn ${turns} to end`);
 
     return { h, engine, chat, send, read, settled };
 }
 
 /** What a client may offer on each item: the kind, then `fork`, `edit` or both. */
-const offers = (items: StreamItem[]) => items.map(item => [item.body.kind, ...(item.canFork ? ['fork'] : []), ...(item.canEdit ? ['edit'] : [])].join(' '));
+const offers = (items: StreamItem[]) =>
+    items.map(item => [item.body.kind, ...(item.canFork ? ['fork'] : []), ...(item.canEdit ? ['edit'] : [])].join(' '));
 
 describe('the point a turn ends at', () => {
-    test('is the id the agent gave the turn\'s last message, kept on that item and never sent to a client', async () => {
+    test("is the id the agent gave the turn's last message, kept on that item and never sent to a client", async () => {
         const { h, send, read, settled } = await setup();
         const { runId } = send('Hello');
 
@@ -83,7 +93,7 @@ describe('the point a turn ends at', () => {
         expect(JSON.stringify(items)).not.toContain('m1');
     });
 
-    test('is made again by each turn: the answer of the second turn holds the second turn\'s id, and the first keeps its own', async () => {
+    test("is made again by each turn: the answer of the second turn holds the second turn's id, and the first keeps its own", async () => {
         const { h, send, read, settled } = await setup();
         const { runId } = send('One');
 
@@ -92,7 +102,12 @@ describe('the point a turn ends at', () => {
         await settled(runId, 2);
 
         expect(await read().then(offers)).toEqual(['user edit', 'assistant fork', 'user edit', 'assistant fork']);
-        expect(listItems(h.store.db, runId, 0).map(item => itemRef(h.store.db, runId, item.seq))).toEqual([undefined, 'm1', undefined, 'm2']);
+        expect(listItems(h.store.db, runId, 0).map(item => itemRef(h.store.db, runId, item.seq))).toEqual([
+            undefined,
+            'm1',
+            undefined,
+            'm2',
+        ]);
     });
 
     test('goes out as the item again once it is stamped, so a client that had the item learns it can fork', async () => {
@@ -101,7 +116,15 @@ describe('the point a turn ends at', () => {
 
         await settled(runId, 1);
 
-        const about = h.events().flatMap(event => event.data.type === 'stream.item' && event.data.item.runId === runId && event.data.item.body.kind === 'assistant' ? [event.data.item] : []);
+        const about = h
+            .events()
+            .flatMap(event =>
+                event.data.type === 'stream.item' &&
+                event.data.item.runId === runId &&
+                event.data.item.body.kind === 'assistant'
+                    ? [event.data.item]
+                    : []
+            );
 
         // The text streamed without the flag, and the last publication of the item has it.
         expect(about.length).toBeGreaterThan(1);
@@ -114,7 +137,14 @@ describe('the point a turn ends at', () => {
             yield { type: 'session', sessionId: 's1' };
             yield* say('Running it', 'm1');
             yield { type: 'tool', toolCallId: 'c1', name: 'Bash', input: { command: 'ls' }, state: 'running' };
-            yield { type: 'tool', toolCallId: 'c1', name: 'Bash', input: { command: 'ls' }, state: 'done', output: 'a' };
+            yield {
+                type: 'tool',
+                toolCallId: 'c1',
+                name: 'Bash',
+                input: { command: 'ls' },
+                state: 'done',
+                output: 'a',
+            };
             yield { type: 'done', result: 'Running it' };
         });
         const { runId } = send('Hello');
@@ -131,12 +161,10 @@ describe('the point a turn ends at', () => {
             if (number === 1) {
                 yield* say('No id given');
                 yield { type: 'done', result: 'No id given' };
-            }
-            else if (number === 2) {
+            } else if (number === 2) {
                 yield* say('   ', 'blank');
                 yield { type: 'done' };
-            }
-            else {
+            } else {
                 yield* say('Half an answer', 'm3');
                 yield { type: 'error', message: 'The agent fell over' };
             }
@@ -149,19 +177,33 @@ describe('the point a turn ends at', () => {
         send('Three');
         await waitFor(() => h.run(runId).status === 'failed', 'the third turn to fail');
 
-        expect(listItems(h.store.db, runId, 0).every(item => itemRef(h.store.db, runId, item.seq) === undefined)).toBe(true);
-        expect(await read().then(offers)).toEqual(['user edit', 'assistant', 'user', 'assistant', 'user', 'assistant', 'error']);
+        expect(listItems(h.store.db, runId, 0).every(item => itemRef(h.store.db, runId, item.seq) === undefined)).toBe(
+            true
+        );
+        expect(await read().then(offers)).toEqual([
+            'user edit',
+            'assistant',
+            'user',
+            'assistant',
+            'user',
+            'assistant',
+            'error',
+        ]);
     });
 
-    test('is not made by the agent\'s compact turn, whose report is no answer of the conversation; the message after it starts no turn to edit', async () => {
-        const { h, chat, send, read, settled } = await setup(async function* ({ number, options }) {
-            yield { type: 'session', sessionId: 's1' };
+    test("is not made by the agent's compact turn, whose report is no answer of the conversation; the message after it starts no turn to edit", async () => {
+        const { h, chat, send, read, settled } = await setup(
+            async function* ({ number, options }) {
+                yield { type: 'session', sessionId: 's1' };
 
-            const text = options.prompt === '/compact' ? 'Compacted the conversation' : `answer ${ number }`;
+                const text = options.prompt === '/compact' ? 'Compacted the conversation' : `answer ${number}`;
 
-            yield* say(text, `m${ number }`);
-            yield { type: 'done', result: text };
-        }, true, 'claude');
+                yield* say(text, `m${number}`);
+                yield { type: 'done', result: text };
+            },
+            true,
+            'claude'
+        );
         const { runId } = send('One');
 
         await settled(runId, 1);
@@ -170,8 +212,20 @@ describe('the point a turn ends at', () => {
         send('Two');
         await settled(runId, 3);
 
-        expect(await read().then(offers)).toEqual(['user edit', 'assistant fork', 'assistant', 'user', 'assistant fork']);
-        expect(listItems(h.store.db, runId, 0).map(item => itemRef(h.store.db, runId, item.seq))).toEqual([undefined, 'm1', undefined, undefined, 'm3']);
+        expect(await read().then(offers)).toEqual([
+            'user edit',
+            'assistant fork',
+            'assistant',
+            'user',
+            'assistant fork',
+        ]);
+        expect(listItems(h.store.db, runId, 0).map(item => itemRef(h.store.db, runId, item.seq))).toEqual([
+            undefined,
+            'm1',
+            undefined,
+            undefined,
+            'm3',
+        ]);
     });
 
     test('a turn the agent starts by itself in a session that stays open ends at a point of its own', async () => {
@@ -193,13 +247,29 @@ describe('the point a turn ends at', () => {
         const { runId } = send('Run the tests');
 
         // The session stays open (the command is in the background), so the run waits instead of ending.
-        await waitFor(() => engine.turns.length === 1 && h.run(runId).status === 'waiting_background', 'the run to wait');
+        await waitFor(
+            () => engine.turns.length === 1 && h.run(runId).status === 'waiting_background',
+            'the run to wait'
+        );
 
         first.release();
-        await eventually(async () => (await read()).some(item => item.body.kind === 'assistant' && item.body.text === 'It passed' && item.canFork), 'the report to hold a point');
+        await eventually(
+            async () =>
+                (await read()).some(
+                    item => item.body.kind === 'assistant' && item.body.text === 'It passed' && item.canFork
+                ),
+            'the report to hold a point'
+        );
 
         // The stream says the command finished between the two answers; a note holds no point.
-        expect(listItems(h.store.db, runId, 0).map(item => [item.body.kind, itemRef(h.store.db, runId, item.seq)])).toEqual([['user', undefined], ['assistant', 'm1'], ['note', undefined], ['assistant', 'm2']]);
+        expect(
+            listItems(h.store.db, runId, 0).map(item => [item.body.kind, itemRef(h.store.db, runId, item.seq)])
+        ).toEqual([
+            ['user', undefined],
+            ['assistant', 'm1'],
+            ['note', undefined],
+            ['assistant', 'm2'],
+        ]);
     });
 });
 
@@ -229,8 +299,8 @@ describe('what a client may offer on an item', () => {
         const { h, send, read, settled } = await setup(async function* ({ number }) {
             yield { type: 'session', sessionId: 's1' };
             // The first turn gives no id; the second does.
-            yield* say(`answer ${ number }`, number === 1 ? undefined : `m${ number }`);
-            yield { type: 'done', result: `answer ${ number }` };
+            yield* say(`answer ${number}`, number === 1 ? undefined : `m${number}`);
+            yield { type: 'done', result: `answer ${number}` };
         });
         const { runId } = send('One');
 
@@ -241,10 +311,17 @@ describe('what a client may offer on an item', () => {
         await settled(runId, 3);
 
         expect(listItems(h.store.db, runId, 0).map(item => item.body.kind)).toHaveLength(6);
-        expect(offers(await read())).toEqual(['user edit', 'assistant', 'user', 'assistant fork', 'user edit', 'assistant fork']);
+        expect(offers(await read())).toEqual([
+            'user edit',
+            'assistant',
+            'user',
+            'assistant fork',
+            'user edit',
+            'assistant fork',
+        ]);
     });
 
-    test('a steer in the middle of a turn is not a message that starts one, and the answer after it is the turn\'s point', async () => {
+    test("a steer in the middle of a turn is not a message that starts one, and the answer after it is the turn's point", async () => {
         const gate = latch();
         const { h, engine, send, read, settled } = await setup(async function* (turn) {
             yield { type: 'session', sessionId: 's1' };
@@ -274,7 +351,11 @@ describe('what a client may offer on an item', () => {
         const { runId } = send('One');
 
         await settled(runId, 1);
-        appendItem(h.store, runId, { kind: 'user', text: 'From a thread', from: { kind: 'thread', chatId: 'cht_other', title: 'Other' } });
+        appendItem(h.store, runId, {
+            kind: 'user',
+            text: 'From a thread',
+            from: { kind: 'thread', chatId: 'cht_other', title: 'Other' },
+        });
         appendItem(h.store, runId, { kind: 'user', text: 'Done', from: { kind: 'threadNotice', threads: [] } });
 
         expect(offers(await read())).toEqual(['user edit', 'assistant fork', 'user', 'user']);
@@ -315,23 +396,23 @@ describe('what a client may offer on an item', () => {
         expect(await read().then(offers)).toEqual(['user', 'assistant']);
     });
 
-    test('the run\'s own stream reads the same, and a sub-agent\'s stream offers nothing', async () => {
+    test("the run's own stream reads the same, and a sub-agent's stream offers nothing", async () => {
         const { h, send, settled } = await setup(async function* ({ number }) {
             yield { type: 'session', sessionId: 's1' };
             yield { type: 'subagent', agentId: 'a1', name: 'Explore', state: 'running' };
             yield { type: 'text', delta: 'Looking', done: false, agentId: 'a1' };
             yield { type: 'text', delta: '', done: true, agentId: 'a1' };
             yield { type: 'subagent', agentId: 'a1', name: 'Explore', state: 'done', summary: 'Looking' };
-            yield* say(`answer ${ number }`, `m${ number }`);
-            yield { type: 'done', result: `answer ${ number }` };
+            yield* say(`answer ${number}`, `m${number}`);
+            yield { type: 'done', result: `answer ${number}` };
         });
         const { runId } = send('One');
 
         await settled(runId, 1);
 
         const child = h.store.db.query('SELECT id FROM runs WHERE parent_run_id = ?').get(runId) as { id: string };
-        const own = await (await h.fetch(`/v1/runs/${ runId }/items`)).json() as StreamItem[];
-        const theirs = await (await h.fetch(`/v1/runs/${ child.id }/items`)).json() as StreamItem[];
+        const own = (await (await h.fetch(`/v1/runs/${runId}/items`)).json()) as StreamItem[];
+        const theirs = (await (await h.fetch(`/v1/runs/${child.id}/items`)).json()) as StreamItem[];
 
         expect(offers(own)).toEqual(['user edit', 'assistant fork']);
         expect(theirs.length).toBeGreaterThan(0);

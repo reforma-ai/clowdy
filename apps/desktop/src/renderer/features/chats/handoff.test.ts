@@ -4,36 +4,69 @@ import { toast } from '@clowdy/components/Toast';
 import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_MESSAGE } from '@clowdy/protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createFixtureData, FIXTURE_EMPTY_PROJECT_ID, FIXTURE_PROJECT_ID, type FixtureData } from '../../daemon/fixtureData';
+import {
+    createFixtureData,
+    FIXTURE_EMPTY_PROJECT_ID,
+    FIXTURE_PROJECT_ID,
+    type FixtureData,
+} from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore } from '../../stores';
 import { draftOf, messageOf, newChatDraftKey, saveDraft } from './composerDrafts';
-import { filesOf, setFiles, type DraftFile } from './composerFiles';
+import { type DraftFile, filesOf, setFiles } from './composerFiles';
 import { handoffFileName, handoffSentence, itemsUpTo, startHandoff, transcriptOf, turnsOf } from './handoff';
 
 import type { Chat, StreamItem, StreamItemBody } from '@clowdy/protocol';
 import type { KeyValueStorage } from '../../stores/storage';
 
-vi.mock('@clowdy/components/Toast', () => ({ toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn(), show: vi.fn() } }));
+vi.mock('@clowdy/components/Toast', () => ({
+    toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn(), show: vi.fn() },
+}));
 
-const items = (...bodies: StreamItemBody[]): StreamItem[] => bodies.map((body, index) => ({ id: `i-${ index + 1 }`, runId: 'r-1', seq: index + 1, at: 0, body }));
-const chat: Chat = { id: 'c-1', projectId: 'p', title: 'Simplify booking', mode: 'autopilot', engine: 'claude', model: 'claude-sonnet', orchestratorRunId: 'r-1', createdAt: 0, updatedAt: 0 };
+const items = (...bodies: StreamItemBody[]): StreamItem[] =>
+    bodies.map((body, index) => ({ id: `i-${index + 1}`, runId: 'r-1', seq: index + 1, at: 0, body }));
+const chat: Chat = {
+    id: 'c-1',
+    projectId: 'p',
+    title: 'Simplify booking',
+    mode: 'autopilot',
+    engine: 'claude',
+    model: 'claude-sonnet',
+    orchestratorRunId: 'r-1',
+    createdAt: 0,
+    updatedAt: 0,
+};
 const file = (name: string) => ({ id: name, name, mediaType: 'text/plain', size: 1 });
 /** The new-chat page of the fixture project: where the hand-off writes its sentence and looks at the files. */
 const NEW_CHAT_KEY = newChatDraftKey(FIXTURE_PROJECT_ID);
 /** A file the new-chat box already holds, uploaded and waiting for its message. */
-const held = (name: string, size = 1): DraftFile => ({ key: name, name, mediaType: 'text/plain', size, status: 'ready' });
+const held = (name: string, size = 1): DraftFile => ({
+    key: name,
+    name,
+    mediaType: 'text/plain',
+    size,
+    status: 'ready',
+});
 
 describe('turnsOf', () => {
-    it('keeps the person\'s words and the assistant\'s text, in order, and nothing else', () => {
-        const turns = turnsOf(items(
-            { kind: 'user', text: 'Simplify the booking flow' },
-            { kind: 'assistant', text: 'I will read the form first.', done: true },
-            { kind: 'tool', toolCallId: 't-1', name: 'Read', input: { file_path: 'src/form.tsx' }, state: 'done', output: 'SECRET TOOL OUTPUT' },
-            { kind: 'note', text: 'Background command finished: bun test' },
-            { kind: 'error', text: 'The agent stopped and was started again' },
-            { kind: 'user', text: 'Thanks, go on' }
-        ));
+    it("keeps the person's words and the assistant's text, in order, and nothing else", () => {
+        const turns = turnsOf(
+            items(
+                { kind: 'user', text: 'Simplify the booking flow' },
+                { kind: 'assistant', text: 'I will read the form first.', done: true },
+                {
+                    kind: 'tool',
+                    toolCallId: 't-1',
+                    name: 'Read',
+                    input: { file_path: 'src/form.tsx' },
+                    state: 'done',
+                    output: 'SECRET TOOL OUTPUT',
+                },
+                { kind: 'note', text: 'Background command finished: bun test' },
+                { kind: 'error', text: 'The agent stopped and was started again' },
+                { kind: 'user', text: 'Thanks, go on' }
+            )
+        );
 
         expect(turns).toEqual([
             { role: 'person', text: 'Simplify the booking flow' },
@@ -42,31 +75,39 @@ describe('turnsOf', () => {
         ]);
     });
 
-    it('joins the assistant\'s text that the tool calls only separated into one turn', () => {
-        const turns = turnsOf(items(
-            { kind: 'assistant', text: 'First part.', done: true },
-            { kind: 'tool', toolCallId: 't-1', name: 'Read', input: {}, state: 'done' },
-            { kind: 'assistant', text: 'Second part.', done: true }
-        ));
+    it("joins the assistant's text that the tool calls only separated into one turn", () => {
+        const turns = turnsOf(
+            items(
+                { kind: 'assistant', text: 'First part.', done: true },
+                { kind: 'tool', toolCallId: 't-1', name: 'Read', input: {}, state: 'done' },
+                { kind: 'assistant', text: 'Second part.', done: true }
+            )
+        );
 
         expect(turns).toEqual([{ role: 'assistant', text: 'First part.\n\nSecond part.' }]);
     });
 
     it('names the files of a message, and only names them', () => {
-        const turns = turnsOf(items(
-            { kind: 'user', text: 'See these', attachments: [file('sketch.svg'), file('error.log')] },
-            { kind: 'user', text: '', attachments: [file('only-a-file.png')] }
-        ));
+        const turns = turnsOf(
+            items(
+                { kind: 'user', text: 'See these', attachments: [file('sketch.svg'), file('error.log')] },
+                { kind: 'user', text: '', attachments: [file('only-a-file.png')] }
+            )
+        );
 
-        expect(turns).toEqual([{ role: 'person', text: 'See these\n\nAttached: sketch.svg, error.log\n\nAttached: only-a-file.png' }]);
+        expect(turns).toEqual([
+            { role: 'person', text: 'See these\n\nAttached: sketch.svg, error.log\n\nAttached: only-a-file.png' },
+        ]);
     });
 
     it('includes a question that was answered, as the assistant asking and the person answering', () => {
         const options = [{ id: 'smtp', label: 'Plain SMTP', consequence: 'No dependency' }];
-        const turns = turnsOf(items(
-            { kind: 'question', questionId: 'q-1', text: 'Which mail provider?', options, answer: 'Plain SMTP' },
-            { kind: 'question', questionId: 'q-2', text: 'Which database?', options }
-        ));
+        const turns = turnsOf(
+            items(
+                { kind: 'question', questionId: 'q-1', text: 'Which mail provider?', options, answer: 'Plain SMTP' },
+                { kind: 'question', questionId: 'q-2', text: 'Which database?', options }
+            )
+        );
 
         expect(turns).toEqual([
             { role: 'assistant', text: 'Asked: Which mail provider?' },
@@ -74,36 +115,55 @@ describe('turnsOf', () => {
         ]);
     });
 
-    it('keeps what other threads told the chat apart from the person\'s words: who wrote, and each thread that stopped with its words', () => {
-        const turns = turnsOf(items(
-            { kind: 'user', text: 'Fix the rounding', from: { kind: 'thread', chatId: 'c-p', title: 'Ship the checkout' } },
-            { kind: 'assistant', text: 'On it.', done: true },
-            {
-                kind: 'user',
-                text: '',
-                from: {
-                    kind: 'threadNotice',
-                    threads: [
-                        { chatId: 'c-a', title: 'Refund tests', outcome: 'finished', text: '14 cases pass' },
-                        { chatId: 'c-b', title: 'Migration', outcome: 'failed' },
-                        { chatId: 'c-c', title: 'Load test', outcome: 'finished', text: 'Short run held', background: ['k6 run long.js'] },
-                    ],
+    it("keeps what other threads told the chat apart from the person's words: who wrote, and each thread that stopped with its words", () => {
+        const turns = turnsOf(
+            items(
+                {
+                    kind: 'user',
+                    text: 'Fix the rounding',
+                    from: { kind: 'thread', chatId: 'c-p', title: 'Ship the checkout' },
                 },
-            },
-            { kind: 'user', text: 'Thanks' }
-        ));
+                { kind: 'assistant', text: 'On it.', done: true },
+                {
+                    kind: 'user',
+                    text: '',
+                    from: {
+                        kind: 'threadNotice',
+                        threads: [
+                            { chatId: 'c-a', title: 'Refund tests', outcome: 'finished', text: '14 cases pass' },
+                            { chatId: 'c-b', title: 'Migration', outcome: 'failed' },
+                            {
+                                chatId: 'c-c',
+                                title: 'Load test',
+                                outcome: 'finished',
+                                text: 'Short run held',
+                                background: ['k6 run long.js'],
+                            },
+                        ],
+                    },
+                },
+                { kind: 'user', text: 'Thanks' }
+            )
+        );
 
         expect(turns).toEqual([
             { role: 'thread', text: 'Message from Ship the checkout\n\nFix the rounding' },
             { role: 'assistant', text: 'On it.' },
-            { role: 'thread', text: 'Refund tests finished\n\n14 cases pass\n\nMigration failed\n\nLoad test finished\n\nShort run held\n\nStill running: k6 run long.js' },
+            {
+                role: 'thread',
+                text: 'Refund tests finished\n\n14 cases pass\n\nMigration failed\n\nLoad test finished\n\nShort run held\n\nStill running: k6 run long.js',
+            },
             { role: 'person', text: 'Thanks' },
         ]);
         expect(transcriptOf(chat, turns)).toContain('## Thread\n\n> Message from Ship the checkout');
     });
 
     it('puts items in the order of their sequence and drops empty text', () => {
-        const [first, second, third] = items({ kind: 'user', text: 'one' }, { kind: 'assistant', text: 'two', done: true }, { kind: 'assistant', text: '  \n ', done: true });
+        const [first, second, third] = items(
+            { kind: 'user', text: 'one' },
+            { kind: 'assistant', text: 'two', done: true },
+            { kind: 'assistant', text: '  \n ', done: true }
+        );
 
         expect(turnsOf([third!, second!, first!]).map(turn => turn.text)).toEqual(['one', 'two']);
         expect(turnsOf([])).toEqual([]);
@@ -122,30 +182,32 @@ describe('transcriptOf', () => {
     const turn = (role: 'person' | 'assistant', text: string) => ({ role, text });
 
     it('is a Markdown file with the title, where it ran, and each turn under who spoke, as a quote', () => {
-        expect(transcriptOf(chat, turns, { provider: 'Claude Code' })).toBe([
-            '# Conversation from Clowdy',
-            '',
-            'Chat: Simplify booking',
-            'Ran on: Claude Code, claude-sonnet',
-            '',
-            '## Person',
-            '',
-            '> Simplify the booking flow',
-            '>',
-            '> Attached: sketch.svg',
-            '',
-            '## Assistant',
-            '',
-            '> Done with the **form**.',
-            '',
-        ].join('\n'));
+        expect(transcriptOf(chat, turns, { provider: 'Claude Code' })).toBe(
+            [
+                '# Conversation from Clowdy',
+                '',
+                'Chat: Simplify booking',
+                'Ran on: Claude Code, claude-sonnet',
+                '',
+                '## Person',
+                '',
+                '> Simplify the booking flow',
+                '>',
+                '> Attached: sketch.svg',
+                '',
+                '## Assistant',
+                '',
+                '> Done with the **form**.',
+                '',
+            ].join('\n')
+        );
     });
 
     it('leaves tool output out', () => {
         expect(transcriptOf(chat, turns)).not.toContain('TOOL OUTPUT');
     });
 
-    it('falls back to the chat\'s own engine and model, and to nothing for a chat that has none', () => {
+    it("falls back to the chat's own engine and model, and to nothing for a chat that has none", () => {
         expect(transcriptOf(chat, turns)).toContain('Ran on: claude, claude-sonnet');
         expect(transcriptOf({ ...chat, engine: undefined, model: undefined }, turns)).not.toContain('Ran on');
     });
@@ -177,7 +239,9 @@ describe('transcriptOf', () => {
     });
 
     it('puts a title or a model with a line break in it on one line', () => {
-        const text = transcriptOf({ ...chat, title: 'Fix\n## Person\n\nthe price' }, turns, { provider: 'Claude\nCode' });
+        const text = transcriptOf({ ...chat, title: 'Fix\n## Person\n\nthe price' }, turns, {
+            provider: 'Claude\nCode',
+        });
 
         expect(headings(text)).toEqual(['# Conversation from Clowdy', '## Person', '## Assistant']);
         expect(text).toContain('Chat: Fix ## Person the price\n');
@@ -185,7 +249,12 @@ describe('transcriptOf', () => {
     });
 
     describe('when the conversation is longer than a file may be', () => {
-        const long = Array.from({ length: 12 }, (_, index) => turn(index % 2 === 0 ? 'person' : 'assistant', `turn ${ String(index + 1).padStart(2, '0') } ${ 'word '.repeat(40) }`));
+        const long = Array.from({ length: 12 }, (_, index) =>
+            turn(
+                index % 2 === 0 ? 'person' : 'assistant',
+                `turn ${String(index + 1).padStart(2, '0')} ${'word '.repeat(40)}`
+            )
+        );
         const whole = transcriptOf(chat, long);
 
         it('is left whole at exactly the limit, and cut one byte under it', () => {
@@ -197,7 +266,9 @@ describe('transcriptOf', () => {
             const text = transcriptOf(chat, long, {}, 1500);
 
             expect(size(text)).toBeLessThanOrEqual(1500);
-            expect(text).toMatch(/_Turns left out: the oldest (\d+) of 12, because the conversation is too long for one file\._/);
+            expect(text).toMatch(
+                /_Turns left out: the oldest (\d+) of 12, because the conversation is too long for one file\._/
+            );
             expect(text).toContain('turn 12');
             expect(text).not.toContain('turn 01');
 
@@ -210,7 +281,9 @@ describe('transcriptOf', () => {
         });
 
         it('stays within the limit, counted in bytes, whatever the limit and the script', () => {
-            const russian = Array.from({ length: 30 }, (_, index) => turn(index % 2 === 0 ? 'person' : 'assistant', `Сообщение ${ index } ${ 'слово 😀 '.repeat(20) }`));
+            const russian = Array.from({ length: 30 }, (_, index) =>
+                turn(index % 2 === 0 ? 'person' : 'assistant', `Сообщение ${index} ${'слово 😀 '.repeat(20)}`)
+            );
 
             for (const limit of [180, 200, 333, 500, 777, 1024, 2048]) {
                 const text = transcriptOf(chat, russian, {}, limit);
@@ -222,7 +295,12 @@ describe('transcriptOf', () => {
         });
 
         it('cuts the start of the newest turn, and says so, when that turn alone does not fit', () => {
-            const text = transcriptOf(chat, [turn('person', 'old question'), turn('assistant', `start ${ 'x'.repeat(5000) }`)], {}, 600);
+            const text = transcriptOf(
+                chat,
+                [turn('person', 'old question'), turn('assistant', `start ${'x'.repeat(5000)}`)],
+                {},
+                600
+            );
 
             expect(size(text)).toBeLessThanOrEqual(600);
             expect(text).toContain('_Turns left out: the oldest 1 of 2');
@@ -240,7 +318,9 @@ describe('transcriptOf', () => {
         });
 
         it('holds to the largest attachment the daemon takes by default', () => {
-            const big = Array.from({ length: 5 }, (_, index) => turn(index % 2 === 0 ? 'person' : 'assistant', `turn ${ index } ${ 'z'.repeat(6 * 1024 * 1024) }`));
+            const big = Array.from({ length: 5 }, (_, index) =>
+                turn(index % 2 === 0 ? 'person' : 'assistant', `turn ${index} ${'z'.repeat(6 * 1024 * 1024)}`)
+            );
             const text = transcriptOf(chat, big);
 
             expect(size(text)).toBeLessThanOrEqual(MAX_ATTACHMENT_BYTES);
@@ -268,7 +348,7 @@ describe('handoffFileName', () => {
     });
 
     it('keeps a long title short, without a dash left at the cut', () => {
-        const name = handoffFileName(`${ 'word '.repeat(30) }end`);
+        const name = handoffFileName(`${'word '.repeat(30)}end`);
 
         expect(name.endsWith('-conversation.md')).toBe(true);
         expect(name.length).toBeLessThanOrEqual(60 + '-conversation.md'.length);
@@ -277,7 +357,7 @@ describe('handoffFileName', () => {
 
     it('never cuts a character in two, and stays a name the daemon keeps whole', () => {
         // Letters outside the basic plane take two UTF-16 units and four bytes each; a letter in front moves where a cut by unit would fall.
-        for (const title of ['𝐇'.repeat(80), `a${ '𝐇'.repeat(80) }`, `ab${ '𝐇'.repeat(80) }`]) {
+        for (const title of ['𝐇'.repeat(80), `a${'𝐇'.repeat(80)}`, `ab${'𝐇'.repeat(80)}`]) {
             const name = handoffFileName(title);
 
             expect(name).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/);
@@ -294,12 +374,15 @@ describe('handoffFileName', () => {
 
 describe('handoffSentence', () => {
     it('asks to continue the work and names the file', () => {
-        expect(handoffSentence('Simplify  booking', 'simplify-booking-conversation.md'))
-            .toBe('Continue the work from the chat "Simplify booking". The conversation so far is attached as simplify-booking-conversation.md.');
+        expect(handoffSentence('Simplify  booking', 'simplify-booking-conversation.md')).toBe(
+            'Continue the work from the chat "Simplify booking". The conversation so far is attached as simplify-booking-conversation.md.'
+        );
     });
 
     it('keeps a title with a line break in it on one line', () => {
-        expect(handoffSentence('Fix\n\nthe price', 'fix-conversation.md')).toBe('Continue the work from the chat "Fix the price". The conversation so far is attached as fix-conversation.md.');
+        expect(handoffSentence('Fix\n\nthe price', 'fix-conversation.md')).toBe(
+            'Continue the work from the chat "Fix the price". The conversation so far is attached as fix-conversation.md.'
+        );
     });
 });
 
@@ -319,7 +402,11 @@ describe('itemsUpTo', () => {
 
     it('keeps the items up to and including the one named, whatever order they come in', () => {
         expect(itemsUpTo(list, 'i-2')!.map(item => item.id)).toEqual(['i-1', 'i-2']);
-        expect(itemsUpTo([...list].reverse(), 'i-3')!.map(item => item.id).sort()).toEqual(['i-1', 'i-2', 'i-3']);
+        expect(
+            itemsUpTo([...list].reverse(), 'i-3')!
+                .map(item => item.id)
+                .sort()
+        ).toEqual(['i-1', 'i-2', 'i-3']);
         expect(itemsUpTo(list, 'i-4')).toHaveLength(4);
     });
 
@@ -335,7 +422,13 @@ describe('startHandoff', () => {
 
     const ui = () => root.ui.forProject(FIXTURE_PROJECT_ID);
     const chatOf = (id: string) => root.selectedProject!.chats.get(id)!;
-    const handOff = (id: string) => startHandoff({ root, ui: ui(), chat: chatOf(id), run: root.selectedProject!.runs.get(chatOf(id).orchestratorRunId ?? '') });
+    const handOff = (id: string) =>
+        startHandoff({
+            root,
+            ui: ui(),
+            chat: chatOf(id),
+            run: root.selectedProject!.runs.get(chatOf(id).orchestratorRunId ?? ''),
+        });
 
     beforeEach(async () => {
         vi.mocked(toast.error).mockClear();
@@ -375,8 +468,9 @@ describe('startHandoff', () => {
         expect(transcript).not.toContain('Background command finished');
         expect(transcript).not.toContain('The agent stopped and was started again');
 
-        expect(messageOf(draftOf(NEW_CHAT_KEY)))
-            .toBe('Continue the work from the chat "Simplify booking". The conversation so far is attached as simplify-booking-conversation.md.');
+        expect(messageOf(draftOf(NEW_CHAT_KEY))).toBe(
+            'Continue the work from the chat "Simplify booking". The conversation so far is attached as simplify-booking-conversation.md.'
+        );
         expect(toast.error).not.toHaveBeenCalled();
     });
 
@@ -394,7 +488,14 @@ describe('startHandoff', () => {
     it('keeps working in the worktree of the chat: the draft picks it as an existing one, and none when it is not made yet', async () => {
         const run = root.selectedProject!.runs.get(chatOf('c-1').orchestratorRunId ?? '');
         const handOffFrom = (chat: Chat) => startHandoff({ root, ui: ui(), chat, run });
-        const workspace = { id: 'wks_a', folderId: 'fld_car_rental', path: '/Users/dev/Clowdy/workspaces/car-rental/ab12cd34/car-rental', branch: 'clowdy/ab12cd34', managed: true, ready: true };
+        const workspace = {
+            id: 'wks_a',
+            folderId: 'fld_car_rental',
+            path: '/Users/dev/Clowdy/workspaces/car-rental/ab12cd34/car-rental',
+            branch: 'clowdy/ab12cd34',
+            managed: true,
+            ready: true,
+        };
 
         expect(await handOffFrom({ ...chatOf('c-1'), folderId: workspace.folderId, workspace })).toBe(true);
         expect(ui().draftFolderId).toBe('fld_car_rental');
@@ -415,7 +516,14 @@ describe('startHandoff', () => {
 
             await stream.load();
 
-            return startHandoff({ root, ui: ui(), chat: chatOf('c-1'), run: root.selectedProject!.runs.get('r-orch-1'), itemId: stream.items.find(item => item.seq === seq)!.id, ...(engine && { engine }) });
+            return startHandoff({
+                root,
+                ui: ui(),
+                chat: chatOf('c-1'),
+                run: root.selectedProject!.runs.get('r-orch-1'),
+                itemId: stream.items.find(item => item.seq === seq)!.id,
+                ...(engine && { engine }),
+            });
         };
 
         it('attaches the conversation up to and including that answer and leaves out what came after', async () => {
@@ -426,7 +534,9 @@ describe('startHandoff', () => {
             expect(transcript).toContain('Simplify the booking flow: one form instead of three steps');
             expect(transcript).toContain(FIRST_ANSWER);
             expect(transcript).not.toContain(LATER_ANSWER);
-            expect(messageOf(draftOf(NEW_CHAT_KEY))).toBe(handoffSentence('Simplify booking', 'simplify-booking-conversation.md'));
+            expect(messageOf(draftOf(NEW_CHAT_KEY))).toBe(
+                handoffSentence('Simplify booking', 'simplify-booking-conversation.md')
+            );
         });
 
         it('keeps the whole conversation when the answer is the last one', async () => {
@@ -449,25 +559,47 @@ describe('startHandoff', () => {
         });
 
         it('keeps the folder and the worktree of the chat, as the hand-off of a read only chat does', async () => {
-            const workspace = { id: 'wks_a', folderId: 'fld_car_rental', path: '/Users/dev/Clowdy/workspaces/car-rental/ab12cd34/car-rental', branch: 'clowdy/ab12cd34', managed: true, ready: true };
+            const workspace = {
+                id: 'wks_a',
+                folderId: 'fld_car_rental',
+                path: '/Users/dev/Clowdy/workspaces/car-rental/ab12cd34/car-rental',
+                branch: 'clowdy/ab12cd34',
+                managed: true,
+                ready: true,
+            };
             const stream = root.streams.of('r-orch-1');
 
             await stream.load();
 
-            expect(await startHandoff({
-                root,
-                ui: ui(),
-                chat: { ...chatOf('c-1'), folderId: workspace.folderId, workspace },
-                run: root.selectedProject!.runs.get('r-orch-1'),
-                itemId: stream.items.find(item => item.seq === 2)!.id,
-                engine: 'cursor',
-            })).toBe(true);
+            expect(
+                await startHandoff({
+                    root,
+                    ui: ui(),
+                    chat: { ...chatOf('c-1'), folderId: workspace.folderId, workspace },
+                    run: root.selectedProject!.runs.get('r-orch-1'),
+                    itemId: stream.items.find(item => item.seq === 2)!.id,
+                    engine: 'cursor',
+                })
+            ).toBe(true);
 
-            expect([ui().draftFolderId, ui().draftWorkspace, ui().draftEngine]).toEqual(['fld_car_rental', { mode: 'existing', path: workspace.path }, 'cursor']);
+            expect([ui().draftFolderId, ui().draftWorkspace, ui().draftEngine]).toEqual([
+                'fld_car_rental',
+                { mode: 'existing', path: workspace.path },
+                'cursor',
+            ]);
         });
 
         it('says so and stays where it is when the answer is no longer in the conversation', async () => {
-            expect(await startHandoff({ root, ui: ui(), chat: chatOf('c-1'), run: root.selectedProject!.runs.get('r-orch-1'), itemId: 'i-gone', engine: 'codex' })).toBe(false);
+            expect(
+                await startHandoff({
+                    root,
+                    ui: ui(),
+                    chat: chatOf('c-1'),
+                    run: root.selectedProject!.runs.get('r-orch-1'),
+                    itemId: 'i-gone',
+                    engine: 'codex',
+                })
+            ).toBe(false);
 
             expect(toast.error).toHaveBeenCalledWith({ message: 'That answer is no longer in the conversation' });
             expect(ui().draft).toBe(false);
@@ -476,13 +608,18 @@ describe('startHandoff', () => {
         });
 
         it('says a full message box of the new chat in the same words from an answer, and ends with the way on', async () => {
-            setFiles(NEW_CHAT_KEY, Array.from({ length: MAX_ATTACHMENTS_PER_MESSAGE }, (_, index) => held(`file-${ index }.txt`, 1)));
+            setFiles(
+                NEW_CHAT_KEY,
+                Array.from({ length: MAX_ATTACHMENTS_PER_MESSAGE }, (_, index) => held(`file-${index}.txt`, 1))
+            );
 
             expect(await from(2, 'codex')).toBe(false);
 
             expect(vi.mocked(toast.error).mock.calls[0]![0]).toMatchObject({
                 title: 'The conversation was not handed off',
-                message: expect.stringMatching(/Make room in the message box of the new chat, then try again\.$/) as string,
+                message: expect.stringMatching(
+                    /Make room in the message box of the new chat, then try again\.$/
+                ) as string,
             });
         });
 
@@ -505,11 +642,19 @@ describe('startHandoff', () => {
 
         expect(await handOff('c-1')).toBe(true);
 
-        expect(messageOf(draftOf(NEW_CHAT_KEY))).toBe('Also check the footer\n\nContinue the work from the chat "Simplify booking". The conversation so far is attached as simplify-booking-conversation.md.');
+        expect(messageOf(draftOf(NEW_CHAT_KEY))).toBe(
+            'Also check the footer\n\nContinue the work from the chat "Simplify booking". The conversation so far is attached as simplify-booking-conversation.md.'
+        );
     });
 
     it('does not leave a second blank line after a draft that ends in an empty paragraph', async () => {
-        saveDraft(NEW_CHAT_KEY, { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Also check the footer' }] }, { type: 'paragraph' }] });
+        saveDraft(NEW_CHAT_KEY, {
+            type: 'doc',
+            content: [
+                { type: 'paragraph', content: [{ type: 'text', text: 'Also check the footer' }] },
+                { type: 'paragraph' },
+            ],
+        });
 
         await handOff('c-1');
 
@@ -531,18 +676,25 @@ describe('startHandoff', () => {
     it('says so and stays where it is for a chat that has no messages at all', async () => {
         expect(await handOff('c-4')).toBe(false);
 
-        expect(toast.error).toHaveBeenCalledWith({ message: 'There is nothing to hand off yet: the chat has no messages' });
+        expect(toast.error).toHaveBeenCalledWith({
+            message: 'There is nothing to hand off yet: the chat has no messages',
+        });
         expect(ui().draft).toBe(false);
         expect(ui().pendingFiles).toEqual([]);
         expect(messageOf(draftOf(NEW_CHAT_KEY))).toBe('');
     });
 
     it('says so for a chat whose stream holds only tool calls and notes', async () => {
-        data.items['r-orch-2'] = items({ kind: 'note', text: 'started' }, { kind: 'tool', toolCallId: 't-1', name: 'Read', input: {}, state: 'done' });
+        data.items['r-orch-2'] = items(
+            { kind: 'note', text: 'started' },
+            { kind: 'tool', toolCallId: 't-1', name: 'Read', input: {}, state: 'done' }
+        );
 
         expect(await handOff('c-2')).toBe(false);
 
-        expect(toast.error).toHaveBeenCalledWith({ message: 'There is nothing to hand off yet: the chat has no messages' });
+        expect(toast.error).toHaveBeenCalledWith({
+            message: 'There is nothing to hand off yet: the chat has no messages',
+        });
         expect(ui().draft).toBe(false);
     });
 
@@ -551,13 +703,15 @@ describe('startHandoff', () => {
 
         expect(await handOff('c-1')).toBe(false);
 
-        expect(toast.error).toHaveBeenCalledWith({ message: 'The conversation could not be loaded: The daemon cannot be reached' });
+        expect(toast.error).toHaveBeenCalledWith({
+            message: 'The conversation could not be loaded: The daemon cannot be reached',
+        });
         expect(ui().draft).toBe(false);
         expect(ui().pendingFiles).toEqual([]);
         expect(messageOf(draftOf(NEW_CHAT_KEY))).toBe('');
     });
 
-    it('takes the engine\'s own name from the orchestrator for a chat that does not record one', async () => {
+    it("takes the engine's own name from the orchestrator for a chat that does not record one", async () => {
         const legacy = { ...chatOf('c-1'), engine: undefined, model: undefined };
 
         await startHandoff({ root, ui: ui(), chat: legacy, run: root.selectedProject!.runs.get('r-orch-1') });
@@ -597,7 +751,13 @@ describe('startHandoff', () => {
         });
 
         const chatId = 'c-1';
-        const handed = await startHandoff({ root, ui: ui(), chat: chatOf(chatId), run: root.selectedProject!.runs.get('r-orch-1'), stillOpen: () => open });
+        const handed = await startHandoff({
+            root,
+            ui: ui(),
+            chat: chatOf(chatId),
+            run: root.selectedProject!.runs.get('r-orch-1'),
+            stillOpen: () => open,
+        });
 
         expect(handed).toBe(false);
         expect(ui().draft).toBe(false);
@@ -615,12 +775,18 @@ describe('startHandoff', () => {
         expect(await handOff('c-1')).toBe(true);
 
         expect(messageOf(draftOf(other))).toBe('Words of the other project');
-        expect(messageOf(draftOf(NEW_CHAT_KEY))).toBe(`Also check the footer\n\n${ handoffSentence('Simplify booking', 'simplify-booking-conversation.md') }`);
+        expect(messageOf(draftOf(NEW_CHAT_KEY))).toBe(
+            `Also check the footer\n\n${handoffSentence('Simplify booking', 'simplify-booking-conversation.md')}`
+        );
         saveDraft(other, emptyComposerDoc());
     });
 
     describe('when the message box of the new chat is full', () => {
-        const fill = (count: number, size = 1) => setFiles(NEW_CHAT_KEY, Array.from({ length: count }, (_, index) => held(`file-${ index }.txt`, size)));
+        const fill = (count: number, size = 1) =>
+            setFiles(
+                NEW_CHAT_KEY,
+                Array.from({ length: count }, (_, index) => held(`file-${index}.txt`, size))
+            );
 
         it('says so and changes nothing when it holds the most files a message takes', async () => {
             saveDraft(NEW_CHAT_KEY, plainTextToDoc('Also check the footer'));
@@ -631,7 +797,9 @@ describe('startHandoff', () => {
             expect(toast.error).toHaveBeenCalledTimes(1);
             expect(vi.mocked(toast.error).mock.calls[0]![0]).toMatchObject({
                 title: 'The conversation was not handed off',
-                message: expect.stringContaining(`a message takes ${ MAX_ATTACHMENTS_PER_MESSAGE } files at most`) as string,
+                message: expect.stringContaining(
+                    `a message takes ${MAX_ATTACHMENTS_PER_MESSAGE} files at most`
+                ) as string,
             });
             // Not the page, not the file, and not the sentence: the draft says "attached as ..." only when a file is.
             expect(ui().draft).toBe(false);
@@ -646,7 +814,9 @@ describe('startHandoff', () => {
 
             expect(await handOff('c-1')).toBe(false);
 
-            expect(vi.mocked(toast.error).mock.calls[0]![0]).toMatchObject({ message: expect.stringContaining('of files at most') as string });
+            expect(vi.mocked(toast.error).mock.calls[0]![0]).toMatchObject({
+                message: expect.stringContaining('of files at most') as string,
+            });
             expect(ui().draft).toBe(false);
             expect(ui().pendingFiles).toEqual([]);
         });
@@ -657,7 +827,10 @@ describe('startHandoff', () => {
             const [attached] = ui().pendingFiles;
 
             ui().takePendingFiles();
-            setFiles(NEW_CHAT_KEY, [held(attached!.name, attached!.size), ...Array.from({ length: MAX_ATTACHMENTS_PER_MESSAGE - 1 }, (_, index) => held(`file-${ index }.txt`))]);
+            setFiles(NEW_CHAT_KEY, [
+                held(attached!.name, attached!.size),
+                ...Array.from({ length: MAX_ATTACHMENTS_PER_MESSAGE - 1 }, (_, index) => held(`file-${index}.txt`)),
+            ]);
             vi.mocked(toast.error).mockClear();
 
             expect(await handOff('c-1')).toBe(true);
@@ -676,9 +849,10 @@ describe('startHandoff', () => {
     });
 
     it('hands over a conversation of any length as a file the daemon takes', async () => {
-        const turn = (index: number): StreamItemBody => (index % 2 === 0
-            ? { kind: 'user', text: `question ${ index } ${ 'q'.repeat(5 * 1024 * 1024) }` }
-            : { kind: 'assistant', text: `answer ${ index } ${ 'a'.repeat(5 * 1024 * 1024) }`, done: true });
+        const turn = (index: number): StreamItemBody =>
+            index % 2 === 0
+                ? { kind: 'user', text: `question ${index} ${'q'.repeat(5 * 1024 * 1024)}` }
+                : { kind: 'assistant', text: `answer ${index} ${'a'.repeat(5 * 1024 * 1024)}`, done: true };
 
         data.items['r-orch-2'] = items(...Array.from({ length: 7 }, (_, index) => turn(index)));
 

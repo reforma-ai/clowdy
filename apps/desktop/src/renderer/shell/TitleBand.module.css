@@ -35,5 +35,8 @@
     grid-column: 3;
     align-items: center;
     justify-self: end;
-    padding-right: max(0px, calc(var(--titlebar-inset-end) - var(--side-rail-width) + var(--spacing-lg) * sign(var(--titlebar-inset-end))));
+    padding-right: max(
+        0px,
+        calc(var(--titlebar-inset-end) - var(--side-rail-width) + var(--spacing-lg) * sign(var(--titlebar-inset-end)))
+    );
 }

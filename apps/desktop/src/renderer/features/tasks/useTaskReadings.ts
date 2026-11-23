@@ -20,7 +20,10 @@ type Outcome = 'read' | 'missing' | { failed: string };
  * (`ProjectState.readTask`, which asks once for a task however many ask and remembers an archived one). The board answers first and follows its events, so a task
  * that is restored or archived meanwhile changes with them. `retry` asks again for the ids whose read failed.
  */
-export function useTaskReadings(ids: readonly TaskId[]): { readings: ReadonlyMap<TaskId, TaskReading>; retry: () => void } {
+export function useTaskReadings(ids: readonly TaskId[]): {
+    readings: ReadonlyMap<TaskId, TaskReading>;
+    retry: () => void;
+} {
     const project = useProjectState();
     const [outcomes, setOutcomes] = useState<ReadonlyMap<TaskId, Outcome>>(() => new Map());
     const [attempt, setAttempt] = useState(0);
@@ -35,13 +38,18 @@ export function useTaskReadings(ids: readonly TaskId[]): { readings: ReadonlyMap
 
             asked.current.add(id);
             project.readTask(id).then(
-                (task) => {
+                task => {
                     // The project remembers an archived task it read, within its limit: when it lets the task go the id is asked again, so a panel that is open for it stays.
                     if (task?.archivedAt !== undefined) asked.current.delete(id);
 
-                    setOutcomes(current => new Map(current).set(id, task?.archivedAt === undefined ? 'missing' : 'read'));
+                    setOutcomes(current =>
+                        new Map(current).set(id, task?.archivedAt === undefined ? 'missing' : 'read')
+                    );
                 },
-                error => setOutcomes(current => new Map(current).set(id, { failed: error instanceof Error ? error.message : String(error) }))
+                error =>
+                    setOutcomes(current =>
+                        new Map(current).set(id, { failed: error instanceof Error ? error.message : String(error) })
+                    )
             );
         }
     }, [project, wanted, attempt]);

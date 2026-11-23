@@ -133,7 +133,7 @@ The owner does not need to hear about a worktree that was opened, merged and rem
 ## Pull Requests
 
 - A PR into `main` carries what `next` holds, with a description that lists its slices. The owner decides when it goes. A separate branch and PR for one chunk only when the owner asks.
-- CI (`.github/workflows/ci.yml`) runs on a PR into `main` that changes code, not on one that only changes documents, and not on a PR into another branch. It tests the result of merging the PR into `main`: build, lint, typecheck and test of every package, then lint and typecheck of the root `scripts/` (`gate.yml`, Linux). Its `ci-ok` check is the one to look at: `gh pr checks <n>`. A PR with no `ci-ok` is a documents-only PR: there is nothing to wait for.
+- CI (`.github/workflows/ci.yml`) runs on a PR into `main` that changes code, not on one that only changes documents, and not on a PR into another branch. It tests the result of merging the PR into `main`: build, lint, typecheck and test of every package, then lint of the root files (`scripts/`, `.github/`, the root configs) and typecheck of `scripts/` (`gate.yml`, Linux). Its `ci-ok` check is the one to look at: `gh pr checks <n>`. A PR with no `ci-ok` is a documents-only PR: there is nothing to wait for.
 - Nothing runs again after the merge. A push to `main` does not run CI; the OTA bundle of a merge is published as before (Releases).
 - GitHub cannot make a check required on a private repository of a free plan, so nothing stops a merge. Merge only when `ci-ok` is green.
 - Merge with a merge commit: `gh pr merge <n> --merge`. The branch does not have to be rebased first: CI already ran on its merge with `main`, and a merge commit has fewer conflicts to settle. Do not rebase-merge or squash: both drop the signatures of the branch's commits.
@@ -148,7 +148,7 @@ Before you push, run the same checks for what you changed (the whole gate is wha
 bunx turbo run build lint typecheck test --affected
 ```
 
-`lint` only reports problems. `bun run lint:fix` in a package applies the fixes.
+`lint` is Biome: it reports lint findings, formatting and import order, and only reports. `bun run lint:fix` in a package applies the fixes.
 
 ## Releases
 

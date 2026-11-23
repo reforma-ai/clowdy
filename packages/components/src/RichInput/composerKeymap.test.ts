@@ -29,8 +29,7 @@ function withDom<T>(run: () => T): T {
 
     try {
         return run();
-    }
-    finally {
+    } finally {
         Object.defineProperty(globalThis, 'window', { value: prev.window, configurable: true });
         Object.defineProperty(globalThis, 'document', { value: prev.document, configurable: true });
         globalThis.requestAnimationFrame = prev.requestAnimationFrame;
@@ -43,16 +42,20 @@ function withDom<T>(run: () => T): T {
 function bulletDoc(items: string[]): JSONContent {
     return {
         type: 'doc',
-        content: [{
-            type: 'bulletList',
-            content: items.map(text => ({
-                type: 'listItem',
-                content: [{
-                    type: 'paragraph',
-                    ...(text ? { content: [{ type: 'text', text }] } : {}),
-                }],
-            })),
-        }],
+        content: [
+            {
+                type: 'bulletList',
+                content: items.map(text => ({
+                    type: 'listItem',
+                    content: [
+                        {
+                            type: 'paragraph',
+                            ...(text ? { content: [{ type: 'text', text }] } : {}),
+                        },
+                    ],
+                })),
+            },
+        ],
     };
 }
 
@@ -125,13 +128,17 @@ describe('handleComposerKeyDown list Shift+Enter', () => {
                 content: [
                     {
                         type: 'bulletList',
-                        content: [{
-                            type: 'listItem',
-                            content: [{
-                                type: 'paragraph',
-                                content: [{ type: 'text', text: 'hello' }],
-                            }],
-                        }],
+                        content: [
+                            {
+                                type: 'listItem',
+                                content: [
+                                    {
+                                        type: 'paragraph',
+                                        content: [{ type: 'text', text: 'hello' }],
+                                    },
+                                ],
+                            },
+                        ],
                     },
                     { type: 'paragraph' },
                 ],

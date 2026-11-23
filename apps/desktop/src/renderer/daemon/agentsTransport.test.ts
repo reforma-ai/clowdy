@@ -18,7 +18,11 @@ describe('HttpTransport.getAgents', () => {
     });
 
     it('fails when the daemon refuses', async () => {
-        const transport = new HttpTransport({ url: 'http://127.0.0.1:4310', token: 't', fetch: (async () => new Response('{}', { status: 500 })) as typeof fetch });
+        const transport = new HttpTransport({
+            url: 'http://127.0.0.1:4310',
+            token: 't',
+            fetch: (async () => new Response('{}', { status: 500 })) as typeof fetch,
+        });
 
         await expect(transport.getAgents()).rejects.toMatchObject({ status: 500 });
     });

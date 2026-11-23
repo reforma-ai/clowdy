@@ -26,7 +26,7 @@ export function estimateTokens(name: string, description: string): number {
 
 /** User skills from several folders, `roots` ordered from the weakest to the strongest: a name in a later folder hides the same name in an earlier one. */
 export function mergeUserSkills(roots: readonly LabeledScan[]): { skills: ScannedSkill[]; warnings: string[] } {
-    const warnings = roots.flatMap(({ label, scan }) => scan.warnings.map(warning => `${ label }: ${ warning }`));
+    const warnings = roots.flatMap(({ label, scan }) => scan.warnings.map(warning => `${label}: ${warning}`));
     const byName = new Map<string, { skill: ScannedSkill; label: string }>();
 
     for (const { label, scan } of roots) {
@@ -34,7 +34,7 @@ export function mergeUserSkills(roots: readonly LabeledScan[]): { skills: Scanne
             const hidden = byName.get(skill.folder);
 
             if (hidden && hidden.skill.real !== skill.real) {
-                warnings.push(`"${ skill.folder }" in ${ hidden.label } is hidden by the one in ${ label }`);
+                warnings.push(`"${skill.folder}" in ${hidden.label} is hidden by the one in ${label}`);
             }
 
             byName.set(skill.folder, { skill, label });
@@ -62,20 +62,44 @@ export interface CatalogInput {
  */
 export function buildCatalog({ system, user, project, disabled, warnings = [] }: CatalogInput): SkillCatalog {
     const entries = [
-        ...system.skills.map(skill => entryOf(skill, { id: `system:${ skill.folder }`, name: `${ SYSTEM_PLUGIN_NAME }:${ skill.folder }`, source: 'system', enabled: true, engines: ENGINES })),
-        ...user.skills.map(skill => entryOf(skill, { id: `user:${ skill.folder }`, name: `${ USER_PLUGIN_NAME }:${ skill.folder }`, source: 'user', enabled: !disabled.has(skill.folder), engines: ENGINES })),
+        ...system.skills.map(skill =>
+            entryOf(skill, {
+                id: `system:${skill.folder}`,
+                name: `${SYSTEM_PLUGIN_NAME}:${skill.folder}`,
+                source: 'system',
+                enabled: true,
+                engines: ENGINES,
+            })
+        ),
+        ...user.skills.map(skill =>
+            entryOf(skill, {
+                id: `user:${skill.folder}`,
+                name: `${USER_PLUGIN_NAME}:${skill.folder}`,
+                source: 'user',
+                enabled: !disabled.has(skill.folder),
+                engines: ENGINES,
+            })
+        ),
         ...projectEntries(project),
     ];
-    const tokens = Math.max(...ENGINES.map(engine => entries.filter(entry => entry.enabled && entry.engines.includes(engine)).reduce((sum, entry) => sum + entry.tokens, 0)));
+    const tokens = Math.max(
+        ...ENGINES.map(engine =>
+            entries
+                .filter(entry => entry.enabled && entry.engines.includes(engine))
+                .reduce((sum, entry) => sum + entry.tokens, 0)
+        )
+    );
     const all = [
         ...warnings,
-        ...system.warnings.map(warning => `System skills: ${ warning }`),
+        ...system.warnings.map(warning => `System skills: ${warning}`),
         ...user.warnings,
-        ...project.flatMap(({ label, scan }) => scan.warnings.map(warning => `${ label }: ${ warning }`)),
+        ...project.flatMap(({ label, scan }) => scan.warnings.map(warning => `${label}: ${warning}`)),
     ];
 
     if (tokens > TOKEN_WARNING) {
-        all.push(`The enabled skills cost about ${ tokens } tokens in every run; engines shorten descriptions past about ${ TOKEN_WARNING }. Switch off skills you do not need`);
+        all.push(
+            `The enabled skills cost about ${tokens} tokens in every run; engines shorten descriptions past about ${TOKEN_WARNING}. Switch off skills you do not need`
+        );
     }
 
     return { entries, tokens, warnings: all };
@@ -91,9 +115,17 @@ function projectEntries(roots: readonly ProjectScan[]): SkillEntry[] {
 
             if (known) {
                 known.engines.push(engine);
-            }
-            else {
-                byReal.set(skill.real, entryOf(skill, { id: `project:${ label }/${ skill.folder }`, name: skill.folder, source: 'project', enabled: true, engines: [engine] }));
+            } else {
+                byReal.set(
+                    skill.real,
+                    entryOf(skill, {
+                        id: `project:${label}/${skill.folder}`,
+                        name: skill.folder,
+                        source: 'project',
+                        enabled: true,
+                        engines: [engine],
+                    })
+                );
             }
         }
     }
@@ -101,7 +133,10 @@ function projectEntries(roots: readonly ProjectScan[]): SkillEntry[] {
     return [...byReal.values()].sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
 }
 
-function entryOf(skill: ScannedSkill, fields: Pick<SkillEntry, 'id' | 'name' | 'source' | 'enabled' | 'engines'>): SkillEntry {
+function entryOf(
+    skill: ScannedSkill,
+    fields: Pick<SkillEntry, 'id' | 'name' | 'source' | 'enabled' | 'engines'>
+): SkillEntry {
     return {
         ...fields,
         description: skill.description,

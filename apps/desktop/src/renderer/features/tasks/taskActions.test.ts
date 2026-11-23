@@ -14,7 +14,7 @@ import { openDocument } from '../files/openDocument';
 import { filesStoreOf } from '../files/useFilesStore';
 import { archiveTasks } from './archiveActions';
 import { startTask } from './commands';
-import { taskCommands, TASKS_SCOPE, type TaskCommandDeps } from './taskCommands';
+import { TASKS_SCOPE, type TaskCommandDeps, taskCommands } from './taskCommands';
 import { sendWithUndo } from './taskUndo';
 import { newestDocPath, runsByTask, startBlockedReason, taskGrid } from './taskView';
 
@@ -26,7 +26,7 @@ import type { KeyValueStorage } from '../../stores/storage';
 
 const toasts = vi.hoisted(() => {
     let count = 0;
-    const next = () => `toast-${ ++count }`;
+    const next = () => `toast-${++count}`;
 
     return {
         error: vi.fn<(options: { message: string }) => void>(),
@@ -82,17 +82,24 @@ async function mount(refuse: (input: CommandInput) => string | undefined = () =>
     daemon = base;
 
     const transport: Transport = overrideTransport(base, {
-        command: async (input) => {
+        command: async input => {
             sent.push(input);
 
             const message = refuse(input);
 
-            return message ? { ok: false, requestId: 'r', error: { code: 'invalid', message } } satisfies CommandResult : base.command(input);
+            return message
+                ? ({ ok: false, requestId: 'r', error: { code: 'invalid', message } } satisfies CommandResult)
+                : base.command(input);
         },
         getTaskDetail: async (taskId): Promise<TaskDetail> => {
             if (resultsFail) throw new Error('The daemon is not answering');
 
-            return { ...(await base.getTaskDetail(taskId)), chatIds: [], runIds: [], artifacts: artifactsOf[taskId] ?? [] };
+            return {
+                ...(await base.getTaskDetail(taskId)),
+                chatIds: [],
+                runIds: [],
+                artifacts: artifactsOf[taskId] ?? [],
+            };
         },
     });
 
@@ -105,7 +112,10 @@ async function mount(refuse: (input: CommandInput) => string | undefined = () =>
     cursor.setGrid(taskGrid('list', project().taskList, project().statuses));
 
     // `Screen` gives the cursor the grid again whenever the tasks change.
-    stopFollowing = reaction(() => taskGrid('list', project().taskList, project().statuses), grid => cursor.setGrid(grid));
+    stopFollowing = reaction(
+        () => taskGrid('list', project().taskList, project().statuses),
+        grid => cursor.setGrid(grid)
+    );
 
     // The window's state the commands navigate with: the real task selection, and a document opened where the real window opens it.
     const taskUi: TaskCommandDeps['ui'] = {
@@ -135,8 +145,15 @@ async function mount(refuse: (input: CommandInput) => string | undefined = () =>
         statuses: () => project().statuses,
         startBlocked: id => startBlockedReason(runsByTask(project().runTaskLinks.values(), project().runs).get(id)),
         send: inputs => sendWithUndo(root, project(), inputs, stack),
-        undo: { canUndo: () => stack.canUndo(FIXTURE_PROJECT_ID), undoLatest: () => stack.undoLatest(FIXTURE_PROJECT_ID) },
-        archive: tasks => archiveTasks({ root, project: project(), ui: ui(), confirm: options => confirms.push(options), stack }, tasks),
+        undo: {
+            canUndo: () => stack.canUndo(FIXTURE_PROJECT_ID),
+            undoLatest: () => stack.undoLatest(FIXTURE_PROJECT_ID),
+        },
+        archive: tasks =>
+            archiveTasks(
+                { root, project: project(), ui: ui(), confirm: options => confirms.push(options), stack },
+                tasks
+            ),
         start: id => startTask(root, id),
         openPicker: request => pickers.push(request),
         confirm: options => confirms.push(options),
@@ -190,12 +207,19 @@ afterEach(() => {
 });
 
 describe('Change status', () => {
-    it('lists the project\'s statuses in workflow order and marks the status of the cursor task', async () => {
+    it("lists the project's statuses in workflow order and marks the status of the cursor task", async () => {
         await mount();
         goTo('t-24');
         press('s');
 
-        expect(pickers[0].options.map(option => option.label)).toEqual(['Backlog', 'To do', 'In progress', 'Review', 'Done', 'Canceled']);
+        expect(pickers[0].options.map(option => option.label)).toEqual([
+            'Backlog',
+            'To do',
+            'In progress',
+            'Review',
+            'Done',
+            'Canceled',
+        ]);
         expect(pickers[0].selectedIds).toEqual(['active']);
     });
 
@@ -230,7 +254,11 @@ describe('Change status', () => {
     });
 
     it('applies what the daemon accepted and says once what it refused', async () => {
-        await mount(input => (input.type === 'task.update' && input.taskId === 't-27' ? 'CAR-27 cannot move to Done while CAR-24 is open.' : undefined));
+        await mount(input =>
+            input.type === 'task.update' && input.taskId === 't-27'
+                ? 'CAR-27 cannot move to Done while CAR-24 is open.'
+                : undefined
+        );
         goTo('t-26');
         press('x');
         goTo('t-27');
@@ -243,7 +271,9 @@ describe('Change status', () => {
 
         expect(['t-26', 't-27', 't-28'].map(status)).toEqual(['done', 'todo', 'done']);
         expect(toasts.error).toHaveBeenCalledTimes(1);
-        expect(toasts.error).toHaveBeenCalledWith({ message: '1 of 3 changes failed: CAR-27 cannot move to Done while CAR-24 is open.' });
+        expect(toasts.error).toHaveBeenCalledWith({
+            message: '1 of 3 changes failed: CAR-27 cannot move to Done while CAR-24 is open.',
+        });
     });
 });
 
@@ -369,7 +399,9 @@ describe('Rename and start', () => {
         await settle();
 
         expect(sent).toEqual([{ type: 'task.start', taskId: 't-22' }]);
-        expect([...project().runTaskLinks.values()].some(link => link.taskId === 't-22' && link.relation === 'assigned')).toBe(true);
+        expect(
+            [...project().runTaskLinks.values()].some(link => link.taskId === 't-22' && link.relation === 'assigned')
+        ).toBe(true);
 
         press('Enter', { metaKey: true });
         await settle();
@@ -392,7 +424,9 @@ describe('Rename and start', () => {
     it('does not offer Start for a task an agent is working on', async () => {
         await mount();
 
-        const working = [...project().runTaskLinks.values()].find(link => link.relation === 'assigned' && project().runs.get(link.runId)?.status === 'running');
+        const working = [...project().runTaskLinks.values()].find(
+            link => link.relation === 'assigned' && project().runs.get(link.runId)?.status === 'running'
+        );
 
         expect(working).toBeDefined();
 
@@ -451,7 +485,9 @@ describe('Delete', () => {
     });
 
     it('deletes what it can, says once what the daemon refused, and keeps the refused task selected', async () => {
-        await mount(input => (input.type === 'task.delete' && input.taskId === 't-29' ? 'CAR-29 is linked to a running agent.' : undefined));
+        await mount(input =>
+            input.type === 'task.delete' && input.taskId === 't-29' ? 'CAR-29 is linked to a running agent.' : undefined
+        );
         goTo('t-28');
         press('x');
         press('ArrowDown', { shiftKey: true });
@@ -462,7 +498,9 @@ describe('Delete', () => {
 
         expect(['t-28', 't-29', 't-30'].map(id => project().tasks.has(id))).toEqual([false, true, false]);
         expect(toasts.error).toHaveBeenCalledTimes(1);
-        expect(toasts.error).toHaveBeenCalledWith({ message: '1 of 3 changes failed: CAR-29 is linked to a running agent.' });
+        expect(toasts.error).toHaveBeenCalledWith({
+            message: '1 of 3 changes failed: CAR-29 is linked to a running agent.',
+        });
         expect([...cursor.selected]).toEqual(['t-29']);
     });
 
@@ -478,7 +516,14 @@ describe('Delete', () => {
     });
 });
 
-const docArtifact = (id: string, path: string | undefined, createdAt: number): Artifact => ({ id, projectId: FIXTURE_PROJECT_ID, kind: 'doc', title: id, ref: path ? { path } : {}, createdAt });
+const docArtifact = (id: string, path: string | undefined, createdAt: number): Artifact => ({
+    id,
+    projectId: FIXTURE_PROJECT_ID,
+    kind: 'doc',
+    title: id,
+    ref: path ? { path } : {},
+    createdAt,
+});
 
 describe('Copy', () => {
     it('copies the key of the cursor task and says so', async () => {
@@ -498,7 +543,10 @@ describe('Copy', () => {
         press('"', { metaKey: true, shiftKey: true, code: 'Quote' });
 
         expect(copied).toHaveLength(1);
-        expect(copied[0].text.split('\n')).toEqual([project().tasks.get('t-24')!.title, project().tasks.get('t-26')!.title]);
+        expect(copied[0].text.split('\n')).toEqual([
+            project().tasks.get('t-24')!.title,
+            project().tasks.get('t-26')!.title,
+        ]);
         expect(copied[0].message).toBe('Copied 2 task titles');
     });
 });
@@ -507,12 +555,22 @@ describe('Open the linked chat', () => {
     it('opens the newest chat that discusses the cursor task, in Agents', async () => {
         await mount();
         // CAR-28 is discussed in c-2 (four days ago) and now in c-4 (minutes ago).
-        project().applyEvent({ cursor: project().cursor + 1, at: 0, projectId: FIXTURE_PROJECT_ID, data: { type: 'link.chatTask', link: { chatId: 'c-4', taskId: 't-28' }, present: true } });
+        project().applyEvent({
+            cursor: project().cursor + 1,
+            at: 0,
+            projectId: FIXTURE_PROJECT_ID,
+            data: { type: 'link.chatTask', link: { chatId: 'c-4', taskId: 't-28' }, present: true },
+        });
         goTo('t-28');
         press('o');
         press('c');
 
-        expect(project().chatsOfTask('t-28').map(chat => chat.id).sort()).toEqual(['c-2', 'c-4']);
+        expect(
+            project()
+                .chatsOfTask('t-28')
+                .map(chat => chat.id)
+                .sort()
+        ).toEqual(['c-2', 'c-4']);
         expect(ui().chatId).toBe('c-4');
     });
 
@@ -531,7 +589,10 @@ describe('Open the linked chat', () => {
 
 describe('Open the latest document', () => {
     /** The paths open in the tabs of the main folder's file manager, which the Files and Docs tabs share. */
-    const tabsOfFolder = (kind: 'files' | 'docs' = 'docs') => filesStoreOf(root).managerOf(FIXTURE_PROJECT_ID, { folder: project().project.folders[0] }, kind).tabs.documents.map(document => document.path);
+    const tabsOfFolder = (kind: 'files' | 'docs' = 'docs') =>
+        filesStoreOf(root)
+            .managerOf(FIXTURE_PROJECT_ID, { folder: project().project.folders[0] }, kind)
+            .tabs.documents.map(document => document.path);
 
     it('opens the newest document the daemon lists for the task, on the Docs tab', async () => {
         await mount();
@@ -566,7 +627,9 @@ describe('Open the latest document', () => {
         await settle();
 
         expect(ui().sidePanelOpen).toBe(false);
-        expect(notices).toEqual([{ message: 'Could not load the results of CAR-23: The daemon is not answering', tone: 'error' }]);
+        expect(notices).toEqual([
+            { message: 'Could not load the results of CAR-23: The daemon is not answering', tone: 'error' },
+        ]);
     });
 
     it('opens the document of the task the key was pressed on, even when the cursor moves while the daemon answers', async () => {
@@ -622,7 +685,10 @@ describe('Undo', () => {
     const offer = () => toasts.show.mock.calls.at(-1)![0];
 
     /** An agent or another window changes a task through the daemon, and the project shows it once the event comes in. */
-    async function changedElsewhere(taskId: string, changes: Partial<Pick<Task, 'title' | 'description' | 'statusId' | 'dependsOn'>>) {
+    async function changedElsewhere(
+        taskId: string,
+        changes: Partial<Pick<Task, 'title' | 'description' | 'statusId' | 'dependsOn'>>
+    ) {
         await daemon.command({ type: 'task.update', taskId, ...changes });
         await settle();
     }
@@ -645,7 +711,11 @@ describe('Undo', () => {
 
             expect(status('t-28')).toBe('review');
             expect(toasts.show).toHaveBeenCalledTimes(1);
-            expect(offer()).toEqual({ message: 'CAR-28 moved to Review', timeout: 5000, action: { label: 'Undo', onPress: expect.any(Function) } });
+            expect(offer()).toEqual({
+                message: 'CAR-28 moved to Review',
+                timeout: 5000,
+                action: { label: 'Undo', onPress: expect.any(Function) },
+            });
 
             expect(undoKey()).toBe(true);
             await settle();
@@ -655,7 +725,7 @@ describe('Undo', () => {
             expect(toasts.success).toHaveBeenCalledWith({ message: 'Undone: CAR-28 moved to Review' });
         });
 
-        it('goes back when the toast\'s Undo is pressed, and then there is nothing left for the key', async () => {
+        it("goes back when the toast's Undo is pressed, and then there is nothing left for the key", async () => {
             await mount();
             goTo('t-24');
             press('ArrowRight', { altKey: true });
@@ -694,7 +764,7 @@ describe('Undo', () => {
             expect(stack.canUndo(FIXTURE_PROJECT_ID)).toBe(false);
         });
 
-        it('takes a quick second change\'s toast in place of the first one\'s instead of stacking them', async () => {
+        it("takes a quick second change's toast in place of the first one's instead of stacking them", async () => {
             await mount();
             goTo('t-24');
             press('ArrowRight', { altKey: true });
@@ -746,7 +816,11 @@ describe('Undo', () => {
         });
 
         it('records the tasks the daemon took, and puts back only those', async () => {
-            await mount(input => (input.type === 'task.update' && input.taskId === 't-27' && input.statusId === 'done' ? 'CAR-27 cannot move to Done while CAR-24 is open.' : undefined));
+            await mount(input =>
+                input.type === 'task.update' && input.taskId === 't-27' && input.statusId === 'done'
+                    ? 'CAR-27 cannot move to Done while CAR-24 is open.'
+                    : undefined
+            );
             select('t-26', 't-27', 't-28');
             press('s');
             pickers[0].onPick('done');
@@ -899,7 +973,7 @@ describe('Undo', () => {
             expect(toasts.error).not.toHaveBeenCalled();
         });
 
-        it('is not overwritten when the undo comes from the toast\'s button either', async () => {
+        it("is not overwritten when the undo comes from the toast's button either", async () => {
             await mount();
             goTo('t-28');
             press('s');
@@ -969,7 +1043,7 @@ describe('Undo', () => {
     });
 
     describe('a refused undo', () => {
-        it('shows the daemon\'s own message, leaves the task as it is, and drops the entry', async () => {
+        it("shows the daemon's own message, leaves the task as it is, and drops the entry", async () => {
             let refusing = false;
 
             await mount(() => (refusing ? 'CAR-28 cannot go back to Backlog.' : undefined));

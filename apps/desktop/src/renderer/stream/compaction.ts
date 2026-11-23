@@ -21,8 +21,7 @@ export function compactionCounts(output: unknown): CompactionCounts | undefined 
     if (typeof output === 'string') {
         try {
             value = JSON.parse(output);
-        }
-        catch {
+        } catch {
             return undefined;
         }
     }

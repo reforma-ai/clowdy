@@ -26,13 +26,18 @@ function stand(extensions: Extension, doc = DOC): EditorView {
 }
 
 /** Selects `from` to `to` (characters of the document) the way a drag does, and lets the tooltip's button be drawn. */
-const select = (view: EditorView, from: number, to: number) => act(async () => view.dispatch({ selection: { anchor: from, head: to } }));
+const select = (view: EditorView, from: number, to: number) =>
+    act(async () => view.dispatch({ selection: { anchor: from, head: to } }));
 
 /** The key as the editor sees it: `Mod` is Cmd on a Mac and Ctrl elsewhere. */
 function modI(view: EditorView): boolean {
     const mac = /Mac/.test(navigator.platform);
 
-    return runScopeHandlers(view, new KeyboardEvent('keydown', { key: 'i', code: 'KeyI', ...(mac ? { metaKey: true } : { ctrlKey: true }) }), 'editor');
+    return runScopeHandlers(
+        view,
+        new KeyboardEvent('keydown', { key: 'i', code: 'KeyI', ...(mac ? { metaKey: true } : { ctrlKey: true }) }),
+        'editor'
+    );
 }
 
 const button = () => host.querySelector<HTMLButtonElement>('.cm-tooltip button');
@@ -40,9 +45,10 @@ const button = () => host.querySelector<HTMLButtonElement>('.cm-tooltip button')
 const press = () => act(async () => button()!.click());
 
 /** Lets the tooltip's React root, which is unmounted after the editor's update, go. */
-const settle = () => act(async () => {
-    await new Promise(resolve => setTimeout(resolve, 0));
-});
+const settle = () =>
+    act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 0));
+    });
 
 beforeEach(() => {
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -51,13 +57,14 @@ beforeEach(() => {
     views = [];
 });
 
-afterEach(async() => {
+afterEach(async () => {
     await act(async () => views.forEach(view => view.destroy()));
     host.remove();
 });
 
 describe('selectedLines', () => {
-    const lines = (from: number, to: number, doc = DOC) => selectedLines(EditorState.create({ doc, selection: { anchor: from, head: to } }));
+    const lines = (from: number, to: number, doc = DOC) =>
+        selectedLines(EditorState.create({ doc, selection: { anchor: from, head: to } }));
 
     it('is nothing for a caret', () => {
         expect(lines(3, 3)).toBeUndefined();
@@ -99,7 +106,7 @@ describe('selectedLines', () => {
 
     it('works for a selection in the last line, with or without a line break at the end', () => {
         expect(lines(17, 22)).toEqual({ from: 4, to: 4, text: 'delta' });
-        expect(lines(17, 23, `${ DOC }\n`)).toEqual({ from: 4, to: 4, text: 'delta' });
+        expect(lines(17, 23, `${DOC}\n`)).toEqual({ from: 4, to: 4, text: 'delta' });
     });
 });
 
@@ -164,11 +171,14 @@ describe('selectionAction', () => {
         expect(view.state.selection.main.empty).toBe(true);
     });
 
-    it('takes Mod-i from a binding the editor has, which a host\'s extension comes after', async () => {
+    it("takes Mod-i from a binding the editor has, which a host's extension comes after", async () => {
         const onAction = vi.fn();
         const own = vi.fn(() => true);
         // The editor's own keymap first, as `CodeEditor` has it (`defaultKeymap` binds `Mod-i` to select the parent syntax), then the host's extension.
-        const view = stand([keymap.of([{ key: 'Mod-i', run: own }]), selectionAction({ label: 'Add to chat', onAction })]);
+        const view = stand([
+            keymap.of([{ key: 'Mod-i', run: own }]),
+            selectionAction({ label: 'Add to chat', onAction }),
+        ]);
 
         await select(view, 5, 8);
         await act(async () => modI(view));
@@ -180,7 +190,10 @@ describe('selectionAction', () => {
     it('leaves Mod-i to the editor while nothing is selected', async () => {
         const onAction = vi.fn();
         const own = vi.fn(() => true);
-        const view = stand([keymap.of([{ key: 'Mod-i', run: own }]), selectionAction({ label: 'Add to chat', onAction })]);
+        const view = stand([
+            keymap.of([{ key: 'Mod-i', run: own }]),
+            selectionAction({ label: 'Add to chat', onAction }),
+        ]);
 
         await select(view, 6, 6);
 
@@ -189,7 +202,7 @@ describe('selectionAction', () => {
         expect(onAction).not.toHaveBeenCalled();
     });
 
-    it('adds nothing without a host callback: no button, and Mod-i is the editor\'s', async () => {
+    it("adds nothing without a host callback: no button, and Mod-i is the editor's", async () => {
         const own = vi.fn(() => true);
         const view = stand([keymap.of([{ key: 'Mod-i', run: own }]), selectionAction({ label: 'Add to chat' })]);
 
@@ -313,12 +326,22 @@ describe('selectionAction where the button stands', () => {
     }
 
     it('is the end of the selection where that shows', async () => {
-        expect(await measured(new DOMRect(900, 337.5, 0, 15))).toEqual({ left: 900, right: 900, top: 337.5, bottom: 352.5 });
+        expect(await measured(new DOMRect(900, 337.5, 0, 15))).toEqual({
+            left: 900,
+            right: 900,
+            top: 337.5,
+            bottom: 352.5,
+        });
     });
 
     it('is brought back inside the box the lines scroll in when the end of a long line is past its edge, which would hide the button', async () => {
         // 1134 (the edge) less the button's 144 and a gap of 8.
-        expect(await measured(new DOMRect(1150, 337.5, 0, 15))).toEqual({ left: 982, right: 982, top: 337.5, bottom: 352.5 });
+        expect(await measured(new DOMRect(1150, 337.5, 0, 15))).toEqual({
+            left: 982,
+            right: 982,
+            top: 337.5,
+            bottom: 352.5,
+        });
     });
 
     it('is brought back inside the box when the end of the selection is scrolled out at the left', async () => {
@@ -344,7 +367,12 @@ describe('selectionAction in a diff card', () => {
     });
 
     /** Draws the diff and waits for its editor, which is built once the language of the file is loaded. */
-    async function showDiff(path: string, original: string, modified: string, extensions?: Extension): Promise<EditorView> {
+    async function showDiff(
+        path: string,
+        original: string,
+        modified: string,
+        extensions?: Extension
+    ): Promise<EditorView> {
         await act(async () => {
             root.render(createElement(DiffView, { path, original, modified, extensions }));
         });
@@ -372,9 +400,14 @@ describe('selectionAction in a diff card', () => {
 
     it('quotes what lies in a run of unchanged lines folded behind a row, when the selection goes across it, as a copy would', async () => {
         const onAction = vi.fn<(selected: SelectedLines) => void>();
-        const original = Array.from({ length: 30 }, (_, index) => `line ${ index + 1 }`);
-        const modified = original.map((line, index) => (index === 0 || index === 29 ? `${ line } changed` : line));
-        const editor = await showDiff('notes.txt', original.join('\n'), modified.join('\n'), selectionAction({ label: 'Add to chat', onAction }));
+        const original = Array.from({ length: 30 }, (_, index) => `line ${index + 1}`);
+        const modified = original.map((line, index) => (index === 0 || index === 29 ? `${line} changed` : line));
+        const editor = await showDiff(
+            'notes.txt',
+            original.join('\n'),
+            modified.join('\n'),
+            selectionAction({ label: 'Add to chat', onAction })
+        );
 
         // The lines between the two changes are folded behind one row, and still are text of the document.
         expect(host.querySelector('.cm-collapsedLines')).not.toBeNull();
@@ -386,11 +419,14 @@ describe('selectionAction in a diff card', () => {
         expect(onAction).toHaveBeenCalledExactlyOnceWith({ from: 1, to: 30, text: modified.join('\n') });
     });
 
-    it('is added and taken away with the host\'s extensions, without losing the selection', async () => {
+    it("is added and taken away with the host's extensions, without losing the selection", async () => {
         const onAction = vi.fn();
-        const render = (extensions?: Extension) => act(async () => {
-            root.render(createElement(DiffView, { path: 'notes.txt', original: 'a\nb\nc', modified: 'a\nB\nc', extensions }));
-        });
+        const render = (extensions?: Extension) =>
+            act(async () => {
+                root.render(
+                    createElement(DiffView, { path: 'notes.txt', original: 'a\nb\nc', modified: 'a\nB\nc', extensions })
+                );
+            });
         const editor = await showDiff('notes.txt', 'a\nb\nc', 'a\nB\nc');
 
         await select(editor, 2, 3);

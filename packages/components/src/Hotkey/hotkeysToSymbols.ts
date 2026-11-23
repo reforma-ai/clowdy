@@ -56,7 +56,7 @@ const HOTKEY_SYMBOLS = {
     period: '.',
     slash: '/',
     semicolon: ';',
-    quote: '\'',
+    quote: "'",
     backquote: '`',
     equal: '=',
     bracketleft: '[',
@@ -68,7 +68,7 @@ const HOTKEY_SYMBOLS = {
 export function hotkeysToSymbols(hotkey: HotkeyValue): string[] {
     return getHotkeyKeys(hotkey)
         .filter(Boolean)
-        .map((key) => {
+        .map(key => {
             const normalizedKey = key.toLowerCase();
 
             if (normalizedKey in HOTKEY_SYMBOLS) {

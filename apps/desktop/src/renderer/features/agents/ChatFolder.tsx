@@ -6,7 +6,14 @@ import { Folder } from '@clowdy/icons/14';
 import { tildePath } from '../../shared/displayPath';
 import { homeFolder } from '../../shared/homeFolder';
 import { useProjectState } from '../../stores';
-import { canOpenPaths, OpenWithMenu, useFolderGit, useFolderRepair, type FolderGit, type OpenTarget } from '../openWith';
+import {
+    canOpenPaths,
+    type FolderGit,
+    type OpenTarget,
+    OpenWithMenu,
+    useFolderGit,
+    useFolderRepair,
+} from '../openWith';
 import styles from './ChatFolder.module.css';
 import { FolderTrigger } from './DraftFolderSelect';
 import { WorkspaceLabel } from './WorkspaceChips';
@@ -40,20 +47,33 @@ export function FolderPill({ name, folder, missing, git, workspace }: FolderPill
 
     if (!canOpenPaths()) {
         return (
-            <div role="group" aria-label="Folder" className={ styles.folder } data-missing={ missing || undefined } title={ title }>
+            <div
+                role="group"
+                aria-label="Folder"
+                className={styles.folder}
+                data-missing={missing || undefined}
+                title={title}
+            >
                 <Folder aria-hidden="true" />
-                <Text truncate>{ name }</Text>
+                <Text truncate>{name}</Text>
             </div>
         );
     }
 
-    const target: OpenTarget = { projectId: project.id, folder, path, relative: '', kind: 'directory', ...(workspace && { workspace }) };
+    const target: OpenTarget = {
+        projectId: project.id,
+        folder,
+        path,
+        relative: '',
+        kind: 'directory',
+        ...(workspace && { workspace }),
+    };
 
     return (
         <MenuTrigger>
-            <FolderTrigger name={ name } tooltip={ title } missing={ missing } />
+            <FolderTrigger name={name} tooltip={title} missing={missing} />
             <Popover placement="bottom start" spacing="xs">
-                <OpenWithMenu target={ target } missing={ missing } repair={ repair } git={ git } aria-label="Open folder" />
+                <OpenWithMenu target={target} missing={missing} repair={repair} git={git} aria-label="Open folder" />
             </Popover>
         </MenuTrigger>
     );
@@ -79,8 +99,14 @@ export function ChatFolder({ name, folder, missing, workspace }: ChatFolderProps
 
     return (
         <>
-            <FolderPill name={ name } folder={ folder } missing={ missing || git?.gone === true } git={ git } workspace={ workspace } />
-            <WorkspaceLabel worktree={ workspace?.path } git={ git } />
+            <FolderPill
+                name={name}
+                folder={folder}
+                missing={missing || git?.gone === true}
+                git={git}
+                workspace={workspace}
+            />
+            <WorkspaceLabel worktree={workspace?.path} git={git} />
         </>
     );
 }
@@ -90,5 +116,5 @@ export function DraftFolder({ name, folder, missing }: Omit<ChatFolderProps, 'wo
     const project = useProjectState();
     const git = useFolderGit(project.id, folder.id);
 
-    return <FolderPill name={ name } folder={ folder } missing={ missing } git={ git } />;
+    return <FolderPill name={name} folder={folder} missing={missing} git={git} />;
 }

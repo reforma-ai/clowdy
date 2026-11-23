@@ -1,6 +1,6 @@
+import { useNow } from '../../../shared/useNow';
 import styles from './UsageBlock.module.css';
 import { UsageReading } from './UsageRows';
-import { useNow } from './useNow';
 
 import type { AgentUsage } from '@clowdy/protocol';
 
@@ -13,8 +13,8 @@ export function UsageBlock({ usage }: { usage: AgentUsage }) {
     const now = useNow();
 
     return (
-        <section className={ styles.block } aria-label="Usage">
-            <UsageReading usage={ usage } now={ now } />
+        <section className={styles.block} aria-label="Usage">
+            <UsageReading usage={usage} now={now} />
         </section>
     );
 }

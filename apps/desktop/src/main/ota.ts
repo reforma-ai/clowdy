@@ -1,12 +1,20 @@
-import { isVersionAheadOf } from '@clowdy/lib/semver';
 import { randomBytes } from 'node:crypto';
 import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { gunzip } from 'node:zlib';
+import { isVersionAheadOf } from '@clowdy/lib/semver';
 
 import { renameWhenFree } from './bundle';
-import { MANIFEST_FILE, openManifest, RENDERER_DIR, rendererFiles, sha256, type BundleFiles, type BundleManifest } from './bundleManifest';
+import {
+    type BundleFiles,
+    type BundleManifest,
+    MANIFEST_FILE,
+    openManifest,
+    RENDERER_DIR,
+    rendererFiles,
+    sha256,
+} from './bundleManifest';
 import { daemonHoldsLock, restoreDatabase } from './daemonFiles';
 import { readTar, tarSize } from './tar';
 
@@ -125,7 +133,7 @@ export function createOta(options: OtaOptions) {
 
     /** The newest installed bundle that verifies, is not rejected, and this shell can run; otherwise the app's own copy. */
     async function choose(): Promise<RunningBundle> {
-        if (!publicKey) return running = own;
+        if (!publicKey) return (running = own);
 
         const state = await readState();
 
@@ -139,18 +147,25 @@ export function createOta(options: OtaOptions) {
 
                 onTrial = state.unconfirmed && version === state.current;
 
-                return running = { version, rendererRoot: path.join(dir, RENDERER_DIR), dir, rendererFiles: rendererFiles(manifest.files) };
+                return (running = {
+                    version,
+                    rendererRoot: path.join(dir, RENDERER_DIR),
+                    dir,
+                    rendererFiles: rendererFiles(manifest.files),
+                });
             }
         }
 
-        return running = own;
+        return (running = own);
     }
 
     /** Starts the ready clock when the running bundle is on its first launch. */
     function watchReady(): void {
         if (onTrial) {
             readyTimer = setTimeout(() => {
-                rollBack().catch((error: unknown) => log(`Could not go back from bundle ${ running.version }: ${ errorText(error) }`));
+                rollBack().catch((error: unknown) =>
+                    log(`Could not go back from bundle ${running.version}: ${errorText(error)}`)
+                );
             }, options.readyTimeoutMs ?? READY_TIMEOUT_MS);
         }
     }
@@ -162,7 +177,7 @@ export function createOta(options: OtaOptions) {
         onTrial = false;
         clearTimeout(readyTimer);
         await changeState(state => ({ ...state, unconfirmed: false }));
-        check().catch((error: unknown) => log(`The update check failed: ${ errorText(error) }`));
+        check().catch((error: unknown) => log(`The update check failed: ${errorText(error)}`));
     }
 
     async function rollBack(): Promise<void> {
@@ -175,16 +190,22 @@ export function createOta(options: OtaOptions) {
 
     /** Never runs the running bundle again; the next launch runs the one before it. */
     function reject(reason: string): Promise<void> {
-        return changeState((state) => {
+        return changeState(state => {
             // Its page and its daemon both failed; the first failure already went back.
             if (state.rejected.includes(running.version)) return state;
 
             const back = running.version === state.current ? state.previous : null;
 
-            log(`Bundle ${ running.version } ${ reason }; going back to ${ back ?? 'the app\'s own copy' }.`);
+            log(`Bundle ${running.version} ${reason}; going back to ${back ?? "the app's own copy"}.`);
 
             // The previous bundle proves itself again; if it fails too, the app's own copy runs.
-            return { ...state, current: back, previous: null, unconfirmed: back !== null, rejected: [...state.rejected, running.version] };
+            return {
+                ...state,
+                current: back,
+                previous: null,
+                unconfirmed: back !== null,
+                rejected: [...state.rejected, running.version],
+            };
         });
     }
 
@@ -192,7 +213,11 @@ export function createOta(options: OtaOptions) {
     async function daemonUp(version: number | undefined): Promise<void> {
         if (!running.dir || version !== running.version) return;
 
-        await changeState(state => (state.proven.includes(version) ? state : { ...state, proven: [...state.proven, version].slice(-PROVEN_KEPT) }));
+        await changeState(state =>
+            state.proven.includes(version)
+                ? state
+                : { ...state, proven: [...state.proven, version].slice(-PROVEN_KEPT) }
+        );
     }
 
     /**
@@ -209,15 +234,19 @@ export function createOta(options: OtaOptions) {
             clearTimeout(readyTimer);
 
             // A daemon stuck in its migration still holds the database; it is left alone.
-            if (!await daemonHoldsLock(options.dataDir)) {
+            if (!(await daemonHoldsLock(options.dataDir))) {
                 // The bundle goes all the same: its daemon did not start either way.
-                const restored = await restoreDatabase(options.dataDir, launchedAt - CLOCK_SLACK_MS).catch((error: unknown) => {
-                    log(`Could not put back the database the daemon of bundle ${ running.version } migrated: ${ errorText(error) }`);
+                const restored = await restoreDatabase(options.dataDir, launchedAt - CLOCK_SLACK_MS).catch(
+                    (error: unknown) => {
+                        log(
+                            `Could not put back the database the daemon of bundle ${running.version} migrated: ${errorText(error)}`
+                        );
 
-                    return undefined;
-                });
+                        return undefined;
+                    }
+                );
 
-                if (restored) log(`Put back ${ restored }, which the daemon of bundle ${ running.version } migrated.`);
+                if (restored) log(`Put back ${restored}, which the daemon of bundle ${running.version} migrated.`);
             }
 
             await reject('could not start its daemon');
@@ -243,7 +272,7 @@ export function createOta(options: OtaOptions) {
 
             if (version !== null) {
                 installedVersion = version;
-                log(`Installed bundle ${ version }; it runs from the next launch.`);
+                log(`Installed bundle ${version}; it runs from the next launch.`);
                 options.onInstalled?.(version);
             }
 
@@ -268,7 +297,7 @@ export function createOta(options: OtaOptions) {
         let first = false;
 
         // Marked first, so a launch cut short does not wait again.
-        await changeState((state) => {
+        await changeState(state => {
             first = state.shell !== options.shellVersion;
 
             return first ? { ...state, shell: options.shellVersion } : state;
@@ -279,12 +308,11 @@ export function createOta(options: OtaOptions) {
         try {
             const version = await installNewer({ onProgress, wait: options.catchUpMs ?? CATCH_UP_MS });
 
-            if (version !== null) log(`Installed bundle ${ version } before the first window.`);
+            if (version !== null) log(`Installed bundle ${version} before the first window.`);
 
             return version !== null;
-        }
-        catch (error) {
-            log(`Could not install the newest bundle before the first window: ${ errorText(error) }`);
+        } catch (error) {
+            log(`Could not install the newest bundle before the first window: ${errorText(error)}`);
 
             return false;
         }
@@ -295,19 +323,24 @@ export function createOta(options: OtaOptions) {
      * version, or null when there is nothing to install. With `waiting` a launch waits, so the requests are cut short.
      */
     async function installNewer(waiting?: Waiting): Promise<number | null> {
-        const response = await options.fetch(`${ feed }/${ MANIFEST_FILE }`, { signal: waiting && AbortSignal.timeout(waiting.wait.manifest) });
+        const response = await options.fetch(`${feed}/${MANIFEST_FILE}`, {
+            signal: waiting && AbortSignal.timeout(waiting.wait.manifest),
+        });
 
         // Nothing published yet, or the repository is still private.
         if (response.status === 404) return null;
 
-        if (!response.ok) throw new Error(`The bundle manifest answered ${ response.status }`);
+        if (!response.ok) throw new Error(`The bundle manifest answered ${response.status}`);
 
         const signed = new TextDecoder().decode(await readBody(response, MANIFEST_LIMIT));
         const manifest = openManifest(signed, publicKey);
         const state = await readState();
 
-        if (manifest.version <= Math.max(running.version, installedVersion ?? 0)
-            || state.rejected.includes(manifest.version) || !compatible(manifest)) {
+        if (
+            manifest.version <= Math.max(running.version, installedVersion ?? 0) ||
+            state.rejected.includes(manifest.version) ||
+            !compatible(manifest)
+        ) {
             return null;
         }
 
@@ -335,25 +368,28 @@ export function createOta(options: OtaOptions) {
         // Before the request: a launch whose download stalls before it answers still shows why it waits.
         waiting?.onProgress(0);
 
-        const response = await options.fetch(`${ feed }/${ name }`, { signal: waiting && AbortSignal.timeout(waiting.wait.install) });
+        const response = await options.fetch(`${feed}/${name}`, {
+            signal: waiting && AbortSignal.timeout(waiting.wait.install),
+        });
 
-        if (!response.ok) throw new Error(`${ name } answered ${ response.status }`);
+        if (!response.ok) throw new Error(`${name} answered ${response.status}`);
 
         let received = 0;
-        const archive = await readBody(response, size, (length) => {
+        const archive = await readBody(response, size, length => {
             received += length;
             waiting?.onProgress(Math.min(received / size, 1));
         });
 
-        if (archive.length !== size || sha256(archive) !== archiveHash) throw new Error(`${ name } does not match the manifest`);
+        if (archive.length !== size || sha256(archive) !== archiveHash)
+            throw new Error(`${name} does not match the manifest`);
 
         const expected = new Map(Object.entries(manifest.files));
         // The tar `writeTar` makes of the manifest's files: a larger one is not this bundle.
         const limit = tarSize([...expected.values()].map(file => file.size));
         const entries = await gunzipAsync(archive, { maxOutputLength: limit }).then(readTar, (error: unknown) => {
-            throw new Error(`${ name } does not match the manifest: ${ errorText(error) }`);
+            throw new Error(`${name} does not match the manifest: ${errorText(error)}`);
         });
-        const staging = path.join(bundles, `.staging-${ manifest.version }-${ randomBytes(4).toString('hex') }`);
+        const staging = path.join(bundles, `.staging-${manifest.version}-${randomBytes(4).toString('hex')}`);
 
         try {
             for (const entry of entries) {
@@ -361,7 +397,7 @@ export function createOta(options: OtaOptions) {
 
                 // Only the manifest's paths are written, and those are checked to stay inside the folder.
                 if (!file || entry.data.length !== file.size || sha256(entry.data) !== file.sha256) {
-                    throw new Error(`${ entry.path } in ${ name } does not match the manifest`);
+                    throw new Error(`${entry.path} in ${name} does not match the manifest`);
                 }
 
                 expected.delete(entry.path);
@@ -371,13 +407,12 @@ export function createOta(options: OtaOptions) {
 
             const [missing] = expected.keys();
 
-            if (missing !== undefined) throw new Error(`${ name } lacks ${ missing }`);
+            if (missing !== undefined) throw new Error(`${name} lacks ${missing}`);
 
             await writeFile(path.join(staging, MANIFEST_FILE), signed);
             await rm(target, { recursive: true, force: true });
             await renameWhenFree(staging, target);
-        }
-        finally {
+        } finally {
             await rm(staging, { recursive: true, force: true });
         }
     }
@@ -395,18 +430,19 @@ export function createOta(options: OtaOptions) {
 
             // An altered or half-deleted file would otherwise leave a blank window or a daemon that cannot start.
             for (let start = 0; start < files.length; start += HASHES_AT_ONCE) {
-                const results = await Promise.all(files.slice(start, start + HASHES_AT_ONCE).map(async ([file, expected]) => {
-                    const bytes = await readFile(path.join(dir, file));
+                const results = await Promise.all(
+                    files.slice(start, start + HASHES_AT_ONCE).map(async ([file, expected]) => {
+                        const bytes = await readFile(path.join(dir, file));
 
-                    return bytes.length === expected.size && sha256(bytes) === expected.sha256;
-                }));
+                        return bytes.length === expected.size && sha256(bytes) === expected.sha256;
+                    })
+                );
 
                 if (results.includes(false)) return null;
             }
 
             return manifest;
-        }
-        catch {
+        } catch {
             return null;
         }
     }
@@ -426,9 +462,8 @@ export function createOta(options: OtaOptions) {
 
             try {
                 daemon = await options.daemonVersion();
-            }
-            catch (error) {
-                log(`Not deleting old bundles now: ${ errorText(error) }`);
+            } catch (error) {
+                log(`Not deleting old bundles now: ${errorText(error)}`);
 
                 return;
             }
@@ -440,8 +475,9 @@ export function createOta(options: OtaOptions) {
                 if (keep.has(entry)) continue;
 
                 // Windows refuses to delete a file that is open; the next prune tries again.
-                await rm(path.join(bundles, entry), { recursive: true, force: true })
-                    .catch((error: unknown) => log(`Could not delete ${ entry }: ${ errorText(error) }`));
+                await rm(path.join(bundles, entry), { recursive: true, force: true }).catch((error: unknown) =>
+                    log(`Could not delete ${entry}: ${errorText(error)}`)
+                );
             }
         });
     }
@@ -449,7 +485,7 @@ export function createOta(options: OtaOptions) {
     async function readState(): Promise<OtaState> {
         try {
             const state = JSON.parse(await readFile(path.join(updates, STATE_FILE), 'utf8')) as Partial<OtaState>;
-            const version = (value: unknown) => (Number.isSafeInteger(value) ? value as number : null);
+            const version = (value: unknown) => (Number.isSafeInteger(value) ? (value as number) : null);
 
             return {
                 current: version(state.current),
@@ -459,8 +495,7 @@ export function createOta(options: OtaOptions) {
                 proven: Array.isArray(state.proven) ? state.proven.filter(Number.isSafeInteger) : [],
                 shell: typeof state.shell === 'string' ? state.shell : null,
             };
-        }
-        catch {
+        } catch {
             return NO_STATE;
         }
     }
@@ -476,8 +511,8 @@ export function createOta(options: OtaOptions) {
             const file = path.join(updates, STATE_FILE);
 
             await mkdir(updates, { recursive: true });
-            await writeFile(`${ file }.tmp`, JSON.stringify(next));
-            await rename(`${ file }.tmp`, file);
+            await writeFile(`${file}.tmp`, JSON.stringify(next));
+            await rename(`${file}.tmp`, file);
         });
     }
 
@@ -486,7 +521,19 @@ export function createOta(options: OtaOptions) {
         if (installedVersion !== null) options.relaunch();
     }
 
-    return { enabled, choose, catchUp, watchReady, ready, daemonUp, daemonFailed, check, prune, restart, pending: () => installedVersion };
+    return {
+        enabled,
+        choose,
+        catchUp,
+        watchReady,
+        ready,
+        daemonUp,
+        daemonFailed,
+        check,
+        prune,
+        restart,
+        pending: () => installedVersion,
+    };
 }
 
 /** Runs each piece of work it is given once the one before has settled. */
@@ -511,7 +558,7 @@ async function readBody(response: Response, limit: number, onChunk?: (length: nu
         length += chunk.length;
 
         // Leaving the loop cancels the download.
-        if (length > limit) throw new Error(`${ response.url || 'A download' } is larger than ${ limit } bytes`);
+        if (length > limit) throw new Error(`${response.url || 'A download'} is larger than ${limit} bytes`);
 
         chunks.push(chunk);
         onChunk?.(chunk.length);

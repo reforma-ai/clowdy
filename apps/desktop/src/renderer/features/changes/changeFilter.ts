@@ -32,10 +32,19 @@ const MAX_STAR_RUNS = 3;
  * the `!` of a pattern on its own. `nobrace` and `noext`: the grammar above has no braces and no `+(a|b)`, and a text typed on every key should not grow into several globs. `platform`: a path is
  * `/`-separated and a backslash escapes, on every system.
  */
-const GLOB_OPTIONS = { dot: true, nocase: true, nonegate: true, nocomment: true, nobrace: true, noext: true, platform: 'linux' } satisfies MinimatchOptions;
+const GLOB_OPTIONS = {
+    dot: true,
+    nocase: true,
+    nonegate: true,
+    nocomment: true,
+    nobrace: true,
+    noext: true,
+    platform: 'linux',
+} satisfies MinimatchOptions;
 
 /** Whether a part of a glob has more runs of stars than a name can be tried against in good time. */
-const hasTooManyStars = (glob: string): boolean => glob.split('/').some(part => (part.match(/\*+/g)?.length ?? 0) > MAX_STAR_RUNS);
+const hasTooManyStars = (glob: string): boolean =>
+    glob.split('/').some(part => (part.match(/\*+/g)?.length ?? 0) > MAX_STAR_RUNS);
 
 /**
  * A glob made once, to match many paths. A glob with no `/` is about the name of a file, wherever the file is. Nothing for a glob with too many stars, and for one that `minimatch`
@@ -46,8 +55,7 @@ function compileGlob(glob: string): Minimatch | undefined {
 
     try {
         return new Minimatch(glob, { ...GLOB_OPTIONS, matchBase: !glob.includes('/') });
-    }
-    catch {
+    } catch {
         return undefined;
     }
 }
@@ -86,13 +94,18 @@ export interface ChangeFilter {
 
 /** The patterns of a filter text, in the order they were typed, with the empty ones and a bare `!` dropped. */
 export function compileChangeFilter(text: string): ChangeFilter {
-    const patterns = text.split(',').map(part => patternOf(part.trim())).filter((pattern): pattern is Pattern => pattern !== undefined);
+    const patterns = text
+        .split(',')
+        .map(part => patternOf(part.trim()))
+        .filter((pattern): pattern is Pattern => pattern !== undefined);
     const included = patterns.filter(pattern => !pattern.exclude);
     const excluded = patterns.filter(pattern => pattern.exclude);
 
     return {
         isEmpty: patterns.length === 0,
-        matches: path => (included.length === 0 || included.some(pattern => pattern.matches(path))) && !excluded.some(pattern => pattern.matches(path)),
+        matches: path =>
+            (included.length === 0 || included.some(pattern => pattern.matches(path))) &&
+            !excluded.some(pattern => pattern.matches(path)),
     };
 }
 

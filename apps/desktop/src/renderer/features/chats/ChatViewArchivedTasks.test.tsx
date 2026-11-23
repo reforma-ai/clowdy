@@ -23,11 +23,22 @@ vi.mock('../../stream/Markdown', () => ({
 
         return (
             <div>
-                { text.split(/(CAR-\d+)/).map((part, index) => {
+                {text.split(/(CAR-\d+)/).map((part, index) => {
                     const task = taskOfKey?.(part);
 
-                    return task ? <button key={ index } type="button" data-task-chip={ task.id } onClick={ () => onOpenTask?.(task.id) }>{ part }</button> : part;
-                }) }
+                    return task ? (
+                        <button
+                            key={index}
+                            type="button"
+                            data-task-chip={task.id}
+                            onClick={() => onOpenTask?.(task.id)}
+                        >
+                            {part}
+                        </button>
+                    ) : (
+                        part
+                    );
+                })}
             </div>
         );
     },
@@ -54,9 +65,14 @@ const ui = () => store.ui.forProject(FIXTURE_PROJECT_ID);
 const project = () => store.selectedProject!;
 const chips = () => [...container.querySelectorAll<HTMLElement>('[data-task-chip]')].map(chip => chip.textContent);
 
-const render = () => act(async () => {
-    reactRoot.render(<RootStoreProvider value={ store }><ChatView chat={ project().chats.get('c-1')! } /></RootStoreProvider>);
-});
+const render = () =>
+    act(async () => {
+        reactRoot.render(
+            <RootStoreProvider value={store}>
+                <ChatView chat={project().chats.get('c-1')!} />
+            </RootStoreProvider>
+        );
+    });
 
 async function draw() {
     await render();
@@ -109,12 +125,16 @@ describe('a task key in a message', () => {
 
         await daemon.command({ type: 'task.archive', taskId: 't-22' });
 
-        store = new RootStore(overrideTransport(daemon, {
-            getTaskDetailByKey: (projectId, key) => new Promise((resolve, reject) => {
-                asked.push(key);
-                answer = () => void daemon.getTaskDetailByKey(projectId, key).then(resolve, reject);
+        store = new RootStore(
+            overrideTransport(daemon, {
+                getTaskDetailByKey: (projectId, key) =>
+                    new Promise((resolve, reject) => {
+                        asked.push(key);
+                        answer = () => void daemon.getTaskDetailByKey(projectId, key).then(resolve, reject);
+                    }),
             }),
-        }), { storage: memoryStorage() });
+            { storage: memoryStorage() }
+        );
         await store.load();
         await draw();
 
@@ -144,7 +164,11 @@ describe('TaskChip', () => {
         const archived = { id: 't-38', key: 'CAR-38', title: 'Clean up the admin pages' };
 
         await act(async () => {
-            reactRoot.render(<RootStoreProvider value={ store }><TaskChip task={ archived } /></RootStoreProvider>);
+            reactRoot.render(
+                <RootStoreProvider value={store}>
+                    <TaskChip task={archived} />
+                </RootStoreProvider>
+            );
         });
         await act(async () => container.querySelector('button')!.click());
 

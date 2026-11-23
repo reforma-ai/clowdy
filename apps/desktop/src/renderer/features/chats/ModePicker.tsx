@@ -26,32 +26,32 @@ export interface ModePickerProps {
 export function ModePicker({ mode, isDisabled, onPick }: ModePickerProps) {
     return (
         <MenuTrigger>
-            <Trigger label={ MODES.find(option => option.id === mode)?.label ?? mode } isDisabled={ isDisabled } />
-            <Popover className={ styles.menu } placement="top" spacing="xs">
+            <Trigger label={MODES.find(option => option.id === mode)?.label ?? mode} isDisabled={isDisabled} />
+            <Popover className={styles.menu} placement="top" spacing="xs">
                 <Menu
                     aria-label="How the orchestrator works"
-                    className={ styles.list }
+                    className={styles.list}
                     size="sm"
                     selectionMode="single"
-                    selectedKeys={ [mode] }
+                    selectedKeys={[mode]}
                     disallowEmptySelection
-                    onSelectionChange={ (keys) => {
+                    onSelectionChange={keys => {
                         const next = keys === 'all' ? undefined : MODES.find(option => keys.has(option.id));
 
                         if (next && next.id !== mode) onPick(next.id);
-                    } }
+                    }}
                 >
-                    { MODES.map(option => (
+                    {MODES.map(option => (
                         <MenuItem
-                            key={ option.id }
-                            id={ option.id }
-                            className={ styles.item }
-                            text={ option.label }
-                            description={ option.description }
+                            key={option.id}
+                            id={option.id}
+                            className={styles.item}
+                            text={option.label}
+                            description={option.description}
                             stacked
-                            endAffix={ mode === option.id ? <Check aria-hidden="true" /> : undefined }
+                            endAffix={mode === option.id ? <Check aria-hidden="true" /> : undefined}
                         />
-                    )) }
+                    ))}
                 </Menu>
             </Popover>
         </MenuTrigger>
@@ -66,13 +66,13 @@ function Trigger({ label, isDisabled }: { label: string; isDisabled?: boolean })
             size="sm"
             variant="filling"
             rounded
-            className={ styles.trigger }
-            contentClassName={ styles.triggerContent }
-            data-open={ isOpen || undefined }
-            isDisabled={ isDisabled }
-            aria-label={ `Mode: ${ label }` }
+            className={styles.trigger}
+            contentClassName={styles.triggerContent}
+            data-open={isOpen || undefined}
+            isDisabled={isDisabled}
+            aria-label={`Mode: ${label}`}
         >
-            <Text truncate>{ label }</Text>
+            <Text truncate>{label}</Text>
             <ChevronDown aria-hidden="true" />
         </Button>
     );

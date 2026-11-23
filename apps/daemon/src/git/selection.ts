@@ -22,7 +22,7 @@ export interface Selection {
 export async function selectChanged(place: Place, paths: unknown): Promise<Selection> {
     if (!Array.isArray(paths) || paths.length === 0) throw invalid('Pick at least one file');
 
-    if (paths.length > MAX_GIT_COMMIT_PATHS) throw invalid(`Pick at most ${ MAX_GIT_COMMIT_PATHS } files`);
+    if (paths.length > MAX_GIT_COMMIT_PATHS) throw invalid(`Pick at most ${MAX_GIT_COMMIT_PATHS} files`);
 
     const wanted = [...new Set(paths)];
 
@@ -37,14 +37,20 @@ export async function selectChanged(place: Place, paths: unknown): Promise<Selec
     if (!changes.isRepository) throw invalid('The folder is not the root of a git repository');
 
     const listed = new Map(changes.files.map(file => [file.path, file]));
-    const files = (wanted as string[]).map((path) => {
+    const files = (wanted as string[]).map(path => {
         const file = listed.get(path);
 
-        if (!file) throw invalid(`${ path } is not a changed file`);
+        if (!file) throw invalid(`${path} is not a changed file`);
 
         return file;
     });
-    const gitPaths = [...new Set(files.flatMap(file => (file.kind === 'renamed' && file.oldPath !== undefined ? [file.path, file.oldPath] : [file.path])))];
+    const gitPaths = [
+        ...new Set(
+            files.flatMap(file =>
+                file.kind === 'renamed' && file.oldPath !== undefined ? [file.path, file.oldPath] : [file.path]
+            )
+        ),
+    ];
 
     return { files, gitPaths };
 }

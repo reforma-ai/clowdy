@@ -3,8 +3,8 @@ import { Plus } from '@clowdy/icons/14';
 
 import { Unavailable } from '../../shared/Unavailable';
 import { None, Section } from './DetailSections';
-import { StatusIcon } from './status';
 import styles from './SubtasksSection.module.css';
+import { StatusIcon } from './status';
 import { RollUpChip } from './TaskChips';
 import { DEPTH_LIMIT_HINT } from './taskTree';
 
@@ -31,33 +31,49 @@ export interface SubtasksSectionProps {
  * button for a new one. Every task has the section, so the first sub-task is made from here: a task with nothing inside it says so, and one at the last level
  * has the button off with the reason.
  */
-export function SubtasksSection({ task, subtasks, rollUp, statuses, canHaveChildren, onOpen, onCreate }: SubtasksSectionProps) {
+export function SubtasksSection({
+    task,
+    subtasks,
+    rollUp,
+    statuses,
+    canHaveChildren,
+    onOpen,
+    onCreate,
+}: SubtasksSectionProps) {
     return (
-        <Section title="Sub-tasks" aside={ rollUp && <RollUpChip rollUp={ rollUp } taskKey={ task.key } /> }>
-            { subtasks.length === 0 && <None>No sub-tasks yet</None> }
+        <Section title="Sub-tasks" aside={rollUp && <RollUpChip rollUp={rollUp} taskKey={task.key} />}>
+            {subtasks.length === 0 && <None>No sub-tasks yet</None>}
 
-            { subtasks.length > 0 && (
-                <div className={ styles.list }>
-                    { subtasks.map((subtask) => {
+            {subtasks.length > 0 && (
+                <div className={styles.list}>
+                    {subtasks.map(subtask => {
                         const status = statuses.find(candidate => candidate.id === subtask.statusId);
 
                         return (
-                            <button key={ subtask.id } type="button" className={ styles.row } onClick={ () => onOpen(subtask.id) } title={ subtask.title }>
-                                { status
-                                    ? <StatusIcon category={ status.category } />
-                                    : <span aria-hidden className={ styles.noStatus } /> }
-                                <span className={ styles.key }>{ subtask.key }</span>
-                                <span className={ styles.title }>{ subtask.title }</span>
+                            <button
+                                key={subtask.id}
+                                type="button"
+                                className={styles.row}
+                                onClick={() => onOpen(subtask.id)}
+                                title={subtask.title}
+                            >
+                                {status ? (
+                                    <StatusIcon category={status.category} />
+                                ) : (
+                                    <span aria-hidden className={styles.noStatus} />
+                                )}
+                                <span className={styles.key}>{subtask.key}</span>
+                                <span className={styles.title}>{subtask.title}</span>
                             </button>
                         );
-                    }) }
+                    })}
                 </div>
-            ) }
+            )}
 
             {/* Its own line, so the stand-in that carries the hint is as wide as the button and not as wide as the section. */}
-            <div className={ styles.action }>
-                <Unavailable label="New sub-task" hint={ canHaveChildren ? undefined : DEPTH_LIMIT_HINT }>
-                    <Button variant="bordered" size="sm" isDisabled={ !canHaveChildren } onPress={ onCreate }>
+            <div className={styles.action}>
+                <Unavailable label="New sub-task" hint={canHaveChildren ? undefined : DEPTH_LIMIT_HINT}>
+                    <Button variant="bordered" size="sm" isDisabled={!canHaveChildren} onPress={onCreate}>
                         <Plus />
                         New sub-task
                     </Button>

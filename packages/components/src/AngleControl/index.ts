@@ -1,3 +1,4 @@
+export { AngleControl } from './AngleControl';
 export {
     ANGLE_PREVIEW_GEOMETRY,
     ANGLE_RING_WIDTH,
@@ -23,7 +24,7 @@ export {
     snapDegreesToPresets,
     toDegrees,
 } from './angle';
-export { AngleControl } from './AngleControl';
+
 export type {
     AngleChangeMeta,
     AngleChangeSource,

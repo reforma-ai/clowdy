@@ -20,15 +20,24 @@ export interface GitResult {
  */
 export function git(cwd: string, args: string[], timeoutMs?: number): GitResult {
     try {
-        const result = Bun.spawnSync(['git', ...args], { cwd, stdout: 'pipe', stderr: 'pipe', env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }, ...(timeoutMs !== undefined && { timeout: timeoutMs, killSignal: 'SIGKILL' }) });
+        const result = Bun.spawnSync(['git', ...args], {
+            cwd,
+            stdout: 'pipe',
+            stderr: 'pipe',
+            env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+            ...(timeoutMs !== undefined && { timeout: timeoutMs, killSignal: 'SIGKILL' }),
+        });
 
         if (result.exitedDueToTimeout) {
             throw unavailable('git did not answer');
         }
 
-        return { ok: result.exitCode === 0, stdout: result.stdout.toString().trim(), stderr: result.stderr.toString().trim() };
-    }
-    catch (error) {
+        return {
+            ok: result.exitCode === 0,
+            stdout: result.stdout.toString().trim(),
+            stderr: result.stderr.toString().trim(),
+        };
+    } catch (error) {
         throw error instanceof CommandError ? error : unavailable('git is not installed or not on PATH');
     }
 }
@@ -82,7 +91,8 @@ export interface GitReadOptions extends GitOptions {
 /** What a read of git came to: its stdout, or why there is none (`failed`: git ran and said no, as it does outside a repository; `unavailable`: it could not be run, did not answer in time or printed too much). */
 export type GitRead = { ok: true; stdout: string } | { ok: false; reason: 'failed' | 'unavailable' };
 
-const withConfig = (args: string[], parsed: boolean | undefined) => (parsed ? [...PARSED_OUTPUT_CONFIG, ...args] : args);
+const withConfig = (args: string[], parsed: boolean | undefined) =>
+    parsed ? [...PARSED_OUTPUT_CONFIG, ...args] : args;
 
 /**
  * Runs git in `cwd` and reads its stdout without holding up the daemon (the sync `git` stops everything while it runs, and on a stale network disk for as long as that
@@ -109,8 +119,7 @@ export async function gitRead(cwd: string, args: string[], options: GitReadOptio
         const { stdout } = await pending;
 
         return { ok: true, stdout };
-    }
-    catch (error) {
+    } catch (error) {
         // A process that ran and exited with a code is git's own answer; one that did not start, was killed for the time or for the size is not.
         const { code, killed } = error as { code?: unknown; killed?: boolean };
 
@@ -119,7 +128,9 @@ export async function gitRead(cwd: string, args: string[], options: GitReadOptio
 }
 
 /** What a read of the NUL-separated records git prints came to: the records it read (the last may be cut short by `maxRecords`, which `truncated` says), or why there are none. */
-export type GitRecords = { ok: true; records: string[]; truncated: boolean } | { ok: false; reason: 'failed' | 'unavailable' };
+export type GitRecords =
+    | { ok: true; records: string[]; truncated: boolean }
+    | { ok: false; reason: 'failed' | 'unavailable' };
 
 export interface GitRecordsOptions extends GitOptions {
     /** git is killed once it has printed one more record than this: a listing too long to be wanted whole (every file of a tree that is all new) costs no more than this. */
@@ -130,8 +141,12 @@ export interface GitRecordsOptions extends GitOptions {
  * Runs git in `cwd` with `-z` output and reads its records as they come, stopping git once more than `maxRecords` are in: a `status` or a listing of new files in a tree
  * that is all new would otherwise print for as long as it takes and fill the daemon's memory. The records are decoded text without their NUL.
  */
-export function gitRecords(cwd: string, args: string[], { maxRecords, timeoutMs = READ_TIMEOUT_MS, parsed }: GitRecordsOptions): Promise<GitRecords> {
-    return new Promise((resolve) => {
+export function gitRecords(
+    cwd: string,
+    args: string[],
+    { maxRecords, timeoutMs = READ_TIMEOUT_MS, parsed }: GitRecordsOptions
+): Promise<GitRecords> {
+    return new Promise(resolve => {
         const records: string[] = [];
         let rest: Buffer = Buffer.alloc(0);
         let cut = false;
@@ -146,9 +161,13 @@ export function gitRecords(cwd: string, args: string[], { maxRecords, timeoutMs 
         let child: ReturnType<typeof spawn>;
 
         try {
-            child = spawn('git', withConfig(args, parsed), { cwd, env: readEnvironment(), windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
-        }
-        catch {
+            child = spawn('git', withConfig(args, parsed), {
+                cwd,
+                env: readEnvironment(),
+                windowsHide: true,
+                stdio: ['ignore', 'pipe', 'ignore'],
+            });
+        } catch {
             resolve({ ok: false, reason: 'unavailable' });
 
             return;
@@ -181,17 +200,15 @@ export function gitRecords(cwd: string, args: string[], { maxRecords, timeoutMs 
 
             rest = rest.subarray(start);
         });
-        child.on('close', (code) => {
+        child.on('close', code => {
             if (cut) {
                 finish({ ok: true, records, truncated: true });
-            }
-            else if (code === 0) {
+            } else if (code === 0) {
                 // Output that does not end in a NUL (a git that wrote no `-z` record at all) is one more record.
                 if (rest.length > 0) records.push(rest.toString('utf8'));
 
                 finish({ ok: true, records, truncated: false });
-            }
-            else {
+            } else {
                 finish({ ok: false, reason: code === null ? 'unavailable' : 'failed' });
             }
         });

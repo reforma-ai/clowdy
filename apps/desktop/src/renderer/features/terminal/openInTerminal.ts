@@ -12,7 +12,12 @@ import type { RootStore } from '../../stores';
  * was, when no shell could be started (the folder is gone from the disk, the limit of shells is reached, the worktree is not made yet). The tab shows the place the window works
  * in, so a caller offers this only for that place.
  */
-export async function openInTerminal(root: RootStore, projectId: ProjectId, place: Place, relative: string): Promise<boolean> {
+export async function openInTerminal(
+    root: RootStore,
+    projectId: ProjectId,
+    place: Place,
+    relative: string
+): Promise<boolean> {
     const store = terminalsStoreOf(root.transport);
 
     if (!isPlaceReady(place)) {

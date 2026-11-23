@@ -18,7 +18,8 @@ const PANEL: Record<PanelIconState, { x: number; width: number; rx: number }> = 
 };
 
 /** The frame of the three icons. */
-const FRAME = 'M11.0002 1C12.1047 1.00013 13.0002 1.89551 13.0002 3V11C13.0001 12.1044 12.1046 12.9999 11.0002 13H3.00024C1.89576 13 1.00038 12.1045 1.00024 11V3C1.00024 1.89543 1.89567 1 3.00024 1H11.0002ZM3.00024 2C2.44796 2 2.00024 2.44772 2.00024 3V11C2.00038 11.5522 2.44804 12 3.00024 12H11.0002C11.5523 11.9999 12.0001 11.5521 12.0002 11V3C12.0002 2.4478 11.5524 2.00013 11.0002 2H3.00024Z';
+const FRAME =
+    'M11.0002 1C12.1047 1.00013 13.0002 1.89551 13.0002 3V11C13.0001 12.1044 12.1046 12.9999 11.0002 13H3.00024C1.89576 13 1.00038 12.1045 1.00024 11V3C1.00024 1.89543 1.89567 1 3.00024 1H11.0002ZM3.00024 2C2.44796 2 2.00024 2.44772 2.00024 3V11C2.00038 11.5522 2.44804 12 3.00024 12H11.0002C11.5523 11.9999 12.0001 11.5521 12.0002 11V3C12.0002 2.4478 11.5524 2.00013 11.0002 2H3.00024Z';
 
 export interface PanelIconProps {
     /** What the panel is now: the icon draws it so. */
@@ -33,24 +34,24 @@ export interface PanelIconProps {
 export function PanelIcon({ state, className }: PanelIconProps) {
     const { x, width, rx } = PANEL[state];
     const vars = {
-        '--x': `${ x }px`,
-        '--width': `${ width }px`,
-        '--rx': `${ rx }px`,
+        '--x': `${x}px`,
+        '--width': `${width}px`,
+        '--rx': `${rx}px`,
     } as CSSProperties;
 
     return (
         <svg
-            className={ cn('clowdy-icon', styles.icon, className) }
-            width={ 14 }
-            height={ 14 }
+            className={cn('clowdy-icon', styles.icon, className)}
+            width={14}
+            height={14}
             viewBox="0 0 14 14"
             fill="none"
             aria-hidden="true"
-            data-state={ state }
-            style={ vars }
+            data-state={state}
+            style={vars}
         >
-            <path d={ FRAME } fill="currentColor" />
-            <rect className={ styles.panel } y={ 3 } height={ 8 } opacity={ 0.85 } fill="currentColor" />
+            <path d={FRAME} fill="currentColor" />
+            <rect className={styles.panel} y={3} height={8} opacity={0.85} fill="currentColor" />
         </svg>
     );
 }

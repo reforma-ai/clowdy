@@ -3,7 +3,14 @@ import { useMemo, useState } from 'react';
 import { useAgentModels, useAgents, useRootStore } from '../../stores';
 import { isUsableProvider, providerAgents } from '../settings/providers/providerView';
 import { perform } from './commands';
-import { readRemembered, remember, startingChoice, startingEngine, writeRemembered, type ModelChoice } from './modelSelection';
+import {
+    type ModelChoice,
+    readRemembered,
+    remember,
+    startingChoice,
+    startingEngine,
+    writeRemembered,
+} from './modelSelection';
 
 import type { Chat, Run } from '@clowdy/protocol';
 import type { PickerProvider } from './ModelPicker';
@@ -13,11 +20,18 @@ export const NO_PROVIDER_HINT = 'Turn on a provider in Settings > Providers';
 
 /** What a chat, or an orchestrator run, says it runs on. A chat from before chats had a choice of their own says nothing: its run does. */
 function choiceOf(source: Pick<Chat, 'engine' | 'model' | 'effort'> | undefined): ModelChoice | undefined {
-    return source?.engine ? { engine: source.engine, ...(source.model && { model: source.model }), ...(source.effort && { effort: source.effort }) } : undefined;
+    return source?.engine
+        ? {
+              engine: source.engine,
+              ...(source.model && { model: source.model }),
+              ...(source.effort && { effort: source.effort }),
+          }
+        : undefined;
 }
 
 /** The same choice, as one string, to tell whether what the store holds has moved since a pick. */
-const choiceKey = (choice: ModelChoice | undefined) => (choice ? [choice.engine, choice.model ?? '', choice.effort ?? ''].join('\n') : '');
+const choiceKey = (choice: ModelChoice | undefined) =>
+    choice ? [choice.engine, choice.model ?? '', choice.effort ?? ''].join('\n') : '';
 
 interface ModelChoiceArgs {
     /** The chat the composer is on, live from the store. Absent on the new-chat page. */
@@ -68,7 +82,13 @@ export function useModelChoice({ chat, made, run, preferredEngine }: ModelChoice
     const waiting = heldPick && heldPick.from === choiceKey(stored) ? heldPick.choice : undefined;
     const fixed = chat ? (waiting ?? stored) : (picked ?? choiceOf(made));
     const starting = !chat && !fixed;
-    const engine = starting ? startingEngine(usable.map(agent => agent.id), remembered, preferredEngine) : fixed?.engine;
+    const engine = starting
+        ? startingEngine(
+              usable.map(agent => agent.id),
+              remembered,
+              preferredEngine
+          )
+        : fixed?.engine;
     const list = useAgentModels(engine);
     const models = list?.models?.state === 'ok' ? list.models.models : [];
     const choice = starting ? (engine ? startingChoice(engine, models, remembered) : undefined) : fixed;
@@ -76,7 +96,12 @@ export function useModelChoice({ chat, made, run, preferredEngine }: ModelChoice
     const offeredKey = offered.join('\n');
     // The same array until the agents change, so the picker's effects do not run on every render.
     const providers = useMemo<PickerProvider[]>(
-        () => (offeredKey === '' ? [] : offeredKey.split('\n')).map(id => ({ id, name: agents.find(agent => agent.id === id)?.name ?? id, list: root.models.of(id) })),
+        () =>
+            (offeredKey === '' ? [] : offeredKey.split('\n')).map(id => ({
+                id,
+                name: agents.find(agent => agent.id === id)?.name ?? id,
+                list: root.models.of(id),
+            })),
         [offeredKey, agents, root]
     );
 

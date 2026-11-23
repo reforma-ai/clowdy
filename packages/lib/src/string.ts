@@ -2,7 +2,7 @@
  * English count + noun with simple singular/plural forms (e.g. `1 file` / `2 files`).
  */
 export function plural(count: number, singular: string, pluralForm: string): string {
-    return `${ count } ${ count === 1 ? singular : pluralForm }`;
+    return `${count} ${count === 1 ? singular : pluralForm}`;
 }
 
 /**
@@ -52,7 +52,7 @@ export const truncate = (str: string, maxLength: number, suffix: string = '...')
         return str;
     }
 
-    return str.length > maxLength ? `${ str.slice(0, maxLength) }${ suffix }` : str;
+    return str.length > maxLength ? `${str.slice(0, maxLength)}${suffix}` : str;
 };
 
 /**
@@ -61,7 +61,7 @@ export const truncate = (str: string, maxLength: number, suffix: string = '...')
 export function indentBlock(text: string, indent: string): string {
     return text
         .split('\n')
-        .map(line => `${ indent }${ line }`)
+        .map(line => `${indent}${line}`)
         .join('\n');
 }
 
@@ -138,5 +138,8 @@ export function dedentText(text: string): string {
         return text.trimEnd();
     }
 
-    return lines.map(line => stripLeadingIndent(line, minIndent)).join('\n').trimEnd();
+    return lines
+        .map(line => stripLeadingIndent(line, minIndent))
+        .join('\n')
+        .trimEnd();
 }

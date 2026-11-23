@@ -1,5 +1,5 @@
-import { folderNames, mainFolder } from '@clowdy/protocol';
 import { existsSync } from 'node:fs';
+import { folderNames, mainFolder } from '@clowdy/protocol';
 
 import { unavailable } from '../errors';
 import { listProjectFiles } from './list';
@@ -28,7 +28,9 @@ export class FilesService {
         const rootOf = (folder: ProjectFolder) => (place?.folder.id === folder.id ? place.path : folder.path);
 
         if (!existsSync(rootOf(main))) {
-            throw unavailable(`The ${ rootOf(main) === main.path ? 'project folder' : 'worktree' } ${ rootOf(main) } is missing`);
+            throw unavailable(
+                `The ${rootOf(main) === main.path ? 'project folder' : 'worktree'} ${rootOf(main)} is missing`
+            );
         }
 
         if (project.folders.length === 1) {
@@ -38,15 +40,17 @@ export class FilesService {
         const names = folderNames(project.folders);
         const byKey = new Map<string, ProjectFileMatch>();
 
-        await Promise.all(project.folders.map(async (folder, index) => {
-            if (!existsSync(rootOf(folder))) {
-                return;
-            }
+        await Promise.all(
+            project.folders.map(async (folder, index) => {
+                if (!existsSync(rootOf(folder))) {
+                    return;
+                }
 
-            for (const path of await this.list(rootOf(folder))) {
-                byKey.set(`${ names[index] }/${ path }`, { folderId: folder.id, path });
-            }
-        }));
+                for (const path of await this.list(rootOf(folder))) {
+                    byKey.set(`${names[index]}/${path}`, { folderId: folder.id, path });
+                }
+            })
+        );
 
         return searchPaths([...byKey.keys()], query, limit).map(key => byKey.get(key) as ProjectFileMatch);
     }

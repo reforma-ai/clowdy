@@ -28,12 +28,14 @@ export interface PermissionParams {
 /** The longest text of an input that a card is given as detail. */
 const DETAIL_CHARS = 200;
 
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null && !Array.isArray(value);
 
 const text = (value: unknown): string | undefined => (typeof value === 'string' && value.trim() ? value : undefined);
 
 /** The first of `keys` that holds text in `input`. */
-const firstText = (input: unknown, keys: string[]): string | undefined => (isRecord(input) ? keys.map(key => text(input[key])).find(found => found !== undefined) : undefined);
+const firstText = (input: unknown, keys: string[]): string | undefined =>
+    isRecord(input) ? keys.map(key => text(input[key])).find(found => found !== undefined) : undefined;
 
 /** The command an input names: text, or a list of words (an argument vector) that is joined. */
 function commandOf(input: unknown): string | undefined {
@@ -66,7 +68,9 @@ function diffPaths(entry: unknown): (string | undefined)[] {
         return [];
     }
 
-    const changes = Array.isArray(entry.changes) ? entry.changes.filter(isRecord).flatMap(change => [text(change.oldPath), text(change.path)]) : [];
+    const changes = Array.isArray(entry.changes)
+        ? entry.changes.filter(isRecord).flatMap(change => [text(change.oldPath), text(change.path)])
+        : [];
 
     return [text(entry.path), ...changes];
 }
@@ -84,14 +88,16 @@ function pathsOf({ locations, content, rawInput }: PermissionParams['toolCall'])
 
 /** The tool's own name when the agent gives one (an ACP `name`, or Claude's adapter in `_meta.claudeCode.toolName`), else the call's title. */
 function toolOf(call: PermissionParams['toolCall']): string {
-    const claude = isRecord(call._meta) && isRecord(call._meta.claudeCode) ? text(call._meta.claudeCode.toolName) : undefined;
+    const claude =
+        isRecord(call._meta) && isRecord(call._meta.claudeCode) ? text(call._meta.claudeCode.toolName) : undefined;
 
     return text(call.name) ?? claude ?? text(call.title) ?? 'tool';
 }
 
 /** A short text of an input, for a card to show under the tool's name; nothing when there is none or it is long. */
 function detailOf(input: unknown): string | undefined {
-    const shown = typeof input === 'string' ? input.trim() : input === undefined || input === null ? '' : JSON.stringify(input);
+    const shown =
+        typeof input === 'string' ? input.trim() : input === undefined || input === null ? '' : JSON.stringify(input);
 
     return shown && shown !== '{}' && shown.length <= DETAIL_CHARS ? shown : undefined;
 }
@@ -125,11 +131,11 @@ function subjectOf(call: PermissionParams['toolCall']): ApprovalSubject {
 function keyOf(subject: ApprovalSubject, title: string): string {
     switch (subject.kind) {
         case 'command':
-            return `command:${ subject.command }`;
+            return `command:${subject.command}`;
         case 'file_change':
-            return `file:${ [...subject.paths].sort().join('\n') }`;
+            return `file:${[...subject.paths].sort().join('\n')}`;
         case 'tool_use':
-            return `tool:${ subject.tool }:${ title }`;
+            return `tool:${subject.tool}:${title}`;
     }
 }
 
@@ -152,7 +158,15 @@ function decisionsOf(options: readonly PermissionOption[]): ApprovalDecision[] {
  * A version 2 request, which has no tool call of its own: it says what it is about in a `subject`, either a tool call or a command, and a `title` for the
  * prompt. Read as the version 1 shape the classifier takes.
  */
-export function paramsOfV2({ title, subject, options }: { title: string; subject?: unknown; options: readonly PermissionOption[] }): PermissionParams {
+export function paramsOfV2({
+    title,
+    subject,
+    options,
+}: {
+    title: string;
+    subject?: unknown;
+    options: readonly PermissionOption[];
+}): PermissionParams {
     if (isRecord(subject) && subject.type === 'tool_call' && isRecord(subject.toolCall)) {
         const call = subject.toolCall as PermissionParams['toolCall'];
 
@@ -160,7 +174,15 @@ export function paramsOfV2({ title, subject, options }: { title: string; subject
     }
 
     if (isRecord(subject) && subject.type === 'command' && text(subject.command)) {
-        return { toolCall: { ...(text(subject.toolCallId) && { toolCallId: subject.toolCallId as string }), title, kind: 'execute', rawInput: { command: subject.command, cwd: subject.cwd } }, options };
+        return {
+            toolCall: {
+                ...(text(subject.toolCallId) && { toolCallId: subject.toolCallId as string }),
+                title,
+                kind: 'execute',
+                rawInput: { command: subject.command, cwd: subject.cwd },
+            },
+            options,
+        };
     }
 
     return { toolCall: { title }, options };
@@ -169,7 +191,9 @@ export function paramsOfV2({ title, subject, options }: { title: string; subject
 /** A permission request as the run puts it to the person. */
 export function classify({ toolCall, options }: PermissionParams): ApprovalRequest {
     const subject = subjectOf(toolCall);
-    const title = text(toolCall.title) ?? (subject.kind === 'command' ? subject.command : subject.kind === 'tool_use' ? subject.tool : 'Change files');
+    const title =
+        text(toolCall.title) ??
+        (subject.kind === 'command' ? subject.command : subject.kind === 'tool_use' ? subject.tool : 'Change files');
 
     return {
         ...(toolCall.toolCallId && { toolCallId: toolCall.toolCallId }),

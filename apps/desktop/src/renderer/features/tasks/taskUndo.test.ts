@@ -14,11 +14,13 @@ import type { KeyValueStorage } from '../../stores/storage';
 
 const toasts = vi.hoisted(() => {
     let count = 0;
-    const next = () => `toast-${ ++count }`;
+    const next = () => `toast-${++count}`;
 
     return {
         error: vi.fn<(options: { message: string }) => void>(),
-        show: vi.fn<(options: { message: string; timeout?: number; action?: { label: string; onPress: () => void } }) => string>(next),
+        show: vi.fn<
+            (options: { message: string; timeout?: number; action?: { label: string; onPress: () => void } }) => string
+        >(next),
         success: vi.fn<(options: { message: string }) => string>(next),
         queue: { close: vi.fn<(key: string) => void>() },
     };
@@ -47,7 +49,8 @@ const settle = () => vi.advanceTimersByTimeAsync(0);
 const project = () => root.selectedProject!;
 const task = (taskId: string) => project().tasks.get(taskId)!;
 
-const update = (taskId: string, changes: Partial<Extract<CommandInput, { type: 'task.update' }>>): CommandInput => ({ type: 'task.update', taskId, ...changes } as CommandInput);
+const update = (taskId: string, changes: Partial<Extract<CommandInput, { type: 'task.update' }>>): CommandInput =>
+    ({ type: 'task.update', taskId, ...changes }) as CommandInput;
 
 /** Sends as the panel does and waits for the project to show the daemon's answer. */
 async function edit(...inputs: CommandInput[]) {
@@ -70,12 +73,14 @@ beforeEach(async () => {
     toasts.queue.close.mockClear();
 
     const transport = overrideTransport(daemon, {
-        command: async (input) => {
+        command: async input => {
             sent.push(input);
 
             const message = refuse(input);
 
-            return message ? { ok: false, requestId: 'r', error: { code: 'invalid', message } } satisfies CommandResult : daemon.command(input);
+            return message
+                ? ({ ok: false, requestId: 'r', error: { code: 'invalid', message } } satisfies CommandResult)
+                : daemon.command(input);
         },
     });
 
@@ -97,7 +102,11 @@ describe('what is recorded', () => {
 
         expect(task('t-24').title).toBe('Booking form v2');
         expect(stack.entries.map(entry => entry.label)).toEqual(['Renamed CAR-24']);
-        expect(toasts.show).toHaveBeenCalledWith({ message: 'Renamed CAR-24', timeout: 5000, action: { label: 'Undo', onPress: expect.any(Function) } });
+        expect(toasts.show).toHaveBeenCalledWith({
+            message: 'Renamed CAR-24',
+            timeout: 5000,
+            action: { label: 'Undo', onPress: expect.any(Function) },
+        });
 
         await stack.undoLatest(FIXTURE_PROJECT_ID);
         await settle();
@@ -204,7 +213,9 @@ describe('what is recorded', () => {
         const results = await edit(update('t-31', { parentId: 't-33' }));
 
         expect(results[0].ok).toBe(false);
-        expect(toasts.error).toHaveBeenCalledWith({ message: 'Task CAR-33 is inside CAR-31, so it cannot be its parent' });
+        expect(toasts.error).toHaveBeenCalledWith({
+            message: 'Task CAR-33 is inside CAR-31, so it cannot be its parent',
+        });
         expect(stack.canUndo(FIXTURE_PROJECT_ID)).toBe(false);
         expect(task('t-31').parentId).toBeUndefined();
     });
@@ -256,7 +267,7 @@ describe('what is recorded', () => {
         expect(stack.canUndo(FIXTURE_PROJECT_ID)).toBe(false);
     });
 
-    it('records nothing and shows only the daemon\'s message when it refuses', async () => {
+    it("records nothing and shows only the daemon's message when it refuses", async () => {
         refuse = () => 'The title is too long';
 
         const results = await edit(update('t-24', { title: 'x'.repeat(10) }));
@@ -325,7 +336,7 @@ describe('what an undo checks', () => {
         expect(sent).toEqual([]);
     });
 
-    it('keeps the entry\'s own toast in step: the offer is replaced by the next change\'s, and closed when its entry is undone', async () => {
+    it("keeps the entry's own toast in step: the offer is replaced by the next change's, and closed when its entry is undone", async () => {
         await edit(update('t-24', { title: 'Booking form v2' }));
 
         const first = toasts.show.mock.results[0].value;
@@ -391,7 +402,7 @@ describe('a run of description edits', () => {
         const was = original();
 
         for (const step of ['one', 'two', 'three', 'four']) {
-            await edit(description(`${ was }\n\n${ step }`));
+            await edit(description(`${was}\n\n${step}`));
             await vi.advanceTimersByTimeAsync(3000);
         }
 

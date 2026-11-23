@@ -1,7 +1,12 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { createFixtureData, FIXTURE_PROJECT_ID, FIXTURE_WORKSPACE_CHAT_ID, withFixtureWorkspace } from '../../daemon/fixtureData';
+import {
+    createFixtureData,
+    FIXTURE_PROJECT_ID,
+    FIXTURE_WORKSPACE_CHAT_ID,
+    withFixtureWorkspace,
+} from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore } from '../../stores';
 import { filesManagerOf, kindOnDisk, openInFiles } from './openInFiles';
@@ -12,14 +17,22 @@ import type { Place } from '../sidePanel/currentPlace';
 // The Car Rental project's only folder, with the fixture's files: README.md, package.json, src/booking/price.ts and the like.
 const FOLDER = { id: 'fld_car_rental', path: '/Users/dev/car-rental' };
 const PLACE: Place = { folder: FOLDER };
-const FILES = ['README.md', 'package.json', 'src/booking/index.tsx', 'src/booking/BookingForm.tsx', 'src/booking/price.ts', 'src/booking/price.test.ts'];
+const FILES = [
+    'README.md',
+    'package.json',
+    'src/booking/index.tsx',
+    'src/booking/BookingForm.tsx',
+    'src/booking/price.ts',
+    'src/booking/price.test.ts',
+];
 
 let store: RootStore;
 
 const ui = () => store.ui.forProject(FIXTURE_PROJECT_ID);
 const manager = (kind: 'files' | 'docs' = 'files') => filesManagerOf(store, FIXTURE_PROJECT_ID, PLACE, kind);
 const open = (path: string) => openInFiles(store, FIXTURE_PROJECT_ID, PLACE, path);
-const tabs = async (kind: 'files' | 'docs' = 'files') => (await manager(kind)).tabs.documents.map(document => document.path);
+const tabs = async (kind: 'files' | 'docs' = 'files') =>
+    (await manager(kind)).tabs.documents.map(document => document.path);
 
 beforeEach(async () => {
     // The tabs of a folder are kept in the browser's storage and come back with it: a test starts with none.
@@ -130,23 +143,32 @@ describe('opening a path in a worktree', () => {
         store = new RootStore(new FixtureTransport({ data: withFixtureWorkspace(createFixtureData()) }));
         await store.load();
         store.selectProject(FIXTURE_PROJECT_ID);
-        worktree = { folder: FOLDER, workspace: store.selectedProject!.chats.get(FIXTURE_WORKSPACE_CHAT_ID)!.workspace! };
+        worktree = {
+            folder: FOLDER,
+            workspace: store.selectedProject!.chats.get(FIXTURE_WORKSPACE_CHAT_ID)!.workspace!,
+        };
     });
 
-    it('opens a file that only the worktree has in the worktree\'s tabs, which the folder\'s own checkout does not have', async () => {
+    it("opens a file that only the worktree has in the worktree's tabs, which the folder's own checkout does not have", async () => {
         expect(await openInFiles(store, FIXTURE_PROJECT_ID, PLACE, 'src/booking/weekend.ts')).toBe(false);
         expect(await openInFiles(store, FIXTURE_PROJECT_ID, worktree, 'src/booking/weekend.ts')).toBe(true);
 
-        expect((await filesManagerOf(store, FIXTURE_PROJECT_ID, worktree)).tabs.active?.path).toBe('src/booking/weekend.ts');
+        expect((await filesManagerOf(store, FIXTURE_PROJECT_ID, worktree)).tabs.active?.path).toBe(
+            'src/booking/weekend.ts'
+        );
         expect((await filesManagerOf(store, FIXTURE_PROJECT_ID, PLACE)).tabs.documents).toEqual([]);
         expect(ui().sidePanelTab).toBe('files');
     });
 
     it('opens a plan that only the worktree has on the Docs tab of the worktree', async () => {
         expect(await openInFiles(store, FIXTURE_PROJECT_ID, PLACE, '.briefback/weekend-surcharge/plan.md')).toBe(false);
-        expect(await openInFiles(store, FIXTURE_PROJECT_ID, worktree, '.briefback/weekend-surcharge/plan.md')).toBe(true);
+        expect(await openInFiles(store, FIXTURE_PROJECT_ID, worktree, '.briefback/weekend-surcharge/plan.md')).toBe(
+            true
+        );
 
-        expect((await filesManagerOf(store, FIXTURE_PROJECT_ID, worktree, 'docs')).tabs.active?.path).toBe('.briefback/weekend-surcharge/plan.md');
+        expect((await filesManagerOf(store, FIXTURE_PROJECT_ID, worktree, 'docs')).tabs.active?.path).toBe(
+            '.briefback/weekend-surcharge/plan.md'
+        );
         expect(ui().sidePanelTab).toBe('docs');
     });
 

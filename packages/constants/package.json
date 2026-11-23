@@ -1,6 +1,7 @@
 {
     "name": "@clowdy/constants",
     "private": true,
+    "license": "Apache-2.0",
     "description": "Constants shared between Clowdy packages",
     "version": "0.0.0",
     "type": "module",
@@ -11,6 +12,8 @@
     },
     "scripts": {
         "clean": "rm -rf node_modules/{*,.*} .turbo 2>/dev/null || true",
+        "lint": "biome check",
+        "lint:fix": "biome check --write",
         "typecheck": "tsc --noEmit"
     }
 }

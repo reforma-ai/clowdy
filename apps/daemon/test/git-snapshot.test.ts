@@ -1,9 +1,9 @@
-import { turnScope } from '@clowdy/protocol';
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { turnScope } from '@clowdy/protocol';
 
 import { getChat } from '../src/db/chats';
 import { saveChat } from '../src/domain/chats';
@@ -23,7 +23,7 @@ afterEach(async () => {
     await Promise.all(harnesses.splice(0).map(h => h.stop().catch(() => undefined)));
 });
 
-const lines = (...text: string[]) => `${ text.join('\n') }\n`;
+const lines = (...text: string[]) => `${text.join('\n')}\n`;
 
 /** Writes files (and the folders above them) under `root`. */
 function put(root: string, files: Record<string, string>): void {
@@ -39,7 +39,13 @@ const placeAt = (path: string): Place => ({ folder: { id: 'fld_test', path }, pa
 function work(): string {
     const path = makeRepo(tempDir('git-snapshot'), 'work');
 
-    put(path, { '.gitignore': lines('*.log', 'build/'), 'a.ts': lines('a1', 'a2', 'a3'), 'b.ts': lines('b1', 'b2'), 'c.ts': lines('c1'), 'src/deep.ts': lines('d1', 'd2') });
+    put(path, {
+        '.gitignore': lines('*.log', 'build/'),
+        'a.ts': lines('a1', 'a2', 'a3'),
+        'b.ts': lines('b1', 'b2'),
+        'c.ts': lines('c1'),
+        'src/deep.ts': lines('d1', 'd2'),
+    });
     git(path, 'add', '-A');
     git(path, 'commit', '-q', '-m', 'Add the files');
 
@@ -47,18 +53,23 @@ function work(): string {
 }
 
 /** The paths a tree holds, sorted. */
-const pathsOf = (path: string, tree: string) => git(path, 'ls-tree', '-r', '--name-only', tree).split('\n').filter(Boolean).sort();
+const pathsOf = (path: string, tree: string) =>
+    git(path, 'ls-tree', '-r', '--name-only', tree).split('\n').filter(Boolean).sort();
 
 /** A tree made, which the test asserts was made. */
 async function treeOf(path: string): Promise<string> {
     const tree = await snapshotTree(path);
 
-    if (!tree) throw new Error(`No tree was made of ${ path }`);
+    if (!tree) throw new Error(`No tree was made of ${path}`);
 
     return tree;
 }
 
-async function changesOf(path: string, start: string, end: string): Promise<Extract<GitChanges, { isRepository: true }>> {
+async function changesOf(
+    path: string,
+    start: string,
+    end: string
+): Promise<Extract<GitChanges, { isRepository: true }>> {
     const answer = await placeChanges(placeAt(path), turnScope(start, end));
 
     if (!answer.isRepository) throw new Error('not a repository');
@@ -72,7 +83,10 @@ function fingerprint(path: string): Record<string, string> {
     const index = join(path, '.git', 'index');
 
     // A status that may not write the index (`GIT_OPTIONAL_LOCKS=0`): the one a person runs refreshes the index's cached stats, and would change what is looked for.
-    const read = Bun.spawnSync(['git', 'status', '--porcelain=v2', '--branch', '-uall'], { cwd: path, env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } });
+    const read = Bun.spawnSync(['git', 'status', '--porcelain=v2', '--branch', '-uall'], {
+        cwd: path,
+        env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' },
+    });
     const status = read.stdout.toString();
 
     return {
@@ -83,7 +97,11 @@ function fingerprint(path: string): Record<string, string> {
         status,
         config: sha(join(path, '.git', 'config')),
         lock: String(existsSync(join(path, '.git', 'index.lock'))),
-        files: git(path, 'ls-files', '--cached', '--others', '--exclude-standard').split('\n').sort().map(file => `${ file }:${ sha(join(path, file)) }`).join(','),
+        files: git(path, 'ls-files', '--cached', '--others', '--exclude-standard')
+            .split('\n')
+            .sort()
+            .map(file => `${file}:${sha(join(path, file))}`)
+            .join(','),
     };
 }
 
@@ -96,13 +114,32 @@ describe('snapshotTree', () => {
         // A clean tree is the tree of HEAD itself.
         expect(start).toBe(git(path, 'rev-parse', 'HEAD^{tree}'));
 
-        put(path, { 'a.ts': lines('a1', 'A2', 'a3', 'a4'), 'new.ts': lines('n1'), 'src/more/new-deep.ts': lines('x'), 'debug.log': 'noise\n', 'build/out.js': 'out\n' });
+        put(path, {
+            'a.ts': lines('a1', 'A2', 'a3', 'a4'),
+            'new.ts': lines('n1'),
+            'src/more/new-deep.ts': lines('x'),
+            'debug.log': 'noise\n',
+            'build/out.js': 'out\n',
+        });
         rmSync(join(path, 'c.ts'));
 
         const end = await treeOf(path);
 
-        expect(pathsOf(path, end)).toEqual(['.gitignore', 'README.md', 'a.ts', 'b.ts', 'new.ts', 'src/deep.ts', 'src/more/new-deep.ts']);
-        expect(git(path, 'diff', '--name-status', start, end).split('\n')).toEqual(['M\ta.ts', 'D\tc.ts', 'A\tnew.ts', 'A\tsrc/more/new-deep.ts']);
+        expect(pathsOf(path, end)).toEqual([
+            '.gitignore',
+            'README.md',
+            'a.ts',
+            'b.ts',
+            'new.ts',
+            'src/deep.ts',
+            'src/more/new-deep.ts',
+        ]);
+        expect(git(path, 'diff', '--name-status', start, end).split('\n')).toEqual([
+            'M\ta.ts',
+            'D\tc.ts',
+            'A\tnew.ts',
+            'A\tsrc/more/new-deep.ts',
+        ]);
         // The same files make the same tree, so a turn that changed nothing is told by the two ids being one.
         expect(await treeOf(path)).toBe(end);
     });
@@ -119,7 +156,9 @@ describe('snapshotTree', () => {
 
         const end = await treeOf(path);
 
-        expect(git(path, 'diff', '--name-status', '-M', start, end).split('\n').sort()).toEqual(['D\tsrc/deep.ts', 'M\tREADME.md', 'M\tb.ts', 'R100\ta.ts\trenamed.ts'].sort());
+        expect(git(path, 'diff', '--name-status', '-M', start, end).split('\n').sort()).toEqual(
+            ['D\tsrc/deep.ts', 'M\tREADME.md', 'M\tb.ts', 'R100\ta.ts\trenamed.ts'].sort()
+        );
     });
 
     test('takes a change the person staged or committed meanwhile as the files are, so the two trees stay what the files did', async () => {
@@ -128,7 +167,7 @@ describe('snapshotTree', () => {
 
         put(path, { 'a.ts': lines('changed'), 'fresh.ts': lines('fresh') });
         git(path, 'add', 'a.ts');
-        git(path, 'commit', '-q', '-m', 'Commit the run\'s work');
+        git(path, 'commit', '-q', '-m', "Commit the run's work");
 
         const end = await treeOf(path);
 
@@ -153,7 +192,9 @@ describe('snapshotTree', () => {
         await snapshotTree(path);
 
         expect(fingerprint(path)).toEqual(before);
-        expect(readdirSync(join(path, '.git')).filter(name => name.includes('lock') || name.startsWith('sharedindex'))).toEqual([]);
+        expect(
+            readdirSync(join(path, '.git')).filter(name => name.includes('lock') || name.startsWith('sharedindex'))
+        ).toEqual([]);
     });
 
     test('keeps the staged state out of it: a file staged and then edited again is the file on the disk, and nothing in the real index changes the tree', async () => {
@@ -166,7 +207,7 @@ describe('snapshotTree', () => {
 
         const tree = await treeOf(path);
 
-        expect(git(path, 'show', `${ tree }:a.ts`)).toBe('staged\nand edited');
+        expect(git(path, 'show', `${tree}:a.ts`)).toBe('staged\nand edited');
         // A file taken out of the index but still on the disk is on the disk, which is what a run's tree says.
         expect(pathsOf(path, tree)).toContain('b.ts');
     });
@@ -190,7 +231,9 @@ describe('snapshotTree', () => {
         expect(git(tree, 'diff', '--name-status', start, end).split('\n')).toEqual(['M\ta.ts', 'A\tin-tree.ts']);
         expect(fingerprint(path).index).toBe(mainIndex);
         expect(existsSync(join(path, '.git', 'worktrees'))).toBe(true);
-        expect(readdirSync(join(path, '.git', 'worktrees', 'chat-tree')).filter(name => name.endsWith('.lock'))).toEqual([]);
+        expect(
+            readdirSync(join(path, '.git', 'worktrees', 'chat-tree')).filter(name => name.endsWith('.lock'))
+        ).toEqual([]);
     });
 
     test('works for a repository with no commit and no index yet, and for one that hashes with SHA-256', async () => {
@@ -244,8 +287,7 @@ describe('snapshotTree', () => {
             await snapshotTree(path);
             await snapshotTree(path, 1);
             await snapshotTree(plain);
-        }
-        finally {
+        } finally {
             if (previous === undefined) delete process.env.TMPDIR;
             else process.env.TMPDIR = previous;
         }
@@ -256,19 +298,25 @@ describe('snapshotTree', () => {
 
     test('writes nothing into the repository when it comes to none: the objects of a failed snapshot are not left behind', async () => {
         const path = work();
-        const count = () => git(path, 'count-objects', '-v').split('\n').find(line => line.startsWith('count:'));
+        const count = () =>
+            git(path, 'count-objects', '-v')
+                .split('\n')
+                .find(line => line.startsWith('count:'));
 
         // `add` takes the files in path order, writes the first and fails on the one it cannot read.
-        put(path, { 'a-readable.ts': lines('written before the failure'), 'zz-unreadable.ts': lines('git cannot read this') });
+        put(path, {
+            'a-readable.ts': lines('written before the failure'),
+            'zz-unreadable.ts': lines('git cannot read this'),
+        });
         chmodSync(join(path, 'zz-unreadable.ts'), 0);
 
         const before = count();
 
         try {
             // A user that can read everything (root) makes no failure to test.
-            if (process.platform !== 'win32' && process.getuid?.() !== 0) expect(await snapshotTree(path)).toBeUndefined();
-        }
-        finally {
+            if (process.platform !== 'win32' && process.getuid?.() !== 0)
+                expect(await snapshotTree(path)).toBeUndefined();
+        } finally {
             chmodSync(join(path, 'zz-unreadable.ts'), 0o644);
         }
 
@@ -279,15 +327,18 @@ describe('snapshotTree', () => {
         expect(readdirSync(join(path, '.git', 'objects')).filter(name => name.startsWith('tmp_'))).toEqual([]);
     });
 
-    test.skipIf(process.platform === 'win32')('works in a folder whose name has the alternates\' delimiter and a quote in it', async () => {
-        const path = makeRepo(join(tempDir('git-snapshot'), 'a:b "c"'), 'work');
+    test.skipIf(process.platform === 'win32')(
+        "works in a folder whose name has the alternates' delimiter and a quote in it",
+        async () => {
+            const path = makeRepo(join(tempDir('git-snapshot'), 'a:b "c"'), 'work');
 
-        put(path, { 'a.ts': lines('one') });
-        git(path, 'add', '-A');
-        git(path, 'commit', '-q', '-m', 'Add a file');
-        put(path, { 'a.ts': lines('one', 'two') });
-        expect(git(path, 'show', `${ await treeOf(path) }:a.ts`)).toBe('one\ntwo');
-    });
+            put(path, { 'a.ts': lines('one') });
+            git(path, 'add', '-A');
+            git(path, 'commit', '-q', '-m', 'Add a file');
+            put(path, { 'a.ts': lines('one', 'two') });
+            expect(git(path, 'show', `${await treeOf(path)}:a.ts`)).toBe('one\ntwo');
+        }
+    );
 
     test('works in a repository that borrows its objects from another one, and stores nothing the lender has', async () => {
         const lender = work();
@@ -301,7 +352,7 @@ describe('snapshotTree', () => {
 
         const edited = await treeOf(borrower);
 
-        expect(git(borrower, 'show', `${ edited }:a.ts`)).toBe('edited in the borrower');
+        expect(git(borrower, 'show', `${edited}:a.ts`)).toBe('edited in the borrower');
         expect(git(borrower, 'fsck', '--no-dangling', '--connectivity-only')).not.toContain('missing');
     });
 });
@@ -315,13 +366,24 @@ describe('the scope of a run over two snapshots', () => {
 
         const start = await treeOf(path);
 
-        put(path, { 'a.ts': lines('a1', 'A2', 'a3', 'a4'), 'src/deep.ts': lines('d1', 'd2', 'd3'), 'created.ts': lines('n1', 'n2') });
+        put(path, {
+            'a.ts': lines('a1', 'A2', 'a3', 'a4'),
+            'src/deep.ts': lines('d1', 'd2', 'd3'),
+            'created.ts': lines('n1', 'n2'),
+        });
         rmSync(join(path, 'c.ts'));
 
         const end = await treeOf(path);
         const answer = await changesOf(path, start, end);
 
-        expect(answer).toMatchObject({ isRepository: true, scope: turnScope(start, end), fileCount: 4, additions: 2 + 2 + 1, deletions: 1 + 1, statsComplete: true });
+        expect(answer).toMatchObject({
+            isRepository: true,
+            scope: turnScope(start, end),
+            fileCount: 4,
+            additions: 2 + 2 + 1,
+            deletions: 1 + 1,
+            statsComplete: true,
+        });
         expect(answer.from).toBeUndefined();
         expect(answer.files.map(file => [file.path, file.kind, file.additions, file.deletions])).toEqual([
             ['a.ts', 'modified', 2, 1],
@@ -332,7 +394,7 @@ describe('the scope of a run over two snapshots', () => {
         expect(answer.files.some(file => file.untracked)).toBe(false);
     });
 
-    test('reads each file\'s two sides from the trees, so it stays what the run did after the files, the branch and the repository changed', async () => {
+    test("reads each file's two sides from the trees, so it stays what the run did after the files, the branch and the repository changed", async () => {
         const path = work();
         const start = await treeOf(path);
 
@@ -346,14 +408,26 @@ describe('the scope of a run over two snapshots', () => {
 
         // The run's work is committed, then undone, then the files are edited again.
         git(path, 'add', '-A');
-        git(path, 'commit', '-q', '-m', 'The run\'s work');
+        git(path, 'commit', '-q', '-m', "The run's work");
         git(path, 'reset', '-q', '--hard', 'HEAD~1');
         put(path, { 'a.ts': lines('something else entirely'), 'created.ts': lines('rewritten') });
 
         expect(await placeChanges(place, scope)).toEqual(before);
-        expect(await placeFile(place, scope, 'a.ts', undefined)).toMatchObject({ state: 'text', original: lines('a1', 'a2', 'a3'), modified: lines('a1', 'run edit', 'a3') });
-        expect(await placeFile(place, scope, 'created.ts', undefined)).toMatchObject({ state: 'text', original: null, modified: lines('made by the run') });
-        expect(await placeFile(place, scope, 'c.ts', undefined)).toMatchObject({ state: 'text', original: lines('c1'), modified: null });
+        expect(await placeFile(place, scope, 'a.ts', undefined)).toMatchObject({
+            state: 'text',
+            original: lines('a1', 'a2', 'a3'),
+            modified: lines('a1', 'run edit', 'a3'),
+        });
+        expect(await placeFile(place, scope, 'created.ts', undefined)).toMatchObject({
+            state: 'text',
+            original: null,
+            modified: lines('made by the run'),
+        });
+        expect(await placeFile(place, scope, 'c.ts', undefined)).toMatchObject({
+            state: 'text',
+            original: lines('c1'),
+            modified: null,
+        });
     });
 
     test('says the changes of a run are unavailable once git has pruned its trees', async () => {
@@ -367,7 +441,9 @@ describe('the scope of a run over two snapshots', () => {
         expect((await changesOf(path, start, end)).fileCount).toBe(1);
         git(path, 'prune', '--expire=now');
         await expect(placeChanges(placeAt(path), turnScope(start, end))).rejects.toMatchObject({ code: 'unavailable' });
-        await expect(placeFile(placeAt(path), turnScope(start, end), 'a.ts', undefined)).rejects.toMatchObject({ code: 'unavailable' });
+        await expect(placeFile(placeAt(path), turnScope(start, end), 'a.ts', undefined)).rejects.toMatchObject({
+            code: 'unavailable',
+        });
     });
 });
 
@@ -378,14 +454,15 @@ describe('the scope of a run over two snapshots', () => {
 const boot = () => Bun.sleep(400);
 
 /** A script whose turn does what `act` does in the folder it works in, then finishes. */
-const doing = (act: (cwd: string, turn: number) => void | Promise<void>): Script => async function* ({ options, number }) {
-    yield { type: 'session', sessionId: `s${ number }` };
-    await boot();
-    await act(options.cwd, number);
-    yield { type: 'text', delta: 'Done', done: false };
-    yield { type: 'text', delta: '', done: true, messageId: `m${ number }` };
-    yield { type: 'done', result: 'Done' };
-};
+const doing = (act: (cwd: string, turn: number) => void | Promise<void>): Script =>
+    async function* ({ options, number }) {
+        yield { type: 'session', sessionId: `s${number}` };
+        await boot();
+        await act(options.cwd, number);
+        yield { type: 'text', delta: 'Done', done: false };
+        yield { type: 'text', delta: '', done: true, messageId: `m${number}` };
+        yield { type: 'done', result: 'Done' };
+    };
 
 /** A daemon with a project of one repository, whose engine runs `script`. */
 async function setup(script: Script, options: { repo?: string; plain?: boolean } = {}) {
@@ -397,10 +474,18 @@ async function setup(script: Script, options: { repo?: string; plain?: boolean }
     const repo = options.repo ?? (options.plain ? tempDir('git-snapshot') : work());
     const { project } = h.ok('project.add', { name: 'Shop', folders: [repo] }) as { project: Project };
     const chatOf = (chatId: string) => getChat(h.store.db, chatId) as Chat;
-    const make = (workspace?: unknown) => (h.ok('chat.create', { projectId: project.id, ...(workspace !== undefined && { workspace }) }) as { chat: Chat }).chat;
+    const make = (workspace?: unknown) =>
+        (
+            h.ok('chat.create', { projectId: project.id, ...(workspace !== undefined && { workspace }) }) as {
+                chat: Chat;
+            }
+        ).chat;
     /** Sends a message and waits until the chat's run is at rest again. */
     const send = async (chat: Chat, text: string, until: Run['status'] = 'succeeded') => {
-        const before = chatOf(chat.id).orchestratorRunId === undefined ? undefined : h.run(chatOf(chat.id).orchestratorRunId as string).finishedAt;
+        const before =
+            chatOf(chat.id).orchestratorRunId === undefined
+                ? undefined
+                : h.run(chatOf(chat.id).orchestratorRunId as string).finishedAt;
 
         h.ok('chat.send', { chatId: chat.id, text });
         await waitFor(() => {
@@ -408,12 +493,12 @@ async function setup(script: Script, options: { repo?: string; plain?: boolean }
             const run = id ? h.run(id) : undefined;
 
             return run?.status === until && run.finishedAt !== before;
-        }, `the turn on "${ text }" to end as ${ until }`);
+        }, `the turn on "${text}" to end as ${until}`);
     };
     const read = async (chat: Chat, scope: string, workspaceId?: string) => {
-        const query = `?folderId=${ project.folders[0].id }${ workspaceId ? `&workspaceId=${ workspaceId }` : '' }&scope=${ scope }`;
+        const query = `?folderId=${project.folders[0].id}${workspaceId ? `&workspaceId=${workspaceId}` : ''}&scope=${scope}`;
 
-        return await (await h.fetch(`/v1/projects/${ project.id }/git/changes${ query }`)).json() as GitChanges;
+        return (await (await h.fetch(`/v1/projects/${project.id}/git/changes${query}`)).json()) as GitChanges;
     };
 
     return { h, engine, repo, project, chatOf, make, send, read, folder: project.folders[0] };
@@ -425,11 +510,13 @@ const lastRunOf = (chat: Chat): ChatLastRun => {
     return chat.lastRun;
 };
 
-describe('a chat\'s turn', () => {
+describe("a chat's turn", () => {
     test('keeps the two trees on the chat when it edits and adds files, and publishes the chat with them', async () => {
-        const { h, repo, chatOf, make, send, read, project } = await setup(doing((cwd) => {
-            put(cwd, { 'a.ts': lines('a1', 'by the agent', 'a3'), 'agent-made.ts': lines('new', 'file') });
-        }));
+        const { h, repo, chatOf, make, send, read, project } = await setup(
+            doing(cwd => {
+                put(cwd, { 'a.ts': lines('a1', 'by the agent', 'a3'), 'agent-made.ts': lines('new', 'file') });
+            })
+        );
         const chat = make();
 
         // Work the person left in the tree before the turn.
@@ -445,25 +532,39 @@ describe('a chat\'s turn', () => {
         expect(run.seq).toBeGreaterThan(0);
         expect(run.at).toBeGreaterThan(0);
 
-        const answer = await read(chat, turnScope(run.startTree, run.endTree)) as Extract<GitChanges, { isRepository: true }>;
+        const answer = (await read(chat, turnScope(run.startTree, run.endTree))) as Extract<
+            GitChanges,
+            { isRepository: true }
+        >;
 
         expect(answer.files.map(file => file.path)).toEqual(['a.ts', 'agent-made.ts']);
 
         // The change reached a client that listens: the chat was published with its last run once the trees were known.
-        const upserts = h.events(cursor).flatMap((event: ClowdyEvent) => (event.data.type === 'chat.upserted' && event.data.chat.id === chat.id ? [event.data.chat] : []));
+        const upserts = h
+            .events(cursor)
+            .flatMap((event: ClowdyEvent) =>
+                event.data.type === 'chat.upserted' && event.data.chat.id === chat.id ? [event.data.chat] : []
+            );
 
         expect(upserts.some(published => published.lastRun !== undefined)).toBe(true);
         expect(upserts.at(-1)?.lastRun).toEqual(run);
         expect(project.id).toBe(chat.projectId);
         // The repository's own index was not what the trees were made in.
-        expect(git(repo, 'status', '--porcelain').split('\n').map(line => line.trim()).sort()).toEqual(['M a.ts', 'M b.ts', '?? agent-made.ts'].sort());
+        expect(
+            git(repo, 'status', '--porcelain')
+                .split('\n')
+                .map(line => line.trim())
+                .sort()
+        ).toEqual(['M a.ts', 'M b.ts', '?? agent-made.ts'].sort());
     });
 
-    test('takes the next turn\'s record in place of the last one, and forgets it when that turn changes nothing', async () => {
-        const { h, chatOf, make, send } = await setup(doing((cwd, turn) => {
-            if (turn === 1) put(cwd, { 'a.ts': lines('first turn') });
-            if (turn === 3) put(cwd, { 'a.ts': lines('third turn') });
-        }));
+    test("takes the next turn's record in place of the last one, and forgets it when that turn changes nothing", async () => {
+        const { h, chatOf, make, send } = await setup(
+            doing((cwd, turn) => {
+                if (turn === 1) put(cwd, { 'a.ts': lines('first turn') });
+                if (turn === 3) put(cwd, { 'a.ts': lines('third turn') });
+            })
+        );
         const chat = make();
 
         await send(chat, 'First');
@@ -475,7 +576,16 @@ describe('a chat\'s turn', () => {
 
         await send(chat, 'Second');
         expect(chatOf(chat.id).lastRun).toBeUndefined();
-        expect(h.events(cursor).some(event => event.data.type === 'chat.upserted' && event.data.chat.id === chat.id && event.data.chat.lastRun === undefined)).toBe(true);
+        expect(
+            h
+                .events(cursor)
+                .some(
+                    event =>
+                        event.data.type === 'chat.upserted' &&
+                        event.data.chat.id === chat.id &&
+                        event.data.chat.lastRun === undefined
+                )
+        ).toBe(true);
 
         await send(chat, 'Third');
 
@@ -487,9 +597,12 @@ describe('a chat\'s turn', () => {
     });
 
     test('keeps nothing for a folder that is no repository, and makes no snapshot for a turn that cannot have one', async () => {
-        const { chatOf, make, send } = await setup(doing((cwd) => {
-            put(cwd, { 'notes.txt': 'written\n' });
-        }), { plain: true });
+        const { chatOf, make, send } = await setup(
+            doing(cwd => {
+                put(cwd, { 'notes.txt': 'written\n' });
+            }),
+            { plain: true }
+        );
         const chat = make();
 
         await send(chat, 'Write a note');
@@ -498,12 +611,13 @@ describe('a chat\'s turn', () => {
 
     test('keeps what a stopped turn changed, since the files changed all the same', async () => {
         const hold: Script = async function* ({ options, number, signal }) {
-            yield { type: 'session', sessionId: `s${ number }` };
+            yield { type: 'session', sessionId: `s${number}` };
             await boot();
             put(options.cwd, { 'half-done.ts': lines('written before the stop') });
             yield { type: 'text', delta: 'working', done: false };
 
-            if (!signal.aborted) await new Promise<void>(resolve => signal.addEventListener('abort', () => resolve(), { once: true }));
+            if (!signal.aborted)
+                await new Promise<void>(resolve => signal.addEventListener('abort', () => resolve(), { once: true }));
 
             throw new Error('stopped');
         };
@@ -519,7 +633,10 @@ describe('a chat\'s turn', () => {
         await waitFor(() => chatOf(chat.id).lastRun, 'the stopped turn to be measured');
 
         const run = lastRunOf(chatOf(chat.id));
-        const answer = await read(chat, turnScope(run.startTree, run.endTree)) as Extract<GitChanges, { isRepository: true }>;
+        const answer = (await read(chat, turnScope(run.startTree, run.endTree))) as Extract<
+            GitChanges,
+            { isRepository: true }
+        >;
 
         expect(answer.files.map(file => file.path)).toEqual(['half-done.ts']);
     });
@@ -539,7 +656,7 @@ describe('a chat\'s turn', () => {
             if (message === undefined) return;
 
             put(turn.options.cwd, { 'second-turn.ts': lines('second') });
-            yield { type: 'text', delta: `Heard: ${ message }`, done: true };
+            yield { type: 'text', delta: `Heard: ${message}`, done: true };
             yield { type: 'done', result: 'Heard' };
             await turn.received();
         };
@@ -556,14 +673,22 @@ describe('a chat\'s turn', () => {
         const chat = (h.ok('chat.create', { projectId: project.id }) as { chat: Chat }).chat;
         const chatOf = () => getChat(h.store.db, chat.id) as Chat;
         const filesOf = async (run: ChatLastRun) => {
-            const query = `?folderId=${ project.folders[0].id }&scope=${ turnScope(run.startTree, run.endTree) }`;
-            const answer = await (await h.fetch(`/v1/projects/${ project.id }/git/changes${ query }`)).json() as Extract<GitChanges, { isRepository: true }>;
+            const query = `?folderId=${project.folders[0].id}&scope=${turnScope(run.startTree, run.endTree)}`;
+            const answer = (await (await h.fetch(`/v1/projects/${project.id}/git/changes${query}`)).json()) as Extract<
+                GitChanges,
+                { isRepository: true }
+            >;
 
             return answer.files.map(file => file.path);
         };
 
         h.ok('chat.send', { chatId: chat.id, text: 'Start it' });
-        await waitFor(() => chatOf().orchestratorRunId && h.run(chatOf().orchestratorRunId as string).status === 'waiting_background', 'the run to wait for background work');
+        await waitFor(
+            () =>
+                chatOf().orchestratorRunId &&
+                h.run(chatOf().orchestratorRunId as string).status === 'waiting_background',
+            'the run to wait for background work'
+        );
 
         const runId = chatOf().orchestratorRunId as string;
         const first = await waitFor(() => chatOf().lastRun, 'the first turn to be measured');
@@ -571,7 +696,13 @@ describe('a chat\'s turn', () => {
         expect(await filesOf(first)).toEqual(['first-turn.ts']);
 
         h.ok('chat.send', { chatId: chat.id, text: 'How is it going' });
-        await waitFor(() => engine.sent.length === 1 && h.run(runId).status === 'waiting_background' && chatOf().lastRun?.seq !== first.seq, 'the message to be answered and measured');
+        await waitFor(
+            () =>
+                engine.sent.length === 1 &&
+                h.run(runId).status === 'waiting_background' &&
+                chatOf().lastRun?.seq !== first.seq,
+            'the message to be answered and measured'
+        );
 
         const second = lastRunOf(chatOf());
 
@@ -587,42 +718,47 @@ describe('a chat\'s turn', () => {
 
         git(repo, 'worktree', 'add', '-q', '-b', 'chat-branch', tree);
 
-        const { h, chatOf, make, send, read } = await setup(doing((cwd) => {
-            put(cwd, { 'in-tree.ts': lines('made in the worktree') });
-        }), { repo });
+        const { h, chatOf, make, send, read } = await setup(
+            doing(cwd => {
+                put(cwd, { 'in-tree.ts': lines('made in the worktree') });
+            }),
+            { repo }
+        );
         const chat = make({ mode: 'existing', path: tree });
 
         // The checkout has an edit of its own while the chat works.
-        put(repo, { 'in-checkout.ts': lines('not the chat\'s') });
+        put(repo, { 'in-checkout.ts': lines("not the chat's") });
         await send(chat, 'Work in the worktree');
 
         const run = lastRunOf(chatOf(chat.id));
-        const answer = await read(chat, turnScope(run.startTree, run.endTree), chat.workspace?.id) as Extract<GitChanges, { isRepository: true }>;
+        const answer = (await read(chat, turnScope(run.startTree, run.endTree), chat.workspace?.id)) as Extract<
+            GitChanges,
+            { isRepository: true }
+        >;
 
         expect(answer.files.map(file => file.path)).toEqual(['in-tree.ts']);
         expect(h.run(chatOf(chat.id).orchestratorRunId as string).status).toBe('succeeded');
     });
 
-    test('measures two chats of one place each by its own turn, and a turn that overlaps another shows that one\'s edits as well', async () => {
+    test("measures two chats of one place each by its own turn, and a turn that overlaps another shows that one's edits as well", async () => {
         let open!: () => void;
-        const gate = new Promise<void>((resolve) => {
+        const gate = new Promise<void>(resolve => {
             open = resolve;
         });
         const script: Script = async function* ({ options, number }) {
-            yield { type: 'session', sessionId: `s${ number }` };
+            yield { type: 'session', sessionId: `s${number}` };
 
             if (options.prompt.includes('slow work')) {
                 // The slow chat's turn is open while the quick one's starts, edits and ends; it edits last.
                 await gate;
                 put(options.cwd, { 'slow-edit.ts': lines('slow') });
-            }
-            else {
+            } else {
                 await boot();
                 put(options.cwd, { 'quick-edit.ts': lines('quick') });
             }
 
             yield { type: 'text', delta: 'Done', done: false };
-            yield { type: 'text', delta: '', done: true, messageId: `m${ number }` };
+            yield { type: 'text', delta: '', done: true, messageId: `m${number}` };
             yield { type: 'done', result: 'Done' };
         };
         const { h, engine, chatOf, make, send, read } = await setup(script);
@@ -635,16 +771,24 @@ describe('a chat\'s turn', () => {
         open();
         await waitFor(() => chatOf(slow.id).lastRun, 'the slow turn to be measured');
 
-        const files = async (run: ChatLastRun) => ((await read(quick, turnScope(run.startTree, run.endTree))) as Extract<GitChanges, { isRepository: true }>).files.map(file => file.path);
+        const files = async (run: ChatLastRun) =>
+            (
+                (await read(quick, turnScope(run.startTree, run.endTree))) as Extract<
+                    GitChanges,
+                    { isRepository: true }
+                >
+            ).files.map(file => file.path);
 
         expect(await files(lastRunOf(chatOf(quick.id)))).toEqual(['quick-edit.ts']);
         expect(await files(lastRunOf(chatOf(slow.id)))).toEqual(['quick-edit.ts', 'slow-edit.ts']);
     });
 
     test('is published with the last run whatever copy of the chat is saved, so a stale copy cannot take it away', async () => {
-        const { h, chatOf, make, send } = await setup(doing((cwd) => {
-            put(cwd, { 'a.ts': lines('changed') });
-        }));
+        const { h, chatOf, make, send } = await setup(
+            doing(cwd => {
+                put(cwd, { 'a.ts': lines('changed') });
+            })
+        );
         const chat = make();
         const stale = chatOf(chat.id);
 
@@ -656,7 +800,9 @@ describe('a chat\'s turn', () => {
         h.store.tx(() => saveChat(h.store, { ...stale, title: 'Renamed from a stale copy' }));
         expect(chatOf(chat.id)).toMatchObject({ title: 'Renamed from a stale copy', lastRun: run });
 
-        const published = h.events(cursor).flatMap(event => (event.data.type === 'chat.upserted' ? [event.data.chat] : []));
+        const published = h
+            .events(cursor)
+            .flatMap(event => (event.data.type === 'chat.upserted' ? [event.data.chat] : []));
 
         expect(published.at(-1)).toMatchObject({ title: 'Renamed from a stale copy', lastRun: run });
     });
@@ -664,8 +810,14 @@ describe('a chat\'s turn', () => {
 
 describe('TurnSnapshots', () => {
     /** A store with a chat and its run, for the class on its own with a snapshot function the test controls. */
-    async function bare(snapshot: (cwd: string) => Promise<string | undefined>, options: { startWaitMs?: number; endWaitMs?: number } = {}) {
-        const { h, make, chatOf } = await setup(doing(() => undefined), { plain: true });
+    async function bare(
+        snapshot: (cwd: string) => Promise<string | undefined>,
+        options: { startWaitMs?: number; endWaitMs?: number } = {}
+    ) {
+        const { h, make, chatOf } = await setup(
+            doing(() => undefined),
+            { plain: true }
+        );
         const chat = make();
 
         h.ok('chat.send', { chatId: chat.id, text: 'Make the run' });
@@ -681,13 +833,16 @@ describe('TurnSnapshots', () => {
     const A = 'a'.repeat(40);
     const B = 'b'.repeat(40);
 
-    test('does not hold a turn\'s start longer than the wait, and still keeps the pair when the slow tree comes in', async () => {
+    test("does not hold a turn's start longer than the wait, and still keeps the pair when the slow tree comes in", async () => {
         let release!: (tree: string) => void;
-        const slow = new Promise<string>((resolve) => {
+        const slow = new Promise<string>(resolve => {
             release = resolve;
         });
         const trees = [slow, Promise.resolve(B)];
-        const { chat, chatOf, runId, snapshots } = await bare(() => trees.shift() as Promise<string>, { startWaitMs: 30, endWaitMs: 30 });
+        const { chat, chatOf, runId, snapshots } = await bare(() => trees.shift() as Promise<string>, {
+            startWaitMs: 30,
+            endWaitMs: 30,
+        });
         const turn = snapshots.begin(runId, '/somewhere');
 
         expect(turn).toBeDefined();
@@ -711,7 +866,7 @@ describe('TurnSnapshots', () => {
     test('keeps nothing when either tree could not be made, when they are one tree, and asked twice does it once', async () => {
         const calls: string[] = [];
         const answers: (string | undefined)[] = [A, A];
-        const { chat, chatOf, runId, snapshots } = await bare(async (cwd) => {
+        const { chat, chatOf, runId, snapshots } = await bare(async cwd => {
             calls.push(cwd);
 
             return answers.shift();
@@ -741,12 +896,12 @@ describe('TurnSnapshots', () => {
         expect(chatOf(chat.id).lastRun).toBeUndefined();
     });
 
-    test('keeps the record of a newer turn when an older turn\'s snapshot comes in after it, and still forgets nothing the newer turn kept', async () => {
+    test("keeps the record of a newer turn when an older turn's snapshot comes in after it, and still forgets nothing the newer turn kept", async () => {
         const C = 'c'.repeat(40);
         const D = 'd'.repeat(40);
         let clock = 100;
         let release!: (tree: string) => void;
-        const late = new Promise<string>((resolve) => {
+        const late = new Promise<string>(resolve => {
             release = resolve;
         });
         const calls = new Map<string, number>();
@@ -787,7 +942,7 @@ describe('TurnSnapshots', () => {
         expect(chatOf(chat.id).lastRun).toBeUndefined();
     });
 
-    test('measures only a chat\'s own orchestrator: no run, a run with a folder of its own and a sub-agent\'s run have none', async () => {
+    test("measures only a chat's own orchestrator: no run, a run with a folder of its own and a sub-agent's run have none", async () => {
         const { h, chat, chatOf, runId, snapshots } = await bare(async () => A);
 
         expect(snapshots.begin('run_unknown', '/somewhere')).toBeUndefined();

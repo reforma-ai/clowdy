@@ -13,7 +13,11 @@ import type { ChatWorkspace, ChatWorkspaceChoice, FolderId, ProjectId } from '@c
  * checkout without a word: the chat's creation says what is wrong when it comes to it. An answer for a choice that changed meanwhile is dropped. The daemon drops a worktree's row
  * with the last chat that works in it, so a row that had a chat and has none now is gone: it is asked for again, and the page's place and its first message share the new one.
  */
-export function useDraftWorkspaceRow(projectId: ProjectId, folderId: FolderId, choice: ChatWorkspaceChoice | undefined): void {
+export function useDraftWorkspaceRow(
+    projectId: ProjectId,
+    folderId: FolderId,
+    choice: ChatWorkspaceChoice | undefined
+): void {
     const root = useRootStore();
     const ui = useProjectUi();
     const { chats } = useProjectState();
@@ -27,11 +31,9 @@ export function useDraftWorkspaceRow(projectId: ProjectId, folderId: FolderId, c
     useEffect(() => {
         if (row === null) {
             hadChat.current = false;
-        }
-        else if (shared) {
+        } else if (shared) {
             hadChat.current = true;
-        }
-        else if (hadChat.current) {
+        } else if (hadChat.current) {
             hadChat.current = false;
             ui.setDraftWorkspaceRow(null);
         }
@@ -48,7 +50,7 @@ export function useDraftWorkspaceRow(projectId: ProjectId, folderId: FolderId, c
 
         let stale = false;
 
-        void root.command({ type: 'workspace.open', projectId, folderId, path }).then((result) => {
+        void root.command({ type: 'workspace.open', projectId, folderId, path }).then(result => {
             const { workspace } = (result.ok ? result.data : {}) as { workspace?: ChatWorkspace };
 
             if (!stale && workspace) ui.setDraftWorkspaceRow(workspace);

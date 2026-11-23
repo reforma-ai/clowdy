@@ -1,11 +1,11 @@
 import { Close, CloseCompact } from '@clowdy/icons/12';
 import { cn } from '@clowdy/lib';
-import { use, type ReactNode } from 'react';
+import { type ReactNode, use } from 'react';
 import {
     composeRenderProps,
+    type Key,
     Provider,
     Tag as RACTag,
-    type Key,
     type TagProps as RACTagProps,
     type SelectionMode,
 } from 'react-aria-components';
@@ -86,88 +86,80 @@ export function Tag({
     const useLeadingRemove = removePlacement === 'leading';
 
     const isInteractive = Boolean(
-        context?.onAction
-        || props.href
-        || props.onAction
-        || props.onHoverStart
-        || props.onHoverEnd
-        || props.onHoverChange
-        || (['single', 'multiple'] as SelectionMode[]).includes(selectionMode)
+        context?.onAction ||
+            props.href ||
+            props.onAction ||
+            props.onHoverStart ||
+            props.onHoverEnd ||
+            props.onHoverChange ||
+            (['single', 'multiple'] as SelectionMode[]).includes(selectionMode)
     );
     const isActionable = Boolean(context?.onAction || props.onAction);
 
     const tag = (
         <RACTag
-            { ...props }
-            id={ id ?? value }
-            className={ cn(styles.tag, className) }
-            data-color={ resolvedColor }
-            data-size={ resolvedSize }
-            data-rounded={ resolvedRounded || undefined }
-            data-interactive={ isInteractive || undefined }
-            data-actionable={ isActionable || undefined }
-            data-remove-placement={ useLeadingRemove ? 'leading' : undefined }
-            textValue={ textValue }
+            {...props}
+            id={id ?? value}
+            className={cn(styles.tag, className)}
+            data-color={resolvedColor}
+            data-size={resolvedSize}
+            data-rounded={resolvedRounded || undefined}
+            data-interactive={isInteractive || undefined}
+            data-actionable={isActionable || undefined}
+            data-remove-placement={useLeadingRemove ? 'leading' : undefined}
+            textValue={textValue}
         >
-            { composeRenderProps(children, (content, { allowsRemoving }) => (
-                <Provider values={ [[SlotContext, TAG_INNER_SLOT_CONTEXT]] }>
-                    <Show when={ props.count != null }>
-                        <Text className={ styles.count }>
-                            { props.count }
-                        </Text>
+            {composeRenderProps(children, (content, { allowsRemoving }) => (
+                <Provider values={[[SlotContext, TAG_INNER_SLOT_CONTEXT]]}>
+                    <Show when={props.count != null}>
+                        <Text className={styles.count}>{props.count}</Text>
                     </Show>
 
-                    <Show when={ useLeadingRemove && allowsRemoving }>
-                        <span className={ styles.leadingRemoveSlot }>
-                            <Show when={ icon != null }>
-                                <Text className={ styles.icon }>
-                                    { icon }
-                                </Text>
+                    <Show when={useLeadingRemove && allowsRemoving}>
+                        <span className={styles.leadingRemoveSlot}>
+                            <Show when={icon != null}>
+                                <Text className={styles.icon}>{icon}</Text>
                             </Show>
 
-                            <span className={ styles.leadingRemoveControl }>
+                            <span className={styles.leadingRemoveControl}>
                                 <Button
                                     slot="remove"
                                     variant="transparent"
-                                    size={ REMOVE_BUTTON_SIZE[resolvedSize] }
+                                    size={REMOVE_BUTTON_SIZE[resolvedSize]}
                                     color="inherit"
                                     iconOnly
-                                    className={ styles.removeButton }
+                                    className={styles.removeButton}
                                     aria-label="Remove"
                                 >
-                                    { REMOVE_BUTTON_ICON[resolvedSize] }
+                                    {REMOVE_BUTTON_ICON[resolvedSize]}
                                 </Button>
                             </span>
                         </span>
                     </Show>
 
-                    <Show when={ !useLeadingRemove && icon != null }>
-                        <Text className={ styles.icon }>
-                            { icon }
-                        </Text>
+                    <Show when={!useLeadingRemove && icon != null}>
+                        <Text className={styles.icon}>{icon}</Text>
                     </Show>
 
-                    <Text className={ cn(styles.text, 'truncate') }>
-                        { content }
-                    </Text>
+                    <Text className={cn(styles.text, 'truncate')}>{content}</Text>
 
-                    <Show when={ !useLeadingRemove && allowsRemoving }>
+                    <Show when={!useLeadingRemove && allowsRemoving}>
                         <Button
                             slot="remove"
                             variant="transparent"
-                            size={ REMOVE_BUTTON_SIZE[resolvedSize] }
+                            size={REMOVE_BUTTON_SIZE[resolvedSize]}
                             color="inherit"
                             iconOnly
-                            className={ styles.removeButton }
+                            className={styles.removeButton}
                             aria-label="Remove"
                         >
-                            { REMOVE_BUTTON_ICON[resolvedSize] }
+                            {REMOVE_BUTTON_ICON[resolvedSize]}
                         </Button>
                     </Show>
                 </Provider>
-            )) }
+            ))}
         </RACTag>
     );
 
-    return tooltip ? <Tooltip content={ tooltip }>{tag}</Tooltip> : tag;
+    return tooltip ? <Tooltip content={tooltip}>{tag}</Tooltip> : tag;
 }

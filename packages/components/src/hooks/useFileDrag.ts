@@ -1,5 +1,5 @@
 import { filesFromDataTransfer } from '@clowdy/lib';
-import { useCallback, useEffect, useRef, type DragEvent } from 'react';
+import { type DragEvent, useCallback, useEffect, useRef } from 'react';
 
 import { useFilePaste } from './useFilePaste';
 

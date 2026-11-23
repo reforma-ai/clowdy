@@ -38,7 +38,10 @@ describe('FixtureTransport skills', () => {
         const other = await transport.getSkills(FIXTURE_EMPTY_PROJECT_ID);
 
         expect(global.entries.filter(entry => entry.source === 'project')).toEqual([]);
-        expect(car.entries.filter(entry => entry.source === 'project').map(entry => entry.name)).toEqual(['booking-rules', 'fleet-import']);
+        expect(car.entries.filter(entry => entry.source === 'project').map(entry => entry.name)).toEqual([
+            'booking-rules',
+            'fleet-import',
+        ]);
         expect(other.entries).toEqual(global.entries);
         expect(car.entries.every(entry => !('projectId' in entry))).toBe(true);
         await expect(transport.getSkills('nope')).rejects.toMatchObject({ status: 404 });
@@ -57,17 +60,33 @@ describe('FixtureTransport skills', () => {
         const events: ClowdyEvent[] = [];
         const { cursor } = await transport.getRootSnapshot();
 
-        transport.subscribe(cursor, event => events.push(event), () => undefined);
+        transport.subscribe(
+            cursor,
+            event => events.push(event),
+            () => undefined
+        );
 
-        expect(await transport.command({ type: 'skills.setEnabled', name: 'user:sql-review', enabled: true })).toMatchObject({ ok: true, data: { name: 'user:sql-review', enabled: true } });
+        expect(
+            await transport.command({ type: 'skills.setEnabled', name: 'user:sql-review', enabled: true })
+        ).toMatchObject({ ok: true, data: { name: 'user:sql-review', enabled: true } });
         await new Promise(resolve => setTimeout(resolve, 0));
 
         expect(events.map(event => event.data.type)).toEqual(['skills.changed', 'skills.changed', 'skills.changed']);
-        expect(events.map(event => event.projectId).sort()).toEqual([FIXTURE_PROJECT_ID, FIXTURE_EMPTY_PROJECT_ID, FIXTURE_PERSONAL_PROJECT_ID].sort());
-        expect((await transport.getSkills()).entries.find(entry => entry.name === 'user:sql-review')?.enabled).toBe(true);
+        expect(events.map(event => event.projectId).sort()).toEqual(
+            [FIXTURE_PROJECT_ID, FIXTURE_EMPTY_PROJECT_ID, FIXTURE_PERSONAL_PROJECT_ID].sort()
+        );
+        expect((await transport.getSkills()).entries.find(entry => entry.name === 'user:sql-review')?.enabled).toBe(
+            true
+        );
 
-        expect(await transport.command({ type: 'skills.setEnabled', name: 'clowdy:docs', enabled: false })).toMatchObject({ ok: false, error: { code: 'invalid' } });
-        expect(await transport.command({ type: 'skills.setEnabled', name: 'booking-rules', enabled: false })).toMatchObject({ ok: false, error: { code: 'invalid' } });
-        expect(await transport.command({ type: 'skills.setEnabled', name: 'user:nope', enabled: false })).toMatchObject({ ok: false, error: { code: 'not_found' } });
+        expect(
+            await transport.command({ type: 'skills.setEnabled', name: 'clowdy:docs', enabled: false })
+        ).toMatchObject({ ok: false, error: { code: 'invalid' } });
+        expect(
+            await transport.command({ type: 'skills.setEnabled', name: 'booking-rules', enabled: false })
+        ).toMatchObject({ ok: false, error: { code: 'invalid' } });
+        expect(await transport.command({ type: 'skills.setEnabled', name: 'user:nope', enabled: false })).toMatchObject(
+            { ok: false, error: { code: 'not_found' } }
+        );
     });
 });

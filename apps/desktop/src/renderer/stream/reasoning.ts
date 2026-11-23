@@ -9,13 +9,13 @@ export function thoughtLabel(done: boolean, durationMs?: number): string {
 
     const seconds = Math.round(durationMs / 1000);
 
-    if (seconds < 60) return `Thought ${ seconds }s`;
+    if (seconds < 60) return `Thought ${seconds}s`;
 
     const minutes = Math.floor(seconds / 60);
 
-    if (minutes < 60) return seconds % 60 === 0 ? `Thought ${ minutes }m` : `Thought ${ minutes }m ${ seconds % 60 }s`;
+    if (minutes < 60) return seconds % 60 === 0 ? `Thought ${minutes}m` : `Thought ${minutes}m ${seconds % 60}s`;
 
     const hours = Math.floor(minutes / 60);
 
-    return minutes % 60 === 0 ? `Thought ${ hours }h` : `Thought ${ hours }h ${ minutes % 60 }m`;
+    return minutes % 60 === 0 ? `Thought ${hours}h` : `Thought ${hours}h ${minutes % 60}m`;
 }

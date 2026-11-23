@@ -28,7 +28,7 @@ vi.mock('../files/FilesTab', async () => {
                 built();
             }, []);
 
-            return <p>{ variant === 'docs' ? 'The docs' : 'The files' }</p>;
+            return <p>{variant === 'docs' ? 'The docs' : 'The files'}</p>;
         },
     };
 });
@@ -39,7 +39,9 @@ vi.mock('../tasks', () => ({ Screen: () => <p>The tasks</p> }));
 // And the changes.
 vi.mock('../changes/ChangesTab', () => ({ default: () => <p>The changes</p> }));
 // The babel plugin that makes the app's components observers does not run under Vitest: the panel is one, to follow the tab that is chosen.
-vi.mock('./SidePanel', async (importOriginal) => ({ SidePanel: observer((await importOriginal<typeof import('./SidePanel')>()).SidePanel) }));
+vi.mock('./SidePanel', async importOriginal => ({
+    SidePanel: observer((await importOriginal<typeof import('./SidePanel')>()).SidePanel),
+}));
 
 // The babel plugin that makes the app's components observers does not run under Vitest.
 const Layout = observer(SidePanelLayout);
@@ -47,7 +49,9 @@ const Rail = observer(SidePanelRail);
 /** The page with its side panel, and the rail at the window's right edge. */
 const Frame = () => (
     <>
-        <Layout><p>The page</p></Layout>
+        <Layout>
+            <p>The page</p>
+        </Layout>
         <Rail />
     </>
 );
@@ -55,37 +59,53 @@ const Frame = () => (
 const memory = () => {
     const data = new Map<string, string>();
 
-    return { getItem: (key: string) => data.get(key) ?? null, setItem: (key: string, value: string) => void data.set(key, value), removeItem: (key: string) => void data.delete(key) };
+    return {
+        getItem: (key: string) => data.get(key) ?? null,
+        setItem: (key: string, value: string) => void data.set(key, value),
+        removeItem: (key: string) => void data.delete(key),
+    };
 };
 
 let container: HTMLDivElement;
 let root: Root;
 let store: RootStore;
 
-const settle = () => act(async () => {
-    await new Promise(resolve => setTimeout(resolve, 0));
-});
-const press = (target: HTMLElement) => act(async () => {
-    target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
-    target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
-    target.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
-    target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
-    target.click();
-});
+const settle = () =>
+    act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 0));
+    });
+const press = (target: HTMLElement) =>
+    act(async () => {
+        target.dispatchEvent(
+            new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true })
+        );
+        target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+        target.dispatchEvent(
+            new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true })
+        );
+        target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
+        target.click();
+    });
 /** The two clicks of a double click: the browser counts them in `detail`. */
-const doubleClick = (target: HTMLElement) => act(async () => {
-    for (const detail of [1, 2]) target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail }));
-});
+const doubleClick = (target: HTMLElement) =>
+    act(async () => {
+        for (const detail of [1, 2])
+            target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail }));
+    });
 const panel = () => container.querySelector<HTMLElement>('aside[aria-label="Panel"]');
 const rail = () => container.querySelector<HTMLElement>('nav[aria-label="Panel tabs"]');
-const tab = (name: string) => [...(rail()?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find(button => button.textContent === name);
+const tab = (name: string) =>
+    [...(rail()?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find(button => button.textContent === name);
 const ui = () => store.ui.forProject(store.selectedProjectId!);
 const expandButton = () => container.querySelector<HTMLButtonElement>('button[aria-label="Side panel"]');
-const settingsItem = () => [...container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Settings');
+const settingsItem = () =>
+    [...container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Settings');
 
 /** A window with no project on show: the projects are loaded and there are none. */
 async function withoutProjects() {
-    const empty = new RootStore(new FixtureTransport({ data: { ...createFixtureData(), projects: [] } }), { storage: memory() });
+    const empty = new RootStore(new FixtureTransport({ data: { ...createFixtureData(), projects: [] } }), {
+        storage: memory(),
+    });
 
     await empty.load();
     store.dispose();
@@ -93,7 +113,7 @@ async function withoutProjects() {
 }
 
 async function draw(element: React.ReactElement) {
-    act(() => root.render(<RootStoreProvider value={ store }>{ element }</RootStoreProvider>));
+    act(() => root.render(<RootStoreProvider value={store}>{element}</RootStoreProvider>));
     await settle();
 }
 
@@ -121,13 +141,24 @@ describe('the corner at the top of the rail', () => {
     const sizes = () => document.querySelector('[role="group"][aria-label="Side panel size"]');
     const sizeButtons = () => [...(sizes()?.querySelectorAll<HTMLButtonElement>('button') ?? [])];
     const size = (name: string) => sizeButtons().find(button => button.textContent?.startsWith(name))!;
-    const current = () => sizeButtons().filter(button => button.getAttribute('aria-pressed') === 'true').map(button => button.textContent);
-    const pause = (ms: number) => act(async () => {
-        await new Promise(resolve => setTimeout(resolve, ms));
-    });
+    const current = () =>
+        sizeButtons()
+            .filter(button => button.getAttribute('aria-pressed') === 'true')
+            .map(button => button.textContent);
+    const pause = (ms: number) =>
+        act(async () => {
+            await new Promise(resolve => setTimeout(resolve, ms));
+        });
 
     it('opens a menu of the sizes with a press, and a choice sets the panel to that size and shuts the menu', async () => {
-        await draw(<><Layout><p>The page</p></Layout><Rail /></>);
+        await draw(
+            <>
+                <Layout>
+                    <p>The page</p>
+                </Layout>
+                <Rail />
+            </>
+        );
 
         expect(sizes()).toBeNull();
         expect(pressed()).toBe('false');
@@ -170,7 +201,14 @@ describe('the corner at the top of the rail', () => {
     });
 
     it('titles the menu as the side panel, and tells the key that toggles the panel only while there is one', async () => {
-        await draw(<><Layout><p>The page</p></Layout><Rail /></>);
+        await draw(
+            <>
+                <Layout>
+                    <p>The page</p>
+                </Layout>
+                <Rail />
+            </>
+        );
         await press(expandButton()!);
 
         const menu = () => sizes()?.parentElement?.textContent;
@@ -178,21 +216,34 @@ describe('the corner at the top of the rail', () => {
         expect(menu()).toMatch(/^Side panel/);
         expect(menu()).not.toContain('to toggle the panel');
 
-        const remove = defineCommand({ id: SIDE_PANEL_COMMAND, title: 'Toggle side panel', group: 'General', keys: SIDE_PANEL_KEYS, scope: 'app', handler: () => undefined });
+        const remove = defineCommand({
+            id: SIDE_PANEL_COMMAND,
+            title: 'Toggle side panel',
+            group: 'General',
+            keys: SIDE_PANEL_KEYS,
+            scope: 'app',
+            handler: () => undefined,
+        });
 
         try {
             await settle();
 
             expect(menu()).toMatch(/^Side panelUse .+ to toggle the panelWide/);
-        }
-        finally {
+        } finally {
             remove();
         }
     });
 
     it('shows a panel that was shut while expanded as hidden, and brings it back in the size that is chosen', async () => {
         act(() => ui().toggleSidePanel());
-        await draw(<><Layout><p>The page</p></Layout><Rail /></>);
+        await draw(
+            <>
+                <Layout>
+                    <p>The page</p>
+                </Layout>
+                <Rail />
+            </>
+        );
 
         act(() => ui().toggleSidePanelExpanded());
         act(() => ui().toggleSidePanel());
@@ -212,7 +263,14 @@ describe('the corner at the top of the rail', () => {
 
     it('keeps Half in the menu, grey and saying why, where the panel cannot be beside the chat: the Tasks tab, and a window too narrow for Files', async () => {
         act(() => ui().showSidePanelTab('tasks'));
-        await draw(<><Layout><p>The page</p></Layout><Rail /></>);
+        await draw(
+            <>
+                <Layout>
+                    <p>The page</p>
+                </Layout>
+                <Rail />
+            </>
+        );
 
         await press(expandButton()!);
 
@@ -246,14 +304,23 @@ describe('the corner at the top of the rail', () => {
     });
 
     it('shuts the menu with Escape, and the button is its trigger again', async () => {
-        await draw(<><Layout><p>The page</p></Layout><Rail /></>);
+        await draw(
+            <>
+                <Layout>
+                    <p>The page</p>
+                </Layout>
+                <Rail />
+            </>
+        );
 
         await press(expandButton()!);
         expect(sizes()).not.toBeNull();
         expect(expandButton()?.getAttribute('aria-expanded')).toBe('true');
 
         await act(async () => {
-            (document.activeElement ?? sizes())?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            (document.activeElement ?? sizes())?.dispatchEvent(
+                new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })
+            );
         });
         await pause(100);
 
@@ -263,7 +330,14 @@ describe('the corner at the top of the rail', () => {
     });
 
     it('does not open the menu when the pointer rests on the button: only a press does', async () => {
-        await draw(<><Layout><p>The page</p></Layout><Rail /></>);
+        await draw(
+            <>
+                <Layout>
+                    <p>The page</p>
+                </Layout>
+                <Rail />
+            </>
+        );
 
         const button = expandButton()!;
 
@@ -297,7 +371,11 @@ describe('the corner at the top of the rail', () => {
 
 describe('the side panel of the window', () => {
     it('is not there until the person opens it, and the page it sits beside is', async () => {
-        await draw(<Layout><p>The page</p></Layout>);
+        await draw(
+            <Layout>
+                <p>The page</p>
+            </Layout>
+        );
 
         expect(container.textContent).toBe('The page');
         expect(panel()).toBeNull();
@@ -318,7 +396,11 @@ describe('the side panel of the window', () => {
             return <p>The page</p>;
         }
 
-        await draw(<Layout><Page /></Layout>);
+        await draw(
+            <Layout>
+                <Page />
+            </Layout>
+        );
 
         act(() => ui().toggleSidePanel());
         await settle();
@@ -340,7 +422,11 @@ describe('the side panel of the window', () => {
     it('stays where it is while Settings is open over it, which is a window and not a screen in its place', async () => {
         act(() => ui().toggleSidePanel());
         store.ui.openSettings();
-        await draw(<Layout><p>The page</p></Layout>);
+        await draw(
+            <Layout>
+                <p>The page</p>
+            </Layout>
+        );
 
         expect(panel()).not.toBeNull();
 
@@ -352,21 +438,33 @@ describe('the side panel of the window', () => {
 
     it('is drawn only while the window shows a project', async () => {
         await withoutProjects();
-        await draw(<Layout><p>The page</p></Layout>);
+        await draw(
+            <Layout>
+                <p>The page</p>
+            </Layout>
+        );
 
         expect(store.selectedProjectId).toBeNull();
         expect(panel()).toBeNull();
     });
 
     it('is open for the project it was opened in, and not for another', async () => {
-        await draw(<Layout><p>The page</p></Layout>);
+        await draw(
+            <Layout>
+                <p>The page</p>
+            </Layout>
+        );
 
         act(() => ui().toggleSidePanel());
         await settle();
 
         expect(panel()).not.toBeNull();
 
-        act(() => store.selectProject(store.projects.find(project => project.id !== store.selectedProjectId && !project.personal)!.id));
+        act(() =>
+            store.selectProject(
+                store.projects.find(project => project.id !== store.selectedProjectId && !project.personal)!.id
+            )
+        );
         await settle();
 
         expect(panel()).toBeNull();
@@ -439,7 +537,9 @@ describe('the side panel of the window', () => {
         act(() => ui().toggleSidePanel());
         await settle();
 
-        const names = [...(rail()?.querySelectorAll<HTMLButtonElement>('button') ?? [])].map(button => button.textContent);
+        const names = [...(rail()?.querySelectorAll<HTMLButtonElement>('button') ?? [])].map(
+            button => button.textContent
+        );
 
         expect(names).toEqual(['Files', 'Changes', 'Docs', 'Terminal', 'Tasks', 'Info']);
 
@@ -512,7 +612,14 @@ describe('the rail of the side panel', () => {
         await draw(<Frame />);
 
         expect(panel()).toBeNull();
-        expect([...rail()!.querySelectorAll('button')].map(button => button.textContent)).toEqual(['Files', 'Changes', 'Docs', 'Terminal', 'Tasks', 'Info']);
+        expect([...rail()!.querySelectorAll('button')].map(button => button.textContent)).toEqual([
+            'Files',
+            'Changes',
+            'Docs',
+            'Terminal',
+            'Tasks',
+            'Info',
+        ]);
         expect(rail()!.querySelector('[aria-current]')).toBeNull();
 
         act(() => ui().toggleSidePanel());
@@ -555,7 +662,12 @@ describe('the rail of the side panel', () => {
 
         // The browser counts such clicks in `detail`, and every one of them counts.
         for (const detail of [1, 2, 3]) {
-            await act(async () => void tab('Files')!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail })));
+            await act(
+                async () =>
+                    void tab('Files')!.dispatchEvent(
+                        new MouseEvent('click', { bubbles: true, cancelable: true, detail })
+                    )
+            );
         }
 
         // Opened, shut, opened.
@@ -566,13 +678,21 @@ describe('the rail of the side panel', () => {
         expect(ui().sidePanelOpen).toBe(true);
     });
 
-    it('has the panel\'s button first, then Info at the bottom beside Settings, and Settings under it', async () => {
+    it("has the panel's button first, then Info at the bottom beside Settings, and Settings under it", async () => {
         await draw(<Frame />);
 
         const items = [...container.querySelectorAll<HTMLButtonElement>('button')];
 
         expect(items[0]).toBe(expandButton());
-        expect(items.slice(1).map(button => button.textContent)).toEqual(['Files', 'Changes', 'Docs', 'Terminal', 'Tasks', 'Info', 'Settings']);
+        expect(items.slice(1).map(button => button.textContent)).toEqual([
+            'Files',
+            'Changes',
+            'Docs',
+            'Terminal',
+            'Tasks',
+            'Info',
+            'Settings',
+        ]);
         // Info is the one tab that is pushed to the bottom of the column, so that it sits above Settings.
         expect(tab('Info')!.className).toMatch(/bottom/);
         expect(tab('Files')!.className).not.toMatch(/bottom/);

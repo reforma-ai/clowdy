@@ -38,10 +38,12 @@ export function plainTextToDoc(text: string): ComposerDoc {
 
     return {
         type: 'doc',
-        content: [{
-            type: 'paragraph',
-            ...(content.length > 0 ? { content } : {}),
-        }],
+        content: [
+            {
+                type: 'paragraph',
+                ...(content.length > 0 ? { content } : {}),
+            },
+        ],
     };
 }
 
@@ -66,25 +68,22 @@ function wrapTextMarks(text: string, marks: JSONContent['marks']): string {
     const types = new Set(marks.map(mark => mark.type));
 
     if (types.has('code')) {
-        out = `\`${ out }\``;
+        out = `\`${out}\``;
     }
 
     if (types.has('italic')) {
-        out = `*${ out }*`;
+        out = `*${out}*`;
     }
 
     if (types.has('bold')) {
-        out = `**${ out }**`;
+        out = `**${out}**`;
     }
 
     return out;
 }
 
 /** Prompt / copy text. TipTap marks become markdown so the bubble and the model see the same formatting. */
-export function docToPlainText(
-    doc: ComposerDoc,
-    serializeMention?: RichInputMentionSerializer
-): string {
+export function docToPlainText(doc: ComposerDoc, serializeMention?: RichInputMentionSerializer): string {
     const parts: string[] = [];
 
     const walkInline = (node: JSONContent) => {
@@ -125,7 +124,7 @@ export function docToPlainText(
                     parts.push('\n');
                 }
 
-                parts.push(node.type === 'bulletList' ? '- ' : `${ start + i }. `);
+                parts.push(node.type === 'bulletList' ? '- ' : `${start + i}. `);
                 walkBlock(items[i]!);
             }
 
@@ -165,7 +164,7 @@ export function docToPlainText(
 export function docHasMentions(doc: ComposerDoc): boolean {
     let found = false;
 
-    walk(doc, (node) => {
+    walk(doc, node => {
         if (node.type === 'composerMention') {
             found = true;
         }
@@ -177,7 +176,7 @@ export function docHasMentions(doc: ComposerDoc): boolean {
 export function docHasList(doc: ComposerDoc): boolean {
     let found = false;
 
-    walk(doc, (node) => {
+    walk(doc, node => {
         if (node.type === 'bulletList' || node.type === 'orderedList') {
             found = true;
         }
@@ -189,7 +188,7 @@ export function docHasList(doc: ComposerDoc): boolean {
 export function docMentions(doc: ComposerDoc): ComposerMentionAttrs[] {
     const out: ComposerMentionAttrs[] = [];
 
-    walk(doc, (node) => {
+    walk(doc, node => {
         if (node.type !== 'composerMention') {
             return;
         }
@@ -225,9 +224,8 @@ export function appendTextToDoc(doc: ComposerDoc, suffix: string): ComposerDoc {
     const lastInline = inline[inline.length - 1];
 
     if (lastInline?.type === 'text' && typeof lastInline.text === 'string') {
-        inline[inline.length - 1] = { ...lastInline, text: `${ lastInline.text }${ suffix }` };
-    }
-    else {
+        inline[inline.length - 1] = { ...lastInline, text: `${lastInline.text}${suffix}` };
+    } else {
         for (const piece of plainTextToDoc(suffix).content?.[0]?.content ?? [{ type: 'text', text: suffix }]) {
             inline.push(piece);
         }
@@ -255,10 +253,7 @@ export function mentionNodes(mention: ComposerMentionAttrs): JSONContent[] {
     ];
 }
 
-export async function pastedTextToMentionContent(
-    text: string,
-    mention: RichInputTrigger
-): Promise<ComposerDoc[]> {
+export async function pastedTextToMentionContent(text: string, mention: RichInputTrigger): Promise<ComposerDoc[]> {
     const re = /@https?:\/\/[^\s]+/gi;
     const paragraphs: ComposerDoc[] = [];
 
@@ -278,21 +273,21 @@ export async function pastedTextToMentionContent(
 
             try {
                 item = (await Promise.resolve(mention.onSearch(full.slice(1))))[0];
-            }
-            catch {
+            } catch {
                 item = undefined;
             }
 
             if (item?.kind === 'link' && !item.action) {
-                inline.push(...mentionNodes({
-                    id: item.value,
-                    label: item.displayText ?? item.label,
-                    kind: item.kind,
-                    trigger: '@',
-                    data: item.data,
-                }));
-            }
-            else {
+                inline.push(
+                    ...mentionNodes({
+                        id: item.value,
+                        label: item.displayText ?? item.label,
+                        kind: item.kind,
+                        trigger: '@',
+                        data: item.data,
+                    })
+                );
+            } else {
                 inline.push({ type: 'text', text: full });
             }
 
@@ -402,7 +397,7 @@ export function removeMentionsByIds(doc: ComposerDoc, ids: Iterable<string>): Co
             return nodes;
         }
 
-        return nodes.filter((node) => {
+        return nodes.filter(node => {
             if (node.type === 'composerMention') {
                 const id = node.attrs?.id;
 
@@ -417,7 +412,7 @@ export function removeMentionsByIds(doc: ComposerDoc, ids: Iterable<string>): Co
         });
     };
 
-    next.content = (next.content ?? []).map((block) => {
+    next.content = (next.content ?? []).map(block => {
         if (block.content) {
             block.content = filterInline(block.content);
         }

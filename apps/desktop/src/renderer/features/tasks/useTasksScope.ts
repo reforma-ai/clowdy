@@ -34,7 +34,10 @@ export function useTasksScope({ cursor, filter, runsOfTask }: UseTasksScopeOptio
     const view: TasksView = scopeId === null ? ui.tasksView : ui.taskPageView;
     const isArchive = ui.tasksArchive;
     const keep = isFiltering(filter) ? keepAmong(filterTasks(tasks, filter, runsOfTask)) : undefined;
-    const content = scopeContent(tree, project.statuses, scopeId, tasksMode(view, ui.tasksSubtasks), { collapsed: ui.tasksCollapsed, keep });
+    const content = scopeContent(tree, project.statuses, scopeId, tasksMode(view, ui.tasksSubtasks), {
+        collapsed: ui.tasksCollapsed,
+        keep,
+    });
     // The task whose insides the person just went out of, so the way up puts the cursor on it, as a file manager selects the folder you came out of.
     const left = useRef<TaskId | null>(null);
 
@@ -66,7 +69,10 @@ export function useTasksScope({ cursor, filter, runsOfTask }: UseTasksScopeOptio
     };
 
     // What the Tasks commands ask of the scope: the view, the tree's folds, going into a task and up.
-    const commandDeps: Pick<TaskCommandDeps, 'view' | 'setView' | 'scope' | 'isArchive' | 'rows' | 'setFolded' | 'openScope' | 'goUp' | 'canHaveChildren'> = {
+    const commandDeps: Pick<
+        TaskCommandDeps,
+        'view' | 'setView' | 'scope' | 'isArchive' | 'rows' | 'setFolded' | 'openScope' | 'goUp' | 'canHaveChildren'
+    > = {
         view: () => view,
         setView,
         scope: () => scopeId,
@@ -77,7 +83,7 @@ export function useTasksScope({ cursor, filter, runsOfTask }: UseTasksScopeOptio
         },
         openScope: open,
         goUp: up,
-        canHaveChildren: (taskId) => {
+        canHaveChildren: taskId => {
             const task = project.tasks.get(taskId);
 
             return task !== undefined && tree.canHaveChildren(task);

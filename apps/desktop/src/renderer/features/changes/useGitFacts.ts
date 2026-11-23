@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 
 import { useRootStore } from '../../stores';
 import { isPlaceReady, type Place } from '../sidePanel/currentPlace';
-import { gitFactsOf, type GitFacts, type GitPlaceKey, type PlaceFacts } from './gitFacts';
+import { type GitFacts, type GitPlaceKey, gitFactsOf, type PlaceFacts } from './gitFacts';
 
 import type { ProjectId } from '@clowdy/protocol';
 
@@ -17,9 +17,10 @@ export function useGitFactsStore(): GitFacts {
  */
 export function useGitFacts(projectId: ProjectId, place: Place | undefined): PlaceFacts | undefined {
     const store = useGitFactsStore();
-    const key: GitPlaceKey | undefined = place && isPlaceReady(place)
-        ? { projectId, folderId: place.folder.id, ...(place.workspace && { workspaceId: place.workspace.id }) }
-        : undefined;
+    const key: GitPlaceKey | undefined =
+        place && isPlaceReady(place)
+            ? { projectId, folderId: place.folder.id, ...(place.workspace && { workspaceId: place.workspace.id }) }
+            : undefined;
     const facts = key && store.of(key);
 
     useEffect(() => (facts ? store.observe(facts.key) : undefined), [store, facts]);

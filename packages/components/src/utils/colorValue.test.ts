@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-    detectColorInputEditorFormat,
-    parseCssColorChannels,
-    serializeCssColorChannels,
-} from '../ColorInput/format';
+import { detectColorInputEditorFormat, parseCssColorChannels, serializeCssColorChannels } from '../ColorInput/format';
 import { parseColorInputValue, serializeColorInputValue } from '../ColorInput/value';
 import { parseColorValue } from './colorValue';
 
@@ -63,7 +59,7 @@ describe('parseColorValue', () => {
         'var(--color)',
         'currentColor',
         '',
-    ])('returns null for unsupported or invalid color syntax: %s', (value) => {
+    ])('returns null for unsupported or invalid color syntax: %s', value => {
         expect(parseColorValue(value)).toBeNull();
     });
 

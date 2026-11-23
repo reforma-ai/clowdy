@@ -13,45 +13,53 @@ function change<T>(services: Services, id: string | undefined, apply: () => T): 
         announceAgentsChanged(services.store);
 
         return result;
-    }
-    catch (error) {
+    } catch (error) {
         if (error instanceof AgentRegistryError) {
-            throw error.kind === 'not_found' ? notFound('Agent', id ?? '') : error.kind === 'conflict' ? conflict(error.message) : invalid(error.message);
+            throw error.kind === 'not_found'
+                ? notFound('Agent', id ?? '')
+                : error.kind === 'conflict'
+                  ? conflict(error.message)
+                  : invalid(error.message);
         }
 
         throw error;
     }
 }
 
-export const agentsHandlers: Pick<Handlers, 'agent.add' | 'agent.update' | 'agent.remove' | 'agents.refresh' | 'agent.signIn' | 'agent.cancelSignIn'> = {
-    'agent.add': (services, { id, name, command, args, env }) => change(services, id, () => {
-        services.agents.add({ id, name, command, args: args ?? [], ...(env && { env }) });
+export const agentsHandlers: Pick<
+    Handlers,
+    'agent.add' | 'agent.update' | 'agent.remove' | 'agents.refresh' | 'agent.signIn' | 'agent.cancelSignIn'
+> = {
+    'agent.add': (services, { id, name, command, args, env }) =>
+        change(services, id, () => {
+            services.agents.add({ id, name, command, args: args ?? [], ...(env && { env }) });
 
-        return { id };
-    }),
-    'agent.update': (services, { id, enabled, path, env, name, command, args, settings, permission }) => change(services, id, () => {
-        services.agents.update(id, { enabled, path, env, name, command, args, settings, permission });
-        // Another program, environment or switch can mean another account: read it again. A setting cannot, but it can change the models on offer.
-        if (enabled !== undefined || path !== undefined || env !== undefined) {
-            services.providers.forget(id);
-        }
+            return { id };
+        }),
+    'agent.update': (services, { id, enabled, path, env, name, command, args, settings, permission }) =>
+        change(services, id, () => {
+            services.agents.update(id, { enabled, path, env, name, command, args, settings, permission });
+            // Another program, environment or switch can mean another account: read it again. A setting cannot, but it can change the models on offer.
+            if (enabled !== undefined || path !== undefined || env !== undefined) {
+                services.providers.forget(id);
+            }
 
-        if (enabled !== undefined || path !== undefined || env !== undefined || settings !== undefined) {
-            services.models.forget(id);
-        }
+            if (enabled !== undefined || path !== undefined || env !== undefined || settings !== undefined) {
+                services.models.forget(id);
+            }
 
-        return { id };
-    }),
-    'agent.remove': (services, { id }) => change(services, id, () => {
-        services.agents.remove(id);
+            return { id };
+        }),
+    'agent.remove': (services, { id }) =>
+        change(services, id, () => {
+            services.agents.remove(id);
 
-        return { id };
-    }),
+            return { id };
+        }),
     'agent.signIn': (services, { id }) => {
         try {
             services.providers.signIn(id);
-        }
-        catch (error) {
+        } catch (error) {
             if (error instanceof SignInError) {
                 throw error.kind === 'conflict' ? conflict(error.message) : invalid(error.message);
             }
@@ -66,11 +74,12 @@ export const agentsHandlers: Pick<Handlers, 'agent.add' | 'agent.update' | 'agen
 
         return { id };
     },
-    'agents.refresh': services => change(services, undefined, () => {
-        services.agents.refresh();
-        services.providers.refresh();
-        services.models.forget();
+    'agents.refresh': services =>
+        change(services, undefined, () => {
+            services.agents.refresh();
+            services.providers.refresh();
+            services.models.forget();
 
-        return {};
-    }),
+            return {};
+        }),
 };

@@ -1,6 +1,6 @@
 import { Button } from '@clowdy/components/Button';
 import { Text } from '@clowdy/components/Text';
-import { GITHUB_URL, LICENSES_URL, RELEASES_URL } from '@clowdy/constants';
+import { GITHUB_URL, LICENSE_URL, LICENSES_URL, RELEASES_URL } from '@clowdy/constants';
 import { ArrowUpRight } from '@clowdy/icons/14';
 import { Github } from '@clowdy/icons/logo';
 import { useEffect, useState } from 'react';
@@ -34,22 +34,30 @@ export function AboutPage() {
             <SettingsSection title="Clowdy">
                 <SettingsCard divided>
                     <SettingsRow title="Repository" description="Source code, issues and stars">
-                        <LinkButton href={ GITHUB_URL } icon={ <Github size={ 14 } /> }>Open in GitHub</LinkButton>
+                        <LinkButton href={GITHUB_URL} icon={<Github size={14} />}>
+                            Open in GitHub
+                        </LinkButton>
                     </SettingsRow>
                     <SettingsRow title="Download" description="The installers of the latest release">
-                        <LinkButton href={ RELEASES_URL }>Open releases</LinkButton>
+                        <LinkButton href={RELEASES_URL}>Open releases</LinkButton>
+                    </SettingsRow>
+                    <SettingsRow title="License" description="Clowdy is open source under the Apache License 2.0">
+                        <LinkButton href={LICENSE_URL}>Apache-2.0</LinkButton>
                     </SettingsRow>
                 </SettingsCard>
             </SettingsSection>
 
             <SettingsSection title="Updates" description="The versions running on your hosts">
-                <HostCard host={ LOCAL_HOST } transport={ transport } />
+                <HostCard host={LOCAL_HOST} transport={transport} />
             </SettingsSection>
 
             <SettingsSection title="Credits">
                 <SettingsCard>
-                    <SettingsRow title="Open source licenses" description="The libraries, fonts and icons Clowdy is built with">
-                        <LinkButton href={ LICENSES_URL }>Open licenses</LinkButton>
+                    <SettingsRow
+                        title="Open source licenses"
+                        description="The libraries, fonts and icons Clowdy is built with"
+                    >
+                        <LinkButton href={LICENSES_URL}>Open licenses</LinkButton>
                     </SettingsRow>
                 </SettingsCard>
             </SettingsSection>
@@ -58,11 +66,19 @@ export function AboutPage() {
 }
 
 /** A button that opens an address in the browser. */
-function LinkButton({ href, icon = <ArrowUpRight />, children }: { href: string; icon?: ReactNode; children: ReactNode }) {
+function LinkButton({
+    href,
+    icon = <ArrowUpRight />,
+    children,
+}: {
+    href: string;
+    icon?: ReactNode;
+    children: ReactNode;
+}) {
     return (
-        <Button variant="filling" color="secondary" size="sm" href={ href } target="_blank" rel="noreferrer">
-            { icon }
-            { children }
+        <Button variant="filling" color="secondary" size="sm" href={href} target="_blank" rel="noreferrer">
+            {icon}
+            {children}
         </Button>
     );
 }
@@ -75,16 +91,19 @@ function HostCard({ host, transport }: { host: Host; transport: Transport }) {
     const reading = useDaemonReading(transport);
 
     return (
-        <SettingsCard as="section" divided aria-label={ host.name }>
-            <SettingsRow title={ host.name } description={ host.detail } />
+        <SettingsCard as="section" divided aria-label={host.name}>
+            <SettingsRow title={host.name} description={host.detail} />
             <SettingsRow title="Daemon" description="Runs the agents and keeps the chats">
-                <Text variant="sm" color="secondary" role="status">{ readingText(reading) }</Text>
+                <Text variant="sm" color="secondary" role="status">
+                    {readingText(reading)}
+                </Text>
             </SettingsRow>
         </SettingsCard>
     );
 }
 
-const readingText = (reading: Reading) => reading.status === 'checking' ? 'Checking…' : reading.status === 'read' ? reading.version : 'Unavailable';
+const readingText = (reading: Reading) =>
+    reading.status === 'checking' ? 'Checking…' : reading.status === 'read' ? reading.version : 'Unavailable';
 
 /** Reads the daemon's version once, when the card is drawn. */
 function useDaemonReading(transport: Transport): Reading {

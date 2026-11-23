@@ -111,7 +111,7 @@ const KEY_NAMES: Record<string, string> = {
     Slash: '/',
     Period: '.',
     Comma: ',',
-    Quote: '\'',
+    Quote: "'",
     Backquote: '`',
     Minus: '-',
     Equal: '=',
@@ -135,7 +135,7 @@ function detectPlatform(): Platform {
 
 /** A key in the vocabulary of `hotkeysToSymbols` (`ArrowDown` is `down`, `KeyK` is `k`, `Slash` is `/`). */
 function keyName(key: string | RegExp): string {
-    if (typeof key !== 'string') return `(${ key.source })`;
+    if (typeof key !== 'string') return `(${key.source})`;
 
     if (Object.hasOwn(KEY_NAMES, key)) return KEY_NAMES[key];
 
@@ -151,19 +151,24 @@ function parseSequence(text: string, family: KeyFamily): Sequence {
 
     if (!normalized) throw new Error('keys cannot be empty');
 
-    const presses = parseKeybinding(normalized.replaceAll('$mod', family === 'mac' ? 'Meta' : 'Control')).map(([required, optional, key]): KeybindingPress => {
-        const unknown = [...required, ...optional].find(modifier => !MODIFIERS.includes(modifier));
+    const presses = parseKeybinding(normalized.replaceAll('$mod', family === 'mac' ? 'Meta' : 'Control')).map(
+        ([required, optional, key]): KeybindingPress => {
+            const unknown = [...required, ...optional].find(modifier => !MODIFIERS.includes(modifier));
 
-        if (unknown) throw new Error(`unknown modifier "${ unknown }" in "${ text }"; use $mod, Meta, Control, Alt or Shift`);
+            if (unknown)
+                throw new Error(`unknown modifier "${unknown}" in "${text}"; use $mod, Meta, Control, Alt or Shift`);
 
-        // `?` is Shift+/ on US layouts and plain on others, so a symbol key takes Shift unless the keys say otherwise.
-        const shiftTolerant = isSymbolKey(key) && !required.includes('Shift') && !optional.includes('Shift');
+            // `?` is Shift+/ on US layouts and plain on others, so a symbol key takes Shift unless the keys say otherwise.
+            const shiftTolerant = isSymbolKey(key) && !required.includes('Shift') && !optional.includes('Shift');
 
-        return [required, shiftTolerant ? [...optional, 'Shift'] : optional, key];
-    });
+            return [required, shiftTolerant ? [...optional, 'Shift'] : optional, key];
+        }
+    );
 
     const display = presses.map(([required, , key]) => [
-        ...MODIFIER_ORDER[family].filter(modifier => required.includes(modifier)).map(modifier => MODIFIER_NAMES[modifier]),
+        ...MODIFIER_ORDER[family]
+            .filter(modifier => required.includes(modifier))
+            .map(modifier => MODIFIER_NAMES[modifier]),
         keyName(key),
     ]);
 
@@ -171,7 +176,7 @@ function parseSequence(text: string, family: KeyFamily): Sequence {
 }
 
 function sequencesOf(keys: CommandKeys, family: KeyFamily): Sequence[] {
-    const own = typeof keys === 'object' && 'mac' in keys ? keys[family] : keys as Keys;
+    const own = typeof keys === 'object' && 'mac' in keys ? keys[family] : (keys as Keys);
 
     return (typeof own === 'string' ? [own] : own).map(text => parseSequence(text, family));
 }
@@ -179,9 +184,10 @@ function sequencesOf(keys: CommandKeys, family: KeyFamily): Sequence[] {
 function createEntry(command: Command): RegisteredCommand {
     try {
         return { command, sequences: { mac: sequencesOf(command.keys, 'mac'), win: sequencesOf(command.keys, 'win') } };
-    }
-    catch (error) {
-        throw new Error(`Hotkey command "${ command.id }": ${ error instanceof Error ? error.message : String(error) }`, { cause: error });
+    } catch (error) {
+        throw new Error(`Hotkey command "${command.id}": ${error instanceof Error ? error.message : String(error)}`, {
+            cause: error,
+        });
     }
 }
 
@@ -189,7 +195,8 @@ function createEntry(command: Command): RegisteredCommand {
 function pressesOverlap(a: KeybindingPress, b: KeybindingPress): boolean {
     if (keyName(a[2]) !== keyName(b[2])) return false;
 
-    const allows = (needs: KeybindingPress, has: KeybindingPress) => needs[0].every(modifier => has[0].includes(modifier) || has[1].includes(modifier));
+    const allows = (needs: KeybindingPress, has: KeybindingPress) =>
+        needs[0].every(modifier => has[0].includes(modifier) || has[1].includes(modifier));
 
     return allows(a, b) && allows(b, a);
 }
@@ -211,7 +218,7 @@ function conflictBetween(first: Command, a: Sequence, second: Command, b: Sequen
 
     const how = kind === 'duplicate' ? 'uses the same keys as' : 'starts or continues the keys of';
 
-    return { a: first, b: second, kind, message: `Hotkey "${ first.id }" (${ a.text }) ${ how } "${ second.id }" (${ b.text })` };
+    return { a: first, b: second, kind, message: `Hotkey "${first.id}" (${a.text}) ${how} "${second.id}" (${b.text})` };
 }
 
 /** Two commands can run on the same key press when they share a scope, or when one is in `app`, which is always live. */
@@ -325,7 +332,8 @@ export class HotkeyRegistry {
      * Throws when its keys collide with another command's (see `findKeyConflicts`), when its keys cannot be parsed, or when the id is taken.
      */
     defineCommand(command: Command): () => void {
-        if (this.entries.some(entry => entry.command.id === command.id)) throw new Error(`Hotkey command "${ command.id }" is already defined`);
+        if (this.entries.some(entry => entry.command.id === command.id))
+            throw new Error(`Hotkey command "${command.id}" is already defined`);
 
         const entry = createEntry(command);
         const conflict = ownConflict(entry) ?? this.entries.map(other => entryConflict(entry, other)).find(Boolean);
@@ -335,11 +343,12 @@ export class HotkeyRegistry {
         this.entries.push(entry);
 
         // The returned function runs from a React cleanup, outside any action, while a key hint may be observing `entries`.
-        return () => runInAction(() => {
-            const index = this.entries.indexOf(entry);
+        return () =>
+            runInAction(() => {
+                const index = this.entries.indexOf(entry);
 
-            if (index >= 0) this.entries.splice(index, 1);
-        });
+                if (index >= 0) this.entries.splice(index, 1);
+            });
     }
 
     /** Puts a scope on top of the stack, so its commands win over those of outer scopes. Returns the function that removes it. */
@@ -348,11 +357,12 @@ export class HotkeyRegistry {
 
         this.scopeStack.push(token);
 
-        return () => runInAction(() => {
-            const index = this.scopeStack.indexOf(token);
+        return () =>
+            runInAction(() => {
+                const index = this.scopeStack.indexOf(token);
 
-            if (index >= 0) this.scopeStack.splice(index, 1);
-        });
+                if (index >= 0) this.scopeStack.splice(index, 1);
+            });
     }
 
     /** Set by the dispatcher while a chord waits for its next key. */
@@ -371,7 +381,11 @@ export class HotkeyRegistry {
 
     /** Whether the command is defined, its scope is active and its `when` agrees. */
     isEntryLive(entry: RegisteredCommand): boolean {
-        return this.entries.includes(entry) && this.scopeDepth(entry.command.scope) !== null && (entry.command.when?.() ?? true);
+        return (
+            this.entries.includes(entry) &&
+            this.scopeDepth(entry.command.scope) !== null &&
+            (entry.command.when?.() ?? true)
+        );
     }
 
     isLive(command: Command): boolean {

@@ -4,12 +4,21 @@
         --clowdy-control-group-radius: var(--radius-md);
         --clowdy-control-group-gap: var(--spacing-1);
         --clowdy-control-group-border-width: var(--spacing-1);
-        --clowdy-control-group-overlap: calc(var(--clowdy-control-group-gap) + var(--clowdy-control-group-border-width));
+        --clowdy-control-group-overlap: calc(
+            var(--clowdy-control-group-gap) +
+            var(--clowdy-control-group-border-width)
+        );
         --clowdy-control-group-input-gap: var(--clowdy-control-group-input-gap-override, var(--spacing-xs));
         --clowdy-control-group-input-min-width: 3ch;
-        --clowdy-control-group-input-padding-inline: var(--clowdy-control-group-input-padding-inline-override, var(--spacing-xs));
+        --clowdy-control-group-input-padding-inline: var(
+            --clowdy-control-group-input-padding-inline-override,
+            var(--spacing-xs)
+        );
         --clowdy-control-group-prefix-size: var(--spacing-22);
-        --clowdy-control-group-prefix-label-padding: calc(var(--clowdy-control-group-prefix-size) + var(--clowdy-control-group-input-gap));
+        --clowdy-control-group-prefix-label-padding: calc(
+            var(--clowdy-control-group-prefix-size) +
+            var(--clowdy-control-group-input-gap)
+        );
 
         display: grid;
         grid-template-columns: var(--clowdy-control-group-columns);

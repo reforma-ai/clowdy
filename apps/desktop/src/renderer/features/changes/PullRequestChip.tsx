@@ -2,7 +2,7 @@ import { Button } from '@clowdy/components/Button';
 import { Menu, MenuItem, MenuTrigger } from '@clowdy/components/List';
 import { Popover, PopoverScroll } from '@clowdy/components/Popover';
 import { Text } from '@clowdy/components/Text';
-import { useRef, type RefObject } from 'react';
+import { type RefObject, useRef } from 'react';
 
 import { StatusDot } from '../../shared/StatusDot';
 import { openEffects } from '../openWith';
@@ -22,37 +22,49 @@ function ChecksMenu({ pr, anchor }: { pr: GitPullRequest; anchor: RefObject<HTML
 
     return (
         <MenuTrigger>
-            <Button size="xs" variant="ghost" color="secondary" iconOnly className={ styles.checks } aria-label={ `Checks: ${ words }` } tooltip={ words }>
-                <StatusDot tone={ checksTone(checks) } />
+            <Button
+                size="xs"
+                variant="ghost"
+                color="secondary"
+                iconOnly
+                className={styles.checks}
+                aria-label={`Checks: ${words}`}
+                tooltip={words}
+            >
+                <StatusDot tone={checksTone(checks)} />
             </Button>
-            <Popover triggerRef={ anchor } placement="top start" spacing="xs" width={ 320 }>
-                <PopoverScroll maxHeight={ 320 }>
+            <Popover triggerRef={anchor} placement="top start" spacing="xs" width={320}>
+                <PopoverScroll maxHeight={320}>
                     <Menu
                         aria-label="Checks"
                         size="sm"
-                        onAction={ (key) => {
+                        onAction={key => {
                             const { url } = items[Number(key)] ?? {};
 
                             if (url) openEffects.openUrl(url);
-                        } }
+                        }}
                     >
-                        { items.map((check, index) => {
+                        {items.map((check, index) => {
                             const view = CHECK_STATE_VIEW[check.state];
 
                             return (
                                 <MenuItem
                                     // The names are one for each check, but a status and a check run may share one.
-                                    key={ `${ index }:${ check.name }` }
-                                    id={ String(index) }
-                                    textValue={ check.name }
-                                    isDisabled={ !check.url }
-                                    icon={ <StatusDot tone={ view.tone } /> }
-                                    endAffix={ <Text variant="xs" color="secondary">{ view.label }</Text> }
+                                    key={`${index}:${check.name}`}
+                                    id={String(index)}
+                                    textValue={check.name}
+                                    isDisabled={!check.url}
+                                    icon={<StatusDot tone={view.tone} />}
+                                    endAffix={
+                                        <Text variant="xs" color="secondary">
+                                            {view.label}
+                                        </Text>
+                                    }
                                 >
-                                    { check.name }
+                                    {check.name}
                                 </MenuItem>
                             );
-                        }) }
+                        })}
                     </Menu>
                 </PopoverScroll>
             </Popover>
@@ -71,20 +83,22 @@ export function PullRequestChip({ pr, stale }: { pr: GitPullRequest; stale: bool
     const chip = useRef<HTMLDivElement>(null);
 
     return (
-        <div ref={ chip } role="group" aria-label="Pull request" className={ styles.chip } data-stale={ stale || undefined }>
+        <div ref={chip} role="group" aria-label="Pull request" className={styles.chip} data-stale={stale || undefined}>
             <Button
                 size="xs"
                 variant="ghost"
                 color="secondary"
-                className={ styles.pr }
-                aria-label={ `Open pull request ${ pr.number } on GitHub: ${ state }, ${ pr.title }` }
-                tooltip={ pr.title }
-                onPress={ () => openEffects.openUrl(pr.url) }
+                className={styles.pr}
+                aria-label={`Open pull request ${pr.number} on GitHub: ${state}, ${pr.title}`}
+                tooltip={pr.title}
+                onPress={() => openEffects.openUrl(pr.url)}
             >
-                <Text variant="xs" weight="medium">{ `PR #${ pr.number }` }</Text>
-                <Text variant="xs" color={ pr.state === 'open' ? 'success' : 'secondary' }>{ state }</Text>
+                <Text variant="xs" weight="medium">{`PR #${pr.number}`}</Text>
+                <Text variant="xs" color={pr.state === 'open' ? 'success' : 'secondary'}>
+                    {state}
+                </Text>
             </Button>
-            { hasChecks && <ChecksMenu pr={ pr } anchor={ chip } /> }
+            {hasChecks && <ChecksMenu pr={pr} anchor={chip} />}
         </div>
     );
 }

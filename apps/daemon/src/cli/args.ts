@@ -45,19 +45,23 @@ export function commandOf(tool: Pick<CliTool, 'name'>): { group: string; command
     return { group, command: rest.join('-') };
 }
 
-export const kebab = (name: string) => name.replaceAll(/[A-Z]/g, letter => `-${ letter.toLowerCase() }`);
+export const kebab = (name: string) => name.replaceAll(/[A-Z]/g, letter => `-${letter.toLowerCase()}`);
 
 /** The flags a tool takes besides `--json` and `--help`: each field, `--no-<field>` for a boolean, `--<field>-file` for text. */
 export function flagsOf(tool: CliTool): string[] {
     return Object.entries(tool.inputSchema.properties ?? {}).flatMap(([name, property]) => [
         kebab(name),
-        ...(property.type === 'boolean' ? [`no-${ kebab(name) }`] : []),
-        ...(property.type === 'string' ? [`${ kebab(name) }-file`] : []),
+        ...(property.type === 'boolean' ? [`no-${kebab(name)}`] : []),
+        ...(property.type === 'string' ? [`${kebab(name)}-file`] : []),
     ]);
 }
 
 /** The field a flag names: itself, `--no-<boolean>`, or `--<text>-file`. */
-function resolve(properties: Record<string, Property>, names: Map<string, string>, flag: string): { name: string; fromFile: boolean; negated: boolean } | undefined {
+function resolve(
+    properties: Record<string, Property>,
+    names: Map<string, string>,
+    flag: string
+): { name: string; fromFile: boolean; negated: boolean } | undefined {
     const direct = names.get(flag);
 
     if (direct !== undefined) {
@@ -72,7 +76,9 @@ function resolve(properties: Record<string, Property>, names: Map<string, string
 
     const file = flag.endsWith('-file') ? names.get(flag.slice(0, -5)) : undefined;
 
-    return file !== undefined && properties[file].type === 'string' ? { name: file, fromFile: true, negated: false } : undefined;
+    return file !== undefined && properties[file].type === 'string'
+        ? { name: file, fromFile: true, negated: false }
+        : undefined;
 }
 
 function coerce(property: Property, flag: string, value: string): unknown {
@@ -81,21 +87,27 @@ function coerce(property: Property, flag: string, value: string): unknown {
         case 'number': {
             const number = Number(value);
 
-            if (value.trim() === '' || Number.isNaN(number) || (property.type === 'integer' && !Number.isInteger(number))) {
-                throw new UsageError(`--${ flag } takes ${ property.type === 'integer' ? 'a whole number' : 'a number' }, not "${ value }"`);
+            if (
+                value.trim() === '' ||
+                Number.isNaN(number) ||
+                (property.type === 'integer' && !Number.isInteger(number))
+            ) {
+                throw new UsageError(
+                    `--${flag} takes ${property.type === 'integer' ? 'a whole number' : 'a number'}, not "${value}"`
+                );
             }
 
             return number;
         }
         case 'boolean':
             if (value !== 'true' && value !== 'false') {
-                throw new UsageError(`--${ flag } takes true or false, not "${ value }"`);
+                throw new UsageError(`--${flag} takes true or false, not "${value}"`);
             }
 
             return value === 'true';
         default:
             if (property.enum && !property.enum.includes(value)) {
-                throw new UsageError(`--${ flag } is one of ${ property.enum.join(', ') }, not "${ value }"`);
+                throw new UsageError(`--${flag} is one of ${property.enum.join(', ')}, not "${value}"`);
             }
 
             return value;
@@ -156,14 +168,16 @@ export function parseCommand(tool: CliTool, words: readonly string[]): ParsedCom
         const known = resolve(properties, names, flag);
 
         if (!known) {
-            throw new UsageError(`Unknown option --${ flag }. Options: ${ [...names.keys()].map(option => `--${ option }`).join(', ') || 'none' }`);
+            throw new UsageError(
+                `Unknown option --${flag}. Options: ${[...names.keys()].map(option => `--${option}`).join(', ') || 'none'}`
+            );
         }
 
         const { name, fromFile, negated } = known;
         const property = properties[name];
 
         if (given(name) && property.type !== 'array') {
-            throw new UsageError(`--${ kebab(name) } is given twice`);
+            throw new UsageError(`--${kebab(name)} is given twice`);
         }
 
         if (negated) {
@@ -181,19 +195,21 @@ export function parseCommand(tool: CliTool, words: readonly string[]): ParsedCom
             value = words[++index];
 
             if (value === undefined) {
-                throw new UsageError(`--${ flag } needs a value`);
+                throw new UsageError(`--${flag} needs a value`);
             }
         }
 
         if (fromFile) {
             fromSource(name, value);
-        }
-        else if (property.type === 'array') {
-            const items = value.split(',').map(item => item.trim()).filter(Boolean).map(item => coerce(property.items ?? {}, flag, item));
+        } else if (property.type === 'array') {
+            const items = value
+                .split(',')
+                .map(item => item.trim())
+                .filter(Boolean)
+                .map(item => coerce(property.items ?? {}, flag, item));
 
-            input[name] = [...(input[name] as unknown[] | undefined ?? []), ...items];
-        }
-        else {
+            input[name] = [...((input[name] as unknown[] | undefined) ?? []), ...items];
+        } else {
             input[name] = coerce(property, flag, value);
         }
     }
@@ -203,7 +219,14 @@ export function parseCommand(tool: CliTool, words: readonly string[]): ParsedCom
     const lastTakesRest = lastType === 'string' || lastType === 'array';
 
     if (bare.length > order.length && !lastTakesRest) {
-        throw new UsageError(`Unexpected ${ bare.slice(order.length).map(word => `"${ word }"`).join(', ') }. ${ order.length > 0 ? `Expected ${ order.map(name => `<${ kebab(name) }>`).join(' ') }` : 'This command takes no bare words; give every value with its option' }`);
+        throw new UsageError(
+            `Unexpected ${bare
+                .slice(order.length)
+                .map(word => `"${word}"`)
+                .join(
+                    ', '
+                )}. ${order.length > 0 ? `Expected ${order.map(name => `<${kebab(name)}>`).join(' ')}` : 'This command takes no bare words; give every value with its option'}`
+        );
     }
 
     order.forEach((name, position) => {
@@ -214,14 +237,17 @@ export function parseCommand(tool: CliTool, words: readonly string[]): ParsedCom
         }
 
         if (given(name)) {
-            throw new UsageError(`${ kebab(name) } is given twice: as a word and as --${ kebab(name) }`);
+            throw new UsageError(`${kebab(name)} is given twice: as a word and as --${kebab(name)}`);
         }
 
         const property = properties[name] ?? {};
 
         // A list takes every word that is left, each of which may hold several items with commas, as the option does (`archive CLW-1 CLW-2,CLW-3`).
         if (property.type === 'array') {
-            const items = rest.flatMap(word => word.split(',')).map(item => item.trim()).filter(Boolean);
+            const items = rest
+                .flatMap(word => word.split(','))
+                .map(item => item.trim())
+                .filter(Boolean);
 
             // Words that hold no item, a lone comma, are no list: a required one is missing.
             if (items.length > 0) {
@@ -236,8 +262,7 @@ export function parseCommand(tool: CliTool, words: readonly string[]): ParsedCom
         // Only the field the tool names for stdin, a message, reads it from there; a `-` anywhere else is a value like any other.
         if (text === STDIN && property.type === 'string' && name === tool.stdin) {
             fromSource(name, STDIN);
-        }
-        else {
+        } else {
             input[name] = coerce(property, kebab(name), text);
         }
     });
@@ -245,7 +270,9 @@ export function parseCommand(tool: CliTool, words: readonly string[]): ParsedCom
     const missing = (tool.inputSchema.required ?? []).filter(name => !given(name));
 
     if (!help && missing.length > 0) {
-        throw new UsageError(`Missing ${ missing.map(name => (order.includes(name) ? `<${ kebab(name) }>` : `--${ kebab(name) }`)).join(', ') }. Run it with --help to see the usage`);
+        throw new UsageError(
+            `Missing ${missing.map(name => (order.includes(name) ? `<${kebab(name)}>` : `--${kebab(name)}`)).join(', ')}. Run it with --help to see the usage`
+        );
     }
 
     return { arguments: input, files, json, help };
@@ -259,7 +286,7 @@ export function commandText(text: string, tools: readonly Pick<CliTool, 'name'>[
     return tools.reduce((result, tool) => {
         const { group, command } = commandOf(tool);
 
-        return result.replaceAll(new RegExp(`\\b${ tool.name }\\b`, 'g'), `clowdy ${ group } ${ command }`);
+        return result.replaceAll(new RegExp(`\\b${tool.name}\\b`, 'g'), `clowdy ${group} ${command}`);
     }, text);
 }
 
@@ -268,7 +295,10 @@ const SUMMARY_CHARS = 100;
 
 /** One line of what a tool does: its first sentence without the parts in brackets, cut at a colon when that is still long. */
 export function summaryOf(description: string): string {
-    const plain = description.replaceAll(/\s*\([^)]*\)/g, '').replaceAll(/\s+/g, ' ').trim();
+    const plain = description
+        .replaceAll(/\s*\([^)]*\)/g, '')
+        .replaceAll(/\s+/g, ' ')
+        .trim();
     const sentence = (/^.*?\.(?=\s|$)/.exec(plain)?.[0] ?? plain).replace(/\.$/, '');
     const colon = sentence.indexOf(':');
 
@@ -287,13 +317,13 @@ function placeholder(property: Property): string {
         case 'number':
             return 'number';
         case 'array':
-            return property.items?.enum ? `${ property.items.enum.join('|') },...` : 'a,b,...';
+            return property.items?.enum ? `${property.items.enum.join('|')},...` : 'a,b,...';
         default:
             return 'text';
     }
 }
 
-const row = (left: string, right: string) => (right ? `  ${ left.padEnd(30) } ${ right }` : `  ${ left }`);
+const row = (left: string, right: string) => (right ? `  ${left.padEnd(30)} ${right}` : `  ${left}`);
 
 /** The usage text of one command: its line, what it does, its arguments and options, and examples when there are any. */
 export function helpOf(tool: CliTool, tools: readonly CliTool[] = [tool], examples: readonly string[] = []): string {
@@ -303,19 +333,52 @@ export function helpOf(tool: CliTool, tools: readonly CliTool[] = [tool], exampl
     const order = tool.positional ?? [];
     const text = (value: string | undefined) => commandText(value ?? '', tools);
     // A list is written `<name>...`: one word or more.
-    const spelled = (name: string) => (properties[name]?.type === 'array' ? `<${ kebab(name) }>...` : `<${ kebab(name) }>`);
-    const usage = [`clowdy ${ group } ${ command }`, ...order.map(name => (required.has(name) ? spelled(name) : `[${ kebab(name) }]`)), '[options]'].join(' ');
-    const positional = order.map((name, position) => row(spelled(name), [text(properties[name]?.description), name === tool.stdin && properties[name]?.type === 'string' && '(- reads it from stdin)'].filter(Boolean).join(' ')));
-    const options = Object.entries(properties).filter(([name]) => !order.includes(name)).flatMap(([name, property]) => {
-        const flag = property.type === 'boolean' ? `--${ kebab(name) }` : `--${ kebab(name) } <${ placeholder(property) }>`;
-        const note = [text(property.description), property.type === 'array' && '(comma-separated, or the option repeated)', required.has(name) && '(required)'].filter(Boolean).join(' ');
+    const spelled = (name: string) => (properties[name]?.type === 'array' ? `<${kebab(name)}>...` : `<${kebab(name)}>`);
+    const usage = [
+        `clowdy ${group} ${command}`,
+        ...order.map(name => (required.has(name) ? spelled(name) : `[${kebab(name)}]`)),
+        '[options]',
+    ].join(' ');
+    const positional = order.map((name, position) =>
+        row(
+            spelled(name),
+            [
+                text(properties[name]?.description),
+                name === tool.stdin && properties[name]?.type === 'string' && '(- reads it from stdin)',
+            ]
+                .filter(Boolean)
+                .join(' ')
+        )
+    );
+    const options = Object.entries(properties)
+        .filter(([name]) => !order.includes(name))
+        .flatMap(([name, property]) => {
+            const flag =
+                property.type === 'boolean' ? `--${kebab(name)}` : `--${kebab(name)} <${placeholder(property)}>`;
+            const note = [
+                text(property.description),
+                property.type === 'array' && '(comma-separated, or the option repeated)',
+                required.has(name) && '(required)',
+            ]
+                .filter(Boolean)
+                .join(' ');
 
-        // A required text is the long one, a brief or a message: it comes from a file or a heredoc more often than not.
-        return [row(flag, note), ...(required.has(name) && property.type === 'string' ? [row(`--${ kebab(name) }-file <path>`, `The same from a file; - reads stdin (a heredoc: --${ kebab(name) }-file - <<'EOF')`)] : [])];
-    });
+            // A required text is the long one, a brief or a message: it comes from a file or a heredoc more often than not.
+            return [
+                row(flag, note),
+                ...(required.has(name) && property.type === 'string'
+                    ? [
+                          row(
+                              `--${kebab(name)}-file <path>`,
+                              `The same from a file; - reads stdin (a heredoc: --${kebab(name)}-file - <<'EOF')`
+                          ),
+                      ]
+                    : []),
+            ];
+        });
 
     return [
-        `Usage: ${ usage }`,
+        `Usage: ${usage}`,
         '',
         text(tool.description),
         ...(positional.length > 0 ? ['', 'Arguments:', ...positional] : []),
@@ -323,6 +386,6 @@ export function helpOf(tool: CliTool, tools: readonly CliTool[] = [tool], exampl
         'Options:',
         ...options,
         row('--json', 'Print the result, or the refusal, as one JSON object'),
-        ...(examples.length > 0 ? ['', 'Examples:', ...examples.map(example => `  ${ example }`)] : []),
+        ...(examples.length > 0 ? ['', 'Examples:', ...examples.map(example => `  ${example}`)] : []),
     ].join('\n');
 }

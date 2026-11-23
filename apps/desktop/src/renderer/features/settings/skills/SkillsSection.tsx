@@ -20,17 +20,18 @@ export function SkillsSection() {
     const project = useRootStore().selectedProject?.project;
 
     // A new project starts from nothing: the key drops the old project's skills at once.
-    return <SkillsBody key={ project?.id ?? 'none' } projectId={ project?.id } projectName={ project?.name } />;
+    return <SkillsBody key={project?.id ?? 'none'} projectId={project?.id} projectName={project?.name} />;
 }
 
-const INTRO = 'A skill is a short playbook an agent reads when a job calls for it. Every enabled skill adds its name and description to the start of every run, so a long list makes runs slower and dearer.';
+const INTRO =
+    'A skill is a short playbook an agent reads when a job calls for it. Every enabled skill adds its name and description to the start of every run, so a long list makes runs slower and dearer.';
 
 function SkillsBody({ projectId, projectName }: { projectId?: string; projectName?: string }) {
     const { state, pending, reload, toggle } = useSkills(projectId);
 
     if (state.status === 'loading') {
         return (
-            <SettingsPage description={ INTRO }>
+            <SettingsPage description={INTRO}>
                 <Box direction="row" gap="md" align="center">
                     <Loader size="xs" />
                     <Text color="secondary">Loading skills…</Text>
@@ -41,10 +42,12 @@ function SkillsBody({ projectId, projectName }: { projectId?: string; projectNam
 
     if (state.status === 'failed') {
         return (
-            <SettingsPage description={ INTRO }>
+            <SettingsPage description={INTRO}>
                 <Box gap="md" align="start">
-                    <Text color="danger">Skills could not be loaded. { state.message }</Text>
-                    <Button variant="bordered" size="sm" onPress={ reload }>Try again</Button>
+                    <Text color="danger">Skills could not be loaded. {state.message}</Text>
+                    <Button variant="bordered" size="sm" onPress={reload}>
+                        Try again
+                    </Button>
                 </Box>
             </SettingsPage>
         );
@@ -54,43 +57,57 @@ function SkillsBody({ projectId, projectName }: { projectId?: string; projectNam
 
     return (
         <SettingsPage
-            description={ (
+            description={
                 <>
-                    { INTRO }
-                    { ' ' }
-                    <span data-testid="skills-cost">Enabled skills add about <Text weight="medium">{ tokenLabel(tokens) }</Text> to every run.</span>
+                    {INTRO}{' '}
+                    <span data-testid="skills-cost">
+                        Enabled skills add about <Text weight="medium">{tokenLabel(tokens)}</Text> to every run.
+                    </span>
                 </>
-            ) }
+            }
         >
-            { warnings.length > 0 && (
+            {warnings.length > 0 && (
                 <Alert color="warning" role="status">
-                    <AlertIcon><AttentionTriangle /></AlertIcon>
+                    <AlertIcon>
+                        <AttentionTriangle />
+                    </AlertIcon>
                     <AlertDescription>
-                        <ul className={ styles.warnings }>
-                            { warnings.map(warning => <li key={ warning }>{ warning }</li>) }
+                        <ul className={styles.warnings}>
+                            {warnings.map(warning => (
+                                <li key={warning}>{warning}</li>
+                            ))}
                         </ul>
                     </AlertDescription>
                 </Alert>
-            ) }
+            )}
 
-            { groupSkills(entries, projectName).map(group => (
+            {groupSkills(entries, projectName).map(group => (
                 <SettingsSection
-                    key={ group.source }
-                    title={ `${ group.title } skills` }
-                    aside={ <Text variant="xs" color="secondary">{ group.skills.length }</Text> }
-                    description={ group.hint }
+                    key={group.source}
+                    title={`${group.title} skills`}
+                    aside={
+                        <Text variant="xs" color="secondary">
+                            {group.skills.length}
+                        </Text>
+                    }
+                    description={group.hint}
                 >
-                    { group.skills.length === 0
-                        ? <SettingsEmpty>{ group.empty }</SettingsEmpty>
-                        : (
-                            <SettingsCard as="ul" divided>
-                                { group.skills.map(skill => (
-                                    <SkillRow key={ skill.id } skill={ skill } isPending={ pending.has(skill.name) } onToggle={ enabled => void toggle(skill, enabled) } />
-                                )) }
-                            </SettingsCard>
-                        ) }
+                    {group.skills.length === 0 ? (
+                        <SettingsEmpty>{group.empty}</SettingsEmpty>
+                    ) : (
+                        <SettingsCard as="ul" divided>
+                            {group.skills.map(skill => (
+                                <SkillRow
+                                    key={skill.id}
+                                    skill={skill}
+                                    isPending={pending.has(skill.name)}
+                                    onToggle={enabled => void toggle(skill, enabled)}
+                                />
+                            ))}
+                        </SettingsCard>
+                    )}
                 </SettingsSection>
-            )) }
+            ))}
         </SettingsPage>
     );
 }

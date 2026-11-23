@@ -29,7 +29,8 @@ export const END_WAIT_MS = 4000;
 const SNAPSHOT_CONFIG = ['-c', 'core.splitIndex=false'];
 
 /** A folder as an entry of `GIT_ALTERNATE_OBJECT_DIRECTORIES`: the entries are told apart by the platform's path delimiter, and one that has it (or a quote) in its name is written in quotes. */
-const alternate = (folder: string) => (folder.includes(delimiter) || folder.includes('"') ? `"${ folder.replace(/["\\]/g, '\\$&') }"` : folder);
+const alternate = (folder: string) =>
+    folder.includes(delimiter) || folder.includes('"') ? `"${folder.replace(/["\\]/g, '\\$&')}"` : folder;
 
 /**
  * Moves the loose objects a snapshot wrote in its quarantine into the repository's own object folder, which is where a tree has to be for git to read it later. An object that is
@@ -52,7 +53,13 @@ async function adopt(quarantine: string, objects: string): Promise<boolean> {
             const target = join(objects, name, file);
 
             await rename(join(quarantine, name, file), target).catch(async (error: unknown) => {
-                if (!await stat(target).then(() => true, () => false)) throw error;
+                if (
+                    !(await stat(target).then(
+                        () => true,
+                        () => false
+                    ))
+                )
+                    throw error;
             });
         }
     }
@@ -81,7 +88,10 @@ export async function snapshotTree(cwd: string, timeoutMs = SNAPSHOT_TIMEOUT_MS)
     let quarantine: string | undefined;
 
     try {
-        const [root, paths] = await Promise.all([workingTreeRoot(cwd), gitRead(cwd, ['rev-parse', '--git-path', 'index', '--git-path', 'objects'])]);
+        const [root, paths] = await Promise.all([
+            workingTreeRoot(cwd),
+            gitRead(cwd, ['rev-parse', '--git-path', 'index', '--git-path', 'objects']),
+        ]);
         const [index, objectsPath] = paths.ok ? paths.stdout.split('\n') : [];
 
         if (!root || !index || !objectsPath) return undefined;
@@ -98,22 +108,34 @@ export async function snapshotTree(cwd: string, timeoutMs = SNAPSHOT_TIMEOUT_MS)
             if (error.code !== 'ENOENT') throw error;
         });
 
-        const env = { GIT_INDEX_FILE: own, GIT_OBJECT_DIRECTORY: quarantine, GIT_ALTERNATE_OBJECT_DIRECTORIES: [alternate(objects), process.env.GIT_ALTERNATE_OBJECT_DIRECTORIES].filter(Boolean).join(delimiter) };
-        const added = await gitRead(cwd, [...SNAPSHOT_CONFIG, 'add', '-A'], { env, timeoutMs: Math.max(1, deadline - Date.now()) });
+        const env = {
+            GIT_INDEX_FILE: own,
+            GIT_OBJECT_DIRECTORY: quarantine,
+            GIT_ALTERNATE_OBJECT_DIRECTORIES: [alternate(objects), process.env.GIT_ALTERNATE_OBJECT_DIRECTORIES]
+                .filter(Boolean)
+                .join(delimiter),
+        };
+        const added = await gitRead(cwd, [...SNAPSHOT_CONFIG, 'add', '-A'], {
+            env,
+            timeoutMs: Math.max(1, deadline - Date.now()),
+        });
 
         if (!added.ok) return undefined;
 
-        const written = await gitRead(cwd, [...SNAPSHOT_CONFIG, 'write-tree'], { env, timeoutMs: Math.max(1, deadline - Date.now()) });
+        const written = await gitRead(cwd, [...SNAPSHOT_CONFIG, 'write-tree'], {
+            env,
+            timeoutMs: Math.max(1, deadline - Date.now()),
+        });
         const tree = written.ok ? written.stdout.trim() : '';
 
-        return /^([0-9a-f]{40}|[0-9a-f]{64})$/.test(tree) && await adopt(quarantine, objects) ? tree : undefined;
-    }
-    catch {
+        return /^([0-9a-f]{40}|[0-9a-f]{64})$/.test(tree) && (await adopt(quarantine, objects)) ? tree : undefined;
+    } catch {
         // A folder that went, a disk that is full, a git that is not there: the turn has no snapshot, and says nothing of it.
         return undefined;
-    }
-    finally {
-        await Promise.all([folder, quarantine].map(path => path && rm(path, { recursive: true, force: true }).catch(() => undefined)));
+    } finally {
+        await Promise.all(
+            [folder, quarantine].map(path => path && rm(path, { recursive: true, force: true }).catch(() => undefined))
+        );
     }
 }
 
@@ -122,11 +144,13 @@ async function within(work: Promise<unknown>, ms: number): Promise<void> {
     let timer: ReturnType<typeof setTimeout> | undefined;
 
     try {
-        await Promise.race([work, new Promise<void>((done) => {
-            timer = setTimeout(done, ms);
-        })]);
-    }
-    finally {
+        await Promise.race([
+            work,
+            new Promise<void>(done => {
+                timer = setTimeout(done, ms);
+            }),
+        ]);
+    } finally {
         clearTimeout(timer);
     }
 }
@@ -151,7 +175,10 @@ export class TurnSnapshots {
     readonly #endWaitMs: number;
     readonly #now: () => number;
 
-    constructor(private readonly store: Store, options: TurnSnapshotsOptions = {}) {
+    constructor(
+        private readonly store: Store,
+        options: TurnSnapshotsOptions = {}
+    ) {
         this.#snapshot = options.snapshot ?? (cwd => snapshotTree(cwd));
         this.#startWaitMs = options.startWaitMs ?? START_WAIT_MS;
         this.#endWaitMs = options.endWaitMs ?? END_WAIT_MS;
@@ -162,7 +189,8 @@ export class TurnSnapshots {
     begin(runId: string, cwd: string): TurnTrees | undefined {
         const run = getRun(this.store.db, runId);
 
-        if (!run || run.role !== 'orchestrator' || run.chatId === undefined || getRunWork(this.store.db, runId).cwd) return undefined;
+        if (!run || run.role !== 'orchestrator' || run.chatId === undefined || getRunWork(this.store.db, runId).cwd)
+            return undefined;
 
         return new TurnTrees(this, run.chatId, runId, cwd);
     }
@@ -183,7 +211,11 @@ export class TurnSnapshots {
     }
 
     /** @internal for `TurnTrees`: keeps what the turn changed on the chat (or forgets the earlier turn's), and publishes the chat when that changed it. */
-    keep(chatId: string, trees: Pick<ChatLastRun, 'startTree' | 'endTree'> | undefined, mark: { seq: number; at: number }): void {
+    keep(
+        chatId: string,
+        trees: Pick<ChatLastRun, 'startTree' | 'endTree'> | undefined,
+        mark: { seq: number; at: number }
+    ): void {
         const { store } = this;
 
         try {
@@ -200,8 +232,7 @@ export class TurnSnapshots {
 
                 if (chat) store.emit(chat.projectId, { type: 'chat.upserted', chat });
             });
-        }
-        catch {
+        } catch {
             // The chat or the database went while the snapshot was made (the daemon stops, the chat is deleted): there is nothing left to keep it on.
         }
     }
@@ -213,7 +244,12 @@ export class TurnTrees {
     #finished?: Promise<void>;
 
     /** @internal made by `TurnSnapshots.begin` */
-    constructor(private readonly owner: TurnSnapshots, private readonly chatId: string, private readonly runId: string, readonly cwd: string) {
+    constructor(
+        private readonly owner: TurnSnapshots,
+        private readonly chatId: string,
+        private readonly runId: string,
+        readonly cwd: string
+    ) {
         this.#start = owner.take(cwd);
     }
 
@@ -232,8 +268,7 @@ export class TurnTrees {
             try {
                 // Where the stream was when the turn ended, not when the second tree is done: a message the person writes meanwhile is newer than the turn.
                 this.#finished = this.#finish(this.owner.mark(this.runId));
-            }
-            catch {
+            } catch {
                 // The run or the database is gone (the daemon is stopping): nothing to keep the trees on.
                 this.#finished = Promise.resolve();
             }
@@ -247,6 +282,12 @@ export class TurnTrees {
         // A turn that could not be measured at its start is not measured at its end either: one failed attempt (not a repository, git gone) is not tried twice.
         const endTree = startTree === undefined ? undefined : await this.owner.take(this.cwd);
 
-        this.owner.keep(this.chatId, startTree !== undefined && endTree !== undefined && startTree !== endTree ? { startTree, endTree } : undefined, mark);
+        this.owner.keep(
+            this.chatId,
+            startTree !== undefined && endTree !== undefined && startTree !== endTree
+                ? { startTree, endTree }
+                : undefined,
+            mark
+        );
     }
 }

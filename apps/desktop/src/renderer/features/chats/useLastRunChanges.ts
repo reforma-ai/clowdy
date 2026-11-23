@@ -16,9 +16,13 @@ const kept = new WeakMap<object, Map<string, GitChanges>>();
  * there is no refresh. A scope that is not given reads nothing. A read that fails (a tree git has pruned, a daemon that does not answer) is no answer: nothing is drawn, and the next
  * time the plate is drawn it asks again. The answer is the place's own: one that is still on its way for another scope is never handed back.
  */
-export function useLastRunChanges(projectId: ProjectId, place: Place, scope: GitScope | undefined): GitChanges | undefined {
+export function useLastRunChanges(
+    projectId: ProjectId,
+    place: Place,
+    scope: GitScope | undefined
+): GitChanges | undefined {
     const { transport } = useRootStore();
-    const key = scope && `${ projectId }/${ place.folder.id }/${ place.workspace?.id ?? '' }/${ scope }`;
+    const key = scope && `${projectId}/${place.folder.id}/${place.workspace?.id ?? ''}/${scope}`;
     const [answer, setAnswer] = useState<{ key: string; changes: GitChanges | undefined }>();
 
     useEffect(() => {
@@ -37,19 +41,30 @@ export function useLastRunChanges(projectId: ProjectId, place: Place, scope: Git
 
         let current = true;
 
-        transport.getGitChanges(projectId, placeRef({ projectId, folderId: place.folder.id, ...(place.workspace && { workspaceId: place.workspace.id }) }), scope).then(
-            (changes) => {
-                answers.set(key, changes);
+        transport
+            .getGitChanges(
+                projectId,
+                placeRef({
+                    projectId,
+                    folderId: place.folder.id,
+                    ...(place.workspace && { workspaceId: place.workspace.id }),
+                }),
+                scope
+            )
+            .then(
+                changes => {
+                    answers.set(key, changes);
 
-                // The oldest answers go.
-                for (const [oldest] of [...answers].slice(0, Math.max(0, answers.size - KEPT_ANSWERS))) answers.delete(oldest);
+                    // The oldest answers go.
+                    for (const [oldest] of [...answers].slice(0, Math.max(0, answers.size - KEPT_ANSWERS)))
+                        answers.delete(oldest);
 
-                if (current) setAnswer({ key, changes });
-            },
-            () => {
-                if (current) setAnswer({ key, changes: undefined });
-            }
-        );
+                    if (current) setAnswer({ key, changes });
+                },
+                () => {
+                    if (current) setAnswer({ key, changes: undefined });
+                }
+            );
 
         return () => {
             current = false;

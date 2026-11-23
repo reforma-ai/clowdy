@@ -53,13 +53,21 @@ export function archiveTask(store: Store, runs: RunLookup, taskId: string, optio
         }
 
         const tree = new TaskTree(listAllTasks(store.db, task.projectId));
-        const batch = [task, ...tree.descendantsOf(task.id).map(({ task: below }) => below).filter(below => below.archivedAt === undefined)];
+        const batch = [
+            task,
+            ...tree
+                .descendantsOf(task.id)
+                .map(({ task: below }) => below)
+                .filter(below => below.archivedAt === undefined),
+        ];
 
         for (const member of batch) {
             const [active] = runs.activeRunsOfTask(member.id, options.exceptRunId);
 
             if (active) {
-                throw conflict(`Task ${ member.key }${ member.id === task.id ? '' : `, inside ${ task.key },` } has an active run (${ active.name }): stop it first`);
+                throw conflict(
+                    `Task ${member.key}${member.id === task.id ? '' : `, inside ${task.key},`} has an active run (${active.name}): stop it first`
+                );
             }
         }
 
@@ -68,10 +76,15 @@ export function archiveTask(store: Store, runs: RunLookup, taskId: string, optio
         const open = batch.filter(member => !isClosedCategory(statusOf(member)?.category ?? 'todo'));
 
         if (open.length > 0 && !options.cancel) {
-            const named = open.slice(0, MAX_NAMED).map(member => `${ member.key } (${ statusOf(member)?.name ?? 'To do' })`).join(', ');
-            const more = open.length > MAX_NAMED ? ` and ${ open.length - MAX_NAMED } more` : '';
+            const named = open
+                .slice(0, MAX_NAMED)
+                .map(member => `${member.key} (${statusOf(member)?.name ?? 'To do'})`)
+                .join(', ');
+            const more = open.length > MAX_NAMED ? ` and ${open.length - MAX_NAMED} more` : '';
 
-            throw invalid(`${ named }${ more } ${ open.length === 1 ? 'is' : 'are' } not closed: close ${ open.length === 1 ? 'it' : 'them' } first, or archive with cancel`);
+            throw invalid(
+                `${named}${more} ${open.length === 1 ? 'is' : 'are'} not closed: close ${open.length === 1 ? 'it' : 'them'} first, or archive with cancel`
+            );
         }
 
         const now = Date.now();
@@ -83,7 +96,11 @@ export function archiveTask(store: Store, runs: RunLookup, taskId: string, optio
 
         for (const member of batch) {
             const wasOpen = open.includes(member);
-            const next: Task = { ...member, archivedAt, ...(wasOpen && canceledStatus && { statusId: canceledStatus.id, closedAt: now, updatedAt: now }) };
+            const next: Task = {
+                ...member,
+                archivedAt,
+                ...(wasOpen && canceledStatus && { statusId: canceledStatus.id, closedAt: now, updatedAt: now }),
+            };
 
             upsertTask(store.db, next);
             store.emit(next.projectId, { type: 'task.upserted', task: next });
@@ -142,7 +159,7 @@ export function unarchiveTask(store: Store, taskId: string): Unarchived {
         const parent = tree.parentOf(task);
 
         if (parent?.archivedAt !== undefined) {
-            throw invalid(`Task ${ task.key } is inside ${ parent.key }, which is archived: restore ${ parent.key } first`);
+            throw invalid(`Task ${task.key} is inside ${parent.key}, which is archived: restore ${parent.key} first`);
         }
 
         const restored = batchOf(tree, task).map((member): Task => {
@@ -159,13 +176,13 @@ export function unarchiveTask(store: Store, taskId: string): Unarchived {
 }
 
 /** A cursor names the last task of a page by its place in the archive's order, so tasks that are archived or restored between pages neither repeat nor shift the rest. */
-const encodeCursor = (task: Task) => `${ task.archivedAt }.${ task.number }`;
+const encodeCursor = (task: Task) => `${task.archivedAt}.${task.number}`;
 
 function decodeCursor(cursor: string): ArchivePosition {
     const match = /^(\d+)\.(\d+)$/.exec(cursor);
 
     if (!match) {
-        throw invalid(`"${ cursor }" is not a cursor: pass the nextCursor of the previous page unchanged`);
+        throw invalid(`"${cursor}" is not a cursor: pass the nextCursor of the previous page unchanged`);
     }
 
     return { archivedAt: Number(match[1]), number: Number(match[2]) };
@@ -198,6 +215,10 @@ export function archivedTasksPage(store: Store, projectId: string, query: Archiv
         const tasks = found.slice(0, limit);
         const last = tasks.at(-1);
 
-        return { tasks, total: countArchivedTasks(store.db, projectId), ...(last && found.length > limit && { nextCursor: encodeCursor(last) }) };
+        return {
+            tasks,
+            total: countArchivedTasks(store.db, projectId),
+            ...(last && found.length > limit && { nextCursor: encodeCursor(last) }),
+        };
     });
 }

@@ -2,7 +2,13 @@ import { TERMINAL_SUBPROTOCOL, tokenFromTerminalProtocols } from '@clowdy/protoc
 import { describe, expect, it, vi } from 'vitest';
 
 import { HttpTransport } from './httpTransport';
-import { chunkInput, RECONNECT_MAX_MS, RECONNECT_MIN_MS, TerminalSocket, type TerminalStreamHandlers } from './terminalStream';
+import {
+    chunkInput,
+    RECONNECT_MAX_MS,
+    RECONNECT_MIN_MS,
+    TerminalSocket,
+    type TerminalStreamHandlers,
+} from './terminalStream';
 
 import type { TerminalInfo, TerminalScreen } from '@clowdy/protocol';
 
@@ -17,7 +23,10 @@ class FakeSocket {
     onclose: (() => void) | null = null;
     onerror: (() => void) | null = null;
 
-    constructor(readonly url: string, readonly protocols: string[]) {
+    constructor(
+        readonly url: string,
+        readonly protocols: string[]
+    ) {
         FakeSocket.all.push(this);
     }
 
@@ -55,9 +64,9 @@ function setup(exists: () => Promise<boolean | undefined> = async () => true) {
     const events: string[] = [];
     const sleeps: number[] = [];
     const handlers: TerminalStreamHandlers = {
-        onScreen: value => void events.push(`screen ${ value.screen }`),
-        onOutput: data => void events.push(`output ${ new TextDecoder().decode(data) }`),
-        onExit: code => void events.push(`exit ${ code }`),
+        onScreen: value => void events.push(`screen ${value.screen}`),
+        onOutput: data => void events.push(`output ${new TextDecoder().decode(data)}`),
+        onExit: code => void events.push(`exit ${code}`),
         onStatus: status => void events.push(status),
         onGone: () => void events.push('gone'),
     };
@@ -66,7 +75,7 @@ function setup(exists: () => Promise<boolean | undefined> = async () => true) {
         exists,
         address: () => ({ url: 'ws://127.0.0.1:1/v1/terminals/trm_1/stream', token: 'secret' }),
         WebSocket: FakeSocket as unknown as typeof WebSocket,
-        sleep: async (ms) => {
+        sleep: async ms => {
             sleeps.push(ms);
         },
     });
@@ -192,9 +201,12 @@ describe('TerminalSocket', () => {
 
     it('says nothing of a terminal that is gone when it was closed while the daemon was being asked', async () => {
         let answer: (value: boolean) => void = () => undefined;
-        const { events, socket, stream } = setup(() => new Promise<boolean>((resolve) => {
-            answer = resolve;
-        }));
+        const { events, socket, stream } = setup(
+            () =>
+                new Promise<boolean>(resolve => {
+                    answer = resolve;
+                })
+        );
 
         await settle();
         socket().drop();
@@ -234,17 +246,35 @@ describe('TerminalSocket', () => {
 });
 
 describe('HttpTransport terminals', () => {
-    const info: TerminalInfo = { id: 'trm 1', projectId: 'prj_1', folderId: 'fld_1', cwd: '/p', shell: 'zsh', cols: 80, rows: 24, state: 'running', createdAt: 1 };
+    const info: TerminalInfo = {
+        id: 'trm 1',
+        projectId: 'prj_1',
+        folderId: 'fld_1',
+        cwd: '/p',
+        shell: 'zsh',
+        cols: 80,
+        rows: 24,
+        state: 'running',
+        createdAt: 1,
+    };
 
     function transport(respond: (url: string, init: RequestInit | undefined) => Response) {
         const calls: Array<{ url: string; method: string; body?: string; authorization?: string }> = [];
         const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
-            calls.push({ url: String(input), method: init?.method ?? 'GET', body: init?.body as string | undefined, authorization: (init?.headers as Record<string, string>).authorization });
+            calls.push({
+                url: String(input),
+                method: init?.method ?? 'GET',
+                body: init?.body as string | undefined,
+                authorization: (init?.headers as Record<string, string>).authorization,
+            });
 
             return respond(String(input), init);
         }) as typeof fetch;
 
-        return { calls, transport: new HttpTransport({ url: 'http://127.0.0.1:4310/', token: 'tok', fetch: fetchImpl }) };
+        return {
+            calls,
+            transport: new HttpTransport({ url: 'http://127.0.0.1:4310/', token: 'tok', fetch: fetchImpl }),
+        };
     }
 
     it('lists the terminals of a project, or of all', async () => {
@@ -252,7 +282,10 @@ describe('HttpTransport terminals', () => {
 
         expect(await http.listTerminals('prj 1')).toEqual([info]);
         expect(await http.listTerminals()).toEqual([info]);
-        expect(calls.map(call => call.url)).toEqual(['http://127.0.0.1:4310/v1/terminals?projectId=prj%201', 'http://127.0.0.1:4310/v1/terminals']);
+        expect(calls.map(call => call.url)).toEqual([
+            'http://127.0.0.1:4310/v1/terminals?projectId=prj%201',
+            'http://127.0.0.1:4310/v1/terminals',
+        ]);
         expect(calls[0].authorization).toBe('Bearer tok');
     });
 
@@ -261,15 +294,29 @@ describe('HttpTransport terminals', () => {
         const ok = transport(() => Response.json(info));
 
         expect(await ok.transport.createTerminal(request)).toEqual(info);
-        expect(ok.calls[0]).toMatchObject({ method: 'POST', url: 'http://127.0.0.1:4310/v1/terminals', body: JSON.stringify(request) });
+        expect(ok.calls[0]).toMatchObject({
+            method: 'POST',
+            url: 'http://127.0.0.1:4310/v1/terminals',
+            body: JSON.stringify(request),
+        });
 
-        const refused = transport(() => Response.json({ ok: false, error: { code: 'unavailable', message: 'The folder /p is missing' } }, { status: 503 }));
+        const refused = transport(() =>
+            Response.json(
+                { ok: false, error: { code: 'unavailable', message: 'The folder /p is missing' } },
+                { status: 503 }
+            )
+        );
 
-        await expect(refused.transport.createTerminal(request)).rejects.toMatchObject({ message: 'The folder /p is missing', status: 503 });
+        await expect(refused.transport.createTerminal(request)).rejects.toMatchObject({
+            message: 'The folder /p is missing',
+            status: 503,
+        });
     });
 
     it('closes one, and takes a terminal that is already gone as closed', async () => {
-        const { calls, transport: http } = transport((_url, init) => (init?.method === 'DELETE' ? new Response(null, { status: 404 }) : Response.json([])));
+        const { calls, transport: http } = transport((_url, init) =>
+            init?.method === 'DELETE' ? new Response(null, { status: 404 }) : Response.json([])
+        );
 
         await expect(http.closeTerminal('trm 1')).resolves.toBeUndefined();
         expect(calls[0]).toMatchObject({ method: 'DELETE', url: 'http://127.0.0.1:4310/v1/terminals/trm%201' });
@@ -289,14 +336,19 @@ describe('HttpTransport terminals', () => {
             // A daemon that was replaced is found where it is now.
             http.setAddress({ url: 'http://127.0.0.1:4311', token: 'newer' });
 
-            const stream = http.openTerminal('trm_1', { onScreen: () => undefined, onOutput: () => undefined, onExit: () => undefined, onStatus: () => undefined, onGone: () => undefined });
+            const stream = http.openTerminal('trm_1', {
+                onScreen: () => undefined,
+                onOutput: () => undefined,
+                onExit: () => undefined,
+                onStatus: () => undefined,
+                onGone: () => undefined,
+            });
 
             await settle();
             expect(FakeSocket.all[0].url).toBe('ws://127.0.0.1:4311/v1/terminals/trm_1/stream');
             expect(tokenFromTerminalProtocols(FakeSocket.all[0].protocols.join(', '))).toBe('newer');
             stream.close();
-        }
-        finally {
+        } finally {
             vi.unstubAllGlobals();
         }
     });

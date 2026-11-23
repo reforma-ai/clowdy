@@ -1,6 +1,6 @@
 import { isPicture } from '../../shared/pictures';
 import { docOfMessage, dropDraft, saveDraft } from './composerDrafts';
-import { filesOf, patchFile, releaseFiles, setFiles, takeFiles, type DraftFile } from './composerFiles';
+import { type DraftFile, filesOf, patchFile, releaseFiles, setFiles, takeFiles } from './composerFiles';
 
 import type { Attachment } from '@clowdy/protocol';
 
@@ -16,19 +16,25 @@ export interface EditedMessage {
  * an edit goes through). What an earlier session left under the same key is let go of first. The pictures among the files get their preview from
  * `attachmentBlob` once it answers, unless the session has ended by then.
  */
-export function beginEditSession(key: string, message: EditedMessage, attachmentBlob?: (attachment: Attachment) => Promise<Blob>): void {
+export function beginEditSession(
+    key: string,
+    message: EditedMessage,
+    attachmentBlob?: (attachment: Attachment) => Promise<Blob>
+): void {
     releaseFiles(takeFiles(key));
     saveDraft(key, docOfMessage(message.text));
 
-    const files = (message.attachments ?? []).map((attachment): DraftFile => ({
-        key: crypto.randomUUID(),
-        name: attachment.name,
-        mediaType: attachment.mediaType,
-        size: attachment.size,
-        status: 'ready',
-        attachment,
-        sent: true,
-    }));
+    const files = (message.attachments ?? []).map(
+        (attachment): DraftFile => ({
+            key: crypto.randomUUID(),
+            name: attachment.name,
+            mediaType: attachment.mediaType,
+            size: attachment.size,
+            status: 'ready',
+            attachment,
+            sent: true,
+        })
+    );
 
     setFiles(key, files);
 
@@ -36,7 +42,7 @@ export function beginEditSession(key: string, message: EditedMessage, attachment
 
     for (const file of files.filter(candidate => isPicture(candidate.mediaType))) {
         attachmentBlob(file.attachment!).then(
-            (blob) => {
+            blob => {
                 // The card was taken off, or the session is over: nobody would let go of the URL.
                 if (!filesOf(key).some(held => held.key === file.key)) return;
 

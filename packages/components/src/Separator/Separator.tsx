@@ -37,17 +37,17 @@ const ORIENTATION_SPACING_CLASS: Record<
     },
 };
 
-export function Separator({
-    orientation = 'horizontal',
-    spacing = 'md',
-    className,
-    ...props
-}: SeparatorProps) {
+export function Separator({ orientation = 'horizontal', spacing = 'md', className, ...props }: SeparatorProps) {
     return (
         <RACSeparator
-            { ...props }
-            orientation={ orientation }
-            className={ cn(styles.separator, styles[orientation], ORIENTATION_SPACING_CLASS[orientation][spacing], className) }
+            {...props}
+            orientation={orientation}
+            className={cn(
+                styles.separator,
+                styles[orientation],
+                ORIENTATION_SPACING_CLASS[orientation][spacing],
+                className
+            )}
         />
     );
 }

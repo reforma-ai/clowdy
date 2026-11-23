@@ -1,8 +1,8 @@
 import { Text } from '@clowdy/components/Text';
 import { cn } from '@clowdy/lib';
 
-import { SCREEN_TITLE } from './screenTitle';
 import styles from './SidebarHeading.module.css';
+import { SCREEN_TITLE } from './screenTitle';
 
 import type { ReactNode, Ref } from 'react';
 
@@ -20,9 +20,9 @@ export interface SidebarHeadingProps {
 /** The title of a screen's left column (the project select above the chats), with its buttons at the right edge: the title of Tasks' header, without the toolbar. */
 export function SidebarHeading({ title, children, className, ref }: SidebarHeadingProps) {
     return (
-        <div ref={ ref } className={ cn(styles.heading, className) }>
-            { typeof title === 'string' ? <Text variant={ SCREEN_TITLE }>{ title }</Text> : title }
-            { children && <div className={ styles.actions }>{ children }</div> }
+        <div ref={ref} className={cn(styles.heading, className)}>
+            {typeof title === 'string' ? <Text variant={SCREEN_TITLE}>{title}</Text> : title}
+            {children && <div className={styles.actions}>{children}</div>}
         </div>
     );
 }

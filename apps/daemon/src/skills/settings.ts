@@ -23,9 +23,11 @@ export class SkillSettings {
 
         try {
             return { disabled: new Set(fileSchema.parse(JSON.parse(readFileSync(this.file, 'utf8'))).disabled) };
-        }
-        catch {
-            return { disabled: new Set(), warning: 'skills.json in the data folder cannot be read, so every user skill is on' };
+        } catch {
+            return {
+                disabled: new Set(),
+                warning: 'skills.json in the data folder cannot be read, so every user skill is on',
+            };
         }
     }
 
@@ -39,14 +41,13 @@ export class SkillSettings {
 
         if (enabled) {
             disabled.delete(name);
-        }
-        else {
+        } else {
             disabled.add(name);
         }
 
-        const temp = `${ this.file }.tmp`;
+        const temp = `${this.file}.tmp`;
 
-        writeFileSync(temp, `${ JSON.stringify({ disabled: [...disabled].sort() }, null, 4) }\n`);
+        writeFileSync(temp, `${JSON.stringify({ disabled: [...disabled].sort() }, null, 4)}\n`);
         renameSync(temp, this.file);
 
         return true;

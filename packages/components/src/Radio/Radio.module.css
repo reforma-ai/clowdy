@@ -67,7 +67,8 @@
         align-items: center;
     }
 
-    .root[data-hovered='true']:not([data-disabled='true']):not([data-readonly='true']):not([data-selected='true']) .box {
+    .root[data-hovered='true']:not([data-disabled='true']):not([data-readonly='true']):not([data-selected='true'])
+        .box {
         background-color: var(--clowdy-radio-bg--hover);
         border-color: var(--clowdy-radio-border--hover);
     }

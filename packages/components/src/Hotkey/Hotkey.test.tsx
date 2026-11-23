@@ -27,14 +27,14 @@ afterEach(() => {
 
 describe('Hotkey', () => {
     it('shows one press in one capsule', () => {
-        render(<Hotkey hotkey={ ['shift', 'r'] } />);
+        render(<Hotkey hotkey={['shift', 'r']} />);
 
         expect(capsules()).toHaveLength(1);
         expect(container.querySelector('[data-hotkey-sequence]')).toBeNull();
     });
 
     it('shows a sequence as one capsule per press, joined by "then"', () => {
-        render(<Hotkey sequence={ [['g'], ['t']] } />);
+        render(<Hotkey sequence={[['g'], ['t']]} />);
 
         expect(capsules()).toEqual(['G', 'T']);
         expect(container.querySelector('[data-hotkey-sequence]')?.textContent).toBe('GthenT');
@@ -45,27 +45,27 @@ describe('Hotkey', () => {
 
         expect(container.querySelector('[data-hotkey]')?.getAttribute('data-size')).toBe('sm');
 
-        render(<Hotkey sequence={ [['g'], ['t']] } />);
+        render(<Hotkey sequence={[['g'], ['t']]} />);
 
         expect(container.querySelector('[data-hotkey-sequence]')?.getAttribute('data-size')).toBe('xs');
     });
 
     it('shows a press with modifiers inside a sequence as one capsule', () => {
-        render(<Hotkey sequence={ [['shift', 'm'], ['b']] } />);
+        render(<Hotkey sequence={[['shift', 'm'], ['b']]} />);
 
         expect(capsules()).toHaveLength(2);
         expect(capsules()[1]).toBe('B');
     });
 
     it('shows a single press of a sequence without a "then"', () => {
-        render(<Hotkey sequence={ [['escape']] } />);
+        render(<Hotkey sequence={[['escape']]} />);
 
         expect(capsules()).toEqual(['Esc']);
         expect(container.textContent).not.toContain('then');
     });
 
     it('puts a label and its sequence in a tooltip', () => {
-        render(<div>{ tooltipWithSequence('Tasks', [['g'], ['t']]) }</div>);
+        render(<div>{tooltipWithSequence('Tasks', [['g'], ['t']])}</div>);
 
         expect(container.textContent).toBe('Tasks GthenT');
         expect(capsules()).toEqual(['G', 'T']);

@@ -10,7 +10,14 @@ import type { RootStore } from '../../stores';
  * when it is shut. The tab shows the place the window works in, so a caller offers this for the open chat's own place. A worktree that is not made yet has no changes to show:
  * nothing is done and `false` says so.
  */
-export function openRunInChanges(root: RootStore, projectId: ProjectId, place: Place, chatId: ChatId, scope: GitScope, path?: string): boolean {
+export function openRunInChanges(
+    root: RootStore,
+    projectId: ProjectId,
+    place: Place,
+    chatId: ChatId,
+    scope: GitScope,
+    path?: string
+): boolean {
     if (!isPlaceReady(place)) return false;
 
     const key = { projectId, folderId: place.folder.id, ...(place.workspace && { workspaceId: place.workspace.id }) };

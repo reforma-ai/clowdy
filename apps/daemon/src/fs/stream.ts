@@ -11,7 +11,10 @@ const encoder = new TextEncoder();
  * goes out every 15 s so an idle connection stays open. `subscribe` is called as the stream is made and answers how to stop listening, which
  * happens when the client reads no more, or when the watch ends.
  */
-export function watchStream(subscribe: (subscriber: WatchSubscriber) => () => void, heartbeatMs = HEARTBEAT_MS): ReadableStream<Uint8Array> {
+export function watchStream(
+    subscribe: (subscriber: WatchSubscriber) => () => void,
+    heartbeatMs = HEARTBEAT_MS
+): ReadableStream<Uint8Array> {
     let unsubscribe: (() => void) | undefined;
     let heartbeat: ReturnType<typeof setInterval> | undefined;
 
@@ -28,8 +31,7 @@ export function watchStream(subscribe: (subscriber: WatchSubscriber) => () => vo
 
                 try {
                     controller.close();
-                }
-                catch {
+                } catch {
                     // Already closed by the client.
                 }
             };
@@ -43,7 +45,7 @@ export function watchStream(subscribe: (subscriber: WatchSubscriber) => () => vo
                         return;
                     }
 
-                    controller.enqueue(encoder.encode(`data: ${ JSON.stringify(event) }\n\n`));
+                    controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
                 },
                 end,
             });

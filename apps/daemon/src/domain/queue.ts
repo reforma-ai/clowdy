@@ -40,5 +40,10 @@ export function settleSteers(queue: readonly QueuedMessage[]): QueuedMessage[] {
 export function userItemOf(item: QueuedMessage): StreamItemBody {
     const text = item.from?.kind === 'threadNotice' ? '' : item.text;
 
-    return { kind: 'user', text, ...(item.attachments?.length && { attachments: item.attachments }), ...(item.from && { from: item.from }) };
+    return {
+        kind: 'user',
+        text,
+        ...(item.attachments?.length && { attachments: item.attachments }),
+        ...(item.from && { from: item.from }),
+    };
 }

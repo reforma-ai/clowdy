@@ -3,7 +3,7 @@ import { Input } from '@clowdy/components/Input';
 import { SortableList, type SortableListDropContext } from '@clowdy/components/SortableList';
 import { Text } from '@clowdy/components/Text';
 import { Plus } from '@clowdy/icons/14';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 
 import styles from './FolderList.module.css';
 import { FolderRow } from './FolderRow';
@@ -39,7 +39,20 @@ export interface FolderListProps<T> {
  * them, dragged into another order by the whole row (a grip outside its edge would stick out of the card) and removed one by one, and Add
  * folders… as the last row.
  */
-export function FolderList<T>({ items, getKey, getPath, getName, renderDetails, renderActions, onRemove, isRemoveDisabled, onReorder, canDrop, onAdd, empty }: FolderListProps<T>) {
+export function FolderList<T>({
+    items,
+    getKey,
+    getPath,
+    getName,
+    renderDetails,
+    renderActions,
+    onRemove,
+    isRemoveDisabled,
+    onReorder,
+    canDrop,
+    onAdd,
+    empty,
+}: FolderListProps<T>) {
     const card = useRef<HTMLDivElement>(null);
     // The place of a removed row, where the focus goes once the row is gone.
     const removedAt = useRef<number | null>(null);
@@ -55,51 +68,66 @@ export function FolderList<T>({ items, getKey, getPath, getName, renderDetails, 
         const rows = card.current?.querySelectorAll('[data-folder-path]') ?? [];
         const row = rows[Math.min(index, rows.length - 1)];
 
-        (row?.querySelector<HTMLElement>('button[aria-label^="Remove"]') ?? card.current?.querySelector<HTMLElement>('[data-folder-adder] :is(button, input)'))?.focus();
+        (
+            row?.querySelector<HTMLElement>('button[aria-label^="Remove"]') ??
+            card.current?.querySelector<HTMLElement>('[data-folder-adder] :is(button, input)')
+        )?.focus();
     }, [keys]);
 
-    const remove = onRemove && ((item: T, index: number) => {
-        removedAt.current = index;
-        void Promise.resolve(onRemove(item, index)).then((removed) => {
-            if (removed === false) removedAt.current = null;
+    const remove =
+        onRemove &&
+        ((item: T, index: number) => {
+            removedAt.current = index;
+            void Promise.resolve(onRemove(item, index)).then(removed => {
+                if (removed === false) removedAt.current = null;
+            });
         });
-    });
 
     const row = (item: T, index: number) => (
         <FolderRow
-            name={ getName(item) }
-            path={ getPath(item) }
-            isMain={ index === 0 && (onAdd !== undefined || items.length > 1) }
-            onRemove={ remove && (() => remove(item, index)) }
-            isRemoveDisabled={ isRemoveDisabled?.(item) }
-            actions={ renderActions?.(item) }
+            name={getName(item)}
+            path={getPath(item)}
+            isMain={index === 0 && (onAdd !== undefined || items.length > 1)}
+            onRemove={remove && (() => remove(item, index))}
+            isRemoveDisabled={isRemoveDisabled?.(item)}
+            actions={renderActions?.(item)}
         >
-            { renderDetails?.(item) }
+            {renderDetails?.(item)}
         </FolderRow>
     );
 
-    const rows = onReorder
-        ? (
-            <SortableList
-                aria-label="Folders"
-                items={ items as T[] }
-                gap="sm"
-                handle={ false }
-                className={ `${ styles.list } ${ styles.draggable }` }
-                getKey={ getKey }
-                getTextValue={ getName }
-                canDrop={ canDrop }
-                onChange={ onReorder }
-            >
-                { (item, { index }) => row(item, index) }
-            </SortableList>
-        )
-        : <div className={ styles.list }>{ items.map((item, index) => <div key={ getKey(item) }>{ row(item, index) }</div>) }</div>;
+    const rows = onReorder ? (
+        <SortableList
+            aria-label="Folders"
+            items={items as T[]}
+            gap="sm"
+            handle={false}
+            className={`${styles.list} ${styles.draggable}`}
+            getKey={getKey}
+            getTextValue={getName}
+            canDrop={canDrop}
+            onChange={onReorder}
+        >
+            {(item, { index }) => row(item, index)}
+        </SortableList>
+    ) : (
+        <div className={styles.list}>
+            {items.map((item, index) => (
+                <div key={getKey(item)}>{row(item, index)}</div>
+            ))}
+        </div>
+    );
 
     return (
-        <div ref={ card } className={ styles.card }>
-            { items.length > 0 ? rows : empty && <Text variant="sm" color="secondary" align="center" className={ styles.empty }>{ empty }</Text> }
-            { onAdd && <FolderAdder onAdd={ onAdd } /> }
+        <div ref={card} className={styles.card}>
+            {items.length > 0
+                ? rows
+                : empty && (
+                      <Text variant="sm" color="secondary" align="center" className={styles.empty}>
+                          {empty}
+                      </Text>
+                  )}
+            {onAdd && <FolderAdder onAdd={onAdd} />}
         </div>
     );
 }
@@ -122,7 +150,10 @@ function FolderAdder({ onAdd }: { onAdd: (paths: string[]) => void }) {
     if (choose) {
         return (
             <div data-folder-adder>
-                <button type="button" className={ styles.add } onClick={ () => void choose().then(onAdd) }><Plus />Add folders…</button>
+                <button type="button" className={styles.add} onClick={() => void choose().then(onAdd)}>
+                    <Plus />
+                    Add folders…
+                </button>
             </div>
         );
     }
@@ -135,22 +166,24 @@ function FolderAdder({ onAdd }: { onAdd: (paths: string[]) => void }) {
     };
 
     return (
-        <div className={ styles.path } data-folder-adder>
+        <div className={styles.path} data-folder-adder>
             <Input
                 type="text"
                 aria-label="Folder path"
-                value={ path }
-                onChange={ setPath }
+                value={path}
+                onChange={setPath}
                 placeholder="/Users/you/code/my-app"
-                onKeyDown={ (event) => {
+                onKeyDown={event => {
                     // Enter adds what is typed instead of sending a form around it; with the field empty a form is sent as usual.
                     if (event.key === 'Enter' && typedPath(path)) {
                         event.preventDefault();
                         add();
                     }
-                } }
+                }}
             />
-            <Button variant="bordered" isDisabled={ !typedPath(path) } onPress={ add }>Add folder</Button>
+            <Button variant="bordered" isDisabled={!typedPath(path)} onPress={add}>
+                Add folder
+            </Button>
         </div>
     );
 }

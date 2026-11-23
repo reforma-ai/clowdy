@@ -1,7 +1,7 @@
 import { branchPrefixOf, branchPrefixProblem, DEFAULT_BRANCH_PREFIX } from '@clowdy/protocol';
 import { makeAutoObservable } from 'mobx';
 
-import { browserStorage, readStored, writeStored, type KeyValueStorage } from '../../stores/storage';
+import { browserStorage, type KeyValueStorage, readStored, writeStored } from '../../stores/storage';
 
 import type { ChatWorkspaceChoice } from '@clowdy/protocol';
 
@@ -20,7 +20,10 @@ export class BranchPrefixPreference {
         const stored = readStored(storage, STORAGE_KEY);
 
         this.#storage = storage;
-        this.value = typeof stored === 'string' && branchPrefixProblem(stored) === undefined ? branchPrefixOf(stored) : DEFAULT_BRANCH_PREFIX;
+        this.value =
+            typeof stored === 'string' && branchPrefixProblem(stored) === undefined
+                ? branchPrefixOf(stored)
+                : DEFAULT_BRANCH_PREFIX;
         makeAutoObservable(this);
     }
 
@@ -41,7 +44,9 @@ export class BranchPrefixPreference {
      * than the setting knows no such field, and the default is what it does without one).
      */
     withPrefix(choice: ChatWorkspaceChoice): ChatWorkspaceChoice {
-        return choice.mode === 'new' && this.value !== DEFAULT_BRANCH_PREFIX ? { ...choice, branchPrefix: this.value } : { ...choice };
+        return choice.mode === 'new' && this.value !== DEFAULT_BRANCH_PREFIX
+            ? { ...choice, branchPrefix: this.value }
+            : { ...choice };
     }
 }
 

@@ -17,9 +17,9 @@ afterEach(async () => {
 });
 
 const finishing: Script = async function* ({ number }) {
-    yield { type: 'session', sessionId: `s${ number }` };
+    yield { type: 'session', sessionId: `s${number}` };
     yield { type: 'text', delta: 'Done', done: false };
-    yield { type: 'text', delta: '', done: true, messageId: `m${ number }` };
+    yield { type: 'text', delta: '', done: true, messageId: `m${number}` };
     yield { type: 'done', result: 'Done' };
 };
 
@@ -27,8 +27,7 @@ const finishing: Script = async function* ({ number }) {
 function real(path: string): string {
     try {
         return realpathSync(path);
-    }
-    catch {
+    } catch {
         return join(realpathSync(dirname(path)), basename(path));
     }
 }
@@ -49,13 +48,16 @@ async function setup(folders: string[] = []) {
     // The project keeps the real place of a folder (`/private/var/...` for `/var/...` on a Mac), which is the path of its own checkout's row.
     const folder = project.folders[0].path;
     const chatOf = (chatId: string) => getChat(h.store.db, chatId) as Chat;
-    const make = (workspace: unknown): Chat => (h.ok('chat.create', { projectId: project.id, workspace }) as { chat: Chat }).chat;
+    const make = (workspace: unknown): Chat =>
+        (h.ok('chat.create', { projectId: project.id, workspace }) as { chat: Chat }).chat;
     const start = async (workspace: unknown = { mode: 'new' }): Promise<Chat> => {
         const chat = make(workspace);
 
         h.ok('chat.send', { chatId: chat.id, text: 'Start' });
         await waitFor(() => {
-            const run = chatOf(chat.id).orchestratorRunId ? h.run(chatOf(chat.id).orchestratorRunId as string) : undefined;
+            const run = chatOf(chat.id).orchestratorRunId
+                ? h.run(chatOf(chat.id).orchestratorRunId as string)
+                : undefined;
 
             return run?.status === 'succeeded' && (run as Run).finishedAt !== undefined;
         }, 'the turn to end');
@@ -63,18 +65,18 @@ async function setup(folders: string[] = []) {
         return chatOf(chat.id);
     };
     const worktrees = async (id = project.id): Promise<FolderWorktrees[]> => {
-        const response = await h.fetch(`/v1/projects/${ id }/worktrees`);
+        const response = await h.fetch(`/v1/projects/${id}/worktrees`);
 
         expect(response.status).toBe(200);
 
-        return await response.json() as FolderWorktrees[];
+        return (await response.json()) as FolderWorktrees[];
     };
     /** The rows of the first folder, which `shop-web` is. */
     const rows = async (): Promise<WorktreeInfo[]> => (await worktrees())[0].worktrees;
     const at = async (path: string): Promise<WorktreeInfo> => {
         const row = (await rows()).find(candidate => candidate.path === real(path));
 
-        if (!row) throw new Error(`No row for ${ path }`);
+        if (!row) throw new Error(`No row for ${path}`);
 
         return row;
     };
@@ -82,14 +84,14 @@ async function setup(folders: string[] = []) {
     const found = (name: string, detach = false): string => {
         const path = join(root, name);
 
-        git(repo, 'worktree', 'add', '-q', ...detach ? ['--detach', path, 'main'] : ['-b', name, path]);
+        git(repo, 'worktree', 'add', '-q', ...(detach ? ['--detach', path, 'main'] : ['-b', name, path]));
 
         return path;
     };
 
     /** `git worktree lock`, with the reason when there is one. */
     const lock = (path: string, reason?: string): void => {
-        git(repo, 'worktree', 'lock', ...reason === undefined ? [] : ['--reason', reason], path);
+        git(repo, 'worktree', 'lock', ...(reason === undefined ? [] : ['--reason', reason]), path);
     };
 
     return { h, root, repo, folder, project, chatOf, make, start, worktrees, rows, at, found, lock };
@@ -97,13 +99,13 @@ async function setup(folders: string[] = []) {
 
 /** Commits a file in a worktree. */
 function commit(path: string, file = 'work.txt', message = 'Work'): void {
-    writeFileSync(join(path, file), `${ message }\n`);
+    writeFileSync(join(path, file), `${message}\n`);
     git(path, 'add', file);
     git(path, 'commit', '-q', '-m', message);
 }
 
 describe('GET /v1/projects/:id/worktrees', () => {
-    test('lists the folder\'s own checkout first, with its branch, clean, and nothing to remove or to compare with a base', async () => {
+    test("lists the folder's own checkout first, with its branch, clean, and nothing to remove or to compare with a base", async () => {
         const { rows, folder } = await setup();
         const [main, ...others] = await rows();
 
@@ -151,7 +153,9 @@ describe('GET /v1/projects/:id/worktrees', () => {
             chats: [],
         });
         // Asking leaves no record behind: the dialog only reads.
-        expect(h.store.db.query('SELECT COUNT(*) AS n FROM workspaces WHERE project_id = ?').get(project.id)).toEqual({ n: 0 });
+        expect(h.store.db.query('SELECT COUNT(*) AS n FROM workspaces WHERE project_id = ?').get(project.id)).toEqual({
+            n: 0,
+        });
     });
 
     test('lists a worktree Clowdy made with its chats, archived ones too, and blocks Remove while they work in it', async () => {
@@ -212,7 +216,11 @@ describe('GET /v1/projects/:id/worktrees', () => {
         lock(chat.workspace!.path);
         h.ok('chat.setArchived', { chatId: chat.id, archived: true });
 
-        expect(await at(chat.workspace!.path)).toMatchObject({ locked: '', blocked: 'locked', chats: [{ id: chat.id, archived: true }] });
+        expect(await at(chat.workspace!.path)).toMatchObject({
+            locked: '',
+            blocked: 'locked',
+            chats: [{ id: chat.id, archived: true }],
+        });
     });
 
     test('keeps a worktree whose folder was deleted, missing on disk, with the work it had', async () => {
@@ -224,7 +232,14 @@ describe('GET /v1/projects/:id/worktrees', () => {
         rmSync(gone, { recursive: true, force: true });
 
         // It is still a worktree of the repository until git prunes it, so it is listed, with no files to read, and its branch is still judged.
-        expect(await at(gone)).toMatchObject({ branch: 'gone', missing: true, changes: 0, submodules: false, merged: false, base: 'main' });
+        expect(await at(gone)).toMatchObject({
+            branch: 'gone',
+            missing: true,
+            changes: 0,
+            submodules: false,
+            merged: false,
+            base: 'main',
+        });
         expect(await at(kept)).toMatchObject({ missing: false });
         expect((await rows()).map(row => row.path).sort()).toEqual([folder, real(gone), real(kept)].sort());
     });
@@ -239,7 +254,7 @@ describe('GET /v1/projects/:id/worktrees', () => {
         expect(await at(path)).toMatchObject({ missing: true, locked: 'moved', blocked: 'locked' });
     });
 
-    test('counts the changed files of a dirty worktree, a new file and an untracked folder\'s file included', async () => {
+    test("counts the changed files of a dirty worktree, a new file and an untracked folder's file included", async () => {
         const { at, found } = await setup();
         const path = found('dirty');
         const clean = found('clean');
@@ -279,12 +294,20 @@ describe('GET /v1/projects/:id/worktrees', () => {
         const alias = join(root, 'alias');
 
         symlinkSync(realpathSync(dirname(record.path)), alias);
-        h.store.db.query('UPDATE workspaces SET path = ? WHERE id = ?').run(join(alias, basename(record.path)), record.id);
+        h.store.db
+            .query('UPDATE workspaces SET path = ? WHERE id = ?')
+            .run(join(alias, basename(record.path)), record.id);
         rmSync(record.path, { recursive: true, force: true });
 
         const row = (await rows()).find(candidate => candidate.branch === record.branch);
 
-        expect(row).toMatchObject({ missing: true, managed: true, workspaceId: record.id, chats: [{ id: chat.id }], blocked: 'chats' });
+        expect(row).toMatchObject({
+            missing: true,
+            managed: true,
+            workspaceId: record.id,
+            chats: [{ id: chat.id }],
+            blocked: 'chats',
+        });
         expect(row?.path).toBe(real(record.path));
         expect(await at(record.path)).toMatchObject({ workspaceId: record.id });
     });
@@ -304,7 +327,10 @@ describe('GET /v1/projects/:id/worktrees', () => {
         const group = (await worktrees())[1];
 
         expect(group.isRepository).toBe(true);
-        expect(group.worktrees.map(row => [row.path, row.main, row.missing])).toEqual([[real(repo), true, false], [real(join(root, 'side')), false, false]]);
+        expect(group.worktrees.map(row => [row.path, row.main, row.missing])).toEqual([
+            [real(repo), true, false],
+            [real(join(root, 'side')), false, false],
+        ]);
     });
 
     test('says nothing of merging for a worktree on a branch with no commit yet', async () => {
@@ -320,7 +346,7 @@ describe('GET /v1/projects/:id/worktrees', () => {
         expect(row.base).toBeUndefined();
     });
 
-    test('compares with a remote branch as last fetched when that is the folder\'s default', async () => {
+    test("compares with a remote branch as last fetched when that is the folder's default", async () => {
         const root = tempDir('worktrees-remote');
         const origin = makeRepo(root, 'origin');
         const clone = join(root, 'clone');
@@ -413,7 +439,7 @@ describe('GET /v1/projects/:id/worktrees', () => {
         expect(await at(plain)).toMatchObject({ submodules: false });
     });
 
-    test('names a project\'s folders in its order: a repository, a plain folder, a folder that is gone, one a file replaced and one inside a repository', async () => {
+    test("names a project's folders in its order: a repository, a plain folder, a folder that is gone, one a file replaced and one inside a repository", async () => {
         const root = tempDir('worktrees-folders');
         const plain = join(root, 'notes');
         const inside = join(makeRepo(root, 'other'), 'packages');
@@ -456,11 +482,14 @@ describe('GET /v1/projects/:id/worktrees', () => {
         const [web, second] = await worktrees();
 
         expect(web.worktrees.map(row => row.path)).toContain(real(path));
-        expect(second.worktrees.map(row => [row.main, row.branch])).toEqual([[true, 'main'], [false, 'api-feature']]);
+        expect(second.worktrees.map(row => [row.main, row.branch])).toEqual([
+            [true, 'main'],
+            [false, 'api-feature'],
+        ]);
         expect(second.worktrees.some(row => row.path === real(path))).toBe(false);
     });
 
-    test('flags the repository\'s primary working tree, which git never removes, when the folder is a linked worktree', async () => {
+    test("flags the repository's primary working tree, which git never removes, when the folder is a linked worktree", async () => {
         const root = tempDir('worktrees-linked');
         const primary = makeRepo(root, 'primary');
         const linked = join(root, 'linked');
@@ -475,27 +504,32 @@ describe('GET /v1/projects/:id/worktrees', () => {
         expect(group.worktrees[1]).toMatchObject({ path: real(primary), branch: 'main', main: false, blocked: 'main' });
     });
 
-    test('blocks the checkout of another folder of the project like the folder\'s own, though it is only a worktree of the same repository, and leaves a spare one free', async () => {
+    test("blocks the checkout of another folder of the project like the folder's own, though it is only a worktree of the same repository, and leaves a spare one free", async () => {
         const root = tempDir('worktrees-folders');
         const primary = makeRepo(root, 'primary');
         const second = join(root, 'second');
         const third = join(root, 'third');
         const spare = join(root, 'spare');
 
-        for (const [name, path] of [['second', second], ['third', third], ['spare', spare]]) {
+        for (const [name, path] of [
+            ['second', second],
+            ['third', third],
+            ['spare', spare],
+        ]) {
             git(primary, 'worktree', 'add', '-q', '-b', name, path);
         }
 
         const { worktrees } = await setup([second, third]);
         const [, group, other] = await worktrees();
-        const blocked = (rows: WorktreeInfo[]) => Object.fromEntries(rows.map(row => [basename(row.path), row.blocked ?? null]));
+        const blocked = (rows: WorktreeInfo[]) =>
+            Object.fromEntries(rows.map(row => [basename(row.path), row.blocked ?? null]));
 
         expect(blocked(group.worktrees)).toEqual({ second: 'main', primary: 'main', third: 'main', spare: null });
         expect(blocked(other.worktrees)).toEqual({ third: 'main', primary: 'main', second: 'main', spare: null });
         expect(group.worktrees.find(row => row.path === real(third))?.main).toBe(false);
     });
 
-    test('lists the worktrees that are ours above the others: Clowdy-made, with a chat, the repository\'s own tree; and one gone from the disk last', async () => {
+    test("lists the worktrees that are ours above the others: Clowdy-made, with a chat, the repository's own tree; and one gone from the disk last", async () => {
         const { rows, start, found, repo } = await setup();
         const first = found('agent-first');
         const made = (await start()).workspace!;
@@ -506,24 +540,40 @@ describe('GET /v1/projects/:id/worktrees', () => {
         await start({ mode: 'existing', path: withChat });
         rmSync(gone.path, { recursive: true, force: true });
 
-        const listed = git(repo, 'worktree', 'list', '--porcelain').split('\n').filter(line => line.startsWith('worktree ')).map(line => real(line.slice('worktree '.length)));
+        const listed = git(repo, 'worktree', 'list', '--porcelain')
+            .split('\n')
+            .filter(line => line.startsWith('worktree '))
+            .map(line => real(line.slice('worktree '.length)));
         const kind = (paths: string[]) => listed.filter(path => paths.map(real).includes(path));
 
         // The checkout of the folder, then ours (one Clowdy made, one a chat works in), then the ones nobody here made, and the one that is gone last; git's order within a kind.
-        expect((await rows()).map(row => row.path)).toEqual([listed[0], ...kind([made.path, withChat]), ...kind([first, last]), real(gone.path)]);
+        expect((await rows()).map(row => row.path)).toEqual([
+            listed[0],
+            ...kind([made.path, withChat]),
+            ...kind([first, last]),
+            real(gone.path),
+        ]);
     });
 
     test('lists every worktree of a repository with many, in the order git lists them, though they are read a few at a time', async () => {
         const { rows, found, repo } = await setup();
-        const names = Array.from({ length: 9 }, (_, index) => `many-${ index }`);
+        const names = Array.from({ length: 9 }, (_, index) => `many-${index}`);
 
         for (const name of names) found(name);
 
-        const listed = git(repo, 'worktree', 'list', '--porcelain').split('\n').filter(line => line.startsWith('worktree ')).map(line => real(line.slice('worktree '.length)));
+        const listed = git(repo, 'worktree', 'list', '--porcelain')
+            .split('\n')
+            .filter(line => line.startsWith('worktree '))
+            .map(line => real(line.slice('worktree '.length)));
 
         expect(listed).toHaveLength(10);
         expect((await rows()).map(row => row.path)).toEqual(listed);
-        expect((await rows()).slice(1).map(row => row.branch).sort()).toEqual([...names].sort());
+        expect(
+            (await rows())
+                .slice(1)
+                .map(row => row.branch)
+                .sort()
+        ).toEqual([...names].sort());
     });
 
     test('is unavailable, not an empty answer, when git cannot be run', async () => {
@@ -533,11 +583,10 @@ describe('GET /v1/projects/:id/worktrees', () => {
         process.env.PATH = tempDir('worktrees-no-git');
 
         try {
-            const response = await h.fetch(`/v1/projects/${ project.id }/worktrees`);
+            const response = await h.fetch(`/v1/projects/${project.id}/worktrees`);
 
             expect(response.status).toBe(503);
-        }
-        finally {
+        } finally {
             process.env.PATH = path;
         }
     });

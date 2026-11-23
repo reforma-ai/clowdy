@@ -289,7 +289,10 @@ export const MIGRATIONS: Migration[] = [
 
             const insert = db.query('INSERT INTO project_folders (id, project_id, path, position) VALUES (?, ?, ?, 0)');
 
-            for (const { id, path } of db.query('SELECT id, path FROM projects').all() as { id: string; path: string }[]) {
+            for (const { id, path } of db.query('SELECT id, path FROM projects').all() as {
+                id: string;
+                path: string;
+            }[]) {
                 insert.run(newId('fld'), id, path);
             }
 

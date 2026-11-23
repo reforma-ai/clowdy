@@ -1,4 +1,4 @@
-import { plainTextToDoc, type ComposerDoc } from '@clowdy/components/RichInput';
+import { type ComposerDoc, plainTextToDoc } from '@clowdy/components/RichInput';
 import { toast } from '@clowdy/components/Toast';
 import { MAX_ATTACHMENT_BYTES } from '@clowdy/protocol';
 import { when } from 'mobx';
@@ -19,10 +19,19 @@ export interface Turn {
 
 /** What another thread told the chat, in words: who wrote and the message, or each thread that stopped with its last words and what it still runs. */
 function threadWords(from: MessageSource, text: string): string {
-    if (from.kind === 'thread') return [`Message from ${ oneLine(from.title) }`, text.trim()].filter(Boolean).join('\n\n');
+    if (from.kind === 'thread')
+        return [`Message from ${oneLine(from.title)}`, text.trim()].filter(Boolean).join('\n\n');
 
     return from.threads
-        .map(notice => [noticeLine(notice), notice.text?.trim(), notice.background?.length ? `Still running: ${ notice.background.join(', ') }` : ''].filter(Boolean).join('\n\n'))
+        .map(notice =>
+            [
+                noticeLine(notice),
+                notice.text?.trim(),
+                notice.background?.length ? `Still running: ${notice.background.join(', ')}` : '',
+            ]
+                .filter(Boolean)
+                .join('\n\n')
+        )
         .join('\n\n');
 }
 
@@ -40,7 +49,7 @@ export function turnsOf(items: readonly StreamItem[]): Turn[] {
 
         const last = turns.at(-1);
 
-        if (last?.role === role) last.text += `\n\n${ words }`;
+        if (last?.role === role) last.text += `\n\n${words}`;
         else turns.push({ role, text: words });
     };
 
@@ -54,7 +63,12 @@ export function turnsOf(items: readonly StreamItem[]): Turn[] {
 
                 const files = (body.attachments ?? []).map(file => file.name);
 
-                add('person', [body.text.trim(), files.length > 0 ? `Attached: ${ files.join(', ') }` : ''].filter(Boolean).join('\n\n'));
+                add(
+                    'person',
+                    [body.text.trim(), files.length > 0 ? `Attached: ${files.join(', ')}` : '']
+                        .filter(Boolean)
+                        .join('\n\n')
+                );
                 break;
             }
             case 'assistant':
@@ -62,8 +76,8 @@ export function turnsOf(items: readonly StreamItem[]): Turn[] {
                 break;
             case 'question':
                 if (body.answer !== undefined) {
-                    add('assistant', `Asked: ${ body.text }`);
-                    add('person', `Answered: ${ body.answer }`);
+                    add('assistant', `Asked: ${body.text}`);
+                    add('person', `Answered: ${body.answer}`);
                 }
 
                 break;
@@ -95,7 +109,11 @@ const HEADINGS: Record<Turn['role'], string> = { person: '## Person', assistant:
  * that never closes would otherwise run into the turns after it. Inside a quote they stay inside their turn.
  */
 function quoted(text: string): string {
-    return text.replace(/\r\n?/g, '\n').split('\n').map(line => (line ? `> ${ line }` : '>')).join('\n');
+    return text
+        .replace(/\r\n?/g, '\n')
+        .split('\n')
+        .map(line => (line ? `> ${line}` : '>'))
+        .join('\n');
 }
 
 /** The longest start of the text that fits `limit` bytes of UTF-8, never ending inside a character. */
@@ -107,12 +125,13 @@ function cutBytes(text: string, limit: number): string {
     let end = Math.max(limit, 0);
 
     // A byte of the form 10xxxxxx continues the character before it, so the cut goes back to where that character starts.
-    while (end > 0 && (bytes[end]! & 0xC0) === 0x80) end -= 1;
+    while (end > 0 && (bytes[end]! & 0xc0) === 0x80) end -= 1;
 
     return new TextDecoder().decode(bytes.subarray(0, end));
 }
 
-const leftOut = (omitted: number, total: number) => `_Turns left out: the oldest ${ omitted } of ${ total }, because the conversation is too long for one file._\n`;
+const leftOut = (omitted: number, total: number) =>
+    `_Turns left out: the oldest ${omitted} of ${total}, because the conversation is too long for one file._\n`;
 const CUT_NOTE = '\n\n_The rest of this turn is left out: it is too long for one file._\n';
 
 /**
@@ -139,7 +158,7 @@ function newestThatFit(head: string, sections: readonly string[], maxBytes: numb
     const intro = total > 1 ? [head, leftOut(total - 1, total)] : [head];
     const room = maxBytes - bytesOf(intro.join('\n')) - 1 - bytesOf(CUT_NOTE);
 
-    return [...intro, `${ cutBytes(sections[total - 1]!, room).trimEnd() }${ CUT_NOTE }`].join('\n');
+    return [...intro, `${cutBytes(sections[total - 1]!, room).trimEnd()}${CUT_NOTE}`].join('\n');
 }
 
 /**
@@ -147,10 +166,15 @@ function newestThatFit(head: string, sections: readonly string[], maxBytes: numb
  * as a quote. Tool output is not in it, only what was said. A file is at most `maxBytes` (the most an attachment may be): a longer
  * conversation keeps its newest turns, and the file says that older ones were left out.
  */
-export function transcriptOf(chat: Chat, turns: readonly Turn[], { provider = chat.engine, model = chat.model }: TranscriptContext = {}, maxBytes = MAX_ATTACHMENT_BYTES): string {
+export function transcriptOf(
+    chat: Chat,
+    turns: readonly Turn[],
+    { provider = chat.engine, model = chat.model }: TranscriptContext = {},
+    maxBytes = MAX_ATTACHMENT_BYTES
+): string {
     const ranOn = oneLine([provider, model].filter(Boolean).join(', '));
-    const head = `${ ['# Conversation from Clowdy', '', `Chat: ${ oneLine(chat.title) }`, ...(ranOn ? [`Ran on: ${ ranOn }`] : [])].join('\n') }\n`;
-    const sections = turns.map(({ role, text }) => `${ HEADINGS[role] }\n\n${ quoted(text) }\n`);
+    const head = `${['# Conversation from Clowdy', '', `Chat: ${oneLine(chat.title)}`, ...(ranOn ? [`Ran on: ${ranOn}`] : [])].join('\n')}\n`;
+    const sections = turns.map(({ role, text }) => `${HEADINGS[role]}\n\n${quoted(text)}\n`);
     const whole = [head, ...sections].join('\n');
 
     if (bytesOf(whole) <= maxBytes) return whole;
@@ -166,7 +190,10 @@ const NAME_BYTES = 200;
 /** The file's name: the chat's title in kebab case, then `-conversation.md`. */
 export function handoffFileName(title: string): string {
     // Letters, marks (the vowel signs of Hindi or Thai are not letters) and numbers of any script stay; the rest between them is one dash.
-    const kebab = title.toLowerCase().replace(/[^\p{L}\p{M}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '');
+    const kebab = title
+        .toLowerCase()
+        .replace(/[^\p{L}\p{M}\p{N}]+/gu, '-')
+        .replace(/^-+|-+$/g, '');
     let slug = '';
     let bytes = 0;
     let chars = 0;
@@ -181,12 +208,12 @@ export function handoffFileName(title: string): string {
         slug += char;
     }
 
-    return `${ slug.replace(/-+$/, '') || 'chat' }-conversation.md`;
+    return `${slug.replace(/-+$/, '') || 'chat'}-conversation.md`;
 }
 
 /** The sentence that asks the next agent to carry on, for the message box of the new chat. */
 export function handoffSentence(title: string, fileName: string): string {
-    return `Continue the work from the chat "${ oneLine(title) }". The conversation so far is attached as ${ fileName }.`;
+    return `Continue the work from the chat "${oneLine(title)}". The conversation so far is attached as ${fileName}.`;
 }
 
 /**
@@ -254,7 +281,15 @@ const handingOff = new Set<ChatId>();
  * From an answer (`itemId`) the file ends at that answer, as a fork does, and the new chat goes on from there. `engine` is the agent the page starts on (the Fork
  * menu's "Hand off to"): the person can pick another, or close the page, which leaves nothing behind, since no chat exists before its first message is sent.
  */
-export async function startHandoff({ root, ui, chat, run, stillOpen = () => true, itemId, engine: startOn }: Handoff): Promise<boolean> {
+export async function startHandoff({
+    root,
+    ui,
+    chat,
+    run,
+    stillOpen = () => true,
+    itemId,
+    engine: startOn,
+}: Handoff): Promise<boolean> {
     if (!chat.orchestratorRunId) {
         toast.error({ message: 'There is nothing to hand off yet: the chat has no messages' });
 
@@ -276,7 +311,7 @@ export async function startHandoff({ root, ui, chat, run, stillOpen = () => true
         if (!stillOpen()) return false;
 
         if (stream.status !== 'ready') {
-            toast.error({ message: `The conversation could not be loaded${ stream.error ? `: ${ stream.error }` : '' }` });
+            toast.error({ message: `The conversation could not be loaded${stream.error ? `: ${stream.error}` : ''}` });
 
             return false;
         }
@@ -300,25 +335,34 @@ export async function startHandoff({ root, ui, chat, run, stillOpen = () => true
         const engine = chatProvider(chat, run);
         const provider = root.agents.find(agent => agent.id === engine)?.name ?? engine;
         const fileName = handoffFileName(chat.title);
-        const file = new File([transcriptOf(chat, turns, { provider, model: chat.model ?? run?.model })], fileName, { type: 'text/markdown' });
+        const file = new File([transcriptOf(chat, turns, { provider, model: chat.model ?? run?.model })], fileName, {
+            type: 'text/markdown',
+        });
 
         const draftKey = newChatDraftKey(ui.projectId);
         // A file the box already holds (the same chat handed off twice) is not a refusal: it is attached already.
         const [refusal] = admitFiles(filesOf(draftKey), [file]).refusals;
 
         if (refusal) {
-            toast.error({ title: 'The conversation was not handed off', message: `${ refusal } Make room in the message box of the new chat, then try again.` });
+            toast.error({
+                title: 'The conversation was not handed off',
+                message: `${refusal} Make room in the message box of the new chat, then try again.`,
+            });
 
             return false;
         }
 
         saveDraft(draftKey, withSentence(draftOf(draftKey), handoffSentence(chat.title, fileName)));
         // A chat in a worktree hands over to a chat in the same worktree, which is made and the folder the chat is pinned to. One whose worktree is not made yet has none to share.
-        ui.openDraft([file], chat.folderId ?? null, chat.workspace?.ready ? { mode: 'existing', path: chat.workspace.path } : null, startOn ?? null);
+        ui.openDraft(
+            [file],
+            chat.folderId ?? null,
+            chat.workspace?.ready ? { mode: 'existing', path: chat.workspace.path } : null,
+            startOn ?? null
+        );
 
         return true;
-    }
-    finally {
+    } finally {
         handingOff.delete(chat.id);
     }
 }

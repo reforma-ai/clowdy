@@ -35,13 +35,18 @@ export const placePath = ({ folder, workspace }: Place): string => workspace?.pa
 export const isPlaceReady = ({ workspace }: Place): boolean => workspace === undefined || workspace.ready;
 
 /** Whether two places are the same one: the same worktree, or the same folder's own checkout. */
-export const isSamePlace = (a: Place, b: Place): boolean => a.folder.id === b.folder.id && a.workspace?.id === b.workspace?.id;
+export const isSamePlace = (a: Place, b: Place): boolean =>
+    a.folder.id === b.folder.id && a.workspace?.id === b.workspace?.id;
 
 /**
  * The place a chat works in: the folder it works in (`folder` when the caller knows it, else the chat's own `folderId`, which a thread has from its parent) and the worktree
  * the chat has, if it is a checkout of that folder (the daemon pins a chat with a worktree to the worktree's folder, so a mismatch is a stale read and the worktree is left out).
  */
-export function chatPlace(folders: readonly ProjectFolder[], chat: Pick<Chat, 'folderId' | 'workspace'>, folder: ProjectFolder = folderById(folders, chat.folderId)): Place {
+export function chatPlace(
+    folders: readonly ProjectFolder[],
+    chat: Pick<Chat, 'folderId' | 'workspace'>,
+    folder: ProjectFolder = folderById(folders, chat.folderId)
+): Place {
     return chat.workspace?.folderId === folder.id ? { folder, workspace: chat.workspace } : { folder };
 }
 
@@ -53,7 +58,10 @@ export function chatPlace(folders: readonly ProjectFolder[], chat: Pick<Chat, 'f
  * made by the first message works in, so nothing changes under the tabs when the chat starts. A new worktree is made by the first message and has no row until then, so
  * the place of a page that chose one is the folder's own checkout.
  */
-export function currentPlace(project: Pick<ProjectState, 'chats' | 'project'>, ui: Pick<ProjectUi, 'chatId' | 'draft' | 'draftFolderId' | 'draftWorkspace' | 'draftWorkspaceRow'>): Place {
+export function currentPlace(
+    project: Pick<ProjectState, 'chats' | 'project'>,
+    ui: Pick<ProjectUi, 'chatId' | 'draft' | 'draftFolderId' | 'draftWorkspace' | 'draftWorkspaceRow'>
+): Place {
     const { folders } = project.project;
 
     if (ui.draft) {
@@ -61,10 +69,14 @@ export function currentPlace(project: Pick<ProjectState, 'chats' | 'project'>, u
         const { draftWorkspace: choice, draftWorkspaceRow: row } = ui;
 
         // The row answers for the choice it was asked for: one that no longer fits it (another worktree, another folder) is not the page's place.
-        return row && choice?.mode === 'existing' && row.folderId === folder.id && samePath(row.path, choice.path) ? { folder, workspace: row } : { folder };
+        return row && choice?.mode === 'existing' && row.folderId === folder.id && samePath(row.path, choice.path)
+            ? { folder, workspace: row }
+            : { folder };
     }
 
     const chat = ui.chatId ? project.chats.get(ui.chatId) : undefined;
 
-    return chat ? chatPlace(folders, chat, chatFolder(project.chats, folders, chat.id)?.folder) : { folder: mainFolder(project.project) };
+    return chat
+        ? chatPlace(folders, chat, chatFolder(project.chats, folders, chat.id)?.folder)
+        : { folder: mainFolder(project.project) };
 }

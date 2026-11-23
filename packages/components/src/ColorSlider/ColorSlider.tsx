@@ -1,10 +1,10 @@
 import { cn } from '@clowdy/lib';
 import {
     ColorSlider as AriaColorSlider,
-    ColorThumb,
-    SliderTrack,
     type ColorSliderProps as AriaColorSliderProps,
+    ColorThumb,
     type ColorThumbProps,
+    SliderTrack,
     type SliderTrackProps,
 } from 'react-aria-components';
 
@@ -19,7 +19,6 @@ export interface ColorSliderProps extends Omit<AriaColorSliderProps, 'children' 
     thumbClassName?: string;
     children?: ReactNode;
 }
-
 
 function getDefaultColorSpace(channel: AriaColorSliderProps['channel']): AriaColorSliderProps['colorSpace'] {
     if (channel === 'hue' || channel === 'saturation' || channel === 'brightness') {
@@ -48,7 +47,7 @@ function getTrackStyle(channel: AriaColorSliderProps['channel']): SliderTrackPro
 
         return {
             ...style,
-            background: `${ gradient }, var(--clowdy-color-slider-checker-bg)`,
+            background: `${gradient}, var(--clowdy-color-slider-checker-bg)`,
         };
     };
 }
@@ -91,25 +90,19 @@ export function ColorSlider({
 }: ColorSliderProps) {
     return (
         <AriaColorSlider
-            { ...props }
-            ref={ ref }
-            channel={ channel }
-            colorSpace={ colorSpace ?? getDefaultColorSpace(channel) }
-            className={ cn(styles.slider, className) }
-            data-channel={ channel }
+            {...props}
+            ref={ref}
+            channel={channel}
+            colorSpace={colorSpace ?? getDefaultColorSpace(channel)}
+            className={cn(styles.slider, className)}
+            data-channel={channel}
             data-modal-drag-exclude
         >
-            { children ?? (
-                <SliderTrack
-                    className={ cn(styles.track, trackClassName) }
-                    style={ getTrackStyle(channel) }
-                >
-                    <ColorThumb
-                        className={ cn(styles.thumb, thumbClassName) }
-                        style={ getThumbStyle }
-                    />
+            {children ?? (
+                <SliderTrack className={cn(styles.track, trackClassName)} style={getTrackStyle(channel)}>
+                    <ColorThumb className={cn(styles.thumb, thumbClassName)} style={getThumbStyle} />
                 </SliderTrack>
-            ) }
+            )}
         </AriaColorSlider>
     );
 }

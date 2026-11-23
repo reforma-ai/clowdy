@@ -117,31 +117,36 @@ export function selectionAction({ label, onAction }: SelectionActionOptions): Ex
         dom.className = styles.host;
         // The press of the mouse is what moves the focus and clears the selection; the button's own press handling still sees it.
         dom.addEventListener('mousedown', event => event.preventDefault());
-        root.render(createElement(
-            Button,
-            {
-                variant: 'filling',
-                size: 'sm',
-                preventFocusOnPress: true,
-                'aria-label': label,
-                onPress: () => run(view, onAction),
-            },
-            createElement(Message),
-            label,
-            createElement(Hotkey, { hotkey: ['mod', 'i'] })
-        ));
+        root.render(
+            createElement(
+                Button,
+                {
+                    variant: 'filling',
+                    size: 'sm',
+                    preventFocusOnPress: true,
+                    'aria-label': label,
+                    onPress: () => run(view, onAction),
+                },
+                createElement(Message),
+                label,
+                createElement(Hotkey, { hotkey: ['mod', 'i'] })
+            )
+        );
 
         return {
             dom,
             // Lines do not wrap, and the editor hides a tooltip whose position is outside the box the lines scroll in: the end of a long line is. The button stands
             // under the part of the line that shows instead, against the box's right edge, so it is there whatever the selection and the scroll.
-            getCoords: (pos) => {
+            getCoords: pos => {
                 const rect = view.coordsAtPos(pos);
 
                 if (!rect) return OUT_OF_SIGHT;
 
                 const box = view.scrollDOM.getBoundingClientRect();
-                const left = Math.max(box.left, Math.min(rect.left, box.right - dom.getBoundingClientRect().width - EDGE_GAP));
+                const left = Math.max(
+                    box.left,
+                    Math.min(rect.left, box.right - dom.getBoundingClientRect().width - EDGE_GAP)
+                );
 
                 // The editor's rectangles are DOMRects, whose sides are not own properties a spread would copy.
                 return { left, right: left, top: rect.top, bottom: rect.bottom };
@@ -159,7 +164,8 @@ export function selectionAction({ label, onAction }: SelectionActionOptions): Ex
         create: state => ({ tooltip: tooltipOf(state), held: false }),
         update(value, transaction) {
             const held = transaction.effects.findLast(effect => effect.is(mouseHeld))?.value ?? value.held;
-            const tooltip = transaction.docChanged || transaction.selection ? tooltipOf(transaction.state) : value.tooltip;
+            const tooltip =
+                transaction.docChanged || transaction.selection ? tooltipOf(transaction.state) : value.tooltip;
 
             return held === value.held && tooltip === value.tooltip ? value : { tooltip, held };
         },
@@ -171,9 +177,10 @@ export function selectionAction({ label, onAction }: SelectionActionOptions): Ex
             if (event.button !== 0) return false;
 
             // After the editor's own handlers of the same event have made the selection what it ends as.
-            const release = () => setTimeout(() => {
-                if (view.dom.isConnected) view.dispatch({ effects: mouseHeld.of(false) });
-            });
+            const release = () =>
+                setTimeout(() => {
+                    if (view.dom.isConnected) view.dispatch({ effects: mouseHeld.of(false) });
+                });
 
             view.dispatch({ effects: mouseHeld.of(true) });
             view.dom.ownerDocument.addEventListener('mouseup', release, { once: true, capture: true });
@@ -182,9 +189,5 @@ export function selectionAction({ label, onAction }: SelectionActionOptions): Ex
         },
     });
 
-    return [
-        offer,
-        tracking,
-        Prec.high(keymap.of([{ key: KEY, run: view => run(view, onAction) }])),
-    ];
+    return [offer, tracking, Prec.high(keymap.of([{ key: KEY, run: view => run(view, onAction) }]))];
 }

@@ -4,7 +4,7 @@
     "description": "File manager and text editor over any file system provider",
     "type": "module",
     "version": "0.0.0",
-    "license": "UNLICENSED",
+    "license": "Apache-2.0",
     "sideEffects": [
         "**/*.css"
     ],
@@ -47,7 +47,8 @@
     },
     "scripts": {
         "clean": "rm -rf node_modules/{*,.*} .turbo 2>/dev/null || true",
-        "lint": "eslint .",
+        "lint": "biome check",
+        "lint:fix": "biome check --write",
         "test": "vitest run",
         "typecheck": "tsc --noEmit"
     },

@@ -15,7 +15,7 @@ export const BRIDGE_SERVER_NAME = 'clowdy';
  * It sits beside the module that runs this line: `mcp-stdio.ts` next to this file in the sources, `mcp-stdio.js` next to
  * `main.js` in a bundle (`scripts/bundle.ts`), so its extension is this module's.
  */
-const MCP_ENTRY = fileURLToPath(new URL(`./mcp-stdio${ extname(fileURLToPath(import.meta.url)) }`, import.meta.url));
+const MCP_ENTRY = fileURLToPath(new URL(`./mcp-stdio${extname(fileURLToPath(import.meta.url))}`, import.meta.url));
 
 interface Registration {
     tools: Map<string, ToolDefinition>;
@@ -47,7 +47,13 @@ export interface BridgeAccess {
 }
 
 /** A tool as `GET /cli/tools` lists it for the `clowdy` command (`cli/args.ts` reads it). */
-const cliEntry = ({ name, description, inputSchema, cli }: ToolDefinition) => ({ name, description, inputSchema, positional: [...cli?.positional ?? []], ...(cli?.stdin && { stdin: cli.stdin }) });
+const cliEntry = ({ name, description, inputSchema, cli }: ToolDefinition) => ({
+    name,
+    description,
+    inputSchema,
+    positional: [...(cli?.positional ?? [])],
+    ...(cli?.stdin && { stdin: cli.stdin }),
+});
 
 /**
  * How an agent calls the runtime's tools. ACP has no way to register a tool, only to name MCP servers, and stdio is the
@@ -64,10 +70,13 @@ export class ToolBridge {
     /** Gives `tools` to one session. `signal` ends every call still running for it. */
     register(tools: ToolDefinition[], signal: AbortSignal): BridgeAccess {
         const token = randomBytes(32).toString('hex');
-        const url = `http://127.0.0.1:${ this.listener().port }`;
+        const url = `http://127.0.0.1:${this.listener().port}`;
         const ended = new AbortController();
 
-        this.registrations.set(token, { tools: new Map(tools.map(tool => [tool.name, tool])), signal: AbortSignal.any([signal, ended.signal]) });
+        this.registrations.set(token, {
+            tools: new Map(tools.map(tool => [tool.name, tool])),
+            signal: AbortSignal.any([signal, ended.signal]),
+        });
 
         return {
             ...(tools.some(tool => !tool.cli) && {
@@ -98,7 +107,12 @@ export class ToolBridge {
 
     private listener(): ReturnType<typeof Bun.serve> {
         // A call can wait on a person (`ask_user`) for as long as they take, so the connection has no idle timeout.
-        this.server ??= Bun.serve({ hostname: '127.0.0.1', port: 0, idleTimeout: 0, fetch: request => this.handle(request) });
+        this.server ??= Bun.serve({
+            hostname: '127.0.0.1',
+            port: 0,
+            idleTimeout: 0,
+            fetch: request => this.handle(request),
+        });
 
         return this.server;
     }
@@ -115,7 +129,11 @@ export class ToolBridge {
 
         // The MCP server lists the model's tools, the CLI its commands; a call runs either.
         if (pathname === '/tools' && request.method === 'GET') {
-            return Response.json({ tools: [...registration.tools.values()].filter(tool => !tool.cli).map(({ name, description, inputSchema }) => ({ name, description, inputSchema })) });
+            return Response.json({
+                tools: [...registration.tools.values()]
+                    .filter(tool => !tool.cli)
+                    .map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),
+            });
         }
 
         if (pathname === '/cli/tools' && request.method === 'GET') {
@@ -126,7 +144,10 @@ export class ToolBridge {
             return new Response('not found', { status: 404 });
         }
 
-        const body = await request.json().catch(() => undefined) as { name?: unknown; arguments?: unknown } | null | undefined;
+        const body = (await request.json().catch(() => undefined)) as
+            | { name?: unknown; arguments?: unknown }
+            | null
+            | undefined;
 
         if (typeof body?.name !== 'string') {
             return new Response('a call needs a JSON body with the name of a tool', { status: 400 });
@@ -135,15 +156,17 @@ export class ToolBridge {
         const tool = registration.tools.get(body.name);
 
         if (!tool) {
-            return Response.json({ isError: true, text: `Unknown tool ${ body.name }` });
+            return Response.json({ isError: true, text: `Unknown tool ${body.name}` });
         }
 
         try {
-            const result = await tool.execute(body.arguments ?? {}, AbortSignal.any([registration.signal, request.signal]));
+            const result = await tool.execute(
+                body.arguments ?? {},
+                AbortSignal.any([registration.signal, request.signal])
+            );
 
             return Response.json({ isError: false, text: resultText(result) });
-        }
-        catch (error) {
+        } catch (error) {
             return Response.json({ isError: true, text: errorMessage(error) });
         }
     }

@@ -16,10 +16,19 @@ const FILE: FileEntry = { path: 'src/index.ts', kind: 'file' };
 const DIRECTORY: FileEntry = { path: 'src', kind: 'directory' };
 
 const effects = (): OpenEffects => ({ openPath: vi.fn(), openUrl: vi.fn(), copy: vi.fn() });
-const itemsOf = (targets: readonly FileEntry[], options: Partial<Parameters<typeof openInMenuItems>[0]> = {}) => openInMenuItems({ projectId: 'p-app', place: { folder: FOLDER }, programs: PROGRAMS, git: GIT, effects: effects(), ...options })(targets);
-const labels = (items: ReturnType<typeof itemsOf>) => items.map(item => [item.label, item.children?.map(child => child.label)]);
+const itemsOf = (targets: readonly FileEntry[], options: Partial<Parameters<typeof openInMenuItems>[0]> = {}) =>
+    openInMenuItems({
+        projectId: 'p-app',
+        place: { folder: FOLDER },
+        programs: PROGRAMS,
+        git: GIT,
+        effects: effects(),
+        ...options,
+    })(targets);
+const labels = (items: ReturnType<typeof itemsOf>) =>
+    items.map(item => [item.label, item.children?.map(child => child.label)]);
 
-describe('what the Files tree\'s row menu is given to open a row in', () => {
+describe("what the Files tree's row menu is given to open a row in", () => {
     it('is a Copy path submenu of the two paths, then an Open in… submenu of the editor, the file manager showing the file and GitHub, for a file', () => {
         expect(labels(itemsOf([FILE]))).toEqual([
             ['Copy path', ['Absolute path', 'Relative path']],
@@ -70,10 +79,12 @@ describe('what the Files tree\'s row menu is given to open a row in', () => {
     });
 
     it('leaves out Open in… when nothing opens the row (no program and no GitHub page), and keeps Copy path', () => {
-        expect(labels(itemsOf([FILE], { programs: {}, git: undefined }))).toEqual([['Copy path', ['Absolute path', 'Relative path']]]);
+        expect(labels(itemsOf([FILE], { programs: {}, git: undefined }))).toEqual([
+            ['Copy path', ['Absolute path', 'Relative path']],
+        ]);
     });
 
-    it('runs each item against the row\'s path inside the folder the tree shows', () => {
+    it("runs each item against the row's path inside the folder the tree shows", () => {
         const done = effects();
         const [copying, opening] = itemsOf([FILE], { effects: done });
         const [editor, manager, github] = opening!.children!;
@@ -86,7 +97,12 @@ describe('what the Files tree\'s row menu is given to open a row in', () => {
         copyRelative!.onAction();
 
         expect(done.openPath).toHaveBeenNthCalledWith(1, '/Users/dev/app/src/index.ts', 'editor', PROGRAMS.editor);
-        expect(done.openPath).toHaveBeenNthCalledWith(2, '/Users/dev/app/src/index.ts', 'fileManager', PROGRAMS.fileManager);
+        expect(done.openPath).toHaveBeenNthCalledWith(
+            2,
+            '/Users/dev/app/src/index.ts',
+            'fileManager',
+            PROGRAMS.fileManager
+        );
         expect(done.openUrl).toHaveBeenCalledExactlyOnceWith('https://github.com/acme/app/blob/main/src/index.ts');
         expect(done.copy).toHaveBeenNthCalledWith(1, '/Users/dev/app/src/index.ts');
         expect(done.copy).toHaveBeenNthCalledWith(2, 'src/index.ts');

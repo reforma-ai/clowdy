@@ -6,7 +6,10 @@
         --clowdy-color-slider-thumb-border: var(--spacing-2);
         --clowdy-color-slider-thumb-shadow: var(--color-secondary-muted-border);
         --clowdy-color-slider-checker-size: var(--spacing-4);
-        --clowdy-color-slider-checker-bg: repeating-conic-gradient(var(--color-dark-a15) 0% 25%, transparent 0% 50%) 0 0 / var(--clowdy-color-slider-checker-size) var(--clowdy-color-slider-checker-size), var(--color-white);
+        --clowdy-color-slider-checker-bg:
+            repeating-conic-gradient(var(--color-dark-a15) 0% 25%, transparent 0% 50%) 0 0 /
+            var(--clowdy-color-slider-checker-size) var(--clowdy-color-slider-checker-size),
+            var(--color-white);
 
         width: 100%;
         min-width: var(--spacing-56);

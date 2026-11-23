@@ -17,7 +17,7 @@ import {
 } from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { overrideTransport } from '../../daemon/testing';
-import { TransportError, type Transport } from '../../daemon/transport';
+import { type Transport, TransportError } from '../../daemon/transport';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { chatFolder } from '../agents/agentTree';
 import { gitFactsOf } from '../changes/gitFacts';
@@ -50,9 +50,10 @@ let store: RootStore;
 let transport: Transport;
 let data: ReturnType<typeof createFixtureData>;
 
-const settle = () => act(async () => {
-    await new Promise(resolve => setTimeout(resolve, 0));
-});
+const settle = () =>
+    act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 0));
+    });
 const chatOf = (id: string): Chat => store.selectedProject!.chats.get(id)!;
 const runOf = (id: string): Run => ({ ...store.selectedProject!.runs.get(chatOf(id).orchestratorRunId!)! });
 const itemsOf = (id: string): StreamItem[] => structuredClone(data.items[chatOf(id).orchestratorRunId!]!);
@@ -68,11 +69,17 @@ interface Draw {
 async function draw({ chat = FIXTURE_LAST_RUN_CHAT_ID, run, items, chatFields }: Draw = {}) {
     const found = { ...chatOf(chat), ...chatFields };
 
-    await act(async () => reactRoot.render(
-        <RootStoreProvider value={ store }>
-            <Plate chat={ found } run={ run === null ? undefined : { ...runOf(chat), ...run } } items={ items === null ? undefined : items ?? itemsOf(chat) } />
-        </RootStoreProvider>
-    ));
+    await act(async () =>
+        reactRoot.render(
+            <RootStoreProvider value={store}>
+                <Plate
+                    chat={found}
+                    run={run === null ? undefined : { ...runOf(chat), ...run }}
+                    items={items === null ? undefined : (items ?? itemsOf(chat))}
+                />
+            </RootStoreProvider>
+        )
+    );
     await settle();
     await settle();
 }
@@ -126,7 +133,11 @@ describe('the Last run plate', () => {
         expect(chevron()?.textContent).toBe('Show fewer');
         expect(rows().map(row => row.getAttribute('aria-label'))).toEqual(FIXTURE_RUN_FILES.map(rowLabel));
         // The button controls the rows it unfolds.
-        expect(plate()?.querySelector(`[id="${ chevron()!.getAttribute('aria-controls') }"]`)?.querySelectorAll('button')).toHaveLength(7);
+        expect(
+            plate()
+                ?.querySelector(`[id="${chevron()!.getAttribute('aria-controls')}"]`)
+                ?.querySelectorAll('button')
+        ).toHaveLength(7);
 
         await act(async () => chevron()!.click());
         expect(chevron()?.getAttribute('aria-expanded')).toBe('false');
@@ -134,7 +145,11 @@ describe('the Last run plate', () => {
     });
 
     it('has a chevron only when there is something behind it', async () => {
-        data.chats.find(chat => chat.id === FIXTURE_LAST_RUN_CHAT_ID)!.lastRun = { ...FIXTURE_RUN_TREES, seq: 2, at: 1 };
+        data.chats.find(chat => chat.id === FIXTURE_LAST_RUN_CHAT_ID)!.lastRun = {
+            ...FIXTURE_RUN_TREES,
+            seq: 2,
+            at: 1,
+        };
         vi.spyOn(transport, 'getGitChanges').mockResolvedValue({
             isRepository: true,
             scope: FIXTURE_RUN_SCOPE,
@@ -153,7 +168,7 @@ describe('the Last run plate', () => {
         expect(chevron()).toBeNull();
     });
 
-    it('draws a row\'s path with the folder dimmed, the name after it, and the start cut when it is long, so the name stays', async () => {
+    it("draws a row's path with the folder dimmed, the name after it, and the start cut when it is long, so the name stays", async () => {
         await draw();
 
         const long = rows()[0]!;
@@ -162,9 +177,15 @@ describe('the Last run plate', () => {
         expect(path.getAttribute('title')).toBe(FIXTURE_RUN_FILES[0]!.path);
         expect(path.querySelector('bdi')?.getAttribute('dir')).toBe('ltr');
         // The folder and the name are two runs of text inside it.
-        expect([...path.querySelectorAll('bdi > *')].map(part => part.textContent)).toEqual(['docs/pricing/a/deeply/nested/folder/for/the/weekend-surcharge-rules/', 'weekend-surcharge-calculation-notes.md']);
+        expect([...path.querySelectorAll('bdi > *')].map(part => part.textContent)).toEqual([
+            'docs/pricing/a/deeply/nested/folder/for/the/weekend-surcharge-rules/',
+            'weekend-surcharge-calculation-notes.md',
+        ]);
         // Only the letter and the lines are hidden from a screen reader: the row's own name says them.
-        expect([...long.querySelectorAll('[aria-hidden="true"]')].map(part => part.textContent)).toEqual(['A', '+38−0']);
+        expect([...long.querySelectorAll('[aria-hidden="true"]')].map(part => part.textContent)).toEqual([
+            'A',
+            '+38−0',
+        ]);
     });
 
     it('is not drawn for a chat whose latest run changed nothing', async () => {
@@ -176,7 +197,15 @@ describe('the Last run plate', () => {
     it('is not drawn for a run that changed files but whose list is empty, or is not a repository', async () => {
         const read = vi.spyOn(transport, 'getGitChanges');
 
-        read.mockResolvedValueOnce({ isRepository: true, scope: FIXTURE_RUN_SCOPE, files: [], fileCount: 0, additions: 0, deletions: 0, statsComplete: true });
+        read.mockResolvedValueOnce({
+            isRepository: true,
+            scope: FIXTURE_RUN_SCOPE,
+            files: [],
+            fileCount: 0,
+            additions: 0,
+            deletions: 0,
+            statsComplete: true,
+        });
         await draw();
         expect(plate()).toBeNull();
 
@@ -221,13 +250,26 @@ describe('the Last run plate', () => {
         await draw({ run: working });
         expect(plate()).toBeNull();
 
-        const sent: StreamItem = { id: 'i3', runId: 'r-orch-11', seq: 3, at: 5, body: { kind: 'user', text: 'And now the tests' } };
+        const sent: StreamItem = {
+            id: 'i3',
+            runId: 'r-orch-11',
+            seq: 3,
+            at: 5,
+            body: { kind: 'user', text: 'And now the tests' },
+        };
 
         await draw({ items: [...itemsOf(FIXTURE_LAST_RUN_CHAT_ID), sent] });
         expect(plate()).toBeNull();
 
         // The run ends again with a newer latest turn that changed files (the daemon says so with a `lastRun` of its own, after the message): its plate stands in place of the one that went.
-        await draw({ items: [...itemsOf(FIXTURE_LAST_RUN_CHAT_ID), sent, { ...sent, id: 'i4', seq: 4, body: { kind: 'assistant', text: 'Tests added', done: true } }], chatFields: { lastRun: { ...FIXTURE_RUN_TREES, seq: 4, at: 9 } } });
+        await draw({
+            items: [
+                ...itemsOf(FIXTURE_LAST_RUN_CHAT_ID),
+                sent,
+                { ...sent, id: 'i4', seq: 4, body: { kind: 'assistant', text: 'Tests added', done: true } },
+            ],
+            chatFields: { lastRun: { ...FIXTURE_RUN_TREES, seq: 4, at: 9 } },
+        });
         expect(plate()).not.toBeNull();
     });
 
@@ -249,7 +291,11 @@ describe('the Last run plate', () => {
 
         expect(plate()).not.toBeNull();
         expect(read).toHaveBeenCalledTimes(1);
-        expect(read).toHaveBeenCalledWith(FIXTURE_PROJECT_ID, { folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' }, FIXTURE_RUN_SCOPE);
+        expect(read).toHaveBeenCalledWith(
+            FIXTURE_PROJECT_ID,
+            { folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' },
+            FIXTURE_RUN_SCOPE
+        );
     });
 
     it('reads nothing while it could not be drawn: a run that works, a stream that is not loaded', async () => {
@@ -267,8 +313,19 @@ describe('the Last run plate', () => {
         await draw();
 
         const chat = chatOf(FIXTURE_LAST_RUN_CHAT_ID);
-        const place = chatPlace(store.selectedProject!.project.folders, chat, chatFolder(store.selectedProject!.chats, store.selectedProject!.project.folders, chat.id)?.folder);
-        const model = placeChangesOf(transport, gitFactsOf(transport).of({ projectId: FIXTURE_PROJECT_ID, folderId: place.folder.id, workspaceId: place.workspace!.id }));
+        const place = chatPlace(
+            store.selectedProject!.project.folders,
+            chat,
+            chatFolder(store.selectedProject!.chats, store.selectedProject!.project.folders, chat.id)?.folder
+        );
+        const model = placeChangesOf(
+            transport,
+            gitFactsOf(transport).of({
+                projectId: FIXTURE_PROJECT_ID,
+                folderId: place.folder.id,
+                workspaceId: place.workspace!.id,
+            })
+        );
 
         expect(model.effectiveScope).toBe('all');
 
@@ -295,16 +352,24 @@ describe('the Last run plate', () => {
     });
 
     it('says nothing of a transport that cannot answer: a window with no daemon draws no plate', async () => {
-        const broken = overrideTransport(transport, { getGitChanges: () => Promise.reject(new TransportError('No daemon', 503)) });
+        const broken = overrideTransport(transport, {
+            getGitChanges: () => Promise.reject(new TransportError('No daemon', 503)),
+        });
         const other = new RootStore(broken, { storage: memoryStorage() });
 
         await other.load();
         other.selectProject(FIXTURE_PROJECT_ID);
-        await act(async () => reactRoot.render(
-            <RootStoreProvider value={ other }>
-                <Plate chat={ other.selectedProject!.chats.get(FIXTURE_LAST_RUN_CHAT_ID)! } run={ other.selectedProject!.runs.get('r-orch-11') } items={ itemsOf(FIXTURE_LAST_RUN_CHAT_ID) } />
-            </RootStoreProvider>
-        ));
+        await act(async () =>
+            reactRoot.render(
+                <RootStoreProvider value={other}>
+                    <Plate
+                        chat={other.selectedProject!.chats.get(FIXTURE_LAST_RUN_CHAT_ID)!}
+                        run={other.selectedProject!.runs.get('r-orch-11')}
+                        items={itemsOf(FIXTURE_LAST_RUN_CHAT_ID)}
+                    />
+                </RootStoreProvider>
+            )
+        );
         await settle();
         expect(plate()).toBeNull();
         other.dispose();

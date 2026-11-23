@@ -19,7 +19,10 @@ let root: string;
 let current: Rig | undefined;
 
 /** A registry that finds no agent on this machine: neither on a path nor in an install folder, so no program of the person's is looked for or started. */
-const emptyRegistry = () => new AgentRegistry({ discovery: new Discovery({ env: { PATH: '' }, loginPath: async () => undefined, installDirs: [] }) });
+const emptyRegistry = () =>
+    new AgentRegistry({
+        discovery: new Discovery({ env: { PATH: '' }, loginPath: async () => undefined, installDirs: [] }),
+    });
 
 beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'clowdy-fork-'));
@@ -35,9 +38,14 @@ const store = () => join(root, 'sessions');
 const logFile = () => join(root, 'agent.log');
 
 /** A v2 fake agent that forks, and keeps its sessions in a folder, as the adapters keep theirs on disk. */
-const forking = (extra: Record<string, string> = {}, options: Parameters<typeof rig>[0] = {}) => (current = rig({ protocol: 'v2', agentEnv: { FAKE_ACP_FORK: '1', FAKE_ACP_STORE: store(), FAKE_ACP_LOG: logFile(), ...extra }, ...options }));
+const forking = (extra: Record<string, string> = {}, options: Parameters<typeof rig>[0] = {}) =>
+    (current = rig({
+        protocol: 'v2',
+        agentEnv: { FAKE_ACP_FORK: '1', FAKE_ACP_STORE: store(), FAKE_ACP_LOG: logFile(), ...extra },
+        ...options,
+    }));
 
-const lines = () => existsSync(logFile()) ? readFileSync(logFile(), 'utf8').split('\n').filter(Boolean) : [];
+const lines = () => (existsSync(logFile()) ? readFileSync(logFile(), 'utf8').split('\n').filter(Boolean) : []);
 
 /** Runs one turn to its end, and gives back the session it ran in and the agent's id of each message the turn closed. */
 async function turn(r: Rig, prompt: string, resumeSessionId?: string) {
@@ -46,9 +54,11 @@ async function turn(r: Rig, prompt: string, resumeSessionId?: string) {
 
     await session.close();
 
-    const sessionId = events.flatMap(event => event.type === 'session' ? [event.sessionId] : [])[0];
-    const messageIds = events.flatMap(event => event.type === 'text' && event.done && event.messageId !== undefined ? [event.messageId] : []);
-    const said = events.flatMap(event => event.type === 'text' ? [event.delta] : []).join('');
+    const sessionId = events.flatMap(event => (event.type === 'session' ? [event.sessionId] : []))[0];
+    const messageIds = events.flatMap(event =>
+        event.type === 'text' && event.done && event.messageId !== undefined ? [event.messageId] : []
+    );
+    const said = events.flatMap(event => (event.type === 'text' ? [event.delta] : [])).join('');
 
     return { events, sessionId, messageIds, said };
 }
@@ -87,7 +97,11 @@ describe('a fork of an ACP session over v2', () => {
         const r = forking();
         const first = await turn(r, 'say alpha');
         const second = await turn(r, 'say beta', first.sessionId);
-        const forked = await r.engine.fork({ sessionId: first.sessionId, ref: first.messageIds[0], cwd: process.cwd() });
+        const forked = await r.engine.fork({
+            sessionId: first.sessionId,
+            ref: first.messageIds[0],
+            cwd: process.cwd(),
+        });
 
         await turn(r, 'say gamma', forked.sessionId);
 
@@ -101,11 +115,16 @@ describe('a fork of an ACP session over v2', () => {
         expect(copy).not.toContain('beta');
     });
 
-    test('the first prompt of a fork reports its cost, since the agent counts the copy\'s from zero, where a session this daemon never measured reports none', async () => {
+    test("the first prompt of a fork reports its cost, since the agent counts the copy's from zero, where a session this daemon never measured reports none", async () => {
         const r = forking();
         const first = await turn(r, 'say alpha\nusage 100 10 0.5');
-        const forked = await r.engine.fork({ sessionId: first.sessionId, ref: first.messageIds[0], cwd: process.cwd() });
-        const usageOf = (events: { type: string }[]) => events.flatMap(event => event.type === 'usage' ? [event as { type: 'usage'; costUsd?: number }] : []);
+        const forked = await r.engine.fork({
+            sessionId: first.sessionId,
+            ref: first.messageIds[0],
+            cwd: process.cwd(),
+        });
+        const usageOf = (events: { type: string }[]) =>
+            events.flatMap(event => (event.type === 'usage' ? [event as { type: 'usage'; costUsd?: number }] : []));
 
         // The copy's own prompt costs 0.25: the agent's running total for the copy is that, and the report is that.
         const copy = await turn(r, 'say beta\nusage 40 4 0.25', forked.sessionId);
@@ -119,14 +138,16 @@ describe('a fork of an ACP session over v2', () => {
             const resumed = await turn(unmeasured, 'say gamma\nusage 40 4 0.25', first.sessionId);
 
             expect(usageOf(resumed.events).map(event => event.costUsd)).toEqual([undefined]);
-        }
-        finally {
+        } finally {
             unmeasured.stop();
         }
     });
 
-    test('sends the fork point in the vendor extension, with the agent\'s own options, and closes the new session', async () => {
-        const r = forking({ FAKE_ACP_DIRECTORIES: '1' }, { sessionMeta: { claudeCode: { options: { disallowedTools: ['AskUserQuestion'] } } } });
+    test("sends the fork point in the vendor extension, with the agent's own options, and closes the new session", async () => {
+        const r = forking(
+            { FAKE_ACP_DIRECTORIES: '1' },
+            { sessionMeta: { claudeCode: { options: { disallowedTools: ['AskUserQuestion'] } } } }
+        );
         const first = await turn(r, 'say alpha');
         const forked = await r.engine.fork({
             sessionId: first.sessionId,
@@ -136,31 +157,46 @@ describe('a fork of an ACP session over v2', () => {
             systemPrompt: 'You work in Clowdy',
             tools: [tool('ping', async () => 'pong')],
         });
-        const request = JSON.parse(lines().find(line => line.startsWith('fork-request '))?.slice('fork-request '.length) ?? 'null');
+        const request = JSON.parse(
+            lines()
+                .find(line => line.startsWith('fork-request '))
+                ?.slice('fork-request '.length) ?? 'null'
+        );
 
         expect(request).toMatchObject({
             cwd: process.cwd(),
             directories: ['/work/other'],
             servers: ['clowdy'],
             systemPrompt: 'You work in Clowdy',
-            meta: { claudeCode: { options: { disallowedTools: ['AskUserQuestion'] } }, jetbrains: { air: { fork: { version: 1, messageId: first.messageIds[0] } } } },
+            meta: {
+                claudeCode: { options: { disallowedTools: ['AskUserQuestion'] } },
+                jetbrains: { air: { fork: { version: 1, messageId: first.messageIds[0] } } },
+            },
         });
-        expect(lines()).toContain(`fork ${ first.sessionId } ${ first.messageIds[0] } ${ forked.sessionId }`);
-        expect(lines()).toContain(`close ${ forked.sessionId }`);
+        expect(lines()).toContain(`fork ${first.sessionId} ${first.messageIds[0]} ${forked.sessionId}`);
+        expect(lines()).toContain(`close ${forked.sessionId}`);
     });
 
-    test('gives the agent the runtime\'s tools only for the call: their credential works while it forks and is dead once the call is over, a failed fork included', async () => {
+    test("gives the agent the runtime's tools only for the call: their credential works while it forks and is dead once the call is over, a failed fork included", async () => {
         const r = forking();
         const first = await turn(r, 'say alpha');
-        const credential = () => (lines().filter(line => line.startsWith('fork-bridge ')).at(-1) as string).split(' ');
-        const status = ([, url, token]: string[]) => fetch(`${ url }/tools`, { headers: { authorization: `Bearer ${ token }` } }).then(answer => answer.status);
+        const credential = () =>
+            (
+                lines()
+                    .filter(line => line.startsWith('fork-bridge '))
+                    .at(-1) as string
+            ).split(' ');
+        const status = ([, url, token]: string[]) =>
+            fetch(`${url}/tools`, { headers: { authorization: `Bearer ${token}` } }).then(answer => answer.status);
         const tools = [tool('ping', async () => 'pong')];
 
         await r.engine.fork({ sessionId: first.sessionId, ref: first.messageIds[0], cwd: process.cwd(), tools });
         expect(credential()[3]).toBe('200');
         expect(await status(credential())).toBe(401);
 
-        await r.engine.fork({ sessionId: first.sessionId, ref: 'not-a-message', cwd: process.cwd(), tools }).catch(() => undefined);
+        await r.engine
+            .fork({ sessionId: first.sessionId, ref: 'not-a-message', cwd: process.cwd(), tools })
+            .catch(() => undefined);
         expect(lines().filter(line => line.startsWith('fork-bridge '))).toHaveLength(2);
         expect(credential()[3]).toBe('200');
         expect(await status(credential())).toBe(401);
@@ -172,20 +208,28 @@ describe('a fork of an ACP session over v2', () => {
 
         await r.engine.fork({ sessionId: first.sessionId, ref: first.messageIds[0], cwd: process.cwd() });
 
-        const request = JSON.parse(lines().find(line => line.startsWith('fork-request '))?.slice('fork-request '.length) ?? 'null');
+        const request = JSON.parse(
+            lines()
+                .find(line => line.startsWith('fork-request '))
+                ?.slice('fork-request '.length) ?? 'null'
+        );
 
         expect(request.servers).toEqual([]);
         expect(request.directories).toBeUndefined();
         expect(request.systemPrompt).toBeUndefined();
     });
 
-    test('ends the agent\'s process: nothing of the fork stays running once the call is over', async () => {
+    test("ends the agent's process: nothing of the fork stays running once the call is over", async () => {
         const r = forking();
         const first = await turn(r, 'say alpha');
 
         await r.engine.fork({ sessionId: first.sessionId, ref: first.messageIds[0], cwd: process.cwd() });
 
-        const pid = Number(lines().find(line => line.startsWith('fork-process '))?.slice('fork-process '.length));
+        const pid = Number(
+            lines()
+                .find(line => line.startsWith('fork-process '))
+                ?.slice('fork-process '.length)
+        );
 
         expect(pid).toBeGreaterThan(0);
         expect(alive(pid)).toBe(false);
@@ -194,17 +238,29 @@ describe('a fork of an ACP session over v2', () => {
     test('a point the session does not have is refused with what the agent said, and the process is gone', async () => {
         const r = forking();
         const first = await turn(r, 'say alpha');
-        const failure = await r.engine.fork({ sessionId: first.sessionId, ref: 'not-a-message', cwd: process.cwd() }).catch((error: unknown) => error);
+        const failure = await r.engine
+            .fork({ sessionId: first.sessionId, ref: 'not-a-message', cwd: process.cwd() })
+            .catch((error: unknown) => error);
 
         expect(failure).toBeInstanceOf(EngineFailure);
         expect((failure as EngineFailure).message).toContain('Fork point message not-a-message was not found');
-        expect(alive(Number(lines().find(line => line.startsWith('fork-process '))?.slice('fork-process '.length)))).toBe(false);
+        expect(
+            alive(
+                Number(
+                    lines()
+                        .find(line => line.startsWith('fork-process '))
+                        ?.slice('fork-process '.length)
+                )
+            )
+        ).toBe(false);
         expect(lines().some(line => line.startsWith('fork '))).toBe(false);
     });
 
     test('a session the agent no longer has fails as a lost session', async () => {
         const r = forking();
-        const failure = await r.engine.fork({ sessionId: 'fake-gone', ref: 'm1', cwd: process.cwd() }).catch((error: unknown) => error);
+        const failure = await r.engine
+            .fork({ sessionId: 'fake-gone', ref: 'm1', cwd: process.cwd() })
+            .catch((error: unknown) => error);
 
         expect(failure).toBeInstanceOf(EngineFailure);
         expect((failure as EngineFailure).code).toBe('session_not_found');
@@ -213,7 +269,9 @@ describe('a fork of an ACP session over v2', () => {
     test('an adapter that offers no fork is refused without being asked for one', async () => {
         const r = forking({ FAKE_ACP_FORK: '' });
         const first = await turn(r, 'say alpha');
-        const failure = await r.engine.fork({ sessionId: first.sessionId, ref: first.messageIds[0], cwd: process.cwd() }).catch((error: unknown) => error);
+        const failure = await r.engine
+            .fork({ sessionId: first.sessionId, ref: first.messageIds[0], cwd: process.cwd() })
+            .catch((error: unknown) => error);
 
         expect(failure).toBeInstanceOf(EngineFailure);
         expect((failure as EngineFailure).message).toContain('offers no session/fork');
@@ -224,19 +282,31 @@ describe('a fork of an ACP session over v2', () => {
         const r = forking({ FAKE_ACP_FORK: 'hang' }, { forkTimeoutMs: 300 });
         const first = await turn(r, 'say alpha');
         const started = Date.now();
-        const failure = await r.engine.fork({ sessionId: first.sessionId, ref: first.messageIds[0], cwd: process.cwd() }).catch((error: unknown) => error);
+        const failure = await r.engine
+            .fork({ sessionId: first.sessionId, ref: first.messageIds[0], cwd: process.cwd() })
+            .catch((error: unknown) => error);
 
         expect(failure).toBeInstanceOf(EngineFailure);
         expect((failure as EngineFailure).message).toContain('did not finish the fork');
         expect(Date.now() - started).toBeLessThan(5000);
-        expect(alive(Number(lines().find(line => line.startsWith('fork-process '))?.slice('fork-process '.length)))).toBe(false);
+        expect(
+            alive(
+                Number(
+                    lines()
+                        .find(line => line.startsWith('fork-process '))
+                        ?.slice('fork-process '.length)
+                )
+            )
+        ).toBe(false);
     });
 
     test('a fork that is cancelled stops at once', async () => {
         const r = forking({ FAKE_ACP_FORK: 'hang' });
         const first = await turn(r, 'say alpha');
         const abort = new AbortController();
-        const pending = r.engine.fork({ sessionId: first.sessionId, ref: first.messageIds[0], cwd: process.cwd(), signal: abort.signal }).catch((error: unknown) => error);
+        const pending = r.engine
+            .fork({ sessionId: first.sessionId, ref: first.messageIds[0], cwd: process.cwd(), signal: abort.signal })
+            .catch((error: unknown) => error);
 
         await new Promise(resolve => setTimeout(resolve, 300));
         abort.abort();
@@ -244,7 +314,15 @@ describe('a fork of an ACP session over v2', () => {
         const failure = await pending;
 
         expect(failure).toBeInstanceOf(EngineFailure);
-        expect(alive(Number(lines().find(line => line.startsWith('fork-process '))?.slice('fork-process '.length)))).toBe(false);
+        expect(
+            alive(
+                Number(
+                    lines()
+                        .find(line => line.startsWith('fork-process '))
+                        ?.slice('fork-process '.length)
+                )
+            )
+        ).toBe(false);
     });
 
     test('an agent that is not installed fails as a missing agent', async () => {
@@ -252,12 +330,13 @@ describe('a fork of an ACP session over v2', () => {
         const bridge = new ToolBridge();
 
         try {
-            const failure = await new AcpEngine('claude', { registry, bridge }).fork({ sessionId: 's', ref: 'm', cwd: process.cwd() }).catch((error: unknown) => error);
+            const failure = await new AcpEngine('claude', { registry, bridge })
+                .fork({ sessionId: 's', ref: 'm', cwd: process.cwd() })
+                .catch((error: unknown) => error);
 
             expect(failure).toBeInstanceOf(EngineFailure);
             expect((failure as EngineFailure).code).toBe('engine_missing');
-        }
-        finally {
+        } finally {
             bridge.stop();
         }
     });
@@ -266,7 +345,9 @@ describe('a fork of an ACP session over v2', () => {
 describe('a fork of an ACP session over v1', () => {
     test('is refused, saying so, and no process is started', async () => {
         const r = (current = rig({ protocol: 'v1', agentEnv: { FAKE_ACP_LOG: logFile() } }));
-        const failure = await r.engine.fork({ sessionId: 'fake-1', ref: 'm1', cwd: process.cwd() }).catch((error: unknown) => error);
+        const failure = await r.engine
+            .fork({ sessionId: 'fake-1', ref: 'm1', cwd: process.cwd() })
+            .catch((error: unknown) => error);
 
         expect(failure).toBeInstanceOf(EngineFailure);
         expect((failure as EngineFailure).message).toContain('cannot fork a conversation');
@@ -299,8 +380,7 @@ describe('the fork flag of an agent', () => {
         try {
             expect(new AcpEngine('claude', { registry, bridge }).canFork).toBe(true);
             expect(new AcpEngine('cursor', { registry, bridge }).canFork).toBe(false);
-        }
-        finally {
+        } finally {
             bridge.stop();
         }
     });

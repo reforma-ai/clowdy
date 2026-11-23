@@ -13,5 +13,5 @@ export type ContentColumnProps = ComponentPropsWithRef<'div'>;
  * padding, gaps and the direction of its children are the caller's. A subtree that needs another width sets `--content-width` itself.
  */
 export function ContentColumn({ className, ...props }: ContentColumnProps) {
-    return <div { ...props } className={ cn(styles.column, className) } />;
+    return <div {...props} className={cn(styles.column, className)} />;
 }

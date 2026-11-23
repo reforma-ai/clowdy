@@ -20,31 +20,11 @@ export interface HelpTipProps {
  * Compact “?” control that reveals help on hover/focus.
  * Spectrum’s analogue is ContextualHelp (popover); this is the tooltip-sized version.
  */
-export function HelpTip({
-    children,
-    className,
-    placement = 'top',
-    delay,
-    closeDelay,
-    warmUp,
-}: HelpTipProps) {
+export function HelpTip({ children, className, placement = 'top', delay, closeDelay, warmUp }: HelpTipProps) {
     return (
-        <Tooltip
-            content={ children }
-            placement={ placement }
-            delay={ delay }
-            closeDelay={ closeDelay }
-            warmUp={ warmUp }
-            arrow
-        >
-            <Button
-                variant="inline"
-                color="inherit"
-                size="unset"
-                iconOnly
-                className={ cn(styles.helpTip, className) }
-            >
-                <HelpCircle width={ 12 } height={ 12 } />
+        <Tooltip content={children} placement={placement} delay={delay} closeDelay={closeDelay} warmUp={warmUp} arrow>
+            <Button variant="inline" color="inherit" size="unset" iconOnly className={cn(styles.helpTip, className)}>
+                <HelpCircle width={12} height={12} />
             </Button>
         </Tooltip>
     );

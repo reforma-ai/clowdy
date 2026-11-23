@@ -18,13 +18,22 @@ let layout = { scrollHeight: 0, clientHeight: 0 };
 
 beforeEach(() => {
     layout = { scrollHeight: 0, clientHeight: 0 };
-    vi.stubGlobal('ResizeObserver', class {
-        observe = () => undefined;
-        disconnect = () => undefined;
-        unobserve = () => undefined;
+    vi.stubGlobal(
+        'ResizeObserver',
+        class {
+            observe = () => undefined;
+            disconnect = () => undefined;
+            unobserve = () => undefined;
+        }
+    );
+    Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
+        configurable: true,
+        get: () => layout.scrollHeight,
     });
-    Object.defineProperty(HTMLElement.prototype, 'scrollHeight', { configurable: true, get: () => layout.scrollHeight });
-    Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => layout.clientHeight });
+    Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+        configurable: true,
+        get: () => layout.clientHeight,
+    });
     container = document.createElement('div');
     document.body.append(container);
     root = createRoot(container);
@@ -38,22 +47,40 @@ afterEach(() => {
     Reflect.deleteProperty(HTMLElement.prototype, 'clientHeight');
 });
 
-const item = (n: number, body: StreamItemBody): StreamItem => ({ id: `i-${ n }`, runId: 'r', seq: n, at: n * 20_000, body });
-const message = item(0, { kind: 'user', text: 'Use the **staging** keys', from: { kind: 'thread', chatId: 'c-parent', title: 'Ship the checkout' } });
+const item = (n: number, body: StreamItemBody): StreamItem => ({
+    id: `i-${n}`,
+    runId: 'r',
+    seq: n,
+    at: n * 20_000,
+    body,
+});
+const message = item(0, {
+    kind: 'user',
+    text: 'Use the **staging** keys',
+    from: { kind: 'thread', chatId: 'c-parent', title: 'Ship the checkout' },
+});
 const notices: ThreadNotice[] = [
     { chatId: 'c-a', title: 'Write the refund tests', outcome: 'finished', text: '14 cases, all passing.' },
     { chatId: 'c-b', title: 'Migrate the payments table', outcome: 'failed', text: 'The column already exists' },
     { chatId: 'c-c', title: 'Fix login', outcome: 'interrupted' },
-    { chatId: 'c-d', title: 'Load test', outcome: 'finished', text: 'The short run held.', background: ['k6 run long.js', 'bun run report'] },
+    {
+        chatId: 'c-d',
+        title: 'Load test',
+        outcome: 'finished',
+        text: 'The short run held.',
+        background: ['k6 run long.js', 'bun run report'],
+    },
 ];
 const notice = item(1, { kind: 'user', text: '', from: { kind: 'threadNotice', threads: notices } });
 
-const draw = (items: StreamItem[], links: StreamLinks = {}) => act(async () => root.render(<StreamView items={ items } links={ links } />));
-const cards = (slot: string) => [...container.querySelectorAll<HTMLElement>(`[data-slot="${ slot }"]`)];
-const linkNamed = (scope: HTMLElement, name: string) => [...scope.querySelectorAll('button')].find(button => button.textContent === name);
+const draw = (items: StreamItem[], links: StreamLinks = {}) =>
+    act(async () => root.render(<StreamView items={items} links={links} />));
+const cards = (slot: string) => [...container.querySelectorAll<HTMLElement>(`[data-slot="${slot}"]`)];
+const linkNamed = (scope: HTMLElement, name: string) =>
+    [...scope.querySelectorAll('button')].find(button => button.textContent === name);
 
 describe('a message from another thread', () => {
-    it('is a card titled with who wrote it, not the person\'s bubble, with the words as Markdown', async () => {
+    it("is a card titled with who wrote it, not the person's bubble, with the words as Markdown", async () => {
         await draw([message]);
 
         const [card] = cards('thread-message');
@@ -74,7 +101,7 @@ describe('a message from another thread', () => {
         expect(onOpenChat).toHaveBeenCalledWith('c-parent');
     });
 
-    it('clamps a long message, as the person\'s long messages are, with a toggle that opens the rest', async () => {
+    it("clamps a long message, as the person's long messages are, with a toggle that opens the rest", async () => {
         layout = { scrollHeight: 900, clientHeight: 300 };
         await draw([message]);
 
@@ -114,12 +141,17 @@ describe('threads that stopped', () => {
             'Fix login was interrupted',
             'Load test finished',
         ]);
-        expect(cards('thread-notice').map(card => card.getAttribute('data-outcome'))).toEqual(['finished', 'failed', 'interrupted', 'finished']);
+        expect(cards('thread-notice').map(card => card.getAttribute('data-outcome'))).toEqual([
+            'finished',
+            'failed',
+            'interrupted',
+            'finished',
+        ]);
         expect(cards('thread-notice').every(card => card.querySelector('svg'))).toBe(true);
         expect(group.textContent).not.toMatch(/(finished|failed|interrupted)\./);
     });
 
-    it('shows the thread\'s words, and nothing for a thread that said nothing', async () => {
+    it("shows the thread's words, and nothing for a thread that said nothing", async () => {
         await draw([notice]);
 
         const [refunds, , login] = cards('thread-notice');

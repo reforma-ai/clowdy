@@ -18,7 +18,7 @@ function pipe(access: ReturnType<ToolBridge['register']>) {
         const queue: string[] = [];
         let wake: (() => void) | undefined;
 
-        push = (line) => {
+        push = line => {
             queue.push(line);
             wake?.();
         };
@@ -26,7 +26,7 @@ function pipe(access: ReturnType<ToolBridge['register']>) {
 
         for (;;) {
             while (queue.length === 0) {
-                await new Promise<void>((resolve) => {
+                await new Promise<void>(resolve => {
                     wake = resolve;
                 });
             }
@@ -37,14 +37,17 @@ function pipe(access: ReturnType<ToolBridge['register']>) {
                 return;
             }
 
-            yield `${ next }\n`;
+            yield `${next}\n`;
         }
-    }());
+    })();
     const done = runMcpBridge({ input, write: line => void lines.push(line), env, fetch });
 
     return {
         send: (message: object) => push(JSON.stringify({ jsonrpc: '2.0', ...message })),
-        received: () => lines.map(line => JSON.parse(line) as { id?: number; result?: any; error?: { code: number; message: string } }),
+        received: () =>
+            lines.map(
+                line => JSON.parse(line) as { id?: number; result?: any; error?: { code: number; message: string } }
+            ),
         finish: async () => {
             end();
             await done;
@@ -53,11 +56,18 @@ function pipe(access: ReturnType<ToolBridge['register']>) {
 }
 
 describe('the MCP server an agent starts', () => {
-    test('answers initialize, ping and tools/list with the session\'s tools', async () => {
-        const access = bridge.register([tool('task_list', async () => 'ok'), tool('task_get', async () => 'ok')], new AbortController().signal);
+    test("answers initialize, ping and tools/list with the session's tools", async () => {
+        const access = bridge.register(
+            [tool('task_list', async () => 'ok'), tool('task_get', async () => 'ok')],
+            new AbortController().signal
+        );
         const mcp = pipe(access);
 
-        mcp.send({ id: 1, method: 'initialize', params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'x', version: '1' } } });
+        mcp.send({
+            id: 1,
+            method: 'initialize',
+            params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'x', version: '1' } },
+        });
         mcp.send({ method: 'notifications/initialized' });
         mcp.send({ id: 2, method: 'ping' });
         mcp.send({ id: 3, method: 'tools/list' });
@@ -66,16 +76,30 @@ describe('the MCP server an agent starts', () => {
 
         const [initialize, ping, list] = mcp.received();
 
-        expect(initialize.result).toMatchObject({ protocolVersion: '2025-11-25', capabilities: { tools: {} }, serverInfo: { name: 'clowdy' } });
+        expect(initialize.result).toMatchObject({
+            protocolVersion: '2025-11-25',
+            capabilities: { tools: {} },
+            serverInfo: { name: 'clowdy' },
+        });
         expect(ping.result).toEqual({});
         expect(list.result.tools.map((entry: { name: string }) => entry.name)).toEqual(['task_list', 'task_get']);
-        expect(list.result.tools[0]).toMatchObject({ description: 'The task_list tool', inputSchema: { type: 'object' } });
+        expect(list.result.tools[0]).toMatchObject({
+            description: 'The task_list tool',
+            inputSchema: { type: 'object' },
+        });
     });
 
     test('runs a call in the daemon: a result is text, a throw is an error result, an unknown tool says so', async () => {
-        const access = bridge.register([tool('echo', async input => ({ got: input })), tool('nothing', async () => undefined), tool('boom', async () => {
-            throw new Error('It broke');
-        })], new AbortController().signal);
+        const access = bridge.register(
+            [
+                tool('echo', async input => ({ got: input })),
+                tool('nothing', async () => undefined),
+                tool('boom', async () => {
+                    throw new Error('It broke');
+                }),
+            ],
+            new AbortController().signal
+        );
         const mcp = pipe(access);
 
         mcp.send({ id: 1, method: 'tools/call', params: { name: 'echo', arguments: { a: 1 } } });
@@ -98,13 +122,22 @@ describe('the MCP server an agent starts', () => {
     test('a cancel notification stops the call that is running', async () => {
         let entered = false;
         let aborted = false;
-        const access = bridge.register([tool('slow', (_input, signal) => new Promise((_resolve, reject) => {
-            entered = true;
-            signal.addEventListener('abort', () => {
-                aborted = true;
-                reject(new Error('stopped'));
-            });
-        }))], new AbortController().signal);
+        const access = bridge.register(
+            [
+                tool(
+                    'slow',
+                    (_input, signal) =>
+                        new Promise((_resolve, reject) => {
+                            entered = true;
+                            signal.addEventListener('abort', () => {
+                                aborted = true;
+                                reject(new Error('stopped'));
+                            });
+                        })
+                ),
+            ],
+            new AbortController().signal
+        );
         const mcp = pipe(access);
 
         mcp.send({ id: 7, method: 'tools/call', params: { name: 'slow' } });
@@ -118,26 +151,27 @@ describe('the MCP server an agent starts', () => {
 });
 
 describe('the bridge listener', () => {
-    test('refuses a caller without the session\'s token, and stops answering when the session ends', async () => {
+    test("refuses a caller without the session's token, and stops answering when the session ends", async () => {
         const access = bridge.register([tool('echo', async () => 'hi')], new AbortController().signal);
         const url = access.server?.env.find(entry => entry.name === 'CLOWDY_BRIDGE_URL')?.value as string;
         const token = access.server?.env.find(entry => entry.name === 'CLOWDY_BRIDGE_TOKEN')?.value as string;
-        const headers = { authorization: `Bearer ${ token }` };
+        const headers = { authorization: `Bearer ${token}` };
 
-        expect((await fetch(`${ url }/tools`)).status).toBe(401);
-        expect((await fetch(`${ url }/tools`, { headers: { authorization: 'Bearer wrong' } })).status).toBe(401);
-        expect((await fetch(`${ url }/tools`, { headers })).status).toBe(200);
+        expect((await fetch(`${url}/tools`)).status).toBe(401);
+        expect((await fetch(`${url}/tools`, { headers: { authorization: 'Bearer wrong' } })).status).toBe(401);
+        expect((await fetch(`${url}/tools`, { headers })).status).toBe(200);
 
         access.dispose();
 
-        expect((await fetch(`${ url }/tools`, { headers })).status).toBe(401);
+        expect((await fetch(`${url}/tools`, { headers })).status).toBe(401);
     });
 
     test('a call without a usable body is refused as a bad request', async () => {
         const access = bridge.register([tool('echo', async () => 'hi')], new AbortController().signal);
         const url = access.server?.env.find(entry => entry.name === 'CLOWDY_BRIDGE_URL')?.value as string;
         const token = access.server?.env.find(entry => entry.name === 'CLOWDY_BRIDGE_TOKEN')?.value as string;
-        const post = (body?: string) => fetch(`${ url }/call`, { method: 'POST', headers: { authorization: `Bearer ${ token }` }, body });
+        const post = (body?: string) =>
+            fetch(`${url}/call`, { method: 'POST', headers: { authorization: `Bearer ${token}` }, body });
 
         expect((await post()).status).toBe(400);
         expect((await post('{ nope')).status).toBe(400);
@@ -149,16 +183,29 @@ describe('the bridge listener', () => {
     test('ending the session also ends a call still in flight', async () => {
         let entered = false;
         let aborted = false;
-        const access = bridge.register([tool('slow', (_input, signal) => new Promise((_resolve, reject) => {
-            entered = true;
-            signal.addEventListener('abort', () => {
-                aborted = true;
-                reject(new Error('session over'));
-            });
-        }))], new AbortController().signal);
+        const access = bridge.register(
+            [
+                tool(
+                    'slow',
+                    (_input, signal) =>
+                        new Promise((_resolve, reject) => {
+                            entered = true;
+                            signal.addEventListener('abort', () => {
+                                aborted = true;
+                                reject(new Error('session over'));
+                            });
+                        })
+                ),
+            ],
+            new AbortController().signal
+        );
         const url = access.server?.env.find(entry => entry.name === 'CLOWDY_BRIDGE_URL')?.value as string;
         const token = access.server?.env.find(entry => entry.name === 'CLOWDY_BRIDGE_TOKEN')?.value as string;
-        const call = fetch(`${ url }/call`, { method: 'POST', headers: { authorization: `Bearer ${ token }` }, body: '{"name":"slow"}' });
+        const call = fetch(`${url}/call`, {
+            method: 'POST',
+            headers: { authorization: `Bearer ${token}` },
+            body: '{"name":"slow"}',
+        });
 
         await until(() => entered, 'the call to reach the tool');
         access.dispose();
@@ -167,17 +214,26 @@ describe('the bridge listener', () => {
         expect(aborted).toBe(true);
     });
 
-    test('the daemon\'s own abort ends a call in flight', async () => {
+    test("the daemon's own abort ends a call in flight", async () => {
         const controller = new AbortController();
         let entered = false;
         let aborted = false;
-        const access = bridge.register([tool('slow', (_input, signal) => new Promise((_resolve, reject) => {
-            entered = true;
-            signal.addEventListener('abort', () => {
-                aborted = true;
-                reject(new Error('run cancelled'));
-            });
-        }))], controller.signal);
+        const access = bridge.register(
+            [
+                tool(
+                    'slow',
+                    (_input, signal) =>
+                        new Promise((_resolve, reject) => {
+                            entered = true;
+                            signal.addEventListener('abort', () => {
+                                aborted = true;
+                                reject(new Error('run cancelled'));
+                            });
+                        })
+                ),
+            ],
+            controller.signal
+        );
         const mcp = pipe(access);
 
         mcp.send({ id: 1, method: 'tools/call', params: { name: 'slow' } });
@@ -193,10 +249,20 @@ describe('the bridge listener', () => {
 
 describe('the shell commands of a session', () => {
     /** A tool that is also a shell command (`ToolDefinition.cli`). */
-    const command = (name: string, positional?: string[]) => ({ ...tool(name, async input => ({ ran: name, input })), cli: positional ? { positional } : {} });
+    const command = (name: string, positional?: string[]) => ({
+        ...tool(name, async input => ({ ran: name, input })),
+        cli: positional ? { positional } : {},
+    });
 
     test('are left out of the MCP list, listed for the CLI with their positional fields, and run by the same call with the same credential', async () => {
-        const access = bridge.register([tool('task_list', async () => 'tasks'), command('thread_tell', ['thread', 'message']), command('thread_list')], new AbortController().signal);
+        const access = bridge.register(
+            [
+                tool('task_list', async () => 'tasks'),
+                command('thread_tell', ['thread', 'message']),
+                command('thread_list'),
+            ],
+            new AbortController().signal
+        );
         const mcp = pipe(access);
 
         mcp.send({ id: 1, method: 'tools/list' });
@@ -206,19 +272,36 @@ describe('the shell commands of a session', () => {
         expect(mcp.received()[0].result.tools.map((entry: { name: string }) => entry.name)).toEqual(['task_list']);
 
         const { url, auth } = access.cli as { url: string; auth: string };
-        const headers = { authorization: `Bearer ${ auth }` };
+        const headers = { authorization: `Bearer ${auth}` };
 
         // The CLI's credential is the session's one token, on the same listener.
         expect(url).toBe(access.server?.env.find(entry => entry.name === 'CLOWDY_BRIDGE_URL')?.value as string);
         expect(auth).toBe(access.server?.env.find(entry => entry.name === 'CLOWDY_BRIDGE_TOKEN')?.value as string);
-        expect(await (await fetch(`${ url }/cli/tools`, { headers })).json()).toEqual({
+        expect(await (await fetch(`${url}/cli/tools`, { headers })).json()).toEqual({
             tools: [
-                { name: 'thread_tell', description: 'The thread_tell tool', inputSchema: { type: 'object', properties: {} }, positional: ['thread', 'message'] },
-                { name: 'thread_list', description: 'The thread_list tool', inputSchema: { type: 'object', properties: {} }, positional: [] },
+                {
+                    name: 'thread_tell',
+                    description: 'The thread_tell tool',
+                    inputSchema: { type: 'object', properties: {} },
+                    positional: ['thread', 'message'],
+                },
+                {
+                    name: 'thread_list',
+                    description: 'The thread_list tool',
+                    inputSchema: { type: 'object', properties: {} },
+                    positional: [],
+                },
             ],
         });
 
-        const call = async (name: string) => (await fetch(`${ url }/call`, { method: 'POST', headers, body: JSON.stringify({ name, arguments: { a: 1 } }) })).json();
+        const call = async (name: string) =>
+            (
+                await fetch(`${url}/call`, {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify({ name, arguments: { a: 1 } }),
+                })
+            ).json();
 
         expect(await call('thread_tell')).toEqual({ isError: false, text: '{"ran":"thread_tell","input":{"a":1}}' });
         expect(await call('task_list')).toEqual({ isError: false, text: 'tasks' });
@@ -229,20 +312,33 @@ describe('the shell commands of a session', () => {
         const tools = bridge.register([tool('task_list', async () => 'tasks')], new AbortController().signal);
 
         expect(commands.server).toBeUndefined();
-        expect(commands.cli).toEqual({ url: expect.stringMatching(/^http:\/\/127\.0\.0\.1:\d+$/), auth: expect.stringMatching(/^[0-9a-f]{64}$/) });
+        expect(commands.cli).toEqual({
+            url: expect.stringMatching(/^http:\/\/127\.0\.0\.1:\d+$/),
+            auth: expect.stringMatching(/^[0-9a-f]{64}$/),
+        });
         expect(tools.server).toBeDefined();
         expect(tools.cli).toBeUndefined();
 
         const { url, auth } = commands.cli as { url: string; auth: string };
 
-        expect((await fetch(`${ url }/cli/tools`)).status).toBe(401);
-        expect((await fetch(`${ url }/cli/tools`, { headers: { authorization: 'Bearer wrong' } })).status).toBe(401);
-        expect((await fetch(`${ url }/tools`, { headers: { authorization: `Bearer ${ auth }` } })).status).toBe(200);
-        expect(await (await fetch(`${ url }/tools`, { headers: { authorization: `Bearer ${ auth }` } })).json()).toEqual({ tools: [] });
+        expect((await fetch(`${url}/cli/tools`)).status).toBe(401);
+        expect((await fetch(`${url}/cli/tools`, { headers: { authorization: 'Bearer wrong' } })).status).toBe(401);
+        expect((await fetch(`${url}/tools`, { headers: { authorization: `Bearer ${auth}` } })).status).toBe(200);
+        expect(await (await fetch(`${url}/tools`, { headers: { authorization: `Bearer ${auth}` } })).json()).toEqual({
+            tools: [],
+        });
 
         commands.dispose();
 
-        expect((await fetch(`${ url }/cli/tools`, { headers: { authorization: `Bearer ${ auth }` } })).status).toBe(401);
-        expect((await fetch(`${ url }/call`, { method: 'POST', headers: { authorization: `Bearer ${ auth }` }, body: '{"name":"thread_list"}' })).status).toBe(401);
+        expect((await fetch(`${url}/cli/tools`, { headers: { authorization: `Bearer ${auth}` } })).status).toBe(401);
+        expect(
+            (
+                await fetch(`${url}/call`, {
+                    method: 'POST',
+                    headers: { authorization: `Bearer ${auth}` },
+                    body: '{"name":"thread_list"}',
+                })
+            ).status
+        ).toBe(401);
     });
 });

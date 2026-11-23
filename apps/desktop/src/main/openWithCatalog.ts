@@ -48,21 +48,26 @@ function jetbrains(id: string, name: string, mac: RegExp, folder: string, exe: s
         name,
         mac,
         win: [
-            `${ FILES }\\JetBrains\\${ folder }*\\bin\\${ exe }`,
-            `${ LOCAL }\\${ folder }*\\bin\\${ exe }`,
-            `%LOCALAPPDATA%\\JetBrains\\Toolbox\\apps\\${ toolbox }\\ch-*\\*\\bin\\${ exe }`,
+            `${FILES}\\JetBrains\\${folder}*\\bin\\${exe}`,
+            `${LOCAL}\\${folder}*\\bin\\${exe}`,
+            `%LOCALAPPDATA%\\JetBrains\\Toolbox\\apps\\${toolbox}\\ch-*\\*\\bin\\${exe}`,
         ],
     };
 }
 
 export const EDITORS: readonly EditorSpec[] = [
-    { id: 'cursor', name: 'Cursor', mac: /^Cursor$/, win: [`${ LOCAL }\\cursor\\Cursor.exe`] },
-    { id: 'vscode', name: 'Visual Studio Code', mac: /^Visual Studio Code$/, win: [`${ LOCAL }\\Microsoft VS Code\\Code.exe`, `${ FILES }\\Microsoft VS Code\\Code.exe`] },
-    { id: 'windsurf', name: 'Windsurf', mac: /^Windsurf/, win: [`${ LOCAL }\\Windsurf\\Windsurf.exe`] },
-    { id: 'zed', name: 'Zed', mac: /^Zed( Preview)?$/, win: [`${ LOCAL }\\Zed\\Zed.exe`, `${ FILES }\\Zed\\Zed.exe`] },
-    { id: 'antigravity', name: 'Antigravity', mac: /^Antigravity/, win: [`${ LOCAL }\\Antigravity\\Antigravity.exe`] },
-    { id: 'kiro', name: 'Kiro', mac: /^Kiro$/, win: [`${ LOCAL }\\Kiro\\Kiro.exe`] },
-    { id: 'trae', name: 'Trae', mac: /^Trae( CN)?$/, win: [`${ LOCAL }\\Trae\\Trae.exe`] },
+    { id: 'cursor', name: 'Cursor', mac: /^Cursor$/, win: [`${LOCAL}\\cursor\\Cursor.exe`] },
+    {
+        id: 'vscode',
+        name: 'Visual Studio Code',
+        mac: /^Visual Studio Code$/,
+        win: [`${LOCAL}\\Microsoft VS Code\\Code.exe`, `${FILES}\\Microsoft VS Code\\Code.exe`],
+    },
+    { id: 'windsurf', name: 'Windsurf', mac: /^Windsurf/, win: [`${LOCAL}\\Windsurf\\Windsurf.exe`] },
+    { id: 'zed', name: 'Zed', mac: /^Zed( Preview)?$/, win: [`${LOCAL}\\Zed\\Zed.exe`, `${FILES}\\Zed\\Zed.exe`] },
+    { id: 'antigravity', name: 'Antigravity', mac: /^Antigravity/, win: [`${LOCAL}\\Antigravity\\Antigravity.exe`] },
+    { id: 'kiro', name: 'Kiro', mac: /^Kiro$/, win: [`${LOCAL}\\Kiro\\Kiro.exe`] },
+    { id: 'trae', name: 'Trae', mac: /^Trae( CN)?$/, win: [`${LOCAL}\\Trae\\Trae.exe`] },
     jetbrains('idea', 'IntelliJ IDEA', /^IntelliJ IDEA/, 'IntelliJ IDEA', 'idea64.exe', 'IDEA-*'),
     jetbrains('webstorm', 'WebStorm', /^WebStorm/, 'WebStorm', 'webstorm64.exe', 'WebStorm'),
     jetbrains('pycharm', 'PyCharm', /^PyCharm/, 'PyCharm', 'pycharm64.exe', 'PyCharm-*'),
@@ -72,15 +77,45 @@ export const EDITORS: readonly EditorSpec[] = [
     jetbrains('clion', 'CLion', /^CLion/, 'CLion', 'clion64.exe', 'CLion'),
     jetbrains('rider', 'Rider', /^Rider/, 'JetBrains Rider', 'rider64.exe', 'Rider'),
     jetbrains('rustrover', 'RustRover', /^RustRover/, 'RustRover', 'rustrover64.exe', 'RustRover'),
-    { id: 'android-studio', name: 'Android Studio', mac: /^Android Studio/, win: [`${ FILES }\\Android\\Android Studio*\\bin\\studio64.exe`, `${ LOCAL }\\Android Studio*\\bin\\studio64.exe`] },
-    { id: 'sublime', name: 'Sublime Text', mac: /^Sublime Text/, win: [`${ FILES }\\Sublime Text*\\sublime_text.exe`] },
+    {
+        id: 'android-studio',
+        name: 'Android Studio',
+        mac: /^Android Studio/,
+        win: [`${FILES}\\Android\\Android Studio*\\bin\\studio64.exe`, `${LOCAL}\\Android Studio*\\bin\\studio64.exe`],
+    },
+    { id: 'sublime', name: 'Sublime Text', mac: /^Sublime Text/, win: [`${FILES}\\Sublime Text*\\sublime_text.exe`] },
     { id: 'nova', name: 'Nova', mac: /^Nova$/, win: [] },
-    { id: 'vscode-insiders', name: 'VS Code Insiders', mac: /^Visual Studio Code - Insiders$/, win: [`${ LOCAL }\\Microsoft VS Code Insiders\\Code - Insiders.exe`] },
-    { id: 'vscodium', name: 'VSCodium', mac: /^VSCodium/, win: [`${ LOCAL }\\VSCodium\\VSCodium.exe`, `${ FILES }\\VSCodium\\VSCodium.exe`] },
-    { id: 'positron', name: 'Positron', mac: /^Positron/, win: [`${ LOCAL }\\Positron\\Positron.exe`, `${ FILES }\\Positron\\Positron.exe`] },
-    { id: 'theia', name: 'Theia IDE', mac: /^Theia/, win: [`${ LOCAL }\\TheiaIDE\\TheiaIDE.exe`, `${ LOCAL }\\Theia IDE\\Theia IDE.exe`] },
-    { id: 'lapce', name: 'Lapce', mac: /^Lapce/, win: [`${ LOCAL }\\Lapce\\lapce.exe`, `${ FILES }\\Lapce\\lapce.exe`] },
-    { id: 'pulsar', name: 'Pulsar', mac: /^Pulsar/, win: [`${ LOCAL }\\Pulsar\\Pulsar.exe`, '%LOCALAPPDATA%\\Pulsar\\Pulsar.exe'] },
+    {
+        id: 'vscode-insiders',
+        name: 'VS Code Insiders',
+        mac: /^Visual Studio Code - Insiders$/,
+        win: [`${LOCAL}\\Microsoft VS Code Insiders\\Code - Insiders.exe`],
+    },
+    {
+        id: 'vscodium',
+        name: 'VSCodium',
+        mac: /^VSCodium/,
+        win: [`${LOCAL}\\VSCodium\\VSCodium.exe`, `${FILES}\\VSCodium\\VSCodium.exe`],
+    },
+    {
+        id: 'positron',
+        name: 'Positron',
+        mac: /^Positron/,
+        win: [`${LOCAL}\\Positron\\Positron.exe`, `${FILES}\\Positron\\Positron.exe`],
+    },
+    {
+        id: 'theia',
+        name: 'Theia IDE',
+        mac: /^Theia/,
+        win: [`${LOCAL}\\TheiaIDE\\TheiaIDE.exe`, `${LOCAL}\\Theia IDE\\Theia IDE.exe`],
+    },
+    { id: 'lapce', name: 'Lapce', mac: /^Lapce/, win: [`${LOCAL}\\Lapce\\lapce.exe`, `${FILES}\\Lapce\\lapce.exe`] },
+    {
+        id: 'pulsar',
+        name: 'Pulsar',
+        mac: /^Pulsar/,
+        win: [`${LOCAL}\\Pulsar\\Pulsar.exe`, '%LOCALAPPDATA%\\Pulsar\\Pulsar.exe'],
+    },
 ];
 
 /** `wt` splits every argument at a `;` and runs what follows as another command of its own, so a folder with one in its name cannot be handed to it. */
@@ -99,11 +134,33 @@ export const TERMINALS: readonly TerminalSpec[] = [
     { id: 'iterm', name: 'iTerm2', mac: /^iTerm/, win: [] },
     { id: 'ghostty', name: 'Ghostty', mac: /^Ghostty$/, win: [] },
     { id: 'warp', name: 'Warp', mac: /^Warp/, win: [] },
-    { id: 'wezterm', name: 'WezTerm', mac: /^WezTerm$/, win: [`${ FILES }\\WezTerm\\wezterm-gui.exe`], args: folder => ['start', '--cwd', folder] },
-    { id: 'alacritty', name: 'Alacritty', mac: /^Alacritty$/, win: [`${ FILES }\\Alacritty\\alacritty.exe`, `${ LOCAL }\\Alacritty\\alacritty.exe`], args: folder => ['--working-directory', folder] },
+    {
+        id: 'wezterm',
+        name: 'WezTerm',
+        mac: /^WezTerm$/,
+        win: [`${FILES}\\WezTerm\\wezterm-gui.exe`],
+        args: folder => ['start', '--cwd', folder],
+    },
+    {
+        id: 'alacritty',
+        name: 'Alacritty',
+        mac: /^Alacritty$/,
+        win: [`${FILES}\\Alacritty\\alacritty.exe`, `${LOCAL}\\Alacritty\\alacritty.exe`],
+        args: folder => ['--working-directory', folder],
+    },
     { id: 'kitty', name: 'kitty', mac: /^kitty$/, win: [], args: folder => ['--directory', folder] },
-    { id: 'windows-terminal', name: 'Windows Terminal', win: ['%LOCALAPPDATA%\\Microsoft\\WindowsApps\\wt.exe'], args: windowsTerminalArgs },
-    { id: 'git-bash', name: 'Git Bash', win: [`${ FILES }\\Git\\git-bash.exe`, `${ LOCAL }\\Git\\git-bash.exe`], args: folder => [`--cd=${ folder }`] },
+    {
+        id: 'windows-terminal',
+        name: 'Windows Terminal',
+        win: ['%LOCALAPPDATA%\\Microsoft\\WindowsApps\\wt.exe'],
+        args: windowsTerminalArgs,
+    },
+    {
+        id: 'git-bash',
+        name: 'Git Bash',
+        win: [`${FILES}\\Git\\git-bash.exe`, `${LOCAL}\\Git\\git-bash.exe`],
+        args: folder => [`--cd=${folder}`],
+    },
     { id: 'terminal', name: 'Terminal', mac: /^Terminal$/, win: [] },
 ];
 
@@ -114,10 +171,13 @@ export const FILE_MANAGERS = {
         { id: 'path-finder', name: 'Path Finder', mac: /^Path Finder$/ },
         { id: 'forklift', name: 'ForkLift', mac: /^ForkLift/ },
     ],
-    win32: [
-        { id: 'explorer', name: 'File Explorer', system: true, icon: '%SystemRoot%\\explorer.exe' },
-    ],
+    win32: [{ id: 'explorer', name: 'File Explorer', system: true, icon: '%SystemRoot%\\explorer.exe' }],
 } as const satisfies Record<string, readonly FileManagerSpec[]>;
 
 /** The folders where macOS apps are looked for: the system's, the user's, where the JetBrains Toolbox puts the IDEs it installs, and where macOS keeps Terminal. */
-export const MAC_APP_FOLDERS = ['/Applications', '~/Applications', '~/Applications/JetBrains Toolbox', '/System/Applications/Utilities'] as const;
+export const MAC_APP_FOLDERS = [
+    '/Applications',
+    '~/Applications',
+    '~/Applications/JetBrains Toolbox',
+    '/System/Applications/Utilities',
+] as const;

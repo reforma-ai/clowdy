@@ -49,19 +49,23 @@ function hostClipboard(fs: MemoryFileSystem, outside: Record<string, string | nu
             // `null` is a folder.
             if (outside[path] === null) {
                 await fs.createDirectory(target);
-            }
-            else {
+            } else {
                 await fs.write(target, outside[path] ?? '');
             }
         }
     });
     const clipboard: FileClipboard = {
-        write: async (paths) => {
-            held = (await Promise.all(paths.map(async (path) => {
-                const kind = (await fs.list(path, 1)).length > 0 || !path.includes('.') ? 'directory' as const : 'file' as const;
+        write: async paths => {
+            held = await Promise.all(
+                paths.map(async path => {
+                    const kind =
+                        (await fs.list(path, 1)).length > 0 || !path.includes('.')
+                            ? ('directory' as const)
+                            : ('file' as const);
 
-                return { path: `/disk/${path}`, name: basename(path), kind, local: path };
-            })));
+                    return { path: `/disk/${path}`, name: basename(path), kind, local: path };
+                })
+            );
         },
         read: async () => held,
         paste: pasted,
@@ -131,7 +135,11 @@ describe('FileManager', () => {
 
     it('should paste what was copied outside under its name, and a taken name as a copy', async () => {
         const fs = new MemoryFileSystem({ 'docs/notes.md': 'notes' });
-        const host = hostClipboard(fs, { '/Users/dev/Downloads/report.pdf': 'report', '/Users/dev/Downloads/notes.md': 'other', '/Users/dev/Downloads/photos': null });
+        const host = hostClipboard(fs, {
+            '/Users/dev/Downloads/report.pdf': 'report',
+            '/Users/dev/Downloads/notes.md': 'other',
+            '/Users/dev/Downloads/photos': null,
+        });
         const manager = new FileManager({ provider: fs, clipboard: host.clipboard });
 
         await manager.start();
@@ -158,7 +166,11 @@ describe('FileManager', () => {
         host.pasted.mockClear();
         await manager.paste('docs');
 
-        expect(host.pasted.mock.calls[0]?.[1].map(item => item.name)).toEqual(['report copy.pdf', 'notes copy 2.md', 'photos copy']);
+        expect(host.pasted.mock.calls[0]?.[1].map(item => item.name)).toEqual([
+            'report copy.pdf',
+            'notes copy 2.md',
+            'photos copy',
+        ]);
     });
 
     it('should treat a name that differs only in case as taken, as the disk does, and paste files of both kinds in one go', async () => {
@@ -196,11 +208,14 @@ describe('FileManager', () => {
         await manager.paste('');
         await flush();
 
-        expect(notify).toHaveBeenCalledWith('Couldn’t paste x.txt', expect.objectContaining({ message: 'out.js already exists' }));
+        expect(notify).toHaveBeenCalledWith(
+            'Couldn’t paste x.txt',
+            expect.objectContaining({ message: 'out.js already exists' })
+        );
         expect(manager.tree.get('x.txt')).toBeUndefined();
     });
 
-    it('should say there is nothing to paste, and do nothing without the host\'s clipboard or on a read only provider', async () => {
+    it("should say there is nothing to paste, and do nothing without the host's clipboard or on a read only provider", async () => {
         const fs = new MemoryFileSystem({ 'a.ts': 'a' });
         const notify = vi.fn();
         const host = hostClipboard(fs);
@@ -221,7 +236,10 @@ describe('FileManager', () => {
 
         expect([bare.canCopy, bare.canPaste]).toEqual([false, false]);
 
-        const locked = new FileManager({ provider: { ...lossy(fs).provider, capabilities: { readonly: true } }, clipboard: host.clipboard });
+        const locked = new FileManager({
+            provider: { ...lossy(fs).provider, capabilities: { readonly: true } },
+            clipboard: host.clipboard,
+        });
 
         expect([locked.canCopy, locked.canPaste]).toEqual([true, false]);
     });
@@ -490,7 +508,7 @@ describe('FileManager filter', () => {
         expect(manager.filterResult).toBeNull();
     });
 
-    it('should find a file the tree lists although the provider\'s own search leaves it out, such as one git ignores, and words that are not one name', async () => {
+    it("should find a file the tree lists although the provider's own search leaves it out, such as one git ignores, and words that are not one name", async () => {
         const fs = new MemoryFileSystem({ 'BACKLOG.md': '', 'src/booking/price.ts': '', 'src/other.ts': '' });
         const manager = new FileManager({ provider: fs });
 

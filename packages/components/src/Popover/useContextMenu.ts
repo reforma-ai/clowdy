@@ -35,8 +35,8 @@ function createVirtualTrigger(x: number, y: number): Element {
 
     element.getBoundingClientRect = () => rect;
     element.style.position = 'fixed';
-    element.style.top = `${ y }px`;
-    element.style.left = `${ x }px`;
+    element.style.top = `${y}px`;
+    element.style.left = `${x}px`;
     element.style.width = '0';
     element.style.height = '0';
     element.style.pointerEvents = 'none';
@@ -86,10 +86,13 @@ export function useContextMenu(): UseContextMenuResult {
         setIsOpen(true);
     }, []);
 
-    const onContextMenu = useCallback((e: MouseEvent) => {
-        e.preventDefault();
-        openAt(e.clientX, e.clientY);
-    }, [openAt]);
+    const onContextMenu = useCallback(
+        (e: MouseEvent) => {
+            e.preventDefault();
+            openAt(e.clientX, e.clientY);
+        },
+        [openAt]
+    );
 
     const close = useCallback(() => {
         setIsOpen(false);
@@ -101,14 +104,16 @@ export function useContextMenu(): UseContextMenuResult {
         }
     }, []);
 
-    const handleOpenChange = useCallback((open: boolean) => {
-        if (!open) {
-            close();
-        }
-        else {
-            setIsOpen(true);
-        }
-    }, [close]);
+    const handleOpenChange = useCallback(
+        (open: boolean) => {
+            if (!open) {
+                close();
+            } else {
+                setIsOpen(true);
+            }
+        },
+        [close]
+    );
 
     return {
         areaProps: { onContextMenu },

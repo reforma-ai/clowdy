@@ -10,35 +10,50 @@ import type { Config } from '../config';
 import type { MessageDeps } from './messages';
 
 /** The line every notice ends with: a parent that answers each one, or pings its threads back, burns turns on nothing. */
-const NOTICE_RULE = 'Do not reply to this message just to acknowledge it, and do not message a thread unless you need something from it.';
+const NOTICE_RULE =
+    'Do not reply to this message just to acknowledge it, and do not message a thread unless you need something from it.';
 
 /** How the queue's one line ends after a thread's name. */
-const OUTCOME_WORDS: Record<ThreadOutcome, string> = { finished: 'finished', failed: 'failed', interrupted: 'was interrupted' };
+const OUTCOME_WORDS: Record<ThreadOutcome, string> = {
+    finished: 'finished',
+    failed: 'failed',
+    interrupted: 'was interrupted',
+};
 
 /** What a queued notice shows: `Thread "Fix login" finished`, or how many threads stopped. */
 export function noticeSummary(threads: readonly ThreadNotice[]): string {
-    return threads.length === 1 ? `Thread "${ threads[0].title }" ${ OUTCOME_WORDS[threads[0].outcome] }` : `${ threads.length } threads stopped`;
+    return threads.length === 1
+        ? `Thread "${threads[0].title}" ${OUTCOME_WORDS[threads[0].outcome]}`
+        : `${threads.length} threads stopped`;
 }
 
 /** One thread's block of a notice, as its parent's agent reads it. */
 function noticeBlock(notice: ThreadNotice): string {
-    const name = `Thread "${ notice.title }" (${ notice.chatId })`;
+    const name = `Thread "${notice.title}" (${notice.chatId})`;
 
     switch (notice.outcome) {
         case 'failed':
-            return [`[${ name } failed]`, notice.text, `Look at it with clowdy thread log ${ notice.chatId } before deciding what to do.`].filter(Boolean).join('\n\n');
+            return [
+                `[${name} failed]`,
+                notice.text,
+                `Look at it with clowdy thread log ${notice.chatId} before deciding what to do.`,
+            ]
+                .filter(Boolean)
+                .join('\n\n');
         case 'interrupted':
-            return `[${ name } was interrupted because the daemon restarted]`;
+            return `[${name} was interrupted because the daemon restarted]`;
         case 'finished':
             if (notice.background?.length) {
                 return [
-                    `[${ name } finished its turn and still has work running in the background: ${ notice.background.join(', ') }]`,
+                    `[${name} finished its turn and still has work running in the background: ${notice.background.join(', ')}]`,
                     notice.text,
                     'This is not its final result; it will report again when that work finishes.',
-                ].filter(Boolean).join('\n\n');
+                ]
+                    .filter(Boolean)
+                    .join('\n\n');
             }
 
-            return [`[${ name } finished]`, notice.text].filter(Boolean).join('\n\n');
+            return [`[${name} finished]`, notice.text].filter(Boolean).join('\n\n');
     }
 }
 
@@ -81,7 +96,7 @@ export class ThreadNotices {
     constructor(private deps: NoticeDeps) {
         const queueStatus = deps.runs.onOrchestratorStatus;
 
-        deps.runs.onOrchestratorStatus = (run) => {
+        deps.runs.onOrchestratorStatus = run => {
             queueStatus(run);
             this.statusChanged(run);
         };
@@ -181,7 +196,7 @@ export class ThreadNotices {
      */
     private flush(parentChatId: string): void {
         const { store, queue } = this.deps;
-        const threads = [...this.pending.get(parentChatId)?.notices.values() ?? []];
+        const threads = [...(this.pending.get(parentChatId)?.notices.values() ?? [])];
 
         this.pending.delete(parentChatId);
 
@@ -202,15 +217,20 @@ export class ThreadNotices {
 
                 if (atRest && chat.queuePaused === undefined && queueOf(chat).length === 0) {
                     // A notice has no words of its own: the stream draws it from `from`, and the agent reads `content`.
-                    sendMessage(this.deps, chat.id, { text: '', content: noticeContent(threads), mode: 'queue', from: { kind: 'threadNotice', threads } });
-                }
-                else {
+                    sendMessage(this.deps, chat.id, {
+                        text: '',
+                        content: noticeContent(threads),
+                        mode: 'queue',
+                        from: { kind: 'threadNotice', threads },
+                    });
+                } else {
                     queue.enqueueNotice(chat, run, threads);
                 }
             });
-        }
-        catch (error) {
-            console.error(`[clowdy] telling chat ${ parentChatId } that its threads stopped failed: ${ errorMessage(error) }`);
+        } catch (error) {
+            console.error(
+                `[clowdy] telling chat ${parentChatId} that its threads stopped failed: ${errorMessage(error)}`
+            );
         }
     }
 }

@@ -34,7 +34,7 @@ beforeEach(() => {
     URL.createObjectURL = (blob: Blob | MediaSource) => {
         created.push(blob as Blob);
 
-        return `blob:preview-${ created.length }`;
+        return `blob:preview-${created.length}`;
     };
     URL.revokeObjectURL = (url: string) => void revoked.push(url);
 });
@@ -45,7 +45,13 @@ describe('useAttachmentPreviews', () => {
     it('fetches only the pictures, shows them as what the message says they are, and lets go of them with the message', async () => {
         const attachmentBlob = vi.fn(async () => new Blob(['bytes'], { type: 'application/octet-stream' }));
 
-        await act(async () => root.render(<StreamLinksContext value={ { attachmentBlob } }><Probe attachments={ [picture, log, page] } /></StreamLinksContext>));
+        await act(async () =>
+            root.render(
+                <StreamLinksContext value={{ attachmentBlob }}>
+                    <Probe attachments={[picture, log, page]} />
+                </StreamLinksContext>
+            )
+        );
 
         expect(attachmentBlob).toHaveBeenCalledTimes(1);
         expect(attachmentBlob).toHaveBeenCalledWith(picture);
@@ -60,13 +66,23 @@ describe('useAttachmentPreviews', () => {
     });
 
     it('shows nothing when the stream cannot fetch files, or a file cannot be fetched', async () => {
-        await act(async () => root.render(<Probe attachments={ [picture] } />));
+        await act(async () => root.render(<Probe attachments={[picture]} />));
 
         expect(shown.size).toBe(0);
 
-        await act(async () => root.render(<StreamLinksContext value={ { attachmentBlob: async () => {
-            throw new Error('gone');
-        } } }><Probe attachments={ [picture] } /></StreamLinksContext>));
+        await act(async () =>
+            root.render(
+                <StreamLinksContext
+                    value={{
+                        attachmentBlob: async () => {
+                            throw new Error('gone');
+                        },
+                    }}
+                >
+                    <Probe attachments={[picture]} />
+                </StreamLinksContext>
+            )
+        );
 
         expect(shown.size).toBe(0);
     });

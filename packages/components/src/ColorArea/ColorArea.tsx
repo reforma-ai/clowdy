@@ -2,9 +2,9 @@ import { cn } from '@clowdy/lib';
 import { useContext, useEffect, useRef } from 'react';
 import {
     ColorArea as AriaColorArea,
+    type ColorAreaProps as AriaColorAreaProps,
     ColorAreaStateContext,
     ColorThumb,
-    type ColorAreaProps as AriaColorAreaProps,
 } from 'react-aria-components';
 
 import { Show } from '../Show';
@@ -19,24 +19,13 @@ export interface ColorAreaProps extends Omit<AriaColorAreaProps, 'children' | 'c
     children?: ReactNode;
 }
 
-export function ColorArea({
-    ref,
-    className,
-    thumbClassName,
-    children,
-    ...props
-}: ColorAreaProps) {
+export function ColorArea({ ref, className, thumbClassName, children, ...props }: ColorAreaProps) {
     return (
-        <AriaColorArea
-            { ...props }
-            ref={ ref }
-            className={ cn(styles.area, className) }
-            data-modal-drag-exclude
-        >
-            <Show when={ children } fallback={ <ColorThumb className={ cn(styles.thumb, thumbClassName) } /> }>
-                { children }
+        <AriaColorArea {...props} ref={ref} className={cn(styles.area, className)} data-modal-drag-exclude>
+            <Show when={children} fallback={<ColorThumb className={cn(styles.thumb, thumbClassName)} />}>
+                {children}
             </Show>
-            <Show when={ !props.isDisabled }>
+            <Show when={!props.isDisabled}>
                 <ColorAreaDrag />
             </Show>
         </AriaColorArea>
@@ -84,15 +73,17 @@ function ColorAreaDrag() {
         const xRange = current.value.getChannelRange(xChannel);
         const yRange = current.value.getChannelRange(yChannel);
 
-        current.setValue(current.value
-            .withChannelValue(xChannel, xRange.minValue + (x * (xRange.maxValue - xRange.minValue)))
-            .withChannelValue(yChannel, yRange.minValue + ((1 - y) * (yRange.maxValue - yRange.minValue))));
+        current.setValue(
+            current.value
+                .withChannelValue(xChannel, xRange.minValue + x * (xRange.maxValue - xRange.minValue))
+                .withChannelValue(yChannel, yRange.minValue + (1 - y) * (yRange.maxValue - yRange.minValue))
+        );
     };
 
     return (
         <div
-            className={ styles.drag }
-            onPointerDown={ (event) => {
+            className={styles.drag}
+            onPointerDown={event => {
                 if (event.button !== 0) {
                     return;
                 }
@@ -102,15 +93,15 @@ function ColorAreaDrag() {
                 event.currentTarget.setPointerCapture(event.pointerId);
                 stateRef.current?.setDragging(true);
                 apply(event);
-            } }
-            onPointerMove={ (event) => {
+            }}
+            onPointerMove={event => {
                 if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
                     return;
                 }
 
                 apply(event);
-            } }
-            onPointerUp={ (event) => {
+            }}
+            onPointerUp={event => {
                 if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
                     return;
                 }
@@ -118,10 +109,10 @@ function ColorAreaDrag() {
                 apply(event);
                 event.currentTarget.releasePointerCapture(event.pointerId);
                 stateRef.current?.setDragging(false);
-            } }
-            onPointerCancel={ () => {
+            }}
+            onPointerCancel={() => {
                 stateRef.current?.setDragging(false);
-            } }
+            }}
         />
     );
 }

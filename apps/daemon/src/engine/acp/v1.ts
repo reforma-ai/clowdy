@@ -1,20 +1,42 @@
-import { client, methods, ndJsonStream, PROTOCOL_VERSION } from '@agentclientprotocol/sdk/unstable';
 import { Readable, Writable } from 'node:stream';
+import { client, methods, ndJsonStream, PROTOCOL_VERSION } from '@agentclientprotocol/sdk/unstable';
 
 import { EngineFailure, errorMessage } from '../../errors';
 import { answeredInTime, Channel, ProcessEnded, watchEnd } from './connection';
-import { advertisesSteering, applyChoices, isResumeWarning, keepTitle, prefaceOf, STEER_METHOD, steerByExtension, steerRequest, stopFailure } from './conversation';
+import {
+    advertisesSteering,
+    applyChoices,
+    isResumeWarning,
+    keepTitle,
+    prefaceOf,
+    STEER_METHOD,
+    steerByExtension,
+    steerRequest,
+    stopFailure,
+} from './conversation';
 import { classifyThrown, failureEvent, processEnded } from './failure';
 import { UpdateMapper } from './mapper';
 
-import type { ClientCapabilities, ClientConnection, ContentBlock, NewSessionRequest, PromptResponse, SessionConfigOption, SessionUpdate } from '@agentclientprotocol/sdk/unstable';
+import type {
+    ClientCapabilities,
+    ClientConnection,
+    ContentBlock,
+    NewSessionRequest,
+    PromptResponse,
+    SessionConfigOption,
+    SessionUpdate,
+} from '@agentclientprotocol/sdk/unstable';
 import type { EngineEvent, EngineFork } from '../types';
 import type { SelectOption, SteerRequest, SteerResponse } from './conversation';
 import type { LayerHost, ProtocolLayer } from './layer';
 import type { ResolvedAgent } from './registry';
 
 /** What the client tells an agent it can do in `initialize`. The probe sends the same, so it shows the options a run gets. */
-export const clientCapabilities = (agent: Pick<ResolvedAgent, 'clientMeta'>): ClientCapabilities => ({ fs: { readTextFile: false, writeTextFile: false }, terminal: false, ...(agent.clientMeta && { _meta: agent.clientMeta }) });
+export const clientCapabilities = (agent: Pick<ResolvedAgent, 'clientMeta'>): ClientCapabilities => ({
+    fs: { readTextFile: false, writeTextFile: false },
+    terminal: false,
+    ...(agent.clientMeta && { _meta: agent.clientMeta }),
+});
 
 type Item =
     | { kind: 'update'; update: SessionUpdate }
@@ -27,17 +49,35 @@ type Item =
  * Why an agent spoken to over ACP v1 cannot be forked: v1 has no fork that cuts a session at a message, and none of the agents that speak v1 is known to
  * have one of its own. Fork is a v2 feature of the adapters that offer it.
  */
-export const noFork = (agent: string) => new EngineFailure(`${ agent } cannot fork a conversation: it is spoken to over ACP v1, which has no fork`, false, 'invalid_request');
+export const noFork = (agent: string) =>
+    new EngineFailure(
+        `${agent} cannot fork a conversation: it is spoken to over ACP v1, which has no fork`,
+        false,
+        'invalid_request'
+    );
 
 /** The select options among an agent's, each with its choices (the members of its groups included) in one list. */
 function selectsOf(options: SessionConfigOption[] | null | undefined): SelectOption[] {
-    return (options ?? []).flatMap(option => option.type === 'select'
-        ? [{ id: option.id, category: option.category, currentValue: option.currentValue, choices: option.options.flatMap(choice => 'group' in choice ? choice.options : [choice]) }]
-        : []);
+    return (options ?? []).flatMap(option =>
+        option.type === 'select'
+            ? [
+                  {
+                      id: option.id,
+                      category: option.category,
+                      currentValue: option.currentValue,
+                      choices: option.options.flatMap(choice => ('group' in choice ? choice.options : [choice])),
+                  },
+              ]
+            : []
+    );
 }
 
 function isResumeWarningUpdate(update: SessionUpdate): boolean {
-    return update.sessionUpdate === 'agent_message_chunk' && update.content.type === 'text' && isResumeWarning(update.content.text);
+    return (
+        update.sessionUpdate === 'agent_message_chunk' &&
+        update.content.type === 'text' &&
+        isResumeWarning(update.content.text)
+    );
 }
 
 /**
@@ -71,10 +111,13 @@ export class V1Layer implements ProtocolLayer {
         }
 
         try {
-            return await steerByExtension(() => connection.agent.request<SteerResponse, SteerRequest>(STEER_METHOD, steerRequest(sessionId, text)), { running: () => host.promptRunning(), aborted: () => host.signal.aborted });
-        }
-        catch (error) {
-            host.deps.log?.(`${ host.agent.id } refused a steer: ${ errorMessage(error) }`);
+            return await steerByExtension(
+                () =>
+                    connection.agent.request<SteerResponse, SteerRequest>(STEER_METHOD, steerRequest(sessionId, text)),
+                { running: () => host.promptRunning(), aborted: () => host.signal.aborted }
+            );
+        } catch (error) {
+            host.deps.log?.(`${host.agent.id} refused a steer: ${errorMessage(error)}`);
 
             return false;
         }
@@ -88,7 +131,9 @@ export class V1Layer implements ProtocolLayer {
     cancel(): Promise<void> {
         const { connection, sessionId } = this;
 
-        return connection && sessionId ? connection.agent.notify(methods.agent.session.cancel, { sessionId }).catch(() => undefined) : Promise.resolve();
+        return connection && sessionId
+            ? connection.agent.notify(methods.agent.session.cancel, { sessionId }).catch(() => undefined)
+            : Promise.resolve();
     }
 
     disconnect(): void {
@@ -107,7 +152,10 @@ export class V1Layer implements ProtocolLayer {
         const app = client({ name: 'clowdy' })
             .onNotification(methods.client.session.update, ({ params }) => {
                 if (!replaying && params.sessionId === current && !isResumeWarningUpdate(params.update)) {
-                    if (params.update.sessionUpdate === 'session_info_update' && typeof params.update.title === 'string') {
+                    if (
+                        params.update.sessionUpdate === 'session_info_update' &&
+                        typeof params.update.title === 'string'
+                    ) {
                         host.offerTitle(params.update.title);
                     }
 
@@ -117,7 +165,9 @@ export class V1Layer implements ProtocolLayer {
             .onRequest(methods.client.session.requestPermission, async ({ params, signal }) => {
                 const optionId = await host.pickPermission(params, signal);
 
-                return { outcome: optionId === undefined ? { outcome: 'cancelled' } : { outcome: 'selected', optionId } };
+                return {
+                    outcome: optionId === undefined ? { outcome: 'cancelled' } : { outcome: 'selected', optionId },
+                };
             });
 
         const input = Readable.toWeb(proc.child.stdout as Readable) as ReadableStream<Uint8Array>;
@@ -130,14 +180,23 @@ export class V1Layer implements ProtocolLayer {
         const request = watchEnd(proc, signal, ending => channel.push({ kind: ending }));
 
         try {
-            const init = await answeredInTime(request(connection.agent.request(methods.agent.initialize, {
-                protocolVersion: PROTOCOL_VERSION,
-                clientCapabilities: clientCapabilities(agent),
-                clientInfo: { name: 'clowdy', title: 'Clowdy', version: deps.clientVersion },
-            })), host);
+            const init = await answeredInTime(
+                request(
+                    connection.agent.request(methods.agent.initialize, {
+                        protocolVersion: PROTOCOL_VERSION,
+                        clientCapabilities: clientCapabilities(agent),
+                        clientInfo: { name: 'clowdy', title: 'Clowdy', version: deps.clientVersion },
+                    })
+                ),
+                host
+            );
 
             if (init.protocolVersion !== PROTOCOL_VERSION) {
-                yield { type: 'error', message: `${ agent.name } speaks ACP version ${ init.protocolVersion }; Clowdy speaks ${ PROTOCOL_VERSION }.`, code: 'invalid_request' };
+                yield {
+                    type: 'error',
+                    message: `${agent.name} speaks ACP version ${init.protocolVersion}; Clowdy speaks ${PROTOCOL_VERSION}.`,
+                    code: 'invalid_request',
+                };
 
                 return;
             }
@@ -151,13 +210,18 @@ export class V1Layer implements ProtocolLayer {
             // Only an agent that advertises the field gets it: Grok's `session/resume` refuses a non-empty list. ACP lets the list change on a resume
             // while `cwd` stays, so a folder added between turns keeps the session. Not in `_meta.claudeCode.options` as well: Claude's adapter
             // would add the folders a second time.
-            const directories = capabilities.sessionCapabilities?.additionalDirectories ? options.additionalDirectories ?? [] : [];
+            const directories = capabilities.sessionCapabilities?.additionalDirectories
+                ? (options.additionalDirectories ?? [])
+                : [];
             const shared: NewSessionRequest = {
                 cwd: options.cwd,
                 mcpServers: access?.server ? [access.server] : [],
                 ...(directories.length > 0 && { additionalDirectories: directories }),
                 ...(agent.sessionMeta && { _meta: agent.sessionMeta }),
-                ...(supportsSystemPrompt && options.systemPrompt && { systemPrompt: { mode: 'append', content: [{ type: 'text', text: options.systemPrompt }] } }),
+                ...(supportsSystemPrompt &&
+                    options.systemPrompt && {
+                        systemPrompt: { mode: 'append', content: [{ type: 'text', text: options.systemPrompt }] },
+                    }),
             };
 
             let configOptions: SessionConfigOption[] | null | undefined;
@@ -168,30 +232,37 @@ export class V1Layer implements ProtocolLayer {
 
                 try {
                     if (capabilities.sessionCapabilities?.resume) {
-                        configOptions = (await request(connection.agent.request(methods.agent.session.resume, { sessionId: id, ...shared }))).configOptions;
+                        configOptions = (
+                            await request(
+                                connection.agent.request(methods.agent.session.resume, { sessionId: id, ...shared })
+                            )
+                        ).configOptions;
                         resumed = true;
-                    }
-                    else if (capabilities.loadSession) {
+                    } else if (capabilities.loadSession) {
                         // The agent replays the whole conversation as updates before it answers; none of it is news.
                         replaying = true;
                         current = id;
 
                         try {
-                            configOptions = (await request(connection.agent.request(methods.agent.session.load, { sessionId: id, ...shared }))).configOptions;
-                        }
-                        finally {
+                            configOptions = (
+                                await request(
+                                    connection.agent.request(methods.agent.session.load, { sessionId: id, ...shared })
+                                )
+                            ).configOptions;
+                        } finally {
                             replaying = false;
                         }
 
                         resumed = true;
                     }
-                }
-                catch (error) {
+                } catch (error) {
                     if (signal.aborted || error instanceof ProcessEnded) {
                         throw error;
                     }
 
-                    console.warn(`[clowdy] ${ agent.name } could not continue session ${ id }; starting a new one: ${ errorMessage(error) }`);
+                    console.warn(
+                        `[clowdy] ${agent.name} could not continue session ${id}; starting a new one: ${errorMessage(error)}`
+                    );
                 }
 
                 if (resumed) {
@@ -220,13 +291,21 @@ export class V1Layer implements ProtocolLayer {
                 effort: options.effort,
                 mode: agent.permission.mode,
                 set: async ({ configId, value }) => {
-                    const answer = await request(connection.agent.request(methods.agent.session.setConfigOption, { sessionId: id, configId, value }));
+                    const answer = await request(
+                        connection.agent.request(methods.agent.session.setConfigOption, {
+                            sessionId: id,
+                            configId,
+                            value,
+                        })
+                    );
 
                     return answer.configOptions ? selectsOf(answer.configOptions) : undefined;
                 },
             });
 
-            await keepTitle({ agent: agent.name, signal, title: options.title, naming: this.naming }, keep => request(connection.agent.request(methods.agent.session.setTitle, { sessionId: id, title: keep })));
+            await keepTitle({ agent: agent.name, signal, title: options.title, naming: this.naming }, keep =>
+                request(connection.agent.request(methods.agent.session.setTitle, { sessionId: id, title: keep }))
+            );
 
             // An agent that was to continue a conversation and starts a new one has not seen it: it is told what it said, so the work is not lost.
             const record = options.resumeSessionId && !resumed ? host.record() : undefined;
@@ -234,12 +313,21 @@ export class V1Layer implements ProtocolLayer {
             // An agent that cannot take a system prompt gets it in front of the first message of a conversation it has not seen.
             const preface = prefaceOf({ systemPrompt: options.systemPrompt, supportsSystemPrompt, resumed, record });
 
-            const mapper = new UpdateMapper({ toolNames: options.tools.map(tool => tool.name), costBefore: deps.costs.get(id), log: deps.log });
+            const mapper = new UpdateMapper({
+                toolNames: options.tools.map(tool => tool.name),
+                costBefore: deps.costs.get(id),
+                log: deps.log,
+            });
 
-            void connection.agent.request(methods.agent.session.prompt, { sessionId: id, prompt: [{ type: 'text', text: `${ preface }${ options.prompt }` } satisfies ContentBlock] }).then(
-                response => channel.push({ kind: 'stop', response }),
-                error => channel.push({ kind: 'failed', error })
-            );
+            void connection.agent
+                .request(methods.agent.session.prompt, {
+                    sessionId: id,
+                    prompt: [{ type: 'text', text: `${preface}${options.prompt}` } satisfies ContentBlock],
+                })
+                .then(
+                    response => channel.push({ kind: 'stop', response }),
+                    error => channel.push({ kind: 'failed', error })
+                );
             host.promptIs('running');
 
             for (;;) {
@@ -258,7 +346,9 @@ export class V1Layer implements ProtocolLayer {
                 host.promptIs('over');
 
                 if (item.kind === 'exited') {
-                    yield failureEvent(processEnded(context, `exit code ${ proc.child.exitCode ?? 'unknown' }`, proc.stderr()));
+                    yield failureEvent(
+                        processEnded(context, `exit code ${proc.child.exitCode ?? 'unknown'}`, proc.stderr())
+                    );
 
                     return;
                 }
@@ -283,14 +373,15 @@ export class V1Layer implements ProtocolLayer {
 
                 return;
             }
-        }
-        catch (error) {
+        } catch (error) {
             if (signal.aborted) {
                 return;
             }
 
             if (error instanceof ProcessEnded) {
-                yield failureEvent(processEnded(context, `exit code ${ proc.child.exitCode ?? 'unknown' }`, proc.stderr()));
+                yield failureEvent(
+                    processEnded(context, `exit code ${proc.child.exitCode ?? 'unknown'}`, proc.stderr())
+                );
 
                 return;
             }

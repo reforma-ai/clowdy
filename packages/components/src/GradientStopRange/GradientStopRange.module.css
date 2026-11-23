@@ -4,10 +4,17 @@
         --clowdy-gradient-stop-range-thumb-size: var(--spacing-10);
         --clowdy-gradient-stop-range-thumb-border: var(--spacing-2);
         --clowdy-gradient-stop-range-track-radius: var(--radius-full);
-        --clowdy-gradient-stop-range-background: linear-gradient(to right, var(--color-secondary), var(--color-secondary));
+        --clowdy-gradient-stop-range-background: linear-gradient(
+            to right,
+            var(--color-secondary),
+            var(--color-secondary)
+        );
         --clowdy-gradient-stop-range-thumb-shadow: var(--color-secondary-muted-border);
         --clowdy-gradient-stop-range-checker-size: var(--spacing-4);
-        --clowdy-gradient-stop-range-checker-bg: repeating-conic-gradient(var(--color-dark-a15) 0% 25%, transparent 0% 50%) 0 0 / var(--clowdy-gradient-stop-range-checker-size) var(--clowdy-gradient-stop-range-checker-size), var(--color-white);
+        --clowdy-gradient-stop-range-checker-bg:
+            repeating-conic-gradient(var(--color-dark-a15) 0% 25%, transparent 0% 50%) 0 0 /
+            var(--clowdy-gradient-stop-range-checker-size) var(--clowdy-gradient-stop-range-checker-size),
+            var(--color-white);
 
         position: relative;
         width: 100%;

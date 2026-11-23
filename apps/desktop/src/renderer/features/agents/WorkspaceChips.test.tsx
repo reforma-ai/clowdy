@@ -3,7 +3,13 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createFixtureData, FIXTURE_PERSONAL_PROJECT_ID, FIXTURE_PROJECT_ID, withFixtureWorkspace, type FixtureData } from '../../daemon/fixtureData';
+import {
+    createFixtureData,
+    FIXTURE_PERSONAL_PROJECT_ID,
+    FIXTURE_PROJECT_ID,
+    type FixtureData,
+    withFixtureWorkspace,
+} from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { TransportError } from '../../daemon/transport';
 import { RootStore, RootStoreProvider } from '../../stores';
@@ -16,7 +22,10 @@ import type { Editor } from '@tiptap/core';
 import type { KeyValueStorage } from '../../stores/storage';
 
 // The dialog itself is `features/worktrees`' own subject; here only that the control opens it, and for which folder.
-vi.mock('../worktrees', async importOriginal => ({ ...await importOriginal<typeof import('../worktrees')>(), openManageWorktrees: vi.fn() }));
+vi.mock('../worktrees', async importOriginal => ({
+    ...(await importOriginal<typeof import('../worktrees')>()),
+    openManageWorktrees: vi.fn(),
+}));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -40,31 +49,45 @@ let store: RootStore;
 
 const ui = (projectId = FIXTURE_PROJECT_ID) => store.ui.forProject(projectId);
 // The test build has no MobX observer plugin, so the page is drawn again by hand after a change, as the observer does in the app.
-const render = () => root.render(<RootStoreProvider value={ store }><DraftChat missing={ new Set() } /></RootStoreProvider>);
-const settle = () => act(async () => {
-    await new Promise(resolve => setTimeout(resolve, 0));
-    render();
-});
-const press = async (target: HTMLElement) => act(async () => {
-    target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
-    target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
-    target.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
-    target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
-    target.click();
-    render();
-});
+const render = () =>
+    root.render(
+        <RootStoreProvider value={store}>
+            <DraftChat missing={new Set()} />
+        </RootStoreProvider>
+    );
+const settle = () =>
+    act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 0));
+        render();
+    });
+const press = async (target: HTMLElement) =>
+    act(async () => {
+        target.dispatchEvent(
+            new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true })
+        );
+        target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+        target.dispatchEvent(
+            new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true })
+        );
+        target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
+        target.click();
+        render();
+    });
 
 /** The control's pill: the only one of its kind on the page. */
 const chip = () => container.querySelector<HTMLButtonElement>('button[aria-label^="Where it runs"]');
 /** The base of the row of a new worktree, in the open menu: a press target of its own at the row's end. */
-const baseButton = () => document.body.querySelector<HTMLButtonElement>('[role="menu"] button[aria-label^="Start from"]');
+const baseButton = () =>
+    document.body.querySelector<HTMLButtonElement>('[role="menu"] button[aria-label^="Start from"]');
 const folderSelect = () => container.querySelector<HTMLButtonElement>('button[aria-label^="Folder:"]');
 const menuItems = () => [...document.body.querySelectorAll<HTMLElement>('[role="menu"] [role^="menuitem"]')];
 const menuItem = (text: string) => menuItems().find(row => row.textContent?.startsWith(text))!;
 /** The rows of the submenu `Existing worktree` flies out: the folder's other worktrees, by branch. */
 /** How many icons a row draws: its own, and the chevron of a row that opens a submenu. */
 const iconsOf = (row: HTMLElement) => row.querySelectorAll('svg').length;
-const worktreeRows = () => [...document.body.querySelectorAll<HTMLElement>('[role="menu"][aria-label="Existing worktrees"] [role^="menuitem"]')];
+const worktreeRows = () => [
+    ...document.body.querySelectorAll<HTMLElement>('[role="menu"][aria-label="Existing worktrees"] [role^="menuitem"]'),
+];
 const worktreeRow = (text: string) => worktreeRows().find(row => row.textContent?.startsWith(text))!;
 const options = () => [...document.body.querySelectorAll<HTMLElement>('[role="option"]')];
 const option = (text: string) => options().find(row => row.textContent?.startsWith(text))!;
@@ -74,12 +97,21 @@ const editor = () => (field() as HTMLElement & { editor: Editor }).editor;
 /** What the line under the message box says, apart from the mode at its end. */
 const line = () => container.textContent;
 
-const draw = (before?: () => void) => act(async () => {
-    before?.();
-    render();
-});
+const draw = (before?: () => void) =>
+    act(async () => {
+        before?.();
+        render();
+    });
 
-async function start({ data = createFixtureData(), project = FIXTURE_PROJECT_ID, transport = new FixtureTransport({ data }) }: { data?: FixtureData; project?: string; transport?: FixtureTransport } = {}) {
+async function start({
+    data = createFixtureData(),
+    project = FIXTURE_PROJECT_ID,
+    transport = new FixtureTransport({ data }),
+}: {
+    data?: FixtureData;
+    project?: string;
+    transport?: FixtureTransport;
+} = {}) {
     act(() => root.unmount());
     store.dispose();
     root = createRoot(container);
@@ -112,7 +144,9 @@ async function flyOut(row: string) {
         const target = menuItem(row);
 
         target.focus();
-        target.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', code: 'ArrowRight', bubbles: true, cancelable: true }));
+        target.dispatchEvent(
+            new KeyboardEvent('keydown', { key: 'ArrowRight', code: 'ArrowRight', bubbles: true, cancelable: true })
+        );
         render();
     });
     await settle();
@@ -142,9 +176,14 @@ async function send(words: string) {
 }
 
 /** What the daemon answers a command it cannot take. */
-const refused: CommandResult = { ok: false, requestId: 'req-refused', error: { code: 'unavailable', message: 'No daemon' } };
+const refused: CommandResult = {
+    ok: false,
+    requestId: 'req-refused',
+    error: { code: 'unavailable', message: 'No daemon' },
+};
 
-const made = (before: ReadonlySet<string>): Chat[] => [...store.selectedProject!.chats.values()].filter(chat => !before.has(chat.id));
+const made = (before: ReadonlySet<string>): Chat[] =>
+    [...store.selectedProject!.chats.values()].filter(chat => !before.has(chat.id));
 
 beforeEach(async () => {
     container = document.createElement('div');
@@ -166,7 +205,10 @@ afterEach(() => {
 describe('the control', () => {
     const textsOf = (rows: HTMLElement[]) => rows.map(row => row.textContent);
     /** Whether the slot at a row's start has a check: the slot is there on every row, so the words line up. */
-    const dimParts = () => [...chip()!.querySelectorAll('span')].filter(part => part.className.includes('color-secondary-muted-text')).map(part => part.textContent);
+    const dimParts = () =>
+        [...chip()!.querySelectorAll('span')]
+            .filter(part => part.className.includes('color-secondary-muted-text'))
+            .map(part => part.textContent);
 
     it('says the branch that is checked out to begin with and nothing of a mode, in the one pill there is', () => {
         expect(chip()?.textContent).toBe('main');
@@ -188,14 +230,25 @@ describe('the control', () => {
         ]);
         // Existing worktree opens a submenu and Manage worktrees… a dialog: neither is a place to choose, so neither is a radio, and nothing is ticked on them.
         expect(menuItems().map(row => row.getAttribute('aria-checked'))).toEqual(['true', 'false', null, null]);
-        expect(menuItems().map(row => row.getAttribute('role'))).toEqual(['menuitemradio', 'menuitemradio', 'menuitem', 'menuitem']);
+        expect(menuItems().map(row => row.getAttribute('role'))).toEqual([
+            'menuitemradio',
+            'menuitemradio',
+            'menuitem',
+            'menuitem',
+        ]);
         expect(menuItems().every(row => row.getAttribute('aria-disabled') !== 'true')).toBe(true);
         // One separator stands between the three places to work in and Manage worktrees….
         expect(document.body.querySelectorAll('[role="menu"] [role="separator"]')).toHaveLength(1);
 
         const rows = [...document.body.querySelectorAll<HTMLElement>('[role="menu"] > *')];
 
-        expect(rows.map(row => row.getAttribute('role'))).toEqual(['menuitemradio', 'menuitemradio', 'menuitem', 'separator', 'group']);
+        expect(rows.map(row => row.getAttribute('role'))).toEqual([
+            'menuitemradio',
+            'menuitemradio',
+            'menuitem',
+            'separator',
+            'group',
+        ]);
         // The worktrees are not rows of this menu: they are in the submenu, which is not open.
         expect(worktreeRows()).toEqual([]);
     });
@@ -260,12 +313,15 @@ describe('the control', () => {
 
     // A single choice list shuts for Enter, and leaves itself open for Space unless its items say otherwise.
     it('shuts for Space as for Enter, whichever row it is pressed on', async () => {
-        const key = async (target: HTMLElement, name: string, code: string) => act(async () => {
-            target.focus();
-            target.dispatchEvent(new KeyboardEvent('keydown', { key: name, code, bubbles: true, cancelable: true }));
-            target.dispatchEvent(new KeyboardEvent('keyup', { key: name, code, bubbles: true, cancelable: true }));
-            render();
-        });
+        const key = async (target: HTMLElement, name: string, code: string) =>
+            act(async () => {
+                target.focus();
+                target.dispatchEvent(
+                    new KeyboardEvent('keydown', { key: name, code, bubbles: true, cancelable: true })
+                );
+                target.dispatchEvent(new KeyboardEvent('keyup', { key: name, code, bubbles: true, cancelable: true }));
+                render();
+            });
 
         await press(chip()!);
         await key(menuItem('New worktree'), ' ', 'Space');
@@ -289,7 +345,12 @@ describe('the control', () => {
     it('is off in a repository with no commit, for a new worktree, saying so', async () => {
         const transport = new FixtureTransport();
 
-        vi.spyOn(transport, 'getFolderGit').mockResolvedValue({ isRepository: true, branch: 'main', branches: [], worktrees: [{ path: '/Users/dev/car-rental', branch: 'main', head: 'a1b2c3d', main: true, dirty: false }] });
+        vi.spyOn(transport, 'getFolderGit').mockResolvedValue({
+            isRepository: true,
+            branch: 'main',
+            branches: [],
+            worktrees: [{ path: '/Users/dev/car-rental', branch: 'main', head: 'a1b2c3d', main: true, dirty: false }],
+        });
         await start({ transport });
         await press(chip()!);
 
@@ -301,19 +362,39 @@ describe('the control', () => {
     it('turns Existing worktree off, saying so, when the folder has no other worktree', async () => {
         const transport = new FixtureTransport();
 
-        vi.spyOn(transport, 'getFolderGit').mockResolvedValue({ isRepository: true, branch: 'main', defaultBranch: 'origin/main', branches: [{ name: 'main', remote: false }], worktrees: [{ path: '/Users/dev/car-rental', branch: 'main', head: 'a1b2c3d', main: true, dirty: false }] });
+        vi.spyOn(transport, 'getFolderGit').mockResolvedValue({
+            isRepository: true,
+            branch: 'main',
+            defaultBranch: 'origin/main',
+            branches: [{ name: 'main', remote: false }],
+            worktrees: [{ path: '/Users/dev/car-rental', branch: 'main', head: 'a1b2c3d', main: true, dirty: false }],
+        });
         await start({ transport });
         await press(chip()!);
 
-        expect(textsOf(menuItems())).toEqual(['Main worktreeWork in the folder as it ismain', 'New worktreeA separate checkout on a branch of its ownorigin/main', 'Existing worktreeThe folder has no other worktrees', 'Manage worktrees…']);
+        expect(textsOf(menuItems())).toEqual([
+            'Main worktreeWork in the folder as it ismain',
+            'New worktreeA separate checkout on a branch of its ownorigin/main',
+            'Existing worktreeThe folder has no other worktrees',
+            'Manage worktrees…',
+        ]);
         expect(menuItem('Existing worktree').getAttribute('aria-disabled')).toBe('true');
-        expect([...document.body.querySelectorAll<HTMLElement>('[role="menu"] > *')].map(row => row.getAttribute('role'))).toEqual(['menuitemradio', 'menuitemradio', 'menuitem', 'separator', 'group']);
+        expect(
+            [...document.body.querySelectorAll<HTMLElement>('[role="menu"] > *')].map(row => row.getAttribute('role'))
+        ).toEqual(['menuitemradio', 'menuitemradio', 'menuitem', 'separator', 'group']);
     });
 
     it('says a detached HEAD by its short hash in the pill and on the row of the main worktree', async () => {
         const transport = new FixtureTransport();
 
-        vi.spyOn(transport, 'getFolderGit').mockResolvedValue({ isRepository: true, branch: '5c4d3e2', detached: true, defaultBranch: 'origin/main', branches: [{ name: 'main', remote: false }], worktrees: [{ path: '/Users/dev/car-rental', head: '5c4d3e2', main: true, dirty: false }] });
+        vi.spyOn(transport, 'getFolderGit').mockResolvedValue({
+            isRepository: true,
+            branch: '5c4d3e2',
+            detached: true,
+            defaultBranch: 'origin/main',
+            branches: [{ name: 'main', remote: false }],
+            worktrees: [{ path: '/Users/dev/car-rental', head: '5c4d3e2', main: true, dirty: false }],
+        });
         await start({ transport });
 
         expect(chip()?.textContent).toBe('5c4d3e2');
@@ -361,18 +442,26 @@ describe('the branch a new worktree starts from', () => {
         expect(options()).toEqual([]);
     });
 
-    it('is out of the tab order, since the right arrow on the row is the keyboard\'s way to it', async () => {
+    it("is out of the tab order, since the right arrow on the row is the keyboard's way to it", async () => {
         await press(chip()!);
 
         expect(baseButton()?.getAttribute('tabindex')).toBe('-1');
     });
 
     it('opens the list for the right arrow on the row of a new worktree, and only on that row', async () => {
-        const key = async (target: HTMLElement) => act(async () => {
-            target.focus();
-            target.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', code: 'ArrowRight', bubbles: true, cancelable: true }));
-            render();
-        });
+        const key = async (target: HTMLElement) =>
+            act(async () => {
+                target.focus();
+                target.dispatchEvent(
+                    new KeyboardEvent('keydown', {
+                        key: 'ArrowRight',
+                        code: 'ArrowRight',
+                        bubbles: true,
+                        cancelable: true,
+                    })
+                );
+                render();
+            });
 
         await press(chip()!);
         await key(menuItem('Main worktree'));
@@ -387,7 +476,13 @@ describe('the branch a new worktree starts from', () => {
 
         // The menu stays open with the list beside it.
         expect(menuItems().length).toBeGreaterThan(0);
-        expect(options().map(row => row.textContent)).toEqual(['main', 'dev', 'feature/payments', 'origin/mainDefault', 'origin/dev']);
+        expect(options().map(row => row.textContent)).toEqual([
+            'main',
+            'dev',
+            'feature/payments',
+            'origin/mainDefault',
+            'origin/dev',
+        ]);
         expect(ui().draftWorkspace).toBeNull();
     });
 
@@ -399,7 +494,13 @@ describe('the branch a new worktree starts from', () => {
         });
 
         it('has the branches, local and remote, with the default one marked and ticked, and the pill looks pressed while it is open', () => {
-            expect(options().map(row => row.textContent)).toEqual(['main', 'dev', 'feature/payments', 'origin/mainDefault', 'origin/dev']);
+            expect(options().map(row => row.textContent)).toEqual([
+                'main',
+                'dev',
+                'feature/payments',
+                'origin/mainDefault',
+                'origin/dev',
+            ]);
             expect(option('origin/main').querySelector('[aria-label="Current"]')).not.toBeNull();
             expect(chip()?.hasAttribute('data-open')).toBe(true);
         });
@@ -408,7 +509,12 @@ describe('the branch a new worktree starts from', () => {
             const groups = [...document.body.querySelectorAll('[role="listbox"] [role="group"]')];
 
             expect(groups.map(group => group.getAttribute('aria-label'))).toEqual(['Local', 'Remote']);
-            expect(groups.map(group => [...group.querySelectorAll('[role="option"]')].map(row => row.textContent))).toEqual([['main', 'dev', 'feature/payments'], ['origin/mainDefault', 'origin/dev']]);
+            expect(
+                groups.map(group => [...group.querySelectorAll('[role="option"]')].map(row => row.textContent))
+            ).toEqual([
+                ['main', 'dev', 'feature/payments'],
+                ['origin/mainDefault', 'origin/dev'],
+            ]);
             expect(document.body.querySelector('[role="listbox"]')?.textContent).toContain('Remote');
         });
 
@@ -438,7 +544,9 @@ describe('the branch a new worktree starts from', () => {
 
         it('is shut by Escape alone, chooses nothing and leaves the menu open, which the next Escape shuts', async () => {
             await act(async () => {
-                search().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+                search().dispatchEvent(
+                    new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+                );
             });
             await settle();
 
@@ -448,7 +556,9 @@ describe('the branch a new worktree starts from', () => {
 
             await act(async () => {
                 menuItem('Main worktree').focus();
-                menuItem('Main worktree').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true }));
+                menuItem('Main worktree').dispatchEvent(
+                    new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true })
+                );
             });
             await settle();
 
@@ -460,7 +570,16 @@ describe('the branch a new worktree starts from', () => {
     it('has no headings for a folder that has only local branches', async () => {
         const transport = new FixtureTransport();
 
-        vi.spyOn(transport, 'getFolderGit').mockResolvedValue({ isRepository: true, branch: 'main', defaultBranch: 'main', branches: [{ name: 'main', remote: false }, { name: 'dev', remote: false }], worktrees: [{ path: '/Users/dev/car-rental', branch: 'main', head: 'a1b2c3d', main: true, dirty: false }] });
+        vi.spyOn(transport, 'getFolderGit').mockResolvedValue({
+            isRepository: true,
+            branch: 'main',
+            defaultBranch: 'main',
+            branches: [
+                { name: 'main', remote: false },
+                { name: 'dev', remote: false },
+            ],
+            worktrees: [{ path: '/Users/dev/car-rental', branch: 'main', head: 'a1b2c3d', main: true, dirty: false }],
+        });
         await start({ transport });
         await press(chip()!);
         await press(baseButton()!);
@@ -511,22 +630,55 @@ describe('Existing worktrees', () => {
     describe('the ones a chat works in and the ones none does', () => {
         const withThree = (data: FixtureData) => {
             const transport = new FixtureTransport({ data });
-            const git = { isRepository: true as const, branch: 'main', defaultBranch: 'origin/main', branches: [{ name: 'main', remote: false }], worktrees: [{ path: '/Users/dev/car-rental', branch: 'main', head: 'a1b2c3d', main: true, dirty: false }, { path: '/Users/dev/trees/stale-one', branch: 'worktree-agent-a1', head: 'b1', main: false, dirty: true }, { path: WORKTREE, branch: 'clowdy/ab12cd34', head: 'c1', main: false, dirty: false }, { path: '/Users/dev/trees/stale-two', branch: 'worktree-agent-a2', head: 'd1', main: false, dirty: false }] };
+            const git = {
+                isRepository: true as const,
+                branch: 'main',
+                defaultBranch: 'origin/main',
+                branches: [{ name: 'main', remote: false }],
+                worktrees: [
+                    { path: '/Users/dev/car-rental', branch: 'main', head: 'a1b2c3d', main: true, dirty: false },
+                    {
+                        path: '/Users/dev/trees/stale-one',
+                        branch: 'worktree-agent-a1',
+                        head: 'b1',
+                        main: false,
+                        dirty: true,
+                    },
+                    { path: WORKTREE, branch: 'clowdy/ab12cd34', head: 'c1', main: false, dirty: false },
+                    {
+                        path: '/Users/dev/trees/stale-two',
+                        branch: 'worktree-agent-a2',
+                        head: 'd1',
+                        main: false,
+                        dirty: false,
+                    },
+                ],
+            };
 
             vi.spyOn(transport, 'getFolderGit').mockResolvedValue(git);
 
             return transport;
         };
 
-        it('are listed first, and the others after them under a heading, each group in git\'s order', async () => {
+        it("are listed first, and the others after them under a heading, each group in git's order", async () => {
             const data = withFixtureWorkspace(createFixtureData());
 
             await start({ data, transport: withThree(data) });
             await openWorktrees();
 
-            expect(worktreeRows().map(row => row.textContent?.split('No chat')[0]?.slice(0, 22))).toEqual(['clowdy/ab12cd34Weekend', 'worktree-agent-a1', 'worktree-agent-a2']);
-            expect(document.body.querySelector('[role="menu"][aria-label="Existing worktrees"]')?.textContent).toContain('Not in use');
-            expect([...document.body.querySelectorAll('[role="menu"][aria-label="Existing worktrees"] [role="group"]')].map(group => group.getAttribute('aria-label'))).toEqual(['Worktrees in use', 'Worktrees not in use']);
+            expect(worktreeRows().map(row => row.textContent?.split('No chat')[0]?.slice(0, 22))).toEqual([
+                'clowdy/ab12cd34Weekend',
+                'worktree-agent-a1',
+                'worktree-agent-a2',
+            ]);
+            expect(
+                document.body.querySelector('[role="menu"][aria-label="Existing worktrees"]')?.textContent
+            ).toContain('Not in use');
+            expect(
+                [
+                    ...document.body.querySelectorAll('[role="menu"][aria-label="Existing worktrees"] [role="group"]'),
+                ].map(group => group.getAttribute('aria-label'))
+            ).toEqual(['Worktrees in use', 'Worktrees not in use']);
         });
 
         it('have no heading when none of them is in use, nor when all of them are', async () => {
@@ -534,7 +686,9 @@ describe('Existing worktrees', () => {
             await openWorktrees();
 
             expect(worktreeRows()).toHaveLength(3);
-            expect(document.body.querySelector('[role="menu"][aria-label="Existing worktrees"]')?.textContent).not.toContain('Not in use');
+            expect(
+                document.body.querySelector('[role="menu"][aria-label="Existing worktrees"]')?.textContent
+            ).not.toContain('Not in use');
         });
     });
 
@@ -542,26 +696,52 @@ describe('Existing worktrees', () => {
         const data = withFixtureWorkspace(createFixtureData());
         const used = data.chats.find(chat => chat.workspace)!;
 
-        for (const [id, title] of [['c-x1', 'Second chat'], ['c-x2', 'Third chat'], ['c-x3', 'Fourth chat']]) data.chats.push({ ...structuredClone(used), id, title, orchestratorRunId: undefined });
+        for (const [id, title] of [
+            ['c-x1', 'Second chat'],
+            ['c-x2', 'Third chat'],
+            ['c-x3', 'Fourth chat'],
+        ])
+            data.chats.push({ ...structuredClone(used), id, title, orchestratorRunId: undefined });
 
         await start({ data });
         await openWorktrees();
 
-        expect(worktreeRow('clowdy/ab12cd34').textContent).toContain('Weekend surcharge in a worktree, Second chat and 2 more');
+        expect(worktreeRow('clowdy/ab12cd34').textContent).toContain(
+            'Weekend surcharge in a worktree, Second chat and 2 more'
+        );
     });
 
     it('scroll when there are many, in a box that keeps the popover to a height', async () => {
         const transport = new FixtureTransport();
-        const worktrees = Array.from({ length: 30 }, (_, n) => ({ path: `/Users/dev/trees/t${ n }`, branch: `feature/t${ n }`, head: 'a1b2c3d', main: false, dirty: false }));
+        const worktrees = Array.from({ length: 30 }, (_, n) => ({
+            path: `/Users/dev/trees/t${n}`,
+            branch: `feature/t${n}`,
+            head: 'a1b2c3d',
+            main: false,
+            dirty: false,
+        }));
 
-        vi.spyOn(transport, 'getFolderGit').mockResolvedValue({ isRepository: true, branch: 'main', defaultBranch: 'origin/main', branches: [{ name: 'main', remote: false }], worktrees: [{ path: '/Users/dev/car-rental', branch: 'main', head: 'a1b2c3d', main: true, dirty: false }, ...worktrees] });
+        vi.spyOn(transport, 'getFolderGit').mockResolvedValue({
+            isRepository: true,
+            branch: 'main',
+            defaultBranch: 'origin/main',
+            branches: [{ name: 'main', remote: false }],
+            worktrees: [
+                { path: '/Users/dev/car-rental', branch: 'main', head: 'a1b2c3d', main: true, dirty: false },
+                ...worktrees,
+            ],
+        });
         await start({ transport });
         await openWorktrees();
 
         // The thirty worktrees are rows of the submenu, in a box that keeps it to a height; the menu has its four rows.
         expect(worktreeRows()).toHaveLength(30);
         expect(menuItems()).toHaveLength(34);
-        expect(document.body.querySelector('[role="menu"][aria-label="Existing worktrees"]')?.closest('[style*="max-height"]')).not.toBeNull();
+        expect(
+            document.body
+                .querySelector('[role="menu"][aria-label="Existing worktrees"]')
+                ?.closest('[style*="max-height"]')
+        ).not.toBeNull();
     });
 });
 
@@ -574,12 +754,13 @@ describe('Manage worktrees…', () => {
 
         return data;
     };
-    const key = async (target: HTMLElement, name: string, code: string) => act(async () => {
-        target.focus();
-        target.dispatchEvent(new KeyboardEvent('keydown', { key: name, code, bubbles: true, cancelable: true }));
-        target.dispatchEvent(new KeyboardEvent('keyup', { key: name, code, bubbles: true, cancelable: true }));
-        render();
-    });
+    const key = async (target: HTMLElement, name: string, code: string) =>
+        act(async () => {
+            target.focus();
+            target.dispatchEvent(new KeyboardEvent('keydown', { key: name, code, bubbles: true, cancelable: true }));
+            target.dispatchEvent(new KeyboardEvent('keyup', { key: name, code, bubbles: true, cancelable: true }));
+            render();
+        });
 
     beforeEach(() => opener.mockClear());
 
@@ -601,7 +782,11 @@ describe('Manage worktrees…', () => {
         await press(menuItem('Manage worktrees'));
         await settle();
 
-        expect(opener).toHaveBeenCalledExactlyOnceWith({ root: store, projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental' });
+        expect(opener).toHaveBeenCalledExactlyOnceWith({
+            root: store,
+            projectId: FIXTURE_PROJECT_ID,
+            folderId: 'fld_car_rental',
+        });
         expect(menuItems()).toEqual([]);
     });
 
@@ -625,13 +810,21 @@ describe('Manage worktrees…', () => {
     it('opens it for the other folder when that is the folder of the page', async () => {
         await start({ transport: new FixtureTransport({ data: twoFolders() }) });
         await press(folderSelect()!);
-        await press([...document.body.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find(row => row.textContent === 'car-rental-api')!);
+        await press(
+            [...document.body.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find(
+                row => row.textContent === 'car-rental-api'
+            )!
+        );
         await settle();
         await press(chip()!);
         await press(menuItem('Manage worktrees'));
         await settle();
 
-        expect(opener).toHaveBeenCalledExactlyOnceWith({ root: store, projectId: FIXTURE_PROJECT_ID, folderId: API.id });
+        expect(opener).toHaveBeenCalledExactlyOnceWith({
+            root: store,
+            projectId: FIXTURE_PROJECT_ID,
+            folderId: API.id,
+        });
     });
 
     it('opens for Enter and for Space, and shuts the menu for both', async () => {
@@ -667,7 +860,8 @@ describe('Manage worktrees…', () => {
 
     it('gives focus back to the pill when the dialog is dismissed with Escape, though the row that opened it went with the menu', async () => {
         // The one test that draws the dialog itself: where focus returns is what the dialog noted when it opened, and that row is gone.
-        const { openManageWorktrees: openDialog } = await vi.importActual<typeof import('../worktrees')>('../worktrees');
+        const { openManageWorktrees: openDialog } =
+            await vi.importActual<typeof import('../worktrees')>('../worktrees');
 
         opener.mockImplementationOnce(openDialog);
         await press(chip()!);
@@ -677,18 +871,23 @@ describe('Manage worktrees…', () => {
             await new Promise(resolve => setTimeout(resolve, 400));
         });
 
-        expect(document.body.textContent).toContain('Each folder\'s worktrees');
+        expect(document.body.textContent).toContain("Each folder's worktrees");
         expect(document.activeElement).not.toBe(chip());
 
         await key(document.activeElement as HTMLElement, 'Escape', 'Escape');
         await vi.waitFor(() => expect(document.activeElement).toBe(chip()));
-        expect(document.body.textContent).not.toContain('Each folder\'s worktrees');
+        expect(document.body.textContent).not.toContain("Each folder's worktrees");
     });
 
     it('is in the menu of a repository with no commit too, where a new worktree is off', async () => {
         const transport = new FixtureTransport();
 
-        vi.spyOn(transport, 'getFolderGit').mockResolvedValue({ isRepository: true, branch: 'main', branches: [], worktrees: [{ path: '/Users/dev/car-rental', branch: 'main', head: 'a1b2c3d', main: true, dirty: false }] });
+        vi.spyOn(transport, 'getFolderGit').mockResolvedValue({
+            isRepository: true,
+            branch: 'main',
+            branches: [],
+            worktrees: [{ path: '/Users/dev/car-rental', branch: 'main', head: 'a1b2c3d', main: true, dirty: false }],
+        });
         await start({ transport });
         await press(chip()!);
 
@@ -715,7 +914,11 @@ describe('a folder that offers no worktree', () => {
     const hint = async () => {
         await act(async () => {
             document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
-            container.querySelector<HTMLElement>('[role="button"][aria-disabled][aria-label="Where it runs: Main worktree"]')!.focus();
+            container
+                .querySelector<HTMLElement>(
+                    '[role="button"][aria-disabled][aria-label="Where it runs: Main worktree"]'
+                )!
+                .focus();
         });
         await settle();
 
@@ -737,7 +940,9 @@ describe('a folder that offers no worktree', () => {
         await start({ transport });
 
         expect(chip()).toBeNull();
-        expect(container.querySelector('[aria-label="Where it runs: Main worktree"]')?.textContent).toBe('Main worktree');
+        expect(container.querySelector('[aria-label="Where it runs: Main worktree"]')?.textContent).toBe(
+            'Main worktree'
+        );
         expect(await hint()).toBe('Git did not answer');
     });
 
@@ -747,7 +952,7 @@ describe('a folder that offers no worktree', () => {
         vi.spyOn(transport, 'getFolderGit').mockRejectedValue(new Error(''));
         await start({ transport });
 
-        expect(await hint()).toBe('Couldn\'t read the folder\'s git');
+        expect(await hint()).toBe("Couldn't read the folder's git");
     });
 
     it('shows nothing while the daemon has not answered yet', async () => {
@@ -764,9 +969,11 @@ describe('a folder that offers no worktree', () => {
         const transport = new FixtureTransport();
         let answer: (git: FolderGit) => void = () => undefined;
 
-        vi.spyOn(transport, 'getFolderGit').mockReturnValue(new Promise<FolderGit>((resolve) => {
-            answer = resolve;
-        }));
+        vi.spyOn(transport, 'getFolderGit').mockReturnValue(
+            new Promise<FolderGit>(resolve => {
+                answer = resolve;
+            })
+        );
         await start({ transport });
         // The page comes back from another chat (back, forward) with its choice, and the read is on its way again.
         await draw(() => ui().setDraftWorkspace({ mode: 'new', base: 'dev' }));
@@ -777,7 +984,11 @@ describe('a folder that offers no worktree', () => {
         expect(made(before)).toHaveLength(0);
         expect(editor().getText()).toContain('Fix it');
 
-        const sentWith = await FixtureTransport.prototype.getFolderGit.call(transport, FIXTURE_PROJECT_ID, 'fld_car_rental');
+        const sentWith = await FixtureTransport.prototype.getFolderGit.call(
+            transport,
+            FIXTURE_PROJECT_ID,
+            'fld_car_rental'
+        );
 
         await act(async () => answer(sentWith));
         await settle();
@@ -847,8 +1058,17 @@ describe('the first message', () => {
         const [chat] = made(before);
 
         // The fixture daemon makes the worktree at the first message, as the daemon does: it is ready, on the branch of its own, with the step in the chat's stream.
-        expect(chat?.workspace).toMatchObject({ managed: true, ready: true, folderId: 'fld_car_rental', branch: `clowdy/${ chat!.id.slice(-8) }` });
-        expect((await store.transport.getItems({ chatId: chat!.id })).slice(0, 2).map(item => (item.body.kind === 'tool' ? item.body.name : item.body.kind))).toEqual(['user', 'workspace']);
+        expect(chat?.workspace).toMatchObject({
+            managed: true,
+            ready: true,
+            folderId: 'fld_car_rental',
+            branch: `clowdy/${chat!.id.slice(-8)}`,
+        });
+        expect(
+            (await store.transport.getItems({ chatId: chat!.id }))
+                .slice(0, 2)
+                .map(item => (item.body.kind === 'tool' ? item.body.name : item.body.kind))
+        ).toEqual(['user', 'workspace']);
     });
 
     it('makes a chat in the existing worktree that was picked, sharing the worktree with the chats that have it', async () => {
@@ -898,7 +1118,7 @@ describe('the first message', () => {
         expect(ui().draft).toBe(false);
     });
 
-    it('makes another chat when the worktree was changed after a first message that failed, since a chat\'s worktree is fixed from the start', async () => {
+    it("makes another chat when the worktree was changed after a first message that failed, since a chat's worktree is fixed from the start", async () => {
         const transport = new FixtureTransport();
         const original = transport.command.bind(transport);
         const commands = vi.spyOn(transport, 'command');
@@ -945,7 +1165,11 @@ describe('the folder of the page', () => {
         expect(read).toHaveBeenCalledExactlyOnceWith(FIXTURE_PROJECT_ID, 'fld_car_rental');
 
         await press(folderSelect()!);
-        await press([...document.body.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find(row => row.textContent === 'car-rental-api')!);
+        await press(
+            [...document.body.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find(
+                row => row.textContent === 'car-rental-api'
+            )!
+        );
         await settle();
 
         expect(read).toHaveBeenLastCalledWith(FIXTURE_PROJECT_ID, API.id);
@@ -983,7 +1207,7 @@ describe('the place of the page', () => {
     const pickWorktree = () => chooseWorktree('clowdy/ab12cd34');
     const placeOfPage = () => currentPlace(store.selectedProject!, ui());
 
-    it('is the folder\'s own checkout in Project checkout and for a new worktree, which the first message makes', async () => {
+    it("is the folder's own checkout in Project checkout and for a new worktree, which the first message makes", async () => {
         expect(placeOfPage().workspace).toBeUndefined();
 
         await chooseMode('New worktree');
@@ -992,11 +1216,14 @@ describe('the place of the page', () => {
         expect(ui().draftWorkspaceRow).toBeNull();
     });
 
-    it('is the worktree that is picked once the daemon has answered for it, and the folder\'s own checkout again when it is left', async () => {
+    it("is the worktree that is picked once the daemon has answered for it, and the folder's own checkout again when it is left", async () => {
         await pickWorktree();
 
         expect(ui().draftWorkspaceRow).toMatchObject({ path: WORKTREE, managed: true, ready: true });
-        expect(placeOfPage()).toMatchObject({ folder: { id: 'fld_car_rental' }, workspace: { path: WORKTREE, ready: true } });
+        expect(placeOfPage()).toMatchObject({
+            folder: { id: 'fld_car_rental' },
+            workspace: { path: WORKTREE, ready: true },
+        });
 
         await chooseMode('Main worktree');
 
@@ -1027,7 +1254,9 @@ describe('the place of the page', () => {
         await draw(() => ui().setDraftWorkspace({ mode: 'existing', path: WORKTREE }));
         await settle();
 
-        expect(asked.mock.calls.filter(([command]) => command.type === 'workspace.open')).toEqual([[{ type: 'workspace.open', projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental', path: WORKTREE }]]);
+        expect(asked.mock.calls.filter(([command]) => command.type === 'workspace.open')).toEqual([
+            [{ type: 'workspace.open', projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental', path: WORKTREE }],
+        ]);
     });
 
     it('asks again for a worktree whose row went with the last chat that worked in it, so the page and the chat of its first message share the row that is made', async () => {
@@ -1082,10 +1311,10 @@ describe('the place of the page', () => {
         const original = transport.command.bind(transport);
         let answer: () => void = () => undefined;
 
-        vi.spyOn(transport, 'command').mockImplementation(async (command) => {
+        vi.spyOn(transport, 'command').mockImplementation(async command => {
             if (command.type !== 'workspace.open') return original(command);
 
-            await new Promise<void>((resolve) => {
+            await new Promise<void>(resolve => {
                 answer = resolve;
             });
 
@@ -1104,11 +1333,13 @@ describe('the place of the page', () => {
         expect(placeOfPage().workspace).toBeUndefined();
     });
 
-    it('stays in the folder\'s own checkout, without a word, when the daemon refuses or cannot be reached', async () => {
+    it("stays in the folder's own checkout, without a word, when the daemon refuses or cannot be reached", async () => {
         const transport = new FixtureTransport();
         const original = transport.command.bind(transport);
 
-        vi.spyOn(transport, 'command').mockImplementation(async command => (command.type === 'workspace.open' ? refused : original(command)));
+        vi.spyOn(transport, 'command').mockImplementation(async command =>
+            command.type === 'workspace.open' ? refused : original(command)
+        );
         await start({ transport });
         await pickWorktree();
 

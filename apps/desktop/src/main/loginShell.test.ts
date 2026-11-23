@@ -11,7 +11,9 @@ describe('parseLoginShellPath', () => {
     });
 
     test('ignores what the shell startup files print around it', () => {
-        expect(parseLoginShellPath('Welcome back!\n[oh-my-zsh] updating...\n__CLOWDY_PATH__/a:/b__CLOWDY_PATH__\nbye\n')).toBe('/a:/b');
+        expect(
+            parseLoginShellPath('Welcome back!\n[oh-my-zsh] updating...\n__CLOWDY_PATH__/a:/b__CLOWDY_PATH__\nbye\n')
+        ).toBe('/a:/b');
     });
 
     test.each([
@@ -44,8 +46,10 @@ describe('isMinimalPath', () => {
 });
 
 describe('mergePaths', () => {
-    test('puts the login shell first and keeps the app\'s own folders after it, once each', () => {
-        expect(mergePaths('/opt/homebrew/bin:/usr/bin:/bin', '/usr/bin:/bin:/sbin', ':')).toBe('/opt/homebrew/bin:/usr/bin:/bin:/sbin');
+    test("puts the login shell first and keeps the app's own folders after it, once each", () => {
+        expect(mergePaths('/opt/homebrew/bin:/usr/bin:/bin', '/usr/bin:/bin:/sbin', ':')).toBe(
+            '/opt/homebrew/bin:/usr/bin:/bin:/sbin'
+        );
     });
 
     test('works without a current PATH', () => {
@@ -60,7 +64,7 @@ describe.skipIf(process.platform === 'win32')('resolveLoginShellPath', () => {
     async function fakeShell(name: string, body: string): Promise<string> {
         const file = path.join(folder, name);
 
-        await writeFile(file, `#!/bin/sh\n${ body }\n`);
+        await writeFile(file, `#!/bin/sh\n${body}\n`);
         await chmod(file, 0o755);
 
         return file;
@@ -74,7 +78,10 @@ describe.skipIf(process.platform === 'win32')('resolveLoginShellPath', () => {
 
     test('runs the shell as an interactive login shell and returns the PATH it prints', async () => {
         // Prints a banner as a noisy rc file would, then evaluates the command like `sh -c`.
-        const shell = await fakeShell('noisy', 'echo "banner" >&2; echo "motd"; [ "$1" = "-ilc" ] || exit 3; eval "$2"');
+        const shell = await fakeShell(
+            'noisy',
+            'echo "banner" >&2; echo "motd"; [ "$1" = "-ilc" ] || exit 3; eval "$2"'
+        );
         const env = { PATH: '/from/login:/usr/bin' };
 
         expect(await resolveLoginShellPath(shell, env)).toBe('/from/login:/usr/bin');

@@ -1,0 +1,15 @@
+Clowdy
+Copyright 2026 The Clowdy authors
+
+Clowdy is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Portions of this software are derived from Reforma, Copyright 2026 Reforma, Inc.,
+which Reforma, Inc. licenses to Clowdy and its users under the Apache License,
+Version 2.0: the design system and its styles (packages/components, packages/styles),
+the icon packs (packages/icons), the file tree and text editor (packages/file-manager),
+the Loader animation, and the Biome configuration (biome.json).
+
+The open source software that Clowdy is built with, and the licenses it comes under,
+is listed in THIRD-PARTY-LICENSES.md.
+
+The names and logos of Clowdy and of Reforma are not licensed: see TRADEMARKS.md.

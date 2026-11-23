@@ -11,23 +11,40 @@ const encoder = new TextEncoder();
  */
 class FixtureShell {
     readonly info: TerminalInfo;
-    #screen = `Fixture shell: nothing here is run\r\n${ PROMPT }`;
+    #screen = `Fixture shell: nothing here is run\r\n${PROMPT}`;
     #line = '';
     readonly #streams = new Set<TerminalStreamHandlers>();
 
     constructor(id: TerminalId, request: TerminalCreate, cwd: string, createdAt: number) {
-        this.info = { id, projectId: request.projectId, folderId: request.folderId, ...(request.workspaceId !== undefined && { workspaceId: request.workspaceId }), cwd, shell: 'zsh', cols: request.cols, rows: request.rows, state: 'running', createdAt };
+        this.info = {
+            id,
+            projectId: request.projectId,
+            folderId: request.folderId,
+            ...(request.workspaceId !== undefined && { workspaceId: request.workspaceId }),
+            cwd,
+            shell: 'zsh',
+            cols: request.cols,
+            rows: request.rows,
+            state: 'running',
+            createdAt,
+        };
     }
 
     open(handlers: TerminalStreamHandlers): TerminalStream {
         this.#streams.add(handlers);
         handlers.onStatus('open');
-        handlers.onScreen({ screen: this.#screen, cols: this.info.cols, rows: this.info.rows, state: this.info.state, exitCode: this.info.exitCode });
+        handlers.onScreen({
+            screen: this.#screen,
+            cols: this.info.cols,
+            rows: this.info.rows,
+            state: this.info.state,
+            exitCode: this.info.exitCode,
+        });
 
         if (this.info.state === 'exited') handlers.onExit(this.info.exitCode ?? 0);
 
         return {
-            write: (data) => {
+            write: data => {
                 if (this.info.state !== 'running') return false;
 
                 for (const character of data) this.#type(character);
@@ -68,15 +85,13 @@ class FixtureShell {
                 return;
             }
 
-            this.#print(line === '' ? PROMPT : `fixture: ${ line }: command not found\r\n${ PROMPT }`);
-        }
-        else if (character === '\x7f') {
+            this.#print(line === '' ? PROMPT : `fixture: ${line}: command not found\r\n${PROMPT}`);
+        } else if (character === '\x7f') {
             if (this.#line.length > 0) {
                 this.#line = this.#line.slice(0, -1);
                 this.#print('\b \b');
             }
-        }
-        else if (character >= ' ') {
+        } else if (character >= ' ') {
             this.#line += character;
             this.#print(character);
         }
@@ -89,17 +104,24 @@ export class FixtureTerminals {
     #counter = 0;
 
     list(projectId?: ProjectId): TerminalInfo[] {
-        return [...this.#shells.values()].filter(shell => projectId === undefined || shell.info.projectId === projectId).map(shell => structuredClone(shell.info));
+        return [...this.#shells.values()]
+            .filter(shell => projectId === undefined || shell.info.projectId === projectId)
+            .map(shell => structuredClone(shell.info));
     }
 
     /** Starts a shell in the folder, or in the worktree of it that `workspace` is (the transport has judged it), or in a folder below either. */
     create(project: Project, request: TerminalCreate, workspace?: ChatWorkspace): TerminalInfo {
         const folder = project.folders.find(candidate => candidate.id === request.folderId);
 
-        if (!folder) throw new Error(`Folder ${ request.folderId } does not exist`);
+        if (!folder) throw new Error(`Folder ${request.folderId} does not exist`);
 
         const root = workspace?.path ?? folder.path;
-        const shell = new FixtureShell(`trm_fixture${ ++this.#counter }`, request, request.path ? `${ root }/${ request.path }` : root, Date.now());
+        const shell = new FixtureShell(
+            `trm_fixture${++this.#counter}`,
+            request,
+            request.path ? `${root}/${request.path}` : root,
+            Date.now()
+        );
 
         this.#shells.set(shell.info.id, shell);
 

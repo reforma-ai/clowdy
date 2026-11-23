@@ -1,6 +1,6 @@
-import { PERMISSION_PRESET_NAMES, PERMISSION_PRESETS } from '@clowdy/protocol';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
+import { PERMISSION_PRESET_NAMES, PERMISSION_PRESETS } from '@clowdy/protocol';
 
 import { errorMessage } from '../../errors';
 import { PROVIDERS } from '../../providers/builtin';
@@ -11,7 +11,15 @@ import { buildAgentEnv } from './env';
 
 import type { AgentInfo, AgentPermissions, AgentSetting, PermissionPresetId } from '@clowdy/protocol';
 import type { PermissionSupport, Provider } from '../../providers/types';
-import type { AgentOverride, AgentProtocol, AgentSettingSpec, AgentSpec, CustomAgent, SettingEffect, TaskChannel } from './catalog';
+import type {
+    AgentOverride,
+    AgentProtocol,
+    AgentSettingSpec,
+    AgentSpec,
+    CustomAgent,
+    SettingEffect,
+    TaskChannel,
+} from './catalog';
 
 /** Detection results are reused this long, so a settings screen can poll without spawning a probe each time. */
 const INFO_TTL_MS = 30_000;
@@ -66,7 +74,10 @@ export interface AgentRegistryOptions {
 }
 
 export class AgentRegistryError extends Error {
-    constructor(readonly kind: 'invalid' | 'not_found' | 'conflict', message: string) {
+    constructor(
+        readonly kind: 'invalid' | 'not_found' | 'conflict',
+        message: string
+    ) {
         super(message);
     }
 }
@@ -93,7 +104,9 @@ export class AgentRegistry {
         this.discovery = options.discovery ?? new Discovery();
         this.now = options.now ?? Date.now;
         this.platform = options.platform ?? process.platform;
-        this.runtime = options.runtime ?? (async () => process.versions.bun ? process.execPath : (await this.discovery.find(['bun']))?.path);
+        this.runtime =
+            options.runtime ??
+            (async () => (process.versions.bun ? process.execPath : (await this.discovery.find(['bun']))?.path));
 
         if (options.dataDir) {
             this.dataDir = options.dataDir;
@@ -168,7 +181,10 @@ export class AgentRegistry {
      * `CLAUDE_CONFIG_DIR` or `CODEX_HOME` a run would), except the folder a run keeps apart from the person's (`AgentSpec.isolation`): nothing
      * here chooses a model, and a sign-in has to land where the person's own program and the account read look. `undefined` for an agent that is off or not installed.
      */
-    async probeTarget(id: string, daemonEnv: Record<string, string | undefined> = process.env): Promise<{ program: string; env: Record<string, string> } | undefined> {
+    async probeTarget(
+        id: string,
+        daemonEnv: Record<string, string | undefined> = process.env
+    ): Promise<{ program: string; env: Record<string, string> } | undefined> {
         const resolution = await this.resolveAs(id, false);
 
         if (!resolution.ok) {
@@ -177,18 +193,24 @@ export class AgentRegistry {
 
         const { agent } = resolution;
 
-        return { program: agent.program, env: buildAgentEnv({ daemonEnv, path: await this.path(), scrub: agent.scrub, set: agent.env }) };
+        return {
+            program: agent.program,
+            env: buildAgentEnv({ daemonEnv, path: await this.path(), scrub: agent.scrub, set: agent.env }),
+        };
     }
 
     /* -------------------------------- Changing -------------------------------- */
 
     add(agent: CustomAgent): void {
         if (!AGENT_ID.test(agent.id)) {
-            throw new AgentRegistryError('invalid', 'An agent id is lowercase letters, digits and dashes, starting with a letter or digit, at most 32 characters');
+            throw new AgentRegistryError(
+                'invalid',
+                'An agent id is lowercase letters, digits and dashes, starting with a letter or digit, at most 32 characters'
+            );
         }
 
         if (agent.id === 'fake' || this.has(agent.id)) {
-            throw new AgentRegistryError('conflict', `An agent called "${ agent.id }" already exists`);
+            throw new AgentRegistryError('conflict', `An agent called "${agent.id}" already exists`);
         }
 
         if (!agent.name.trim() || !agent.command.trim()) {
@@ -196,26 +218,37 @@ export class AgentRegistry {
         }
 
         checkProgram(agent.command.trim());
-        this.change(() => this.stored.agents.push({ ...agent, name: agent.name.trim(), command: agent.command.trim() }));
+        this.change(() =>
+            this.stored.agents.push({ ...agent, name: agent.name.trim(), command: agent.command.trim() })
+        );
     }
 
-    update(id: string, patch: Omit<AgentOverride, 'path' | 'permission'> & { path?: string | null; permission?: PermissionPresetId | null; name?: string; command?: string; args?: string[] }): void {
+    update(
+        id: string,
+        patch: Omit<AgentOverride, 'path' | 'permission'> & {
+            path?: string | null;
+            permission?: PermissionPresetId | null;
+            name?: string;
+            command?: string;
+            args?: string[];
+        }
+    ): void {
         const custom = this.stored.agents.find(agent => agent.id === id);
 
         if (!custom && !this.spec(id)) {
-            throw new AgentRegistryError('not_found', `There is no agent called "${ id }"`);
+            throw new AgentRegistryError('not_found', `There is no agent called "${id}"`);
         }
 
         const { name, command, args, path, enabled, env, settings, permission } = patch;
 
         for (const settingId of Object.keys(settings ?? {})) {
             if (!this.spec(id)?.settings?.some(setting => setting.id === settingId)) {
-                throw new AgentRegistryError('invalid', `${ this.nameOf(id) } has no setting called "${ settingId }"`);
+                throw new AgentRegistryError('invalid', `${this.nameOf(id)} has no setting called "${settingId}"`);
             }
         }
 
         if (permission && !this.permissionsOf(id).presets.some(preset => preset.id === permission)) {
-            throw new AgentRegistryError('invalid', `${ this.nameOf(id) } has no preset called "${ permission }"`);
+            throw new AgentRegistryError('invalid', `${this.nameOf(id)} has no preset called "${permission}"`);
         }
 
         if (path) {
@@ -228,7 +261,11 @@ export class AgentRegistry {
 
         this.change(() => {
             if (custom) {
-                Object.assign(custom, { ...(name?.trim() && { name: name.trim() }), ...(command?.trim() && { command: command.trim() }), ...(args && { args }) });
+                Object.assign(custom, {
+                    ...(name?.trim() && { name: name.trim() }),
+                    ...(command?.trim() && { command: command.trim() }),
+                    ...(args && { args }),
+                });
             }
 
             // Only what the patch names changes; a field left out (or passed as `undefined`) keeps its value.
@@ -241,15 +278,13 @@ export class AgentRegistry {
 
             if (path === null) {
                 delete next.path;
-            }
-            else if (path !== undefined) {
+            } else if (path !== undefined) {
                 next.path = path;
             }
 
             if (permission === null) {
                 delete next.permission;
-            }
-            else if (permission !== undefined) {
+            } else if (permission !== undefined) {
                 next.permission = permission;
             }
 
@@ -259,7 +294,12 @@ export class AgentRegistry {
 
     remove(id: string): void {
         if (!this.stored.agents.some(agent => agent.id === id)) {
-            throw new AgentRegistryError(this.spec(id) ? 'invalid' : 'not_found', this.spec(id) ? `${ this.nameOf(id) } is built in; switch it off instead` : `There is no custom agent called "${ id }"`);
+            throw new AgentRegistryError(
+                this.spec(id) ? 'invalid' : 'not_found',
+                this.spec(id)
+                    ? `${this.nameOf(id)} is built in; switch it off instead`
+                    : `There is no custom agent called "${id}"`
+            );
         }
 
         this.change(() => {
@@ -283,7 +323,10 @@ export class AgentRegistry {
      * What the preset the agent runs on does to its next start: the person's choice, or the provider's default when they chose none or chose one the agent no
      * longer offers.
      */
-    private permissionPlan(id: string, override: AgentOverride): { permission: ResolvedAgent['permission']; effect: SettingEffect } {
+    private permissionPlan(
+        id: string,
+        override: AgentOverride
+    ): { permission: ResolvedAgent['permission']; effect: SettingEffect } {
         const support = this.permissionsOf(id);
         const preset = chosenPreset(support, override) ?? support.default;
         const { mode, effect, answer } = support.apply(preset);
@@ -307,7 +350,11 @@ export class AgentRegistry {
         }
 
         if (entry.custom) {
-            return isAbsolute(entry.agent.command) ? (existsSync(entry.agent.command) ? entry.agent.command : undefined) : (await this.discovery.find([entry.agent.command]))?.path;
+            return isAbsolute(entry.agent.command)
+                ? existsSync(entry.agent.command)
+                    ? entry.agent.command
+                    : undefined
+                : (await this.discovery.find([entry.agent.command]))?.path;
         }
 
         return (await this.discovery.find(entry.spec.programs))?.path;
@@ -316,7 +363,7 @@ export class AgentRegistry {
     private async resolveAs(id: string, isolate: boolean): Promise<Resolution> {
         const entry = this.entries().find(candidate => candidate.id === id);
 
-        return entry ? this.build(entry, isolate) : { ok: false, message: `There is no agent called "${ id }"` };
+        return entry ? this.build(entry, isolate) : { ok: false, message: `There is no agent called "${id}"` };
     }
 
     /**
@@ -325,10 +372,18 @@ export class AgentRegistry {
      * the person's own value for the variable is set (theirs wins). A message when the folder cannot be made: the run then fails with it, rather
      * than start on the person's own folder and change their default.
      */
-    private isolation(spec: AgentSpec, override: AgentOverride): { env: Record<string, string> } | { message: string } | undefined {
+    private isolation(
+        spec: AgentSpec,
+        override: AgentOverride
+    ): { env: Record<string, string> } | { message: string } | undefined {
         const { isolation } = spec;
 
-        if (!isolation || !this.dataDir || !isolation.platforms.includes(this.platform) || override.env?.[isolation.env] !== undefined) {
+        if (
+            !isolation ||
+            !this.dataDir ||
+            !isolation.platforms.includes(this.platform) ||
+            override.env?.[isolation.env] !== undefined
+        ) {
             return undefined;
         }
 
@@ -336,9 +391,10 @@ export class AgentRegistry {
 
         try {
             mkdirSync(folder, { recursive: true, mode: 0o700 });
-        }
-        catch (error) {
-            return { message: `${ spec.name } was not started: Clowdy could not make ${ folder }, where it keeps ${ spec.name }'s own settings apart from yours (${ errorMessage(error) })` };
+        } catch (error) {
+            return {
+                message: `${spec.name} was not started: Clowdy could not make ${folder}, where it keeps ${spec.name}'s own settings apart from yours (${errorMessage(error)})`,
+            };
         }
 
         return { env: { [isolation.env]: folder } };
@@ -349,19 +405,37 @@ export class AgentRegistry {
         const override = this.stored.overrides[entry.id] ?? {};
 
         if (!this.isEnabled(entry.id)) {
-            return { ok: false, message: `${ entry.name } is switched off in Clowdy` };
+            return { ok: false, message: `${entry.name} is switched off in Clowdy` };
         }
 
         const program = await this.program(entry);
 
         if (!program) {
-            return { ok: false, message: entry.custom ? `The command "${ entry.agent.command }" of ${ entry.name } was not found` : `${ entry.name } is not installed: no \`${ entry.spec.programs[0] }\` command was found. Install it, then try again` };
+            return {
+                ok: false,
+                message: entry.custom
+                    ? `The command "${entry.agent.command}" of ${entry.name} was not found`
+                    : `${entry.name} is not installed: no \`${entry.spec.programs[0]}\` command was found. Install it, then try again`,
+            };
         }
 
         const permit = this.permissionPlan(entry.id, override);
 
         if (entry.custom) {
-            return { ok: true, agent: { id: entry.id, name: entry.name, program, command: program, args: entry.agent.args, env: { ...entry.agent.env, ...override.env }, scrub: [], protocol: 'v1', permission: permit.permission } };
+            return {
+                ok: true,
+                agent: {
+                    id: entry.id,
+                    name: entry.name,
+                    program,
+                    command: program,
+                    args: entry.agent.args,
+                    env: { ...entry.agent.env, ...override.env },
+                    scrub: [],
+                    protocol: 'v1',
+                    permission: permit.permission,
+                },
+            };
         }
 
         const { spec } = entry;
@@ -372,21 +446,63 @@ export class AgentRegistry {
         }
 
         const applied = appliedSettings(spec, override, permit.effect);
-        const base = { id: spec.id, name: spec.name, scrub: spec.scrub ?? [], login: spec.login, protocol: spec.protocol ?? 'v1', ...(spec.wakesOnBackgroundEnd && { wakesOnBackgroundEnd: true }), sessionMeta: withToolRules(spec.sessionMeta, applied), ...(spec.clientMeta && { clientMeta: spec.clientMeta }), permission: permit.permission };
+        const base = {
+            id: spec.id,
+            name: spec.name,
+            scrub: spec.scrub ?? [],
+            login: spec.login,
+            protocol: spec.protocol ?? 'v1',
+            ...(spec.wakesOnBackgroundEnd && { wakesOnBackgroundEnd: true }),
+            sessionMeta: withToolRules(spec.sessionMeta, applied),
+            ...(spec.clientMeta && { clientMeta: spec.clientMeta }),
+            permission: permit.permission,
+        };
 
         if (spec.launch.kind === 'binary') {
-            return { ok: true, agent: { ...base, program, command: program, args: spec.launch.args, env: withoutRemoved({ ...spec.env, ...apart?.env, ...applied.env, ...codexConfigEnv(applied.codexConfig), ...override.env }) } };
+            return {
+                ok: true,
+                agent: {
+                    ...base,
+                    program,
+                    command: program,
+                    args: spec.launch.args,
+                    env: withoutRemoved({
+                        ...spec.env,
+                        ...apart?.env,
+                        ...applied.env,
+                        ...codexConfigEnv(applied.codexConfig),
+                        ...override.env,
+                    }),
+                },
+            };
         }
 
         const runtime = await this.runtime();
 
         if (!runtime) {
-            return { ok: false, message: `${ spec.name } needs Bun: its adapter is fetched with \`bun x\`, and no bun was found. Install Bun, then try again` };
+            return {
+                ok: false,
+                message: `${spec.name} needs Bun: its adapter is fetched with \`bun x\`, and no bun was found. Install Bun, then try again`,
+            };
         }
 
         return {
             ok: true,
-            agent: { ...base, program, command: runtime, args: ['x', '--bun', spec.launch.package], env: withoutRemoved({ ...PACKAGE_RUNNER_ENV, ...spec.env, ...apart?.env, ...applied.env, ...codexConfigEnv(applied.codexConfig), [spec.launch.pathEnv]: program, ...override.env }) },
+            agent: {
+                ...base,
+                program,
+                command: runtime,
+                args: ['x', '--bun', spec.launch.package],
+                env: withoutRemoved({
+                    ...PACKAGE_RUNNER_ENV,
+                    ...spec.env,
+                    ...apart?.env,
+                    ...applied.env,
+                    ...codexConfigEnv(applied.codexConfig),
+                    [spec.launch.pathEnv]: program,
+                    ...override.env,
+                }),
+            },
         };
     }
 
@@ -415,7 +531,12 @@ export class AgentRegistry {
             ...(spec?.compact && { canCompact: true }),
             ...(spec?.settings?.length && { settings: settingsOf(spec, override) }),
             permissions: permissionsInfo(this.permissionsOf(entry.id), override),
-            ...((override.path || override.env) && { overrides: { ...(override.path && { path: override.path }), ...(override.env && { env: override.env }) } }),
+            ...((override.path || override.env) && {
+                overrides: {
+                    ...(override.path && { path: override.path }),
+                    ...(override.env && { env: override.env }),
+                },
+            }),
         };
     }
 
@@ -424,10 +545,11 @@ export class AgentRegistry {
     private load(file: string): Stored {
         try {
             return parseStored(JSON.parse(readFileSync(file, 'utf8')), this.specs);
-        }
-        catch (error) {
+        } catch (error) {
             if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-                console.warn(`[clowdy] ${ file } could not be read; custom agents and agent settings are ignored: ${ (error as Error).message }`);
+                console.warn(
+                    `[clowdy] ${file} could not be read; custom agents and agent settings are ignored: ${(error as Error).message}`
+                );
             }
 
             return { agents: [], overrides: {} };
@@ -441,8 +563,7 @@ export class AgentRegistry {
         try {
             mutate();
             this.save();
-        }
-        catch (error) {
+        } catch (error) {
             this.stored = before;
 
             throw error;
@@ -458,15 +579,16 @@ export class AgentRegistry {
 
         mkdirSync(dirname(this.file), { recursive: true });
         // A write that dies half-way must not leave a file nobody can read. The file may hold keys the user gave an agent.
-        writeFileSync(`${ this.file }.tmp`, JSON.stringify(this.stored, null, 2), { mode: 0o600 });
-        renameSync(`${ this.file }.tmp`, this.file);
+        writeFileSync(`${this.file}.tmp`, JSON.stringify(this.stored, null, 2), { mode: 0o600 });
+        renameSync(`${this.file}.tmp`, this.file);
     }
-
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null && !Array.isArray(value);
 const isPreset = (value: unknown): value is PermissionPresetId => PERMISSION_PRESETS.some(preset => preset === value);
-const isStrings = (value: unknown): value is Record<string, string> => isRecord(value) && Object.values(value).every(item => typeof item === 'string');
+const isStrings = (value: unknown): value is Record<string, string> =>
+    isRecord(value) && Object.values(value).every(item => typeof item === 'string');
 
 /**
  * A program is a name looked up on the search path or an absolute path. A relative path would be read against whatever
@@ -477,7 +599,10 @@ function checkProgram(program: string, pathOnly = false): void {
         return;
     }
 
-    throw new AgentRegistryError('invalid', pathOnly ? 'A path to a program must be absolute' : 'A command is a program name or an absolute path');
+    throw new AgentRegistryError(
+        'invalid',
+        pathOnly ? 'A path to a program must be absolute' : 'A command is a program name or an absolute path'
+    );
 }
 
 /** Reads `agents.json` for what it is worth: whatever is damaged or foreign in it is left out, the rest is kept. */
@@ -487,7 +612,15 @@ function parseStored(data: unknown, specs: readonly AgentSpec[]): Stored {
     const agents = new Map<string, CustomAgent>();
 
     for (const entry of Array.isArray(record.agents) ? record.agents : []) {
-        if (!isRecord(entry) || typeof entry.id !== 'string' || !AGENT_ID.test(entry.id) || known.has(entry.id) || agents.has(entry.id) || typeof entry.command !== 'string' || !entry.command.trim()) {
+        if (
+            !isRecord(entry) ||
+            typeof entry.id !== 'string' ||
+            !AGENT_ID.test(entry.id) ||
+            known.has(entry.id) ||
+            agents.has(entry.id) ||
+            typeof entry.command !== 'string' ||
+            !entry.command.trim()
+        ) {
             continue;
         }
 
@@ -511,7 +644,13 @@ function parseStored(data: unknown, specs: readonly AgentSpec[]): Stored {
                 ...(typeof value.enabled === 'boolean' && { enabled: value.enabled }),
                 ...(typeof value.path === 'string' && value.path !== '' && { path: value.path }),
                 ...(isStrings(value.env) && { env: value.env }),
-                ...(isRecord(value.settings) && { settings: Object.fromEntries(Object.entries(value.settings).filter((entry): entry is [string, boolean] => typeof entry[1] === 'boolean')) }),
+                ...(isRecord(value.settings) && {
+                    settings: Object.fromEntries(
+                        Object.entries(value.settings).filter(
+                            (entry): entry is [string, boolean] => typeof entry[1] === 'boolean'
+                        )
+                    ),
+                }),
                 ...(isPreset(value.permission) && { permission: value.permission }),
             };
         }
@@ -520,15 +659,23 @@ function parseStored(data: unknown, specs: readonly AgentSpec[]): Stored {
     return { agents: [...agents.values()], overrides };
 }
 
-const settingValue = (setting: AgentSettingSpec, override: AgentOverride): boolean => override.settings?.[setting.id] ?? setting.default;
+const settingValue = (setting: AgentSettingSpec, override: AgentOverride): boolean =>
+    override.settings?.[setting.id] ?? setting.default;
 
 /** The agent's settings with their values, for a person to see and change. */
 function settingsOf(spec: AgentSpec, override: AgentOverride): AgentSetting[] {
-    return (spec.settings ?? []).map(setting => ({ id: setting.id, label: setting.label, description: setting.description, value: settingValue(setting, override), default: setting.default }));
+    return (spec.settings ?? []).map(setting => ({
+        id: setting.id,
+        label: setting.label,
+        description: setting.description,
+        value: settingValue(setting, override),
+        default: setting.default,
+    }));
 }
 
 /** The person's choice of permission preset, unless the agent no longer offers it (written by hand, or left from a provider that offered more). */
-const chosenPreset = (support: PermissionSupport, override: AgentOverride): PermissionPresetId | undefined => (support.presets.some(preset => preset.id === override.permission) ? override.permission : undefined);
+const chosenPreset = (support: PermissionSupport, override: AgentOverride): PermissionPresetId | undefined =>
+    support.presets.some(preset => preset.id === override.permission) ? override.permission : undefined;
 
 /** The permission presets of an agent for a person to see and pick from: the names are the same for every agent, the descriptions are the agent's own. A chosen preset the agent no longer offers is not shown as chosen. */
 function permissionsInfo(support: PermissionSupport, override: AgentOverride): AgentPermissions {
@@ -542,15 +689,22 @@ function permissionsInfo(support: PermissionSupport, override: AgentOverride): A
 }
 
 /** What the settings, at their values, do to the environment and the tools of the agent, then what the chosen permission preset does. A later one wins over an earlier one. */
-function appliedSettings(spec: AgentSpec, override: AgentOverride, permission: SettingEffect = {}): Required<SettingEffect> {
+function appliedSettings(
+    spec: AgentSpec,
+    override: AgentOverride,
+    permission: SettingEffect = {}
+): Required<SettingEffect> {
     const applied: Required<SettingEffect> = { env: {}, disallowedTools: [], allowedTools: [], codexConfig: {} };
-    const effects = [...(spec.settings ?? []).map(setting => setting.effect?.(settingValue(setting, override)) ?? {}), permission];
+    const effects = [
+        ...(spec.settings ?? []).map(setting => setting.effect?.(settingValue(setting, override)) ?? {}),
+        permission,
+    ];
 
     for (const effect of effects) {
         Object.assign(applied.env, effect.env);
         Object.assign(applied.codexConfig, effect.codexConfig);
-        applied.disallowedTools.push(...effect.disallowedTools ?? []);
-        applied.allowedTools.push(...effect.allowedTools ?? []);
+        applied.disallowedTools.push(...(effect.disallowedTools ?? []));
+        applied.allowedTools.push(...(effect.allowedTools ?? []));
     }
 
     return applied;
@@ -567,23 +721,39 @@ function withoutRemoved(env: Record<string, string | null>): Record<string, stri
 }
 
 /** The agent's `_meta` for `session/new`, with the tools its settings take away added to the ones the spec already withholds, and the tools a preset lets it use without asking. */
-function withToolRules(meta: Record<string, unknown> | undefined, { disallowedTools, allowedTools }: Pick<Required<SettingEffect>, 'disallowedTools' | 'allowedTools'>): Record<string, unknown> | undefined {
+function withToolRules(
+    meta: Record<string, unknown> | undefined,
+    { disallowedTools, allowedTools }: Pick<Required<SettingEffect>, 'disallowedTools' | 'allowedTools'>
+): Record<string, unknown> | undefined {
     if (disallowedTools.length === 0 && allowedTools.length === 0) {
         return meta;
     }
 
     const claudeCode = isRecord(meta?.claudeCode) ? meta.claudeCode : {};
     const options = isRecord(claudeCode.options) ? claudeCode.options : {};
-    const union = (key: 'disallowedTools' | 'allowedTools', extra: string[]) => (extra.length > 0 ? { [key]: [...new Set([...(Array.isArray(options[key]) ? options[key] as string[] : []), ...extra])] } : {});
+    const union = (key: 'disallowedTools' | 'allowedTools', extra: string[]) =>
+        extra.length > 0
+            ? { [key]: [...new Set([...(Array.isArray(options[key]) ? (options[key] as string[]) : []), ...extra])] }
+            : {};
 
-    return { ...meta, claudeCode: { ...claudeCode, options: { ...options, ...union('disallowedTools', disallowedTools), ...union('allowedTools', allowedTools) } } };
+    return {
+        ...meta,
+        claudeCode: {
+            ...claudeCode,
+            options: {
+                ...options,
+                ...union('disallowedTools', disallowedTools),
+                ...union('allowedTools', allowedTools),
+            },
+        },
+    };
 }
 
 /** How an agent starts, as a person would type it. */
 function launchLine({ launch, programs }: AgentSpec): string {
     switch (launch.kind) {
         case 'package':
-            return `bun x --bun ${ launch.package }`;
+            return `bun x --bun ${launch.package}`;
         case 'binary':
             return [programs[0], ...launch.args].join(' ');
     }

@@ -16,7 +16,14 @@ let root: Root;
 
 beforeEach(() => {
     // Opening a call animates its height; with reduced motion asked for, it does not, which is all this environment can run.
-    window.matchMedia = ((query: string) => ({ matches: query.includes('reduce'), media: query, addEventListener: () => undefined, removeEventListener: () => undefined, addListener: () => undefined, removeListener: () => undefined })) as unknown as typeof window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+        matches: query.includes('reduce'),
+        media: query,
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+        addListener: () => undefined,
+        removeListener: () => undefined,
+    })) as unknown as typeof window.matchMedia;
     container = document.createElement('div');
     document.body.append(container);
     root = createRoot(container);
@@ -27,8 +34,16 @@ afterEach(() => {
     container.remove();
 });
 
-const call = (fields: Partial<Call> = {}): Call => ({ kind: 'tool', toolCallId: 't1', name: 'Read', input: { file_path: 'src/form.tsx' }, state: 'done', output: 'export {}', ...fields });
-const draw = (fields?: Partial<Call>) => act(async () => root.render(<ToolCard call={ call(fields) } />));
+const call = (fields: Partial<Call> = {}): Call => ({
+    kind: 'tool',
+    toolCallId: 't1',
+    name: 'Read',
+    input: { file_path: 'src/form.tsx' },
+    state: 'done',
+    output: 'export {}',
+    ...fields,
+});
+const draw = (fields?: Partial<Call>) => act(async () => root.render(<ToolCard call={call(fields)} />));
 const header = () => container.querySelector<HTMLElement>('button')!;
 
 describe('ToolCard', () => {
@@ -40,7 +55,11 @@ describe('ToolCard', () => {
     });
 
     it('titles a command by what the agent says it does, with the command beside it', async () => {
-        await draw({ name: 'Bash', input: { command: 'bun install', description: 'Install package dependencies' }, output: 'done' });
+        await draw({
+            name: 'Bash',
+            input: { command: 'bun install', description: 'Install package dependencies' },
+            output: 'done',
+        });
 
         expect(header().textContent).toContain('Install package dependencies');
         expect(header().querySelector('code')?.textContent).toBe('bun install');
@@ -74,11 +93,11 @@ describe('ToolCard', () => {
         expect(header().innerHTML).toMatch(/shimmer/i);
     });
 
-    describe('the step that makes the chat\'s worktree', () => {
+    describe("the step that makes the chat's worktree", () => {
         const step = (fields: Partial<Call> = {}): Partial<Call> => ({
             name: 'workspace',
             input: { path: '/work/api', branch: 'clowdy/ab12cd34', base: 'origin/main' },
-            output: 'Fetching origin/main\nPreparing worktree (new branch \'clowdy/ab12cd34\')',
+            output: "Fetching origin/main\nPreparing worktree (new branch 'clowdy/ab12cd34')",
             ...fields,
         });
 
@@ -110,7 +129,9 @@ describe('ToolCard', () => {
         });
 
         it('shows the reason it failed, struck through on the title and in full once opened', async () => {
-            await draw(step({ state: 'error', error: '\'clowdy/ab12cd34\' is already used by worktree at \'/work/other\'' }));
+            await draw(
+                step({ state: 'error', error: "'clowdy/ab12cd34' is already used by worktree at '/work/other'" })
+            );
 
             expect(header().textContent).toContain('Prepare workspace');
             expect(header().innerHTML).toContain('line-through');

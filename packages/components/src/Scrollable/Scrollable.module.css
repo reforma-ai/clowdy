@@ -148,13 +148,30 @@
 
     /* Mid-scroll — fade top and bottom */
     .edgeFade[data-scroll-v-start='false'][data-scroll-v-end='false'] > .container {
-        -webkit-mask-image: linear-gradient(to bottom, transparent 0, black var(--scrollbar-fade), black calc(100% - var(--scrollbar-fade)), transparent 100%);
-        mask-image: linear-gradient(to bottom, transparent 0, black var(--scrollbar-fade), black calc(100% - var(--scrollbar-fade)), transparent 100%);
+        -webkit-mask-image: linear-gradient(
+            to bottom,
+            transparent 0,
+            black var(--scrollbar-fade),
+            black calc(100% - var(--scrollbar-fade)),
+            transparent 100%
+        );
+        mask-image: linear-gradient(
+            to bottom,
+            transparent 0,
+            black var(--scrollbar-fade),
+            black calc(100% - var(--scrollbar-fade)),
+            transparent 100%
+        );
     }
 
     /* At top — fade bottom only */
     .edgeFade[data-scroll-v-start='true'][data-scroll-v-end='false'] > .container {
-        -webkit-mask-image: linear-gradient(to bottom, black 0, black calc(100% - var(--scrollbar-fade)), transparent 100%);
+        -webkit-mask-image: linear-gradient(
+            to bottom,
+            black 0,
+            black calc(100% - var(--scrollbar-fade)),
+            transparent 100%
+        );
         mask-image: linear-gradient(to bottom, black 0, black calc(100% - var(--scrollbar-fade)), transparent 100%);
     }
 
@@ -180,13 +197,30 @@
 
     /* Mid-scroll — fade left and right */
     .edgeFade.scrollH:not(.scrollV)[data-scroll-h-start='false'][data-scroll-h-end='false'] > .container {
-        -webkit-mask-image: linear-gradient(to right, transparent 0, black var(--scrollbar-fade), black calc(100% - var(--scrollbar-fade)), transparent 100%);
-        mask-image: linear-gradient(to right, transparent 0, black var(--scrollbar-fade), black calc(100% - var(--scrollbar-fade)), transparent 100%);
+        -webkit-mask-image: linear-gradient(
+            to right,
+            transparent 0,
+            black var(--scrollbar-fade),
+            black calc(100% - var(--scrollbar-fade)),
+            transparent 100%
+        );
+        mask-image: linear-gradient(
+            to right,
+            transparent 0,
+            black var(--scrollbar-fade),
+            black calc(100% - var(--scrollbar-fade)),
+            transparent 100%
+        );
     }
 
     /* At the left — fade right only */
     .edgeFade.scrollH:not(.scrollV)[data-scroll-h-start='true'][data-scroll-h-end='false'] > .container {
-        -webkit-mask-image: linear-gradient(to right, black 0, black calc(100% - var(--scrollbar-fade)), transparent 100%);
+        -webkit-mask-image: linear-gradient(
+            to right,
+            black 0,
+            black calc(100% - var(--scrollbar-fade)),
+            transparent 100%
+        );
         mask-image: linear-gradient(to right, black 0, black calc(100% - var(--scrollbar-fade)), transparent 100%);
     }
 

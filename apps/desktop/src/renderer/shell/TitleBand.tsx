@@ -18,19 +18,19 @@ export function TitleBand() {
     const { history } = root;
 
     return (
-        <header className={ styles.band }>
-            { root.phase === 'ready' && (
+        <header className={styles.band}>
+            {root.phase === 'ready' && (
                 <>
-                    <div className={ styles.history }>
+                    <div className={styles.history}>
                         <Button
                             variant="filling"
                             size="sm"
                             iconOnly
                             aria-label="Back"
-                            tooltip={ commandTooltip('Back', 'nav.back') ?? 'Back' }
+                            tooltip={commandTooltip('Back', 'nav.back') ?? 'Back'}
                             tooltipPlacement="bottom"
-                            isDisabled={ !history.canGoBack }
-                            onPress={ () => history.back() }
+                            isDisabled={!history.canGoBack}
+                            onPress={() => history.back()}
                         >
                             <ChevronLeft />
                         </Button>
@@ -39,22 +39,20 @@ export function TitleBand() {
                             size="sm"
                             iconOnly
                             aria-label="Forward"
-                            tooltip={ commandTooltip('Forward', 'nav.forward') ?? 'Forward' }
+                            tooltip={commandTooltip('Forward', 'nav.forward') ?? 'Forward'}
                             tooltipPlacement="bottom"
-                            isDisabled={ !history.canGoForward }
-                            onPress={ () => history.forward() }
+                            isDisabled={!history.canGoForward}
+                            onPress={() => history.forward()}
                         >
                             <ChevronRight />
                         </Button>
                     </div>
-                    <div className={ styles.center }>
-                        { root.showsProjectScreen && <SearchButton /> }
-                    </div>
-                    <div className={ styles.end }>
+                    <div className={styles.center}>{root.showsProjectScreen && <SearchButton />}</div>
+                    <div className={styles.end}>
                         <UsageStatus />
                     </div>
                 </>
-            ) }
+            )}
         </header>
     );
 }

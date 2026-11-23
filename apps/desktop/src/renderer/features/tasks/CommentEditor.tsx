@@ -1,6 +1,6 @@
 import { Button } from '@clowdy/components/Button';
 import { tooltipWithHotkey } from '@clowdy/components/Hotkey';
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { type KeyboardEvent, useEffect, useRef, useState } from 'react';
 
 import styles from './CommentEditor.module.css';
 import { MarkdownPlate } from './MarkdownPlate';
@@ -28,7 +28,16 @@ export interface CommentEditorProps {
  * sent. A text the daemon took leaves the editor as it started, which is empty for a composer. The editor takes the key first, so the line break it would make
  * of `Cmd+Enter` is not made.
  */
-export function CommentEditor({ initial = '', draft, onDraftChange, 'aria-label': ariaLabel, submitLabel, onSubmit, onCancel, autoFocus }: CommentEditorProps) {
+export function CommentEditor({
+    initial = '',
+    draft,
+    onDraftChange,
+    'aria-label': ariaLabel,
+    submitLabel,
+    onSubmit,
+    onCancel,
+    autoFocus,
+}: CommentEditorProps) {
     const frame = useRef<HTMLDivElement>(null);
     const [text, setText] = useState(draft ?? initial);
     const [isPending, setIsPending] = useState(false);
@@ -60,8 +69,7 @@ export function CommentEditor({ initial = '', draft, onDraftChange, 'aria-label'
 
         try {
             if (await onSubmit(body)) change(initial);
-        }
-        finally {
+        } finally {
             setIsPending(false);
         }
     };
@@ -78,19 +86,31 @@ export function CommentEditor({ initial = '', draft, onDraftChange, 'aria-label'
             event.preventDefault();
             event.stopPropagation();
             void submit();
-        }
-        else if (event.key === 'Escape' && onCancel) {
+        } else if (event.key === 'Escape' && onCancel) {
             event.stopPropagation();
             onCancel();
         }
     };
 
     return (
-        <div ref={ frame } className={ styles.editor } onKeyDownCapture={ onKeyDownCapture }>
-            <MarkdownPlate isBounded value={ text } aria-label={ ariaLabel } onChange={ change } />
-            <div className={ styles.actions }>
-                { onCancel && <Button size="sm" variant="bordered" isDisabled={ isPending } onPress={ onCancel }>Cancel</Button> }
-                <Button size="sm" color="primary" isDisabled={ !canSubmit } isPending={ isPending } tooltip={ tooltipWithHotkey(submitLabel, ['mod', 'enter']) } onPress={ () => void submit() }>{ submitLabel }</Button>
+        <div ref={frame} className={styles.editor} onKeyDownCapture={onKeyDownCapture}>
+            <MarkdownPlate isBounded value={text} aria-label={ariaLabel} onChange={change} />
+            <div className={styles.actions}>
+                {onCancel && (
+                    <Button size="sm" variant="bordered" isDisabled={isPending} onPress={onCancel}>
+                        Cancel
+                    </Button>
+                )}
+                <Button
+                    size="sm"
+                    color="primary"
+                    isDisabled={!canSubmit}
+                    isPending={isPending}
+                    tooltip={tooltipWithHotkey(submitLabel, ['mod', 'enter'])}
+                    onPress={() => void submit()}
+                >
+                    {submitLabel}
+                </Button>
             </div>
         </div>
     );

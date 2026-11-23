@@ -33,12 +33,9 @@ describe('dedentText', () => {
             '                        );',
         ].join('\n');
 
-        expect(dedentText(nested)).toBe([
-            'const items = useMemo(',
-            '    () => files.map(file => file),',
-            '    [files]',
-            ');',
-        ].join('\n'));
+        expect(dedentText(nested)).toBe(
+            ['const items = useMemo(', '    () => files.map(file => file),', '    [files]', ');'].join('\n')
+        );
     });
 
     it('leaves top-level code unchanged when min indent is zero', () => {
@@ -58,14 +55,16 @@ describe('dedentText', () => {
             '          </figure>',
         ].join('\n');
 
-        expect(dedentText(trimmedExcerpt)).toBe([
-            '<figure className="bg-poster-stage shadow-poster">',
-            '  <Image',
-            '    alt="poster"',
-            '    src="/posters/poster-12.png"',
-            '  />',
-            '</figure>',
-        ].join('\n'));
+        expect(dedentText(trimmedExcerpt)).toBe(
+            [
+                '<figure className="bg-poster-stage shadow-poster">',
+                '  <Image',
+                '    alt="poster"',
+                '    src="/posters/poster-12.png"',
+                '  />',
+                '</figure>',
+            ].join('\n')
+        );
     });
 
     it('recovers indent inside a flush brace-wrapped JSX attribute RHS', () => {
@@ -81,15 +80,17 @@ describe('dedentText', () => {
             '        }',
         ].join('\n');
 
-        expect(dedentText(braced)).toBe([
-            '{',
-            '  <figure className="bg-poster-stage shadow-poster">',
-            '    <Image',
-            '      alt="poster"',
-            '      src="/posters/poster-12.png"',
-            '    />',
-            '  </figure>',
-            '}',
-        ].join('\n'));
+        expect(dedentText(braced)).toBe(
+            [
+                '{',
+                '  <figure className="bg-poster-stage shadow-poster">',
+                '    <Image',
+                '      alt="poster"',
+                '      src="/posters/poster-12.png"',
+                '    />',
+                '  </figure>',
+                '}',
+            ].join('\n')
+        );
     });
 });

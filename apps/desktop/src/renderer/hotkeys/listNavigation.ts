@@ -7,10 +7,7 @@ import type { Command } from './registry';
  * `item`: on one of the list's items. `idle`: nothing in particular has it (the page body, or a button of the rail), so the list's keys may bring it in.
  * `other`: a control inside the list (a row's menu button, a rename field), another part of the screen, or a dialog: it keeps its own keys.
  */
-export type ListFocus =
-    | { zone: 'item'; id: string }
-    | { zone: 'idle' }
-    | { zone: 'other' };
+export type ListFocus = { zone: 'item'; id: string } | { zone: 'idle' } | { zone: 'other' };
 
 /** The shell's navigation, which sits beside the screen. A `nav` inside the screen or the side panel (a breadcrumb) is that part's own control. */
 function isRail(element: Element): boolean {
@@ -23,14 +20,24 @@ function isRail(element: Element): boolean {
  * The zone of the focused element, for a list whose items are the elements inside `region` that `itemId` names.
  * `itemId` gives the id of an item and null for anything else, so a button or an input inside a row is not the row.
  */
-export function listFocusOf(region: Element | null, itemId: (element: Element) => string | null, active: Element | null = document.activeElement): ListFocus {
+export function listFocusOf(
+    region: Element | null,
+    itemId: (element: Element) => string | null,
+    active: Element | null = document.activeElement
+): ListFocus {
     if (active && region?.contains(active)) {
         const id = itemId(active);
 
         return id === null ? { zone: 'other' } : { zone: 'item', id };
     }
 
-    if (!active || active === active.ownerDocument.body || active === active.ownerDocument.documentElement || isRail(active)) return { zone: 'idle' };
+    if (
+        !active ||
+        active === active.ownerDocument.body ||
+        active === active.ownerDocument.documentElement ||
+        isRail(active)
+    )
+        return { zone: 'idle' };
 
     return { zone: 'other' };
 }
@@ -56,7 +63,16 @@ export interface ListMoveOptions {
  * Only the list's own items take them, so a key never leaves a field, a row's control or a dialog. While nothing has the focus the first key brings it
  * to the open item without moving it, so it cannot skip an item the person has not seen.
  */
-export function listMoveCommands({ scope, prefix, group, ids, focus, openId, focusItem, follow }: ListMoveOptions): Command[] {
+export function listMoveCommands({
+    scope,
+    prefix,
+    group,
+    ids,
+    focus,
+    openId,
+    focusItem,
+    follow,
+}: ListMoveOptions): Command[] {
     // The zone is a focus gate and not part of `when`: the key hints show these commands wherever the focus sits, and must not show them as dead.
     const inList = () => focus().zone !== 'other';
     const hasItems = () => ids().length > 0;
@@ -84,7 +100,27 @@ export function listMoveCommands({ scope, prefix, group, ids, focus, openId, foc
     };
 
     return [
-        { id: `${ prefix }.cursor.down`, title: 'Move down', group, keys: 'j', scope, when: hasItems, focus: inList, repeat: true, handler: move('down') },
-        { id: `${ prefix }.cursor.up`, title: 'Move up', group, keys: 'k', scope, when: hasItems, focus: inList, repeat: true, handler: move('up') },
+        {
+            id: `${prefix}.cursor.down`,
+            title: 'Move down',
+            group,
+            keys: 'j',
+            scope,
+            when: hasItems,
+            focus: inList,
+            repeat: true,
+            handler: move('down'),
+        },
+        {
+            id: `${prefix}.cursor.up`,
+            title: 'Move up',
+            group,
+            keys: 'k',
+            scope,
+            when: hasItems,
+            focus: inList,
+            repeat: true,
+            handler: move('up'),
+        },
     ];
 }

@@ -1,9 +1,9 @@
-import { useMemo, useRef, type RefObject } from 'react';
+import { type RefObject, useMemo, useRef } from 'react';
 
 import { useProjectState, useRootStore } from '../../stores';
 import { isPlaceReady, type Place } from '../sidePanel/currentPlace';
 import { MENTION_TRIGGER, SKILL_TRIGGER } from './composerMentions';
-import { docItems, fileItems, FILES_SHOWN, skillItems, taskItems } from './mentionItems';
+import { docItems, FILES_SHOWN, fileItems, skillItems, taskItems } from './mentionItems';
 
 import type { RichInputTrigger, RichInputTriggerItem } from '@clowdy/components/RichInput';
 import type { SkillEntry } from '@clowdy/protocol';
@@ -55,9 +55,17 @@ export function useMentionTriggers(box: RefObject<HTMLElement | null>, place: Pl
                 // A worktree that is not made yet has no files and no documents to list, and the folder's own checkout is not what the chat works in.
                 const [docs, files] = ready
                     ? await Promise.all([
-                        orNothing(root.transport.getDocsTree(projectId, workspaceId).then(tree => docItems(tree, folders, query, folderId))),
-                        orNothing(root.transport.getProjectFiles(projectId, query, FILES_SHOWN, workspaceId).then(found => fileItems(found, folders, folderId))),
-                    ])
+                          orNothing(
+                              root.transport
+                                  .getDocsTree(projectId, workspaceId)
+                                  .then(tree => docItems(tree, folders, query, folderId))
+                          ),
+                          orNothing(
+                              root.transport
+                                  .getProjectFiles(projectId, query, FILES_SHOWN, workspaceId)
+                                  .then(found => fileItems(found, folders, folderId))
+                          ),
+                      ])
                     : [[], []];
 
                 return [...taskItems(project.taskList, query), ...docs, ...files];

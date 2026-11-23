@@ -11,7 +11,7 @@ let root: Root;
 
 function draw(props: Partial<RailItemProps> = {}) {
     act(() => {
-        root.render(<RailItem label="Files" icon={ Folder } size={ 16 } current={ false } onPress={ () => {} } { ...props } />);
+        root.render(<RailItem label="Files" icon={Folder} size={16} current={false} onPress={() => {}} {...props} />);
     });
 
     return host.querySelector('button')!;

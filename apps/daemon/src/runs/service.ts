@@ -1,9 +1,30 @@
-import { ACTIVE_RUN_STATUSES, isClosedCategory, isTerminalRunStatus, projectEngine, STOPPED_TOOL } from '@clowdy/protocol';
+import {
+    ACTIVE_RUN_STATUSES,
+    isClosedCategory,
+    isTerminalRunStatus,
+    projectEngine,
+    STOPPED_TOOL,
+} from '@clowdy/protocol';
 
 import { getChat } from '../db/chats';
 import { findApproval, findQuestion, listOpenApprovals, listOpenThoughts, listRunningTools } from '../db/items';
 import { getProject } from '../db/projects';
-import { activeSubtree, clearAwaitingUser, countActiveRuns, countRunsWithRole, getRun, getRunWork, linksOfRun, linksOfTask, listActiveRuns, listEnginePauses, listRunsWithProcess, saveEnginePause, setRunWork, upsertRun } from '../db/runs';
+import {
+    activeSubtree,
+    clearAwaitingUser,
+    countActiveRuns,
+    countRunsWithRole,
+    getRun,
+    getRunWork,
+    linksOfRun,
+    linksOfTask,
+    listActiveRuns,
+    listEnginePauses,
+    listRunsWithProcess,
+    saveEnginePause,
+    setRunWork,
+    upsertRun,
+} from '../db/runs';
 import { getTask } from '../db/tasks';
 import { appendItem, updateItem } from '../domain/items';
 import { categoryOf, linkRunTask, moveTask, requireTask } from '../domain/tasks';
@@ -14,7 +35,19 @@ import { killSurvivor, signalProcess } from './processes';
 import { QUEUE_REASON, Scheduler } from './scheduler';
 import { canTransition, NEEDS_REASON, STOPPED_TO_SEND_REASON } from './transitions';
 
-import type { ApprovalDecision, BackgroundItem, ChatMode, EngineId, Project, QuestionOption, Run, RunContext, RunStatus, RunUsage, Task } from '@clowdy/protocol';
+import type {
+    ApprovalDecision,
+    BackgroundItem,
+    ChatMode,
+    EngineId,
+    Project,
+    QuestionOption,
+    Run,
+    RunContext,
+    RunStatus,
+    RunUsage,
+    Task,
+} from '@clowdy/protocol';
 import type { Config } from '../config';
 import type { RunProcess } from '../db/runs';
 import type { ApprovalRequest, EngineRegistry } from '../engine/types';
@@ -35,7 +68,7 @@ export interface NewRun {
     model?: string;
     /** The reasoning level, in the engine's own spelling. */
     effort?: string;
-    /** Where the engine works; absent, the folder its chat works in, else the project's main folder (`workingFolder` in `runs/driver.ts`). */
+    /** Where the engine works; absent, the folder its chat works in, else the project's main folder (`workingFolder` in `domain/places.ts`). */
     cwd?: string;
     /** What the run's first turn is told. */
     nextPrompt?: string;
@@ -87,10 +120,17 @@ export class RunService {
     private grants = new Map<string, Set<string>>();
     private ladders = new Set<ReturnType<typeof setTimeout>>();
 
-    constructor(private store: Store, private config: Config, private engines: EngineRegistry) {
+    constructor(
+        private store: Store,
+        private config: Config,
+        private engines: EngineRegistry
+    ) {
         this.limits = new EngineLimits(config.engineCaps, {
             defaultCap: config.defaultEngineCap,
-            store: { pauses: listEnginePauses(store.db), save: (engine, until) => saveEnginePause(store.db, engine, until) },
+            store: {
+                pauses: listEnginePauses(store.db),
+                save: (engine, until) => saveEnginePause(store.db, engine, until),
+            },
             jitterMs: config.timings.pauseJitterMs,
         });
         this.scheduler = new Scheduler(
@@ -119,7 +159,7 @@ export class RunService {
         const engine = preferred ?? projectEngine(project.settings) ?? this.config.engine;
 
         if (!this.engines.has(engine)) {
-            throw unavailable(`The ${ engine } engine is not available in this daemon`);
+            throw unavailable(`The ${engine} engine is not available in this daemon`);
         }
 
         return engine;
@@ -142,7 +182,7 @@ export class RunService {
                 rootRunId: id,
                 ...(input.chatId && { chatId: input.chatId }),
                 role: input.role,
-                name: `Orchestrator ${ String(number).padStart(2, '0') }`,
+                name: `Orchestrator ${String(number).padStart(2, '0')}`,
                 summary: input.summary,
                 status: blockers.length > 0 ? 'blocked' : 'queued',
                 statusReason: blockers.length > 0 ? blockedReason(blockers) : QUEUE_REASON,
@@ -170,7 +210,10 @@ export class RunService {
      * the engine said, so the parent's stream can draw that call as the child's card. `canStopAlone` says the session can end it alone, which the app
      * reads to offer a Stop for it (`Run.canStopAlone`).
      */
-    createNative(parent: Run, input: { name: string; summary: string; parentToolCallId?: string; canStopAlone?: boolean }): Run {
+    createNative(
+        parent: Run,
+        input: { name: string; summary: string; parentToolCallId?: string; canStopAlone?: boolean }
+    ): Run {
         return this.store.tx(() => {
             const id = newId('run');
             const run: Run = {
@@ -219,11 +262,11 @@ export class RunService {
             }
 
             if (!canTransition(run.status, status)) {
-                throw new Error(`Illegal run transition ${ run.status } -> ${ status } for ${ runId }`);
+                throw new Error(`Illegal run transition ${run.status} -> ${status} for ${runId}`);
             }
 
             if (NEEDS_REASON.includes(status) && !reason) {
-                throw new Error(`A run in ${ status } needs a status reason (${ runId })`);
+                throw new Error(`A run in ${status} needs a status reason (${runId})`);
             }
 
             const now = Date.now();
@@ -231,8 +274,7 @@ export class RunService {
 
             if (reason) {
                 next.statusReason = reason;
-            }
-            else {
+            } else {
                 delete next.statusReason;
             }
 
@@ -257,8 +299,7 @@ export class RunService {
                 if (options.failureCode !== undefined) {
                     next.failureCode = options.failureCode;
                 }
-            }
-            else if (isTerminalRunStatus(run.status)) {
+            } else if (isTerminalRunStatus(run.status)) {
                 delete next.finishedAt;
                 delete next.result;
                 delete next.error;
@@ -304,11 +345,14 @@ export class RunService {
 
             if (run.status === 'running' && previous !== 'running' && (category === 'todo' || category === 'backlog')) {
                 moveTask(this.store, task.id, 'active');
-            }
-            else if (run.status === 'succeeded' && category === 'active') {
+            } else if (run.status === 'succeeded' && category === 'active') {
                 moveTask(this.store, task.id, 'review');
-            }
-            else if (['failed', 'cancelled', 'interrupted'].includes(run.status) && category === 'active' && run.statusReason !== STOPPED_TO_SEND_REASON && this.activeRunsOfTask(task.id, run.id).length === 0) {
+            } else if (
+                ['failed', 'cancelled', 'interrupted'].includes(run.status) &&
+                category === 'active' &&
+                run.statusReason !== STOPPED_TO_SEND_REASON &&
+                this.activeRunsOfTask(task.id, run.id).length === 0
+            ) {
                 moveTask(this.store, task.id, 'todo');
             }
         }
@@ -353,7 +397,7 @@ export class RunService {
         }
 
         if (isTerminalRunStatus(run.status)) {
-            throw new Error(`Run ${ runId } is already ${ run.status }`);
+            throw new Error(`Run ${runId} is already ${run.status}`);
         }
 
         if (run.status !== 'queued') {
@@ -379,7 +423,7 @@ export class RunService {
                 stop();
                 reject(signal.reason);
             };
-            const unsubscribe = this.store.subscribe((events) => {
+            const unsubscribe = this.store.subscribe(events => {
                 if (events.some(event => RELEVANT_EVENTS.has(event.data.type))) {
                     stop();
                     resolve();
@@ -388,8 +432,7 @@ export class RunService {
 
             if (signal.aborted) {
                 onAbort();
-            }
-            else {
+            } else {
                 signal.addEventListener('abort', onAbort, { once: true });
             }
         });
@@ -398,7 +441,11 @@ export class RunService {
     /** A run created `blocked` waits until every dependency of its tasks is closed (done or canceled), then returns. Other runs return at once. */
     async waitUnblocked(runId: string, signal: AbortSignal): Promise<void> {
         while (this.require(runId).status === 'blocked') {
-            const blockers = this.unfinishedDependencies(linksOfRun(this.store.db, runId).filter(link => link.relation === 'assigned').map(link => requireTask(this.store, link.taskId)));
+            const blockers = this.unfinishedDependencies(
+                linksOfRun(this.store.db, runId)
+                    .filter(link => link.relation === 'assigned')
+                    .map(link => requireTask(this.store, link.taskId))
+            );
 
             if (blockers.length === 0) {
                 return;
@@ -415,14 +462,20 @@ export class RunService {
      * Puts a question card into the run's stream, parks the run in `waiting_user` until `answerQuestion` delivers
      * the user's reply, then takes a slot again. Returns the reply.
      */
-    async ask(runId: string, question: { text: string; options: QuestionOption[]; recommended?: string }, signal: AbortSignal): Promise<string> {
+    async ask(
+        runId: string,
+        question: { text: string; options: QuestionOption[]; recommended?: string },
+        signal: AbortSignal
+    ): Promise<string> {
         if (this.asking.has(runId)) {
-            throw new Error('Another question is waiting for the user. Ask one question at a time and wait for its answer.');
+            throw new Error(
+                'Another question is waiting for the user. Ask one question at a time and wait for its answer.'
+            );
         }
 
         // A turn the agent starts by itself while the run waits has no way to park the run for an answer (`waiting_background` does not lead to `waiting_user`).
         if (this.require(runId).status === 'waiting_background') {
-            throw new Error('Can\'t ask a question while the run waits for background work');
+            throw new Error("Can't ask a question while the run waits for background work");
         }
 
         const questionId = newId('qst');
@@ -434,15 +487,19 @@ export class RunService {
 
         try {
             // A question parks the run for certain: a run that cannot be parked has no business asking, so the change of status is not skipped as an approval's is.
-            this.waitForPerson(runId, 'Waiting for your answer', () => appendItem(this.store, runId, { kind: 'question', questionId, ...question }), true);
+            this.waitForPerson(
+                runId,
+                'Waiting for your answer',
+                () => appendItem(this.store, runId, { kind: 'question', questionId, ...question }),
+                true
+            );
             counted = true;
 
             answer = await new Promise<string>((resolve, reject) => {
                 this.answers.set(questionId, resolve);
                 signal.addEventListener('abort', () => reject(signal.reason), { once: true });
             });
-        }
-        finally {
+        } finally {
             this.answers.delete(questionId);
             this.asking.delete(runId);
 
@@ -465,7 +522,11 @@ export class RunService {
      * (a Stop, the session closing, the agent taking the request back), and its item is marked `cancelled`; a request with no answer the person could
      * give (the agent's options have no kind that maps to a decision) is not put to anyone and is withdrawn the same way. Never rejects.
      */
-    async askApproval(runId: string, request: ApprovalRequest, signal: AbortSignal): Promise<ApprovalDecision | undefined> {
+    async askApproval(
+        runId: string,
+        request: ApprovalRequest,
+        signal: AbortSignal
+    ): Promise<ApprovalDecision | undefined> {
         if (signal.aborted || request.decisions.length === 0) {
             return undefined;
         }
@@ -487,19 +548,20 @@ export class RunService {
         signal.addEventListener('abort', withdraw, { once: true });
 
         try {
-            this.waitForPerson(runId, 'Waiting for your approval', () => appendItem(this.store, runId, {
-                kind: 'approval',
-                approvalId,
-                ...(shown.toolCallId && { toolCallId: shown.toolCallId }),
-                title: shown.title,
-                subject: shown.subject,
-                decisions,
-                state: 'open',
-            }));
-        }
-        catch (error) {
+            this.waitForPerson(runId, 'Waiting for your approval', () =>
+                appendItem(this.store, runId, {
+                    kind: 'approval',
+                    approvalId,
+                    ...(shown.toolCallId && { toolCallId: shown.toolCallId }),
+                    title: shown.title,
+                    subject: shown.subject,
+                    decisions,
+                    state: 'open',
+                })
+            );
+        } catch (error) {
             forget();
-            console.warn(`[clowdy] an approval of run ${ runId } could not be put to the person: ${ errorMessage(error) }`);
+            console.warn(`[clowdy] an approval of run ${runId} could not be put to the person: ${errorMessage(error)}`);
 
             return undefined;
         }
@@ -596,9 +658,10 @@ export class RunService {
                     updateItem(this.store, runId, item.seq, { ...item.body, state: 'cancelled' });
                 }
             });
-        }
-        catch (error) {
-            console.warn(`[clowdy] approval ${ approvalId } of run ${ runId } could not be marked cancelled: ${ errorMessage(error) }`);
+        } catch (error) {
+            console.warn(
+                `[clowdy] approval ${approvalId} of run ${runId} could not be marked cancelled: ${errorMessage(error)}`
+            );
         }
     }
 
@@ -661,10 +724,13 @@ export class RunService {
                 return;
             }
 
-            this.update(runId, ({ awaitingUser: _awaiting, ...rest }) => (awaiting ? { ...rest, awaitingUser: true } : rest));
-        }
-        catch (error) {
-            console.warn(`[clowdy] run ${ runId } could not be marked ${ awaiting ? 'as waiting for' : 'as no longer waiting for' } the person: ${ errorMessage(error) }`);
+            this.update(runId, ({ awaitingUser: _awaiting, ...rest }) =>
+                awaiting ? { ...rest, awaitingUser: true } : rest
+            );
+        } catch (error) {
+            console.warn(
+                `[clowdy] run ${runId} could not be marked ${awaiting ? 'as waiting for' : 'as no longer waiting for'} the person: ${errorMessage(error)}`
+            );
         }
     }
 
@@ -712,7 +778,9 @@ export class RunService {
                 }
 
                 // Claude's adapter ends that sub-agent and leaves the ones it started working, so each of them is asked too: the Stop is of the whole branch.
-                const below = activeSubtree(this.store.db, runId).filter(id => id !== runId && this.stopAlone(this.require(id), reason));
+                const below = activeSubtree(this.store.db, runId).filter(
+                    id => id !== runId && this.stopAlone(this.require(id), reason)
+                );
 
                 return [runId, ...below];
             }
@@ -849,7 +917,9 @@ export class RunService {
             clearAwaitingUser(this.store.db);
 
             const withProcess = new Set(listRunsWithProcess(this.store.db).map(entry => entry.runId));
-            const dead = listActiveRuns(this.store.db).filter(run => ['running', 'waiting_user', 'waiting_background'].includes(run.status) || withProcess.has(run.id));
+            const dead = listActiveRuns(this.store.db).filter(
+                run => ['running', 'waiting_user', 'waiting_background'].includes(run.status) || withProcess.has(run.id)
+            );
 
             for (const run of dead) {
                 // `setStatus` clears what a run had open in the background, since a run that ended has nothing open; what the restart cost it is kept first,
@@ -881,7 +951,11 @@ export class RunService {
             for (const projectId of new Set(dead.map(run => run.projectId))) {
                 const count = dead.filter(run => run.projectId === projectId).length;
 
-                this.store.emit(projectId, { type: 'notice', level: 'warn', text: `The daemon restarted; ${ count } ${ count === 1 ? 'run was' : 'runs were' } interrupted` });
+                this.store.emit(projectId, {
+                    type: 'notice',
+                    level: 'warn',
+                    text: `The daemon restarted; ${count} ${count === 1 ? 'run was' : 'runs were'} interrupted`,
+                });
             }
 
             return dead.length;
@@ -907,7 +981,7 @@ export class RunService {
      */
     rewind(runId: string, sessionId: string | undefined): void {
         this.store.tx(() => {
-            this.update(runId, (run) => {
+            this.update(runId, run => {
                 const { sessionId: _session, context: _context, ...rest } = run;
 
                 return sessionId ? { ...rest, sessionId } : rest;
@@ -922,7 +996,7 @@ export class RunService {
     }
 
     addUsage(runId: string, usage: RunUsage): void {
-        this.update(runId, (run) => {
+        this.update(runId, run => {
             const total: RunUsage = {
                 inputTokens: (run.usage?.inputTokens ?? 0) + usage.inputTokens,
                 outputTokens: (run.usage?.outputTokens ?? 0) + usage.outputTokens,
@@ -945,10 +1019,14 @@ export class RunService {
             return;
         }
 
-        this.update(runId, (run) => {
+        this.update(runId, run => {
             const { model: _model, effort: _effort, ...rest } = run;
 
-            return { ...rest, ...(choice.model && { model: choice.model }), ...(choice.effort && { effort: choice.effort }) };
+            return {
+                ...rest,
+                ...(choice.model && { model: choice.model }),
+                ...(choice.effort && { effort: choice.effort }),
+            };
         });
     }
 
@@ -975,14 +1053,19 @@ export class RunService {
     setBackground(runId: string, items: BackgroundItem[]): void {
         // Only the protocol's fields are kept, so whatever else an engine put on an item does not reach the row or the clients. The list and each title
         // are bounded: a command's title may be a whole script, and the list rides in every `run.upserted` that the event log keeps.
-        const kept = items.slice(0, MAX_BACKGROUND_ITEMS).map(({ id, kind, title, canStopAlone }) => ({ id, kind, title: title.slice(0, MAX_BACKGROUND_TITLE), ...(canStopAlone === true && { canStopAlone: true as const }) }));
+        const kept = items.slice(0, MAX_BACKGROUND_ITEMS).map(({ id, kind, title, canStopAlone }) => ({
+            id,
+            kind,
+            title: title.slice(0, MAX_BACKGROUND_TITLE),
+            ...(canStopAlone === true && { canStopAlone: true as const }),
+        }));
         const run = this.require(runId);
 
         if (isTerminalRunStatus(run.status) || sameItems(run.background ?? [], kept)) {
             return;
         }
 
-        this.update(runId, (run) => {
+        this.update(runId, run => {
             const { background: _background, ...rest } = run;
 
             return kept.length > 0 ? { ...rest, background: kept } : rest;
@@ -1012,7 +1095,7 @@ export class RunService {
         const project = getProject(this.store.db, run.projectId);
 
         if (!project) {
-            throw invalid(`Project ${ run.projectId } of run ${ run.id } is gone`);
+            throw invalid(`Project ${run.projectId} of run ${run.id} is gone`);
         }
 
         return project;
@@ -1024,9 +1107,18 @@ const MAX_BACKGROUND_ITEMS = 50;
 const MAX_BACKGROUND_TITLE = 200;
 
 function sameItems(a: BackgroundItem[], b: BackgroundItem[]): boolean {
-    return a.length === b.length && a.every((item, index) => item.id === b[index].id && item.kind === b[index].kind && item.title === b[index].title && item.canStopAlone === b[index].canStopAlone);
+    return (
+        a.length === b.length &&
+        a.every(
+            (item, index) =>
+                item.id === b[index].id &&
+                item.kind === b[index].kind &&
+                item.title === b[index].title &&
+                item.canStopAlone === b[index].canStopAlone
+        )
+    );
 }
 
 function blockedReason(blockers: Task[]): string {
-    return `Waiting for ${ blockers.map(task => task.key).join(', ') }`;
+    return `Waiting for ${blockers.map(task => task.key).join(', ')}`;
 }

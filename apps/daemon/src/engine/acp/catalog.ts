@@ -42,7 +42,7 @@ export const CHAT_TITLE_SETTING = 'chatTitle';
 export const chatTitleSetting = (agent: string): AgentSettingSpec => ({
     id: CHAT_TITLE_SETTING,
     label: 'Chat titles',
-    description: `Let ${ agent } name a new chat from its first message`,
+    description: `Let ${agent} name a new chat from its first message`,
     default: true,
 });
 
@@ -55,7 +55,7 @@ export const COMMIT_MESSAGE_SETTING = COMMIT_MESSAGE_SETTING_ID;
 export const commitMessageSetting = (agent: string): AgentSettingSpec => ({
     id: COMMIT_MESSAGE_SETTING,
     label: 'Commit messages',
-    description: `Send the changed files to ${ agent } to write commit messages`,
+    description: `Send the changed files to ${agent} to write commit messages`,
     default: false,
 });
 

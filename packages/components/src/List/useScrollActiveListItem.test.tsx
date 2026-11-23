@@ -13,32 +13,32 @@ let host: HTMLDivElement;
 let root: Root;
 
 function StoryList({ selected, nonce }: { selected: string; nonce: number }) {
-    const items = Array.from({ length: 40 }, (_, index) => `story-${ index }`);
+    const items = Array.from({ length: 40 }, (_, index) => `story-${index}`);
 
     return (
         <Autocomplete
             inputValue=""
-            onInputChange={ () => {} }
-            filter={ () => true }
-            maxHeight={ 300 }
+            onInputChange={() => {}}
+            filter={() => true}
+            maxHeight={300}
             placeholder="Find story"
             aria-label="Find story"
         >
             <ListBox
                 aria-label="Stories"
                 size="sm"
-                autoFocus={ false }
+                autoFocus={false}
                 selectionMode="single"
-                selectedKeys={ [selected] }
-                data-nonce={ nonce }
+                selectedKeys={[selected]}
+                data-nonce={nonce}
             >
                 <ListBoxSection id="ui">
                     <ListBoxHeader>UI</ListBoxHeader>
-                    { items.map(id => (
-                        <ListBoxItem key={ id } id={ id } textValue={ id }>
-                            { id }
+                    {items.map(id => (
+                        <ListBoxItem key={id} id={id} textValue={id}>
+                            {id}
                         </ListBoxItem>
-                    )) }
+                    ))}
                 </ListBoxSection>
             </ListBox>
         </Autocomplete>
@@ -47,7 +47,7 @@ function StoryList({ selected, nonce }: { selected: string; nonce: number }) {
 
 async function renderList(selected: string, nonce: number) {
     await act(async () => {
-        root.render(<StoryList selected={ selected } nonce={ nonce } />);
+        root.render(<StoryList selected={selected} nonce={nonce} />);
         await Promise.resolve();
     });
 }

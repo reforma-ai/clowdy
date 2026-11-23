@@ -8,48 +8,94 @@ import { bundlesToPrune, decideOta, shellChangedSince } from './publish-ota';
 
 import type { Release } from './github';
 
-const release = (tagName: string, flags: Partial<Release> = {}): Release => ({ tagName, isDraft: false, isPrerelease: false, ...flags });
+const release = (tagName: string, flags: Partial<Release> = {}): Release => ({
+    tagName,
+    isDraft: false,
+    isPrerelease: false,
+    ...flags,
+});
 const BUNDLE = { version: 412, minShell: '0.2.0', protocol: 1 };
 const RELEASES = [release('v0.1.0'), release('v0.2.0'), release('ota', { isPrerelease: true })];
 
 describe('decideOta', () => {
     test('publishes a newer bundle for a released, unchanged shell', () => {
-        expect(decideOta({ bundle: BUNDLE, releases: RELEASES, shellChanged: false, published: 411 }).decision).toBe('publish');
-        expect(decideOta({ bundle: BUNDLE, releases: RELEASES, shellChanged: false, published: null }).decision).toBe('publish');
+        expect(decideOta({ bundle: BUNDLE, releases: RELEASES, shellChanged: false, published: 411 }).decision).toBe(
+            'publish'
+        );
+        expect(decideOta({ bundle: BUNDLE, releases: RELEASES, shellChanged: false, published: null }).decision).toBe(
+            'publish'
+        );
     });
 
     test('waits for the first shell release', () => {
-        expect(decideOta({ bundle: BUNDLE, releases: [], shellChanged: undefined, published: null }).decision).toBe('skip');
+        expect(decideOta({ bundle: BUNDLE, releases: [], shellChanged: undefined, published: null }).decision).toBe(
+            'skip'
+        );
     });
 
     test('waits while the shell it needs is not released', () => {
-        const result = decideOta({ bundle: { ...BUNDLE, minShell: '0.3.0' }, releases: RELEASES, shellChanged: undefined, published: 400 });
+        const result = decideOta({
+            bundle: { ...BUNDLE, minShell: '0.3.0' },
+            releases: RELEASES,
+            shellChanged: undefined,
+            published: 400,
+        });
 
         expect(result).toMatchObject({ decision: 'skip' });
         expect(result.reason).toContain('0.3.0');
     });
 
     test('waits when the shell changed since its release without a new version', () => {
-        expect(decideOta({ bundle: BUNDLE, releases: RELEASES, shellChanged: true, published: 400 }).reason).toContain('raise its version');
+        expect(decideOta({ bundle: BUNDLE, releases: RELEASES, shellChanged: true, published: 400 }).reason).toContain(
+            'raise its version'
+        );
     });
 
     test('skips a bundle that is not newer than the published one', () => {
-        expect(decideOta({ bundle: BUNDLE, releases: RELEASES, shellChanged: false, published: 412 }).decision).toBe('skip');
-        expect(decideOta({ bundle: BUNDLE, releases: RELEASES, shellChanged: false, published: 500 }).decision).toBe('skip');
+        expect(decideOta({ bundle: BUNDLE, releases: RELEASES, shellChanged: false, published: 412 }).decision).toBe(
+            'skip'
+        );
+        expect(decideOta({ bundle: BUNDLE, releases: RELEASES, shellChanged: false, published: 500 }).decision).toBe(
+            'skip'
+        );
     });
 });
 
 test('bundlesToPrune keeps the newest three archives', () => {
-    expect(bundlesToPrune(['manifest.json', 'bundle-9.tar.gz', 'bundle-12.tar.gz', 'bundle-10.tar.gz', 'bundle-11.tar.gz', 'other.zip'])).toEqual(['bundle-9.tar.gz']);
+    expect(
+        bundlesToPrune([
+            'manifest.json',
+            'bundle-9.tar.gz',
+            'bundle-12.tar.gz',
+            'bundle-10.tar.gz',
+            'bundle-11.tar.gz',
+            'other.zip',
+        ])
+    ).toEqual(['bundle-9.tar.gz']);
     expect(bundlesToPrune(['bundle-1.tar.gz', 'manifest.json'])).toEqual([]);
 });
 
 describe('shellChangedSince', () => {
     let dir = '';
     // The person's own config may sign commits or run hooks.
-    const git = (...args: string[]) => execFileSync('git', [
-        '-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgSign=false', '-c', 'tag.gpgSign=false', '-c', 'core.hooksPath=/dev/null', ...args,
-    ], { cwd: dir, stdio: 'pipe' });
+    const git = (...args: string[]) =>
+        execFileSync(
+            'git',
+            [
+                '-c',
+                'user.name=Test',
+                '-c',
+                'user.email=test@example.com',
+                '-c',
+                'commit.gpgSign=false',
+                '-c',
+                'tag.gpgSign=false',
+                '-c',
+                'core.hooksPath=/dev/null',
+                ...args,
+            ],
+            { cwd: dir, stdio: 'pipe' }
+        );
     const commit = (files: Record<string, string>) => {
         for (const [file, content] of Object.entries(files)) {
             mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });

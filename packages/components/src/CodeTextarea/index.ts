@@ -1,4 +1,5 @@
 export { CodeTextarea } from './CodeTextarea';
+
 export type {
     CodeTextareaProps,
     CodeTextareaSize,

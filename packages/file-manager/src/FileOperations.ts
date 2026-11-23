@@ -46,7 +46,10 @@ function copyName(name: string, kind: FileKind, taken: (name: string) => boolean
  * Which names in `folder` are taken: the ones the tree lists, and the ones `claim` is given for the items being made. A name that differs only in case is taken
  * too, as the disks the app runs on (APFS, NTFS) see it, so a paste does not meet a refusal for `readme.md` beside `README.md`.
  */
-function takenNames(tree: FileTree, folder: string): { taken: (name: string) => boolean; claim: (name: string) => void } {
+function takenNames(
+    tree: FileTree,
+    folder: string
+): { taken: (name: string) => boolean; claim: (name: string) => void } {
     const used = new Set<string>();
 
     for (const path of tree.entries.keys()) {
@@ -230,8 +233,7 @@ export class FileOperations {
         try {
             // The names taken in a folder are known once it is listed.
             await tree.load(folder);
-        }
-        catch (error) {
+        } catch (error) {
             this.#manager.notify('Couldn’t list the folder', error);
 
             return [];
@@ -286,8 +288,7 @@ export class FileOperations {
 
         try {
             await tree.load(folder);
-        }
-        catch (error) {
+        } catch (error) {
             this.#manager.notify('Couldn’t list the folder', error);
 
             return [];
@@ -321,8 +322,7 @@ export class FileOperations {
                 for (const { path, file } of writes) {
                     if (file) {
                         await provider.write(path, file, { expectedVersion: null });
-                    }
-                    else if (!parents.has(path)) {
+                    } else if (!parents.has(path)) {
                         await provider.createDirectory(path);
                     }
                 }
@@ -349,15 +349,14 @@ export class FileOperations {
 
         try {
             await tree.load(folder);
-        }
-        catch (error) {
+        } catch (error) {
             this.#manager.notify('Couldn’t list the folder', error);
 
             return [];
         }
 
         const { taken, claim } = takenNames(tree, folder);
-        const copies = entries.map((entry) => {
+        const copies = entries.map(entry => {
             const name = taken(entry.name) ? copyName(entry.name, entry.kind, taken) : entry.name;
 
             claim(name);
@@ -366,7 +365,11 @@ export class FileOperations {
         });
         const pasted = await this.#run(
             copies.map(({ entry, path }) => ({ type: 'created', path, kind: entry.kind })),
-            () => clipboard.paste(folder, copies.map(({ entry, name }) => ({ path: entry.path, name }))),
+            () =>
+                clipboard.paste(
+                    folder,
+                    copies.map(({ entry, name }) => ({ path: entry.path, name }))
+                ),
             `Couldn’t paste ${describe(copies.map(copy => copy.path))}`
         );
 
@@ -457,8 +460,7 @@ export class FileOperations {
             await request();
 
             return true;
-        }
-        catch (error) {
+        } catch (error) {
             this.#manager.notify(failure, error);
             this.#relist();
 
@@ -483,8 +485,7 @@ export class FileOperations {
 
         try {
             await this.#manager.provider.move(moves, { overwrite });
-        }
-        catch (error) {
+        } catch (error) {
             runInAction(() => {
                 for (const { from, to } of [...moves].reverse()) {
                     tree.applyChanges(transferChanges(tree, to, from, false));
