@@ -252,7 +252,7 @@ const handingOff = new Set<ChatId>();
  * as ..." with no file behind it is worse than none. So the person is told plainly, and nothing changes: not the draft, not the page.
  *
  * From an answer (`itemId`) the file ends at that answer, as a fork does, and the new chat goes on from there. `engine` is the agent the page starts on (the Fork
- * menu's "Fork to another agent"): the person can pick another, or close the page, which leaves nothing behind, since no chat exists before its first message is sent.
+ * menu's "Hand off to another agent"): the person can pick another, or close the page, which leaves nothing behind, since no chat exists before its first message is sent.
  */
 export async function startHandoff({ root, ui, chat, run, stillOpen = () => true, itemId, engine: startOn }: Handoff): Promise<boolean> {
     if (!chat.orchestratorRunId) {
@@ -307,7 +307,7 @@ export async function startHandoff({ root, ui, chat, run, stillOpen = () => true
         const [refusal] = admitFiles(filesOf(draftKey), [file]).refusals;
 
         if (refusal) {
-            toast.error({ title: 'The conversation was not handed off', message: `${ refusal } Make room in the message box of the new chat, then hand off again.` });
+            toast.error({ title: 'The conversation was not handed off', message: `${ refusal } Make room in the message box of the new chat, then try again.` });
 
             return false;
         }

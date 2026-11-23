@@ -216,10 +216,10 @@ describe('Remove in Manage worktrees', () => {
 
             expect(window.textContent).toContain('Delete branch wip/pricing');
             expect(window.textContent).toContain('Not merged');
-            expect(window.textContent).toContain('Its changes are lost when the branch goes');
+            expect(window.textContent).toContain('Its unmerged commits are lost with the branch');
             expect(checkbox()!.checked).toBe(false);
             // The warning is the box's description, so a screen reader hears it with the box.
-            expect(window.querySelector(`#${ CSS.escape(checkbox()!.getAttribute('aria-describedby')!) }`)?.textContent).toBe('Its changes are lost when the branch goes');
+            expect(window.querySelector(`#${ CSS.escape(checkbox()!.getAttribute('aria-describedby')!) }`)?.textContent).toBe('Its unmerged commits are lost with the branch');
 
             await confirm('Remove');
 
@@ -275,9 +275,9 @@ describe('Remove in Manage worktrees', () => {
 
             expect(red.dataset.color).toBe('danger');
             expect(window.textContent).toContain('Discard changes and remove?');
-            expect(window.textContent).toContain('2 changes that are not committed are deleted for good with it');
+            expect(window.textContent).toContain('2 uncommitted changes will be deleted for good');
             // An initialised submodule is said as well.
-            expect(window.textContent).toContain('Its submodules are checked out and go with it');
+            expect(window.textContent).toContain('Its checked-out submodules are removed with it');
             expect(removals()).toEqual([]);
 
             await click(red);
@@ -293,7 +293,7 @@ describe('Remove in Manage worktrees', () => {
             await askToRemove(ONE_CHANGE);
 
             expect(textButton(confirmation(), 'Discard 1 change and remove')).not.toBeUndefined();
-            expect(confirmation().textContent).toContain('1 change that is not committed is deleted for good with it');
+            expect(confirmation().textContent).toContain('1 uncommitted change will be deleted for good');
             expect(confirmation().textContent).not.toContain('files');
 
             await confirm('Discard 1 change and remove');
@@ -411,7 +411,7 @@ describe('Remove in Manage worktrees', () => {
             await confirm('Remove');
 
             expect(refuse).toHaveBeenCalledTimes(1);
-            expect(error).toHaveBeenCalledWith({ message: 'The chat "Fix the login" works in this worktree' });
+            expect(error).toHaveBeenCalledWith({ title: 'Couldn\'t remove the worktree', message: 'The chat "Fix the login" works in this worktree' });
             expect(isConfirming()).toBe(false);
             expect(Modal.opened).toHaveLength(1);
             expect(getProjectWorktrees).toHaveBeenCalledTimes(2);
@@ -428,9 +428,9 @@ describe('Remove in Manage worktrees', () => {
             await askToRemove(CLEAN_MERGED);
             await confirm('Remove');
 
-            expect(error).toHaveBeenCalledWith({ message: 'The worktree has changes that are not committed' });
+            expect(error).toHaveBeenCalledWith({ title: 'Couldn\'t remove the worktree', message: 'The worktree has changes that are not committed' });
             expect(isConfirming()).toBe(false);
-            expect(row(CLEAN_MERGED)!.textContent).toContain('2 changed');
+            expect(row(CLEAN_MERGED)!.textContent).toContain('2 changes');
 
             await askToRemove(CLEAN_MERGED);
 

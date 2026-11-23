@@ -282,7 +282,7 @@ describe('workspace.remove', () => {
 
         // The worktree's own index is damaged: `git status` and `git worktree remove` both fail, `--force` does not read it.
         writeFileSync(join(repo, '.git', 'worktrees', 'unreadable', 'index'), 'garbage');
-        expect(refusal(await remove(path))).toEqual({ code: 'conflict', message: 'Git did not say what is changed in the worktree' });
+        expect(refusal(await remove(path))).toEqual({ code: 'conflict', message: 'Couldn\'t tell what is changed in the worktree' });
         expect(existsSync(path)).toBe(true);
         expect(await remove(path, { discard: true })).toMatchObject({ ok: true });
         expect(existsSync(path)).toBe(false);

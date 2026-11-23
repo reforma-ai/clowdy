@@ -16,6 +16,7 @@ import { readRememberedMode, startingMode, writeRememberedMode } from './chatMod
 import { isRunActive, isRunBusy } from './chatRun';
 import { perform } from './commands';
 import styles from './Composer.module.css';
+import { useRegisterComposer } from './composerBridge';
 import { draftOf, messageOf, newChatDraftKey, quotedMessage, saveDraft, withQuoteLast, withTextFirst } from './composerDrafts';
 import { filesOf, releaseFiles, restoreFiles, takeFiles, type DraftFile } from './composerFiles';
 import { serializeMention } from './composerMentions';
@@ -182,6 +183,8 @@ export function Composer({ chat, run, start, minLines, editMode, controls, ref }
     const pasted = (files: readonly File[]) => void pasteFiles(files, { folders, place, mention: chip => field.current?.insertMention(chip), attach: attach.add });
 
     useImperativeHandle(ref, () => ({ addFiles: attach.add, pasteFiles: pasted, reply, quote }), [attach.add, pasted, reply, quote]);
+    // The side panel's Add to chat quotes code into this box (`composerBridge`); the box of an edit frame is not the one it means.
+    useRegisterComposer(editMode ? undefined : quote);
 
     /** Sends the message; `mod` (Cmd/Ctrl+Enter) sends it the other way than Enter while the orchestrator works. */
     const send = async (from: ComposerDoc, mod = false) => {

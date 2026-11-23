@@ -99,7 +99,7 @@ function ManageWorktrees({ projectId, folderId }: Omit<ManageWorktreesProps, 'ro
         <div className={ styles.dialog }>
             <div className={ styles.heading }>
                 <Text variant="heading-3" truncate>Manage worktrees</Text>
-                <Text variant="md" color="secondary">Every worktree of the project's folders, and the chats that work in each</Text>
+                <Text variant="md" color="secondary">Each folder's worktrees and the chats working in them</Text>
             </div>
 
             { failed && groups && (
@@ -113,11 +113,11 @@ function ManageWorktrees({ projectId, folderId }: Omit<ManageWorktreesProps, 'ro
                 { groups === undefined && !failed && <WorktreesSkeleton /> }
                 { groups === undefined && failed && (
                     <div className={ styles.message }>
-                        <Text color="danger" role="alert">Couldn't read the worktrees</Text>
+                        <Text color="danger" role="alert">Couldn't load the worktrees</Text>
                         <Button size="sm" onPress={ () => void reload() }>Try again</Button>
                     </div>
                 ) }
-                { groups?.length === 0 && <Text color="secondary" className={ styles.message }>None of the project's folders is a git repository</Text> }
+                { groups?.length === 0 && <Text color="secondary" className={ styles.message }>No folder of this project is a git repository</Text> }
                 <For each={ groups ?? [] }>
                     {({ group, folder }) => <WorktreeGroup key={ group.folderId } projectId={ projectId } group={ group } folder={ folder } { ...actions } />}
                 </For>

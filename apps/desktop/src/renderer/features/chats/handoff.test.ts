@@ -475,6 +475,17 @@ describe('startHandoff', () => {
             expect(messageOf(draftOf(NEW_CHAT_KEY))).toBe('');
         });
 
+        it('says a full message box of the new chat in the same words from an answer, and ends with the way on', async () => {
+            setFiles(NEW_CHAT_KEY, Array.from({ length: MAX_ATTACHMENTS_PER_MESSAGE }, (_, index) => held(`file-${ index }.txt`, 1)));
+
+            expect(await from(2, 'codex')).toBe(false);
+
+            expect(vi.mocked(toast.error).mock.calls[0]![0]).toMatchObject({
+                title: 'The conversation was not handed off',
+                message: expect.stringMatching(/Make room in the message box of the new chat, then try again\.$/) as string,
+            });
+        });
+
         it('leaves no chat behind: it only opens the page, and nothing is sent to the daemon', async () => {
             const command = vi.spyOn(root, 'command');
             const before = [...root.selectedProject!.chats.keys()];

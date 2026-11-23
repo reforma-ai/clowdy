@@ -20,7 +20,7 @@ export function BranchPrefixRow() {
     return (
         <SettingsRow
             title={ LABEL }
-            description={ `The branch of a chat in a new worktree starts with it, such as ${ branchPrefix.value }/ab12cd34` }
+            description={ `Branches of new worktrees are named like ${ branchPrefix.value }/ab12cd34` }
             footer={ problem && <Text variant="sm" color="danger" role="alert">{ problem }</Text> }
         >
             <Input

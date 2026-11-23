@@ -72,7 +72,7 @@ describe('the menu of a folder group\'s title', () => {
         await draw(API);
 
         // Above the folder's own items, whatever those are (Open in Files and Terminal come with the window's place being the folder, which the list sets as the menu opens).
-        expect(items().map(row => row.textContent)).toEqual(['Manage worktrees', 'Copy path', 'Open in…']);
+        expect(items().map(row => row.textContent)).toEqual(['Manage worktrees…', 'Copy path', 'Open in…']);
 
         await press(items()[0]!);
 
@@ -81,7 +81,7 @@ describe('the menu of a folder group\'s title', () => {
 
     it('names the main folder the same way, by its own id', async () => {
         await draw(CAR_RENTAL);
-        await press(items().find(row => row.textContent === 'Manage worktrees')!);
+        await press(items().find(row => row.textContent === 'Manage worktrees…')!);
 
         expect(openManageWorktrees).toHaveBeenCalledExactlyOnceWith({ root: store, projectId: FIXTURE_PROJECT_ID, folderId: CAR_RENTAL.id });
     });
@@ -95,13 +95,13 @@ describe('the menu of a folder group\'s title', () => {
     it('has none for a folder that is gone from the disk, whatever the last read of its git said', async () => {
         await draw(API, FIXTURE_PROJECT_ID, true);
 
-        expect(items().map(row => row.textContent)).not.toContain('Manage worktrees');
+        expect(items().map(row => row.textContent)).not.toContain('Manage worktrees…');
         expect(document.body.textContent).toContain('This folder no longer exists');
     });
 
     it('has none for the personal space, whose folder git does not know', async () => {
         await draw({ id: 'fld_personal', path: '/Users/dev/Clowdy/Personal' }, FIXTURE_PERSONAL_PROJECT_ID);
 
-        expect(items().map(row => row.textContent)).not.toContain('Manage worktrees');
+        expect(items().map(row => row.textContent)).not.toContain('Manage worktrees…');
     });
 });

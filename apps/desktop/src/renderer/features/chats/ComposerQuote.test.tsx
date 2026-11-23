@@ -7,7 +7,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { RootStoreProvider, type RootStore } from '../../stores';
 import { UserBubble } from '../../stream/UserBubble';
+import { codeQuote } from './codeQuote';
 import { Composer, type ComposerHandle } from './Composer';
+import { quoteIntoComposer } from './composerBridge';
 import { draftOf, messageOf, newChatDraftKey, saveDraft } from './composerDrafts';
 import { modelStore } from './modelTestKit';
 
@@ -205,5 +207,64 @@ describe('ComposerHandle.quote', () => {
         expect(docToPlainText(draftOf(newChatDraftKey('p'))).replaceAll('  \n', '\n')).toBe('> A line to build on\n\n');
         expect(document.activeElement).toBe(field());
         expect(atEnd()).toBe(true);
+    });
+});
+
+describe('a quote of code from the side panel, through the door the box registers (composerBridge)', () => {
+    const selected = { from: 3, to: 4, text: '    const a = 1;\n    b();' };
+
+    it('puts the path, the lines and the words in the draft, keeps their indentation and puts the caret under them', async () => {
+        await mount();
+
+        expect(await act(async () => quoteIntoComposer(codeQuote('src/a.ts', selected)))).toBe(true);
+
+        expect(written()).toBe('> `src/a.ts:3-4`\n> ```ts\n>     const a = 1;\n>     b();\n> ```\n\n');
+        expect(docToPlainText(draftOf(chat.id)).replaceAll('  \n', '\n')).toBe(written());
+        expect(document.activeElement).toBe(field());
+        expect(atEnd()).toBe(true);
+        expect(caretLine()).toBe('');
+    });
+
+    it('is sent as a quote with a code block in it, and what is typed under it stays out of the quote', async () => {
+        await mount();
+        await act(async () => quoteIntoComposer(codeQuote('src/a.ts', selected)));
+        type('Why is b called?');
+
+        const out = drawn(sent());
+        const quoted = out.slice(0, out.indexOf('</blockquote>'));
+
+        expect(sent()).toBe('> `src/a.ts:3-4`  \n> ```ts  \n>     const a = 1;  \n>     b();  \n> ```\n\nWhy is b called?');
+        expect(out.match(/<blockquote/g)).toHaveLength(1);
+        expect(quoted).toContain('src/a.ts:3-4');
+        expect(quoted).toContain('<pre');
+        expect(quoted).not.toContain('Why is b called?');
+    });
+
+    it('goes to the box of the new-chat page as well', async () => {
+        await mount({ projectId: 'p' });
+        act(() => field().blur());
+
+        expect(await act(async () => quoteIntoComposer(codeQuote('README.md', { from: 1, to: 1, text: 'Words' })))).toBe(true);
+
+        expect(docToPlainText(draftOf(newChatDraftKey('p'))).replaceAll('  \n', '\n')).toBe('> `README.md:1`\n> ```md\n> Words\n> ```\n\n');
+    });
+
+    it('has no door once the box is gone', async () => {
+        await mount();
+        act(() => root.render(null));
+
+        expect(quoteIntoComposer('words')).toBe(false);
+    });
+
+    it('is not opened by the box of an edit frame, which is no box to write a new message in', async () => {
+        await act(async () => {
+            root.render(
+                <RootStoreProvider value={ { command: vi.fn(), transport, skillsRevision: 0, selectedProject: { project: { id: 'p', folders: [{ id: 'f1', path: '/Users/dev/web' }] }, taskList: [] }, ...await modelStore() } as unknown as RootStore }>
+                    <Composer chat={ chat } run={ undefined } editMode={ { draftKey: `edit:${ chat.id }:i-1`, onSubmit: () => undefined, onCancel: () => undefined } } />
+                </RootStoreProvider>
+            );
+        });
+
+        expect(quoteIntoComposer('words')).toBe(false);
     });
 });

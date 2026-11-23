@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { EditorView } from '@codemirror/view';
 import { observer } from 'mobx-react-lite';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -7,13 +8,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createFixtureData, FIXTURE_PROJECT_ID, FIXTURE_WORKSPACE_CHAT_ID, FIXTURE_WORKTREE_PATH, withFixtureWorkspace } from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider } from '../../stores';
-import { openManageWorktrees } from '../worktrees';
+import { registerComposer } from '../chats/composerBridge';
 import FilesTab from './FilesTab';
 import { filesStoreOf } from './useFilesStore';
 
 import type { Chat, ChatWorkspace } from '@clowdy/protocol';
-
-vi.mock('../worktrees', () => ({ openManageWorktrees: vi.fn() }));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -37,21 +36,12 @@ const draw = async (variant: 'files' | 'docs' = 'files') => {
     await settle();
 };
 const ui = () => store.ui.forProject(FIXTURE_PROJECT_ID);
-const bar = () => container.querySelector<HTMLElement>('[data-place-bar]');
-const press = (target: HTMLElement) => act(async () => {
-    target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
-    target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
-    target.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
-    target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
-    target.click();
-});
 
 beforeEach(async () => {
     localStorage.clear();
     store = new RootStore(new FixtureTransport({ data: withFixtureWorkspace(createFixtureData()) }));
     await store.load();
     store.selectProject(FIXTURE_PROJECT_ID);
-    vi.mocked(openManageWorktrees).mockClear();
     container = document.createElement('div');
     document.body.append(container);
     root = createRoot(container);
@@ -94,6 +84,28 @@ describe('the Docs tab over a place', () => {
         expect(rows().some(text => text?.includes('weekend-surcharge'))).toBe(true);
     });
 
+    it('draws the plan only the worktree has once a new-chat page that chose it has its row, though no chat works in it', async () => {
+        store.dispose();
+        store = new RootStore(new FixtureTransport({ data: createFixtureData() }));
+        await store.load();
+        store.selectProject(FIXTURE_PROJECT_ID);
+        ui().openDraft([], null, { mode: 'existing', path: FIXTURE_WORKTREE_PATH });
+        await draw('docs');
+
+        // The page has not asked for the worktree yet: the place is the folder's own checkout.
+        expect(rows().some(text => text?.includes('weekend-surcharge'))).toBe(false);
+
+        const opened = await store.command({ type: 'workspace.open', projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental', path: FIXTURE_WORKTREE_PATH });
+
+        if (!opened.ok) throw new Error(opened.error.message);
+
+        act(() => ui().setDraftWorkspaceRow((opened.data as { workspace: ChatWorkspace }).workspace));
+        await settle();
+        await settle();
+
+        expect(rows().some(text => text?.includes('weekend-surcharge'))).toBe(true);
+    });
+
     it('keeps a document the person opened in the worktree\'s tabs when another chat comes on show and goes', async () => {
         ui().openChat(FIXTURE_WORKSPACE_CHAT_ID);
         await draw('docs');
@@ -108,77 +120,6 @@ describe('the Docs tab over a place', () => {
         await settle();
 
         expect(manager.tabs.documents.map(document => document.path)).toEqual(['.briefback/weekend-surcharge/plan.md']);
-    });
-});
-
-describe('the bar that names the place', () => {
-    it('names the folder and its branch for the folder\'s own checkout, over the files, and opens the dialog on the folder from its name and its Manage button', async () => {
-        await draw('files');
-
-        expect(bar()?.textContent).toBe('car-rental · mainManage');
-        expect(bar()?.nextElementSibling?.querySelector('[role="treeitem"]')).not.toBeNull();
-
-        await press(bar()!.querySelector<HTMLButtonElement>('button:not([aria-label])')!);
-
-        expect(openManageWorktrees).toHaveBeenLastCalledWith({ root: store, projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental' });
-
-        await press(bar()!.querySelector<HTMLButtonElement>('button[aria-label="Manage worktrees"]')!);
-
-        expect(openManageWorktrees).toHaveBeenCalledTimes(2);
-        expect(openManageWorktrees).toHaveBeenLastCalledWith({ root: store, projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental' });
-    });
-
-    it('names the branch of the worktree the open chat works in, and goes back to the folder with no chat open', async () => {
-        ui().openChat(FIXTURE_WORKSPACE_CHAT_ID);
-        await draw('files');
-
-        expect(bar()?.textContent).toBe('clowdy/ab12cd34Manage');
-
-        act(() => ui().openChat(null));
-        await settle();
-        await settle();
-
-        expect(bar()?.textContent).toBe('car-rental · mainManage');
-    });
-
-    it('names the branch of the worktree a new-chat page chose once the page has its row, though no chat works in it', async () => {
-        store.dispose();
-        store = new RootStore(new FixtureTransport({ data: createFixtureData() }));
-        await store.load();
-        store.selectProject(FIXTURE_PROJECT_ID);
-        ui().openDraft([], null, { mode: 'existing', path: FIXTURE_WORKTREE_PATH });
-        await draw('files');
-
-        // The page has not asked for the worktree yet: the place is the folder's own checkout.
-        expect(bar()?.textContent).toBe('car-rental · mainManage');
-
-        const opened = await store.command({ type: 'workspace.open', projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental', path: FIXTURE_WORKTREE_PATH });
-
-        if (!opened.ok) throw new Error(opened.error.message);
-
-        act(() => ui().setDraftWorkspaceRow((opened.data as { workspace: ChatWorkspace }).workspace));
-        await settle();
-        await settle();
-
-        expect(bar()?.textContent).toBe('clowdy/ab12cd34Manage');
-    });
-
-    it('is on the Docs tab too, which is the same place', async () => {
-        await draw('docs');
-
-        expect(bar()?.textContent).toBe('car-rental · mainManage');
-    });
-
-    it('is not there while the chat\'s worktree is not made, whose tab has a note instead', async () => {
-        const made = await store.command({ type: 'chat.create', projectId: FIXTURE_PROJECT_ID, workspace: { mode: 'new' } });
-        const { chat } = (made as { data: { chat: Chat } }).data;
-        const project = store.projectState(FIXTURE_PROJECT_ID)!;
-
-        await vi.waitFor(() => expect(project.chats.get(chat.id)?.workspace?.ready).toBe(false));
-        ui().openChat(chat.id);
-        await draw('files');
-
-        expect(bar()).toBeNull();
     });
 });
 
@@ -208,5 +149,94 @@ describe('a chat whose worktree is not made yet', () => {
 
         expect(container.textContent).not.toContain('The worktree is not made yet');
         expect(rows().some(text => text?.includes('weekend-pricing'))).toBe(true);
+    });
+});
+
+describe('Add to chat over the open file', () => {
+    const editor = () => EditorView.findFromDOM(container.querySelector<HTMLElement>('.cm-editor')!)!;
+    const button = () => container.querySelector<HTMLButtonElement>('.cm-tooltip button');
+    const select = (from: number, to: number) => act(async () => editor().dispatch({ selection: { anchor: from, head: to } }));
+
+    async function openPrice() {
+        await draw('files');
+
+        const manager = await filesStoreOf(store).startedManagerOf(FIXTURE_PROJECT_ID, { folder: store.selectedProject!.project.folders[0]! }, 'files');
+
+        await manager.open('src/booking/price.ts');
+        await settle();
+        await vi.waitFor(() => expect(container.querySelector('.cm-editor')).not.toBeNull(), { timeout: 5000 });
+    }
+
+    it('offers nothing while no message box is mounted', async () => {
+        await openPrice();
+        await select(0, 5);
+        await settle();
+
+        expect(container.querySelector('.cm-editor')).not.toBeNull();
+        expect(button()).toBeNull();
+    });
+
+    it('shows the button over selected words once a message box is mounted, and quotes the file\'s path and lines into it', async () => {
+        const quoted: string[] = [];
+        const unregister = registerComposer(text => quoted.push(text));
+
+        await openPrice();
+
+        const text = editor().state.doc.toString();
+        const lines = text.split('\n');
+
+        // The first two lines, whole.
+        await select(0, lines[0]!.length + 1 + lines[1]!.length);
+
+        expect(button()?.textContent).toContain('Add to chat');
+
+        await act(async () => button()!.click());
+
+        expect(quoted).toEqual([`\`src/booking/price.ts:1-2\`\n\`\`\`ts\n${ lines[0] }\n${ lines[1] }\n\`\`\``]);
+        expect(editor().state.selection.main.empty).toBe(true);
+
+        unregister();
+    });
+
+    it('shuts the side panel when it covers the chat, which cannot be typed in out of sight, and leaves a panel beside the chat open', async () => {
+        const unregister = registerComposer(() => undefined);
+
+        ui().sidePanelOpen = true;
+        await openPrice();
+
+        // Beside the chat: left as it is.
+        await select(0, 5);
+        await act(async () => button()!.click());
+        expect(ui().sidePanelOpen).toBe(true);
+
+        // Expanded, in the chat's place: shut, so the box that took the quote is on screen. The choice of the expanded size stays, so it comes back expanded.
+        act(() => {
+            ui().sidePanelExpanded = true;
+        });
+        await select(0, 5);
+        await act(async () => button()!.click());
+        expect(ui().sidePanelOpen).toBe(false);
+        expect(ui().sidePanelExpanded).toBe(true);
+
+        unregister();
+    });
+
+    it('takes the button away when the message box goes, and brings it back with the next one', async () => {
+        const unregister = registerComposer(() => undefined);
+
+        await openPrice();
+        await select(0, 5);
+        expect(button()).not.toBeNull();
+
+        act(() => unregister());
+        await settle();
+        expect(button()).toBeNull();
+
+        const again = registerComposer(() => undefined);
+
+        await settle();
+        expect(button()).not.toBeNull();
+
+        again();
     });
 });

@@ -1,7 +1,7 @@
 import { Button } from '@clowdy/components/Button';
 import { Text } from '@clowdy/components/Text';
 import { Tooltip } from '@clowdy/components/Tooltip';
-import { ArrowUpRight } from '@clowdy/icons/14';
+import { ArrowUpRight, Settings } from '@clowdy/icons/14';
 import { Github } from '@clowdy/icons/logo';
 import { useMemo, useState } from 'react';
 
@@ -144,7 +144,7 @@ function LocateButton({ project, view, isDisabled }: { project: Project; view: F
     );
 }
 
-/** Opens the dialog of the base branch and the setup the worktrees made from this folder get. */
+/** Opens the dialog of the base branch and the setup the worktrees made from this folder get: a gear, whose tip says what it is for. */
 function WorkspaceButton({ project, view }: { project: Project; view: FolderView }) {
     const root = useRootStore();
 
@@ -154,10 +154,11 @@ function WorkspaceButton({ project, view }: { project: Project; view: FolderView
                 variant="filling"
                 color="secondary"
                 size="sm"
+                iconOnly
                 aria-label={ `Workspace of ${ view.name }` }
                 onPress={ () => openFolderWorkspace({ root, projectId: project.id, folderId: view.folder.id, name: view.name }) }
             >
-                Workspace
+                <Settings />
             </Button>
         </Tooltip>
     );
