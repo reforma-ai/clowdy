@@ -576,6 +576,296 @@ describe('the sidebar', () => {
     });
 });
 
+describe('the viewed files', () => {
+    const tickOf = (path: string) => card(path).querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+    const tick = (path: string) => act(async () => {
+        tickOf(path).click();
+        await new Promise(resolve => setTimeout(resolve, 0));
+    });
+    const sidebarRow = (path: string) => sidebarFiles().find(row => row.textContent?.includes(path.split('/').at(-1)!))!;
+    const viewedTicks = () => sidebarFiles().filter(row => row.querySelector('[aria-label="Viewed"]') !== null).map(row => row.querySelector('[class*="name"]')?.textContent);
+    const hideViewed = () => button('Hide viewed');
+    /** The fixture's own transport, which holds the marks: the tab is drawn again over it, the way a window is over the daemon. */
+    let shared: FixtureTransport | undefined;
+    const share = (base: FixtureTransport) => {
+        shared = base;
+
+        return overrideTransport(base, {});
+    };
+
+    it('gives every card a Viewed checkbox, and ticking one shuts its card, ticks its row in the sidebar and counts it in the summary', async () => {
+        await start();
+        await draw();
+
+        expect(cards().map(element => tickOf(element.dataset.card!).checked)).toEqual([false, false, false, false, false, false]);
+        expect(cards().every(element => element.textContent?.includes('Viewed'))).toBe(true);
+        expect(summary()).toBe('6 files,+112−8');
+
+        const write = vi.spyOn(transport, 'setGitViewed');
+
+        await tick('notes.md');
+
+        expect(write).toHaveBeenCalledExactlyOnceWith(FIXTURE_PROJECT_ID, { folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' }, 'all', 'notes.md', expect.stringMatching(/^000000:0+:100644:b+$/));
+        expect(tickOf('notes.md').checked).toBe(true);
+        expect(card('notes.md').hasAttribute('data-open')).toBe(false);
+        expect(card('src/limits.ts').hasAttribute('data-open')).toBe(true);
+        expect(viewedTicks()).toEqual(['notes.md']);
+        expect(summary()).toBe('6 files,+112−81 of 6 viewed');
+    });
+
+    it('opens the card and takes the tick, the row\'s tick and the count away when the checkbox is unticked', async () => {
+        await start();
+        await draw();
+        await tick('src/limits.ts');
+        await tick('notes.md');
+
+        expect(viewedTicks()).toEqual(['notes.md', 'limits.ts']);
+        expect(summary()).toContain('2 of 6 viewed');
+
+        const clear = vi.spyOn(transport, 'clearGitViewed');
+
+        await tick('notes.md');
+
+        expect(clear).toHaveBeenCalledExactlyOnceWith(FIXTURE_PROJECT_ID, { folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' }, 'all', 'notes.md');
+        expect(tickOf('notes.md').checked).toBe(false);
+        expect(card('notes.md').hasAttribute('data-open')).toBe(true);
+        expect(viewedTicks()).toEqual(['limits.ts']);
+        expect(summary()).toContain('1 of 6 viewed');
+    });
+
+    it('opens a viewed card again on a press on its header, and a press on its row in the sidebar', async () => {
+        await start();
+        await draw();
+        await tick('notes.md');
+        await tick('src/limits.ts');
+
+        await press(button('Unfold notes.md'));
+        expect(card('notes.md').hasAttribute('data-open')).toBe(true);
+        // Still viewed: opening a card does not take the mark away.
+        expect(tickOf('notes.md').checked).toBe(true);
+
+        await press(button('Fold notes.md'));
+        expect(card('notes.md').hasAttribute('data-open')).toBe(false);
+
+        await press(sidebarRow('src/limits.ts'));
+        expect(card('src/limits.ts').hasAttribute('data-open')).toBe(true);
+        expect(scrolled).toEqual([card('src/limits.ts')]);
+    });
+
+    it('shows the tick and the shut card before the daemon has answered, and takes both back quietly when it refuses', async () => {
+        let refuse: (reason: unknown) => void = () => undefined;
+
+        await start({
+            wrap: base => overrideTransport(base, {
+                setGitViewed: () => new Promise((_resolve, reject) => {
+                    refuse = reject;
+                }),
+            }),
+        });
+        await draw();
+        await tick('notes.md');
+
+        expect(tickOf('notes.md').checked).toBe(true);
+        expect(card('notes.md').hasAttribute('data-open')).toBe(false);
+        expect(viewedTicks()).toEqual(['notes.md']);
+        expect(summary()).toContain('1 of 6 viewed');
+
+        await act(async () => {
+            refuse(new TransportError('The worktree is missing', 503));
+            await new Promise(resolve => setTimeout(resolve, 0));
+        });
+
+        expect(tickOf('notes.md').checked).toBe(false);
+        expect(card('notes.md').hasAttribute('data-open')).toBe(true);
+        expect(viewedTicks()).toEqual([]);
+        expect(summary()).not.toMatch(/\d of \d viewed/);
+        // A phrase in the summary line with the daemon's reason on it, no dialog and no toast.
+        expect(summary()).toContain('Couldn\'t save the viewed mark');
+        expect(container.querySelector('[title="The worktree is missing"]')?.textContent).toBe('Couldn\'t save the viewed mark');
+        expect(document.querySelector('[role="alertdialog"], [role="alert"]')).toBeNull();
+    });
+
+    it('keeps the ticks for the next time the tab is drawn from the daemon, with the viewed cards shut and the rest open', async () => {
+        await start({ wrap: share });
+        await draw();
+        await tick('src/limits.ts');
+        await tick('src/booking/weekend.ts');
+
+        // The window is made again over the same daemon: nothing of the tab's own state is left.
+        act(() => root.unmount());
+        store.dispose();
+        transport = overrideTransport(shared!, {});
+        store = new RootStore(transport);
+        await store.load();
+        store.selectProject(FIXTURE_PROJECT_ID);
+        store.ui.forProject(FIXTURE_PROJECT_ID).openChat(FIXTURE_WORKSPACE_CHAT_ID);
+        root = createRoot(container);
+        await draw();
+
+        expect(viewedTicks()).toEqual(['weekend.ts', 'limits.ts']);
+        expect(tickOf('src/limits.ts').checked).toBe(true);
+        expect(tickOf('notes.md').checked).toBe(false);
+        expect(cards().filter(element => element.hasAttribute('data-open')).map(element => element.dataset.card)).toEqual(['assets/logo.png', 'notes.md', 'src/booking/price.test.ts', 'src/booking/price.ts']);
+        expect(summary()).toContain('2 of 6 viewed');
+    });
+
+    it('keeps the ticks of one scope out of another, and of the files that are in both', async () => {
+        await start();
+        await draw();
+        await tick('src/limits.ts');
+
+        await press(scopeTrigger());
+        await press(options().find(option => option.textContent?.includes('Uncommitted'))!);
+        await settle();
+
+        expect(cardPaths()).toEqual(['notes.md', 'src/booking/price.ts', 'src/limits.ts']);
+        expect(tickOf('src/limits.ts').checked).toBe(false);
+        expect(card('src/limits.ts').hasAttribute('data-open')).toBe(true);
+        expect(summary()).not.toContain('viewed');
+
+        await tick('notes.md');
+        await press(scopeTrigger());
+        await press(options().find(option => option.textContent?.includes('All changes'))!);
+        await settle();
+
+        expect(tickOf('src/limits.ts').checked).toBe(true);
+        expect(tickOf('notes.md').checked).toBe(false);
+    });
+
+    it('shows a file whose mark is not its revision any more as not viewed, with its card open, and no count', async () => {
+        let edited = false;
+
+        await start({
+            wrap: base => overrideTransport(base, {
+                getGitChanges: async (project, place, scope) => {
+                    const answer = await base.getGitChanges(project, place, scope);
+
+                    if (!edited || !answer.isRepository || scope !== 'all') return answer;
+
+                    return { ...answer, files: answer.files.map(file => (file.path === 'src/limits.ts' ? { ...file, revision: `100644:${ 'd'.repeat(40) }:100644:${ '9'.repeat(40) }` } : file)) };
+                },
+            }),
+        });
+        await draw();
+        await tick('src/limits.ts');
+        await tick('notes.md');
+
+        expect(summary()).toContain('2 of 6 viewed');
+
+        edited = true;
+        await act(async () => {
+            gitFactsOf(transport).refresh({ projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' });
+        });
+        await settle();
+
+        expect(tickOf('src/limits.ts').checked).toBe(false);
+        expect(card('src/limits.ts').hasAttribute('data-open')).toBe(true);
+        expect(tickOf('notes.md').checked).toBe(true);
+        expect(viewedTicks()).toEqual(['notes.md']);
+        expect(summary()).toContain('1 of 6 viewed');
+    });
+
+    it('reads the marks again with the next round of the store, so a mark made in another window shows', async () => {
+        await start({ wrap: share });
+        await draw();
+
+        expect(viewedTicks()).toEqual([]);
+
+        const notes = (await shared!.getGitChanges(FIXTURE_PROJECT_ID, { folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' }, 'all') as { files: Array<{ path: string; revision: string }> }).files.find(file => file.path === 'notes.md')!;
+
+        await shared!.setGitViewed(FIXTURE_PROJECT_ID, { folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' }, 'all', 'notes.md', notes.revision);
+        await act(async () => {
+            gitFactsOf(transport).refresh({ projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' });
+        });
+        await settle();
+
+        expect(viewedTicks()).toEqual(['notes.md']);
+        expect(card('notes.md').hasAttribute('data-open')).toBe(false);
+    });
+
+    it('has a Hide viewed toggle that is pressed or not, hides the viewed cards and rows, and brings them back', async () => {
+        await start();
+        await draw();
+
+        // Nothing is viewed, so there is nothing to hide.
+        expect(hideViewed().disabled).toBe(true);
+        expect(hideViewed().getAttribute('aria-pressed')).toBe('false');
+
+        await tick('notes.md');
+        await tick('src/limits.ts');
+
+        expect(hideViewed().disabled).toBe(false);
+
+        await press(hideViewed());
+
+        expect(hideViewed().getAttribute('aria-pressed')).toBe('true');
+        expect(cardPaths()).toEqual(['assets/logo.png', 'src/booking/price.test.ts', 'src/booking/price.ts', 'src/booking/weekend.ts']);
+        expect(sidebarPaths()).toEqual(['logo.png', 'price.test.ts', 'price.ts', 'weekend.ts']);
+        // The count is of the list, so it says what was read.
+        expect(summary()).toContain('2 of 6 viewed');
+        expect(summary()).toContain('4 of 6 files');
+
+        await press(hideViewed());
+
+        expect(hideViewed().getAttribute('aria-pressed')).toBe('false');
+        expect(cards()).toHaveLength(6);
+        expect(sidebarPaths()).toHaveLength(6);
+    });
+
+    it('takes a card out of the list when it is ticked while viewed files are hidden, and says every file is viewed when none is left', async () => {
+        await start();
+        await draw();
+        await tick('notes.md');
+        await press(hideViewed());
+
+        for (const path of ['assets/logo.png', 'src/booking/price.test.ts', 'src/booking/price.ts', 'src/booking/weekend.ts', 'src/limits.ts']) await tick(path);
+
+        expect(cards()).toHaveLength(0);
+        expect(container.textContent).toContain('Every file is viewed');
+        expect(container.querySelector('[aria-label="Changed files"]')?.textContent).toContain('Every file is viewed');
+        expect(summary()).toContain('6 of 6 viewed');
+
+        await press([...container.querySelectorAll('button')].find(element => element.textContent === 'Show viewed files')!);
+
+        expect(hideViewed().getAttribute('aria-pressed')).toBe('false');
+        expect(cards()).toHaveLength(6);
+        expect(cards().every(element => !element.hasAttribute('data-open'))).toBe(true);
+    });
+
+    it('opens every card, the viewed ones too, on Expand all, and shuts them on Collapse all', async () => {
+        await start();
+        await draw();
+        await tick('notes.md');
+
+        expect(button('Expand all files').disabled).toBe(false);
+
+        await press(button('Expand all files'));
+        expect(cards().every(element => element.hasAttribute('data-open'))).toBe(true);
+        expect(button('Expand all files').disabled).toBe(true);
+
+        await press(button('Collapse all files'));
+        expect(cards().every(element => !element.hasAttribute('data-open'))).toBe(true);
+        expect(button('Collapse all files').disabled).toBe(true);
+    });
+
+    it('does not read the texts of a file because it was ticked: the state of the tick is out of the cache and the diff', async () => {
+        await start();
+
+        const read = vi.spyOn(transport, 'getGitFile');
+
+        await draw();
+        await bringNear();
+        await settle();
+
+        const reads = read.mock.calls.length;
+
+        await tick('notes.md');
+        await tick('notes.md');
+
+        expect(read.mock.calls.length).toBe(reads);
+    });
+});
+
 describe('the states instead of the cards', () => {
     it('says a clean checkout has no changes, against what it is clean, and has no totals', async () => {
         await start({ chat: null });

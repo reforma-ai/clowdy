@@ -55,6 +55,14 @@ export function ChangesList({ model, ref }: { model: PlaceChanges; ref?: Ref<Cha
                     action={ <Button variant="filling" color="secondary" size="sm" onPress={ () => model.setFilter('') }>Clear the filter</Button> }
                 />
             );
+        case 'allViewed':
+            return (
+                <PanelEmptyState
+                    title={ LIST_TEXT.allViewed }
+                    description={ LIST_TEXT.allViewedHint }
+                    action={ <Button variant="filling" color="secondary" size="sm" onPress={ () => model.setHideViewed(false) }>Show viewed files</Button> }
+                />
+            );
         case 'files':
             return (
                 <Scrollable ref={ root } className={ styles.list } contentClass={ styles.cards }>

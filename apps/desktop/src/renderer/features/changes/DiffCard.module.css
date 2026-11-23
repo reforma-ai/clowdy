@@ -99,6 +99,12 @@
     white-space: nowrap;
 }
 
+/* The tick that says the file was read: it stands between the toggle and the copy button and keeps its width while the path is cut. */
+.viewed {
+    flex-shrink: 0;
+    padding-inline: var(--spacing-6);
+}
+
 .body {
     min-width: 0;
 }
