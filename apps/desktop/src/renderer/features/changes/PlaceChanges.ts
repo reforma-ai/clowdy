@@ -3,6 +3,7 @@ import { makeAutoObservable, observable, runInAction } from 'mobx';
 
 import { compileChangeFilter } from './changeFilter';
 import { isCommitScope, usableScope } from './changeScopes';
+import { discardableFiles } from './discardRules';
 import { SidesCache, type SidesRequest } from './fileSides';
 import { Fact, type PlaceFacts, placeRef } from './gitFacts';
 import { ViewedMarks, type ViewedTransport } from './viewedMarks';
@@ -107,6 +108,15 @@ export class PlaceChanges {
         const { value } = this.#listOf('uncommitted');
 
         return value?.isRepository === true ? value : undefined;
+    }
+
+    /**
+     * The files whose changes can be discarded from the scope that is shown, by path: the place's uncommitted files in `all` and `uncommitted`, and none in the branch or a commit (`discardableFiles`).
+     * What each maps to is the file's uncommitted entry, which is what a discard acts on and the dialog speaks of. None while the branch is being changed.
+     */
+    get discardable(): ReadonlyMap<string, GitChangedFile> {
+        // While the branch is being changed what is uncommitted is in motion: nothing is offered until the list is read again.
+        return this.facts.switching ? new Map() : discardableFiles(this.effectiveScope, this.uncommitted);
     }
 
     /** Whether the place is a repository: the status says it, and so does a list that was read. `undefined` until one has answered. */

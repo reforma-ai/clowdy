@@ -55,6 +55,20 @@ describe('resolveDaemonConfig', () => {
         });
     });
 
+    it('says how a discard ends in the fixtures, for the words it knows', () => {
+        for (const discard of ['slow', 'refused', 'copyfail', 'hook']) {
+            expect(resolveDaemonConfig(`?fixtures=static&worktree&discard=${discard}`)).toEqual({
+                kind: 'fixtures',
+                timeline: false,
+                worktree: true,
+                discard,
+            });
+        }
+
+        expect(resolveDaemonConfig('?fixtures=static&discard=ok')).toEqual({ kind: 'fixtures', timeline: false });
+        expect(resolveDaemonConfig('?fixtures=static&discard=failed')).toEqual({ kind: 'fixtures', timeline: false });
+    });
+
     it("says how a fetch, a pull and a push end in the fixtures, and what GitHub says of the worktree's branch, for the words it knows", () => {
         expect(resolveDaemonConfig('?fixtures=static&worktree&remote=rejected&pr=none')).toEqual({
             kind: 'fixtures',
@@ -202,6 +216,7 @@ describe('createTransport', () => {
 
         await expect(transport.getRootSnapshot()).rejects.toThrow('No daemon is configured');
         await expect(transport.pushGit('p', { folderId: 'f' })).rejects.toThrow('No daemon is configured');
+        await expect(transport.discardGit('p', { folderId: 'f' }, ['a.ts'])).rejects.toThrow('No daemon is configured');
         await expect(transport.command({ type: 'run.cancel', runId: 'r' })).rejects.toThrow('No daemon is configured');
     });
 });

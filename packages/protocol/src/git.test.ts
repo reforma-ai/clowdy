@@ -1,6 +1,16 @@
 import { describe, expect, test } from 'vitest';
 
-import { commitScope, type GitStatus, parseGitScope, ROUTES, turnScope, turnScopeTrees } from './index';
+import {
+    commitScope,
+    GIT_DISCARD_KEEP_DAYS,
+    type GitStatus,
+    MAX_GIT_COMMIT_PATHS,
+    MAX_GIT_DISCARD_PATHS,
+    parseGitScope,
+    ROUTES,
+    turnScope,
+    turnScopeTrees,
+} from './index';
 
 describe('parseGitScope', () => {
     test('takes the three words and a commit by its hash, short or whole, in any case', () => {
@@ -85,6 +95,11 @@ describe('ROUTES git writes', () => {
         expect(ROUTES.projectGitMessage('a/b?c')).toBe('/v1/projects/a%2Fb%3Fc/git/message');
     });
 
+    test('has a route for discarding files, with the project id made safe for a path', () => {
+        expect(ROUTES.projectGitDiscard('prj_1')).toBe('/v1/projects/prj_1/git/discard');
+        expect(ROUTES.projectGitDiscard('a/b?c')).toBe('/v1/projects/a%2Fb%3Fc/git/discard');
+    });
+
     test('are one route for each of the three actions that reach origin', () => {
         expect(ROUTES.projectGitRemote('prj_1', 'fetch')).toBe('/v1/projects/prj_1/git/fetch');
         expect(ROUTES.projectGitRemote('prj_1', 'pull')).toBe('/v1/projects/prj_1/git/pull');
@@ -115,5 +130,13 @@ describe('GitStatus.lastFetchedAt', () => {
         const none: GitStatus = { isRepository: false, lastFetchedAt: 1 };
 
         expect([text, none]).toHaveLength(2);
+    });
+});
+
+describe('the limits of a discard', () => {
+    test('take a handful of files, fewer than a commit, and keep the copy for a week', () => {
+        expect(MAX_GIT_DISCARD_PATHS).toBe(50);
+        expect(MAX_GIT_DISCARD_PATHS).toBeLessThan(MAX_GIT_COMMIT_PATHS);
+        expect(GIT_DISCARD_KEEP_DAYS).toBe(7);
     });
 });

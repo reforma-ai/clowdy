@@ -68,6 +68,7 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  * DELETE /v1/projects/:id/git/viewed?folderId=&workspaceId=&scope=&path= -> { ok: true } (clears one file's mark). The three are described in `git.ts`
  * POST /v1/projects/:id/git/commit        -> GitCommitResult (commits the files the person ticked, `paths`, with `message`: the first route that changes a repository)
  * POST /v1/projects/:id/git/message       -> GitMessage (a commit message for the ticked files, written by the provider the person turned `Commit messages` on for). Both are described in `git.ts`
+ * POST /v1/projects/:id/git/discard      -> GitDiscardResult (discards the changes of the files named in `paths`, one by one, after keeping a copy of what each holds now: the one route that deletes work)
  * POST /v1/projects/:id/git/fetch|pull|push -> GitRemoteResult (the only routes that reach `origin`: `git fetch --no-recurse-submodules origin`, a fast-forward pull, a push or the first publish of the branch; a pull of
  *                                            a diverged branch answers `state: 'diverged'` and changes nothing). Body `GitRemoteRequest`, described in `git.ts`
  * GET  /v1/projects/:id/git/branches?folderId=&workspaceId= -> GitBranches (the branches a place can switch to: local, those only `origin` has, the recent ones)
@@ -133,6 +134,7 @@ export const ROUTES = {
     projectGitMessage: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git/message`,
     projectGitBranches: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git/branches`,
     projectGitSwitch: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git/switch`,
+    projectGitDiscard: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git/discard`,
     projectGitRemote: (projectId: string, action: GitRemoteAction) =>
         `/v1/projects/${encodeURIComponent(projectId)}/git/${action}`,
     projectFiles: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/files`,
