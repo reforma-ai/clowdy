@@ -158,6 +158,17 @@ export interface AgentSetting {
     default: boolean;
 }
 
+/** The `AgentSetting.id` of the switch that lets an agent write commit messages (`Commit messages`, off until the person turns it on). Only the daemon reads it. */
+export const COMMIT_MESSAGE_SETTING_ID = 'commitMessage';
+
+/**
+ * Whether the app may offer to have a commit message written by this agent: it is switched on and can start, somebody is signed in to it (`unknown` is not a yes) and the person turned
+ * `Commit messages` on for it. The daemon decides again when it is asked (`POST .../git/message`), so this only says whether to show the button.
+ */
+export function writesCommitMessages(agent: AgentInfo): boolean {
+    return agent.enabled && agent.status === 'ready' && agent.signIn?.status === 'signed-in' && agent.settings?.some(setting => setting.id === COMMIT_MESSAGE_SETTING_ID && setting.value) === true;
+}
+
 /** One model an agent offers, as its own program lists it on this machine and account. */
 export interface AgentModel {
     /** What a run's `model` takes: Claude Code's `opus`, Codex's `gpt-5.5`, a Cursor model family such as `claude-opus-4-8` (its level is `effort`; an older Cursor lists variants such as `gpt-5.3-codex-high`). */

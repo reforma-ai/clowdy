@@ -38,9 +38,11 @@
  *                                         with git's first `fatal:`, `error:` or hook line as the message and, for a signing key that cannot be used, `details.hint`
  *                                         (`GitErrorDetails`); a commit that did not end in time is `unavailable`.
  * POST /v1/projects/:id/git/message   -> GitMessage. Body `GitMessageRequest`: the ticked `paths`. The first line of a Conventional Commits message for them, written by
- *                                         the agent the person turned `Commit messages` on for (Codex) in a run of its own with no tools. Nothing runs unless this is
- *                                         called. `unavailable` with `Couldn't write the message` when no agent is on and signed in, or its run fails or does not
- *                                         end in time (`details.reason`: `off`, `signed_out`, `failed`, `timed_out`); the paths are judged as the commit judges them.
+ *                                         the agent the person turned `Commit messages` on for, in a run of its own with no tools: Codex when it is on and signed in,
+ *                                         else (or when its run fails or does not end in time) Claude Code, asked once. Nothing runs unless this is called.
+ *                                         `Couldn't write the message` when no agent is on and signed in, or every one that is fails or does not end in time
+ *                                         (`unavailable`, or `invalid` for none on; `details.reason`: `off`, `signed_out`, `failed`, `timed_out`); the paths are judged as
+ *                                         the commit judges them.
  *
  * The first three reads answer `invalid` for no `folderId`, `not_found` for a folder or a workspace that is not the project's, and `unavailable` for a folder or a worktree
  * that is gone from the disk or not made yet and for a git that does not answer in time; the fourth answers the same.
