@@ -258,7 +258,7 @@ function fixtureAgents(now: number): AgentInfo[] {
                 { id: 'subagents', label: 'Claude Code sub-agents', description: 'Let Claude Code start sub-agents of its own. Clowdy\'s agents are the better way to delegate work.', value: true, default: true },
                 { id: 'longContext', label: '1M context window', description: 'Use the 1M-token context window on the models that have one', value: true, default: true },
                 // Off, as it is until the person turns it on; Codex's is on in the fixtures, so the Changes tab has its Generate button.
-                { id: COMMIT_MESSAGE_SETTING_ID, label: 'Commit messages', description: 'Let Claude Code write commit messages', value: false, default: false },
+                { id: COMMIT_MESSAGE_SETTING_ID, label: 'Commit messages', description: 'Send the changed files to Claude Code to write commit messages', value: false, default: false },
             ],
             permissions: modePresets({
                 'ask': 'Asks before every edit and command',
@@ -290,7 +290,7 @@ function fixtureAgents(now: number): AgentInfo[] {
                 ],
             },
             // The only switch the fixture's Codex has: on, so the Changes tab shows its Generate button.
-            settings: [{ id: COMMIT_MESSAGE_SETTING_ID, label: 'Commit messages', description: 'Let Codex write commit messages', value: true, default: false }],
+            settings: [{ id: COMMIT_MESSAGE_SETTING_ID, label: 'Commit messages', description: 'Send the changed files to Codex to write commit messages', value: true, default: false }],
             permissions: modePresets({
                 'ask': 'Asks before editing files or using the network',
                 'accept-edits': 'Edits workspace files, asks before going outside them or using the network',

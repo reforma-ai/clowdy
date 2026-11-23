@@ -55,7 +55,7 @@ export const COMMIT_MESSAGE_SETTING = COMMIT_MESSAGE_SETTING_ID;
 export const commitMessageSetting = (agent: string): AgentSettingSpec => ({
     id: COMMIT_MESSAGE_SETTING,
     label: 'Commit messages',
-    description: `Let ${ agent } write commit messages`,
+    description: `Send the changed files to ${ agent } to write commit messages`,
     default: false,
 });
 

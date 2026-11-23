@@ -110,9 +110,9 @@ describe('the cards', () => {
         expect(switchOf(card('Claude Code'), '1M context window').checked).toBe(true);
         // Codex and Claude Code have the Commit messages switch of the Changes tab's Generate button, drawn like any other (Codex's is on in the fixtures); Cursor has none.
         expect(switchOf(card('Claude Code'), 'Commit messages').checked).toBe(false);
-        expect(card('Claude Code').textContent).toContain('Let Claude Code write commit messages');
+        expect(card('Claude Code').textContent).toContain('Send the changed files to Claude Code to write commit messages');
         expect(switchOf(card('Codex'), 'Commit messages').checked).toBe(true);
-        expect(card('Codex').textContent).toContain('Let Codex write commit messages');
+        expect(card('Codex').textContent).toContain('Send the changed files to Codex to write commit messages');
         expect(card('Cursor').querySelectorAll('input[type="checkbox"]')).toHaveLength(1);
     });
 

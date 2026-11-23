@@ -405,8 +405,8 @@ describe('AgentRegistry', () => {
             expect(reg.setting('claude', 'commitMessage')).toBe(false);
             expect(reg.setting('cursor', 'commitMessage')).toBeUndefined();
             expect(reg.setting('nobody', 'commitMessage')).toBeUndefined();
-            expect((await byId(reg, 'claude'))?.settings?.find(setting => setting.id === 'commitMessage')).toEqual({ id: 'commitMessage', label: 'Commit messages', description: 'Let Claude Code write commit messages', value: false, default: false });
-            expect((await byId(reg, 'codex'))?.settings?.find(setting => setting.id === 'commitMessage')).toEqual({ id: 'commitMessage', label: 'Commit messages', description: 'Let Codex write commit messages', value: false, default: false });
+            expect((await byId(reg, 'claude'))?.settings?.find(setting => setting.id === 'commitMessage')).toEqual({ id: 'commitMessage', label: 'Commit messages', description: 'Send the changed files to Claude Code to write commit messages', value: false, default: false });
+            expect((await byId(reg, 'codex'))?.settings?.find(setting => setting.id === 'commitMessage')).toEqual({ id: 'commitMessage', label: 'Commit messages', description: 'Send the changed files to Codex to write commit messages', value: false, default: false });
 
             const before = await start(reg, 'codex');
             const claudeBefore = await start(reg);
