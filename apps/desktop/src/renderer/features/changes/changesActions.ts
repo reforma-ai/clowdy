@@ -68,7 +68,7 @@ export function remoteActions(status: GitStatus | undefined, busy: boolean): Rem
 
     // A branch that is not on origin has nothing to pull from, and is published in place of being pushed.
     if (!published) {
-        const pull: RemoteActionView = { id: 'pull', label: 'Pull', reason: moves ?? (status.upstream ? `${ status.upstream.name } is gone from ${ ORIGIN }` : 'Not published yet') };
+        const pull: RemoteActionView = { id: 'pull', label: 'Pull', reason: moves ?? (status.upstream ? `Upstream gone from ${ ORIGIN }` : 'Not published yet') };
 
         return [fetch, pull, { id: 'publish', label: 'Publish', ...(moves && { reason: moves }) }];
     }
@@ -152,7 +152,7 @@ export function commitAndPushBlock(status: GitStatus | undefined): string | unde
 
     if (isDiverged(published)) return divergedWords(published);
 
-    return published.behind > 0 ? `${ published.name } has ${ commitsWords(published.behind) } to pull first` : undefined;
+    return published.behind > 0 ? `${ commitsWords(published.behind) } to pull first` : undefined;
 }
 
 /** The action that sends the branch of a status after a commit: a push when it is on origin, else its publishing. */
@@ -165,8 +165,18 @@ export const RUNNING_WORDS: Record<RemoteActionId, string> = { fetch: 'Fetching 
 export const branchOf = (status: RepositoryStatus): string | undefined => (status.head.kind === 'detached' ? undefined : status.head.name);
 
 /**
+ * The name the branch has on `origin`, which is the name GitHub knows it by: the branch it tracks there (a branch made with `git switch -c mine origin/feature` tracks `feature`, and that is
+ * what a push sends it to), else its own name, which is what publishing it makes. Nothing for a HEAD on no branch.
+ */
+export function remoteBranchOf(status: RepositoryStatus): string | undefined {
+    const { upstream } = status;
+
+    return upstream && onOrigin(upstream) ? upstream.name.slice(ORIGIN.length + 1) : branchOf(status);
+}
+
+/**
  * The name GitHub knows a base by, from the base the Changes tab compares with (`GitBase.name`): `origin/main` is `main`, and a local `main` stays `main`. A base that is a commit (a
- * short hash) or a ref of another remote has no such name here, and the compare page is then left to choose its own.
+ * short hash) has no such name here, and the compare page is then left to choose its own.
  */
 export function githubBaseName(base: GitBase | undefined): string | undefined {
     if (base?.state !== 'ready' && base?.state !== 'no_merge_base') return undefined;

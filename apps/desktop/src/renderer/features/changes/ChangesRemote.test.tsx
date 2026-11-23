@@ -331,6 +331,24 @@ describe('Create PR in the sidebar', () => {
         expect(opened).toEqual(['https://github.com/acme/car-rental/compare/main...clowdy/ab12cd34?expand=1']);
     });
 
+    it('opens the page of the branch GitHub has: the one the worktree\'s branch tracks on origin, when it is not named as the branch is', async () => {
+        await start({ tweak: noPullRequest, gitWrites: { remote: 'behind' } });
+
+        const read = transport.getGitStatus.bind(transport);
+
+        vi.spyOn(transport, 'getGitStatus').mockImplementation(async (...args) => {
+            const value = await read(...args);
+
+            return value.isRepository && value.upstream ? { ...value, upstream: { ...value.upstream, name: 'origin/shared/feature' } } : value;
+        });
+        gitFactsOf(transport).refresh(WORKTREE);
+        await settle();
+        await settle();
+        await press(buttonOf('Create PR')!);
+
+        expect(opened).toEqual(['https://github.com/acme/car-rental/compare/main...shared/feature?expand=1']);
+    });
+
     it('is off, with the reason, for a branch that diverged', async () => {
         await start({ tweak: noPullRequest, gitWrites: { remote: 'diverged' } });
 

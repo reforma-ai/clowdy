@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { commitAndPushBlock, createPullRequest, githubBaseName, isDiverged, isOffered, pushOrPublish, remoteActions, remoteCall, remoteNotice, upstreamView } from './changesActions';
+import { commitAndPushBlock, createPullRequest, githubBaseName, isDiverged, isOffered, pushOrPublish, remoteActions, remoteBranchOf, remoteCall, remoteNotice, upstreamView } from './changesActions';
 
 import type { GitBase, GitStatus, GitUpstream } from '@clowdy/protocol';
 
@@ -49,7 +49,7 @@ describe('remoteActions', () => {
     it('offers Publish in place of Push for a branch that is not on origin, with nothing to pull from', () => {
         expect(reasons(status({}, null))).toEqual([['fetch', null, null], ['pull', 'Not published yet', null], ['publish', null, null]]);
         // An upstream that is gone from origin is published again, not pushed.
-        expect(reasons(status({}, { gone: true }))).toEqual([['fetch', null, null], ['pull', 'origin/feature is gone from origin', null], ['publish', null, null]]);
+        expect(reasons(status({}, { gone: true }))).toEqual([['fetch', null, null], ['pull', 'Upstream gone from origin', null], ['publish', null, null]]);
     });
 
     it('turns every action off with the reason when there is no origin, and all but Fetch for a HEAD that is on no branch', () => {
@@ -123,6 +123,23 @@ describe('githubBaseName', () => {
     });
 });
 
+describe('remoteBranchOf', () => {
+    const of = (value: GitStatus) => remoteBranchOf(value as RepositoryStatus);
+
+    it('is the name the branch tracks on origin, which a branch made from another one has otherwise than its own, and its own name when it tracks nothing', () => {
+        expect(of(status())).toBe('feature');
+        expect(of(status({}, { name: 'origin/shared/feature' }))).toBe('shared/feature');
+        expect(of(status({}, null))).toBe('feature');
+        // An upstream that is gone is where a push sends the branch again.
+        expect(of(status({}, { name: 'origin/other', gone: true }))).toBe('other');
+    });
+
+    it('is the branch\'s own name for an upstream that is not on origin, and nothing for a HEAD on no branch', () => {
+        expect(of(status({}, { name: 'upstream/feature' }))).toBe('feature');
+        expect(of(status({ head: { kind: 'detached', commit: 'a'.repeat(40) } }, null))).toBeUndefined();
+    });
+});
+
 describe('createPullRequest', () => {
     const state = (value: GitStatus | undefined, extra: { hasPullRequest?: boolean; onGitHub?: boolean } = {}) => createPullRequest({ status: value, hasPullRequest: false, onGitHub: true, ...extra });
 
@@ -192,8 +209,8 @@ describe('commitAndPushBlock', () => {
         expect(commitAndPushBlock(status({ origin: false }))).toBe('No origin');
         expect(commitAndPushBlock(status({ head: { kind: 'detached', commit: 'a'.repeat(40) } }, null))).toBe('HEAD is detached');
         expect(commitAndPushBlock(status({}, { name: 'fork/feature' }))).toBe('Tracks fork/feature, not origin');
-        expect(commitAndPushBlock(status({}, { behind: 1 }))).toBe('origin/feature has 1 commit to pull first');
-        expect(commitAndPushBlock(status({}, { behind: 2 }))).toBe('origin/feature has 2 commits to pull first');
+        expect(commitAndPushBlock(status({}, { behind: 1 }))).toBe('1 commit to pull first');
+        expect(commitAndPushBlock(status({}, { behind: 2 }))).toBe('2 commits to pull first');
         expect(commitAndPushBlock(status({}, { ahead: 1, behind: 2 }))).toBe('Diverged: 1 ahead, 2 behind');
         expect(commitAndPushBlock({ isRepository: false })).toBe('Not a repository');
         expect(commitAndPushBlock(undefined)).toBe('Not a repository');

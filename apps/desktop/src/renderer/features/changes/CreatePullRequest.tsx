@@ -3,7 +3,7 @@ import { Github } from '@clowdy/icons/logo';
 
 import { openEffects } from '../openWith';
 import { compareLink } from '../openWith/openTarget';
-import { branchOf, createPullRequest, githubBaseName, type CreatePullRequestState } from './changesActions';
+import { createPullRequest, githubBaseName, remoteBranchOf, type CreatePullRequestState } from './changesActions';
 import styles from './CreatePullRequest.module.css';
 import { useRemoteActions } from './useRemoteActions';
 
@@ -14,7 +14,8 @@ import type { PlaceFacts } from './gitFacts';
 export function createPullRequestOf(facts: PlaceFacts, git: FolderGit | undefined): { state: CreatePullRequestState | undefined; link: string | undefined } {
     const status = facts.status.value;
     const repository = status?.isRepository === true ? status : undefined;
-    const branch = repository && branchOf(repository);
+    // The page is about the branch as GitHub has it: the one the local branch tracks on origin, which may be named otherwise.
+    const branch = repository && remoteBranchOf(repository);
     // A host of GitHub Enterprise is GitHub's when the person's `gh` is signed in to it, which is all the app can tell of it.
     const enterprise = facts.access === 'ready' ? facts.repo?.host : undefined;
     const link = repository && branch !== undefined ? compareLink(git, { head: branch, base: githubBaseName(repository.base) }, enterprise) : undefined;

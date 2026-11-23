@@ -617,7 +617,7 @@ describe('the draft of a commit', () => {
         const behind = draftOver(['a.ts'], { upstream: { name: 'origin/feature', ahead: 0, behind: 2 } });
 
         behind.draft.setMessage('feat: add');
-        expect(behind.draft.pushBlock).toBe('origin/feature has 2 commits to pull first');
+        expect(behind.draft.pushBlock).toBe('2 commits to pull first');
         await behind.draft.commit(true);
         expect(behind.commitGit).not.toHaveBeenCalled();
 
