@@ -91,6 +91,12 @@ describe('selectedLines', () => {
         expect(lines(0, 3, '   \nx')).toBeUndefined();
     });
 
+    it('reads a file with Windows or old Mac line ends as lines, and gives the words with plain line breaks', () => {
+        // The editor splits the text at CRLF and CR alike: the document holds "a", "b" and "c", and the line break between two is one character.
+        expect(lines(0, 3, 'a\r\nb\r\nc')).toEqual({ from: 1, to: 2, text: 'a\nb' });
+        expect(lines(0, 3, 'a\rb\rc')).toEqual({ from: 1, to: 2, text: 'a\nb' });
+    });
+
     it('works for a selection in the last line, with or without a line break at the end', () => {
         expect(lines(17, 22)).toEqual({ from: 4, to: 4, text: 'delta' });
         expect(lines(17, 23, `${ DOC }\n`)).toEqual({ from: 4, to: 4, text: 'delta' });
@@ -205,6 +211,31 @@ describe('selectionAction', () => {
         expect(onAction).not.toHaveBeenCalled();
     });
 
+    it('takes its React root down with the tooltip, when the selection goes and when the editor is destroyed', async () => {
+        const view = stand(selectionAction({ label: 'Add to chat', onAction: vi.fn() }));
+
+        await select(view, 2, 8);
+
+        const first = host.querySelector<HTMLElement>('.cm-tooltip')!;
+
+        expect(first.querySelector('button')).not.toBeNull();
+
+        await select(view, 4, 4);
+        await settle();
+        expect(first.childElementCount).toBe(0);
+
+        await select(view, 2, 8);
+
+        const second = host.querySelector<HTMLElement>('.cm-tooltip')!;
+
+        expect(second.querySelector('button')).not.toBeNull();
+
+        await act(async () => view.destroy());
+        views.splice(views.indexOf(view), 1);
+        await settle();
+        expect(second.childElementCount).toBe(0);
+    });
+
     it('moves the same button along with the selection', async () => {
         const view = stand(selectionAction({ label: 'Add to chat', onAction: vi.fn() }));
 
@@ -312,18 +343,23 @@ describe('selectionAction in a diff card', () => {
         await act(async () => root.unmount());
     });
 
+    /** Draws the diff and waits for its editor, which is built once the language of the file is loaded. */
+    async function showDiff(path: string, original: string, modified: string, extensions?: Extension): Promise<EditorView> {
+        await act(async () => {
+            root.render(createElement(DiffView, { path, original, modified, extensions }));
+        });
+        await act(async () => {
+            await vi.waitFor(() => expect(host.querySelector('.cm-editor')).not.toBeNull());
+        });
+
+        return EditorView.findFromDOM(host.querySelector<HTMLElement>('.cm-editor')!)!;
+    }
+
     it('quotes the lines of the new text, with the removed ones left out of the count', async () => {
         const onAction = vi.fn<(selected: SelectedLines) => void>();
         const extension = selectionAction({ label: 'Add to chat', onAction });
 
-        await act(async () => {
-            root.render(createElement(DiffView, { path: 'notes.txt', original: 'a\nb\nc\nd', modified: 'a\nB\nc\nd', extensions: extension }));
-        });
-        await act(async () => {
-            await new Promise(resolve => setTimeout(resolve, 20));
-        });
-
-        const editor = EditorView.findFromDOM(host.querySelector<HTMLElement>('.cm-editor')!)!;
+        const editor = await showDiff('notes.txt', 'a\nb\nc\nd', 'a\nB\nc\nd', extension);
 
         // The removed line "b" is drawn above "B" but is no part of the document: line 2 of the new text is "B".
         expect(editor.state.doc.toString()).toBe('a\nB\nc\nd');
@@ -334,18 +370,28 @@ describe('selectionAction in a diff card', () => {
         expect(onAction).toHaveBeenCalledExactlyOnceWith({ from: 2, to: 3, text: 'B\nc' });
     });
 
+    it('quotes what lies in a run of unchanged lines folded behind a row, when the selection goes across it, as a copy would', async () => {
+        const onAction = vi.fn<(selected: SelectedLines) => void>();
+        const original = Array.from({ length: 30 }, (_, index) => `line ${ index + 1 }`);
+        const modified = original.map((line, index) => (index === 0 || index === 29 ? `${ line } changed` : line));
+        const editor = await showDiff('notes.txt', original.join('\n'), modified.join('\n'), selectionAction({ label: 'Add to chat', onAction }));
+
+        // The lines between the two changes are folded behind one row, and still are text of the document.
+        expect(host.querySelector('.cm-collapsedLines')).not.toBeNull();
+
+        await select(editor, 0, editor.state.doc.length);
+        expect(button()).not.toBeNull();
+        await press();
+
+        expect(onAction).toHaveBeenCalledExactlyOnceWith({ from: 1, to: 30, text: modified.join('\n') });
+    });
+
     it('is added and taken away with the host\'s extensions, without losing the selection', async () => {
         const onAction = vi.fn();
         const render = (extensions?: Extension) => act(async () => {
             root.render(createElement(DiffView, { path: 'notes.txt', original: 'a\nb\nc', modified: 'a\nB\nc', extensions }));
         });
-
-        await render();
-        await act(async () => {
-            await new Promise(resolve => setTimeout(resolve, 20));
-        });
-
-        const editor = EditorView.findFromDOM(host.querySelector<HTMLElement>('.cm-editor')!)!;
+        const editor = await showDiff('notes.txt', 'a\nb\nc', 'a\nB\nc');
 
         await select(editor, 2, 3);
         expect(button()).toBeNull();
