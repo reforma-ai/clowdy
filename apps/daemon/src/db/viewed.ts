@@ -44,9 +44,12 @@ export function countViewed(db: Database, place: ViewedPlace): number {
     return (db.query('SELECT COUNT(*) AS count FROM viewed_files WHERE project_id = ? AND folder_id = ? AND workspace_id = ?').get(place.projectId, place.folderId, place.workspaceId) as { count: number }).count;
 }
 
-/** Drops every mark of a worktree: its row is gone, and so is the place they were of. */
+/**
+ * Drops every mark of a worktree: its row is gone, and so is the place they were of. The `<> ''` is what lets SQLite use the partial index `viewed_files_workspace` (a bound
+ * parameter alone is not known to be non-empty, so it would scan the table), and it keeps the folders' own checkouts' marks, which have an empty `workspace_id`, out of reach.
+ */
 export function deleteViewedOfWorkspace(db: Database, workspaceId: string): void {
-    db.query('DELETE FROM viewed_files WHERE workspace_id = ?').run(workspaceId);
+    db.query(`DELETE FROM viewed_files WHERE workspace_id = ? AND workspace_id <> ''`).run(workspaceId);
 }
 
 /** Drops every mark of a project, for the project's removal (no foreign key does it). */

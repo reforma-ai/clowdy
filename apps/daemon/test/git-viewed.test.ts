@@ -165,6 +165,47 @@ describe('over HTTP', () => {
         expect(rows()).toHaveLength(1);
     });
 
+    test('holds a mark of a new, a renamed and a binary file while it is left alone and loses it when the file changes, and a commit\'s mark holds as the branch moves on', async () => {
+        const { work: repo, featureCommit } = work();
+        const { fileOf, marks, mark, viewed } = open(repo);
+
+        git(repo, 'mv', 'docs/readme.md', 'docs/guide.md');
+        writeFileSync(join(repo, 'logo.bin'), Buffer.from([0, 1, 2, 3]));
+
+        const edits: Record<string, () => void> = {
+            'scratch.txt': () => put(repo, { 'scratch.txt': lines('scratch', 'more') }),
+            'docs/guide.md': () => put(repo, { 'docs/guide.md': lines('# Readme', 'more') }),
+            'logo.bin': () => writeFileSync(join(repo, 'logo.bin'), Buffer.from([0, 1, 2, 4])),
+        };
+
+        expect(await fileOf('all', 'scratch.txt')).toMatchObject({ untracked: true });
+        expect(await fileOf('all', 'docs/guide.md')).toMatchObject({ kind: 'renamed', oldPath: 'docs/readme.md' });
+        expect(await fileOf('all', 'logo.bin')).toMatchObject({ untracked: true, binary: true });
+
+        for (const [path, edit] of Object.entries(edits)) {
+            const first = await fileOf('all', path);
+
+            expect((await mark('all', path, first.revision)).status).toBe(200);
+            // Read again with nothing touched: the same revision, so still viewed.
+            expect(viewed(await fileOf('all', path), await marks('all'))).toBe(true);
+
+            edit();
+
+            const edited = await fileOf('all', path);
+
+            expect(edited.revision).not.toBe(first.revision);
+            expect(viewed(edited, await marks('all'))).toBe(false);
+        }
+
+        // A commit's files never change, so its mark holds when the branch gets another commit and the files of the work move on.
+        const inCommit = await fileOf(`commit:${ featureCommit }`, 'feature.ts');
+
+        await mark(`commit:${ featureCommit }`, 'feature.ts', inCommit.revision);
+        put(repo, { 'lib.ts': lines('a', 'B', 'c', 'later') });
+        commit(repo, 'Move on');
+        expect(viewed(await fileOf(`commit:${ featureCommit }`, 'feature.ts'), await marks(`commit:${ featureCommit }`))).toBe(true);
+    });
+
     test('clears one file\'s mark and nothing else, and clearing a file that has none is not an error', async () => {
         const { work: repo } = work();
         const { fileOf, marks, mark, clear } = open(repo);
@@ -562,6 +603,20 @@ describe('the table', () => {
 
         deleteViewedOfProject(db, 'prj_1');
         expect([place, otherProject].map(target => countViewed(db, target))).toEqual([0, 1]);
+        db.close();
+    });
+
+    test('never takes the checkout\'s marks for a worktree\'s: an empty worktree id drops nothing', () => {
+        const db = openDatabase(':memory:');
+        const tree = { ...place, workspaceId: 'wks_1' };
+
+        setViewed(db, place, 'uncommitted', { path: 'a.ts', revision: 'r' }, 1);
+        setViewed(db, tree, 'uncommitted', { path: 'a.ts', revision: 'r' }, 1);
+
+        deleteViewedOfWorkspace(db, '');
+        expect([place, tree].map(target => countViewed(db, target))).toEqual([1, 1]);
+        deleteViewedOfWorkspace(db, 'wks_1');
+        expect([place, tree].map(target => countViewed(db, target))).toEqual([1, 0]);
         db.close();
     });
 });
