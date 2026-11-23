@@ -1,8 +1,8 @@
 import type { FolderWorktrees, ProjectFolder, WorktreeInfo } from '@clowdy/protocol';
 
-/** How many files a worktree has changed, in a word: `Clean`, or `3 changed`. */
+/** How many files a worktree has changed, in a word: `No local changes`, or `3 changed`. */
 export function changesLabel(changes: number): string {
-    return changes === 0 ? 'Clean' : `${ changes } changed`;
+    return changes === 0 ? 'No local changes' : `${ changes } changed`;
 }
 
 /** The mark a worktree's work has in the base: what it says, why, and the colour of its badge. */
@@ -29,6 +29,29 @@ export function mergedMark({ main, merged, base }: Pick<WorktreeInfo, 'main' | '
 /** What a lock says on hover: git's reason when it gave one. */
 export function lockTip(locked: string): string {
     return locked === '' ? 'Git has it locked' : `Git has it locked: ${ locked }`;
+}
+
+/** The one badge of a worktree's row: what it says, why (the tooltip), and the colour (the neutral grey when it has none). */
+export interface WorktreeMark {
+    label: 'Project checkout' | 'Missing on disk' | 'Locked' | MergedMark['label'];
+    tip: string;
+    color?: MergedMark['color'];
+}
+
+/**
+ * The single badge of a row: of everything that could be said of a worktree, the one that matters most, from the most to the least. The folder's own checkout is what it is
+ * and has nothing else to say. A worktree gone from the disk has only its record left, so its lock and its work mean nothing. A locked one is held: git was told to keep it
+ * (an agent that works in it locks it for as long as it does), and that outweighs whether its work has reached the base. The base only comes last: `Merged` or `Not merged`,
+ * and nothing where there is no base to compare with.
+ */
+export function worktreeMark(worktree: Pick<WorktreeInfo, 'main' | 'missing' | 'locked' | 'merged' | 'base'>): WorktreeMark | undefined {
+    if (worktree.main) return { label: 'Project checkout', tip: 'The folder itself, where a chat works without a worktree' };
+
+    if (worktree.missing) return { label: 'Missing on disk', tip: 'Git lists it, but its folder is gone', color: 'warning' };
+
+    if (worktree.locked !== undefined) return { label: 'Locked', tip: lockTip(worktree.locked) };
+
+    return mergedMark(worktree);
 }
 
 /**

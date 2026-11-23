@@ -126,7 +126,7 @@ describe('Manage worktrees', () => {
         expect(document.body.textContent).not.toContain('notes');
     });
 
-    it('marks the folder\'s own checkout with its branch and whether it is clean, and gives it no Remove', async () => {
+    it('marks the folder\'s own checkout with its branch and whether it has local changes, and gives it no Remove', async () => {
         await open();
 
         const main = row('/Users/dev/car-rental');
@@ -134,7 +134,7 @@ describe('Manage worktrees', () => {
         expect(main.dataset.main).toBe('true');
         expect(main.textContent).toContain('main');
         expect(main.textContent).toContain('Project checkout');
-        expect(main.textContent).toContain('Clean');
+        expect(main.textContent).toContain('No local changes');
         // The base is no place to compare the folder's own checkout with.
         expect(main.textContent).not.toContain('merged');
         expect(removeOf(await moreMenu('/Users/dev/car-rental'))).toBeUndefined();
@@ -159,9 +159,7 @@ describe('Manage worktrees', () => {
         const locked = row(LOCKED_WORKTREE);
 
         expect(locked.textContent).toContain('hotfix/invoice');
-        expect(locked.textContent).toContain('Clean');
-        expect(locked.textContent).toContain('Merged');
-        expect(locked.textContent).not.toContain('Not merged');
+        expect(locked.textContent).toContain('No local changes');
 
         // A worktree on a detached HEAD is named by its commit.
         expect(row(DETACHED_WORKTREE).textContent).toContain('Detached at 3a2b1c0');
@@ -186,6 +184,19 @@ describe('Manage worktrees', () => {
         expect(document.querySelector('[role="tooltip"]')?.textContent).toBe('~/orca/car-rental/search-filters');
     });
 
+    it('gives each row one badge at most, the one that matters most: Locked over Merged, Missing on disk over the rest', async () => {
+        await open();
+
+        const badges = (path: string) => [...row(path).querySelectorAll<HTMLElement>('[aria-label="Tags"] [role="row"]')].map(badge => badge.textContent);
+
+        expect(badges('/Users/dev/car-rental')).toEqual(['Project checkout']);
+        // Merged into the base, and locked: the lock is what to know.
+        expect(badges(LOCKED_WORKTREE)).toEqual(['Locked']);
+        expect(badges(MISSING_WORKTREE)).toEqual(['Missing on disk']);
+        expect(badges(FOUND_WORKTREE)).toEqual(['Not merged']);
+        expect(badges(CLOWDY_WORKTREE)).toEqual(['Not merged']);
+    });
+
     it('marks a locked worktree and one whose folder is gone, which has no state of its own to show and no chat to start', async () => {
         await open();
 
@@ -196,7 +207,7 @@ describe('Manage worktrees', () => {
 
         expect(missing.dataset.missing).toBe('true');
         expect(missing.textContent).toContain('Missing on disk');
-        expect(missing.textContent).not.toContain('Clean');
+        expect(missing.textContent).not.toContain('No local changes');
         expect(buttonIn(missing, 'New chat in this worktree: old-pricing')!.disabled).toBe(true);
         // A disabled button takes no hover and no focus, so the reason is on the focusable stand-in beside it.
         expect(missing.querySelector('[role="button"][aria-disabled]')?.getAttribute('aria-label')).toBe('New chat in this worktree: old-pricing');
@@ -414,6 +425,20 @@ describe('Manage worktrees', () => {
         await openMore(FOUND_WORKTREE);
 
         expect(await openIn()).toEqual(['Open in GitHub']);
+    });
+
+    it('opens the same menu on a right-click anywhere on the row, and shuts it when an item is chosen', async () => {
+        await open();
+        await act(async () => void row(FOUND_WORKTREE).querySelector('[class*="title"]')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 40, clientY: 60 })));
+        await settle();
+
+        expect(items().map(candidate => candidate.textContent)).toEqual(['New chat', 'Copy path', 'Open in…', 'Remove…']);
+
+        await click(item('New chat')!);
+        await settle();
+
+        expect(store.ui.forProject(FIXTURE_PROJECT_ID).draftWorkspace).toEqual({ mode: 'existing', path: FOUND_WORKTREE });
+        expect(isOpen()).toBe(false);
     });
 
     it('starts a new chat in the worktree from the More menu as the button does, and closes the dialog', async () => {

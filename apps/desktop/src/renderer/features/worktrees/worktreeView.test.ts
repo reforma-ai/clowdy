@@ -1,14 +1,31 @@
 import { describe, expect, it } from 'vitest';
 
-import { branchWarning, changesLabel, discardLabel, lockTip, mergedMark, removalPlan, removeHint, repositoryGroups } from './worktreeView';
+import { branchWarning, changesLabel, discardLabel, lockTip, mergedMark, removalPlan, removeHint, repositoryGroups, worktreeMark } from './worktreeView';
 
 import type { FolderWorktrees, ProjectFolder } from '@clowdy/protocol';
 
 describe('changesLabel', () => {
-    it('says a clean tree is clean, and else how many files are changed', () => {
-        expect(changesLabel(0)).toBe('Clean');
+    it('says a tree with nothing changed has no local changes, and else how many files are changed', () => {
+        expect(changesLabel(0)).toBe('No local changes');
         expect(changesLabel(1)).toBe('1 changed');
         expect(changesLabel(12)).toBe('12 changed');
+    });
+});
+
+describe('worktreeMark', () => {
+    const plain = { main: false, missing: false, merged: false, base: 'origin/main' };
+
+    it('gives the one badge that matters most: the folder\'s own checkout, then gone from the disk, then locked, then the work in the base', () => {
+        expect(worktreeMark({ ...plain, main: true, locked: '', missing: true })).toMatchObject({ label: 'Project checkout' });
+        expect(worktreeMark({ ...plain, missing: true, locked: 'on a drive' })).toEqual({ label: 'Missing on disk', tip: 'Git lists it, but its folder is gone', color: 'warning' });
+        expect(worktreeMark({ ...plain, locked: 'claude agent agent-a58e (pid 42120)', merged: false })).toEqual({ label: 'Locked', tip: 'Git has it locked: claude agent agent-a58e (pid 42120)' });
+        expect(worktreeMark({ ...plain })).toMatchObject({ label: 'Not merged', color: 'warning' });
+        expect(worktreeMark({ ...plain, merged: true })).toMatchObject({ label: 'Merged', color: 'success' });
+    });
+
+    it('counts a lock with no reason as a lock, and says nothing for a worktree with no base to compare with', () => {
+        expect(worktreeMark({ ...plain, locked: '' })).toEqual({ label: 'Locked', tip: 'Git has it locked' });
+        expect(worktreeMark({ main: false, missing: false })).toBeUndefined();
     });
 });
 

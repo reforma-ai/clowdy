@@ -22,6 +22,8 @@ export interface WorktreeMenuProps {
     worktree: WorktreeInfo;
     onNewChat: (folder: ProjectFolder, worktree: WorktreeInfo) => void;
     onRemove: (group: FolderWorktrees, worktree: WorktreeInfo) => void;
+    /** Called when an item is pressed, before it runs: a menu that is not in a `MenuTrigger` (the row's right-click) shuts itself here. */
+    onClose?: () => void;
 }
 
 /**
@@ -30,7 +32,7 @@ export interface WorktreeMenuProps {
  * so it has no Open in Files and no Open in Terminal, which would act behind it, and so it is built here from `openActions` and not as `OpenWithMenu`, which offers them. It reads
  * the folder's git, for the GitHub link, once it is open (a popover builds its content then), and not for every row on the list. A Remove that is off says why under its name.
  */
-export function WorktreeMenu({ projectId, group, folder, worktree, onNewChat, onRemove }: WorktreeMenuProps) {
+export function WorktreeMenu({ projectId, group, folder, worktree, onNewChat, onRemove, onClose }: WorktreeMenuProps) {
     const apps = useOpenApps();
     const folderGit = useFolderGit(projectId, folder.id);
     const git = folderGit && { remoteUrl: folderGit.remoteUrl, ...(worktree.branch === undefined ? { detached: true } : { branch: worktree.branch }) };
@@ -41,6 +43,8 @@ export function WorktreeMenu({ projectId, group, folder, worktree, onNewChat, on
     const hint = removeHint(worktree);
     const label = worktreeLabel(worktree);
     const run = (key: string) => {
+        onClose?.();
+
         if (key === NEW_CHAT) onNewChat(folder, worktree);
         else if (key === REMOVE) onRemove(group, worktree);
         else actions.find(action => action.id === key)?.run();
