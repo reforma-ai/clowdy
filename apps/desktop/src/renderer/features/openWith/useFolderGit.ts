@@ -24,6 +24,13 @@ export function refreshFolderGit(projectId: ProjectId, folderId: FolderId): void
     for (const listener of listeners) listener(projectId, folderId);
 }
 
+/** Listens for `refreshFolderGit`, for a reader of the folder's git that is not `useFolderGit` (the new-chat page's branches and worktrees); gives back what ends the listening. */
+export function onFolderGitRefresh(listener: (projectId: ProjectId, folderId: FolderId) => void): () => void {
+    listeners.add(listener);
+
+    return () => void listeners.delete(listener);
+}
+
 /**
  * What git says about a folder of a project (its `origin` and the branch that is checked out), read from the daemon when the component is drawn, when the folder
  * changes and when the window gets focus again, since the branch changes in a terminal or by an agent while the app is in the background. Nothing until the

@@ -11,6 +11,6 @@ export {
     openActions,
 } from './openTarget';
 export { openWithPreferences } from './openWithPreferences';
-export { refreshFolderGit, useFolderGit } from './useFolderGit';
+export { onFolderGitRefresh, refreshFolderGit, useFolderGit } from './useFolderGit';
 export { type FolderRepair, useFolderRepair } from './useFolderRepair';
 export { type WorkspaceHead, type WorkspaceRef, workspaceHead } from './workspaceHead';

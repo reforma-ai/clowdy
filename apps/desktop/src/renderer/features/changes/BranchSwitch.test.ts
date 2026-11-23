@@ -204,6 +204,79 @@ describe('BranchSwitch', () => {
         expect(branches.warning).toBeUndefined();
     });
 
+    describe('around the making of a chat that switches the checkout itself', () => {
+        it('marks the place as switching while it runs, hands the answer back as it is, drops the listing and reads the place when it ends', async () => {
+            const { stand, reads } = transport();
+            const { model: branches, refresh, facts } = model(stand);
+            const read = branches.load();
+
+            reads[0]!.resolve(LISTING);
+            await read;
+
+            let finish: (answer: string) => void = () => undefined;
+            const pending = branches.around('dev', () => new Promise<string>(resolve => void (finish = resolve)));
+
+            expect(branches.running).toBe('dev');
+            expect(branches.busy).toBe(true);
+            // The place's moves to and from origin wait for it (`RemoteActions.busy`).
+            expect(facts.switching).toBe(true);
+            expect(refresh).not.toHaveBeenCalled();
+            expect(stand.switchGitBranch).not.toHaveBeenCalled();
+
+            finish('the answer');
+
+            expect(await pending).toBe('the answer');
+            expect(facts.switching).toBe(false);
+            expect(branches.running).toBeUndefined();
+            expect(branches.listing).toBeUndefined();
+            expect(refresh).toHaveBeenCalledTimes(1);
+        });
+
+        it('frees the place and reads it again when what it runs throws, and passes the error on', async () => {
+            const { stand } = transport();
+            const { model: branches, refresh, facts } = model(stand);
+
+            await expect(
+                branches.around('dev', () => Promise.reject(new Error('The connection broke')))
+            ).rejects.toThrow('The connection broke');
+            expect(facts.switching).toBe(false);
+            expect(branches.running).toBeUndefined();
+            expect(refresh).toHaveBeenCalledTimes(1);
+        });
+
+        it('forgets what the last switch said, and leaves what the caller keeps of its own answer to the caller', async () => {
+            const { stand, switches } = transport();
+            const { model: branches } = model(stand);
+            const refused = branches.switchTo('dev');
+
+            switches[0]!.reject(new TransportError('Commit or discard the changes first', 409));
+            await refused;
+            expect(branches.failure).toBeDefined();
+
+            await branches.around('dev', async () => 'ok');
+            expect(branches.failure).toBeUndefined();
+            expect(branches.warning).toBeUndefined();
+        });
+
+        it('is the first switch of the place only: one that is running already marks it, and the other is just waited for', async () => {
+            const { stand, switches } = transport();
+            const { model: branches, refresh, facts } = model(stand);
+            const first = branches.switchTo('dev');
+            const second = await branches.around('main', async () => 'waited');
+
+            expect(second).toBe('waited');
+            // The one that was running still marks the place, and has not ended.
+            expect(branches.running).toBe('dev');
+            expect(facts.switching).toBe(true);
+            expect(refresh).not.toHaveBeenCalled();
+
+            switches[0]!.resolve(RESULT);
+            await first;
+            expect(facts.switching).toBe(false);
+            expect(refresh).toHaveBeenCalledTimes(1);
+        });
+    });
+
     it('is one model for a place, kept with its facts', () => {
         const { stand } = transport();
         const facts = new PlaceFacts(

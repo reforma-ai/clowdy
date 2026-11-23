@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { TransportError } from '../../daemon/transport';
 import { type RootStore, RootStoreProvider } from '../../stores';
+import { refreshFolderGit } from '../openWith';
 import { useFolderRepository } from './useFolderRepository';
 
 import type { FolderGit } from '@clowdy/protocol';
@@ -90,6 +91,31 @@ describe('useFolderRepository', () => {
 
         await daemon.answer(1, repository('next'));
         expect(shown()).toBe('ready next');
+    });
+
+    it("reads the folder again when the app has changed its branch (`refreshFolderGit`), and for no other folder or project's", async () => {
+        const daemon = transport();
+        const store = { transport: daemon } as unknown as RootStore;
+
+        draw(store, 'f-a');
+        await daemon.answer(0, repository('main'));
+
+        act(() => refreshFolderGit('p-1', 'f-b'));
+        act(() => refreshFolderGit('p-2', 'f-a'));
+        expect(daemon.getFolderGit).toHaveBeenCalledTimes(1);
+
+        act(() => refreshFolderGit('p-1', 'f-a'));
+        expect(daemon.getFolderGit).toHaveBeenCalledTimes(2);
+        expect(shown()).toBe('ready main');
+
+        await daemon.answer(1, repository('dev'));
+        expect(shown()).toBe('ready dev');
+
+        // Unmounted, it listens no more.
+        act(() => root.unmount());
+        act(() => refreshFolderGit('p-1', 'f-a'));
+        expect(daemon.getFolderGit).toHaveBeenCalledTimes(2);
+        root = createRoot(container);
     });
 
     it('says why the daemon could not read the folder, and that it is no repository when it says so', async () => {

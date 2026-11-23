@@ -97,10 +97,7 @@ export class BranchSwitch {
 
         const { key } = this.facts;
 
-        this.running = branch;
-        this.facts.switching = true;
-        this.failure = undefined;
-        this.warning = undefined;
+        this.#begin(branch);
 
         try {
             const result = await this.transport.switchGitBranch(key.projectId, placeRef(key), branch, create);
@@ -126,12 +123,48 @@ export class BranchSwitch {
 
             return { ok: false, failure };
         } finally {
-            runInAction(() => {
-                this.running = undefined;
-                this.facts.switching = false;
-            });
-            this.refresh();
+            this.#end();
         }
+    }
+
+    /**
+     * Runs `run`, the making of a chat that switches the place's checkout itself (`chat.create` with `{ mode: 'main', branch }`, the new chat's pill), as a switch of the place: while it
+     * is on its way the place is `running` and its facts are `switching`, so the Changes sidebar's button spins and the moves to and from `origin` are off, and when it ends, however it
+     * ends, the list of branches is dropped and the facts and the folder's branch are read again (`refresh`). What `run` answers is handed back as it is, and what the daemon said of a
+     * refusal is the caller's to keep. Another switch of the place that is running already (the daemon runs them one at a time) is the one that marks it: `run` is simply waited for.
+     */
+    async around<T>(branch: string, run: () => Promise<T>): Promise<T> {
+        if (this.running !== undefined) return await run();
+
+        this.#begin(branch);
+
+        try {
+            return await run();
+        } finally {
+            runInAction(() => {
+                this.listing = undefined;
+            });
+            this.#end();
+        }
+    }
+
+    /** A switch to `branch` starts: the place is busy and what the last one said is out of date. */
+    #begin(branch: string): void {
+        runInAction(() => {
+            this.running = branch;
+            this.facts.switching = true;
+            this.failure = undefined;
+            this.warning = undefined;
+        });
+    }
+
+    /** The switch has ended, one way or the other: the place is free, and what changed is read again. */
+    #end(): void {
+        runInAction(() => {
+            this.running = undefined;
+            this.facts.switching = false;
+        });
+        this.refresh();
     }
 
     /** Clears what the last switch said, for a popover that opens again. */

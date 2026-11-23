@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 
 import { TransportError } from '../../daemon/transport';
 import { useRootStore } from '../../stores';
+import { onFolderGitRefresh } from '../openWith';
 
 import type { FolderGit, FolderId, ProjectId } from '@clowdy/protocol';
 
@@ -17,7 +18,8 @@ const LOADING: FolderRepository = { status: 'loading' };
 
 /**
  * The branches and worktrees of one folder of a project (`Transport.getFolderGit`), for the control of where the new chat works (`WorkspaceChips`). Read when the page opens, when its folder
- * changes and when the window gets focus again, since a branch or a worktree comes and goes in a terminal or by an agent while the app is in the background. Nothing but
+ * changes, when the window gets focus again, since a branch or a worktree comes and goes in a terminal or by an agent while the app is in the background, and when the app has changed the folder's
+ * branch itself (`refreshFolderGit`). Nothing but
  * `loading` until the answer for this folder comes (never another folder's), and a later read that fails leaves what was known for the same folder, as `useFolderGit` does.
  */
 export function useFolderRepository(projectId: ProjectId, folderId: FolderId): FolderRepository {
@@ -54,9 +56,15 @@ export function useFolderRepository(projectId: ProjectId, folderId: FolderId): F
         readRepository();
         window.addEventListener('focus', readRepository);
 
+        // A change of the folder's branch that the app made itself (a switch from the Changes sidebar or from the pill) is known before the window's next focus.
+        const stopListening = onFolderGitRefresh((changedProject, changedFolder) => {
+            if (changedProject === projectId && changedFolder === folderId) readRepository();
+        });
+
         return () => {
             latest++;
             window.removeEventListener('focus', readRepository);
+            stopListening();
         };
     }, [root, projectId, folderId, key]);
 
