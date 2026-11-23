@@ -1,3 +1,4 @@
+import { FIXTURE_UNCOMMITTED_PATHS } from './fixtureData';
 import { TransportError } from './transport';
 
 import type { GitCommitResult, GitMessage } from '@clowdy/protocol';
@@ -14,6 +15,8 @@ export interface FixtureGitWritesOptions {
     message?: FixtureMessageScript;
     /** How a fetch, a pull and a push end and where the branch stands against its upstream (`fixtureGitRemote.ts`). */
     remote?: FixtureRemoteScript;
+    /** The worktree has nothing uncommitted: its files are already committed, as if a commit had taken them (the page's `&clean`), so the commit box is at its empty state. */
+    clean?: true;
 }
 
 /** How long a `slow` request takes: long enough for a screenshot of its running state. */
@@ -44,9 +47,11 @@ export class FixtureGitWrites {
         this.#script = script;
     }
 
-    /** The paths already committed in a place, which its uncommitted changes no longer list. */
+    /** The paths already committed in a place, which its uncommitted changes no longer list. A worktree that the page asked to be clean has every one of its files committed. */
     committedOf(place: string): ReadonlySet<string> {
-        return this.#committed.get(place) ?? new Set();
+        const committed = this.#committed.get(place) ?? new Set<string>();
+
+        return this.#script.clean && place !== '' ? new Set([...committed, ...FIXTURE_UNCOMMITTED_PATHS]) : committed;
     }
 
     /** Commits `paths` of the place, which has `uncommitted` as its uncommitted files. */

@@ -3,6 +3,7 @@ import { exclusive } from '../domain/workspaces';
 import { conflict, invalid, unavailable } from '../errors';
 import { runProgram } from '../providers/exec';
 import { printedLines, shownLine, writeLine } from './commit';
+import { rememberFetch } from './lastFetch';
 import { workingTreeRoot } from './state';
 import { parseStatus } from './status';
 import { namesSigningKey, SIGNING_HINT, WriteEnvironment } from './writeEnv';
@@ -25,6 +26,12 @@ const MAX_PRINTED_CHARS = 256 * 1024;
 /** The only remote the app moves commits to and from. */
 const ORIGIN = 'origin';
 
+/** Where a branch's own ref is: `refs/heads/<branch>`. */
+const HEADS = 'refs/heads/';
+
+/** Whether what a branch tracks is the branch of its own name: the only upstream the app pulls from and pushes to. */
+const ownName = (branch: string, tracking: { merge: string }): boolean => tracking.merge === `${ HEADS }${ branch }`;
+
 /** Keeps a fetch to `origin`: git also fetches a submodule from its own remote when the commit of it that the superproject points at has moved, which is another remote and another failure. */
 const NO_SUBMODULES = ['--no-recurse-submodules'];
 
@@ -33,8 +40,7 @@ const NO_SUBMODULES = ['--no-recurse-submodules'];
  * and a push name their remote on. These are never the line shown while a more particular one is there. So are the lines that say nothing of a cause: a `warning:`, a `remote:` with
  * nothing after it, and the remote's own progress (`remote: Resolving deltas: 100% ...`), which a remote may print before the line that says why it refused.
  */
-const SUMMARY_LINE =
-    /^(?:To |From |error: failed to push some refs|fatal: Could not read from remote repository|fatal: the remote end hung up unexpectedly|Please make sure you have the correct access rights|and the repository exists|hint:|warning:|remote:\s*$|remote: (?:Resolving deltas|Counting objects|Enumerating objects|Compressing objects|Total ))/i;
+const SUMMARY_LINE = /^(?:To |From |error: failed to push some refs|fatal: Could not read from remote repository|fatal: the remote end hung up unexpectedly|Please make sure you have the correct access rights|and the repository exists|hint:|warning:|remote:\s*$|remote: (?:Resolving deltas|Counting objects|Enumerating objects|Compressing objects|Total ))/i;
 
 /**
  * The line git writes for a ref it would not send, which says why in its own parentheses: `! [rejected] main -> main (fetch first)`. A ref that the remote declined
@@ -45,13 +51,12 @@ const REJECTED_REF = /^!\s*\[rejected\]/i;
 /** What git says first that is the cause: the line that names the signing key, else the refused ref, else the first line that is not a summary (a hook's line, ssh's, a remote's `remote:` line), else git's own first `fatal:` or `error:`. */
 export function remoteFailureLine(stderr: string, stdout: string, fallback: string): string {
     const printed = printedLines(stderr);
-    const line =
-        printed.find(namesSigningKey) ??
-        printed.find(candidate => REJECTED_REF.test(candidate))?.replace(/\s+/g, ' ') ??
-        printed.find(candidate => !SUMMARY_LINE.test(candidate)) ??
-        printed.find(candidate => /^(?:fatal|error):/i.test(candidate)) ??
-        printedLines(stdout)[0] ??
-        fallback;
+    const line = printed.find(namesSigningKey)
+        ?? printed.find(candidate => REJECTED_REF.test(candidate))?.replace(/\s+/g, ' ')
+        ?? printed.find(candidate => !SUMMARY_LINE.test(candidate))
+        ?? printed.find(candidate => /^(?:fatal|error):/i.test(candidate))
+        ?? printedLines(stdout)[0]
+        ?? fallback;
 
     return shownLine(line);
 }
@@ -73,14 +78,15 @@ interface Head {
  *
  * - fetch is `git fetch --no-recurse-submodules origin`: the submodules' own remotes are not asked (git does that by itself for a submodule whose commit moved, and a failure there ends the
  *   fetch with an error though `origin` was fetched);
- * - pull fetches, then takes what the upstream has with `git merge --ff-only`; a branch that diverged from its upstream (commits on both sides, counted with `rev-list --left-right --count`
+ * - pull fetches, then takes what the upstream has with `git merge --ff-only`, for a branch whose upstream is the branch of its own name (`invalid` for one that tracks another); a branch that diverged from its upstream (commits on both sides, counted with `rev-list --left-right --count`
  *   before anything moves) is answered as `diverged` and left alone: no merge, no rebase, no reset. It merges itself, and does not call `git pull`, so the network is asked once;
- * - push is `git push origin refs/heads/<branch>:<the upstream's ref>` for a branch that has an upstream, and `git push -u origin refs/heads/<branch>:refs/heads/<branch>` (publish) for one
- *   that has none. The branch is spelled as a full ref, never `HEAD`, so a branch that an agent or the person switched to while the push waited is not sent in its place, and a tag of its name
+ * - push is `git push origin refs/heads/<branch>:refs/heads/<branch>` for a branch whose upstream is `origin/<branch>`, the branch of its own name, and `git push -u origin
+ *   refs/heads/<branch>:refs/heads/<branch>` (publish) for any other: one that tracks nothing, one whose upstream is gone from origin and one that tracks a branch of another name
+ *   (`git switch -c feat origin/main`), which is sent under its own name and never to the branch it tracks, so a push cannot update `main` from `feat`. The branch is spelled as a full ref, never `HEAD`, so a branch that an agent or the person switched to while the push waited is not sent in its place, and a tag of its name
  *   is not meant. The refspec is given on the command line, so what the person's configuration says (`push.default`, `remote.origin.push`, a `+` in it) cannot widen it, and `--no-follow-tags`
  *   and `--no-recurse-submodules` keep a tag and a submodule from going with it. Never `--force`, never `--no-verify`.
  *
- * A place that is not a repository, a repository with no `origin`, a detached HEAD, a branch with no commit (pull and push) and a branch that tracks another remote are `invalid`. A
+ * A place that is not a repository, a repository with no `origin`, a detached HEAD, a branch with no commit (pull and push), a branch that tracks another remote and, for a pull, a branch that tracks a branch of another name are `invalid`. A
  * refusal by git is `conflict` with the line that says why (`remoteFailureLine`) and, for a signing or agent failure, the hint of `writeEnv`; a run that does not end in time and the daemon stopping are `unavailable`.
  */
 export class GitRemote {
@@ -105,6 +111,7 @@ export class GitRemote {
         return this.#alone(place, async () => {
             await this.#inspect(place);
             await this.#run(place, 'fetch', ['fetch', ...NO_SUBMODULES, ORIGIN]);
+            await rememberFetch(place.path);
 
             const upstream = await this.#upstream(place);
 
@@ -117,25 +124,21 @@ export class GitRemote {
         return this.#alone(place, async () => {
             const { branch, tracking } = await this.#branchOf(place, 'pull');
 
-            if (!tracking) throw invalid(`${branch} has no upstream to pull from, publish it first`);
+            if (!tracking) throw invalid(`${ branch } has no upstream to pull from, publish it first`);
+
+            if (!ownName(branch, tracking)) throw invalid(`${ branch } tracks ${ ORIGIN }/${ tracking.merge.slice(HEADS.length) }, not a branch of its own, publish it first`);
 
             await this.#run(place, 'pull', ['fetch', ...NO_SUBMODULES, ORIGIN]);
+            await rememberFetch(place.path);
 
             const apart = await this.#apart(place);
 
-            if (!apart) throw invalid(`${tracking.merge.replace(/^refs\/heads\//, '')} is no longer on origin`);
+            if (!apart) throw invalid(`${ tracking.merge.replace(/^refs\/heads\//, '') } is no longer on origin`);
 
             if (apart.ahead > 0 && apart.behind > 0) {
                 const upstream = await this.#upstream(place);
 
-                return {
-                    state: 'diverged',
-                    upstream: {
-                        name: upstream?.name ?? `${ORIGIN}/${branch}`,
-                        ahead: apart.ahead,
-                        behind: apart.behind,
-                    },
-                };
+                return { state: 'diverged', upstream: { name: upstream?.name ?? `${ ORIGIN }/${ branch }`, ahead: apart.ahead, behind: apart.behind } };
             }
 
             if (apart.behind > 0) await this.#run(place, 'pull', ['merge', '--ff-only', '@{upstream}']);
@@ -150,31 +153,18 @@ export class GitRemote {
     push(place: Place): Promise<GitRemoteResult> {
         return this.#alone(place, async () => {
             const { branch, tracking } = await this.#branchOf(place, 'push');
-            // A branch is published when it tracks nothing, and also when what it tracks is not on origin (the upstream is set and the remote's branch is gone): it is sent as a new one.
-            const publish =
-                tracking === undefined ||
-                (await gitAnswer(place.path, ['rev-parse', '--verify', '--quiet', '@{upstream}'])) === undefined;
+            const own = `${ HEADS }${ branch }`;
+            // A branch is sent only to the branch of its own name. What it tracks is its own only under that name: a branch made from another one (`git switch -c feat origin/main` tracks `origin/main`)
+            // would be sent to `main` itself, which git's own `push.default=simple` refuses and a refspec to the upstream's ref would not. Such a branch, and one that tracks nothing or whose
+            // upstream is gone from origin, is published under its own name instead, with `-u`, so its upstream is the new branch. The source is spelled as a full ref (never `HEAD`, which is
+            // whatever is checked out when git runs, not the branch that was judged), so a tag of the branch's name is not meant, and git names the ref as the branch in what it says of a refusal.
+            const published = tracking !== undefined && ownName(branch, tracking) && await gitAnswer(place.path, ['rev-parse', '--verify', '--quiet', '@{upstream}']) !== undefined;
 
-            // Everything a person's configuration may add to a push (other refs, a force, tags, submodules) is overridden here: the branch goes to the branch it tracks, or to the one of its own
-            // name when it tracks none (`-u` then makes it track that), nothing else. The source is spelled as a full ref (never `HEAD`, which is whatever is checked out when git runs, not
-            // the branch that was judged), so a tag of the branch's name is not meant, and git names the ref as the branch in what it says of a refusal.
-            await this.#run(place, 'push', [
-                'push',
-                '--no-follow-tags',
-                '--no-recurse-submodules',
-                ...(tracking === undefined ? ['-u'] : []),
-                ORIGIN,
-                `refs/heads/${branch}:${tracking?.merge ?? `refs/heads/${branch}`}`,
-            ]);
+            await this.#run(place, 'push', ['push', '--no-follow-tags', '--no-recurse-submodules', ...(published ? [] : ['-u']), ORIGIN, `${ own }:${ own }`]);
 
             const upstream = await this.#upstream(place);
 
-            return {
-                state: 'done',
-                action: 'push',
-                ...(publish && { published: true as const }),
-                ...(upstream && { upstream }),
-            };
+            return { state: 'done', action: 'push', ...(!published && { published: true as const }), ...(upstream && { upstream }) };
         });
     }
 
@@ -187,52 +177,39 @@ export class GitRemote {
     async #inspect(place: Place): Promise<Head> {
         const cwd = place.path;
 
-        if (!(await workingTreeRoot(cwd))) throw invalid('The folder is not the root of a git repository');
+        if (!await workingTreeRoot(cwd)) throw invalid('The folder is not the root of a git repository');
 
-        if ((await gitAnswer(cwd, ['remote', 'get-url', ORIGIN])) === undefined)
-            throw invalid('The repository has no origin');
+        if (await gitAnswer(cwd, ['remote', 'get-url', ORIGIN]) === undefined) throw invalid('The repository has no origin');
 
         const branch = await gitAnswer(cwd, ['symbolic-ref', '--quiet', '--short', 'HEAD']);
 
-        if (branch === undefined)
-            return { born: (await gitAnswer(cwd, ['rev-parse', '--verify', '--quiet', 'HEAD'])) !== undefined };
+        if (branch === undefined) return { born: await gitAnswer(cwd, ['rev-parse', '--verify', '--quiet', 'HEAD']) !== undefined };
 
         const [remote, merge, commit] = await Promise.all([
-            gitAnswer(cwd, ['config', '--get', `branch.${branch}.remote`]),
-            gitAnswer(cwd, ['config', '--get', `branch.${branch}.merge`]),
+            gitAnswer(cwd, ['config', '--get', `branch.${ branch }.remote`]),
+            gitAnswer(cwd, ['config', '--get', `branch.${ branch }.merge`]),
             gitAnswer(cwd, ['rev-parse', '--verify', '--quiet', 'HEAD']),
         ]);
 
-        return {
-            branch,
-            born: commit !== undefined,
-            ...(remote !== undefined && merge !== undefined && { tracking: { remote, merge } }),
-        };
+        return { branch, born: commit !== undefined, ...(remote !== undefined && merge !== undefined && { tracking: { remote, merge } }) };
     }
 
     /**
      * The branch a pull or a push is about: it has to be on a branch that has a commit and, when it tracks something, track a branch of `origin` (a branch of another remote, a local
      * branch and a tag are not the app's to move).
      */
-    async #branchOf(
-        place: Place,
-        action: 'pull' | 'push'
-    ): Promise<{ branch: string; tracking?: { remote: string; merge: string } }> {
+    async #branchOf(place: Place, action: 'pull' | 'push'): Promise<{ branch: string; tracking?: { remote: string; merge: string } }> {
         const head = await this.#inspect(place);
 
-        if (head.branch === undefined) throw invalid(`HEAD is detached, switch to a branch to ${action}`);
+        if (head.branch === undefined) throw invalid(`HEAD is detached, switch to a branch to ${ action }`);
 
-        if (!head.born) throw invalid(`${head.branch} has no commits yet`);
+        if (!head.born) throw invalid(`${ head.branch } has no commits yet`);
 
         const { tracking } = head;
 
-        if (tracking && tracking.remote !== ORIGIN)
-            throw invalid(
-                `${head.branch} tracks ${tracking.remote === '.' ? 'a local branch' : shownLine(tracking.remote)}, and only ${ORIGIN} is used`
-            );
+        if (tracking && tracking.remote !== ORIGIN) throw invalid(`${ head.branch } tracks ${ tracking.remote === '.' ? 'a local branch' : shownLine(tracking.remote) }, and only ${ ORIGIN } is used`);
 
-        if (tracking && !tracking.merge.startsWith('refs/heads/'))
-            throw invalid(`${head.branch} tracks ${tracking.merge}, which is not a branch of ${ORIGIN}`);
+        if (tracking && !tracking.merge.startsWith('refs/heads/')) throw invalid(`${ head.branch } tracks ${ tracking.merge }, which is not a branch of ${ ORIGIN }`);
 
         return { branch: head.branch, ...(tracking && { tracking }) };
     }
@@ -242,20 +219,12 @@ export class GitRemote {
         const counts = await gitAnswer(place.path, ['rev-list', '--left-right', '--count', 'HEAD...@{upstream}']);
         const [ahead, behind] = (counts ?? '').split(/\s+/).map(Number);
 
-        return counts === undefined ||
-            ahead === undefined ||
-            behind === undefined ||
-            Number.isNaN(ahead) ||
-            Number.isNaN(behind)
-            ? undefined
-            : { ahead, behind };
+        return counts === undefined || ahead === undefined || behind === undefined || Number.isNaN(ahead) || Number.isNaN(behind) ? undefined : { ahead, behind };
     }
 
     /** The branch's upstream as it stands now, with how far apart the two are; nothing for a branch that tracks none and for a HEAD that is on no branch. */
     async #upstream(place: Place): Promise<GitUpstream | undefined> {
-        const read = await gitRead(place.path, ['status', '--porcelain=v2', '--branch', '--untracked-files=no', '-z'], {
-            parsed: true,
-        });
+        const read = await gitRead(place.path, ['status', '--porcelain=v2', '--branch', '--untracked-files=no', '-z'], { parsed: true });
 
         return read.ok ? parseStatus(read.stdout.split('\0')).upstream : undefined;
     }
@@ -263,14 +232,7 @@ export class GitRemote {
     /** `git <args>` in the place with the write environment, asked to stop with `SIGTERM` so it removes its lock files when the time is up; throws what a run that did not succeed came to. */
     async #run(place: Place, action: GitRemoteAction, args: string[]): Promise<void> {
         const env = await this.environment.of(place.path);
-        const run = await runProgram('git', args, {
-            env,
-            cwd: place.path,
-            timeoutMs: this.#timeoutMs,
-            maxChars: MAX_PRINTED_CHARS,
-            signal: this.#stopper.signal,
-            stopSignal: 'SIGTERM',
-        });
+        const run = await runProgram('git', args, { env, cwd: place.path, timeoutMs: this.#timeoutMs, maxChars: MAX_PRINTED_CHARS, signal: this.#stopper.signal, stopSignal: 'SIGTERM' });
 
         this.#check(run, action);
     }
@@ -279,19 +241,15 @@ export class GitRemote {
     #check(run: RunResult, action: GitRemoteAction): void {
         if (run.error === 'stopped') throw unavailable('The daemon is stopping');
 
-        if (run.timedOut) throw unavailable(`The ${action} did not finish in time`);
+        if (run.timedOut) throw unavailable(`The ${ action } did not finish in time`);
 
         if (run.error !== undefined) throw unavailable('git is not installed or not on PATH');
 
         if (run.code === 0) return;
 
-        const line = remoteFailureLine(
-            run.stderr,
-            run.stdout,
-            `git could not ${action === 'fetch' ? 'fetch from' : action === 'push' ? 'push to' : 'take what is on'} ${ORIGIN}`
-        );
+        const line = remoteFailureLine(run.stderr, run.stdout, `git could not ${ action === 'fetch' ? 'fetch from' : action === 'push' ? 'push to' : 'take what is on' } ${ ORIGIN }`);
 
-        if (namesSigningKey(`${run.stderr}\n${run.stdout}`)) {
+        if (namesSigningKey(`${ run.stderr }\n${ run.stdout }`)) {
             // What was found of the agent may be what failed: it is looked for again at the next write.
             this.environment.forgetAgent();
 

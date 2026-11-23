@@ -1,15 +1,5 @@
 import { MemoryFileSystem } from '@clowdy/file-manager/memory';
-import {
-    folderNames,
-    isBusyRunStatus,
-    isTerminalRunStatus,
-    MAX_ATTACHMENT_BYTES,
-    MAX_ATTACHMENTS_BYTES_PER_MESSAGE,
-    mainFolder,
-    PROTOCOL_VERSION,
-    STOPPED_TOOL,
-    writesCommitMessages,
-} from '@clowdy/protocol';
+import { folderNames, isBusyRunStatus, isTerminalRunStatus, mainFolder, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_BYTES_PER_MESSAGE, PROTOCOL_VERSION, STOPPED_TOOL, writesCommitMessages } from '@clowdy/protocol';
 
 import {
     catalogTokens,
@@ -20,7 +10,6 @@ import {
     FIXTURE_LIVE_TEXT_ID,
     FIXTURE_LIVE_TOOL_ID,
     FIXTURE_PULL_REQUEST_UNAVAILABLE,
-    type FixtureData,
     fixtureChatWorkspace,
     fixtureFolderGit,
     fixtureGitChanges,
@@ -31,24 +20,16 @@ import {
     fixtureProjectWorktrees,
     fixtureViewedProblem,
     fixtureWorkspaceLog,
+    type FixtureData,
 } from './fixtureData';
 import { fixtureFileContents } from './fixtureFiles';
 import { applyFolderSettings } from './fixtureFolderSettings';
 import { FixtureGitRemote, type FixtureRemotePlace } from './fixtureGitRemote';
 import { FixtureGitWrites, type FixtureGitWritesOptions } from './fixtureGitWrites';
-import { fail, type Outcome, ok } from './fixtureOutcome';
+import { fail, ok, type Outcome } from './fixtureOutcome';
 import { FixtureTasks } from './fixtureTasks';
 import { FixtureTerminals } from './fixtureTerminals';
-import {
-    type CommandInput,
-    type FeedStatus,
-    type PageQuery,
-    type PlaceRef,
-    type ProjectFileSystem,
-    type StreamTarget,
-    type Transport,
-    TransportError,
-} from './transport';
+import { TransportError, type CommandInput, type FeedStatus, type PageQuery, type PlaceRef, type ProjectFileSystem, type StreamTarget, type Transport } from './transport';
 
 import type {
     AgentInfo,
@@ -158,29 +139,20 @@ const NOTICE_REPLY = 'Noted. I will look at what the thread found and carry on.'
 const NOTICE_TEXT_MAX = 600;
 
 /** The words of a notice's outcome, as the queue's summary says them. */
-const OUTCOME_SUMMARY: Record<ThreadNotice['outcome'], string> = {
-    finished: 'finished',
-    failed: 'failed',
-    interrupted: 'was interrupted',
-};
+const OUTCOME_SUMMARY: Record<ThreadNotice['outcome'], string> = { finished: 'finished', failed: 'failed', interrupted: 'was interrupted' };
 
 /** The one line a queued notice shows: `Thread "Fix login" finished`, or how many threads stopped. */
 function noticeSummary(threads: readonly ThreadNotice[]): string {
-    if (threads.length === 1) return `Thread "${threads[0].title}" ${OUTCOME_SUMMARY[threads[0].outcome]}`;
+    if (threads.length === 1) return `Thread "${ threads[0].title }" ${ OUTCOME_SUMMARY[threads[0].outcome] }`;
 
-    return `${threads.length} threads stopped`;
+    return `${ threads.length } threads stopped`;
 }
 
 /** The stream item a queued message becomes when the agent gets it: a notice has no words of its own, a thread's message keeps its sender. */
 function userBody(item: QueuedMessage): StreamItemBody {
     const text = item.from?.kind === 'threadNotice' ? '' : item.text;
 
-    return {
-        kind: 'user',
-        text,
-        ...(item.attachments && { attachments: item.attachments }),
-        ...(item.from && { from: item.from }),
-    };
+    return { kind: 'user', text, ...(item.attachments && { attachments: item.attachments }), ...(item.from && { from: item.from }) };
 }
 
 /** Puts a message at the end of its own kind (or at `index` in it), the steers before the next turns, as the daemon does. */
@@ -199,9 +171,7 @@ function placeQueued(queue: readonly QueuedMessage[], item: QueuedMessage, index
 function withoutEmpty(overrides: AgentOverrides): AgentOverrides | undefined {
     const { path, env } = overrides;
 
-    return path === undefined && env === undefined
-        ? undefined
-        : { ...(path !== undefined && { path }), ...(env !== undefined && { env }) };
+    return path === undefined && env === undefined ? undefined : { ...(path !== undefined && { path }), ...(env !== undefined && { env }) };
 }
 
 /** The title of a fork: `foo` becomes `(1) foo` and `(1) foo` becomes `(2) foo`, as the daemon numbers it; a chat with no title of its own keeps none. */
@@ -212,12 +182,11 @@ function forkTitle(title: string): string {
 
     const numbered = /^\((\d{1,6})\) (\S.*)$/s.exec(text);
 
-    return numbered ? `(${Number(numbered[1]) + 1}) ${numbered[2]}` : `(1) ${text}`;
+    return numbered ? `(${ Number(numbered[1]) + 1 }) ${ numbered[2] }` : `(1) ${ text }`;
 }
 
 /** What a field becomes when a command may name it: the value it names, nothing for `null`, and `kept` when the command leaves it out. */
-const named = <T>(change: T | null | undefined, kept: T | undefined): T | undefined =>
-    change === undefined ? kept : (change ?? undefined);
+const named = <T>(change: T | null | undefined, kept: T | undefined): T | undefined => (change === undefined ? kept : change ?? undefined);
 
 /**
  * A daemon in memory: scripted data in the shape of the protocol, and commands that change it and announce the
@@ -260,18 +229,10 @@ export class FixtureTransport implements Transport {
         this.#timeline = timeline;
         this.#gitWrites = new FixtureGitWrites(gitWrites);
         this.#gitRemote = new FixtureGitRemote(gitWrites?.remote);
-        this.#tasks = new FixtureTasks(data, {
-            emit: (projectId, event) => this.#emit(projectId, event),
-            id: prefix => this.#id(prefix),
-        });
+        this.#tasks = new FixtureTasks(data, { emit: (projectId, event) => this.#emit(projectId, event), id: prefix => this.#id(prefix) });
 
         for (const { projectId, attachment, content } of data.attachments) {
-            this.#files.set(attachment.id, {
-                projectId,
-                attachment,
-                blob: new Blob([content], { type: attachment.mediaType }),
-                sent: true,
-            });
+            this.#files.set(attachment.id, { projectId, attachment, blob: new Blob([content], { type: attachment.mediaType }), sent: true });
         }
     }
 
@@ -282,61 +243,33 @@ export class FixtureTransport implements Transport {
     async getProjectsInfo(projectId?: ProjectId): Promise<ProjectInfo[]> {
         const { chats, tasks, git } = this.#data;
 
-        return structuredClone(
-            this.#listed()
-                .filter(project => projectId === undefined || project.id === projectId)
-                .map(project => {
-                    // The worktrees the project's chats work in, and those `workspace.open` answered that no chat works in (yet), as the daemon reads them: whether each is made, and the branch it
-                    // has (the fixture's worktrees keep the branch they were made with).
-                    const workspaces = new Map<string, ProjectWorkspaceInfo>();
-                    const rows = [
-                        ...chats
-                            .filter(chat => chat.projectId === project.id)
-                            .flatMap(chat => (chat.workspace ? [chat.workspace] : [])),
-                        ...[...this.#opened.values()]
-                            .filter(entry => entry.projectId === project.id)
-                            .map(entry => entry.workspace),
-                    ];
+        return structuredClone(this.#listed().filter(project => projectId === undefined || project.id === projectId).map((project) => {
+            // The worktrees the project's chats work in, and those `workspace.open` answered that no chat works in (yet), as the daemon reads them: whether each is made, and the branch it
+            // has (the fixture's worktrees keep the branch they were made with).
+            const workspaces = new Map<string, ProjectWorkspaceInfo>();
+            const rows = [...chats.filter(chat => chat.projectId === project.id).flatMap(chat => (chat.workspace ? [chat.workspace] : [])), ...[...this.#opened.values()].filter(entry => entry.projectId === project.id).map(entry => entry.workspace)];
 
-                    for (const workspace of rows) {
-                        workspaces.set(workspace.id, {
-                            workspaceId: workspace.id,
-                            exists: workspace.ready,
-                            ...(workspace.ready && workspace.branch !== undefined && { branch: workspace.branch }),
-                        });
-                    }
+            for (const workspace of rows) {
+                workspaces.set(workspace.id, { workspaceId: workspace.id, exists: workspace.ready, ...(workspace.ready && workspace.branch !== undefined && { branch: workspace.branch }) });
+            }
 
-                    return {
-                        projectId: project.id,
-                        folders: project.folders.map(folder => ({
-                            folderId: folder.id,
-                            exists: true,
-                            ...git[folder.path],
-                            chats: chats.filter(chat => chat.projectId === project.id && chat.folderId === folder.id)
-                                .length,
-                        })),
-                        chats: chats.filter(chat => chat.projectId === project.id).length,
-                        tasks: tasks.filter(task => task.projectId === project.id).length,
-                        activeRuns: this.#activeRuns(project.id),
-                        ...(workspaces.size > 0 && { workspaces: [...workspaces.values()] }),
-                    };
-                })
-        );
+            return {
+                projectId: project.id,
+                folders: project.folders.map(folder => ({ folderId: folder.id, exists: true, ...git[folder.path], chats: chats.filter(chat => chat.projectId === project.id && chat.folderId === folder.id).length })),
+                chats: chats.filter(chat => chat.projectId === project.id).length,
+                tasks: tasks.filter(task => task.projectId === project.id).length,
+                activeRuns: this.#activeRuns(project.id),
+                ...(workspaces.size > 0 && { workspaces: [...workspaces.values()] }),
+            };
+        }));
     }
 
     async getFolderGit(projectId: ProjectId, folderId: FolderId): Promise<FolderGit> {
         const folder = this.#project(projectId).folders.find(candidate => candidate.id === folderId);
 
-        if (!folder) throw new TransportError(`No such folder: ${folderId}`, 404);
+        if (!folder) throw new TransportError(`No such folder: ${ folderId }`, 404);
 
-        return structuredClone(
-            fixtureFolderGit(
-                folder.path,
-                this.#data.git[folder.path],
-                folder.settings?.baseBranch,
-                this.#data.removed?.[folder.path]
-            )
-        );
+        return structuredClone(fixtureFolderGit(folder.path, this.#data.git[folder.path], folder.settings?.baseBranch, this.#data.removed?.[folder.path]));
     }
 
     async getProjectWorktrees(projectId: ProjectId): Promise<FolderWorktrees[]> {
@@ -347,23 +280,21 @@ export class FixtureTransport implements Transport {
         const { head, workspace } = this.#gitPlace(projectId, place);
 
         const upstream = this.#gitRemote.upstreamOf(this.#remotePlace(head, workspace, place));
+        const { lastFetchedAt, hasOrigin, head: script } = this.#gitRemote;
 
-        return structuredClone(
-            fixtureGitStatus(head, workspace, this.#gitWrites.committedOf(place.workspaceId ?? ''), {
-                ...(upstream && { upstream }),
-            })
-        );
+        return structuredClone(fixtureGitStatus(head, workspace, this.#gitWrites.committedOf(place.workspaceId ?? ''), {
+            ...(upstream && { upstream }),
+            ...(lastFetchedAt !== undefined && { lastFetchedAt }),
+            ...(!hasOrigin && { origin: false }),
+            ...(script && { head: script }),
+        }));
     }
 
     /** The place as the fixture's remote keeps it: a checkout is level with its upstream, a worktree's branch is not published until a push says so. */
-    #remotePlace(
-        head: { branch?: string; detached?: true } | undefined,
-        workspace: Pick<ChatWorkspace, 'branch'> | undefined,
-        place: PlaceRef
-    ): FixtureRemotePlace {
-        const branch = head?.detached ? undefined : workspace ? (workspace.branch ?? 'clowdy/ab12cd34') : head?.branch;
+    #remotePlace(head: { branch?: string; detached?: true } | undefined, workspace: Pick<ChatWorkspace, 'branch'> | undefined, place: PlaceRef): FixtureRemotePlace {
+        const branch = head?.detached || this.#gitRemote.head === 'detached' ? undefined : workspace ? workspace.branch ?? 'clowdy/ab12cd34' : head?.branch;
 
-        return { key: `${place.folderId}/${place.workspaceId ?? ''}`, branch, worktree: workspace !== undefined };
+        return { key: `${ place.folderId }/${ place.workspaceId ?? '' }`, branch, worktree: workspace !== undefined };
     }
 
     /** Runs a fetch, a pull or a push in a place, judged as the daemon judges it: a folder that is no repository is `400`. */
@@ -389,40 +320,26 @@ export class FixtureTransport implements Transport {
 
     async getGitChanges(projectId: ProjectId, place: PlaceRef, scope: GitScope): Promise<GitChanges> {
         const { head, workspace } = this.#gitPlace(projectId, place);
-        const changes = fixtureGitChanges(
-            head,
-            workspace !== undefined,
-            scope,
-            this.#gitWrites.committedOf(place.workspaceId ?? '')
-        );
+        const changes = fixtureGitChanges(head, workspace !== undefined, scope, this.#gitWrites.committedOf(place.workspaceId ?? ''));
 
-        if (!changes) throw new TransportError(`Commit ${scope.slice('commit:'.length)} does not exist`, 404);
+        if (!changes) throw new TransportError(`Commit ${ scope.slice('commit:'.length) } does not exist`, 404);
 
         return structuredClone(changes);
     }
 
-    async getGitFile(
-        projectId: ProjectId,
-        place: PlaceRef,
-        scope: GitScope,
-        path: string,
-        _oldPath?: string,
-        from?: string
-    ): Promise<GitFileSides> {
+    async getGitFile(projectId: ProjectId, place: PlaceRef, scope: GitScope, path: string, _oldPath?: string, from?: string): Promise<GitFileSides> {
         const { head, workspace } = this.#gitPlace(projectId, place);
 
         if (!head?.branch) throw new TransportError('The folder is not the root of a git repository', 400);
 
         // The fixture draws no diff of its own, so a start is only judged as the daemon judges it: a hash, of a commit the repository has.
-        if (from !== undefined && !/^[0-9a-f]{7,64}$/i.test(from))
-            throw new TransportError('The start of the comparison is not a hash', 400);
+        if (from !== undefined && !/^[0-9a-f]{7,64}$/i.test(from)) throw new TransportError('The start of the comparison is not a hash', 400);
 
-        if (from !== undefined && !fixtureHasCommit(from))
-            throw new TransportError(`Commit ${from} does not exist`, 404);
+        if (from !== undefined && !fixtureHasCommit(from)) throw new TransportError(`Commit ${ from } does not exist`, 404);
 
         const sides = workspace && fixtureGitFile(scope, path);
 
-        if (!sides) throw new TransportError(`Changed file ${path} does not exist`, 404);
+        if (!sides) throw new TransportError(`Changed file ${ path } does not exist`, 404);
 
         return structuredClone(sides);
     }
@@ -434,13 +351,7 @@ export class FixtureTransport implements Transport {
         return marks.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
     }
 
-    async setGitViewed(
-        projectId: ProjectId,
-        place: PlaceRef,
-        scope: GitScope,
-        path: string,
-        revision: string
-    ): Promise<GitViewedMark> {
+    async setGitViewed(projectId: ProjectId, place: PlaceRef, scope: GitScope, path: string, revision: string): Promise<GitViewedMark> {
         const problem = fixtureViewedProblem(path, revision);
 
         if (problem) throw new TransportError(problem, 400);
@@ -468,10 +379,9 @@ export class FixtureTransport implements Transport {
 
         if (!head?.branch) throw new TransportError('The folder is not the root of a git repository', 400);
 
-        if (scope.startsWith('commit:') && !fixtureHasCommit(scope.slice('commit:'.length)))
-            throw new TransportError(`Commit ${scope.slice('commit:'.length)} does not exist`, 404);
+        if (scope.startsWith('commit:') && !fixtureHasCommit(scope.slice('commit:'.length))) throw new TransportError(`Commit ${ scope.slice('commit:'.length) } does not exist`, 404);
 
-        const key = `${projectId}/${place.folderId}/${place.workspaceId ?? ''}/${scope}`;
+        const key = `${ projectId }/${ place.folderId }/${ place.workspaceId ?? '' }/${ scope }`;
         const kept = this.#viewed.get(key) ?? new Map<string, string>();
 
         this.#viewed.set(key, kept);
@@ -480,9 +390,7 @@ export class FixtureTransport implements Transport {
     }
 
     async commitGit(projectId: ProjectId, place: PlaceRef, paths: string[], message: string): Promise<GitCommitResult> {
-        const committed = structuredClone(
-            await this.#gitWrites.commit(place.workspaceId ?? '', this.#uncommitted(projectId, place), paths, message)
-        );
+        const committed = structuredClone(await this.#gitWrites.commit(place.workspaceId ?? '', this.#uncommitted(projectId, place), paths, message));
         const { head, workspace } = this.#gitPlace(projectId, place);
 
         // A commit puts the branch one ahead of its upstream.
@@ -493,22 +401,15 @@ export class FixtureTransport implements Transport {
 
     async generateGitMessage(projectId: ProjectId, place: PlaceRef, paths: string[]): Promise<GitMessage> {
         // The daemon asks the agents' settings; so does the fixture, of the agents it lists.
-        if (!this.#data.agents.some(writesCommitMessages)) throw new TransportError("Couldn't write the message", 400);
+        if (!this.#data.agents.some(writesCommitMessages)) throw new TransportError('Couldn\'t write the message', 400);
 
-        return structuredClone(
-            await this.#gitWrites.message(place.workspaceId ?? '', this.#uncommitted(projectId, place), paths)
-        );
+        return structuredClone(await this.#gitWrites.message(place.workspaceId ?? '', this.#uncommitted(projectId, place), paths));
     }
 
     /** The paths the place's uncommitted changes list now (the fixture's checkout is clean; the worktree has files, less what was committed). */
     #uncommitted(projectId: ProjectId, place: PlaceRef): string[] {
         const { head, workspace } = this.#gitPlace(projectId, place);
-        const changes = fixtureGitChanges(
-            head,
-            workspace !== undefined,
-            'uncommitted',
-            this.#gitWrites.committedOf(place.workspaceId ?? '')
-        );
+        const changes = fixtureGitChanges(head, workspace !== undefined, 'uncommitted', this.#gitWrites.committedOf(place.workspaceId ?? ''));
 
         return changes?.isRepository ? changes.files.map(file => file.path) : [];
     }
@@ -527,19 +428,15 @@ export class FixtureTransport implements Transport {
         const project = this.#project(projectId);
         const folder = project.folders.find(candidate => candidate.id === folderId);
 
-        if (!folder) throw new TransportError(`Folder ${folderId} does not exist`, 404);
+        if (!folder) throw new TransportError(`Folder ${ folderId } does not exist`, 404);
 
-        return {
-            folder,
-            head: this.#data.git[folder.path],
-            workspace: workspaceId === undefined ? undefined : this.#workspaceOf(project, workspaceId, folderId),
-        };
+        return { folder, head: this.#data.git[folder.path], workspace: workspaceId === undefined ? undefined : this.#workspaceOf(project, workspaceId, folderId) };
     }
 
     async getChatWorkspaceRemoval(chatId: ChatId): Promise<ChatWorkspaceRemoval> {
         const chat = this.#data.chats.find(candidate => candidate.id === chatId);
 
-        if (!chat) throw new TransportError(`No such chat: ${chatId}`, 404);
+        if (!chat) throw new TransportError(`No such chat: ${ chatId }`, 404);
 
         return this.#removal(chat);
     }
@@ -556,11 +453,7 @@ export class FixtureTransport implements Transport {
         const below = new Set([chat.id, ...this.#threadsBelow(chat).map(thread => thread.id)]);
         const shared = this.#data.chats.some(other => other.workspace?.id === workspace.id && !below.has(other.id));
 
-        return {
-            removable: workspace.managed && workspace.ready && !shared,
-            path: workspace.path,
-            ...(workspace.branch !== undefined && { branch: workspace.branch }),
-        };
+        return { removable: workspace.managed && workspace.ready && !shared, path: workspace.path, ...(workspace.branch !== undefined && { branch: workspace.branch }) };
     }
 
     /**
@@ -573,38 +466,30 @@ export class FixtureTransport implements Transport {
         const data = this.#data;
         const project = data.projects.find(candidate => candidate.id === command.projectId);
 
-        if (!project) return fail('not_found', `Project ${command.projectId} does not exist`);
+        if (!project) return fail('not_found', `Project ${ command.projectId } does not exist`);
 
         const folder = project.folders.find(candidate => candidate.id === command.folderId);
 
-        if (!folder)
-            return fail('invalid', `Folder ${command.folderId} does not belong to project ${command.projectId}`);
+        if (!folder) return fail('invalid', `Folder ${ command.folderId } does not belong to project ${ command.projectId }`);
 
         if (!command.path.startsWith('/')) return fail('invalid', 'The path of a worktree must be absolute');
 
         const group = fixtureProjectWorktrees(project, data).find(candidate => candidate.folderId === folder.id);
 
-        if (!group?.isRepository)
-            return fail('invalid', 'A worktree needs the root of a git repository, and this folder is not one');
+        if (!group?.isRepository) return fail('invalid', 'A worktree needs the root of a git repository, and this folder is not one');
 
         const worktree = group.worktrees.find(candidate => candidate.path === command.path);
 
         if (!worktree) return fail('conflict', 'Git does not list it as a worktree of the folder');
 
-        if (worktree.chats.length > 0)
-            return fail('conflict', `The chat "${worktree.chats[0].title}" works in this worktree`);
+        if (worktree.chats.length > 0) return fail('conflict', `The chat "${ worktree.chats[0].title }" works in this worktree`);
 
-        if (worktree.main) return fail('conflict', "That is the folder's own checkout");
+        if (worktree.main) return fail('conflict', 'That is the folder\'s own checkout');
 
         if (worktree.locked !== undefined) return fail('conflict', 'The worktree is locked');
 
         if (!worktree.missing && command.discard !== true && (worktree.changes > 0 || worktree.submodules)) {
-            return fail(
-                'conflict',
-                worktree.changes > 0
-                    ? 'The worktree has changes that are not committed'
-                    : 'The worktree has submodules checked out'
-            );
+            return fail('conflict', worktree.changes > 0 ? 'The worktree has changes that are not committed' : 'The worktree has submodules checked out');
         }
 
         const removals = data.removed?.[folder.path] ?? { worktrees: [], deleted: [], kept: [] };
@@ -642,11 +527,7 @@ export class FixtureTransport implements Transport {
         });
     }
 
-    subscribe(
-        cursor: number,
-        onEvent: (event: ClowdyEvent) => void,
-        onStatus: (status: FeedStatus) => void
-    ): () => void {
+    subscribe(cursor: number, onEvent: (event: ClowdyEvent) => void, onStatus: (status: FeedStatus) => void): () => void {
         let active = true;
         // Events arrive on their own turn, as they would over the network.
         const deliver = (event: ClowdyEvent) => queueMicrotask(() => active && onEvent(event));
@@ -670,18 +551,13 @@ export class FixtureTransport implements Transport {
         const requestId = crypto.randomUUID();
         const outcome = this.#apply(command);
 
-        return outcome.ok
-            ? { ok: true, requestId, data: outcome.data }
-            : { ok: false, requestId, error: outcome.error };
+        return outcome.ok ? { ok: true, requestId, data: outcome.data } : { ok: false, requestId, error: outcome.error };
     }
 
     async getItems(target: StreamTarget, afterSeq = 0): Promise<StreamItem[]> {
-        const runId =
-            'runId' in target
-                ? target.runId
-                : this.#data.chats.find(chat => chat.id === target.chatId)?.orchestratorRunId;
+        const runId = 'runId' in target ? target.runId : this.#data.chats.find(chat => chat.id === target.chatId)?.orchestratorRunId;
 
-        return structuredClone((runId ? (this.#data.items[runId] ?? []) : []).filter(item => item.seq > afterSeq));
+        return structuredClone((runId ? this.#data.items[runId] ?? [] : []).filter(item => item.seq > afterSeq));
     }
 
     async getTaskDetail(taskId: TaskId): Promise<TaskDetail> {
@@ -689,7 +565,7 @@ export class FixtureTransport implements Transport {
         const task = data.tasks.find(candidate => candidate.id === taskId);
 
         // Like the daemon, which answers 404 for a task it does not have.
-        if (!task) throw new TransportError(`No such task: ${taskId}`, 404);
+        if (!task) throw new TransportError(`No such task: ${ taskId }`, 404);
 
         return structuredClone({
             taskId,
@@ -704,14 +580,11 @@ export class FixtureTransport implements Transport {
         const project = this.#project(projectId);
         const match = /^(.+)-(\d+)$/.exec(key);
         // As the daemon reads a key: the project's own prefix in any case and a number it has, the archived tasks included; anything else is a 404.
-        const task =
-            match && match[1].toUpperCase() === project.taskPrefix.toUpperCase()
-                ? this.#data.tasks.find(
-                      candidate => candidate.projectId === projectId && candidate.number === Number(match[2])
-                  )
-                : undefined;
+        const task = match && match[1].toUpperCase() === project.taskPrefix.toUpperCase()
+            ? this.#data.tasks.find(candidate => candidate.projectId === projectId && candidate.number === Number(match[2]))
+            : undefined;
 
-        if (!task) throw new TransportError(`No such task: ${key}`, 404);
+        if (!task) throw new TransportError(`No such task: ${ key }`, 404);
 
         return this.getTaskDetail(task.id);
     }
@@ -729,25 +602,14 @@ export class FixtureTransport implements Transport {
         const workspace = workspaceId === undefined ? undefined : this.#workspaceOf(project, workspaceId);
 
         // Every fixture folder exists; one with no source has none, and reading does not make one. The worktree's folder lists the worktree's documents.
-        return project.folders.map(folder => {
+        return project.folders.map((folder) => {
             const root = this.#rootOf(folder, workspace);
 
-            return {
-                folderId: folder.id,
-                sources: docsSources({
-                    briefback: this.#data.briefback[root] ?? this.#data.briefback[folder.path],
-                    documents: this.#data.docs[root] ?? this.#data.docs[folder.path],
-                }),
-            };
+            return { folderId: folder.id, sources: docsSources({ briefback: this.#data.briefback[root] ?? this.#data.briefback[folder.path], documents: this.#data.docs[root] ?? this.#data.docs[folder.path] }) };
         });
     }
 
-    async getProjectFiles(
-        projectId: ProjectId,
-        query: string,
-        limit = 40,
-        workspaceId?: WorkspaceId
-    ): Promise<ProjectFileMatch[]> {
+    async getProjectFiles(projectId: ProjectId, query: string, limit = 40, workspaceId?: WorkspaceId): Promise<ProjectFileMatch[]> {
         const words = query.toLowerCase().split(/\s+/).filter(Boolean);
         const project = this.#data.projects.find(candidate => candidate.id === projectId);
 
@@ -761,24 +623,17 @@ export class FixtureTransport implements Transport {
         const found = project.folders.flatMap((folder, index) => {
             const root = this.#rootOf(folder, workspace);
 
-            return (this.#data.files[root] ?? this.#data.files[folder.path] ?? []).map(path => ({
-                folderId: folder.id,
-                path,
-                searched: several ? `${names[index]}/${path}` : path,
-            }));
+            return (this.#data.files[root] ?? this.#data.files[folder.path] ?? []).map(path => ({ folderId: folder.id, path, searched: several ? `${ names[index] }/${ path }` : path }));
         });
 
-        return found
-            .filter(file => words.every(word => file.searched.toLowerCase().includes(word)))
-            .slice(0, limit)
-            .map(({ folderId, path }) => ({ folderId, path }));
+        return found.filter(file => words.every(word => file.searched.toLowerCase().includes(word))).slice(0, limit).map(({ folderId, path }) => ({ folderId, path }));
     }
 
     fileSystem(projectId: ProjectId, folderId: FolderId, workspaceId?: WorkspaceId): ProjectFileSystem {
         const project = this.#project(projectId);
         const folder = project.folders.find(candidate => candidate.id === folderId);
 
-        if (!folder) throw new TransportError(`Folder ${folderId} does not exist`, 404);
+        if (!folder) throw new TransportError(`Folder ${ folderId } does not exist`, 404);
 
         const workspace = workspaceId === undefined ? undefined : this.#workspaceOf(project, workspaceId, folderId);
         const key = workspaceId ?? folderId;
@@ -786,18 +641,11 @@ export class FixtureTransport implements Transport {
 
         if (!fileSystem) {
             // The folder's documents are files like the others, below the roots of their sources: `.clowdy/docs`, `.briefback`.
-            const below = (root: string, files: Record<string, string> | undefined) =>
-                Object.entries(files ?? {}).map(([path, text]) => [`${root}/${path}`, text] as const);
+            const below = (root: string, files: Record<string, string> | undefined) => Object.entries(files ?? {}).map(([path, text]) => [`${ root }/${ path }`, text] as const);
             const root = this.#rootOf(folder, workspace);
-            const documents = Object.fromEntries([
-                ...below('.clowdy/docs', this.#data.docs[root] ?? this.#data.docs[folder.path]),
-                ...below('.briefback', this.#data.briefback[root] ?? this.#data.briefback[folder.path]),
-            ]);
+            const documents = Object.fromEntries([...below('.clowdy/docs', this.#data.docs[root] ?? this.#data.docs[folder.path]), ...below('.briefback', this.#data.briefback[root] ?? this.#data.briefback[folder.path])]);
 
-            fileSystem = new MemoryFileSystem({
-                ...fixtureFileContents(this.#data.files[root] ?? this.#data.files[folder.path] ?? []),
-                ...documents,
-            });
+            fileSystem = new MemoryFileSystem({ ...fixtureFileContents(this.#data.files[root] ?? this.#data.files[folder.path] ?? []), ...documents });
             this.#fileSystems.set(key, fileSystem);
         }
 
@@ -807,14 +655,9 @@ export class FixtureTransport implements Transport {
     async uploadAttachment(projectId: ProjectId, file: File): Promise<Attachment> {
         this.#project(projectId);
 
-        if (file.size > MAX_ATTACHMENT_BYTES) throw new TransportError(`${file.name} is over the size limit`, 413);
+        if (file.size > MAX_ATTACHMENT_BYTES) throw new TransportError(`${ file.name } is over the size limit`, 413);
 
-        const attachment: Attachment = {
-            id: this.#id('a'),
-            name: file.name,
-            mediaType: file.type || 'application/octet-stream',
-            size: file.size,
-        };
+        const attachment: Attachment = { id: this.#id('a'), name: file.name, mediaType: file.type || 'application/octet-stream', size: file.size };
 
         this.#files.set(attachment.id, { projectId, attachment, blob: file, sent: false });
 
@@ -850,21 +693,13 @@ export class FixtureTransport implements Transport {
     async getSkills(projectId?: ProjectId): Promise<SkillCatalog> {
         if (projectId !== undefined) this.#project(projectId);
 
-        const entries = this.#data.skills
-            .filter(skill => skill.projectId === undefined || skill.projectId === projectId)
-            .map(({ projectId: _projectId, ...entry }) => entry);
+        const entries = this.#data.skills.filter(skill => skill.projectId === undefined || skill.projectId === projectId).map(({ projectId: _projectId, ...entry }) => entry);
 
         return structuredClone({ entries, tokens: catalogTokens(entries), warnings: this.#data.skillWarnings });
     }
 
     async getHealth(): Promise<Health> {
-        return {
-            ok: true,
-            protocol: PROTOCOL_VERSION,
-            version: FIXTURE_DAEMON_VERSION,
-            pid: 0,
-            startedAt: this.#startedAt,
-        };
+        return { ok: true, protocol: PROTOCOL_VERSION, version: FIXTURE_DAEMON_VERSION, pid: 0, startedAt: this.#startedAt };
     }
 
     async getAgents(): Promise<AgentInfo[]> {
@@ -872,13 +707,7 @@ export class FixtureTransport implements Transport {
     }
 
     async getAgentModels(agentId: string): Promise<AgentModels> {
-        return structuredClone(
-            this.#data.agentModels[agentId] ?? {
-                state: 'unavailable',
-                models: [],
-                detail: `Clowdy cannot list the models of ${agentId}`,
-            }
-        );
+        return structuredClone(this.#data.agentModels[agentId] ?? { state: 'unavailable', models: [], detail: `Clowdy cannot list the models of ${ agentId }` });
     }
 
     async listTerminals(projectId?: ProjectId): Promise<TerminalInfo[]> {
@@ -889,14 +718,9 @@ export class FixtureTransport implements Transport {
         try {
             const project = this.#project(request.projectId);
 
-            return this.#terminals.create(
-                project,
-                request,
-                request.workspaceId === undefined
-                    ? undefined
-                    : this.#workspaceOf(project, request.workspaceId, request.folderId)
-            );
-        } catch (error) {
+            return this.#terminals.create(project, request, request.workspaceId === undefined ? undefined : this.#workspaceOf(project, request.workspaceId, request.folderId));
+        }
+        catch (error) {
             throw error instanceof TransportError ? error : new TransportError((error as Error).message, 404);
         }
     }
@@ -928,13 +752,13 @@ export class FixtureTransport implements Transport {
     }
 
     #id(prefix: string): string {
-        return `${prefix}-${++this.#idCounter}`;
+        return `${ prefix }-${ ++this.#idCounter }`;
     }
 
     #project(projectId: ProjectId): Project {
         const project = this.#data.projects.find(candidate => candidate.id === projectId);
 
-        if (!project) throw new TransportError(`No such project: ${projectId}`, 404);
+        if (!project) throw new TransportError(`No such project: ${ projectId }`, 404);
 
         return project;
     }
@@ -945,16 +769,9 @@ export class FixtureTransport implements Transport {
      */
     #workspaceOf(project: Project, workspaceId: WorkspaceId, folderId?: FolderId): ChatWorkspace {
         const opened = this.#opened.get(workspaceId);
-        const workspace =
-            this.#data.chats.find(chat => chat.projectId === project.id && chat.workspace?.id === workspaceId)
-                ?.workspace ?? (opened?.projectId === project.id ? opened.workspace : undefined);
+        const workspace = this.#data.chats.find(chat => chat.projectId === project.id && chat.workspace?.id === workspaceId)?.workspace ?? (opened?.projectId === project.id ? opened.workspace : undefined);
 
-        if (
-            !workspace ||
-            !project.folders.some(folder => folder.id === workspace.folderId) ||
-            (folderId !== undefined && workspace.folderId !== folderId)
-        )
-            throw new TransportError(`No such workspace: ${workspaceId}`, 404);
+        if (!workspace || !project.folders.some(folder => folder.id === workspace.folderId) || (folderId !== undefined && workspace.folderId !== folderId)) throw new TransportError(`No such workspace: ${ workspaceId }`, 404);
 
         if (!workspace.ready) throw new TransportError('The worktree is not made yet', 503);
 
@@ -968,9 +785,7 @@ export class FixtureTransport implements Transport {
 
     /** The daemon refuses an agent it does not know when a chat is made or changed; one that is switched off waits for the first message. */
     #refuseEngine(engine: string | undefined): Outcome | undefined {
-        return engine && !this.#data.agents.some(agent => agent.id === engine)
-            ? fail('unavailable', `The ${engine} engine is not available in this daemon`)
-            : undefined;
+        return engine && !this.#data.agents.some(agent => agent.id === engine) ? fail('unavailable', `The ${ engine } engine is not available in this daemon`) : undefined;
     }
 
     #saveRun(run: Run): void {
@@ -983,7 +798,7 @@ export class FixtureTransport implements Transport {
 
     /** Adds or replaces a stream item (by id) and announces it. */
     #saveItem(run: Run, item: StreamItem): void {
-        const items = (this.#data.items[run.id] ??= []);
+        const items = this.#data.items[run.id] ??= [];
         const index = items.findIndex(candidate => candidate.id === item.id);
 
         if (index === -1) items.push(item);
@@ -997,23 +812,12 @@ export class FixtureTransport implements Transport {
      * point) offers Edit, for an agent that can fork (`canEdit`).
      */
     #appendItem(run: Run, body: StreamItemBody): StreamItem {
-        const items = (this.#data.items[run.id] ??= []);
+        const items = this.#data.items[run.id] ??= [];
         const seq = (items.at(-1)?.seq ?? 0) + 1;
         const rewrites = this.#rewrites.get(run.id) ?? 0;
         const previous = items.findLast(candidate => candidate.body.kind !== 'note');
-        const opens =
-            body.kind === 'user' &&
-            body.from === undefined &&
-            FORKABLE_ENGINES.has(run.engine) &&
-            (previous === undefined || previous.canFork === true);
-        const item: StreamItem = {
-            id: `${run.id}-${seq}${rewrites > 0 ? `-r${rewrites}` : ''}`,
-            runId: run.id,
-            seq,
-            at: Date.now(),
-            body,
-            ...(opens && { canEdit: true }),
-        };
+        const opens = body.kind === 'user' && body.from === undefined && FORKABLE_ENGINES.has(run.engine) && (previous === undefined || previous.canFork === true);
+        const item: StreamItem = { id: `${ run.id }-${ seq }${ rewrites > 0 ? `-r${ rewrites }` : '' }`, runId: run.id, seq, at: Date.now(), body, ...(opens && { canEdit: true }) };
 
         this.#saveItem(run, item);
 
@@ -1024,8 +828,7 @@ export class FixtureTransport implements Transport {
     #markRewindPoint(run: Run): void {
         const last = this.#data.items[run.id]?.findLast(item => item.body.kind !== 'note');
 
-        if (last?.body.kind === 'assistant' && FORKABLE_ENGINES.has(run.engine))
-            this.#saveItem(run, { ...last, canFork: true });
+        if (last?.body.kind === 'assistant' && FORKABLE_ENGINES.has(run.engine)) this.#saveItem(run, { ...last, canFork: true });
     }
 
     /** Streams a reply into one item in three steps, the way an engine's text arrives. */
@@ -1034,9 +837,7 @@ export class FixtureTransport implements Transport {
         const cut = (share: number) => words.slice(0, Math.ceil(words.length * share)).join(' ');
         const item = this.#appendItem(run, { kind: 'assistant', text: cut(0.3), done: false });
 
-        this.#later(350, () =>
-            this.#saveItem(run, { ...item, body: { kind: 'assistant', text: cut(0.7), done: false } })
-        );
+        this.#later(350, () => this.#saveItem(run, { ...item, body: { kind: 'assistant', text: cut(0.7), done: false } }));
         this.#later(700, () => this.#saveItem(run, { ...item, body: { kind: 'assistant', text, done: true } }));
     }
 
@@ -1044,21 +845,13 @@ export class FixtureTransport implements Transport {
         return this.#data.agents.find(agent => agent.id === id);
     }
 
-    #updateAgent({
-        id,
-        enabled,
-        settings,
-        path,
-        env,
-        permission,
-    }: Extract<CommandInput, { type: 'agent.update' }>): Outcome {
+    #updateAgent({ id, enabled, settings, path, env, permission }: Extract<CommandInput, { type: 'agent.update' }>): Outcome {
         const agent = this.#agent(id);
 
-        if (!agent) return fail('not_found', `There is no agent called "${id}"`);
+        if (!agent) return fail('not_found', `There is no agent called "${ id }"`);
 
         // A preset the agent does not offer is refused before anything changes, as the daemon does.
-        if (permission && !agent.permissions?.presets.some(preset => preset.id === permission))
-            return fail('invalid', `${agent.name} has no preset called "${permission}"`);
+        if (permission && !agent.permissions?.presets.some(preset => preset.id === permission)) return fail('invalid', `${ agent.name } has no preset called "${ permission }"`);
 
         if (enabled !== undefined) {
             agent.enabled = enabled;
@@ -1070,7 +863,7 @@ export class FixtureTransport implements Transport {
         for (const [settingId, value] of Object.entries(settings ?? {})) {
             const setting = agent.settings?.find(candidate => candidate.id === settingId);
 
-            if (!setting) return fail('invalid', `${agent.name} has no setting called "${settingId}"`);
+            if (!setting) return fail('invalid', `${ agent.name } has no setting called "${ settingId }"`);
 
             setting.value = value;
         }
@@ -1086,7 +879,8 @@ export class FixtureTransport implements Transport {
         if (path === null) {
             agent.path = FIXTURE_PROGRAMS[id];
             agent.overrides = withoutEmpty({ ...agent.overrides, path: undefined });
-        } else if (path !== undefined) {
+        }
+        else if (path !== undefined) {
             agent.path = path;
             agent.overrides = { ...agent.overrides, path };
         }
@@ -1102,16 +896,11 @@ export class FixtureTransport implements Transport {
     #startSignIn(id: string): Outcome {
         const agent = this.#agent(id);
 
-        if (!agent) return fail('not_found', `There is no agent called "${id}"`);
+        if (!agent) return fail('not_found', `There is no agent called "${ id }"`);
 
-        if (!agent.canSignIn)
-            return fail(
-                'invalid',
-                `${agent.name} has to be signed in from a terminal: ${agent.login ?? 'see its documentation'}`
-            );
+        if (!agent.canSignIn) return fail('invalid', `${ agent.name } has to be signed in from a terminal: ${ agent.login ?? 'see its documentation' }`);
 
-        if (agent.signInSession?.step === 'starting' || agent.signInSession?.step === 'waiting')
-            return fail('conflict', 'A sign-in is already running');
+        if (agent.signInSession?.step === 'starting' || agent.signInSession?.step === 'waiting') return fail('conflict', 'A sign-in is already running');
 
         const startedAt = Date.now();
         const session = { step: 'starting' as const, startedAt };
@@ -1119,33 +908,19 @@ export class FixtureTransport implements Transport {
         agent.signInSession = session;
         this.#agentsChanged();
 
-        const running = () =>
-            agent.signInSession?.startedAt === startedAt &&
-            (agent.signInSession.step === 'starting' || agent.signInSession.step === 'waiting');
+        const running = () => agent.signInSession?.startedAt === startedAt && (agent.signInSession.step === 'starting' || agent.signInSession.step === 'waiting');
 
         this.#later(SIGN_IN_LINK_MS, () => {
             if (!running()) return;
 
-            agent.signInSession = {
-                step: 'waiting',
-                startedAt,
-                url: FIXTURE_SIGN_IN_LINKS[id] ?? 'https://example.com/sign-in',
-            };
+            agent.signInSession = { step: 'waiting', startedAt, url: FIXTURE_SIGN_IN_LINKS[id] ?? 'https://example.com/sign-in' };
             this.#agentsChanged();
         });
         this.#later(SIGN_IN_DONE_MS, () => {
             if (!running()) return;
 
             agent.signInSession = { step: 'done', startedAt };
-            agent.signIn = {
-                status: 'signed-in',
-                account: {
-                    email: 'dev@example.com',
-                    method: 'subscription',
-                    plan: agent.signIn?.account?.plan ?? 'Pro',
-                },
-                checkedAt: Date.now(),
-            };
+            agent.signIn = { status: 'signed-in', account: { email: 'dev@example.com', method: 'subscription', plan: agent.signIn?.account?.plan ?? 'Pro' }, checkedAt: Date.now() };
             this.#agentsChanged();
         });
 
@@ -1155,14 +930,10 @@ export class FixtureTransport implements Transport {
     #cancelSignIn(id: string): Outcome {
         const agent = this.#agent(id);
 
-        if (!agent) return fail('not_found', `There is no agent called "${id}"`);
+        if (!agent) return fail('not_found', `There is no agent called "${ id }"`);
 
         if (agent.signInSession?.step === 'starting' || agent.signInSession?.step === 'waiting') {
-            agent.signInSession = {
-                step: 'cancelled',
-                startedAt: agent.signInSession.startedAt,
-                message: 'Sign-in cancelled',
-            };
+            agent.signInSession = { step: 'cancelled', startedAt: agent.signInSession.startedAt, message: 'Sign-in cancelled' };
             this.#agentsChanged();
         }
 
@@ -1178,28 +949,14 @@ export class FixtureTransport implements Transport {
         if (!run || !tool || !text || tool.body.kind !== 'tool') return;
 
         const toolBody = tool.body;
-        const say = (message: string, done: boolean) =>
-            this.#saveItem(run, { ...text, at: Date.now(), body: { kind: 'assistant', text: message, done } });
+        const say = (message: string, done: boolean) => this.#saveItem(run, { ...text, at: Date.now(), body: { kind: 'assistant', text: message, done } });
 
-        this.#later(2500, () =>
-            this.#saveItem(run, { ...tool, body: { ...toolBody, state: 'done', output: '0 errors, 0 warnings' } })
-        );
-        this.#later(3500, () =>
-            say('Checking confirmation handling. The confirmation view reads the saved booking', false)
-        );
-        this.#later(4500, () =>
-            say(
-                'Checking confirmation handling. The confirmation view reads the saved booking, so a reload keeps it.',
-                true
-            )
-        );
+        this.#later(2500, () => this.#saveItem(run, { ...tool, body: { ...toolBody, state: 'done', output: '0 errors, 0 warnings' } }));
+        this.#later(3500, () => say('Checking confirmation handling. The confirmation view reads the saved booking', false));
+        this.#later(4500, () => say('Checking confirmation handling. The confirmation view reads the saved booking, so a reload keeps it.', true));
         this.#later(6000, () => {
             const parent = this.#data.runs.find(candidate => candidate.id === run.parentRunId);
-            const call =
-                parent &&
-                this.#data.items[parent.id]?.find(
-                    item => item.body.kind === 'tool' && item.body.toolCallId === run.parentToolCallId
-                );
+            const call = parent && this.#data.items[parent.id]?.find(item => item.body.kind === 'tool' && item.body.toolCallId === run.parentToolCallId);
 
             // The sub-agent is done: its run ends and the call that started it returns its report, as a session reports a sub-agent.
             if (run.status !== 'running') return;
@@ -1209,8 +966,7 @@ export class FixtureTransport implements Transport {
             run.finishedAt = Date.now();
             this.#saveRun(run);
 
-            if (parent && call?.body.kind === 'tool')
-                this.#saveItem(parent, { ...call, body: { ...call.body, state: 'done', output: run.result } });
+            if (parent && call?.body.kind === 'tool') this.#saveItem(parent, { ...call, body: { ...call.body, state: 'done', output: run.result } });
         });
     }
 
@@ -1223,27 +979,17 @@ export class FixtureTransport implements Transport {
             case 'project.add': {
                 const paths = command.folders ?? [];
 
-                if (paths.length === 0 && command.name === undefined)
-                    return fail('invalid', 'A project without folders needs a name: its new folder is named after it');
+                if (paths.length === 0 && command.name === undefined) return fail('invalid', 'A project without folders needs a name: its new folder is named after it');
 
                 if (new Set(paths).size !== paths.length) return fail('invalid', 'A folder is listed twice');
 
-                const known =
-                    paths.length > 0 &&
-                    data.projects.find(
-                        project =>
-                            project.folders.length === paths.length &&
-                            project.folders.every(folder => paths.includes(folder.path))
-                    );
+                const known = paths.length > 0 && data.projects.find(project => project.folders.length === paths.length && project.folders.every(folder => paths.includes(folder.path)));
 
                 if (known) return ok({ project: structuredClone(known), existing: true });
 
                 const name = command.name ?? paths[0]?.split(/[\\/]/).filter(Boolean).at(-1) ?? 'Project';
 
-                return this.#addProject(
-                    name,
-                    paths.length > 0 ? paths : [`/Users/dev/Clowdy/projects/${name.toLowerCase().replace(/\W+/g, '-')}`]
-                );
+                return this.#addProject(name, paths.length > 0 ? paths : [`/Users/dev/Clowdy/projects/${ name.toLowerCase().replace(/\W+/g, '-') }`]);
             }
             case 'project.update': {
                 const project = data.projects.find(candidate => candidate.id === command.projectId);
@@ -1253,45 +999,28 @@ export class FixtureTransport implements Transport {
                 if (command.folders?.length === 0) return fail('invalid', 'A project needs at least one folder');
 
                 // `{ id }` keeps a folder, `{ id, path }` keeps it at another place (its chats stay with it), `{ path }` adds one.
-                const folders = command.folders?.map(entry => {
-                    if (!('id' in entry))
-                        return (
-                            project.folders.find(folder => folder.path === entry.path) ?? {
-                                id: this.#id('fld'),
-                                path: entry.path,
-                            }
-                        );
+                const folders = command.folders?.map((entry) => {
+                    if (!('id' in entry)) return project.folders.find(folder => folder.path === entry.path) ?? { id: this.#id('fld'), path: entry.path };
 
                     const kept = project.folders.find(folder => folder.id === entry.id);
 
                     return kept && 'path' in entry ? { id: kept.id, path: entry.path } : kept;
                 });
 
-                if (folders?.some(folder => folder === undefined))
-                    return fail('invalid', "A folder is not one of the project's");
+                if (folders?.some(folder => folder === undefined)) return fail('invalid', 'A folder is not one of the project\'s');
 
                 const nextFolders = (folders as Project['folders'] | undefined) ?? project.folders;
 
-                if (new Set(nextFolders.map(folder => folder.path)).size !== nextFolders.length)
-                    return fail('invalid', 'A folder is listed twice');
+                if (new Set(nextFolders.map(folder => folder.path)).size !== nextFolders.length) return fail('invalid', 'A folder is listed twice');
 
                 const renamed = command.name !== undefined && command.name !== project.name;
-                const refoldered =
-                    nextFolders.map(folder => `${folder.id}:${folder.path}`).join('|') !==
-                    project.folders.map(folder => `${folder.id}:${folder.path}`).join('|');
+                const refoldered = nextFolders.map(folder => `${ folder.id }:${ folder.path }`).join('|') !== project.folders.map(folder => `${ folder.id }:${ folder.path }`).join('|');
 
-                if (project.personal && (renamed || refoldered))
-                    return fail('conflict', 'The personal space cannot be renamed or given other folders');
+                if (project.personal && (renamed || refoldered)) return fail('conflict', 'The personal space cannot be renamed or given other folders');
 
-                if (project.personal && command.settings?.icon !== undefined)
-                    return fail('conflict', 'The personal space has no icon of its own');
+                if (project.personal && command.settings?.icon !== undefined) return fail('conflict', 'The personal space has no icon of its own');
 
-                if (
-                    (mainFolder({ folders: nextFolders }).id !== mainFolder(project).id ||
-                        mainFolder({ folders: nextFolders }).path !== mainFolder(project).path) &&
-                    this.#activeRuns(project.id) > 0
-                )
-                    return fail('conflict', 'The agents of this project are still working. Stop them first.');
+                if ((mainFolder({ folders: nextFolders }).id !== mainFolder(project).id || mainFolder({ folders: nextFolders }).path !== mainFolder(project).path) && this.#activeRuns(project.id) > 0) return fail('conflict', 'The agents of this project are still working. Stop them first.');
 
                 const settings: Project['settings'] = { ...project.settings };
 
@@ -1301,20 +1030,12 @@ export class FixtureTransport implements Transport {
                 }
 
                 Object.assign(project, { name: command.name ?? project.name, folders: nextFolders, settings });
-                this.#emit(project.id, {
-                    type: 'project.upserted',
-                    project,
-                    statuses: data.statuses[project.id] ?? DEFAULT_STATUSES,
-                });
+                this.#emit(project.id, { type: 'project.upserted', project, statuses: data.statuses[project.id] ?? DEFAULT_STATUSES });
 
                 if (refoldered) {
                     // Like the daemon: a chat that worked in a folder that left goes back to the main folder.
                     for (const chat of data.chats) {
-                        if (
-                            chat.projectId === project.id &&
-                            chat.folderId !== undefined &&
-                            !nextFolders.some(folder => folder.id === chat.folderId)
-                        ) {
+                        if (chat.projectId === project.id && chat.folderId !== undefined && !nextFolders.some(folder => folder.id === chat.folderId)) {
                             delete chat.folderId;
                             this.#emit(project.id, { type: 'chat.upserted', chat: structuredClone(chat) });
                         }
@@ -1331,12 +1052,7 @@ export class FixtureTransport implements Transport {
                 const project = data.projects.find(candidate => candidate.id === command.projectId);
                 const outcome = applyFolderSettings(project, command.folderId, command.settings);
 
-                if (project && outcome.ok)
-                    this.#emit(project.id, {
-                        type: 'project.upserted',
-                        project,
-                        statuses: data.statuses[project.id] ?? DEFAULT_STATUSES,
-                    });
+                if (project && outcome.ok) this.#emit(project.id, { type: 'project.upserted', project, statuses: data.statuses[project.id] ?? DEFAULT_STATUSES });
 
                 return outcome;
             }
@@ -1347,8 +1063,7 @@ export class FixtureTransport implements Transport {
 
                 if (project.personal) return fail('conflict', 'The personal space cannot be removed');
 
-                if (this.#activeRuns(project.id) > 0)
-                    return fail('conflict', 'The agents of this project are still working. Stop them first.');
+                if (this.#activeRuns(project.id) > 0) return fail('conflict', 'The agents of this project are still working. Stop them first.');
 
                 const runIds = new Set(data.runs.filter(run => run.projectId === project.id).map(run => run.id));
 
@@ -1371,11 +1086,9 @@ export class FixtureTransport implements Transport {
             case 'project.reorder': {
                 const unknown = command.projectIds.find(id => !data.projects.some(project => project.id === id));
 
-                if (unknown !== undefined) return fail('invalid', `No such project: ${unknown}`);
+                if (unknown !== undefined) return fail('invalid', `No such project: ${ unknown }`);
 
-                const named = [...new Set(command.projectIds)].flatMap(
-                    id => data.projects.find(project => project.id === id && !project.personal) ?? []
-                );
+                const named = [...new Set(command.projectIds)].flatMap(id => data.projects.find(project => project.id === id && !project.personal) ?? []);
                 const rest = data.projects.filter(project => !project.personal && !named.includes(project));
                 const ordered = [...data.projects.filter(project => project.personal), ...named, ...rest];
 
@@ -1384,11 +1097,7 @@ export class FixtureTransport implements Transport {
                     if (project.personal || project.position === index) return;
 
                     project.position = index;
-                    this.#emit(project.id, {
-                        type: 'project.upserted',
-                        project,
-                        statuses: data.statuses[project.id] ?? DEFAULT_STATUSES,
-                    });
+                    this.#emit(project.id, { type: 'project.upserted', project, statuses: data.statuses[project.id] ?? DEFAULT_STATUSES });
                 });
 
                 return ok({ projects: structuredClone(ordered) });
@@ -1397,41 +1106,21 @@ export class FixtureTransport implements Transport {
             case 'workspace.open': {
                 const project = data.projects.find(candidate => candidate.id === command.projectId);
 
-                if (!project) return fail('not_found', `Project ${command.projectId} does not exist`);
+                if (!project) return fail('not_found', `Project ${ command.projectId } does not exist`);
 
-                const folder =
-                    project.folders.find(candidate => candidate.id === command.folderId) ??
-                    (command.folderId === undefined ? mainFolder(project) : undefined);
+                const folder = project.folders.find(candidate => candidate.id === command.folderId) ?? (command.folderId === undefined ? mainFolder(project) : undefined);
 
-                if (!folder)
-                    return fail(
-                        'invalid',
-                        `Folder ${command.folderId} does not belong to project ${command.projectId}`
-                    );
+                if (!folder) return fail('invalid', `Folder ${ command.folderId } does not belong to project ${ command.projectId }`);
 
-                const known = [
-                    ...data.chats.flatMap(chat => (chat.workspace ? [chat.workspace] : [])),
-                    ...[...this.#opened.values()].map(entry => entry.workspace),
-                ];
-                const made = fixtureChatWorkspace(
-                    { mode: 'existing', path: command.path },
-                    {
-                        projectName: project.name,
-                        folder,
-                        chatId: '',
-                        head: data.git[folder.path],
-                        known,
-                        removed: data.removed?.[folder.path],
-                    }
-                );
+                const known = [...data.chats.flatMap(chat => (chat.workspace ? [chat.workspace] : [])), ...[...this.#opened.values()].map(entry => entry.workspace)];
+                const made = fixtureChatWorkspace({ mode: 'existing', path: command.path }, { projectName: project.name, folder, chatId: '', head: data.git[folder.path], known, removed: data.removed?.[folder.path] });
 
                 if ('error' in made) return fail('invalid', made.error);
 
                 const workspace = structuredClone(made.workspace);
 
                 // The row is the same one `chat.create` finds by the path: the id is the worktree's, with or without a chat.
-                if (!this.#opened.has(workspace.id))
-                    this.#opened.set(workspace.id, { projectId: project.id, workspace });
+                if (!this.#opened.has(workspace.id)) this.#opened.set(workspace.id, { projectId: project.id, workspace });
 
                 // Like the daemon: `{ workspace }`.
                 return ok({ workspace });
@@ -1444,16 +1133,8 @@ export class FixtureTransport implements Transport {
                 if (refused) return refused;
 
                 // Like the daemon: a folder the project does not have is refused.
-                if (
-                    command.folderId &&
-                    !data.projects
-                        .find(candidate => candidate.id === command.projectId)
-                        ?.folders.some(folder => folder.id === command.folderId)
-                ) {
-                    return fail(
-                        'invalid',
-                        `Folder ${command.folderId} does not belong to project ${command.projectId}`
-                    );
+                if (command.folderId && !data.projects.find(candidate => candidate.id === command.projectId)?.folders.some(folder => folder.id === command.folderId)) {
+                    return fail('invalid', `Folder ${ command.folderId } does not belong to project ${ command.projectId }`);
                 }
 
                 const project = data.projects.find(candidate => candidate.id === command.projectId);
@@ -1462,8 +1143,7 @@ export class FixtureTransport implements Transport {
 
                 // Like the daemon: a worktree of the chat's folder (the main one when none is named), refused where the folder is no repository, the base is no ref or the path is no worktree.
                 if (command.workspace && project) {
-                    const folder =
-                        project.folders.find(candidate => candidate.id === command.folderId) ?? mainFolder(project);
+                    const folder = project.folders.find(candidate => candidate.id === command.folderId) ?? mainFolder(project);
                     const made = fixtureChatWorkspace(command.workspace, {
                         projectName: project.name,
                         folder,
@@ -1477,8 +1157,7 @@ export class FixtureTransport implements Transport {
 
                     workspace = structuredClone(made.workspace);
 
-                    if (command.workspace.mode === 'new')
-                        this.#bases.set(workspace.id, command.workspace.base ?? 'origin/main');
+                    if (command.workspace.mode === 'new') this.#bases.set(workspace.id, command.workspace.base ?? 'origin/main');
                 }
 
                 const now = Date.now();
@@ -1528,8 +1207,7 @@ export class FixtureTransport implements Transport {
                 // The daemon's rules (`setChatModel`): the provider is fixed by the first message, another provider brings its own models, a new model its own levels.
                 const switched = (command.engine ?? chat.engine) !== chat.engine;
 
-                if (switched && chat.orchestratorRunId)
-                    return fail('conflict', 'The provider of a chat is fixed once its first message was sent');
+                if (switched && chat.orchestratorRunId) return fail('conflict', 'The provider of a chat is fixed once its first message was sent');
 
                 const model = named(command.model, switched ? undefined : chat.model);
                 const effort = named(command.effort, switched || model !== chat.model ? undefined : chat.effort);
@@ -1573,23 +1251,13 @@ export class FixtureTransport implements Transport {
 
                 // Only these agents have a command of their own to compact the conversation.
                 if (run.engine !== 'claude' && run.engine !== 'codex') {
-                    return fail(
-                        'invalid',
-                        `${data.agents.find(agent => agent.id === run.engine)?.name ?? run.engine} has no command to compact its conversation`
-                    );
+                    return fail('invalid', `${ data.agents.find(agent => agent.id === run.engine)?.name ?? run.engine } has no command to compact its conversation`);
                 }
 
                 // While the orchestrator works, Compact waits in the queue until it has finished; asking again changes nothing.
                 if (!isTerminalRunStatus(run.status)) {
                     if (!chat.queue?.some(isCompact)) {
-                        chat.queue = placeQueued(chat.queue ?? [], {
-                            id: this.#id('q'),
-                            mode: 'queue',
-                            command: 'compact',
-                            text: COMPACT_TEXT,
-                            content: '/compact',
-                            createdAt: Date.now(),
-                        });
+                        chat.queue = placeQueued(chat.queue ?? [], { id: this.#id('q'), mode: 'queue', command: 'compact', text: COMPACT_TEXT, content: '/compact', createdAt: Date.now() });
                         this.#emit(chat.projectId, { type: 'chat.upserted', chat });
                     }
 
@@ -1598,10 +1266,7 @@ export class FixtureTransport implements Transport {
 
                 // A compact item that waited in a held queue is this same request.
                 if (chat.queue?.some(isCompact)) {
-                    this.#setQueue(
-                        chat,
-                        chat.queue.filter(item => !isCompact(item))
-                    );
+                    this.#setQueue(chat, chat.queue.filter(item => !isCompact(item)));
                     this.#emit(chat.projectId, { type: 'chat.upserted', chat });
                 }
 
@@ -1617,23 +1282,19 @@ export class FixtureTransport implements Transport {
                 if (command.archived && chat.archivedAt === undefined) {
                     const threads = this.#threadsBelow(chat);
 
-                    if (this.#isChatBusy(chat))
-                        return fail('conflict', 'The agents of this chat are still working. Stop the chat first.');
+                    if (this.#isChatBusy(chat)) return fail('conflict', 'The agents of this chat are still working. Stop the chat first.');
 
-                    if (threads.some(thread => this.#isChatBusy(thread)))
-                        return fail('conflict', 'A thread of this chat is still working. Stop it first.');
+                    if (threads.some(thread => this.#isChatBusy(thread))) return fail('conflict', 'A thread of this chat is still working. Stop it first.');
 
                     // Like the daemon: the threads go with it, each before its parent, so no thread is ever listed without its parent.
                     const now = Date.now();
 
-                    for (const archived of [
-                        ...threads.filter(thread => thread.archivedAt === undefined).reverse(),
-                        chat,
-                    ]) {
+                    for (const archived of [...threads.filter(thread => thread.archivedAt === undefined).reverse(), chat]) {
                         archived.archivedAt = now;
                         this.#emit(archived.projectId, { type: 'chat.upserted', chat: archived });
                     }
-                } else if (!command.archived && chat.archivedAt !== undefined) {
+                }
+                else if (!command.archived && chat.archivedAt !== undefined) {
                     delete chat.archivedAt;
                     this.#emit(chat.projectId, { type: 'chat.upserted', chat });
                 }
@@ -1645,17 +1306,12 @@ export class FixtureTransport implements Transport {
 
                 if (!chat) return fail('not_found', 'No such chat');
 
-                if (command.removeWorkspace === true && !this.#removal(chat).removable)
-                    return fail('conflict', 'The worktree cannot be removed');
+                if (command.removeWorkspace === true && !this.#removal(chat).removable) return fail('conflict', 'The worktree cannot be removed');
 
                 // Like the daemon: the threads below go with it, archived ones too, once no agent of any of them works.
                 const gone = [...this.#threadsBelow(chat).reverse(), chat];
 
-                if (gone.some(candidate => this.#isChatBusy(candidate)))
-                    return fail(
-                        'conflict',
-                        'The agents of this chat or of its threads are still working. Stop them first.'
-                    );
+                if (gone.some(candidate => this.#isChatBusy(candidate))) return fail('conflict', 'The agents of this chat or of its threads are still working. Stop them first.');
 
                 for (const deleted of gone) {
                     const runIds = new Set(this.#runsOfChat(deleted).map(run => run.id));
@@ -1672,25 +1328,17 @@ export class FixtureTransport implements Transport {
                 for (const deleted of gone) {
                     const workspaceId = deleted.workspace?.id;
 
-                    if (workspaceId && !data.chats.some(candidate => candidate.workspace?.id === workspaceId))
-                        this.#opened.delete(workspaceId);
+                    if (workspaceId && !data.chats.some(candidate => candidate.workspace?.id === workspaceId)) this.#opened.delete(workspaceId);
                 }
 
                 return ok({ chatId: chat.id });
             }
             case 'chat.send':
-                return this.#sendMessage(
-                    command.chatId,
-                    command.text,
-                    command.attachmentIds ?? [],
-                    command.mode ?? 'queue'
-                );
+                return this.#sendMessage(command.chatId, command.text, command.attachmentIds ?? [], command.mode ?? 'queue');
             case 'chat.removeQueued':
                 return this.#removeQueued(command.chatId, command.itemId, command.keepFiles === true);
             case 'chat.moveQueued':
-                return this.#changeQueued(command.chatId, command.itemId, (chat, item) =>
-                    placeQueued(chat.queue ?? [], item, command.index)
-                );
+                return this.#changeQueued(command.chatId, command.itemId, (chat, item) => placeQueued(chat.queue ?? [], item, command.index));
             case 'chat.sendQueued':
                 return this.#sendQueued(command.chatId, command.itemId);
             case 'chat.fork':
@@ -1732,15 +1380,9 @@ export class FixtureTransport implements Transport {
             case 'skills.setEnabled': {
                 const skill = data.skills.find(candidate => candidate.name === command.name);
 
-                if (!skill) return fail('not_found', `Skill ${command.name} does not exist`);
+                if (!skill) return fail('not_found', `Skill ${ command.name } does not exist`);
 
-                if (skill.source !== 'user')
-                    return fail(
-                        'invalid',
-                        skill.source === 'system'
-                            ? 'System skills cannot be switched off'
-                            : 'Only user skills can be switched on or off'
-                    );
+                if (skill.source !== 'user') return fail('invalid', skill.source === 'system' ? 'System skills cannot be switched off' : 'Only user skills can be switched on or off');
 
                 if (skill.enabled !== command.enabled) {
                     skill.enabled = command.enabled;
@@ -1776,9 +1418,7 @@ export class FixtureTransport implements Transport {
 
     /** The projects as the daemon lists them: the personal space first, then in the person's order. */
     #listed(): Project[] {
-        return [...this.#data.projects].sort(
-            (a, b) => Number(b.personal === true) - Number(a.personal === true) || a.position - b.position
-        );
+        return [...this.#data.projects].sort((a, b) => Number(b.personal === true) - Number(a.personal === true) || a.position - b.position);
     }
 
     /** Runs of the project that have not finished: what stops it from being removed or moved. */
@@ -1788,11 +1428,7 @@ export class FixtureTransport implements Transport {
 
     /** The runs of a chat: its orchestrator and every run of its tree (native sub-agents). A thread's runs are its own chat's, not its parent's. */
     #runsOfChat(chat: Chat): Run[] {
-        return this.#data.runs.filter(
-            run =>
-                run.chatId === chat.id ||
-                (chat.orchestratorRunId !== undefined && run.rootRunId === chat.orchestratorRunId)
-        );
+        return this.#data.runs.filter(run => run.chatId === chat.id || (chat.orchestratorRunId !== undefined && run.rootRunId === chat.orchestratorRunId));
     }
 
     /** An agent of the chat still works: what the daemon refuses an archive or a delete for. */
@@ -1808,9 +1444,7 @@ export class FixtureTransport implements Transport {
         for (let index = -1; index < found.length; index++) {
             const parentId = index < 0 ? chat.id : found[index].id;
 
-            for (const thread of this.#data.chats.filter(
-                candidate => candidate.parentChatId === parentId && !seen.has(candidate.id)
-            )) {
+            for (const thread of this.#data.chats.filter(candidate => candidate.parentChatId === parentId && !seen.has(candidate.id))) {
                 seen.add(thread.id);
                 found.push(thread);
             }
@@ -1833,64 +1467,29 @@ export class FixtureTransport implements Transport {
         if (!parent || !parentRun || parent.archivedAt !== undefined || text === '') return;
 
         const open = run.status === 'waiting_background' ? (run.background ?? []).map(item => item.title) : [];
-        const notice: ThreadNotice = {
-            chatId: thread.id,
-            title: thread.title,
-            outcome: 'finished',
-            text,
-            ...(open.length > 0 && { background: open }),
-        };
+        const notice: ThreadNotice = { chatId: thread.id, title: thread.title, outcome: 'finished', text, ...(open.length > 0 && { background: open }) };
 
         if (!isBusyRunStatus(parentRun.status) && !parent.queuePaused) {
-            this.#startTurn(
-                parent,
-                parentRun,
-                { kind: 'user', text: '', from: { kind: 'threadNotice', threads: [notice] } },
-                NOTICE_REPLY
-            );
+            this.#startTurn(parent, parentRun, { kind: 'user', text: '', from: { kind: 'threadNotice', threads: [notice] } }, NOTICE_REPLY);
 
             return;
         }
 
         const waiting = parent.queue?.find(item => item.from?.kind === 'threadNotice');
-        const earlier =
-            waiting?.from?.kind === 'threadNotice'
-                ? waiting.from.threads.filter(entry => entry.chatId !== thread.id)
-                : [];
+        const earlier = waiting?.from?.kind === 'threadNotice' ? waiting.from.threads.filter(entry => entry.chatId !== thread.id) : [];
         const threads = [...earlier, notice];
         const summary = noticeSummary(threads);
-        const item: QueuedMessage = {
-            id: waiting?.id ?? this.#id('q'),
-            mode: 'queue',
-            text: summary,
-            content: `${summary}.`,
-            from: { kind: 'threadNotice', threads },
-            createdAt: waiting?.createdAt ?? Date.now(),
-        };
+        const item: QueuedMessage = { id: waiting?.id ?? this.#id('q'), mode: 'queue', text: summary, content: `${ summary }.`, from: { kind: 'threadNotice', threads }, createdAt: waiting?.createdAt ?? Date.now() };
 
-        parent.queue = waiting
-            ? (parent.queue ?? []).map(entry => (entry.id === item.id ? item : entry))
-            : placeQueued(parent.queue ?? [], item);
+        parent.queue = waiting ? (parent.queue ?? []).map(entry => (entry.id === item.id ? item : entry)) : placeQueued(parent.queue ?? [], item);
         this.#emit(parent.projectId, { type: 'chat.upserted', chat: parent });
     }
 
     #addProject(name: string, paths: readonly string[]): Outcome {
-        const prefix =
-            name
-                .replace(/[^a-z]/gi, '')
-                .slice(0, 3)
-                .toUpperCase() || 'TSK';
+        const prefix = name.replace(/[^a-z]/gi, '').slice(0, 3).toUpperCase() || 'TSK';
         const position = Math.max(0, ...this.#data.projects.map(candidate => candidate.position)) + 1;
         const folders = paths.map(path => ({ id: this.#id('fld'), path }));
-        const project: Project = {
-            id: this.#id('p'),
-            name,
-            folders,
-            taskPrefix: prefix,
-            settings: {},
-            createdAt: Date.now(),
-            position,
-        };
+        const project: Project = { id: this.#id('p'), name, folders, taskPrefix: prefix, settings: {}, createdAt: Date.now(), position };
 
         this.#data.projects.push(project);
         this.#data.statuses[project.id] = DEFAULT_STATUSES;
@@ -1914,15 +1513,14 @@ export class FixtureTransport implements Transport {
         for (const id of new Set(attachmentIds)) {
             const stored = this.#files.get(id);
 
-            if (stored?.projectId !== chat.projectId) return fail('not_found', `No such attachment: ${id}`);
+            if (stored?.projectId !== chat.projectId) return fail('not_found', `No such attachment: ${ id }`);
 
-            if (stored.sent) return fail('conflict', `${stored.attachment.name} was sent already`);
+            if (stored.sent) return fail('conflict', `${ stored.attachment.name } was sent already`);
 
             files.push(stored);
         }
 
-        if (files.reduce((sum, stored) => sum + stored.attachment.size, 0) > MAX_ATTACHMENTS_BYTES_PER_MESSAGE)
-            return fail('invalid', 'The files are over the size limit of one message');
+        if (files.reduce((sum, stored) => sum + stored.attachment.size, 0) > MAX_ATTACHMENTS_BYTES_PER_MESSAGE) return fail('invalid', 'The files are over the size limit of one message');
 
         for (const stored of files) stored.sent = true;
 
@@ -1933,14 +1531,7 @@ export class FixtureTransport implements Transport {
 
         // A busy orchestrator gets the message later: it waits in the chat's queue, and a steer is taken a moment later, as an agent would.
         if (existing && isBusyRunStatus(existing.status)) {
-            const item: QueuedMessage = {
-                id: this.#id('q'),
-                mode,
-                text,
-                ...(attachments.length > 0 && { attachments }),
-                content: text,
-                createdAt: Date.now(),
-            };
+            const item: QueuedMessage = { id: this.#id('q'), mode, text, ...(attachments.length > 0 && { attachments }), content: text, createdAt: Date.now() };
 
             chat.queue = placeQueued(chat.queue ?? [], item);
             this.#emit(chat.projectId, { type: 'chat.upserted', chat });
@@ -1962,7 +1553,7 @@ export class FixtureTransport implements Transport {
                 rootRunId: id,
                 chatId: chat.id,
                 role: 'orchestrator',
-                name: `Orchestrator ${String(number).padStart(2, '0')}`,
+                name: `Orchestrator ${ String(number).padStart(2, '0') }`,
                 summary: chat.title,
                 status: 'running',
                 engine: chat.engine ?? 'fake',
@@ -1999,16 +1590,14 @@ export class FixtureTransport implements Transport {
 
         const answer = (data.items[source.id] ?? []).find(item => item.id === itemId);
 
-        if (!answer) return fail('not_found', `Message ${itemId} does not exist`);
+        if (!answer) return fail('not_found', `Message ${ itemId } does not exist`);
 
         if (!answer.canFork) return fail('invalid', 'This message cannot be forked');
 
         const now = Date.now();
         const id = this.#id('c');
         const runId = this.#id('r-orch');
-        const number =
-            data.runs.filter(candidate => candidate.role === 'orchestrator' && candidate.origin !== 'native').length +
-            1;
+        const number = data.runs.filter(candidate => candidate.role === 'orchestrator' && candidate.origin !== 'native').length + 1;
         const title = forkTitle(chat.title);
         const run: Run = {
             id: runId,
@@ -2016,7 +1605,7 @@ export class FixtureTransport implements Transport {
             rootRunId: runId,
             chatId: id,
             role: 'orchestrator',
-            name: `Orchestrator ${String(number).padStart(2, '0')}`,
+            name: `Orchestrator ${ String(number).padStart(2, '0') }`,
             summary: title,
             status: 'succeeded',
             engine: source.engine,
@@ -2028,30 +1617,29 @@ export class FixtureTransport implements Transport {
             startedAt: now,
             finishedAt: now,
         };
-        const copied = (data.items[source.id] ?? [])
-            .filter(item => item.seq <= answer.seq)
-            .map((item): StreamItem => {
-                const copy = structuredClone(item);
-                const body = copy.body;
+        const copied = (data.items[source.id] ?? []).filter(item => item.seq <= answer.seq).map((item): StreamItem => {
+            const copy = structuredClone(item);
+            const body = copy.body;
 
-                if (body.kind === 'user' && body.attachments) {
-                    body.attachments = body.attachments.map(file => {
-                        const stored = this.#files.get(file.id);
+            if (body.kind === 'user' && body.attachments) {
+                body.attachments = body.attachments.map((file) => {
+                    const stored = this.#files.get(file.id);
 
-                        if (!stored) return file;
+                    if (!stored) return file;
 
-                        const own: Attachment = { ...file, id: this.#id('a') };
+                    const own: Attachment = { ...file, id: this.#id('a') };
 
-                        this.#files.set(own.id, { ...stored, attachment: own, sent: true });
+                    this.#files.set(own.id, { ...stored, attachment: own, sent: true });
 
-                        return own;
-                    });
-                } else if (body.kind === 'tool' && body.state === 'running') {
-                    Object.assign(body, { state: 'error', error: STOPPED_TOOL });
-                }
+                    return own;
+                });
+            }
+            else if (body.kind === 'tool' && body.state === 'running') {
+                Object.assign(body, { state: 'error', error: STOPPED_TOOL });
+            }
 
-                return { ...copy, id: `${runId}-${item.seq}`, runId };
-            });
+            return { ...copy, id: `${ runId }-${ item.seq }`, runId };
+        });
         const made: Chat = {
             id,
             projectId: chat.projectId,
@@ -2097,7 +1685,7 @@ export class FixtureTransport implements Transport {
         const items = data.items[run.id] ?? [];
         const edited = items.find(item => item.id === itemId);
 
-        if (!edited) return fail('not_found', `Message ${itemId} does not exist`);
+        if (!edited) return fail('not_found', `Message ${ itemId } does not exist`);
 
         if (!edited.canEdit) return fail('invalid', 'This message cannot be edited');
 
@@ -2106,30 +1694,19 @@ export class FixtureTransport implements Transport {
         if (!rawText.trim() && attachmentIds.length === 0) return fail('invalid', 'The message is empty');
 
         const dropped = items.filter(item => item.seq >= edited.seq);
-        const droppedFiles = new Set(
-            dropped.flatMap(item =>
-                (item.body.kind === 'user' ? (item.body.attachments ?? []) : []).map(file => file.id)
-            )
-        );
+        const droppedFiles = new Set(dropped.flatMap(item => (item.body.kind === 'user' ? item.body.attachments ?? [] : []).map(file => file.id)));
 
         // What the message carries is checked as a send checks it, except that the files of the dropped messages may go on in it.
         for (const id of new Set(attachmentIds)) {
             const stored = this.#files.get(id);
 
-            if (stored?.projectId !== chat.projectId) return fail('not_found', `No such attachment: ${id}`);
+            if (stored?.projectId !== chat.projectId) return fail('not_found', `No such attachment: ${ id }`);
 
-            if (stored.sent && !droppedFiles.has(id))
-                return fail('conflict', `${stored.attachment.name} was sent already`);
+            if (stored.sent && !droppedFiles.has(id)) return fail('conflict', `${ stored.attachment.name } was sent already`);
         }
 
         const calls = new Set(dropped.flatMap(item => (item.body.kind === 'tool' ? [item.body.toolCallId] : [])));
-        const started = data.runs.filter(
-            candidate =>
-                candidate.parentRunId === run.id &&
-                (candidate.parentToolCallId !== undefined
-                    ? calls.has(candidate.parentToolCallId)
-                    : candidate.createdAt >= edited.at)
-        );
+        const started = data.runs.filter(candidate => candidate.parentRunId === run.id && (candidate.parentToolCallId !== undefined ? calls.has(candidate.parentToolCallId) : candidate.createdAt >= edited.at));
         const removed = new Set(started.map(candidate => candidate.id));
 
         // The sub-agents of those are theirs to go with them.
@@ -2152,24 +1729,17 @@ export class FixtureTransport implements Transport {
             else this.#files.delete(id);
         }
 
-        this.#emit(run.projectId, {
-            type: 'stream.truncated',
-            runId: run.id,
-            fromSeq: edited.seq,
-            removedRunIds: [...removed],
-        });
+        this.#emit(run.projectId, { type: 'stream.truncated', runId: run.id, fromSeq: edited.seq, removedRunIds: [...removed] });
 
         delete run.context;
 
-        if (items.some(item => item.seq < edited.seq && item.body.kind !== 'note'))
-            run.sessionId = this.#id('fork-session');
+        if (items.some(item => item.seq < edited.seq && item.body.kind !== 'note')) run.sessionId = this.#id('fork-session');
         else delete run.sessionId;
 
         this.#saveRun(run);
 
         // A fork's divider follows the last item it inherited: a cut into that history ends it where the cut begins, as the daemon moves `forkedFrom.atSeq`.
-        if (chat.forkedFrom && chat.forkedFrom.atSeq >= edited.seq)
-            chat.forkedFrom = { ...chat.forkedFrom, atSeq: edited.seq - 1 };
+        if (chat.forkedFrom && chat.forkedFrom.atSeq >= edited.seq) chat.forkedFrom = { ...chat.forkedFrom, atSeq: edited.seq - 1 };
 
         return this.#sendMessage(chat.id, rawText, attachmentIds, 'queue');
     }
@@ -2231,7 +1801,8 @@ export class FixtureTransport implements Transport {
         if ((run.background?.length ?? 0) > 0) {
             run.status = 'waiting_background';
             run.statusReason = 'Waiting for background work';
-        } else {
+        }
+        else {
             run.status = 'succeeded';
             run.finishedAt = Date.now();
         }
@@ -2265,16 +1836,9 @@ export class FixtureTransport implements Transport {
             if (this.#turns.get(run.id) !== turn || run.status !== 'running') return;
 
             const after = before === undefined ? undefined : Math.round(before / 4);
-            const output = JSON.stringify({
-                trigger: 'manual',
-                ...(before !== undefined && { preTokens: before, postTokens: after }),
-                durationMs: COMPACT_MS,
-            });
+            const output = JSON.stringify({ trigger: 'manual', ...(before !== undefined && { preTokens: before, postTokens: after }), durationMs: COMPACT_MS });
 
-            this.#saveItem(run, {
-                ...item,
-                body: { kind: 'tool', toolCallId, name: 'compact', input, state: 'done', output },
-            });
+            this.#saveItem(run, { ...item, body: { kind: 'tool', toolCallId, name: 'compact', input, state: 'done', output } });
 
             if (run.context && after !== undefined) run.context = { ...run.context, used: after };
 
@@ -2289,17 +1853,13 @@ export class FixtureTransport implements Transport {
      */
     #settleQueue(chat: Chat): void {
         const run = this.#data.runs.find(candidate => candidate.id === chat.orchestratorRunId);
-        const queue = (chat.queue ?? []).map(item =>
-            item.mode === 'steer' ? { ...item, mode: 'queue' as const } : item
-        );
+        const queue = (chat.queue ?? []).map(item => (item.mode === 'steer' ? { ...item, mode: 'queue' as const } : item));
 
         if (!run || isBusyRunStatus(run.status) || queue.length === 0) return;
 
         chat.queue = queue;
 
-        const next = chat.queuePaused
-            ? undefined
-            : queue.find(item => !isCompact(item) || isTerminalRunStatus(run.status));
+        const next = chat.queuePaused ? undefined : queue.find(item => !isCompact(item) || isTerminalRunStatus(run.status));
 
         if (!next) {
             this.#emit(chat.projectId, { type: 'chat.upserted', chat });
@@ -2312,10 +1872,7 @@ export class FixtureTransport implements Transport {
 
     /** Takes a message out of the queue and makes it the orchestrator's next turn; sending a message from the queue lets a paused one flow again. */
     #dispatch(chat: Chat, run: Run, item: QueuedMessage): void {
-        this.#setQueue(
-            chat,
-            (chat.queue ?? []).filter(entry => entry.id !== item.id)
-        );
+        this.#setQueue(chat, (chat.queue ?? []).filter(entry => entry.id !== item.id));
         delete chat.queuePaused;
         this.#emit(chat.projectId, { type: 'chat.upserted', chat });
 
@@ -2331,10 +1888,7 @@ export class FixtureTransport implements Transport {
 
         if (!chat || !item || run?.status !== 'running') return;
 
-        this.#setQueue(
-            chat,
-            (chat.queue ?? []).filter(entry => entry.id !== itemId)
-        );
+        this.#setQueue(chat, (chat.queue ?? []).filter(entry => entry.id !== itemId));
         this.#emit(chat.projectId, { type: 'chat.upserted', chat });
         this.#appendItem(run, userBody(item));
         this.#later(300, () => this.#streamReply(run, 'Noted. I will take that into account.'));
@@ -2351,15 +1905,11 @@ export class FixtureTransport implements Transport {
         delete chat.queuePaused;
     }
 
-    #changeQueued(
-        chatId: string,
-        itemId: string,
-        change: (chat: Chat, item: QueuedMessage) => QueuedMessage[]
-    ): Outcome {
+    #changeQueued(chatId: string, itemId: string, change: (chat: Chat, item: QueuedMessage) => QueuedMessage[]): Outcome {
         const chat = this.#data.chats.find(candidate => candidate.id === chatId);
         const item = chat?.queue?.find(entry => entry.id === itemId);
 
-        if (!chat || !item) return fail('not_found', `Queued message ${itemId} does not exist`);
+        if (!chat || !item) return fail('not_found', `Queued message ${ itemId } does not exist`);
 
         this.#setQueue(chat, change(chat, item));
         this.#emit(chat.projectId, { type: 'chat.upserted', chat });
@@ -2385,17 +1935,13 @@ export class FixtureTransport implements Transport {
         const item = chat?.queue?.find(entry => entry.id === itemId);
         const run = this.#data.runs.find(candidate => candidate.id === chat?.orchestratorRunId);
 
-        if (!chat || !item || !run) return fail('not_found', `Queued message ${itemId} does not exist`);
+        if (!chat || !item || !run) return fail('not_found', `Queued message ${ itemId } does not exist`);
 
         // A compact item steers nothing: it keeps its place while the orchestrator works, and goes only once it has finished.
         if (isCompact(item)) {
             if (isBusyRunStatus(run.status)) return ok({ chatId: chat.id, runId: run.id });
 
-            if (!isTerminalRunStatus(run.status))
-                return fail(
-                    'conflict',
-                    'The orchestrator is waiting for background work. Compact the chat when it has finished'
-                );
+            if (!isTerminalRunStatus(run.status)) return fail('conflict', 'The orchestrator is waiting for background work. Compact the chat when it has finished');
 
             this.#dispatch(chat, run, item);
 
@@ -2406,7 +1952,8 @@ export class FixtureTransport implements Transport {
             this.#setQueue(chat, placeQueued(chat.queue ?? [], { ...item, mode: 'steer' }));
             this.#emit(chat.projectId, { type: 'chat.upserted', chat });
             this.#later(STEER_MS, () => this.#takeSteer(chat.id, item.id));
-        } else {
+        }
+        else {
             chat.updatedAt = Date.now();
             this.#dispatch(chat, run, item);
         }
@@ -2421,16 +1968,11 @@ export class FixtureTransport implements Transport {
         if (!task) return fail('not_found', 'No such task');
 
         // Like the daemon: an archived task takes no new work until it is restored.
-        if (task.archivedAt !== undefined) return fail('invalid', `Task ${task.key} is archived: restore it first`);
+        if (task.archivedAt !== undefined) return fail('invalid', `Task ${ task.key } is archived: restore it first`);
 
-        const runIds = new Set(
-            data.runTaskLinks
-                .filter(link => link.taskId === taskId && link.relation === 'assigned')
-                .map(link => link.runId)
-        );
+        const runIds = new Set(data.runTaskLinks.filter(link => link.taskId === taskId && link.relation === 'assigned').map(link => link.runId));
 
-        if (!force && data.runs.some(run => runIds.has(run.id) && !isTerminalRunStatus(run.status)))
-            return fail('already_running', `${task.key} already has an active run`);
+        if (!force && data.runs.some(run => runIds.has(run.id) && !isTerminalRunStatus(run.status))) return fail('already_running', `${ task.key } already has an active run`);
 
         // Like the daemon: the task opens a chat named after it, and the chat's orchestrator is the run assigned to the task.
         const number = data.runs.filter(candidate => candidate.role === 'orchestrator').length + 1;
@@ -2452,7 +1994,7 @@ export class FixtureTransport implements Transport {
             rootRunId: id,
             chatId: chat.id,
             role: 'orchestrator',
-            name: `Orchestrator ${String(number).padStart(2, '0')}`,
+            name: `Orchestrator ${ String(number).padStart(2, '0') }`,
             summary: task.title,
             status: 'running',
             engine: 'fake',
@@ -2462,8 +2004,7 @@ export class FixtureTransport implements Transport {
         const link = { runId: id, taskId, relation: 'assigned' as const };
         const chatLink = { chatId: chat.id, taskId };
         const statuses = data.statuses[task.projectId] ?? DEFAULT_STATUSES;
-        const categoryOf = (candidate: Task) =>
-            statuses.find(status => status.id === candidate.statusId)?.category ?? 'todo';
+        const categoryOf = (candidate: Task) => statuses.find(status => status.id === candidate.statusId)?.category ?? 'todo';
         const moveTo = (category: 'active' | 'review') => {
             const status = statuses.find(candidate => candidate.category === category);
 
@@ -2487,11 +2028,11 @@ export class FixtureTransport implements Transport {
         // or is in progress or in review already, stays where it is.
         if (categoryOf(task) === 'todo' || categoryOf(task) === 'backlog') moveTo('active');
 
-        this.#appendItem(run, { kind: 'user', text: `Work on ${task.key}: ${task.title}.` });
-        this.#later(500, () => this.#streamReply(run, `I will start on ${task.key} by reading the code around it.`));
+        this.#appendItem(run, { kind: 'user', text: `Work on ${ task.key }: ${ task.title }.` });
+        this.#later(500, () => this.#streamReply(run, `I will start on ${ task.key } by reading the code around it.`));
         this.#later(2500, () => {
             run.status = 'succeeded';
-            run.result = `Finished ${task.key}.`;
+            run.result = `Finished ${ task.key }.`;
             run.finishedAt = Date.now();
             this.#saveRun(run);
 
@@ -2511,8 +2052,7 @@ export class FixtureTransport implements Transport {
 
         // Like the daemon: a sub-agent of a session is stopped alone when its session can end it, and refused when it cannot.
         if (target.origin === 'native' && !isTerminalRunStatus(target.status)) {
-            if (!target.canStopAlone)
-                return fail('conflict', 'A sub-agent runs inside its parent run; cancel the parent run instead');
+            if (!target.canStopAlone) return fail('conflict', 'A sub-agent runs inside its parent run; cancel the parent run instead');
 
             this.#endRun(target);
 
@@ -2521,9 +2061,7 @@ export class FixtureTransport implements Transport {
 
         const cancelled = this.#subtree(runId);
 
-        for (const run of data.runs.filter(
-            candidate => cancelled.has(candidate.id) && !isTerminalRunStatus(candidate.status)
-        )) {
+        for (const run of data.runs.filter(candidate => cancelled.has(candidate.id) && !isTerminalRunStatus(candidate.status))) {
             this.#endRun(run);
         }
 
@@ -2561,8 +2099,7 @@ export class FixtureTransport implements Transport {
 
         const item = run.background?.find(candidate => candidate.id === itemId);
 
-        if (!item?.canStopAlone || item.kind === 'subagent' || isTerminalRunStatus(run.status))
-            return ok({ stopped: false });
+        if (!item?.canStopAlone || item.kind === 'subagent' || isTerminalRunStatus(run.status)) return ok({ stopped: false });
 
         const rest = (run.background ?? []).filter(candidate => candidate.id !== itemId);
 
@@ -2570,7 +2107,7 @@ export class FixtureTransport implements Transport {
         else delete run.background;
 
         this.#saveRun(run);
-        this.#appendItem(run, { kind: 'note', text: `Background command stopped: ${item.title}` });
+        this.#appendItem(run, { kind: 'note', text: `Background command stopped: ${ item.title }` });
 
         return ok({ stopped: true });
     }
@@ -2580,7 +2117,7 @@ export class FixtureTransport implements Transport {
         const { runs } = this.#data;
         const found = new Set([runId]);
 
-        for (let size = 0; size !== found.size; ) {
+        for (let size = 0; size !== found.size;) {
             size = found.size;
             runs.filter(run => run.parentRunId && found.has(run.parentRunId)).forEach(run => found.add(run.id));
         }
@@ -2600,8 +2137,7 @@ export class FixtureTransport implements Transport {
         this.#saveRun(run);
 
         // A sub-agent that stopped leaves its parent's list of open work.
-        const parent =
-            run.origin === 'native' ? data.runs.find(candidate => candidate.id === run.parentRunId) : undefined;
+        const parent = run.origin === 'native' ? data.runs.find(candidate => candidate.id === run.parentRunId) : undefined;
 
         if (parent?.background && run.parentToolCallId) {
             parent.background = parent.background.filter(item => item.id !== run.parentToolCallId);
@@ -2609,8 +2145,7 @@ export class FixtureTransport implements Transport {
         }
 
         for (const item of data.items[run.id] ?? []) {
-            if (item.body.kind === 'tool' && item.body.state === 'running')
-                this.#saveItem(run, { ...item, body: { ...item.body, state: 'error', error: STOPPED_TOOL } });
+            if (item.body.kind === 'tool' && item.body.state === 'running') this.#saveItem(run, { ...item, body: { ...item.body, state: 'error', error: STOPPED_TOOL } });
         }
 
         // Stop holds the queue of the chat whose orchestrator it stopped.
@@ -2624,9 +2159,7 @@ export class FixtureTransport implements Transport {
 
     #answerQuestion(runId: RunId, questionId: string, answer: string): Outcome {
         const run = this.#data.runs.find(candidate => candidate.id === runId);
-        const item = this.#data.items[runId]?.find(
-            candidate => candidate.body.kind === 'question' && candidate.body.questionId === questionId
-        );
+        const item = this.#data.items[runId]?.find(candidate => candidate.body.kind === 'question' && candidate.body.questionId === questionId);
 
         if (!run || !item || item.body.kind !== 'question') return fail('not_found', 'No such question');
 
@@ -2637,7 +2170,7 @@ export class FixtureTransport implements Transport {
             run.status = 'running';
             run.statusReason = undefined;
             this.#saveRun(run);
-            this.#later(500, () => this.#streamReply(run, `Thanks. I will go with "${answer}" and continue.`));
+            this.#later(500, () => this.#streamReply(run, `Thanks. I will go with "${ answer }" and continue.`));
         }
 
         return ok();
@@ -2645,19 +2178,13 @@ export class FixtureTransport implements Transport {
 
     /** A question without an answer, or a request for permission that is open: what keeps a run in `waiting_user`. */
     #hasOpenCard(runId: RunId): boolean {
-        return (this.#data.items[runId] ?? []).some(
-            candidate =>
-                (candidate.body.kind === 'approval' && candidate.body.state === 'open') ||
-                (candidate.body.kind === 'question' && candidate.body.answer === undefined)
-        );
+        return (this.#data.items[runId] ?? []).some(candidate => (candidate.body.kind === 'approval' && candidate.body.state === 'open') || (candidate.body.kind === 'question' && candidate.body.answer === undefined));
     }
 
     #decideApproval(runId: RunId, approvalId: string, decision: ApprovalDecision): Outcome {
         const run = this.#data.runs.find(candidate => candidate.id === runId);
         const items = this.#data.items[runId] ?? [];
-        const item = items.find(
-            candidate => candidate.body.kind === 'approval' && candidate.body.approvalId === approvalId
-        );
+        const item = items.find(candidate => candidate.body.kind === 'approval' && candidate.body.approvalId === approvalId);
 
         if (!run || !item || item.body.kind !== 'approval') return fail('not_found', 'No such approval');
 

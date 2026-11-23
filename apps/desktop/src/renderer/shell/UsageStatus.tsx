@@ -23,8 +23,8 @@ import {
 } from '../features/settings/providers/providerView';
 import { RefreshUsageButton, UsageReading } from '../features/settings/providers/UsageRows';
 import { waitForRead } from '../features/settings/providers/useAgentCommands';
-import { useNow } from '../features/settings/providers/useNow';
 import { describeRemaining, formatRemaining } from '../shared';
+import { useNow } from '../shared/useNow';
 import { useAgents, useRootStore } from '../stores';
 import styles from './UsageStatus.module.css';
 

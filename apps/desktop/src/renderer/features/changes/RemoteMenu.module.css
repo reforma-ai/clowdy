@@ -1,6 +1,6 @@
 @reference '@clowdy/styles/rulesets';
 
-/* The row that opens the menu, and under it what the last action did or why it failed: one block of the sidebar's facts, as wide as they are. */
+/* The sync button, and under it what the last action did or why it failed: one block of the sidebar's facts, as wide as they are. */
 .root {
     display: flex;
     flex-direction: column;
@@ -14,13 +14,48 @@
     user-select: text;
 }
 
-/* The row is a press that fills the facts' width, its content laid out from the start, the way the sidebar's other rows are. */
-.trigger[data-size][data-variant] {
+/* The button that names the next action and the dropdown that keeps the others, side by side, as the commit box's Commit and its menu are. */
+.split {
+    display: flex;
+    gap: var(--spacing-2);
+    width: 100%;
+    min-width: 0;
+}
+
+/* The button's stop (`Unavailable`), when it is off and says why: it takes what the dropdown leaves, and its focus ring follows the button's corners. */
+.host {
+    flex: 1 1 0;
+    min-width: 0;
+    border-radius: calc(var(--radius-md) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+}
+
+/* The button takes what the dropdown leaves and is as tall as its two lines, with the corners of the dropdown's side squared so the two read as one. */
+.main[data-size][data-variant] {
+    flex: 1 1 0;
     justify-content: flex-start;
     width: 100%;
     min-width: 0;
-    padding-inline: var(--spacing-6);
+    height: auto;
+    min-height: var(--spacing-36);
+    padding: var(--spacing-4) var(--spacing-8);
     text-align: start;
+    border-start-end-radius: 0;
+    border-end-end-radius: 0;
+}
+
+/* The words of a button that cannot be pressed are what says why, so they stay readable: the design system's dimming (0.4) would take them. */
+.main[data-disabled='true'] {
+    opacity: 0.7;
+}
+
+.more[data-size][data-variant] {
+    flex-shrink: 0;
+    align-self: stretch;
+    height: auto;
+    min-height: var(--spacing-36);
+    border-start-start-radius: 0;
+    border-end-start-radius: 0;
 }
 
 .content {
@@ -30,31 +65,98 @@
     gap: var(--spacing-6);
 }
 
-.icon,
-.chevron {
-    flex-shrink: 0;
-    color: var(--color-secondary-muted-text);
+/* The label and the counts on a line, the line of words under them. */
+.words {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    min-width: 0;
 }
 
-/* The upstream's name is cut before how far apart the two are is. */
+.head {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-6);
+    min-width: 0;
+}
+
+/* The label is cut before the counts are. */
 .label {
     flex: 0 1 auto;
     min-width: 0;
 }
 
-.detail {
+.line {
+    min-width: 0;
+    font-weight: 400;
+}
+
+.counts {
+    display: inline-flex;
     flex-shrink: 0;
+    gap: var(--spacing-4);
+    margin-inline-start: auto;
+    color: var(--color-secondary-muted-text);
     white-space: nowrap;
 }
 
-/* The chevron stays at the row's end. */
-.chevron {
-    margin-inline-start: auto;
+.count {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-2);
+    font-size: var(--text-xs);
+    font-weight: 500;
 }
 
+.count svg {
+    width: var(--spacing-12);
+    height: var(--spacing-12);
+}
+
+/* In a sidebar dragged to its narrowest the label keeps the whole of its line and the counts take the next one, and the line of words (the last fetch) is left to the tooltip, which has it. */
+@container (max-width: 12rem) {
+    .head {
+        flex-wrap: wrap;
+        gap: 0;
+    }
+
+    .label {
+        flex-basis: 100%;
+    }
+
+    .counts {
+        margin-inline-start: 0;
+    }
+
+    .line {
+        display: none;
+    }
+
+    .main[data-size][data-variant] {
+        padding-inline: var(--spacing-6);
+    }
+
+    .more[data-size][data-variant] {
+        min-width: var(--spacing-24);
+    }
+}
+
+/* Git's line and the Fetch origin button that goes with a push turned down for newer commits: the button goes under the line where there is no room beside it. */
 .failure {
     display: flex;
-    flex-direction: column;
-    gap: var(--spacing-2);
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: var(--spacing-2) var(--spacing-8);
     overflow-wrap: anywhere;
+}
+
+.failure > * {
+    flex: 1 1 100%;
+}
+
+.failure > .fetch {
+    flex: 0 0 auto;
+    margin-top: var(--spacing-2);
 }
