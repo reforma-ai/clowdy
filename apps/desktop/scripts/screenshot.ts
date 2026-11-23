@@ -36,7 +36,9 @@ const { values } = parseArgs({
 });
 
 if (!values.url || !values.out) {
-    console.error('Usage: bun apps/desktop/scripts/screenshot.ts --url <url> --out <png> [--width N] [--height N] [--wait-for <selector>] [--eval <js>]... [--delay <ms>] [--theme light|dark|system] [--overlay] [--logs]');
+    console.error(
+        'Usage: bun apps/desktop/scripts/screenshot.ts --url <url> --out <png> [--width N] [--height N] [--wait-for <selector>] [--eval <js>]... [--delay <ms>] [--theme light|dark|system] [--overlay] [--logs]'
+    );
     process.exit(2);
 }
 

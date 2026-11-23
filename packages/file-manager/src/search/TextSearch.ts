@@ -174,8 +174,7 @@ export class TextSearch implements SearchOptions {
             if (this.#running === running) {
                 this.#finish(result, null);
             }
-        }
-        catch (error) {
+        } catch (error) {
             if (this.#running === running) {
                 this.#finish(null, error instanceof Error ? error.message : String(error));
             }

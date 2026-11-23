@@ -7,7 +7,16 @@ import { announceAgentsChanged } from '../src/providers/announce';
 import { PROVIDERS } from '../src/providers/builtin';
 import { ProvidersService } from '../src/providers/service';
 import { FAKE_AGENT } from './acp-helpers';
-import { cleanTempDirs, Harness, restartHarness, startHarness, testAgents, testConfig, testSpec, waitFor } from './helpers';
+import {
+    cleanTempDirs,
+    Harness,
+    restartHarness,
+    startHarness,
+    testAgents,
+    testConfig,
+    testSpec,
+    waitFor,
+} from './helpers';
 
 import type { AgentInfo } from '@clowdy/protocol';
 
@@ -29,8 +38,9 @@ async function setup() {
     harnesses.push(h);
 
     const project = h.openRepo();
-    const list = async (): Promise<AgentInfo[]> => await (await h.fetch('/v1/agents')).json() as AgentInfo[];
-    const add = (id = 'mine') => h.ok('agent.add', { id, name: 'My agent', command: process.execPath, args: [FAKE_AGENT] });
+    const list = async (): Promise<AgentInfo[]> => (await (await h.fetch('/v1/agents')).json()) as AgentInfo[];
+    const add = (id = 'mine') =>
+        h.ok('agent.add', { id, name: 'My agent', command: process.execPath, args: [FAKE_AGENT] });
 
     return { h, project, list, add };
 }
@@ -40,12 +50,34 @@ describe('GET /v1/agents', () => {
         const { h, list } = await setup();
         const agents = await list();
 
-        expect(agents.map(agent => agent.id)).toEqual(['claude', 'codex', 'cursor', 'opencode', 'gemini', 'copilot', 'grok', 'omp', 'hermes']);
+        expect(agents.map(agent => agent.id)).toEqual([
+            'claude',
+            'codex',
+            'cursor',
+            'opencode',
+            'gemini',
+            'copilot',
+            'grok',
+            'omp',
+            'hermes',
+        ]);
         // The test daemon finds nothing on this machine, so every built-in agent is missing whatever is installed here.
-        expect(agents.every(agent => !agent.custom && agent.enabled && agent.launch !== '' && agent.status === 'missing' && agent.detail !== undefined)).toBe(true);
-        expect(agents.find(agent => agent.id === 'claude')).toMatchObject({ name: 'Claude Code', login: 'claude auth login' });
+        expect(
+            agents.every(
+                agent =>
+                    !agent.custom &&
+                    agent.enabled &&
+                    agent.launch !== '' &&
+                    agent.status === 'missing' &&
+                    agent.detail !== undefined
+            )
+        ).toBe(true);
+        expect(agents.find(agent => agent.id === 'claude')).toMatchObject({
+            name: 'Claude Code',
+            login: 'claude auth login',
+        });
         expect(agents.find(agent => agent.id === 'codex')?.fetches).toBe(codexPackage);
-        expect((await fetch(`${ h.url }/v1/agents`)).status).toBe(401);
+        expect((await fetch(`${h.url}/v1/agents`)).status).toBe(401);
     });
 });
 
@@ -55,7 +87,11 @@ describe('agent commands', () => {
         const before = h.events().length;
 
         expect(add()).toEqual({ id: 'mine' });
-        expect((await list()).find(agent => agent.id === 'mine')).toMatchObject({ custom: true, status: 'ready', launch: `${ process.execPath } ${ FAKE_AGENT }` });
+        expect((await list()).find(agent => agent.id === 'mine')).toMatchObject({
+            custom: true,
+            status: 'ready',
+            launch: `${process.execPath} ${FAKE_AGENT}`,
+        });
 
         h.ok('agent.update', { id: 'mine', enabled: false });
         expect((await list()).find(agent => agent.id === 'mine')).toMatchObject({ status: 'disabled', enabled: false });
@@ -81,7 +117,10 @@ describe('agent commands', () => {
         expect((await list()).find(agent => agent.id === 'opencode')).toMatchObject({ status: 'missing' });
 
         h.ok('agent.update', { id: 'opencode', path: process.execPath });
-        expect((await list()).find(agent => agent.id === 'opencode')).toMatchObject({ status: 'ready', path: process.execPath });
+        expect((await list()).find(agent => agent.id === 'opencode')).toMatchObject({
+            status: 'ready',
+            path: process.execPath,
+        });
 
         h.ok('agent.update', { id: 'opencode', path: null });
         expect((await list()).find(agent => agent.id === 'opencode')?.path).not.toBe(process.execPath);
@@ -93,7 +132,11 @@ describe('agent commands', () => {
         h.ok('agent.update', { id: 'opencode', enabled: false });
         h.ok('agent.update', { id: 'opencode', path: process.execPath });
 
-        expect((await list()).find(agent => agent.id === 'opencode')).toMatchObject({ status: 'disabled', enabled: false, path: process.execPath });
+        expect((await list()).find(agent => agent.id === 'opencode')).toMatchObject({
+            status: 'disabled',
+            enabled: false,
+            path: process.execPath,
+        });
     });
 
     test('a permission preset is picked, listed as the choice, cleared with null, and refused when the agent does not offer it', async () => {
@@ -172,7 +215,7 @@ describe('agent commands', () => {
 
         harnesses.push(again);
 
-        const agents = await (await again.fetch('/v1/agents')).json() as AgentInfo[];
+        const agents = (await (await again.fetch('/v1/agents')).json()) as AgentInfo[];
 
         expect(agents.find(agent => agent.id === 'mine')).toMatchObject({ custom: true });
         expect(agents.find(agent => agent.id === 'cursor')).toMatchObject({ status: 'disabled' });
@@ -188,7 +231,10 @@ describe('accounts, usage and sign-in over the API', () => {
         const marker = join(config.dataDir, 'signed-in');
 
         mkdirSync(config.dataDir, { recursive: true });
-        writeFileSync(login, `console.log('Open https://example.com/login?x=1'); await Bun.write(${ JSON.stringify(marker) }, '1');`);
+        writeFileSync(
+            login,
+            `console.log('Open https://example.com/login?x=1'); await Bun.write(${JSON.stringify(marker)}, '1');`
+        );
 
         // The announce of the real daemon, once it exists: background reads and login output announce from outside any transaction.
         let announce = () => {};
@@ -196,13 +242,26 @@ describe('accounts, usage and sign-in over the API', () => {
             registry: agents,
             announce: () => announce(),
             cwd: config.dataDir,
-            providers: [{
-                ...testSpec('mine'),
-                login: { args: [login] },
-                read: async () => await Bun.file(marker).exists()
-                    ? { signIn: { status: 'signed-in', account: { email: 'ada@example.com', plan: 'Max', method: 'subscription' } }, usage: { state: 'ok', windows: [{ id: 'session', label: 'Session', usedPercent: 8 }], fetchedAt: 1 } }
-                    : { signIn: { status: 'signed-out' }, usage: { state: 'unavailable', windows: [] } },
-            }],
+            providers: [
+                {
+                    ...testSpec('mine'),
+                    login: { args: [login] },
+                    read: async () =>
+                        (await Bun.file(marker).exists())
+                            ? {
+                                  signIn: {
+                                      status: 'signed-in',
+                                      account: { email: 'ada@example.com', plan: 'Max', method: 'subscription' },
+                                  },
+                                  usage: {
+                                      state: 'ok',
+                                      windows: [{ id: 'session', label: 'Session', usedPercent: 8 }],
+                                      fetchedAt: 1,
+                                  },
+                              }
+                            : { signIn: { status: 'signed-out' }, usage: { state: 'unavailable', windows: [] } },
+                },
+            ],
         });
         const h = new Harness(await startDaemon(config, { agents, providers }), config);
 
@@ -211,12 +270,16 @@ describe('accounts, usage and sign-in over the API', () => {
         h.openRepo();
         h.ok('agent.add', { id: 'mine', name: 'My agent', command: process.execPath, args: [FAKE_AGENT] });
 
-        return { h, list: async (): Promise<AgentInfo[]> => (await (await h.fetch('/v1/agents')).json() as AgentInfo[]).filter(agent => agent.id === 'mine') };
+        return {
+            h,
+            list: async (): Promise<AgentInfo[]> =>
+                ((await (await h.fetch('/v1/agents')).json()) as AgentInfo[]).filter(agent => agent.id === 'mine'),
+        };
     }
 
     /** Asks again until the answer is what the test waits for: the reads happen in the background. */
     async function until(check: () => Promise<boolean>) {
-        for (let i = 0; i < 150 && !await check(); i++) {
+        for (let i = 0; i < 150 && !(await check()); i++) {
             await new Promise(resolve => setTimeout(resolve, 20));
         }
     }

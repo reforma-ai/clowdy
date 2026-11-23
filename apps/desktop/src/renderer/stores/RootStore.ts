@@ -5,9 +5,9 @@ import { ModelsStore } from './ModelsStore';
 import { NavHistory } from './NavHistory';
 import { ProjectIconsStore } from './ProjectIconsStore';
 import { ProjectState } from './ProjectState';
-import { browserStorage, readStored, writeStored, type KeyValueStorage } from './storage';
 import { StreamStore } from './StreamStore';
-import { UiStore, type InitialProjectUi, type ProjectUi } from './UiStore';
+import { browserStorage, type KeyValueStorage, readStored, writeStored } from './storage';
+import { type InitialProjectUi, type ProjectUi, UiStore } from './UiStore';
 
 import type { AgentInfo, ClowdyEvent, CommandResult, Project, ProjectId } from '@clowdy/protocol';
 import type { CommandInput, FeedStatus, Transport } from '../daemon/transport';
@@ -27,7 +27,13 @@ export interface Notice {
 
 /** The person's order: the personal space first, then by `position`, then by when the project was added. */
 function sortProjects(projects: readonly Project[]): Project[] {
-    return [...projects].sort((a, b) => Number(b.personal === true) - Number(a.personal === true) || a.position - b.position || a.createdAt - b.createdAt || a.id.localeCompare(b.id));
+    return [...projects].sort(
+        (a, b) =>
+            Number(b.personal === true) - Number(a.personal === true) ||
+            a.position - b.position ||
+            a.createdAt - b.createdAt ||
+            a.id.localeCompare(b.id)
+    );
 }
 
 /** What `project.add` answers: the project added, or the one that already had the same folders (`existing`). */
@@ -79,14 +85,26 @@ export class RootStore {
     #bannerTimer: ReturnType<typeof setTimeout> | undefined;
     #resyncTimer: ReturnType<typeof setTimeout> | undefined;
 
-    constructor(readonly transport: Transport, { storage = browserStorage(), notify, initialUi }: RootStoreOptions = {}) {
+    constructor(
+        readonly transport: Transport,
+        { storage = browserStorage(), notify, initialUi }: RootStoreOptions = {}
+    ) {
         this.#storage = storage;
         this.#notify = notify;
         this.ui = new UiStore(storage, initialUi, projectId => this.projectState(projectId)?.tasks);
         this.streams = new StreamStore(transport);
         this.models = new ModelsStore(transport);
         this.projectIcons = new ProjectIconsStore(transport);
-        makeAutoObservable<RootStore, 'transport'>(this, { transport: false, ui: false, streams: false, models: false, projectIcons: false, history: false, projects: observableRef, agents: observableRef });
+        makeAutoObservable<RootStore, 'transport'>(this, {
+            transport: false,
+            ui: false,
+            streams: false,
+            models: false,
+            projectIcons: false,
+            history: false,
+            projects: observableRef,
+            agents: observableRef,
+        });
         // After `makeAutoObservable`: the history watches `selectedProjectId`, which is not observable before it.
         this.history = new NavHistory(this);
     }
@@ -134,11 +152,13 @@ export class RootStore {
 
             const stored = readStored(this.#storage, SELECTED_PROJECT_KEY);
             // Nothing remembered: the first project of the person's own, and the personal space when there is none.
-            const first = this.projects.find(project => project.id === stored) ?? this.projects.find(project => !project.personal) ?? this.projects[0];
+            const first =
+                this.projects.find(project => project.id === stored) ??
+                this.projects.find(project => !project.personal) ??
+                this.projects[0];
 
             if (first) this.selectProject(first.id);
-        }
-        catch (error) {
+        } catch (error) {
             runInAction(() => {
                 this.phase = 'unreachable';
                 this.loadError = error instanceof Error ? error.message : String(error);
@@ -193,8 +213,7 @@ export class RootStore {
                 this.agentsStatus = 'ready';
                 this.agentsError = '';
             });
-        }
-        catch (error) {
+        } catch (error) {
             if (request !== this.#agentsSeq) return;
 
             runInAction(() => {
@@ -208,9 +227,15 @@ export class RootStore {
     async command(input: CommandInput): Promise<CommandResult> {
         try {
             return await this.transport.command(input);
-        }
-        catch (error) {
-            return { ok: false, requestId: 'unsent', error: { code: 'unavailable', message: error instanceof Error ? error.message : 'The daemon cannot be reached' } };
+        } catch (error) {
+            return {
+                ok: false,
+                requestId: 'unsent',
+                error: {
+                    code: 'unavailable',
+                    message: error instanceof Error ? error.message : 'The daemon cannot be reached',
+                },
+            };
         }
     }
 
@@ -219,7 +244,11 @@ export class RootStore {
      * answers a project that already has exactly these folders instead of adding one, and the window switches to that: `existing` says so.
      */
     async addProject(input: { name?: string; folders: string[] }): Promise<CommandResult<AddedProject>> {
-        const result = await this.command({ type: 'project.add', ...(input.name && { name: input.name }), ...(input.folders.length > 0 && { folders: input.folders }) });
+        const result = await this.command({
+            type: 'project.add',
+            ...(input.name && { name: input.name }),
+            ...(input.folders.length > 0 && { folders: input.folders }),
+        });
 
         if (!result.ok) return result;
 
@@ -233,8 +262,7 @@ export class RootStore {
 
                 if (projects.some(candidate => candidate.id === project.id)) this.selectProject(project.id);
             });
-        }
-        catch {
+        } catch {
             // The command went through; the `project.upserted` event adds the project.
         }
 
@@ -250,7 +278,10 @@ export class RootStore {
         const named = projectIds.flatMap(id => before.find(project => project.id === id && !project.personal) ?? []);
         const rest = before.filter(project => !project.personal && !named.includes(project));
 
-        this.projects = [...before.filter(project => project.personal), ...[...named, ...rest].map((project, index) => ({ ...project, position: index + 1 }))];
+        this.projects = [
+            ...before.filter(project => project.personal),
+            ...[...named, ...rest].map((project, index) => ({ ...project, position: index + 1 })),
+        ];
 
         const result = await this.command({ type: 'project.reorder', projectIds: [...projectIds] });
 
@@ -282,9 +313,13 @@ export class RootStore {
 
         if (this.syncStatus === 'connected') {
             this.syncStatus = 'reconnecting';
-            this.#bannerTimer = setTimeout(() => runInAction(() => {
-                this.bannerVisible = true;
-            }), BANNER_DELAY_MS);
+            this.#bannerTimer = setTimeout(
+                () =>
+                    runInAction(() => {
+                        this.bannerVisible = true;
+                    }),
+                BANNER_DELAY_MS
+            );
         }
 
         if (status === 'resync') void this.#resync();
@@ -296,32 +331,29 @@ export class RootStore {
         if (data.type === 'project.upserted') {
             const known = this.projects.some(project => project.id === data.project.id);
 
-            this.projects = sortProjects(known ? this.projects.map(project => (project.id === data.project.id ? data.project : project)) : [...this.projects, data.project]);
+            this.projects = sortProjects(
+                known
+                    ? this.projects.map(project => (project.id === data.project.id ? data.project : project))
+                    : [...this.projects, data.project]
+            );
 
             // The first project to appear, opened from another client or by the daemon, is the one to show.
             if (!known && !this.selectedProjectId) this.selectProject(data.project.id);
-        }
-        else if (data.type === 'project.deleted') {
+        } else if (data.type === 'project.deleted') {
             this.#dropProject(event.projectId);
-        }
-        else if (data.type === 'stream.item') {
+        } else if (data.type === 'stream.item') {
             this.streams.applyItem(data.item);
-        }
-        else if (data.type === 'stream.truncated') {
+        } else if (data.type === 'stream.truncated') {
             this.streams.applyTruncation(data.runId, data.fromSeq);
             // The sub-agent runs the dropped part started are gone; `ProjectState` drops their rows.
             this.streams.forget(data.removedRunIds);
-        }
-        else if (data.type === 'chat.deleted') {
+        } else if (data.type === 'chat.deleted') {
             this.streams.forget(data.runIds);
-        }
-        else if (data.type === 'notice') {
+        } else if (data.type === 'notice') {
             this.#notify?.({ level: data.level, text: data.text });
-        }
-        else if (data.type === 'skills.changed') {
+        } else if (data.type === 'skills.changed') {
             this.skillsRevision++;
-        }
-        else if (data.type === 'agents.changed') {
+        } else if (data.type === 'agents.changed') {
             // The daemon announces it once per project: one fetch answers them all.
             this.#scheduleAgents();
         }
@@ -343,7 +375,11 @@ export class RootStore {
 
     #follow(cursor: number): void {
         this.#unsubscribe?.();
-        this.#unsubscribe = this.transport.subscribe(cursor, event => this.handleEvent(event), status => this.handleFeedStatus(status));
+        this.#unsubscribe = this.transport.subscribe(
+            cursor,
+            event => this.handleEvent(event),
+            status => this.handleFeedStatus(status)
+        );
     }
 
     /** The daemon no longer holds the events after our cursor: take every snapshot again, then follow from there. */
@@ -373,8 +409,7 @@ export class RootStore {
             void this.refreshAgents();
             // An `agents.changed` may have been lost in the gap, and the lists that were opened follow it.
             void this.models.reloadOpened();
-        }
-        catch {
+        } catch {
             this.#resyncTimer = setTimeout(() => void this.#resync(), RESYNC_RETRY_MS);
         }
     }

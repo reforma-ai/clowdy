@@ -5,6 +5,7 @@ export {
     ControlGroupInput,
     ControlGroupSelect,
 } from './ControlGroup';
+
 export type {
     ControlGroupControlProps,
     ControlGroupFieldProps,

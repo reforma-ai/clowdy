@@ -33,7 +33,9 @@ export type UnitInputValue = UnitValue | KeywordValue;
 /** Conversion rates: how many CSS pixels fit in 1 unit */
 export type ConversionRates = Partial<Record<string, number>>;
 
-export type ComparableUnitInputValue = { type: 'unit'; value: number; unit: string } | { type: 'keyword'; value: string };
+export type ComparableUnitInputValue =
+    | { type: 'unit'; value: number; unit: string }
+    | { type: 'keyword'; value: string };
 
 export interface UnitInputProps {
     value?: UnitInputValue | null;
@@ -68,12 +70,7 @@ export interface UnitInputProps {
  * Convert a value between units through px as intermediate.
  * Falls back to keeping the numeric value if a rate is unknown.
  */
-function convertUnit(
-    value: number,
-    fromUnit: string,
-    toUnit: string,
-    rates: ConversionRates
-): number {
+function convertUnit(value: number, fromUnit: string, toUnit: string, rates: ConversionRates): number {
     if (fromUnit === toUnit) {
         return value;
     }
@@ -177,9 +174,7 @@ function unitInputDraftMatchesValue(
         return value.type === 'keyword' && draft.value === value.value;
     }
 
-    return value.type === 'unit'
-      && draft.value === value.value
-      && draft.unit === value.unit;
+    return value.type === 'unit' && draft.value === value.value && draft.unit === value.unit;
 }
 
 // ── Component ──────────────────────────────────────────────────────────────
@@ -224,10 +219,14 @@ export function UnitInput({
         }
 
         const prev = prevValueRef.current;
-        const same = (prev === value)
-          || (prev?.type === 'keyword' && value?.type === 'keyword' && prev.value === value.value)
-          || (prev?.type === 'unit' && value?.type === 'unit' && prev.value === value.value && prev.unit === value.unit)
-          || (prev == null && value == null);
+        const same =
+            prev === value ||
+            (prev?.type === 'keyword' && value?.type === 'keyword' && prev.value === value.value) ||
+            (prev?.type === 'unit' &&
+                value?.type === 'unit' &&
+                prev.value === value.value &&
+                prev.unit === value.unit) ||
+            (prev == null && value == null);
 
         if (!same) {
             prevValueRef.current = value;
@@ -239,9 +238,7 @@ export function UnitInput({
 
     // Derive display state from value prop
     const currentUnit = value?.type === 'unit' ? value.unit : (placeholderUnit ?? units[0] ?? 'px');
-    const displayText = value
-        ? (value.type === 'unit' ? String(value.value) : value.value)
-        : '';
+    const displayText = value ? (value.type === 'unit' ? String(value.value) : value.value) : '';
 
     // What user sees in the input
     const inputValue = localInput ?? displayText;
@@ -251,17 +248,15 @@ export function UnitInput({
         [placeholder, currentUnit, keywords, units, min, max]
     );
 
-    const draft = localInput == null
-        ? null
-        : readInput(localInput, currentUnit, keywords, units, min, max);
-    const hideUnit = draft?.hideUnit
-        ?? (value?.type === 'keyword' && !keywords.includes(value.value));
-    const isKeyword = !hideUnit
-        && value?.type === 'keyword'
-        && keywords.includes(value.value)
-        && (localInput === null || localInput === value.value);
+    const draft = localInput == null ? null : readInput(localInput, currentUnit, keywords, units, min, max);
+    const hideUnit = draft?.hideUnit ?? (value?.type === 'keyword' && !keywords.includes(value.value));
+    const isKeyword =
+        !hideUnit &&
+        value?.type === 'keyword' &&
+        keywords.includes(value.value) &&
+        (localInput === null || localInput === value.value);
     const hasChevronSuffix = !hideUnit && (isKeyword || (!value && !placeholderUnit));
-    const suffixText = (hasChevronSuffix || hideUnit) ? undefined : (value ? currentUnit : placeholderUnit);
+    const suffixText = hasChevronSuffix || hideUnit ? undefined : value ? currentUnit : placeholderUnit;
 
     // ── Handlers ───────────────────────────────────────────────────────────
 
@@ -269,31 +264,33 @@ export function UnitInput({
         setLocalInput(raw);
     }, []);
 
-    const commit = useCallback((raw: string) => {
-        if (!raw.trim()) {
-            if (value) {
-                onClear?.();
+    const commit = useCallback(
+        (raw: string) => {
+            if (!raw.trim()) {
+                if (value) {
+                    onClear?.();
+                }
+
+                setLocalInput(null);
+                draftValueRef.current = null;
+
+                return;
             }
 
-            setLocalInput(null);
+            const parsed = readInput(raw, currentUnit, keywords, units, min, max).value;
+            const next =
+                parsed?.type === 'unit' ? { ...parsed, value: roundForUnit(parsed.value, parsed.unit) } : parsed;
+
             draftValueRef.current = null;
+            setLocalInput(null);
 
-            return;
-        }
-
-        const parsed = readInput(raw, currentUnit, keywords, units, min, max).value;
-        const next = parsed?.type === 'unit'
-            ? { ...parsed, value: roundForUnit(parsed.value, parsed.unit) }
-            : parsed;
-
-        draftValueRef.current = null;
-        setLocalInput(null);
-
-        if (next) {
-            onApply?.(next);
-            onCommit?.(next);
-        }
-    }, [currentUnit, keywords, min, max, onApply, onCommit, onClear, units, value]);
+            if (next) {
+                onApply?.(next);
+                onCommit?.(next);
+            }
+        },
+        [currentUnit, keywords, min, max, onApply, onCommit, onClear, units, value]
+    );
 
     const handleSubmit = useCallback(() => {
         // Nothing to commit if user didn't type anything
@@ -337,76 +334,81 @@ export function UnitInput({
     const step = stepProp ?? stepForUnit(currentUnit);
     const shiftStep = shiftStepProp ?? shiftStepForUnit(currentUnit);
 
-    const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (isKeyword && (e.key === 'Backspace' || e.key === 'Delete')) {
+    const handleKeyDown = useCallback(
+        (e: React.KeyboardEvent<HTMLInputElement>) => {
+            if (isKeyword && (e.key === 'Backspace' || e.key === 'Delete')) {
+                e.preventDefault();
+                draftValueRef.current = null;
+                setLocalInput('');
+
+                return;
+            }
+
+            if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') {
+                return;
+            }
+
+            if (isKeyword || isPopoverOpen || e.altKey || e.ctrlKey || e.metaKey) {
+                return;
+            }
+
+            const reading =
+                localInput == null ? null : readInput(localInput, currentUnit, keywords, units, min, max).value;
+
+            if (localInput != null && reading?.type !== 'unit') {
+                return;
+            }
+
+            const base = reading?.type === 'unit' ? reading.value : runnerStartValue;
+            const delta = (e.shiftKey ? shiftStep : step) * (e.key === 'ArrowUp' ? 1 : -1);
+            const next = roundForUnit(clampNumeric(base + delta, min, max), currentUnit);
+            const nextValue = { type: 'unit', value: next, unit: currentUnit } as const;
+
             e.preventDefault();
+
+            if (next === base) {
+                return;
+            }
+
+            nudgingRef.current = true;
+            setLocalInput(String(next));
+            draftValueRef.current = nextValue;
+            onApply?.(nextValue);
+        },
+        [
+            currentUnit,
+            isKeyword,
+            isPopoverOpen,
+            keywords,
+            localInput,
+            max,
+            min,
+            onApply,
+            runnerStartValue,
+            shiftStep,
+            step,
+            units,
+        ]
+    );
+
+    const handleKeyUp = useCallback(
+        (e: React.KeyboardEvent<HTMLInputElement>) => {
+            if ((e.key !== 'ArrowUp' && e.key !== 'ArrowDown') || !nudgingRef.current) {
+                return;
+            }
+
+            nudgingRef.current = false;
+            const draft = draftValueRef.current;
+
             draftValueRef.current = null;
-            setLocalInput('');
+            setLocalInput(null);
 
-            return;
-        }
-
-        if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') {
-            return;
-        }
-
-        if (isKeyword || isPopoverOpen || e.altKey || e.ctrlKey || e.metaKey) {
-            return;
-        }
-
-        const reading = localInput == null
-            ? null
-            : readInput(localInput, currentUnit, keywords, units, min, max).value;
-
-        if (localInput != null && reading?.type !== 'unit') {
-            return;
-        }
-
-        const base = reading?.type === 'unit' ? reading.value : runnerStartValue;
-        const delta = (e.shiftKey ? shiftStep : step) * (e.key === 'ArrowUp' ? 1 : -1);
-        const next = roundForUnit(clampNumeric(base + delta, min, max), currentUnit);
-        const nextValue = { type: 'unit', value: next, unit: currentUnit } as const;
-
-        e.preventDefault();
-
-        if (next === base) {
-            return;
-        }
-
-        nudgingRef.current = true;
-        setLocalInput(String(next));
-        draftValueRef.current = nextValue;
-        onApply?.(nextValue);
-    }, [
-        currentUnit,
-        isKeyword,
-        isPopoverOpen,
-        keywords,
-        localInput,
-        max,
-        min,
-        onApply,
-        runnerStartValue,
-        shiftStep,
-        step,
-        units,
-    ]);
-
-    const handleKeyUp = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
-        if ((e.key !== 'ArrowUp' && e.key !== 'ArrowDown') || !nudgingRef.current) {
-            return;
-        }
-
-        nudgingRef.current = false;
-        const draft = draftValueRef.current;
-
-        draftValueRef.current = null;
-        setLocalInput(null);
-
-        if (draft?.type === 'unit') {
-            onCommit?.(draft);
-        }
-    }, [onCommit]);
+            if (draft?.type === 'unit') {
+                onCommit?.(draft);
+            }
+        },
+        [onCommit]
+    );
 
     useRunner(fieldRef, {
         value: runnerStartValue,
@@ -414,7 +416,7 @@ export function UnitInput({
         max,
         step,
         shiftStep,
-        onChange: (next) => {
+        onChange: next => {
             const rounded = roundForUnit(next, currentUnit);
             const nextValue = { type: 'unit', value: rounded, unit: currentUnit } as const;
 
@@ -422,7 +424,7 @@ export function UnitInput({
             draftValueRef.current = nextValue;
             onApply?.(nextValue);
         },
-        onEnd: (payload) => {
+        onEnd: payload => {
             const rounded = roundForUnit(payload.value, currentUnit);
             const nextValue = { type: 'unit', value: rounded, unit: currentUnit } as const;
 
@@ -465,81 +467,78 @@ export function UnitInput({
         }
 
         if (value.type === 'keyword') {
-            return new Set([`kw:${ value.value }`]);
+            return new Set([`kw:${value.value}`]);
         }
 
-        return new Set([`u:${ value.unit }`]);
+        return new Set([`u:${value.unit}`]);
     }, [value]);
-    const priorityEntries = useMemo(() => priorityOptions.flatMap((option) => {
-        if (units.includes(option)) {
-            return [{ id: `u:${ option }`, value: option }];
-        }
+    const priorityEntries = useMemo(
+        () =>
+            priorityOptions.flatMap(option => {
+                if (units.includes(option)) {
+                    return [{ id: `u:${option}`, value: option }];
+                }
 
-        if (keywords.includes(option)) {
-            return [{ id: `kw:${ option }`, value: option }];
-        }
+                if (keywords.includes(option)) {
+                    return [{ id: `kw:${option}`, value: option }];
+                }
 
-        return [];
-    }), [keywords, priorityOptions, units]);
-    const priorityKeys = useMemo(
-        () => new Set(priorityEntries.map(entry => entry.id)),
-        [priorityEntries]
+                return [];
+            }),
+        [keywords, priorityOptions, units]
     );
-    const remainingUnits = useMemo(
-        () => units.filter(unit => !priorityKeys.has(`u:${ unit }`)),
-        [priorityKeys, units]
-    );
+    const priorityKeys = useMemo(() => new Set(priorityEntries.map(entry => entry.id)), [priorityEntries]);
+    const remainingUnits = useMemo(() => units.filter(unit => !priorityKeys.has(`u:${unit}`)), [priorityKeys, units]);
     const remainingKeywords = useMemo(
-        () => keywords.filter(keyword => !priorityKeys.has(`kw:${ keyword }`)),
+        () => keywords.filter(keyword => !priorityKeys.has(`kw:${keyword}`)),
         [keywords, priorityKeys]
     );
 
-    const handleSelection = useCallback((keys: Selection) => {
-        if (keys === 'all') {
-            return;
-        }
-
-        const key = [...keys][0] as string;
-
-        if (!key) {
-            return;
-        }
-
-        let newValue: UnitInputValue;
-
-        if (key.startsWith('kw:')) {
-            newValue = { type: 'keyword', value: key.slice(3) };
-        }
-        else {
-            const newUnit = key.slice(2);
-            const rates = conversionRates ?? {};
-
-            let newNum: number;
-
-            if (value?.type === 'unit') {
-                // Unit → unit: convert through px using user's declared value
-                newNum = convertUnit(value.value, value.unit, newUnit, rates);
-            }
-            else if (!value && placeholderValue?.type === 'unit') {
-                // Empty own value with numeric inherited/initial placeholder: keep the visible numeric baseline.
-                newNum = convertUnit(placeholderValue.value, placeholderValue.unit, newUnit, rates);
-            }
-            else if (computedPx != null && rates[newUnit] != null && rates[newUnit] > 0) {
-                // Keyword → unit: use rendered pixel size when the caller provides one.
-                newNum = roundForUnit(computedPx / rates[newUnit], newUnit);
-            }
-            else {
-                newNum = 0;
+    const handleSelection = useCallback(
+        (keys: Selection) => {
+            if (keys === 'all') {
+                return;
             }
 
-            newValue = { type: 'unit', value: newNum, unit: newUnit };
-        }
+            const key = [...keys][0] as string;
 
-        setLocalInput(null);
-        setIsPopoverOpen(false);
-        onApply?.(newValue);
-        onCommit?.(newValue);
-    }, [value, placeholderValue, conversionRates, computedPx, onApply, onCommit]);
+            if (!key) {
+                return;
+            }
+
+            let newValue: UnitInputValue;
+
+            if (key.startsWith('kw:')) {
+                newValue = { type: 'keyword', value: key.slice(3) };
+            } else {
+                const newUnit = key.slice(2);
+                const rates = conversionRates ?? {};
+
+                let newNum: number;
+
+                if (value?.type === 'unit') {
+                    // Unit → unit: convert through px using user's declared value
+                    newNum = convertUnit(value.value, value.unit, newUnit, rates);
+                } else if (!value && placeholderValue?.type === 'unit') {
+                    // Empty own value with numeric inherited/initial placeholder: keep the visible numeric baseline.
+                    newNum = convertUnit(placeholderValue.value, placeholderValue.unit, newUnit, rates);
+                } else if (computedPx != null && rates[newUnit] != null && rates[newUnit] > 0) {
+                    // Keyword → unit: use rendered pixel size when the caller provides one.
+                    newNum = roundForUnit(computedPx / rates[newUnit], newUnit);
+                } else {
+                    newNum = 0;
+                }
+
+                newValue = { type: 'unit', value: newNum, unit: newUnit };
+            }
+
+            setLocalInput(null);
+            setIsPopoverOpen(false);
+            onApply?.(newValue);
+            onCommit?.(newValue);
+        },
+        [value, placeholderValue, conversionRates, computedPx, onApply, onCommit]
+    );
 
     const hasPicker = units.length > 0 || keywords.length > 0;
     const scrubFieldProps = {
@@ -551,136 +550,135 @@ export function UnitInput({
         onKeyUp: handleKeyUp,
     };
     const textPrefix = typeof prefix === 'string' ? prefix : undefined;
-    const prefixSlot = (prefix && typeof prefix !== 'string')
-        ? <Slot as="span" slot="prefix">{ prefix }</Slot>
-        : null;
+    const prefixSlot =
+        prefix && typeof prefix !== 'string' ? (
+            <Slot as="span" slot="prefix">
+                {prefix}
+            </Slot>
+        ) : null;
 
     if (!hasPicker) {
         return (
             <Input
-                ref={ fieldRef }
+                ref={fieldRef}
                 type="text"
-                size={ size }
-                scrubHandle={ !hideUnit }
-                isActive={ isActive }
-                aria-label={ ariaLabel }
-                autoSelect={ autoSelect }
-                className={ isKeyword ? styles.keywordMode : undefined }
-                inputRef={ inputRef }
-                htmlSize={ htmlSize }
-                value={ inputValue }
-                placeholder={ placeholder }
-                prefix={ textPrefix }
-                suffix={ suffixText }
-                onChange={ handleChange }
-                onSubmit={ handleSubmit }
-                onBlur={ handleBlur }
-                onKeyDown={ handleKeyDown }
-                { ...scrubFieldProps }
+                size={size}
+                scrubHandle={!hideUnit}
+                isActive={isActive}
+                aria-label={ariaLabel}
+                autoSelect={autoSelect}
+                className={isKeyword ? styles.keywordMode : undefined}
+                inputRef={inputRef}
+                htmlSize={htmlSize}
+                value={inputValue}
+                placeholder={placeholder}
+                prefix={textPrefix}
+                suffix={suffixText}
+                onChange={handleChange}
+                onSubmit={handleSubmit}
+                onBlur={handleBlur}
+                onKeyDown={handleKeyDown}
+                {...scrubFieldProps}
             >
-                { prefixSlot }
+                {prefixSlot}
             </Input>
         );
     }
 
     return (
         <Input
-            ref={ fieldRef }
+            ref={fieldRef}
             type="text"
-            size={ size }
-            scrubHandle={ !hideUnit }
-            isActive={ isActive }
-            aria-label={ ariaLabel }
-            autoSelect={ autoSelect }
-            className={ cn(styles.unitInput, isKeyword && styles.keywordMode) }
-            inputRef={ inputRef }
-            htmlSize={ htmlSize }
-            value={ inputValue }
-            placeholder={ placeholder }
-            prefix={ textPrefix }
-            onChange={ handleChange }
-            onSubmit={ handleSubmit }
-            onBlur={ handleBlur }
-            onKeyDown={ handleKeyDown }
-            { ...scrubFieldProps }
+            size={size}
+            scrubHandle={!hideUnit}
+            isActive={isActive}
+            aria-label={ariaLabel}
+            autoSelect={autoSelect}
+            className={cn(styles.unitInput, isKeyword && styles.keywordMode)}
+            inputRef={inputRef}
+            htmlSize={htmlSize}
+            value={inputValue}
+            placeholder={placeholder}
+            prefix={textPrefix}
+            onChange={handleChange}
+            onSubmit={handleSubmit}
+            onBlur={handleBlur}
+            onKeyDown={handleKeyDown}
+            {...scrubFieldProps}
         >
-            { prefixSlot }
-            { !hideUnit
-                ? (
-                    <Slot
-                        as="div"
-                        slot="suffix"
-                        data-unit-chevron-slot={ hasChevronSuffix || undefined }
-                        data-open={ isPopoverOpen || undefined }
-                    >
-                        <PopoverTrigger isOpen={ isPopoverOpen } onOpenChange={ setIsPopoverOpen }>
-                            <Button
-                                variant="filling"
-                                size="xs"
-                                className={ styles.unitButton }
-                                contentClassName={ hasChevronSuffix ? styles.unitButtonContent : undefined }
-                                data-chevron-suffix={ hasChevronSuffix || undefined }
-                                data-open={ isPopoverOpen || undefined }
-                                aria-label="Change unit"
-                                aria-expanded={ isPopoverOpen }
-                            >
-                                { hasChevronSuffix
-                                    ? <ChevronDown className={ styles.unitChevron } aria-hidden />
-                                    : suffixText }
-                            </Button>
+            {prefixSlot}
+            {!hideUnit ? (
+                <Slot
+                    as="div"
+                    slot="suffix"
+                    data-unit-chevron-slot={hasChevronSuffix || undefined}
+                    data-open={isPopoverOpen || undefined}
+                >
+                    <PopoverTrigger isOpen={isPopoverOpen} onOpenChange={setIsPopoverOpen}>
+                        <Button
+                            variant="filling"
+                            size="xs"
+                            className={styles.unitButton}
+                            contentClassName={hasChevronSuffix ? styles.unitButtonContent : undefined}
+                            data-chevron-suffix={hasChevronSuffix || undefined}
+                            data-open={isPopoverOpen || undefined}
+                            aria-label="Change unit"
+                            aria-expanded={isPopoverOpen}
+                        >
+                            {hasChevronSuffix ? <ChevronDown className={styles.unitChevron} aria-hidden /> : suffixText}
+                        </Button>
 
-                            <Popover placement="bottom end" spacing="xs" className={ cn(styles.popover, popoverClassName) }>
-                                <PopoverScroll maxHeight={ 240 }>
-                                    <ListBox
-                                        selectionMode="single"
-                                        selectedKeys={ selectedKeys }
-                                        onSelectionChange={ handleSelection }
-                                        aria-label="Units and keywords"
-                                    >
-                                        <Show when={ priorityEntries.length > 0 }>
-                                            <ListBoxSection>
-                                                <For each={ priorityEntries }>
-                                                    { option => (
-                                                        <ListBoxItem
-                                                            key={ option.id }
-                                                            id={ option.id }
-                                                            textValue={ option.value }
-                                                        >
-                                                            { option.value }
-                                                        </ListBoxItem>
-                                                    ) }
-                                                </For>
-                                            </ListBoxSection>
-                                        </Show>
-                                        <Show when={ remainingUnits.length > 0 }>
-                                            <ListBoxSection>
-                                                <For each={ remainingUnits }>
-                                                    { u => (
-                                                        <ListBoxItem key={ `u:${ u }` } id={ `u:${ u }` } textValue={ u }>
-                                                            { u }
-                                                        </ListBoxItem>
-                                                    ) }
-                                                </For>
-                                            </ListBoxSection>
-                                        </Show>
-                                        <Show when={ remainingKeywords.length > 0 }>
-                                            <ListBoxSection>
-                                                <For each={ remainingKeywords }>
-                                                    { kw => (
-                                                        <ListBoxItem key={ `kw:${ kw }` } id={ `kw:${ kw }` } textValue={ kw }>
-                                                            { kw }
-                                                        </ListBoxItem>
-                                                    ) }
-                                                </For>
-                                            </ListBoxSection>
-                                        </Show>
-                                    </ListBox>
-                                </PopoverScroll>
-                            </Popover>
-                        </PopoverTrigger>
-                    </Slot>
-                )
-                : null }
+                        <Popover placement="bottom end" spacing="xs" className={cn(styles.popover, popoverClassName)}>
+                            <PopoverScroll maxHeight={240}>
+                                <ListBox
+                                    selectionMode="single"
+                                    selectedKeys={selectedKeys}
+                                    onSelectionChange={handleSelection}
+                                    aria-label="Units and keywords"
+                                >
+                                    <Show when={priorityEntries.length > 0}>
+                                        <ListBoxSection>
+                                            <For each={priorityEntries}>
+                                                {option => (
+                                                    <ListBoxItem
+                                                        key={option.id}
+                                                        id={option.id}
+                                                        textValue={option.value}
+                                                    >
+                                                        {option.value}
+                                                    </ListBoxItem>
+                                                )}
+                                            </For>
+                                        </ListBoxSection>
+                                    </Show>
+                                    <Show when={remainingUnits.length > 0}>
+                                        <ListBoxSection>
+                                            <For each={remainingUnits}>
+                                                {u => (
+                                                    <ListBoxItem key={`u:${u}`} id={`u:${u}`} textValue={u}>
+                                                        {u}
+                                                    </ListBoxItem>
+                                                )}
+                                            </For>
+                                        </ListBoxSection>
+                                    </Show>
+                                    <Show when={remainingKeywords.length > 0}>
+                                        <ListBoxSection>
+                                            <For each={remainingKeywords}>
+                                                {kw => (
+                                                    <ListBoxItem key={`kw:${kw}`} id={`kw:${kw}`} textValue={kw}>
+                                                        {kw}
+                                                    </ListBoxItem>
+                                                )}
+                                            </For>
+                                        </ListBoxSection>
+                                    </Show>
+                                </ListBox>
+                            </PopoverScroll>
+                        </Popover>
+                    </PopoverTrigger>
+                </Slot>
+            ) : null}
         </Input>
     );
 }

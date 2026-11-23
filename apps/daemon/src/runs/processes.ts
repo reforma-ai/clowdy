@@ -10,8 +10,7 @@ export function isAlive(pid: number): boolean {
         process.kill(pid, 0);
 
         return true;
-    }
-    catch (error) {
+    } catch (error) {
         // EPERM: the process exists but belongs to someone else.
         return (error as NodeJS.ErrnoException).code === 'EPERM';
     }
@@ -27,7 +26,9 @@ export function startTimeOf(pid: number): number | undefined {
     }
 
     // Elapsed time rather than the start date: the date is printed in local time, which moves with the zone and daylight saving.
-    const text = Bun.spawnSync(['ps', '-o', 'etime=', '-p', String(pid)], { stdout: 'pipe', stderr: 'ignore' }).stdout.toString().trim();
+    const text = Bun.spawnSync(['ps', '-o', 'etime=', '-p', String(pid)], { stdout: 'pipe', stderr: 'ignore' })
+        .stdout.toString()
+        .trim();
     const match = /^(?:(?:(\d+)-)?(\d+):)?(\d+):(\d+)$/.exec(text);
 
     if (!match) {
@@ -53,7 +54,9 @@ export function isSameProcess(ref: RunProcess): boolean {
     const started = startTimeOf(ref.pid);
 
     // Without a start time on either side nothing tells a reused pid apart, so leave it alone.
-    return started !== undefined && ref.startedAt !== undefined && Math.abs(started - ref.startedAt) <= START_TOLERANCE_MS;
+    return (
+        started !== undefined && ref.startedAt !== undefined && Math.abs(started - ref.startedAt) <= START_TOLERANCE_MS
+    );
 }
 
 /** Signals the process group of a run's engine (the whole tree), or the process alone when it has no group of its own. */
@@ -69,8 +72,7 @@ export function signalProcess(ref: RunProcess, signal: 'SIGTERM' | 'SIGKILL'): v
             process.kill(target, signal);
 
             return;
-        }
-        catch {
+        } catch {
             // The group is gone; try the process alone, then give up.
         }
     }
@@ -88,7 +90,7 @@ export async function killSurvivor(ref: RunProcess, graceMs: number): Promise<bo
     signalProcess(ref, 'SIGTERM');
     signalBelow(below, ref.pgid ?? ref.pid, 'SIGTERM');
 
-    for (const deadline = Date.now() + graceMs; Date.now() < deadline && isAlive(ref.pid);) {
+    for (const deadline = Date.now() + graceMs; Date.now() < deadline && isAlive(ref.pid); ) {
         await Bun.sleep(50);
     }
 

@@ -5,8 +5,8 @@ import { Select } from '@clowdy/components/Select';
 import { Text } from '@clowdy/components/Text';
 import { Collapse, EyeOff } from '@clowdy/icons/14';
 
-import { scopeOptions } from './changeScopes';
 import styles from './ChangesToolbar.module.css';
+import { scopeOptions } from './changeScopes';
 import { summaryOf } from './summary';
 import { VIEWED_TEXT } from './viewedMarks';
 
@@ -28,15 +28,31 @@ function Summary({ model }: { model: PlaceChanges }) {
     const refused = model.viewed.error;
 
     return (
-        <div className={ styles.summary } role="status" aria-label="Summary of the changes">
-            <span className={ styles.totals } title={ summary.incomplete ? 'Some files weren\'t counted' : undefined }>
-                <Text variant="xs" color="secondary">{ `${ summary.files },` }</Text>
-                <Text variant="xs" color="success">{ summary.additions }</Text>
-                <Text variant="xs" color="danger">{ summary.deletions }</Text>
+        <div className={styles.summary} role="status" aria-label="Summary of the changes">
+            <span className={styles.totals} title={summary.incomplete ? "Some files weren't counted" : undefined}>
+                <Text variant="xs" color="secondary">{`${summary.files},`}</Text>
+                <Text variant="xs" color="success">
+                    {summary.additions}
+                </Text>
+                <Text variant="xs" color="danger">
+                    {summary.deletions}
+                </Text>
             </span>
-            { summary.viewed && <Text variant="xs" color="secondary" className={ styles.viewedCount }>{ summary.viewed }</Text> }
-            { summary.notes.map(note => <Text key={ note } variant="xs" color="secondary" truncate className={ styles.note }>{ note }</Text>) }
-            { refused !== undefined && <Text variant="xs" color="secondary" truncate className={ styles.note } title={ refused }>{ VIEWED_TEXT.notSaved }</Text> }
+            {summary.viewed && (
+                <Text variant="xs" color="secondary" className={styles.viewedCount}>
+                    {summary.viewed}
+                </Text>
+            )}
+            {summary.notes.map(note => (
+                <Text key={note} variant="xs" color="secondary" truncate className={styles.note}>
+                    {note}
+                </Text>
+            ))}
+            {refused !== undefined && (
+                <Text variant="xs" color="secondary" truncate className={styles.note} title={refused}>
+                    {VIEWED_TEXT.notSaved}
+                </Text>
+            )}
         </div>
     );
 }
@@ -58,47 +74,59 @@ export function ChangesToolbar({ model, end }: { model: PlaceChanges; end?: Reac
                     size="sm"
                     variant="transparent"
                     valueDisplay="text"
-                    className={ styles.scope }
-                    triggerClassName={ styles.scopeTrigger }
-                    popoverClassName={ styles.scopeList }
-                    items={ options }
-                    selectedKey={ model.effectiveScope }
-                    onSelectionChange={ (key: unknown) => typeof key === 'string' && model.setScope(key as GitScope) }
+                    className={styles.scope}
+                    triggerClassName={styles.scopeTrigger}
+                    popoverClassName={styles.scopeList}
+                    items={options}
+                    selectedKey={model.effectiveScope}
+                    onSelectionChange={(key: unknown) => typeof key === 'string' && model.setScope(key as GitScope)}
                 >
-                    { item => <ListBoxItem id={ item.id } text={ item.label } /> }
+                    {item => <ListBoxItem id={item.id} text={item.label} />}
                 </Select>
                 <PanelHeader.Actions>
-                    <PanelHeader.Button aria-label="Collapse all files" tooltip="Collapse all" tooltipPlacement="bottom" isDisabled={ !hasFiles || model.allFolded } onPress={ () => model.foldAll() }>
+                    <PanelHeader.Button
+                        aria-label="Collapse all files"
+                        tooltip="Collapse all"
+                        tooltipPlacement="bottom"
+                        isDisabled={!hasFiles || model.allFolded}
+                        onPress={() => model.foldAll()}
+                    >
                         <Collapse />
                     </PanelHeader.Button>
-                    <PanelHeader.Button aria-label="Expand all files" tooltip="Expand all" tooltipPlacement="bottom" isDisabled={ !hasFiles || model.noneFolded } onPress={ () => model.unfoldAll() }>
-                        <Collapse className={ styles.flipped } />
+                    <PanelHeader.Button
+                        aria-label="Expand all files"
+                        tooltip="Expand all"
+                        tooltipPlacement="bottom"
+                        isDisabled={!hasFiles || model.noneFolded}
+                        onPress={() => model.unfoldAll()}
+                    >
+                        <Collapse className={styles.flipped} />
                     </PanelHeader.Button>
                     <PanelHeader.Button
                         aria-label="Hide viewed"
                         tooltip="Hide viewed"
                         tooltipPlacement="bottom"
-                        isPressed={ model.hideViewed }
-                        isDisabled={ !model.hideViewed && model.viewedCount === 0 }
-                        onPress={ () => model.setHideViewed(!model.hideViewed) }
+                        isPressed={model.hideViewed}
+                        isDisabled={!model.hideViewed && model.viewedCount === 0}
+                        onPress={() => model.setHideViewed(!model.hideViewed)}
                     >
                         <EyeOff />
                     </PanelHeader.Button>
-                    { end }
+                    {end}
                 </PanelHeader.Actions>
             </PanelHeader>
-            <div className={ styles.filter }>
+            <div className={styles.filter}>
                 <SearchInput
                     size="sm"
                     variant="filled"
-                    className={ styles.input }
-                    placeholder={ FILTER_PLACEHOLDER }
+                    className={styles.input}
+                    placeholder={FILTER_PLACEHOLDER}
                     aria-label="Filter files"
-                    value={ model.filter }
-                    onChange={ (value: string) => model.setFilter(value) }
+                    value={model.filter}
+                    onChange={(value: string) => model.setFilter(value)}
                 />
             </div>
-            <Summary model={ model } />
+            <Summary model={model} />
         </>
     );
 }

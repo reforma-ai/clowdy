@@ -13,10 +13,10 @@ export function pinCssLayerOrder(css: string): string {
     const charset = css.match(/^(\s*@charset\s+[^;]+;\s*)/i);
 
     if (charset) {
-        return `${ charset[1] }${ CSS_LAYER_ORDER }\n${ css.slice(charset[0].length) }`;
+        return `${charset[1]}${CSS_LAYER_ORDER}\n${css.slice(charset[0].length)}`;
     }
 
-    return `${ CSS_LAYER_ORDER }\n${ css }`;
+    return `${CSS_LAYER_ORDER}\n${css}`;
 }
 
 /** Vite prod CSS order is not import order (https://github.com/vitejs/vite/discussions/23087). `cssCodeSplit: false` still emits `@layer components` first. */

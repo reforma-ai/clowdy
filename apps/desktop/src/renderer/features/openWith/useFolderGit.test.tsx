@@ -3,20 +3,22 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { RootStoreProvider, type RootStore } from '../../stores';
+import { type RootStore, RootStoreProvider } from '../../stores';
 import { useFolderGit } from './useFolderGit';
 
 import type { ProjectInfo } from '@clowdy/protocol';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const info = (folders: Record<string, string>): ProjectInfo[] => [{
-    projectId: 'p-1',
-    folders: Object.entries(folders).map(([folderId, branch]) => ({ folderId, exists: true, branch, chats: 0 })),
-    chats: 0,
-    tasks: 0,
-    activeRuns: 0,
-}];
+const info = (folders: Record<string, string>): ProjectInfo[] => [
+    {
+        projectId: 'p-1',
+        folders: Object.entries(folders).map(([folderId, branch]) => ({ folderId, exists: true, branch, chats: 0 })),
+        chats: 0,
+        tasks: 0,
+        activeRuns: 0,
+    },
+];
 
 /** The reads the hook has made, each one answered when the test says so. */
 function transport() {
@@ -29,8 +31,15 @@ function transport() {
 let container: HTMLDivElement;
 let root: Root;
 
-const Branch = ({ folderId }: { folderId: string }) => <span>{ useFolderGit('p-1', folderId)?.branch ?? 'none' }</span>;
-const draw = (store: RootStore, folderId: string) => act(() => root.render(<RootStoreProvider value={ store }><Branch folderId={ folderId } /></RootStoreProvider>));
+const Branch = ({ folderId }: { folderId: string }) => <span>{useFolderGit('p-1', folderId)?.branch ?? 'none'}</span>;
+const draw = (store: RootStore, folderId: string) =>
+    act(() =>
+        root.render(
+            <RootStoreProvider value={store}>
+                <Branch folderId={folderId} />
+            </RootStoreProvider>
+        )
+    );
 const shown = () => container.textContent;
 
 beforeEach(() => {
@@ -94,11 +103,22 @@ describe('useFolderGit', () => {
     });
 
     describe('for the worktree of a chat', () => {
-        const worktreeInfo = (workspaces: ProjectInfo['workspaces']): ProjectInfo[] => [{ ...info({ 'f-a': 'main' })[0]!, workspaces }];
-        const Head = ({ workspace }: { workspace: { id: string; branch?: string; ready: boolean } }) => <span>{ useFolderGit('p-1', 'f-a', workspace)?.branch ?? 'none' }</span>;
-        const drawHead = (store: RootStore, workspace: { id: string; branch?: string; ready: boolean }) => act(() => root.render(<RootStoreProvider value={ store }><Head workspace={ workspace } /></RootStoreProvider>));
+        const worktreeInfo = (workspaces: ProjectInfo['workspaces']): ProjectInfo[] => [
+            { ...info({ 'f-a': 'main' })[0]!, workspaces },
+        ];
+        const Head = ({ workspace }: { workspace: { id: string; branch?: string; ready: boolean } }) => (
+            <span>{useFolderGit('p-1', 'f-a', workspace)?.branch ?? 'none'}</span>
+        );
+        const drawHead = (store: RootStore, workspace: { id: string; branch?: string; ready: boolean }) =>
+            act(() =>
+                root.render(
+                    <RootStoreProvider value={store}>
+                        <Head workspace={workspace} />
+                    </RootStoreProvider>
+                )
+            );
 
-        it('answers the branch the worktree has now, read like the folder\'s, and again when the window gets focus', async () => {
+        it("answers the branch the worktree has now, read like the folder's, and again when the window gets focus", async () => {
             const daemon = transport();
             const store = { transport: daemon } as unknown as RootStore;
 
@@ -147,7 +167,13 @@ describe('useFolderGit', () => {
     });
 
     it('keeps what it knew when a read fails, and shows nothing for a folder the answer does not have', async () => {
-        const daemon = { getProjectsInfo: vi.fn().mockResolvedValueOnce(info({ 'f-a': 'main' })).mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce(info({})) };
+        const daemon = {
+            getProjectsInfo: vi
+                .fn()
+                .mockResolvedValueOnce(info({ 'f-a': 'main' }))
+                .mockRejectedValueOnce(new Error('offline'))
+                .mockResolvedValueOnce(info({})),
+        };
         const store = { transport: daemon } as unknown as RootStore;
 
         draw(store, 'f-a');

@@ -44,7 +44,7 @@ describe('the clipboard of a folder', () => {
         expect(host.writeClipboardFiles).toHaveBeenCalledWith(['/Users/dev/web/src/a.ts', '/Users/dev/web/docs']);
     });
 
-    test('says which of the files on the clipboard are the folder\'s own', async () => {
+    test("says which of the files on the clipboard are the folder's own", async () => {
         const entries = await systemFileClipboard(bridge(), '/Users/dev/web').read();
 
         expect(entries).toEqual([
@@ -61,7 +61,10 @@ describe('the clipboard of a folder', () => {
         await clipboard.paste('src', items);
         await clipboard.paste('', items);
 
-        expect(host.pasteClipboardFiles.mock.calls).toEqual([['C:\\Users\\dev\\web\\src', items], ['C:\\Users\\dev\\web', items]]);
+        expect(host.pasteClipboardFiles.mock.calls).toEqual([
+            ['C:\\Users\\dev\\web\\src', items],
+            ['C:\\Users\\dev\\web', items],
+        ]);
     });
 });
 
@@ -70,10 +73,16 @@ describe('a refused paste', () => {
         const host = {
             readClipboardFiles: vi.fn<DesktopBridge['readClipboardFiles']>(async () => []),
             writeClipboardFiles: vi.fn<DesktopBridge['writeClipboardFiles']>(async () => undefined),
-            pasteClipboardFiles: vi.fn<DesktopBridge['pasteClipboardFiles']>(async () => Promise.reject(new Error('Error invoking remote method \'desktop:paste-files\': Error: My notes already exists'))),
+            pasteClipboardFiles: vi.fn<DesktopBridge['pasteClipboardFiles']>(async () =>
+                Promise.reject(
+                    new Error("Error invoking remote method 'desktop:paste-files': Error: My notes already exists")
+                )
+            ),
         };
 
-        await expect(systemFileClipboard(host, '/Users/dev/web').paste('', [{ path: '/Users/dev/My notes', name: 'My notes' }])).rejects.toThrow(/^My notes already exists$/);
+        await expect(
+            systemFileClipboard(host, '/Users/dev/web').paste('', [{ path: '/Users/dev/My notes', name: 'My notes' }])
+        ).rejects.toThrow(/^My notes already exists$/);
     });
 });
 
@@ -82,14 +91,19 @@ describe('the clipboard of a page', () => {
         delete window.desktop;
     });
 
-    test('is the desktop app\'s when it has the bridge for it, and none in a browser, in an older shell or for a folder with no path', () => {
+    test("is the desktop app's when it has the bridge for it, and none in a browser, in an older shell or for a folder with no path", () => {
         expect(clipboardOf('/Users/dev/web')).toBeUndefined();
 
         window.desktop = { platform: 'darwin' } as DesktopBridge;
 
         expect(clipboardOf('/Users/dev/web')).toBeUndefined();
 
-        window.desktop = { platform: 'darwin', readClipboardFiles: async () => [], writeClipboardFiles: async () => undefined, pasteClipboardFiles: async () => undefined } as unknown as DesktopBridge;
+        window.desktop = {
+            platform: 'darwin',
+            readClipboardFiles: async () => [],
+            writeClipboardFiles: async () => undefined,
+            pasteClipboardFiles: async () => undefined,
+        } as unknown as DesktopBridge;
 
         expect(clipboardOf('/Users/dev/web')).toBeDefined();
         expect(clipboardOf(undefined)).toBeUndefined();

@@ -189,7 +189,7 @@ describe('TextSearch scan', () => {
                         {
                             line: 1,
                             column: 10,
-                            preview: 'import { useState } from \'react\';',
+                            preview: "import { useState } from 'react';",
                             ranges: [{ start: 9, end: 17 }],
                         },
                         {

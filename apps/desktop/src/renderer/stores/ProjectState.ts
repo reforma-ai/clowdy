@@ -32,8 +32,8 @@ export const UNRESOLVED_KEYS_LIMIT = 500;
 /** The most keys `ProjectState.taskOfKey` reads from the daemon at once: a long chat full of keys must not flood the daemon or hold up the window's own requests, so the rest wait their turn. */
 export const KEY_READS_AT_ONCE = 4;
 
-const chatLinkKey = (link: ChatTaskLink) => `${ link.chatId }:${ link.taskId }`;
-const runLinkKey = (link: RunTaskLink) => `${ link.runId }:${ link.taskId }:${ link.relation }`;
+const chatLinkKey = (link: ChatTaskLink) => `${link.chatId}:${link.taskId}`;
+const runLinkKey = (link: RunTaskLink) => `${link.runId}:${link.taskId}:${link.relation}`;
 
 function group<K, V>(items: Iterable<V>, keyOf: (item: V) => K): Map<K, V[]> {
     const groups = new Map<K, V[]>();
@@ -41,7 +41,7 @@ function group<K, V>(items: Iterable<V>, keyOf: (item: V) => K): Map<K, V[]> {
     for (const item of items) {
         const key = keyOf(item);
 
-        groups.set(key, [...groups.get(key) ?? [], item]);
+        groups.set(key, [...(groups.get(key) ?? []), item]);
     }
 
     return groups;
@@ -104,7 +104,10 @@ export class ProjectState {
     /** The keys the daemon was asked about and gave nothing to show (no such task, a read that failed, a task that is not archived), so they are not asked again until a snapshot is taken in. Plain, bounded. */
     readonly #unresolvedKeys = new Set<string>();
 
-    constructor(private readonly transport: Transport, project: Project) {
+    constructor(
+        private readonly transport: Transport,
+        project: Project
+    ) {
         this.id = project.id;
         this.project = project;
         makeAutoObservable<ProjectState, 'transport'>(this, {
@@ -137,8 +140,7 @@ export class ProjectState {
             if (loadId === this.#loadId) this.applySnapshot(snapshot);
 
             return true;
-        }
-        catch (error) {
+        } catch (error) {
             if (loadId === this.#loadId) {
                 runInAction(() => {
                     if (this.status !== 'ready') this.status = 'failed';
@@ -208,7 +210,8 @@ export class ProjectState {
                 this.chats.delete(data.chatId);
                 gone.forEach(runId => this.runs.delete(runId));
 
-                for (const [key, link] of this.chatTaskLinks) if (link.chatId === data.chatId) this.chatTaskLinks.delete(key);
+                for (const [key, link] of this.chatTaskLinks)
+                    if (link.chatId === data.chatId) this.chatTaskLinks.delete(key);
 
                 for (const [key, link] of this.runTaskLinks) if (gone.has(link.runId)) this.runTaskLinks.delete(key);
 
@@ -219,11 +222,11 @@ export class ProjectState {
                 // Its chat and run links stay (a restore sends no link events); the derived lists ignore the links of a task the map does not hold.
                 if (data.task.archivedAt === undefined) {
                     // Back on the board, or new: either way the archive may have lost it.
-                    if (this.archivedKnown.delete(data.task.id) || !this.tasks.has(data.task.id)) this.archiveRevision++;
+                    if (this.archivedKnown.delete(data.task.id) || !this.tasks.has(data.task.id))
+                        this.archiveRevision++;
 
                     this.tasks.set(data.task.id, data.task);
-                }
-                else {
+                } else {
                     this.tasks.delete(data.task.id);
                     this.rememberArchived([data.task]);
                     this.archiveRevision++;
@@ -298,7 +301,9 @@ export class ProjectState {
 
     /** The threads of each chat (`Chat.parentChatId`), archived ones too, in the order they were made. A chat with none has no entry. */
     get threadsByParent(): Map<ChatId, Chat[]> {
-        const threads = [...this.chats.values()].filter(chat => chat.parentChatId !== undefined).sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
+        const threads = [...this.chats.values()]
+            .filter(chat => chat.parentChatId !== undefined)
+            .sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
 
         return group(threads, chat => chat.parentChatId!);
     }
@@ -364,7 +369,12 @@ export class ProjectState {
 
         if (held) return held;
 
-        if (this.#mayBeKey(key) && !this.#readingKeys.has(key) && !this.#waitingKeys.has(key) && !this.#unresolvedKeys.has(key)) {
+        if (
+            this.#mayBeKey(key) &&
+            !this.#readingKeys.has(key) &&
+            !this.#waitingKeys.has(key) &&
+            !this.#unresolvedKeys.has(key)
+        ) {
             this.#waitingKeys.add(key);
             this.#startKeyReads();
         }
@@ -398,7 +408,11 @@ export class ProjectState {
         const dash = key.lastIndexOf('-');
 
         // Task numbers start at 1 and have no leading zero.
-        return dash > 0 && /^[1-9]\d*$/.test(key.slice(dash + 1)) && key.slice(0, dash).toUpperCase() === this.project.taskPrefix.toUpperCase();
+        return (
+            dash > 0 &&
+            /^[1-9]\d*$/.test(key.slice(dash + 1)) &&
+            key.slice(0, dash).toUpperCase() === this.project.taskPrefix.toUpperCase()
+        );
     }
 
     /**
@@ -413,8 +427,7 @@ export class ProjectState {
             const { task } = await this.transport.getTaskDetailByKey(this.id, key);
 
             if (task.projectId === this.id) this.rememberArchived([task]);
-        }
-        catch {
+        } catch {
             // No such task, or a daemon out of reach: both are settled below, and a key that is not a task stays text.
         }
 
@@ -433,7 +446,8 @@ export class ProjectState {
         this.#unresolvedKeys.delete(key);
         this.#unresolvedKeys.add(key);
 
-        if (this.#unresolvedKeys.size > UNRESOLVED_KEYS_LIMIT) this.#unresolvedKeys.delete(this.#unresolvedKeys.values().next().value as string);
+        if (this.#unresolvedKeys.size > UNRESOLVED_KEYS_LIMIT)
+            this.#unresolvedKeys.delete(this.#unresolvedKeys.values().next().value as string);
     }
 
     /**
@@ -465,8 +479,7 @@ export class ProjectState {
             this.rememberArchived([task]);
 
             return task;
-        }
-        catch (error) {
+        } catch (error) {
             if (error instanceof TransportError && error.status === 404) return undefined;
 
             throw error;
@@ -494,19 +507,39 @@ export class ProjectState {
     // The links of a task the map does not hold (an archived one, whose links the daemon keeps) are ignored by the four lists below and by `linksOfRun`.
 
     get runsByTask(): Map<TaskId, Run[]> {
-        return this.#join(this.runTaskLinks.values(), link => link.taskId, link => (this.tasks.has(link.taskId) ? this.runs.get(link.runId) : undefined), byCreatedAt);
+        return this.#join(
+            this.runTaskLinks.values(),
+            link => link.taskId,
+            link => (this.tasks.has(link.taskId) ? this.runs.get(link.runId) : undefined),
+            byCreatedAt
+        );
     }
 
     get tasksByRun(): Map<RunId, Task[]> {
-        return this.#join(this.runTaskLinks.values(), link => link.runId, link => this.tasks.get(link.taskId), byNumber);
+        return this.#join(
+            this.runTaskLinks.values(),
+            link => link.runId,
+            link => this.tasks.get(link.taskId),
+            byNumber
+        );
     }
 
     get tasksByChat(): Map<ChatId, Task[]> {
-        return this.#join(this.chatTaskLinks.values(), link => link.chatId, link => this.tasks.get(link.taskId), byNumber);
+        return this.#join(
+            this.chatTaskLinks.values(),
+            link => link.chatId,
+            link => this.tasks.get(link.taskId),
+            byNumber
+        );
     }
 
     get chatsByTask(): Map<TaskId, Chat[]> {
-        return this.#join(this.chatTaskLinks.values(), link => link.taskId, link => (this.tasks.has(link.taskId) ? this.chats.get(link.chatId) : undefined), (a, b) => b.updatedAt - a.updatedAt);
+        return this.#join(
+            this.chatTaskLinks.values(),
+            link => link.taskId,
+            link => (this.tasks.has(link.taskId) ? this.chats.get(link.chatId) : undefined),
+            (a, b) => b.updatedAt - a.updatedAt
+        );
     }
 
     /** Runs linked to the task, whatever the relation (`assigned` or `created`), by when they were made. */
@@ -531,7 +564,12 @@ export class ProjectState {
         return [...this.runTaskLinks.values()].filter(link => link.runId === runId && this.tasks.has(link.taskId));
     }
 
-    #join<L, T>(links: Iterable<L>, keyOf: (link: L) => string, target: (link: L) => T | undefined, order: (a: T, b: T) => number): Map<string, T[]> {
+    #join<L, T>(
+        links: Iterable<L>,
+        keyOf: (link: L) => string,
+        target: (link: L) => T | undefined,
+        order: (a: T, b: T) => number
+    ): Map<string, T[]> {
         const joined = new Map<string, T[]>();
 
         for (const link of links) {

@@ -23,17 +23,21 @@ describe('the pinned archives', () => {
         expect(new Set(archives.map(({ sha256 }) => sha256)).size).toBe(TARGETS.length);
     });
 
-    test('are the release builds of the pinned version for the target\'s own platform and architecture', () => {
-        expect(RG_ARCHIVES['darwin-arm64'].file).toBe(`ripgrep-${ RG_VERSION }-aarch64-apple-darwin.tar.gz`);
-        expect(RG_ARCHIVES['darwin-x64'].file).toBe(`ripgrep-${ RG_VERSION }-x86_64-apple-darwin.tar.gz`);
+    test("are the release builds of the pinned version for the target's own platform and architecture", () => {
+        expect(RG_ARCHIVES['darwin-arm64'].file).toBe(`ripgrep-${RG_VERSION}-aarch64-apple-darwin.tar.gz`);
+        expect(RG_ARCHIVES['darwin-x64'].file).toBe(`ripgrep-${RG_VERSION}-x86_64-apple-darwin.tar.gz`);
         // The MSVC builds carry their C runtime, so they run without a redistributable; the GNU ones need MinGW's DLLs.
-        expect(RG_ARCHIVES['win32-x64'].file).toBe(`ripgrep-${ RG_VERSION }-x86_64-pc-windows-msvc.zip`);
-        expect(RG_ARCHIVES['win32-arm64'].file).toBe(`ripgrep-${ RG_VERSION }-aarch64-pc-windows-msvc.zip`);
+        expect(RG_ARCHIVES['win32-x64'].file).toBe(`ripgrep-${RG_VERSION}-x86_64-pc-windows-msvc.zip`);
+        expect(RG_ARCHIVES['win32-arm64'].file).toBe(`ripgrep-${RG_VERSION}-aarch64-pc-windows-msvc.zip`);
     });
 
     test('are downloaded from the release of the pinned version', () => {
-        expect(rgUrl('darwin-arm64')).toBe(`https://github.com/BurntSushi/ripgrep/releases/download/${ RG_VERSION }/ripgrep-${ RG_VERSION }-aarch64-apple-darwin.tar.gz`);
-        expect(rgUrl('win32-x64')).toBe(`https://github.com/BurntSushi/ripgrep/releases/download/${ RG_VERSION }/ripgrep-${ RG_VERSION }-x86_64-pc-windows-msvc.zip`);
+        expect(rgUrl('darwin-arm64')).toBe(
+            `https://github.com/BurntSushi/ripgrep/releases/download/${RG_VERSION}/ripgrep-${RG_VERSION}-aarch64-apple-darwin.tar.gz`
+        );
+        expect(rgUrl('win32-x64')).toBe(
+            `https://github.com/BurntSushi/ripgrep/releases/download/${RG_VERSION}/ripgrep-${RG_VERSION}-x86_64-pc-windows-msvc.zip`
+        );
     });
 });
 
@@ -58,7 +62,7 @@ describe('laying ripgrep out', () => {
 
     /** What an archive holds: a folder named after it with the executable, the licences, and what the app leaves behind. */
     const unpack = async (exe: string) => {
-        const folder = path.join(unpacked, `ripgrep-${ RG_VERSION }-some-target`);
+        const folder = path.join(unpacked, `ripgrep-${RG_VERSION}-some-target`);
 
         await mkdir(path.join(folder, 'doc'), { recursive: true });
         await mkdir(path.join(folder, 'complete'), { recursive: true });
@@ -75,10 +79,12 @@ describe('laying ripgrep out', () => {
         await unpack('rg');
         await layoutRipgrep(unpacked, out, 'darwin-arm64');
 
-        expect((await readdir(out)).sort()).toEqual(['RG_VERSION', 'ripgrep-COPYING', 'ripgrep-LICENSE-MIT', 'ripgrep-UNLICENSE', 'rg'].sort());
+        expect((await readdir(out)).sort()).toEqual(
+            ['RG_VERSION', 'ripgrep-COPYING', 'ripgrep-LICENSE-MIT', 'ripgrep-UNLICENSE', 'rg'].sort()
+        );
         expect(await readFile(path.join(out, 'rg'), 'utf8')).toBe('rg');
         expect(await readFile(path.join(out, 'ripgrep-LICENSE-MIT'), 'utf8')).toBe('MIT');
-        expect(await readFile(path.join(out, 'RG_VERSION'), 'utf8')).toBe(`${ RG_VERSION }\n`);
+        expect(await readFile(path.join(out, 'RG_VERSION'), 'utf8')).toBe(`${RG_VERSION}\n`);
 
         // Windows has no executable bit.
         if (process.platform !== 'win32') expect((await stat(path.join(out, 'rg'))).mode & 0o111).not.toBe(0);

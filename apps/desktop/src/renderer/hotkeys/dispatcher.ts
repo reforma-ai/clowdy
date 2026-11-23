@@ -6,10 +6,37 @@ import type { HotkeyRegistry, RegisteredCommand, Sequence } from './registry';
 const CHORD_TIMEOUT = 1000;
 
 /** Keys that change what the next key means but are not a key press of their own. They never cancel a chord. */
-const MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'AltGraph', 'Meta', 'CapsLock', 'NumLock', 'ScrollLock', 'Fn', 'FnLock', 'OS', 'Hyper', 'Super', 'Symbol', 'SymbolLock']);
+const MODIFIER_KEYS = new Set([
+    'Shift',
+    'Control',
+    'Alt',
+    'AltGraph',
+    'Meta',
+    'CapsLock',
+    'NumLock',
+    'ScrollLock',
+    'Fn',
+    'FnLock',
+    'OS',
+    'Hyper',
+    'Super',
+    'Symbol',
+    'SymbolLock',
+]);
 
 /** Inputs that do not take text: a single key means a command there. */
-const NON_TEXT_INPUTS = new Set(['checkbox', 'radio', 'button', 'submit', 'reset', 'image', 'range', 'file', 'color', 'hidden']);
+const NON_TEXT_INPUTS = new Set([
+    'checkbox',
+    'radio',
+    'button',
+    'submit',
+    'reset',
+    'image',
+    'range',
+    'file',
+    'color',
+    'hidden',
+]);
 
 const TEXT_ROLES = '[role="textbox"], [role="combobox"], [role="searchbox"], [role="spinbutton"]';
 
@@ -20,7 +47,8 @@ const TEXT_ROLES = '[role="textbox"], [role="combobox"], [role="searchbox"], [ro
  */
 const OVERLAYS = '[data-modal-overlay], [data-modal-clickout-layer], [role="dialog"], [role="alertdialog"]';
 
-const asElement = (target: EventTarget | null): Element | null => (target && typeof (target as Element).closest === 'function' ? target as Element : null);
+const asElement = (target: EventTarget | null): Element | null =>
+    target && typeof (target as Element).closest === 'function' ? (target as Element) : null;
 
 /** Whether the person types text here, so a single key is a character and not a command. A focused button is not a text target. */
 function isTextTarget(target: EventTarget | null): boolean {
@@ -34,7 +62,11 @@ function isTextTarget(target: EventTarget | null): boolean {
 
     if (tag === 'INPUT') return !NON_TEXT_INPUTS.has((element as HTMLInputElement).type.toLowerCase());
 
-    return (element as HTMLElement).isContentEditable === true || element.closest('[contenteditable]:not([contenteditable="false"])') !== null || element.closest(TEXT_ROLES) !== null;
+    return (
+        (element as HTMLElement).isContentEditable === true ||
+        element.closest('[contenteditable]:not([contenteditable="false"])') !== null ||
+        element.closest(TEXT_ROLES) !== null
+    );
 }
 
 /**
@@ -47,12 +79,23 @@ function isOverlayOpen(target: EventTarget | null): boolean {
 
 /** A key event that must not be looked at at all: IME composition (including Safari's late Enter), dead keys, synthetic events with no key. */
 function isInvisible(event: KeyboardEvent): boolean {
-    return typeof event.key !== 'string' || event.isComposing || event.keyCode === 229 || event.key === 'Process' || event.key === 'Dead';
+    return (
+        typeof event.key !== 'string' ||
+        event.isComposing ||
+        event.keyCode === 229 ||
+        event.key === 'Process' ||
+        event.key === 'Dead'
+    );
 }
 
 /** AltGr arrives as Ctrl+Alt on Windows. Those two flags are an artifact of typing a character, not a command's modifiers. */
 function isAltGraph(event: KeyboardEvent): boolean {
-    return event.ctrlKey && event.altKey && typeof event.getModifierState === 'function' && event.getModifierState('AltGraph');
+    return (
+        event.ctrlKey &&
+        event.altKey &&
+        typeof event.getModifierState === 'function' &&
+        event.getModifierState('AltGraph')
+    );
 }
 
 /**
@@ -64,7 +107,11 @@ function layoutNeutral(event: KeyboardEvent): KeyboardEvent {
 
     if (!letter || !/^\p{L}$/u.test(event.key) || /^\p{Script=Latin}$/u.test(event.key)) return event;
 
-    return { key: letter.toLowerCase(), code: event.code, getModifierState: (modifier: string) => event.getModifierState(modifier) } as KeyboardEvent;
+    return {
+        key: letter.toLowerCase(),
+        code: event.code,
+        getModifierState: (modifier: string) => event.getModifierState(modifier),
+    } as KeyboardEvent;
 }
 
 interface Candidate {
@@ -103,7 +150,10 @@ export function installDispatcher(registry: HotkeyRegistry): () => void {
         registry.setPending(null);
     }
 
-    const starts = (): Candidate[] => registry.entries.flatMap(entry => entry.sequences[registry.family].map(sequence => ({ entry, sequence, typed: 0 })));
+    const starts = (): Candidate[] =>
+        registry.entries.flatMap(entry =>
+            entry.sequences[registry.family].map(sequence => ({ entry, sequence, typed: 0 }))
+        );
 
     /** The presses of the sequence start with this key event, among commands that may run here and now. */
     function matching(candidates: Candidate[], event: KeyboardEvent): Candidate[] {
@@ -113,12 +163,14 @@ export function installDispatcher(registry: HotkeyRegistry): () => void {
         const matched = candidates.filter(({ entry, sequence, typed }) => {
             const { command } = entry;
 
-            return matchKeybindingPress(keys, sequence.presses[typed])
-                && (!textTarget || command.inInputs)
-                && (!overlayOpen || command.inOverlays)
-                && registry.isEntryLive(entry)
+            return (
+                matchKeybindingPress(keys, sequence.presses[typed]) &&
+                (!textTarget || command.inInputs) &&
+                (!overlayOpen || command.inOverlays) &&
+                registry.isEntryLive(entry) &&
                 // Part of the match, like `when`: a command whose focus is elsewhere lets the key through to another scope's command or to the widget.
-                && (command.focus?.() ?? true);
+                (command.focus?.() ?? true)
+            );
         });
 
         // The innermost scope wins when two live commands share keys.
@@ -136,7 +188,10 @@ export function installDispatcher(registry: HotkeyRegistry): () => void {
         chord = { candidates, timer: setTimeout(cancel, CHORD_TIMEOUT) };
         registry.setPending({
             typed: first.sequence.display.slice(0, first.typed),
-            candidates: candidates.map(({ entry, sequence, typed }) => ({ command: entry.command, remaining: sequence.display.slice(typed) })),
+            candidates: candidates.map(({ entry, sequence, typed }) => ({
+                command: entry.command,
+                remaining: sequence.display.slice(typed),
+            })),
         });
     }
 

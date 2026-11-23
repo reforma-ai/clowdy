@@ -6,16 +6,16 @@ import { Show } from '@clowdy/components/Show';
 import { SortableList } from '@clowdy/components/SortableList';
 import { Text } from '@clowdy/components/Text';
 import { Clip, Collapse, EditPen, Split, Trash } from '@clowdy/icons/14';
-import { useEffect, useRef, useState, type RefObject } from 'react';
+import { type RefObject, useEffect, useRef, useState } from 'react';
 
 import { Unavailable } from '../../shared/Unavailable';
 import { useRootStore } from '../../stores';
-import { perform } from './commands';
 import styles from './ComposerQueue.module.css';
+import { perform } from './commands';
 
 import type { Chat, QueuedMessage, QueuePause } from '@clowdy/protocol';
 
-const filesLabel = (count: number) => (count === 1 ? '1 file' : `${ count } files`);
+const filesLabel = (count: number) => (count === 1 ? '1 file' : `${count} files`);
 
 /**
  * What a row says of its message: the words, or the files when there are none. A message another thread wrote starts with that thread's title, so
@@ -25,7 +25,7 @@ export function queuedLabel(item: QueuedMessage): string {
     const count = item.attachments?.length ?? 0;
     const words = item.text.trim() || (count > 0 ? filesLabel(count) : 'Queued message');
 
-    return item.from?.kind === 'thread' ? `${ item.from.title }: ${ words }` : words;
+    return item.from?.kind === 'thread' ? `${item.from.title}: ${words}` : words;
 }
 
 const PAUSED: Record<QueuePause, string> = {
@@ -65,12 +65,16 @@ export function ComposerQueue({ chat, busy, running, onEdit }: ComposerQueueProp
     const [sending, setSending] = useState<ReadonlySet<string>>(() => new Set());
     const draggedRef = useRef(false);
     const queue = chat.queue;
-    const items = dropped && dropped.base === queue ? dropped.items : queue ?? [];
+    const items = dropped && dropped.base === queue ? dropped.items : (queue ?? []);
 
     if (items.length === 0) return null;
 
     // A compact item cannot steer, so its Send now waits for an orchestrator that has finished; a held queue gives it nothing by itself even then.
-    const compactWaits = running ? (chat.queuePaused ? 'Send it once the agent finishes' : 'Runs when the agent finishes') : undefined;
+    const compactWaits = running
+        ? chat.queuePaused
+            ? 'Send it once the agent finishes'
+            : 'Runs when the agent finishes'
+        : undefined;
 
     const reorder = async (next: QueuedMessage[], moved: QueuedMessage) => {
         const base = queue ?? [];
@@ -87,7 +91,7 @@ export function ComposerQueue({ chat, busy, running, onEdit }: ComposerQueueProp
     const sendNow = async (item: QueuedMessage) => {
         setSending(current => new Set(current).add(item.id));
         await perform(root, { type: 'chat.sendQueued', chatId: chat.id, itemId: item.id });
-        setSending((current) => {
+        setSending(current => {
             const next = new Set(current);
 
             next.delete(item.id);
@@ -98,12 +102,18 @@ export function ComposerQueue({ chat, busy, running, onEdit }: ComposerQueueProp
 
     const edit = async (item: QueuedMessage) => {
         // The files go back to the project unsent, so the message box can send them again.
-        const result = await perform(root, { type: 'chat.removeQueued', chatId: chat.id, itemId: item.id, keepFiles: true });
+        const result = await perform(root, {
+            type: 'chat.removeQueued',
+            chatId: chat.id,
+            itemId: item.id,
+            keepFiles: true,
+        });
 
         if (result.ok) onEdit(item);
     };
 
-    const remove = (item: QueuedMessage) => void perform(root, { type: 'chat.removeQueued', chatId: chat.id, itemId: item.id });
+    const remove = (item: QueuedMessage) =>
+        void perform(root, { type: 'chat.removeQueued', chatId: chat.id, itemId: item.id });
 
     const renderRow = (item: QueuedMessage, isFirst: boolean, isDragging: boolean) => {
         const steering = item.mode === 'steer' || sending.has(item.id);
@@ -111,12 +121,12 @@ export function ComposerQueue({ chat, busy, running, onEdit }: ComposerQueueProp
         if (item.command === 'compact') {
             return (
                 <CompactRow
-                    label={ queuedLabel(item) }
-                    isFirst={ isFirst }
-                    sending={ sending.has(item.id) }
-                    waits={ compactWaits }
-                    onSendNow={ () => void sendNow(item) }
-                    onRemove={ () => remove(item) }
+                    label={queuedLabel(item)}
+                    isFirst={isFirst}
+                    sending={sending.has(item.id)}
+                    waits={compactWaits}
+                    onSendNow={() => void sendNow(item)}
+                    onRemove={() => remove(item)}
                 />
             );
         }
@@ -124,54 +134,56 @@ export function ComposerQueue({ chat, busy, running, onEdit }: ComposerQueueProp
         if (item.from) {
             return (
                 <ThreadItemRow
-                    label={ queuedLabel(item) }
-                    isFirst={ isFirst }
-                    steering={ steering }
-                    busy={ busy }
-                    onSendNow={ () => void sendNow(item) }
-                    onRemove={ () => remove(item) }
+                    label={queuedLabel(item)}
+                    isFirst={isFirst}
+                    steering={steering}
+                    busy={busy}
+                    onSendNow={() => void sendNow(item)}
+                    onRemove={() => remove(item)}
                 />
             );
         }
 
         return (
             <QueuedRow
-                item={ item }
-                isFirst={ isFirst }
-                isDragging={ isDragging }
-                steering={ steering }
-                busy={ busy }
-                draggedRef={ draggedRef }
-                onSendNow={ () => void sendNow(item) }
-                onEdit={ () => void edit(item) }
-                onRemove={ () => remove(item) }
+                item={item}
+                isFirst={isFirst}
+                isDragging={isDragging}
+                steering={steering}
+                busy={busy}
+                draggedRef={draggedRef}
+                onSendNow={() => void sendNow(item)}
+                onEdit={() => void edit(item)}
+                onRemove={() => remove(item)}
             />
         );
     };
 
     return (
-        <Scrollable vertical edgeFade className={ styles.queue }>
-            <Show when={ chat.queuePaused }>
-                { pause => (
-                    <Text role="status" variant="xs" color="secondary" className={ styles.paused }>
-                        { `${ PAUSED[pause] } Use Send now on a message to resume.` }
+        <Scrollable vertical edgeFade className={styles.queue}>
+            <Show when={chat.queuePaused}>
+                {pause => (
+                    <Text role="status" variant="xs" color="secondary" className={styles.paused}>
+                        {`${PAUSED[pause]} Use Send now on a message to resume.`}
                     </Text>
-                ) }
+                )}
             </Show>
 
             <SortableList
                 aria-label="Queued messages"
-                items={ items }
-                handle={ false }
+                items={items}
+                handle={false}
                 gap="sm"
-                className={ styles.list }
-                getKey={ item => item.id }
-                getTextValue={ queuedLabel }
+                className={styles.list}
+                getKey={item => item.id}
+                getTextValue={queuedLabel}
                 // Steers and next turns do not mix.
-                canDrop={ ({ items: [moving], target }) => moving !== undefined && (!target || target.mode === moving.mode) }
-                onChange={ (next, { item }) => void reorder(next, item) }
+                canDrop={({ items: [moving], target }) =>
+                    moving !== undefined && (!target || target.mode === moving.mode)
+                }
+                onChange={(next, { item }) => void reorder(next, item)}
             >
-                { (item, { isFirst, isDragging }) => renderRow(item, isFirst, isDragging) }
+                {(item, { isFirst, isDragging }) => renderRow(item, isFirst, isDragging)}
             </SortableList>
         </Scrollable>
     );
@@ -191,7 +203,17 @@ interface QueuedRowProps {
     onRemove: () => void;
 }
 
-function QueuedRow({ item, isFirst, isDragging, steering, busy, draggedRef, onSendNow, onEdit, onRemove }: QueuedRowProps) {
+function QueuedRow({
+    item,
+    isFirst,
+    isDragging,
+    steering,
+    busy,
+    draggedRef,
+    onSendNow,
+    onEdit,
+    onRemove,
+}: QueuedRowProps) {
     const label = queuedLabel(item);
     const files = item.attachments?.length ?? 0;
 
@@ -200,54 +222,72 @@ function QueuedRow({ item, isFirst, isDragging, steering, busy, draggedRef, onSe
     }, [isDragging, draggedRef]);
 
     return (
-        <div className={ styles.item } data-first={ isFirst || undefined }>
+        <div className={styles.item} data-first={isFirst || undefined}>
             <Pressable
-                onPress={ () => {
+                onPress={() => {
                     if (!draggedRef.current) onEdit();
-                } }
+                }}
             >
                 <div
                     role="button"
-                    tabIndex={ 0 }
-                    aria-label={ `Edit: ${ label }` }
-                    className={ styles.preview }
-                    onPointerDown={ () => {
+                    tabIndex={0}
+                    aria-label={`Edit: ${label}`}
+                    className={styles.preview}
+                    onPointerDown={() => {
                         draggedRef.current = false;
-                    } }
+                    }}
                 >
-                    <Show when={ item.text.trim() }>
-                        <span className={ styles.text }>{ item.text }</span>
+                    <Show when={item.text.trim()}>
+                        <span className={styles.text}>{item.text}</span>
                     </Show>
 
-                    <Show when={ files > 0 }>
-                        <div className={ styles.files }>
+                    <Show when={files > 0}>
+                        <div className={styles.files}>
                             <Clip />
-                            <Text color="secondary">{ filesLabel(files) }</Text>
+                            <Text color="secondary">{filesLabel(files)}</Text>
                         </div>
                     </Show>
                 </div>
             </Pressable>
 
-            <Show when={ steering }>
-                <span role="status" className={ styles.status }>Steering…</span>
+            <Show when={steering}>
+                <span role="status" className={styles.status}>
+                    Steering…
+                </span>
             </Show>
 
-            <Box direction="row" className={ styles.actions }>
-                <Show when={ !steering }>
+            <Box direction="row" className={styles.actions}>
+                <Show when={!steering}>
                     <Button
                         size="xs"
                         variant="filling"
                         color="secondary"
-                        tooltip={ busy ? 'Submit without interrupting the model' : undefined }
-                        onPress={ onSendNow }
+                        tooltip={busy ? 'Submit without interrupting the model' : undefined}
+                        onPress={onSendNow}
                     >
                         Send now
                     </Button>
                 </Show>
-                <Button iconOnly size="xs" variant="filling" color="secondary" aria-label="Edit" tooltip="Edit" onPress={ onEdit }>
+                <Button
+                    iconOnly
+                    size="xs"
+                    variant="filling"
+                    color="secondary"
+                    aria-label="Edit"
+                    tooltip="Edit"
+                    onPress={onEdit}
+                >
                     <EditPen />
                 </Button>
-                <Button iconOnly size="xs" variant="filling" color="secondary" aria-label="Remove" tooltip="Remove" onPress={ onRemove }>
+                <Button
+                    iconOnly
+                    size="xs"
+                    variant="filling"
+                    color="secondary"
+                    aria-label="Remove"
+                    tooltip="Remove"
+                    onPress={onRemove}
+                >
                     <Trash />
                 </Button>
             </Box>
@@ -271,31 +311,41 @@ interface ThreadItemRowProps {
  */
 function ThreadItemRow({ label, isFirst, steering, busy, onSendNow, onRemove }: ThreadItemRowProps) {
     return (
-        <div className={ styles.item } data-first={ isFirst || undefined } data-thread>
-            <div className={ styles.preview } data-command>
-                <span className={ styles.command }>
+        <div className={styles.item} data-first={isFirst || undefined} data-thread>
+            <div className={styles.preview} data-command>
+                <span className={styles.command}>
                     <Split aria-hidden />
-                    <span className={ styles.text }>{ label }</span>
+                    <span className={styles.text}>{label}</span>
                 </span>
             </div>
 
-            <Show when={ steering }>
-                <span role="status" className={ styles.status }>Steering…</span>
+            <Show when={steering}>
+                <span role="status" className={styles.status}>
+                    Steering…
+                </span>
             </Show>
 
-            <Box direction="row" className={ styles.actions }>
-                <Show when={ !steering }>
+            <Box direction="row" className={styles.actions}>
+                <Show when={!steering}>
                     <Button
                         size="xs"
                         variant="filling"
                         color="secondary"
-                        tooltip={ busy ? 'Submit without interrupting the model' : undefined }
-                        onPress={ onSendNow }
+                        tooltip={busy ? 'Submit without interrupting the model' : undefined}
+                        onPress={onSendNow}
                     >
                         Send now
                     </Button>
                 </Show>
-                <Button iconOnly size="xs" variant="filling" color="secondary" aria-label="Remove" tooltip="Remove" onPress={ onRemove }>
+                <Button
+                    iconOnly
+                    size="xs"
+                    variant="filling"
+                    color="secondary"
+                    aria-label="Remove"
+                    tooltip="Remove"
+                    onPress={onRemove}
+                >
                     <Trash />
                 </Button>
             </Box>
@@ -317,21 +367,36 @@ interface CompactRowProps {
 /** A compact item: what it does, Send now once the orchestrator has finished (it cannot steer a turn), and Remove; there are no words to edit. */
 function CompactRow({ label, isFirst, sending, waits, onSendNow, onRemove }: CompactRowProps) {
     return (
-        <div className={ styles.item } data-first={ isFirst || undefined }>
-            <div className={ styles.preview } data-command>
-                <span className={ styles.command }>
+        <div className={styles.item} data-first={isFirst || undefined}>
+            <div className={styles.preview} data-command>
+                <span className={styles.command}>
                     <Collapse aria-hidden />
-                    <span className={ styles.text }>{ label }</span>
+                    <span className={styles.text}>{label}</span>
                 </span>
             </div>
 
-            <Box direction="row" className={ styles.actions }>
-                <Unavailable label="Send now" hint={ waits }>
-                    <Button size="xs" variant="filling" color="secondary" isDisabled={ waits !== undefined } isPending={ sending } onPress={ onSendNow }>
+            <Box direction="row" className={styles.actions}>
+                <Unavailable label="Send now" hint={waits}>
+                    <Button
+                        size="xs"
+                        variant="filling"
+                        color="secondary"
+                        isDisabled={waits !== undefined}
+                        isPending={sending}
+                        onPress={onSendNow}
+                    >
                         Send now
                     </Button>
                 </Unavailable>
-                <Button iconOnly size="xs" variant="filling" color="secondary" aria-label="Remove" tooltip="Remove" onPress={ onRemove }>
+                <Button
+                    iconOnly
+                    size="xs"
+                    variant="filling"
+                    color="secondary"
+                    aria-label="Remove"
+                    tooltip="Remove"
+                    onPress={onRemove}
+                >
                     <Trash />
                 </Button>
             </Box>

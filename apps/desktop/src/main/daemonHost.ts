@@ -1,8 +1,8 @@
-import { PROTOCOL_HEADER, ROUTES, type DaemonInfo, type Health } from '@clowdy/protocol';
 import { spawn } from 'node:child_process';
 import { closeSync, mkdirSync, openSync, writeSync } from 'node:fs';
 import { open, readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { type DaemonInfo, type Health, PROTOCOL_HEADER, ROUTES } from '@clowdy/protocol';
 
 import { probeHealth } from './daemonProbe';
 import { loginShellPath } from './loginShell';
@@ -60,12 +60,10 @@ async function readLogTail(file: string): Promise<string> {
             await handle.read(buffer, 0, length, size - length);
 
             return buffer.toString('utf8');
-        }
-        finally {
+        } finally {
             await handle.close();
         }
-    }
-    catch {
+    } catch {
         return '';
     }
 }
@@ -76,7 +74,7 @@ function launch({ bun, entry, cwd, env, logPath }: DaemonLaunch): Promise<Daemon
     const log = openSync(logPath, 'a');
 
     try {
-        writeSync(log, `\n--- ${ new Date().toISOString() } Clowdy starts the daemon: ${ bun } ${ entry }\n`);
+        writeSync(log, `\n--- ${new Date().toISOString()} Clowdy starts the daemon: ${bun} ${entry}\n`);
 
         // A process of its own (setsid on POSIX), hidden on Windows, with no handle that keeps the app alive.
         const child = spawn(bun, [entry], { cwd, env, detached: true, stdio: ['ignore', log, log], windowsHide: true });
@@ -87,8 +85,7 @@ function launch({ bun, entry, cwd, env, logPath }: DaemonLaunch): Promise<Daemon
             child.once('error', error => resolve({ code: null, error: error.message }));
             child.once('exit', code => resolve({ code }));
         });
-    }
-    finally {
+    } finally {
         closeSync(log);
     }
 }
@@ -98,9 +95,9 @@ function launch({ bun, entry, cwd, env, logPath }: DaemonLaunch): Promise<Daemon
  * often one an update left behind, on the protocol before.
  */
 async function stop({ port, token, protocol }: DaemonInfo): Promise<void> {
-    await fetch(`http://127.0.0.1:${ port }${ ROUTES.shutdown }`, {
+    await fetch(`http://127.0.0.1:${port}${ROUTES.shutdown}`, {
         method: 'POST',
-        headers: { authorization: `Bearer ${ token }`, [PROTOCOL_HEADER]: String(protocol) },
+        headers: { authorization: `Bearer ${token}`, [PROTOCOL_HEADER]: String(protocol) },
         signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS * 5),
     }).catch(() => undefined);
 }
@@ -110,8 +107,7 @@ export function processAlive(pid: number): boolean {
         process.kill(pid, 0);
 
         return true;
-    }
-    catch (error) {
+    } catch (error) {
         // EPERM: the process exists but belongs to someone else.
         return (error as NodeJS.ErrnoException).code === 'EPERM';
     }

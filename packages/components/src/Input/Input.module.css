@@ -329,7 +329,11 @@
     }
 
     .field [data-input-affix='control'][data-icon-only] {
-        --clowdy-input-icon-affix-size: calc(var(--clowdy-input-height) - var(--clowdy-input-control-affix-inset, var(--spacing-2)) * 2);
+        --clowdy-input-icon-affix-size: calc(
+            var(--clowdy-input-height) -
+            var(--clowdy-input-control-affix-inset, var(--spacing-2)) *
+            2
+        );
 
         box-sizing: border-box;
         width: var(--clowdy-input-icon-affix-size);
@@ -338,7 +342,10 @@
         height: var(--clowdy-input-icon-affix-size);
         padding: 0;
         flex-shrink: 0;
-        border-radius: calc((var(--clowdy-input-radius) - var(--clowdy-input-control-affix-inset, var(--spacing-2))) * var(--squircle-radius-factor));
+        border-radius: calc(
+            (var(--clowdy-input-radius) - var(--clowdy-input-control-affix-inset, var(--spacing-2))) *
+            var(--squircle-radius-factor)
+        );
         corner-shape: superellipse(var(--squircle-value));
     }
 

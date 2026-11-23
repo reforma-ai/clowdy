@@ -16,11 +16,7 @@ const ZERO_WIDTH_SPACE = '\u200B';
 const RE_DIFF = /\/\/\s*#?\s*\[!code\s*(\+\+|--)(:(\d+))?\]/gi;
 const RE_HIGHLIGHT = /\/\/\s*#?\s*\[!code\s*(highlight|hl)(:(\d+))?\]/gi;
 
-function mergeLineClasses(
-    target: Map<number, Set<string>>,
-    lineNum: number,
-    classes: string[]
-): void {
+function mergeLineClasses(target: Map<number, Set<string>>, lineNum: number, classes: string[]): void {
     let set = target.get(lineNum);
 
     if (!set) {
@@ -45,23 +41,26 @@ function stripWithSpans(
         const lineNum = i + 1;
         const lineRe = new RegExp(re.source, re.flags);
 
-        return line.replace(lineRe, (_full, kind: string, _colonPart: string | undefined, spanStr: string | undefined) => {
-            hasAny = true;
-            let spanRaw = 1;
+        return line.replace(
+            lineRe,
+            (_full, kind: string, _colonPart: string | undefined, spanStr: string | undefined) => {
+                hasAny = true;
+                let spanRaw = 1;
 
-            if (spanStr != null && spanStr !== '') {
-                spanRaw = Number.parseInt(spanStr, 10);
+                if (spanStr != null && spanStr !== '') {
+                    spanRaw = Number.parseInt(spanStr, 10);
+                }
+
+                const span = Number.isFinite(spanRaw) && spanRaw > 0 ? spanRaw : 1;
+                const classes = lineClass(kind.toLowerCase(), span, lineNum);
+
+                for (let j = 0; j < span; j++) {
+                    mergeLineClasses(lineClasses, lineNum + j, classes);
+                }
+
+                return '';
             }
-
-            const span = (Number.isFinite(spanRaw) && spanRaw > 0) ? spanRaw : 1;
-            const classes = lineClass(kind.toLowerCase(), span, lineNum);
-
-            for (let j = 0; j < span; j++) {
-                mergeLineClasses(lineClasses, lineNum + j, classes);
-            }
-
-            return '';
-        });
+        );
     });
 
     return { code: out.join('\n'), lineClasses, hasAny };
@@ -78,7 +77,7 @@ function lineClassesToRecord(map: Map<number, Set<string>>): Record<number, stri
 }
 
 function attachMeta(options: { meta?: Record<string, unknown> }, key: string, meta: NotationMeta): void {
-    const bag = options.meta ??= {};
+    const bag = (options.meta ??= {});
 
     bag[key] = meta;
 }
@@ -109,11 +108,11 @@ export function transformerNotationDiff(options: NotationDiffOptions = {}): Shik
     return {
         name: 'clowdy:notation-diff',
         preprocess(code, opts) {
-            const { code: next, lineClasses, hasAny } = stripWithSpans(
-                code,
-                RE_DIFF,
-                kind => (kind === '++' ? [classLineAdd] : [classLineRemove])
-            );
+            const {
+                code: next,
+                lineClasses,
+                hasAny,
+            } = stripWithSpans(code, RE_DIFF, kind => (kind === '++' ? [classLineAdd] : [classLineRemove]));
 
             attachMeta(opts, metaKeyDiff, { lines: lineClassesToRecord(lineClasses), hasAny });
 
@@ -169,17 +168,17 @@ export function transformerNotationHighlight(options: NotationHighlightOptions =
     return {
         name: 'clowdy:notation-highlight',
         preprocess(code, opts) {
-            const { code: next, lineClasses, hasAny } = stripWithSpans(
-                code,
-                RE_HIGHLIGHT,
-                (kind) => {
-                    if (kind === 'highlight' || kind === 'hl') {
-                        return [classActiveLine];
-                    }
-
-                    return [];
+            const {
+                code: next,
+                lineClasses,
+                hasAny,
+            } = stripWithSpans(code, RE_HIGHLIGHT, kind => {
+                if (kind === 'highlight' || kind === 'hl') {
+                    return [classActiveLine];
                 }
-            );
+
+                return [];
+            });
 
             attachMeta(opts, metaKeyHighlight, { lines: lineClassesToRecord(lineClasses), hasAny });
 

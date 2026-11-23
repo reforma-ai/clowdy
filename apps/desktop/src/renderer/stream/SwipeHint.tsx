@@ -9,7 +9,7 @@ import styles from './SwipeHint.module.css';
  */
 export function SwipeHint() {
     return (
-        <span className={ styles.hint } aria-hidden>
+        <span className={styles.hint} aria-hidden>
             <Reply />
         </span>
     );

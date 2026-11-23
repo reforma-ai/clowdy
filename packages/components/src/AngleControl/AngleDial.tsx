@@ -2,16 +2,10 @@ import { cn, mergeRefs } from '@clowdy/lib';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Show } from '../Show';
-import {
-    ANGLE_RING_WIDTH,
-    clampAngle,
-    DEFAULT_ANGLE_PRESETS,
-    getAngleDialGeometry,
-    getPointOnCircle,
-} from './angle';
 import styles from './AngleControl.module.css';
 import { AngleDraftInput } from './AngleDraftInput';
 import { AnglePresets } from './AnglePresets';
+import { ANGLE_RING_WIDTH, clampAngle, DEFAULT_ANGLE_PRESETS, getAngleDialGeometry, getPointOnCircle } from './angle';
 import { useAngleInteraction } from './useAngleInteraction';
 import { useAngleSlider } from './useAngleSlider';
 
@@ -63,21 +57,27 @@ export function AngleDial({
     const presetPreviewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [presetPreviewValue, setPresetPreviewValue] = useState<string | null>(null);
     const geometry = useMemo(() => getAngleDialGeometry(controlSize), [controlSize]);
-    const center = useMemo(() => ({
-        x: geometry.controlSize / 2,
-        y: geometry.controlSize / 2,
-    }), [geometry.controlSize]);
+    const center = useMemo(
+        () => ({
+            x: geometry.controlSize / 2,
+            y: geometry.controlSize / 2,
+        }),
+        [geometry.controlSize]
+    );
     const isInactive = isDisabled || isReadOnly;
     const handlePoint = getPointOnCircle(angle.normalizedDegrees, geometry.handleRadius, center);
     const styleVars = {
-        '--clowdy-angle-handle-size': `${ geometry.handleSize }px`,
-        '--clowdy-angle-ring-width': `${ ANGLE_RING_WIDTH }px`,
-        '--clowdy-angle-size': `${ geometry.controlSize }px`,
+        '--clowdy-angle-handle-size': `${geometry.handleSize}px`,
+        '--clowdy-angle-ring-width': `${ANGLE_RING_WIDTH}px`,
+        '--clowdy-angle-size': `${geometry.controlSize}px`,
     } as CSSProperties;
 
-    const updateDegrees = useCallback((nextDegrees: number, source: Parameters<typeof angle.setDegrees>[1], committed: boolean) => {
-        angle.setDegrees(clampAngle(nextDegrees, angle.minDegrees, angle.maxDegrees), source, committed);
-    }, [angle]);
+    const updateDegrees = useCallback(
+        (nextDegrees: number, source: Parameters<typeof angle.setDegrees>[1], committed: boolean) => {
+            angle.setDegrees(clampAngle(nextDegrees, angle.minDegrees, angle.maxDegrees), source, committed);
+        },
+        [angle]
+    );
 
     const clearPresetPreviewTimer = useCallback(() => {
         if (presetPreviewTimerRef.current) {
@@ -91,14 +91,20 @@ export function AngleDial({
         setPresetPreviewValue(null);
     }, [clearPresetPreviewTimer]);
 
-    const updatePresetPreview = useCallback((nextValue: string | null) => {
-        clearPresetPreviewTimer();
+    const updatePresetPreview = useCallback(
+        (nextValue: string | null) => {
+            clearPresetPreviewTimer();
 
-        presetPreviewTimerRef.current = setTimeout(() => {
-            setPresetPreviewValue(nextValue);
-            presetPreviewTimerRef.current = null;
-        }, nextValue == null ? 120 : 70);
-    }, [clearPresetPreviewTimer]);
+            presetPreviewTimerRef.current = setTimeout(
+                () => {
+                    setPresetPreviewValue(nextValue);
+                    presetPreviewTimerRef.current = null;
+                },
+                nextValue == null ? 120 : 70
+            );
+        },
+        [clearPresetPreviewTimer]
+    );
 
     const {
         groupProps,
@@ -121,11 +127,7 @@ export function AngleDial({
         onChangeDegrees: updateDegrees,
     });
 
-    const {
-        isDragging,
-        applyPreset,
-        handleInteractionProps,
-    } = useAngleInteraction({
+    const { isDragging, applyPreset, handleInteractionProps } = useAngleInteraction({
         center,
         handlePoint,
         degrees: angle.degrees,
@@ -164,63 +166,59 @@ export function AngleDial({
 
     return (
         <div
-            { ...groupProps }
-            ref={ mergeRefs(rootRef, ref) }
-            className={ cn(styles.dial, className) }
-            style={ styleVars }
-            data-disabled={ isDisabled || undefined }
-            data-readonly={ isReadOnly || undefined }
-            data-dragging={ isHandleActive || undefined }
-            data-thumb-focused={ isSliderFocused || undefined }
-            aria-disabled={ isInactive || undefined }
+            {...groupProps}
+            ref={mergeRefs(rootRef, ref)}
+            className={cn(styles.dial, className)}
+            style={styleVars}
+            data-disabled={isDisabled || undefined}
+            data-readonly={isReadOnly || undefined}
+            data-dragging={isHandleActive || undefined}
+            data-thumb-focused={isSliderFocused || undefined}
+            aria-disabled={isInactive || undefined}
         >
-            <input
-                { ...sliderInputProps }
-                ref={ sliderInputRef }
-                className={ styles.sliderInput }
-            />
+            <input {...sliderInputProps} ref={sliderInputRef} className={styles.sliderInput} />
 
-            <div className={ styles.ring } aria-hidden="true" />
+            <div className={styles.ring} aria-hidden="true" />
 
             <AnglePresets
-                presets={ presets }
-                center={ center }
-                radius={ geometry.presetRadius }
-                currentDegrees={ angle.degrees }
-                unit={ angle.unit }
-                minDegrees={ angle.minDegrees }
-                maxDegrees={ angle.maxDegrees }
-                precision={ precision }
-                valueRange={ valueRange }
-                presetBehavior={ presetBehavior }
-                isDragging={ isHandleActive }
-                isDisabled={ isInactive }
-                onPreviewChange={ updatePresetPreview }
-                onSelect={ (preset) => {
+                presets={presets}
+                center={center}
+                radius={geometry.presetRadius}
+                currentDegrees={angle.degrees}
+                unit={angle.unit}
+                minDegrees={angle.minDegrees}
+                maxDegrees={angle.maxDegrees}
+                precision={precision}
+                valueRange={valueRange}
+                presetBehavior={presetBehavior}
+                isDragging={isHandleActive}
+                isDisabled={isInactive}
+                onPreviewChange={updatePresetPreview}
+                onSelect={preset => {
                     clearPresetPreview();
                     applyPreset(preset);
-                } }
+                }}
             />
 
-            <Show when={ showInlineInput }>
+            <Show when={showInlineInput}>
                 <AngleDraftInput
-                    angle={ angle }
-                    precision={ precision }
-                    previewValue={ presetPreviewValue }
-                    isDisabled={ isDisabled }
-                    isReadOnly={ isReadOnly }
-                    onCancel={ focusThumb }
+                    angle={angle}
+                    precision={precision}
+                    previewValue={presetPreviewValue}
+                    isDisabled={isDisabled}
+                    isReadOnly={isReadOnly}
+                    onCancel={focusThumb}
                 />
             </Show>
 
             <div
-                className={ styles.handle }
+                className={styles.handle}
                 data-angle-handle
-                style={ {
+                style={{
                     left: handlePoint.x,
                     top: handlePoint.y,
-                } }
-                { ...handleInteractionProps }
+                }}
+                {...handleInteractionProps}
             />
         </div>
     );

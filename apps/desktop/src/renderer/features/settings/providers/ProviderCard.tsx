@@ -27,55 +27,67 @@ export function ProviderCard({ agent }: { agent: AgentInfo }) {
     const usage = isOn ? agent.usage : undefined;
 
     return (
-        <SettingsCard as="section" divided aria-label={ agent.name }>
-            <SettingsBlock className={ styles.identity }>
-                <span className={ styles.icon }><ProviderIcon agentId={ agent.id } size={ 24 } /></span>
+        <SettingsCard as="section" divided aria-label={agent.name}>
+            <SettingsBlock className={styles.identity}>
+                <span className={styles.icon}>
+                    <ProviderIcon agentId={agent.id} size={24} />
+                </span>
 
-                <div className={ styles.who }>
-                    <header className={ styles.title }>
-                        <Text weight="medium" truncate title={ agent.name }>{ agent.name }</Text>
-                        { agent.version && <Text variant="xs" color="secondary" className={ styles.version }>{ `v${ agent.version }` }</Text> }
+                <div className={styles.who}>
+                    <header className={styles.title}>
+                        <Text weight="medium" truncate title={agent.name}>
+                            {agent.name}
+                        </Text>
+                        {agent.version && (
+                            <Text variant="xs" color="secondary" className={styles.version}>{`v${agent.version}`}</Text>
+                        )}
                     </header>
-                    <AccountLine agent={ agent } />
+                    <AccountLine agent={agent} />
                 </div>
 
-                <div className={ styles.actions }>
-                    { usage && !isSignInRunning(agent.signInSession) && <RefreshUsageButton size="sm" isRefreshing={ commands.pending.has('refresh') } onRefresh={ () => void commands.refresh() } /> }
-                    <SignInAction agent={ agent } commands={ commands } />
+                <div className={styles.actions}>
+                    {usage && !isSignInRunning(agent.signInSession) && (
+                        <RefreshUsageButton
+                            size="sm"
+                            isRefreshing={commands.pending.has('refresh')}
+                            onRefresh={() => void commands.refresh()}
+                        />
+                    )}
+                    <SignInAction agent={agent} commands={commands} />
                     <Switch
                         size="sm"
-                        className={ styles.switch }
-                        isSelected={ isOn }
-                        isDisabled={ !installed }
-                        isPending={ commands.pending.has('enabled') }
-                        aria-label={ `Use ${ agent.name } in Clowdy` }
-                        onChange={ enabled => void commands.setEnabled(enabled) }
+                        className={styles.switch}
+                        isSelected={isOn}
+                        isDisabled={!installed}
+                        isPending={commands.pending.has('enabled')}
+                        aria-label={`Use ${agent.name} in Clowdy`}
+                        onChange={enabled => void commands.setEnabled(enabled)}
                     />
                 </div>
 
-                <SignInPanel agent={ agent } commands={ commands } className={ styles.signIn } />
+                <SignInPanel agent={agent} commands={commands} className={styles.signIn} />
             </SettingsBlock>
 
-            { usage && (
+            {usage && (
                 <SettingsBlock>
-                    <UsageBlock usage={ usage } />
+                    <UsageBlock usage={usage} />
                 </SettingsBlock>
-            ) }
+            )}
 
-            { (agent.permissions?.presets.length ?? 0) > 0 && (
-                <SettingsBlock data-dim={ !isOn || undefined } className={ styles.settings }>
-                    <PermissionPresets agent={ agent } commands={ commands } />
+            {(agent.permissions?.presets.length ?? 0) > 0 && (
+                <SettingsBlock data-dim={!isOn || undefined} className={styles.settings}>
+                    <PermissionPresets agent={agent} commands={commands} />
                 </SettingsBlock>
-            ) }
+            )}
 
-            { (agent.settings ?? []).length > 0 && (
-                <SettingsBlock data-dim={ !isOn || undefined } className={ styles.settings }>
-                    <ProviderSettings agent={ agent } commands={ commands } />
+            {(agent.settings ?? []).length > 0 && (
+                <SettingsBlock data-dim={!isOn || undefined} className={styles.settings}>
+                    <ProviderSettings agent={agent} commands={commands} />
                 </SettingsBlock>
-            ) }
+            )}
 
-            <SettingsBlock data-dim={ !isOn || undefined } className={ styles.settings }>
-                <ProviderAdvanced agent={ agent } commands={ commands } />
+            <SettingsBlock data-dim={!isOn || undefined} className={styles.settings}>
+                <ProviderAdvanced agent={agent} commands={commands} />
             </SettingsBlock>
         </SettingsCard>
     );

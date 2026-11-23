@@ -7,14 +7,14 @@ import styles from './Panel.module.css';
 export function TreeChevron({ isOpen, onToggle }: { isOpen: boolean; onToggle: () => void }) {
     return (
         <span
-            className={ styles.treeChevron }
+            className={styles.treeChevron}
             aria-hidden="true"
-            onClick={ (e) => {
+            onClick={e => {
                 e.stopPropagation();
                 onToggle();
-            } }
+            }}
         >
-            <Show when={ isOpen } fallback={ <ChevronRight /> }>
+            <Show when={isOpen} fallback={<ChevronRight />}>
                 <ChevronDown />
             </Show>
         </span>

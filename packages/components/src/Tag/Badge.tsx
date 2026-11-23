@@ -6,21 +6,21 @@ import type { Key } from 'react-aria-components';
 
 export interface BadgeProps
     extends Omit<TagGroupProps, 'items' | 'children' | 'renderEmptyState' | 'selectedKeys' | 'selectionMode' | 'id'>,
-    Pick<
-        TagComponentProps,
-        | 'id'
-        | 'textValue'
-        | 'icon'
-        | 'count'
-        | 'href'
-        | 'target'
-        | 'onPress'
-        | 'onHoverStart'
-        | 'onHoverEnd'
-        | 'onHoverChange'
-        | 'rounded'
-        | 'tooltip'
-    > {
+        Pick<
+            TagComponentProps,
+            | 'id'
+            | 'textValue'
+            | 'icon'
+            | 'count'
+            | 'href'
+            | 'target'
+            | 'onPress'
+            | 'onHoverStart'
+            | 'onHoverEnd'
+            | 'onHoverChange'
+            | 'rounded'
+            | 'tooltip'
+        > {
     /** Label inside the tag. */
     children?: ReactNode;
     /** React Aria key for the single tag. */
@@ -60,31 +60,31 @@ export function Badge({
 
     return (
         <TagGroup
-            { ...groupProps }
-            key={ String(itemKey) }
-            color={ color }
-            size={ size }
-            rounded={ rounded }
-            className={ className }
-            onRemove={ onRemove }
+            {...groupProps}
+            key={String(itemKey)}
+            color={color}
+            size={size}
+            rounded={rounded}
+            className={className}
+            onRemove={onRemove}
         >
             <Tag
-                id={ itemKey }
-                value={ value }
-                textValue={ textValue }
-                icon={ icon }
-                count={ count }
-                rounded={ rounded }
-                className={ tagClassName }
-                href={ href }
-                target={ target }
-                onPress={ onPress }
-                onHoverStart={ onHoverStart }
-                onHoverEnd={ onHoverEnd }
-                onHoverChange={ onHoverChange }
-                tooltip={ tooltip }
+                id={itemKey}
+                value={value}
+                textValue={textValue}
+                icon={icon}
+                count={count}
+                rounded={rounded}
+                className={tagClassName}
+                href={href}
+                target={target}
+                onPress={onPress}
+                onHoverStart={onHoverStart}
+                onHoverEnd={onHoverEnd}
+                onHoverChange={onHoverChange}
+                tooltip={tooltip}
             >
-                { children }
+                {children}
             </Tag>
         </TagGroup>
     );

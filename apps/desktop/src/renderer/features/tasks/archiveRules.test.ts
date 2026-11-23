@@ -8,18 +8,18 @@ import type { Task } from '@clowdy/protocol';
 
 function task(number: number, statusId: string, parentId?: number, rest: Partial<Task> = {}): Task {
     return {
-        id: `t-${ number }`,
+        id: `t-${number}`,
         projectId: 'p',
         number,
-        key: `X-${ number }`,
-        title: `Task ${ number }`,
+        key: `X-${number}`,
+        title: `Task ${number}`,
         description: '',
         statusId,
         dependsOn: [],
         createdBy: { kind: 'user' },
         createdAt: 0,
         updatedAt: 0,
-        ...(parentId !== undefined && { parentId: `t-${ parentId }` }),
+        ...(parentId !== undefined && { parentId: `t-${parentId}` }),
         ...rest,
     };
 }
@@ -42,7 +42,14 @@ const TASKS = [
 ];
 
 const keys = (tasks: readonly Task[]) => tasks.map(candidate => candidate.number).sort((a, b) => a - b);
-const open = (taskId: string) => keys(openWork(TASKS.find(candidate => candidate.id === taskId)!, new TaskTree(TASKS, DEFAULT_STATUSES), DEFAULT_STATUSES));
+const open = (taskId: string) =>
+    keys(
+        openWork(
+            TASKS.find(candidate => candidate.id === taskId)!,
+            new TaskTree(TASKS, DEFAULT_STATUSES),
+            DEFAULT_STATUSES
+        )
+    );
 
 describe('openWork', () => {
     it('is empty for a closed task with only closed tasks inside it, canceled ones too', () => {
@@ -65,7 +72,9 @@ describe('archiveWording', () => {
         expect(archiveWording([task(1, 'done')], false).action).toBe('Archive');
         expect(archiveWording([task(4, 'active')], true).action).toBe('Cancel and archive');
         expect(archiveWording([task(1, 'done'), task(2, 'done')], false).action).toBe('Archive 2 tasks');
-        expect(archiveWording([task(1, 'done'), task(4, 'active'), task(8, 'done')], true).action).toBe('Cancel and archive 3 tasks');
+        expect(archiveWording([task(1, 'done'), task(4, 'active'), task(8, 'done')], true).action).toBe(
+            'Cancel and archive 3 tasks'
+        );
     });
 
     it('names the task in the offer to undo, or counts the tasks', () => {
@@ -97,13 +106,25 @@ describe('cancelDialog', () => {
 
 describe('archiveReply', () => {
     it('reads the ids the daemon answers with, for an archive and for a restore', () => {
-        expect(archiveReply({ task: {}, archived: ['t-1', 't-2'], canceled: ['t-2'] })).toEqual({ archived: ['t-1', 't-2'], canceled: ['t-2'], restored: [] });
-        expect(archiveReply({ task: {}, restored: ['t-1'] })).toEqual({ archived: [], canceled: [], restored: ['t-1'] });
+        expect(archiveReply({ task: {}, archived: ['t-1', 't-2'], canceled: ['t-2'] })).toEqual({
+            archived: ['t-1', 't-2'],
+            canceled: ['t-2'],
+            restored: [],
+        });
+        expect(archiveReply({ task: {}, restored: ['t-1'] })).toEqual({
+            archived: [],
+            canceled: [],
+            restored: ['t-1'],
+        });
     });
 
     it('reads nothing from an answer that is not one, and ignores what is not an id', () => {
         expect(archiveReply(undefined)).toEqual({ archived: [], canceled: [], restored: [] });
         expect(archiveReply('no')).toEqual({ archived: [], canceled: [], restored: [] });
-        expect(archiveReply({ archived: ['t-1', 5, null], canceled: 'x' })).toEqual({ archived: ['t-1'], canceled: [], restored: [] });
+        expect(archiveReply({ archived: ['t-1', 5, null], canceled: 'x' })).toEqual({
+            archived: ['t-1'],
+            canceled: [],
+            restored: [],
+        });
     });
 });

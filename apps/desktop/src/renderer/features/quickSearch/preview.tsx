@@ -10,7 +10,10 @@ export interface Range {
 const LEAD = 24;
 
 /** The preview of a line without its indentation, cut to start a little before its first match. */
-export function visiblePreview({ preview, ranges }: Pick<FoundLine, 'preview' | 'ranges'>): { text: string; ranges: Range[] } {
+export function visiblePreview({ preview, ranges }: Pick<FoundLine, 'preview' | 'ranges'>): {
+    text: string;
+    ranges: Range[];
+} {
     const first = ranges[0]?.start ?? 0;
     const indent = preview.length - preview.trimStart().length;
     const cut = Math.max(Math.min(indent, first), first - LEAD);
@@ -52,7 +55,7 @@ export function Marked({ text, ranges }: { text: string; ranges: readonly Range[
     let at = 0;
 
     for (const { start, end } of ranges) {
-        nodes.push(text.slice(at, start), <mark key={ start }>{ text.slice(start, end) }</mark>);
+        nodes.push(text.slice(at, start), <mark key={start}>{text.slice(start, end)}</mark>);
         at = end;
     }
 

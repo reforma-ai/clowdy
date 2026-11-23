@@ -2,7 +2,16 @@ import { FILE_MANAGER_MIN_WIDTH } from '@clowdy/file-manager/layout';
 import { describe, expect, it } from 'vitest';
 
 import { CHANGES_MIN_WIDTH, CHANGES_READING_MIN_WIDTH, CHANGES_SIDEBAR_MIN_WIDTH } from '../changes/layout';
-import { HALF_MIN_WINDOW_WIDTH, readSidePanelWidth, SIDE_PANEL_DEFAULT_WIDTH, SIDE_PANEL_MIN_WIDTH, SIDE_RAIL_WIDTH, TREE_PANEL_MIN_WIDTH, WINDOW_MIN_WIDTH, writeSidePanelWidth } from './panelWidth';
+import {
+    HALF_MIN_WINDOW_WIDTH,
+    readSidePanelWidth,
+    SIDE_PANEL_DEFAULT_WIDTH,
+    SIDE_PANEL_MIN_WIDTH,
+    SIDE_RAIL_WIDTH,
+    TREE_PANEL_MIN_WIDTH,
+    WINDOW_MIN_WIDTH,
+    writeSidePanelWidth,
+} from './panelWidth';
 
 import type { KeyValueStorage } from '../../stores/storage';
 
@@ -38,11 +47,11 @@ describe('side panel width', () => {
 });
 
 describe('the least widths of the window', () => {
-    it('keeps the list of chats at 220 and the chat at 350, with the frame of the window\'s plate around them', () => {
+    it("keeps the list of chats at 220 and the chat at 350, with the frame of the window's plate around them", () => {
         expect(WINDOW_MIN_WIDTH).toBe(580);
     });
 
-    it('asks a tree beside a view for its two least, 150 and 350, and the panel\'s plate around them', () => {
+    it("asks a tree beside a view for its two least, 150 and 350, and the panel's plate around them", () => {
         expect(TREE_PANEL_MIN_WIDTH).toBe(504);
         expect(TREE_PANEL_MIN_WIDTH).toBeGreaterThan(SIDE_PANEL_MIN_WIDTH);
     });
@@ -55,7 +64,7 @@ describe('the least widths of the window', () => {
         expect(TREE_PANEL_MIN_WIDTH).toBeGreaterThanOrEqual(FILE_MANAGER_MIN_WIDTH);
     });
 
-    it('gives the window\'s width from which a tree fits beside the chat: the rail, the left part and the panel, each at its least', () => {
+    it("gives the window's width from which a tree fits beside the chat: the rail, the left part and the panel, each at its least", () => {
         expect(HALF_MIN_WINDOW_WIDTH).toBe(SIDE_RAIL_WIDTH + WINDOW_MIN_WIDTH + TREE_PANEL_MIN_WIDTH);
         expect(HALF_MIN_WINDOW_WIDTH).toBe(1140);
     });

@@ -8,13 +8,14 @@ import { runProgram } from '../providers/exec';
 type Env = Record<string, string | undefined>;
 
 /** What the person is told beside git's own line when the line names the signing key: the agent that holds it was not there to answer. */
-export const SIGNING_HINT = 'The signing agent couldn\'t be reached';
+export const SIGNING_HINT = "The signing agent couldn't be reached";
 
 /**
  * Git's own words for a signature that could not be made, which is what a signed commit says when `SSH_AUTH_SOCK` is not the agent that holds the key (`No private key found
  * for public key`), when the agent will not sign (`agent refused operation`, a Touch ID that was cancelled) and when there is no agent at all.
  */
-const SIGNING_FAILURE = /no private key found|agent refused|communication with agent failed|couldn't get agent socket|error: load key|incorrect passphrase|signing failed/i;
+const SIGNING_FAILURE =
+    /no private key found|agent refused|communication with agent failed|couldn't get agent socket|error: load key|incorrect passphrase|signing failed/i;
 
 /** Whether what git said names the signing key: the failure `WriteEnvironment.forgetAgent` is for, and the one the hint explains. */
 export function namesSigningKey(text: string): boolean {
@@ -27,7 +28,7 @@ const SHELL_TIMEOUT_MS = 3000;
 
 /** Prints the socket between markers, so whatever the person's shell startup files print does not end up in it. */
 const MARKER = '__CLOWDY_SOCK__';
-const PRINT_SOCKET = `printf '${ MARKER }%s${ MARKER }' "$SSH_AUTH_SOCK"`;
+const PRINT_SOCKET = `printf '${MARKER}%s${MARKER}' "$SSH_AUTH_SOCK"`;
 
 export interface WriteEnvironmentOptions {
     /** The environment the daemon runs in, read at each call: the base of every write's, and the `PATH` `ssh` is looked for on. */
@@ -41,7 +42,12 @@ export interface WriteEnvironmentOptions {
 
 /** The environment without what is unset and without what the daemon keeps to itself (`NEVER_INHERITED`): a repository's hooks run in it. */
 function inherited(env: Env): Record<string, string> {
-    return Object.fromEntries(Object.entries(env).filter((entry): entry is [string, string] => entry[1] !== undefined && !NEVER_INHERITED.some(pattern => pattern.test(entry[0]))));
+    return Object.fromEntries(
+        Object.entries(env).filter(
+            (entry): entry is [string, string] =>
+                entry[1] !== undefined && !NEVER_INHERITED.some(pattern => pattern.test(entry[0]))
+        )
+    );
 }
 
 /**
@@ -50,10 +56,14 @@ function inherited(env: Env): Record<string, string> {
  */
 export function remoteHost(address: string): string | undefined {
     const text = address.trim();
-    const host = /^(?:ssh|git|https?):\/\/(?:[^@/]*@)?([^/:?#@]+)/i.exec(text)?.[1] ?? /^(?:[^@/\s]+@)?([^/:\s@]+):(?!\/\/)/.exec(text)?.[1];
+    const host =
+        /^(?:ssh|git|https?):\/\/(?:[^@/]*@)?([^/:?#@]+)/i.exec(text)?.[1] ??
+        /^(?:[^@/\s]+@)?([^/:\s@]+):(?!\/\/)/.exec(text)?.[1];
 
     // A single letter is a Windows drive (`C:\work`), not a host. An alias of `~/.ssh/config` may have an underscore (`github_work`); it never starts with a dash, so it cannot be an option.
-    return host !== undefined && host.length > 1 && /^[a-z0-9][a-z0-9._-]*$/i.test(host) ? host.toLowerCase() : undefined;
+    return host !== undefined && host.length > 1 && /^[a-z0-9][a-z0-9._-]*$/i.test(host)
+        ? host.toLowerCase()
+        : undefined;
 }
 
 /**
@@ -74,7 +84,13 @@ export class WriteEnvironment {
     readonly #fromSsh = new Map<string, Promise<string | undefined>>();
     #fromShell: Promise<string | undefined> | undefined;
 
-    constructor({ env = () => process.env, platform = process.platform, home = homedir(), sshTimeoutMs = SSH_TIMEOUT_MS, shellTimeoutMs = SHELL_TIMEOUT_MS }: WriteEnvironmentOptions = {}) {
+    constructor({
+        env = () => process.env,
+        platform = process.platform,
+        home = homedir(),
+        sshTimeoutMs = SSH_TIMEOUT_MS,
+        shellTimeoutMs = SHELL_TIMEOUT_MS,
+    }: WriteEnvironmentOptions = {}) {
         this.#env = env;
         this.#platform = platform;
         this.#home = home;
@@ -103,7 +119,7 @@ export class WriteEnvironment {
 
     async #socketFor(cwd: string, env: Record<string, string>): Promise<string | undefined> {
         const address = await gitLine(cwd, ['remote', 'get-url', 'origin']);
-        const host = address === undefined ? '' : remoteHost(address) ?? '';
+        const host = address === undefined ? '' : (remoteHost(address) ?? '');
         let asked = this.#fromSsh.get(host);
 
         if (!asked) {
@@ -143,8 +159,12 @@ export class WriteEnvironment {
     /** `SSH_AUTH_SOCK` of the person's login shell, which has what their startup files export. */
     async #askShell(env: Record<string, string>): Promise<string | undefined> {
         const shell = env.SHELL || (this.#platform === 'darwin' ? '/bin/zsh' : '/bin/sh');
-        const run = await runProgram(shell, ['-ilc', PRINT_SOCKET], { env: { ...env, TERM: 'dumb' }, cwd: tmpdir(), timeoutMs: this.#shellTimeoutMs });
-        const value = new RegExp(`${ MARKER }(.*?)${ MARKER }`, 's').exec(run.stdout)?.[1];
+        const run = await runProgram(shell, ['-ilc', PRINT_SOCKET], {
+            env: { ...env, TERM: 'dumb' },
+            cwd: tmpdir(),
+            timeoutMs: this.#shellTimeoutMs,
+        });
+        const value = new RegExp(`${MARKER}(.*?)${MARKER}`, 's').exec(run.stdout)?.[1];
 
         return value !== undefined && isAbsolute(value) && !/[\r\n]/.test(value) ? value : undefined;
     }

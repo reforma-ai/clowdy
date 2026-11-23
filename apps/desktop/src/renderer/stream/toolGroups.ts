@@ -20,7 +20,14 @@ interface Tally {
     running: boolean;
 }
 
-const CLAUSE_OF = { read: 'explore', list: 'explore', search: 'explore', command: 'run', edit: 'edit', other: 'other' } as const;
+const CLAUSE_OF = {
+    read: 'explore',
+    list: 'explore',
+    search: 'explore',
+    command: 'run',
+    edit: 'edit',
+    other: 'other',
+} as const;
 
 /** A call that names no file counts for itself: reading two unnamed files is two files. */
 const unique = (call: ToolBody, target?: string) => target ?? call.toolCallId;
@@ -38,7 +45,13 @@ export function summarizeTools(calls: readonly ToolBody[]): string {
     for (const call of calls) {
         const { activity, target } = classifyTool(call.name, call.input);
         const clause = CLAUSE_OF[activity];
-        const tally = tallies.get(clause) ?? { files: new Set<string>(), folders: new Set<string>(), searches: 0, calls: 0, running: false };
+        const tally = tallies.get(clause) ?? {
+            files: new Set<string>(),
+            folders: new Set<string>(),
+            searches: 0,
+            calls: 0,
+            running: false,
+        };
 
         tallies.set(clause, tally);
         tally.calls++;
@@ -56,9 +69,9 @@ export function summarizeTools(calls: readonly ToolBody[]): string {
 
         switch (clause) {
             case 'run':
-                return `${ now ? 'running' : 'ran' } ${ plural(tally.calls, 'command', 'commands') }`;
+                return `${now ? 'running' : 'ran'} ${plural(tally.calls, 'command', 'commands')}`;
             case 'edit':
-                return `${ now ? 'editing' : 'edited' } ${ plural(tally.files.size, 'file', 'files') }`;
+                return `${now ? 'editing' : 'edited'} ${plural(tally.files.size, 'file', 'files')}`;
             case 'explore': {
                 const parts = [
                     tally.files.size > 0 && plural(tally.files.size, 'file', 'files'),
@@ -66,14 +79,14 @@ export function summarizeTools(calls: readonly ToolBody[]): string {
                     tally.searches > 0 && plural(tally.searches, 'search', 'searches'),
                 ];
 
-                return `${ now ? 'exploring' : 'explored' } ${ parts.filter(Boolean).join(', ') }`;
+                return `${now ? 'exploring' : 'explored'} ${parts.filter(Boolean).join(', ')}`;
             }
             case 'other':
-                return `${ now ? 'using' : 'used' } ${ plural(tally.calls, 'tool', 'tools') }`;
+                return `${now ? 'using' : 'used'} ${plural(tally.calls, 'tool', 'tools')}`;
         }
     });
 
-    if (failed > 0) clauses.push(`${ failed } failed`);
+    if (failed > 0) clauses.push(`${failed} failed`);
 
     return capitalize(clauses.join(', '));
 }

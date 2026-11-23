@@ -1,12 +1,15 @@
 type NonInheritValue<T> = T extends 'default' | 'inherit' | null | undefined ? never : T;
 
-
 /**
  * Returns the default value if the passed value is empty or inherit
  */
 export function defaultValue<Args extends any[]>(
     ...variables: Args
-): NonInheritValue<Args[number]> extends never ? Args extends [any, ...any[]] ? Args[number] | undefined : undefined : NonInheritValue<Args[number]> {
+): NonInheritValue<Args[number]> extends never
+    ? Args extends [any, ...any[]]
+        ? Args[number] | undefined
+        : undefined
+    : NonInheritValue<Args[number]> {
     let last: any;
 
     while (variables.length) {

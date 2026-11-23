@@ -1,6 +1,7 @@
 import { cn } from '@clowdy/lib';
-import { isValidElement, useRef, type ReactNode } from 'react';
+import { isValidElement, type ReactNode, useRef } from 'react';
 import { useTooltipTrigger } from 'react-aria';
+import { FocusableProvider } from 'react-aria/private/interactions/useFocusable';
 import {
     Focusable as AriaFocusable,
     Tooltip as AriaTooltip,
@@ -11,7 +12,6 @@ import {
     TooltipTriggerComponentProps,
     TooltipTriggerStateContext,
 } from 'react-aria-components';
-import { FocusableProvider } from 'react-aria/private/interactions/useFocusable';
 
 import { Show } from '../Show';
 import styles from './Tooltip.module.css';
@@ -98,13 +98,13 @@ export function TooltipTrigger({
 
     return (
         <Provider
-            values={ [
+            values={[
                 [TooltipTriggerStateContext, state],
                 [TooltipContext, { ...tooltipProps, triggerRef: ref }],
-            ] }
+            ]}
         >
-            <FocusableProvider { ...triggerProps } ref={ ref }>
-                { children }
+            <FocusableProvider {...triggerProps} ref={ref}>
+                {children}
             </FocusableProvider>
         </Provider>
     );
@@ -125,19 +125,17 @@ export function Tooltip({
 }: TooltipProps) {
     return (
         <TooltipTrigger
-            closeDelay={ closeDelay }
-            delay={ delay }
-            isDisabled={ isDisabled }
-            isOpen={ isOpen }
-            shouldCloseOnPress={ shouldCloseOnPress }
-            trigger={ trigger }
-            warmUp={ warmUp }
+            closeDelay={closeDelay}
+            delay={delay}
+            isDisabled={isDisabled}
+            isOpen={isOpen}
+            shouldCloseOnPress={shouldCloseOnPress}
+            trigger={trigger}
+            warmUp={warmUp}
         >
-            { makeFocusable(children, wrapTrigger) }
-            <Show when={ content != null }>
-                <TooltipContent { ...props }>
-                    {content}
-                </TooltipContent>
+            {makeFocusable(children, wrapTrigger)}
+            <Show when={content != null}>
+                <TooltipContent {...props}>{content}</TooltipContent>
             </Show>
         </TooltipTrigger>
     );
@@ -145,18 +143,15 @@ export function Tooltip({
 
 export function TooltipContent({ children, className, arrow = false, ...props }: TooltipContentProps) {
     return (
-        <AriaTooltip
-            { ...props }
-            className={ cn(styles.tooltip, className) }
-        >
-            <Show when={ arrow }>
-                <OverlayArrow className={ styles.arrow }>
-                    <svg width={ 8 } height={ 8 } viewBox="0 0 8 8" aria-hidden>
+        <AriaTooltip {...props} className={cn(styles.tooltip, className)}>
+            <Show when={arrow}>
+                <OverlayArrow className={styles.arrow}>
+                    <svg width={8} height={8} viewBox="0 0 8 8" aria-hidden>
                         <path d="M0 0 L4 4 L8 0" />
                     </svg>
                 </OverlayArrow>
             </Show>
-            { children }
+            {children}
         </AriaTooltip>
     );
 }

@@ -1,11 +1,11 @@
 // @vitest-environment happy-dom
 import { act, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 
 import { installDispatcher } from '../hotkeys/dispatcher';
 import { createRegistry } from '../hotkeys/registry';
-import { PickerPopover, type PickerOption } from './PickerPopover';
+import { type PickerOption, PickerPopover } from './PickerPopover';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -29,16 +29,16 @@ function Owner({ selectedIds = [], anchor = true }: { selectedIds?: string[]; an
     return (
         isOpen && (
             <PickerPopover
-                anchor={ anchor ? opener : null }
-                options={ OPTIONS }
-                selectedIds={ selectedIds }
+                anchor={anchor ? opener : null}
+                options={OPTIONS}
+                selectedIds={selectedIds}
                 aria-label="Change status"
                 placeholder="Change status…"
-                onPick={ id => picks.push(id) }
-                onClose={ () => {
+                onPick={id => picks.push(id)}
+                onClose={() => {
                     closes++;
                     setIsOpen(false);
-                } }
+                }}
             />
         )
     );
@@ -50,7 +50,7 @@ async function open(props: Parameters<typeof Owner>[0] = {}) {
     document.body.append(opener);
     opener.focus();
 
-    await act(async () => root.render(<Owner { ...props } />));
+    await act(async () => root.render(<Owner {...props} />));
 
     // The popover places itself on the next frame, and the search field takes focus after 50 ms.
     await act(async () => {
@@ -215,7 +215,14 @@ describe('PickerPopover and the hotkey dispatcher', () => {
     beforeEach(() => {
         registry = createRegistry('darwin');
         handler = vi.fn<(event: KeyboardEvent) => void>();
-        registry.defineCommand({ id: 'tasks.x', title: 'X', group: 'Tasks', keys: ['x', 'ArrowDown', 'Enter', 'Escape'], scope: 'app', handler });
+        registry.defineCommand({
+            id: 'tasks.x',
+            title: 'X',
+            group: 'Tasks',
+            keys: ['x', 'ArrowDown', 'Enter', 'Escape'],
+            scope: 'app',
+            handler,
+        });
         uninstall = installDispatcher(registry);
     });
 

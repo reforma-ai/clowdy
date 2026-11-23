@@ -18,7 +18,7 @@ let room = 1000;
 let resized: (() => void) | undefined;
 
 const text = () => container.querySelector('span')!;
-const draw = (path: string) => act(async () => root.render(<PathText path={ path } />));
+const draw = (path: string) => act(async () => root.render(<PathText path={path} />));
 
 beforeEach(() => {
     room = 1000;
@@ -30,14 +30,17 @@ beforeEach(() => {
         },
     });
     Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => room });
-    vi.stubGlobal('ResizeObserver', class {
-        constructor(callback: () => void) {
-            resized = callback;
-        }
+    vi.stubGlobal(
+        'ResizeObserver',
+        class {
+            constructor(callback: () => void) {
+                resized = callback;
+            }
 
-        observe() {}
-        disconnect() {}
-    });
+            observe() {}
+            disconnect() {}
+        }
+    );
     container = document.createElement('div');
     document.body.append(container);
     root = createRoot(container);

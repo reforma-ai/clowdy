@@ -1,5 +1,5 @@
-import { ROUTES, type DaemonInfo, type Health } from '@clowdy/protocol';
 import { request } from 'node:http';
+import { type DaemonInfo, type Health, ROUTES } from '@clowdy/protocol';
 
 const MAX_HEALTH_BYTES = 4096;
 
@@ -7,15 +7,17 @@ function parseJson(text: string): Record<string, unknown> | undefined {
     try {
         const value: unknown = JSON.parse(text);
 
-        return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
-    }
-    catch {
+        return typeof value === 'object' && value !== null && !Array.isArray(value)
+            ? (value as Record<string, unknown>)
+            : undefined;
+    } catch {
         return undefined;
     }
 }
 
 const isPid = (value: unknown): value is number => Number.isInteger(value) && (value as number) > 0;
-const isPort = (value: unknown): value is number => Number.isInteger(value) && (value as number) > 0 && (value as number) <= 65535;
+const isPort = (value: unknown): value is number =>
+    Number.isInteger(value) && (value as number) > 0 && (value as number) <= 65535;
 const isCount = (value: unknown): value is number => Number.isInteger(value) && (value as number) >= 0;
 
 /** The contents of a `daemon.json`, or `undefined` when the text is not what the daemon writes. */
@@ -26,7 +28,14 @@ export function parseDaemonInfo(text: string): DaemonInfo | undefined {
 
     const { pid, port, token, protocol, startedAt } = raw;
 
-    if (!isPid(pid) || !isPort(port) || typeof token !== 'string' || token === '' || !isCount(protocol) || !isCount(startedAt)) {
+    if (
+        !isPid(pid) ||
+        !isPort(port) ||
+        typeof token !== 'string' ||
+        token === '' ||
+        !isCount(protocol) ||
+        !isCount(startedAt)
+    ) {
         return undefined;
     }
 
@@ -45,7 +54,7 @@ export function parseHealth(text: string): Health | undefined {
         return undefined;
     }
 
-    return { ok, protocol, version, pid, startedAt, ...isCount(activeRuns) && { activeRuns } };
+    return { ok, protocol, version, pid, startedAt, ...(isCount(activeRuns) && { activeRuns }) };
 }
 
 /**
@@ -55,32 +64,35 @@ export function parseHealth(text: string): Health | undefined {
  */
 export function probeHealth(port: number, timeoutMs: number): Promise<Health | undefined> {
     return new Promise(resolve => {
-        const req = request({
-            host: '127.0.0.1',
-            port,
-            path: ROUTES.health,
-            agent: false,
-            signal: AbortSignal.timeout(timeoutMs),
-        }, response => {
-            if (response.statusCode !== 200) {
-                response.resume();
-                resolve(undefined);
+        const req = request(
+            {
+                host: '127.0.0.1',
+                port,
+                path: ROUTES.health,
+                agent: false,
+                signal: AbortSignal.timeout(timeoutMs),
+            },
+            response => {
+                if (response.statusCode !== 200) {
+                    response.resume();
+                    resolve(undefined);
 
-                return;
+                    return;
+                }
+
+                let body = '';
+
+                response.setEncoding('utf8');
+                response.on('data', (chunk: string) => {
+                    body += chunk;
+
+                    if (body.length > MAX_HEALTH_BYTES) req.destroy();
+                });
+                response.on('end', () => resolve(parseHealth(body)));
+                // After a normal 'end' the promise is settled already; this covers a response cut off in flight.
+                response.on('close', () => resolve(undefined));
             }
-
-            let body = '';
-
-            response.setEncoding('utf8');
-            response.on('data', (chunk: string) => {
-                body += chunk;
-
-                if (body.length > MAX_HEALTH_BYTES) req.destroy();
-            });
-            response.on('end', () => resolve(parseHealth(body)));
-            // After a normal 'end' the promise is settled already; this covers a response cut off in flight.
-            response.on('close', () => resolve(undefined));
-        });
+        );
 
         req.on('error', () => resolve(undefined));
         req.end();

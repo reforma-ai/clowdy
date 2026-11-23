@@ -27,7 +27,11 @@ export async function renameProject(root: RootStore, project: Project, name: str
 }
 
 /** `null` in a field clears it, so the project follows the daemon's own choice again. */
-export async function setProjectDefaults(root: RootStore, project: Project, settings: { [K in keyof ProjectSettings]?: ProjectSettings[K] | null }): Promise<boolean> {
+export async function setProjectDefaults(
+    root: RootStore,
+    project: Project,
+    settings: { [K in keyof ProjectSettings]?: ProjectSettings[K] | null }
+): Promise<boolean> {
     return (await perform(root, { type: 'project.update', projectId: project.id, settings })).ok;
 }
 
@@ -37,7 +41,7 @@ export async function setProjectDefaults(root: RootStore, project: Project, sett
  */
 export async function uploadProjectIcon(root: RootStore, project: Project, file: File): Promise<boolean> {
     if (file.size > MAX_ICON_SOURCE_BYTES) {
-        toast.error({ message: `${ file.name } is over ${ MAX_ICON_SOURCE_BYTES / 1024 / 1024 } MB` });
+        toast.error({ message: `${file.name} is over ${MAX_ICON_SOURCE_BYTES / 1024 / 1024} MB` });
 
         return false;
     }
@@ -46,9 +50,8 @@ export async function uploadProjectIcon(root: RootStore, project: Project, file:
 
     try {
         icon = await squareIcon(file);
-    }
-    catch {
-        toast.error({ message: `Couldn't read ${ file.name } as a picture` });
+    } catch {
+        toast.error({ message: `Couldn't read ${file.name} as a picture` });
 
         return false;
     }
@@ -93,7 +96,11 @@ export async function addFolders(root: RootStore, project: Project, picked: read
 
     if (added.length === 0) return;
 
-    await perform(root, { type: 'project.update', projectId: current.id, folders: folderEntries(current.folders, added) });
+    await perform(root, {
+        type: 'project.update',
+        projectId: current.id,
+        folders: folderEntries(current.folders, added),
+    });
 }
 
 /**
@@ -102,22 +109,34 @@ export async function addFolders(root: RootStore, project: Project, picked: read
  * the dialog opened would drop a folder added meanwhile. The daemon refuses while agents of the project are working, and its reason shows
  * while the dialog stays open. Resolves to whether the folders were saved once the dialog is gone.
  */
-function confirmNewMain(root: RootStore, project: Project, change: (folders: readonly ProjectFolder[]) => ProjectFolder[], dialog: { title: string; message: string; confirmLabel: string }): Promise<boolean> {
-    return new Promise((resolve) => {
+function confirmNewMain(
+    root: RootStore,
+    project: Project,
+    change: (folders: readonly ProjectFolder[]) => ProjectFolder[],
+    dialog: { title: string; message: string; confirmLabel: string }
+): Promise<boolean> {
+    return new Promise(resolve => {
         let saved = false;
 
-        openConfirmModal({
-            ...dialog,
-            onConfirm: async () => {
-                const { folders } = root.projects.find(candidate => candidate.id === project.id) ?? project;
-                const result = await root.command({ type: 'project.update', projectId: project.id, folders: folderEntries(change(folders)) });
+        openConfirmModal(
+            {
+                ...dialog,
+                onConfirm: async () => {
+                    const { folders } = root.projects.find(candidate => candidate.id === project.id) ?? project;
+                    const result = await root.command({
+                        type: 'project.update',
+                        projectId: project.id,
+                        folders: folderEntries(change(folders)),
+                    });
 
-                // The dialog shows a thrown message as an error and stays open.
-                if (!result.ok) throw new Error(result.error.message);
+                    // The dialog shows a thrown message as an error and stays open.
+                    if (!result.ok) throw new Error(result.error.message);
 
-                saved = true;
+                    saved = true;
+                },
             },
-        }, { onClose: () => resolve(saved) });
+            { onClose: () => resolve(saved) }
+        );
     });
 }
 
@@ -125,18 +144,28 @@ function confirmNewMain(root: RootStore, project: Project, change: (folders: rea
  * Saves the order the person dragged the folders to. A new main folder asks first, since the agents move to it; another order applies at
  * once. Resolves to whether it was saved: false when the person cancelled or the daemon refused.
  */
-export async function reorderFolders(root: RootStore, project: Project, folders: readonly ProjectFolder[]): Promise<boolean> {
+export async function reorderFolders(
+    root: RootStore,
+    project: Project,
+    folders: readonly ProjectFolder[]
+): Promise<boolean> {
     const [next] = folders;
 
     if (!next) return false;
 
-    if (next.id === mainFolder(project).id) return (await perform(root, { type: 'project.update', projectId: project.id, folders: folderEntries(folders) })).ok;
+    if (next.id === mainFolder(project).id)
+        return (await perform(root, { type: 'project.update', projectId: project.id, folders: folderEntries(folders) }))
+            .ok;
 
     const name = folderNames(folders)[0] ?? next.path;
     // A drag moves one folder: the one dragged to the top goes first, the others keep their order.
     const change = (current: readonly ProjectFolder[]) => [next, ...current.filter(folder => folder.id !== next.id)];
 
-    return confirmNewMain(root, project, change, { title: `Make ${ name } the main folder?`, message: newMainMessage(project.name, next.path), confirmLabel: 'Make main folder' });
+    return confirmNewMain(root, project, change, {
+        title: `Make ${name} the main folder?`,
+        message: newMainMessage(project.name, next.path),
+        confirmLabel: 'Make main folder',
+    });
 }
 
 /**
@@ -144,7 +173,12 @@ export async function reorderFolders(root: RootStore, project: Project, folders:
  * another folder goes at once, unless chats work in it (`chats`, from the daemon's info): they go back to the main folder, which asks first too.
  * Resolves to whether it was removed.
  */
-export async function removeFolder(root: RootStore, project: Project, folder: ProjectFolder, chats = 0): Promise<boolean> {
+export async function removeFolder(
+    root: RootStore,
+    project: Project,
+    folder: ProjectFolder,
+    chats = 0
+): Promise<boolean> {
     const folders = project.folders.filter(other => other.id !== folder.id);
 
     // A project has at least one folder: its last one is not offered for removal.
@@ -155,21 +189,29 @@ export async function removeFolder(root: RootStore, project: Project, folder: Pr
     const change = (current: readonly ProjectFolder[]) => current.filter(other => other.id !== folder.id);
     const isMain = folder.id === mainFolder(project).id;
 
-    if (!isMain && chats === 0) return (await perform(root, { type: 'project.update', projectId: project.id, folders: folderEntries(folders) })).ok;
+    if (!isMain && chats === 0)
+        return (await perform(root, { type: 'project.update', projectId: project.id, folders: folderEntries(folders) }))
+            .ok;
 
     const message = isMain
         ? newMainMessage(project.name, mainFolder({ folders }).path, folder.path)
         : removedFolderMessage(chats, name, names[0] ?? mainFolder(project).path);
 
-    return confirmNewMain(root, project, change, { title: `Remove ${ name }?`, message, confirmLabel: 'Remove folder' });
+    return confirmNewMain(root, project, change, { title: `Remove ${name}?`, message, confirmLabel: 'Remove folder' });
 }
 
 /**
  * Saves what the worktrees made from one folder of the project start from and need (the Workspace dialog); `null` in a field clears it. The daemon's refusal is a toast.
  * Resolves to whether it was saved.
  */
-export async function setFolderSettings(root: RootStore, project: Pick<Project, 'id'>, folder: Pick<ProjectFolder, 'id'>, settings: FolderSettingsPatch): Promise<boolean> {
-    return (await perform(root, { type: 'project.updateFolder', projectId: project.id, folderId: folder.id, settings })).ok;
+export async function setFolderSettings(
+    root: RootStore,
+    project: Pick<Project, 'id'>,
+    folder: Pick<ProjectFolder, 'id'>,
+    settings: FolderSettingsPatch
+): Promise<boolean> {
+    return (await perform(root, { type: 'project.updateFolder', projectId: project.id, folderId: folder.id, settings }))
+        .ok;
 }
 
 /**
@@ -177,7 +219,12 @@ export async function setFolderSettings(root: RootStore, project: Pick<Project, 
  * the same order, so the chats that work in it stay with it (an agent that worked there starts over from the record on its next turn). The daemon checks the path as
  * it does a new folder's, and the main folder waits for the agents; a refusal is a toast. Resolves to whether it was saved.
  */
-export async function locateFolder(root: RootStore, project: Project, folder: ProjectFolder, path: string): Promise<boolean> {
+export async function locateFolder(
+    root: RootStore,
+    project: Project,
+    folder: ProjectFolder,
+    path: string
+): Promise<boolean> {
     // The list as it is now, since `project.update` replaces the whole of it and another window may have changed it.
     const current = root.projects.find(candidate => candidate.id === project.id) ?? project;
     const folders = current.folders.map(other => (other.id === folder.id ? { id: other.id, path } : { id: other.id }));
@@ -202,8 +249,12 @@ export async function locateFolderByDialog(root: RootStore, project: Project, fo
 /** Asks, then removes the project from Clowdy. Its folders are never touched. */
 export function removeProject(root: RootStore, project: Project, info: ProjectInfo | undefined): void {
     openConfirmModal({
-        title: `Remove ${ project.name }?`,
-        message: removalMessage(project.name, project.folders.map(folder => folder.path), info),
+        title: `Remove ${project.name}?`,
+        message: removalMessage(
+            project.name,
+            project.folders.map(folder => folder.path),
+            info
+        ),
         confirmLabel: 'Remove project',
         destructive: true,
         onConfirm: async () => {

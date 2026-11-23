@@ -1,6 +1,6 @@
 import { Button } from '@clowdy/components/Button';
 import { ConfirmButton } from '@clowdy/components/ConfirmButton';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 
 import { formatFullTime, formatMessageTime } from '../../shared/time';
 import { Markdown } from '../../stream/Markdown';
@@ -41,41 +41,66 @@ export function Comment({ comment, author, isOwn, onEdit, onDelete }: CommentPro
     }, [isEditing]);
 
     return (
-        <article className={ styles.comment } data-comment-id={ comment.id }>
-            <header className={ styles.head }>
-                <span className={ styles.author }>{ author }</span>
-                <time className={ styles.time } dateTime={ new Date(comment.createdAt).toISOString() } title={ formatFullTime(comment.createdAt) }>
-                    { formatMessageTime(comment.createdAt) }
+        <article className={styles.comment} data-comment-id={comment.id}>
+            <header className={styles.head}>
+                <span className={styles.author}>{author}</span>
+                <time
+                    className={styles.time}
+                    dateTime={new Date(comment.createdAt).toISOString()}
+                    title={formatFullTime(comment.createdAt)}
+                >
+                    {formatMessageTime(comment.createdAt)}
                 </time>
-                { comment.editedAt !== undefined && <span className={ styles.time } title={ `Edited ${ formatFullTime(comment.editedAt) }` }>edited</span> }
-
-                { isOwn && !isEditing && (
-                    <span className={ styles.actions }>
-                        <Button ref={ editButton } size="xs" variant="filling" aria-label="Edit comment" onPress={ () => setIsEditing(true) }>Edit</Button>
-                        <ConfirmButton size="xs" variant="filling" color="danger" confirmColor="danger" confirmVariant="filled" onConfirm={ onDelete }>Delete</ConfirmButton>
+                {comment.editedAt !== undefined && (
+                    <span className={styles.time} title={`Edited ${formatFullTime(comment.editedAt)}`}>
+                        edited
                     </span>
-                ) }
+                )}
+
+                {isOwn && !isEditing && (
+                    <span className={styles.actions}>
+                        <Button
+                            ref={editButton}
+                            size="xs"
+                            variant="filling"
+                            aria-label="Edit comment"
+                            onPress={() => setIsEditing(true)}
+                        >
+                            Edit
+                        </Button>
+                        <ConfirmButton
+                            size="xs"
+                            variant="filling"
+                            color="danger"
+                            confirmColor="danger"
+                            confirmVariant="filled"
+                            onConfirm={onDelete}
+                        >
+                            Delete
+                        </ConfirmButton>
+                    </span>
+                )}
             </header>
 
-            { isEditing
-                ? (
-                    <CommentEditor
-                        initial={ comment.body }
-                        aria-label="Edit comment"
-                        submitLabel="Save"
-                        autoFocus
-                        onCancel={ () => setIsEditing(false) }
-                        onSubmit={ async (body) => {
-                            // Nothing changed: the daemon would still mark the comment edited.
-                            const isTaken = body === comment.body.trim() || await onEdit(body);
+            {isEditing ? (
+                <CommentEditor
+                    initial={comment.body}
+                    aria-label="Edit comment"
+                    submitLabel="Save"
+                    autoFocus
+                    onCancel={() => setIsEditing(false)}
+                    onSubmit={async body => {
+                        // Nothing changed: the daemon would still mark the comment edited.
+                        const isTaken = body === comment.body.trim() || (await onEdit(body));
 
-                            if (isTaken) setIsEditing(false);
+                        if (isTaken) setIsEditing(false);
 
-                            return isTaken;
-                        } }
-                    />
-                )
-                : <Markdown text={ comment.body } fromPerson={ comment.author.kind === 'user' } /> }
+                        return isTaken;
+                    }}
+                />
+            ) : (
+                <Markdown text={comment.body} fromPerson={comment.author.kind === 'user'} />
+            )}
         </article>
     );
 }

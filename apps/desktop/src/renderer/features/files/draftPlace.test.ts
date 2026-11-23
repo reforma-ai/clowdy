@@ -38,14 +38,19 @@ describe('the files of a new chat that chose an existing worktree', () => {
     const choose = async () => {
         ui().openDraft([], null, { mode: 'existing', path: FIXTURE_WORKTREE_PATH });
 
-        const opened = await store.command({ type: 'workspace.open', projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental', path: FIXTURE_WORKTREE_PATH });
+        const opened = await store.command({
+            type: 'workspace.open',
+            projectId: FIXTURE_PROJECT_ID,
+            folderId: 'fld_car_rental',
+            path: FIXTURE_WORKTREE_PATH,
+        });
 
         if (!opened.ok) throw new Error(opened.error.message);
 
         ui().setDraftWorkspaceRow((opened.data as { workspace: ChatWorkspace }).workspace);
     };
 
-    it('lists the worktree\'s files in the tree, which its folder\'s own checkout lacks', async () => {
+    it("lists the worktree's files in the tree, which its folder's own checkout lacks", async () => {
         const files = new FilesStore(store.transport, memoryStorage());
 
         ui().openDraft([], null, null);
@@ -60,8 +65,12 @@ describe('the files of a new chat that chose an existing worktree', () => {
 
         expect(worktree).not.toBe(own);
         expect(place().workspace?.path).toBe(FIXTURE_WORKTREE_PATH);
-        expect(await worktree.provider.list('src/booking')).toEqual(expect.arrayContaining([expect.objectContaining({ path: 'src/booking/weekend.ts' })]));
-        expect(await own.provider.list('src/booking')).not.toEqual(expect.arrayContaining([expect.objectContaining({ path: 'src/booking/weekend.ts' })]));
+        expect(await worktree.provider.list('src/booking')).toEqual(
+            expect.arrayContaining([expect.objectContaining({ path: 'src/booking/weekend.ts' })])
+        );
+        expect(await own.provider.list('src/booking')).not.toEqual(
+            expect.arrayContaining([expect.objectContaining({ path: 'src/booking/weekend.ts' })])
+        );
 
         files.dispose();
     });
@@ -77,7 +86,11 @@ describe('the files of a new chat that chose an existing worktree', () => {
         await settle();
         await manager.open('src/booking/weekend.ts');
 
-        const made = await store.command({ type: 'chat.create', projectId: FIXTURE_PROJECT_ID, workspace: { mode: 'existing', path: FIXTURE_WORKTREE_PATH } });
+        const made = await store.command({
+            type: 'chat.create',
+            projectId: FIXTURE_PROJECT_ID,
+            workspace: { mode: 'existing', path: FIXTURE_WORKTREE_PATH },
+        });
 
         if (!made.ok) throw new Error(made.error.message);
 

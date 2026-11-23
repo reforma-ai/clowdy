@@ -90,89 +90,103 @@ export function AngleUnitInput({
         externalAngle,
         hasValue,
     }));
-    const externalChanged = state.hasValue !== hasValue
-        || !isSameAngle(state.externalAngle, externalAngle);
+    const externalChanged = state.hasValue !== hasValue || !isSameAngle(state.externalAngle, externalAngle);
 
     if (externalChanged) {
         setState({ angle: externalAngle, externalAngle, hasValue });
     }
 
     const angle = externalChanged ? externalAngle : state.angle;
-    const setAngle = useCallback((nextAngle: AngleValue) => {
-        setState({ angle: nextAngle, externalAngle, hasValue });
-    }, [externalAngle, hasValue]);
+    const setAngle = useCallback(
+        (nextAngle: AngleValue) => {
+            setState({ angle: nextAngle, externalAngle, hasValue });
+        },
+        [externalAngle, hasValue]
+    );
 
-    const handleInputApply = useCallback((nextValue: UnitInputValue) => {
-        const nextAngle = unitInputToAngleValue(nextValue);
+    const handleInputApply = useCallback(
+        (nextValue: UnitInputValue) => {
+            const nextAngle = unitInputToAngleValue(nextValue);
 
-        if (nextAngle) {
+            if (nextAngle) {
+                setAngle(nextAngle);
+                onApply?.(nextAngle);
+            }
+        },
+        [onApply, setAngle]
+    );
+
+    const handleInputCommit = useCallback(
+        (nextValue: UnitInputValue) => {
+            const nextAngle = unitInputToAngleValue(nextValue);
+
+            if (!nextAngle) {
+                return false;
+            }
+
             setAngle(nextAngle);
-            onApply?.(nextAngle);
-        }
-    }, [onApply, setAngle]);
 
-    const handleInputCommit = useCallback((nextValue: UnitInputValue) => {
-        const nextAngle = unitInputToAngleValue(nextValue);
-
-        if (!nextAngle) {
-            return false;
-        }
-
-        setAngle(nextAngle);
-
-        return onCommit?.(nextAngle);
-    }, [onCommit, setAngle]);
+            return onCommit?.(nextAngle);
+        },
+        [onCommit, setAngle]
+    );
 
     const handleClear = useCallback(() => {
         setAngle(fallbackAngle);
         onClear?.();
     }, [fallbackAngle, onClear, setAngle]);
 
-    const handleAngleApply = useCallback((nextValue: AngleValue) => {
-        setAngle(nextValue);
-        onApply?.(nextValue);
-    }, [onApply, setAngle]);
+    const handleAngleApply = useCallback(
+        (nextValue: AngleValue) => {
+            setAngle(nextValue);
+            onApply?.(nextValue);
+        },
+        [onApply, setAngle]
+    );
 
-    const handleAngleCommit = useCallback((nextValue: AngleValue) => {
-        setAngle(nextValue);
-        onCommit?.(nextValue);
-    }, [onCommit, setAngle]);
+    const handleAngleCommit = useCallback(
+        (nextValue: AngleValue) => {
+            setAngle(nextValue);
+            onCommit?.(nextValue);
+        },
+        [onCommit, setAngle]
+    );
 
     return (
         <Box direction="row" align="center" gap="xs" fullWidth>
-            <Box grow style={ { position: 'relative' } }>
+            <Box grow style={{ position: 'relative' }}>
                 <UnitInput
-                    size={ size }
-                    aria-label={ placeholder ? undefined : ariaLabel }
-                    value={ hasValue ? angleToUnitInput(angle) : null }
-                    placeholder={ placeholder }
-                    placeholderUnit={ placeholderUnit ?? fallbackAngle.unit }
-                    units={ units }
-                    min={ min }
-                    max={ max }
-                    step={ step }
-                    conversionRates={ ANGLE_CONVERSION_RATES }
-                    isActive={ isActive }
-                    onApply={ handleInputApply }
-                    onCommit={ handleInputCommit }
-                    onClear={ handleClear }
+                    size={size}
+                    aria-label={placeholder ? undefined : ariaLabel}
+                    value={hasValue ? angleToUnitInput(angle) : null}
+                    placeholder={placeholder}
+                    placeholderUnit={placeholderUnit ?? fallbackAngle.unit}
+                    units={units}
+                    min={min}
+                    max={max}
+                    step={step}
+                    conversionRates={ANGLE_CONVERSION_RATES}
+                    isActive={isActive}
+                    onApply={handleInputApply}
+                    onCommit={handleInputCommit}
+                    onClear={handleClear}
                 />
-                { inputOverlay }
+                {inputOverlay}
             </Box>
 
             <AngleControl
-                value={ angle }
-                unit={ angle.unit }
-                size={ size }
-                min={ angleMin }
-                max={ angleMax }
-                step={ step }
-                precision={ precision }
-                valueRange={ valueRange }
-                presetBehavior={ presetBehavior }
-                ariaLabel={ angleAriaLabel }
-                onChange={ handleAngleApply }
-                onChangeEnd={ handleAngleCommit }
+                value={angle}
+                unit={angle.unit}
+                size={size}
+                min={angleMin}
+                max={angleMax}
+                step={step}
+                precision={precision}
+                valueRange={valueRange}
+                presetBehavior={presetBehavior}
+                ariaLabel={angleAriaLabel}
+                onChange={handleAngleApply}
+                onChangeEnd={handleAngleCommit}
             />
         </Box>
     );
@@ -194,10 +208,7 @@ function angleToUnitInput(value: AngleValue): UnitInputValue {
     };
 }
 
-function angleFromPlaceholder(
-    placeholder: string | undefined,
-    placeholderUnit: AngleUnit | undefined
-): AngleValue {
+function angleFromPlaceholder(placeholder: string | undefined, placeholderUnit: AngleUnit | undefined): AngleValue {
     const fallbackUnit = placeholderUnit ?? DEFAULT_ANGLE_VALUE.unit;
 
     return parseAngleValue(placeholder ?? '', fallbackUnit) ?? { ...DEFAULT_ANGLE_VALUE, unit: fallbackUnit };

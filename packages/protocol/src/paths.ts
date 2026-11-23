@@ -24,7 +24,7 @@ export function daemonDataDir({ platform, home, env }: DataDirInput): string {
     }
 
     if (platform === 'win32') {
-        const local = env.LOCALAPPDATA ? trimTrailingSeparators(env.LOCALAPPDATA) : `${ base }\\AppData\\Local`;
+        const local = env.LOCALAPPDATA ? trimTrailingSeparators(env.LOCALAPPDATA) : `${base}\\AppData\\Local`;
 
         return [local, dev ? 'Clowdy Dev' : 'Clowdy', 'daemon'].join('\\');
     }

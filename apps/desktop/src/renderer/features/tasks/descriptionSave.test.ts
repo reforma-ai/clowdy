@@ -10,7 +10,9 @@ describe('onlyTicksChanged', () => {
     });
 
     it('reads every kind of list marker and an upper case X, and nested items', () => {
-        expect(onlyTicksChanged('* [ ] a\n+ [ ] b\n1. [ ] c\n  - [ ] d', '* [x] a\n+ [X] b\n1. [x] c\n  - [x] d')).toBe(true);
+        expect(onlyTicksChanged('* [ ] a\n+ [ ] b\n1. [ ] c\n  - [ ] d', '* [x] a\n+ [X] b\n1. [x] c\n  - [x] d')).toBe(
+            true
+        );
     });
 
     it('keeps the text around the boxes in the comparison: a word typed with a tick is typing', () => {

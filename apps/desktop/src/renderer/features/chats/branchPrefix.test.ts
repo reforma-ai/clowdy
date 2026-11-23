@@ -5,7 +5,10 @@ import { BranchPrefixPreference } from './branchPrefix';
 const memory = () => {
     const values = new Map<string, string>();
 
-    return { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => void values.set(key, value) };
+    return {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => void values.set(key, value),
+    };
 };
 
 describe('The branch prefix of a new worktree', () => {
@@ -58,7 +61,7 @@ describe('The branch prefix of a new worktree', () => {
         expect(preference.value).toBe('max');
     });
 
-    it('puts the prefix on a new worktree\'s choice when it is not the default, and leaves every other choice as it is', () => {
+    it("puts the prefix on a new worktree's choice when it is not the default, and leaves every other choice as it is", () => {
         const preference = new BranchPrefixPreference(undefined);
         const existing = { mode: 'existing', path: '/work/p-feature' } as const;
         const fresh = { mode: 'new', base: 'dev' } as const;

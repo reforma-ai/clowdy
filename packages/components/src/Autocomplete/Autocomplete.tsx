@@ -1,19 +1,11 @@
 import { Search } from '@clowdy/icons/14';
 import { cn } from '@clowdy/lib';
 import { useCallback, useMemo, useState } from 'react';
-import {
-    Autocomplete as RACAutocomplete,
-    type AutocompleteProps as RACAutocompleteProps,
-} from 'react-aria-components';
+import { Autocomplete as RACAutocomplete, type AutocompleteProps as RACAutocompleteProps } from 'react-aria-components';
 
 import { Input } from '../Input';
 import { PopoverScroll } from '../Popover';
-import {
-    elementScrollAxisSource,
-    ScrollChromeBars,
-    ScrollChromeRoot,
-    useScrollChrome,
-} from '../Scrollable';
+import { elementScrollAxisSource, ScrollChromeBars, ScrollChromeRoot, useScrollChrome } from '../Scrollable';
 import { Separator } from '../Separator';
 import { Show } from '../Show';
 import styles from './Autocomplete.module.css';
@@ -62,35 +54,35 @@ export function Autocomplete({
     ...autocompleteProps
 }: AutocompleteProps) {
     return (
-        <div className={ cn(styles.root, className) }>
-            <RACAutocomplete { ...autocompleteProps }>
-                <Show when={ showSearch }>
+        <div className={cn(styles.root, className)}>
+            <RACAutocomplete {...autocompleteProps}>
+                <Show when={showSearch}>
                     <Input
                         type="text"
                         size="sm"
                         variant="inline"
-                        placeholder={ placeholder }
-                        aria-label={ placeholder ? undefined : ariaLabel }
-                        autoFocus={ autoFocus }
-                        isDisabled={ isDisabled }
-                        onKeyDown={ onKeyDown }
-                        className={ cn(styles.searchInput, inputClassName) }
+                        placeholder={placeholder}
+                        aria-label={placeholder ? undefined : ariaLabel}
+                        autoFocus={autoFocus}
+                        isDisabled={isDisabled}
+                        onKeyDown={onKeyDown}
+                        className={cn(styles.searchInput, inputClassName)}
                     >
-                        <Search slot="prefix" aria-hidden size={ 14 } />
+                        <Search slot="prefix" aria-hidden size={14} />
                     </Input>
 
                     <Separator spacing="xs" />
                 </Show>
 
                 <Show
-                    when={ childrenOwnScroll }
-                    fallback={ (
-                        <PopoverScroll maxHeight={ maxHeight } containerRef={ scrollContainerRef }>
-                            { children }
+                    when={childrenOwnScroll}
+                    fallback={
+                        <PopoverScroll maxHeight={maxHeight} containerRef={scrollContainerRef}>
+                            {children}
                         </PopoverScroll>
-                    ) }
+                    }
                 >
-                    <ListBoxScrollChrome>{ children }</ListBoxScrollChrome>
+                    <ListBoxScrollChrome>{children}</ListBoxScrollChrome>
                 </Show>
             </RACAutocomplete>
         </div>
@@ -108,27 +100,20 @@ function ListBoxScrollChrome({ children }: { children: ReactNode }) {
         setScrollEl(host?.querySelector<HTMLElement>(':scope > [role="listbox"]') ?? null);
     }, []);
 
-    const verticalSource = useMemo(
-        () => elementScrollAxisSource(() => scrollEl, 'vertical'),
-        [scrollEl]
-    );
+    const verticalSource = useMemo(() => elementScrollAxisSource(() => scrollEl, 'vertical'), [scrollEl]);
 
     const chrome = useScrollChrome({ verticalSource, sourceKey: scrollEl });
 
     return (
         <ScrollChromeRoot
-            ref={ hostRef }
-            rootRef={ chrome.rootRef }
-            className={ styles.listBoxScroll }
+            ref={hostRef}
+            rootRef={chrome.rootRef}
+            className={styles.listBoxScroll}
             vertical
-            rootPointerHandlers={ chrome.rootPointerHandlers }
+            rootPointerHandlers={chrome.rootPointerHandlers}
         >
-            { children }
-            <ScrollChromeBars
-                vertical
-                setScrollbarV={ chrome.setScrollbarV }
-                onPointerDown={ chrome.handlePointerDown }
-            />
+            {children}
+            <ScrollChromeBars vertical setScrollbarV={chrome.setScrollbarV} onPointerDown={chrome.handlePointerDown} />
         </ScrollChromeRoot>
     );
 }

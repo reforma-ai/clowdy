@@ -7,7 +7,12 @@ import type { KeyValueStorage } from './storage';
 function memoryStorage(initial: Record<string, string> = {}): KeyValueStorage & { data: Record<string, string> } {
     const data = { ...initial };
 
-    return { data, getItem: key => data[key] ?? null, setItem: (key, value) => void (data[key] = value), removeItem: key => void delete data[key] };
+    return {
+        data,
+        getItem: key => data[key] ?? null,
+        setItem: (key, value) => void (data[key] = value),
+        removeItem: key => void delete data[key],
+    };
 }
 
 describe('UiStore', () => {
@@ -25,7 +30,9 @@ describe('UiStore', () => {
     });
 
     it('forgets what an older version kept of the open document, and the Docs section', () => {
-        const storage = memoryStorage({ 'clowdy:ui:p1': '{"section":"docs","docPath":"decisions/pricing.md","docFolderId":"fld_api"}' });
+        const storage = memoryStorage({
+            'clowdy:ui:p1': '{"section":"docs","docPath":"decisions/pricing.md","docFolderId":"fld_api"}',
+        });
         const ui = new UiStore(storage).forProject('p1');
         expect(ui).not.toHaveProperty('docPath');
         expect(Object.keys(ui.view)).not.toContain('docPath');
@@ -93,7 +100,12 @@ describe('UiStore', () => {
 
         const second = new UiStore(storage);
 
-        expect(second.forProject('p1')).toMatchObject({ taskId: 't7', tasksView: 'list', sidePanelOpen: true, sidePanelTab: 'tasks' });
+        expect(second.forProject('p1')).toMatchObject({
+            taskId: 't7',
+            tasksView: 'list',
+            sidePanelOpen: true,
+            sidePanelTab: 'tasks',
+        });
         expect(second.forProject('p2')).toMatchObject({ chatId: 'c3', tasksView: 'board' });
         expect(second.forProject('p3').chatId).toBeNull();
     });
@@ -101,10 +113,15 @@ describe('UiStore', () => {
     describe('the scope of the Tasks screen and its options', () => {
         const held = (...ids: string[]) => new Map(ids.map(id => [id, {} as { archivedAt?: number }]));
 
-        it('starts at the roots, with the sub-tasks hidden, the board on a task\'s page and nothing folded', () => {
+        it("starts at the roots, with the sub-tasks hidden, the board on a task's page and nothing folded", () => {
             const ui = new UiStore().forProject('p1');
 
-            expect([ui.tasksScope, ui.tasksSubtasks, ui.taskPageView, ui.tasksCollapsed]).toEqual([null, false, 'board', []]);
+            expect([ui.tasksScope, ui.tasksSubtasks, ui.taskPageView, ui.tasksCollapsed]).toEqual([
+                null,
+                false,
+                'board',
+                [],
+            ]);
         });
 
         it('keeps the scope, the sub-tasks toggle, the task page view and the folds per project across a restart', () => {
@@ -120,30 +137,64 @@ describe('UiStore', () => {
 
             const second = new UiStore(storage);
 
-            expect(second.forProject('p1')).toMatchObject({ tasksScope: 't-31', tasksSubtasks: true, taskPageView: 'list', tasksCollapsed: ['t-32', 't-35'], tasksView: 'board' });
-            expect(second.forProject('p2')).toMatchObject({ tasksScope: 't-9', tasksSubtasks: false, taskPageView: 'board', tasksCollapsed: [] });
-            expect(second.forProject('p3')).toMatchObject({ tasksScope: null, tasksSubtasks: false, tasksCollapsed: [] });
+            expect(second.forProject('p1')).toMatchObject({
+                tasksScope: 't-31',
+                tasksSubtasks: true,
+                taskPageView: 'list',
+                tasksCollapsed: ['t-32', 't-35'],
+                tasksView: 'board',
+            });
+            expect(second.forProject('p2')).toMatchObject({
+                tasksScope: 't-9',
+                tasksSubtasks: false,
+                taskPageView: 'board',
+                tasksCollapsed: [],
+            });
+            expect(second.forProject('p3')).toMatchObject({
+                tasksScope: null,
+                tasksSubtasks: false,
+                tasksCollapsed: [],
+            });
         });
 
         it('reads a project stored before they existed: the defaults, and the rest as it was', () => {
-            const ui = new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"section":"tasks","taskId":"t7","tasksView":"list"}' })).forProject('p1');
+            const ui = new UiStore(
+                memoryStorage({ 'clowdy:ui:p1': '{"section":"tasks","taskId":"t7","tasksView":"list"}' })
+            ).forProject('p1');
 
             // The section an older version stored is ignored: there is one screen.
-            expect(ui).toMatchObject({ taskId: 't7', tasksView: 'list', tasksScope: null, tasksSubtasks: false, taskPageView: 'board', tasksCollapsed: [] });
+            expect(ui).toMatchObject({
+                taskId: 't7',
+                tasksView: 'list',
+                tasksScope: null,
+                tasksSubtasks: false,
+                taskPageView: 'board',
+                tasksCollapsed: [],
+            });
         });
 
         it('takes what it can from a stored value of a shape it does not know, and the defaults for the rest', () => {
-            const damaged = (value: object) => new UiStore(memoryStorage({ 'clowdy:ui:p1': JSON.stringify(value) })).forProject('p1');
+            const damaged = (value: object) =>
+                new UiStore(memoryStorage({ 'clowdy:ui:p1': JSON.stringify(value) })).forProject('p1');
 
-            expect(damaged({ tasksScope: 5, tasksSubtasks: 'yes', taskPageView: 'cards', tasksCollapsed: 't-1' })).toMatchObject({ tasksScope: null, tasksSubtasks: false, taskPageView: 'board', tasksCollapsed: [] });
-            expect(damaged({ tasksScope: { id: 't-1' }, tasksSubtasks: 1, taskPageView: null, tasksCollapsed: null })).toMatchObject({ tasksScope: null, tasksSubtasks: false, taskPageView: 'board', tasksCollapsed: [] });
+            expect(
+                damaged({ tasksScope: 5, tasksSubtasks: 'yes', taskPageView: 'cards', tasksCollapsed: 't-1' })
+            ).toMatchObject({ tasksScope: null, tasksSubtasks: false, taskPageView: 'board', tasksCollapsed: [] });
+            expect(
+                damaged({ tasksScope: { id: 't-1' }, tasksSubtasks: 1, taskPageView: null, tasksCollapsed: null })
+            ).toMatchObject({ tasksScope: null, tasksSubtasks: false, taskPageView: 'board', tasksCollapsed: [] });
             // A list with something else in it keeps its ids, once each.
-            expect(damaged({ tasksCollapsed: ['t-1', 7, null, 't-2', 't-1', {}] }).tasksCollapsed).toEqual(['t-1', 't-2']);
+            expect(damaged({ tasksCollapsed: ['t-1', 7, null, 't-2', 't-1', {}] }).tasksCollapsed).toEqual([
+                't-1',
+                't-2',
+            ]);
         });
 
         it('keeps no more folds than the limit, the newest ones, from storage and as they are made', () => {
-            const many = Array.from({ length: COLLAPSED_TASKS_LIMIT + 50 }, (_, index) => `t-${ index }`);
-            const ui = new UiStore(memoryStorage({ 'clowdy:ui:p1': JSON.stringify({ tasksCollapsed: many }) })).forProject('p1');
+            const many = Array.from({ length: COLLAPSED_TASKS_LIMIT + 50 }, (_, index) => `t-${index}`);
+            const ui = new UiStore(
+                memoryStorage({ 'clowdy:ui:p1': JSON.stringify({ tasksCollapsed: many }) })
+            ).forProject('p1');
 
             expect(ui.tasksCollapsed).toHaveLength(COLLAPSED_TASKS_LIMIT);
             expect(ui.tasksCollapsed.at(-1)).toBe(many.at(-1));
@@ -243,14 +294,18 @@ describe('UiStore', () => {
         });
     });
 
-    describe('the comment a task\'s composer holds and has not sent', () => {
+    describe("the comment a task's composer holds and has not sent", () => {
         it('is kept per task, and is empty for a task that has none', () => {
             const ui = new UiStore().forProject('p1');
 
             ui.setCommentDraft('t-32', 'Half a thought');
             ui.setCommentDraft('t-35', 'Another');
 
-            expect([ui.commentDraft('t-32'), ui.commentDraft('t-35'), ui.commentDraft('t-36')]).toEqual(['Half a thought', 'Another', '']);
+            expect([ui.commentDraft('t-32'), ui.commentDraft('t-35'), ui.commentDraft('t-36')]).toEqual([
+                'Half a thought',
+                'Another',
+                '',
+            ]);
             expect(new UiStore().forProject('p1').commentDraft('t-32')).toBe('');
         });
 
@@ -291,7 +346,8 @@ describe('UiStore', () => {
         it('keeps no more than the limit: the draft written longest ago goes, and writing again makes a draft the newest', () => {
             const ui = new UiStore().forProject('p1');
 
-            for (let index = 0; index < COMMENT_DRAFTS_LIMIT; index++) ui.setCommentDraft(`t-${ index }`, `Draft ${ index }`);
+            for (let index = 0; index < COMMENT_DRAFTS_LIMIT; index++)
+                ui.setCommentDraft(`t-${index}`, `Draft ${index}`);
 
             // The oldest is written again and so is the newest now: the next one in line goes instead.
             ui.setCommentDraft('t-0', 'Draft 0, longer');
@@ -300,7 +356,7 @@ describe('UiStore', () => {
             expect(ui.commentDraft('t-1')).toBe('');
             expect(ui.commentDraft('t-0')).toBe('Draft 0, longer');
             expect(ui.commentDraft('t-new')).toBe('One more');
-            expect(ui.commentDraft(`t-${ COMMENT_DRAFTS_LIMIT - 1 }`)).toBe(`Draft ${ COMMENT_DRAFTS_LIMIT - 1 }`);
+            expect(ui.commentDraft(`t-${COMMENT_DRAFTS_LIMIT - 1}`)).toBe(`Draft ${COMMENT_DRAFTS_LIMIT - 1}`);
         });
     });
 
@@ -364,7 +420,7 @@ describe('UiStore', () => {
             expect(ui.tasksScope).toBeNull();
         });
 
-        it('reads the view of the task page inside a task, and the project\'s own view at the roots', () => {
+        it("reads the view of the task page inside a task, and the project's own view at the roots", () => {
             const ui = open();
 
             ui.setTasksScope('t-31');
@@ -433,7 +489,7 @@ describe('UiStore', () => {
             expect([ui.taskId, ui.tasksScope]).toEqual([null, 't-31']);
         });
 
-        it('leaves the archive view for a task of the board opened from elsewhere, and stays in it for an archived task and for the screen\'s own clicks', () => {
+        it("leaves the archive view for a task of the board opened from elsewhere, and stays in it for an archived task and for the screen's own clicks", () => {
             const ui = open();
 
             ui.setTasksArchive(true);
@@ -466,7 +522,7 @@ describe('UiStore', () => {
             expect(new UiStore(storage).forProject('p1').tasksArchive).toBe(false);
         });
 
-        it('does nothing to the scope without the project\'s tasks, as a window state of its own has none', () => {
+        it("does nothing to the scope without the project's tasks, as a window state of its own has none", () => {
             const ui = new UiStore().forProject('p1');
 
             ui.setTasksScope('t-35');
@@ -477,7 +533,9 @@ describe('UiStore', () => {
     });
 
     it('starts from defaults when the stored value is damaged', () => {
-        const ui = new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"section":"nope","taskId":5,"tasksView":"cards"}' })).forProject('p1');
+        const ui = new UiStore(
+            memoryStorage({ 'clowdy:ui:p1': '{"section":"nope","taskId":5,"tasksView":"cards"}' })
+        ).forProject('p1');
 
         expect(ui).toMatchObject({ taskId: null, tasksView: 'board' });
         expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': 'not json' })).forProject('p1').chatId).toBeNull();
@@ -521,16 +579,30 @@ describe('UiStore', () => {
     });
 
     it('ignores a section an older version stored under the name Chats, and keeps the chat', () => {
-        const ui = new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"section":"chats","chatId":"c-1"}' })).forProject('p1');
+        const ui = new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"section":"chats","chatId":"c-1"}' })).forProject(
+            'p1'
+        );
 
         expect(ui).toMatchObject({ chatId: 'c-1' });
     });
 
     it('starts from what the page URL preselects, ahead of the stored state', () => {
-        const initial = initialUiFromSearch('?fixtures=1&panel=open&panelTab=tasks&task=t-24&view=list&chat=c-1&run=r-1');
-        const ui = new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"section":"agents","tasksView":"board"}' }), initial).forProject('p1');
+        const initial = initialUiFromSearch(
+            '?fixtures=1&panel=open&panelTab=tasks&task=t-24&view=list&chat=c-1&run=r-1'
+        );
+        const ui = new UiStore(
+            memoryStorage({ 'clowdy:ui:p1': '{"section":"agents","tasksView":"board"}' }),
+            initial
+        ).forProject('p1');
 
-        expect(ui).toMatchObject({ taskId: 't-24', tasksView: 'list', chatId: 'c-1', runId: 'r-1', sidePanelOpen: true, sidePanelTab: 'tasks' });
+        expect(ui).toMatchObject({
+            taskId: 't-24',
+            tasksView: 'list',
+            chatId: 'c-1',
+            runId: 'r-1',
+            sidePanelOpen: true,
+            sidePanelTab: 'tasks',
+        });
     });
 
     it('folds every chat until its threads are opened, and keeps what the person opened per project across a restart', () => {
@@ -564,8 +636,12 @@ describe('UiStore', () => {
 
     it('reads the folds of threads from the page URL, and drops what is damaged in storage', () => {
         expect(initialUiFromSearch('?expand=c-6,c-6a')).toEqual({ expandedChats: ['c-6', 'c-6a'] });
-        expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"expandedChats":"c-1"}' })).forProject('p1')).toMatchObject({ expandedChats: [] });
-        expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"expandedChats":["c-1",5]}' })).forProject('p1').expandedChats).toEqual(['c-1']);
+        expect(
+            new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"expandedChats":"c-1"}' })).forProject('p1')
+        ).toMatchObject({ expandedChats: [] });
+        expect(
+            new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"expandedChats":["c-1",5]}' })).forProject('p1').expandedChats
+        ).toEqual(['c-1']);
     });
 
     it('shows the rows of the running-agents strip until the person folds them, and remembers it per project', () => {
@@ -603,7 +679,9 @@ describe('UiStore', () => {
     it('reads the side panel from the page URL', () => {
         expect(initialUiFromSearch('?panel=open')).toEqual({ sidePanelOpen: true });
         expect(initialUiFromSearch('?panel=closed')).toEqual({ sidePanelOpen: false });
-        expect(new UiStore(memoryStorage(), initialUiFromSearch('?panel=open')).forProject('p1').sidePanelOpen).toBe(true);
+        expect(new UiStore(memoryStorage(), initialUiFromSearch('?panel=open')).forProject('p1').sidePanelOpen).toBe(
+            true
+        );
     });
 
     it('starts the side panel on its Info tab, and keeps the tab the person left it on per project', () => {
@@ -723,7 +801,7 @@ describe('UiStore', () => {
         expect([ui.sidePanelOpen, ui.sidePanelTab]).toEqual([true, 'terminal']);
     });
 
-    it('sets the side panel to one of its three sizes: beside the chat, in the chat\'s place, or hidden', () => {
+    it("sets the side panel to one of its three sizes: beside the chat, in the chat's place, or hidden", () => {
         const ui = new UiStore(memoryStorage()).forProject('p1');
         const state = () => [ui.sidePanelOpen, ui.sidePanelExpanded];
 
@@ -754,7 +832,7 @@ describe('UiStore', () => {
         expect([ui.sidePanelOpen, ui.sidePanelExpanded]).toEqual([true, true]);
     });
 
-    it('puts Files and Docs in the chat\'s place while the window is too narrow for them beside it, and leaves the other tabs and the choice alone', () => {
+    it("puts Files and Docs in the chat's place while the window is too narrow for them beside it, and leaves the other tabs and the choice alone", () => {
         const store = new UiStore(memoryStorage());
         const ui = store.forProject('p1');
 
@@ -795,14 +873,16 @@ describe('UiStore', () => {
     it('knows that Files, Docs and Changes are a list beside a view', () => {
         const ui = new UiStore(memoryStorage()).forProject('p1');
 
-        expect((['files', 'docs', 'terminal', 'info', 'tasks', 'changes'] as const).map((tab) => {
-            ui.showSidePanelTab(tab);
+        expect(
+            (['files', 'docs', 'terminal', 'info', 'tasks', 'changes'] as const).map(tab => {
+                ui.showSidePanelTab(tab);
 
-            return ui.sidePanelTabHasTree;
-        })).toEqual([true, true, false, false, false, true]);
+                return ui.sidePanelTabHasTree;
+            })
+        ).toEqual([true, true, false, false, false, true]);
     });
 
-    it('puts Changes beside the chat while the window fits it, and in the chat\'s place while it does not, as Files is', () => {
+    it("puts Changes beside the chat while the window fits it, and in the chat's place while it does not, as Files is", () => {
         const store = new UiStore(memoryStorage());
         const ui = store.forProject('p1');
 
@@ -886,23 +966,36 @@ describe('UiStore', () => {
     });
 
     it('reads the side panel tab from the page URL, and drops a tab that is not one', () => {
-        expect(initialUiFromSearch('?panel=open&panelTab=files')).toEqual({ sidePanelOpen: true, sidePanelTab: 'files' });
+        expect(initialUiFromSearch('?panel=open&panelTab=files')).toEqual({
+            sidePanelOpen: true,
+            sidePanelTab: 'files',
+        });
         expect(initialUiFromSearch('?panelTab=terminal')).toEqual({ sidePanelTab: 'terminal' });
         expect(initialUiFromSearch('?panelTab=docs')).toEqual({ sidePanelTab: 'docs' });
         expect(initialUiFromSearch('?panelTab=tasks')).toEqual({ sidePanelTab: 'tasks' });
         expect(initialUiFromSearch('?panelTab=changes')).toEqual({ sidePanelTab: 'changes' });
-        expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"sidePanelTab":"docs"}' })).forProject('p1').sidePanelTab).toBe('docs');
-        expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"sidePanelTab":"changes"}' })).forProject('p1').sidePanelTab).toBe('changes');
+        expect(
+            new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"sidePanelTab":"docs"}' })).forProject('p1').sidePanelTab
+        ).toBe('docs');
+        expect(
+            new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"sidePanelTab":"changes"}' })).forProject('p1').sidePanelTab
+        ).toBe('changes');
         expect(initialUiFromSearch('?panelTab=checks')).toEqual({});
-        expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"sidePanelTab":"terminal"}' })).forProject('p1').sidePanelTab).toBe('terminal');
+        expect(
+            new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"sidePanelTab":"terminal"}' })).forProject('p1').sidePanelTab
+        ).toBe('terminal');
         // A stored tab that is none (one a later version had, or damage) falls back to Info.
-        expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"sidePanelTab":"checks"}' })).forProject('p1').sidePanelTab).toBe('info');
+        expect(
+            new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"sidePanelTab":"checks"}' })).forProject('p1').sidePanelTab
+        ).toBe('info');
     });
 
     it('reads the fold of the strip from the page URL, and drops what is damaged in storage', () => {
         expect(initialUiFromSearch('?agents=folded')).toEqual({ agentsFolded: true });
         expect(initialUiFromSearch('?agents=open')).toEqual({ agentsFolded: false });
-        expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"agentsFolded":"yes"}' })).forProject('p1').agentsFolded).toBe(false);
+        expect(
+            new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"agentsFolded":"yes"}' })).forProject('p1').agentsFolded
+        ).toBe(false);
     });
 
     it('groups the list by folder until it is turned off, folds a group on its own, and keeps both per project across a restart', () => {
@@ -918,7 +1011,10 @@ describe('UiStore', () => {
         ui.toggleFolderCollapsed('fld-api');
         expect(ui.collapsedFolders).toEqual(['fld-notes']);
         expect(store.forProject('p2')).toMatchObject({ groupByFolder: true, collapsedFolders: [] });
-        expect(new UiStore(storage).forProject('p1')).toMatchObject({ groupByFolder: false, collapsedFolders: ['fld-notes'] });
+        expect(new UiStore(storage).forProject('p1')).toMatchObject({
+            groupByFolder: false,
+            collapsedFolders: ['fld-notes'],
+        });
     });
 
     it('opens the folded group of a chat opened from elsewhere, and changes nothing when it is open', () => {
@@ -938,12 +1034,24 @@ describe('UiStore', () => {
     });
 
     it('reads the grouping and the folded groups from the page URL, and drops what is damaged in storage', () => {
-        expect(initialUiFromSearch('?group=1&collapsed=fld-api,fld-notes')).toEqual({ groupByFolder: true, collapsedFolders: ['fld-api', 'fld-notes'] });
+        expect(initialUiFromSearch('?group=1&collapsed=fld-api,fld-notes')).toEqual({
+            groupByFolder: true,
+            collapsedFolders: ['fld-api', 'fld-notes'],
+        });
         expect(initialUiFromSearch('?group=0')).toEqual({ groupByFolder: false });
         // A choice that was kept stays, and what is not a choice reads as the default, grouped.
-        expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"groupByFolder":false}' })).forProject('p1').groupByFolder).toBe(false);
-        expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"groupByFolder":"yes","collapsedFolders":"fld-api"}' })).forProject('p1')).toMatchObject({ groupByFolder: true, collapsedFolders: [] });
-        expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"collapsedFolders":["fld-api",5]}' })).forProject('p1').collapsedFolders).toEqual(['fld-api']);
+        expect(
+            new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"groupByFolder":false}' })).forProject('p1').groupByFolder
+        ).toBe(false);
+        expect(
+            new UiStore(
+                memoryStorage({ 'clowdy:ui:p1': '{"groupByFolder":"yes","collapsedFolders":"fld-api"}' })
+            ).forProject('p1')
+        ).toMatchObject({ groupByFolder: true, collapsedFolders: [] });
+        expect(
+            new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"collapsedFolders":["fld-api",5]}' })).forProject('p1')
+                .collapsedFolders
+        ).toEqual(['fld-api']);
     });
 
     it('makes the new-chat row for a folder, and forgets the folder once another page opens; back and forward bring it again', () => {
@@ -990,7 +1098,7 @@ describe('UiStore', () => {
     });
 
     describe('where the new chat works in its folder', () => {
-        it('starts in the folder\'s own checkout, whatever the page was before, and is part of the place (`view`)', () => {
+        it("starts in the folder's own checkout, whatever the page was before, and is part of the place (`view`)", () => {
             const ui = new UiStore().forProject('p1');
 
             ui.openDraft();
@@ -1016,7 +1124,11 @@ describe('UiStore', () => {
             expect(ui.draftWorkspace).toBeNull();
 
             ui.show(view);
-            expect([ui.draft, ui.draftFolderId, ui.draftWorkspace]).toEqual([true, 'fld-api', { mode: 'existing', path: '/work/api-fix' }]);
+            expect([ui.draft, ui.draftFolderId, ui.draftWorkspace]).toEqual([
+                true,
+                'fld-api',
+                { mode: 'existing', path: '/work/api-fix' },
+            ]);
 
             ui.openRun('r1');
             expect(ui.draftWorkspace).toBeNull();
@@ -1047,8 +1159,15 @@ describe('UiStore', () => {
             expect(ui.draftWorkspace).toBeNull();
         });
 
-        describe('the daemon\'s row of the worktree it chose', () => {
-            const row = { id: 'wks_found', folderId: 'fld-api', path: '/work/api-fix', branch: 'fix', managed: false, ready: true };
+        describe("the daemon's row of the worktree it chose", () => {
+            const row = {
+                id: 'wks_found',
+                folderId: 'fld-api',
+                path: '/work/api-fix',
+                branch: 'fix',
+                managed: false,
+                ready: true,
+            };
             const existing = { mode: 'existing', path: '/work/api-fix' } as const;
             const chosen = () => {
                 const ui = new UiStore().forProject('p1');

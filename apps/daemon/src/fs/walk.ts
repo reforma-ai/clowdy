@@ -3,8 +3,8 @@ import { join } from 'node:path';
 
 import { CUTOFF_NAMES, followLink, isListed, versionOf } from './paths';
 
-import type { FsEntry, FsKind } from '@clowdy/protocol';
 import type { Dirent } from 'node:fs';
+import type { FsEntry, FsKind } from '@clowdy/protocol';
 
 /** The most entries one listing answers with; past it the folders not read yet are left as cutoffs. */
 export const MAX_LIST_ENTRIES = 100_000;
@@ -58,7 +58,7 @@ async function inChunks<T, R>(items: readonly T[], size: number, work: (item: T)
     const results: R[] = [];
 
     for (let index = 0; index < items.length; index += size) {
-        results.push(...await Promise.all(items.slice(index, index + size).map(work)));
+        results.push(...(await Promise.all(items.slice(index, index + size).map(work))));
     }
 
     return results;
@@ -77,12 +77,10 @@ export async function hasEntries(path: string): Promise<boolean> {
             }
 
             return false;
-        }
-        finally {
+        } finally {
             await dir.close();
         }
-    }
-    catch {
+    } catch {
         return true;
     }
 }
@@ -92,7 +90,12 @@ export async function hasEntries(path: string): Promise<boolean> {
  * enters, with `hasChildren` told from the target), or nothing. A link that leads outside the folder or nowhere is nothing, and so is a
  * socket, a pipe or a device.
  */
-export async function describe(root: string, abs: string, kind: 'file' | 'directory' | 'link' | 'other', rel: string): Promise<Found | undefined> {
+export async function describe(
+    root: string,
+    abs: string,
+    kind: 'file' | 'directory' | 'link' | 'other',
+    rel: string
+): Promise<Found | undefined> {
     try {
         let target = abs;
         let type: FsKind | undefined = kind === 'file' ? 'file' : kind === 'directory' ? 'directory' : undefined;
@@ -106,7 +109,13 @@ export async function describe(root: string, abs: string, kind: 'file' | 'direct
 
         if (type === 'directory') {
             // A link to a folder is never entered by a listing, so it always says whether there is something to ask for.
-            return { entry: { path: rel, kind: 'directory', ...kind === 'link' && { hasChildren: await hasEntries(target) } } };
+            return {
+                entry: {
+                    path: rel,
+                    kind: 'directory',
+                    ...(kind === 'link' && { hasChildren: await hasEntries(target) }),
+                },
+            };
         }
 
         if (type === 'file') {
@@ -114,23 +123,22 @@ export async function describe(root: string, abs: string, kind: 'file' | 'direct
 
             return { entry: { path: rel, kind: 'file', size: Number(info.size) }, version: versionOf(info) };
         }
-    }
-    catch {
+    } catch {
         // Gone while it was looked at, a link that leaves the folder, a file nobody may look at: it is not listed.
     }
 
     return undefined;
 }
 
-const kindOf = (dirent: Dirent): 'file' | 'directory' | 'link' | 'other' => dirent.isFile() ? 'file' : dirent.isDirectory() ? 'directory' : dirent.isSymbolicLink() ? 'link' : 'other';
+const kindOf = (dirent: Dirent): 'file' | 'directory' | 'link' | 'other' =>
+    dirent.isFile() ? 'file' : dirent.isDirectory() ? 'directory' : dirent.isSymbolicLink() ? 'link' : 'other';
 
 async function readFolder(options: WalkOptions, folder: Pending): Promise<Read[] | undefined> {
     let dirents: Dirent[];
 
     try {
         dirents = await readdir(folder.abs, { withFileTypes: true });
-    }
-    catch (error) {
+    } catch (error) {
         // The folder asked for must be readable; one found on the way is left as a cutoff, and asking for it explains why.
         if (folder.item) {
             return undefined;
@@ -139,11 +147,13 @@ async function readFolder(options: WalkOptions, folder: Pending): Promise<Read[]
         throw error;
     }
 
-    const names = dirents.filter(dirent => isListed(dirent.name)).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+    const names = dirents
+        .filter(dirent => isListed(dirent.name))
+        .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
     const cutoff = folder.level >= options.depth;
 
     const reads = await inChunks(names, STAT_AHEAD, async (dirent): Promise<Read | undefined> => {
-        const rel = folder.rel === '' ? dirent.name : `${ folder.rel }/${ dirent.name }`;
+        const rel = folder.rel === '' ? dirent.name : `${folder.rel}/${dirent.name}`;
         const abs = join(folder.abs, dirent.name);
         const kind = kindOf(dirent);
 

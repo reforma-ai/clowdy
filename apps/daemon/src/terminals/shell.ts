@@ -19,7 +19,8 @@ export interface ShellLookup {
     which?: (program: string) => string | null;
 }
 
-const nameOf = (file: string) => (file.includes('\\') ? win32.basename(file) : basename(file)).replace(/\.(exe|cmd|bat)$/i, '');
+const nameOf = (file: string) =>
+    (file.includes('\\') ? win32.basename(file) : basename(file)).replace(/\.(exe|cmd|bat)$/i, '');
 
 /**
  * The person's own shell, as a terminal app starts it.
@@ -27,7 +28,12 @@ const nameOf = (file: string) => (file.includes('\\') ? win32.basename(file) : b
  *   its `PATH`; on Linux a terminal is a plain interactive shell, which reads `.bashrc`.
  * - Windows: PowerShell 7 when it is installed, else Windows PowerShell, else `%ComSpec%`.
  */
-export function resolveShell({ platform = process.platform, env = process.env, exists = existsSync, which = Bun.which }: ShellLookup = {}): Shell {
+export function resolveShell({
+    platform = process.platform,
+    env = process.env,
+    exists = existsSync,
+    which = Bun.which,
+}: ShellLookup = {}): Shell {
     if (platform === 'win32') {
         const pwsh = which('pwsh') ?? which('powershell');
 
@@ -41,10 +47,15 @@ export function resolveShell({ platform = process.platform, env = process.env, e
     }
 
     const candidates = [env.SHELL, platform === 'darwin' ? '/bin/zsh' : '/bin/bash', '/bin/bash', '/bin/sh'];
-    const file = candidates.find((candidate): candidate is string => typeof candidate === 'string' && candidate.startsWith('/') && exists(candidate));
+    const file = candidates.find(
+        (candidate): candidate is string =>
+            typeof candidate === 'string' && candidate.startsWith('/') && exists(candidate)
+    );
 
     if (!file) {
-        throw unavailable('No shell to run: $SHELL names none that exists, and /bin/zsh, /bin/bash and /bin/sh are not here');
+        throw unavailable(
+            'No shell to run: $SHELL names none that exists, and /bin/zsh, /bin/bash and /bin/sh are not here'
+        );
     }
 
     return { file, args: platform === 'darwin' ? ['-l'] : [], name: nameOf(file) };

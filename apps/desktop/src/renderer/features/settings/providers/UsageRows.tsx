@@ -16,7 +16,7 @@ function resetText(window: AgentUsageWindow, now: number): string | undefined {
 
     const remaining = formatRemaining(window.resetsAt - now);
 
-    return remaining === 'now' ? 'Resets now' : `Resets in ${ remaining }`;
+    return remaining === 'now' ? 'Resets now' : `Resets in ${remaining}`;
 }
 
 /**
@@ -29,14 +29,37 @@ function UsageRow({ window, now }: { window: AgentUsageWindow; now: number }) {
     const reset = resetText(window, now);
 
     return (
-        <li className={ styles.row }>
-            <div className={ styles.details }>
-                <Text variant="sm" weight="medium" truncate className={ styles.label } title={ window.label }>{ window.label }</Text>
-                <Text variant="sm" color="secondary" className={ styles.figure }>{ `${ percent }% used` }</Text>
-                { reset && <Text variant="sm" color="secondary" className={ cn(styles.figure, styles.reset) } title="Time until the window resets">{ reset }</Text> }
+        <li className={styles.row}>
+            <div className={styles.details}>
+                <Text variant="sm" weight="medium" truncate className={styles.label} title={window.label}>
+                    {window.label}
+                </Text>
+                <Text variant="sm" color="secondary" className={styles.figure}>{`${percent}% used`}</Text>
+                {reset && (
+                    <Text
+                        variant="sm"
+                        color="secondary"
+                        className={cn(styles.figure, styles.reset)}
+                        title="Time until the window resets"
+                    >
+                        {reset}
+                    </Text>
+                )}
             </div>
-            <div className={ styles.track } role="progressbar" aria-label={ `${ window.label } used` } aria-valuemin={ 0 } aria-valuemax={ 100 } aria-valuenow={ percent } aria-valuetext={ `${ percent }%` }>
-                <div className={ styles.fill } data-tone={ tone === 'normal' ? undefined : tone } style={ { width: `${ percent }%` } } />
+            <div
+                className={styles.track}
+                role="progressbar"
+                aria-label={`${window.label} used`}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={percent}
+                aria-valuetext={`${percent}%`}
+            >
+                <div
+                    className={styles.fill}
+                    data-tone={tone === 'normal' ? undefined : tone}
+                    style={{ width: `${percent}%` }}
+                />
             </div>
         </li>
     );
@@ -54,8 +77,19 @@ export interface RefreshUsageButtonProps {
 /** The button that reads the usage again: an icon that gets a fill under the pointer, and turns while a read is on its way. */
 export function RefreshUsageButton({ isRefreshing, onRefresh, size = 'xs', className }: RefreshUsageButtonProps) {
     return (
-        <Button variant="filling" color="secondary" size={ size } iconOnly aria-label="Refresh usage" tooltip="Refresh usage" isPending={ isRefreshing } spinnerPlacement="none" className={ className } onPress={ onRefresh }>
-            <Refresh className={ isRefreshing ? styles.spin : undefined } />
+        <Button
+            variant="filling"
+            color="secondary"
+            size={size}
+            iconOnly
+            aria-label="Refresh usage"
+            tooltip="Refresh usage"
+            isPending={isRefreshing}
+            spinnerPlacement="none"
+            className={className}
+            onPress={onRefresh}
+        >
+            <Refresh className={isRefreshing ? styles.spin : undefined} />
         </Button>
     );
 }
@@ -65,13 +99,26 @@ function UsageNote({ usage }: { usage: AgentUsage }) {
     const { state, windows, detail } = usage;
 
     if (state !== 'ok' && detail) {
-        return <Text variant="sm" color={ state === 'error' ? 'danger' : 'secondary' }><InlineCode text={ detail } /></Text>;
+        return (
+            <Text variant="sm" color={state === 'error' ? 'danger' : 'secondary'}>
+                <InlineCode text={detail} />
+            </Text>
+        );
     }
 
-    if (state === 'error') return <Text variant="sm" color="danger">Couldn't read the usage</Text>;
+    if (state === 'error')
+        return (
+            <Text variant="sm" color="danger">
+                Couldn't read the usage
+            </Text>
+        );
 
     // The daemon sends no windows and no words of its own when nobody is signed in.
-    return windows.length === 0 ? <Text variant="sm" color="secondary">Sign in to see your limits</Text> : null;
+    return windows.length === 0 ? (
+        <Text variant="sm" color="secondary">
+            Sign in to see your limits
+        </Text>
+    ) : null;
 }
 
 export interface UsageReadingProps {
@@ -87,12 +134,14 @@ export interface UsageReadingProps {
 export function UsageReading({ usage, now }: UsageReadingProps) {
     return (
         <>
-            { usage.windows.length > 0 && (
-                <ul className={ styles.rows } data-stale={ usage.state === 'error' || undefined }>
-                    { usage.windows.map(window => <UsageRow key={ window.id } window={ window } now={ now } />) }
+            {usage.windows.length > 0 && (
+                <ul className={styles.rows} data-stale={usage.state === 'error' || undefined}>
+                    {usage.windows.map(window => (
+                        <UsageRow key={window.id} window={window} now={now} />
+                    ))}
                 </ul>
-            ) }
-            <UsageNote usage={ usage } />
+            )}
+            <UsageNote usage={usage} />
         </>
     );
 }

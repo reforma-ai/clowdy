@@ -17,7 +17,7 @@ const placeAt = (path: string): Place => ({ folder: { id: 'fld_test', path }, pa
 const lastFetched = async (path: string): Promise<number | undefined> => {
     const answer: GitStatus = await placeStatus(placeAt(path));
 
-    if (!answer.isRepository) throw new Error(`${ path } is not a repository`);
+    if (!answer.isRepository) throw new Error(`${path} is not a repository`);
 
     return answer.lastFetchedAt;
 };
@@ -46,7 +46,7 @@ function pushedByNeighbour(root: string, origin: string): void {
 
     if (!existsSync(neighbour)) git(root, 'clone', '-q', origin, 'neighbour');
 
-    writeFileSync(join(neighbour, `n-${ Date.now() }.txt`), 'n\n');
+    writeFileSync(join(neighbour, `n-${Date.now()}.txt`), 'n\n');
     git(neighbour, 'add', '-A');
     git(neighbour, 'commit', '-q', '-m', 'Neighbour work');
     git(neighbour, 'push', '-q', 'origin', 'main');
@@ -95,7 +95,7 @@ describe('lastFetchedAt in the status of a place', () => {
         expect(await lastFetched(alone)).toBeUndefined();
     });
 
-    test('is the same for the folder\'s own checkout and for a worktree of it, whichever of them fetched: FETCH_HEAD is per worktree and the refs it moves are shared', async () => {
+    test("is the same for the folder's own checkout and for a worktree of it, whichever of them fetched: FETCH_HEAD is per worktree and the refs it moves are shared", async () => {
         const { root, work, origin } = clone();
         const tree = join(root, 'tree');
 
@@ -117,7 +117,7 @@ describe('lastFetchedAt in the status of a place', () => {
         // ...and the checkout's counts moved all the same, so it says when they were brought up to date.
         expect(fromTree).toBeGreaterThan(Date.now() - 60_000);
         expect(await lastFetched(work)).toBe(fromTree);
-        expect((await placeStatus(placeAt(work)) as { upstream?: { behind: number } }).upstream?.behind).toBe(1);
+        expect(((await placeStatus(placeAt(work))) as { upstream?: { behind: number } }).upstream?.behind).toBe(1);
 
         // And the other way round: a fetch in the checkout is seen from the worktree.
         touch(join(gitDirOf(tree), 'FETCH_HEAD'), Math.floor(Date.now() / 1000) - 7200);
@@ -131,7 +131,7 @@ describe('lastFetchedAt in the status of a place', () => {
         expect(await lastFetched(tree)).toBe(fromWork);
     });
 
-    test('is the newest of every worktree\'s FETCH_HEAD and the common one', async () => {
+    test("is the newest of every worktree's FETCH_HEAD and the common one", async () => {
         const { root, work } = clone();
         const first = join(root, 'first');
         const second = join(root, 'second');
@@ -155,18 +155,18 @@ describe('lastFetchedAt in the status of a place', () => {
         git(work, 'fetch', '-q', 'origin');
         expect(await lastFetched(work)).toBeGreaterThan(Date.now() - 60_000);
 
-        renameSync(origin, `${ origin }.away`);
+        renameSync(origin, `${origin}.away`);
         expect(() => git(work, 'fetch', '-q', 'origin')).toThrow();
         expect(await lastFetched(work)).toBeUndefined();
 
         // Back on its feet, one fetch says it again.
-        renameSync(`${ origin }.away`, origin);
+        renameSync(`${origin}.away`, origin);
         pushedByNeighbour(root, origin);
         git(work, 'fetch', '-q', 'origin');
         expect(await lastFetched(work)).toBeGreaterThan(Date.now() - 60_000);
     });
 
-    test('is the app\'s own last fetch while the files say less: a fetch that failed emptied them, a removed worktree took its file along, a later fetch of anyone\'s is newer and wins', async () => {
+    test("is the app's own last fetch while the files say less: a fetch that failed emptied them, a removed worktree took its file along, a later fetch of anyone's is newer and wins", async () => {
         const { root, work, origin } = clone();
         const tree = join(root, 'tree');
         const now = Math.floor(Date.now() / 1000);
@@ -181,12 +181,12 @@ describe('lastFetchedAt in the status of a place', () => {
 
         // ...the worktree goes with its FETCH_HEAD, and the repository's own is empty because the fetch after it failed: the record is what is left, for every place of the repository.
         git(work, 'worktree', 'remove', '--force', tree);
-        renameSync(origin, `${ origin }.away`);
+        renameSync(origin, `${origin}.away`);
         expect(() => git(work, 'fetch', '-q', 'origin')).toThrow();
         expect(await lastFetched(work)).toBe((now - 3600) * 1000);
 
         // A fetch that went through after it, by anyone, is newer than the record.
-        renameSync(`${ origin }.away`, origin);
+        renameSync(`${origin}.away`, origin);
         git(work, 'fetch', '-q', 'origin');
         expect(await lastFetched(work)).toBeGreaterThan(Date.now() - 60_000);
     });
@@ -202,7 +202,7 @@ describe('lastFetchedAt in the status of a place', () => {
         expect(await lastFetched(other)).toBeUndefined();
     });
 
-    test('does not count a fetch that was told not to write FETCH_HEAD (git\'s own background prefetch is one)', async () => {
+    test("does not count a fetch that was told not to write FETCH_HEAD (git's own background prefetch is one)", async () => {
         const { work } = clone();
 
         git(work, 'fetch', '-q', '--no-write-fetch-head', 'origin');

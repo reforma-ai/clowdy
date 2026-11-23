@@ -44,8 +44,7 @@ export const spawnPty: SpawnPty = ({ cmd, cwd, env, cols, rows, onData, onExit }
     const close = () => {
         try {
             terminal.close();
-        }
-        catch {
+        } catch {
             // Already closed.
         }
     };

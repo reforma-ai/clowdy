@@ -1,6 +1,6 @@
 import { FileDropOverlay } from '@clowdy/components/FileDropOverlay';
 import { useFileDrag, useFilePaste } from '@clowdy/components/hooks';
-import { useState, type ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 
 import styles from './ChatDropZone.module.css';
 
@@ -26,15 +26,15 @@ export function ChatDropZone({ onFiles, onPasteFiles = onFiles, disabled = false
 
     return (
         <div
-            className={ styles.zone }
-            onDragEnter={ drag.onDragEnter }
-            onDragLeave={ drag.onDragLeave }
-            onDragOver={ drag.onDragOver }
-            onDrop={ drag.onDrop }
-            onPaste={ paste.onPaste }
+            className={styles.zone}
+            onDragEnter={drag.onDragEnter}
+            onDragLeave={drag.onDragLeave}
+            onDragOver={drag.onDragOver}
+            onDrop={drag.onDrop}
+            onPaste={paste.onPaste}
         >
-            { children }
-            <FileDropOverlay open={ over } label="Drop files to attach them to the message" />
+            {children}
+            <FileDropOverlay open={over} label="Drop files to attach them to the message" />
         </div>
     );
 }

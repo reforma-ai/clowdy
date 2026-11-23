@@ -1,7 +1,7 @@
-import { daemonDataDir } from '@clowdy/protocol';
 import { describe, expect, test } from 'bun:test';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { daemonDataDir } from '@clowdy/protocol';
 
 import { ConfigError, loadConfig } from '../src/config';
 
@@ -39,29 +39,52 @@ describe('config', () => {
 
     test('threads: three levels, 30 at work and 300 over the life of a chat, unless the environment says otherwise', () => {
         expect(loadConfig({}, 'linux')).toMatchObject({ maxThreadDepth: 3, maxActiveThreads: 30, maxThreads: 300 });
-        expect(loadConfig({ CLOWDY_MAX_THREAD_DEPTH: '2', CLOWDY_MAX_ACTIVE_THREADS: '5', CLOWDY_MAX_THREADS: '50' }, 'linux')).toMatchObject({ maxThreadDepth: 2, maxActiveThreads: 5, maxThreads: 50 });
+        expect(
+            loadConfig(
+                { CLOWDY_MAX_THREAD_DEPTH: '2', CLOWDY_MAX_ACTIVE_THREADS: '5', CLOWDY_MAX_THREADS: '50' },
+                'linux'
+            )
+        ).toMatchObject({ maxThreadDepth: 2, maxActiveThreads: 5, maxThreads: 50 });
         expect(() => loadConfig({ CLOWDY_MAX_THREAD_DEPTH: '0' })).toThrow(/CLOWDY_MAX_THREAD_DEPTH/);
         expect(() => loadConfig({ CLOWDY_MAX_ACTIVE_THREADS: '1.5' })).toThrow(/CLOWDY_MAX_ACTIVE_THREADS/);
         expect(() => loadConfig({ CLOWDY_MAX_THREADS: 'many' })).toThrow(/CLOWDY_MAX_THREADS/);
     });
 
     test('a parent hears of its threads that stopped 2 s after the first one, unless the environment says otherwise; the other timings keep their defaults', () => {
-        expect(loadConfig({}, 'linux').timings).toEqual({ killGraceMs: 5000, retryBaseMs: 5000, pauseJitterMs: 30_000, noticeWindowMs: 2000, setupMs: 600_000 });
+        expect(loadConfig({}, 'linux').timings).toEqual({
+            killGraceMs: 5000,
+            retryBaseMs: 5000,
+            pauseJitterMs: 30_000,
+            noticeWindowMs: 2000,
+            setupMs: 600_000,
+        });
         expect(loadConfig({ CLOWDY_THREAD_NOTICE_WINDOW_MS: '0' }, 'linux').timings.noticeWindowMs).toBe(0);
-        expect(loadConfig({ CLOWDY_THREAD_NOTICE_WINDOW_MS: '500' }, 'linux').timings).toMatchObject({ noticeWindowMs: 500, killGraceMs: 5000 });
+        expect(loadConfig({ CLOWDY_THREAD_NOTICE_WINDOW_MS: '500' }, 'linux').timings).toMatchObject({
+            noticeWindowMs: 500,
+            killGraceMs: 5000,
+        });
         expect(() => loadConfig({ CLOWDY_THREAD_NOTICE_WINDOW_MS: '-1' })).toThrow(/CLOWDY_THREAD_NOTICE_WINDOW_MS/);
         expect(() => loadConfig({ CLOWDY_THREAD_NOTICE_WINDOW_MS: '1.5' })).toThrow(/CLOWDY_THREAD_NOTICE_WINDOW_MS/);
     });
 
     test('environment variables override the defaults', () => {
-        expect(loadConfig({
-            CLOWDY_DATA_DIR: '/data',
-            CLOWDY_PORT: '47831',
-            CLOWDY_TOKEN: 'devtoken',
-            CLOWDY_ENGINE: 'claude',
-            CLOWDY_MAX_RUNS: '3',
-            CLOWDY_FAKE_SPEED: '0',
-        })).toMatchObject({ dataDir: '/data', port: 47831, token: 'devtoken', engine: 'claude', maxRuns: 3, fakeSpeed: 0 });
+        expect(
+            loadConfig({
+                CLOWDY_DATA_DIR: '/data',
+                CLOWDY_PORT: '47831',
+                CLOWDY_TOKEN: 'devtoken',
+                CLOWDY_ENGINE: 'claude',
+                CLOWDY_MAX_RUNS: '3',
+                CLOWDY_FAKE_SPEED: '0',
+            })
+        ).toMatchObject({
+            dataDir: '/data',
+            port: 47831,
+            token: 'devtoken',
+            engine: 'claude',
+            maxRuns: 3,
+            fakeSpeed: 0,
+        });
     });
 
     test('any engine id is accepted: the daemon checks it against its agents at start', () => {
@@ -70,7 +93,9 @@ describe('config', () => {
 
     test('CORS origins: none by default, a comma-separated list on request', () => {
         expect(loadConfig({}, 'linux').corsOrigins).toEqual([]);
-        expect(loadConfig({ CLOWDY_CORS_ORIGINS: ' http://127.0.0.1:5300 , ,http://localhost:5400' }, 'linux').corsOrigins).toEqual(['http://127.0.0.1:5300', 'http://localhost:5400']);
+        expect(
+            loadConfig({ CLOWDY_CORS_ORIGINS: ' http://127.0.0.1:5300 , ,http://localhost:5400' }, 'linux').corsOrigins
+        ).toEqual(['http://127.0.0.1:5300', 'http://localhost:5400']);
     });
 
     test('invalid values name the variable', () => {

@@ -40,37 +40,37 @@ export function SidePanelRail() {
     if (!railShown) return null;
 
     return (
-        <div className={ styles.rail }>
+        <div className={styles.rail}>
             <SidePanelCorner />
-            { available && (
-                <nav className={ styles.tabs } aria-label="Panel tabs">
-                    { TABS.map(({ tab, icon, size }) => (
+            {available && (
+                <nav className={styles.tabs} aria-label="Panel tabs">
+                    {TABS.map(({ tab, icon, size }) => (
                         <RailItem
-                            key={ tab }
-                            className={ tab === AT_BOTTOM ? styles.bottom : undefined }
-                            label={ SIDE_PANEL_TAB_LABELS[tab] }
-                            icon={ icon }
-                            size={ size }
-                            current={ open && tab === shown }
+                            key={tab}
+                            className={tab === AT_BOTTOM ? styles.bottom : undefined}
+                            label={SIDE_PANEL_TAB_LABELS[tab]}
+                            icon={icon}
+                            size={size}
+                            current={open && tab === shown}
                             accent
-                            tooltip={ commandTooltip(SIDE_PANEL_TAB_LABELS[tab], sidePanelTabCommand(tab)) }
+                            tooltip={commandTooltip(SIDE_PANEL_TAB_LABELS[tab], sidePanelTabCommand(tab))}
                             tooltipPlacement="left"
-                            onPress={ () => toggleTab(tab) }
+                            onPress={() => toggleTab(tab)}
                         />
-                    )) }
+                    ))}
                 </nav>
-            ) }
+            )}
 
             <RailItem
-                className={ available ? undefined : styles.bottom }
+                className={available ? undefined : styles.bottom}
                 label="Settings"
-                icon={ Settings }
-                size={ 16 }
-                current={ root.ui.settingsOpen }
+                icon={Settings}
+                size={16}
+                current={root.ui.settingsOpen}
                 accent
-                tooltip={ commandTooltip('Settings', SETTINGS_COMMAND) }
+                tooltip={commandTooltip('Settings', SETTINGS_COMMAND)}
                 tooltipPlacement="left"
-                onPress={ () => root.ui.openSettings() }
+                onPress={() => root.ui.openSettings()}
             />
         </div>
     );

@@ -16,7 +16,10 @@ import type { CommandInput } from '../../daemon/transport';
 import type { TaskComments } from './useTaskComments';
 
 // The hook is tested by itself (`useTaskComments.test.tsx`): here the section is given the states it can be in.
-const feed = vi.hoisted(() => ({ state: { status: 'loading' } as unknown as TaskComments, retry: vi.fn<() => void>() }));
+const feed = vi.hoisted(() => ({
+    state: { status: 'loading' } as unknown as TaskComments,
+    retry: vi.fn<() => void>(),
+}));
 
 vi.mock('./useTaskComments', () => ({ MAX_COMMENTS: 1000, useTaskComments: () => feed }));
 
@@ -27,13 +30,27 @@ vi.mock('./useTaskComments', () => ({ MAX_COMMENTS: 1000, useTaskComments: () =>
  * as the test says and remembers it.
  */
 
-const comment = (id: string, body: string, rest: Partial<TaskComment> = {}): TaskComment => ({ id, taskId: 't-32', author: { kind: 'user' }, body, createdAt: Date.UTC(2026, 10, 20, 9, 0), ...rest });
+const comment = (id: string, body: string, rest: Partial<TaskComment> = {}): TaskComment => ({
+    id,
+    taskId: 't-32',
+    author: { kind: 'user' },
+    body,
+    createdAt: Date.UTC(2026, 10, 20, 9, 0),
+    ...rest,
+});
 
 const MINE = comment('c-mine', 'Keep the amount in cents.');
-const AGENTS = comment('c-agent', 'The form posts to `/api/pay`.\n\n- the card number never reaches our server\n- a declined card answers `402`\n\nNext: the declined state (`CAR-34`).', { author: { kind: 'run', runId: 'r-orch-1' } });
+const AGENTS = comment(
+    'c-agent',
+    'The form posts to `/api/pay`.\n\n- the card number never reaches our server\n- a declined card answers `402`\n\nNext: the declined state (`CAR-34`).',
+    { author: { kind: 'run', runId: 'r-orch-1' } }
+);
 const EDITED = comment('c-edited', 'Looks right.', { editedAt: Date.UTC(2026, 10, 21, 9, 0) });
 
-const ready = (comments: TaskComment[], rest: Partial<Extract<TaskComments, { status: 'ready' }>> = {}): TaskComments => ({ status: 'ready', comments, total: comments.length, isCut: false, ...rest });
+const ready = (
+    comments: TaskComment[],
+    rest: Partial<Extract<TaskComments, { status: 'ready' }>> = {}
+): TaskComments => ({ status: 'ready', comments, total: comments.length, isCut: false, ...rest });
 
 let container: HTMLDivElement;
 let reactRoot: Root;
@@ -44,13 +61,20 @@ let onOpenRun: ReturnType<typeof vi.fn<(runId: string) => void>>;
 let onOpenTask: ReturnType<typeof vi.fn<(taskId: string) => void>>;
 
 const accepted = (data: unknown = {}): CommandResult => ({ ok: true, requestId: 'r', data });
-const refused = (message: string): CommandResult => ({ ok: false, requestId: 'r', error: { code: 'invalid', message } });
+const refused = (message: string): CommandResult => ({
+    ok: false,
+    requestId: 'r',
+    error: { code: 'invalid', message },
+});
 
-const draw = (taskId = 't-32') => act(async () => reactRoot.render(
-    <RootStoreProvider value={ store }>
-        <CommentsSection taskId={ taskId } onOpenRun={ onOpenRun } onOpenTask={ onOpenTask } />
-    </RootStoreProvider>
-));
+const draw = (taskId = 't-32') =>
+    act(async () =>
+        reactRoot.render(
+            <RootStoreProvider value={store}>
+                <CommentsSection taskId={taskId} onOpenRun={onOpenRun} onOpenTask={onOpenTask} />
+            </RootStoreProvider>
+        )
+    );
 
 const show = (state: TaskComments) => {
     feed.state = state;
@@ -72,13 +96,16 @@ beforeEach(async () => {
 
     const daemon = new FixtureTransport();
 
-    store = new RootStore(overrideTransport(daemon, {
-        command: async (input) => {
-            sent.push(input);
+    store = new RootStore(
+        overrideTransport(daemon, {
+            command: async input => {
+                sent.push(input);
 
-            return answer(input);
-        },
-    }), { storage: memoryStorage() });
+                return answer(input);
+            },
+        }),
+        { storage: memoryStorage() }
+    );
     await store.load();
 });
 
@@ -89,19 +116,27 @@ afterEach(() => {
     vi.restoreAllMocks();
 });
 
-const article = (id: string) => container.querySelector<HTMLElement>(`article[data-comment-id="${ id }"]`)!;
-const named = (name: string, within: ParentNode = container) => [...within.querySelectorAll<HTMLElement>('button')].find(button => (button.getAttribute('aria-label') ?? button.textContent?.trim()) === name);
+const article = (id: string) => container.querySelector<HTMLElement>(`article[data-comment-id="${id}"]`)!;
+const named = (name: string, within: ParentNode = container) =>
+    [...within.querySelectorAll<HTMLElement>('button')].find(
+        button => (button.getAttribute('aria-label') ?? button.textContent?.trim()) === name
+    );
 /** Delete says Delete and Confirm in turns, and holds both in the button: it is found by the word it starts with. */
-const deleteButton = (within: ParentNode) => [...within.querySelectorAll<HTMLElement>('button')].find(button => button.textContent?.includes('Delete'));
+const deleteButton = (within: ParentNode) =>
+    [...within.querySelectorAll<HTMLElement>('button')].find(button => button.textContent?.includes('Delete'));
 const press = (element: Element | undefined) => act(async () => (element as HTMLElement).click());
-const editorOf = (label: string) => (container.querySelector(`[contenteditable][aria-label="${ label }"]`) as HTMLElement & { editor: Editor }).editor;
-const type = (label: string, text: string) => act(async () => void editorOf(label).chain().focus('end').insertContent(text).run());
+const editorOf = (label: string) =>
+    (container.querySelector(`[contenteditable][aria-label="${label}"]`) as HTMLElement & { editor: Editor }).editor;
+const type = (label: string, text: string) =>
+    act(async () => void editorOf(label).chain().focus('end').insertContent(text).run());
 
 /** A key in the editor, as the browser sends it. It reports whether the page let it be (the editor's own handling is `defaultPrevented`). */
 async function key(label: string, init: KeyboardEventInit) {
     const event = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init });
 
-    await act(async () => void container.querySelector(`[contenteditable][aria-label="${ label }"]`)!.dispatchEvent(event));
+    await act(
+        async () => void container.querySelector(`[contenteditable][aria-label="${label}"]`)!.dispatchEvent(event)
+    );
 
     return event;
 }
@@ -128,7 +163,10 @@ describe('what the section shows while it waits and when it cannot', () => {
     it('keeps the comments on show when a read for a change failed, says so under them and offers Retry, which the hook answers', async () => {
         await show(ready([MINE, AGENTS], { refreshError: 'The daemon cannot be reached' }));
 
-        expect([...container.querySelectorAll('article')].map(found => found.dataset.commentId)).toEqual(['c-mine', 'c-agent']);
+        expect([...container.querySelectorAll('article')].map(found => found.dataset.commentId)).toEqual([
+            'c-mine',
+            'c-agent',
+        ]);
         expect(container.querySelector('[role="alert"]')!.textContent).toContain('Comments did not refresh');
         expect(container.textContent).not.toContain('Comments did not load');
         // The composer is there as before.
@@ -172,7 +210,11 @@ describe('a comment', () => {
     it('shows the comments in the order it is given them, with the count in the header', async () => {
         await show(ready([MINE, AGENTS, EDITED]));
 
-        expect([...container.querySelectorAll('article')].map(found => found.dataset.commentId)).toEqual(['c-mine', 'c-agent', 'c-edited']);
+        expect([...container.querySelectorAll('article')].map(found => found.dataset.commentId)).toEqual([
+            'c-mine',
+            'c-agent',
+            'c-edited',
+        ]);
         expect(container.querySelector('section')!.firstElementChild!.textContent).toBe('Comments3');
     });
 
@@ -182,7 +224,9 @@ describe('a comment', () => {
         expect(article('c-agent').querySelectorAll('[data-streamdown="list-item"]')).toHaveLength(2);
         expect(article('c-agent').querySelector('[data-streamdown="inline-code"]')?.textContent).toBe('/api/pay');
 
-        const chip = [...article('c-agent').querySelectorAll('button')].find(button => button.textContent?.includes('CAR-34'))!;
+        const chip = [...article('c-agent').querySelectorAll('button')].find(button =>
+            button.textContent?.includes('CAR-34')
+        )!;
 
         await press(chip);
 
@@ -236,8 +280,10 @@ describe('a comment', () => {
         expect(article('c-edited').querySelector('[title^="Edited"]')).not.toBeNull();
     });
 
-    it('offers Edit and Delete on the person\'s own comments only, an agent\'s and another tracker\'s are read only', async () => {
-        await show(ready([MINE, AGENTS, comment('c-linear', 'Synced.', { author: { kind: 'provider', provider: 'linear' } })]));
+    it("offers Edit and Delete on the person's own comments only, an agent's and another tracker's are read only", async () => {
+        await show(
+            ready([MINE, AGENTS, comment('c-linear', 'Synced.', { author: { kind: 'provider', provider: 'linear' } })])
+        );
 
         expect(named('Edit comment', article('c-mine'))).toBeDefined();
         expect(deleteButton(article('c-mine'))).toBeDefined();
@@ -262,7 +308,14 @@ describe('editing a comment', () => {
         await type('Edit comment', ' Always.  ');
         await press(named('Save'));
 
-        expect(sent).toEqual([{ type: 'task.comment.edit', taskId: 't-32', commentId: 'c-mine', body: 'Keep the amount in cents. Always.' }]);
+        expect(sent).toEqual([
+            {
+                type: 'task.comment.edit',
+                taskId: 't-32',
+                commentId: 'c-mine',
+                body: 'Keep the amount in cents. Always.',
+            },
+        ]);
         expect(container.querySelector('[contenteditable][aria-label="Edit comment"]')).toBeNull();
     });
 
@@ -368,7 +421,10 @@ describe('editing a comment', () => {
 
         expect(url).not.toBeNull();
 
-        await act(async () => void url.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })));
+        await act(
+            async () =>
+                void url.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+        );
 
         expect(container.querySelector('[contenteditable][aria-label="Edit comment"]')).not.toBeNull();
         expect(sent).toEqual([]);
@@ -379,7 +435,14 @@ describe('editing a comment', () => {
         await press(named('Edit comment'));
         await type('Edit comment', '!');
         await press(named('Link'));
-        await act(async () => void document.querySelector('input[aria-label="URL"]')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true, cancelable: true })));
+        await act(
+            async () =>
+                void document
+                    .querySelector('input[aria-label="URL"]')!
+                    .dispatchEvent(
+                        new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true, cancelable: true })
+                    )
+        );
 
         expect(sent).toEqual([]);
     });
@@ -390,7 +453,9 @@ describe('editing a comment', () => {
         await type('Edit comment', '!');
         await key('Edit comment', { key: 'Enter', metaKey: true });
 
-        expect(sent).toEqual([{ type: 'task.comment.edit', taskId: 't-32', commentId: 'c-mine', body: 'Keep the amount in cents.!' }]);
+        expect(sent).toEqual([
+            { type: 'task.comment.edit', taskId: 't-32', commentId: 'c-mine', body: 'Keep the amount in cents.!' },
+        ]);
     });
 });
 
@@ -412,7 +477,9 @@ describe('deleting a comment', () => {
     it('is not sent when the person backs out with Escape: the next press asks again', async () => {
         await show(ready([MINE]));
         await press(deleteButton(article('c-mine')));
-        await act(async () => void document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+        await act(
+            async () => void document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+        );
 
         expect(isArmed()).toBe(false);
 
@@ -516,12 +583,17 @@ describe('the composer', () => {
         await show(ready([]));
         await type('Write a comment', 'One');
         // The editor's own Mod+Enter is Cmd on a Mac and Ctrl elsewhere (it does not match both at once).
-        await key('Write a comment', { key: 'Enter', ...(/Mac|iP(hone|[oa]d)/.test(navigator.platform) ? { metaKey: true } : { ctrlKey: true }) });
+        await key('Write a comment', {
+            key: 'Enter',
+            ...(/Mac|iP(hone|[oa]d)/.test(navigator.platform) ? { metaKey: true } : { ctrlKey: true }),
+        });
 
         expect(sent).toHaveLength(1);
         expect(editorOf('Write a comment').getMarkdown()).toBe('One');
         // A paragraph of the text and nothing after it: no hard break.
-        expect(editorOf('Write a comment').getJSON().content).toEqual([{ type: 'paragraph', content: [{ type: 'text', text: 'One' }] }]);
+        expect(editorOf('Write a comment').getJSON().content).toEqual([
+            { type: 'paragraph', content: [{ type: 'text', text: 'One' }] },
+        ]);
     });
 
     it('sends once when the key is pressed again while the first is on its way', async () => {
@@ -556,7 +628,7 @@ describe('the unsent comment of a task', () => {
         expect(named('Send')!.hasAttribute('disabled')).toBe(false);
     });
 
-    it('belongs to its task: another task\'s composer starts empty, and the first task\'s comes back with it', async () => {
+    it("belongs to its task: another task's composer starts empty, and the first task's comes back with it", async () => {
         await show(ready([]));
         await type('Write a comment', 'For CAR-32');
         await draw('t-35');
@@ -621,7 +693,7 @@ describe('the unsent comment of a task', () => {
 describe('the scroll', () => {
     const scrolled = () => vi.mocked(Element.prototype.scrollIntoView).mock.contexts as Element[];
 
-    it('brings the composer into view once the person\'s own comment is in the list, and not before', async () => {
+    it("brings the composer into view once the person's own comment is in the list, and not before", async () => {
         answer = () => accepted({ comment: { id: 'c-new' } });
         await show(ready([MINE]));
         await type('Write a comment', 'One');
@@ -633,10 +705,12 @@ describe('the scroll', () => {
         await show(ready([MINE, comment('c-new', 'One')]));
 
         expect(scrolled()).toHaveLength(1);
-        expect(scrolled()[0].contains(container.querySelector('[contenteditable][aria-label="Write a comment"]'))).toBe(true);
+        expect(scrolled()[0].contains(container.querySelector('[contenteditable][aria-label="Write a comment"]'))).toBe(
+            true
+        );
     });
 
-    it('brings it into view as well when the list holds the comment before the daemon\'s answer comes: the read can win the race against the reply', async () => {
+    it("brings it into view as well when the list holds the comment before the daemon's answer comes: the read can win the race against the reply", async () => {
         let take: (result: CommandResult) => void = () => {};
 
         answer = () => new Promise(resolve => void (take = resolve));

@@ -1,5 +1,5 @@
 import { formatTokens, tokensOf } from '../../shared/tokens';
-import { usageTone, type UsageTone } from '../settings/providers/providerView';
+import { type UsageTone, usageTone } from '../settings/providers/providerView';
 
 import type { RunContext } from '@clowdy/protocol';
 
@@ -26,8 +26,8 @@ export function contextFill(context: RunContext): ContextFill {
     return {
         percent,
         tone: usageTone(percent),
-        used: `~${ formatTokens(used) }`,
+        used: `~${formatTokens(used)}`,
         size: formatTokens(size),
-        label: `${ percent }% full`,
+        label: `${percent}% full`,
     };
 }

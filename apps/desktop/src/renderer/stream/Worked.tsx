@@ -14,9 +14,15 @@ function WorkedTrigger({ label, shimmer }: { label: string; shimmer?: boolean })
 
     return (
         <CollapsibleTrigger asChild>
-            <Button type="button" variant="inline" color="secondary" className={ styles.trigger }>
-                { shimmer ? <Shimmer as="span" duration={ 1 }>{ label }</Shimmer> : label }
-                <ChevronDown className={ cn('chevron', 'next') } aria-expanded={ state.isExpanded } aria-hidden />
+            <Button type="button" variant="inline" color="secondary" className={styles.trigger}>
+                {shimmer ? (
+                    <Shimmer as="span" duration={1}>
+                        {label}
+                    </Shimmer>
+                ) : (
+                    label
+                )}
+                <ChevronDown className={cn('chevron', 'next')} aria-expanded={state.isExpanded} aria-hidden />
             </Button>
         </CollapsibleTrigger>
     );
@@ -27,8 +33,8 @@ function WorkedPanel({ children, ruled }: { children: ReactNode; ruled?: boolean
     const { state } = useCollapsible();
 
     return (
-        <Show when={ state.isExpanded }>
-            <CollapsibleContent className={ cn(styles.panel, ruled && styles.ruled) }>{ children }</CollapsibleContent>
+        <Show when={state.isExpanded}>
+            <CollapsibleContent className={cn(styles.panel, ruled && styles.ruled)}>{children}</CollapsibleContent>
         </Show>
     );
 }
@@ -50,9 +56,9 @@ export interface WorkedProps {
 /** The work of a finished turn behind one line; the answer it led to stays outside. A run of tool calls is folded the same way (`ToolGroup`). */
 export function Worked({ label, children, open, onOpenChange, shimmer, ruled }: WorkedProps) {
     return (
-        <Collapsible className={ styles.worked } defaultOpen={ false } open={ open } onOpenChange={ onOpenChange }>
-            <WorkedTrigger label={ label } shimmer={ shimmer } />
-            <WorkedPanel ruled={ ruled }>{ children }</WorkedPanel>
+        <Collapsible className={styles.worked} defaultOpen={false} open={open} onOpenChange={onOpenChange}>
+            <WorkedTrigger label={label} shimmer={shimmer} />
+            <WorkedPanel ruled={ruled}>{children}</WorkedPanel>
         </Collapsible>
     );
 }

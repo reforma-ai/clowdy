@@ -1,6 +1,22 @@
 import { describe, expect, it } from 'vitest';
 
-import { choiceForModel, defaultEffort, defaultModel, legalEffort, levelLabel, mainModels, modelRow, moreModels, pickableModels, readRemembered, remember, startingChoice, startingEngine, writeRemembered, type RememberedChoice } from './modelSelection';
+import {
+    choiceForModel,
+    defaultEffort,
+    defaultModel,
+    legalEffort,
+    levelLabel,
+    mainModels,
+    modelRow,
+    moreModels,
+    pickableModels,
+    type RememberedChoice,
+    readRemembered,
+    remember,
+    startingChoice,
+    startingEngine,
+    writeRemembered,
+} from './modelSelection';
 
 import type { AgentModel } from '@clowdy/protocol';
 
@@ -8,7 +24,13 @@ const NOTHING: RememberedChoice = { models: {}, efforts: {} };
 const CLAUDE_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'];
 
 const claude: AgentModel[] = [
-    { id: 'default', name: 'Default (recommended)', isDefault: true, resolvedId: 'claude-opus-5-5', efforts: CLAUDE_LEVELS },
+    {
+        id: 'default',
+        name: 'Default (recommended)',
+        isDefault: true,
+        resolvedId: 'claude-opus-5-5',
+        efforts: CLAUDE_LEVELS,
+    },
     { id: 'opus', name: 'Opus 5.5', resolvedId: 'claude-opus-5-5', efforts: CLAUDE_LEVELS },
     { id: 'sonnet', name: 'Sonnet 5.5', resolvedId: 'claude-sonnet-5-5', efforts: CLAUDE_LEVELS },
     { id: 'claude-opus-4-6', name: 'Opus 4.6', efforts: ['low', 'medium', 'high', 'max'] },
@@ -18,14 +40,18 @@ const claude: AgentModel[] = [
 const store = (initial?: string) => {
     const values = new Map<string, string>(initial === undefined ? [] : [['clowdy:model-choice', initial]]);
 
-    return { values, getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => void values.set(key, value) };
+    return {
+        values,
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => void values.set(key, value),
+    };
 };
 
 describe('levelLabel', () => {
     it('spells every level the agents use', () => {
-        expect(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'extra-high', 'max', 'ultra'].map(levelLabel)).toEqual([
-            'None', 'Minimal', 'Low', 'Medium', 'High', 'Extra high', 'Extra high', 'Max', 'Ultra',
-        ]);
+        expect(
+            ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'extra-high', 'max', 'ultra'].map(levelLabel)
+        ).toEqual(['None', 'Minimal', 'Low', 'Medium', 'High', 'Extra high', 'Extra high', 'Max', 'Ultra']);
     });
 
     it('capitalises a level it has never seen, turning separators into spaces', () => {
@@ -40,7 +66,7 @@ describe('levelLabel', () => {
 });
 
 describe('pickableModels', () => {
-    it('shows the pair of Claude\'s default row and the model it stands for once, as that model, still the default', () => {
+    it("shows the pair of Claude's default row and the model it stands for once, as that model, still the default", () => {
         const models = pickableModels(claude);
 
         expect(models.map(model => model.id)).toEqual(['opus', 'sonnet', 'claude-opus-4-6', 'haiku-4-5']);
@@ -48,8 +74,11 @@ describe('pickableModels', () => {
         expect(defaultModel(models)?.id).toBe('opus');
     });
 
-    it('keeps a default row that is a model of its own, like Cursor\'s Auto', () => {
-        const cursor: AgentModel[] = [{ id: 'default', name: 'Auto', isDefault: true }, { id: 'gpt-5.5', name: 'GPT-5.5' }];
+    it("keeps a default row that is a model of its own, like Cursor's Auto", () => {
+        const cursor: AgentModel[] = [
+            { id: 'default', name: 'Auto', isDefault: true },
+            { id: 'gpt-5.5', name: 'GPT-5.5' },
+        ];
 
         expect(pickableModels(cursor)).toEqual(cursor);
         expect(pickableModels([])).toEqual([]);
@@ -63,7 +92,11 @@ describe('pickableModels', () => {
             { id: 'sonnet', name: 'Sonnet 5.5', resolvedId: 'claude-sonnet-5-5' },
         ]);
 
-        expect(models.map(model => [model.id, model.isDefault ?? false])).toEqual([['opus', true], ['opus-latest', false], ['sonnet', false]]);
+        expect(models.map(model => [model.id, model.isDefault ?? false])).toEqual([
+            ['opus', true],
+            ['opus-latest', false],
+            ['sonnet', false],
+        ]);
     });
 
     it('finds the model the default row stands for by its id when that row has no resolved id of its own', () => {
@@ -73,7 +106,10 @@ describe('pickableModels', () => {
             { id: 'claude-opus-4-6', name: 'Opus 4.6' },
         ]);
 
-        expect(models.map(model => [model.id, model.isDefault ?? false])).toEqual([['sonnet', false], ['claude-opus-4-6', true]]);
+        expect(models.map(model => [model.id, model.isDefault ?? false])).toEqual([
+            ['sonnet', false],
+            ['claude-opus-4-6', true],
+        ]);
     });
 
     it('does not remove both of two default rows that name the same model', () => {
@@ -98,7 +134,9 @@ describe('pickableModels', () => {
 
 describe('defaultEffort', () => {
     it('is the level the model names when it offers it', () => {
-        expect(defaultEffort({ id: 'm', name: 'M', efforts: ['low', 'medium', 'high'], defaultEffort: 'medium' })).toBe('medium');
+        expect(defaultEffort({ id: 'm', name: 'M', efforts: ['low', 'medium', 'high'], defaultEffort: 'medium' })).toBe(
+            'medium'
+        );
     });
 
     it('is high when there is no named default, else the middle level, and nothing for a model with no levels', () => {
@@ -124,7 +162,7 @@ describe('legalEffort', () => {
         expect(legalEffort(model, 'high')).toBe('high');
     });
 
-    it('is the model\'s own default for a level it does not offer, and for none', () => {
+    it("is the model's own default for a level it does not offer, and for none", () => {
         expect(legalEffort(model, 'xhigh')).toBe('medium');
         expect(legalEffort(model, undefined)).toBe('medium');
         expect(legalEffort({ ...model, defaultEffort: undefined }, 'max')).toBe('high');
@@ -140,7 +178,7 @@ describe('mainModels and moreModels', () => {
     const named = (...ids: string[]): AgentModel[] => ids.map(id => ({ id, name: id.toUpperCase() }));
     const ids = (models: readonly AgentModel[]) => models.map(model => model.id);
 
-    it('are the first five in the agent\'s own order when it marks none as featured', () => {
+    it("are the first five in the agent's own order when it marks none as featured", () => {
         const models = named('a', 'b', 'c', 'd', 'e', 'f', 'g');
 
         expect(ids(mainModels(models))).toEqual(['a', 'b', 'c', 'd', 'e']);
@@ -156,14 +194,22 @@ describe('mainModels and moreModels', () => {
         expect(moreModels([])).toEqual([]);
     });
 
-    it('are the featured rows when any row is featured, however many or few, and in the agent\'s order', () => {
+    it("are the featured rows when any row is featured, however many or few, and in the agent's order", () => {
         const featured = (id: string, on = true): AgentModel => ({ id, name: id, ...(on && { featured: true }) });
         const many = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map(id => featured(id));
 
         expect(ids(mainModels(many))).toEqual(['a', 'b', 'c', 'd', 'e', 'f', 'g']);
         expect(ids(moreModels(many))).toEqual([]);
 
-        const some = [featured('a', false), featured('b'), featured('c', false), featured('d'), featured('e', false), featured('f', false), featured('g', false)];
+        const some = [
+            featured('a', false),
+            featured('b'),
+            featured('c', false),
+            featured('d'),
+            featured('e', false),
+            featured('f', false),
+            featured('g', false),
+        ];
 
         expect(ids(mainModels(some))).toEqual(['b', 'd']);
         expect(ids(moreModels(some))).toEqual(['a', 'c', 'e', 'f', 'g']);
@@ -177,7 +223,11 @@ describe('mainModels and moreModels', () => {
         expect(ids(mainModels(models, 'c'))).toEqual(['a', 'b', 'c', 'd', 'e']);
         expect(ids(moreModels(models, 'c'))).toEqual(['f', 'g']);
 
-        const featured: AgentModel[] = [{ id: 'a', name: 'A', featured: true }, { id: 'b', name: 'B' }, { id: 'c', name: 'C' }];
+        const featured: AgentModel[] = [
+            { id: 'a', name: 'A', featured: true },
+            { id: 'b', name: 'B' },
+            { id: 'c', name: 'C' },
+        ];
 
         expect(ids(mainModels(featured, 'c'))).toEqual(['a', 'c']);
         expect(ids(moreModels(featured, 'c'))).toEqual(['b']);
@@ -191,9 +241,15 @@ describe('mainModels and moreModels', () => {
         expect(ids(mainModels(models, undefined))).toEqual(['a', 'b', 'c', 'd', 'e']);
     });
 
-    it('split what pickableModels gives: Claude\'s default row is Opus, once, and a featured one', () => {
+    it("split what pickableModels gives: Claude's default row is Opus, once, and a featured one", () => {
         const rows = pickableModels([
-            { id: 'default', name: 'Default (recommended)', isDefault: true, resolvedId: 'claude-opus-5-5', featured: true },
+            {
+                id: 'default',
+                name: 'Default (recommended)',
+                isDefault: true,
+                resolvedId: 'claude-opus-5-5',
+                featured: true,
+            },
             { id: 'opus', name: 'Opus 5.5', resolvedId: 'claude-opus-5-5', featured: true },
             { id: 'sonnet', name: 'Sonnet 5.5', resolvedId: 'claude-sonnet-5-5', featured: true },
             { id: 'claude-opus-4-6', name: 'Opus 4.6' },
@@ -220,7 +276,7 @@ describe('modelRow', () => {
         expect(modelRow(claude, 'haiku-4-5')?.name).toBe('Haiku 4.5');
     });
 
-    it('is the row of the model Claude\'s hidden default stands for', () => {
+    it("is the row of the model Claude's hidden default stands for", () => {
         const row = modelRow(claude, 'default');
 
         expect(row).toMatchObject({ id: 'opus', name: 'Opus 5.5', isDefault: true });
@@ -232,7 +288,10 @@ describe('modelRow', () => {
     });
 
     it('keeps a default row that is a model of its own', () => {
-        const cursor: AgentModel[] = [{ id: 'default', name: 'Auto', isDefault: true }, { id: 'gpt-5.5', name: 'GPT-5.5' }];
+        const cursor: AgentModel[] = [
+            { id: 'default', name: 'Auto', isDefault: true },
+            { id: 'gpt-5.5', name: 'GPT-5.5' },
+        ];
 
         expect(modelRow(cursor, 'default')?.name).toBe('Auto');
     });
@@ -244,18 +303,39 @@ describe('startingChoice', () => {
     });
 
     it('starts on the model last used with the level last used on it', () => {
-        const remembered: RememberedChoice = { engine: 'claude', models: { claude: 'opus' }, efforts: { 'claude/opus': 'max' } };
+        const remembered: RememberedChoice = {
+            engine: 'claude',
+            models: { claude: 'opus' },
+            efforts: { 'claude/opus': 'max' },
+        };
 
-        expect(startingChoice('claude', claude, remembered)).toEqual({ engine: 'claude', model: 'opus', effort: 'max' });
+        expect(startingChoice('claude', claude, remembered)).toEqual({
+            engine: 'claude',
+            model: 'opus',
+            effort: 'max',
+        });
     });
 
-    it('falls back to the default when the remembered model is gone, and to the model\'s default when its remembered level is', () => {
-        expect(startingChoice('claude', claude, { models: { claude: 'retired' }, efforts: {} })).toMatchObject({ model: 'opus', effort: 'high' });
-        expect(startingChoice('claude', claude, { models: { claude: 'claude-opus-4-6' }, efforts: { 'claude/claude-opus-4-6': 'xhigh' } })).toEqual({ engine: 'claude', model: 'claude-opus-4-6', effort: 'high' });
+    it("falls back to the default when the remembered model is gone, and to the model's default when its remembered level is", () => {
+        expect(startingChoice('claude', claude, { models: { claude: 'retired' }, efforts: {} })).toMatchObject({
+            model: 'opus',
+            effort: 'high',
+        });
+        expect(
+            startingChoice('claude', claude, {
+                models: { claude: 'claude-opus-4-6' },
+                efforts: { 'claude/claude-opus-4-6': 'xhigh' },
+            })
+        ).toEqual({ engine: 'claude', model: 'claude-opus-4-6', effort: 'high' });
     });
 
     it('gives a model with no levels none', () => {
-        expect(startingChoice('claude', claude, { models: { claude: 'haiku-4-5' }, efforts: { 'claude/haiku-4-5': 'high' } })).toEqual({ engine: 'claude', model: 'haiku-4-5' });
+        expect(
+            startingChoice('claude', claude, {
+                models: { claude: 'haiku-4-5' },
+                efforts: { 'claude/haiku-4-5': 'high' },
+            })
+        ).toEqual({ engine: 'claude', model: 'haiku-4-5' });
     });
 
     it('does not mistake what every object inherits for a remembered model', () => {
@@ -266,7 +346,9 @@ describe('startingChoice', () => {
     });
 
     it('returns the memory as it is while there is no list to choose from', () => {
-        expect(startingChoice('codex', [], { models: { codex: 'gpt-6-sol' }, efforts: { 'codex/gpt-6-sol': 'high' } })).toEqual({ engine: 'codex', model: 'gpt-6-sol', effort: 'high' });
+        expect(
+            startingChoice('codex', [], { models: { codex: 'gpt-6-sol' }, efforts: { 'codex/gpt-6-sol': 'high' } })
+        ).toEqual({ engine: 'codex', model: 'gpt-6-sol', effort: 'high' });
         expect(startingChoice('codex', [], NOTHING)).toEqual({ engine: 'codex' });
     });
 });
@@ -274,7 +356,7 @@ describe('startingChoice', () => {
 describe('choiceForModel', () => {
     const remembered: RememberedChoice = { models: {}, efforts: { 'claude/sonnet': 'low' } };
 
-    it('prefers the level last used on that model, then the level held now, then the model\'s own default', () => {
+    it("prefers the level last used on that model, then the level held now, then the model's own default", () => {
         const [, opus, sonnet, old] = claude;
 
         expect(choiceForModel('claude', sonnet, 'max', remembered).effort).toBe('low');
@@ -285,8 +367,14 @@ describe('choiceForModel', () => {
     it('drops a level the model does not offer, and gives a model with no levels none however it was asked', () => {
         const [, opus, , , haiku] = claude;
 
-        expect(choiceForModel('claude', opus, 'ultra', { models: {}, efforts: { 'claude/opus': 'gone' } })).toEqual({ engine: 'claude', model: 'opus', effort: 'high' });
-        expect(choiceForModel('claude', haiku, 'high', { models: {}, efforts: { 'claude/haiku-4-5': 'high' } })).toEqual({ engine: 'claude', model: 'haiku-4-5' });
+        expect(choiceForModel('claude', opus, 'ultra', { models: {}, efforts: { 'claude/opus': 'gone' } })).toEqual({
+            engine: 'claude',
+            model: 'opus',
+            effort: 'high',
+        });
+        expect(
+            choiceForModel('claude', haiku, 'high', { models: {}, efforts: { 'claude/haiku-4-5': 'high' } })
+        ).toEqual({ engine: 'claude', model: 'haiku-4-5' });
     });
 });
 
@@ -312,8 +400,16 @@ describe('what is remembered', () => {
         const second = remember(first, { engine: 'codex', model: 'gpt-6-luna', effort: 'low' });
         const bare = remember(second, { engine: 'claude', model: 'haiku-4-5' });
 
-        expect(second).toEqual({ engine: 'codex', models: { claude: 'opus', codex: 'gpt-6-luna' }, efforts: { 'claude/opus': 'max', 'codex/gpt-6-luna': 'low' } });
-        expect(bare).toEqual({ engine: 'claude', models: { claude: 'haiku-4-5', codex: 'gpt-6-luna' }, efforts: second.efforts });
+        expect(second).toEqual({
+            engine: 'codex',
+            models: { claude: 'opus', codex: 'gpt-6-luna' },
+            efforts: { 'claude/opus': 'max', 'codex/gpt-6-luna': 'low' },
+        });
+        expect(bare).toEqual({
+            engine: 'claude',
+            models: { claude: 'haiku-4-5', codex: 'gpt-6-luna' },
+            efforts: second.efforts,
+        });
     });
 
     it('survives a round trip through storage', () => {
@@ -335,7 +431,8 @@ describe('what is remembered', () => {
     });
 
     it('keeps a stored key like __proto__ as an entry of its own and never as a prototype', () => {
-        const hostile = '{"engine":"claude","models":{"__proto__":"evil","claude":"opus"},"efforts":{"__proto__":{"polluted":"yes"},"constructor":"x"}}';
+        const hostile =
+            '{"engine":"claude","models":{"__proto__":"evil","claude":"opus"},"efforts":{"__proto__":{"polluted":"yes"},"constructor":"x"}}';
         const read = readRemembered(store(hostile));
 
         expect(Object.getPrototypeOf(read.models)).toBe(Object.prototype);
@@ -357,12 +454,24 @@ describe('what is remembered', () => {
         expect(readRemembered(store('[1,2]'))).toEqual(NOTHING);
         expect(readRemembered(store('null'))).toEqual(NOTHING);
         expect(readRemembered(store('"claude"'))).toEqual(NOTHING);
-        expect(readRemembered({ getItem: () => {
-            throw new Error('blocked');
-        }, setItem: () => undefined })).toEqual(NOTHING);
-        expect(readRemembered(store(JSON.stringify({ engine: 4, models: { claude: 'opus', codex: 7 }, efforts: 'x' })))).toEqual({ models: { claude: 'opus' }, efforts: {} });
-        expect(() => writeRemembered(NOTHING, { getItem: () => null, setItem: () => {
-            throw new Error('full');
-        } })).not.toThrow();
+        expect(
+            readRemembered({
+                getItem: () => {
+                    throw new Error('blocked');
+                },
+                setItem: () => undefined,
+            })
+        ).toEqual(NOTHING);
+        expect(
+            readRemembered(store(JSON.stringify({ engine: 4, models: { claude: 'opus', codex: 7 }, efforts: 'x' })))
+        ).toEqual({ models: { claude: 'opus' }, efforts: {} });
+        expect(() =>
+            writeRemembered(NOTHING, {
+                getItem: () => null,
+                setItem: () => {
+                    throw new Error('full');
+                },
+            })
+        ).not.toThrow();
     });
 });

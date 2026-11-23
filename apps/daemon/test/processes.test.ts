@@ -6,7 +6,17 @@ import { join } from 'node:path';
 import { getRunWork } from '../src/db/runs';
 import { processesBelow, spawnInOwnGroup } from '../src/engine/process';
 import { isAlive, killSurvivor, startTimeOf } from '../src/runs/processes';
-import { cleanTempDirs, restartHarness, ScriptEngine, scriptEngines, SHORT_TIMINGS, startHarness, tempDir, untilAborted, waitFor } from './helpers';
+import {
+    cleanTempDirs,
+    restartHarness,
+    ScriptEngine,
+    SHORT_TIMINGS,
+    scriptEngines,
+    startHarness,
+    tempDir,
+    untilAborted,
+    waitFor,
+} from './helpers';
 
 import type { Harness } from './helpers';
 
@@ -21,8 +31,7 @@ afterEach(async () => {
     for (const pid of leftovers.splice(0)) {
         try {
             process.kill(-pid, 'SIGKILL');
-        }
-        catch {
+        } catch {
             // already gone
         }
     }
@@ -46,7 +55,7 @@ describe('cancelling a run whose engine does not stop', () => {
         const stubborn = startProcess('trap "" TERM; while true; do sleep 1; done');
         const pids = [polite, stubborn];
         const engine = new ScriptEngine(async function* ({ number, options }) {
-            yield { type: 'session', sessionId: `s${ number }` };
+            yield { type: 'session', sessionId: `s${number}` };
 
             const pid = pids[number - 1];
 
@@ -56,12 +65,19 @@ describe('cancelling a run whose engine does not stop', () => {
             await new Promise(() => undefined);
             yield { type: 'done', result: String(options.prompt.length) };
         });
-        const h = await startHarness({ timings: { ...SHORT_TIMINGS, killGraceMs: 300 } }, { engines: scriptEngines(engine) });
+        const h = await startHarness(
+            { timings: { ...SHORT_TIMINGS, killGraceMs: 300 } },
+            { engines: scriptEngines(engine) }
+        );
 
         harnesses.push(h);
 
         const project = h.openRepo();
-        const runs = ['A', 'B'].map(title => h.ok('task.start', { taskId: h.ok('task.create', { projectId: project.id, title }).task.id }).runId as string);
+        const runs = ['A', 'B'].map(
+            title =>
+                h.ok('task.start', { taskId: h.ok('task.create', { projectId: project.id, title }).task.id })
+                    .runId as string
+        );
 
         await waitFor(() => runs.every(id => getRunWork(h.store.db, id).process), 'both processes to be recorded');
 
@@ -94,12 +110,16 @@ describe('cancelling a run whose engine does not stop', () => {
             yield { type: 'process', pid, pgid: pid };
             await untilAborted(signal);
         });
-        const h = await startHarness({ timings: { ...SHORT_TIMINGS, killGraceMs: 200 } }, { engines: scriptEngines(engine) });
+        const h = await startHarness(
+            { timings: { ...SHORT_TIMINGS, killGraceMs: 200 } },
+            { engines: scriptEngines(engine) }
+        );
 
         harnesses.push(h);
 
         const project = h.openRepo();
-        const runId = h.ok('task.start', { taskId: h.ok('task.create', { projectId: project.id, title: 'A' }).task.id }).runId as string;
+        const runId = h.ok('task.start', { taskId: h.ok('task.create', { projectId: project.id, title: 'A' }).task.id })
+            .runId as string;
 
         await waitFor(() => getRunWork(h.store.db, runId).process, 'the process to be recorded');
         h.ok('run.cancel', { runId });
@@ -117,16 +137,25 @@ describe('a daemon that crashed', () => {
         });
         const first = await startHarness({}, { engines: scriptEngines(engine) });
         const project = first.openRepo();
-        const runs = ['A', 'B'].map(title => first.ok('task.start', { taskId: first.ok('task.create', { projectId: project.id, title }).task.id }).runId as string);
+        const runs = ['A', 'B'].map(
+            title =>
+                first.ok('task.start', { taskId: first.ok('task.create', { projectId: project.id, title }).task.id })
+                    .runId as string
+        );
 
-        await waitFor(() => engine.turns.length === 2 && runs.every(id => first.run(id).status === 'running'), 'two live runs');
+        await waitFor(
+            () => engine.turns.length === 2 && runs.every(id => first.run(id).status === 'running'),
+            'two live runs'
+        );
         await first.stop();
 
         // What a crash leaves behind: runs still `running`, their engine processes still alive.
         const survivor = startProcess('sleep 60');
         const recycled = startProcess('sleep 60');
         const db = new Database(join(first.config.dataDir, 'clowdy.db'));
-        const record = db.query('UPDATE runs SET pid = ?, pgid = ?, process_started_at = ?, status = \'running\' WHERE id = ?');
+        const record = db.query(
+            "UPDATE runs SET pid = ?, pgid = ?, process_started_at = ?, status = 'running' WHERE id = ?"
+        );
 
         // `recycled` stands for a pid the OS gave to another process after the engine died: it started long after the recorded time.
         record.run(survivor, survivor, startTimeOf(survivor)!, runs[0]);
@@ -162,10 +191,16 @@ describe('the process guard', () => {
         harnesses.push(h);
 
         const project = h.openRepo();
-        const runs = ['A', 'B', 'C'].map(title => h.ok('task.start', { taskId: h.ok('task.create', { projectId: project.id, title }).task.id }).runId as string);
+        const runs = ['A', 'B', 'C'].map(
+            title =>
+                h.ok('task.start', { taskId: h.ok('task.create', { projectId: project.id, title }).task.id })
+                    .runId as string
+        );
 
         await waitFor(() => h.run(runs[2]).status === 'failed', 'the third run to be refused');
-        expect(h.run(runs[2]).error).toBe('2 engine processes are alive, the most this daemon allows (CLOWDY_MAX_PROCESSES); the run was not started');
+        expect(h.run(runs[2]).error).toBe(
+            '2 engine processes are alive, the most this daemon allows (CLOWDY_MAX_PROCESSES); the run was not started'
+        );
         expect(runs.slice(0, 2).map(id => h.run(id).status)).toEqual(['running', 'running']);
         expect(engine.turns).toHaveLength(2);
     });
@@ -180,7 +215,11 @@ describe('the process guard', () => {
         harnesses.push(h);
 
         const project = h.openRepo();
-        const runs = ['A', 'B', 'C'].map(title => h.ok('task.start', { taskId: h.ok('task.create', { projectId: project.id, title }).task.id }).runId as string);
+        const runs = ['A', 'B', 'C'].map(
+            title =>
+                h.ok('task.start', { taskId: h.ok('task.create', { projectId: project.id, title }).task.id })
+                    .runId as string
+        );
 
         await waitFor(() => runs.every(id => h.run(id).status === 'succeeded'), 'every run to finish');
         expect(engine.turns).toHaveLength(3);
@@ -211,7 +250,7 @@ setInterval(() => undefined, 1000);
 
 /** The pid a process that runs `AGENT_WITH_DETACHED_TOOL` says its tool has. */
 function toolOf(child: { stdout: NodeJS.ReadableStream | null }): Promise<number> {
-    return new Promise((resolve) => {
+    return new Promise(resolve => {
         child.stdout?.on('data', (data: Buffer) => {
             const match = /tool (\d+)/.exec(String(data));
 
@@ -222,22 +261,26 @@ function toolOf(child: { stdout: NodeJS.ReadableStream | null }): Promise<number
     });
 }
 
-describe('a tool that left the agent\'s process group', () => {
+describe("a tool that left the agent's process group", () => {
     const tools: number[] = [];
 
     afterEach(() => {
         for (const pid of tools.splice(0)) {
             try {
                 process.kill(-pid, 'SIGKILL');
-            }
-            catch {
+            } catch {
                 // already gone
             }
         }
     });
 
     async function startAgent(script = AGENT_WITH_DETACHED_TOOL) {
-        const agent = await spawnInOwnGroup({ command: process.execPath, args: ['-e', script], cwd: tempDir(), env: { PATH: process.env.PATH ?? '' } });
+        const agent = await spawnInOwnGroup({
+            command: process.execPath,
+            args: ['-e', script],
+            cwd: tempDir(),
+            env: { PATH: process.env.PATH ?? '' },
+        });
         leftovers.push(agent.pid);
 
         const tool = await toolOf(agent.child);
@@ -268,7 +311,7 @@ describe('a tool that left the agent\'s process group', () => {
         await agent.exited;
     });
 
-    test('goes down when the agent leaves by itself after a cancel began, which is how Claude Code\'s adapter leaves when its input closes', async () => {
+    test("goes down when the agent leaves by itself after a cancel began, which is how Claude Code's adapter leaves when its input closes", async () => {
         const { agent, tool } = await startAgent();
 
         agent.watch();
@@ -312,8 +355,7 @@ describe('a tool that left the agent\'s process group', () => {
             expect(processesBelow(agent.pid)).toEqual([]);
             agent.watch();
             agent.stop();
-        }
-        finally {
+        } finally {
             process.env.PATH = path;
         }
 
@@ -321,7 +363,10 @@ describe('a tool that left the agent\'s process group', () => {
     });
 
     test('goes down with a survivor of a daemon that was killed, which startup recovery finds by the pid it recorded', async () => {
-        const child = spawn(process.execPath, ['-e', AGENT_WITH_DETACHED_TOOL], { detached: true, stdio: ['ignore', 'pipe', 'ignore'] });
+        const child = spawn(process.execPath, ['-e', AGENT_WITH_DETACHED_TOOL], {
+            detached: true,
+            stdio: ['ignore', 'pipe', 'ignore'],
+        });
 
         child.unref();
         leftovers.push(child.pid!);
@@ -332,7 +377,9 @@ describe('a tool that left the agent\'s process group', () => {
         expect(isAlive(tool)).toBe(true);
 
         // The agent started a moment ago, as the daemon recorded it before it died.
-        expect(await killSurvivor({ pid: child.pid!, pgid: child.pid!, startedAt: startTimeOf(child.pid!) }, 300)).toBe(true);
+        expect(await killSurvivor({ pid: child.pid!, pgid: child.pid!, startedAt: startTimeOf(child.pid!) }, 300)).toBe(
+            true
+        );
         await waitFor(() => gone(child.pid!) && gone(tool), 'the agent and its tool to be stopped');
     });
 });

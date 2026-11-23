@@ -1,7 +1,7 @@
-import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_BYTES_PER_MESSAGE, MAX_ATTACHMENTS_PER_MESSAGE } from '@clowdy/protocol';
 import { constants, copyFileSync, existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { open } from 'node:fs/promises';
 import { join } from 'node:path';
+import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_BYTES_PER_MESSAGE, MAX_ATTACHMENTS_PER_MESSAGE } from '@clowdy/protocol';
 
 import {
     allAttachmentIds,
@@ -19,17 +19,23 @@ import { newId } from '../ids';
 import { formatSize } from './message';
 import { mediaTypeOf, safeFileName } from './names';
 
-import type { Attachment, Project } from '@clowdy/protocol';
 import type { FileHandle } from 'node:fs/promises';
+import type { Attachment, Project } from '@clowdy/protocol';
 import type { AttachmentRecord } from '../db/attachments';
 import type { Store } from '../store';
 
 /** A file that was uploaded and never sent is removed after this long. */
 export const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 
-export const toAttachment = ({ id, name, mediaType, size }: AttachmentRecord): Attachment => ({ id, name, mediaType, size });
+export const toAttachment = ({ id, name, mediaType, size }: AttachmentRecord): Attachment => ({
+    id,
+    name,
+    mediaType,
+    size,
+});
 
-const tooLarge = () => new TooLargeError(`A file may be at most ${ formatSize(MAX_ATTACHMENT_BYTES) }`, { maxBytes: MAX_ATTACHMENT_BYTES });
+const tooLarge = () =>
+    new TooLargeError(`A file may be at most ${formatSize(MAX_ATTACHMENT_BYTES)}`, { maxBytes: MAX_ATTACHMENT_BYTES });
 
 /** What the HTTP route hands over: the request, reduced to what storing it needs. */
 export interface Upload {
@@ -44,7 +50,7 @@ export interface Upload {
 }
 
 async function writeAll(handle: FileHandle, chunk: Uint8Array): Promise<void> {
-    for (let offset = 0; offset < chunk.length;) {
+    for (let offset = 0; offset < chunk.length; ) {
         offset += (await handle.write(chunk, offset, chunk.length - offset)).bytesWritten;
     }
 }
@@ -59,7 +65,10 @@ export class AttachmentsService {
     /** Folders of uploads still being written: the sweep must not take them for strays. */
     private uploading = new Set<string>();
 
-    constructor(private store: Store, dataDir: string) {
+    constructor(
+        private store: Store,
+        dataDir: string
+    ) {
         this.root = join(dataDir, 'attachments');
     }
 
@@ -111,8 +120,7 @@ export class AttachmentsService {
 
                     await writeAll(handle, chunk);
                 }
-            }
-            finally {
+            } finally {
                 await handle.close();
             }
 
@@ -120,17 +128,22 @@ export class AttachmentsService {
                 throw invalid('The file is empty');
             }
 
-            const record: AttachmentRecord = { id, name, mediaType: mediaTypeOf(contentType, name), size, projectId: project.id, createdAt: Date.now() };
+            const record: AttachmentRecord = {
+                id,
+                name,
+                mediaType: mediaTypeOf(contentType, name),
+                size,
+                projectId: project.id,
+                createdAt: Date.now(),
+            };
 
             this.store.tx(() => insertAttachment(this.store.db, record));
 
             return toAttachment(record);
-        }
-        catch (error) {
+        } catch (error) {
             this.removeFolder(id);
             throw error;
-        }
-        finally {
+        } finally {
             this.uploading.delete(id);
         }
     }
@@ -169,14 +182,14 @@ export class AttachmentsService {
      */
     claim(projectId: string, ids: readonly string[], reusable: ReadonlySet<string> = new Set()): AttachmentRecord[] {
         if (ids.length > MAX_ATTACHMENTS_PER_MESSAGE) {
-            throw invalid(`A message may carry at most ${ MAX_ATTACHMENTS_PER_MESSAGE } files`);
+            throw invalid(`A message may carry at most ${MAX_ATTACHMENTS_PER_MESSAGE} files`);
         }
 
         if (new Set(ids).size !== ids.length) {
             throw invalid('A file is listed more than once');
         }
 
-        const records = ids.map((id) => {
+        const records = ids.map(id => {
             const record = getAttachment(this.store.db, id);
 
             if (record?.projectId !== projectId) {
@@ -184,14 +197,14 @@ export class AttachmentsService {
             }
 
             if (record.chatId && !reusable.has(id)) {
-                throw conflict(`Attachment ${ id } was sent with another message already`);
+                throw conflict(`Attachment ${id} was sent with another message already`);
             }
 
             return record;
         });
 
         if (records.reduce((total, record) => total + record.size, 0) > MAX_ATTACHMENTS_BYTES_PER_MESSAGE) {
-            throw invalid(`A message may carry at most ${ formatSize(MAX_ATTACHMENTS_BYTES_PER_MESSAGE) } of files`);
+            throw invalid(`A message may carry at most ${formatSize(MAX_ATTACHMENTS_BYTES_PER_MESSAGE)} of files`);
         }
 
         return records;
@@ -199,7 +212,14 @@ export class AttachmentsService {
 
     /** Marks claimed files as sent with this chat and run. Call it in the transaction that adds the message. */
     markSent(records: readonly AttachmentRecord[], chatId: string, runId: string): void {
-        if (markAttachmentsSent(this.store.db, records.map(record => record.id), chatId, runId) !== records.length) {
+        if (
+            markAttachmentsSent(
+                this.store.db,
+                records.map(record => record.id),
+                chatId,
+                runId
+            ) !== records.length
+        ) {
             throw conflict('A file was sent with another message already');
         }
     }
@@ -223,7 +243,7 @@ export class AttachmentsService {
      * keep. An id with no row, or sent in another chat, is not one of them.
      */
     sentIn(chatId: string, ids: Iterable<string>): AttachmentRecord[] {
-        return [...new Set(ids)].flatMap((id) => {
+        return [...new Set(ids)].flatMap(id => {
             const record = getAttachment(this.store.db, id);
 
             return record?.chatId === chatId ? [record] : [];
@@ -237,7 +257,10 @@ export class AttachmentsService {
      * A file that cannot be copied (the source's row or bytes are gone, or the disk refuses) is left out of `copies`: it was no better in the source, and
      * the message keeps naming the file it had. Call it in the transaction that makes the chat.
      */
-    copyInto(files: readonly Attachment[], target: { projectId: string; chatId: string; runId: string }): { copies: Map<string, Attachment>; undo: () => void } {
+    copyInto(
+        files: readonly Attachment[],
+        target: { projectId: string; chatId: string; runId: string }
+    ): { copies: Map<string, Attachment>; undo: () => void } {
         const copies = new Map<string, Attachment>();
         const folders: string[] = [];
         const now = Date.now();
@@ -257,11 +280,16 @@ export class AttachmentsService {
                 folders.push(id);
                 // A copy-on-write clone where the disk has them, a plain copy where it does not.
                 copyFileSync(this.pathOf(record), join(folder, record.name), constants.COPYFILE_FICLONE);
-                insertAttachment(this.store.db, { ...record, id, chatId: target.chatId, runId: target.runId, createdAt: now });
+                insertAttachment(this.store.db, {
+                    ...record,
+                    id,
+                    chatId: target.chatId,
+                    runId: target.runId,
+                    createdAt: now,
+                });
                 copies.set(file.id, { ...toAttachment(record), id });
-            }
-            catch (error) {
-                console.warn(`[clowdy] copying attachment ${ file.id } into a fork failed:`, error);
+            } catch (error) {
+                console.warn(`[clowdy] copying attachment ${file.id} into a fork failed:`, error);
                 this.removeFolder(id);
             }
         }
@@ -305,8 +333,7 @@ export class AttachmentsService {
                     this.removeFolder(entry);
                 }
             }
-        }
-        catch (error) {
+        } catch (error) {
             console.warn('[clowdy] sweeping attachments failed:', error);
         }
     }
@@ -324,9 +351,8 @@ export class AttachmentsService {
     private removeFolder(id: string): void {
         try {
             rmSync(join(this.root, id), { recursive: true, force: true });
-        }
-        catch (error) {
-            console.warn(`[clowdy] removing the folder of attachment ${ id } failed:`, error);
+        } catch (error) {
+            console.warn(`[clowdy] removing the folder of attachment ${id} failed:`, error);
         }
     }
 }

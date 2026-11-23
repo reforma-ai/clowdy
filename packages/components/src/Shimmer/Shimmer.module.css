@@ -18,7 +18,12 @@
         /* Highlight band (inherits --spread from inline style, px) */
         --shimmer-highlight: var(--color-text);
         --shimmer-text: var(--color-secondary-muted-text);
-        --shimmer-band: linear-gradient(90deg, transparent calc(50% - var(--spread)), var(--shimmer-highlight), transparent calc(50% + var(--spread)));
+        --shimmer-band: linear-gradient(
+            90deg,
+            transparent calc(50% - var(--spread)),
+            var(--shimmer-highlight),
+            transparent calc(50% + var(--spread))
+        );
 
         --shimmer-duration: 2s;
 
@@ -88,7 +93,8 @@
         position: absolute;
         inset: 0;
         background: radial-gradient(
-            ellipse var(--shimmer-ball-radius-x) var(--shimmer-ball-radius-y) at var(--shimmer-ball-x) var(--shimmer-ball-y),
+            ellipse var(--shimmer-ball-radius-x) var(--shimmer-ball-radius-y) at var(--shimmer-ball-x)
+                var(--shimmer-ball-y),
             color-mix(in srgb, var(--color-text) 50%, transparent) 0%,
             color-mix(in srgb, var(--color-text) 26%, transparent) 40%,
             color-mix(in srgb, var(--color-text) 8%, transparent) 68%,

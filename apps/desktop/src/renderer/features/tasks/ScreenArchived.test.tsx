@@ -8,7 +8,25 @@ import { overrideTransport } from '../../daemon/testing';
 import { undoStack } from '../../hotkeys/undo';
 import { ARCHIVED_MEMORY_LIMIT } from '../../stores/ProjectState';
 import { OPENING_DELAY_MS } from './OpeningTask';
-import { buttonNamed, change, click, closePage, draw, drawn, isOn, itemOf, mountScreen, openPage, page, pathText, press, project, search, ui, wait } from './screenHarness';
+import {
+    buttonNamed,
+    change,
+    click,
+    closePage,
+    draw,
+    drawn,
+    isOn,
+    itemOf,
+    mountScreen,
+    openPage,
+    page,
+    pathText,
+    press,
+    project,
+    search,
+    ui,
+    wait,
+} from './screenHarness';
 import { parentCandidates } from './taskTree';
 import { dependencyCandidates } from './taskView';
 import { RELOAD_DELAY_MS } from './useArchivedTasks';
@@ -38,21 +56,25 @@ afterEach(() => {
     vi.restoreAllMocks();
 });
 
-const panel = (key: string) => page.container.querySelector<HTMLElement>(`aside[aria-label="Task ${ key }"]`);
-const archiveRows = () => [...page.container.querySelectorAll<HTMLElement>('[data-archived-task]')].map(row => row.dataset.archivedTask);
-const rowOf = (taskId: string) => page.container.querySelector<HTMLElement>(`[data-archived-task="${ taskId }"]`)!;
+const panel = (key: string) => page.container.querySelector<HTMLElement>(`aside[aria-label="Task ${key}"]`);
+const archiveRows = () =>
+    [...page.container.querySelectorAll<HTMLElement>('[data-archived-task]')].map(row => row.dataset.archivedTask);
+const rowOf = (taskId: string) => page.container.querySelector<HTMLElement>(`[data-archived-task="${taskId}"]`)!;
 const titleOf = (taskId: string) => rowOf(taskId).querySelector<HTMLButtonElement>('button[title]')!;
 const openArchive = () => ui().setTasksArchive(true);
-const sectionOf = (key: string, title: string) => [...panel(key)!.querySelectorAll<HTMLElement>('section')].find(section => section.textContent?.startsWith(title))!;
+const sectionOf = (key: string, title: string) =>
+    [...panel(key)!.querySelectorAll<HTMLElement>('section')].find(section => section.textContent?.startsWith(title))!;
 /** The labels of the buttons in a part of the page: a button with a second press (Delete asks again) has the words of both. */
-const buttonTexts = (within: ParentNode) => [...within.querySelectorAll('button')].map(button => button.textContent ?? '');
-const recording = (base: Parameters<NonNullable<Parameters<typeof mountScreen>[0]>['transport'] & {}>[0]) => overrideTransport(base, {
-    command: async (input) => {
-        sent.push(input);
+const buttonTexts = (within: ParentNode) =>
+    [...within.querySelectorAll('button')].map(button => button.textContent ?? '');
+const recording = (base: Parameters<NonNullable<Parameters<typeof mountScreen>[0]>['transport'] & {}>[0]) =>
+    overrideTransport(base, {
+        command: async input => {
+            sent.push(input);
 
-        return base.command(input);
-    },
-});
+            return base.command(input);
+        },
+    });
 
 /** Draws what the archive view found, once the daemon has answered. */
 async function settleArchive() {
@@ -67,7 +89,7 @@ async function settleReload() {
     await draw();
 }
 
-describe('the header\'s Archive toggle', () => {
+describe("the header's Archive toggle", () => {
     it('is off at first, and shows the archive in place of the board when it is pressed', async () => {
         await mountScreen();
 
@@ -84,27 +106,32 @@ describe('the header\'s Archive toggle', () => {
         expect(page.container.querySelector('header')?.textContent).toContain('Archived tasks');
     });
 
-    it('takes the scope\'s own controls off the header and leaves the toggle: the path, the view, the sub-tasks, the search, the filter and the new task button', async () => {
-        await mountScreen({ prepare: (window) => {
-            window.setTasksScope('t-31');
-            window.setTasksArchive(true);
-        } });
+    it("takes the scope's own controls off the header and leaves the toggle: the path, the view, the sub-tasks, the search, the filter and the new task button", async () => {
+        await mountScreen({
+            prepare: window => {
+                window.setTasksScope('t-31');
+                window.setTasksArchive(true);
+            },
+        });
         await settleArchive();
 
         expect(pathText()).toEqual([]);
         expect(page.container.querySelector('section[aria-label="Inside CAR-31"]')).toBeNull();
         expect(page.container.querySelector('input[aria-label="Search tasks"]')).toBeNull();
 
-        for (const name of ['Board', 'List', 'Sub-tasks', 'Filter', 'Task', 'Sub-task']) expect(buttonNamed(name)).toBeUndefined();
+        for (const name of ['Board', 'List', 'Sub-tasks', 'Filter', 'Task', 'Sub-task'])
+            expect(buttonNamed(name)).toBeUndefined();
 
         expect(buttonNamed('Archive')).toBeDefined();
     });
 
     it('is project-wide, so it shows the whole archive whatever the scope, and leaving it returns to the same scope and view', async () => {
-        await mountScreen({ prepare: (window) => {
-            window.setTasksScope('t-31');
-            window.setTaskPageView('list');
-        } });
+        await mountScreen({
+            prepare: window => {
+                window.setTasksScope('t-31');
+                window.setTaskPageView('list');
+            },
+        });
 
         expect(pathText()).toEqual(['Tasks', 'CAR-31']);
 
@@ -133,7 +160,9 @@ describe('the header\'s Archive toggle', () => {
         await settleArchive();
         await click(buttonNamed('Archive'));
 
-        expect(page.container.querySelector<HTMLInputElement>('input[aria-label="Search tasks"]')!.value).toBe('booking');
+        expect(page.container.querySelector<HTMLInputElement>('input[aria-label="Search tasks"]')!.value).toBe(
+            'booking'
+        );
         expect(drawn()).toEqual(before);
     });
 
@@ -196,7 +225,12 @@ describe('the panel of an archived task', () => {
         expect(aside.textContent).toContain('Archived 2 days ago');
         expect(aside.querySelector('textarea, input, [contenteditable="true"]')).toBeNull();
         expect(buttonTexts(aside)).toContain('Restore');
-        expect(buttonTexts(aside).filter(label => /Start|Delete|Cancel and archive|New sub-task|Set parent|Change/.test(label) || label === 'Archive')).toEqual([]);
+        expect(
+            buttonTexts(aside).filter(
+                label =>
+                    /Start|Delete|Cancel and archive|New sub-task|Set parent|Change/.test(label) || label === 'Archive'
+            )
+        ).toEqual([]);
 
         expect(rowOf('t-38').hasAttribute('data-open')).toBe(true);
     });
@@ -284,10 +318,21 @@ describe('the panel of an archived task', () => {
         expect(panel('CAR-38')!.hasAttribute('data-archived')).toBe(true);
     });
 
-    it('shows the daemon\'s reason when a restore is refused', async () => {
-        await mountScreen({ prepare: window => window.openTask('t-38'), transport: base => overrideTransport(base, {
-            command: async input => (input.type === 'task.unarchive' ? { ok: false, requestId: 'r', error: { code: 'invalid', message: 'Nothing can be restored today' } } : base.command(input)),
-        }) });
+    it("shows the daemon's reason when a restore is refused", async () => {
+        await mountScreen({
+            prepare: window => window.openTask('t-38'),
+            transport: base =>
+                overrideTransport(base, {
+                    command: async input =>
+                        input.type === 'task.unarchive'
+                            ? {
+                                  ok: false,
+                                  requestId: 'r',
+                                  error: { code: 'invalid', message: 'Nothing can be restored today' },
+                              }
+                            : base.command(input),
+                }),
+        });
         await wait(0);
         await draw();
         await click(buttonNamed('Restore', panel('CAR-38')!));
@@ -309,11 +354,18 @@ describe('the panel of an archived task', () => {
     });
 
     it('opens the agent that wrote one of its comments in Agents, as the panel of a task on the board does', async () => {
-        const agent: TaskComment = { id: 'cmt_agent', taskId: 't-38', author: { kind: 'run', runId: 'r-orch-1' }, body: 'Archived once the reports moved.', createdAt: Date.now() };
+        const agent: TaskComment = {
+            id: 'cmt_agent',
+            taskId: 't-38',
+            author: { kind: 'run', runId: 'r-orch-1' },
+            body: 'Archived once the reports moved.',
+            createdAt: Date.now(),
+        };
 
         await mountScreen({
             prepare: window => window.openTask('t-38'),
-            transport: base => overrideTransport(base, { getTaskComments: async () => ({ comments: [agent], total: 1 }) }),
+            transport: base =>
+                overrideTransport(base, { getTaskComments: async () => ({ comments: [agent], total: 1 }) }),
         });
         await wait(250);
         await draw();
@@ -375,15 +427,19 @@ describe('an archived task opened by its id', () => {
     it('waits with the loader while the daemon reads it, then shows it read only', async () => {
         let release: () => void = () => undefined;
 
-        await mountScreen({ prepare: window => window.openTask('t-38'), transport: base => overrideTransport(base, {
-            getTaskDetail: async (taskId) => {
-                await new Promise<void>((resolve) => {
-                    release = resolve;
-                });
+        await mountScreen({
+            prepare: window => window.openTask('t-38'),
+            transport: base =>
+                overrideTransport(base, {
+                    getTaskDetail: async taskId => {
+                        await new Promise<void>(resolve => {
+                            release = resolve;
+                        });
 
-                return base.getTaskDetail(taskId);
-            },
-        }) });
+                        return base.getTaskDetail(taskId);
+                    },
+                }),
+        });
 
         // Not at once: a task that comes in a moment makes no panel of waiting.
         expect(page.container.querySelector('aside')).toBeNull();
@@ -417,7 +473,15 @@ describe('an archived task opened by its id', () => {
         // The memory is bounded, and the task read longest ago goes first: the archive view's pages push it out.
         const archived = project().archivedKnown.get('t-38')!;
 
-        act(() => project().rememberArchived(Array.from({ length: ARCHIVED_MEMORY_LIMIT }, (_, index) => ({ ...archived, id: `t-extra-${ index }`, key: `CAR-${ 900 + index }` }))));
+        act(() =>
+            project().rememberArchived(
+                Array.from({ length: ARCHIVED_MEMORY_LIMIT }, (_, index) => ({
+                    ...archived,
+                    id: `t-extra-${index}`,
+                    key: `CAR-${900 + index}`,
+                }))
+            )
+        );
 
         expect(project().archivedKnown.has('t-38')).toBe(false);
 
@@ -439,17 +503,23 @@ describe('an archived task opened by its id', () => {
     it('says why when the daemon cannot be asked, with Retry', async () => {
         let failing = true;
 
-        await mountScreen({ prepare: window => window.openTask('t-38'), transport: base => overrideTransport(base, {
-            getTaskDetail: async (taskId): Promise<TaskDetail> => {
-                if (failing) throw new Error('The daemon is not answering');
+        await mountScreen({
+            prepare: window => window.openTask('t-38'),
+            transport: base =>
+                overrideTransport(base, {
+                    getTaskDetail: async (taskId): Promise<TaskDetail> => {
+                        if (failing) throw new Error('The daemon is not answering');
 
-                return base.getTaskDetail(taskId);
-            },
-        }) });
+                        return base.getTaskDetail(taskId);
+                    },
+                }),
+        });
         await wait(0);
         await draw();
 
-        expect(page.container.querySelector('aside')!.textContent).toContain('The task could not be loaded. The daemon is not answering');
+        expect(page.container.querySelector('aside')!.textContent).toContain(
+            'The task could not be loaded. The daemon is not answering'
+        );
 
         failing = false;
         await click(buttonNamed('Retry'));
@@ -460,9 +530,13 @@ describe('an archived task opened by its id', () => {
     });
 
     it('closes from the panel that waits', async () => {
-        await mountScreen({ prepare: window => window.openTask('t-38'), transport: base => overrideTransport(base, {
-            getTaskDetail: () => new Promise<TaskDetail>(() => undefined),
-        }) });
+        await mountScreen({
+            prepare: window => window.openTask('t-38'),
+            transport: base =>
+                overrideTransport(base, {
+                    getTaskDetail: () => new Promise<TaskDetail>(() => undefined),
+                }),
+        });
         await wait(OPENING_DELAY_MS + 50);
         await draw();
         await click(buttonNamed('Close', page.container.querySelector('aside')!));
@@ -491,8 +565,12 @@ describe('a dependency on an archived task', () => {
     }
 
     const dependencies = () => sectionOf('CAR-26', 'Dependencies');
-    const dependencyRow = (key: string) => [...dependencies().querySelectorAll<HTMLElement>('button[title]')].find(button => button.textContent?.includes(key))!;
-    const tickOf = (key: string) => dependencyRow(key).parentElement!.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+    const dependencyRow = (key: string) =>
+        [...dependencies().querySelectorAll<HTMLElement>('button[title]')].find(button =>
+            button.textContent?.includes(key)
+        )!;
+    const tickOf = (key: string) =>
+        dependencyRow(key).parentElement!.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
 
     it('is shown as resolved, with its key and title, and not as a removed task', async () => {
         await archivedDependency();
@@ -511,17 +589,21 @@ describe('a dependency on an archived task', () => {
         let release: () => void = () => undefined;
 
         // CAR-26 depends on CAR-38, which was archived before the window opened.
-        await mountScreen({ prepare: window => window.openTask('t-26'), transport: base => overrideTransport(base, {
-            getTaskDetail: async (taskId) => {
-                if (taskId === 't-38') {
-                    await new Promise<void>((resolve) => {
-                        release = resolve;
-                    });
-                }
+        await mountScreen({
+            prepare: window => window.openTask('t-26'),
+            transport: base =>
+                overrideTransport(base, {
+                    getTaskDetail: async taskId => {
+                        if (taskId === 't-38') {
+                            await new Promise<void>(resolve => {
+                                release = resolve;
+                            });
+                        }
 
-                return base.getTaskDetail(taskId);
-            },
-        }) });
+                        return base.getTaskDetail(taskId);
+                    },
+                }),
+        });
         await page.store.command({ type: 'task.update', taskId: 't-26', dependsOn: ['t-24', 't-38'] });
         await wait(0);
         await draw();
@@ -539,18 +621,22 @@ describe('a dependency on an archived task', () => {
     });
 
     it('says it could not be read when the daemon cannot be asked', async () => {
-        await mountScreen({ prepare: window => window.openTask('t-26'), transport: base => overrideTransport(base, {
-            getTaskDetail: async (taskId) => {
-                if (taskId === 't-38') throw new Error('offline');
+        await mountScreen({
+            prepare: window => window.openTask('t-26'),
+            transport: base =>
+                overrideTransport(base, {
+                    getTaskDetail: async taskId => {
+                        if (taskId === 't-38') throw new Error('offline');
 
-                return base.getTaskDetail(taskId);
-            },
-        }) });
+                        return base.getTaskDetail(taskId);
+                    },
+                }),
+        });
         await page.store.command({ type: 'task.update', taskId: 't-26', dependsOn: ['t-24', 't-38'] });
         await wait(0);
         await draw();
 
-        expect(dependencies().textContent).toContain('Couldn\'t read the task');
+        expect(dependencies().textContent).toContain("Couldn't read the task");
         expect(dependencies().textContent).not.toContain('Removed task');
     });
 
@@ -636,7 +722,9 @@ describe('archived tasks appear in no other view', () => {
         const candidates = dependencyCandidates(project().taskList, { taskId: 't-26', taken: [] }).map(task => task.id);
 
         expect(candidates).not.toContain('t-31');
-        expect(parentCandidates(project().taskList, project().tasks.get('t-26')).map(task => task.id)).not.toContain('t-32');
+        expect(parentCandidates(project().taskList, project().tasks.get('t-26')).map(task => task.id)).not.toContain(
+            't-32'
+        );
     });
 
     it('are in the archive view, and a restore of the tree puts them back on the board', async () => {

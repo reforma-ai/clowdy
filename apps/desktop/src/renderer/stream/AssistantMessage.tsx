@@ -26,14 +26,14 @@ export function AssistantMessage({ text, streaming, at, actions }: AssistantMess
     const message = useSwipeReply<HTMLDivElement>({ enabled: swipes, onReply: () => actions?.onReply?.(text) });
 
     return (
-        <div ref={ message } className={ styles.message } data-message="">
-            { /* Before the row of actions, which stays the last child of the message (see `MessageActions`). */ }
-            <Show when={ swipes }>
+        <div ref={message} className={styles.message} data-message="">
+            {/* Before the row of actions, which stays the last child of the message (see `MessageActions`). */}
+            <Show when={swipes}>
                 <SwipeHint />
             </Show>
-            <Markdown text={ text } streaming={ streaming } />
-            <Show when={ actions }>
-                { config => <MessageActions text={ text } at={ at } align="start" actions={ config } /> }
+            <Markdown text={text} streaming={streaming} />
+            <Show when={actions}>
+                {config => <MessageActions text={text} at={at} align="start" actions={config} />}
             </Show>
         </div>
     );

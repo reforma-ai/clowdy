@@ -5,7 +5,13 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createFixtureData, FIXTURE_PROJECT_ID, FIXTURE_WORKSPACE_CHAT_ID, FIXTURE_WORKTREE_PATH, withFixtureWorkspace } from '../../daemon/fixtureData';
+import {
+    createFixtureData,
+    FIXTURE_PROJECT_ID,
+    FIXTURE_WORKSPACE_CHAT_ID,
+    FIXTURE_WORKTREE_PATH,
+    withFixtureWorkspace,
+} from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { registerComposer } from '../chats/composerBridge';
@@ -26,12 +32,19 @@ let container: HTMLDivElement;
 let root: Root;
 let store: RootStore;
 
-const settle = () => act(async () => {
-    await new Promise(resolve => setTimeout(resolve, 20));
-});
+const settle = () =>
+    act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 20));
+    });
 const rows = () => [...container.querySelectorAll('[role="treeitem"]')].map(row => row.textContent);
 const draw = async (variant: 'files' | 'docs' = 'files') => {
-    act(() => root.render(<RootStoreProvider value={ store }><Tab variant={ variant } /></RootStoreProvider>));
+    act(() =>
+        root.render(
+            <RootStoreProvider value={store}>
+                <Tab variant={variant} />
+            </RootStoreProvider>
+        )
+    );
     await settle();
     await settle();
 };
@@ -56,14 +69,14 @@ afterEach(() => {
 });
 
 describe('the Docs tab over a place', () => {
-    it('draws the documents of the folder\'s own checkout when no chat is open', async () => {
+    it("draws the documents of the folder's own checkout when no chat is open", async () => {
         await draw('docs');
 
         expect(rows().some(text => text?.includes('weekend-pricing'))).toBe(true);
         expect(rows().some(text => text?.includes('weekend-surcharge'))).toBe(false);
     });
 
-    it('draws the plan only the worktree has when the chat that works in it is open, and the folder\'s own again when it is not', async () => {
+    it("draws the plan only the worktree has when the chat that works in it is open, and the folder's own again when it is not", async () => {
         ui().openChat(FIXTURE_WORKSPACE_CHAT_ID);
         await draw('docs');
 
@@ -95,7 +108,12 @@ describe('the Docs tab over a place', () => {
         // The page has not asked for the worktree yet: the place is the folder's own checkout.
         expect(rows().some(text => text?.includes('weekend-surcharge'))).toBe(false);
 
-        const opened = await store.command({ type: 'workspace.open', projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental', path: FIXTURE_WORKTREE_PATH });
+        const opened = await store.command({
+            type: 'workspace.open',
+            projectId: FIXTURE_PROJECT_ID,
+            folderId: 'fld_car_rental',
+            path: FIXTURE_WORKTREE_PATH,
+        });
 
         if (!opened.ok) throw new Error(opened.error.message);
 
@@ -106,12 +124,16 @@ describe('the Docs tab over a place', () => {
         expect(rows().some(text => text?.includes('weekend-surcharge'))).toBe(true);
     });
 
-    it('keeps a document the person opened in the worktree\'s tabs when another chat comes on show and goes', async () => {
+    it("keeps a document the person opened in the worktree's tabs when another chat comes on show and goes", async () => {
         ui().openChat(FIXTURE_WORKSPACE_CHAT_ID);
         await draw('docs');
 
         const worktree = store.selectedProject!.chats.get(FIXTURE_WORKSPACE_CHAT_ID)!;
-        const manager = await filesStoreOf(store).startedManagerOf(FIXTURE_PROJECT_ID, { folder: store.selectedProject!.project.folders[0]!, workspace: worktree.workspace }, 'docs');
+        const manager = await filesStoreOf(store).startedManagerOf(
+            FIXTURE_PROJECT_ID,
+            { folder: store.selectedProject!.project.folders[0]!, workspace: worktree.workspace },
+            'docs'
+        );
 
         await manager.open('.briefback/weekend-surcharge/plan.md');
         act(() => ui().openChat(null));
@@ -124,8 +146,12 @@ describe('the Docs tab over a place', () => {
 });
 
 describe('a chat whose worktree is not made yet', () => {
-    it('shows a note in place of the files and the documents, not an error and not the folder\'s own checkout, and the tree once the worktree is made', async () => {
-        const made = await store.command({ type: 'chat.create', projectId: FIXTURE_PROJECT_ID, workspace: { mode: 'new' } });
+    it("shows a note in place of the files and the documents, not an error and not the folder's own checkout, and the tree once the worktree is made", async () => {
+        const made = await store.command({
+            type: 'chat.create',
+            projectId: FIXTURE_PROJECT_ID,
+            workspace: { mode: 'new' },
+        });
         const { chat } = (made as { data: { chat: Chat } }).data;
         const project = store.projectState(FIXTURE_PROJECT_ID)!;
 
@@ -155,12 +181,17 @@ describe('a chat whose worktree is not made yet', () => {
 describe('Add to chat over the open file', () => {
     const editor = () => EditorView.findFromDOM(container.querySelector<HTMLElement>('.cm-editor')!)!;
     const button = () => container.querySelector<HTMLButtonElement>('.cm-tooltip button');
-    const select = (from: number, to: number) => act(async () => editor().dispatch({ selection: { anchor: from, head: to } }));
+    const select = (from: number, to: number) =>
+        act(async () => editor().dispatch({ selection: { anchor: from, head: to } }));
 
     async function openPrice() {
         await draw('files');
 
-        const manager = await filesStoreOf(store).startedManagerOf(FIXTURE_PROJECT_ID, { folder: store.selectedProject!.project.folders[0]! }, 'files');
+        const manager = await filesStoreOf(store).startedManagerOf(
+            FIXTURE_PROJECT_ID,
+            { folder: store.selectedProject!.project.folders[0]! },
+            'files'
+        );
 
         await manager.open('src/booking/price.ts');
         await settle();
@@ -176,7 +207,7 @@ describe('Add to chat over the open file', () => {
         expect(button()).toBeNull();
     });
 
-    it('shows the button over selected words once a message box is mounted, and quotes the file\'s path and lines into it', async () => {
+    it("shows the button over selected words once a message box is mounted, and quotes the file's path and lines into it", async () => {
         const quoted: string[] = [];
         const unregister = registerComposer(text => quoted.push(text));
 
@@ -192,7 +223,7 @@ describe('Add to chat over the open file', () => {
 
         await act(async () => button()!.click());
 
-        expect(quoted).toEqual([`\`src/booking/price.ts:1-2\`\n\`\`\`ts\n${ lines[0] }\n${ lines[1] }\n\`\`\``]);
+        expect(quoted).toEqual([`\`src/booking/price.ts:1-2\`\n\`\`\`ts\n${lines[0]}\n${lines[1]}\n\`\`\``]);
         expect(editor().state.selection.main.empty).toBe(true);
 
         unregister();

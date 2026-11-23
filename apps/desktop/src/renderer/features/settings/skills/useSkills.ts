@@ -26,7 +26,9 @@ export function useSkills(projectId: ProjectId | undefined) {
 
         root.transport.getSkills(projectId).then(
             catalog => current && setState({ status: 'ready', catalog }),
-            error => current && setState({ status: 'failed', message: error instanceof Error ? error.message : String(error) })
+            error =>
+                current &&
+                setState({ status: 'failed', message: error instanceof Error ? error.message : String(error) })
         );
 
         return () => {
@@ -36,22 +38,25 @@ export function useSkills(projectId: ProjectId | undefined) {
 
     const reload = useCallback(() => setAttempt(count => count + 1), []);
 
-    const toggle = useCallback(async (skill: SkillEntry, enabled: boolean) => {
-        setPending(names => new Set(names).add(skill.name));
+    const toggle = useCallback(
+        async (skill: SkillEntry, enabled: boolean) => {
+            setPending(names => new Set(names).add(skill.name));
 
-        const result = await root.command({ type: 'skills.setEnabled', name: skill.name, enabled });
+            const result = await root.command({ type: 'skills.setEnabled', name: skill.name, enabled });
 
-        if (!result.ok) toast.error({ message: result.error.message });
+            if (!result.ok) toast.error({ message: result.error.message });
 
-        setPending((names) => {
-            const rest = new Set(names);
+            setPending(names => {
+                const rest = new Set(names);
 
-            rest.delete(skill.name);
+                rest.delete(skill.name);
 
-            return rest;
-        });
-        reload();
-    }, [root, reload]);
+                return rest;
+            });
+            reload();
+        },
+        [root, reload]
+    );
 
     return { state, pending, reload, toggle };
 }

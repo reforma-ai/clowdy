@@ -1,18 +1,18 @@
 import { useCallback, useMemo, useState } from 'react';
 
 import {
-    applyAngleValueRange,
-    clampAngle,
-    fromDegrees,
-    normalizeDegrees,
-    roundAngleValueInRange,
-    toDegrees,
     type AngleChangeMeta,
     type AngleChangeSource,
     type AnglePrecision,
     type AngleUnit,
     type AngleValue,
     type AngleValueRange,
+    applyAngleValueRange,
+    clampAngle,
+    fromDegrees,
+    normalizeDegrees,
+    roundAngleValueInRange,
+    toDegrees,
 } from './angle';
 
 interface UseAngleStateOptions {
@@ -61,40 +61,50 @@ export function useAngleState({
     const minDegrees = min == null ? undefined : toDegrees({ value: min, unit });
     const maxDegrees = max == null ? undefined : toDegrees({ value: max, unit });
     const rawDegrees = clampAngle(applyAngleValueRange(toDegrees(rawValue), valueRange), minDegrees, maxDegrees);
-    const value = useMemo(() => (
-        roundAngleValueInRange(fromDegrees(rawDegrees, unit), precision, min, max)
-    ), [max, min, precision, rawDegrees, unit]);
+    const value = useMemo(
+        () => roundAngleValueInRange(fromDegrees(rawDegrees, unit), precision, min, max),
+        [max, min, precision, rawDegrees, unit]
+    );
     const degrees = toDegrees(value);
 
-    const emitValue = useCallback((nextValue: AngleValue, source: AngleChangeSource, committed: boolean): AngleValue => {
-        const outputUnit = unitProp ?? nextValue.unit;
-        const nextDegrees = clampAngle(applyAngleValueRange(toDegrees(nextValue), valueRange), minDegrees, maxDegrees);
-        const outputValue = roundAngleValueInRange(fromDegrees(nextDegrees, outputUnit), precision, min, max);
-        const outputDegrees = toDegrees(outputValue);
-        const meta: AngleChangeMeta = {
-            source,
-            degrees: outputDegrees,
-            normalizedDegrees: normalizeDegrees(outputDegrees),
-            unit: outputUnit,
-            committed,
-        };
+    const emitValue = useCallback(
+        (nextValue: AngleValue, source: AngleChangeSource, committed: boolean): AngleValue => {
+            const outputUnit = unitProp ?? nextValue.unit;
+            const nextDegrees = clampAngle(
+                applyAngleValueRange(toDegrees(nextValue), valueRange),
+                minDegrees,
+                maxDegrees
+            );
+            const outputValue = roundAngleValueInRange(fromDegrees(nextDegrees, outputUnit), precision, min, max);
+            const outputDegrees = toDegrees(outputValue);
+            const meta: AngleChangeMeta = {
+                source,
+                degrees: outputDegrees,
+                normalizedDegrees: normalizeDegrees(outputDegrees),
+                unit: outputUnit,
+                committed,
+            };
 
-        if (!isControlled) {
-            setUncontrolledValue(outputValue);
-        }
+            if (!isControlled) {
+                setUncontrolledValue(outputValue);
+            }
 
-        onChange?.(outputValue, meta);
+            onChange?.(outputValue, meta);
 
-        if (committed) {
-            onChangeEnd?.(outputValue, meta);
-        }
+            if (committed) {
+                onChangeEnd?.(outputValue, meta);
+            }
 
-        return outputValue;
-    }, [isControlled, max, maxDegrees, min, minDegrees, onChange, onChangeEnd, precision, unitProp, valueRange]);
+            return outputValue;
+        },
+        [isControlled, max, maxDegrees, min, minDegrees, onChange, onChangeEnd, precision, unitProp, valueRange]
+    );
 
-    const setDegrees = useCallback((nextDegrees: number, source: AngleChangeSource, committed: boolean): AngleValue => (
-        emitValue(fromDegrees(nextDegrees, unit), source, committed)
-    ), [emitValue, unit]);
+    const setDegrees = useCallback(
+        (nextDegrees: number, source: AngleChangeSource, committed: boolean): AngleValue =>
+            emitValue(fromDegrees(nextDegrees, unit), source, committed),
+        [emitValue, unit]
+    );
 
     return {
         value,

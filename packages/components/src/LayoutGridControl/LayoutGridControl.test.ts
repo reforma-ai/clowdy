@@ -35,12 +35,14 @@ describe('LayoutGridControl utilities', () => {
     });
 
     it('keeps direction and wrapping semantic in alignment glyphs', () => {
-        expect(createLayoutGridAlignmentGlyph({
-            axis: 'vertical',
-            flow: 'wrap',
-            placement: 'bottom',
-            isActive: true,
-        })).toMatchObject({
+        expect(
+            createLayoutGridAlignmentGlyph({
+                axis: 'vertical',
+                flow: 'wrap',
+                placement: 'bottom',
+                isActive: true,
+            })
+        ).toMatchObject({
             variant: 'bars',
             axis: 'vertical',
             flow: 'wrap',
@@ -51,24 +53,28 @@ describe('LayoutGridControl utilities', () => {
     });
 
     it('keeps distribution and stretch glyphs semantic', () => {
-        expect(createLayoutGridDistributionGlyph({
-            axis: 'vertical',
-            distribution: 'space-around',
-            placement: 'left',
-            isActive: true,
-            showMarker: true,
-        })).toMatchObject({
+        expect(
+            createLayoutGridDistributionGlyph({
+                axis: 'vertical',
+                distribution: 'space-around',
+                placement: 'left',
+                isActive: true,
+                showMarker: true,
+            })
+        ).toMatchObject({
             variant: 'distribution',
             axis: 'vertical',
             placement: 'left',
             distribution: 'space-around',
             items: ['line', 'marker-inline-start'],
         });
-        expect(createLayoutGridStretchGlyph({
-            axis: 'horizontal',
-            connection: 'start',
-            isActive: true,
-        })).toMatchObject({
+        expect(
+            createLayoutGridStretchGlyph({
+                axis: 'horizontal',
+                connection: 'start',
+                isActive: true,
+            })
+        ).toMatchObject({
             variant: 'stretch-line',
             axis: 'horizontal',
             connection: 'start',

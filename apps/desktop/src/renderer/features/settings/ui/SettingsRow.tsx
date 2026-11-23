@@ -18,15 +18,29 @@ export interface SettingsRowProps extends Omit<ComponentPropsWithoutRef<'div'>, 
 }
 
 /** One setting: what it is, with a line on what it does, and its control at the end, as in macOS and iOS settings. */
-export function SettingsRow({ title, description, children, stacked = false, footer, className, ...props }: SettingsRowProps) {
+export function SettingsRow({
+    title,
+    description,
+    children,
+    stacked = false,
+    footer,
+    className,
+    ...props
+}: SettingsRowProps) {
     return (
-        <SettingsBlock { ...props } className={ cn(styles.row, className) } data-stacked={ stacked || undefined }>
-            <div className={ styles.text }>
-                <Text variant="sm" weight="medium">{ title }</Text>
-                { description && <Text variant="sm" color="secondary">{ description }</Text> }
+        <SettingsBlock {...props} className={cn(styles.row, className)} data-stacked={stacked || undefined}>
+            <div className={styles.text}>
+                <Text variant="sm" weight="medium">
+                    {title}
+                </Text>
+                {description && (
+                    <Text variant="sm" color="secondary">
+                        {description}
+                    </Text>
+                )}
             </div>
-            { children && <div className={ styles.control }>{ children }</div> }
-            { footer && <div className={ styles.footer }>{ footer }</div> }
+            {children && <div className={styles.control}>{children}</div>}
+            {footer && <div className={styles.footer}>{footer}</div>}
         </SettingsBlock>
     );
 }

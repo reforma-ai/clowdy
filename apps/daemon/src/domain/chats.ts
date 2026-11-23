@@ -21,7 +21,7 @@ const TITLE_LENGTH = 60;
 export function titleFrom(text: string): string {
     const line = text.split('\n')[0].trim();
 
-    return line.length > TITLE_LENGTH ? `${ line.slice(0, TITLE_LENGTH - 1) }…` : line;
+    return line.length > TITLE_LENGTH ? `${line.slice(0, TITLE_LENGTH - 1)}…` : line;
 }
 
 /**
@@ -97,7 +97,7 @@ export function createChat(store: Store, input: NewChat, workspaces?: Pick<Confi
         const project = requireProject(store, input.projectId);
 
         if (input.folderId !== undefined && !project.folders.some(folder => folder.id === input.folderId)) {
-            throw invalid(`Folder ${ input.folderId } does not belong to project ${ project.id }`);
+            throw invalid(`Folder ${input.folderId} does not belong to project ${project.id}`);
         }
 
         if (input.workspace && input.workspaceId) {
@@ -112,9 +112,13 @@ export function createChat(store: Store, input: NewChat, workspaces?: Pick<Confi
         let workspace: ChatWorkspace | undefined;
 
         if (input.workspace && workspaces) {
-            workspace = createWorkspace(store, workspaces, { project, chatId: id, folderId: input.folderId, choice: input.workspace });
-        }
-        else if (input.workspaceId) {
+            workspace = createWorkspace(store, workspaces, {
+                project,
+                chatId: id,
+                folderId: input.folderId,
+                choice: input.workspace,
+            });
+        } else if (input.workspaceId) {
             workspace = inheritWorkspace(store, project, input.workspaceId, input.folderId);
         }
 
@@ -190,14 +194,16 @@ export function inSameTree(store: Store, a: Chat, b: Chat): boolean {
  */
 export function stoppedSubtree(store: Store, chat: Chat): Chat[] {
     const chats = [chat, ...listChatDescendants(store.db, chat.id).map(entry => entry.chat)];
-    const busy = chats.find(candidate => runsOfChat(store.db, candidate.id).some(run => !isTerminalRunStatus(run.status)));
+    const busy = chats.find(candidate =>
+        runsOfChat(store.db, candidate.id).some(run => !isTerminalRunStatus(run.status))
+    );
 
     if (busy?.id === chat.id) {
         throw conflict('The agents of this chat are still working. Stop the chat first.');
     }
 
     if (busy) {
-        throw conflict(`The thread "${ busy.title }" below this chat is still working. Stop it first.`);
+        throw conflict(`The thread "${busy.title}" below this chat is still working. Stop it first.`);
     }
 
     return chats;
@@ -215,7 +221,7 @@ export function deleteChat(store: Store, chatId: string, attachments: Attachment
     return store.tx(() => {
         const chats = stoppedSubtree(store, requireChat(store, chatId));
         const workspaceIds = new Set(chats.flatMap(each => (each.workspace ? [each.workspace.id] : [])));
-        const runIds = chats.reverse().flatMap((each) => {
+        const runIds = chats.reverse().flatMap(each => {
             const runIdsOfChat = runsOfChat(store.db, each.id).map(run => run.id);
 
             attachments.removeOfChat(each.id);
@@ -298,7 +304,8 @@ export function setChatMode(store: Store, chatId: string, mode: ChatMode): Chat 
 }
 
 /** What a field becomes when a call may name it: the value it names, nothing for `null`, and `kept` when the call leaves it out. */
-const named = <T>(change: T | null | undefined, kept: T | undefined): T | undefined => change === undefined ? kept : change ?? undefined;
+const named = <T>(change: T | null | undefined, kept: T | undefined): T | undefined =>
+    change === undefined ? kept : (change ?? undefined);
 
 /**
  * Changes what the chat runs on. Like archiving, it is not activity: the chat keeps its place in the order. `model` and `effort` may change at any time (`null` clears one); the agent only while no orchestrator exists.
@@ -306,7 +313,11 @@ const named = <T>(change: T | null | undefined, kept: T | undefined): T | undefi
  * levels, so what the same call does not name again is dropped. The chat alone changes here: the caller carries the choice to the
  * orchestrator run, which is what the next turn reads.
  */
-export function setChatModel(store: Store, chatId: string, change: { engine?: EngineId; model?: string | null; effort?: string | null }): Chat {
+export function setChatModel(
+    store: Store,
+    chatId: string,
+    change: { engine?: EngineId; model?: string | null; effort?: string | null }
+): Chat {
     return store.tx(() => {
         const chat = requireChat(store, chatId);
         const { engine: currentEngine, model: currentModel, effort: currentEffort, ...rest } = chat;

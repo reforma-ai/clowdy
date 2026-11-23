@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { FixtureTransport } from '../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider } from '../stores';
 import { Markdown } from './Markdown';
-import { StreamLinksContext, type StreamLinks } from './StreamLinks';
+import { type StreamLinks, StreamLinksContext } from './StreamLinks';
 import { UserBubble } from './UserBubble';
 
 import type { TaskDetail } from '@clowdy/protocol';
@@ -32,10 +32,11 @@ let replies: (() => void)[];
 let offline: boolean;
 
 /** Lets the daemon answer every read the window is waiting for, and lets the window take the answers in. */
-const answer = () => act(async () => {
-    replies.splice(0).forEach(reply => reply());
-    await new Promise(resolve => setTimeout(resolve, 0));
-});
+const answer = () =>
+    act(async () => {
+        replies.splice(0).forEach(reply => reply());
+        await new Promise(resolve => setTimeout(resolve, 0));
+    });
 
 const chips = () => [...container.querySelectorAll<HTMLElement>('button[title]')].map(chip => chip.textContent);
 
@@ -74,8 +75,10 @@ const drawBubble = (text: string) => {
 
     return act(async () => {
         reactRoot.render(
-            <RootStoreProvider value={ store }>
-                <StreamLinksContext value={ linksOf() }><Bubble text={ text } at={ 0 } /></StreamLinksContext>
+            <RootStoreProvider value={store}>
+                <StreamLinksContext value={linksOf()}>
+                    <Bubble text={text} at={0} />
+                </StreamLinksContext>
             </RootStoreProvider>
         );
     });
@@ -92,20 +95,25 @@ describe('a key of an archived task the window has not seen', () => {
         await answer();
 
         expect(chips()).toEqual(['CAR-38']);
-        expect(container.querySelector('button[title]')?.getAttribute('title')).toBe(store.selectedProject!.archivedKnown.get('t-38')?.title);
+        expect(container.querySelector('button[title]')?.getAttribute('title')).toBe(
+            store.selectedProject!.archivedKnown.get('t-38')?.title
+        );
         // The key nobody has stays words, and each key was asked for once however often the message was drawn.
         expect(container.textContent).toContain('CAR-999');
         expect(asked).toEqual(['CAR-38', 'CAR-999']);
     });
 
     it('is a chip in a code span of Markdown once the read is over and the text is drawn again, and code that is not a key asks nothing', async () => {
-        const draw = () => act(async () => {
-            reactRoot.render(
-                <RootStoreProvider value={ store }>
-                    <StreamLinksContext value={ linksOf() }><Markdown text="Read `CAR-39` and `npm run build` first" /></StreamLinksContext>
-                </RootStoreProvider>
-            );
-        });
+        const draw = () =>
+            act(async () => {
+                reactRoot.render(
+                    <RootStoreProvider value={store}>
+                        <StreamLinksContext value={linksOf()}>
+                            <Markdown text="Read `CAR-39` and `npm run build` first" />
+                        </StreamLinksContext>
+                    </RootStoreProvider>
+                );
+            });
 
         await draw();
 

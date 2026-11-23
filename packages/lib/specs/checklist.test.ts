@@ -15,10 +15,13 @@ describe('parseChecklist', () => {
     });
 
     it('counts nested items, however deep and however they are indented', () => {
-        expect(parseChecklist('- [ ] parent\n  - [x] child\n    - [x] grandchild\n\t- [ ] tab')).toEqual({ done: 2, total: 4 });
+        expect(parseChecklist('- [ ] parent\n  - [x] child\n    - [x] grandchild\n\t- [ ] tab')).toEqual({
+            done: 2,
+            total: 4,
+        });
     });
 
-    it('an item sits among other text, and its box must be a space or an x with a space or the line\'s end after it', () => {
+    it("an item sits among other text, and its box must be a space or an x with a space or the line's end after it", () => {
         expect(parseChecklist('Steps:\n\n- [x] first\n\nSome text\n\n- [ ] second')).toEqual({ done: 1, total: 2 });
         expect(parseChecklist('- [ ]')).toEqual({ done: 0, total: 1 });
         expect(parseChecklist('- [x]no space')).toBeUndefined();
@@ -31,13 +34,32 @@ describe('parseChecklist', () => {
     });
 
     it('lines inside a fenced code block are code and do not count', () => {
-        const text = ['- [x] real', '```md', '- [ ] in a backtick fence', '- [x] another', '```', '~~~', '- [ ] in a tilde fence', '~~~', '- [ ] real too'].join('\n');
+        const text = [
+            '- [x] real',
+            '```md',
+            '- [ ] in a backtick fence',
+            '- [x] another',
+            '```',
+            '~~~',
+            '- [ ] in a tilde fence',
+            '~~~',
+            '- [ ] real too',
+        ].join('\n');
 
         expect(parseChecklist(text)).toEqual({ done: 1, total: 2 });
     });
 
     it('a fence ends only at the same mark, at least as long, with nothing after it', () => {
-        const text = ['````', '```', '- [ ] still code', '~~~~', '```js', '- [ ] still code', '````', '- [x] real'].join('\n');
+        const text = [
+            '````',
+            '```',
+            '- [ ] still code',
+            '~~~~',
+            '```js',
+            '- [ ] still code',
+            '````',
+            '- [x] real',
+        ].join('\n');
 
         expect(parseChecklist(text)).toEqual({ done: 1, total: 1 });
     });

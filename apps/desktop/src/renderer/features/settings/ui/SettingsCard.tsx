@@ -16,5 +16,5 @@ export function SettingsCard({ as: Tag = 'div', divided = false, className, ...p
     // `div`, `ul` and `section` take the same props here; the union of their element types does not.
     const Element = Tag as ElementType;
 
-    return <Element { ...props } className={ cn(styles.card, className) } data-divided={ divided || undefined } />;
+    return <Element {...props} className={cn(styles.card, className)} data-divided={divided || undefined} />;
 }

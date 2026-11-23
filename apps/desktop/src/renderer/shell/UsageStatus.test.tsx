@@ -32,9 +32,14 @@ let container: HTMLDivElement;
 let reactRoot: Root;
 let store: RootStore;
 
-const draw = () => act(async () => {
-    reactRoot.render(<RootStoreProvider value={ store }><UsageStatus /></RootStoreProvider>);
-});
+const draw = () =>
+    act(async () => {
+        reactRoot.render(
+            <RootStoreProvider value={store}>
+                <UsageStatus />
+            </RootStoreProvider>
+        );
+    });
 
 /** Starts the store on `transport` and waits until the agents are in. */
 async function start(transport: Transport) {
@@ -49,7 +54,16 @@ const inMinutes = (minutes: number) => Date.now() + minutes * MINUTE + 5_000;
 
 const meter = (id: string, usedPercent: number, minutes?: number): AgentUsageWindow => ({
     id,
-    label: { session: 'Session', weekly: 'Week', 'weekly:fable': 'Fable', 'codex:primary': 'Session', 'codex:secondary': 'Week', 'spark:secondary': 'Codex Spark', plan: 'Plan usage' }[id] ?? id,
+    label:
+        {
+            session: 'Session',
+            weekly: 'Week',
+            'weekly:fable': 'Fable',
+            'codex:primary': 'Session',
+            'codex:secondary': 'Week',
+            'spark:secondary': 'Codex Spark',
+            plan: 'Plan usage',
+        }[id] ?? id,
     usedPercent,
     resetsAt: minutes === undefined ? undefined : inMinutes(minutes),
 });
@@ -65,11 +79,23 @@ function agentsWith(change: (providers: Providers) => void = () => undefined) {
     const usage = (windows: AgentUsageWindow[]) => ({ state: 'ok' as const, fetchedAt: Date.now(), windows });
 
     providers.claude.usage = usage([meter('session', 8, 28), meter('weekly', 78, 92), meter('weekly:fable', 99, 92)]);
-    providers.claude.signIn = { status: 'signed-in', checkedAt: Date.now(), account: { email: 'claude@example.com', plan: 'Max' } };
+    providers.claude.signIn = {
+        status: 'signed-in',
+        checkedAt: Date.now(),
+        account: { email: 'claude@example.com', plan: 'Max' },
+    };
     providers.codex.usage = usage([meter('codex:primary', 85, 45), meter('codex:secondary', 17, 24 * 60)]);
-    providers.codex.signIn = { status: 'signed-in', checkedAt: Date.now(), account: { email: 'codex@example.com', plan: 'Plus' } };
+    providers.codex.signIn = {
+        status: 'signed-in',
+        checkedAt: Date.now(),
+        account: { email: 'codex@example.com', plan: 'Plus' },
+    };
     providers.cursor.usage = usage([meter('plan', 40, 3 * 24 * 60)]);
-    providers.cursor.signIn = { status: 'signed-in', checkedAt: Date.now(), account: { email: 'cursor@example.com', plan: 'Pro+' } };
+    providers.cursor.signIn = {
+        status: 'signed-in',
+        checkedAt: Date.now(),
+        account: { email: 'cursor@example.com', plan: 'Pro+' },
+    };
     change(providers);
 
     return new FixtureTransport({ data });
@@ -78,8 +104,11 @@ function agentsWith(change: (providers: Providers) => void = () => undefined) {
 const badges = () => [...container.querySelectorAll<HTMLElement>('[role="group"] button')];
 const badge = (name: string) => badges().find(element => element.getAttribute('aria-label')?.startsWith(name))!;
 const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]');
-const section = (name: string) => dialog()!.querySelector<HTMLElement>(`section[aria-label="${ name }"]`)!;
-const button = (within: ParentNode, label: string) => [...within.querySelectorAll<HTMLElement>('button')].find(element => element.textContent?.trim() === label || element.getAttribute('aria-label') === label);
+const section = (name: string) => dialog()!.querySelector<HTMLElement>(`section[aria-label="${name}"]`)!;
+const button = (within: ParentNode, label: string) =>
+    [...within.querySelectorAll<HTMLElement>('button')].find(
+        element => element.textContent?.trim() === label || element.getAttribute('aria-label') === label
+    );
 const press = (element: HTMLElement | undefined) => act(async () => element!.click());
 const bars = (within: ParentNode) => [...within.querySelectorAll('[role="progressbar"]')];
 
@@ -143,9 +172,15 @@ describe('the badges', () => {
     });
 
     it('shows a session that is at zero, as the nearest limit, whatever the fuller ones say', async () => {
-        await start(agentsWith((providers) => {
-            providers.claude.usage!.windows = [meter('session', 0, 300), meter('weekly', 90, 60), meter('weekly:fable', 99, 60)];
-        }));
+        await start(
+            agentsWith(providers => {
+                providers.claude.usage!.windows = [
+                    meter('session', 0, 300),
+                    meter('weekly', 90, 60),
+                    meter('weekly:fable', 99, 60),
+                ];
+            })
+        );
 
         const claude = badge('Claude Code');
 
@@ -157,9 +192,15 @@ describe('the badges', () => {
     });
 
     it('does not let the limit of a single model decide the badge, for Codex as for Claude', async () => {
-        await start(agentsWith((providers) => {
-            providers.codex.usage!.windows = [meter('spark:secondary', 99, 60), meter('codex:primary', 12, 45), meter('codex:secondary', 30, 24 * 60)];
-        }));
+        await start(
+            agentsWith(providers => {
+                providers.codex.usage!.windows = [
+                    meter('spark:secondary', 99, 60),
+                    meter('codex:primary', 12, 45),
+                    meter('codex:secondary', 30, 24 * 60),
+                ];
+            })
+        );
 
         const codex = badge('Codex');
 
@@ -172,13 +213,19 @@ describe('the badges', () => {
         await openPopover('Codex');
 
         // The bars of the popover do show it, in the order the daemon gave.
-        expect(bars(section('Codex')).map(bar => bar.getAttribute('aria-label'))).toEqual(['Codex Spark used', 'Session used', 'Week used']);
+        expect(bars(section('Codex')).map(bar => bar.getAttribute('aria-label'))).toEqual([
+            'Codex Spark used',
+            'Session used',
+            'Week used',
+        ]);
     });
 
     it('shows the mark alone when every window of a provider is the limit of a single model', async () => {
-        await start(agentsWith((providers) => {
-            providers.claude.usage!.windows = [meter('weekly:fable', 99, 60)];
-        }));
+        await start(
+            agentsWith(providers => {
+                providers.claude.usage!.windows = [meter('weekly:fable', 99, 60)];
+            })
+        );
 
         const claude = badge('Claude Code');
 
@@ -189,10 +236,12 @@ describe('the badges', () => {
         expect(claude.getAttribute('aria-label')).toBe('Claude Code usage: Fable 99%');
     });
 
-    it('shows the mark alone, muted, when a single model\'s limit is under the danger tone', async () => {
-        await start(agentsWith((providers) => {
-            providers.claude.usage!.windows = [meter('weekly:fable', 40, 60)];
-        }));
+    it("shows the mark alone, muted, when a single model's limit is under the danger tone", async () => {
+        await start(
+            agentsWith(providers => {
+                providers.claude.usage!.windows = [meter('weekly:fable', 40, 60)];
+            })
+        );
 
         expect(badge('Claude Code').hasAttribute('data-muted')).toBe(true);
         expect(badge('Claude Code').textContent).toBe('');
@@ -200,29 +249,39 @@ describe('the badges', () => {
     });
 
     it('leaves the time out when the window has no reset', async () => {
-        await start(agentsWith((providers) => {
-            providers.cursor.usage!.windows = [meter('plan', 40)];
-        }));
+        await start(
+            agentsWith(providers => {
+                providers.cursor.usage!.windows = [meter('plan', 40)];
+            })
+        );
 
         expect(badge('Cursor').textContent).toBe('40%');
         expect(badge('Cursor').getAttribute('aria-label')).toBe('Cursor usage 40%');
     });
 
     it('turns red from 90% and is never orange: the warning tone is for the bars', async () => {
-        await start(agentsWith((providers) => {
-            providers.claude.usage!.windows = [meter('weekly', 79, 60)];
-            providers.codex.usage!.windows = [meter('codex:secondary', 89, 60)];
-            providers.cursor.usage!.windows = [meter('plan', 90, 60)];
-        }));
+        await start(
+            agentsWith(providers => {
+                providers.claude.usage!.windows = [meter('weekly', 79, 60)];
+                providers.codex.usage!.windows = [meter('codex:secondary', 89, 60)];
+                providers.cursor.usage!.windows = [meter('plan', 90, 60)];
+            })
+        );
 
-        expect(badges().map(element => element.getAttribute('data-color'))).toEqual(['secondary', 'secondary', 'danger']);
+        expect(badges().map(element => element.getAttribute('data-color'))).toEqual([
+            'secondary',
+            'secondary',
+            'danger',
+        ]);
     });
 
     it('keeps the week line terracotta through 89% and red from 90%, without turning the chip red', async () => {
-        await start(agentsWith((providers) => {
-            providers.claude.usage!.windows = [meter('session', 8, 28), meter('weekly', 89, 92)];
-            providers.codex.usage!.windows = [meter('codex:primary', 8, 45), meter('codex:secondary', 90, 24 * 60)];
-        }));
+        await start(
+            agentsWith(providers => {
+                providers.claude.usage!.windows = [meter('session', 8, 28), meter('weekly', 89, 92)];
+                providers.codex.usage!.windows = [meter('codex:primary', 8, 45), meter('codex:secondary', 90, 24 * 60)];
+            })
+        );
 
         const claude = badge('Claude Code');
 
@@ -234,23 +293,38 @@ describe('the badges', () => {
     });
 
     it('leaves the week line off while the week is under 60% or not ahead of the session', async () => {
-        await start(agentsWith((providers) => {
-            providers.claude.usage!.windows = [meter('session', 70, 28), meter('weekly', 59, 92)];
-            providers.codex.usage!.windows = [meter('codex:primary', 80, 45), meter('codex:secondary', 60, 24 * 60)];
-        }));
+        await start(
+            agentsWith(providers => {
+                providers.claude.usage!.windows = [meter('session', 70, 28), meter('weekly', 59, 92)];
+                providers.codex.usage!.windows = [
+                    meter('codex:primary', 80, 45),
+                    meter('codex:secondary', 60, 24 * 60),
+                ];
+            })
+        );
 
         expect(badge('Claude Code').querySelector('[data-week]')).toBeNull();
         expect(badge('Codex').querySelector('[data-week]')).toBeNull();
     });
 
     it('shows the mark alone, muted, for a provider with no reading', async () => {
-        await start(agentsWith((providers) => {
-            // Nobody signed in, the usage is unavailable and the last read failed: none of them is a number to show.
-            providers.claude.signIn = { status: 'signed-out', checkedAt: Date.now() };
-            delete providers.claude.usage;
-            providers.codex.usage = { state: 'unavailable', windows: [], detail: 'Signed in with an API key: there are no plan limits.' };
-            providers.cursor.usage = { ...providers.cursor.usage!, state: 'error', detail: 'The usage endpoint answered 429.' };
-        }));
+        await start(
+            agentsWith(providers => {
+                // Nobody signed in, the usage is unavailable and the last read failed: none of them is a number to show.
+                providers.claude.signIn = { status: 'signed-out', checkedAt: Date.now() };
+                delete providers.claude.usage;
+                providers.codex.usage = {
+                    state: 'unavailable',
+                    windows: [],
+                    detail: 'Signed in with an API key: there are no plan limits.',
+                };
+                providers.cursor.usage = {
+                    ...providers.cursor.usage!,
+                    state: 'error',
+                    detail: 'The usage endpoint answered 429.',
+                };
+            })
+        );
 
         expect(badges()).toHaveLength(3);
 
@@ -268,10 +342,12 @@ describe('the badges', () => {
     });
 
     it('shows the mark alone while the usage has not been read yet', async () => {
-        await start(agentsWith((providers) => {
-            delete providers.claude.usage;
-            delete providers.claude.signIn;
-        }));
+        await start(
+            agentsWith(providers => {
+                delete providers.claude.usage;
+                delete providers.claude.signIn;
+            })
+        );
 
         expect(badge('Claude Code').hasAttribute('data-muted')).toBe(true);
         expect(badge('Claude Code').getAttribute('aria-label')).toBe('Claude Code usage: being checked');
@@ -279,18 +355,20 @@ describe('the badges', () => {
     });
 
     it('leaves out a provider that is switched off, not installed or needs a runtime', async () => {
-        await start(agentsWith((providers) => {
-            providers.claude.enabled = false;
-            providers.claude.status = 'disabled';
-            providers.codex.status = 'missing';
-            providers.cursor.status = 'needs-runtime';
-        }));
+        await start(
+            agentsWith(providers => {
+                providers.claude.enabled = false;
+                providers.claude.status = 'disabled';
+                providers.codex.status = 'missing';
+                providers.cursor.status = 'needs-runtime';
+            })
+        );
 
         expect(badges()).toHaveLength(0);
     });
 
     it('draws nothing at all when no provider is usable, and a badge when one is switched on', async () => {
-        const transport = agentsWith((providers) => {
+        const transport = agentsWith(providers => {
             for (const agent of Object.values(providers)) {
                 agent.enabled = false;
                 agent.status = 'disabled';
@@ -316,11 +394,13 @@ describe('the badges', () => {
         expect(container.innerHTML).toBe('');
     });
 
-    it('is made of real buttons, which the window\'s drag region leaves alone (base.css gives every button no-drag)', async () => {
+    it("is made of real buttons, which the window's drag region leaves alone (base.css gives every button no-drag)", async () => {
         await start(agentsWith());
 
         expect(badges().map(element => element.tagName)).toEqual(['BUTTON', 'BUTTON', 'BUTTON']);
-        expect(container.querySelector('[role="group"]')?.getAttribute('aria-label')).toBe('Plan usage of the providers');
+        expect(container.querySelector('[role="group"]')?.getAttribute('aria-label')).toBe(
+            'Plan usage of the providers'
+        );
     });
 });
 
@@ -375,10 +455,18 @@ describe('the popover', () => {
     it('shows the provider of the badge that was pressed, and no other', async () => {
         await start(agentsWith());
 
-        for (const [name, shown] of [['Codex', 'Codex'], ['Cursor', 'Cursor'], ['Claude Code', 'Claude Code']]) {
+        for (const [name, shown] of [
+            ['Codex', 'Codex'],
+            ['Cursor', 'Cursor'],
+            ['Claude Code', 'Claude Code'],
+        ]) {
             await openPopover(name);
 
-            expect([...dialog()!.querySelectorAll('section[aria-label]')].map(element => element.getAttribute('aria-label'))).toEqual([shown]);
+            expect(
+                [...dialog()!.querySelectorAll('section[aria-label]')].map(element =>
+                    element.getAttribute('aria-label')
+                )
+            ).toEqual([shown]);
 
             await close();
         }
@@ -392,9 +480,17 @@ describe('the popover', () => {
 
         expect(claude.textContent).toContain('claude@example.com');
         expect(claude.textContent).toContain('Max');
-        expect(bars(claude).map(bar => bar.getAttribute('aria-label'))).toEqual(['Session used', 'Week used', 'Fable used']);
+        expect(bars(claude).map(bar => bar.getAttribute('aria-label'))).toEqual([
+            'Session used',
+            'Week used',
+            'Fable used',
+        ]);
         expect(bars(claude).map(bar => bar.getAttribute('aria-valuenow'))).toEqual(['8', '78', '99']);
-        expect([...claude.querySelectorAll('li')].map(row => row.textContent)).toEqual(['Session8% usedResets in 28m', 'Week78% usedResets in 1h 32m', 'Fable99% usedResets in 1h 32m']);
+        expect([...claude.querySelectorAll('li')].map(row => row.textContent)).toEqual([
+            'Session8% usedResets in 28m',
+            'Week78% usedResets in 1h 32m',
+            'Fable99% usedResets in 1h 32m',
+        ]);
 
         await close();
         await openPopover('Codex');
@@ -409,9 +505,15 @@ describe('the popover', () => {
     });
 
     it('puts the label, how much is used and when it resets on one line over the bar, and says so when the time has come or is not known', async () => {
-        await start(agentsWith((providers) => {
-            providers.claude.usage!.windows = [meter('session', 35, 11), { ...meter('weekly', 10), resetsAt: Date.now() - 1_000 }, meter('weekly:fable', 0)];
-        }));
+        await start(
+            agentsWith(providers => {
+                providers.claude.usage!.windows = [
+                    meter('session', 35, 11),
+                    { ...meter('weekly', 10), resetsAt: Date.now() - 1_000 },
+                    meter('weekly:fable', 0),
+                ];
+            })
+        );
         await openPopover();
 
         const rows = [...section('Claude Code').querySelectorAll('li')];
@@ -440,10 +542,12 @@ describe('the popover', () => {
     });
 
     it('says a provider is being checked while its usage has not been read', async () => {
-        await start(agentsWith((providers) => {
-            delete providers.claude.usage;
-            delete providers.claude.signIn;
-        }));
+        await start(
+            agentsWith(providers => {
+                delete providers.claude.usage;
+                delete providers.claude.signIn;
+            })
+        );
         await openPopover();
 
         expect(section('Claude Code').textContent).toContain('Checking…');
@@ -453,10 +557,12 @@ describe('the popover', () => {
     });
 
     it('says a provider is signed out, and opens Settings on Providers from there', async () => {
-        await start(agentsWith((providers) => {
-            providers.claude.signIn = { status: 'signed-out', checkedAt: Date.now() };
-            delete providers.claude.usage;
-        }));
+        await start(
+            agentsWith(providers => {
+                providers.claude.signIn = { status: 'signed-out', checkedAt: Date.now() };
+                delete providers.claude.usage;
+            })
+        );
         await openPopover();
 
         expect(section('Claude Code').textContent).toContain('Not signed in');
@@ -468,11 +574,21 @@ describe('the popover', () => {
         expect(store.ui.settingsPage).toBe('providers');
     });
 
-    it('shows the daemon\'s reason when the usage is unavailable, and when the last read failed along with the last good bars', async () => {
-        await start(agentsWith((providers) => {
-            providers.codex.usage = { state: 'unavailable', windows: [], detail: 'Signed in with an API key: there are no plan limits.' };
-            providers.claude.usage = { ...providers.claude.usage!, state: 'error', detail: 'The usage endpoint answered 429.' };
-        }));
+    it("shows the daemon's reason when the usage is unavailable, and when the last read failed along with the last good bars", async () => {
+        await start(
+            agentsWith(providers => {
+                providers.codex.usage = {
+                    state: 'unavailable',
+                    windows: [],
+                    detail: 'Signed in with an API key: there are no plan limits.',
+                };
+                providers.claude.usage = {
+                    ...providers.claude.usage!,
+                    state: 'error',
+                    detail: 'The usage endpoint answered 429.',
+                };
+            })
+        );
         await openPopover('Codex');
 
         expect(section('Codex').textContent).toContain('there are no plan limits');
@@ -502,8 +618,7 @@ describe('the popover', () => {
 
             expect(before).toEqual(['85%45m', 'Session85% usedResets in 45m']);
             expect([reset(), row()]).toEqual(['85%43m', 'Session85% usedResets in 43m']);
-        }
-        finally {
+        } finally {
             vi.useRealTimers();
         }
     });
@@ -522,7 +637,11 @@ describe('the refresh action', () => {
     });
 
     it('tells the person when the daemon refuses, and stops spinning', async () => {
-        const refused = { ok: false, requestId: 'r', error: { code: 'unavailable', message: 'The daemon is busy.' } } as const;
+        const refused = {
+            ok: false,
+            requestId: 'r',
+            error: { code: 'unavailable', message: 'The daemon is busy.' },
+        } as const;
 
         await start(overrideTransport(agentsWith(), { command: async () => refused }));
         await openPopover();
@@ -537,19 +656,25 @@ describe('the refresh action', () => {
         async function reading() {
             const reads = { newer: false };
             const snapshot = await agentsWith().getAgents();
-            const getAgents = vi.fn<() => Promise<AgentInfo[]>>(async () => snapshot.map(agent => (
-                agent.id === 'claude' && reads.newer ? { ...agent, signIn: { ...agent.signIn!, checkedAt: agent.signIn!.checkedAt + 1_000 } } : agent
-            )));
+            const getAgents = vi.fn<() => Promise<AgentInfo[]>>(async () =>
+                snapshot.map(agent =>
+                    agent.id === 'claude' && reads.newer
+                        ? { ...agent, signIn: { ...agent.signIn!, checkedAt: agent.signIn!.checkedAt + 1_000 } }
+                        : agent
+                )
+            );
 
             return { reads, getAgents };
         }
 
         const spins = () => button(dialog()!, 'Refresh usage')!.hasAttribute('data-pending');
         // The icon itself turns (the button shows no spinner of its own in its place).
-        const iconTurns = () => /spin/i.test(button(dialog()!, 'Refresh usage')!.querySelector('svg')?.getAttribute('class') ?? '');
-        const later = (ms: number) => act(async () => {
-            await vi.advanceTimersByTimeAsync(ms);
-        });
+        const iconTurns = () =>
+            /spin/i.test(button(dialog()!, 'Refresh usage')!.querySelector('svg')?.getAttribute('class') ?? '');
+        const later = (ms: number) =>
+            act(async () => {
+                await vi.advanceTimersByTimeAsync(ms);
+            });
 
         beforeEach(() => {
             vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });
@@ -592,12 +717,16 @@ describe('the refresh action', () => {
 
         it('keeps spinning when the provider that was read last is switched off meanwhile', async () => {
             const off = { claude: false };
-            const snapshot = await agentsWith((providers) => {
+            const snapshot = await agentsWith(providers => {
                 providers.claude.signIn = { ...providers.claude.signIn!, checkedAt: Date.now() + 60_000 };
             }).getAgents();
-            const getAgents = vi.fn<() => Promise<AgentInfo[]>>(async () => snapshot.map(agent => (
-                agent.id === 'claude' && off.claude ? { ...agent, enabled: false, status: 'disabled' as const } : agent
-            )));
+            const getAgents = vi.fn<() => Promise<AgentInfo[]>>(async () =>
+                snapshot.map(agent =>
+                    agent.id === 'claude' && off.claude
+                        ? { ...agent, enabled: false, status: 'disabled' as const }
+                        : agent
+                )
+            );
 
             await start(overrideTransport(agentsWith(), { getAgents }));
             await press(badge('Codex'));
@@ -608,7 +737,10 @@ describe('the refresh action', () => {
             await draw();
 
             // Claude's badge is gone, and with it the newest last read of the three: that is not a new read.
-            expect(badges().map(element => element.getAttribute('aria-label')?.split(' usage')[0])).toEqual(['Codex', 'Cursor']);
+            expect(badges().map(element => element.getAttribute('aria-label')?.split(' usage')[0])).toEqual([
+                'Codex',
+                'Cursor',
+            ]);
             expect(spins()).toBe(true);
         });
 
@@ -654,9 +786,10 @@ describe('reading the agents again', () => {
     const setHidden = (hidden: boolean) => {
         Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
     };
-    const later = (ms: number) => act(async () => {
-        await vi.advanceTimersByTimeAsync(ms);
-    });
+    const later = (ms: number) =>
+        act(async () => {
+            await vi.advanceTimersByTimeAsync(ms);
+        });
 
     /** Starts on a transport that counts the fetches of the agents, and returns the count so far. */
     async function startCounting(transport: Transport = agentsWith()) {
@@ -737,10 +870,11 @@ describe('reading the agents again', () => {
 
     it('reads once when a restored window gets its focus and its visibility together, and again for a later one', async () => {
         const asked = await startCounting();
-        const comeBack = () => act(async () => {
-            window.dispatchEvent(new Event('focus'));
-            document.dispatchEvent(new Event('visibilitychange'));
-        });
+        const comeBack = () =>
+            act(async () => {
+                window.dispatchEvent(new Event('focus'));
+                document.dispatchEvent(new Event('visibilitychange'));
+            });
 
         await comeBack();
 
@@ -772,7 +906,7 @@ describe('reading the agents again', () => {
     });
 
     it('keeps reading while no provider is usable, so one that is switched on later shows up', async () => {
-        const transport = agentsWith((providers) => {
+        const transport = agentsWith(providers => {
             for (const agent of Object.values(providers)) agent.enabled = false;
         });
         const asked = await startCounting(transport);

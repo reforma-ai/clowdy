@@ -1,12 +1,31 @@
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+    existsSync,
+    mkdirSync,
+    readdirSync,
+    readFileSync,
+    realpathSync,
+    rmSync,
+    symlinkSync,
+    writeFileSync,
+} from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 
 import { getChat } from '../src/db/chats';
 import { chatsOfWorkspace, listWorkspacesOfProject } from '../src/db/workspaces';
 import { isBeingRemoved } from '../src/domain/workspaceRemoval';
 import { exclusive, pathKey } from '../src/domain/workspaces';
-import { cleanTempDirs, git, latch, makeRepo, ScriptEngine, scriptEngines, startHarness, tempDir, waitFor } from './helpers';
+import {
+    cleanTempDirs,
+    git,
+    latch,
+    makeRepo,
+    ScriptEngine,
+    scriptEngines,
+    startHarness,
+    tempDir,
+    waitFor,
+} from './helpers';
 
 import type { Chat, ChatWorkspace, CommandResult, FolderWorktrees, Project, Run } from '@clowdy/protocol';
 import type { Config } from '../src/config';
@@ -21,9 +40,9 @@ afterEach(async () => {
 });
 
 const finishing: Script = async function* ({ number }) {
-    yield { type: 'session', sessionId: `s${ number }` };
+    yield { type: 'session', sessionId: `s${number}` };
     yield { type: 'text', delta: 'Done', done: false };
-    yield { type: 'text', delta: '', done: true, messageId: `m${ number }` };
+    yield { type: 'text', delta: '', done: true, messageId: `m${number}` };
     yield { type: 'done', result: 'Done' };
 };
 
@@ -37,13 +56,13 @@ function mainState(repo: string): Record<string, string> {
         // The names only: `git branch` marks a branch another worktree has checked out with a `+`, which comes and goes with the worktrees.
         branches: git(repo, 'branch', '--format=%(refname:short)'),
         status: git(repo, 'status', '--porcelain'),
-        ...Object.fromEntries(files.map(file => [`file:${ file }`, readFileSync(join(repo, file), 'utf8')])),
+        ...Object.fromEntries(files.map(file => [`file:${file}`, readFileSync(join(repo, file), 'utf8')])),
     };
 }
 
 /** Commits a file in a worktree and answers the commit. */
 function commit(path: string, file = 'work.txt', message = 'Work'): string {
-    writeFileSync(join(path, file), `${ message }\n`);
+    writeFileSync(join(path, file), `${message}\n`);
     git(path, 'add', file);
     git(path, 'commit', '-q', '-m', message);
 
@@ -54,7 +73,9 @@ function commit(path: string, file = 'work.txt', message = 'Work'): string {
  * A daemon with a project of one repository, `shop-web`, or of the folders `folders` builds (it is given the root and the repository to build them from). Chats are made with a
  * script engine that finishes at once, so a chat on a new worktree has made it once `start` has run. `remove` is `workspace.remove` as the app sends it.
  */
-async function setup(options: { folders?: (root: string, repo: string) => string[]; script?: Script; config?: Partial<Config> } = {}) {
+async function setup(
+    options: { folders?: (root: string, repo: string) => string[]; script?: Script; config?: Partial<Config> } = {}
+) {
     const engine = new ScriptEngine(options.script ?? finishing);
     const h = await startHarness(options.config, { engines: scriptEngines(engine) });
 
@@ -62,12 +83,15 @@ async function setup(options: { folders?: (root: string, repo: string) => string
 
     const root = tempDir('worktree-removal');
     const repo = makeRepo(root, 'shop-web');
-    const { project } = h.ok('project.add', { name: 'Shop', folders: options.folders?.(root, repo) ?? [repo] }) as { project: Project };
+    const { project } = h.ok('project.add', { name: 'Shop', folders: options.folders?.(root, repo) ?? [repo] }) as {
+        project: Project;
+    };
     const { store } = h;
     const folder = project.folders[0];
     const chatOf = (chatId: string) => getChat(store.db, chatId) as Chat;
     const runOf = (chatId: string) => h.run(chatOf(chatId).orchestratorRunId as string);
-    const make = (workspace: unknown): Chat => (h.ok('chat.create', { projectId: project.id, folderId: folder.id, workspace }) as { chat: Chat }).chat;
+    const make = (workspace: unknown): Chat =>
+        (h.ok('chat.create', { projectId: project.id, folderId: folder.id, workspace }) as { chat: Chat }).chat;
     const send = async (chat: Chat, text: string, until: Run['status'] = 'succeeded') => {
         const before = chatOf(chat.id).orchestratorRunId === undefined ? undefined : runOf(chat.id).finishedAt;
 
@@ -76,7 +100,7 @@ async function setup(options: { folders?: (root: string, repo: string) => string
             const run = chatOf(chat.id).orchestratorRunId ? runOf(chat.id) : undefined;
 
             return run?.status === until && run.finishedAt !== before;
-        }, `the turn on "${ text }" to end as ${ until }`);
+        }, `the turn on "${text}" to end as ${until}`);
 
         return runOf(chat.id);
     };
@@ -92,28 +116,56 @@ async function setup(options: { folders?: (root: string, repo: string) => string
     const found = (name: string, detach = false): string => {
         const path = join(root, name);
 
-        git(repo, 'worktree', 'add', '-q', ...detach ? ['--detach', path, 'main'] : ['-b', name, path]);
+        git(repo, 'worktree', 'add', '-q', ...(detach ? ['--detach', path, 'main'] : ['-b', name, path]));
 
         return path;
     };
-    const remove = (path: string, fields: { discard?: boolean; deleteBranch?: boolean } = {}, folderId = folder.id): Promise<CommandResult> => h.sendAsync('workspace.remove', { projectId: project.id, folderId, path, ...fields });
-    const refusal = (result: CommandResult): { code: string; message: string } | undefined => (result.ok ? undefined : result.error);
+    const remove = (
+        path: string,
+        fields: { discard?: boolean; deleteBranch?: boolean } = {},
+        folderId = folder.id
+    ): Promise<CommandResult> => h.sendAsync('workspace.remove', { projectId: project.id, folderId, path, ...fields });
+    const refusal = (result: CommandResult): { code: string; message: string } | undefined =>
+        result.ok ? undefined : result.error;
     const hasBranch = (name: string) => git(repo, 'branch', '--list', name) !== '';
-    const listed = (path: string) => git(repo, 'worktree', 'list', '--porcelain').includes(`worktree ${ realpathSync(dirname(path)) }/${ basename(path) }`);
+    const listed = (path: string) =>
+        git(repo, 'worktree', 'list', '--porcelain').includes(
+            `worktree ${realpathSync(dirname(path))}/${basename(path)}`
+        );
     const rows = () => listWorkspacesOfProject(store.db, project.id);
     const worktrees = async (): Promise<FolderWorktrees[]> => {
-        const response = await h.fetch(`/v1/projects/${ project.id }/worktrees`);
+        const response = await h.fetch(`/v1/projects/${project.id}/worktrees`);
 
         expect(response.status).toBe(200);
 
-        return await response.json() as FolderWorktrees[];
+        return (await response.json()) as FolderWorktrees[];
     };
 
-    return { h, engine, root, repo, project, folder, store, chatOf, runOf, make, send, start, found, remove, refusal, hasBranch, listed, rows, worktrees };
+    return {
+        h,
+        engine,
+        root,
+        repo,
+        project,
+        folder,
+        store,
+        chatOf,
+        runOf,
+        make,
+        send,
+        start,
+        found,
+        remove,
+        refusal,
+        hasBranch,
+        listed,
+        rows,
+        worktrees,
+    };
 }
 
 describe('workspace.remove', () => {
-    test('removes a clean worktree somebody else made, keeps its branch and its commits, and leaves the folder\'s own checkout as it was', async () => {
+    test("removes a clean worktree somebody else made, keeps its branch and its commits, and leaves the folder's own checkout as it was", async () => {
         const { repo, found, remove, listed, hasBranch, rows } = await setup();
         const path = found('feature');
         const tip = commit(path);
@@ -145,7 +197,10 @@ describe('workspace.remove', () => {
 
         expect(await remove(merged, { deleteBranch: true })).toMatchObject({ ok: true, data: { branchDeleted: true } });
         expect(hasBranch('merged')).toBe(false);
-        expect(await remove(unmerged, { deleteBranch: true })).toMatchObject({ ok: true, data: { branchDeleted: true } });
+        expect(await remove(unmerged, { deleteBranch: true })).toMatchObject({
+            ok: true,
+            data: { branchDeleted: true },
+        });
         expect(hasBranch('unmerged')).toBe(false);
         expect(existsSync(merged)).toBe(false);
         expect(existsSync(unmerged)).toBe(false);
@@ -177,7 +232,10 @@ describe('workspace.remove', () => {
 
         const result = await remove(first, { deleteBranch: true });
 
-        expect(refusal(result)).toEqual({ code: 'conflict', message: 'The branch shared is checked out in another worktree' });
+        expect(refusal(result)).toEqual({
+            code: 'conflict',
+            message: 'The branch shared is checked out in another worktree',
+        });
         expect(existsSync(first)).toBe(true);
         expect(existsSync(second)).toBe(true);
         expect(hasBranch('shared')).toBe(true);
@@ -197,11 +255,14 @@ describe('workspace.remove', () => {
         const result = await remove(path, { deleteBranch: true });
 
         expect(refusal(result)?.code).toBe('conflict');
-        expect(refusal(result)?.message).toStartWith('The worktree was removed. Couldn\'t delete the branch:');
+        expect(refusal(result)?.message).toStartWith("The worktree was removed. Couldn't delete the branch:");
         expect(existsSync(path)).toBe(false);
         expect(hasBranch('stuck')).toBe(true);
         expect(rows()).toEqual([]);
-        expect(refusal(await remove(path, { deleteBranch: true }))).toEqual({ code: 'conflict', message: 'Git does not list it as a worktree of the folder' });
+        expect(refusal(await remove(path, { deleteBranch: true }))).toEqual({
+            code: 'conflict',
+            message: 'Git does not list it as a worktree of the folder',
+        });
     });
 
     describe('what is changed in the tree', () => {
@@ -269,7 +330,10 @@ describe('workspace.remove', () => {
             git(path, '-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', library, 'vendor/library');
             git(path, 'commit', '-q', '-m', 'Add the library');
             expect(git(path, 'status', '--porcelain')).toBe('');
-            expect(refusal(await remove(path))).toEqual({ code: 'conflict', message: 'The worktree has submodules checked out' });
+            expect(refusal(await remove(path))).toEqual({
+                code: 'conflict',
+                message: 'The worktree has submodules checked out',
+            });
             expect(existsSync(path)).toBe(true);
             expect(await remove(path, { discard: true })).toMatchObject({ ok: true });
             expect(existsSync(path)).toBe(false);
@@ -282,16 +346,19 @@ describe('workspace.remove', () => {
 
         // The worktree's own index is damaged: `git status` and `git worktree remove` both fail, `--force` does not read it.
         writeFileSync(join(repo, '.git', 'worktrees', 'unreadable', 'index'), 'garbage');
-        expect(refusal(await remove(path))).toEqual({ code: 'conflict', message: 'Couldn\'t tell what is changed in the worktree' });
+        expect(refusal(await remove(path))).toEqual({
+            code: 'conflict',
+            message: "Couldn't tell what is changed in the worktree",
+        });
         expect(existsSync(path)).toBe(true);
         expect(await remove(path, { discard: true })).toMatchObject({ ok: true });
         expect(existsSync(path)).toBe(false);
     });
 
     describe('what is never removed', () => {
-        test('the folder\'s own checkout, whatever discard and deleteBranch say, and what is in it', async () => {
+        test("the folder's own checkout, whatever discard and deleteBranch say, and what is in it", async () => {
             const { repo, folder, remove, refusal, hasBranch } = await setup();
-            const own = { code: 'conflict', message: 'That is the folder\'s own checkout' };
+            const own = { code: 'conflict', message: "That is the folder's own checkout" };
 
             writeFileSync(join(repo, 'wip.txt'), 'not committed\n');
 
@@ -306,8 +373,8 @@ describe('workspace.remove', () => {
             expect(mainState(repo)).toEqual(before);
         });
 
-        test('the repository\'s primary working tree when the folder is a linked worktree of it, while a sibling worktree goes', async () => {
-            const main = 'That is the repository\'s main working tree';
+        test("the repository's primary working tree when the folder is a linked worktree of it, while a sibling worktree goes", async () => {
+            const main = "That is the repository's main working tree";
             const { repo, root, folder, found, remove, refusal, hasBranch } = await setup({
                 folders: (base, primary) => {
                     git(primary, 'worktree', 'add', '-q', '-b', 'linked', join(base, 'linked'));
@@ -319,15 +386,24 @@ describe('workspace.remove', () => {
 
             expect(folder.path).toBe(realpathSync(join(root, 'linked')));
             expect(refusal(await remove(repo))).toEqual({ code: 'conflict', message: main });
-            expect(refusal(await remove(repo, { discard: true, deleteBranch: true }))).toEqual({ code: 'conflict', message: main });
-            expect(refusal(await remove(join(root, 'linked')))).toEqual({ code: 'conflict', message: 'That is the folder\'s own checkout' });
+            expect(refusal(await remove(repo, { discard: true, deleteBranch: true }))).toEqual({
+                code: 'conflict',
+                message: main,
+            });
+            expect(refusal(await remove(join(root, 'linked')))).toEqual({
+                code: 'conflict',
+                message: "That is the folder's own checkout",
+            });
             expect(existsSync(repo)).toBe(true);
             expect(hasBranch('main')).toBe(true);
-            expect(await remove(sibling, { deleteBranch: true })).toMatchObject({ ok: true, data: { branchDeleted: true } });
+            expect(await remove(sibling, { deleteBranch: true })).toMatchObject({
+                ok: true,
+                data: { branchDeleted: true },
+            });
             expect(existsSync(sibling)).toBe(false);
         });
 
-        test('another folder of the project, even when it is a worktree of the folder\'s own repository', async () => {
+        test("another folder of the project, even when it is a worktree of the folder's own repository", async () => {
             const { root, remove, refusal, hasBranch } = await setup({
                 folders: (base, primary) => {
                     git(primary, 'worktree', 'add', '-q', '-b', 'second-folder', join(base, 'second-folder'));
@@ -337,7 +413,10 @@ describe('workspace.remove', () => {
             });
             const second = join(root, 'second-folder');
 
-            expect(refusal(await remove(second, { discard: true, deleteBranch: true }))).toEqual({ code: 'conflict', message: 'That is another folder of the project' });
+            expect(refusal(await remove(second, { discard: true, deleteBranch: true }))).toEqual({
+                code: 'conflict',
+                message: 'That is another folder of the project',
+            });
             expect(existsSync(second)).toBe(true);
             expect(hasBranch('second-folder')).toBe(true);
         });
@@ -346,7 +425,10 @@ describe('workspace.remove', () => {
             const { found, remove, refusal, hasBranch } = await setup();
             const outer = found('outer');
             const inner = join(outer, 'inner');
-            const nested = { code: 'conflict', message: 'Another worktree or a folder of the project is inside this one' };
+            const nested = {
+                code: 'conflict',
+                message: 'Another worktree or a folder of the project is inside this one',
+            };
 
             writeFileSync(join(outer, '.gitignore'), 'inner/\n');
             git(outer, 'add', '.gitignore');
@@ -383,7 +465,10 @@ describe('workspace.remove', () => {
             const outer = join(root, 'outer');
 
             expect(git(outer, 'status', '--porcelain')).toBe('');
-            expect(refusal(await remove(outer, { discard: true }))).toEqual({ code: 'conflict', message: 'Another worktree or a folder of the project is inside this one' });
+            expect(refusal(await remove(outer, { discard: true }))).toEqual({
+                code: 'conflict',
+                message: 'Another worktree or a folder of the project is inside this one',
+            });
             expect(existsSync(join(outer, 'vendor', 'library', 'README.md'))).toBe(true);
         });
 
@@ -457,9 +542,20 @@ describe('workspace.remove', () => {
             make({ mode: 'existing', path: used });
 
             const [group] = await worktrees();
-            const verdicts = await Promise.all(group.worktrees.map(async row => ({ name: basename(row.path), blocked: row.blocked, ok: (await remove(row.path)).ok })));
+            const verdicts = await Promise.all(
+                group.worktrees.map(async row => ({
+                    name: basename(row.path),
+                    blocked: row.blocked,
+                    ok: (await remove(row.path)).ok,
+                }))
+            );
 
-            expect(Object.fromEntries(verdicts.map(({ name, blocked }) => [name, blocked ?? null]))).toEqual({ 'shop-web': 'main', 'free': null, 'locked': 'locked', 'used': 'chats' });
+            expect(Object.fromEntries(verdicts.map(({ name, blocked }) => [name, blocked ?? null]))).toEqual({
+                'shop-web': 'main',
+                free: null,
+                locked: 'locked',
+                used: 'chats',
+            });
 
             for (const { blocked, ok } of verdicts) {
                 expect(ok).toBe(blocked === undefined);
@@ -477,38 +573,63 @@ describe('workspace.remove', () => {
             const path = found('feature');
             const plain = join(root, 'plain');
 
-            expect(refusal(await remove('feature'))).toEqual({ code: 'invalid', message: 'The path of a worktree must be absolute' });
-            expect(refusal(await remove(path, {}, 'fld_nowhere'))).toEqual({ code: 'invalid', message: `Folder fld_nowhere does not belong to project ${ project.id }` });
-            expect(refusal(await h.sendAsync('workspace.remove', { projectId: 'prj_missing', folderId: 'f', path }))?.code).toBe('not_found');
+            expect(refusal(await remove('feature'))).toEqual({
+                code: 'invalid',
+                message: 'The path of a worktree must be absolute',
+            });
+            expect(refusal(await remove(path, {}, 'fld_nowhere'))).toEqual({
+                code: 'invalid',
+                message: `Folder fld_nowhere does not belong to project ${project.id}`,
+            });
+            expect(
+                refusal(await h.sendAsync('workspace.remove', { projectId: 'prj_missing', folderId: 'f', path }))?.code
+            ).toBe('not_found');
 
             mkdirSync(plain);
 
             const { project: other } = h.ok('project.add', { name: 'Plain', folders: [plain] }) as { project: Project };
-            const ask = () => h.sendAsync('workspace.remove', { projectId: other.id, folderId: other.folders[0].id, path });
+            const ask = () =>
+                h.sendAsync('workspace.remove', { projectId: other.id, folderId: other.folders[0].id, path });
 
-            expect(refusal(await ask())).toEqual({ code: 'invalid', message: 'A worktree needs the root of a git repository, and this folder is not one' });
+            expect(refusal(await ask())).toEqual({
+                code: 'invalid',
+                message: 'A worktree needs the root of a git repository, and this folder is not one',
+            });
             rmSync(plain, { recursive: true });
             expect(refusal(await ask())?.code).toBe('invalid');
             expect(existsSync(path)).toBe(true);
             expect(rows()).toEqual([]);
         });
 
-        test('is a command that waits for git: run without waiting it refuses rather than act, and over HTTP the answer is the removal\'s', async () => {
+        test("is a command that waits for git: run without waiting it refuses rather than act, and over HTTP the answer is the removal's", async () => {
             const { h, project, folder, found } = await setup();
             const path = found('over-http');
             const sync = h.send('workspace.remove', { projectId: project.id, folderId: folder.id, path });
 
-            expect(sync).toMatchObject({ ok: false, error: { code: 'internal', message: expect.stringContaining('executeCommandAsync') } });
+            expect(sync).toMatchObject({
+                ok: false,
+                error: { code: 'internal', message: expect.stringContaining('executeCommandAsync') },
+            });
             expect(existsSync(path)).toBe(true);
 
             const response = await h.fetch('/v1/commands', {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },
-                body: JSON.stringify({ requestId: 'http-remove', type: 'workspace.remove', projectId: project.id, folderId: folder.id, path, deleteBranch: true }),
+                body: JSON.stringify({
+                    requestId: 'http-remove',
+                    type: 'workspace.remove',
+                    projectId: project.id,
+                    folderId: folder.id,
+                    path,
+                    deleteBranch: true,
+                }),
             });
 
             expect(response.status).toBe(200);
-            expect(await response.json()).toMatchObject({ ok: true, data: { path: join(realpathSync(dirname(path)), 'over-http'), branchDeleted: true } });
+            expect(await response.json()).toMatchObject({
+                ok: true,
+                data: { path: join(realpathSync(dirname(path)), 'over-http'), branchDeleted: true },
+            });
             expect(existsSync(path)).toBe(false);
         });
 
@@ -516,7 +637,13 @@ describe('workspace.remove', () => {
             const { h, project, folder, found } = await setup();
             const path = found('twice');
             const { executeCommandAsync } = await import('../src/commands');
-            const asked = { requestId: 'remove-twice', type: 'workspace.remove' as const, projectId: project.id, folderId: folder.id, path };
+            const asked = {
+                requestId: 'remove-twice',
+                type: 'workspace.remove' as const,
+                projectId: project.id,
+                folderId: folder.id,
+                path,
+            };
             const first = await executeCommandAsync(h.daemon.services, asked);
             const again = await executeCommandAsync(h.daemon.services, asked);
 
@@ -527,11 +654,18 @@ describe('workspace.remove', () => {
         test('goes one at a time for one worktree: two removals of it at once, one removes it and the other says git does not list it, and none stays marked', async () => {
             const { h, store, project, found, remove, hasBranch } = await setup();
             const path = found('contended');
-            const { workspace } = h.ok('workspace.open', { projectId: project.id, path }) as { workspace: ChatWorkspace };
-            const results = await Promise.all([remove(path, { deleteBranch: true }), remove(path, { deleteBranch: true })]);
+            const { workspace } = h.ok('workspace.open', { projectId: project.id, path }) as {
+                workspace: ChatWorkspace;
+            };
+            const results = await Promise.all([
+                remove(path, { deleteBranch: true }),
+                remove(path, { deleteBranch: true }),
+            ]);
 
             expect(results.filter(result => result.ok)).toHaveLength(1);
-            expect(results.find(result => !result.ok)).toMatchObject({ error: { code: 'conflict', message: 'Git does not list it as a worktree of the folder' } });
+            expect(results.find(result => !result.ok)).toMatchObject({
+                error: { code: 'conflict', message: 'Git does not list it as a worktree of the folder' },
+            });
             expect(hasBranch('contended')).toBe(false);
             expect(existsSync(path)).toBe(false);
             expect(isBeingRemoved(store, workspace.id)).toBe(false);
@@ -559,16 +693,21 @@ describe('workspace.remove', () => {
             expect(await remove(first)).toMatchObject({ ok: true, data: { branchDeleted: false } });
             // `git worktree prune` would have forgotten all three.
             expect(records()).toEqual(['stale-three', 'stale-two']);
-            expect(listing()).toContain(`worktree ${ place }/stale-two`);
-            expect(listing()).toContain(`worktree ${ place }/stale-three`);
+            expect(listing()).toContain(`worktree ${place}/stale-two`);
+            expect(listing()).toContain(`worktree ${place}/stale-three`);
             expect(listing()).not.toContain('stale-one');
             expect(hasBranch('stale-one')).toBe(true);
 
-            expect(await remove(second, { deleteBranch: true })).toMatchObject({ ok: true, data: { branchDeleted: true } });
+            expect(await remove(second, { deleteBranch: true })).toMatchObject({
+                ok: true,
+                data: { branchDeleted: true },
+            });
             expect(records()).toEqual(['stale-three']);
             expect(hasBranch('stale-two')).toBe(false);
             expect(hasBranch('stale-three')).toBe(true);
-            expect((await worktrees())[0].worktrees.filter(row => row.missing).map(row => basename(row.path))).toEqual(['stale-three']);
+            expect((await worktrees())[0].worktrees.filter(row => row.missing).map(row => basename(row.path))).toEqual([
+                'stale-three',
+            ]);
         });
 
         test('is still refused when it is locked or a chat points at it, and a path git never listed is not one', async () => {
@@ -583,7 +722,10 @@ describe('workspace.remove', () => {
 
             expect(refusal(await remove(locked))).toEqual({ code: 'conflict', message: 'The worktree is locked' });
             expect(refusal(await remove(used))?.message).toContain('works in this worktree');
-            expect(refusal(await remove(join(root, 'never-existed')))).toEqual({ code: 'conflict', message: 'Git does not list it as a worktree of the folder' });
+            expect(refusal(await remove(join(root, 'never-existed')))).toEqual({
+                code: 'conflict',
+                message: 'Git does not list it as a worktree of the folder',
+            });
             expect(readdirSync(join(repo, '.git', 'worktrees')).sort()).toEqual(['gone-locked', 'gone-used']);
         });
 
@@ -617,7 +759,10 @@ describe('workspace.remove', () => {
 
             const before = mainState(repo);
 
-            expect(await remove(path, { deleteBranch: true })).toMatchObject({ ok: true, data: { branchDeleted: true } });
+            expect(await remove(path, { deleteBranch: true })).toMatchObject({
+                ok: true,
+                data: { branchDeleted: true },
+            });
             expect(existsSync(path)).toBe(false);
             expect(hasBranch(branch!)).toBe(false);
             expect(existsSync(slug)).toBe(false);
@@ -641,7 +786,10 @@ describe('workspace.remove', () => {
             h.ok('chat.delete', { chatId: chat.id });
             expect(path.startsWith(link)).toBe(true);
             expect(place.startsWith(realpathSync(target))).toBe(true);
-            expect(await remove(place, { deleteBranch: true })).toMatchObject({ ok: true, data: { path: place, branchDeleted: true } });
+            expect(await remove(place, { deleteBranch: true })).toMatchObject({
+                ok: true,
+                data: { path: place, branchDeleted: true },
+            });
             expect(existsSync(path)).toBe(false);
             expect(hasBranch(branch!)).toBe(false);
             expect(readdirSync(target)).toEqual([]);
@@ -663,9 +811,12 @@ describe('workspace.remove', () => {
 
     describe('with a turn', () => {
         test('keeps a turn out of the tree while the removal waits for its place, and the removal says no once a chat works there: the worktree and the branch stay and the turn goes on in it', async () => {
-            const { h, engine, store, project, repo, found, remove, refusal, send, make, runOf, hasBranch } = await setup();
+            const { h, engine, store, project, repo, found, remove, refusal, send, make, runOf, hasBranch } =
+                await setup();
             const path = found('contested');
-            const { workspace } = h.ok('workspace.open', { projectId: project.id, path }) as { workspace: ChatWorkspace };
+            const { workspace } = h.ok('workspace.open', { projectId: project.id, path }) as {
+                workspace: ChatWorkspace;
+            };
             const gate = latch();
             const before = mainState(repo);
             // Something else holds the line the removal and the turn's own `Prepare workspace` share, as another turn making the worktree would.
@@ -710,7 +861,9 @@ describe('workspace.remove', () => {
         test('removes a worktree no chat picked while it waited, and a chat made after it finds the worktree gone', async () => {
             const { h, store, project, found, remove, make } = await setup();
             const path = found('quiet');
-            const { workspace } = h.ok('workspace.open', { projectId: project.id, path }) as { workspace: ChatWorkspace };
+            const { workspace } = h.ok('workspace.open', { projectId: project.id, path }) as {
+                workspace: ChatWorkspace;
+            };
             const gate = latch();
             const holding = exclusive(store, pathKey(workspace.path), undefined, () => gate.wait());
             const removing = remove(path, { deleteBranch: true });

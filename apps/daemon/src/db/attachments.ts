@@ -1,7 +1,7 @@
 import { clean } from './json';
 
-import type { Attachment } from '@clowdy/protocol';
 import type { Database } from 'bun:sqlite';
+import type { Attachment } from '@clowdy/protocol';
 
 /** What the daemon knows about an uploaded file: the part clients see, and where it belongs. */
 export interface AttachmentRecord extends Attachment {
@@ -23,16 +23,17 @@ interface AttachmentRow {
     created_at: number;
 }
 
-const toRecord = (row: AttachmentRow): AttachmentRecord => clean({
-    id: row.id,
-    name: row.name,
-    mediaType: row.media_type,
-    size: row.size,
-    projectId: row.project_id,
-    chatId: row.chat_id,
-    runId: row.run_id,
-    createdAt: row.created_at,
-}) as AttachmentRecord;
+const toRecord = (row: AttachmentRow): AttachmentRecord =>
+    clean({
+        id: row.id,
+        name: row.name,
+        mediaType: row.media_type,
+        size: row.size,
+        projectId: row.project_id,
+        chatId: row.chat_id,
+        runId: row.run_id,
+        createdAt: row.created_at,
+    }) as AttachmentRecord;
 
 export function getAttachment(db: Database, id: string): AttachmentRecord | undefined {
     const row = db.query('SELECT * FROM attachments WHERE id = ?').get(id) as AttachmentRow | null;
@@ -41,8 +42,18 @@ export function getAttachment(db: Database, id: string): AttachmentRecord | unde
 }
 
 export function insertAttachment(db: Database, record: AttachmentRecord): void {
-    db.query('INSERT INTO attachments (id, project_id, name, media_type, size, chat_id, run_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-        .run(record.id, record.projectId, record.name, record.mediaType, record.size, record.chatId ?? null, record.runId ?? null, record.createdAt);
+    db.query(
+        'INSERT INTO attachments (id, project_id, name, media_type, size, chat_id, run_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(
+        record.id,
+        record.projectId,
+        record.name,
+        record.mediaType,
+        record.size,
+        record.chatId ?? null,
+        record.runId ?? null,
+        record.createdAt
+    );
 }
 
 /** Marks unsent files as sent with this chat and run. Returns how many it changed. */
@@ -65,7 +76,9 @@ export function deleteAttachment(db: Database, id: string): void {
 
 /** Removes the rows of the files sent in a chat and returns their ids. */
 export function deleteAttachmentsOfChat(db: Database, chatId: string): string[] {
-    const ids = (db.query('SELECT id FROM attachments WHERE chat_id = ?').all(chatId) as { id: string }[]).map(row => row.id);
+    const ids = (db.query('SELECT id FROM attachments WHERE chat_id = ?').all(chatId) as { id: string }[]).map(
+        row => row.id
+    );
 
     db.query('DELETE FROM attachments WHERE chat_id = ?').run(chatId);
 
@@ -74,7 +87,9 @@ export function deleteAttachmentsOfChat(db: Database, chatId: string): string[] 
 
 /** Removes the rows of every file of a project and returns their ids. */
 export function deleteAttachmentsOfProject(db: Database, projectId: string): string[] {
-    const ids = (db.query('SELECT id FROM attachments WHERE project_id = ?').all(projectId) as { id: string }[]).map(row => row.id);
+    const ids = (db.query('SELECT id FROM attachments WHERE project_id = ?').all(projectId) as { id: string }[]).map(
+        row => row.id
+    );
 
     db.query('DELETE FROM attachments WHERE project_id = ?').run(projectId);
 
@@ -83,7 +98,9 @@ export function deleteAttachmentsOfProject(db: Database, projectId: string): str
 
 /** Files uploaded before `before` (epoch ms) that no message claimed. */
 export function unsentAttachmentIdsBefore(db: Database, before: number): string[] {
-    return (db.query('SELECT id FROM attachments WHERE chat_id IS NULL AND created_at < ?').all(before) as { id: string }[]).map(row => row.id);
+    return (
+        db.query('SELECT id FROM attachments WHERE chat_id IS NULL AND created_at < ?').all(before) as { id: string }[]
+    ).map(row => row.id);
 }
 
 export function allAttachmentIds(db: Database): Set<string> {

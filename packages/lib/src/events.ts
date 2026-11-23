@@ -39,10 +39,14 @@ const registry = {
     reset: globalThis.Event,
 
     // Touch
-    touchstart: (typeof globalThis.TouchEvent === 'function' ? globalThis.TouchEvent : globalThis.Event) as AnyEventCtor,
+    touchstart: (typeof globalThis.TouchEvent === 'function'
+        ? globalThis.TouchEvent
+        : globalThis.Event) as AnyEventCtor,
     touchmove: (typeof globalThis.TouchEvent === 'function' ? globalThis.TouchEvent : globalThis.Event) as AnyEventCtor,
     touchend: (typeof globalThis.TouchEvent === 'function' ? globalThis.TouchEvent : globalThis.Event) as AnyEventCtor,
-    touchcancel: (typeof globalThis.TouchEvent === 'function' ? globalThis.TouchEvent : globalThis.Event) as AnyEventCtor,
+    touchcancel: (typeof globalThis.TouchEvent === 'function'
+        ? globalThis.TouchEvent
+        : globalThis.Event) as AnyEventCtor,
 
     // UI
     scroll: globalThis.UIEvent,
@@ -70,18 +74,13 @@ const registry = {
     custom: globalThis.CustomEvent,
 } as const;
 
-export function dispatchEvent<K extends EventKey>(
-    el: Element,
-    name: K,
-    options?: InitOf<K>
-): [boolean, EventOf<K>] {
+export function dispatchEvent<K extends EventKey>(el: Element, name: K, options?: InitOf<K>): [boolean, EventOf<K>] {
     const Ctor = registry[name] ?? Event;
     const event = new Ctor(String(name), options as any) as EventOf<K>;
     const notCancelled = el.dispatchEvent(event);
 
     return [notCancelled, event];
 }
-
 
 /**
  * Normalize wheel event delta based on deltaMode
@@ -91,7 +90,11 @@ export function dispatchEvent<K extends EventKey>(
  * @param winHeight
  * @returns
  */
-export function normalizeWheelDelta(e: { deltaX: number; deltaY: number; deltaMode?: number; shiftKey?: boolean }, winWidth: number = window.innerWidth, winHeight: number = window.innerHeight) {
+export function normalizeWheelDelta(
+    e: { deltaX: number; deltaY: number; deltaMode?: number; shiftKey?: boolean },
+    winWidth: number = window.innerWidth,
+    winHeight: number = window.innerHeight
+) {
     const factorY = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? winHeight : 1;
     const factorX = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? winWidth : 1;
 
@@ -106,4 +109,3 @@ export function normalizeWheelDelta(e: { deltaX: number; deltaY: number; deltaMo
 
     return { dx, dy };
 }
-

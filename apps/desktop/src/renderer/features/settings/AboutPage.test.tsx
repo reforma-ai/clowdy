@@ -15,12 +15,19 @@ let reactRoot: Root;
 let transport: FixtureTransport;
 let store: RootStore;
 
-const draw = () => act(async () => {
-    reactRoot.render(<RootStoreProvider value={ store }><AboutPage /></RootStoreProvider>);
-});
+const draw = () =>
+    act(async () => {
+        reactRoot.render(
+            <RootStoreProvider value={store}>
+                <AboutPage />
+            </RootStoreProvider>
+        );
+    });
 
-const sections = () => [...container.querySelectorAll('section[aria-label]')].map(section => section.getAttribute('aria-label'));
-const link = (name: string) => [...container.querySelectorAll<HTMLAnchorElement>('a')].find(anchor => anchor.textContent?.trim() === name)!;
+const sections = () =>
+    [...container.querySelectorAll('section[aria-label]')].map(section => section.getAttribute('aria-label'));
+const link = (name: string) =>
+    [...container.querySelectorAll<HTMLAnchorElement>('a')].find(anchor => anchor.textContent?.trim() === name)!;
 const daemon = () => container.querySelector('[role="status"]')?.textContent;
 
 beforeEach(() => {
@@ -52,7 +59,11 @@ describe('AboutPage', () => {
         expect(link('Open releases').href).toBe(RELEASES_URL);
         expect(link('Apache-2.0').href).toBe(LICENSE_URL);
         expect(link('Open licenses').href).toBe(LICENSES_URL);
-        expect([link('Open in GitHub'), link('Open releases'), link('Apache-2.0'), link('Open licenses')].map(anchor => anchor.target)).toEqual(['_blank', '_blank', '_blank', '_blank']);
+        expect(
+            [link('Open in GitHub'), link('Open releases'), link('Apache-2.0'), link('Open licenses')].map(
+                anchor => anchor.target
+            )
+        ).toEqual(['_blank', '_blank', '_blank', '_blank']);
     });
 
     it('shows the Local host with the version its daemon reports', async () => {

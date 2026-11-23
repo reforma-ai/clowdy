@@ -17,14 +17,14 @@ const decoder = new TextDecoder();
 function writeString(header: Uint8Array, offset: number, length: number, value: string): void {
     const bytes = encoder.encode(value);
 
-    if (bytes.length > length) throw new Error(`"${ value }" does not fit a tar header field of ${ length } bytes`);
+    if (bytes.length > length) throw new Error(`"${value}" does not fit a tar header field of ${length} bytes`);
 
     header.set(bytes, offset);
 }
 
 /** An octal number, zero-padded, ending in NUL. */
 function writeOctal(header: Uint8Array, offset: number, length: number, value: number): void {
-    writeString(header, offset, length, `${ value.toString(8).padStart(length - 1, '0') }\0`);
+    writeString(header, offset, length, `${value.toString(8).padStart(length - 1, '0')}\0`);
 }
 
 /** ustar splits a path longer than 100 bytes at a `/` into a prefix of up to 155 bytes and a name of up to 100. */
@@ -38,7 +38,7 @@ function splitPath(file: string): { name: string; prefix: string } {
         if (encoder.encode(prefix).length <= 155 && encoder.encode(name).length <= 100) return { name, prefix };
     }
 
-    throw new Error(`${ file } is too long for a ustar archive`);
+    throw new Error(`${file} is too long for a ustar archive`);
 }
 
 function header(entry: TarEntry): Uint8Array {
@@ -58,7 +58,15 @@ function header(entry: TarEntry): Uint8Array {
     writeString(block, 345, 155, prefix);
     // The checksum is computed with its own field as spaces.
     block.fill(0x20, 148, 156);
-    writeString(block, 148, 8, `${ block.reduce((sum, byte) => sum + byte, 0).toString(8).padStart(6, '0') }\0 `);
+    writeString(
+        block,
+        148,
+        8,
+        `${block
+            .reduce((sum, byte) => sum + byte, 0)
+            .toString(8)
+            .padStart(6, '0')}\0 `
+    );
 
     return block;
 }
@@ -106,7 +114,7 @@ function readOctal(block: Uint8Array, offset: number, length: number): number {
 export function readTar(bytes: Uint8Array): TarEntry[] {
     const entries: TarEntry[] = [];
 
-    for (let offset = 0; offset + BLOCK <= bytes.length;) {
+    for (let offset = 0; offset + BLOCK <= bytes.length; ) {
         const block = bytes.subarray(offset, offset + BLOCK);
 
         // The archive ends with zero blocks.
@@ -123,10 +131,11 @@ export function readTar(bytes: Uint8Array): TarEntry[] {
         const name = readString(block, 0, 100);
         const start = offset + BLOCK;
 
-        if (start + size > bytes.length) throw new Error(`${ name } runs past the end of the archive`);
+        if (start + size > bytes.length) throw new Error(`${name} runs past the end of the archive`);
 
-        if (type === '0' || type === '\0') entries.push({ path: prefix ? `${ prefix }/${ name }` : name, data: bytes.slice(start, start + size) });
-        else if (type !== '5') throw new Error(`${ name } is not a regular file or a folder`);
+        if (type === '0' || type === '\0')
+            entries.push({ path: prefix ? `${prefix}/${name}` : name, data: bytes.slice(start, start + size) });
+        else if (type !== '5') throw new Error(`${name} is not a regular file or a folder`);
 
         offset = start + size + padding(size);
     }

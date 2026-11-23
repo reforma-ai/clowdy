@@ -57,13 +57,16 @@ function checkManifest(source: string): void {
 
     try {
         name = (JSON.parse(readFileSync(join(source, MANIFEST), 'utf8')) as { name?: unknown }).name;
-    }
-    catch {
-        throw new Error(`The system skills are missing: ${ join(source, MANIFEST) } cannot be read. Set CLOWDY_SYSTEM_SKILLS_DIR to the plugin folder.`);
+    } catch {
+        throw new Error(
+            `The system skills are missing: ${join(source, MANIFEST)} cannot be read. Set CLOWDY_SYSTEM_SKILLS_DIR to the plugin folder.`
+        );
     }
 
     if (name !== SYSTEM_PLUGIN_NAME) {
-        throw new Error(`The system skills manifest must be named "${ SYSTEM_PLUGIN_NAME }" so skills read ${ SYSTEM_PLUGIN_NAME }:<skill>, got ${ JSON.stringify(name) }`);
+        throw new Error(
+            `The system skills manifest must be named "${SYSTEM_PLUGIN_NAME}" so skills read ${SYSTEM_PLUGIN_NAME}:<skill>, got ${JSON.stringify(name)}`
+        );
     }
 }
 
@@ -72,15 +75,16 @@ function pluginFiles(root: string): string[] {
     const files = existsSync(join(root, MANIFEST)) ? [MANIFEST] : [];
 
     function walk(relative: string): void {
-        const entries = readdirSync(join(root, relative), { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name));
+        const entries = readdirSync(join(root, relative), { withFileTypes: true }).sort((a, b) =>
+            a.name.localeCompare(b.name)
+        );
 
         for (const entry of entries) {
-            const path = `${ relative }/${ entry.name }`;
+            const path = `${relative}/${entry.name}`;
 
             if (entry.isDirectory()) {
                 walk(path);
-            }
-            else if (entry.isFile() && entry.name !== '.DS_Store') {
+            } else if (entry.isFile() && entry.name !== '.DS_Store') {
                 files.push(path);
             }
         }
@@ -98,7 +102,10 @@ function hashPlugin(root: string): string {
     const hash = createHash('sha256');
 
     for (const file of pluginFiles(root)) {
-        hash.update(file).update('\0').update(readFileSync(join(root, file))).update('\0');
+        hash.update(file)
+            .update('\0')
+            .update(readFileSync(join(root, file)))
+            .update('\0');
     }
 
     return hash.digest('hex').slice(0, 16);

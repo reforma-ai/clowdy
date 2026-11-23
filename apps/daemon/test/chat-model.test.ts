@@ -1,5 +1,5 @@
-import { commandSchema } from '@clowdy/protocol';
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
+import { commandSchema } from '@clowdy/protocol';
 
 import { cleanTempDirs, latch, ScriptEngine, scriptEngines, startHarness, waitFor } from './helpers';
 
@@ -15,7 +15,7 @@ afterEach(async () => {
 
 /** A turn that ends at once, so the chat is finished and its next message starts a new turn. */
 const finishing: Script = async function* ({ number }) {
-    yield { type: 'session', sessionId: `s${ number }` };
+    yield { type: 'session', sessionId: `s${number}` };
     yield { type: 'done', result: 'ok' };
 };
 
@@ -55,7 +55,7 @@ describe('the provider, model and reasoning level of a chat', () => {
         expect(h.run(runId)).toMatchObject({ engine: 'fake', model: 'smart', effort: 'max' });
     });
 
-    test('the chat records what its orchestrator really got when it named nothing, the project\'s model included', async () => {
+    test("the chat records what its orchestrator really got when it named nothing, the project's model included", async () => {
         const { h, engine, project } = await setup();
 
         h.ok('project.update', { projectId: project.id, settings: { model: 'smart' } });
@@ -71,7 +71,7 @@ describe('the provider, model and reasoning level of a chat', () => {
         expect(saved).toEqual({ engine: 'fake', model: 'smart', effort: null });
     });
 
-    test('a task\'s chat takes the choice of its orchestrator', async () => {
+    test("a task's chat takes the choice of its orchestrator", async () => {
         const { h, project } = await setup();
 
         h.ok('project.update', { projectId: project.id, settings: { model: 'fast' } });
@@ -79,7 +79,10 @@ describe('the provider, model and reasoning level of a chat', () => {
         const { id: taskId } = h.ok('task.create', { projectId: project.id, title: 'Fix it' }).task;
         const { chatId } = h.ok('task.start', { taskId });
 
-        expect(h.store.db.query('SELECT engine, model FROM chats WHERE id = ?').get(chatId)).toEqual({ engine: 'fake', model: 'fast' });
+        expect(h.store.db.query('SELECT engine, model FROM chats WHERE id = ?').get(chatId)).toEqual({
+            engine: 'fake',
+            model: 'fast',
+        });
     });
 
     test('a task started on an agent opens its chat on that agent', async () => {
@@ -89,10 +92,14 @@ describe('the provider, model and reasoning level of a chat', () => {
 
         await waitFor(() => other.turns.length === 1, 'the orchestrator to start on the other agent');
         expect(h.run(runId).engine).toBe('other');
-        expect(h.store.db.query('SELECT engine, model, effort FROM chats WHERE id = ?').get(chatId)).toEqual({ engine: 'other', model: null, effort: null });
+        expect(h.store.db.query('SELECT engine, model, effort FROM chats WHERE id = ?').get(chatId)).toEqual({
+            engine: 'other',
+            model: null,
+            effort: null,
+        });
     });
 
-    test('the project\'s model is for the project\'s agent, not for another one a chat names', async () => {
+    test("the project's model is for the project's agent, not for another one a chat names", async () => {
         const { h, project } = await setup();
 
         h.ok('project.update', { projectId: project.id, settings: { model: 'smart' } });
@@ -101,7 +108,10 @@ describe('the provider, model and reasoning level of a chat', () => {
 
         h.ok('chat.send', { chatId: chat.id, text: 'hello' });
 
-        expect(h.store.db.query('SELECT engine, model FROM chats WHERE id = ?').get(chat.id)).toEqual({ engine: 'other', model: null });
+        expect(h.store.db.query('SELECT engine, model FROM chats WHERE id = ?').get(chat.id)).toEqual({
+            engine: 'other',
+            model: null,
+        });
     });
 
     test('changing the model is not activity: the chat keeps its place in the order', async () => {
@@ -142,7 +152,7 @@ describe('the provider, model and reasoning level of a chat', () => {
     test('a change made while the orchestrator works waits for its next turn', async () => {
         const hold = latch();
         const { h, engine, project } = await setup(async function* ({ number, options }) {
-            yield { type: 'session', sessionId: `s${ number }` };
+            yield { type: 'session', sessionId: `s${number}` };
 
             if (number === 1) {
                 await hold.wait(options.signal);
@@ -153,8 +163,14 @@ describe('the provider, model and reasoning level of a chat', () => {
         const { chat } = h.ok('chat.create', { projectId: project.id, engine: 'fake', model: 'fast', effort: 'low' });
         const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'first' });
 
-        await waitFor(() => engine.turns.length === 1 && h.run(runId).status === 'running', 'the first turn to be under way');
-        expect(h.ok('chat.setModel', { chatId: chat.id, model: 'smart', effort: 'high' }).chat).toMatchObject({ model: 'smart', effort: 'high' });
+        await waitFor(
+            () => engine.turns.length === 1 && h.run(runId).status === 'running',
+            'the first turn to be under way'
+        );
+        expect(h.ok('chat.setModel', { chatId: chat.id, model: 'smart', effort: 'high' }).chat).toMatchObject({
+            model: 'smart',
+            effort: 'high',
+        });
 
         // The row the next turn reads has the new choice; the session that is running keeps what it started with.
         expect(h.run(runId)).toMatchObject({ status: 'running', model: 'smart', effort: 'high' });
@@ -186,7 +202,10 @@ describe('the provider, model and reasoning level of a chat', () => {
         // The same model keeps its level; one that names its level along with it gets that one.
         h.ok('chat.setModel', { chatId: chat.id, effort: 'high' });
         expect(h.ok('chat.setModel', { chatId: chat.id, model: 'smart' }).chat.effort).toBe('high');
-        expect(h.ok('chat.setModel', { chatId: chat.id, model: 'fast', effort: 'low' }).chat).toMatchObject({ model: 'fast', effort: 'low' });
+        expect(h.ok('chat.setModel', { chatId: chat.id, model: 'fast', effort: 'low' }).chat).toMatchObject({
+            model: 'fast',
+            effort: 'low',
+        });
 
         // No model at all leaves the agent's own: the level stays, as the model did not change.
         h.ok('chat.setModel', { chatId: chat.id, model: null });
@@ -205,7 +224,13 @@ describe('the provider, model and reasoning level of a chat', () => {
             expect(h.events(cursor)).toHaveLength(0);
         };
 
-        for (const change of [{}, { engine: 'fake' }, { model: 'fast' }, { effort: 'low' }, { engine: 'fake', model: 'fast', effort: 'low' }]) {
+        for (const change of [
+            {},
+            { engine: 'fake' },
+            { model: 'fast' },
+            { effort: 'low' },
+            { engine: 'fake', model: 'fast', effort: 'low' },
+        ]) {
             quiet(chat.id, change);
         }
 
@@ -224,7 +249,11 @@ describe('the provider, model and reasoning level of a chat', () => {
         const { chat } = h.ok('chat.create', { projectId: project.id, engine: 'fake', model: 'fast', effort: 'low' });
 
         // The same provider again changes nothing.
-        expect(h.ok('chat.setModel', { chatId: chat.id, engine: 'fake' }).chat).toMatchObject({ engine: 'fake', model: 'fast', effort: 'low' });
+        expect(h.ok('chat.setModel', { chatId: chat.id, engine: 'fake' }).chat).toMatchObject({
+            engine: 'fake',
+            model: 'fast',
+            effort: 'low',
+        });
 
         // Another provider has other models: the old model and level mean nothing there, unless the call names new ones.
         const other = h.ok('chat.setModel', { chatId: chat.id, engine: 'other' }).chat;
@@ -232,7 +261,9 @@ describe('the provider, model and reasoning level of a chat', () => {
         expect(other.engine).toBe('other');
         expect(other.model).toBeUndefined();
         expect(other.effort).toBeUndefined();
-        expect(h.ok('chat.setModel', { chatId: chat.id, engine: 'fake', model: 'smart', effort: 'high' }).chat).toMatchObject({ engine: 'fake', model: 'smart', effort: 'high' });
+        expect(
+            h.ok('chat.setModel', { chatId: chat.id, engine: 'fake', model: 'smart', effort: 'high' }).chat
+        ).toMatchObject({ engine: 'fake', model: 'smart', effort: 'high' });
 
         h.ok('chat.send', { chatId: chat.id, text: 'hello' });
 
@@ -249,17 +280,22 @@ describe('the provider, model and reasoning level of a chat', () => {
     });
 });
 
-describe('the commands of a chat\'s choice', () => {
-    const parse = (fields: Record<string, unknown>) => commandSchema.safeParse({ requestId: 'req-12345678', ...fields }).success;
+describe("the commands of a chat's choice", () => {
+    const parse = (fields: Record<string, unknown>) =>
+        commandSchema.safeParse({ requestId: 'req-12345678', ...fields }).success;
 
     test('take null to clear a model or level, but never an empty string, and bound what a client may send', () => {
         expect(parse({ type: 'chat.setModel', chatId: 'cht_1', model: null, effort: null })).toBe(true);
-        expect(parse({ type: 'chat.setModel', chatId: 'cht_1', engine: 'claude', model: 'opus', effort: 'max' })).toBe(true);
+        expect(parse({ type: 'chat.setModel', chatId: 'cht_1', engine: 'claude', model: 'opus', effort: 'max' })).toBe(
+            true
+        );
         expect(parse({ type: 'chat.setModel', chatId: 'cht_1', model: '' })).toBe(false);
         expect(parse({ type: 'chat.setModel', chatId: 'cht_1', effort: '' })).toBe(false);
         expect(parse({ type: 'chat.setModel', chatId: 'cht_1', engine: null })).toBe(false);
         expect(parse({ type: 'chat.setModel', chatId: 'cht_1', model: 'm'.repeat(201) })).toBe(false);
-        expect(parse({ type: 'chat.create', projectId: 'prj_1', engine: 'claude', model: 'opus', effort: 'high' })).toBe(true);
+        expect(
+            parse({ type: 'chat.create', projectId: 'prj_1', engine: 'claude', model: 'opus', effort: 'high' })
+        ).toBe(true);
         expect(parse({ type: 'chat.create', projectId: 'prj_1', effort: 'e'.repeat(65) })).toBe(false);
     });
 });
@@ -267,7 +303,7 @@ describe('the commands of a chat\'s choice', () => {
 describe('the children of a chat', () => {
     test('a sub-agent inside the session shows the model and level of its parent', async () => {
         const { h, project } = await setup(async function* ({ number }) {
-            yield { type: 'session', sessionId: `s${ number }` };
+            yield { type: 'session', sessionId: `s${number}` };
             yield { type: 'subagent', agentId: 'a1', name: 'Explore', state: 'running' };
             yield { type: 'subagent', agentId: 'a1', name: 'Explore', state: 'done', summary: 'Nothing found' };
             yield { type: 'done', result: 'ok' };
@@ -276,7 +312,9 @@ describe('the children of a chat', () => {
         const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'look around' });
 
         await waitFor(() => h.run(runId).status === 'succeeded', 'the turn to end');
-        expect(h.store.db.query('SELECT model, effort FROM runs WHERE origin = \'native\'').all()).toEqual([{ model: 'smart', effort: 'high' }]);
+        expect(h.store.db.query("SELECT model, effort FROM runs WHERE origin = 'native'").all()).toEqual([
+            { model: 'smart', effort: 'high' },
+        ]);
     });
 });
 
@@ -303,7 +341,15 @@ describe('a provider that is switched off', () => {
     test('is also refused for a chat that started, and works again when it is switched on', async () => {
         // Claude's own program is not on this machine, so a script stands in for it under its id.
         const claude = new ScriptEngine(finishing);
-        const h = await startHarness({}, { engines: new Map([['fake', new ScriptEngine(finishing)], ['claude', claude]]) });
+        const h = await startHarness(
+            {},
+            {
+                engines: new Map([
+                    ['fake', new ScriptEngine(finishing)],
+                    ['claude', claude],
+                ]),
+            }
+        );
 
         harnesses.push(h);
 
@@ -328,7 +374,10 @@ describe('a provider that is switched off', () => {
     });
 
     test('a chat that named no agent is checked against the one it will run on', async () => {
-        const h = await startHarness({ engine: 'claude' }, { engines: new Map([['claude', new ScriptEngine(finishing)]]) });
+        const h = await startHarness(
+            { engine: 'claude' },
+            { engines: new Map([['claude', new ScriptEngine(finishing)]]) }
+        );
 
         harnesses.push(h);
 
@@ -336,11 +385,21 @@ describe('a provider that is switched off', () => {
         const { chat } = h.ok('chat.create', { projectId: project.id });
 
         h.ok('agent.update', { id: 'claude', enabled: false });
-        expect(failure(h.send('chat.send', { chatId: chat.id, text: 'hello' })).message).toContain('Claude Code is switched off in Clowdy');
+        expect(failure(h.send('chat.send', { chatId: chat.id, text: 'hello' })).message).toContain(
+            'Claude Code is switched off in Clowdy'
+        );
     });
 
     test('also refuses to start a task on it, and opens no chat', async () => {
-        const h = await startHarness({}, { engines: new Map([['fake', new ScriptEngine(finishing)], ['claude', new ScriptEngine(finishing)]]) });
+        const h = await startHarness(
+            {},
+            {
+                engines: new Map([
+                    ['fake', new ScriptEngine(finishing)],
+                    ['claude', new ScriptEngine(finishing)],
+                ]),
+            }
+        );
 
         harnesses.push(h);
 

@@ -17,27 +17,29 @@ export function ProgressCard({ progress }: { progress: ChatProgress }) {
     const shown = expanded ? tasks : tasks.slice(0, VISIBLE_CHIPS);
 
     return (
-        <section className={ styles.card } aria-label="Progress">
-            <Text weight="medium">{ `Implementation · ${ done } of ${ total } ${ total === 1 ? 'task' : 'tasks' } done` }</Text>
+        <section className={styles.card} aria-label="Progress">
+            <Text weight="medium">{`Implementation · ${done} of ${total} ${total === 1 ? 'task' : 'tasks'} done`}</Text>
 
             <div
-                className={ styles.track }
+                className={styles.track}
                 role="progressbar"
                 aria-label="Tasks done"
-                aria-valuemin={ 0 }
-                aria-valuemax={ total }
-                aria-valuenow={ done }
+                aria-valuemin={0}
+                aria-valuemax={total}
+                aria-valuenow={done}
             >
-                <div className={ styles.fill } style={ { width: `${ (done / total) * 100 }%` } } />
+                <div className={styles.fill} style={{ width: `${(done / total) * 100}%` }} />
             </div>
 
-            <div className={ styles.chips }>
-                { shown.map(task => <TaskChip key={ task.id } task={ task } />) }
-                { tasks.length > VISIBLE_CHIPS && (
-                    <Button variant="filling" color="secondary" size="xs" onPress={ () => setExpanded(!expanded) }>
-                        { expanded ? 'Show fewer' : `+${ tasks.length - VISIBLE_CHIPS } more` }
+            <div className={styles.chips}>
+                {shown.map(task => (
+                    <TaskChip key={task.id} task={task} />
+                ))}
+                {tasks.length > VISIBLE_CHIPS && (
+                    <Button variant="filling" color="secondary" size="xs" onPress={() => setExpanded(!expanded)}>
+                        {expanded ? 'Show fewer' : `+${tasks.length - VISIBLE_CHIPS} more`}
                     </Button>
-                ) }
+                )}
             </div>
         </section>
     );

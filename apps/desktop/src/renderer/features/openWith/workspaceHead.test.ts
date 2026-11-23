@@ -5,15 +5,20 @@ import { workspaceHead } from './workspaceHead';
 import type { ProjectWorkspaceInfo } from '@clowdy/protocol';
 
 const made = { id: 'wks_1', branch: 'clowdy/ab12cd34', ready: true };
-const read: ProjectWorkspaceInfo[] = [{ workspaceId: 'wks_1', exists: true, branch: 'feature/other' }, { workspaceId: 'wks_2', exists: false }];
+const read: ProjectWorkspaceInfo[] = [
+    { workspaceId: 'wks_1', exists: true, branch: 'feature/other' },
+    { workspaceId: 'wks_2', exists: false },
+];
 
-describe('the head of a chat\'s worktree', () => {
+describe("the head of a chat's worktree", () => {
     it('is the branch it has now, not the one it was made with', () => {
         expect(workspaceHead(made, read)).toEqual({ branch: 'feature/other' });
     });
 
     it('is a short hash, marked detached, on a detached HEAD', () => {
-        expect(workspaceHead(made, [{ workspaceId: 'wks_1', exists: true, branch: '5c4d3e2', detached: true }])).toEqual({ branch: '5c4d3e2', detached: true });
+        expect(
+            workspaceHead(made, [{ workspaceId: 'wks_1', exists: true, branch: '5c4d3e2', detached: true }])
+        ).toEqual({ branch: '5c4d3e2', detached: true });
     });
 
     it('is nothing while no read has answered, or when the read has no word on it, once it is made', () => {

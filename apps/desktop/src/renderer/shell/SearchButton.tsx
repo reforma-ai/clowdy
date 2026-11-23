@@ -18,14 +18,14 @@ export function SearchButton() {
         <Button
             variant="ghost"
             size="sm"
-            className={ styles.button }
-            contentClassName={ styles.content }
+            className={styles.button}
+            contentClassName={styles.content}
             aria-label="Search"
-            onPress={ () => openQuickSearch(root) }
+            onPress={() => openQuickSearch(root)}
         >
             <Search aria-hidden />
-            <span className={ styles.label }>Search</span>
-            <CommandHotkey id={ QUICK_SEARCH_COMMAND } size="xs" />
+            <span className={styles.label}>Search</span>
+            <CommandHotkey id={QUICK_SEARCH_COMMAND} size="xs" />
         </Button>
     );
 }

@@ -19,7 +19,7 @@ import type { KeyValueStorage } from '../../stores/storage';
 // `Modal` cannot load under the desktop's Vitest (decorators), and no confirmation is opened here.
 vi.mock('@clowdy/components/modals', () => ({ openConfirmModal: vi.fn() }));
 // Streamdown highlights code with Shiki, whose WebAssembly cannot load under happy-dom and fails after the test that drew a fence; the messages' words are what is checked here.
-vi.mock('../../stream/Markdown', () => ({ Markdown: ({ text }: { text: string }) => <div>{ text }</div> }));
+vi.mock('../../stream/Markdown', () => ({ Markdown: ({ text }: { text: string }) => <div>{text}</div> }));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -44,21 +44,35 @@ let store: RootStore;
 
 const ui = () => store.ui.forProject(FIXTURE_PROJECT_ID);
 
-const draw = () => act(async () => {
-    reactRoot.render(<RootStoreProvider value={ store }><Screen /></RootStoreProvider>);
-});
+const draw = () =>
+    act(async () => {
+        reactRoot.render(
+            <RootStoreProvider value={store}>
+                <Screen />
+            </RootStoreProvider>
+        );
+    });
 
 /** A press with a mouse: what React Aria opens a menu on and picks an item with. */
-const press = (target: Element) => act(async () => {
-    target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
-    target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
-    target.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
-    target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
-    (target as HTMLElement).click();
-});
+const press = (target: Element) =>
+    act(async () => {
+        target.dispatchEvent(
+            new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true })
+        );
+        target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+        target.dispatchEvent(
+            new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true })
+        );
+        target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
+        (target as HTMLElement).click();
+    });
 
-const menuItem = (name: string) => [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(row => row.textContent?.startsWith(name))!;
-const field = () => container.querySelector<HTMLElement>('[contenteditable="true"]') as (HTMLElement & { editor: Editor }) | null;
+const menuItem = (name: string) =>
+    [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(row =>
+        row.textContent?.startsWith(name)
+    )!;
+const field = () =>
+    container.querySelector<HTMLElement>('[contenteditable="true"]') as (HTMLElement & { editor: Editor }) | null;
 const modelLabel = () => container.querySelector('button[aria-label^="Model:"]')?.getAttribute('aria-label');
 
 /** Opens First version, presses Fork on its answer, and picks the agent in the second item. */
@@ -107,12 +121,14 @@ describe('Hand off to', () => {
         expect(modelLabel()).toBe('Model: GPT-6.2 Sol · Low');
         expect(container.textContent).toContain(FILE_NAME);
         expect(filesOf(DRAFT_KEY).map(file => file.name)).toEqual([FILE_NAME]);
-        expect(field()!.editor.getText()).toBe(`Continue the work from the chat "First version". The conversation so far is attached as ${ FILE_NAME }.`);
+        expect(field()!.editor.getText()).toBe(
+            `Continue the work from the chat "First version". The conversation so far is attached as ${FILE_NAME}.`
+        );
         // The page took the file: the window holds none any more.
         expect(ui().pendingFiles).toEqual([]);
     });
 
-    it('starts on the agent picked even when the app\'s new chats ask for another, and the next page opened asks for that other again', async () => {
+    it("starts on the agent picked even when the app's new chats ask for another, and the next page opened asks for that other again", async () => {
         newChatDefaults.setEngine('claude');
         await forkTo('Cursor');
 
@@ -136,11 +152,17 @@ describe('Hand off to', () => {
             field()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
         });
 
-        await vi.waitFor(() => expect(command.mock.calls.filter(([input]) => input.type === 'chat.send')).toHaveLength(1));
+        await vi.waitFor(() =>
+            expect(command.mock.calls.filter(([input]) => input.type === 'chat.send')).toHaveLength(1)
+        );
 
         const sent = command.mock.calls.map(([input]) => input);
 
-        expect(sent.find(input => input.type === 'chat.create')).toMatchObject({ engine: 'codex', model: 'gpt-6.2-sol', projectId: FIXTURE_PROJECT_ID });
+        expect(sent.find(input => input.type === 'chat.create')).toMatchObject({
+            engine: 'codex',
+            model: 'gpt-6.2-sol',
+            projectId: FIXTURE_PROJECT_ID,
+        });
         expect(sent.find(input => input.type === 'chat.send')).toMatchObject({ attachmentIds: [held!.attachment!.id] });
     });
 
@@ -152,7 +174,9 @@ describe('Hand off to', () => {
         await act(async () => ui().openChat('c-3'));
         await draw();
 
-        expect(command.mock.calls.filter(([input]) => input.type === 'chat.create' || input.type === 'chat.fork')).toEqual([]);
+        expect(
+            command.mock.calls.filter(([input]) => input.type === 'chat.create' || input.type === 'chat.fork')
+        ).toEqual([]);
         expect([...store.selectedProject!.chats.keys()]).toEqual(chats);
 
         await act(async () => ui().openDraft());

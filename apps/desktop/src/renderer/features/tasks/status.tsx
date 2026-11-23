@@ -20,7 +20,7 @@ export function StatusIcon({ category }: { category: TaskStatusCategory }) {
     const { icon: Icon, tone } = CATEGORY_VIEW[category];
 
     return (
-        <span aria-hidden className={ styles.icon } data-tone={ tone }>
+        <span aria-hidden className={styles.icon} data-tone={tone}>
             <Icon />
         </span>
     );
@@ -29,10 +29,10 @@ export function StatusIcon({ category }: { category: TaskStatusCategory }) {
 /** A status as a pill with its icon, and a count after the name when given. A status the workflow no longer has shows as "Unknown". */
 export function StatusPill({ status, count }: { status: TaskStatus | undefined; count?: number }) {
     return (
-        <Pill tone={ status ? CATEGORY_VIEW[status.category].tone : 'neutral' }>
-            { status && <StatusIcon category={ status.category } /> }
-            <PillLabel>{ status?.name ?? 'Unknown' }</PillLabel>
-            { count !== undefined && <span className={ styles.count }>{ count }</span> }
+        <Pill tone={status ? CATEGORY_VIEW[status.category].tone : 'neutral'}>
+            {status && <StatusIcon category={status.category} />}
+            <PillLabel>{status?.name ?? 'Unknown'}</PillLabel>
+            {count !== undefined && <span className={styles.count}>{count}</span>}
         </Pill>
     );
 }

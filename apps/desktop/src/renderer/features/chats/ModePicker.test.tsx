@@ -18,15 +18,20 @@ const rows = () => [...document.body.querySelectorAll<HTMLElement>('[role="menui
 /** A press with a mouse: what React Aria opens a menu on. */
 async function open(trigger: HTMLElement) {
     await act(async () => {
-        trigger.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
+        trigger.dispatchEvent(
+            new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true })
+        );
         trigger.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
-        trigger.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
+        trigger.dispatchEvent(
+            new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true })
+        );
         trigger.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
         trigger.click();
     });
 }
 
-const draw = (mode: ChatMode, onPick = vi.fn(), isDisabled = false) => act(async () => root.render(<ModePicker mode={ mode } onPick={ onPick } isDisabled={ isDisabled } />));
+const draw = (mode: ChatMode, onPick = vi.fn(), isDisabled = false) =>
+    act(async () => root.render(<ModePicker mode={mode} onPick={onPick} isDisabled={isDisabled} />));
 
 beforeEach(() => {
     container = document.createElement('div');

@@ -14,14 +14,23 @@ const revoked: string[] = [];
 beforeEach(() => {
     made = 0;
     revoked.length = 0;
-    vi.spyOn(URL, 'createObjectURL').mockImplementation(() => `blob:icon-${ ++made }`);
+    vi.spyOn(URL, 'createObjectURL').mockImplementation(() => `blob:icon-${++made}`);
     vi.spyOn(URL, 'revokeObjectURL').mockImplementation(url => void revoked.push(url));
 });
 
 afterEach(() => vi.restoreAllMocks());
 
 function project(rest: Partial<Project> = {}): Project {
-    return { id: 'p1', name: 'Web', folders: [{ id: 'f1', path: '/code/web' }], taskPrefix: 'WEB', settings: {}, createdAt: 0, position: 1, ...rest };
+    return {
+        id: 'p1',
+        name: 'Web',
+        folders: [{ id: 'f1', path: '/code/web' }],
+        taskPrefix: 'WEB',
+        settings: {},
+        createdAt: 0,
+        position: 1,
+        ...rest,
+    };
 }
 
 function icons(getProjectIcon: Transport['getProjectIcon']): ProjectIconsStore {
@@ -45,7 +54,10 @@ describe('ProjectIconsStore', () => {
     });
 
     it('knows a folder with no icon, and asks again after a read that failed', async () => {
-        const read = vi.fn<Transport['getProjectIcon']>().mockRejectedValueOnce(new Error('down')).mockResolvedValue(undefined);
+        const read = vi
+            .fn<Transport['getProjectIcon']>()
+            .mockRejectedValueOnce(new Error('down'))
+            .mockResolvedValue(undefined);
         const store = icons(read);
         const web = project();
 
@@ -74,10 +86,14 @@ describe('ProjectIconsStore', () => {
 
     it('keeps only the answer for the newest main folder when two reads cross', async () => {
         let answerFirst: (blob: Blob) => void = () => undefined;
-        const read = vi.fn<Transport['getProjectIcon']>()
-            .mockImplementationOnce(() => new Promise((resolve) => {
-                answerFirst = resolve;
-            }))
+        const read = vi
+            .fn<Transport['getProjectIcon']>()
+            .mockImplementationOnce(
+                () =>
+                    new Promise(resolve => {
+                        answerFirst = resolve;
+                    })
+            )
             .mockResolvedValueOnce(new Blob(['api']));
         const store = icons(read);
         const first = store.load('p1', '/code/web');
@@ -92,11 +108,15 @@ describe('ProjectIconsStore', () => {
 
     it('drops a read for a folder the project left again before it answered', async () => {
         let answerApi: (blob: Blob) => void = () => undefined;
-        const read = vi.fn<Transport['getProjectIcon']>()
+        const read = vi
+            .fn<Transport['getProjectIcon']>()
             .mockResolvedValueOnce(new Blob(['web']))
-            .mockImplementationOnce(() => new Promise((resolve) => {
-                answerApi = resolve;
-            }));
+            .mockImplementationOnce(
+                () =>
+                    new Promise(resolve => {
+                        answerApi = resolve;
+                    })
+            );
         const store = icons(read);
 
         await store.load('p1', '/code/web');
@@ -122,7 +142,7 @@ describe('ProjectIconsStore', () => {
         expect(store.src(project({ personal: true }))).toBeUndefined();
     });
 
-    it('needs the folder\'s icon unless the project has a picture of its own or is the personal space', () => {
+    it("needs the folder's icon unless the project has a picture of its own or is the personal space", () => {
         const store = icons(async () => undefined);
 
         expect(store.wantsFound(project())).toBe(true);

@@ -21,7 +21,7 @@ const INTRO = [
 function clip(text: string): string {
     const body = text.trim();
 
-    return body.length > TEXT_HEAD + TEXT_TAIL ? `${ body.slice(0, TEXT_HEAD) }\n[…]\n${ body.slice(-TEXT_TAIL) }` : body;
+    return body.length > TEXT_HEAD + TEXT_TAIL ? `${body.slice(0, TEXT_HEAD)}\n[…]\n${body.slice(-TEXT_TAIL)}` : body;
 }
 
 function brief(value: unknown): string {
@@ -29,10 +29,10 @@ function brief(value: unknown): string {
         return '';
     }
 
-    const text = typeof value === 'string' ? value : JSON.stringify(value) ?? '';
+    const text = typeof value === 'string' ? value : (JSON.stringify(value) ?? '');
     const flat = text.replace(/\s+/g, ' ').trim();
 
-    return flat.length > TOOL_CHARS ? `${ flat.slice(0, TOOL_CHARS - 1) }…` : flat;
+    return flat.length > TOOL_CHARS ? `${flat.slice(0, TOOL_CHARS - 1)}…` : flat;
 }
 
 /** One item as a line of the record, or nothing for an item that adds none. */
@@ -43,10 +43,10 @@ function entryOf(item: StreamItem): string | undefined {
         case 'user': {
             const files = body.attachments?.map(file => file.name).join(', ');
 
-            return `Person: ${ [clip(body.text), files && `[files: ${ files }]`].filter(Boolean).join(' ') }`.trimEnd();
+            return `Person: ${[clip(body.text), files && `[files: ${files}]`].filter(Boolean).join(' ')}`.trimEnd();
         }
         case 'assistant':
-            return body.text.trim() ? `You: ${ clip(body.text) }` : undefined;
+            return body.text.trim() ? `You: ${clip(body.text)}` : undefined;
         case 'tool': {
             // `Prepare workspace` is the runtime's own step, not something the agent did; where it works is told in its system prompt.
             if (body.name === WORKSPACE_TOOL) {
@@ -54,19 +54,19 @@ function entryOf(item: StreamItem): string | undefined {
             }
 
             const input = brief(body.input);
-            const result = body.error ? `failed: ${ brief(body.error) }` : brief(body.output);
+            const result = body.error ? `failed: ${brief(body.error)}` : brief(body.output);
 
-            return `Tool ${ body.name } (${ body.state })${ input ? `: ${ input }` : '' }${ result ? ` → ${ result }` : '' }`;
+            return `Tool ${body.name} (${body.state})${input ? `: ${input}` : ''}${result ? ` → ${result}` : ''}`;
         }
         // What the agent thought is not part of the story it is told again.
         case 'reasoning':
             return undefined;
         case 'note':
-            return `Clowdy: ${ clip(body.text) }`;
+            return `Clowdy: ${clip(body.text)}`;
         case 'question':
-            return `You asked the person: ${ clip(body.text) }${ body.answer ? ` They answered: ${ clip(body.answer) }` : '' }`;
+            return `You asked the person: ${clip(body.text)}${body.answer ? ` They answered: ${clip(body.answer)}` : ''}`;
         case 'error':
-            return `Error: ${ clip(body.text) }`;
+            return `Error: ${clip(body.text)}`;
     }
 }
 
@@ -116,16 +116,15 @@ export function conversationRecord(items: StreamItem[], incoming: string[]): str
     for (const [index, entry] of entries.entries()) {
         if (kept.has(index)) {
             if (skipped > 0) {
-                lines.push(`[${ skipped } entries in between are left out]`);
+                lines.push(`[${skipped} entries in between are left out]`);
                 skipped = 0;
             }
 
             lines.push(entry);
-        }
-        else {
+        } else {
             skipped++;
         }
     }
 
-    return `${ INTRO }\n\n<earlier_conversation>\n${ lines.join('\n') }\n</earlier_conversation>`;
+    return `${INTRO}\n\n<earlier_conversation>\n${lines.join('\n')}\n</earlier_conversation>`;
 }

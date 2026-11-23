@@ -1,6 +1,6 @@
 import { makeAutoObservable } from 'mobx';
 
-import { browserStorage, readStored, writeStored, type KeyValueStorage } from '../../stores/storage';
+import { browserStorage, type KeyValueStorage, readStored, writeStored } from '../../stores/storage';
 
 /** The edge the person drags between the editor and the file tree: how narrow the tree can be, and the width it opens at. */
 export const TREE_MIN_WIDTH = 160;

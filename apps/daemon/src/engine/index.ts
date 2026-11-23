@@ -18,19 +18,25 @@ export interface Engines extends EngineRegistry {
  * agent installed and an agent installed later works without a restart. `shim` is where the `clowdy` command is (`installShim`), which the agents of
  * sessions with shell commands get on their `PATH`.
  */
-export function createEngines(config: Config, agents: AgentRegistry, env: Record<string, string | undefined> = process.env, shim?: Shim): Engines {
+export function createEngines(
+    config: Config,
+    agents: AgentRegistry,
+    env: Record<string, string | undefined> = process.env,
+    shim?: Shim
+): Engines {
     const fake = new FakeEngine(config.fakeSpeed);
     const bridge = new ToolBridge();
     const engines = new Map<string, AgentEngine>();
 
-    const create = (id: string): AgentEngine => new AcpEngine(id, {
-        registry: agents,
-        bridge,
-        shim,
-        env,
-        clientVersion: pkg.version,
-        debug: Boolean(env.CLOWDY_DEBUG),
-    });
+    const create = (id: string): AgentEngine =>
+        new AcpEngine(id, {
+            registry: agents,
+            bridge,
+            shim,
+            env,
+            clientVersion: pkg.version,
+            debug: Boolean(env.CLOWDY_DEBUG),
+        });
 
     const engineFor = (id: string): AgentEngine => {
         let engine = engines.get(id);
@@ -50,7 +56,7 @@ export function createEngines(config: Config, agents: AgentRegistry, env: Record
 
     return {
         has: id => id === 'fake' || agents.has(id),
-        get: id => id === 'fake' ? fake : agents.has(id) ? engineFor(id) : undefined,
+        get: id => (id === 'fake' ? fake : agents.has(id) ? engineFor(id) : undefined),
         stop: () => bridge.stop(),
     };
 }

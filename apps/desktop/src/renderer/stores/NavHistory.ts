@@ -43,7 +43,12 @@ export class NavHistory {
 
     constructor(private readonly host: NavHost) {
         makeAutoObservable<NavHistory, 'host' | 'entries'>(this, { host: false, entries: observableShallow });
-        this.#disposers.push(when(() => host.selectedProjectId !== null, () => this.#start()));
+        this.#disposers.push(
+            when(
+                () => host.selectedProjectId !== null,
+                () => this.#start()
+            )
+        );
     }
 
     get canGoBack(): boolean {
@@ -72,7 +77,13 @@ export class NavHistory {
 
         if (first) this.#push(first);
 
-        this.#disposers.push(reaction(() => this.#observe(), snapshot => snapshot && this.#record(snapshot), { equals: compareStructural }));
+        this.#disposers.push(
+            reaction(
+                () => this.#observe(),
+                snapshot => snapshot && this.#record(snapshot),
+                { equals: compareStructural }
+            )
+        );
     }
 
     #observe(): NavSnapshot | undefined {

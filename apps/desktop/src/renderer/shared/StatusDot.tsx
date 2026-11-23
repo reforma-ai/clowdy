@@ -18,9 +18,9 @@ export function StatusDot({ status, tone, className }: StatusDotProps) {
     return (
         <span
             aria-hidden
-            className={ cn(styles.dot, className) }
-            data-tone={ tone ?? (status ? RUN_STATUS_VIEW[status].tone : 'neutral') }
-            data-live={ status === 'running' || undefined }
+            className={cn(styles.dot, className)}
+            data-tone={tone ?? (status ? RUN_STATUS_VIEW[status].tone : 'neutral')}
+            data-live={status === 'running' || undefined}
         />
     );
 }

@@ -5,7 +5,9 @@ import type { ProjectState } from '../../stores';
 import type { FoundChat } from './QuickSearchModel';
 
 /** What of a project the search of chats reads. */
-export type ChatsOfProject = Pick<ProjectState, 'chats' | 'runs'> & { project: Pick<ProjectState['project'], 'folders'> };
+export type ChatsOfProject = Pick<ProjectState, 'chats' | 'runs'> & {
+    project: Pick<ProjectState['project'], 'folders'>;
+};
 
 /**
  * The chats of a project that answer the words typed: every word is in the title, ignoring case. The ones whose title starts with the first word come first, then the
@@ -20,20 +22,27 @@ export function foundChats({ chats, runs, project }: ChatsOfProject, query: stri
     const scoreOf = ({ title }: Chat) => (first === undefined ? 0 : title.toLowerCase().startsWith(first) ? 0 : 1);
 
     return [...chats.values()]
-        .filter((chat) => {
+        .filter(chat => {
             if (first === undefined) return chat.archivedAt === undefined && chat.parentChatId === undefined;
 
             const title = chat.title.toLowerCase();
 
             return words.every(word => title.includes(word));
         })
-        .sort((a, b) => Number(a.archivedAt !== undefined) - Number(b.archivedAt !== undefined) || scoreOf(a) - scoreOf(b) || b.updatedAt - a.updatedAt)
-        .map((chat): FoundChat => ({
-            kind: 'chat',
-            id: `chat:${ chat.id }`,
-            chatId: chat.id,
-            chat,
-            run: chat.orchestratorRunId === undefined ? undefined : runs.get(chat.orchestratorRunId),
-            note: several ? chatFolder(chats, project.folders, chat.id)?.name : undefined,
-        }));
+        .sort(
+            (a, b) =>
+                Number(a.archivedAt !== undefined) - Number(b.archivedAt !== undefined) ||
+                scoreOf(a) - scoreOf(b) ||
+                b.updatedAt - a.updatedAt
+        )
+        .map(
+            (chat): FoundChat => ({
+                kind: 'chat',
+                id: `chat:${chat.id}`,
+                chatId: chat.id,
+                chat,
+                run: chat.orchestratorRunId === undefined ? undefined : runs.get(chat.orchestratorRunId),
+                note: several ? chatFolder(chats, project.folders, chat.id)?.name : undefined,
+            })
+        );
 }

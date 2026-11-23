@@ -36,8 +36,8 @@ export function groupSkills(entries: readonly SkillEntry[], projectName?: string
         groups.push({
             source: 'project',
             title: 'Project',
-            hint: `From the .claude/skills and .agents/skills folders of ${ projectName }. Always on for this project.`,
-            empty: `${ projectName } has no skills of its own. Add a folder with a SKILL.md file to .claude/skills (for Claude) or .agents/skills (for Codex) in the project.`,
+            hint: `From the .claude/skills and .agents/skills folders of ${projectName}. Always on for this project.`,
+            empty: `${projectName} has no skills of its own. Add a folder with a SKILL.md file to .claude/skills (for Claude) or .agents/skills (for Codex) in the project.`,
             skills: [],
         });
     }
@@ -52,9 +52,9 @@ export function groupSkills(entries: readonly SkillEntry[], projectName?: string
 export function engineLabel(engines: readonly SkillEngine[]): string {
     const names = engines.map(engine => (engine === 'claude' ? 'Claude' : 'Codex'));
 
-    return names.length > 1 ? names.join(' and ') : `${ names[0] ?? 'No engine' } only`;
+    return names.length > 1 ? names.join(' and ') : `${names[0] ?? 'No engine'} only`;
 }
 
 export function tokenLabel(tokens: number): string {
-    return `${ tokens.toLocaleString('en-US') } tokens`;
+    return `${tokens.toLocaleString('en-US')} tokens`;
 }

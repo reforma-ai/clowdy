@@ -25,7 +25,17 @@ describe('remoteHost', () => {
     });
 
     test('says nothing of a path on the disk, a drive letter or a name that could be an option', () => {
-        for (const address of ['', '/srv/git/app.git', '../app', 'app', 'C:\\work\\app', 'C:/work/app', 'file:///srv/git/app.git', 'https://-oProxyCommand=x/acme/app', '-oProxyCommand=x:acme/app']) {
+        for (const address of [
+            '',
+            '/srv/git/app.git',
+            '../app',
+            'app',
+            'C:\\work\\app',
+            'C:/work/app',
+            'file:///srv/git/app.git',
+            'https://-oProxyCommand=x/acme/app',
+            '-oProxyCommand=x:acme/app',
+        ]) {
             expect(remoteHost(address)).toBeUndefined();
         }
     });
@@ -37,7 +47,7 @@ describe('namesSigningKey', () => {
             'error: No private key found for public key "/Users/me/Library/Containers/x/PublicKeys/abc.pub"?',
             'Signing failed: agent refused operation',
             'communication with agent failed',
-            'Couldn\'t get agent socket?',
+            "Couldn't get agent socket?",
             'error: Load key "/x": invalid format',
         ]) {
             expect(namesSigningKey(line)).toBe(true);
@@ -45,7 +55,11 @@ describe('namesSigningKey', () => {
     });
 
     test('leaves the failures that have nothing to do with the key alone', () => {
-        for (const line of ['fatal: unable to auto-detect email address', 'lint failed: 2 problems', 'nothing to commit, working tree clean']) {
+        for (const line of [
+            'fatal: unable to auto-detect email address',
+            'lint failed: 2 problems',
+            'nothing to commit, working tree clean',
+        ]) {
             expect(namesSigningKey(line)).toBe(false);
         }
     });
@@ -64,9 +78,10 @@ function script(dir: string, name: string, ...lines: string[]): string {
 /** The lines a stand-in has written to its log, one for each call. */
 const calls = (log: string): string[] => {
     try {
-        return readFileSync(log, 'utf8').split('\n').filter(line => line !== '');
-    }
-    catch {
+        return readFileSync(log, 'utf8')
+            .split('\n')
+            .filter(line => line !== '');
+    } catch {
         return [];
     }
 };
@@ -78,8 +93,23 @@ function standIns({ ssh, shell }: { ssh?: string; shell?: string }) {
     const shellLog = join(dir, 'shell.log');
 
     mkdirSync(join(dir, 'bin'));
-    script(join(dir, 'bin'), 'ssh', `echo "$@" >> '${ sshLog }'`, 'echo "Pseudo-terminal will not be allocated" >&2', 'echo "host x"', ...(ssh === undefined ? [] : [`echo "identityagent ${ ssh }"`]), 'echo "user git"');
-    const shellProgram = script(dir, 'shell', `echo "$@" >> '${ shellLog }'`, 'echo "Last login: Mon"', `printf '__CLOWDY_SOCK__%s__CLOWDY_SOCK__' '${ shell ?? '' }'`, 'echo "motd"');
+    script(
+        join(dir, 'bin'),
+        'ssh',
+        `echo "$@" >> '${sshLog}'`,
+        'echo "Pseudo-terminal will not be allocated" >&2',
+        'echo "host x"',
+        ...(ssh === undefined ? [] : [`echo "identityagent ${ssh}"`]),
+        'echo "user git"'
+    );
+    const shellProgram = script(
+        dir,
+        'shell',
+        `echo "$@" >> '${shellLog}'`,
+        'echo "Last login: Mon"',
+        `printf '__CLOWDY_SOCK__%s__CLOWDY_SOCK__' '${shell ?? ''}'`,
+        'echo "motd"'
+    );
 
     return { dir, sshLog, shellLog, shellProgram, bin: join(dir, 'bin') };
 }
@@ -102,10 +132,14 @@ function repositoryWithOrigin(address = 'git@github.com:acme/app.git'): string {
 const LAUNCHD = '/var/run/com.apple.launchd.abc/Listeners';
 
 withStandIns('WriteEnvironment', () => {
-    const environment = (extra: Record<string, string | undefined>, options: ConstructorParameters<typeof WriteEnvironment>[0] = {}) => new WriteEnvironment({
-        env: () => ({ HOME: '/home/test', SSH_AUTH_SOCK: LAUNCHD, ...extra }),
-        ...options,
-    });
+    const environment = (
+        extra: Record<string, string | undefined>,
+        options: ConstructorParameters<typeof WriteEnvironment>[0] = {}
+    ) =>
+        new WriteEnvironment({
+            env: () => ({ HOME: '/home/test', SSH_AUTH_SOCK: LAUNCHD, ...extra }),
+            ...options,
+        });
 
     test('takes the socket from ssh -G for the host of origin, and puts it in place of the inherited one', async () => {
         const stand = standIns({ ssh: '/tmp/clowdy-test/secretive.sock', shell: '/tmp/clowdy-test/shell.sock' });
@@ -118,11 +152,24 @@ withStandIns('WriteEnvironment', () => {
         expect(calls(stand.shellLog)).toEqual([]);
     });
 
-    test('is the daemon\'s environment with no prompt for a password, git in English and none of the daemon\'s own secrets', async () => {
+    test("is the daemon's environment with no prompt for a password, git in English and none of the daemon's own secrets", async () => {
         const stand = standIns({ ssh: '/tmp/clowdy-test/secretive.sock' });
-        const env = await environment({ PATH: stand.bin, SHELL: stand.shellProgram, LANG: 'de_DE.UTF-8', CLOWDY_TOKEN: 'secret', NODE_OPTIONS: '--inspect', ELECTRON_RUN_AS_NODE: '1' }).of(repositoryWithOrigin());
+        const env = await environment({
+            PATH: stand.bin,
+            SHELL: stand.shellProgram,
+            LANG: 'de_DE.UTF-8',
+            CLOWDY_TOKEN: 'secret',
+            NODE_OPTIONS: '--inspect',
+            ELECTRON_RUN_AS_NODE: '1',
+        }).of(repositoryWithOrigin());
 
-        expect(env).toMatchObject({ GIT_TERMINAL_PROMPT: '0', LANGUAGE: 'C', HOME: '/home/test', LANG: 'de_DE.UTF-8', PATH: stand.bin });
+        expect(env).toMatchObject({
+            GIT_TERMINAL_PROMPT: '0',
+            LANGUAGE: 'C',
+            HOME: '/home/test',
+            LANG: 'de_DE.UTF-8',
+            PATH: stand.bin,
+        });
         expect(Object.keys(env).filter(name => /CLOWDY|NODE_OPTIONS|ELECTRON/.test(name))).toEqual([]);
     });
 
@@ -151,28 +198,39 @@ withStandIns('WriteEnvironment', () => {
         const spaced = standIns({ ssh: '/tmp/clowdy test/Group Containers/agent.sock' });
         const home = standIns({ ssh: '~/Library/agent.sock' });
 
-        expect((await environment({ PATH: spaced.bin }).of(repositoryWithOrigin())).SSH_AUTH_SOCK).toBe('/tmp/clowdy test/Group Containers/agent.sock');
-        expect((await environment({ PATH: home.bin }, { home: '/home/test' }).of(repositoryWithOrigin())).SSH_AUTH_SOCK).toBe('/home/test/Library/agent.sock');
+        expect((await environment({ PATH: spaced.bin }).of(repositoryWithOrigin())).SSH_AUTH_SOCK).toBe(
+            '/tmp/clowdy test/Group Containers/agent.sock'
+        );
+        expect(
+            (await environment({ PATH: home.bin }, { home: '/home/test' }).of(repositoryWithOrigin())).SSH_AUTH_SOCK
+        ).toBe('/home/test/Library/agent.sock');
     });
 
     test('goes to the login shell for a place with no origin, and leaves the inherited socket when nothing is found', async () => {
         const none = standIns({ ssh: '/tmp/clowdy-test/secretive.sock' });
         const noOrigin = makeRepo(tempDir('write-env'));
 
-        expect((await environment({ PATH: none.bin, SHELL: none.shellProgram }).of(noOrigin)).SSH_AUTH_SOCK).toBe(LAUNCHD);
+        expect((await environment({ PATH: none.bin, SHELL: none.shellProgram }).of(noOrigin)).SSH_AUTH_SOCK).toBe(
+            LAUNCHD
+        );
         // Nothing asked ssh: there was no host to ask it about.
         expect(calls(none.sshLog)).toEqual([]);
         expect(calls(none.shellLog)).toHaveLength(1);
 
         const nothing = standIns({});
 
-        expect((await environment({ PATH: nothing.bin, SHELL: nothing.shellProgram }).of(repositoryWithOrigin())).SSH_AUTH_SOCK).toBe(LAUNCHD);
+        expect(
+            (await environment({ PATH: nothing.bin, SHELL: nothing.shellProgram }).of(repositoryWithOrigin()))
+                .SSH_AUTH_SOCK
+        ).toBe(LAUNCHD);
     });
 
     test('leaves the inherited socket when there is no ssh on the PATH and the shell does not answer in time', async () => {
         const stand = standIns({ shell: '/tmp/clowdy-test/shell.sock' });
         const slow = script(stand.dir, 'slow-shell', 'sleep 5');
-        const env = await environment({ PATH: join(stand.dir, 'nothing'), SHELL: slow }, { shellTimeoutMs: 200 }).of(repositoryWithOrigin());
+        const env = await environment({ PATH: join(stand.dir, 'nothing'), SHELL: slow }, { shellTimeoutMs: 200 }).of(
+            repositoryWithOrigin()
+        );
 
         expect(env.SSH_AUTH_SOCK).toBe(LAUNCHD);
         expect(calls(stand.sshLog)).toEqual([]);
@@ -196,7 +254,7 @@ withStandIns('WriteEnvironment', () => {
         expect(calls(stand.sshLog)).toEqual(['-G -- github.com', '-G -- github.com', '-G -- work-alias']);
     });
 
-    test('is the daemon\'s environment on Windows, whose OpenSSH keeps its agent on a pipe git finds itself', async () => {
+    test("is the daemon's environment on Windows, whose OpenSSH keeps its agent on a pipe git finds itself", async () => {
         const stand = standIns({ ssh: '/tmp/clowdy-test/secretive.sock' });
         const env = await environment({ PATH: stand.bin }, { platform: 'win32' }).of(repositoryWithOrigin());
 

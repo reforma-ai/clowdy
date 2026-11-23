@@ -27,9 +27,10 @@ export const BACKGROUND_HANDOFF_MS = 2000;
  */
 export const BACKGROUND_REPORT_MS = 20_000;
 
-export const wait = (ms: number) => new Promise<void>((resolve) => {
-    setTimeout(resolve, ms).unref();
-});
+export const wait = (ms: number) =>
+    new Promise<void>(resolve => {
+        setTimeout(resolve, ms).unref();
+    });
 
 /**
  * What the session that owns an agent's process gives the layer that speaks ACP to it. The session spawns and stops the process and keeps what every
@@ -42,7 +43,16 @@ export interface LayerHost {
     options: EngineStartOptions;
     /** Aborted when the turn's own signal is or the session is closed. The layer ends at once; stopping the process is the session's. */
     signal: AbortSignal;
-    deps: Pick<SessionDeps, 'costs' | 'clientVersion' | 'initializeTimeoutMs' | 'forkTimeoutMs' | 'backgroundHandoffMs' | 'backgroundReportMs' | 'log'>;
+    deps: Pick<
+        SessionDeps,
+        | 'costs'
+        | 'clientVersion'
+        | 'initializeTimeoutMs'
+        | 'forkTimeoutMs'
+        | 'backgroundHandoffMs'
+        | 'backgroundReportMs'
+        | 'log'
+    >;
     /**
      * The session's access to the tool bridge, registered before the process started (its `clowdy` command has the credential in its environment), with
      * the MCP server to name in the session when the run has tools that are not shell commands. `undefined` when the run has no tools.

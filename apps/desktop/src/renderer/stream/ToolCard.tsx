@@ -1,9 +1,14 @@
-import { Collapsible, CollapsibleMotionContent, CollapsibleTrigger, useCollapsible } from '@clowdy/components/Collapsible';
+import {
+    Collapsible,
+    CollapsibleMotionContent,
+    CollapsibleTrigger,
+    useCollapsible,
+} from '@clowdy/components/Collapsible';
 import { Shimmer } from '@clowdy/components/Shimmer';
 import { Text } from '@clowdy/components/Text';
 import { Tooltip } from '@clowdy/components/Tooltip';
-import { CodeBraces, Page, Search, Terminal, Tool, Version } from '@clowdy/icons/14';
 import { ChevronDown } from '@clowdy/icons/8';
+import { CodeBraces, Page, Search, Terminal, Tool, Version } from '@clowdy/icons/14';
 import { cn } from '@clowdy/lib';
 
 import styles from './ToolCard.module.css';
@@ -27,38 +32,61 @@ const ICONS: Record<ToolIcon, ComponentType<SVGProps<SVGSVGElement>>> = {
 const MAX_PAYLOAD_CHARS = 20_000;
 
 function payloadText(value: unknown): string {
-    const text = typeof value === 'string' ? value : JSON.stringify(value, null, 2) ?? '';
+    const text = typeof value === 'string' ? value : (JSON.stringify(value, null, 2) ?? '');
 
-    return text.length > MAX_PAYLOAD_CHARS ? `${ text.slice(0, MAX_PAYLOAD_CHARS) }\n… ${ text.length - MAX_PAYLOAD_CHARS } more characters` : text;
+    return text.length > MAX_PAYLOAD_CHARS
+        ? `${text.slice(0, MAX_PAYLOAD_CHARS)}\n… ${text.length - MAX_PAYLOAD_CHARS} more characters`
+        : text;
 }
 
 function Section({ label, text, danger }: { label: string; text: string; danger?: boolean }) {
     return (
-        <div className={ styles.section }>
-            <Text variant="xs" color="secondary" transform="uppercase">{ label }</Text>
-            <pre className={ styles.pre } data-danger={ danger || undefined }>{ text }</pre>
+        <div className={styles.section}>
+            <Text variant="xs" color="secondary" transform="uppercase">
+                {label}
+            </Text>
+            <pre className={styles.pre} data-danger={danger || undefined}>
+                {text}
+            </pre>
         </div>
     );
 }
 
 /** What the call is called: shimmering while it runs, struck through with the reason on hover when it failed. */
-function Title({ verb, state, reason, shrinks }: { verb: string; state: ToolBody['state']; reason?: string; shrinks?: boolean }) {
+function Title({
+    verb,
+    state,
+    reason,
+    shrinks,
+}: {
+    verb: string;
+    state: ToolBody['state'];
+    reason?: string;
+    shrinks?: boolean;
+}) {
     if (!verb) return null;
 
     // A verb is a word or two and keeps its width; what an agent says a command does has no such limit, so it gives way before the row overflows.
     const className = cn(styles.label, shrinks && styles.shrinks);
 
-    if (state === 'running') return <Shimmer as="span" className={ className } duration={ 1 }>{ verb }</Shimmer>;
+    if (state === 'running')
+        return (
+            <Shimmer as="span" className={className} duration={1}>
+                {verb}
+            </Shimmer>
+        );
 
     if (state === 'error') {
         return (
-            <Tooltip content={ reason?.trim() || 'This action failed' } wrapTrigger>
-                <Text decoration="line-through" color="secondary" className={ className }>{ verb }</Text>
+            <Tooltip content={reason?.trim() || 'This action failed'} wrapTrigger>
+                <Text decoration="line-through" color="secondary" className={className}>
+                    {verb}
+                </Text>
             </Tooltip>
         );
     }
 
-    return <Text className={ className }>{ verb }</Text>;
+    return <Text className={className}>{verb}</Text>;
 }
 
 function Header({ call }: { call: ToolBody }) {
@@ -67,17 +95,23 @@ function Header({ call }: { call: ToolBody }) {
     const Icon = ICONS[view.icon];
 
     return (
-        <CollapsibleTrigger as="button" className={ styles.header }>
-            <span className={ cn(styles.icon, call.state === 'error' && styles.failedIcon) } aria-hidden><Icon /></span>
-            <Title verb={ view.verb } state={ call.state } reason={ call.error } shrinks={ view.icon === 'terminal' } />
-            { view.target && <code className={ styles.chip }>{ view.target }</code> }
-            { view.diff && (
-                <span className={ styles.diff }>
-                    <span className={ styles.added }>{ `+${ view.diff.added }` }</span>
-                    <span className={ styles.removed }>{ `−${ view.diff.removed }` }</span>
+        <CollapsibleTrigger as="button" className={styles.header}>
+            <span className={cn(styles.icon, call.state === 'error' && styles.failedIcon)} aria-hidden>
+                <Icon />
+            </span>
+            <Title verb={view.verb} state={call.state} reason={call.error} shrinks={view.icon === 'terminal'} />
+            {view.target && <code className={styles.chip}>{view.target}</code>}
+            {view.diff && (
+                <span className={styles.diff}>
+                    <span className={styles.added}>{`+${view.diff.added}`}</span>
+                    <span className={styles.removed}>{`−${view.diff.removed}`}</span>
                 </span>
-            ) }
-            <ChevronDown className={ cn('chevron', 'next', styles.chevron) } aria-expanded={ state.isExpanded } aria-hidden />
+            )}
+            <ChevronDown
+                className={cn('chevron', 'next', styles.chevron)}
+                aria-expanded={state.isExpanded}
+                aria-hidden
+            />
         </CollapsibleTrigger>
     );
 }
@@ -96,13 +130,13 @@ export function ToolCard({ call }: ToolCardProps) {
     const { log } = describeTool(call.name, call.input, call.output, call);
 
     return (
-        <Collapsible className={ styles.root } data-state={ call.state }>
-            <Header call={ call } />
-            <CollapsibleMotionContent className={ styles.collapse }>
-                <div className={ styles.content }>
-                    { !log && <Section label="Input" text={ payloadText(call.input) } /> }
-                    { hasOutput && <Section label={ log ? 'Log' : 'Output' } text={ payloadText(call.output) } /> }
-                    { call.error && <Section label="Error" text={ call.error } danger /> }
+        <Collapsible className={styles.root} data-state={call.state}>
+            <Header call={call} />
+            <CollapsibleMotionContent className={styles.collapse}>
+                <div className={styles.content}>
+                    {!log && <Section label="Input" text={payloadText(call.input)} />}
+                    {hasOutput && <Section label={log ? 'Log' : 'Output'} text={payloadText(call.output)} />}
+                    {call.error && <Section label="Error" text={call.error} danger />}
                 </div>
             </CollapsibleMotionContent>
         </Collapsible>

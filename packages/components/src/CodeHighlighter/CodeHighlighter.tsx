@@ -1,17 +1,17 @@
 import { SHIKI_THEME_DARK, SHIKI_THEME_LIGHT } from '@clowdy/constants';
 import { cn, dedentText, isHtmlProp, useMediaQuery } from '@clowdy/lib';
 import {
-    lazy,
-    Suspense,
-    useMemo,
-    useState,
     type CSSProperties,
     type FC,
     type HTMLAttributes,
+    lazy,
     type ReactNode,
+    Suspense,
+    useMemo,
+    useState,
 } from 'react';
 
-import { Scrollable, ScrollExpandChevronButton, type ScrollableProps } from '../Scrollable';
+import { Scrollable, type ScrollableProps, ScrollExpandChevronButton } from '../Scrollable';
 import styles from './CodeHighlighter.module.css';
 import { useCodeHighlighterDefaults } from './CodeHighlighterDefaults';
 
@@ -38,10 +38,7 @@ export type CodeHighlighterScrollableHtmlProps = Omit<
     'className' | 'children' | 'style' | 'onScroll'
 >;
 
-export type CodeHighlighterProps = Omit<
-    ShikiHighlighterProps,
-    'children' | 'theme' | 'className'
-> & {
+export type CodeHighlighterProps = Omit<ShikiHighlighterProps, 'children' | 'theme' | 'className'> & {
     theme?: ShikiHighlighterProps['theme'] | 'dark' | 'light';
     language: string;
     code: string;
@@ -75,7 +72,7 @@ const DEFAULT_COLLAPSE_LABELS = {
     collapse: 'Show fewer lines',
 } as const;
 
-const ShikiHighlighter = lazy(async() => import('react-shiki'));
+const ShikiHighlighter = lazy(async () => import('react-shiki'));
 
 export const CodeHighlighter: FC<CodeHighlighterProps> = ({
     code,
@@ -103,16 +100,10 @@ export const CodeHighlighter: FC<CodeHighlighterProps> = ({
     const dedent = dedentProp ?? defaults?.dedent ?? false;
     const preloadLanguages = preloadLanguagesProp ?? defaults?.preloadLanguages;
 
-    const displayCode = useMemo(
-        () => (dedent ? dedentText(code ?? '') : (code ?? '')),
-        [code, dedent]
-    );
+    const displayCode = useMemo(() => (dedent ? dedentText(code ?? '') : (code ?? '')), [code, dedent]);
 
-    const resolvedTheme: ShikiHighlighterProps['theme'] = (theme === 'dark')
-        ? SHIKI_THEME_DARK
-        : theme === 'light'
-            ? SHIKI_THEME_LIGHT
-            : theme;
+    const resolvedTheme: ShikiHighlighterProps['theme'] =
+        theme === 'dark' ? SHIKI_THEME_DARK : theme === 'light' ? SHIKI_THEME_LIGHT : theme;
 
     const lineCount = useMemo(() => countCodeLines(displayCode), [displayCode]);
     const collapsible = collapseThresholdLines != null && lineCount > collapseThresholdLines;
@@ -129,8 +120,7 @@ export const CodeHighlighter: FC<CodeHighlighterProps> = ({
 
         if (isHtmlProp(key)) {
             scrollDomProps[key] = value;
-        }
-        else {
+        } else {
             shikiProps[key] = value;
         }
     }
@@ -144,51 +134,49 @@ export const CodeHighlighter: FC<CodeHighlighterProps> = ({
         };
     }
 
-    const collapseOverlay = collapsible
-        ? (
-            <ScrollExpandChevronButton
-                expanded={ collapseExpanded }
-                onPress={ () => setCollapseExpanded(v => !v) }
-                labelExpand={ collapseLabelExpand }
-                labelCollapse={ collapseLabelCollapse }
-                className={ styles.expandToggle }
-            />
-        )
-        : null;
+    const collapseOverlay = collapsible ? (
+        <ScrollExpandChevronButton
+            expanded={collapseExpanded}
+            onPress={() => setCollapseExpanded(v => !v)}
+            labelExpand={collapseLabelExpand}
+            labelCollapse={collapseLabelCollapse}
+            className={styles.expandToggle}
+        />
+    ) : null;
 
     return (
         <Scrollable
             vertical
             horizontal
-            className={ cn(className, styles.root) }
-            containerClass={ containerClassName }
-            overlay={ overlay ?? collapseOverlay }
-            onScroll={ onScroll }
-            stickToBottom={ stickToBottom }
-            style={ scrollRootStyle }
-            aria-expanded={ collapsible ? collapseExpanded : undefined }
-            { ...(scrollDomProps) }
+            className={cn(className, styles.root)}
+            containerClass={containerClassName}
+            overlay={overlay ?? collapseOverlay}
+            onScroll={onScroll}
+            stickToBottom={stickToBottom}
+            style={scrollRootStyle}
+            aria-expanded={collapsible ? collapseExpanded : undefined}
+            {...scrollDomProps}
         >
             <Suspense
-                fallback={ (
-                    <pre className={ cn(styles.code, codeClassName) }>
-                        <code>{ displayCode }</code>
+                fallback={
+                    <pre className={cn(styles.code, codeClassName)}>
+                        <code>{displayCode}</code>
                     </pre>
-                ) }
+                }
             >
                 <ShikiHighlighter
                     as="div"
-                    { ...shikiProps }
-                    className={ cn(styles.code, codeClassName, {
+                    {...shikiProps}
+                    className={cn(styles.code, codeClassName, {
                         dark: theme === 'dark',
-                    }) }
-                    language={ language }
-                    theme={ resolvedTheme }
-                    showLanguage={ showLanguage }
-                    preloadLanguages={ preloadLanguages }
-                    addDefaultStyles={ false }
+                    })}
+                    language={language}
+                    theme={resolvedTheme}
+                    showLanguage={showLanguage}
+                    preloadLanguages={preloadLanguages}
+                    addDefaultStyles={false}
                 >
-                    { displayCode }
+                    {displayCode}
                 </ShikiHighlighter>
             </Suspense>
         </Scrollable>

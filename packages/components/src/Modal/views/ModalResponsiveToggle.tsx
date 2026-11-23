@@ -15,19 +15,20 @@ export const ModalResponsiveToggle = observer(({ modal, className }: ModalRespon
     const adaptive = options?.adaptive;
     const responsiveModes = options?.responsiveModes;
 
-    const responsiveModesList = (!adaptive || !responsiveModes)
-        ? []
-        : Object.keys(adaptive)
-            .map((value) => {
-                const meta = responsiveModes[value];
+    const responsiveModesList =
+        !adaptive || !responsiveModes
+            ? []
+            : Object.keys(adaptive)
+                  .map(value => {
+                      const meta = responsiveModes[value];
 
-                if (!meta) {
-                    return null;
-                }
+                      if (!meta) {
+                          return null;
+                      }
 
-                return { value, icon: meta.icon, iconSize: meta.iconSize, tip: meta.tip };
-            })
-            .filter((item): item is NonNullable<typeof item> => item !== null);
+                      return { value, icon: meta.icon, iconSize: meta.iconSize, tip: meta.tip };
+                  })
+                  .filter((item): item is NonNullable<typeof item> => item !== null);
 
     let responsiveMode = modal.responsiveMode;
 
@@ -38,24 +39,24 @@ export const ModalResponsiveToggle = observer(({ modal, className }: ModalRespon
     const showAdaptiveToggle = responsiveModesList.length > 1;
 
     return (
-        <Show when={ showAdaptiveToggle }>
+        <Show when={showAdaptiveToggle}>
             <ToggleButtonGroup
                 variant="transparent"
-                selectedKeys={ responsiveMode ?? undefined }
-                onSelectionChange={ (keys) => {
+                selectedKeys={responsiveMode ?? undefined}
+                onSelectionChange={keys => {
                     const key = keys.values().next().value;
 
                     if (key != null) {
                         modal.toggleResponsiveMode(String(key));
                     }
-                } }
-                className={ className }
+                }}
+                className={className}
             >
-                { responsiveModesList.map(item => (
-                    <ToggleButtonGroupItem key={ item.value } value={ item.value }>
-                        { item.tip }
+                {responsiveModesList.map(item => (
+                    <ToggleButtonGroupItem key={item.value} value={item.value}>
+                        {item.tip}
                     </ToggleButtonGroupItem>
-                )) }
+                ))}
             </ToggleButtonGroup>
         </Show>
     );

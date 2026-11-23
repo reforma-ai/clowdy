@@ -20,12 +20,14 @@ export function AgentChip({ run, onPress, className }: AgentChipProps) {
     return (
         <button
             type="button"
-            className={ cn(styles.chip, className) }
-            title={ run.summary || run.name }
-            onClick={ onPress ?? (() => ui.openRun(run.id)) }
+            className={cn(styles.chip, className)}
+            title={run.summary || run.name}
+            onClick={onPress ?? (() => ui.openRun(run.id))}
         >
-            <span className={ styles.icon }><User width={ 12 } height={ 12 } /></span>
-            <span className={ styles.label }>{ run.name }</span>
+            <span className={styles.icon}>
+                <User width={12} height={12} />
+            </span>
+            <span className={styles.label}>{run.name}</span>
         </button>
     );
 }

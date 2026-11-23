@@ -22,7 +22,7 @@ export function forkTitle(title: string): string {
 
     const numbered = /^\((\d{1,6})\) (\S.*)$/s.exec(text);
 
-    return numbered ? `(${ Number(numbered[1]) + 1 }) ${ numbered[2] }` : `(1) ${ text }`;
+    return numbered ? `(${Number(numbered[1]) + 1}) ${numbered[2]}` : `(1) ${text}`;
 }
 
 /** What a fork is made of, once the refusals are behind it. */
@@ -92,10 +92,9 @@ export async function prepareFork(services: Services, chatId: string, itemId: st
 
     try {
         sessionId = await driver.forkSession(plan.run.id, plan.ref);
-    }
-    catch (error) {
+    } catch (error) {
         if (error instanceof EngineFailure) {
-            throw unavailable(`Couldn't fork the conversation: ${ reasonOf(error) }`);
+            throw unavailable(`Couldn't fork the conversation: ${reasonOf(error)}`);
         }
 
         throw error;
@@ -104,7 +103,8 @@ export async function prepareFork(services: Services, chatId: string, itemId: st
     return () => {
         // The source may have been deleted, or its stream cut, while the agent copied the session: the copy is then left in the agent's own list, unused.
         const source = requireChat(store, plan.chat.id);
-        const answer = source.orchestratorRunId === plan.run.id ? streamItem(store, plan.run, plan.answer.id) : undefined;
+        const answer =
+            source.orchestratorRunId === plan.run.id ? streamItem(store, plan.run, plan.answer.id) : undefined;
 
         if (!answer) {
             throw conflict('The chat changed while it was forked. Try again.');
@@ -121,7 +121,7 @@ export async function prepareFork(services: Services, chatId: string, itemId: st
             rootRunId: runId,
             chatId,
             role: 'orchestrator',
-            name: `Orchestrator ${ String(countRunsWithRole(store.db, source.projectId, 'orchestrator') + 1).padStart(2, '0') }`,
+            name: `Orchestrator ${String(countRunsWithRole(store.db, source.projectId, 'orchestrator') + 1).padStart(2, '0')}`,
             summary: title,
             status: 'succeeded',
             engine: plan.run.engine,
@@ -156,7 +156,7 @@ export async function prepareFork(services: Services, chatId: string, itemId: st
         store.emit(run.projectId, { type: 'run.upserted', run });
 
         const files = attachments.copyInto(
-            stored.flatMap(({ item }) => item.body.kind === 'user' ? item.body.attachments ?? [] : []),
+            stored.flatMap(({ item }) => (item.body.kind === 'user' ? (item.body.attachments ?? []) : [])),
             { projectId: source.projectId, chatId, runId }
         );
 
@@ -165,8 +165,7 @@ export async function prepareFork(services: Services, chatId: string, itemId: st
             store.emit(chat.projectId, { type: 'chat.upserted', chat });
 
             return { chat };
-        }
-        catch (error) {
+        } catch (error) {
             files.undo();
             throw error;
         }

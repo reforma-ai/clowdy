@@ -1,10 +1,23 @@
 import { ACTIVE_RUN_STATUSES, isClosedCategory, MAX_TASK_DEPTH } from '@clowdy/protocol';
 
 import { DEFAULT_STATUSES, type FixtureData } from './fixtureData';
-import { fail, ok, type Outcome } from './fixtureOutcome';
-import { TransportError, type CommandInput, type PageQuery } from './transport';
+import { fail, type Outcome, ok } from './fixtureOutcome';
+import { type CommandInput, type PageQuery, TransportError } from './transport';
 
-import type { Chat, ErrorCode, EventData, Project, ProjectId, Task, TaskArchivePage, TaskComment, TaskCommentsPage, TaskId, TaskStatus, TaskStatusCategory } from '@clowdy/protocol';
+import type {
+    Chat,
+    ErrorCode,
+    EventData,
+    Project,
+    ProjectId,
+    Task,
+    TaskArchivePage,
+    TaskComment,
+    TaskCommentsPage,
+    TaskId,
+    TaskStatus,
+    TaskStatusCategory,
+} from '@clowdy/protocol';
 
 /*
  * The task rules of the daemon (`apps/daemon/src/domain/tasks.ts`, `taskTree.ts`, `taskArchive.ts`, `taskComments.ts`) over the fixture's data: the same checks in the
@@ -16,14 +29,17 @@ type Command<T extends CommandInput['type']> = Extract<CommandInput, { type: T }
 
 /** What the daemon's domain throws when a caller's request cannot be done: the protocol's code and a message that names the reason. */
 class Refusal extends Error {
-    constructor(readonly code: ErrorCode, message: string) {
+    constructor(
+        readonly code: ErrorCode,
+        message: string
+    ) {
         super(message);
     }
 }
 
 const invalid = (message: string) => new Refusal('invalid', message);
 const conflict = (message: string) => new Refusal('conflict', message);
-const notFound = (what: string, id: string) => new Refusal('not_found', `${ what } ${ id } does not exist`);
+const notFound = (what: string, id: string) => new Refusal('not_found', `${what} ${id} does not exist`);
 
 const STATUS_OF_REFUSAL: Partial<Record<ErrorCode, number>> = { invalid: 400, not_found: 404, conflict: 409 };
 
@@ -33,7 +49,8 @@ const MAX_LIMIT = 100;
 
 /** The size of a page for a `limit`, as the route and the domain settle it: a `limit` that is not a whole number of 0 or more is refused, and the rest is held to 1 to 100. */
 function pageSize(limit: number | undefined): number {
-    if (limit !== undefined && !(Number.isInteger(limit) && limit >= 0)) throw invalid('limit must be a non-negative integer');
+    if (limit !== undefined && !(Number.isInteger(limit) && limit >= 0))
+        throw invalid('limit must be a non-negative integer');
 
     return Math.min(Math.max(limit ?? DEFAULT_LIMIT, 1), MAX_LIMIT);
 }
@@ -70,7 +87,8 @@ class Tree {
         this.#byId = new Map(tasks.map(task => [task.id, task]));
 
         for (const task of [...tasks].sort(byNumber)) {
-            if (task.parentId !== undefined) this.#children.set(task.parentId, [...this.#children.get(task.parentId) ?? [], task]);
+            if (task.parentId !== undefined)
+                this.#children.set(task.parentId, [...(this.#children.get(task.parentId) ?? []), task]);
         }
     }
 
@@ -87,7 +105,7 @@ class Tree {
         const found: Task[] = [];
         const seen = new Set([taskId]);
 
-        for (let current = this.#byId.get(taskId); current;) {
+        for (let current = this.#byId.get(taskId); current; ) {
             const parent = this.parentOf(current);
 
             if (!parent || seen.has(parent.id)) break;
@@ -107,12 +125,15 @@ class Tree {
         let level = [taskId];
 
         for (let depth = 1; level.length > 0; depth++) {
-            level = level.flatMap(id => this.childrenOf(id)).filter(child => !seen.has(child.id)).map((child) => {
-                seen.add(child.id);
-                found.push({ task: child, level: depth });
+            level = level
+                .flatMap(id => this.childrenOf(id))
+                .filter(child => !seen.has(child.id))
+                .map(child => {
+                    seen.add(child.id);
+                    found.push({ task: child, level: depth });
 
-                return child.id;
-            });
+                    return child.id;
+                });
         }
 
         return found;
@@ -140,14 +161,16 @@ export class FixtureTasks {
     /** The next number of each project that has made a task: a counter like the daemon's, so the number of a deleted task is not given out again. */
     readonly #nextNumbers = new Map<ProjectId, number>();
 
-    constructor(private readonly data: FixtureData, private readonly host: TasksHost) {}
+    constructor(
+        private readonly data: FixtureData,
+        private readonly host: TasksHost
+    ) {}
 
     /** Does the command's work and answers with a copy of what it returns; a refusal is the answer, anything else is a bug and goes on. */
     #answer(work: () => unknown): Outcome {
         try {
             return ok(structuredClone(work()));
-        }
-        catch (error) {
+        } catch (error) {
             if (error instanceof Refusal) return fail(error.code, error.message);
 
             throw error;
@@ -158,8 +181,7 @@ export class FixtureTasks {
     #read<T>(work: () => T): T {
         try {
             return structuredClone(work());
-        }
-        catch (error) {
+        } catch (error) {
             if (error instanceof Refusal) throw new TransportError(error.message, STATUS_OF_REFUSAL[error.code]);
 
             throw error;
@@ -208,7 +230,7 @@ export class FixtureTasks {
     #requireStatus(projectId: ProjectId, statusId: string): TaskStatus {
         const status = this.#statuses(projectId).find(candidate => candidate.id === statusId);
 
-        if (!status) throw invalid(`Status ${ statusId } does not belong to project ${ projectId }`);
+        if (!status) throw invalid(`Status ${statusId} does not belong to project ${projectId}`);
 
         return status;
     }
@@ -217,7 +239,7 @@ export class FixtureTasks {
     #statusOfCategory(projectId: ProjectId, category: TaskStatusCategory): TaskStatus {
         const status = this.#statuses(projectId).find(candidate => candidate.category === category);
 
-        if (!status) throw invalid(`Project ${ projectId } has no status in the ${ category } category`);
+        if (!status) throw invalid(`Project ${projectId} has no status in the ${category} category`);
 
         return status;
     }
@@ -236,7 +258,10 @@ export class FixtureTasks {
 
     /** The next task number of the project: past every task it holds, the archived ones too, and every number it gave out. */
     #nextNumber(projectId: ProjectId): number {
-        return Math.max(this.#nextNumbers.get(projectId) ?? 1, ...this.#projectTasks(projectId).map(task => task.number + 1));
+        return Math.max(
+            this.#nextNumbers.get(projectId) ?? 1,
+            ...this.#projectTasks(projectId).map(task => task.number + 1)
+        );
     }
 
     /** Gives the task held in the data its new fields, in place: the fixture's runs keep a reference to a task they will move to Review. */
@@ -266,7 +291,7 @@ export class FixtureTasks {
 
             if (!seen.has(current)) {
                 seen.add(current);
-                stack.push(...this.data.tasks.find(task => task.id === current)?.dependsOn ?? []);
+                stack.push(...(this.data.tasks.find(task => task.id === current)?.dependsOn ?? []));
             }
         }
 
@@ -280,9 +305,12 @@ export class FixtureTasks {
         for (const id of ids) {
             const dependency = this.#requireTask(id);
 
-            if (dependency.projectId !== projectId) throw invalid(`Task ${ dependency.key } belongs to another project`);
+            if (dependency.projectId !== projectId) throw invalid(`Task ${dependency.key} belongs to another project`);
 
-            if (this.#createsCycle(taskId, [id])) throw invalid(`Circular dependency: the task would depend on ${ dependency.key }, which already depends on it`);
+            if (this.#createsCycle(taskId, [id]))
+                throw invalid(
+                    `Circular dependency: the task would depend on ${dependency.key}, which already depends on it`
+                );
         }
 
         return ids;
@@ -297,21 +325,25 @@ export class FixtureTasks {
     #checkParent(task: Pick<Task, 'id' | 'key' | 'projectId' | 'archivedAt'>, parentId: TaskId): TaskId {
         const parent = this.#requireTask(parentId);
 
-        if (parent.projectId !== task.projectId) throw invalid(`Task ${ parent.key } belongs to another project`);
+        if (parent.projectId !== task.projectId) throw invalid(`Task ${parent.key} belongs to another project`);
 
-        if (parent.id === task.id) throw invalid(`Task ${ task.key } cannot be its own parent`);
+        if (parent.id === task.id) throw invalid(`Task ${task.key} cannot be its own parent`);
 
-        if (parent.archivedAt !== undefined && task.archivedAt === undefined) throw invalid(`Task ${ parent.key } is archived: restore it before putting tasks inside it`);
+        if (parent.archivedAt !== undefined && task.archivedAt === undefined)
+            throw invalid(`Task ${parent.key} is archived: restore it before putting tasks inside it`);
 
         const tree = this.#tree(task.projectId);
 
-        if (tree.ancestorsOf(parent.id).some(ancestor => ancestor.id === task.id)) throw invalid(`Task ${ parent.key } is inside ${ task.key }, so it cannot be its parent`);
+        if (tree.ancestorsOf(parent.id).some(ancestor => ancestor.id === task.id))
+            throw invalid(`Task ${parent.key} is inside ${task.key}, so it cannot be its parent`);
 
         const inside = tree.heightOf(task.id);
         const reach = tree.depthOf(parent.id) + 1 + inside;
 
         if (reach > MAX_TASK_DEPTH) {
-            throw invalid(`Too deep: ${ task.key } under ${ parent.key } would reach level ${ reach }${ inside > 0 ? `, counting the ${ inside } level${ inside === 1 ? '' : 's' } of tasks inside it` : '' }, and a tree has at most ${ MAX_TASK_DEPTH } levels`);
+            throw invalid(
+                `Too deep: ${task.key} under ${parent.key} would reach level ${reach}${inside > 0 ? `, counting the ${inside} level${inside === 1 ? '' : 's'} of tasks inside it` : ''}, and a tree has at most ${MAX_TASK_DEPTH} levels`
+            );
         }
 
         return parent.id;
@@ -326,7 +358,9 @@ export class FixtureTasks {
 
             if (chat && chat.projectId !== project.id) throw invalid('The chat belongs to another project');
 
-            const status = command.statusId ? this.#requireStatus(project.id, command.statusId) : this.#statusOfCategory(project.id, 'todo');
+            const status = command.statusId
+                ? this.#requireStatus(project.id, command.statusId)
+                : this.#statusOfCategory(project.id, 'todo');
             const id = this.host.id('t');
             const number = this.#nextNumber(project.id);
             const now = Date.now();
@@ -334,7 +368,7 @@ export class FixtureTasks {
                 id,
                 projectId: project.id,
                 number,
-                key: `${ project.taskPrefix }-${ number }`,
+                key: `${project.taskPrefix}-${number}`,
                 title: cleanTitle(command.title),
                 description: command.description ?? '',
                 statusId: status.id,
@@ -373,24 +407,31 @@ export class FixtureTasks {
                 title: command.title === undefined ? task.title : cleanTitle(command.title),
                 description: command.description ?? task.description,
                 statusId: command.statusId ? this.#requireStatus(task.projectId, command.statusId).id : task.statusId,
-                dependsOn: command.dependsOn ? this.#checkDependencies(task.projectId, task.id, command.dependsOn) : task.dependsOn,
+                dependsOn: command.dependsOn
+                    ? this.#checkDependencies(task.projectId, task.id, command.dependsOn)
+                    : task.dependsOn,
             };
 
             // A parent that does not change is not checked again: an edit of something else must not be refused for a tree that was fine when it was made.
             if (command.parentId === null) {
                 delete next.parentId;
-            }
-            else if (command.parentId !== undefined && command.parentId !== task.parentId) {
+            } else if (command.parentId !== undefined && command.parentId !== task.parentId) {
                 next.parentId = this.#checkParent(task, command.parentId);
             }
 
-            if (next.title === task.title && next.description === task.description && next.statusId === task.statusId
-                && next.dependsOn.join() === task.dependsOn.join() && next.parentId === task.parentId) {
+            if (
+                next.title === task.title &&
+                next.description === task.description &&
+                next.statusId === task.statusId &&
+                next.dependsOn.join() === task.dependsOn.join() &&
+                next.parentId === task.parentId
+            ) {
                 return { task };
             }
 
             // An archived task is closed, and stays so until it is restored: reopening it would leave work hidden from the board.
-            if (task.archivedAt !== undefined && !isClosedCategory(this.#categoryOf(next))) throw invalid(`Task ${ task.key } is archived: restore it before reopening it`);
+            if (task.archivedAt !== undefined && !isClosedCategory(this.#categoryOf(next)))
+                throw invalid(`Task ${task.key} is archived: restore it before reopening it`);
 
             const now = Date.now();
 
@@ -420,11 +461,15 @@ export class FixtureTasks {
             const changed = new Map<TaskId, Task>();
 
             for (const dependent of data.tasks.filter(candidate => candidate.dependsOn.includes(task.id))) {
-                changed.set(dependent.id, { ...dependent, dependsOn: dependent.dependsOn.filter(id => id !== task.id), updatedAt: now });
+                changed.set(dependent.id, {
+                    ...dependent,
+                    dependsOn: dependent.dependsOn.filter(id => id !== task.id),
+                    updatedAt: now,
+                });
             }
 
             for (const child of data.tasks.filter(candidate => candidate.parentId === task.id).sort(byNumber)) {
-                const moved: Task = { ...changed.get(child.id) ?? child, updatedAt: now };
+                const moved: Task = { ...(changed.get(child.id) ?? child), updatedAt: now };
 
                 if (task.parentId === undefined) delete moved.parentId;
                 else moved.parentId = task.parentId;
@@ -437,7 +482,8 @@ export class FixtureTasks {
             data.runTaskLinks = data.runTaskLinks.filter(link => link.taskId !== task.id);
             data.comments = data.comments.filter(comment => comment.taskId !== task.id);
 
-            for (const link of chatLinks) this.host.emit(task.projectId, { type: 'link.chatTask', link, present: false });
+            for (const link of chatLinks)
+                this.host.emit(task.projectId, { type: 'link.chatTask', link, present: false });
 
             for (const link of runLinks) this.host.emit(task.projectId, { type: 'link.runTask', link, present: false });
 
@@ -459,7 +505,10 @@ export class FixtureTasks {
     /** The first run working on the task, which is what an archive refuses for: one assigned to it (not one that only created it) that has not finished. */
     #activeRunOf(taskId: TaskId): { name: string } | undefined {
         for (const link of this.data.runTaskLinks) {
-            const run = link.taskId === taskId && link.relation !== 'created' ? this.data.runs.find(candidate => candidate.id === link.runId) : undefined;
+            const run =
+                link.taskId === taskId && link.relation !== 'created'
+                    ? this.data.runs.find(candidate => candidate.id === link.runId)
+                    : undefined;
 
             if (run && ACTIVE_RUN_STATUSES.includes(run.status)) return run;
         }
@@ -479,12 +528,21 @@ export class FixtureTasks {
             if (task.archivedAt !== undefined) return { task, archived: [], canceled: [] };
 
             const tree = this.#tree(task.projectId);
-            const batch = [task, ...tree.descendantsOf(task.id).map(({ task: below }) => below).filter(below => below.archivedAt === undefined)];
+            const batch = [
+                task,
+                ...tree
+                    .descendantsOf(task.id)
+                    .map(({ task: below }) => below)
+                    .filter(below => below.archivedAt === undefined),
+            ];
 
             for (const member of batch) {
                 const active = this.#activeRunOf(member.id);
 
-                if (active) throw conflict(`Task ${ member.key }${ member.id === task.id ? '' : `, inside ${ task.key },` } has an active run (${ active.name }): stop it first`);
+                if (active)
+                    throw conflict(
+                        `Task ${member.key}${member.id === task.id ? '' : `, inside ${task.key},`} has an active run (${active.name}): stop it first`
+                    );
             }
 
             const statuses = this.#statuses(task.projectId);
@@ -492,10 +550,15 @@ export class FixtureTasks {
             const open = batch.filter(member => !isClosedCategory(statusOf(member)?.category ?? 'todo'));
 
             if (open.length > 0 && !command.cancel) {
-                const named = open.slice(0, MAX_NAMED).map(member => `${ member.key } (${ statusOf(member)?.name ?? 'To do' })`).join(', ');
-                const more = open.length > MAX_NAMED ? ` and ${ open.length - MAX_NAMED } more` : '';
+                const named = open
+                    .slice(0, MAX_NAMED)
+                    .map(member => `${member.key} (${statusOf(member)?.name ?? 'To do'})`)
+                    .join(', ');
+                const more = open.length > MAX_NAMED ? ` and ${open.length - MAX_NAMED} more` : '';
 
-                throw invalid(`${ named }${ more } ${ open.length === 1 ? 'is' : 'are' } not closed: close ${ open.length === 1 ? 'it' : 'them' } first, or archive with cancel`);
+                throw invalid(
+                    `${named}${more} ${open.length === 1 ? 'is' : 'are'} not closed: close ${open.length === 1 ? 'it' : 'them'} first, or archive with cancel`
+                );
             }
 
             const now = Date.now();
@@ -508,7 +571,11 @@ export class FixtureTasks {
 
             for (const member of batch) {
                 const wasOpen = open.includes(member);
-                const next: Task = { ...member, archivedAt, ...(wasOpen && canceledStatus && { statusId: canceledStatus.id, closedAt: now, updatedAt: now }) };
+                const next: Task = {
+                    ...member,
+                    archivedAt,
+                    ...(wasOpen && canceledStatus && { statusId: canceledStatus.id, closedAt: now, updatedAt: now }),
+                };
 
                 this.#replace(member, next);
                 this.#announce(member);
@@ -517,7 +584,11 @@ export class FixtureTasks {
                 if (wasOpen) canceled.push(member);
             }
 
-            return { task: archived[0], archived: archived.map(member => member.id), canceled: canceled.map(member => member.id) };
+            return {
+                task: archived[0],
+                archived: archived.map(member => member.id),
+                canceled: canceled.map(member => member.id),
+            };
         });
     }
 
@@ -551,9 +622,12 @@ export class FixtureTasks {
             const tree = this.#tree(task.projectId);
             const parent = tree.parentOf(task);
 
-            if (parent?.archivedAt !== undefined) throw invalid(`Task ${ task.key } is inside ${ parent.key }, which is archived: restore ${ parent.key } first`);
+            if (parent?.archivedAt !== undefined)
+                throw invalid(
+                    `Task ${task.key} is inside ${parent.key}, which is archived: restore ${parent.key} first`
+                );
 
-            const restored = this.#batchOf(tree, task).map((member) => {
+            const restored = this.#batchOf(tree, task).map(member => {
                 const { archivedAt: _, ...rest } = member;
 
                 this.#replace(member, rest);
@@ -572,17 +646,31 @@ export class FixtureTasks {
             const size = pageSize(limit);
             const match = cursor === undefined ? undefined : /^(\d+)\.(\d+)$/.exec(cursor);
 
-            if (cursor !== undefined && !match) throw invalid(`"${ cursor }" is not a cursor: pass the nextCursor of the previous page unchanged`);
+            if (cursor !== undefined && !match)
+                throw invalid(`"${cursor}" is not a cursor: pass the nextCursor of the previous page unchanged`);
 
             this.#requireProject(projectId);
 
             const [after, position] = match ? [Number(match[1]), Number(match[2])] : [undefined, 0];
-            const archived = this.#projectTasks(projectId).filter(task => task.archivedAt !== undefined).sort((a, b) => b.archivedAt! - a.archivedAt! || a.number - b.number);
-            const found = archived.filter(task => after === undefined || task.archivedAt! < after || (task.archivedAt === after && task.number > position)).slice(0, size + 1);
+            const archived = this.#projectTasks(projectId)
+                .filter(task => task.archivedAt !== undefined)
+                .sort((a, b) => b.archivedAt! - a.archivedAt! || a.number - b.number);
+            const found = archived
+                .filter(
+                    task =>
+                        after === undefined ||
+                        task.archivedAt! < after ||
+                        (task.archivedAt === after && task.number > position)
+                )
+                .slice(0, size + 1);
             const tasks = found.slice(0, size);
             const last = tasks.at(-1);
 
-            return { tasks, total: archived.length, ...(last && found.length > size && { nextCursor: `${ last.archivedAt }.${ last.number }` }) };
+            return {
+                tasks,
+                total: archived.length,
+                ...(last && found.length > size && { nextCursor: `${last.archivedAt}.${last.number}` }),
+            };
         });
     }
 
@@ -590,14 +678,20 @@ export class FixtureTasks {
 
     /** An id whose text order is its creation order, in the shape the daemon's cursor expects (`cmt_` and capital letters or digits). */
     #commentId(): string {
-        return `cmt_${ this.host.id('c').split('-')[1].padStart(8, '0') }`;
+        return `cmt_${this.host.id('c').split('-')[1].padStart(8, '0')}`;
     }
 
     addComment(command: Command<'task.comment.add'>): Outcome {
         return this.#answer(() => {
             const task = this.#requireTask(command.taskId);
             // A command comes from the person's app, so the comment is the person's.
-            const comment: TaskComment = { id: this.#commentId(), taskId: task.id, author: { kind: 'user' }, body: cleanBody(command.body), createdAt: Date.now() };
+            const comment: TaskComment = {
+                id: this.#commentId(),
+                taskId: task.id,
+                author: { kind: 'user' },
+                body: cleanBody(command.body),
+                createdAt: Date.now(),
+            };
 
             this.data.comments.push(comment);
             this.host.emit(task.projectId, { type: 'task.comment.upserted', comment });
@@ -640,16 +734,30 @@ export class FixtureTasks {
             const size = pageSize(limit);
             const match = cursor === undefined ? undefined : /^(\d+)\.(cmt_[0-9A-Z]+)$/.exec(cursor);
 
-            if (cursor !== undefined && !match) throw invalid(`"${ cursor }" is not a cursor: pass the nextCursor of the previous page unchanged`);
+            if (cursor !== undefined && !match)
+                throw invalid(`"${cursor}" is not a cursor: pass the nextCursor of the previous page unchanged`);
 
             const task = this.#requireTask(taskId);
-            const all = this.data.comments.filter(comment => comment.taskId === task.id).sort((a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : Number(a.id > b.id)));
+            const all = this.data.comments
+                .filter(comment => comment.taskId === task.id)
+                .sort((a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : Number(a.id > b.id)));
             const [createdAt, id] = match ? [Number(match[1]), match[2]] : [undefined, ''];
-            const found = all.filter(comment => createdAt === undefined || comment.createdAt > createdAt || (comment.createdAt === createdAt && comment.id > id)).slice(0, size + 1);
+            const found = all
+                .filter(
+                    comment =>
+                        createdAt === undefined ||
+                        comment.createdAt > createdAt ||
+                        (comment.createdAt === createdAt && comment.id > id)
+                )
+                .slice(0, size + 1);
             const comments = found.slice(0, size);
             const last = comments.at(-1);
 
-            return { comments, total: all.length, ...(last && found.length > size && { nextCursor: `${ last.createdAt }.${ last.id }` }) };
+            return {
+                comments,
+                total: all.length,
+                ...(last && found.length > size && { nextCursor: `${last.createdAt}.${last.id}` }),
+            };
         });
     }
 }

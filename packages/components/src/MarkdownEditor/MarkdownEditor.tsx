@@ -1,22 +1,22 @@
 import { cn } from '@clowdy/lib';
 import Placeholder from '@tiptap/extension-placeholder';
 import { EditorContent, useEditor } from '@tiptap/react';
-import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { type ReactNode, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { Scrollable } from '../Scrollable';
 import { Show } from '../Show';
 import { Text } from '../Text';
+import styles from './MarkdownEditor.module.css';
+import { MarkdownToolbar } from './MarkdownToolbar';
 import {
     canonicalMarkdown,
     frontMatterBefore,
     markdownExtensions,
     markdownSupport,
+    type ResolveImageSrc,
     splitFrontMatter,
     withTrailingNewline,
-    type ResolveImageSrc,
 } from './markdownDocument';
-import styles from './MarkdownEditor.module.css';
-import { MarkdownToolbar } from './MarkdownToolbar';
 import { reconcileMarkdown } from './reconcileMarkdown';
 
 import type { Editor } from '@tiptap/core';
@@ -73,7 +73,6 @@ export function MarkdownEditor({
         latest.current = { value, onChange, onUnsupported, resolveImageSrc };
     });
 
-    // eslint-disable-next-line react-hooks/refs -- image node views call the resolver, after render
     const [extensions] = useState(() => {
         const schema = markdownExtensions(src => latest.current.resolveImageSrc?.(src) ?? Promise.resolve(src));
 
@@ -81,34 +80,45 @@ export function MarkdownEditor({
         return placeholder === undefined ? schema : [...schema, Placeholder.configure({ placeholder })];
     });
     // Created during the first render, so that render already knows whether `value` is supported.
-    const editor = useEditor({
-        extensions,
-        editorProps: {
-            attributes: { class: styles.prose, 'aria-label': ariaLabel },
-        },
-        onUpdate: ({ editor: tiptap }) => {
-            const { value } = latest.current;
-            const edited = tiptap.getMarkdown();
-            const shown = shownBodies.get(tiptap);
-            const frontMatter = (shown && frontMatterBefore(value, shown.body)) ?? splitFrontMatter(value).frontMatter;
-            // The edit lands in the file's own text, so untouched blocks keep how they were written.
-            const body = shown
-                ? reconcileMarkdown({ source: shown.body, baseCanonical: shown.canonical, edited, roundTrip: canonicalMarkdown })
-                : edited;
-            // Front matter that ends the file may lack its final newline.
-            const head = frontMatter && body && !frontMatter.endsWith('\n') ? `${ frontMatter }\n` : frontMatter;
-            const file = withTrailingNewline(head + body, value);
+    const editor = useEditor(
+        {
+            extensions,
+            editorProps: {
+                attributes: { class: styles.prose, 'aria-label': ariaLabel },
+            },
+            onUpdate: ({ editor: tiptap }) => {
+                const { value } = latest.current;
+                const edited = tiptap.getMarkdown();
+                const shown = shownBodies.get(tiptap);
+                const frontMatter =
+                    (shown && frontMatterBefore(value, shown.body)) ?? splitFrontMatter(value).frontMatter;
+                // The edit lands in the file's own text, so untouched blocks keep how they were written.
+                const body = shown
+                    ? reconcileMarkdown({
+                          source: shown.body,
+                          baseCanonical: shown.canonical,
+                          edited,
+                          roundTrip: canonicalMarkdown,
+                      })
+                    : edited;
+                // Front matter that ends the file may lack its final newline.
+                const head = frontMatter && body && !frontMatter.endsWith('\n') ? `${frontMatter}\n` : frontMatter;
+                const file = withTrailingNewline(head + body, value);
 
-            shownBodies.set(tiptap, { body: file.slice(head.length), canonical: edited });
-            latest.current.onChange?.(file);
+                shownBodies.set(tiptap, { body: file.slice(head.length), canonical: edited });
+                latest.current.onChange?.(file);
+            },
         },
-    }, []);
+        []
+    );
 
     // `null` while the editor already shows the body, as after its own emit; only other bodies are checked.
     const support = useMemo(() => {
         const shown = shownBodies.get(editor);
 
-        return shown && frontMatterBefore(value, shown.body) !== null ? null : markdownSupport(splitFrontMatter(value).body);
+        return shown && frontMatterBefore(value, shown.body) !== null
+            ? null
+            : markdownSupport(splitFrontMatter(value).body);
     }, [editor, value]);
     const unsupported = support?.supported === false ? support : null;
 
@@ -140,8 +150,7 @@ export function MarkdownEditor({
         // A body shown read-only is checked again with the next value.
         if (unsupported) {
             shownBodies.delete(editor);
-        }
-        else {
+        } else {
             shownBodies.set(editor, { body, canonical: editor.getMarkdown() });
         }
     }, [editor, support, unsupported, value]);
@@ -153,29 +162,31 @@ export function MarkdownEditor({
     }
 
     return (
-        <div className={ cn(styles.root, className) }>
-            <Show when={ editable }>
-                <Show when={ unsupported } fallback={ <MarkdownToolbar editor={ editor } /> }>
-                    { ({ reason }) => (
-                        <div className={ styles.notice }>
-                            <Text variant="sm" color="secondary">{ reason }</Text>
-                            { unsupportedAction }
+        <div className={cn(styles.root, className)}>
+            <Show when={editable}>
+                <Show when={unsupported} fallback={<MarkdownToolbar editor={editor} />}>
+                    {({ reason }) => (
+                        <div className={styles.notice}>
+                            <Text variant="sm" color="secondary">
+                                {reason}
+                            </Text>
+                            {unsupportedAction}
                         </div>
-                    ) }
+                    )}
                 </Show>
             </Show>
 
-            <Scrollable className={ styles.scroll }>
-                <Show when={ frontMatterText }>
-                    <div className={ styles.frontMatter }>
-                        <figure className={ cn(styles.page, styles.frontMatterColumn) } aria-label="Front matter">
-                            <pre className={ styles.frontMatterCode }>{ frontMatterText }</pre>
+            <Scrollable className={styles.scroll}>
+                <Show when={frontMatterText}>
+                    <div className={styles.frontMatter}>
+                        <figure className={cn(styles.page, styles.frontMatterColumn)} aria-label="Front matter">
+                            <pre className={styles.frontMatterCode}>{frontMatterText}</pre>
                         </figure>
                     </div>
                 </Show>
 
-                <div className={ styles.page }>
-                    <EditorContent editor={ editor } />
+                <div className={styles.page}>
+                    <EditorContent editor={editor} />
                 </div>
             </Scrollable>
         </div>

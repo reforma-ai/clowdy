@@ -39,14 +39,16 @@ export function docsScopeOf(manager: FileManager): ExplorerScope {
     if (!scope) {
         scope = {
             get roots() {
-                const found = docSourcesOf(path => manager.tree.get(path)?.kind === 'directory').map(({ id, label, root }) => ({ id, label, root }));
+                const found = docSourcesOf(path => manager.tree.get(path)?.kind === 'directory').map(
+                    ({ id, label, root }) => ({ id, label, root })
+                );
 
                 // A folder with no source still takes its first document: it is made in `.clowdy/docs`, which is drawn once it holds one.
                 return found.length > 0 ? found : [{ id: 'documents', label: 'Documents', root: DOCS_ROOT }];
             },
             label: 'Documents',
             include: (path, kind) => kind === 'directory' || isMarkdownFile(path),
-            fileName: name => (isMarkdownFile(name) ? name : `${ name }.md`),
+            fileName: name => (isMarkdownFile(name) ? name : `${name}.md`),
         };
         scopes.set(manager, scope);
     }

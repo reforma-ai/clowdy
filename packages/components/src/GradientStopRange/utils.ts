@@ -28,11 +28,9 @@ export function visibleGradientStops<T extends GradientStopRangePosition>(
     stops: readonly T[],
     bounds: GradientStopRangeBounds
 ): T[] {
-    return sortedGradientStops(stops).filter(stop => (
-        Number.isFinite(stop.position)
-        && stop.position >= bounds.min
-        && stop.position <= bounds.max
-    ));
+    return sortedGradientStops(stops).filter(
+        stop => Number.isFinite(stop.position) && stop.position >= bounds.min && stop.position <= bounds.max
+    );
 }
 
 export function gradientStopRangeBackground(
@@ -46,14 +44,14 @@ export function gradientStopRangeBackground(
     }
 
     if (sorted.length === 1) {
-        return `linear-gradient(to right, ${ sorted[0].color } 0%, ${ sorted[0].color } 100%)`;
+        return `linear-gradient(to right, ${sorted[0].color} 0%, ${sorted[0].color} 100%)`;
     }
 
     const colorStops = sorted
-        .map(stop => `${ stop.color } ${ formatGradientStopTrackPosition(stop.position, bounds) }`)
+        .map(stop => `${stop.color} ${formatGradientStopTrackPosition(stop.position, bounds)}`)
         .join(', ');
 
-    return `linear-gradient(to right, ${ colorStops })`;
+    return `linear-gradient(to right, ${colorStops})`;
 }
 
 export function formatGradientStopTrackPosition(position: number, bounds: GradientStopRangeBounds): string {
@@ -61,28 +59,24 @@ export function formatGradientStopTrackPosition(position: number, bounds: Gradie
         return '0%';
     }
 
-    return `${ ((position - bounds.min) / (bounds.max - bounds.min)) * 100 }%`;
+    return `${((position - bounds.min) / (bounds.max - bounds.min)) * 100}%`;
 }
 
 export function formatGradientStopPercent(position: number): string {
-    return `${ Math.round(position * 1000) / 10 }%`;
+    return `${Math.round(position * 1000) / 10}%`;
 }
 
 export function hasGradientStopNearPosition(stops: readonly GradientStopRangePosition[], position: number): boolean {
     return stops.some(stop => Math.abs(stop.position - position) < STOP_HIT_TOLERANCE);
 }
 
-export function positionFromTrackOffset(
-    offset: number,
-    trackSize: number,
-    bounds: GradientStopRangeBounds
-): number {
+export function positionFromTrackOffset(offset: number, trackSize: number, bounds: GradientStopRangeBounds): number {
     if (trackSize <= 0) {
         return bounds.min;
     }
 
     const ratio = offset / trackSize;
-    const position = bounds.min + (ratio * (bounds.max - bounds.min));
+    const position = bounds.min + ratio * (bounds.max - bounds.min);
 
     return clamp(bounds.min, position, bounds.max);
 }
@@ -113,7 +107,7 @@ export function positionFromKeyboardMove(
     const isBackwardMove = deltaX < 0 || deltaY > 0;
     const direction = isBackwardMove ? -1 : 1;
 
-    return clamp(options.min, position + (direction * step), options.max);
+    return clamp(options.min, position + direction * step, options.max);
 }
 
 export function positionFromKeyboardCommand(

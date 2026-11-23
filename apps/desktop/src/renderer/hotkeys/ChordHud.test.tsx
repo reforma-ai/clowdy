@@ -18,16 +18,21 @@ let root: Root;
 let registry: HotkeyRegistry;
 let uninstall: () => void;
 
-const press = (key: string) => act(() => {
-    document.body.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
-});
+const press = (key: string) =>
+    act(() => {
+        document.body.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+    });
 const hud = () => container.querySelector('[role="status"]');
 const capsules = () => Array.from(container.querySelectorAll('[data-hotkey]'), element => element.textContent);
 
 beforeEach(() => {
     registry = createRegistry('darwin');
 
-    for (const [id, title, keys] of [['nav.tasks', 'Go to Tasks', 'g t'], ['nav.chats', 'Go to Chats', 'g c'], ['tasks.type', 'Type a note', 'o n x']]) {
+    for (const [id, title, keys] of [
+        ['nav.tasks', 'Go to Tasks', 'g t'],
+        ['nav.chats', 'Go to Chats', 'g c'],
+        ['tasks.type', 'Type a note', 'o n x'],
+    ]) {
         registry.defineCommand({ id, title, group: 'Navigation', keys, scope: 'app', handler: () => undefined });
     }
 
@@ -35,7 +40,7 @@ beforeEach(() => {
     container = document.createElement('div');
     document.body.append(container);
     root = createRoot(container);
-    act(() => root.render(<Hud registry={ registry } />));
+    act(() => root.render(<Hud registry={registry} />));
 });
 
 afterEach(() => {
@@ -106,8 +111,7 @@ describe('ChordHud', () => {
             });
 
             expect(hud()).toBeNull();
-        }
-        finally {
+        } finally {
             vi.useRealTimers();
         }
     });

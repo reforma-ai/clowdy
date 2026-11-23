@@ -14,7 +14,7 @@ export function useWindowFitsHalf(): void {
     useLayoutEffect(() => {
         if (typeof window.matchMedia !== 'function') return;
 
-        const wide = window.matchMedia(`(min-width: ${ HALF_MIN_WINDOW_WIDTH }px)`);
+        const wide = window.matchMedia(`(min-width: ${HALF_MIN_WINDOW_WIDTH}px)`);
         const sync = () => root.ui.setWindowFitsHalf(wide.matches);
 
         sync();

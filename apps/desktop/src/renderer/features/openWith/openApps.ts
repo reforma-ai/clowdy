@@ -38,7 +38,7 @@ export function useOpenApps(): OpenApps {
         let isCurrent = true;
 
         window.desktop.getOpenApps().then(
-            (found) => {
+            found => {
                 if (isCurrent) setApps(found);
             },
             () => undefined
@@ -56,22 +56,21 @@ export function useOpenApps(): OpenApps {
 async function openPathIn(path: string, kind: OpenPathApp['kind'], app: OpenApp): Promise<void> {
     try {
         await window.desktop?.openPath(path, { kind, id: app.id });
-    }
-    catch {
-        toast.error({ message: `Couldn't open it in ${ app.name }` });
+    } catch {
+        toast.error({ message: `Couldn't open it in ${app.name}` });
     }
 }
 
 /** What the menu's actions do in the app: a program is started by the desktop app, a link goes to the browser (the main process opens https addresses outside), a copy says so. */
 export const openEffects: OpenEffects = {
     openPath: (path, kind, app) => void openPathIn(path, kind, app),
-    openUrl: (url) => {
+    openUrl: url => {
         window.open(url, '_blank', 'noopener');
     },
-    copy: (text) => {
+    copy: text => {
         navigator.clipboard.writeText(text).then(
             () => toast.success({ message: 'Path copied' }),
-            () => toast.error({ message: 'Couldn\'t copy the path' })
+            () => toast.error({ message: "Couldn't copy the path" })
         );
     },
 };

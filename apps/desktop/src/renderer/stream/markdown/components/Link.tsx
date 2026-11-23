@@ -11,21 +11,21 @@ function opensInBrowser(href: string | undefined): href is string {
 
 /** A link that would do nothing when pressed (`http:`, `mailto:`, a link still arriving) stays plain text, not a dead link. */
 export function StreamdownLink({ href, children }: ComponentPropsWithoutRef<'a'> & ExtraProps) {
-    if (!opensInBrowser(href)) return <>{ children }</>;
+    if (!opensInBrowser(href)) return <>{children}</>;
 
     return (
         // The hover title says where the link goes, which its text may not.
-        <span title={ href }>
+        <span title={href}>
             <Button
                 data-streamdown="link"
-                href={ href }
+                href={href}
                 target="_blank"
-                className={ inlineLink }
+                className={inlineLink}
                 variant="inline"
                 color="primary"
                 size="sm"
             >
-                { children }
+                {children}
             </Button>
         </span>
     );

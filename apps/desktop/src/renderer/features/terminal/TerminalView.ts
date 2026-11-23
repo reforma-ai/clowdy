@@ -82,8 +82,7 @@ export class TerminalView implements TerminalViewHandle {
             this.syncTheme();
             this.fit();
             this.#xterm.refresh(0, this.#xterm.rows - 1);
-        }
-        else {
+        } else {
             this.#create(host);
         }
 
@@ -104,7 +103,8 @@ export class TerminalView implements TerminalViewHandle {
     fit(): void {
         const host = this.#host;
 
-        if (this.#disposed || !host || !this.#xterm || !this.#fit || host.clientWidth === 0 || host.clientHeight === 0) return;
+        if (this.#disposed || !host || !this.#xterm || !this.#fit || host.clientWidth === 0 || host.clientHeight === 0)
+            return;
 
         const size = this.#fit.proposeDimensions();
 
@@ -125,7 +125,8 @@ export class TerminalView implements TerminalViewHandle {
 
     /** Re-reads the colors of the plate, after the window changed between light and dark. */
     syncTheme(): void {
-        if (this.#xterm && this.#host) this.#xterm.options.theme = terminalTheme(getComputedStyle(this.#host), isDark());
+        if (this.#xterm && this.#host)
+            this.#xterm.options.theme = terminalTheme(getComputedStyle(this.#host), isDark());
     }
 
     dispose(): void {
@@ -162,7 +163,7 @@ export class TerminalView implements TerminalViewHandle {
             onScreen: screen => this.#showScreen(screen),
             onOutput: data => this.#xterm?.write(data),
             onExit: code => this.#showExit(code),
-            onStatus: (status) => {
+            onStatus: status => {
                 this.#session.setStatus(status);
                 this.#syncInput();
             },
@@ -193,7 +194,7 @@ export class TerminalView implements TerminalViewHandle {
     }
 
     #writeExitLine(code: number | undefined): void {
-        this.#xterm?.write(`\r\n\x1b[2m[Process exited with code ${ code ?? '?' }]\x1b[0m\r\n`);
+        this.#xterm?.write(`\r\n\x1b[2m[Process exited with code ${code ?? '?'}]\x1b[0m\r\n`);
     }
 
     /** Typing while the shell is gone or the stream is down would be lost, so the terminal refuses it. */
@@ -208,15 +209,15 @@ export class TerminalView implements TerminalViewHandle {
 
             webgl.onContextLoss(() => webgl.dispose());
             xterm.loadAddon(webgl);
-        }
-        catch {
+        } catch {
             // The DOM renderer stays.
         }
     }
 
     /** Cmd+click (Ctrl+click off Mac) opens a link, as in native terminals; the shell decides which links go to the system browser. */
     #openLink(event: MouseEvent, uri: string): void {
-        if (hotkeys.platform === 'darwin' ? event.metaKey : event.ctrlKey) window.open(uri, '_blank', 'noopener,noreferrer');
+        if (hotkeys.platform === 'darwin' ? event.metaKey : event.ctrlKey)
+            window.open(uri, '_blank', 'noopener,noreferrer');
     }
 
     /** `false` keeps xterm from handling the key. */
@@ -247,6 +248,6 @@ export class TerminalView implements TerminalViewHandle {
             return false;
         }
 
-        return event.code === 'KeyV' ? false : true;
+        return event.code !== 'KeyV';
     }
 }

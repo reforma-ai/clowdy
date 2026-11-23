@@ -5,7 +5,14 @@ import { Text } from '@clowdy/components/Text';
 import { toast } from '@clowdy/components/Toast';
 import { AttentionCircle } from '@clowdy/icons/14';
 import { StopBold } from '@clowdy/icons/16';
-import { isTerminalRunStatus, shownRunReason, shownRunStatus, type ApprovalDecision, type Run, type RunRole } from '@clowdy/protocol';
+import {
+    type ApprovalDecision,
+    isTerminalRunStatus,
+    type Run,
+    type RunRole,
+    shownRunReason,
+    shownRunStatus,
+} from '@clowdy/protocol';
 import { useState } from 'react';
 
 import { AgentChip, RunStatusPill, TaskChip } from '../../shared';
@@ -24,11 +31,13 @@ export function RunDetail({ run }: { run: Run }) {
     const parent = run.parentRunId ? project.runs.get(run.parentRunId) : undefined;
 
     return (
-        <section className={ styles.detail } aria-label={ run.name }>
-            <RunHeader run={ run } parent={ parent } />
-            <RunStream run={ run } />
-            <footer className={ styles.footer }>
-                <Text variant="sm" color="secondary">Viewing agent work</Text>
+        <section className={styles.detail} aria-label={run.name}>
+            <RunHeader run={run} parent={parent} />
+            <RunStream run={run} />
+            <footer className={styles.footer}>
+                <Text variant="sm" color="secondary">
+                    Viewing agent work
+                </Text>
             </footer>
         </section>
     );
@@ -49,49 +58,70 @@ function RunHeader({ run, parent }: { run: Run; parent: Run | undefined }) {
 
         setIsStopping(false);
 
-        if (!result.ok) toast.error({ message: `Could not stop ${ run.name }: ${ result.error.message }` });
+        if (!result.ok) toast.error({ message: `Could not stop ${run.name}: ${result.error.message}` });
     };
 
     return (
-        <header className={ styles.header }>
-            <div className={ styles.titleLine }>
-                <AgentAvatar role={ run.role } size="md" />
-                <div className={ styles.heading }>
-                    <div className={ styles.nameLine }>
-                        <Text variant="heading-5" truncate>{ run.name }</Text>
-                        <RunStatusPill run={ run } />
+        <header className={styles.header}>
+            <div className={styles.titleLine}>
+                <AgentAvatar role={run.role} size="md" />
+                <div className={styles.heading}>
+                    <div className={styles.nameLine}>
+                        <Text variant="heading-5" truncate>
+                            {run.name}
+                        </Text>
+                        <RunStatusPill run={run} />
                     </div>
-                    <Text color="secondary" truncate>{ run.summary ? `${ ROLE_LABEL[run.role] } · ${ run.summary }` : ROLE_LABEL[run.role] }</Text>
+                    <Text color="secondary" truncate>
+                        {run.summary ? `${ROLE_LABEL[run.role]} · ${run.summary}` : ROLE_LABEL[run.role]}
+                    </Text>
                 </div>
-                { !isTerminalRunStatus(run.status) && (!run.canStopAlone
-                    // A sub-agent lives inside its parent's session: when that session cannot end it alone, the daemon refuses to stop it.
-                    ? <Text variant="sm" color="secondary">{ `Runs inside ${ parent?.name ?? 'its parent run' }` }</Text>
-                    : (
-                        <Button variant="bordered" size="sm" isPending={ isStopping } onPress={ () => void stop() }>
+                {!isTerminalRunStatus(run.status) &&
+                    (!run.canStopAlone ? (
+                        // A sub-agent lives inside its parent's session: when that session cannot end it alone, the daemon refuses to stop it.
+                        <Text variant="sm" color="secondary">{`Runs inside ${parent?.name ?? 'its parent run'}`}</Text>
+                    ) : (
+                        <Button variant="bordered" size="sm" isPending={isStopping} onPress={() => void stop()}>
                             <StopBold aria-hidden />
                             Stop
                         </Button>
-                    )) }
+                    ))}
             </div>
 
-            { reason && <Text variant="sm" color="secondary">{ reason }</Text> }
+            {reason && (
+                <Text variant="sm" color="secondary">
+                    {reason}
+                </Text>
+            )}
 
-            { (tasks.length > 0 || run.parentRunId) && (
-                <div className={ styles.links }>
-                    { tasks.length > 0 && (
-                        <div className={ styles.group }>
-                            <Text variant="sm" color="secondary">{ tasks.length === 1 ? 'Task' : 'Tasks' }</Text>
-                            { tasks.map(task => <TaskChip key={ task.id } task={ task } />) }
+            {(tasks.length > 0 || run.parentRunId) && (
+                <div className={styles.links}>
+                    {tasks.length > 0 && (
+                        <div className={styles.group}>
+                            <Text variant="sm" color="secondary">
+                                {tasks.length === 1 ? 'Task' : 'Tasks'}
+                            </Text>
+                            {tasks.map(task => (
+                                <TaskChip key={task.id} task={task} />
+                            ))}
                         </div>
-                    ) }
-                    { run.parentRunId && (
-                        <div className={ styles.group }>
-                            <Text variant="sm" color="secondary">Parent</Text>
-                            { parent ? <AgentChip run={ parent } /> : <Text variant="sm" color="secondary">not available</Text> }
+                    )}
+                    {run.parentRunId && (
+                        <div className={styles.group}>
+                            <Text variant="sm" color="secondary">
+                                Parent
+                            </Text>
+                            {parent ? (
+                                <AgentChip run={parent} />
+                            ) : (
+                                <Text variant="sm" color="secondary">
+                                    not available
+                                </Text>
+                            )}
                         </div>
-                    ) }
+                    )}
                 </div>
-            ) }
+            )}
         </header>
     );
 }
@@ -102,7 +132,7 @@ function RunStream({ run }: { run: Run }) {
 
     if (!stream || stream.status === 'idle' || (stream.status === 'loading' && stream.items.length === 0)) {
         return (
-            <div className={ styles.center }>
+            <div className={styles.center}>
                 <Loader size="xs" />
                 <Text color="secondary">Loading the stream…</Text>
             </div>
@@ -111,11 +141,17 @@ function RunStream({ run }: { run: Run }) {
 
     if (stream.status === 'failed' && stream.items.length === 0) {
         return (
-            <div className={ styles.center }>
-                <Alert color="danger" className={ styles.failure }>
-                    <AlertIcon><AttentionCircle /></AlertIcon>
-                    <AlertDescription>{ `Could not load what ${ run.name } did. ${ stream.error }` }</AlertDescription>
-                    <AlertAction><Button size="sm" variant="bordered" onPress={ () => void stream.reload() }>Retry</Button></AlertAction>
+            <div className={styles.center}>
+                <Alert color="danger" className={styles.failure}>
+                    <AlertIcon>
+                        <AttentionCircle />
+                    </AlertIcon>
+                    <AlertDescription>{`Could not load what ${run.name} did. ${stream.error}`}</AlertDescription>
+                    <AlertAction>
+                        <Button size="sm" variant="bordered" onPress={() => void stream.reload()}>
+                            Retry
+                        </Button>
+                    </AlertAction>
                 </Alert>
             </div>
         );
@@ -124,14 +160,14 @@ function RunStream({ run }: { run: Run }) {
     const answer = async (questionId: string, text: string) => {
         const result = await root.command({ type: 'run.answer', runId: run.id, questionId, answer: text });
 
-        if (!result.ok) toast.error({ message: `Could not send the answer: ${ result.error.message }` });
+        if (!result.ok) toast.error({ message: `Could not send the answer: ${result.error.message}` });
     };
 
     // The card of a request for permission is decided while its own item is open, whatever the run is doing.
     const decide = async (approvalId: string, decision: ApprovalDecision) => {
         const result = await root.command({ type: 'run.decide', runId: run.id, approvalId, decision });
 
-        if (!result.ok) toast.error({ message: `Could not send the decision: ${ result.error.message }` });
+        if (!result.ok) toast.error({ message: `Could not send the decision: ${result.error.message}` });
     };
 
     // The live line follows what the person reads of the run: none while a card waits for them. A question is answered only while the run itself is parked (the daemon's rule).
@@ -139,12 +175,12 @@ function RunStream({ run }: { run: Run }) {
 
     return (
         <StreamView
-            items={ stream.items }
-            active={ !isTerminalRunStatus(run.status) }
-            working={ shown === 'running' || (shown === 'waiting_background' && 'Waiting for background work…') }
-            onAnswer={ run.status === 'waiting_user' ? answer : undefined }
-            onDecide={ decide }
-            emptyState={ <Text color="secondary">This run has not written anything yet.</Text> }
+            items={stream.items}
+            active={!isTerminalRunStatus(run.status)}
+            working={shown === 'running' || (shown === 'waiting_background' && 'Waiting for background work…')}
+            onAnswer={run.status === 'waiting_user' ? answer : undefined}
+            onDecide={decide}
+            emptyState={<Text color="secondary">This run has not written anything yet.</Text>}
         />
     );
 }

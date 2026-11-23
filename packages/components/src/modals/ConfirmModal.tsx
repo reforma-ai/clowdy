@@ -41,7 +41,7 @@ export function confirmDiscardChanges(): Promise<boolean> {
         return pendingDiscard;
     }
 
-    const dialog = new Promise<boolean>((resolve) => {
+    const dialog = new Promise<boolean>(resolve => {
         let settled = false;
 
         const finish = (discard: boolean) => {
@@ -53,19 +53,22 @@ export function confirmDiscardChanges(): Promise<boolean> {
             resolve(discard);
         };
 
-        openConfirmModal({
-            title: 'Unsaved changes',
-            message: 'Discard them, or go back and save',
-            confirmLabel: 'Discard changes',
-            cancelLabel: 'Go back',
-            destructive: true,
-            onConfirm: () => {
-                finish(true);
+        openConfirmModal(
+            {
+                title: 'Unsaved changes',
+                message: 'Discard them, or go back and save',
+                confirmLabel: 'Discard changes',
+                cancelLabel: 'Go back',
+                destructive: true,
+                onConfirm: () => {
+                    finish(true);
+                },
             },
-        }, {
-            onCancel: () => finish(false),
-            onClose: () => finish(false),
-        });
+            {
+                onCancel: () => finish(false),
+                onClose: () => finish(false),
+            }
+        );
     });
 
     pendingDiscard = dialog;
@@ -76,14 +79,11 @@ export function confirmDiscardChanges(): Promise<boolean> {
     return dialog;
 }
 
-export function openConfirmModal(
-    options: OpenConfirmModalOptions,
-    modalOptions?: ModalOptionsRaw
-) {
+export function openConfirmModal(options: OpenConfirmModalOptions, modalOptions?: ModalOptionsRaw) {
     return Modal.create({
         ...DEFAULT_MODAL_OPTIONS,
         ...modalOptions,
-        component: <ConfirmModalContent { ...options } />,
+        component: <ConfirmModalContent {...options} />,
     });
 }
 
@@ -99,7 +99,7 @@ export function ConfirmModalContent({
     const { modal } = useModalContext();
     const [isPending, setIsPending] = useState(false);
 
-    const handleConfirm = async() => {
+    const handleConfirm = async () => {
         if (isPending) {
             return;
         }
@@ -111,8 +111,7 @@ export function ConfirmModalContent({
         try {
             await onConfirm();
             modal.cancel();
-        }
-        catch(error) {
+        } catch (error) {
             setIsPending(false);
             modal.updateOptions({ clickOut, closeOnEscape });
             toast.error({
@@ -125,7 +124,7 @@ export function ConfirmModalContent({
         <Box
             gap="xl"
             padding="xxl"
-            onKeyDown={ (event) => {
+            onKeyDown={event => {
                 if (event.key !== 'Enter' || event.defaultPrevented || isPending) {
                     return;
                 }
@@ -137,42 +136,38 @@ export function ConfirmModalContent({
 
                 event.preventDefault();
                 void handleConfirm();
-            } }
+            }}
         >
             <Box gap="md">
                 <Text variant="heading-3">{title}</Text>
-                {typeof message === 'string'
-                    ? (
-                        <Text variant="md" color="secondary">
-                            {message}
-                        </Text>
-                    )
-                    : message}
+                {typeof message === 'string' ? (
+                    <Text variant="md" color="secondary">
+                        {message}
+                    </Text>
+                ) : (
+                    message
+                )}
             </Box>
 
             <Box
                 direction="row"
                 gap="md"
                 fullWidth
-                justify={ showCancel ? undefined : 'end' }
-                equalWidth={ showCancel || undefined }
+                justify={showCancel ? undefined : 'end'}
+                equalWidth={showCancel || undefined}
             >
-                <Show when={ showCancel }>
-                    <Button
-                        variant="bordered"
-                        isDisabled={ isPending }
-                        onPress={ () => modal.cancel() }
-                    >
+                <Show when={showCancel}>
+                    <Button variant="bordered" isDisabled={isPending} onPress={() => modal.cancel()}>
                         {cancelLabel}
                     </Button>
                 </Show>
 
                 <Button
                     autoFocus
-                    color={ destructive ? 'danger' : 'primary' }
-                    isPending={ isPending }
-                    isDisabled={ isPending }
-                    onPress={ () => void handleConfirm() }
+                    color={destructive ? 'danger' : 'primary'}
+                    isPending={isPending}
+                    isDisabled={isPending}
+                    onPress={() => void handleConfirm()}
                 >
                     {confirmLabel}
                 </Button>

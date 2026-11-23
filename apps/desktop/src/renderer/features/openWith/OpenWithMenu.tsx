@@ -2,8 +2,8 @@ import { For } from '@clowdy/components/For';
 import { Menu, MenuHeader, MenuItem, MenuSection, MenuSeparator, SubmenuTrigger } from '@clowdy/components/List';
 import { Popover, PopoverScroll } from '@clowdy/components/Popover';
 import { toast } from '@clowdy/components/Toast';
-import { Close, Copy, Folder, Follow, Search, Terminal, Version } from '@clowdy/icons/14';
 import { ChevronRight } from '@clowdy/icons/8';
+import { Close, Copy, Folder, Follow, Search, Terminal, Version } from '@clowdy/icons/14';
 import { Github } from '@clowdy/icons/logo';
 
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
@@ -12,7 +12,7 @@ import { currentPlace, isPlaceReady, isSamePlace, placeOf } from '../sidePanel/c
 import { openInTerminal } from '../terminal/openInTerminal';
 import { AppIcon } from './AppIcon';
 import { chosenPrograms, openEffects, useOpenApps } from './openApps';
-import { openActions, type FolderGit, type OpenAction, type OpenTarget } from './openTarget';
+import { type FolderGit, type OpenAction, type OpenTarget, openActions } from './openTarget';
 
 import type { ReactNode } from 'react';
 import type { FolderRepair } from './useFolderRepair';
@@ -33,7 +33,7 @@ export interface OpenWithMenuProps {
 
 /** The icon of an item: the program's own, the Files folder, the Terminal tab's mark, the GitHub mark, or the copy mark. */
 export const actionIcon = (action: OpenAction): ReactNode => {
-    if (action.program) return <AppIcon app={ action.program.app } kind={ action.program.kind } />;
+    if (action.program) return <AppIcon app={action.program.app} kind={action.program.kind} />;
 
     switch (action.id) {
         case 'files':
@@ -41,7 +41,7 @@ export const actionIcon = (action: OpenAction): ReactNode => {
         case 'terminal':
             return <Terminal aria-hidden="true" />;
         case 'github':
-            return <Github size={ 14 } />;
+            return <Github size={14} />;
         default:
             return <Copy aria-hidden="true" />;
     }
@@ -53,7 +53,15 @@ export const actionIcon = (action: OpenAction): ReactNode => {
  * the terminal program, GitHub. One list of items for every place the menu comes from (`openActions`). `Manage worktrees…` is the last item, under a separator
  * (`onManageWorktrees`), which is not an action on a path and so is not in `openActions`.
  */
-export function OpenWithMenu({ target, missing = false, repair, git, onManageWorktrees, onClose, 'aria-label': label }: OpenWithMenuProps) {
+export function OpenWithMenu({
+    target,
+    missing = false,
+    repair,
+    git,
+    onManageWorktrees,
+    onClose,
+    'aria-label': label,
+}: OpenWithMenuProps) {
     const root = useRootStore();
     const project = useProjectState();
     const ui = useProjectUi();
@@ -69,7 +77,10 @@ export function OpenWithMenu({ target, missing = false, repair, git, onManageWor
         missing,
         effects: openEffects,
         inFiles: isHere
-            ? () => void openInFiles(root, target.projectId, place, target.relative).then(opened => !opened && toast.error({ message: 'That path is not on the disk' }))
+            ? () =>
+                  void openInFiles(root, target.projectId, place, target.relative).then(
+                      opened => !opened && toast.error({ message: 'That path is not on the disk' })
+                  )
             : undefined,
         inTerminal: isHere ? () => void openInTerminal(root, target.projectId, place, target.relative) : undefined,
     });
@@ -84,41 +95,67 @@ export function OpenWithMenu({ target, missing = false, repair, git, onManageWor
         else actions.find(action => action.id === key)?.run();
     };
     const item = (action: OpenAction) => (
-        <MenuItem key={ action.id } id={ action.id } icon={ actionIcon(action) } textValue={ action.label } isDisabled={ action.isDisabled }>{ action.label }</MenuItem>
+        <MenuItem
+            key={action.id}
+            id={action.id}
+            icon={actionIcon(action)}
+            textValue={action.label}
+            isDisabled={action.isDisabled}
+        >
+            {action.label}
+        </MenuItem>
     );
 
     return (
         <PopoverScroll>
-            <Menu aria-label={ label } size="sm" onAction={ key => run(String(key)) }>
+            <Menu aria-label={label} size="sm" onAction={key => run(String(key))}>
                 <MenuSection aria-label="Open">
-                    { missing && <MenuHeader>This folder no longer exists</MenuHeader> }
-                    { repair && <MenuItem id="locate" icon={ <Search aria-hidden="true" /> } textValue="Locate…">Locate…</MenuItem> }
-                    { repair?.remove && <MenuItem id="remove" icon={ <Close aria-hidden="true" /> } textValue="Remove from project">Remove from project</MenuItem> }
-                    <For each={ here }>{ item }</For>
+                    {missing && <MenuHeader>This folder no longer exists</MenuHeader>}
+                    {repair && (
+                        <MenuItem id="locate" icon={<Search aria-hidden="true" />} textValue="Locate…">
+                            Locate…
+                        </MenuItem>
+                    )}
+                    {repair?.remove && (
+                        <MenuItem id="remove" icon={<Close aria-hidden="true" />} textValue="Remove from project">
+                            Remove from project
+                        </MenuItem>
+                    )}
+                    <For each={here}>{item}</For>
                 </MenuSection>
-                { outside.length > 0 && (
+                {outside.length > 0 && (
                     <>
                         <MenuSeparator />
                         <MenuSection aria-label="Other programs">
                             <SubmenuTrigger>
-                                <MenuItem id="outside" icon={ <Follow aria-hidden="true" /> } textValue="Open in…" isDisabled={ outside.every(action => action.isDisabled) } endAffix={ <ChevronRight /> }>Open in…</MenuItem>
+                                <MenuItem
+                                    id="outside"
+                                    icon={<Follow aria-hidden="true" />}
+                                    textValue="Open in…"
+                                    isDisabled={outside.every(action => action.isDisabled)}
+                                    endAffix={<ChevronRight />}
+                                >
+                                    Open in…
+                                </MenuItem>
                                 <Popover spacing="xs">
-                                    <Menu aria-label="Open in" size="sm" onAction={ key => run(String(key)) }>
-                                        <For each={ outside }>{ item }</For>
+                                    <Menu aria-label="Open in" size="sm" onAction={key => run(String(key))}>
+                                        <For each={outside}>{item}</For>
                                     </Menu>
                                 </Popover>
                             </SubmenuTrigger>
                         </MenuSection>
                     </>
-                ) }
-                { onManageWorktrees && (
+                )}
+                {onManageWorktrees && (
                     <>
                         <MenuSeparator />
                         <MenuSection aria-label="Worktrees">
-                            <MenuItem id="manage" icon={ <Version aria-hidden="true" /> } textValue="Manage worktrees…">Manage worktrees…</MenuItem>
+                            <MenuItem id="manage" icon={<Version aria-hidden="true" />} textValue="Manage worktrees…">
+                                Manage worktrees…
+                            </MenuItem>
                         </MenuSection>
                     </>
-                ) }
+                )}
             </Menu>
         </PopoverScroll>
     );

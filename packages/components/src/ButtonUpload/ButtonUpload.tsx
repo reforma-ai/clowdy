@@ -11,12 +11,7 @@ export interface ButtonUploadProps extends Omit<ButtonProps, 'onPress'> {
     children: ReactNode;
 }
 
-export function ButtonUpload({
-    onFileSelect,
-    accept,
-    children,
-    ...buttonProps
-}: ButtonUploadProps) {
+export function ButtonUpload({ onFileSelect, accept, children, ...buttonProps }: ButtonUploadProps) {
     const inputRef = useRef<HTMLInputElement>(null);
 
     const handlePress = useCallback(() => {
@@ -34,15 +29,9 @@ export function ButtonUpload({
 
     return (
         <>
-            <input
-                ref={ inputRef }
-                type="file"
-                accept={ accept }
-                style={ { display: 'none' } }
-                onChange={ handleChange }
-            />
-            <Button { ...buttonProps } onPress={ handlePress }>
-                { children }
+            <input ref={inputRef} type="file" accept={accept} style={{ display: 'none' }} onChange={handleChange} />
+            <Button {...buttonProps} onPress={handlePress}>
+                {children}
             </Button>
         </>
     );

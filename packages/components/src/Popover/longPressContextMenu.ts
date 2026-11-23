@@ -43,14 +43,26 @@ export function installLongPressContextMenu(doc: Document = document): () => voi
         if (!target.isConnected) return;
 
         const { clientX, clientY, screenX, screenY, pointerId } = event;
-        const menu = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, composed: true, view: win, button: 2, clientX, clientY, screenX, screenY });
+        const menu = new MouseEvent('contextmenu', {
+            bubbles: true,
+            cancelable: true,
+            composed: true,
+            view: win,
+            button: 2,
+            clientX,
+            clientY,
+            screenX,
+            screenY,
+        });
 
         // `dispatchEvent` is false when a handler prevented the default, which is what a handler that opens a menu does.
         if (target.dispatchEvent(menu)) return;
 
         swallowClick = true;
         firedAt = performance.now();
-        target.dispatchEvent(new PointerEvent('pointercancel', { bubbles: true, pointerId, pointerType: 'touch', isPrimary: true }));
+        target.dispatchEvent(
+            new PointerEvent('pointercancel', { bubbles: true, pointerId, pointerType: 'touch', isPrimary: true })
+        );
     };
 
     const onPointerDown = (event: PointerEvent) => {
@@ -60,9 +72,19 @@ export function installLongPressContextMenu(doc: Document = document): () => voi
 
         const { target } = event;
 
-        if (event.pointerType !== 'touch' || !event.isPrimary || !(target instanceof Element) || target.closest(EDITABLE)) return;
+        if (
+            event.pointerType !== 'touch' ||
+            !event.isPrimary ||
+            !(target instanceof Element) ||
+            target.closest(EDITABLE)
+        )
+            return;
 
-        holding = { x: event.clientX, y: event.clientY, timer: win.setTimeout(() => press(target, event), LONG_PRESS_MS) };
+        holding = {
+            x: event.clientX,
+            y: event.clientY,
+            timer: win.setTimeout(() => press(target, event), LONG_PRESS_MS),
+        };
     };
 
     const onPointerMove = (event: PointerEvent) => {
@@ -75,8 +97,7 @@ export function installLongPressContextMenu(doc: Document = document): () => voi
 
         if (holding) {
             stop();
-        }
-        else if (performance.now() - firedAt < NATIVE_ECHO_MS) {
+        } else if (performance.now() - firedAt < NATIVE_ECHO_MS) {
             event.preventDefault();
             event.stopImmediatePropagation();
         }

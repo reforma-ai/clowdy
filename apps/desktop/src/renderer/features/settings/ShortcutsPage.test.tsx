@@ -13,7 +13,13 @@ let root: Root;
 const sections = () => [...container.querySelectorAll('section[aria-label]')];
 const sectionNamed = (name: string) => sections().find(section => section.getAttribute('aria-label') === name)!;
 /** A row is the block that holds a command's title and its keys. */
-const rowOf = (title: string) => [...container.querySelectorAll('div')].find(element => element.children.length === 2 && element.firstElementChild?.textContent === title && element.querySelector('[data-hotkey]'))!;
+const rowOf = (title: string) =>
+    [...container.querySelectorAll('div')].find(
+        element =>
+            element.children.length === 2 &&
+            element.firstElementChild?.textContent === title &&
+            element.querySelector('[data-hotkey]')
+    )!;
 const keysOf = (row: Element) => [...row.querySelectorAll('[data-hotkey]')].map(element => element.textContent);
 
 beforeEach(() => {

@@ -21,20 +21,18 @@ class LocalStorageService {
 
         try {
             data = JSON.parse(rawData);
-        }
-        catch (err) {
+        } catch (err) {
             // It's not JSON, treat as plain string
             data = rawData;
         }
 
         try {
-            if (data && typeof data === 'object' && ('expire' in data) && ('value' in data)) {
+            if (data && typeof data === 'object' && 'expire' in data && 'value' in data) {
                 return data.expire > Date.now() ? data.value : null;
             }
 
             return data as T;
-        }
-        catch (err) {
+        } catch (err) {
             return null;
         }
     }
@@ -42,7 +40,7 @@ class LocalStorageService {
     /**
      * Set value to localStorage or sessionStorage with optional expiration
      */
-    set<T = any>(key: string, value: T, expire?: number | 'session' | `${ number }${ 'd' | 'h' | 'm' }`) {
+    set<T = any>(key: string, value: T, expire?: number | 'session' | `${number}${'d' | 'h' | 'm'}`) {
         this.remove(key);
 
         // Set to session storage
@@ -59,12 +57,14 @@ class LocalStorageService {
 
         // Set to local storage with expire flag
         if (expire && typeof expire == 'number') {
-            this.#set(key, JSON.stringify({
-                value,
-                expire: Date.now() + expire,
-            }));
-        }
-        else {
+            this.#set(
+                key,
+                JSON.stringify({
+                    value,
+                    expire: Date.now() + expire,
+                })
+            );
+        } else {
             this.#set(key, typeof value === 'object' ? JSON.stringify(value) : String(value));
         }
 
@@ -122,7 +122,7 @@ class LocalStorageService {
         const callbacks = this.#subscribers.get(key);
 
         if (callbacks) {
-            callbacks.forEach((callback) => {
+            callbacks.forEach(callback => {
                 callback(this.get(key));
             });
         }

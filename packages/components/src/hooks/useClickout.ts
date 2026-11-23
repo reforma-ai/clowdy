@@ -15,9 +15,7 @@ export type UseClickoutOptions = {
     event?: UseClickoutEvent;
 };
 
-function isSingleRootRef(
-    roots: UseClickoutOptions['roots']
-): roots is RefObject<Element | null> {
+function isSingleRootRef(roots: UseClickoutOptions['roots']): roots is RefObject<Element | null> {
     return !Array.isArray(roots);
 }
 

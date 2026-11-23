@@ -61,7 +61,10 @@ function titleOf(item: StreamItem, body: UserBody): string {
 
     if (text !== '') return text;
 
-    return (body.attachments ?? []).map(file => file.name).filter(name => name !== '').join(', ');
+    return (body.attachments ?? [])
+        .map(file => file.name)
+        .filter(name => name !== '')
+        .join(', ');
 }
 
 /**
@@ -91,12 +94,13 @@ export function turnMarks(items: readonly StreamItem[]): TurnMark[] {
 
 /** Scroll the stream so the person's message sits just under the top. No-op when the message is not in it. */
 export function scrollStreamToTurn(scroll: HTMLElement, id: string) {
-    const message = scroll.querySelector<HTMLElement>(`[data-turn="${ CSS.escape(id) }"]`);
+    const message = scroll.querySelector<HTMLElement>(`[data-turn="${CSS.escape(id)}"]`);
 
     if (!message) return;
 
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const top = message.getBoundingClientRect().top - scroll.getBoundingClientRect().top + scroll.scrollTop - JUMP_INSET;
+    const top =
+        message.getBoundingClientRect().top - scroll.getBoundingClientRect().top + scroll.scrollTop - JUMP_INSET;
 
     scroll.scrollTo({ top: Math.max(0, top), behavior: reduce ? 'auto' : 'smooth' });
 }

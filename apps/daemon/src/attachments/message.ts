@@ -1,7 +1,7 @@
 /** `214 KB`, `3 KB`, `1.5 MB`: whole numbers from ten up, one decimal below, bytes under a kilobyte. */
 export function formatSize(bytes: number): string {
     if (bytes < 1024) {
-        return `${ bytes } B`;
+        return `${bytes} B`;
     }
 
     const units = ['KB', 'MB', 'GB'];
@@ -15,11 +15,11 @@ export function formatSize(bytes: number): string {
         unit++;
     }
 
-    return `${ round(value) } ${ units[unit] }`;
+    return `${round(value)} ${units[unit]}`;
 }
 
 /** A path the way a message mentions a file: `@src/a.ts`, and `@"my notes.md"` when it holds whitespace (as the composer writes it). */
-const pathMention = (path: string) => (/\s/.test(path) ? `@"${ path }"` : `@${ path }`);
+const pathMention = (path: string) => (/\s/.test(path) ? `@"${path}"` : `@${path}`);
 
 export interface AgentFile {
     path: string;
@@ -36,7 +36,10 @@ export function messageWithFiles(text: string, files: AgentFile[]): string {
         return text;
     }
 
-    const block = ['Attached files:', ...files.map(file => `- ${ pathMention(file.path) } (${ file.mediaType }, ${ formatSize(file.size) })`)].join('\n');
+    const block = [
+        'Attached files:',
+        ...files.map(file => `- ${pathMention(file.path)} (${file.mediaType}, ${formatSize(file.size)})`),
+    ].join('\n');
 
-    return text ? `${ text }\n\n${ block }` : block;
+    return text ? `${text}\n\n${block}` : block;
 }

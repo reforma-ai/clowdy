@@ -16,27 +16,29 @@ const ROWS = [
  */
 export function WorktreesSkeleton() {
     return (
-        <div className={ styles.group } aria-busy="true">
-            <span className={ styles.visuallyHidden } role="status">Loading worktrees…</span>
+        <div className={styles.group} aria-busy="true">
+            <span className={styles.visuallyHidden} role="status">
+                Loading worktrees…
+            </span>
             <Text as="h3" variant="heading-5" aria-hidden="true">
-                <ShimmerBlock className={ styles.skeletonName } />
+                <ShimmerBlock className={styles.skeletonName} />
             </Text>
-            <ul className={ styles.card } aria-hidden="true" data-skeleton="">
-                { ROWS.map(({ title, facts }) => (
-                    <li key={ title } className={ styles.row }>
-                        <span className={ styles.icon }>
-                            <ShimmerBlock className={ styles.skeletonIcon } />
+            <ul className={styles.card} aria-hidden="true" data-skeleton="">
+                {ROWS.map(({ title, facts }) => (
+                    <li key={title} className={styles.row}>
+                        <span className={styles.icon}>
+                            <ShimmerBlock className={styles.skeletonIcon} />
                         </span>
-                        <span className={ styles.text }>
-                            <span className={ styles.title }>
-                                <ShimmerBlock className={ styles.skeletonLine } style={ { width: title } } />
+                        <span className={styles.text}>
+                            <span className={styles.title}>
+                                <ShimmerBlock className={styles.skeletonLine} style={{ width: title }} />
                             </span>
-                            <span className={ styles.facts }>
-                                <ShimmerBlock className={ styles.skeletonLine } style={ { width: facts } } />
+                            <span className={styles.facts}>
+                                <ShimmerBlock className={styles.skeletonLine} style={{ width: facts }} />
                             </span>
                         </span>
                     </li>
-                )) }
+                ))}
             </ul>
         </div>
     );

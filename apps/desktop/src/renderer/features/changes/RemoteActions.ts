@@ -1,9 +1,9 @@
 import { errorMessage } from '@clowdy/lib';
 import { makeAutoObservable, runInAction } from 'mobx';
 
-import { TransportError, type Transport } from '../../daemon/transport';
-import { remoteCall, remoteNotice, type RemoteActionId } from './changesActions';
-import { placeRef, type PlaceFacts } from './gitFacts';
+import { type Transport, TransportError } from '../../daemon/transport';
+import { type RemoteActionId, remoteCall, remoteNotice } from './changesActions';
+import { type PlaceFacts, placeRef } from './gitFacts';
 
 import type { GitRemoteResult } from '@clowdy/protocol';
 
@@ -45,7 +45,11 @@ export class RemoteActions {
         /** Asks for a new round of reads of the place (`GitFacts.refresh`). */
         private readonly refresh: () => void
     ) {
-        makeAutoObservable<RemoteActions, 'transport' | 'refresh'>(this, { facts: false, transport: false, refresh: false });
+        makeAutoObservable<RemoteActions, 'transport' | 'refresh'>(this, {
+            facts: false,
+            transport: false,
+            refresh: false,
+        });
     }
 
     /** An action is running. */
@@ -68,24 +72,30 @@ export class RemoteActions {
         this.#forget();
 
         try {
-            const result = await (call === 'fetch' ? this.transport.fetchGit(key.projectId, place) : call === 'pull' ? this.transport.pullGit(key.projectId, place) : this.transport.pushGit(key.projectId, place));
+            const result = await (call === 'fetch'
+                ? this.transport.fetchGit(key.projectId, place)
+                : call === 'pull'
+                  ? this.transport.pullGit(key.projectId, place)
+                  : this.transport.pushGit(key.projectId, place));
 
             runInAction(() => {
                 if (report) this.#say(remoteNotice(result));
             });
 
             return { ok: true, result };
-        }
-        catch (error) {
-            const failure: RemoteFailure = { action: id, message: errorMessage(error), ...(error instanceof TransportError && error.hint !== undefined && { hint: error.hint }) };
+        } catch (error) {
+            const failure: RemoteFailure = {
+                action: id,
+                message: errorMessage(error),
+                ...(error instanceof TransportError && error.hint !== undefined && { hint: error.hint }),
+            };
 
             runInAction(() => {
                 if (report) this.failure = failure;
             });
 
             return { ok: false, failure };
-        }
-        finally {
+        } finally {
             runInAction(() => {
                 this.running = undefined;
             });

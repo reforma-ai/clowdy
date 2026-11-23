@@ -36,18 +36,16 @@ export interface Logger {
  * Create a simple logger with a name prefix
  */
 export function createLogger(name: string): Logger {
-    const prefix = `[${ name }]`;
+    const prefix = `[${name}]`;
 
     return {
         debug: (...args: any[]) => {
             if (['debug'].includes(logLevel)) {
-                // eslint-disable-next-line no-console
                 console.debug(prefix, ...args);
             }
         },
         info: (...args: any[]) => {
             if (['debug', 'info'].includes(logLevel)) {
-                // eslint-disable-next-line no-console
                 console.info(prefix, ...args);
             }
         },
@@ -63,7 +61,6 @@ export function createLogger(name: string): Logger {
         },
     };
 }
-
 
 // Default logger instance
 export const logger = createLogger('App');

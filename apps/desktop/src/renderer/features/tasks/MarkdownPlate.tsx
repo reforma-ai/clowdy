@@ -14,8 +14,8 @@ export interface MarkdownPlateProps extends MarkdownEditorProps {
  */
 export function MarkdownPlate({ isBounded, className, ...props }: MarkdownPlateProps) {
     return (
-        <div className={ styles.plate } data-bounded={ isBounded || undefined }>
-            <MarkdownEditor { ...props } className={ cn(styles.editor, className) } />
+        <div className={styles.plate} data-bounded={isBounded || undefined}>
+            <MarkdownEditor {...props} className={cn(styles.editor, className)} />
         </div>
     );
 }

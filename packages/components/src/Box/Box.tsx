@@ -8,7 +8,15 @@ import type { ComponentPropsWithoutRef, ComponentPropsWithRef, ElementType } fro
 import type { SlotProps } from 'react-aria-components';
 import type { Align, Direction, Justify, Spacing, Wrap } from '../types.ts';
 
-export type BoxBackground = 'primary' | 'secondary' | 'success' | 'warning' | 'danger' | 'contrast' | 'surface' | 'background';
+export type BoxBackground =
+    | 'primary'
+    | 'secondary'
+    | 'success'
+    | 'warning'
+    | 'danger'
+    | 'contrast'
+    | 'surface'
+    | 'background';
 
 /** Border radius token (`xs`…`xl`, or `full` for a pill). */
 export type BoxRadius = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'full';
@@ -136,15 +144,12 @@ export type BoxOwnProps = {
     equalWidth?: boolean;
 };
 
-export type BoxProps<E extends ElementType = 'div'> = BoxOwnProps
-  & Omit<ComponentPropsWithRef<E>, keyof BoxOwnProps> & {
-      as?: E;
-  };
+export type BoxProps<E extends ElementType = 'div'> = BoxOwnProps &
+    Omit<ComponentPropsWithRef<E>, keyof BoxOwnProps> & {
+        as?: E;
+    };
 
-type BoxHtmlProps<E extends ElementType> = Omit<
-    ComponentPropsWithoutRef<E>,
-    keyof BoxOwnProps | 'as'
->;
+type BoxHtmlProps<E extends ElementType> = Omit<ComponentPropsWithoutRef<E>, keyof BoxOwnProps | 'as'>;
 
 export function Box<E extends ElementType = 'div'>({
     as,
@@ -182,7 +187,7 @@ export function Box<E extends ElementType = 'div'>({
     /** Forward HTML `slot` only when a string; RAC’s internal Symbol slot breaks React 19. */
     const slotProp = typeof rest.slot === 'string' ? { slot: rest.slot } : {};
 
-    const Component = (as ?? 'div');
+    const Component = as ?? 'div';
     const normalizedPaddingX: PaddingValue | undefined = paddingX ?? padding;
     const normalizedPaddingY: PaddingValue | undefined = paddingY ?? padding;
     const isGrid = columns != null;

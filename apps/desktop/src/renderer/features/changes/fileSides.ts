@@ -38,13 +38,14 @@ export type SidesEntry =
 export type ReadSides = (request: SidesRequest) => Promise<GitFileSides>;
 
 /** What a file's texts are kept under: the scope, the path and the revision, so a list that is read again asks only for the files that changed. */
-export const sidesKey = ({ scope, path, revision }: SidesRequest): string => `${ scope }\n${ path }\n${ revision }`;
+export const sidesKey = ({ scope, path, revision }: SidesRequest): string => `${scope}\n${path}\n${revision}`;
 
 /** What a file is called whatever its revision: its scope and path. */
-const fileKey = ({ scope, path }: Pick<SidesRequest, 'scope' | 'path'>): string => `${ scope }\n${ path }`;
+const fileKey = ({ scope, path }: Pick<SidesRequest, 'scope' | 'path'>): string => `${scope}\n${path}`;
 
 /** How many characters of text a file's texts hold. */
-const charsOf = (sides: GitFileSides): number => (sides.state === 'text' ? (sides.original?.length ?? 0) + (sides.modified?.length ?? 0) : 0);
+const charsOf = (sides: GitFileSides): number =>
+    sides.state === 'text' ? (sides.original?.length ?? 0) + (sides.modified?.length ?? 0) : 0;
 
 /**
  * The texts of the files of one place's changes, read when a card asks (`want`) and kept under the file's scope, path and revision. At most `SIDES_CONCURRENCY` reads run at
@@ -125,8 +126,7 @@ export class SidesCache {
 
         try {
             entry = { status: 'ready', sides: await this.read(request) };
-        }
-        catch (error) {
+        } catch (error) {
             entry = { status: 'error', message: errorMessage(error) };
         }
 

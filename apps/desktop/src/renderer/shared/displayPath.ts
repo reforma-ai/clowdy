@@ -25,7 +25,9 @@ export function tildePath(path: string, home: string | undefined): string {
 
     const next = path[root.length];
 
-    return same(path.slice(0, root.length), root) && (next === '/' || next === '\\') ? `~${ path.slice(root.length) }` : path;
+    return same(path.slice(0, root.length), root) && (next === '/' || next === '\\')
+        ? `~${path.slice(root.length)}`
+        : path;
 }
 
 /**

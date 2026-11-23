@@ -1,4 +1,4 @@
-import { createContext, use, type ReactNode } from 'react';
+import { createContext, type ReactNode, use } from 'react';
 
 import type { ShikiHighlighterProps } from 'react-shiki';
 
@@ -28,11 +28,7 @@ export function CodeHighlighterDefaultsProvider({
     value: CodeHighlighterDefaults;
     children: ReactNode;
 }) {
-    return (
-        <CodeHighlighterDefaultsContext value={ value }>
-            { children }
-        </CodeHighlighterDefaultsContext>
-    );
+    return <CodeHighlighterDefaultsContext value={value}>{children}</CodeHighlighterDefaultsContext>;
 }
 
 CodeHighlighterDefaultsProvider.displayName = 'CodeHighlighterDefaultsProvider';

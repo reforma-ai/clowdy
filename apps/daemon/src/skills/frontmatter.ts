@@ -15,9 +15,7 @@ export function isValidSkillName(name: string): boolean {
     return name.length <= MAX_NAME_CHARS && NAME_PATTERN.test(name) && !name.includes('..');
 }
 
-export type ParsedSkill =
-    | { ok: true; description: string; truncated: boolean }
-    | { ok: false; reason: string };
+export type ParsedSkill = { ok: true; description: string; truncated: boolean } | { ok: false; reason: string };
 
 /**
  * Reads what a catalog needs from a SKILL.md: a description (required) and, when `name` is given, a name that
@@ -34,8 +32,7 @@ export function parseSkillFile(raw: string, folder: string): ParsedSkill {
 
     try {
         data = Bun.YAML.parse(block[1] ?? '') ?? {};
-    }
-    catch {
+    } catch {
         return { ok: false, reason: 'its front matter is not valid YAML (quote values that contain a colon)' };
     }
 
@@ -46,7 +43,7 @@ export function parseSkillFile(raw: string, folder: string): ParsedSkill {
     const { name, description } = data as Record<string, unknown>;
 
     if (name !== undefined && String(name) !== folder) {
-        return { ok: false, reason: `its name "${ String(name) }" differs from the folder name` };
+        return { ok: false, reason: `its name "${String(name)}" differs from the folder name` };
     }
 
     const text = typeof description === 'string' ? description.replace(/\s+/g, ' ').trim() : '';
@@ -55,5 +52,9 @@ export function parseSkillFile(raw: string, folder: string): ParsedSkill {
         return { ok: false, reason: 'it has no description' };
     }
 
-    return { ok: true, description: text.slice(0, MAX_DESCRIPTION_CHARS), truncated: text.length > MAX_DESCRIPTION_CHARS };
+    return {
+        ok: true,
+        description: text.slice(0, MAX_DESCRIPTION_CHARS),
+        truncated: text.length > MAX_DESCRIPTION_CHARS,
+    };
 }

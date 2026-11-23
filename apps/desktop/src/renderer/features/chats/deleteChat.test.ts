@@ -1,7 +1,6 @@
 // @vitest-environment happy-dom
 import { openConfirmModal } from '@clowdy/components/modals';
-import { createElement, type ReactNode } from 'react';
-import { act } from 'react';
+import { act, createElement, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -22,12 +21,18 @@ vi.mock('@clowdy/components/Toast', () => ({ toast: { error: vi.fn(), info: vi.f
 
 describe('deleteMessage', () => {
     it('names the chat and the runs of its agents when it has no threads', () => {
-        expect(deleteMessage({ title: 'Fix login' }, 0)).toBe('"Fix login" and the runs of its agents are deleted for good. The tasks it made stay.');
+        expect(deleteMessage({ title: 'Fix login' }, 0)).toBe(
+            '"Fix login" and the runs of its agents are deleted for good. The tasks it made stay.'
+        );
     });
 
     it('says how many threads go with the chat', () => {
-        expect(deleteMessage({ title: 'Ship it' }, 1)).toBe('"Ship it", its thread and the runs of their agents are deleted for good. The tasks they made stay.');
-        expect(deleteMessage({ title: 'Ship it' }, 5)).toBe('"Ship it", its 5 threads and the runs of their agents are deleted for good. The tasks they made stay.');
+        expect(deleteMessage({ title: 'Ship it' }, 1)).toBe(
+            '"Ship it", its thread and the runs of their agents are deleted for good. The tasks they made stay.'
+        );
+        expect(deleteMessage({ title: 'Ship it' }, 5)).toBe(
+            '"Ship it", its 5 threads and the runs of their agents are deleted for good. The tasks they made stay.'
+        );
     });
 });
 
@@ -40,12 +45,14 @@ let store: RootStore;
 let workspaceChat: Chat;
 
 /** The daemon takes every delete: the commands are only watched, so the chat is still there for the next press. */
-const deletes = () => vi.spyOn(store, 'command').mockResolvedValue({ ok: true, requestId: 'r', data: { chatId: workspaceChat.id } });
+const deletes = () =>
+    vi.spyOn(store, 'command').mockResolvedValue({ ok: true, requestId: 'r', data: { chatId: workspaceChat.id } });
 const opened = () => vi.mocked(openConfirmModal).mock.calls.at(-1)![0];
 const checkbox = () => container.querySelector<HTMLInputElement>('input[type="checkbox"]');
-const settle = () => act(async () => {
-    await new Promise(resolve => setTimeout(resolve, 0));
-});
+const settle = () =>
+    act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 0));
+    });
 /** Draws what the confirmation holds, as the dialog would, and waits for the answer of the read. */
 async function show(message: ReactNode) {
     await act(async () => view.render(message));
@@ -111,7 +118,11 @@ describe('deleteChat', () => {
         await act(async () => checkbox()!.click());
         expect(checkbox()!.checked).toBe(true);
         await confirm();
-        expect(command).toHaveBeenLastCalledWith({ type: 'chat.delete', chatId: workspaceChat.id, removeWorkspace: true });
+        expect(command).toHaveBeenLastCalledWith({
+            type: 'chat.delete',
+            chatId: workspaceChat.id,
+            removeWorkspace: true,
+        });
 
         await act(async () => checkbox()!.click());
         expect(checkbox()!.checked).toBe(false);
@@ -120,7 +131,11 @@ describe('deleteChat', () => {
     });
 
     it('has no checkbox when the daemon says the worktree cannot be removed', async () => {
-        const answer: ChatWorkspaceRemoval = { removable: false, path: workspaceChat.workspace!.path, branch: workspaceChat.workspace!.branch };
+        const answer: ChatWorkspaceRemoval = {
+            removable: false,
+            path: workspaceChat.workspace!.path,
+            branch: workspaceChat.workspace!.branch,
+        };
 
         vi.spyOn(transport, 'getChatWorkspaceRemoval').mockResolvedValue(answer);
         deleteChat(store, workspaceChat, true, 0);
@@ -159,8 +174,12 @@ describe('deleteChat', () => {
         expect(checkbox()).toBeNull();
     });
 
-    it('keeps the dialog open with the daemon\'s reason when it refuses the delete, so the box can be unticked', async () => {
-        vi.spyOn(store, 'command').mockResolvedValue({ ok: false, requestId: 'r', error: { code: 'conflict', message: 'The worktree has changes that are not committed' } });
+    it("keeps the dialog open with the daemon's reason when it refuses the delete, so the box can be unticked", async () => {
+        vi.spyOn(store, 'command').mockResolvedValue({
+            ok: false,
+            requestId: 'r',
+            error: { code: 'conflict', message: 'The worktree has changes that are not committed' },
+        });
         deleteChat(store, workspaceChat, true, 0);
         await show(opened().message);
         await act(async () => checkbox()!.click());
@@ -182,9 +201,13 @@ describe('deleteChat', () => {
     });
 });
 
-describe('the fixture transport\'s answer', () => {
+describe("the fixture transport's answer", () => {
     it('is removable for a worktree Clowdy made that no other chat uses, and carries its path and branch', async () => {
-        await expect(transport.getChatWorkspaceRemoval(workspaceChat.id)).resolves.toEqual({ removable: true, path: workspaceChat.workspace!.path, branch: workspaceChat.workspace!.branch });
+        await expect(transport.getChatWorkspaceRemoval(workspaceChat.id)).resolves.toEqual({
+            removable: true,
+            path: workspaceChat.workspace!.path,
+            branch: workspaceChat.workspace!.branch,
+        });
         await expect(transport.getChatWorkspaceRemoval('c-4')).resolves.toEqual({ removable: false });
         await expect(transport.getChatWorkspaceRemoval('c-missing')).rejects.toMatchObject({ status: 404 });
     });
@@ -198,7 +221,9 @@ describe('the fixture transport\'s answer', () => {
         const shared = new FixtureTransport({ data });
 
         await expect(shared.getChatWorkspaceRemoval(source.id)).resolves.toMatchObject({ removable: false });
-        await expect(shared.command({ type: 'chat.delete', chatId: source.id, removeWorkspace: true })).resolves.toMatchObject({ ok: false, error: { code: 'conflict' } });
+        await expect(
+            shared.command({ type: 'chat.delete', chatId: source.id, removeWorkspace: true })
+        ).resolves.toMatchObject({ ok: false, error: { code: 'conflict' } });
         await expect(shared.command({ type: 'chat.delete', chatId: source.id })).resolves.toMatchObject({ ok: true });
     });
 
@@ -207,6 +232,8 @@ describe('the fixture transport\'s answer', () => {
         const source = data.chats.find(chat => chat.id === FIXTURE_WORKSPACE_CHAT_ID)!;
 
         data.chats.push({ ...source, id: 'c-thread', title: 'Thread', parentChatId: source.id });
-        await expect(new FixtureTransport({ data }).getChatWorkspaceRemoval(source.id)).resolves.toMatchObject({ removable: true });
+        await expect(new FixtureTransport({ data }).getChatWorkspaceRemoval(source.id)).resolves.toMatchObject({
+            removable: true,
+        });
     });
 });

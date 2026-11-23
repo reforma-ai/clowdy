@@ -9,7 +9,8 @@ import type { Attachment, Chat, ProjectId, StreamItem } from '@clowdy/protocol';
 import type { RootStore } from '../../stores';
 
 /** What lets go of a file uploaded for an edit that did not go through: nobody will send it, so the daemon need not keep it. */
-const deleteUnsent = (root: RootStore, projectId: ProjectId) => (attachment: Attachment) => void root.transport.deleteAttachment(projectId, attachment.id).catch(() => undefined);
+const deleteUnsent = (root: RootStore, projectId: ProjectId) => (attachment: Attachment) =>
+    void root.transport.deleteAttachment(projectId, attachment.id).catch(() => undefined);
 
 export interface EditMessageOptions {
     chat: Chat;
@@ -41,13 +42,16 @@ export function useEditMessage({ chat, items, ready, writable, attachmentBlob }:
     const busy = useRef(false);
 
     /** Ends the session. `keepFiles` when the daemon has the files to use: the edit went through, or is on its way and would be refused one that was deleted. */
-    const close = useCallback((keepFiles = false) => {
-        if (open.current === undefined) return;
+    const close = useCallback(
+        (keepFiles = false) => {
+            if (open.current === undefined) return;
 
-        endEditSession(open.current, keepFiles ? undefined : deleteUnsent(root, projectId));
-        open.current = undefined;
-        setItemId(undefined);
-    }, [root, projectId]);
+            endEditSession(open.current, keepFiles ? undefined : deleteUnsent(root, projectId));
+            open.current = undefined;
+            setItemId(undefined);
+        },
+        [root, projectId]
+    );
 
     // Leaving the chat takes the session with it, and nobody is left to send the files uploaded for it, unless an edit is on its way.
     useEffect(() => () => close(busy.current), [close]);
@@ -86,12 +90,17 @@ export function useEditMessage({ chat, items, ready, writable, attachmentBlob }:
         setPending(true);
 
         try {
-            const result = await root.command({ type: 'chat.edit', chatId: chat.id, itemId, text, ...(attachmentIds.length > 0 && { attachmentIds }) });
+            const result = await root.command({
+                type: 'chat.edit',
+                chatId: chat.id,
+                itemId,
+                text,
+                ...(attachmentIds.length > 0 && { attachmentIds }),
+            });
 
             if (result.ok) close(true);
-            else toast.error({ message: result.error.message || 'Couldn\'t edit the message' });
-        }
-        finally {
+            else toast.error({ message: result.error.message || "Couldn't edit the message" });
+        } finally {
             busy.current = false;
             setPending(false);
         }

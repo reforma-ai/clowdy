@@ -41,43 +41,74 @@ export function ProjectRow({ project, info, onManage, onOpen, onRemove }: Projec
 
     return (
         <CardRow
-            onPress={ onManage }
-            pressProps={ { 'data-project-id': project.id } }
-            icon={ <ProjectIcon project={ project } size={ 20 } /> }
-            title={ <Text variant="md" weight="medium" truncate>{ project.name }</Text> }
-            marks={ (
+            onPress={onManage}
+            pressProps={{ 'data-project-id': project.id }}
+            icon={<ProjectIcon project={project} size={20} />}
+            title={
+                <Text variant="md" weight="medium" truncate>
+                    {project.name}
+                </Text>
+            }
+            marks={
                 <>
-                    { missing && <Badge size="xs" color="warning" textValue="Folder missing">Folder missing</Badge> }
-                    { holdings.map(text => <Badge key={ text } size="xs" textValue={ text }>{ text }</Badge>) }
+                    {missing && (
+                        <Badge size="xs" color="warning" textValue="Folder missing">
+                            Folder missing
+                        </Badge>
+                    )}
+                    {holdings.map(text => (
+                        <Badge key={text} size="xs" textValue={text}>
+                            {text}
+                        </Badge>
+                    ))}
                 </>
-            ) }
-            actions={ (
+            }
+            actions={
                 <MenuTrigger>
-                    <Button variant="filling" color="secondary" size="sm" iconOnly aria-label={ `${ project.name } actions` }>
+                    <Button
+                        variant="filling"
+                        color="secondary"
+                        size="sm"
+                        iconOnly
+                        aria-label={`${project.name} actions`}
+                    >
                         <More />
                     </Button>
-                    <Popover placement="bottom end" width={ 200 }>
+                    <Popover placement="bottom end" width={200}>
                         <Menu
-                            aria-label={ `${ project.name } actions` }
+                            aria-label={`${project.name} actions`}
                             size="md"
-                            onAction={ (key) => {
+                            onAction={key => {
                                 if (key === CONFIGURE) onManage();
                                 else if (key === OPEN) onOpen();
                                 else if (key === REMOVE) onRemove?.();
-                            } }
+                            }}
                         >
-                            <MenuItem id={ CONFIGURE } text="Configure" icon={ <Sliders /> } />
-                            <MenuItem id={ OPEN } text="Open project" icon={ <Folder /> } />
-                            { onRemove && <MenuSeparator /> }
-                            { onRemove && <MenuItem id={ REMOVE } text="Remove…" icon={ <Trash /> } isDanger isDisabled={ (info?.activeRuns ?? 0) > 0 } /> }
+                            <MenuItem id={CONFIGURE} text="Configure" icon={<Sliders />} />
+                            <MenuItem id={OPEN} text="Open project" icon={<Folder />} />
+                            {onRemove && <MenuSeparator />}
+                            {onRemove && (
+                                <MenuItem
+                                    id={REMOVE}
+                                    text="Remove…"
+                                    icon={<Trash />}
+                                    isDanger
+                                    isDisabled={(info?.activeRuns ?? 0) > 0}
+                                />
+                            )}
                         </Menu>
                     </Popover>
                 </MenuTrigger>
-            ) }
+            }
         >
-            <span className={ styles.where } title={ more > 0 ? project.folders.map(folder => folder.path).join('\n') : path }>
-                <PathText path={ path } variant="sm" color="secondary" />
-                { more > 0 && <Text variant="sm" color="secondary" className={ styles.more }>{ `+${ plural(more, 'folder') }` }</Text> }
+            <span
+                className={styles.where}
+                title={more > 0 ? project.folders.map(folder => folder.path).join('\n') : path}
+            >
+                <PathText path={path} variant="sm" color="secondary" />
+                {more > 0 && (
+                    <Text variant="sm" color="secondary" className={styles.more}>{`+${plural(more, 'folder')}`}</Text>
+                )}
             </span>
         </CardRow>
     );

@@ -41,40 +41,45 @@ export function ParentRow({ task, parent, candidates, statuses, onOpen, onChange
 
     return (
         <Section title="Parent">
-            <div className={ styles.row }>
-                { parent
-                    ? (
-                        <button type="button" className={ styles.open } onClick={ () => onOpen(parent.id) } title={ parent.title }>
-                            { status && <StatusIcon category={ status.category } /> }
-                            <span className={ styles.key }>{ parent.key }</span>
-                            <span className={ styles.title }>{ parent.title }</span>
-                        </button>
-                    )
-                    : <span className={ styles.none }>{ isMissing ? 'Parent is not on the board' : 'No parent' }</span> }
+            <div className={styles.row}>
+                {parent ? (
+                    <button
+                        type="button"
+                        className={styles.open}
+                        onClick={() => onOpen(parent.id)}
+                        title={parent.title}
+                    >
+                        {status && <StatusIcon category={status.category} />}
+                        <span className={styles.key}>{parent.key}</span>
+                        <span className={styles.title}>{parent.title}</span>
+                    </button>
+                ) : (
+                    <span className={styles.none}>{isMissing ? 'Parent is not on the board' : 'No parent'}</span>
+                )}
 
                 <Button
-                    ref={ trigger }
+                    ref={trigger}
                     size="xs"
                     variant="bordered"
-                    isDisabled={ candidates.length === 0 && task.parentId === undefined }
-                    aria-label={ task.parentId === undefined ? 'Set parent' : 'Change parent' }
-                    onPress={ () => setAnchor(trigger.current) }
+                    isDisabled={candidates.length === 0 && task.parentId === undefined}
+                    aria-label={task.parentId === undefined ? 'Set parent' : 'Change parent'}
+                    onPress={() => setAnchor(trigger.current)}
                 >
-                    { task.parentId === undefined ? 'Set parent' : 'Change' }
+                    {task.parentId === undefined ? 'Set parent' : 'Change'}
                 </Button>
             </div>
 
-            { anchor && (
+            {anchor && (
                 <PickerPopover
-                    anchor={ anchor }
-                    options={ parentOptions(candidates, statuses) }
-                    selectedIds={ [task.parentId ?? NO_PARENT] }
+                    anchor={anchor}
+                    options={parentOptions(candidates, statuses)}
+                    selectedIds={[task.parentId ?? NO_PARENT]}
                     aria-label="Parent"
                     placeholder="Find a task…"
-                    onPick={ pick }
-                    onClose={ () => setAnchor(null) }
+                    onPick={pick}
+                    onClose={() => setAnchor(null)}
                 />
-            ) }
+            )}
         </Section>
     );
 }

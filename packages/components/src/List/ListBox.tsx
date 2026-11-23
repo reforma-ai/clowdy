@@ -1,11 +1,11 @@
-import { cn, mergeRefs, toSet, type SelectionInput } from '@clowdy/lib';
+import { cn, mergeRefs, type SelectionInput, toSet } from '@clowdy/lib';
 import { useRef, useState } from 'react';
 import {
     Header as AriaHeader,
     ListBox as AriaListBox,
     ListBoxItem as AriaListBoxItem,
-    ListBoxSection as AriaListBoxSection,
     type ListBoxItemProps as AriaListBoxItemProps,
+    ListBoxSection as AriaListBoxSection,
     type Key,
     type ListBoxSectionProps,
     type ListBoxProps as RACListBoxProps,
@@ -34,7 +34,7 @@ export const listBoxItemDataShow = {
     itemRest: 'item-rest',
 } as const;
 
-export type ListBoxItemDataShow = typeof listBoxItemDataShow[keyof typeof listBoxItemDataShow];
+export type ListBoxItemDataShow = (typeof listBoxItemDataShow)[keyof typeof listBoxItemDataShow];
 
 export interface ListBoxItemSlots {
     icon?: ReactNode;
@@ -44,11 +44,11 @@ export interface ListBoxItemSlots {
     stacked?: boolean;
 }
 
-export type ListBoxItemProps<T extends object = object> = AriaListBoxItemProps<T>
-  & ListBoxItemSlots & {
-      text?: string;
-      isDanger?: boolean;
-  };
+export type ListBoxItemProps<T extends object = object> = AriaListBoxItemProps<T> &
+    ListBoxItemSlots & {
+        text?: string;
+        isDanger?: boolean;
+    };
 
 export interface ListBoxComponentProps<T extends object = object> extends Omit<RACListBoxProps<T>, 'selectedKeys'> {
     ref?: Ref<HTMLDivElement>;
@@ -91,7 +91,7 @@ export function ListBox<T extends object>({
 }: ListBoxComponentProps<T>) {
     const listRef = useRef<HTMLDivElement>(null);
     const nextKeys = toSet(selectedKeys);
-    const [ selectedKeysSet, setSelectedKeysSet ] = useState(nextKeys);
+    const [selectedKeysSet, setSelectedKeysSet] = useState(nextKeys);
 
     if (!sameKeys(selectedKeysSet, nextKeys)) {
         setSelectedKeysSet(nextKeys);
@@ -101,14 +101,14 @@ export function ListBox<T extends object>({
 
     return (
         <AriaListBox
-            ref={ mergeRefs(listRef, ref as Ref<HTMLDivElement>) }
-            className={ cn(styles.list, className) }
-            selectionMode={ selectionMode }
-            selectedKeys={ selectedKeysSet }
-            escapeKeyBehavior={ escapeKeyBehavior }
-            data-size={ size }
-            data-interactive={ interactive || undefined }
-            { ...props }
+            ref={mergeRefs(listRef, ref as Ref<HTMLDivElement>)}
+            className={cn(styles.list, className)}
+            selectionMode={selectionMode}
+            selectedKeys={selectedKeysSet}
+            escapeKeyBehavior={escapeKeyBehavior}
+            data-size={size}
+            data-interactive={interactive || undefined}
+            {...props}
         />
     );
 }
@@ -132,27 +132,27 @@ export function ListBoxItem<T extends object>({
 
     return (
         <AriaListBoxItem
-            ref={ mergeRefs(scrollRef, ref) }
-            className={ cn(styles.item, stacked && styles.itemStacked, isDanger && styles.itemDanger, className) }
-            textValue={ textValue }
-            { ...props }
+            ref={mergeRefs(scrollRef, ref)}
+            className={cn(styles.item, stacked && styles.itemStacked, isDanger && styles.itemDanger, className)}
+            textValue={textValue}
+            {...props}
         >
-            { renderListRowItemContent(children, {
+            {renderListRowItemContent(children, {
                 icon,
                 description,
                 startAffix,
                 endAffix,
                 stacked,
                 textValue,
-            }) }
+            })}
         </AriaListBoxItem>
     );
 }
 
 export function ListBoxHeader({ className, sticky, ...props }: HTMLAttributes<HTMLElement> & { sticky?: boolean }) {
-    return <AriaHeader className={ cn(styles.sectionHeader, className) } { ...props } data-sticky={ sticky || undefined } />;
+    return <AriaHeader className={cn(styles.sectionHeader, className)} {...props} data-sticky={sticky || undefined} />;
 }
 
 export function ListBoxSection<T extends object>({ className, ...props }: ListBoxSectionProps<T>) {
-    return <AriaListBoxSection className={ cn(styles.section, className) } { ...props } />;
+    return <AriaListBoxSection className={cn(styles.section, className)} {...props} />;
 }

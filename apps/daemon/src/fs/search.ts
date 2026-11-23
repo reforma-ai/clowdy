@@ -61,7 +61,7 @@ export class ContentSearch {
 
         const caller = signal ? AbortSignal.any([signal, this.stopped.signal]) : this.stopped.signal;
 
-        if (!await this.enter(caller)) {
+        if (!(await this.enter(caller))) {
             return { files: [], truncated: true };
         }
 
@@ -70,16 +70,21 @@ export class ContentSearch {
             const globs = [...ALWAYS_EXCLUDED, ...exclude];
             const collector = new Collector();
 
-            if (!await this.withRipgrep({ root, query, matchCase, wholeWord, globs }, collector, ending)) {
+            if (!(await this.withRipgrep({ root, query, matchCase, wholeWord, globs }, collector, ending))) {
                 this.lastEngine = 'scan';
-                await scanSearch(root, queryMatcher(query, matchCase, wholeWord), new PathFilter(globs), collector, ending);
+                await scanSearch(
+                    root,
+                    queryMatcher(query, matchCase, wholeWord),
+                    new PathFilter(globs),
+                    collector,
+                    ending
+                );
             }
 
             collector.truncated ||= ending.aborted;
 
             return collector.result();
-        }
-        finally {
+        } finally {
             this.leave();
         }
     }
@@ -90,7 +95,11 @@ export class ContentSearch {
     }
 
     /** Runs ripgrep when there is one. Answers `false` when there is none, or it could not be started. */
-    private async withRipgrep(run: { root: string; query: string; matchCase: boolean; wholeWord: boolean; globs: string[] }, collector: Collector, signal: AbortSignal): Promise<boolean> {
+    private async withRipgrep(
+        run: { root: string; query: string; matchCase: boolean; wholeWord: boolean; globs: string[] },
+        collector: Collector,
+        signal: AbortSignal
+    ): Promise<boolean> {
         const program = this.locator.find();
 
         if (program === null) {
@@ -102,8 +111,7 @@ export class ContentSearch {
             this.lastEngine = 'ripgrep';
 
             return true;
-        }
-        catch (error) {
+        } catch (error) {
             if (error instanceof RipgrepMissing) {
                 this.locator.forget();
 
@@ -130,7 +138,7 @@ export class ContentSearch {
             throw unavailable('Too many searches are running, try again in a moment');
         }
 
-        return new Promise<boolean>((resolve) => {
+        return new Promise<boolean>(resolve => {
             const turn = () => {
                 signal.removeEventListener('abort', give);
                 this.running += 1;

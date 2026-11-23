@@ -15,11 +15,13 @@ import type { KeyValueStorage } from '../../stores/storage';
 
 const toasts = vi.hoisted(() => {
     let count = 0;
-    const next = () => `toast-${ ++count }`;
+    const next = () => `toast-${++count}`;
 
     return {
         error: vi.fn<(options: { message: string }) => void>(),
-        show: vi.fn<(options: { message: string; timeout?: number; action?: { label: string; onPress: () => void } }) => string>(next),
+        show: vi.fn<
+            (options: { message: string; timeout?: number; action?: { label: string; onPress: () => void } }) => string
+        >(next),
         success: vi.fn<(options: { message: string }) => string>(next),
         queue: { close: vi.fn<(key: string) => void>() },
     };
@@ -56,7 +58,10 @@ const archives = () => sent.filter(input => input.type === 'task.archive');
 
 /** What the screen does for a key, a menu item or a drop: `archiveTasks`, then the daemon's events. */
 async function archive(...ids: string[]) {
-    archiveTasks({ root, project: project(), ui: ui(), confirm: options => confirms.push(options), stack }, tasksOf(...ids));
+    archiveTasks(
+        { root, project: project(), ui: ui(), confirm: options => confirms.push(options), stack },
+        tasksOf(...ids)
+    );
     await settle();
 }
 
@@ -83,12 +88,14 @@ beforeEach(async () => {
     toasts.queue.close.mockClear();
 
     const transport = overrideTransport(daemon, {
-        command: async (input) => {
+        command: async input => {
             sent.push(input);
 
             const message = refuse(input);
 
-            return message ? { ok: false, requestId: 'r', error: { code: 'invalid', message } } satisfies CommandResult : daemon.command(input);
+            return message
+                ? ({ ok: false, requestId: 'r', error: { code: 'invalid', message } } satisfies CommandResult)
+                : daemon.command(input);
         },
     });
 
@@ -129,7 +136,11 @@ describe('a closed task', () => {
         await archive('t-20');
 
         expect(stack.entries.map(entry => entry.label)).toEqual(['Archived CAR-20']);
-        expect(toasts.show).toHaveBeenCalledWith({ message: 'Archived CAR-20', timeout: 5000, action: { label: 'Undo', onPress: expect.any(Function) } });
+        expect(toasts.show).toHaveBeenCalledWith({
+            message: 'Archived CAR-20',
+            timeout: 5000,
+            action: { label: 'Undo', onPress: expect.any(Function) },
+        });
 
         expect(await stack.undoLatest(FIXTURE_PROJECT_ID)).toBe(true);
         await settle();
@@ -148,7 +159,11 @@ describe('open work', () => {
         expect(sent).toEqual([]);
         expect(confirms).toHaveLength(1);
         // CAR-31 and CAR-32 are active, CAR-34 and CAR-35 to do, CAR-36 in review: five. CAR-33 is done and CAR-37 canceled.
-        expect(confirms[0]).toMatchObject({ title: 'Cancel and archive CAR-31?', confirmLabel: 'Cancel and archive', destructive: true });
+        expect(confirms[0]).toMatchObject({
+            title: 'Cancel and archive CAR-31?',
+            confirmLabel: 'Cancel and archive',
+            destructive: true,
+        });
         expect(confirms[0].message).toContain('5 open tasks will be canceled first.');
         expect(board('t-31')).toEqual([true]);
     });
@@ -158,7 +173,15 @@ describe('open work', () => {
         await agree();
 
         expect(archives()).toEqual([{ type: 'task.archive', taskId: 't-31', cancel: true }]);
-        expect(board('t-31', 't-32', 't-33', 't-34', 't-35', 't-36', 't-37')).toEqual([false, false, false, false, false, false, false]);
+        expect(board('t-31', 't-32', 't-33', 't-34', 't-35', 't-36', 't-37')).toEqual([
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+        ]);
         // What the daemon canceled shows as canceled in the archive.
         expect(project().archivedKnown.get('t-34')?.statusId).toBe('canceled');
         expect(project().archivedKnown.get('t-33')?.statusId).toBe('done');
@@ -185,14 +208,31 @@ describe('open work', () => {
         const undone = sent.filter(input => input.type !== 'task.archive');
 
         expect(undone[0]).toEqual({ type: 'task.unarchive', taskId: 't-31' });
-        expect(undone.slice(1).map(input => [input.type, 'taskId' in input ? input.taskId : undefined, 'statusId' in input ? input.statusId : undefined]).sort()).toEqual([
+        expect(
+            undone
+                .slice(1)
+                .map(input => [
+                    input.type,
+                    'taskId' in input ? input.taskId : undefined,
+                    'statusId' in input ? input.statusId : undefined,
+                ])
+                .sort()
+        ).toEqual([
             ['task.update', 't-31', 'active'],
             ['task.update', 't-32', 'active'],
             ['task.update', 't-34', 'todo'],
             ['task.update', 't-35', 'todo'],
             ['task.update', 't-36', 'review'],
         ]);
-        expect(['t-31', 't-32', 't-33', 't-34', 't-35', 't-36', 't-37'].map(id => task(id)?.statusId)).toEqual(['active', 'active', 'done', 'todo', 'todo', 'review', 'canceled']);
+        expect(['t-31', 't-32', 't-33', 't-34', 't-35', 't-36', 't-37'].map(id => task(id)?.statusId)).toEqual([
+            'active',
+            'active',
+            'done',
+            'todo',
+            'todo',
+            'review',
+            'canceled',
+        ]);
         // A task that is open again has no closing time, and one that stayed closed keeps its own.
         expect(task('t-34')?.closedAt).toBeUndefined();
         expect(task('t-33')?.closedAt).toBeDefined();
@@ -222,7 +262,9 @@ describe('a selection', () => {
         expect(sent).toEqual([]);
         expect(confirms).toHaveLength(1);
         expect(confirms[0].title).toBe('Cancel and archive 3 tasks?');
-        expect(confirms[0].message).toContain('The 3 selected tasks and everything inside them will go to the archive. 1 open task will be canceled first.');
+        expect(confirms[0].message).toContain(
+            'The 3 selected tasks and everything inside them will go to the archive. 1 open task will be canceled first.'
+        );
 
         await agree();
 
@@ -244,7 +286,11 @@ describe('a selection', () => {
         expect(await stack.undoLatest(FIXTURE_PROJECT_ID)).toBe(true);
         await settle();
 
-        expect(sent.filter(input => input.type === 'task.unarchive').map(input => input.taskId)).toEqual(['t-22', 't-21', 't-20']);
+        expect(sent.filter(input => input.type === 'task.unarchive').map(input => input.taskId)).toEqual([
+            't-22',
+            't-21',
+            't-20',
+        ]);
         expect(board('t-20', 't-21', 't-22')).toEqual([true, true, true]);
     });
 
@@ -288,7 +334,9 @@ describe('what the daemon refuses', () => {
         await archive('t-24');
         await agree();
 
-        expect(toasts.error).toHaveBeenCalledWith({ message: expect.stringMatching(/^Task CAR-24 has an active run \(.+\): stop it first$/) });
+        expect(toasts.error).toHaveBeenCalledWith({
+            message: expect.stringMatching(/^Task CAR-24 has an active run \(.+\): stop it first$/),
+        });
         expect(board('t-24')).toEqual([true]);
         expect(stack.entries).toEqual([]);
     });
@@ -298,7 +346,9 @@ describe('what the daemon refuses', () => {
         await archive('t-28');
         await agree();
 
-        expect(toasts.error).toHaveBeenCalledWith({ message: expect.stringMatching(/^Task CAR-24, inside CAR-28, has an active run/) });
+        expect(toasts.error).toHaveBeenCalledWith({
+            message: expect.stringMatching(/^Task CAR-24, inside CAR-28, has an active run/),
+        });
         expect(board('t-28', 't-24')).toEqual([true, true]);
         expect(stack.entries).toEqual([]);
     });
@@ -309,13 +359,23 @@ describe('what the daemon refuses', () => {
         // CAR-24 is open, so the question comes first; CAR-20 goes with it.
         await agree();
 
-        expect(toasts.error).toHaveBeenCalledWith({ message: expect.stringContaining('1 of 2 changes failed: Task CAR-24 has an active run') });
+        expect(toasts.error).toHaveBeenCalledWith({
+            message: expect.stringContaining('1 of 2 changes failed: Task CAR-24 has an active run'),
+        });
         expect(board('t-20', 't-24')).toEqual([false, true]);
         expect(stack.entries.map(entry => entry.label)).toEqual(['Archived CAR-20']);
     });
 
     it('answers every result, so a caller can tell which task was taken', async () => {
-        const results = await archiveWithUndo(root, project(), [{ taskId: 't-20', cancel: false }, { taskId: 't-24', cancel: true }], stack);
+        const results = await archiveWithUndo(
+            root,
+            project(),
+            [
+                { taskId: 't-20', cancel: false },
+                { taskId: 't-24', cancel: true },
+            ],
+            stack
+        );
 
         expect(results.map(result => result.ok)).toEqual([true, false]);
     });
@@ -358,7 +418,11 @@ describe('restoring', () => {
         expect(board('t-38', 't-39', 't-40')).toEqual([true, true, true]);
         expect(project().archivedKnown.size).toBe(0);
         expect(stack.entries.map(entry => entry.label)).toEqual(['Restored CAR-38']);
-        expect(toasts.show).toHaveBeenCalledWith({ message: 'Restored CAR-38', timeout: 5000, action: { label: 'Undo', onPress: expect.any(Function) } });
+        expect(toasts.show).toHaveBeenCalledWith({
+            message: 'Restored CAR-38',
+            timeout: 5000,
+            action: { label: 'Undo', onPress: expect.any(Function) },
+        });
     });
 
     it('is undone by archiving it again, with the tree that went with it', async () => {
@@ -379,7 +443,9 @@ describe('restoring', () => {
 
         expect(await restoreTask(root, project(), archivedTask('t-39'), stack)).toBe(false);
 
-        expect(toasts.error).toHaveBeenCalledWith({ message: 'Task CAR-39 is inside CAR-38, which is archived: restore CAR-38 first' });
+        expect(toasts.error).toHaveBeenCalledWith({
+            message: 'Task CAR-39 is inside CAR-38, which is archived: restore CAR-38 first',
+        });
         expect(stack.entries).toEqual([]);
         expect(board('t-39')).toEqual([false]);
     });

@@ -63,7 +63,14 @@ afterEach(() => {
     vi.unstubAllGlobals();
 });
 
-const mount = () => act(() => root.render(<RootStoreProvider value={ store }><Probe /></RootStoreProvider>));
+const mount = () =>
+    act(() =>
+        root.render(
+            <RootStoreProvider value={store}>
+                <Probe />
+            </RootStoreProvider>
+        )
+    );
 
 describe('useWindowFitsHalf', () => {
     it('asks for the width from which a tree fits beside the chat, and tells the window state at once', () => {
@@ -71,7 +78,7 @@ describe('useWindowFitsHalf', () => {
 
         mount();
 
-        expect(window.queries).toEqual([`(min-width: ${ HALF_MIN_WINDOW_WIDTH }px)`]);
+        expect(window.queries).toEqual([`(min-width: ${HALF_MIN_WINDOW_WIDTH}px)`]);
         expect(store.ui.windowFitsHalf).toBe(false);
     });
 
@@ -94,7 +101,7 @@ describe('useWindowFitsHalf', () => {
         mount();
         expect(window.listeners.size).toBe(1);
 
-        act(() => root.render(<RootStoreProvider value={ store }>{ null }</RootStoreProvider>));
+        act(() => root.render(<RootStoreProvider value={store}>{null}</RootStoreProvider>));
         expect(window.listeners.size).toBe(0);
     });
 });

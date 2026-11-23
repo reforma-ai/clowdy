@@ -6,8 +6,7 @@ export function isHttpUrl(value: string): boolean {
         const parsed = new URL(value);
 
         return parsed.protocol === 'http:' || parsed.protocol === 'https:';
-    }
-    catch {
+    } catch {
         return false;
     }
 }

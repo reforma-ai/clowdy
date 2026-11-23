@@ -1,6 +1,6 @@
 import { Button } from '@clowdy/components/Button';
 import { Text } from '@clowdy/components/Text';
-import { useEffect, useLayoutEffect, useRef, useState, type FocusEvent } from 'react';
+import { type FocusEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import styles from './DescriptionField.module.css';
 import { LatestSaver, onlyTicksChanged } from './descriptionSave';
@@ -41,14 +41,17 @@ export function DescriptionField({ value, onSave }: DescriptionFieldProps) {
     const [plain, setPlain] = useState<{ reason: PlainReason } | null>(null);
     // What the editor's callbacks and the saver read, which is the latest render's: the editor keeps the handlers it was first given.
     const latest = useRef({ draft, value, onSave });
-    const [saver] = useState(() => new LatestSaver(
-        text => latest.current.onSave(text),
-        () => {
-            // The daemon refused: what the project holds is the text again.
-            latest.current.draft = latest.current.value;
-            setDraft(latest.current.value);
-        }
-    ));
+    const [saver] = useState(
+        () =>
+            new LatestSaver(
+                text => latest.current.onSave(text),
+                () => {
+                    // The daemon refused: what the project holds is the text again.
+                    latest.current.draft = latest.current.value;
+                    setDraft(latest.current.value);
+                }
+            )
+    );
 
     useLayoutEffect(() => {
         latest.current = { draft, value, onSave };
@@ -84,28 +87,38 @@ export function DescriptionField({ value, onSave }: DescriptionFieldProps) {
 
     if (plain) {
         return (
-            <div className={ styles.plain }>
-                { plain.reason !== null && (
-                    <div className={ styles.reason }>
+            <div className={styles.plain}>
+                {plain.reason !== null && (
+                    <div className={styles.reason}>
                         <Text variant="heading-6">This description is too big for the visual editor</Text>
                         {/* The editor ends its reason with a period; one sentence in the interface has none. */}
-                        <Text color="secondary">{ plain.reason.replace(/\.$/, '') }</Text>
+                        <Text color="secondary">{plain.reason.replace(/\.$/, '')}</Text>
                     </div>
-                ) }
-                <EditableText variant="body" aria-label="Description" placeholder="Add a description…" value={ value } onCommit={ onSave } />
+                )}
+                <EditableText
+                    variant="body"
+                    aria-label="Description"
+                    placeholder="Add a description…"
+                    value={value}
+                    onCommit={onSave}
+                />
             </div>
         );
     }
 
     return (
-        <div onBlur={ leave }>
+        <div onBlur={leave}>
             <MarkdownPlate
-                value={ draft }
+                value={draft}
                 aria-label="Description"
                 placeholder="Add a description"
-                onChange={ edit }
-                onUnsupported={ reason => setPlain({ reason }) }
-                unsupportedAction={ <Button size="sm" variant="bordered" onPress={ () => setPlain({ reason: null }) }>Edit as text</Button> }
+                onChange={edit}
+                onUnsupported={reason => setPlain({ reason })}
+                unsupportedAction={
+                    <Button size="sm" variant="bordered" onPress={() => setPlain({ reason: null })}>
+                        Edit as text
+                    </Button>
+                }
             />
         </div>
     );

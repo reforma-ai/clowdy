@@ -12,7 +12,15 @@ import { mergeNotices, noticeContent, noticeSummary } from './notices';
 import { STOPPED_TURN_MESSAGE } from './prompts';
 import { STOPPED_TO_SEND_REASON } from './transitions';
 
-import type { Chat, MessageSource, QueuedMessage, QueuedMessageMode, QueuePause, Run, ThreadNotice } from '@clowdy/protocol';
+import type {
+    Chat,
+    MessageSource,
+    QueuedMessage,
+    QueuedMessageMode,
+    QueuePause,
+    Run,
+    ThreadNotice,
+} from '@clowdy/protocol';
 import type { AttachmentsService } from '../attachments/service';
 import type { AttachmentRecord } from '../db/attachments';
 import type { Store } from '../store';
@@ -52,10 +60,15 @@ const COMPACT_TEXT = 'Compact the conversation';
 const isCompact = (item: QueuedMessage) => item.command === 'compact';
 
 /** The threads a queued notice reports; none for any other message. */
-const noticesOf = (item: QueuedMessage): ThreadNotice[] => (item.from?.kind === 'threadNotice' ? item.from.threads : []);
+const noticesOf = (item: QueuedMessage): ThreadNotice[] =>
+    item.from?.kind === 'threadNotice' ? item.from.threads : [];
 
 /** A queued notice of `threads`: its one line, what the agent reads, and the entries the stream's card is drawn from. */
-const noticeFields = (threads: ThreadNotice[]) => ({ text: noticeSummary(threads), content: noticeContent(threads), from: { kind: 'threadNotice' as const, threads } });
+const noticeFields = (threads: ThreadNotice[]) => ({
+    text: noticeSummary(threads),
+    content: noticeContent(threads),
+    from: { kind: 'threadNotice' as const, threads },
+});
 
 /**
  * How the queue of an orchestrator that is over already waits for a notice that arrives now: held as a Stop or a failure would have held it, since
@@ -83,7 +96,7 @@ export class ChatQueue {
 
     constructor(private deps: QueueDeps) {
         deps.runs.onOrchestratorStatus = run => this.onStatus(run);
-        deps.driver.onTurnStarted = (runId) => {
+        deps.driver.onTurnStarted = runId => {
             const chatId = getRun(deps.store.db, runId)?.chatId;
 
             if (chatId) {
@@ -150,14 +163,19 @@ export class ChatQueue {
         store.tx(() => {
             const chat = getChat(store.db, chatId);
             const queue = chat ? queueOf(chat) : [];
-            const item = queue.find(entry => !this.steering.has(entry.id) && noticesOf(entry).some(notice => notice.chatId === threadId));
+            const item = queue.find(
+                entry => !this.steering.has(entry.id) && noticesOf(entry).some(notice => notice.chatId === threadId)
+            );
 
             if (!chat || !item) {
                 return;
             }
 
             const rest = noticesOf(item).filter(notice => notice.chatId !== threadId);
-            const next = rest.length === 0 ? queue.filter(entry => entry.id !== item.id) : queue.map(entry => (entry.id === item.id ? { ...entry, ...noticeFields(rest) } : entry));
+            const next =
+                rest.length === 0
+                    ? queue.filter(entry => entry.id !== item.id)
+                    : queue.map(entry => (entry.id === item.id ? { ...entry, ...noticeFields(rest) } : entry));
 
             saveChat(store, withQueue(chat, next, chat.queuePaused));
         });
@@ -175,7 +193,14 @@ export class ChatQueue {
 
         if (!isTerminalRunStatus(run.status)) {
             if (!queue.some(isCompact) && !driver.isCompacting(run.id)) {
-                const item: QueuedMessage = { id: newId('que'), mode: 'queue', command: 'compact', text: COMPACT_TEXT, content: command, createdAt: Date.now() };
+                const item: QueuedMessage = {
+                    id: newId('que'),
+                    mode: 'queue',
+                    command: 'compact',
+                    text: COMPACT_TEXT,
+                    content: command,
+                    createdAt: Date.now(),
+                };
 
                 saveChat(store, withQueue(chat, placeQueued(queue, item), chat.queuePaused));
             }
@@ -184,7 +209,14 @@ export class ChatQueue {
         }
 
         if (queue.some(isCompact)) {
-            saveChat(store, withQueue(chat, queue.filter(item => !isCompact(item)), chat.queuePaused));
+            saveChat(
+                store,
+                withQueue(
+                    chat,
+                    queue.filter(item => !isCompact(item)),
+                    chat.queuePaused
+                )
+            );
         }
 
         runs.resume(run.id, command);
@@ -207,12 +239,18 @@ export class ChatQueue {
 
             if (keepFiles) {
                 attachments.release(ids);
-            }
-            else {
+            } else {
                 attachments.discard(ids);
             }
 
-            return saveChat(store, withQueue(chat, queueOf(chat).filter(entry => entry.id !== itemId), chat.queuePaused));
+            return saveChat(
+                store,
+                withQueue(
+                    chat,
+                    queueOf(chat).filter(entry => entry.id !== itemId),
+                    chat.queuePaused
+                )
+            );
         });
     }
 
@@ -253,7 +291,14 @@ export class ChatQueue {
 
                 // Sending a message from a held queue is what lets it flow again, as at rest. Stop and send puts it ahead of the steers that waited for the turn's end.
                 if (item.mode !== 'steer' || chat.queuePaused || stops) {
-                    saveChat(store, withQueue(chat, placeQueued(queueOf(chat), { ...item, mode: 'steer' }, stops ? 0 : undefined), undefined));
+                    saveChat(
+                        store,
+                        withQueue(
+                            chat,
+                            placeQueued(queueOf(chat), { ...item, mode: 'steer' }, stops ? 0 : undefined),
+                            undefined
+                        )
+                    );
                 }
 
                 // A turn that cannot be ended (it ended on its own meanwhile) leaves the message to the steering pass, which settles the queue as the run rests.
@@ -274,7 +319,9 @@ export class ChatQueue {
             if (isCompact(item)) {
                 // At rest but not finished: the session waits for background work, and the command must be a turn of its own.
                 if (!this.canCompact(run)) {
-                    throw conflict('The orchestrator is waiting for background work. Compact the chat when it has finished');
+                    throw conflict(
+                        'The orchestrator is waiting for background work. Compact the chat when it has finished'
+                    );
                 }
 
                 this.dispatch(chat, run, item);
@@ -346,7 +393,9 @@ export class ChatQueue {
             }
 
             // A run that ended on an error, or that the daemon lost in a restart, did not do what the queue was written after: the person decides.
-            const paused = chat.queuePaused ?? (current.status === 'failed' || current.status === 'interrupted' ? 'failed' : undefined);
+            const paused =
+                chat.queuePaused ??
+                (current.status === 'failed' || current.status === 'interrupted' ? 'failed' : undefined);
 
             // A steer still with the agent settles the queue again when it is answered. The hold is written now all the same, or a message the person
             // sends meanwhile would start a turn that the held messages (and that steer) then flow into.
@@ -360,7 +409,9 @@ export class ChatQueue {
             const settled = withQueue(chat, settleSteers(queue), paused);
             // One item per turn, in order. A compact item waits for an orchestrator that can compact (finished, its session over), and the messages
             // behind it go first meanwhile.
-            const next = paused ? undefined : queueOf(settled).find(item => !isCompact(item) || this.canCompact(current));
+            const next = paused
+                ? undefined
+                : queueOf(settled).find(item => !isCompact(item) || this.canCompact(current));
 
             if (next) {
                 this.dispatch(settled, current, next);
@@ -380,7 +431,14 @@ export class ChatQueue {
     private dispatch(chat: Chat, run: Run, item: QueuedMessage): void {
         const { store, runs, driver } = this.deps;
 
-        saveChat(store, withQueue(chat, queueOf(chat).filter(entry => entry.id !== item.id), undefined));
+        saveChat(
+            store,
+            withQueue(
+                chat,
+                queueOf(chat).filter(entry => entry.id !== item.id),
+                undefined
+            )
+        );
 
         if (!isCompact(item)) {
             appendItem(store, run.id, userItemOf(item));
@@ -389,7 +447,7 @@ export class ChatQueue {
         // A turn that stop and send ended: the agent is told it did not end it itself.
         const stopped = run.status === 'cancelled' && run.statusReason === STOPPED_TO_SEND_REASON && !isCompact(item);
 
-        runs.resume(run.id, stopped ? `${ STOPPED_TURN_MESSAGE }\n\n${ item.content }` : item.content);
+        runs.resume(run.id, stopped ? `${STOPPED_TURN_MESSAGE}\n\n${item.content}` : item.content);
         driver.launch(run.id);
     }
 
@@ -408,7 +466,9 @@ export class ChatQueue {
         const previous = this.passes.get(chatId) ?? Promise.resolve();
         const pass: Promise<void> = previous
             .then(() => this.steerPass(chatId))
-            .catch(error => console.error(`[clowdy] steering the queue of chat ${ chatId } failed: ${ errorMessage(error) }`))
+            .catch(error =>
+                console.error(`[clowdy] steering the queue of chat ${chatId} failed: ${errorMessage(error)}`)
+            )
             .finally(() => {
                 if (this.passes.get(chatId) === pass) {
                     this.passes.delete(chatId);
@@ -430,7 +490,10 @@ export class ChatQueue {
         for (;;) {
             const chat = getChat(store.db, chatId);
             // A held queue steers nothing: a turn the person started by hand after a Stop or a failure gets only what they send now.
-            const item = chat && !chat.queuePaused ? queueOf(chat).find(entry => entry.mode === 'steer' && !tried.has(entry.id)) : undefined;
+            const item =
+                chat && !chat.queuePaused
+                    ? queueOf(chat).find(entry => entry.mode === 'steer' && !tried.has(entry.id))
+                    : undefined;
 
             runId = chat?.orchestratorRunId;
 
@@ -446,8 +509,7 @@ export class ChatQueue {
 
             try {
                 taken = await driver.steer(target, item.content, () => this.taken(chatId, target, item));
-            }
-            finally {
+            } finally {
                 this.steering.delete(item.id);
             }
 
@@ -468,7 +530,14 @@ export class ChatQueue {
         const { store } = this.deps;
         const chat = requireChat(store, chatId);
 
-        saveChat(store, withQueue(chat, queueOf(chat).filter(entry => entry.id !== item.id), chat.queuePaused));
+        saveChat(
+            store,
+            withQueue(
+                chat,
+                queueOf(chat).filter(entry => entry.id !== item.id),
+                chat.queuePaused
+            )
+        );
         appendItem(store, runId, userItemOf(item));
     }
 

@@ -8,9 +8,7 @@ export default defineConfig({
             babelConfig: {
                 babelrc: false,
                 configFile: false,
-                presets: [
-                    ['@babel/preset-typescript', { onlyRemoveTypeImports: true, allowDeclareFields: true }],
-                ],
+                presets: [['@babel/preset-typescript', { onlyRemoveTypeImports: true, allowDeclareFields: true }]],
                 plugins: [['@babel/plugin-proposal-decorators', { version: '2023-05' }]],
             },
         }),

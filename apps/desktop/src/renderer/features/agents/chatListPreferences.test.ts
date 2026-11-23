@@ -5,7 +5,10 @@ import { ChatListPreferences } from './chatListPreferences';
 const memory = () => {
     const values = new Map<string, string>();
 
-    return { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => void values.set(key, value) };
+    return {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => void values.set(key, value),
+    };
 };
 
 describe('the Agents list preferences', () => {

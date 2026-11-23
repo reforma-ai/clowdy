@@ -24,11 +24,18 @@ export interface ForkRequest {
  * pointed at a chat the store does not know settles on another one: so the chat is opened once the store has it (or after a wait, when the feed is
  * late). Resolves to whether the new chat was opened.
  */
-export async function forkChat({ root, project, ui, chatId, itemId, stillOpen = () => true }: ForkRequest): Promise<boolean> {
+export async function forkChat({
+    root,
+    project,
+    ui,
+    chatId,
+    itemId,
+    stillOpen = () => true,
+}: ForkRequest): Promise<boolean> {
     const result = await root.command({ type: 'chat.fork', chatId, itemId });
 
     if (!result.ok) {
-        toast.error({ message: result.error.message || 'Couldn\'t fork the chat' });
+        toast.error({ message: result.error.message || "Couldn't fork the chat" });
 
         return false;
     }

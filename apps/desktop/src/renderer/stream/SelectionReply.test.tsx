@@ -3,8 +3,8 @@ import { act, useRef } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { placeToolbar, readSelection } from './selectedMessage';
 import { SelectionReply } from './SelectionReply';
+import { placeToolbar, readSelection } from './selectedMessage';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -23,19 +23,28 @@ function Page() {
 
     return (
         <>
-            <div ref={ list } data-testid="list">
-                <div data-message="" data-testid="first"><p>First message, the first paragraph.</p><p>And a second paragraph.</p></div>
-                <div data-message="" data-testid="second"><p>Second message.</p></div>
+            <div ref={list} data-testid="list">
+                <div data-message="" data-testid="first">
+                    <p>First message, the first paragraph.</p>
+                    <p>And a second paragraph.</p>
+                </div>
+                <div data-message="" data-testid="second">
+                    <p>Second message.</p>
+                </div>
                 <div data-testid="work">Worked for 25s</div>
             </div>
-            <div data-message="" data-testid="elsewhere"><p>A message of another list.</p></div>
-            <div contentEditable data-testid="field">Words in the message box</div>
-            <SelectionReply scope={ list } onReply={ onReply } />
+            <div data-message="" data-testid="elsewhere">
+                <p>A message of another list.</p>
+            </div>
+            <div contentEditable data-testid="field">
+                Words in the message box
+            </div>
+            <SelectionReply scope={list} onReply={onReply} />
         </>
     );
 }
 
-const part = (id: string) => container.querySelector<HTMLElement>(`[data-testid="${ id }"]`)!;
+const part = (id: string) => container.querySelector<HTMLElement>(`[data-testid="${id}"]`)!;
 const toolbar = () => document.body.querySelector<HTMLElement>('[role="toolbar"]');
 const replyButton = () => toolbar()?.querySelector('button');
 
@@ -53,16 +62,18 @@ function select(startNode: Node, startOffset: number, endNode: Node, endOffset: 
 const textOf = (id: string, index = 0) => part(id).querySelectorAll('p')[index].firstChild!;
 
 /** Runs the frames that were asked for, as the browser does before it paints. */
-const paint = () => act(async () => {
-    const due = [...frames.values()];
+const paint = () =>
+    act(async () => {
+        const due = [...frames.values()];
 
-    frames.clear();
-    due.forEach(callback => callback(0));
-});
+        frames.clear();
+        due.forEach(callback => callback(0));
+    });
 
-const press = (type: string, target: Element) => act(async () => {
-    target.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, button: 0 }));
-});
+const press = (type: string, target: Element) =>
+    act(async () => {
+        target.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, button: 0 }));
+    });
 
 beforeEach(() => {
     frames = new Map();
@@ -74,10 +85,16 @@ beforeEach(() => {
     });
     vi.stubGlobal('cancelAnimationFrame', (handle: number) => frames.delete(handle));
     // happy-dom lays nothing out: a selection is drawn on the line `top` 100 to `bottom` 120, 200px across from x 300.
-    vi.spyOn(Range.prototype, 'getClientRects').mockImplementation(() => [{ left: 300, right: 500, top: 100, bottom: 120, width: 200, height: 20 }] as unknown as DOMRectList);
-    vi.spyOn(Range.prototype, 'getBoundingClientRect').mockImplementation(() => ({ left: 300, right: 500, top: 100, bottom: 120, width: 200, height: 20 }) as DOMRect);
+    vi.spyOn(Range.prototype, 'getClientRects').mockImplementation(
+        () => [{ left: 300, right: 500, top: 100, bottom: 120, width: 200, height: 20 }] as unknown as DOMRectList
+    );
+    vi.spyOn(Range.prototype, 'getBoundingClientRect').mockImplementation(
+        () => ({ left: 300, right: 500, top: 100, bottom: 120, width: 200, height: 20 }) as DOMRect
+    );
     // The list fills the window, which happy-dom gives a size of 1024 by 768.
-    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(() => ({ left: 0, right: 1024, top: 0, bottom: 768, width: 1024, height: 768 }) as DOMRect);
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
+        () => ({ left: 0, right: 1024, top: 0, bottom: 768, width: 1024, height: 768 }) as DOMRect
+    );
     onReply.mockReset();
     container = document.createElement('div');
     document.body.append(container);
@@ -201,7 +218,9 @@ describe('SelectionReply', () => {
         });
 
         it('is placed under the selection when the list begins too close over it for the box', async () => {
-            vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(() => ({ left: 0, right: 1024, top: 90, bottom: 768, width: 1024, height: 678 }) as DOMRect);
+            vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
+                () => ({ left: 0, right: 1024, top: 90, bottom: 768, width: 1024, height: 678 }) as DOMRect
+            );
             select(textOf('first'), 6, textOf('first'), 13);
             await paint();
 
@@ -385,7 +404,7 @@ describe('placeToolbar', () => {
     const within = { left: 0, top: 0, right: 1000, bottom: 800 };
     const size = { width: 100, height: 36 };
 
-    it('puts the box over the first line with its middle on the selection\'s, a gap above', () => {
+    it("puts the box over the first line with its middle on the selection's, a gap above", () => {
         expect(placeToolbar({ x: 400, above: 300, below: 360 }, size, within)).toEqual({ left: 350, top: 258 });
     });
 

@@ -20,7 +20,7 @@ beforeEach(() => {
     created = [];
     revoked = [];
     vi.spyOn(URL, 'createObjectURL').mockImplementation(() => {
-        created.push(`blob:preview-${ created.length + 1 }`);
+        created.push(`blob:preview-${created.length + 1}`);
 
         return created.at(-1)!;
     });
@@ -38,14 +38,24 @@ describe('beginEditSession', () => {
         beginEditSession(key, { text: 'Use the **blue** one\n\nThen the footer', attachments: [form, notes] });
 
         expect(messageOf(draftOf(key))).toBe('Use the **blue** one\n\nThen the footer');
-        expect(filesOf(key).map(file => ({ name: file.name, status: file.status, id: file.attachment?.id, sent: file.sent }))).toEqual([
+        expect(
+            filesOf(key).map(file => ({
+                name: file.name,
+                status: file.status,
+                id: file.attachment?.id,
+                sent: file.sent,
+            }))
+        ).toEqual([
             { name: 'form.png', status: 'ready', id: 'a-form', sent: true },
             { name: 'notes.txt', status: 'ready', id: 'a-notes', sent: true },
         ]);
     });
 
-    it('touches nothing of the chat\'s own draft and files', () => {
-        saveDraft(chatKey, { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'typed below' }] }] });
+    it("touches nothing of the chat's own draft and files", () => {
+        saveDraft(chatKey, {
+            type: 'doc',
+            content: [{ type: 'paragraph', content: [{ type: 'text', text: 'typed below' }] }],
+        });
         setFiles(chatKey, [{ key: 'k', name: 'draft.txt', mediaType: 'text/plain', size: 1, status: 'ready' }]);
         beginEditSession(key, { text: 'Hello', attachments: [notes] });
 
@@ -54,7 +64,9 @@ describe('beginEditSession', () => {
     });
 
     it('starts afresh over what an earlier session under the same key left, and lets go of its previews', () => {
-        setFiles(key, [{ key: 'old', name: 'old.png', mediaType: 'image/png', size: 1, status: 'ready', preview: 'blob:old' }]);
+        setFiles(key, [
+            { key: 'old', name: 'old.png', mediaType: 'image/png', size: 1, status: 'ready', preview: 'blob:old' },
+        ]);
         beginEditSession(key, { text: 'New words' });
 
         expect(revoked).toEqual(['blob:old']);
@@ -66,7 +78,9 @@ describe('beginEditSession', () => {
         const blobs = vi.fn(async () => new Blob(['x']));
 
         beginEditSession(key, { text: 'Hello', attachments: [form, notes] }, blobs);
-        await vi.waitFor(() => expect(filesOf(key).find(file => file.name === 'form.png')?.preview).toBe('blob:preview-1'));
+        await vi.waitFor(() =>
+            expect(filesOf(key).find(file => file.name === 'form.png')?.preview).toBe('blob:preview-1')
+        );
 
         expect(blobs).toHaveBeenCalledExactlyOnceWith(form);
         expect(filesOf(key).find(file => file.name === 'notes.txt')?.preview).toBeUndefined();
@@ -74,9 +88,12 @@ describe('beginEditSession', () => {
 
     it('makes no preview, so leaves none to let go of, for a card that is gone or a session that ended before the bytes came', async () => {
         let arrive!: (blob: Blob) => void;
-        const blobs = vi.fn(() => new Promise<Blob>((resolve) => {
-            arrive = resolve;
-        }));
+        const blobs = vi.fn(
+            () =>
+                new Promise<Blob>(resolve => {
+                    arrive = resolve;
+                })
+        );
 
         beginEditSession(key, { text: 'Hello', attachments: [form] }, blobs);
         endEditSession(key);
@@ -118,7 +135,11 @@ describe('endEditSession', () => {
         const discard = vi.fn();
 
         beginEditSession(key, { text: 'Hello', attachments: [form] });
-        setFiles(key, [...filesOf(key), { key: 'k-new', name: 'new.txt', mediaType: 'text/plain', size: 3, status: 'ready', attachment: uploaded }, { key: 'k-failed', name: 'bad.txt', mediaType: 'text/plain', size: 3, status: 'error' }]);
+        setFiles(key, [
+            ...filesOf(key),
+            { key: 'k-new', name: 'new.txt', mediaType: 'text/plain', size: 3, status: 'ready', attachment: uploaded },
+            { key: 'k-failed', name: 'bad.txt', mediaType: 'text/plain', size: 3, status: 'error' },
+        ]);
         endEditSession(key, discard);
 
         expect(discard).toHaveBeenCalledExactlyOnceWith(uploaded);
@@ -126,7 +147,17 @@ describe('endEditSession', () => {
 
     it('offers nothing when no one asked, as after an edit that went through, whose files the daemon keeps', () => {
         beginEditSession(key, { text: 'Hello', attachments: [form] });
-        setFiles(key, [...filesOf(key), { key: 'k-new', name: 'new.txt', mediaType: 'text/plain', size: 3, status: 'ready', attachment: { id: 'a-new', name: 'new.txt', mediaType: 'text/plain', size: 3 } }]);
+        setFiles(key, [
+            ...filesOf(key),
+            {
+                key: 'k-new',
+                name: 'new.txt',
+                mediaType: 'text/plain',
+                size: 3,
+                status: 'ready',
+                attachment: { id: 'a-new', name: 'new.txt', mediaType: 'text/plain', size: 3 },
+            },
+        ]);
 
         expect(() => endEditSession(key)).not.toThrow();
         expect(filesOf(key)).toEqual([]);

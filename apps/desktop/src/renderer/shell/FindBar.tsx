@@ -3,11 +3,11 @@ import { Input } from '@clowdy/components/Input';
 import { Text } from '@clowdy/components/Text';
 import { searchInEditor } from '@clowdy/file-manager/editor-search';
 import { ChevronDown, ChevronUp, Close } from '@clowdy/icons/14';
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
+import { type KeyboardEvent, type MouseEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { commandTooltip, useCommands } from '../hotkeys';
 import styles from './FindBar.module.css';
-import { findCommands, type FindActions } from './findCommands';
+import { type FindActions, findCommands } from './findCommands';
 import { clearMatches, findMatches, paintMatches, revealMatch, stepFrom } from './pageSearch';
 
 /** Where the person is among the hits: the one they are on (from 0) and how many there are. */
@@ -22,7 +22,7 @@ function matchLabel(query: string, position: Position | null): string | null {
 
     if (position.total === 0) return 'No matches';
 
-    return `${ position.index + 1 } of ${ position.total }`;
+    return `${position.index + 1} of ${position.total}`;
 }
 
 /**
@@ -101,11 +101,14 @@ export function FindBar() {
         previous: () => searchInEditor('previous') || step(false),
     };
 
-    useCommands('app', findCommands({
-        open: () => actions.current.open(),
-        next: () => actions.current.next(),
-        previous: () => actions.current.previous(),
-    }));
+    useCommands(
+        'app',
+        findCommands({
+            open: () => actions.current.open(),
+            next: () => actions.current.next(),
+            previous: () => actions.current.previous(),
+        })
+    );
 
     useLayoutEffect(() => {
         if (!open) return;
@@ -119,13 +122,17 @@ export function FindBar() {
         if (selectOnFocus) input.select();
     }, [open, focusTick, selectOnFocus]);
 
-    useEffect(() => window.desktop?.onFindCommand((command) => {
-        const handler = actions.current;
+    useEffect(
+        () =>
+            window.desktop?.onFindCommand(command => {
+                const handler = actions.current;
 
-        if (command === 'open') handler.open();
-        else if (command === 'next') handler.next();
-        else handler.previous();
-    }), []);
+                if (command === 'open') handler.open();
+                else if (command === 'next') handler.next();
+                else handler.previous();
+            }),
+        []
+    );
 
     // The hits are painted on the document, not in this component: they must go when it does.
     useEffect(() => clearMatches, []);
@@ -160,36 +167,38 @@ export function FindBar() {
     };
 
     return (
-        <div ref={ bar } className={ styles.bar } role="search" aria-label="Find in page" onMouseDown={ focusField }>
+        <div ref={bar} className={styles.bar} role="search" aria-label="Find in page" onMouseDown={focusField}>
             <Input
-                className={ styles.field }
+                className={styles.field}
                 variant="transparent"
                 type="text"
                 size="sm"
                 aria-label="Find in page"
                 placeholder="Find"
-                value={ query }
-                inputRef={ field }
-                onChange={ (value: string) => {
+                value={query}
+                inputRef={field}
+                onChange={(value: string) => {
                     setQuery(value);
 
                     if (value === '') clear();
                     else search(value, true, true);
-                } }
-                onKeyDown={ onKeyDown }
+                }}
+                onKeyDown={onKeyDown}
             />
-            <div className={ styles.trail }>
-                <Text variant="xs" color="secondary" className={ styles.count } aria-live="polite">{ label }</Text>
-                <div className={ styles.steps }>
+            <div className={styles.trail}>
+                <Text variant="xs" color="secondary" className={styles.count} aria-live="polite">
+                    {label}
+                </Text>
+                <div className={styles.steps}>
                     <Button
                         variant="filling"
                         size="xs"
                         iconOnly
                         aria-label="Previous match"
-                        tooltip={ commandTooltip('Previous match', 'find.previous') ?? 'Previous match' }
+                        tooltip={commandTooltip('Previous match', 'find.previous') ?? 'Previous match'}
                         tooltipPlacement="bottom"
                         preventFocusOnPress
-                        onPress={ () => step(false) }
+                        onPress={() => step(false)}
                     >
                         <ChevronUp />
                     </Button>
@@ -198,10 +207,10 @@ export function FindBar() {
                         size="xs"
                         iconOnly
                         aria-label="Next match"
-                        tooltip={ commandTooltip('Next match', 'find.next') ?? 'Next match' }
+                        tooltip={commandTooltip('Next match', 'find.next') ?? 'Next match'}
                         tooltipPlacement="bottom"
                         preventFocusOnPress
-                        onPress={ () => step(true) }
+                        onPress={() => step(true)}
                     >
                         <ChevronDown />
                     </Button>
@@ -213,7 +222,7 @@ export function FindBar() {
                         tooltip="Close"
                         tooltipPlacement="bottom"
                         preventFocusOnPress
-                        onPress={ close }
+                        onPress={close}
                     >
                         <Close />
                     </Button>

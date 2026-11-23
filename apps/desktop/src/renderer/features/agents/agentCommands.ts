@@ -6,7 +6,7 @@ export const AGENTS_SCOPE = 'agents';
 
 /** Puts the focus on a row, of a chat or of a thread. The grid list's highlight plate follows the focus by itself. */
 function focusRow(list: Element | null, id: string) {
-    list?.querySelector<HTMLElement>(`[role="row"][data-key="${ CSS.escape(id) }"]`)?.focus();
+    list?.querySelector<HTMLElement>(`[role="row"][data-key="${CSS.escape(id)}"]`)?.focus();
 }
 
 /** A row of the list is a row of React Aria's grid list, whose `data-key` is the chat's id (a thread is a chat). A button or a field inside a row is not the row. */

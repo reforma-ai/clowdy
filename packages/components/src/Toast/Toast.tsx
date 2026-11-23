@@ -6,7 +6,7 @@ import {
     UNSTABLE_ToastQueue as AriaToastQueue,
     UNSTABLE_ToastRegion as AriaToastRegion,
     Text,
-    ToastProps
+    ToastProps,
 } from 'react-aria-components';
 
 import { Button } from '../Button';
@@ -28,36 +28,28 @@ export type ToastOptions = {
 const queue = new AriaToastQueue<ToastOptions>();
 
 export function Toast(props: ToastProps<ToastOptions>) {
-    return (
-        <AriaToast
-            { ...props }
-            className={ cn(styles.toast, props.className) }
-        />
-    );
+    return <AriaToast {...props} className={cn(styles.toast, props.className)} />;
 }
 
 export function ToastRegion() {
     return (
-        <AriaToastRegion
-            queue={ queue }
-            className={ styles.region }
-        >
+        <AriaToastRegion queue={queue} className={styles.region}>
             {({ toast: t }) => (
                 <Toast
-                    toast={ t }
-                    data-type={ t.content.type ?? 'default' }
-                    data-contrast={ t.content.contrast === false ? 'false' : undefined }
+                    toast={t}
+                    data-type={t.content.type ?? 'default'}
+                    data-contrast={t.content.contrast === false ? 'false' : undefined}
                 >
-                    <div className={ styles.body }>
-                        <div className={ styles.line } aria-hidden />
-                        <div className={ styles.content }>
+                    <div className={styles.body}>
+                        <div className={styles.line} aria-hidden />
+                        <div className={styles.content}>
                             <AriaToastContent>
-                                <Show when={ t.content.title != null }>
-                                    <Text slot="title">{ t.content.title }</Text>
+                                <Show when={t.content.title != null}>
+                                    <Text slot="title">{t.content.title}</Text>
                                 </Show>
 
-                                <Show when={ t.content.message != null }>
-                                    <Text slot="description">{ t.content.message }</Text>
+                                <Show when={t.content.message != null}>
+                                    <Text slot="description">{t.content.message}</Text>
                                 </Show>
                             </AriaToastContent>
                         </div>
@@ -70,22 +62,22 @@ export function ToastRegion() {
                         variant="filling"
                         color="secondary"
                         size="sm"
-                        className={ styles.close }
+                        className={styles.close}
                     >
                         <CloseIcon />
                     </Button>
 
-                    <Show when={ t.content.action != null }>
+                    <Show when={t.content.action != null}>
                         <Button
                             color="primary"
                             fullWidth
-                            className={ styles.action }
-                            onPress={ () => {
+                            className={styles.action}
+                            onPress={() => {
                                 t.content.action?.onPress();
                                 queue.close(t.key);
-                            } }
+                            }}
                         >
-                            { t.content.action?.label }
+                            {t.content.action?.label}
                         </Button>
                     </Show>
                 </Toast>
@@ -94,13 +86,15 @@ export function ToastRegion() {
     );
 }
 
-
 /** Simple imperative API: toast.show / .error / .success / .info / .warning */
 export const toast = {
     queue,
-    show: (options: ToastOptions) => queue.add({ ...options, type: options.type ?? 'default' }, { timeout: options.timeout ?? 3000 }),
-    success: (options: ToastOptions) => queue.add({ ...options, type: 'success' }, { timeout: options.timeout ?? 3000 }),
+    show: (options: ToastOptions) =>
+        queue.add({ ...options, type: options.type ?? 'default' }, { timeout: options.timeout ?? 3000 }),
+    success: (options: ToastOptions) =>
+        queue.add({ ...options, type: 'success' }, { timeout: options.timeout ?? 3000 }),
     error: (options: ToastOptions) => queue.add({ ...options, type: 'error' }, { timeout: options.timeout ?? 5000 }),
     info: (options: ToastOptions) => queue.add({ ...options, type: 'info' }, { timeout: options.timeout ?? 3000 }),
-    warning: (options: ToastOptions) => queue.add({ ...options, type: 'warning' }, { timeout: options.timeout ?? 3000 }),
+    warning: (options: ToastOptions) =>
+        queue.add({ ...options, type: 'warning' }, { timeout: options.timeout ?? 3000 }),
 };

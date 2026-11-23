@@ -1,27 +1,79 @@
-import { PROTOCOL_VERSION } from '@clowdy/protocol';
-import { app, BrowserWindow, clipboard, ClipboardItem, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, protocol, session, shell, autoUpdater as squirrel, type MessageBoxOptions } from 'electron';
-import { autoUpdater } from 'electron-updater';
 import { watch } from 'node:fs';
 import { release } from 'node:os';
 import path from 'node:path';
+import { PROTOCOL_VERSION } from '@clowdy/protocol';
+import {
+    app,
+    BrowserWindow,
+    ClipboardItem,
+    clipboard,
+    dialog,
+    ipcMain,
+    Menu,
+    type MessageBoxOptions,
+    nativeImage,
+    nativeTheme,
+    net,
+    protocol,
+    session,
+    shell,
+    autoUpdater as squirrel,
+} from 'electron';
+import { autoUpdater } from 'electron-updater';
 
 import { IPC_CHANNELS } from '../shared/bridge';
 import { DEV_BUILD_MARKER } from '../shared/dev';
 import { createAppIcon } from './appIcon';
-import { showBootWindow, type BootWindow } from './bootWindow';
-import { bundleRuntime, installBun, installedRipgrep, installOwnBundle, pruneBunCopies, readBundleInfo, updatesDir, type BundleInfo } from './bundle';
+import { type BootWindow, showBootWindow } from './bootWindow';
+import {
+    type BundleInfo,
+    bundleRuntime,
+    installBun,
+    installedRipgrep,
+    installOwnBundle,
+    pruneBunCopies,
+    readBundleInfo,
+    updatesDir,
+} from './bundle';
 import { createClipboardFiles, systemClipboardFilesDeps } from './clipboardFiles';
-import { attachDaemon, currentContext, daemonAddress, ensureDaemon, environmentRuntime, findRunning, type DaemonContext, type DaemonRuntime } from './daemon';
+import {
+    attachDaemon,
+    currentContext,
+    type DaemonContext,
+    type DaemonRuntime,
+    daemonAddress,
+    ensureDaemon,
+    environmentRuntime,
+    findRunning,
+} from './daemon';
 import { askToReplaceDaemon, showDaemonError } from './daemonDialog';
 import { daemonHoldsLock } from './daemonFiles';
-import { daemonBundle, fromOlderBundle, keepDaemonFresh, newestSourceTime, sourcesChangedSince, type DaemonKeeper, type KeeperOptions } from './daemonKeeper';
+import {
+    type DaemonKeeper,
+    daemonBundle,
+    fromOlderBundle,
+    type KeeperOptions,
+    keepDaemonFresh,
+    newestSourceTime,
+    sourcesChangedSince,
+} from './daemonKeeper';
 import { registerIpc } from './ipc';
 import { createAppMenu } from './menu';
 import { createOpenWith, systemOpenWithDeps } from './openWith';
 import { createOta, type Ota, type RunningBundle } from './ota';
 import { createProtocolHandler } from './protocol';
-import { releaseConfig, type ReleaseConfig } from './releaseConfig';
-import { APP_ORIGIN, APP_SCHEME, appScheme, captionSymbolColor, hasLaunchSwitches, lockNavigation, restrictPermissions, windowOptions, windowsBuild } from './security';
+import { type ReleaseConfig, releaseConfig } from './releaseConfig';
+import {
+    APP_ORIGIN,
+    APP_SCHEME,
+    appScheme,
+    captionSymbolColor,
+    hasLaunchSwitches,
+    lockNavigation,
+    restrictPermissions,
+    windowOptions,
+    windowsBuild,
+} from './security';
 import { createUpdater } from './updater';
 
 const OTA_CHECK_INTERVAL_MS = 60 * 60_000;
@@ -34,19 +86,21 @@ const OTA_CHECK_INTERVAL_MS = 60 * 60_000;
  */
 const ownRendererRoot = app.isPackaged
     ? path.join(app.getAppPath(), 'renderer')
-    : process.env.CLOWDY_RENDERER_DIR ?? path.join(app.getAppPath(), 'dist/renderer');
+    : (process.env.CLOWDY_RENDERER_DIR ?? path.join(app.getAppPath(), 'dist/renderer'));
 const trustedOrigin = APP_ORIGIN;
 
 /** The editors, terminals and file managers a folder or a file can be opened in: the page asks which this computer has, and which one to use. */
-const openWith = createOpenWith(systemOpenWithDeps(
-    path => shell.openPath(path),
-    createAppIcon({
-        platform: process.platform,
-        thumbnail: (file, size) => nativeImage.createThumbnailFromPath(file, { width: size, height: size }),
-        fileIcon: file => app.getFileIcon(file, { size: 'normal' }),
-    }),
-    path => shell.showItemInFolder(path)
-));
+const openWith = createOpenWith(
+    systemOpenWithDeps(
+        path => shell.openPath(path),
+        createAppIcon({
+            platform: process.platform,
+            thumbnail: (file, size) => nativeImage.createThumbnailFromPath(file, { width: size, height: size }),
+            fileIcon: file => app.getFileIcon(file, { size: 'normal' }),
+        }),
+        path => shell.showItemInFolder(path)
+    )
+);
 
 /** The files and folders on the system clipboard: copied in the app they paste into Finder or Explorer, and copied there they paste into the file tree. */
 const clipboardFiles = createClipboardFiles(systemClipboardFilesDeps(clipboard, ClipboardItem));
@@ -57,13 +111,11 @@ let updateReady: number | undefined;
 if (app.isPackaged && hasLaunchSwitches(process.argv.slice(1))) {
     console.error('Clowdy does not start with command-line switches.');
     app.exit(1);
-}
-else if (!app.requestSingleInstanceLock()) {
+} else if (!app.requestSingleInstanceLock()) {
     // The running instance comes forward (`second-instance`); this one has nothing to do.
     console.info('Clowdy is already running; switching to it.');
     app.quit();
-}
-else {
+} else {
     start();
 }
 
@@ -114,10 +166,10 @@ function start(): void {
         // A development run's own bundle is its checkout: version 0, so a bundle from the test feed is newer.
         const own = app.isPackaged
             ? await readBundleInfo(path.join(app.getAppPath(), 'bundle.json')).catch((error: unknown) => {
-                runtimeError = error;
+                  runtimeError = error;
 
-                return undefined;
-            })
+                  return undefined;
+              })
             : undefined;
         const ota = createOta({
             updates,
@@ -145,9 +197,11 @@ function start(): void {
                 app.relaunch();
                 app.exit(0);
             },
-            onInstalled: (version) => {
+            onInstalled: version => {
                 updateReady = version;
-                BrowserWindow.getAllWindows().forEach(window => window.webContents.send(IPC_CHANNELS.updateReady, version));
+                BrowserWindow.getAllWindows().forEach(window =>
+                    window.webContents.send(IPC_CHANNELS.updateReady, version)
+                );
             },
             log: message => console.info(message),
         });
@@ -160,7 +214,7 @@ function start(): void {
         if (await ota.catchUp(fraction => (boot ??= showBootWindow()).progress(fraction))) bundle = await ota.choose();
 
         // macOS shows it after the shell version: "Version 0.2.0 (Bundle 1234)".
-        if (bundle.version) app.setAboutPanelOptions({ version: `Bundle ${ bundle.version }` });
+        if (bundle.version) app.setAboutPanelOptions({ version: `Bundle ${bundle.version}` });
 
         protocol.handle(APP_SCHEME, createProtocolHandler(bundle.rendererRoot, bundle.rendererFiles));
 
@@ -175,7 +229,7 @@ function start(): void {
         const context = currentContext(runtime);
 
         registerIpc(ipcMain, trustedOrigin, {
-            setThemeSource: (theme) => {
+            setThemeSource: theme => {
                 nativeTheme.themeSource = theme;
             },
             // Asked on every page load, so a daemon the person restarted is found again by reloading the window.
@@ -212,9 +266,8 @@ function start(): void {
          */
         const daemonDown = async () => {
             try {
-                return Boolean(runtime) && !await findRunning(context) && await ota.daemonFailed();
-            }
-            catch (error) {
+                return Boolean(runtime) && !(await findRunning(context)) && (await ota.daemonFailed());
+            } catch (error) {
                 console.warn('Could not go back to the previous bundle:', error);
 
                 return false;
@@ -222,7 +275,8 @@ function start(): void {
         };
         const firstWindow = Promise.withResolvers<BrowserWindow>();
         const keeper = startKeeper(context, bundle, firstWindow.promise, {
-            onReplaced: () => void daemonUp(true).catch((error: unknown) => console.warn('After the daemon was replaced:', error)),
+            onReplaced: () =>
+                void daemonUp(true).catch((error: unknown) => console.warn('After the daemon was replaced:', error)),
             onFailed: () => void daemonDown(),
         });
         // Without a runtime the app still joins a daemon that is running; when it cannot, the runtime's failure is the reason shown.
@@ -231,8 +285,7 @@ function start(): void {
         if (daemonError) {
             // Relaunching on the previous bundle.
             if (await daemonDown()) return;
-        }
-        else {
+        } else {
             void daemonUp(ours).catch((error: unknown) => console.warn('After the daemon came up:', error));
         }
 
@@ -260,7 +313,8 @@ function start(): void {
  * process's event loop on macOS, as does the unparented fallback when no window is open (macOS keeps the app without one).
  */
 async function showSheet(options: MessageBoxOptions): Promise<number> {
-    const window = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows().find(candidate => candidate.isVisible());
+    const window =
+        BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows().find(candidate => candidate.isVisible());
     const { response } = window ? await dialog.showMessageBox(window, options) : await dialog.showMessageBox(options);
 
     return response;
@@ -274,22 +328,34 @@ async function showSheet(options: MessageBoxOptions): Promise<number> {
 function startUpdates(release: ReleaseConfig, ota: Ota, bundle: RunningBundle): void {
     const updates = release.repo
         ? createUpdater({
-            updater: autoUpdater,
-            squirrel,
-            platform: process.platform,
-            // Squirrel.Mac installs only an update signed by the same Developer ID, so an ad-hoc build points to the download.
-            selfUpdates: process.platform !== 'darwin' || release.signed,
-            app,
-            ask: async ({ message, detail, accept, decline }) =>
-                await showSheet({ type: 'info', message, detail, buttons: [accept, decline], defaultId: 0, cancelId: 1 }) === 0,
-            openReleasePage: () => void shell.openExternal(`https://github.com/${ release.repo }/releases/latest`),
-        })
+              updater: autoUpdater,
+              squirrel,
+              platform: process.platform,
+              // Squirrel.Mac installs only an update signed by the same Developer ID, so an ad-hoc build points to the download.
+              selfUpdates: process.platform !== 'darwin' || release.signed,
+              app,
+              ask: async ({ message, detail, accept, decline }) =>
+                  (await showSheet({
+                      type: 'info',
+                      message,
+                      detail,
+                      buttons: [accept, decline],
+                      defaultId: 0,
+                      cancelId: 1,
+                  })) === 0,
+              openReleasePage: () => void shell.openExternal(`https://github.com/${release.repo}/releases/latest`),
+          })
         : undefined;
 
     if (!updates && !ota.enabled) return;
 
     const tell = (message: string, detail: string) => showSheet({ type: 'info', message, detail });
-    const checkBundles = () => ota.check().catch((error: unknown) => console.warn('OTA update check failed:', error instanceof Error ? error.message : error));
+    const checkBundles = () =>
+        ota
+            .check()
+            .catch((error: unknown) =>
+                console.warn('OTA update check failed:', error instanceof Error ? error.message : error)
+            );
 
     /** A newer shell wins; otherwise a newly installed or waiting bundle gets the page's restart offer. */
     // electron-updater's messages go on with a stack and the response headers; it logs them whole.
@@ -300,36 +366,50 @@ function startUpdates(release: ReleaseConfig, ota: Ota, bundle: RunningBundle): 
         let shellProblem: string | undefined;
 
         try {
-            if (await updates?.checkNow(version => void tell(`Downloading Clowdy ${ version }…`, 'Clowdy asks you to restart once the download is done'))) return;
-        }
-        catch (error) {
+            if (
+                await updates?.checkNow(
+                    version =>
+                        void tell(
+                            `Downloading Clowdy ${version}…`,
+                            'Clowdy asks you to restart once the download is done'
+                        )
+                )
+            )
+                return;
+        } catch (error) {
             shellProblem = reason(error);
         }
 
         try {
             await ota.check();
-        }
-        catch (error) {
-            await tell('Couldn\'t update Clowdy', shellProblem ?? reason(error));
+        } catch (error) {
+            await tell("Couldn't update Clowdy", shellProblem ?? reason(error));
 
             return;
         }
 
         const pending = ota.pending();
 
-        if (pending !== null) BrowserWindow.getAllWindows().forEach(window => window.webContents.send(IPC_CHANNELS.updateReady, pending));
-        else if (shellProblem) await tell('Couldn\'t update Clowdy', shellProblem);
-        else await tell('Clowdy is up to date', `Version ${ app.getVersion() }${ bundle.version ? ` (bundle ${ bundle.version })` : '' }`);
+        if (pending !== null)
+            BrowserWindow.getAllWindows().forEach(window => window.webContents.send(IPC_CHANNELS.updateReady, pending));
+        else if (shellProblem) await tell("Couldn't update Clowdy", shellProblem);
+        else
+            await tell(
+                'Clowdy is up to date',
+                `Version ${app.getVersion()}${bundle.version ? ` (bundle ${bundle.version})` : ''}`
+            );
     }
 
-    Menu.setApplicationMenu(createAppMenu({
-        checkForUpdates: (item) => {
-            item.enabled = false;
-            void checkForUpdates().finally(() => {
-                item.enabled = true;
-            });
-        },
-    }));
+    Menu.setApplicationMenu(
+        createAppMenu({
+            checkForUpdates: item => {
+                item.enabled = false;
+                void checkForUpdates().finally(() => {
+                    item.enabled = true;
+                });
+            },
+        })
+    );
     void updates?.start();
     void checkBundles();
     setInterval(() => void checkBundles(), OTA_CHECK_INTERVAL_MS);
@@ -341,7 +421,11 @@ function startUpdates(release: ReleaseConfig, ota: Ota, bundle: RunningBundle): 
  * A development run takes the Bun and the checkout `./clowdy dev` names, or that Bun and a bundle from the test feed; it
  * has no ripgrep of its own, so the daemon uses the one on the PATH.
  */
-async function daemonRuntime(bundle: RunningBundle, own: BundleInfo | undefined, updates: string): Promise<DaemonRuntime | undefined> {
+async function daemonRuntime(
+    bundle: RunningBundle,
+    own: BundleInfo | undefined,
+    updates: string
+): Promise<DaemonRuntime | undefined> {
     if (!app.isPackaged) {
         const checkout = environmentRuntime(process.env);
 
@@ -354,7 +438,7 @@ async function daemonRuntime(bundle: RunningBundle, own: BundleInfo | undefined,
 
     if (bundle.dir) return bundleRuntime(bun, bundle.dir, rg);
 
-    if (!own) throw new Error('The app\'s own bundle is unreadable');
+    if (!own) throw new Error("The app's own bundle is unreadable");
 
     return bundleRuntime(bun, await installOwnBundle({ resources, updates, version: own.version }), rg);
 }
@@ -364,13 +448,16 @@ async function daemonRuntime(bundle: RunningBundle, own: BundleInfo | undefined,
  * reason when there is none (the window opens anyway), and whether the daemon is one this app started. Quitting never
  * stops the daemon: it outlives the app, and only the keeper replaces a stale one (see `startKeeper`).
  */
-async function connectDaemon(context: DaemonContext, keeper: DaemonKeeper | undefined): Promise<{ error?: unknown; ours: boolean }> {
+async function connectDaemon(
+    context: DaemonContext,
+    keeper: DaemonKeeper | undefined
+): Promise<{ error?: unknown; ours: boolean }> {
     try {
         // A stale daemon (another bundle's, or one older than its sources) is replaced now, while no window depends on it.
         const outcome = await keeper?.checkNow();
 
         // The new daemon did not start: starting it again would fail again, after another wait.
-        if (outcome?.kind === 'failed' && !await findRunning(context)) return { error: outcome.error, ours: false };
+        if (outcome?.kind === 'failed' && !(await findRunning(context))) return { error: outcome.error, ours: false };
 
         // A busy one this app cannot talk to stays until the keeper swaps it; the window shows that it cannot reach a daemon
         // and reloads on the swap.
@@ -378,12 +465,11 @@ async function connectDaemon(context: DaemonContext, keeper: DaemonKeeper | unde
 
         const { pid, port } = await ensureDaemon(context);
 
-        console.info(`Using the daemon with pid ${ pid } on port ${ port }.`);
+        console.info(`Using the daemon with pid ${pid} on port ${port}.`);
 
         // With none running, `ensureDaemon` started this one.
         return { ours: outcome?.kind === 'restarted' || outcome?.kind === 'none' };
-    }
-    catch (error) {
+    } catch (error) {
         console.error('No daemon:', error);
 
         return { error, ours: false };
@@ -412,11 +498,13 @@ function startKeeper(
         context,
         onFailed,
         log: message => console.info(message),
-        onRestarted: (info) => {
+        onRestarted: info => {
             const address = daemonAddress(info);
 
             question?.abort();
-            BrowserWindow.getAllWindows().forEach(window => window.webContents.send(IPC_CHANNELS.daemonChanged, address));
+            BrowserWindow.getAllWindows().forEach(window =>
+                window.webContents.send(IPC_CHANNELS.daemonChanged, address)
+            );
             onReplaced();
         },
     };
@@ -433,7 +521,7 @@ function startKeeper(
 
                 void firstWindow
                     .then(window => askToReplaceDaemon(window, activeRuns, signal))
-                    .then(async (replace) => {
+                    .then(async replace => {
                         if (replace) await keeper.replaceNow();
                     });
             },
@@ -462,32 +550,37 @@ function reloadAfterRendererBuilds(root: string): void {
 
             // A rename can arrive as more than one event.
             clearTimeout(pending);
-            pending = setTimeout(() => BrowserWindow.getAllWindows().forEach(window => window.webContents.reloadIgnoringCache()), 50);
+            pending = setTimeout(
+                () => BrowserWindow.getAllWindows().forEach(window => window.webContents.reloadIgnoringCache()),
+                50
+            );
         });
-    }
-    catch (error) {
+    } catch (error) {
         console.warn('Not watching the renderer build; reload the window by hand after a rebuild:', error);
     }
 }
 
 function openWindow(): BrowserWindow {
-    const window = new BrowserWindow(windowOptions(
-        path.join(app.getAppPath(), 'dist/preload/index.cjs'),
-        process.platform,
-        windowsBuild(release()),
-        nativeTheme.shouldUseDarkColors
-    ));
+    const window = new BrowserWindow(
+        windowOptions(
+            path.join(app.getAppPath(), 'dist/preload/index.cjs'),
+            process.platform,
+            windowsBuild(release()),
+            nativeTheme.shouldUseDarkColors
+        )
+    );
 
     window.once('ready-to-show', () => window.show());
     // A page that loads after an OTA bundle was installed still offers the restart.
     window.webContents.on('did-finish-load', () => {
         if (updateReady !== undefined) window.webContents.send(IPC_CHANNELS.updateReady, updateReady);
     });
-    window.loadURL(`${ APP_ORIGIN }/`).catch((error: unknown) => console.error('The window did not load:', error));
+    window.loadURL(`${APP_ORIGIN}/`).catch((error: unknown) => console.error('The window did not load:', error));
 
     if (process.platform === 'win32') {
         // Windows draws the caption buttons over the page; their symbols follow the appearance.
-        const followTheme = () => window.setTitleBarOverlay({ symbolColor: captionSymbolColor(nativeTheme.shouldUseDarkColors) });
+        const followTheme = () =>
+            window.setTitleBarOverlay({ symbolColor: captionSymbolColor(nativeTheme.shouldUseDarkColors) });
 
         nativeTheme.on('updated', followTheme);
         window.once('closed', () => nativeTheme.off('updated', followTheme));
