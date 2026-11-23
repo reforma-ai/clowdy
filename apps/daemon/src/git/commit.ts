@@ -58,7 +58,7 @@ export function shownLine(line: string): string {
  * The first line of what git and its hooks printed that says what went wrong: the line that names the signing key when there is one, else git's own `fatal:` or `error:` line, else
  * the first line of what was printed on its error stream (a hook's), else of its output. One line, cut, without colour codes and without a credential in an address: never the whole of it, since a hook may print anything.
  */
-export function failureLine(stderr: string, stdout: string): string {
+export function failureLine(stderr: string, stdout: string, fallback = 'git could not make the commit'): string {
     const printed = printedLines(stderr);
     // The line that names the signing key comes first: git adds its own `fatal: failed to write commit object` after what the signing program said.
     const line =
@@ -66,7 +66,7 @@ export function failureLine(stderr: string, stdout: string): string {
         printed.find(candidate => /^(?:fatal|error):/i.test(candidate)) ??
         printed[0] ??
         printedLines(stdout)[0] ??
-        'git could not make the commit';
+        fallback;
 
     return shownLine(line);
 }

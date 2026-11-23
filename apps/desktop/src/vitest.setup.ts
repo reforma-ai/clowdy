@@ -34,3 +34,17 @@ if (typeof window !== 'undefined') {
         };
     };
 }
+
+/*
+ * Makes happy-dom's `Animation` match browsers when an animation is cancelled: the Web Animations spec rejects the `finished` promise of a cancelled animation and marks it as handled, so
+ * a browser reports no unhandled rejection when nobody awaits it (a dialog that closes cancels the animations of its content). happy-dom rejects it without the mark, and Vitest fails the
+ * run on the unhandled `AbortError`. The design system's own tests do the same (`packages/components/src/vitest.setup.ts`). Only DOM tests have an `Animation`.
+ */
+if (typeof Animation === 'function') {
+    const cancel = Animation.prototype.cancel;
+
+    Animation.prototype.cancel = function cancelAndMarkFinishedHandled(this: Animation) {
+        this.finished.catch(() => undefined);
+        cancel.call(this);
+    };
+}

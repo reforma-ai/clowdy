@@ -116,7 +116,11 @@ export function ChangesView({
 
     // The facts read the place when this is the first to look at it, which starts a round: the list is read once, for that round, and not before it.
     useEffect(() => {
-        if (model) model.sync(model.facts.generation);
+        if (!model) return;
+
+        model.sync(model.facts.generation);
+        // The uncommitted files too, whichever scope is shown: `Discard changes…` on a card and a row is offered by that list, which the commit box reads only while the sidebar is shown.
+        model.syncUncommitted(model.facts.generation);
     }, [model, scope, generation]);
 
     useEffect(() => model?.setRun(chatId, runScope), [model, chatId, runScope]);

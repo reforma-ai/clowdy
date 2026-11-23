@@ -105,6 +105,21 @@
     padding-inline: var(--spacing-6);
 }
 
+/* The button that discards the file's changes: its place is kept at the end of the header, and it shows while the pointer is over the header or the focus is in it. */
+.discard {
+    flex-shrink: 0;
+    /* Quiet until it is aimed at, and then the colour of what it does. */
+    --clowdy-button-color: var(--color-secondary-muted-text);
+    --clowdy-button-color--hover: var(--color-danger-text);
+    opacity: 0;
+    transition: opacity var(--transition-duration-fast) var(--ease-in-out);
+}
+
+.header:hover .discard,
+.header:focus-within .discard {
+    opacity: 1;
+}
+
 .body {
     min-width: 0;
 }

@@ -13,6 +13,7 @@ import { BranchPicker } from './BranchPicker';
 import styles from './ChangesSidebar.module.css';
 import { CommitBox } from './CommitBox';
 import { CreatePullRequest } from './CreatePullRequest';
+import { DiscardButton } from './DiscardButton';
 import { accessHint, accessHintTitle, aheadBehindCounts, CHANGE_KIND_VIEW, splitPath } from './gitSummary';
 import { CHANGES_FILES_MIN_HEIGHT } from './layout';
 import { LIST_TEXT } from './listState';
@@ -61,9 +62,20 @@ function SectionHeader({ title, count }: { title: string; count?: number }) {
 
 /**
  * One changed file of the scope, a row of the design system's list: what happened to it, its name with its folder dimmed after it (the whole path on hover), its lines, and a tick when it is
- * viewed. Its action (a press, or Enter on the row the arrows reached) brings its card to the top and opens it.
+ * viewed. Its action (a press, or Enter on the row the arrows reached) brings its card to the top and opens it. A file whose changes can be discarded (`discard`, its uncommitted entry) has
+ * `Discard changes…` at the end of its row, in the place of the tick, while the pointer is over the row or the focus is in it.
  */
-function FileRow({ file, viewed }: { file: GitChangedFile; viewed: boolean }) {
+function FileRow({
+    file,
+    viewed,
+    model,
+    discard,
+}: {
+    file: GitChangedFile;
+    viewed: boolean;
+    model: PlaceChanges;
+    discard: GitChangedFile | undefined;
+}) {
     const kind = CHANGE_KIND_VIEW[file.kind];
     const { folder, name } = splitPath(file.path);
 
@@ -94,6 +106,7 @@ function FileRow({ file, viewed }: { file: GitChangedFile; viewed: boolean }) {
                     <span className={styles.tick}>
                         {viewed && <Check role="img" title="Viewed" aria-label="Viewed" />}
                     </span>
+                    {discard && <DiscardButton model={model} file={discard} className={styles.discard} />}
                 </span>
             }
         >
@@ -143,6 +156,8 @@ export function ChangesSidebar({
     const files = model.files;
     // Read here, with the list: the rows are drawn by a callback of `For`, which does not follow the model, so a tick that changes reaches them through this component.
     const viewed = model.viewedPaths;
+    // Read here for the same reason: the rows are drawn by a callback, and the files that can be discarded change with the scope and with the uncommitted list.
+    const discardable = model.discardable;
     const [commitBoxRef, commitBoxHeight] = useBoxHeight();
 
     return (
@@ -212,7 +227,15 @@ export function ChangesSidebar({
                                     onAction={key => onOpenFile(String(key))}
                                 >
                                     <For each={[...files]}>
-                                        {file => <FileRow key={file.path} file={file} viewed={viewed.has(file.path)} />}
+                                        {file => (
+                                            <FileRow
+                                                key={file.path}
+                                                file={file}
+                                                viewed={viewed.has(file.path)}
+                                                model={model}
+                                                discard={discardable.get(file.path)}
+                                            />
+                                        )}
                                     </For>
                                 </GridList>
                             </Scrollable>
