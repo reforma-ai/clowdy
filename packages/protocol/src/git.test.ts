@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 
-import { commitScope, parseGitScope, ROUTES } from './index';
+import { commitScope, parseGitScope, ROUTES, turnScope, turnScopeTrees } from './index';
 
 describe('parseGitScope', () => {
     test('takes the three words and a commit by its hash, short or whole, in any case', () => {
@@ -15,6 +15,26 @@ describe('parseGitScope', () => {
     test('takes nothing else: a hash that is too short or too long, a name, an option, another word', () => {
         for (const text of ['commit:abc', `commit:${ 'a'.repeat(65) }`, 'commit:main', 'commit:--all1234567', 'commit:', 'HEAD', 'All', 'working', '']) {
             expect(parseGitScope(text)).toBeUndefined();
+        }
+    });
+});
+
+describe('the scope of a run', () => {
+    const start = 'a'.repeat(40);
+    const end = 'b0'.repeat(20);
+
+    test('is two whole tree ids, of 40 or 64 digits and of one length, joined by a colon, and keeps its letters lower case', () => {
+        expect(parseGitScope(`turn:${ start }:${ end }`)).toBe(`turn:${ start }:${ end }`);
+        expect(parseGitScope(turnScope(start, end))).toBe(turnScope(start, end));
+        expect(parseGitScope(`turn:${ start.toUpperCase() }:${ end.toUpperCase() }`)).toBe(turnScope(start, end));
+        expect(parseGitScope(`turn:${ 'c'.repeat(64) }:${ 'd'.repeat(64) }`)).toBe(`turn:${ 'c'.repeat(64) }:${ 'd'.repeat(64) }`);
+        expect(turnScopeTrees(turnScope(start, end))).toEqual({ startTree: start, endTree: end });
+    });
+
+    test('takes nothing else: a short id, ids of two lengths, a name, an option, a third part, one id', () => {
+        for (const text of [`turn:${ start }`, `turn:${ start }:`, 'turn:abc:def', `turn:${ start }:${ 'b'.repeat(64) }`, `turn:main:${ end }`, `turn:--all:${ end }`, `turn:${ start }:${ end }:${ end }`, `turn:${ 'a'.repeat(41) }:${ end }`, 'turn:']) {
+            expect(parseGitScope(text)).toBeUndefined();
+            expect(turnScopeTrees(text)).toBeUndefined();
         }
     });
 });
