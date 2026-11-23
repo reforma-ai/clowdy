@@ -232,8 +232,29 @@ export interface Chat {
     queue?: QueuedMessage[];
     /** Why the queue waits for the person (Send now on a message) instead of going out when the orchestrator rests. Absent while it flows, and whenever it is empty. */
     queuePaused?: QueuePause;
+    /**
+     * What the orchestrator's latest turn changed in the chat's place, when it changed files that git tracks or does not ignore: the daemon's own record, which a turn that
+     * changes nothing, one it could not measure and a chat that never ran in a repository leave absent. Set by the daemon when the turn ends and never by a command.
+     */
+    lastRun?: ChatLastRun;
     createdAt: number;
     updatedAt: number;
+}
+
+/**
+ * The two trees of a chat's place that the daemon took around the latest turn of the chat's orchestrator: when it started and when it ended (a temporary index and
+ * `git write-tree`, so the repository's own index and refs are untouched). Their difference is the turn's work (`turnScope`, read through `GET .../git/changes`), and the
+ * two ids stay valid for as long as git keeps the objects.
+ */
+export interface ChatLastRun {
+    /** The tree of the working directory (tracked and not ignored files) when the turn started. */
+    startTree: string;
+    /** The tree of the working directory when the turn ended. It differs from `startTree`: a turn that changed nothing is not kept. */
+    endTree: string;
+    /** The last `seq` of the orchestrator's stream when the turn ended: a message of the person after it (a larger `seq`) is a newer turn than this one. */
+    seq: number;
+    /** When the turn ended, in epoch milliseconds. */
+    at: number;
 }
 
 /**

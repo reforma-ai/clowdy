@@ -14,7 +14,8 @@
  *                                         answers `isRepository: false` and nothing else, as `FolderGit` does.
  * GET  /v1/projects/:id/git/changes?folderId=&workspaceId=&scope=
  *                                      -> GitChanges. The files that changed in `scope` (`all` when it is left out), each with its line counts and revision.
- *                                         `scope` is a `GitScope`; a commit the repository does not have is `not_found`, a scope that is none is `invalid`.
+ *                                         `scope` is a `GitScope`; a commit the repository does not have is `not_found`, a scope that is none is `invalid`, and the scope of a run
+ *                                         whose trees git has pruned is `unavailable`.
  * GET  /v1/projects/:id/git/file?folderId=&workspaceId=&scope=&path=&oldPath=&from=
  *                                      -> GitFileSides. The text of one changed file before and after, for a diff to be drawn from. `path` is the file as it is
  *                                         after the change and `oldPath` the one it had before when the change renamed it (`GitChangedFile.oldPath`). A path
@@ -99,9 +100,12 @@
  * - `branch`: HEAD against the merge base, what is committed on the branch;
  * - `uncommitted`: the working tree against HEAD, what is staged or edited, and what is new;
  * - `commit:<sha>`: that commit alone, against its first parent (a root commit against nothing).
+ * - `turn:<start>:<end>`: what a run of a chat changed, as the difference of two trees of the working directory that the daemon took when the run's turn started and when it ended
+ *   (`ChatLastRun`). Nothing else decides it, so it stays what that run did whatever happens to the files, the branch and the index afterwards. In a place that other chats or the person
+ *   edit too, it holds their edits of that time as well. A tree that git has pruned (it is kept as an object nothing refers to) makes a read of the scope `unavailable`.
  * With no base branch to compare with, `all` counts as `uncommitted` and `branch` is empty (`GitChanges.baseState` says so).
  */
-export type GitScope = 'all' | 'branch' | 'uncommitted' | `commit:${string}`;
+export type GitScope = 'all' | 'branch' | 'uncommitted' | `commit:${string}` | `turn:${string}:${string}`;
 
 /** What a commit scope's text starts with. */
 export const GIT_COMMIT_SCOPE_PREFIX = 'commit:';
@@ -109,9 +113,30 @@ export const GIT_COMMIT_SCOPE_PREFIX = 'commit:';
 /** The scope of one commit, by the hash `GitCommit.sha` gives. */
 export const commitScope = (sha: string): GitScope => `${GIT_COMMIT_SCOPE_PREFIX}${sha}`;
 
-/** A scope as a route's query writes it: one of the three words, or `commit:` and 7 to 64 hexadecimal digits (a hash, short or whole). Nothing for anything else. */
+/** What a run's scope text starts with. */
+export const GIT_TURN_SCOPE_PREFIX = 'turn:';
+
+/** The scope of what one run changed: the ids of the tree it started from and the tree it ended with (`ChatLastRun.startTree`, `endTree`). */
+export const turnScope = (startTree: string, endTree: string): GitScope =>
+    `${GIT_TURN_SCOPE_PREFIX}${startTree}:${endTree}`;
+
+/** The two tree ids a run's scope is made of, and nothing for any other scope. */
+export function turnScopeTrees(scope: string): { startTree: string; endTree: string } | undefined {
+    const found = /^turn:([0-9a-f]{40}|[0-9a-f]{64}):([0-9a-f]{40}|[0-9a-f]{64})$/.exec(scope);
+
+    return found && found[1]!.length === found[2]!.length ? { startTree: found[1]!, endTree: found[2]! } : undefined;
+}
+
+/**
+ * A scope as a route's query writes it: one of the three words, `commit:` and 7 to 64 hexadecimal digits (a hash, short or whole), or `turn:` and two whole tree ids (40 or 64
+ * hexadecimal digits each, of one length) joined by `:`. Nothing for anything else.
+ */
 export function parseGitScope(text: string): GitScope | undefined {
     if (text === 'all' || text === 'branch' || text === 'uncommitted') return text;
+
+    const trees = turnScopeTrees(text.toLowerCase());
+
+    if (trees) return turnScope(trees.startTree, trees.endTree);
 
     return text.startsWith(GIT_COMMIT_SCOPE_PREFIX) &&
         /^[0-9a-f]{7,64}$/i.test(text.slice(GIT_COMMIT_SCOPE_PREFIX.length))

@@ -151,7 +151,7 @@ export function createRoutes(context: RouteContext): Route[] {
         const scope = parseGitScope(url.searchParams.get('scope') ?? 'all');
 
         if (!scope) {
-            throw invalid('The scope is none of all, branch, uncommitted and commit:<hash>');
+            throw invalid('The scope is none of all, branch, uncommitted, commit:<hash> and turn:<tree>:<tree>');
         }
 
         return scope;
@@ -424,7 +424,9 @@ export function createRoutes(context: RouteContext): Route[] {
                 const scope = parseGitScope(body.scope);
 
                 if (!scope) {
-                    throw invalid('The scope is none of all, branch, uncommitted and commit:<hash>');
+                    throw invalid(
+                        'The scope is none of all, branch, uncommitted, commit:<hash> and turn:<tree>:<tree>'
+                    );
                 }
 
                 checkViewedPath(body.path);

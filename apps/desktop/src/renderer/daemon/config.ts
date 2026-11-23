@@ -1,6 +1,6 @@
 import { FileSystemError } from '@clowdy/file-manager/provider';
 
-import { createFixtureData, withFixtureWorkspace } from './fixtureData';
+import { createFixtureData, withFixtureLastRun, withFixtureWorkspace } from './fixtureData';
 import { FIXTURE_BRANCH_SCRIPTS } from './fixtureGitBranches';
 import { FIXTURE_REMOTE_SCRIPTS } from './fixtureGitRemote';
 import { FixtureTransport } from './fixtureTransport';
@@ -157,7 +157,7 @@ export function createTransport(config: DaemonConfig): Transport {
     if (config.kind !== 'fixtures') return unconfigured;
 
     const { timeline, commit, message, remote, pr, branches, clean, base } = config;
-    const data = config.worktree ? withFixtureWorkspace(createFixtureData()) : createFixtureData();
+    const data = config.worktree ? withFixtureLastRun(withFixtureWorkspace(createFixtureData())) : createFixtureData();
 
     // The worktree's branch is the branch the work is compared with, which is where a commit goes straight to the base.
     if (base) for (const chat of data.chats) if (chat.workspace) chat.workspace.branch = 'main';

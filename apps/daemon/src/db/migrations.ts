@@ -530,4 +530,14 @@ export const MIGRATIONS: Migration[] = [
             `);
         },
     },
+    {
+        version: 27,
+        up(db) {
+            // What the chat's latest orchestrator turn changed (see `ChatLastRun`): `{ startTree, endTree, seq, at }` as JSON, the two trees of the chat's place that the daemon
+            // took when the turn started and ended. NULL for a chat whose latest turn changed nothing, could not be measured, or never ran, which is every chat of an older
+            // database. Written only by the daemon at a turn's end (`setChatLastRun`) and by no update of a chat, so a stale copy of a chat cannot bring an old turn back. The
+            // chat's row holds it, so deleting the chat takes it along, and no foreign key is needed.
+            db.run('ALTER TABLE chats ADD COLUMN last_run TEXT');
+        },
+    },
 ];

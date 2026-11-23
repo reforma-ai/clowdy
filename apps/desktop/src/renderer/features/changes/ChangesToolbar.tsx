@@ -6,7 +6,7 @@ import { Text } from '@clowdy/components/Text';
 import { Collapse, EyeOff } from '@clowdy/icons/14';
 
 import styles from './ChangesToolbar.module.css';
-import { scopeOptions } from './changeScopes';
+import { isRunScope, LAST_RUN_TOOLTIP, scopeOptions } from './changeScopes';
 import { summaryOf } from './summary';
 import { VIEWED_TEXT } from './viewedMarks';
 
@@ -60,29 +60,39 @@ function Summary({ model }: { model: PlaceChanges }) {
 /**
  * The bars over the cards: the scope menu with the buttons that fold every card, open every card and hide the viewed files (a toggle, there to press once some are viewed), and, where the sidebar's button goes when the sidebar is hidden (`end`, the
  * same place as the one in the sidebar's own header, so it does not move), then the filter and the summary of the list. The scope menu has all changes, the branch against its base
- * while there is a base, what is not committed, and one entry for each commit of the branch, newest first.
+ * while there is a base, what is not committed, the open chat's last run while it has one, and one entry for each commit of the branch, newest first.
  */
 export function ChangesToolbar({ model, end }: { model: PlaceChanges; end?: ReactNode }) {
-    const options = scopeOptions(model.base).map(option => ({ ...option, id: option.scope }));
+    const options = scopeOptions(model.base, model.runScope).map(option => ({ ...option, id: option.scope }));
     const hasFiles = model.files.length > 0;
 
     return (
         <>
             <PanelHeader>
-                <Select
-                    aria-label="Changes to show"
-                    size="sm"
-                    variant="transparent"
-                    valueDisplay="text"
-                    className={styles.scope}
-                    triggerClassName={styles.scopeTrigger}
-                    popoverClassName={styles.scopeList}
-                    items={options}
-                    selectedKey={model.effectiveScope}
-                    onSelectionChange={(key: unknown) => typeof key === 'string' && model.setScope(key as GitScope)}
-                >
-                    {item => <ListBoxItem id={item.id} text={item.label} />}
-                </Select>
+                {/* The tooltip of the run's scope is the wrapper's, which has no box of its own: the button keeps the place it had. */}
+                <span className={styles.titled} title={isRunScope(model.effectiveScope) ? LAST_RUN_TOOLTIP : undefined}>
+                    <Select
+                        aria-label="Changes to show"
+                        size="sm"
+                        variant="transparent"
+                        valueDisplay="text"
+                        className={styles.scope}
+                        triggerClassName={styles.scopeTrigger}
+                        popoverClassName={styles.scopeList}
+                        items={options}
+                        selectedKey={model.effectiveScope}
+                        onSelectionChange={(key: unknown) => typeof key === 'string' && model.setScope(key as GitScope)}
+                    >
+                        {item => (
+                            <ListBoxItem
+                                id={item.id}
+                                text={item.label}
+                                description={item.note}
+                                stacked={item.note !== undefined}
+                            />
+                        )}
+                    </Select>
+                </span>
                 <PanelHeader.Actions>
                     <PanelHeader.Button
                         aria-label="Collapse all files"
