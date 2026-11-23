@@ -48,8 +48,22 @@ export interface BranchChoice {
     name: string;
     /** Ticked from the start only for a branch whose work is in the base; a branch that is not, or whose standing is unknown, is the person's to tick. */
     selected: boolean;
-    /** `merged`: the work is in the base. `unmerged`: it is not, so it is lost with the branch. `unknown`: no base to compare with. */
-    standing: 'merged' | 'unmerged' | 'unknown';
+    /**
+     * `merged`: the work is in the base. `unmerged`: it is not, so it is lost with the branch. `unknown`: no base to compare with. `base`: the branch is the base itself (or its local
+     * copy), whose work is "in the base" by being it, so nothing shows another branch keeps it.
+     */
+    standing: 'merged' | 'unmerged' | 'unknown' | 'base';
+}
+
+/** Whether a branch is the base the worktree is compared with, or the local branch of the same name as a remote's (`main` for `origin/main`). */
+const isBaseBranch = (branch: string, base: string | undefined) => base !== undefined && (branch === base || branch === base.slice(base.indexOf('/') + 1));
+
+function branchChoice(name: string, merged: boolean | undefined, base: string | undefined): BranchChoice {
+    if (merged === undefined) return { name, selected: false, standing: 'unknown' };
+
+    if (!merged) return { name, selected: false, standing: 'unmerged' };
+
+    return isBaseBranch(name, base) ? { name, selected: false, standing: 'base' } : { name, selected: true, standing: 'merged' };
 }
 
 /**
@@ -65,7 +79,7 @@ export interface RemovalPlan {
     notes: string[];
     /** Absent on a detached HEAD: there is no branch to delete. */
     branch?: BranchChoice;
-    /** A detached HEAD whose commits are in no branch: they are lost with the worktree. */
+    /** A detached HEAD whose commits are not in the base, and so may be in no branch: they can be lost with the worktree. */
     stranded: boolean;
 }
 
@@ -77,8 +91,8 @@ export function discardLabel(changes: number): string {
 }
 
 /** What removing this worktree asks and says. The folder's own checkout has no removal, so it never gets here. */
-export function removalPlan({ branch, merged, missing, changes, submodules }: Pick<WorktreeInfo, 'branch' | 'merged' | 'missing' | 'changes' | 'submodules'>): RemovalPlan {
-    const choice: BranchChoice | undefined = branch === undefined ? undefined : { name: branch, selected: merged === true, standing: merged === undefined ? 'unknown' : merged ? 'merged' : 'unmerged' };
+export function removalPlan({ branch, base, merged, missing, changes, submodules }: Pick<WorktreeInfo, 'branch' | 'base' | 'merged' | 'missing' | 'changes' | 'submodules'>): RemovalPlan {
+    const choice = branch === undefined ? undefined : branchChoice(branch, merged, base);
     const common = { ...(choice && { branch: choice }), stranded: branch === undefined && merged === false };
 
     if (missing) {
@@ -100,15 +114,20 @@ export function removalPlan({ branch, merged, missing, changes, submodules }: Pi
     return { ...common, kind: 'plain', title: 'Remove the worktree?', confirmLabel: 'Remove', notes: ['Its folder is removed from the disk'] };
 }
 
+const BRANCH_WARNINGS: Record<BranchChoice['standing'], string | undefined> = {
+    merged: undefined,
+    unmerged: 'Its changes are lost when the branch goes',
+    unknown: 'Not compared with a base, so its changes may be in no other branch',
+    base: 'It is the base branch itself',
+};
+
 /** What a branch that may be lost says beside its box, or `undefined` when its work is in the base. */
 export function branchWarning({ standing }: BranchChoice): string | undefined {
-    if (standing === 'unmerged') return 'Its changes are lost when the branch goes';
-
-    return standing === 'unknown' ? 'Not compared with a base, so its changes may be in no other branch' : undefined;
+    return BRANCH_WARNINGS[standing];
 }
 
-/** What a detached HEAD whose commits are in no branch says: nothing keeps them once the worktree is gone. */
-export const STRANDED_WARNING = 'Its commits are in no branch, so they are lost with the worktree';
+/** What a detached HEAD whose commits are not in the base says: git may know no branch that keeps them once the worktree is gone. */
+export const STRANDED_WARNING = 'Its commits may be in no branch, so they can be lost with the worktree';
 
 /** The groups of the project that are repositories and whose folder is still in the project, each with its folder, in the project's order. */
 export function repositoryGroups(groups: readonly FolderWorktrees[], folders: readonly ProjectFolder[]): { group: FolderWorktrees; folder: ProjectFolder }[] {

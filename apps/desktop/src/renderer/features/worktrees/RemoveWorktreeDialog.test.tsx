@@ -174,6 +174,32 @@ describe('Remove in Manage worktrees', () => {
         });
     });
 
+    describe('while the command runs', () => {
+        it('sends it once for two presses, and keeps Cancel off until it answers', async () => {
+            let answer!: () => void;
+            const slow = vi.fn((input: CommandInput) => new Promise<CommandResult>((resolve) => {
+                answer = () => void resolve({ ok: true, requestId: 'r', data: { path: input.type === 'workspace.remove' ? input.path : '', branchDeleted: false } });
+            }));
+
+            await open({ overrides: { command: slow } });
+            await askToRemove(CLEAN_MERGED);
+
+            const button = textButton(confirmation(), 'Remove')!;
+
+            await click(button);
+            await click(button);
+
+            expect(slow).toHaveBeenCalledTimes(1);
+            expect(textButton(confirmation(), 'Cancel')!.disabled).toBe(true);
+            expect(isConfirming()).toBe(true);
+
+            await act(async () => answer());
+            await settle();
+
+            expect(isConfirming()).toBe(false);
+        });
+    });
+
     describe('a branch that is not merged', () => {
         it('has its box off, says `Not merged` and what is lost with the branch, and removes the worktree alone by default', async () => {
             await open();
@@ -198,6 +224,24 @@ describe('Remove in Manage worktrees', () => {
             await confirm('Remove');
 
             expect(removals()).toEqual([{ type: 'workspace.remove', projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental', path: CLEAN_UNMERGED, deleteBranch: true }]);
+        });
+
+        it('leaves the box off for the base branch itself, whose work is "in the base" by being it, and says so', async () => {
+            const data = dataWithKinds();
+
+            // The fixture's base is `origin/main`: a worktree on the local `main` is merged into it, and deleting `main` keeps nothing of it anywhere else.
+            data.worktrees![CAR_RENTAL]!.push({ path: '/Users/dev/orca/car-rental/trunk', branch: 'main', head: 'fff7777' });
+            await open({ data });
+            await askToRemove('/Users/dev/orca/car-rental/trunk');
+
+            expect(confirmation().textContent).toContain('Delete branch main');
+            expect(confirmation().textContent).toContain('It is the base branch itself');
+            expect(confirmation().textContent).not.toContain('Not merged');
+            expect(checkbox()!.checked).toBe(false);
+
+            await confirm('Remove');
+
+            expect(removals()).toEqual([{ type: 'workspace.remove', projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental', path: '/Users/dev/orca/car-rental/trunk' }]);
         });
 
         it('offers the branch whatever it is called, one the person made as well as the one Clowdy named', async () => {
@@ -278,13 +322,13 @@ describe('Remove in Manage worktrees', () => {
             expect(removals()).toEqual([{ type: 'workspace.remove', projectId: FIXTURE_PROJECT_ID, folderId: 'fld_api', path: DETACHED_MERGED }]);
         });
 
-        it('warns that its commits are in no branch and are lost with the worktree, with no branch box either', async () => {
+        it('warns that its commits are not in the base and may be in no branch, with no branch box either', async () => {
             await open();
             await askToRemove(STRANDED);
 
             expect(checkbox()).toBeNull();
             expect(confirmation().textContent).toContain('Not merged');
-            expect(confirmation().textContent).toContain('Its commits are in no branch, so they are lost with the worktree');
+            expect(confirmation().textContent).toContain('Its commits may be in no branch, so they can be lost with the worktree');
 
             await confirm('Remove');
 

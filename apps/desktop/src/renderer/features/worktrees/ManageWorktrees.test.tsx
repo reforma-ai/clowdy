@@ -269,7 +269,7 @@ describe('Manage worktrees', () => {
         expect(row('/Users/dev/car-rental').querySelector('button[aria-label^="Remove "]')).toBeNull();
     });
 
-    it('calls the removal of a worktree that has a chat, or a lock, nothing: the button is off and opens no confirmation', async () => {
+    it('opens no confirmation from a Remove that is off, for a chat or for a lock', async () => {
         await open();
         await click(buttonIn(row(CLOWDY_WORKTREE), 'Remove clowdy/ab12cd34')!);
         await click(buttonIn(row(LOCKED_WORKTREE), 'Remove hotfix/invoice')!);

@@ -76,6 +76,19 @@ describe('removalPlan', () => {
         expect(branchWarning({ name: 'x', selected: true, standing: 'merged' })).toBeUndefined();
     });
 
+    it('leaves the base branch itself unticked, or its local copy of the same name as the remote one, since being the base is not a merge', () => {
+        expect(removalPlan({ ...clean, branch: 'main', base: 'main' }).branch).toEqual({ name: 'main', selected: false, standing: 'base' });
+        expect(removalPlan({ ...clean, branch: 'main', base: 'origin/main' }).branch).toEqual({ name: 'main', selected: false, standing: 'base' });
+        expect(branchWarning({ name: 'main', selected: false, standing: 'base' })).toBe('It is the base branch itself');
+        // Another branch of the same tail, or one the base does not name, is an ordinary merged branch.
+        expect(removalPlan({ ...clean, branch: 'feature/main', base: 'origin/main' }).branch).toMatchObject({ selected: true, standing: 'merged' });
+        expect(removalPlan({ ...clean, branch: 'feature/done', base: 'origin/main' }).branch).toMatchObject({ selected: true, standing: 'merged' });
+    });
+
+    it('does not take the base for merged when its work is not in it: a local `main` ahead of `origin/main` is plainly not merged', () => {
+        expect(removalPlan({ ...clean, branch: 'main', base: 'origin/main', merged: false }).branch).toEqual({ name: 'main', selected: false, standing: 'unmerged' });
+    });
+
     it('asks for the red confirmation, with the number of changes, when something is not committed', () => {
         expect(removalPlan({ ...clean, changes: 1 })).toMatchObject({ kind: 'discard', confirmLabel: 'Discard 1 change and remove', notes: ['1 change that is not committed is deleted for good with it'] });
         expect(removalPlan({ ...clean, changes: 4 })).toMatchObject({ kind: 'discard', confirmLabel: 'Discard 4 changes and remove', notes: ['4 changes that are not committed are deleted for good with it'] });

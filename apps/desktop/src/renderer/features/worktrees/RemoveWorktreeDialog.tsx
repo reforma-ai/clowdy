@@ -5,7 +5,7 @@ import { openConfirmModal } from '@clowdy/components/modals';
 import { Show } from '@clowdy/components/Show';
 import { Badge } from '@clowdy/components/Tag';
 import { Text } from '@clowdy/components/Text';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 
 import { PathText } from '../../shared/PathText';
 import { worktreeLabel } from '../agents/workspaceChoice';
@@ -38,12 +38,13 @@ interface RemoveMessageProps {
 
 /**
  * The body of the confirmation: which worktree (its branch or commit, and its path), what goes with it, and the branch as a choice of its own. The box starts ticked only for a
- * branch whose work is in the base; one that is not carries `Not merged` and the reason it is lost with the branch. A detached HEAD has no branch to offer, and when its commits
- * are in no branch (not merged) it says they are lost with the worktree.
+ * branch whose work is in the base (and is not the base itself); one that is not carries `Not merged` and the reason it is lost with the branch. A detached HEAD has no branch to
+ * offer, and when its commits are not in the base it says they may be in no branch.
  */
 function RemoveMessage({ worktree, plan, choice }: RemoveMessageProps) {
     const [deleteBranch, setDeleteBranch] = useState(choice.deleteBranch);
     const warning = plan.branch && branchWarning(plan.branch);
+    const warningId = useId();
 
     return (
         <Box gap="lg">
@@ -65,6 +66,7 @@ function RemoveMessage({ worktree, plan, choice }: RemoveMessageProps) {
                             <Checkbox
                                 size="sm"
                                 isSelected={ deleteBranch }
+                                aria-describedby={ warning ? warningId : undefined }
                                 onChange={ (selected) => {
                                     choice.deleteBranch = selected;
                                     setDeleteBranch(selected);
@@ -77,7 +79,7 @@ function RemoveMessage({ worktree, plan, choice }: RemoveMessageProps) {
                             </Show>
                         </Box>
                         <Show when={ warning }>
-                            { text => <Text variant="sm" color="warning">{ text }</Text> }
+                            { text => <Text id={ warningId } variant="sm" color="warning">{ text }</Text> }
                         </Show>
                     </Box>
                 )}
