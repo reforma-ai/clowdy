@@ -52,8 +52,8 @@ export function remoteHost(address: string): string | undefined {
     const text = address.trim();
     const host = /^(?:ssh|git|https?):\/\/(?:[^@/]*@)?([^/:?#@]+)/i.exec(text)?.[1] ?? /^(?:[^@/\s]+@)?([^/:\s@]+):(?!\/\/)/.exec(text)?.[1];
 
-    // A single letter is a Windows drive (`C:\work`), not a host.
-    return host !== undefined && host.length > 1 && /^[a-z0-9][a-z0-9.-]*$/i.test(host) ? host.toLowerCase() : undefined;
+    // A single letter is a Windows drive (`C:\work`), not a host. An alias of `~/.ssh/config` may have an underscore (`github_work`); it never starts with a dash, so it cannot be an option.
+    return host !== undefined && host.length > 1 && /^[a-z0-9][a-z0-9._-]*$/i.test(host) ? host.toLowerCase() : undefined;
 }
 
 /**

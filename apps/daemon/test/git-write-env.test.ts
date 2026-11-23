@@ -21,6 +21,7 @@ describe('remoteHost', () => {
         expect(remoteHost('https://ghe.example.com:8443/acme/app')).toBe('ghe.example.com');
         expect(remoteHost('git@work-alias:team/app.git')).toBe('work-alias');
         expect(remoteHost('git@work-alias:app.git')).toBe('work-alias');
+        expect(remoteHost('git@github_work:team/app.git')).toBe('github_work');
     });
 
     test('says nothing of a path on the disk, a drive letter or a name that could be an option', () => {
