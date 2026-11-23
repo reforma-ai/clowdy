@@ -7,6 +7,7 @@ import { chatListPreferences, type ChatSort } from '../agents/chatListPreference
 import { busyEnter } from '../chats/busyEnter';
 import { newChatDefaults } from '../chats/newChatDefaults';
 import { swipeToReply } from '../chats/swipeReplyPreference';
+import { BranchPrefixRow } from './BranchPrefixRow';
 import { modeOf, NewChatChoices } from './NewChatChoices';
 import { SettingsCard } from './ui/SettingsCard';
 import { SettingsPage } from './ui/SettingsPage';
@@ -34,7 +35,7 @@ const FINISHED_LABEL = 'Finished threads';
 
 /**
  * Settings > Chat: how the message box sends, whether a swipe over a message replies to it, what a new chat starts with where its project follows the app,
- * and how the Agents list looks, on this computer.
+ * what the branch of a new worktree starts with, and how the Agents list looks, on this computer.
  */
 export function ChatPage() {
     return (
@@ -72,6 +73,12 @@ export function ChatPage() {
                 onEngineChange={ next => newChatDefaults.setEngine(next === LAST_USED ? undefined : next) }
                 onModeChange={ next => newChatDefaults.setMode(modeOf(next)) }
             />
+
+            <SettingsSection title="New worktrees">
+                <SettingsCard>
+                    <BranchPrefixRow />
+                </SettingsCard>
+            </SettingsSection>
 
             <SettingsSection title="Agents list">
                 <SettingsCard divided>

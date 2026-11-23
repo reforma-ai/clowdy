@@ -9,7 +9,7 @@ import { getWorkspace } from '../db/workspaces';
 import { git } from '../domain/git';
 import { appendItem, markRewindPoint } from '../domain/items';
 import { isBeingRemoved } from '../domain/workspaceRemoval';
-import { chatKey, needsPreparing, prepareWorkspace } from '../domain/workspaces';
+import { needsPreparing, ownsWorktree, prepareWorkspace } from '../domain/workspaces';
 import { EngineFailure, errorMessage } from '../errors';
 import { conversationRecord } from './history';
 import { backoffDelay, engineName, formatMoment, parseLimit, sleep } from './limits';
@@ -170,8 +170,8 @@ function promptChat(store: Store, chat: Chat | undefined): PromptChat | undefine
     }
 
     const parent = chat.parentChatId ? getChat(store.db, chat.parentChatId) : undefined;
-    // A thread whose parent had a worktree made for it alone is on the branch named after the thread's own id; one that shares its parent's is on the parent's.
-    const own = chat.workspace?.managed && chat.workspace.branch === `clowdy/${ chatKey(chat.id) }` ? getWorkspace(store.db, chat.workspace.id)?.base : undefined;
+    // A thread whose parent had a worktree made for it alone is on a branch that ends with the thread's own id, whatever its prefix; one that shares its parent's is on the parent's.
+    const own = chat.workspace && ownsWorktree(chat, chat.workspace) ? getWorkspace(store.db, chat.workspace.id)?.base : undefined;
 
     return chat.parentChatId ? { parent: { id: chat.parentChatId, title: parent?.title ?? chat.parentChatId, ...(own !== undefined && { worktreeBase: own }) } } : {};
 }
