@@ -205,9 +205,10 @@ export type GitStatus = { isRepository: false } | {
     origin: boolean;
     /**
      * When the repository last fetched, in milliseconds: the newest `FETCH_HEAD` of the repository that has something in it, so a fetch made in any worktree of it, by the app
-     * or by the person in a terminal or another program, counts (the remote-tracking refs, and with them `GitUpstream`'s counts, are shared by every worktree). Absent when nothing
-     * has fetched yet, when the repository has no `origin`, and after a fetch that failed (git empties the file before it connects, so the time of the fetch before it is gone). It is
-     * the file's time and not a record of the app's own, so a fetch of another remote counts too.
+     * or by the person in a terminal or another program, counts (the remote-tracking refs, and with them `GitUpstream`'s counts, are shared by every worktree), or the time of the
+     * daemon's own last fetch that went through, which it keeps in memory because a fetch that fails afterwards empties the files (git empties `FETCH_HEAD` before it connects). Absent
+     * when nothing has fetched yet, when the repository has no `origin`, and when the only fetch since is a failed one that the daemon did not make or did before it started. A fetch of
+     * another remote counts too, as the file's time.
      */
     lastFetchedAt?: number;
     /** The uncommitted paths, sorted as git lists them, at most `MAX_GIT_STATUS_ENTRIES`. Empty for a clean tree. */

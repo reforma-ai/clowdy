@@ -3,6 +3,7 @@ import { exclusive } from '../domain/workspaces';
 import { conflict, invalid, unavailable } from '../errors';
 import { runProgram } from '../providers/exec';
 import { printedLines, shownLine, writeLine } from './commit';
+import { rememberFetch } from './lastFetch';
 import { workingTreeRoot } from './state';
 import { parseStatus } from './status';
 import { namesSigningKey, SIGNING_HINT, WriteEnvironment } from './writeEnv';
@@ -103,6 +104,7 @@ export class GitRemote {
         return this.#alone(place, async () => {
             await this.#inspect(place);
             await this.#run(place, 'fetch', ['fetch', ...NO_SUBMODULES, ORIGIN]);
+            await rememberFetch(place.path);
 
             const upstream = await this.#upstream(place);
 
@@ -118,6 +120,7 @@ export class GitRemote {
             if (!tracking) throw invalid(`${ branch } has no upstream to pull from, publish it first`);
 
             await this.#run(place, 'pull', ['fetch', ...NO_SUBMODULES, ORIGIN]);
+            await rememberFetch(place.path);
 
             const apart = await this.#apart(place);
 

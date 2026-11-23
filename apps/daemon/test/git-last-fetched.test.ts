@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, renameSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { lastFetchedAt } from '../src/git/lastFetch';
+import { lastFetchedAt, rememberFetch } from '../src/git/lastFetch';
 import { placeStatus } from '../src/git/status';
 import { cleanTempDirs, git, makeRepo, tempDir } from './helpers';
 
@@ -164,6 +164,42 @@ describe('lastFetchedAt in the status of a place', () => {
         pushedByNeighbour(root, origin);
         git(work, 'fetch', '-q', 'origin');
         expect(await lastFetched(work)).toBeGreaterThan(Date.now() - 60_000);
+    });
+
+    test('is the app\'s own last fetch while the files say less: a fetch that failed emptied them, a removed worktree took its file along, a later fetch of anyone\'s is newer and wins', async () => {
+        const { root, work, origin } = clone();
+        const tree = join(root, 'tree');
+        const now = Math.floor(Date.now() / 1000);
+
+        git(work, 'worktree', 'add', '-q', '-b', 'feature', tree);
+
+        // The app fetched in the worktree an hour ago...
+        git(tree, 'fetch', '-q', 'origin');
+        touch(join(gitDirOf(tree), 'FETCH_HEAD'), now - 3600);
+        await rememberFetch(tree, (now - 3600) * 1000);
+        expect(await lastFetched(work)).toBe((now - 3600) * 1000);
+
+        // ...the worktree goes with its FETCH_HEAD, and the repository's own is empty because the fetch after it failed: the record is what is left, for every place of the repository.
+        git(work, 'worktree', 'remove', '--force', tree);
+        renameSync(origin, `${ origin }.away`);
+        expect(() => git(work, 'fetch', '-q', 'origin')).toThrow();
+        expect(await lastFetched(work)).toBe((now - 3600) * 1000);
+
+        // A fetch that went through after it, by anyone, is newer than the record.
+        renameSync(`${ origin }.away`, origin);
+        git(work, 'fetch', '-q', 'origin');
+        expect(await lastFetched(work)).toBeGreaterThan(Date.now() - 60_000);
+    });
+
+    test('is not a record of one repository for another, and says nothing for a folder that is no repository', async () => {
+        const { work } = clone();
+        const other = clone().work;
+
+        await rememberFetch(work);
+        await rememberFetch(join(tempDir('git-last-fetched'), 'plain'));
+
+        expect(await lastFetched(work)).toBeGreaterThan(Date.now() - 60_000);
+        expect(await lastFetched(other)).toBeUndefined();
     });
 
     test('does not count a fetch that was told not to write FETCH_HEAD (git\'s own background prefetch is one)', async () => {

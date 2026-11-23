@@ -1,5 +1,5 @@
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
-import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 import { CommandError } from '../src/errors';
@@ -197,6 +197,34 @@ withScripts('POST /v1/projects/:id/git/fetch, pull and push', () => {
             await result('fetch');
             expect(await lastFetchedAt()).toBeGreaterThanOrEqual(before - 1000);
             expect(await lastFetchedAt()).toBeLessThanOrEqual(Date.now() + 1000);
+        });
+
+        test('keeps saying when the last fetch went through after a later one failed, which empties FETCH_HEAD, and a pull is a fetch too', async () => {
+            const h = await start();
+            const { path, origin } = repository();
+            const { project, folderId, result, failure } = await open(path, h);
+            const lastFetchedAt = async () => (await json<{ lastFetchedAt?: number }>(await h.fetch(`/v1/projects/${ project.id }/git/status?folderId=${ folderId }`))).lastFetchedAt;
+
+            await result('fetch');
+
+            const fetched = await lastFetchedAt();
+
+            expect(fetched).toBeDefined();
+
+            // Origin is gone: git empties FETCH_HEAD before it asks, so the file no longer says when the refs were brought up to date, and the daemon's own record does.
+            renameSync(origin, `${ origin }.away`);
+            await failure('fetch', 409);
+            expect(statSync(join(path, '.git', 'FETCH_HEAD')).size).toBe(0);
+            expect(await lastFetchedAt()).toBe(fetched);
+
+            await failure('pull', 409);
+            expect(await lastFetchedAt()).toBe(fetched);
+
+            // Back, a pull fetches and the time moves on.
+            renameSync(`${ origin }.away`, origin);
+            await new Promise(done => setTimeout(done, 20));
+            await result('pull');
+            expect(await lastFetchedAt()).toBeGreaterThan(fetched!);
         });
 
         test('does not prune: a branch that is gone from origin is still known afterwards', async () => {
