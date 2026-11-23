@@ -900,12 +900,6 @@ export class RunDriver {
             return;
         }
 
-        // The message starts a turn of the live session: the tree before the agent hears it. Waited for here, before the session is looked at again and the answer is counted: a
-        // `done` that the agent's own turn ends with meanwhile is then the end of that turn, not read as the answer to a message that has not gone yet.
-        const trees = live.cwd === undefined ? undefined : this.snapshots.begin(runId, live.cwd);
-
-        await trees?.started();
-
         // The session ended while the message waited for its slot: it takes nothing, and the message starts a new one.
         if (!live.lingering) {
             this.refuse(live);
@@ -915,10 +909,17 @@ export class RunDriver {
 
         const { prompt, lost } = this.compose(getRunWork(store.db, runId), runs.require(runId).engine);
 
-        // The session takes a turn: it counts toward `maxProcesses` again (it is running already, so the cap cannot refuse it). The answer is counted
-        // before the message goes, since the agent's events can come back before the call returns.
+        // The session takes a turn: it counts toward `maxProcesses` again (it is running already, so the cap cannot refuse it).
         this.sessions++;
         live.counted = true;
+
+        // The message starts a turn of the live session: the tree before the agent hears it. Waited for before the answer is counted, so a turn the agent starts by itself and ends in the
+        // meantime is that turn's end and not taken for the answer to a message that has not gone yet.
+        const trees = live.cwd === undefined ? undefined : this.snapshots.begin(runId, live.cwd);
+
+        await trees?.started();
+
+        // The answer is counted before the message goes, since the agent's events can come back before the call returns.
         live.sent = (live.sent ?? 0) + 1;
         live.trees = trees;
 
