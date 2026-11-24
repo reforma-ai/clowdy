@@ -9,19 +9,6 @@
     padding-inline: var(--spacing-sm);
 }
 
-/* The off button is in a stand-in that carries its tooltip: the stand-in gives way to the header's buttons as the button does, or the name would push them out of the sidebar. */
-.off {
-    display: flex;
-    flex: 0 1 auto;
-    min-width: 0;
-    max-width: 100%;
-}
-
-.off > * {
-    min-width: 0;
-    max-width: 100%;
-}
-
 .content {
     min-width: 0;
     gap: var(--spacing-sm);

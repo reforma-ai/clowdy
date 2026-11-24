@@ -307,7 +307,7 @@ export class FixtureTransport implements Transport {
                 .filter(project => projectId === undefined || project.id === projectId)
                 .map(project => {
                     // The worktrees the project's chats work in, and those `workspace.open` answered that no chat works in (yet), as the daemon reads them: whether each is made, and the branch it
-                    // has (the fixture's worktrees keep the branch they were made with).
+                    // has now.
                     const workspaces = new Map<string, ProjectWorkspaceInfo>();
                     const rows = [
                         ...chats
@@ -376,7 +376,12 @@ export class FixtureTransport implements Transport {
             ...(script && { head: script }),
         });
 
-        return structuredClone(workspace ? status : this.#branches.dirtied(status));
+        if (!workspace) return structuredClone(this.#branches.dirtied(status));
+
+        if (this.#branches.merged && status.isRepository && status.base.state === 'ready')
+            status.base = { ...status.base, ahead: 0, commits: [] };
+
+        return structuredClone(status);
     }
 
     /** The place as the fixture's remote keeps it: a checkout is level with its upstream, a worktree's branch is not published until a push says so. */
@@ -426,24 +431,34 @@ export class FixtureTransport implements Transport {
 
     /** The place as the fixture's branches keep it: the folder's head, or the worktree's branch. */
     #branchPlace(
+        projectId: ProjectId,
+        folder: { id: FolderId; path: string },
         head: { branch?: string; detached?: true } | undefined,
-        workspace: Pick<ChatWorkspace, 'branch'> | undefined,
-        place: PlaceRef
+        workspace: Pick<ChatWorkspace, 'branch'> | undefined
     ): FixtureBranchPlace {
+        const worktrees = [
+            ...[...this.#opened.values()].flatMap(entry => (entry.projectId === projectId ? [entry.workspace] : [])),
+            ...this.#data.chats.flatMap(chat =>
+                chat.projectId === projectId && chat.workspace ? [chat.workspace] : []
+            ),
+        ].filter(candidate => candidate.ready && candidate.folderId === folder.id);
+
         return {
-            key: `${place.folderId}/${place.workspaceId ?? ''}`,
+            key: `${projectId}/${folder.id}`,
             branch: head?.detached ? undefined : head?.branch,
+            mainPath: folder.path,
             worktree: workspace !== undefined,
             ...(workspace && { worktreeBranch: workspace.branch ?? 'clowdy/ab12cd34' }),
+            worktrees,
         };
     }
 
     async getGitBranches(projectId: ProjectId, place: PlaceRef): Promise<GitBranches> {
-        const { head, workspace } = this.#gitPlace(projectId, place);
+        const { folder, head, workspace } = this.#gitPlace(projectId, place);
 
         if (!head?.branch) return { isRepository: false };
 
-        return structuredClone(this.#branches.list(this.#branchPlace(head, workspace, place)));
+        return structuredClone(this.#branches.list(this.#branchPlace(projectId, folder, head, workspace)));
     }
 
     async switchGitBranch(
@@ -456,19 +471,40 @@ export class FixtureTransport implements Transport {
 
         if (!head?.branch) throw new TransportError('The folder is not the root of a git repository', 400);
 
+        const branchPlace = this.#branchPlace(projectId, folder, head, workspace);
+
+        if (workspace) {
+            const status = await this.getGitStatus(projectId, place);
+
+            if (status.isRepository) branchPlace.changes = status.entries.length;
+        }
+
         const answer = structuredClone(
-            await this.#branches.switch(this.#branchPlace(head, workspace, place), {
+            await this.#branches.switch(branchPlace, {
                 branch,
                 ...(create && { create }),
             })
         );
 
-        // The folder's checkout is on the branch from now on, which every read of its head says.
-        if (answer.head.kind === 'branch')
-            this.#data.git[folder.path] = {
-                ...(head.remoteUrl !== undefined && { remoteUrl: head.remoteUrl }),
-                branch: answer.head.name,
-            };
+        if (answer.head.kind === 'branch') {
+            const name = answer.head.name;
+
+            if (workspace) {
+                workspace.branch = name;
+                for (const chat of this.#data.chats) {
+                    if (chat.workspace?.id === workspace.id) chat.workspace.branch = name;
+                }
+
+                const opened = this.#opened.get(workspace.id);
+
+                if (opened) opened.workspace.branch = name;
+            } else {
+                this.#data.git[folder.path] = {
+                    ...(head.remoteUrl !== undefined && { remoteUrl: head.remoteUrl }),
+                    branch: name,
+                };
+            }
+        }
 
         return answer;
     }

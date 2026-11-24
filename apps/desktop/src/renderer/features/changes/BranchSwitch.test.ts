@@ -180,8 +180,11 @@ describe('BranchSwitch', () => {
         const { model: branches } = model(stand);
         const refused = branches.switchTo('dev');
 
-        switches[0]!.reject(new TransportError("A chat's worktree keeps its branch", 400));
-        expect(await refused).toEqual({ ok: false, failure: { message: "A chat's worktree keeps its branch" } });
+        switches[0]!.reject(new TransportError('Merge this branch into origin/main before switching', 409));
+        expect(await refused).toEqual({
+            ok: false,
+            failure: { message: 'Merge this branch into origin/main before switching' },
+        });
 
         const broken = branches.switchTo('dev');
 

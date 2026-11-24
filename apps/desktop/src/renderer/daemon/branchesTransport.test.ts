@@ -83,10 +83,14 @@ describe('HttpTransport git branches and the switch', () => {
         expect(sent).toHaveLength(1);
         await expect(
             transportFor(
-                { error: { code: 'invalid', message: "A chat's worktree keeps its branch" } },
-                400
+                { error: { code: 'conflict', message: 'Merge this branch into origin/main before switching' } },
+                409
             ).transport.switchGitBranch('prj_a', { folderId: 'fld_b', workspaceId: 'wks_1' }, 'dev')
-        ).rejects.toMatchObject({ message: "A chat's worktree keeps its branch", status: 400, hint: undefined });
+        ).rejects.toMatchObject({
+            message: 'Merge this branch into origin/main before switching',
+            status: 409,
+            hint: undefined,
+        });
         await expect(
             transportFor(
                 { error: { code: 'unavailable', message: 'The switch did not finish in time' } },
@@ -105,10 +109,11 @@ describe('HttpTransport git branches and the switch', () => {
 describe('FixtureTransport git branches and the switch', () => {
     const place = { folderId: 'fld_car_rental' };
     const inWorktree = { ...place, workspaceId: 'wks_ab12cd34' };
-    const transportOf = (branches?: FixtureBranchScript[], worktree = false) =>
+    const transportOf = (branches?: FixtureBranchScript[], worktree = false, clean = false) =>
         new FixtureTransport({
             data: worktree ? withFixtureWorkspace(createFixtureData()) : createFixtureData(),
             branches,
+            gitWrites: clean ? { clean: true } : undefined,
         });
     const listing = async (transport: FixtureTransport, at: { folderId: string; workspaceId?: string } = place) => {
         const answer = await transport.getGitBranches(FIXTURE_PROJECT_ID, at);
@@ -185,12 +190,34 @@ describe('FixtureTransport git branches and the switch', () => {
         expect(after.local.find(branch => branch.name === 'feature/search')?.upstream).toBe('origin/feature/search');
     });
 
-    it('refuses as the daemon does: a worktree, a bad name, a missing branch, a name taken, a branch held elsewhere', async () => {
-        const transport = transportOf(['held', 'remote'], true);
+    it('keeps the previous worktree branch available and shows the new branch as held from the main checkout', async () => {
+        const transport = transportOf(['merged'], true, true);
+
+        await transport.switchGitBranch(FIXTURE_PROJECT_ID, inWorktree, 'dev');
+
+        const worktree = await listing(transport, inWorktree);
+        expect(worktree.local.find(branch => branch.name === 'dev')?.current).toBe(true);
+        expect(worktree.local.find(branch => branch.name === 'clowdy/ab12cd34')).toEqual(
+            expect.objectContaining({ name: 'clowdy/ab12cd34' })
+        );
+        expect(worktree.local.find(branch => branch.name === 'clowdy/ab12cd34')?.heldBy).toBeUndefined();
+        expect((await listing(transport)).local.find(branch => branch.name === 'dev')?.heldBy?.workspaceId).toBe(
+            inWorktree.workspaceId
+        );
+
+        await expect(
+            transport.switchGitBranch(FIXTURE_PROJECT_ID, inWorktree, 'clowdy/ab12cd34')
+        ).resolves.toMatchObject({
+            head: { name: 'clowdy/ab12cd34' },
+        });
+    });
+
+    it('refuses as the daemon does: an unmerged worktree, a bad name, a missing branch, a name taken, a branch held elsewhere', async () => {
+        const transport = transportOf(['held', 'remote'], true, true);
 
         await expect(transport.switchGitBranch(FIXTURE_PROJECT_ID, inWorktree, 'dev')).rejects.toMatchObject({
-            status: 400,
-            message: "A chat's worktree keeps its branch",
+            status: 409,
+            message: 'Merge this branch into origin/main before switching',
         });
         await expect(transport.switchGitBranch(FIXTURE_PROJECT_ID, place, '-x')).rejects.toMatchObject({
             status: 400,

@@ -8,7 +8,6 @@ import {
     heldWords,
     newBranchStarts,
     START_WORDS,
-    WORKTREE_KEEPS_BRANCH,
 } from './branchChoices';
 
 import type { BranchListing } from './branchChoices';
@@ -170,11 +169,5 @@ describe('the form of a new branch', () => {
         expect(canCreate('  ', 'default', { default: 'main' })).toBe(false);
         expect(canCreate('', 'current', { current: 'dev' })).toBe(false);
         expect(canCreate('x', 'default', { current: 'dev' })).toBe(false);
-    });
-});
-
-describe('WORKTREE_KEEPS_BRANCH', () => {
-    it("is the daemon's own reason, with no period", () => {
-        expect(WORKTREE_KEEPS_BRANCH).toBe("A chat's worktree keeps its branch");
     });
 });

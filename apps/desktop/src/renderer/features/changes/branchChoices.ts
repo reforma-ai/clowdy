@@ -6,9 +6,6 @@ import type { PickerOption } from '../../shared/PickerPopover';
 /** A listing of a place that is a repository. */
 export type BranchListing = Extract<GitBranches, { isRepository: true }>;
 
-/** What the button says, and the tooltip of its off state, for a chat's worktree: it is the branch the chat was made on, and the daemon refuses to change it. */
-export const WORKTREE_KEEPS_BRANCH = "A chat's worktree keeps its branch";
-
 /** The groups of the list, in the order they are drawn (GitHub Desktop's: the default branch, the ones lately on, the rest, and what only `origin` has). */
 export const BRANCH_GROUPS = { default: 'Default', recent: 'Recent', local: 'Local', remote: 'Remote' } as const;
 

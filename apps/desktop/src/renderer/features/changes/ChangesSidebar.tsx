@@ -57,7 +57,7 @@ export function ChangesSidebar({
         <Panel side="right" className={styles.sidebar} aria-label="Changes sidebar">
             <PanelHeader>
                 {branch !== undefined && status?.isRepository === true && status.head.kind !== 'unborn' ? (
-                    <BranchPicker facts={facts} place={place} label={branch} />
+                    <BranchPicker facts={facts} label={branch} />
                 ) : (
                     <span className={styles.branch}>
                         <Version aria-hidden="true" className={styles.branchIcon} />

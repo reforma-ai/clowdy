@@ -94,10 +94,10 @@
  *                                         place that holds a branch another place has checked out, when the tip was committed), the branches of `origin` that have no local branch
  *                                         of their name, and the last few branches the place's HEAD was on (from its reflog). Read only, nothing fetched; no ahead and behind per branch.
  *                                         A folder that is not the root of a working tree answers `isRepository: false`. The lists are cut at `MAX_GIT_BRANCH_ENTRIES` (`truncated`).
- * POST /v1/projects/:id/git/switch   -> GitSwitchResult. Body `GitSwitchRequest` (`folderId`, `workspaceId?`, `branch`, `create?`). Changes the branch the folder's own checkout is on with
+ * POST /v1/projects/:id/git/switch   -> GitSwitchResult. Body `GitSwitchRequest` (`folderId`, `workspaceId?`, `branch`, `create?`). Changes the branch of the checkout or worktree with
  *                                         `git switch`: to a local branch, to one that only `origin` has (a local branch of that name that tracks it), or to a new branch cut from the current
- *                                         HEAD or from the default branch (`create`). **Only the folder's own checkout**: a chat's worktree keeps its branch (`invalid`). It is refused, and
- *                                         nothing is changed, while the tree has a change of any kind (tracked, staged or untracked), a merge, rebase, cherry-pick, revert or bisect is under
+ *                                         HEAD or from the default branch (`create`). A chat worktree can switch when its current HEAD is contained in its base. A switch is refused
+ *                                         while the tree has a change of any kind (tracked, staged or untracked), a merge, rebase, cherry-pick, revert or bisect is under
  *                                         way, a run is working in the place, or another worktree has the branch checked out; the person's hooks run as ever (a `post-checkout` that fails
  *                                         or hangs leaves the branch switched and is told as `warning`, as are the commits a detached HEAD left on no branch). A name that is no branch name, a branch that does not exist, one that is there already
  *                                         (`create`) and a folder that is not a repository are `invalid`; a refusal that is the repository's state and a switch git refused are `conflict`
@@ -569,7 +569,7 @@ export type GitSwitchStart = 'current' | 'default';
 /** The body of `POST /v1/projects/:id/git/switch`. */
 export interface GitSwitchRequest {
     folderId: string;
-    /** A worktree is refused: it is here so the daemon, not the client, judges the place. */
+    /** The ready chat worktree to switch, or omitted for the folder’s own checkout. */
     workspaceId?: string;
     /** The branch to be on: an existing one (local, or one that only `origin` has) or, with `create`, the name of the new one. */
     branch: string;

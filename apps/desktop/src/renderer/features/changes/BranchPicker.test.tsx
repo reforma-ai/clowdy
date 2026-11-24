@@ -77,11 +77,8 @@ const type = (input: HTMLInputElement, text: string) =>
         input.dispatchEvent(new Event('input', { bubbles: true }));
     });
 
-/** The button (or, for a worktree, the stand-in of the off button) that names the branch in the sidebar's header. */
-const trigger = () =>
-    container.querySelector<HTMLElement>(
-        'button[aria-label^="Current branch"], [role="button"][aria-label^="Current branch"]'
-    );
+/** The button that names the branch in the sidebar header. */
+const trigger = () => container.querySelector<HTMLButtonElement>('button[aria-label^="Current branch"]');
 const popover = () => document.querySelector<HTMLElement>('[data-modal-clickout-layer]');
 const search = () => document.querySelector<HTMLInputElement>('input[placeholder="Filter branches"]')!;
 const rows = () => [...document.querySelectorAll<HTMLElement>('[role="option"][data-key]')];
@@ -118,14 +115,17 @@ async function start({
     branches,
     key = CHECKOUT,
     worktree = key.workspaceId !== undefined,
+    clean = false,
 }: {
     branches?: FixtureBranchScript[];
     key?: GitPlaceKey;
     worktree?: boolean;
+    clean?: boolean;
 } = {}) {
     transport = new FixtureTransport({
         data: worktree ? withFixtureWorkspace(createFixtureData()) : createFixtureData(),
         branches,
+        gitWrites: clean ? { clean: true } : undefined,
     });
     store = new RootStore(transport);
     await store.load();
@@ -504,38 +504,43 @@ describe('the form of a new branch in the popover', () => {
 });
 
 describe("the branch of the Changes sidebar, for a chat's worktree", () => {
-    it('shows the branch the worktree is on and is off: a stand-in that names the button and says why in its tooltip, and nothing opens', async () => {
-        await start({ key: WORKTREE });
+    it('switches an available branch in a clean merged worktree and keeps the main checkout on its branch', async () => {
+        await start({ key: WORKTREE, branches: ['merged'], clean: true });
+        const switchTo = vi.spyOn(transport, 'switchGitBranch');
 
-        const stand = trigger()!;
-
-        expect(stand.getAttribute('role')).toBe('button');
-        expect(stand.getAttribute('aria-disabled')).toBe('true');
-        expect(stand.getAttribute('aria-label')).toBe('Current branch: clowdy/ab12cd34');
-        expect(stand.textContent).toBe('clowdy/ab12cd34');
-        expect(stand.querySelector('button')?.disabled).toBe(true);
-        expect(stand.querySelector('svg:last-of-type[class*="chevron"]')).toBeNull();
-
-        const read = vi.spyOn(transport, 'getGitBranches');
-
-        await press(stand);
+        await open();
+        expect(row('main').getAttribute('aria-disabled')).toBe('true');
+        expect(row('main').textContent).toContain('Checked out in the main worktree');
+        await press(row('dev'));
         await settle();
+        await settle();
+
+        expect(switchTo).toHaveBeenCalledExactlyOnceWith(
+            FIXTURE_PROJECT_ID,
+            { folderId: WORKTREE.folderId, workspaceId: WORKTREE.workspaceId },
+            'dev',
+            undefined
+        );
+        expect(trigger()?.textContent).toBe('dev');
         expect(popover()).toBeNull();
-        expect(read).not.toHaveBeenCalled();
+        expect(await transport.getGitStatus(FIXTURE_PROJECT_ID, { folderId: WORKTREE.folderId })).toMatchObject({
+            head: { name: 'main' },
+        });
     });
 
-    it('says why on hover and on focus', async () => {
-        await start({ key: WORKTREE });
+    it.each([
+        [true, 'Merge this branch into origin/main before switching'],
+        [false, 'Commit or discard the changes first'],
+    ])('keeps the picker open with the reason a worktree cannot switch (clean: %s)', async (clean, reason) => {
+        await start({ key: WORKTREE, clean });
+        await open();
+        await press(row('dev'));
+        await settle();
+        await settle();
 
-        const stand = trigger()!;
-
-        await act(async () => {
-            stand.focus();
-            stand.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
-            await new Promise(resolve => setTimeout(resolve, 1600));
-        });
-
-        expect(document.querySelector('[role="tooltip"]')?.textContent).toBe("A chat's worktree keeps its branch");
+        expect(alert()?.textContent).toContain(reason);
+        expect(trigger()?.textContent).toBe('clowdy/ab12cd34');
+        expect(popover()).not.toBeNull();
     });
 });
 
