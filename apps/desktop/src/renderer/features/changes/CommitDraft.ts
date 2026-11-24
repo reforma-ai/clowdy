@@ -44,7 +44,7 @@ export class CommitDraft {
         /** Asks for a new round of reads of the place (`GitFacts.refresh`): what a commit, or a commit that failed, may have changed. */
         private readonly refresh: () => void,
         /** The place's moves to and from origin: what Commit & Push sends the branch with, and what it waits for. */
-        private readonly remote: Pick<RemoteActions, 'run' | 'busy'>
+        private readonly remote: Pick<RemoteActions, 'run'>
     ) {
         makeAutoObservable<CommitDraft, 'transport' | 'refresh' | 'remote'>(this, {
             model: false,
@@ -203,9 +203,9 @@ export class CommitDraft {
         return commitBlock(this.message, this.ticked.length);
     }
 
-    /** Why Commit & Push is not offered right now, for its menu entry; nothing when it is. Another action running holds it, and so does a branch the push after the commit would not take. */
+    /** Why Commit & Push is unavailable, for the button and menu entry. */
     get pushBlock(): string | undefined {
-        return this.remote.busy ? 'An action is running' : commitAndPushBlock(this.model.facts.status.value);
+        return commitAndPushBlock(this.model.facts.status.value);
     }
 
     get canCommitAndPush(): boolean {
@@ -367,7 +367,7 @@ export function commitDraftOf(
     model: PlaceChanges,
     transport: CommitTransport,
     refresh: () => void,
-    remote: Pick<RemoteActions, 'run' | 'busy'>
+    remote: Pick<RemoteActions, 'run'>
 ): CommitDraft {
     let draft = kept.get(model);
 

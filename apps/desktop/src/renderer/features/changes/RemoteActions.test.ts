@@ -96,31 +96,30 @@ describe('the moves of a place to and from origin', () => {
         expect(actions.notice).toBeUndefined();
     });
 
-    it('is one action at a time: a second is refused at once, with nothing sent', async () => {
+    it('submits another action to the daemon while reusing the pending fetch', async () => {
         const { actions, transport } = setup();
-        let release: () => void = () => undefined;
+        const fetchReply = Promise.withResolvers<GitRemoteResult>();
+        const pushReply = Promise.withResolvers<GitRemoteResult>();
+        transport.fetchGit.mockReturnValueOnce(fetchReply.promise);
+        transport.pushGit.mockReturnValueOnce(pushReply.promise);
 
-        transport.fetchGit.mockImplementationOnce(
-            () =>
-                new Promise(resolve => {
-                    release = () => resolve({ state: 'done', action: 'fetch' });
-                })
-        );
-
-        const running = actions.run('fetch');
+        const fetch = actions.run('fetch');
+        const push = actions.run('push');
 
         expect(actions.running).toBe('fetch');
         expect(actions.busy).toBe(true);
-        expect(await actions.run('push')).toEqual({
-            ok: false,
-            failure: { action: 'push', message: 'An action is running' },
-        });
-        expect(transport.pushGit).not.toHaveBeenCalled();
-        // The refused one says nothing in place of the one that runs.
-        expect(actions.failure).toBeUndefined();
+        expect(actions.isPending('push')).toBe(true);
+        expect(actions.run('fetch', { report: false })).toBe(fetch);
+        expect(transport.fetchGit).toHaveBeenCalledTimes(1);
+        expect(transport.pushGit).toHaveBeenCalledWith('prj_a', PLACE);
 
-        release();
-        await running;
+        fetchReply.resolve({ state: 'done', action: 'fetch' });
+        await fetch;
+        expect(actions.running).toBe('push');
+        expect(actions.isPending('fetch')).toBe(false);
+
+        pushReply.resolve({ state: 'done', action: 'push' });
+        await expect(push).resolves.toMatchObject({ ok: true });
         expect(actions.busy).toBe(false);
     });
 

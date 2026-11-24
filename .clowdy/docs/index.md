@@ -17,6 +17,8 @@
 
 ## Checks
 
+- [Source Control during fetch and push](checks/2026-11-24-source-control-during-sync.md) covers branch selection and queued actions while sync is pending. Status: passed.
+
 - [Automatic push in Source Control](checks/2026-11-24-auto-push-in-source-control.md) covers both merge directions, the saved setting and recovery after rejection. Status: passed with limits.
 
 - [Changes tab performance](checks/2026-11-24-changes-tab-performance.md) covers render time before and after for 200 files, and the tests. Status: passed with limits.

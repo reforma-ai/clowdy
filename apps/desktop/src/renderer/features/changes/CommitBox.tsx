@@ -57,8 +57,8 @@ function FailureLines({
                     color="secondary"
                     size="xs"
                     className={styles.fetch}
-                    isDisabled={remote.busy && remote.running !== 'fetch'}
-                    isPending={remote.running === 'fetch'}
+                    isDisabled={draft.model.facts.switching}
+                    isPending={remote.isPending('fetch')}
                     spinnerPlacement="start"
                     onPress={() => void draft.fetchAfterRejection()}
                 >

@@ -176,16 +176,27 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
         let active = true;
 
         const load = async () => {
+            const place = placeRef(placeKey);
             try {
                 if (fetchOrigin) {
-                    const fetch = await remote.run('fetch', { report: false });
+                    const wasSyncing = remote.running !== undefined;
+                    const fetching = remote.run('fetch', { report: false });
+
+                    if (wasSyncing) {
+                        // Local refs can be picked while the fetch waits for origin. The full list below retries if this read fails.
+                        const local = await transport.getGitBranches(projectId, place).catch(() => undefined);
+                        if (!active) return;
+                        if (local?.isRepository) setListing({ ...local, remote: [] });
+                    }
+
+                    const fetch = await fetching;
 
                     if (!active) return;
 
                     if (!fetch.ok) setFetchFailed({ message: "Couldn't fetch origin", hint: fetch.failure.message });
                 }
 
-                const branches = await transport.getGitBranches(projectId, placeRef(placeKey));
+                const branches = await transport.getGitBranches(projectId, place);
 
                 if (active) setListing(branches);
             } catch (error) {

@@ -993,7 +993,6 @@ describe('the draft of a commit', () => {
         const generateGitMessage = vi.fn(async () => ({ message: 'feat: written' }));
         const refresh = vi.fn();
         const remote = {
-            busy: false,
             run: vi.fn(
                 async (action: RemoteActionId, _options?: { report?: boolean }): Promise<RemoteOutcome> => ({
                     ok: true,
@@ -1123,7 +1122,7 @@ describe('the draft of a commit', () => {
         expect(slow.draft.busy).toBeUndefined();
     });
 
-    it('does not commit and push where the push would not be taken, and while another action of the place runs', async () => {
+    it('offers a local commit when the branch must pull before pushing', async () => {
         const behind = draftOver(['a.ts'], { upstream: { name: 'origin/feature', ahead: 0, behind: 2 } });
 
         behind.draft.setMessage('feat: add');
@@ -1134,15 +1133,6 @@ describe('the draft of a commit', () => {
         // A plain commit is still there.
         await behind.draft.commit();
         expect(behind.commitGit).toHaveBeenCalledTimes(1);
-
-        const busy = draftOver(['a.ts']);
-
-        busy.draft.setMessage('feat: add');
-        expect(busy.draft.canCommitAndPush).toBe(true);
-        busy.remote.busy = true;
-        expect(busy.draft.pushBlock).toBe('An action is running');
-        await busy.draft.commit(true);
-        expect(busy.commitGit).not.toHaveBeenCalled();
     });
 
     it('does nothing when it may not: no message, nothing ticked, or while something is going on', async () => {

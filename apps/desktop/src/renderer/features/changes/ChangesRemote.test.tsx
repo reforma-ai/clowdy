@@ -486,7 +486,7 @@ describe('the sync button in the sidebar', () => {
         expect(status()).toBeNull();
     });
 
-    it('says what it is doing while an action runs, with its progress as the label and a spinner, holds the dropdown, and goes back when it ends', async () => {
+    it('shows sync progress while the menu keeps other actions available', async () => {
         await start({ key: CHECKOUT });
 
         let release: () => void = () => undefined;
@@ -505,7 +505,9 @@ describe('the sync button in the sidebar', () => {
         expect(syncCopy()).toBe('Fetching origin');
         expect(syncButton().hasAttribute('data-pending')).toBe(true);
         await openMenu();
-        expect(items().every(candidate => candidate.getAttribute('aria-disabled') === 'true')).toBe(true);
+        expect(isOff('Fetch origin')).toBe(true);
+        expect(isOff('Merge from branch…')).toBe(false);
+        expect(isOff('Merge into branch…')).toBe(false);
 
         release();
         await settle();
@@ -634,6 +636,70 @@ describe('merging branches from the sync menu', () => {
             expect(button, `Abort confirmation button: ${name}`).toBeDefined();
             return button!;
         });
+
+    it('lets the user preview a local branch while a fetch is pending and then adds remote branches', async () => {
+        await start({ gitWrites: { clean: true, remote: 'level' }, branches: ['remote'] });
+        const reply = Promise.withResolvers<GitRemoteResult>();
+        const fetch = vi.spyOn(transport, 'fetchGit').mockReturnValueOnce(reply.promise);
+        await openMenu();
+        await press(item('Fetch origin'));
+        await settle();
+        expect(syncCopy()).toBe('Fetching origin');
+
+        await open('Merge from branch…');
+        expect(heading()).toBe('Merge … to clowdy/ab12cd34');
+        expect(option('origin/feature/search')).toBeUndefined();
+        await press(option('main'));
+        await settle();
+        expect(heading()).toBe('Merge main to clowdy/ab12cd34');
+        expect(button('Fast-forward & Push').disabled).toBe(false);
+        expect(fetch).toHaveBeenCalledTimes(1);
+
+        reply.resolve({ state: 'done', action: 'fetch' });
+        await settle();
+        expect(option('origin/feature/search')).toBeDefined();
+        expect(heading()).toBe('Merge main to clowdy/ab12cd34');
+    });
+
+    it('lets the user open the destination picker during a push', async () => {
+        await start({ gitWrites: { clean: true, remote: 'ahead' } });
+        const reply = Promise.withResolvers<GitRemoteResult>();
+        vi.spyOn(transport, 'pushGit').mockReturnValueOnce(reply.promise);
+
+        await press(syncButton());
+        expect(syncCopy()).toBe('Pushing origin');
+        await openMenu();
+        expect(isOff('Fetch origin')).toBe(false);
+        await press(item('Merge into branch…'));
+        await settle();
+        await press(option('main'));
+        await settle();
+
+        expect(heading()).toBe('Merge clowdy/ab12cd34 to main');
+        expect(button('Fast-forward & Push').disabled).toBe(false);
+        reply.resolve({ state: 'done', action: 'push' });
+        await settle();
+    });
+
+    it('keeps local branches when the branch list cannot be refreshed after a pending fetch', async () => {
+        await start({ gitWrites: { clean: true, remote: 'level' }, branches: ['remote'] });
+        const reply = Promise.withResolvers<GitRemoteResult>();
+        vi.spyOn(transport, 'fetchGit').mockReturnValueOnce(reply.promise);
+        const branches = vi.spyOn(transport, 'getGitBranches');
+
+        await openMenu();
+        await press(item('Fetch origin'));
+        await open('Merge from branch…');
+        expect(option('main')).toBeDefined();
+
+        branches.mockRejectedValueOnce(new TransportError("Couldn't read branches", 503));
+        reply.resolve({ state: 'done', action: 'fetch' });
+        await settle();
+
+        expect(dialog().querySelector('[role="alert"]')?.textContent).toContain("Couldn't read branches");
+        expect(option('main')).toBeDefined();
+        expect(option('origin/feature/search')).toBeUndefined();
+    });
 
     it('fetches origin before listing source branches and previews the selected ref before merging', async () => {
         await start({ gitWrites: { clean: true, remote: 'level' } });
