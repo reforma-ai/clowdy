@@ -71,6 +71,10 @@ const tickOf = (path: string) =>
 const everyTick = () =>
     container.querySelector<HTMLInputElement>('input[type="checkbox"][aria-label="Tick every file"]')!;
 const message = () => container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Commit message"]')!;
+const generateButton = () =>
+    message().parentElement?.querySelector<HTMLButtonElement>('button[aria-label="Generate commit message"]');
+const stopButton = () =>
+    message().parentElement?.querySelector<HTMLButtonElement>('button[aria-label="Stop generating commit message"]');
 const buttonOf = (label: string) =>
     [...container.querySelectorAll<HTMLButtonElement>('button')].find(
         candidate => candidate.textContent?.trim() === label
@@ -153,7 +157,7 @@ describe('the commit box', () => {
         expect(message().placeholder).toBe('Message');
         expect(commitButton()?.disabled).toBe(true);
         // Offered because the fixtures' Codex is signed in with Commit messages on.
-        expect(buttonOf('Generate')?.disabled).toBe(false);
+        expect(generateButton()?.disabled).toBe(false);
     });
 
     it('ticks and unticks a file on a press anywhere on its row, as on its tick', async () => {
@@ -209,27 +213,32 @@ describe('the commit box', () => {
         const generate = vi.spyOn(transport, 'generateGitMessage');
 
         await press(tickOf('notes.md'));
-        await press(buttonOf('Generate')!);
+        await press(generateButton()!);
         await settle();
 
-        expect(generate).toHaveBeenCalledWith(FIXTURE_PROJECT_ID, PLACE, ['src/booking/price.ts', 'src/limits.ts']);
+        expect(generate).toHaveBeenCalledWith(
+            FIXTURE_PROJECT_ID,
+            PLACE,
+            ['src/booking/price.ts', 'src/limits.ts'],
+            expect.any(AbortSignal)
+        );
         expect(message().value).toBe('feat(booking): add the weekend surcharge');
         // What Generate wrote may be written again.
-        expect(buttonOf('Generate')?.disabled).toBe(false);
+        expect(generateButton()?.disabled).toBe(false);
 
         // What the person typed is theirs: the button waits, and says why.
         await type('feat(booking): my own words');
-        expect(buttonOf('Generate')?.disabled).toBe(true);
+        expect(generateButton()?.disabled).toBe(true);
 
-        await press(buttonOf('Generate')!);
+        await press(generateButton()!);
         expect(generate).toHaveBeenCalledTimes(1);
         expect(message().value).toBe('feat(booking): my own words');
 
         await type('');
-        expect(buttonOf('Generate')?.disabled).toBe(false);
+        expect(generateButton()?.disabled).toBe(false);
     });
 
-    it('keeps what is put in the box while a message is being written, and holds the buttons meanwhile', async () => {
+    it('keeps what is put in the box while a message is being written, and holds Commit meanwhile', async () => {
         let release: () => void = () => undefined;
 
         await start();
@@ -240,8 +249,8 @@ describe('the commit box', () => {
                 })
         );
 
-        await press(buttonOf('Generate')!);
-        expect(buttonOf('Generate')?.disabled).toBe(true);
+        await press(generateButton()!);
+        expect(stopButton()?.disabled).toBe(false);
         expect(commitButton()?.disabled).toBe(true);
         expect(message().placeholder).toBe('Writing the message');
 
@@ -262,14 +271,41 @@ describe('the commit box', () => {
         expect(commitButton()?.disabled).toBe(false);
     });
 
+    it('aborts generation and ignores its late answer while the next request is running', async () => {
+        const first = Promise.withResolvers<{ message: string }>();
+        const second = Promise.withResolvers<{ message: string }>();
+
+        await start();
+        const generate = vi
+            .spyOn(transport, 'generateGitMessage')
+            .mockReturnValueOnce(first.promise)
+            .mockReturnValueOnce(second.promise);
+
+        await press(generateButton()!);
+        await press(stopButton()!);
+
+        expect(generate.mock.calls[0]?.[3]?.aborted).toBe(true);
+        expect(message().readOnly).toBe(false);
+        expect(message().value).toBe('');
+        expect(alert()).toBeNull();
+
+        await press(generateButton()!);
+        await act(async () => first.resolve({ message: 'feat: stale result' }));
+
+        expect(stopButton()?.disabled).toBe(false);
+        expect(message().value).toBe('');
+        await act(async () => second.resolve({ message: 'feat: new result' }));
+        expect(message().value).toBe('feat: new result');
+    });
+
     it('leaves the box as it was and says so when the message could not be written', async () => {
         await start({ gitWrites: { message: 'failed' } });
-        await press(buttonOf('Generate')!);
+        await press(generateButton()!);
         await settle();
 
         expect(message().value).toBe('');
         expect(alert()?.textContent).toBe("Couldn't write the message");
-        expect(buttonOf('Generate')?.disabled).toBe(false);
+        expect(generateButton()?.disabled).toBe(false);
 
         // The line goes when the person acts again.
         await type('x');
@@ -347,7 +383,7 @@ describe('the commit box', () => {
 
         expect(box()?.textContent).toContain('0 of 3');
         expect(commitButton()?.disabled).toBe(true);
-        expect(buttonOf('Generate')?.disabled).toBe(true);
+        expect(generateButton()?.disabled).toBe(true);
 
         await press(tickOf('notes.md'));
         expect(everyTick().indeterminate).toBe(true);
@@ -357,7 +393,7 @@ describe('the commit box', () => {
         expect(checkboxes().every(tick => tick.checked)).toBe(true);
     });
 
-    it('has no Generate button while no agent has Commit messages on and is signed in', async () => {
+    it('opens Source Control from Generate when the provider is off', async () => {
         await start({
             tweak: data => {
                 const codex = data.agents.find(agent => agent.id === 'codex')!;
@@ -366,11 +402,16 @@ describe('the commit box', () => {
             },
         });
 
-        expect(buttonOf('Generate')).toBeUndefined();
+        const generate = vi.spyOn(transport, 'generateGitMessage');
+
+        await press(generateButton()!);
+
+        expect([store.ui.settingsOpen, store.ui.settingsPage]).toEqual([true, 'source-control']);
+        expect(generate).not.toHaveBeenCalled();
         expect(commitButton()).toBeDefined();
     });
 
-    it('has the Generate button while Claude Code alone has Commit messages on and is signed in, and not once it is off too', async () => {
+    it('generates a message when Claude Code is the only provider with Commit messages on', async () => {
         const setting = (data: FixtureData, id: string, value: boolean) => {
             const agent = data.agents.find(candidate => candidate.id === id)!;
 
@@ -383,30 +424,26 @@ describe('the commit box', () => {
                 setting(data, 'claude', true);
             },
         });
-        expect(buttonOf('Generate')).toBeDefined();
+        await press(generateButton()!);
+        await settle();
 
-        act(() => root.unmount());
-        stop();
-        store.dispose();
-        root = createRoot(container);
-        await start({
-            tweak: data => {
-                setting(data, 'codex', false);
-                setting(data, 'claude', true);
-                data.agents.find(agent => agent.id === 'claude')!.signIn = { status: 'signed-out', checkedAt: 1 };
-            },
-        });
-        expect(buttonOf('Generate')).toBeUndefined();
+        expect(message().value).not.toBe('');
+        expect(store.ui.settingsOpen).toBe(false);
     });
 
-    it('has no Generate button for an agent that is signed out', async () => {
+    it('opens Source Control from Generate when the selected provider is signed out', async () => {
         await start({
             tweak: data => {
                 data.agents.find(agent => agent.id === 'codex')!.signIn = { status: 'signed-out', checkedAt: 1 };
             },
         });
 
-        expect(buttonOf('Generate')).toBeUndefined();
+        const generate = vi.spyOn(transport, 'generateGitMessage');
+
+        await press(generateButton()!);
+
+        expect([store.ui.settingsOpen, store.ui.settingsPage]).toEqual([true, 'source-control']);
+        expect(generate).not.toHaveBeenCalled();
     });
 
     it('says that the list holds only the first files when the daemon cut it, since the rest cannot be ticked', async () => {
@@ -439,7 +476,7 @@ describe('the commit box', () => {
 
     it('keeps an editable message and a disabled commit button after committing every file', async () => {
         await start();
-        await press(buttonOf('Generate')!);
+        await press(generateButton()!);
         await settle();
         await press(commitButton()!);
         await settle();
@@ -464,7 +501,7 @@ describe('the commit box', () => {
         expect(message().value).toBe('Draft for the next change');
         expect(commitButton()?.textContent).toBe('Commit 0 files');
         expect(commitButton()?.disabled).toBe(true);
-        expect(buttonOf('Generate')?.disabled).toBe(true);
+        expect(generateButton()?.disabled).toBe(true);
 
         act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', shiftKey: true })));
         expect(commitButton()?.textContent).toBe('Commit 0 files');
@@ -489,10 +526,70 @@ describe('the commit box', () => {
         try {
             await start({ key: { projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental' } });
 
-            expect(box()?.textContent).toContain('0 changed files');
+            expect(box()?.textContent).toContain('No staged files');
             expect(message().value).toBe('Merge main');
-            expect(commitButton()?.textContent).toBe('Commit merge');
-            expect(commitButton()?.disabled).toBe(false);
+            expect(buttonOf('Complete merge')?.disabled).toBe(false);
+        } finally {
+            status.mockRestore();
+        }
+    });
+
+    it('separates unmerged files from the index and prevents completing the merge until resolved', async () => {
+        const read = FixtureTransport.prototype.getGitStatus;
+        let resolved = false;
+        const status = vi.spyOn(FixtureTransport.prototype, 'getGitStatus').mockImplementation(async function (
+            this: FixtureTransport,
+            ...args: Parameters<typeof read>
+        ) {
+            const result = await read.apply(this, args);
+
+            if (!result.isRepository) return result;
+
+            return {
+                ...result,
+                merging: { conflicts: resolved ? 0 : 1, subject: 'Merge main' },
+                entries: [
+                    { path: 'notes.md', untracked: true },
+                    { path: 'src/booking/price.ts', staged: 'modified' },
+                    resolved
+                        ? { path: 'src/limits.ts', staged: 'modified' }
+                        : { path: 'src/limits.ts', unstaged: 'conflicted' },
+                ],
+            };
+        });
+
+        try {
+            await start();
+            const commit = vi.spyOn(transport, 'commitGit');
+            const list = (label: string) => box()?.querySelector(`[aria-label="${label}"]`);
+            const conflictRow = box()!.querySelector('[aria-label="Conflicting files"] button')!;
+            expect(list('Staged files')?.textContent).toContain('price.ts');
+            expect(list('Staged files')?.textContent).not.toMatch(/limits\.ts|notes\.md/);
+            expect(conflictRow.textContent).toBe('limits.ts');
+            expect(buttonOf('Abort merge')).toBeDefined();
+            expect(checkboxes()).toHaveLength(0);
+            await press(conflictRow);
+            expect(model.effectiveScope).toBe('uncommitted');
+            expect(model.revealRequest).toBe('src/limits.ts');
+            await type('Merge both changes');
+            expect(buttonOf('Complete merge')?.disabled).toBe(true);
+            await act(async () => {
+                message().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true }));
+            });
+            expect(commit).not.toHaveBeenCalled();
+
+            resolved = true;
+            act(() => gitFactsOf(transport).refresh(KEY));
+            await settle();
+            expect(list('Conflicting files')).toBeNull();
+            expect(list('Staged files')?.textContent).toContain('limits.ts');
+            expect(box()?.textContent).not.toContain('Conflicts resolved');
+            expect(buttonOf('Abort merge')).toBeUndefined();
+            expect(buttonOf('Complete merge')?.disabled).toBe(false);
+            await press(buttonOf('Complete merge')!);
+            expect(commit).toHaveBeenCalledWith(FIXTURE_PROJECT_ID, PLACE, expect.any(Array), 'Merge both changes', {
+                conclude: true,
+            });
         } finally {
             status.mockRestore();
         }

@@ -3,6 +3,8 @@ import {
     branchNameProblem,
     branchPrefixOf,
     branchPrefixProblem,
+    COMMIT_MESSAGE_SETTING_ID,
+    commitMessageAgent,
     folderNames,
     isBusyRunStatus,
     isTerminalRunStatus,
@@ -396,7 +398,14 @@ export class FixtureTransport implements Transport {
             const pending = this.#mergeConflicts.get(key);
 
             if (merged) status.head.commit = merged.commit;
-            if (pending) status.merging = { conflicts: pending.conflicts };
+            if (pending) {
+                status.merging = { conflicts: pending.conflicts };
+                status.entries = [
+                    { path: 'notes.md', staged: 'added' },
+                    { path: 'src/booking/price.ts', staged: 'modified' },
+                    { path: 'src/limits.ts', unstaged: 'conflicted' },
+                ];
+            }
         }
 
         if (!workspace) return structuredClone(this.#branches.dirtied(status));
@@ -545,10 +554,11 @@ export class FixtureTransport implements Transport {
             (isRemote ? undefined : this.#branchMerges.get(refKey(source))?.commit) ??
             mergeCommitId(refKey(isRemote ? `refs/remotes/${source}` : `refs/heads/${source}`));
         const targetCommit = merged?.commit ?? mergeCommitId(refKey(`refs/heads/${target}`));
+        const outgoingConflict = request.direction === 'into' && this.#branches.mergeConflict;
         const mode =
             source === target || merged?.sourceCommit === sourceCommit
                 ? 'up-to-date'
-                : source === 'origin/main' || source === 'origin/feature/search'
+                : outgoingConflict || source === 'origin/main' || source === 'origin/feature/search'
                   ? 'merge-commit'
                   : 'fast-forward';
         const preview: GitBranchMergePreview = {
@@ -560,12 +570,26 @@ export class FixtureTransport implements Transport {
             mode,
             commits: mode === 'up-to-date' ? 0 : 3,
             ...(targetPath && { targetPath }),
+            ...(targetPath &&
+                request.direction === 'into' &&
+                mode === 'merge-commit' && {
+                    conflictCheck: outgoingConflict ? 'conflicts' : 'clean',
+                }),
         };
 
         if (request.action === 'preview') return preview;
 
         if (request.sourceCommit !== sourceCommit || request.targetCommit !== targetCommit)
             throw new TransportError('The branches moved since the preview', 409);
+
+        if (mode === 'up-to-date') return { state: 'done', target, commit: targetCommit, canPush: false };
+        if (!targetPath) throw new TransportError(`Check out ${target} before merging into it`, 409);
+        if (outgoingConflict)
+            throw new TransportError(
+                `Can't merge into ${target} because the branches conflict`,
+                409,
+                `In a chat on ${target}, use Merge from branch to merge ${source} and resolve the conflicts`
+            );
 
         const status =
             target === current || workspaceId !== undefined || holder?.main
@@ -588,15 +612,10 @@ export class FixtureTransport implements Transport {
             return result;
         }
 
-        const commit =
-            mode === 'up-to-date'
-                ? targetCommit
-                : mode === 'fast-forward'
-                  ? sourceCommit
-                  : mergeCommitId(`${targetCommit}+${sourceCommit}`);
+        const commit = mode === 'fast-forward' ? sourceCommit : mergeCommitId(`${targetCommit}+${sourceCommit}`);
         this.#branchMerges.set(key, { sourceCommit, commit });
 
-        if (mode !== 'up-to-date') this.#gitRemote.committed(remotePlace);
+        this.#gitRemote.committed(remotePlace);
 
         return { state: 'done', target, commit, canPush: this.#gitRemote.hasOrigin };
     }
@@ -651,7 +670,9 @@ export class FixtureTransport implements Transport {
 
     async getGitChanges(projectId: ProjectId, place: PlaceRef, scope: GitScope): Promise<GitChanges> {
         const { head, workspace } = this.#gitPlace(projectId, place);
-        const committed = this.#gitWrites.committedOf(place.workspaceId ?? '');
+        const branch = workspace?.branch ?? head?.branch;
+        const merging = this.#mergeConflicts.has(`${projectId}/${place.folderId}/${branch}`);
+        const committed = merging ? new Set<string>() : this.#gitWrites.committedOf(place.workspaceId ?? '');
         // A checkout that has uncommitted files (`&branches=dirty`) has the worktree's, in the scopes that list them.
         const dirtyCheckout =
             workspace === undefined && this.#branches.dirty && (scope === 'all' || scope === 'uncommitted');
@@ -672,6 +693,12 @@ export class FixtureTransport implements Transport {
             throw new TransportError('The changes of that run are no longer in the repository', 503);
 
         if (!changes) throw new TransportError(`Commit ${scope.slice('commit:'.length)} does not exist`, 404);
+
+        if (merging && changes.isRepository && (scope === 'all' || scope === 'uncommitted')) {
+            changes.files = changes.files.map(file =>
+                file.path === 'src/limits.ts' ? { ...file, kind: 'conflicted' } : file
+            );
+        }
 
         return structuredClone(changes);
     }
@@ -794,12 +821,17 @@ export class FixtureTransport implements Transport {
         );
     }
 
-    async generateGitMessage(projectId: ProjectId, place: PlaceRef, paths: string[]): Promise<GitMessage> {
-        // The daemon asks the agents' settings; so does the fixture, of the agents it lists.
-        if (!this.#data.agents.some(writesCommitMessages)) throw new TransportError("Couldn't write the message", 400);
+    async generateGitMessage(
+        projectId: ProjectId,
+        place: PlaceRef,
+        paths: string[],
+        signal?: AbortSignal
+    ): Promise<GitMessage> {
+        const agent = commitMessageAgent(this.#data.agents);
+        if (!writesCommitMessages(agent)) throw new TransportError("Couldn't write the message", agent ? 503 : 400);
 
         return structuredClone(
-            await this.#gitWrites.message(place.workspaceId ?? '', this.#uncommitted(projectId, place), paths)
+            await this.#gitWrites.message(place.workspaceId ?? '', this.#uncommitted(projectId, place), paths, signal)
         );
     }
 
@@ -2167,6 +2199,16 @@ export class FixtureTransport implements Transport {
                 return fail('unavailable', 'The demo data cannot add or remove agents');
             case 'agent.update':
                 return this.#updateAgent(command);
+            case 'agents.setCommitMessageProvider': {
+                for (const agent of data.agents) {
+                    const setting = agent.settings?.find(candidate => candidate.id === COMMIT_MESSAGE_SETTING_ID);
+                    if (setting) setting.value = agent.id === command.provider;
+                }
+
+                this.#agentsChanged();
+
+                return ok({ provider: command.provider });
+            }
             case 'agent.signIn':
                 return this.#startSignIn(command.id);
             case 'agent.cancelSignIn':

@@ -4,10 +4,11 @@ import { For } from '@clowdy/components/For';
 import { GridList, GridListItem, Menu, MenuItem, MenuTrigger } from '@clowdy/components/List';
 import { Popover } from '@clowdy/components/Popover';
 import { Scrollable } from '@clowdy/components/Scrollable';
+import { Spinner } from '@clowdy/components/Spinner';
 import { Text } from '@clowdy/components/Text';
 import { Textarea } from '@clowdy/components/Textarea';
 import { AiStar, ArrowUp, ChevronDown } from '@clowdy/icons/14';
-import { writesCommitMessages } from '@clowdy/protocol';
+import { commitMessageAgent, writesCommitMessages } from '@clowdy/protocol';
 import { useEffect, useState } from 'react';
 
 import { Unavailable } from '../../shared/Unavailable';
@@ -17,6 +18,7 @@ import { commitDraftOf } from './CommitDraft';
 import { commitLabel, commitTarget, isFetchFirst } from './changesActions';
 import { gitFactsOf } from './gitFacts';
 import { CHANGE_KIND_VIEW, splitPath } from './gitSummary';
+import { MergeFiles } from './MergeFiles';
 import { useRemoteActions } from './useRemoteActions';
 
 import type { GitChangedFile } from '@clowdy/protocol';
@@ -127,7 +129,7 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
         () => gitFactsOf(root.transport).refresh(model.facts.key),
         remote
     );
-    const canWrite = agents.some(writesCommitMessages);
+    const canWrite = writesCommitMessages(commitMessageAgent(agents));
     const { generation } = model.facts;
     const scope = model.effectiveScope;
     const names = draft.files.map(file => file.path).join('\0');
@@ -158,56 +160,71 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
         if (mergeSubject) draft.prefill(mergeSubject);
     }, [draft, mergeSubject]);
 
-    if (model.isRepository === false || !draft.known) return null;
+    const status = model.facts.status.value;
+    const merging = status?.isRepository === true ? status.merging : undefined;
 
-    const { files, failure, concluding } = draft;
+    if (model.isRepository === false || (!draft.known && !merging)) return null;
+
+    const { files, failure } = draft;
+    const generating = draft.busy === 'generate';
+    const generateLabel = generating ? 'Stop generating commit message' : 'Generate commit message';
     const hasFiles = files.length > 0;
     const ticked = draft.ticked.length;
-    const hasChangesToCommit = hasFiles || concluding;
-    const commitAndPush = shiftHeld && hasChangesToCommit;
-    const target = commitTarget(model.facts.status.value);
-    const label = commitAndPush ? 'Commit & Push' : concluding ? 'Commit merge' : commitLabel(ticked);
+    const hasChangesToCommit = hasFiles || merging !== undefined;
+    const commitAndPush = shiftHeld && hasFiles && !merging;
+    const target = commitTarget(status);
+    const label = merging ? 'Complete merge' : commitAndPush ? 'Commit & Push' : commitLabel(ticked);
     const reason = hasChangesToCommit
         ? (draft.commitReason ?? (commitAndPush && draft.busy === undefined ? draft.pushBlock : undefined))
         : undefined;
 
     return (
         <section className={styles.root} aria-label="Commit">
-            <div className={styles.header}>
-                <Checkbox
-                    size="sm"
-                    isSelected={draft.allTicked}
-                    isIndeterminate={!draft.allTicked && !draft.noneTicked}
-                    isDisabled={!hasFiles || draft.writing}
-                    aria-label="Tick every file"
-                    onChange={on => draft.setAll(on)}
-                />
-                <Text variant="xs" weight="medium" color="secondary" truncate>
-                    {hasFiles ? 'Commit' : '0 changed files'}
-                </Text>
-                {hasFiles && (
-                    <Text
-                        variant="xs"
-                        color="secondary"
-                        className={styles.count}
-                    >{`${ticked} of ${files.length}`}</Text>
-                )}
-            </div>
-
-            {hasFiles && (
-                <Scrollable className={styles.list} contentClass={styles.rows}>
-                    <GridList
-                        aria-label="Files to commit"
-                        size="sm"
-                        onAction={key => draft.setTicked(String(key), !draft.isTicked(String(key)))}
-                    >
-                        <For each={[...files]}>
-                            {file => <CommitFileRow key={file.path} file={file} draft={draft} />}
-                        </For>
-                    </GridList>
+            {merging && status?.isRepository ? (
+                <Scrollable className={styles.mergeList} contentClass={styles.mergeRows}>
+                    <MergeFiles model={model} status={status} writing={draft.writing} />
                 </Scrollable>
+            ) : (
+                <>
+                    <div className={styles.header}>
+                        <Checkbox
+                            size="sm"
+                            isSelected={draft.allTicked}
+                            isIndeterminate={!draft.allTicked && !draft.noneTicked}
+                            isDisabled={!hasFiles || draft.writing}
+                            aria-label="Tick every file"
+                            onChange={on => draft.setAll(on)}
+                        />
+                        <Text variant="xs" weight="medium" color="secondary" truncate>
+                            {hasFiles ? 'Commit' : '0 changed files'}
+                        </Text>
+                        {hasFiles && (
+                            <Text
+                                variant="xs"
+                                color="secondary"
+                                className={styles.count}
+                            >{`${ticked} of ${files.length}`}</Text>
+                        )}
+                    </div>
+
+                    {hasFiles && (
+                        <Scrollable className={styles.list} contentClass={styles.rows}>
+                            <GridList
+                                aria-label="Files to commit"
+                                size="sm"
+                                onAction={key => draft.setTicked(String(key), !draft.isTicked(String(key)))}
+                            >
+                                <For each={[...files]}>
+                                    {file => <CommitFileRow key={file.path} file={file} draft={draft} />}
+                                </For>
+                            </GridList>
+                        </Scrollable>
+                    )}
+                    {draft.truncated && (
+                        <Text variant="xs" color="secondary">{`Showing the first ${files.length} files`}</Text>
+                    )}
+                </>
             )}
-            {draft.truncated && <Text variant="xs" color="secondary">{`Showing the first ${files.length} files`}</Text>}
 
             <Textarea
                 variant="bordered"
@@ -215,10 +232,39 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
                 rows={3}
                 isResizable={false}
                 aria-label="Commit message"
-                placeholder={draft.busy === 'generate' ? 'Writing the message' : 'Message'}
+                placeholder={generating ? 'Writing the message' : 'Message'}
                 value={draft.message}
                 isReadOnly={draft.busy !== undefined}
-                className={styles.message}
+                alwaysShowEndAction
+                endAction={
+                    (!merging || generating) && (
+                        <Button
+                            variant="filling"
+                            size="xs"
+                            iconOnly
+                            isDisabled={!generating && canWrite && !draft.canGenerate}
+                            aria-label={generateLabel}
+                            aria-haspopup={!generating && !canWrite ? 'dialog' : undefined}
+                            tooltip={
+                                generating || canWrite
+                                    ? (!generating && draft.generateBlock) || generateLabel
+                                    : 'Set up commit message generation'
+                            }
+                            tooltipPlacement="top"
+                            onPress={() => {
+                                if (generating) draft.stopGenerating();
+                                else if (canWrite) void draft.generate();
+                                else root.ui.openSettings('source-control');
+                            }}
+                        >
+                            {generating ? (
+                                <Spinner size="xxs" className={styles.generateProgress} aria-hidden="true" />
+                            ) : (
+                                <AiStar aria-hidden="true" />
+                            )}
+                        </Button>
+                    )
+                }
                 onChange={text => draft.setMessage(text)}
                 onKeyDown={event => {
                     if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
@@ -228,44 +274,35 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
                 }}
             />
 
-            <div className={styles.actions}>
-                {canWrite && (
+            {merging !== undefined && merging.conflicts > 0 && (
+                <Text variant="xs" color="secondary">
+                    {merging.conflicts === 1
+                        ? 'Resolve 1 conflict to continue'
+                        : `Resolve ${merging.conflicts} conflicts to continue`}
+                </Text>
+            )}
+
+            <div className={styles.commitGroup}>
+                <Unavailable label={label} hint={reason} className={styles.commitHost}>
                     <Button
-                        variant="bordered"
+                        color="contrast"
                         size="sm"
-                        className={styles.generate}
-                        isDisabled={!draft.canGenerate}
-                        isPending={draft.busy === 'generate'}
-                        spinnerPlacement="start"
-                        tooltip={draft.generateBlock}
+                        className={styles.commit}
+                        contentClassName={styles.commitContent}
+                        isDisabled={!(commitAndPush ? draft.canCommitAndPush : draft.canCommit)}
+                        isPending={draft.writing}
+                        tooltip={
+                            hasChangesToCommit && reason === undefined && !merging && !commitAndPush && target
+                                ? `Commit to ${target.name}`
+                                : undefined
+                        }
                         tooltipPlacement="top"
-                        onPress={() => void draft.generate()}
+                        onPress={event => void draft.commit(commitAndPush && event.shiftKey)}
                     >
-                        <AiStar aria-hidden="true" />
-                        Generate
+                        {label}
                     </Button>
-                )}
-                {/* Commit and its menu wrap together, so the menu's button is never left alone on a line. */}
-                <div className={styles.commitGroup}>
-                    <Unavailable label={label} hint={reason} className={styles.commitHost}>
-                        <Button
-                            color="contrast"
-                            size="sm"
-                            className={styles.commit}
-                            contentClassName={styles.commitContent}
-                            isDisabled={!(commitAndPush ? draft.canCommitAndPush : draft.canCommit)}
-                            isPending={draft.writing}
-                            tooltip={
-                                hasChangesToCommit && reason === undefined && !commitAndPush && target
-                                    ? `Commit to ${target.name}`
-                                    : undefined
-                            }
-                            tooltipPlacement="top"
-                            onPress={event => void draft.commit(commitAndPush && event.shiftKey)}
-                        >
-                            {label}
-                        </Button>
-                    </Unavailable>
+                </Unavailable>
+                {!merging && (
                     <MenuTrigger>
                         <Button
                             variant="bordered"
@@ -292,7 +329,7 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
                             </Menu>
                         </Popover>
                     </MenuTrigger>
-                </div>
+                )}
             </div>
 
             {/* Several chats share a place, so a commit that goes straight to the branch the work is compared with is said before it is made. */}

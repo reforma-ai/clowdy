@@ -1,5 +1,6 @@
 import { isPlaceReady, type Place } from '../sidePanel/currentPlace';
 import { isDocumentPath } from './docsScope';
+import { treeLayout } from './treeLayout';
 
 import type { FileEntry, FileKind, FileManager } from '@clowdy/file-manager';
 import type { ProjectId } from '@clowdy/protocol';
@@ -64,6 +65,9 @@ export async function kindOnDisk(
     return (await entryOf(await filesManagerOf(root, projectId, place), relative))?.kind;
 }
 
+/** Latest navigation wins when a slow folder listing overlaps a newer request. */
+const navigation = new WeakMap<RootStore, number>();
+
 /**
  * Opens a file in a tab of the Files tab, a document in a tab of the Docs tab, or a folder in the Files tree, and shows the panel. `relative` is the path inside the
  * place (the folder's own checkout, or the worktree of the chat), empty for the place itself (the tab only shows). Resolves `false`, with nothing opened and the panel and
@@ -75,15 +79,45 @@ export async function openInFiles(
     place: Place,
     relative: string
 ): Promise<boolean> {
+    const generation = (navigation.get(root) ?? 0) + 1;
+    navigation.set(root, generation);
+    const stale = () => navigation.get(root) !== generation;
     if (!isPlaceReady(place)) return false;
 
+    const initial = await filesManagerOf(root, projectId, place);
+    const entry = relative === '' ? undefined : await entryOf(initial, relative);
+
+    if (stale()) return true;
+    if (relative !== '' && !entry) return false;
+
+    if (relative === '' || entry?.kind === 'directory') {
+        try {
+            // Check access even when the tree already has a cached listing.
+            await initial.provider.list(relative, 1);
+            const parts = relative.split('/').filter(Boolean);
+            for (let i = 1; i <= parts.length; i++) {
+                await initial.tree.load(parts.slice(0, i).join('/'));
+            }
+        } catch {
+            return stale();
+        }
+        if (initial.filterQuery) await initial.filter('');
+        const { filesStoreOf } = await import('./useFilesStore');
+        if (stale()) return true;
+        filesStoreOf(root).clearOtherReveals(initial);
+        initial.tree.revealPath(relative || null);
+        if (!treeLayout.open) treeLayout.toggle();
+        if (relative) initial.reveal(relative, true);
+        else initial.clearReveal();
+        showFilesTab(root, projectId, 'files');
+        return true;
+    }
+
     const tab = tabOf(relative);
-    const manager = await filesManagerOf(root, projectId, place, tab);
-
-    // Asked before opening: opening a path that is not there still adds a tab, which takes the focus and, at the most tabs, closes the one used least, before it fails.
-    if (relative !== '' && !(await entryOf(manager, relative))) return false;
-
+    const manager = tab === 'files' ? initial : await filesManagerOf(root, projectId, place, tab);
+    if (stale()) return true;
     const document = await manager.open(relative);
+    if (stale()) return true;
 
     // A file that is there but cannot be read gets a tab that says why, which is not a file opened, so the tab goes.
     if (document?.status === 'error') {

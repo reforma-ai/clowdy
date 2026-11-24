@@ -3,12 +3,15 @@ import { Menu, MenuItem, MenuSeparator, MenuTrigger } from '@clowdy/components/L
 import { Popover } from '@clowdy/components/Popover';
 import { Spinner } from '@clowdy/components/Spinner';
 import { Text } from '@clowdy/components/Text';
+import { Tooltip } from '@clowdy/components/Tooltip';
 import { ArrowDown, ArrowDownRight, ArrowUp, ArrowUpRight, ChevronDown, Refresh, Vsc } from '@clowdy/icons/14';
+import { useState } from 'react';
 
 import { Unavailable } from '../../shared/Unavailable';
 import { useNow } from '../../shared/useNow';
 import { useRootStore } from '../../stores';
 import { MERGE_LABELS, openBranchMergeDialog } from './BranchMergeDialog';
+import { CommitCountBadge } from './CommitCountBadge';
 import {
     commitsWords,
     isFetchFirst,
@@ -54,22 +57,69 @@ function Counts({ ahead, behind }: Pick<SyncView, 'ahead' | 'behind'>) {
     );
 }
 
+type SyncCopy = Pick<SyncView, 'label' | 'line' | 'tone'>;
+
+function SyncWords({ label, line, tone }: SyncCopy) {
+    const [copy, setCopy] = useState<{ current: SyncCopy; outgoing?: SyncCopy }>({ current: { label, line, tone } });
+    const { current, outgoing } = copy;
+
+    if (current.label !== label || current.line !== line || current.tone !== tone) {
+        // Keep the latest subtitle, but don't replay the transition when only the fetch clock ticks.
+        setCopy({ current: { label, line, tone }, outgoing: current.label === label ? outgoing : current });
+    }
+
+    const words = ({ label, line, tone }: SyncCopy) => (
+        <>
+            <Text variant="xs" weight="medium" color={tone === 'warning' ? 'warning' : undefined} truncate>
+                {label}
+            </Text>
+            {line && (
+                <Text
+                    variant="xs"
+                    color={tone === 'warning' ? 'warning' : 'secondary'}
+                    truncate
+                    className={styles.line}
+                >
+                    {line}
+                </Text>
+            )}
+        </>
+    );
+
+    return (
+        <span className={styles.words}>
+            <span key={label} className={styles.copy} data-sync-copy data-entering={!!outgoing || undefined}>
+                {words({ label, line, tone })}
+            </span>
+            {outgoing && (
+                <span
+                    key={outgoing.label}
+                    className={styles.copy}
+                    data-outgoing
+                    aria-hidden="true"
+                    onAnimationEnd={() => setCopy(copy => ({ current: copy.current }))}
+                >
+                    {words(outgoing)}
+                </span>
+            )}
+        </span>
+    );
+}
+
 /**
  * The one button that moves the branch: its label is Publish, Pull or Push when the branch needs to sync. Otherwise it shows `Update from <base>` if the base is ahead, or `Fetch origin`.
  * Under the label is when the last fetch was (`Last fetched 3 minutes ago`, `Never fetched`) or the one thing to know of the state. A branch that diverged is `Pull origin`: the pull merges. It is
  * `syncButton`'s rule. While an action runs the label is its progress with a spinner, and nothing can be pressed; where there is nothing to press (no origin, no branch) it is off, and its
- * tooltip says why. The words are cut by the sidebar's edge, narrow as it is dragged: the tooltip has all of them. Beside it a dropdown keeps every action with the reason it cannot run
- * (`remoteActions`: nothing to pull, nothing to push, not published, pull first, no origin), Fetch origin first and always. When an action ends a quiet line
- * says what it did, or git's own line says why it could not (selectable, with the hint of the daemon under it, as the commit box does), and a push that origin turned down for commits the
- * branch lacks has a Fetch origin button beside it, as GitHub Desktop's `Newer Commits on Remote` has Fetch. The place's facts, and with them the line against the base, the counts and the
- * pull request, are read again when it ends.
+ * tooltip says why. The dropdown keeps the other actions, with Fetch first. When the base is ahead but an upstream action has priority, Update sits below the split button.
+ * Git failures remain selectable and a push rejected for newer commits offers Fetch. Status and the pull request are read again when an action ends.
  */
 export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
     const { transport } = useRootStore();
     const remote = useRemoteActions(facts);
     const now = useNow();
     const status = facts.status.value;
-    const view = syncButton(status, remote.running, now);
+    const idleView = syncButton(status, undefined, now);
+    const view = remote.running === undefined ? idleView : syncButton(status, remote.running, now);
 
     if (!view) return null;
 
@@ -79,6 +129,9 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
     const off = view.action === undefined && running === undefined;
     const current = status?.isRepository && status.head.kind === 'branch' ? status.head.name : undefined;
     const hasOrigin = status?.isRepository === true && status.origin;
+    const updateCount = update ? `${commitsWords(update.behind)} to merge from the base` : undefined;
+    const updateTooltip = update && `${update.label} · ${updateCount}`;
+    const tooltip = view.kind === 'update' ? updateTooltip : view.title;
 
     const run = (key: string) => {
         if (key === 'merge-from' || key === 'merge-into') {
@@ -101,44 +154,34 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
         <div className={styles.root}>
             <div className={styles.split}>
                 <Unavailable label={view.label} hint={off ? view.title : undefined} className={styles.host}>
-                    <Button
-                        variant="filled"
-                        color="secondary"
-                        size="sm"
-                        className={styles.main}
-                        contentClassName={styles.content}
-                        isDisabled={off}
-                        isPending={running !== undefined}
-                        spinnerPlacement="none"
-                        aria-label={view.title}
-                        data-sync={view.kind}
-                        tooltip={off || running !== undefined ? undefined : view.title}
-                        tooltipPlacement="bottom"
-                        onPress={() => view.action && void remote.run(view.action)}
+                    <Tooltip
+                        content={off || running !== undefined ? undefined : tooltip}
+                        isDisabled={off || running !== undefined}
+                        placement="bottom"
                     >
-                        <span className={styles.words}>
-                            <Text
-                                variant="xs"
-                                weight="medium"
-                                color={view.tone === 'warning' ? 'warning' : undefined}
-                                truncate
-                            >
-                                {view.label}
-                            </Text>
-                            {view.line && (
-                                <Text
-                                    variant="xs"
-                                    color={view.tone === 'warning' ? 'warning' : 'secondary'}
-                                    truncate
-                                    className={styles.line}
-                                >
-                                    {view.line}
-                                </Text>
+                        <Button
+                            variant="filled"
+                            color="secondary"
+                            size="sm"
+                            className={styles.main}
+                            contentClassName={styles.content}
+                            isDisabled={off}
+                            isPending={running !== undefined}
+                            spinnerPlacement="none"
+                            aria-label={view.title}
+                            aria-description={view.kind === 'update' ? updateCount : undefined}
+                            data-sync={view.kind}
+                            onPress={() => view.action && void remote.run(view.action)}
+                        >
+                            <SyncWords label={view.label} line={view.line} tone={view.tone} />
+                            {view.kind === 'update' && update ? (
+                                <CommitCountBadge direction="down" count={update.behind} />
+                            ) : (
+                                <Counts ahead={view.ahead} behind={view.behind} />
                             )}
-                        </span>
-                        <Counts ahead={view.ahead} behind={view.behind} />
-                        {running !== undefined && <Spinner size="xxs" className={styles.spinner} aria-hidden />}
-                    </Button>
+                            {running !== undefined && <Spinner size="xxs" className={styles.spinner} aria-hidden />}
+                        </Button>
+                    </Tooltip>
                 </Unavailable>
 
                 <MenuTrigger>
@@ -198,6 +241,24 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
                 </MenuTrigger>
             </div>
 
+            {update && hasOrigin && idleView?.kind !== 'update' && (
+                <Button
+                    variant="bordered"
+                    size="sm"
+                    className={styles.update}
+                    contentClassName={styles.content}
+                    isDisabled={remote.busy}
+                    aria-label={update.label}
+                    aria-description={updateCount}
+                    tooltip={updateTooltip}
+                    tooltipPlacement="bottom"
+                    onPress={() => void remote.run('update')}
+                >
+                    <Text truncate>{update.label}</Text>
+                    <CommitCountBadge direction="down" count={update.behind} />
+                </Button>
+            )}
+
             {failure && (
                 <div className={styles.failure} role="alert">
                     <Text variant="xs" color="danger" select="text">
@@ -222,7 +283,7 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
                     )}
                 </div>
             )}
-            {!failure && notice && (
+            {!failure && notice && !(notice.tone === 'warning' && status?.isRepository && status.merging) && (
                 <Text
                     variant="xs"
                     color={notice.tone === 'warning' ? 'warning' : 'secondary'}

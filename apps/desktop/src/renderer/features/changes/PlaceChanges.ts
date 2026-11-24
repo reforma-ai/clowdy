@@ -287,6 +287,13 @@ export class PlaceChanges {
         this.revealRequest = path;
     }
 
+    /** Shows a merge file in the uncommitted diff list. */
+    showUncommittedFile(path: string): void {
+        this.setScope('uncommitted');
+        this.setFilter('');
+        this.revealRequest = path;
+    }
+
     /** The request of `showRun` is answered or no longer wanted. */
     clearRevealRequest(): void {
         this.revealRequest = undefined;

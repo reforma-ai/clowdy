@@ -12,7 +12,12 @@
     flex-shrink: 1;
     min-width: 0;
     max-width: min(100%, 16rem);
-    padding-left: var(--spacing-sm);
+    padding-inline-start: var(--spacing-sm);
+}
+
+/* The ring's 6px inset and the picker's 4px start padding match its 10px end padding. */
+:global([data-context-ring]) + .trigger {
+    padding-inline-start: var(--spacing-xs);
 }
 
 /*
@@ -50,8 +55,7 @@
 }
 
 /*
- * The composer card is the container: a narrow card keeps the model's name and drops its level. The context ring (about 34px with its
- * gap) shares the row with the pill, so the card must be that much wider before the level fits: 340px plus the ring is 380px.
+ * The composer card is the container: a narrow card keeps the model's name and drops its level to leave room for the other controls.
  */
 @container (max-width: 380px) {
     .trigger .level {

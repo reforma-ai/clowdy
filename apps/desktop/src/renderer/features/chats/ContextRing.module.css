@@ -50,8 +50,8 @@
     display: grid;
     flex-shrink: 0;
     place-items: center;
-    width: var(--spacing-30);
-    height: var(--spacing-30);
+    width: var(--spacing-24);
+    height: var(--spacing-24);
     border-radius: var(--radius-full);
 }
 

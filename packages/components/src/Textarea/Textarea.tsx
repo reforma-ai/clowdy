@@ -30,6 +30,8 @@ export interface TextareaProps
     onRowCountChange?: (rows: number) => void;
     /** Top-end control inside the field (e.g. jump-to-source). */
     endAction?: ReactNode;
+    /** Keep the end action visible while the field is idle. */
+    alwaysShowEndAction?: boolean;
 }
 
 function readRowCount(el: HTMLTextAreaElement): number | null {
@@ -63,6 +65,7 @@ export function Textarea(props: TextareaProps) {
         onRowCountChange,
         autoFocus,
         endAction,
+        alwaysShowEndAction,
         ref: refProp,
         ...restProps
     } = merged;
@@ -163,6 +166,7 @@ export function Textarea(props: TextareaProps) {
             <Show when={endAction}>
                 <span
                     className={styles.endAction}
+                    data-always-visible={alwaysShowEndAction || undefined}
                     onClick={event => {
                         event.stopPropagation();
                     }}

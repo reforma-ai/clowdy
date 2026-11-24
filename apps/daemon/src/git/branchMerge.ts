@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rmdir, unlink, writeFile } from 'node:fs/promises';
+import { readFile, rmdir, unlink } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 
 import { listProjects } from '../db/projects';
@@ -26,6 +26,12 @@ const ORIGIN = 'origin';
 const REMOTE_HEADS = `refs/remotes/${ORIGIN}/`;
 const CHECKOUT = 'checkout';
 const MERGE_OWNER = 'clowdy-merge';
+
+function outgoingConflict({ source, target }: GitBranchMergePreview) {
+    return conflict(`Can't merge into ${target} because the branches conflict`, {
+        hint: `In a chat on ${target}, use Merge from branch to merge ${source} and resolve the conflicts`,
+    });
+}
 
 /** Resolve an exact full ref, so a tag, revision expression or alternate remote can never substitute for it. */
 async function branchCommit(cwd: string, ref: string, name: string): Promise<string> {
@@ -140,7 +146,7 @@ async function mergeHead(cwd: string): Promise<string | undefined> {
 async function conflictResult(
     path: string,
     { target, sourceCommit, targetCommit }: GitBranchMergePreview
-): Promise<GitBranchMergeResult> {
+): Promise<Extract<GitBranchMergeResult, { state: 'conflicts' }>> {
     const files = await gitRead(path, ['diff', '--name-only', '--diff-filter=U', '-z'], { parsed: true });
 
     if (!files.ok) throw unavailable(`A merge is in progress in ${path}`);
@@ -180,7 +186,14 @@ export class GitBranchMerge {
             const plan = await preview(cwd, request);
             const targetPath = await checkoutOf(cwd, plan.target);
 
-            return { ...plan, ...(targetPath !== undefined && { targetPath }) };
+            if (targetPath === undefined) return plan;
+
+            const conflictCheck =
+                request.direction === 'into' && plan.mode === 'merge-commit'
+                    ? await this.#checkMerge(targetPath, plan, await this.#environment.of(targetPath))
+                    : undefined;
+
+            return { ...plan, targetPath, ...(conflictCheck && { conflictCheck }) };
         }
 
         const target =
@@ -221,6 +234,25 @@ export class GitBranchMerge {
               );
     }
 
+    /** Check the pinned tips without touching the destination's files or index. A Git error is not a clean result. */
+    async #checkMerge(
+        path: string,
+        { targetCommit, sourceCommit }: GitBranchMergePreview,
+        env: Record<string, string>
+    ): Promise<'clean' | 'conflicts'> {
+        const run = await runGitWrite(
+            path,
+            ['merge-tree', '--write-tree', targetCommit, sourceCommit],
+            env,
+            this.#stopper.signal
+        );
+
+        if (run.code === 1 && !run.timedOut && run.error === undefined) return 'conflicts';
+
+        checkGitWrite(run, this.#environment, 'merge conflict check', 'check for merge conflicts');
+        return 'clean';
+    }
+
     async #merge(
         cwd: string,
         targetPath: string | undefined,
@@ -231,71 +263,82 @@ export class GitBranchMerge {
         const { source, target, sourceCommit, targetCommit, mode } = plan;
 
         if (sourceCommit !== request.sourceCommit || targetCommit !== request.targetCommit)
-            throw conflict('A branch changed. Refresh the merge preview');
+            throw conflict('A branch changed since the preview. Select the branch again to review the merge');
 
         if (mode === 'up-to-date') return { state: 'done', target, commit: targetCommit, canPush: false };
 
-        const path = targetPath ?? (await this.#openTemporary(cwd, target, repo));
-        let keep = false;
+        if (targetPath === undefined) throw conflict(`Check out ${target} before merging into it`);
 
-        try {
-            const env = await this.#environment.of(path);
+        const path = targetPath;
+        const env = await this.#environment.of(path);
 
-            const [operation, changes] = await Promise.all([operationUnderWay(path), countChanges(path)]);
+        if (
+            request.direction === 'into' &&
+            mode === 'merge-commit' &&
+            (await this.#checkMerge(path, plan, env)) === 'conflicts'
+        )
+            throw outgoingConflict(plan);
 
-            if (operation === 'A merge' && (await mergeHead(path)) === sourceCommit) {
-                await this.#expectTarget(path, repo, target, targetCommit);
+        const [operation, changes] = await Promise.all([operationUnderWay(path), countChanges(path)]);
 
-                return await conflictResult(path, plan);
-            }
-
-            if (operation !== undefined) throw conflict(`${operation} is in progress in ${target}`);
-            if (changes === undefined) throw unavailable('git did not answer');
-            if (changes !== 0) throw conflict(`Commit or discard the changes in ${target} first`);
-
+        if (request.direction === 'from' && operation === 'A merge' && (await mergeHead(path)) === sourceCommit) {
             await this.#expectTarget(path, repo, target, targetCommit);
-            this.#requireIdle(path, target);
 
-            const args =
-                mode === 'fast-forward' ? ['--ff-only'] : ['--ff', '-m', `Merge branch '${source}' into ${target}`];
-            const run = await runGitWrite(
-                path,
-                [
-                    'merge',
-                    '--no-edit',
-                    '--no-autostash',
-                    '--no-overwrite-ignore',
-                    '--no-squash',
-                    '--commit',
-                    ...args,
-                    '--',
-                    sourceCommit,
-                ],
-                env,
-                this.#stopper.signal
-            );
-
-            const merged = run.code === 0 ? undefined : await mergeHead(path);
-
-            if (merged !== undefined) {
-                // Mark it before reading the files, so a blocked read cannot remove the checkout.
-                keep = true;
-                if (merged !== sourceCommit) throw conflict(`A different merge is in progress in ${target}`);
-
-                return await conflictResult(path, plan);
-            }
-
-            checkGitWrite(run, this.#environment, 'merge', 'merge the branches');
-
-            const [commit, origin] = await Promise.all([
-                branchCommit(path, `${HEADS}${target}`, target),
-                gitAnswer(path, ['remote', 'get-url', '--push', ORIGIN]),
-            ]);
-
-            return { state: 'done', target, commit, canPush: origin !== undefined };
-        } finally {
-            if (targetPath === undefined && !keep) await this.#removeTemporary(cwd, path, repo);
+            return await conflictResult(path, plan);
         }
+
+        if (operation !== undefined) throw conflict(`${operation} is in progress in ${target}`);
+        if (changes === undefined) throw unavailable('git did not answer');
+        if (changes !== 0) throw conflict(`Commit or discard the changes in ${target} first`);
+
+        await this.#expectTarget(path, repo, target, targetCommit);
+        this.#requireIdle(path, target);
+
+        const args =
+            mode === 'fast-forward' ? ['--ff-only'] : ['--ff', '-m', `Merge branch '${source}' into ${target}`];
+        const run = await runGitWrite(
+            path,
+            [
+                'merge',
+                '--no-edit',
+                '--no-autostash',
+                '--no-overwrite-ignore',
+                '--no-squash',
+                '--commit',
+                ...args,
+                '--',
+                sourceCommit,
+            ],
+            env,
+            this.#stopper.signal
+        );
+
+        const merged = run.code === 0 ? undefined : await mergeHead(path);
+
+        if (merged !== undefined) {
+            if (merged !== sourceCommit) throw conflict(`A different merge is in progress in ${target}`);
+
+            const outcome = await conflictResult(path, plan);
+
+            if (request.direction === 'from' || outcome.conflicts === 0) return outcome;
+
+            // A custom merge strategy or driver can disagree with merge-tree. Roll back only the new merge we own.
+            await this.#expectTarget(path, repo, target, targetCommit);
+            const abort = await runGitWrite(path, ['merge', '--abort'], env, this.#stopper.signal);
+
+            if (abort.code !== 0) return outcome;
+
+            throw outgoingConflict(plan);
+        }
+
+        checkGitWrite(run, this.#environment, 'merge', 'merge the branches');
+
+        const [commit, origin] = await Promise.all([
+            branchCommit(path, `${HEADS}${target}`, target),
+            gitAnswer(path, ['remote', 'get-url', '--push', ORIGIN]),
+        ]);
+
+        return { state: 'done', target, commit, canPush: origin !== undefined };
     }
 
     async #push(
@@ -342,7 +385,7 @@ export class GitBranchMerge {
         const result = await runGitWrite(path, ['merge', '--abort'], env, this.#stopper.signal);
 
         checkGitWrite(result, this.#environment, 'abort', 'abort the merge');
-        await this.#removeTemporary(path, path, repo);
+        await this.#removeLegacyTemporary(path, repo);
 
         return { state: 'aborted', target };
     }
@@ -356,8 +399,7 @@ export class GitBranchMerge {
             gitAnswer(path, ['rev-parse', '--verify', '--quiet', 'HEAD']),
         ]);
 
-        if (head !== `${HEADS}${branch}` || tip !== commit)
-            throw conflict(`The checkout of ${branch} changed. Refresh the merge preview`);
+        if (head !== `${HEADS}${branch}` || tip !== commit) throw conflict(`The checkout of ${branch} changed`);
     }
 
     #requireIdle(path: string, target: string): void {
@@ -365,28 +407,8 @@ export class GitBranchMerge {
             throw conflict(`A chat is working in ${target}`);
     }
 
-    async #openTemporary(cwd: string, branch: string, repo: string): Promise<string> {
-        const env = await this.#environment.of(cwd);
-
-        await mkdir(this.#directory, { recursive: true });
-        const dir = await mkdtemp(join(this.#directory, 'merge-'));
-        const path = join(dir, CHECKOUT);
-
-        await writeFile(join(dir, MERGE_OWNER), repo);
-
-        try {
-            const result = await runGitWrite(cwd, ['worktree', 'add', '--', path, branch], env, this.#stopper.signal);
-
-            checkGitWrite(result, this.#environment, 'checkout', 'prepare the merge checkout');
-            return (await placeOf(path)) ?? path;
-        } catch (error) {
-            await this.#removeTemporary(cwd, path, repo);
-            throw error;
-        }
-    }
-
-    /** Drop only our disposable checkout, and keep any files left there by hooks or conflict resolution. */
-    async #removeTemporary(cwd: string, path: string, repo: string): Promise<void> {
+    /** Clean up an old disposable checkout when its merge is explicitly aborted. Keep files left by hooks or conflict resolution. */
+    async #removeLegacyTemporary(path: string, repo: string): Promise<void> {
         const dir = dirname(path);
         const marker = join(dir, MERGE_OWNER);
         const [root, parent, owner] = await Promise.all([
@@ -412,8 +434,8 @@ export class GitBranchMerge {
 
             if (!files.ok || files.stdout.trim() !== '') return;
 
-            const env = await this.#environment.of(cwd);
-            const result = await runGitWrite(cwd, ['worktree', 'remove', '--', path], env, this.#stopper.signal);
+            const env = await this.#environment.of(path);
+            const result = await runGitWrite(path, ['worktree', 'remove', '--', path], env, this.#stopper.signal);
 
             if (result.code !== 0) return;
         }

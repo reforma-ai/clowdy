@@ -79,7 +79,7 @@
     white-space: nowrap;
 }
 
-/* The failure and the empty note, in the middle of the space the groups would take. */
+/* The empty note in the space the groups would take. */
 .message {
     display: flex;
     flex-direction: column;

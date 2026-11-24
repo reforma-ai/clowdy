@@ -148,6 +148,43 @@ describe('the line under the message box', () => {
     });
 });
 
+describe('following sent messages', () => {
+    it('leaves the position alone when an empty message is submitted', async () => {
+        await start();
+        await draw('c-2');
+        const scroll = container.querySelector<HTMLElement>('[data-stick-at-bottom]')!;
+        Object.defineProperty(scroll, 'scrollHeight', { configurable: true, value: 2000 });
+        Object.defineProperty(scroll, 'clientHeight', { configurable: true, value: 400 });
+        scroll.scrollTop = 100;
+        await act(async () => scroll.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, bubbles: true })));
+        await act(async () => scroll.dispatchEvent(new Event('scroll')));
+        await act(async () =>
+            field()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+        );
+        expect(scroll.scrollTop).toBe(100);
+    });
+
+    it('returns to the latest messages when the person sends after scrolling up', async () => {
+        await start();
+        await draw('c-2');
+        const scroll = container.querySelector<HTMLElement>('[data-stick-at-bottom]')!;
+        Object.defineProperty(scroll, 'scrollHeight', { configurable: true, value: 2000 });
+        Object.defineProperty(scroll, 'clientHeight', { configurable: true, value: 400 });
+        scroll.scrollTop = 100;
+        await act(async () => scroll.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, bubbles: true })));
+        await act(async () => scroll.dispatchEvent(new Event('scroll')));
+        expect(scroll.scrollTop).toBe(100);
+        await act(async () => {
+            (field() as HTMLElement & { editor: Editor }).editor.commands.insertContent('A long message '.repeat(80));
+        });
+        await act(async () =>
+            field()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+        );
+        expect(scroll.scrollTop).toBe(2000);
+        expect(scroll.dataset.stickAtBottom).toBe('true');
+    });
+});
+
 describe('git over the message box', () => {
     const withPullRequest = (data: FixtureData) => {
         data.pullRequests['/Users/dev/car-rental'] = { checkout: 'open' };

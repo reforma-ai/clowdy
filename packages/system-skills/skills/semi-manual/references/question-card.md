@@ -18,7 +18,7 @@ A card is one `ask_user` call: `{question, options: [{id, label, consequence?}],
 
 **Custom answer.** The card has its own field. Do not add "Other", "Something else" or "You decide".
 
-**Round.** Cards asked one after another belong to one round. They must not depend on each other. At most four. Ask them one at a time: each call waits for its answer, and a second call while a card is open is refused.
+**Round.** Cards in one round must not depend on each other. Ask at most four, one at a time: each call waits for its answer, and a second call while a card is open is refused.
 
 ## A card
 

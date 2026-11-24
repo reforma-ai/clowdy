@@ -1284,7 +1284,7 @@ class StepItem {
 const preparing = new WeakMap<Store, Map<string, Promise<unknown>>>();
 
 /** Resolves when the promise does, or rejects with the signal's reason when it aborts first. */
-function until<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+export function until<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
     if (!signal) {
         return promise;
     }

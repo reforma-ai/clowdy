@@ -1,6 +1,11 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
-import { PERMISSION_PRESET_NAMES, PERMISSION_PRESETS } from '@clowdy/protocol';
+import {
+    COMMIT_MESSAGE_PROVIDERS,
+    COMMIT_MESSAGE_SETTING_ID,
+    PERMISSION_PRESET_NAMES,
+    PERMISSION_PRESETS,
+} from '@clowdy/protocol';
 
 import { errorMessage } from '../../errors';
 import { PROVIDERS } from '../../providers/builtin';
@@ -9,7 +14,13 @@ import { AGENT_ID } from './catalog';
 import { Discovery } from './discovery';
 import { buildAgentEnv } from './env';
 
-import type { AgentInfo, AgentPermissions, AgentSetting, PermissionPresetId } from '@clowdy/protocol';
+import type {
+    AgentInfo,
+    AgentPermissions,
+    AgentSetting,
+    CommitMessageProvider,
+    PermissionPresetId,
+} from '@clowdy/protocol';
 import type { PermissionSupport, Provider } from '../../providers/types';
 import type {
     AgentOverride,
@@ -289,6 +300,21 @@ export class AgentRegistry {
             }
 
             this.stored.overrides[id] = next;
+        });
+    }
+
+    /** Writes one choice using the existing settings file, so a failed save cannot leave two choices active. */
+    setCommitMessageProvider(provider: CommitMessageProvider | null): void {
+        this.change(() => {
+            for (const id of COMMIT_MESSAGE_PROVIDERS) {
+                if (this.setting(id, COMMIT_MESSAGE_SETTING_ID) === undefined) continue;
+
+                const override = this.stored.overrides[id];
+                this.stored.overrides[id] = {
+                    ...override,
+                    settings: { ...override?.settings, [COMMIT_MESSAGE_SETTING_ID]: id === provider },
+                };
+            }
         });
     }
 

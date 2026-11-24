@@ -87,6 +87,7 @@ interface ComposerBannerHeaderProps extends ButtonProps {
 export function ComposerBannerHeader({
     children,
     className,
+    contentClassName,
     summary,
     expanded,
     action,
@@ -100,7 +101,7 @@ export function ComposerBannerHeader({
                 color="secondary"
                 size="sm"
                 className={cn(styles.disclosure, className)}
-                contentClassName={styles.headerContent}
+                contentClassName={cn(styles.headerContent, contentClassName)}
                 aria-expanded={expanded}
             >
                 <Text variant="xs" weight="medium" className={styles.headerTitle}>

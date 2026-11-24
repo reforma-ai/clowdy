@@ -5,21 +5,21 @@ description: "How to work as a Clowdy thread, a chat that another chat's agent s
 
 # Thread
 
-This chat is a thread. Another chat's agent, your parent, started it, and its first message is your brief. Work like any orchestrator (clowdy:orchestrate) inside that brief. Your parent reads only what you report. The person can open this chat and write to you too, and their word outranks the brief.
+This thread was started by your parent; its first message is your brief. Follow clowdy:orchestrate within it. Your parent reads only your reports. The person can write here too, and their word outranks the brief.
 
 ## The brief
 
-- The first message is the whole assignment. You do not see your parent's conversation. Find out what the brief leaves open from the code and the docs, or decide it as your mode says.
-- Do what it asks and nothing nearby. It names what you own (paths, tasks). A change needed outside it goes into your report, not into files you do not own.
+- The first message is the whole assignment; you cannot see your parent's conversation. Resolve gaps from code and docs, or decide as your mode says.
+- Do only what the brief asks, within its owned paths and tasks. Report changes needed outside them; do not edit files you do not own.
 - Its mode line rules. Autopilot decides and records. Semi-manual asks the person with `ask_user` in this chat, where the card waits for them while your state shows as asking. Decisions the brief lists as made are settled: do not reopen them.
 - Tasks it names are assigned to you: move them through the statuses as clowdy:orchestrate says. A task may be a stage inside a larger one: move yours, never the whole, which your parent verifies. Do not plan your parent's work again or create tasks it already has.
 - A message from your parent in the middle of a turn changes the brief: take it in and go on. A stop from your parent ends your turn, and a later message starts you again.
 
 ## The report
 
-Your last message of each turn is your report. The daemon gives it to your parent each time you stop and starts a turn of theirs for it. What you say between tool calls does not reach them.
+Your last message each turn is your report. The daemon delivers it to your parent and starts their turn; messages between tool calls do not reach them.
 
-- End every turn with a report that stands on its own. You may report again later, for example when background work of yours finishes, so each report says where things stand now, not what changed since the last one.
+- End every turn with a self-contained report of the current state, not just changes since the last report. You may report again later, for example when background work finishes.
 - Verdict first, then the evidence, then what is left:
 
 ```text
@@ -28,7 +28,7 @@ Evidence: <the commands you ran and what they showed; the files you changed, by 
 Left: <what is not done, risks, a fork you could not decide, what you need; or "nothing">
 ```
 
-- Keep it short. Your parent reads at most 4,000 characters of it. Put long material in a file (a check report, a research note) and give its path.
+- Keep it short; your parent reads at most 4,000 characters. Put longer material in a file (a check report or research note) and give its path.
 - Failed and blocked are reports too: say exactly what failed, or what you need and from whom. Never report done what you did not check.
 
 ## Other chats
@@ -39,7 +39,7 @@ Left: <what is not done, risks, a fork you could not decide, what you need; or "
 
 ## Threads of your own
 
-You may start threads of your own while the depth limit allows; `clowdy thread spawn` says when it does not. The rules are those of clowdy:orchestrate, "Delegating with threads". Your parent sees only your report, so collect your threads' results and report them as your own.
+You may choose sub-agents or start threads while the depth limit allows, including a separate reviewer for your assigned stage. Stay within your brief and ownership, and coordinate concurrent edits. `clowdy thread spawn` says when the depth limit prevents a thread. Follow clowdy:orchestrate, "Delegating with threads". Integrate and verify their work and collect their results in your report; your parent sees only that report. If no separate reviewer is available, review yourself and report that limit.
 
 ## Shared files and git
 

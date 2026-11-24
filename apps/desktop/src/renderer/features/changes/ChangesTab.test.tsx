@@ -273,13 +273,12 @@ describe('the Changes tab of a chat in a worktree', () => {
             'Commits on branch'
         );
         expect(container.querySelector('[aria-label="Changes sidebar"]')?.textContent).toContain('clowdy/ab12cd34');
-        const base = container.querySelector('[title="origin/main, 2 ahead, 1 behind"]');
+        const sidebar = container.querySelector('[aria-label="Changes sidebar"]');
 
-        expect(base?.textContent).toContain('Base: origin/main');
-        expect(container.querySelector('[data-sync]')?.compareDocumentPosition(base!)).toBe(
-            Node.DOCUMENT_POSITION_FOLLOWING
-        );
-        expect(base?.querySelector('[role="img"][aria-label="2 ahead, 1 behind"]')?.textContent).toBe('21');
+        expect(sidebar?.textContent).not.toContain('Base:');
+        expect(
+            sidebar?.querySelector('button[aria-label="Update from main"] [data-commit-count="down"]')?.textContent
+        ).toBe('1');
         expect(container.querySelector('[aria-label="Pull request"]')?.textContent).toContain('PR #128');
     });
 
@@ -524,6 +523,16 @@ describe('the Changes tab of a chat in a worktree', () => {
     });
 });
 
+const filterRows = [
+    'All changesBranch commits and uncommitted changes',
+    'BranchCommitted changes against the base',
+    'UncommittedStaged, unstaged and untracked changes',
+];
+const commitRows = [
+    expect.stringMatching(/^Charge a weekend surchargeb744444 · \d{1,2} Nov 2026$/),
+    expect.stringMatching(/^Price a booking by the daya155555 · \d{1,2} Nov 2026$/),
+];
+
 describe('the scope', () => {
     it('has the entries of the scope menu: all changes, the branch, what is not committed and each commit of the branch, newest first', async () => {
         await start();
@@ -531,13 +540,10 @@ describe('the scope', () => {
         await press(scopeTrigger());
         await vi.waitFor(() => expect(options().length).toBeGreaterThan(0));
 
-        expect(options().map(option => option.textContent)).toEqual([
-            'All changes',
-            'Branch',
-            'Uncommitted',
-            'b744444 Charge a weekend surcharge',
-            'a155555 Price a booking by the day',
-        ]);
+        expect(options().map(option => option.textContent)).toEqual([...filterRows, ...commitRows]);
+        const group = document.querySelector('[role="group"][aria-label="Commits"]');
+        expect(group?.textContent?.startsWith('Commits')).toBe(true);
+        expect(group?.querySelectorAll('[role="option"]')).toHaveLength(2);
     });
 
     it('changes the list with the scope chosen from the menu', async () => {
@@ -545,7 +551,7 @@ describe('the scope', () => {
         await draw();
         await press(scopeTrigger());
         await vi.waitFor(() => expect(options().length).toBeGreaterThan(0));
-        await press(options().find(option => option.textContent === 'Uncommitted')!);
+        await press(options().find(option => option.textContent?.startsWith('Uncommitted'))!);
         await settle();
 
         expect(scopeTrigger().textContent).toContain('Uncommitted');
@@ -560,13 +566,13 @@ describe('the scope', () => {
         const selectScope = async (label: string) => {
             await press(scopeTrigger());
             await vi.waitFor(() => expect(options().length).toBeGreaterThan(0));
-            await press(options().find(option => option.textContent === label)!);
+            await press(options().find(option => option.textContent?.startsWith(label))!);
             await settle();
         };
 
-        await selectScope('a155555 Price a booking by the day');
+        await selectScope('Price a booking by the day');
 
-        expect(scopeTrigger().textContent).toContain('a155555 Price a booking by the day');
+        expect(scopeTrigger().textContent).toBe('Price a booking by the day');
         expect(cardPaths()).toEqual(['assets/logo.png', 'src/booking/price.test.ts', 'src/booking/price.ts']);
 
         await selectScope('All changes');
@@ -600,7 +606,7 @@ describe('the scope', () => {
         });
         await act(async () => {
             options()
-                .find(option => option.textContent === 'Branch')!
+                .find(option => option.textContent?.startsWith('Branch'))!
                 .dispatchEvent(new MouseEvent('click', { bubbles: true }));
         });
         await settle();
@@ -765,7 +771,7 @@ describe('the sidebar', () => {
         expect(branch.getAttribute('aria-expanded')).toBe('false');
     });
 
-    it('has the base, how far the branch is from it and the pull request with its checks, and opens the repository on GitHub', async () => {
+    it('offers a base update and the pull request, and opens the repository on GitHub', async () => {
         const open = vi.spyOn(window, 'open').mockReturnValue(null);
 
         await start({
@@ -787,7 +793,12 @@ describe('the sidebar', () => {
 
         const sidebar = container.querySelector('[aria-label="Changes sidebar"]')!;
 
-        const checks = sidebar.querySelector('ul[aria-label="Checks"]')!;
+        await press(sidebar.querySelector('button[aria-label="Open the repository on GitHub"]')!);
+        expect(open).toHaveBeenCalledExactlyOnceWith('https://github.com/acme/car-rental', '_blank', 'noopener');
+
+        await press(sidebar.querySelector('button[aria-label^="Show checks"]')!);
+        await settle();
+        const checks = document.querySelector('ul[aria-label="Checks"]')!;
         const failedCheck = checks.querySelector<HTMLAnchorElement>('a[aria-label="unit (windows), Failing"]')!;
         const skippedCheck = checks.querySelector<HTMLAnchorElement>('a[aria-label="docs, Skipped"]')!;
         const previewCheck = checks.querySelector<HTMLAnchorElement>('a[aria-label="ci/deploy-preview, Passing"]')!;
@@ -798,10 +809,6 @@ describe('the sidebar', () => {
         expect(failedCheck.rel).toBe('noopener');
         expect(skippedCheck.getAttribute('href')).toBe('https://github.com/acme/car-rental/pull/128/checks');
         expect(previewCheck.getAttribute('href')).toBe('https://github.com/acme/car-rental/pull/128/checks');
-
-        await press(sidebar.querySelector('button[aria-label="Open the repository on GitHub"]')!);
-
-        expect(open).toHaveBeenCalledExactlyOnceWith('https://github.com/acme/car-rental', '_blank', 'noopener');
     });
 
     it('is hidden by a press on its button, which is then in the toolbar of the diffs, and comes back on a second press', async () => {
@@ -1480,12 +1487,9 @@ describe('the last run of the open chat', () => {
         await openMenu();
 
         expect(optionLabels()).toEqual([
-            'All changes',
-            'Branch',
-            'Uncommitted',
+            ...filterRows,
             'Last runEdits of others in the place are in it too',
-            'b744444 Charge a weekend surcharge',
-            'a155555 Price a booking by the day',
+            ...commitRows,
         ]);
     });
 
@@ -1493,13 +1497,7 @@ describe('the last run of the open chat', () => {
         await start({ ...run, chat: FIXTURE_QUIET_CHAT_ID });
         await draw();
         await openMenu();
-        expect(optionLabels()).toEqual([
-            'All changes',
-            'Branch',
-            'Uncommitted',
-            'b744444 Charge a weekend surcharge',
-            'a155555 Price a booking by the day',
-        ]);
+        expect(optionLabels()).toEqual([...filterRows, ...commitRows]);
     });
 
     it("is not offered while the new-chat page is shown, whose place is not a chat's", async () => {
@@ -1526,7 +1524,7 @@ describe('the last run of the open chat', () => {
         // The two ends of a run are trees: no commit, no base.
 
         await openMenu();
-        await press(options().find(option => option.textContent === 'All changes')!);
+        await press(options().find(option => option.textContent?.startsWith('All changes'))!);
         await settle();
         expect(scopeTrigger().textContent).toContain('All changes');
         expect(scopeTrigger().closest('[title]')).toBeNull();
@@ -1639,7 +1637,7 @@ describe('the last run of the open chat', () => {
         expect(cards()).toHaveLength(0);
 
         await openMenu();
-        await press(options().find(option => option.textContent === 'Uncommitted')!);
+        await press(options().find(option => option.textContent?.startsWith('Uncommitted'))!);
         await settle();
         expect(cards()).toHaveLength(3);
     });

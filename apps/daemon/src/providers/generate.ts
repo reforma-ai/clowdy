@@ -188,10 +188,7 @@ const claude: Recipe = {
     },
 };
 
-/**
- * The agents that can answer a request for text with no tools, by the id the registry knows them under, in the order they are tried: the first that has `Commit messages` on and is signed in
- * answers, and when its run fails or does not end in time the next one is asked once (`git/message.ts`). A third agent is one more entry.
- */
+/** The providers that can answer a request for text with no tools, by agent ID. */
 const RECIPES: Record<string, Recipe> = { codex, claude };
 
 export interface TextGenerationOptions {
@@ -218,18 +215,19 @@ export class TextGeneration {
         this.#options = options;
     }
 
-    /** The agents that can be asked, in the order they are tried. */
-    get agents(): string[] {
-        return Object.keys(RECIPES);
-    }
-
     /** Ends the runs that are going on, and refuses new ones. */
     stop(): void {
         this.#stopper.abort();
     }
 
-    /** The answer of the agent to the prompt, as the agent wrote it. Throws `GenerateFailure`. */
-    async run(agentId: string, prompt: string): Promise<string> {
+    /** Reads the agent's answer. A caller can check its permission again immediately before the prompt is sent. */
+    async run(
+        agentId: string,
+        prompt: string,
+        { signal, beforeStart }: { signal?: AbortSignal; beforeStart?: () => void } = {}
+    ): Promise<string> {
+        const stop = signal ? AbortSignal.any([signal, this.#stopper.signal]) : this.#stopper.signal;
+        stop.throwIfAborted();
         const recipe = RECIPES[agentId];
         const target = recipe ? await this.#options.target(agentId) : undefined;
 
@@ -245,6 +243,9 @@ export class TextGeneration {
         const cwd = await mkdtemp(join(tmpdir(), 'clowdy-generate-'));
 
         try {
+            stop.throwIfAborted();
+            beforeStart?.();
+
             const run = await runProgram(target.program, recipe.args(instructions), {
                 env: {
                     ...Object.fromEntries(Object.entries(target.env).filter(([name]) => !recipe.scrub?.test(name))),
@@ -254,9 +255,10 @@ export class TextGeneration {
                 timeoutMs: this.#options.timeoutMs ?? RUN_TIMEOUT_MS,
                 maxChars: MAX_PRINTED_CHARS,
                 input: prompt,
-                signal: this.#stopper.signal,
+                signal: stop,
             });
 
+            stop.throwIfAborted();
             if (run.timedOut) throw new GenerateFailure('timed_out');
 
             const answer = recipe.answer(run);

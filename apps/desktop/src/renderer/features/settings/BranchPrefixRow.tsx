@@ -10,7 +10,7 @@ import { SettingsRow } from './ui/SettingsRow';
 const LABEL = 'Branch prefix';
 
 /**
- * The branch prefix of a new worktree (Settings > Chat). A prefix the daemon would take is kept as it is typed; one it would refuse stays in the box with the
+ * The branch prefix of a new worktree (Settings > Source Control). A prefix the daemon would take is kept as it is typed; one it would refuse stays in the box with the
  * reason under it, and the last good one stays in force until it is fixed, so a chat never meets a refusal from here. An empty box is the default again.
  */
 export function BranchPrefixRow() {

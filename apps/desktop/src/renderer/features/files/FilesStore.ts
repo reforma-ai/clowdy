@@ -95,6 +95,13 @@ export class FilesStore {
         return manager;
     }
 
+    /** A folder navigation replaces temporary reveals in other places. */
+    clearOtherReveals(current: FileManager): void {
+        for (const manager of this.#managers.values()) {
+            if (manager !== current) manager.tree.revealPath(null);
+        }
+    }
+
     /** Stops every watch the folders hold. */
     dispose(): void {
         this.#disposed = true;

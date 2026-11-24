@@ -32,6 +32,7 @@ export function ContextRing({ chat, run }: ContextRingProps) {
             ) : (
                 <span
                     className={styles.readOnly}
+                    data-context-ring=""
                     role="button"
                     aria-disabled
                     tabIndex={0}
@@ -51,9 +52,10 @@ function CompactRing({ chat, fill }: { chat: Chat; fill: ContextFill }) {
     return (
         <Button
             variant="filling"
-            size="sm"
+            size="xs"
             rounded
             iconOnly
+            data-context-ring=""
             aria-label={`${queued ? 'Compact context queued' : 'Compact context'}, ${fill.label}`}
             isPending={isPending || queued}
             spinnerPlacement={queued ? 'none' : 'center'}
@@ -71,8 +73,8 @@ function Ring({ fill }: { fill: ContextFill }) {
             className={styles.ring}
             data-tone={fill.tone}
             viewBox="0 0 18 18"
-            width={18}
-            height={18}
+            width={12}
+            height={12}
             aria-hidden="true"
         >
             <circle className={styles.track} cx="9" cy="9" r="8" />

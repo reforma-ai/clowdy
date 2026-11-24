@@ -29,10 +29,8 @@
 
     .editor :global(blockquote[data-composer-quote]) {
         margin: 0;
-        padding: var(--spacing-xs) var(--spacing-sm);
-        border-inline-start: 3px solid var(--color-primary);
-        border-radius: var(--radius-sm);
-        background-color: var(--color-secondary-muted-light);
+        padding-inline-start: var(--spacing-md);
+        border-inline-start: 3px solid var(--color-secondary-muted-border);
         color: var(--color-secondary-muted-text);
     }
 

@@ -1,6 +1,5 @@
 .form,
-.detail,
-.error {
+.detail {
     display: flex;
     flex-direction: column;
     min-width: 0;
@@ -23,35 +22,31 @@
     flex-shrink: 0;
 }
 
-.detail,
-.error {
-    gap: var(--spacing-4);
-    overflow-wrap: anywhere;
-}
-
-.detail {
-    padding: var(--spacing-12);
-    border-radius: var(--radius-md);
-    background: var(--color-secondary-muted-light);
-}
-
-.loading,
-.actions {
-    display: flex;
-    gap: var(--spacing-8);
+.branches {
+    min-block-size: 150px;
 }
 
 .loading {
-    align-items: center;
+    display: flex;
+}
+
+.detail {
+    gap: var(--spacing-4);
+    padding: var(--spacing-12);
+    border-radius: var(--radius-md);
+    background: var(--color-secondary-muted-light);
+    overflow-wrap: anywhere;
 }
 
 .actions {
-    flex-wrap: wrap;
-    justify-content: flex-end;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-8);
 }
 
-.action[data-size][data-variant] {
-    max-width: 100%;
+.actions > button[data-size][data-variant] {
+    width: 100%;
+    min-width: 0;
     height: auto;
     min-height: var(--spacing-30);
     white-space: normal;

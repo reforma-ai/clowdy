@@ -1,6 +1,6 @@
 # Research note template
 
-One note per question, in `research/<YYYY-MM-DD>-<topic>.md`. A note is for a reader who will build on it later and was not there. Open with the answer. Facts, hypotheses and recommendations stay in separate sections.
+Write one note per question in `research/<YYYY-MM-DD>-<topic>.md` for a future reader. Open with the answer; keep facts, hypotheses and recommendations in separate sections.
 
 ```markdown
 # <The question, as a question or a short topic>

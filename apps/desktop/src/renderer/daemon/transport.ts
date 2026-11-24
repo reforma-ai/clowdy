@@ -157,7 +157,12 @@ export interface Transport {
      * Runs only when asked. Rejects with a `TransportError`: 400 for paths that are not changed files or when no agent has the switch on, 503 with `Couldn't write the message` when the agent
      * is signed out, its run failed or did not end in time.
      */
-    generateGitMessage: (projectId: ProjectId, place: PlaceRef, paths: string[]) => Promise<GitMessage>;
+    generateGitMessage: (
+        projectId: ProjectId,
+        place: PlaceRef,
+        paths: string[],
+        signal?: AbortSignal
+    ) => Promise<GitMessage>;
     /**
      * Discards the changes of the files of a place (`POST git/discard`): the daemon keeps a copy of what each holds now (for a few days, in its own data folder, never in the repository), and
      * then a file the last commit has goes back to it (staged and edited versions alike) while one it has not (a new file) is deleted, that file alone. `paths` are `GitChangedFile.path`s of the

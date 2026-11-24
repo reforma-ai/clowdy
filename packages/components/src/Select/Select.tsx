@@ -76,8 +76,8 @@ export interface SelectProps<T extends object = object> {
     triggerClassName?: string;
     /** Extra class on the dropdown popover (e.g. a wider min-width for described options). */
     popoverClassName?: string;
-    /** Which side of the trigger the list opens on. */
-    placement?: 'top' | 'bottom';
+    /** Which side of the trigger the list opens on, optionally aligned to its start or end. */
+    placement?: 'top' | 'bottom' | `${'top' | 'bottom'} ${'start' | 'end'}`;
     /** Gap between the trigger and the list, in px. Defaults to 4. */
     offset?: number;
     shouldFlip?: boolean;

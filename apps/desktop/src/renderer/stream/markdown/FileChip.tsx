@@ -2,6 +2,7 @@ import { FileIcon } from '@clowdy/components/FileIcon';
 import { Menu, MenuHeader, MenuItem, MenuSection } from '@clowdy/components/List';
 import { Popover, PopoverScroll, useContextMenu } from '@clowdy/components/Popover';
 import { Show } from '@clowdy/components/Show';
+import { toast } from '@clowdy/components/Toast';
 import { Copy } from '@clowdy/icons/14';
 import { cn } from '@clowdy/lib';
 
@@ -132,7 +133,10 @@ export function FileChip({ path, lines, className }: FileChipProps) {
         const opened =
             target && isSamePlace(target, current) && (await openInFiles(root, project.id, current, target.relative));
 
-        if (!opened) contextMenu.openAt(x, y);
+        if (!opened) {
+            if (target && isSamePlace(target, current)) toast.error({ message: 'Couldn’t open this path' });
+            contextMenu.openAt(x, y);
+        }
     };
 
     return (

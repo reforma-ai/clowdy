@@ -309,42 +309,16 @@ export function syncButton(
     };
 }
 
-/** The result line after a branch action. A successful fetch is shown by the timestamp in the button. */
-export function remoteNotice(result: GitRemoteResult): { words: string; tone?: 'warning' } | undefined {
-    if (result.state === 'conflicts') {
-        const { conflicts } = result;
+/** A conflict can be reported before the refreshed status reaches the commit section. Successful actions need no separate line. */
+export function remoteNotice(result: GitRemoteResult): { words: string; tone: 'warning' } | undefined {
+    if (result.state !== 'conflicts' || result.conflicts === 0) return undefined;
 
-        return {
-            words:
-                conflicts === 0
-                    ? 'Conflicts resolved, commit the merge'
-                    : conflicts === 1
-                      ? '1 conflict'
-                      : `${conflicts} conflicts`,
-            tone: 'warning',
-        };
-    }
+    const { conflicts } = result;
 
-    switch (result.action) {
-        case 'fetch':
-            return undefined;
-        case 'pull':
-            return {
-                words: result.merged
-                    ? `Merged ${commitsWords(result.pulled ?? 0)}`
-                    : result.pulled
-                      ? `Pulled ${commitsWords(result.pulled)}`
-                      : 'Already up to date',
-            };
-        case 'update':
-            return {
-                words: result.pulled ? `Updated with ${commitsWords(result.pulled)}` : 'Already up to date',
-            };
-        case 'abort':
-            return { words: 'Aborted the merge' };
-        default:
-            return { words: result.published ? 'Published to origin' : 'Pushed to origin' };
-    }
+    return {
+        words: conflicts === 1 ? '1 conflict' : `${conflicts} conflicts`,
+        tone: 'warning',
+    };
 }
 
 /**
@@ -405,7 +379,7 @@ export function githubBaseName(base: GitBase | undefined): string | undefined {
  * Update from the base, when the branch is behind the branch it is compared with and is not that branch. Nothing while a merge is in progress (the banner owns that), on a detached HEAD,
  * and when the base is not behind.
  */
-export function updateFromBase(status: GitStatus | undefined): { label: string } | undefined {
+export function updateFromBase(status: GitStatus | undefined): { label: string; behind: number } | undefined {
     if (status?.isRepository !== true || status.merging || status.head.kind !== 'branch') return undefined;
 
     const { base, head } = status;
@@ -420,24 +394,7 @@ export function updateFromBase(status: GitStatus | undefined): { label: string }
     )
         return undefined;
 
-    return { label: `Update from ${name}` };
-}
-
-/** What the banner says while a merge is in progress. `ask` is offered while paths are still conflicted. Nothing when no merge is. */
-export function mergeBanner(status: GitStatus | undefined): { words: string; ask: boolean } | undefined {
-    if (status?.isRepository !== true || !status.merging) return undefined;
-
-    const { conflicts } = status.merging;
-
-    return {
-        ask: conflicts > 0,
-        words:
-            conflicts === 0
-                ? 'Conflicts resolved, commit the merge'
-                : conflicts === 1
-                  ? '1 conflict'
-                  : `${conflicts} conflicts`,
-    };
+    return { label: `Update from ${name}`, behind: base.behind };
 }
 
 /** Whether the published branch can be proposed against the base shown in Changes. */

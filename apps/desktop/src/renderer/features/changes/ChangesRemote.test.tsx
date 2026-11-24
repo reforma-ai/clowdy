@@ -78,10 +78,12 @@ const press = (target: Element) =>
 const sidebar = () => container.querySelector('[aria-label="Changes sidebar"]')!;
 const buttonOf = (label: string) =>
     [...container.querySelectorAll<HTMLButtonElement>('button')].find(
-        candidate => candidate.textContent?.trim() === label
+        candidate => candidate.getAttribute('aria-label') === label || candidate.textContent?.trim() === label
     );
 /** The sync button: the one that names the next action. */
+const createPRButton = () => container.querySelector<HTMLButtonElement>('button[aria-label="Create PR"]') ?? undefined;
 const syncButton = () => container.querySelector<HTMLButtonElement>('button[data-sync]')!;
+const syncCopy = () => syncButton().querySelector('[data-sync-copy]')?.textContent;
 /** The dropdown beside it, which keeps every action. */
 const dropdown = () => container.querySelector<HTMLButtonElement>('button[aria-label="More source control actions"]')!;
 const items = () => [...document.querySelectorAll<HTMLElement>('[role="menu"] [role="menuitem"]')];
@@ -193,7 +195,7 @@ describe('the sync button in the sidebar', () => {
         expect(isOff('Publish branch')).toBe(false);
     });
 
-    it('publishes the branch on a press, says so, and offers to update from the base', async () => {
+    it('publishes without a notice and then offers to update from the base', async () => {
         await start();
 
         const push = vi.spyOn(transport, 'pushGit');
@@ -206,9 +208,10 @@ describe('the sync button in the sidebar', () => {
             folderId: 'fld_car_rental',
             workspaceId: 'wks_ab12cd34',
         });
-        expect(status()?.textContent).toBe('Published to origin');
+        expect(status()).toBeNull();
         expect(syncButton().getAttribute('data-sync')).toBe('update');
-        expect(syncButton().textContent).toBe('Update from mainLast fetched 3 minutes ago');
+        expect(syncButton().textContent).toContain('Update from main');
+        expect(syncButton().querySelector('[data-commit-count="down"]')?.textContent).toBe('1');
 
         await openMenu();
         expect(items().map(candidate => candidate.textContent)).toEqual([
@@ -234,7 +237,7 @@ describe('the sync button in the sidebar', () => {
 
         expect(fetch).toHaveBeenCalledWith(FIXTURE_PROJECT_ID, { folderId: 'fld_car_rental' });
         expect(status()).toBeNull();
-        expect(syncButton().textContent).toBe('Fetch originLast fetched just now');
+        expect(syncCopy()).toBe('Fetch originLast fetched just now');
 
         act(() => root.unmount());
         stop();
@@ -289,7 +292,7 @@ describe('the sync button in the sidebar', () => {
             workspaceId: 'wks_ab12cd34',
         });
         expect(pull).not.toHaveBeenCalled();
-        expect(status()?.textContent).toBe('Published to origin');
+        expect(status()).toBeNull();
         expect(syncButton().getAttribute('data-sync')).toBe('update');
         expect(
             await transport.getGitStatus(FIXTURE_PROJECT_ID, {
@@ -312,6 +315,22 @@ describe('the sync button in the sidebar', () => {
         ]);
         expect(isOff('Pull origin')).toBe(true);
         expect(isOff('Publish branch')).toBe(false);
+    });
+
+    it('keeps an update from the base available beside an upstream pull, with the base count', async () => {
+        await start({ gitWrites: { clean: true, remote: 'behind' } });
+        const update = vi.spyOn(transport, 'updateGit');
+        const pull = vi.spyOn(transport, 'pullGit');
+        const updateButton = sidebar().querySelector<HTMLButtonElement>('button[aria-label="Update from main"]')!;
+
+        expect(syncButton().getAttribute('data-sync')).toBe('pull');
+        expect(updateButton.querySelector('[data-commit-count="down"]')?.textContent).toBe('1');
+        await press(updateButton);
+        await settle();
+
+        expect(update).toHaveBeenCalledTimes(1);
+        expect(pull).not.toHaveBeenCalled();
+        expect(status()).toBeNull();
     });
 
     it('is Pull origin with the count for a branch that is behind, and a press pulls and reads the place again, so the counts and the pull request are the ones it left', async () => {
@@ -341,7 +360,7 @@ describe('the sync button in the sidebar', () => {
         expect(pull).toHaveBeenCalledTimes(1);
         expect(reads.status).toHaveBeenCalled();
         expect(reads.pullRequest).toHaveBeenCalled();
-        expect(status()?.textContent).toBe('Pulled 2 commits');
+        expect(status()).toBeNull();
         expect(syncButton().getAttribute('data-sync')).toBe('update');
     });
 
@@ -357,7 +376,7 @@ describe('the sync button in the sidebar', () => {
         await settle();
 
         expect(push).toHaveBeenCalledTimes(1);
-        expect(status()?.textContent).toBe('Pushed to origin');
+        expect(status()).toBeNull();
         expect(syncButton().getAttribute('data-sync')).toBe('update');
     });
 
@@ -475,10 +494,12 @@ describe('the sync button in the sidebar', () => {
                     release = () => resolve({ state: 'done', action: 'fetch' });
                 })
         );
-        await press(syncButton());
+        const button = syncButton();
+        await press(button);
 
+        expect(syncButton()).toBe(button);
         expect(syncButton().getAttribute('data-sync')).toBe('running');
-        expect(syncButton().textContent).toBe('Fetching origin');
+        expect(syncCopy()).toBe('Fetching origin');
         expect(syncButton().hasAttribute('data-pending')).toBe(true);
         await openMenu();
         expect(items().every(candidate => candidate.getAttribute('aria-disabled') === 'true')).toBe(true);
@@ -486,6 +507,7 @@ describe('the sync button in the sidebar', () => {
         release();
         await settle();
         await settle();
+        expect(syncButton()).toBe(button);
         expect(syncButton().getAttribute('data-sync')).toBe('fetch');
         expect(status()).toBeNull();
     });
@@ -502,7 +524,7 @@ describe('the sync button in the sidebar', () => {
                 })
         );
         await press(syncButton());
-        expect(syncButton().textContent).toBe('Publishing branch');
+        expect(syncCopy()).toBe('Publishing branch');
         release();
         await settle();
         await settle();
@@ -564,7 +586,7 @@ describe('the sync button in the sidebar', () => {
             folderId: WORKTREE.folderId,
             workspaceId: WORKTREE.workspaceId,
         });
-        expect(syncButton().textContent).toBe('Updating');
+        expect(syncCopy()).toBe('Updating');
         await openMenu();
         expect(isOff(updateLabel)).toBe(true);
 
@@ -572,7 +594,7 @@ describe('the sync button in the sidebar', () => {
         finish({ state: 'done', action: 'update', pulled: 1 });
         await settle();
         await settle();
-        expect(status()?.textContent).toBe('Updated with 1 commit');
+        expect(status()).toBeNull();
         expect(syncButton().getAttribute('data-sync')).toBe('push');
     });
 });
@@ -593,7 +615,7 @@ describe('merging branches from the sync menu', () => {
         await open('Merge from branch…');
         await press(option('origin/feature/search'));
         await settle();
-        await press(button('Merge into clowdy/ab12cd34'));
+        await press(button('Merge origin/feature/search to clowdy/ab12cd34'));
         await settle();
     };
     const confirmButton = (name: string) =>
@@ -622,7 +644,7 @@ describe('merging branches from the sync menu', () => {
         expect(branches).toHaveBeenCalledTimes(1);
         expect(fetch.mock.invocationCallOrder[0]!).toBeLessThan(branches.mock.invocationCallOrder[0]!);
         expect(merge).not.toHaveBeenCalled();
-        expect(button('Merge into clowdy/ab12cd34').disabled).toBe(true);
+        expect(button('Merge … to clowdy/ab12cd34').disabled).toBe(true);
         expect(heading()).toBe('Merge … to clowdy/ab12cd34');
         expect(option('origin/main')).toBeUndefined();
         expect(option('origin/dev')).toBeUndefined();
@@ -640,7 +662,7 @@ describe('merging branches from the sync menu', () => {
             branch: 'main',
         });
 
-        await press(button('Merge into clowdy/ab12cd34'));
+        await press(button('Merge main to clowdy/ab12cd34'));
         await settle();
 
         expect(merge.mock.calls[1]?.[2]).toMatchObject({
@@ -652,6 +674,38 @@ describe('merging branches from the sync menu', () => {
             targetCommit: expect.stringMatching(/^[0-9a-f]+$/),
         });
         expect(dialog().querySelector('[role="status"]')?.textContent).toBe('Merged into clowdy/ab12cd34');
+    });
+
+    it('filters the destination branches with text entered while they were loading', async () => {
+        await start();
+        const place = { folderId: WORKTREE.folderId, workspaceId: WORKTREE.workspaceId };
+        const listing = await transport.getGitBranches(FIXTURE_PROJECT_ID, place);
+        let finish = () => {};
+        vi.spyOn(transport, 'getGitBranches').mockImplementationOnce(
+            () =>
+                new Promise(resolve => {
+                    finish = () => resolve(listing);
+                })
+        );
+
+        await open('Merge into branch…');
+        const filter = () => dialog().querySelector<HTMLInputElement>('input[placeholder="Filter branches"]')!;
+        const spinner = () => dialog().querySelector('[role="status"][aria-label="Loading branches"]');
+        const input = filter();
+
+        expect(spinner()).not.toBeNull();
+        expect(button('Merge clowdy/ab12cd34 to …').disabled).toBe(true);
+        await act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, 'main');
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            finish();
+        });
+        await settle();
+
+        expect(spinner()).toBeNull();
+        expect(filter()).toBe(input);
+        expect(input.value).toBe('main');
+        expect(options().map(row => row.textContent?.trim())).toEqual(['main']);
     });
 
     it('keeps the source checkout and pushes only the selected destination on a separate press', async () => {
@@ -670,7 +724,7 @@ describe('merging branches from the sync menu', () => {
         await settle();
         expect(heading()).toBe('Merge clowdy/ab12cd34 to main');
 
-        await press(button('Merge into main'));
+        await press(button('Merge clowdy/ab12cd34 to main'));
         await settle();
         expect(merge.mock.calls.map(call => call[2].action)).toEqual(['preview', 'merge']);
         expect(push).not.toHaveBeenCalled();
@@ -687,6 +741,30 @@ describe('merging branches from the sync menu', () => {
         expect(dialog().querySelector('[role="status"]')?.textContent).toBe('Pushed main to origin');
     });
 
+    it('explains why an outgoing merge is blocked before the person can start it', async () => {
+        await start({ gitWrites: { clean: true, remote: 'level' }, branches: ['merge-conflict'] });
+        const merge = vi.spyOn(transport, 'branchMergeGit');
+
+        await open('Merge into branch…');
+        await press(option('main'));
+        await settle();
+
+        let alert = dialog().querySelector('[role="alert"]');
+        expect(alert?.textContent).toContain("Can't merge into main because the branches conflict");
+        expect(alert?.textContent).toContain('In a chat on main, use Merge from branch to merge clowdy/ab12cd34');
+        expect(dialog().textContent).toContain('3 commits');
+        expect(dialog().textContent).not.toContain('Creates a merge commit');
+        expect(button('Merge clowdy/ab12cd34 to main').disabled).toBe(true);
+
+        await press(option('dev'));
+        await settle();
+
+        alert = dialog().querySelector('[role="alert"]');
+        expect(alert?.textContent).toBe('Check out dev before merging into it');
+        expect(button('Merge clowdy/ab12cd34 to dev').disabled).toBe(true);
+        expect(merge.mock.calls.map(call => call[2].action)).toEqual(['preview', 'preview']);
+    });
+
     it('still lists local branches after an automatic fetch fails', async () => {
         await start();
         vi.spyOn(transport, 'fetchGit').mockRejectedValueOnce(new TransportError('Network is offline', 503));
@@ -698,7 +776,7 @@ describe('merging branches from the sync menu', () => {
         expect(option('origin/main')).toBeUndefined();
     });
 
-    it('offers a way to refresh a refused preview before trying the merge again', async () => {
+    it('rechecks a refused merge when the selected branch is chosen again', async () => {
         await start({ gitWrites: { clean: true } });
         const merge = vi.spyOn(transport, 'branchMergeGit');
 
@@ -707,25 +785,29 @@ describe('merging branches from the sync menu', () => {
         await settle();
 
         merge.mockRejectedValueOnce(new TransportError('The branches moved since the preview', 409));
-        await press(button('Merge into main'));
+        await press(button('Merge clowdy/ab12cd34 to main'));
         await settle();
 
-        expect(dialog().querySelector('[role="alert"]')?.textContent).toContain('The branches moved');
-        expect(button('Merge into main').disabled).toBe(true);
-        await press(button('Refresh preview'));
+        const alert = dialog().querySelector('[role="alert"][data-color="danger"]');
+        expect(alert?.textContent).toContain('The branches moved');
+        expect(button('Merge clowdy/ab12cd34 to main').disabled).toBe(true);
+        expect(
+            [...dialog().querySelectorAll('button')].map(button => button.textContent?.trim()).filter(Boolean)
+        ).toEqual(['Merge clowdy/ab12cd34 to main', 'Cancel']);
+        await press(option('main'));
         await settle();
 
         expect(merge.mock.calls.map(call => call[2].action)).toEqual(['preview', 'merge', 'preview']);
-        expect(button('Merge into main').disabled).toBe(false);
+        expect(dialog().querySelector('[role="alert"]')).toBeNull();
+        expect(button('Merge clowdy/ab12cd34 to main').disabled).toBe(false);
     });
 
     it('identifies the destination checkout after a conflict and aborts only that merge', async () => {
         // The nested confirmation needs a visible parent window. Happy DOM has no layout.
         vi.spyOn(Element.prototype, 'getClientRects').mockReturnValue([{}] as unknown as DOMRectList);
         vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 640, 480));
-        const openPath = vi.fn();
         vi.stubGlobal('desktop', {
-            openPath,
+            openPath: vi.fn(),
             getOpenApps: async () => ({
                 editors: [{ id: 'cursor', name: 'Cursor' }],
                 terminals: [],
@@ -741,9 +823,8 @@ describe('merging branches from the sync menu', () => {
         expect(merge.mock.calls[0]?.[2]).toMatchObject({ branch: 'feature/search', remote: true });
         expect(dialog().querySelector('[role="status"]')?.textContent).toContain('1 conflict in clowdy/ab12cd34');
         expect(dialog().querySelector('[role="status"]')?.textContent).toContain(currentPlace.workspace?.path);
-        expect(button('Done')).toBeUndefined();
-        await press(button('Open clowdy/ab12cd34'));
-        expect(openPath).toHaveBeenCalledWith(currentPlace.workspace?.path, { kind: 'editor', id: 'cursor' });
+        expect(button('Done')).toBeDefined();
+        expect(button('Open clowdy/ab12cd34')).toBeUndefined();
 
         await press(button('Abort merge'));
         const cancel = await confirmButton('Cancel');
@@ -772,10 +853,10 @@ describe('merging branches from the sync menu', () => {
         const abort = vi.spyOn(transport, 'abortGit').mockResolvedValue({ state: 'done', action: 'abort' });
 
         await conflict();
-        expect(button('Done')).toBeDefined();
-        expect(button('Open clowdy/ab12cd34')).toBeUndefined();
-        await press(dialog().querySelector('button[aria-label="Close"]')!);
+        await press(button('Done'));
         await settle();
+        expect(dialog()).toBeNull();
+        expect(abort).not.toHaveBeenCalled();
         await press(buttonOf('Abort merge')!);
         const cancel = await confirmButton('Cancel');
         expect(cancel.dataset.variant).toBe('filled');
@@ -801,8 +882,16 @@ describe('Create PR in the sidebar', () => {
 
         expect(container.querySelector('[aria-label="Pull request"]')?.textContent).toContain('PR #128');
         expect(container.querySelector('button svg[data-state="open"]')).not.toBeNull();
-        expect(buttonOf('Create PR')).toBeUndefined();
+        expect(createPRButton()).toBeUndefined();
         expect(buttonOf('Publish first')).toBeUndefined();
+        const summary = container.querySelector('button[aria-label^="Show checks"]')!;
+        expect(summary.getAttribute('aria-label')).toBe('Show checks: 1 failed, 2 pending, 3 passed, 1 skipped');
+        expect(document.querySelector('ul[aria-label="Checks"]')).toBeNull();
+        await press(summary);
+        await settle();
+        const checks = [...document.querySelectorAll<HTMLAnchorElement>('ul[aria-label="Checks"] a')];
+        expect(checks).toHaveLength(7);
+        expect(checks.every(check => check.protocol === 'https:' && check.target === '_blank')).toBe(true);
     });
 
     it('shows a merged pull request with a state icon and its checks', async () => {
@@ -817,13 +906,15 @@ describe('Create PR in the sidebar', () => {
 
         expect(link.textContent).toBe('PR #31');
         expect(link.querySelector('svg[data-state="merged"]')).not.toBeNull();
-        expect(pr.querySelectorAll('ul[aria-label="Checks"] a')).toHaveLength(3);
+        await press(pr.querySelector('button[aria-label^="Show checks"]')!);
+        await settle();
+        expect(document.querySelectorAll('ul[aria-label="Checks"] a')).toHaveLength(3);
     });
 
     it('shows a single Publish action for a clean unpublished branch and offers Create PR after publishing', async () => {
         await start({ tweak: noPullRequest, gitWrites: { clean: true } });
 
-        expect(buttonOf('Create PR')).toBeUndefined();
+        expect(createPRButton()).toBeUndefined();
         expect(buttonOf('Commit 0 files')?.disabled).toBe(true);
         expect(
             [...sidebar().querySelectorAll('button')].filter(button => /publish/i.test(button.textContent ?? ''))
@@ -834,11 +925,12 @@ describe('Create PR in the sidebar', () => {
         await settle();
 
         // The branch is on origin now, and nothing was opened: the page is the second step.
+        expect(createPRButton()?.querySelector('[data-commit-count="up"]')?.textContent).toBe('2');
         expect(opened).toEqual([]);
         expect(buttonOf('Publish first')).toBeUndefined();
-        expect(buttonOf('Create PR')?.disabled).toBe(false);
+        expect(createPRButton()?.disabled).toBe(false);
 
-        await press(buttonOf('Create PR')!);
+        await press(createPRButton()!);
         expect(opened).toEqual(['https://github.com/acme/car-rental/compare/main...clowdy/ab12cd34?expand=1']);
     });
 
@@ -853,14 +945,14 @@ describe('Create PR in the sidebar', () => {
 
         expect(opened).toEqual([]);
         expect(syncButton().textContent).toContain('Publish branch');
-        expect(buttonOf('Create PR')).toBeUndefined();
+        expect(createPRButton()).toBeUndefined();
         expect(alert()?.textContent).toBe('git@github.com: Permission denied (publickey).');
     });
 
     it('offers Create PR after pushing the remaining commits through the sync button', async () => {
         await start({ tweak: noPullRequest, gitWrites: { clean: true, remote: 'ahead' } });
 
-        expect(buttonOf('Create PR')).toBeUndefined();
+        expect(createPRButton()).toBeUndefined();
         expect(buttonOf('Push first')).toBeUndefined();
         expect(syncButton().getAttribute('data-sync')).toBe('push');
 
@@ -869,12 +961,12 @@ describe('Create PR in the sidebar', () => {
         await settle();
 
         expect(opened).toEqual([]);
-        expect(buttonOf('Create PR')?.disabled).toBe(false);
+        expect(createPRButton()?.disabled).toBe(false);
     });
 
     it('opens the page for a branch that is level with its upstream, or only behind it', async () => {
         await start({ tweak: noPullRequest, gitWrites: { remote: 'behind' } });
-        await press(buttonOf('Create PR')!);
+        await press(createPRButton()!);
 
         expect(opened).toEqual(['https://github.com/acme/car-rental/compare/main...clowdy/ab12cd34?expand=1']);
     });
@@ -895,8 +987,8 @@ describe('Create PR in the sidebar', () => {
         gitFactsOf(transport).refresh(WORKTREE);
         await settle();
         await settle();
-        expect(buttonOf('Create PR')).toBeUndefined();
-        expect(syncButton().textContent).toBe('Publish branchTracks origin/main');
+        expect(createPRButton()).toBeUndefined();
+        expect(syncCopy()).toBe('Publish branchTracks origin/main');
 
         const push = vi.spyOn(transport, 'pushGit');
 
@@ -911,7 +1003,7 @@ describe('Create PR in the sidebar', () => {
         gitFactsOf(transport).refresh(WORKTREE);
         await settle();
         await settle();
-        await press(buttonOf('Create PR')!);
+        await press(createPRButton()!);
 
         expect(opened).toEqual(['https://github.com/acme/car-rental/compare/main...clowdy/ab12cd34?expand=1']);
     });
@@ -919,13 +1011,13 @@ describe('Create PR in the sidebar', () => {
     it('hides Create PR when a branch diverged from origin', async () => {
         await start({ tweak: noPullRequest, gitWrites: { remote: 'diverged' } });
 
-        expect(buttonOf('Create PR')).toBeUndefined();
+        expect(createPRButton()).toBeUndefined();
     });
 
     it('hides Create PR on the base branch', async () => {
         await start({ tweak: noPullRequest, key: CHECKOUT });
 
-        expect(buttonOf('Create PR')).toBeUndefined();
+        expect(createPRButton()).toBeUndefined();
     });
 
     it('is the page of a GitHub Enterprise server the person is signed in to, and nothing for another site', async () => {
@@ -937,7 +1029,7 @@ describe('Create PR in the sidebar', () => {
             gitWrites: { remote: 'behind' },
         });
 
-        await press(buttonOf('Create PR')!);
+        await press(createPRButton()!);
         expect(opened).toEqual(['https://ghe.example.com/team/service/compare/main...clowdy/ab12cd34?expand=1']);
 
         act(() => root.unmount());
@@ -953,7 +1045,7 @@ describe('Create PR in the sidebar', () => {
             gitWrites: { remote: 'behind' },
         });
 
-        expect(buttonOf('Create PR')).toBeUndefined();
+        expect(createPRButton()).toBeUndefined();
         expect(buttonOf('Publish first')).toBeUndefined();
     });
 
@@ -965,7 +1057,7 @@ describe('Create PR in the sidebar', () => {
             },
         });
 
-        expect(buttonOf('Create PR')).toBeUndefined();
+        expect(createPRButton()).toBeUndefined();
         expect(buttonOf('Publish first')).toBeUndefined();
     });
 });

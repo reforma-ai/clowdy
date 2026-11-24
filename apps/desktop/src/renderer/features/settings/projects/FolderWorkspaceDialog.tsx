@@ -1,9 +1,11 @@
+import { Alert, AlertDescription, AlertIcon } from '@clowdy/components/Alert';
 import { Button } from '@clowdy/components/Button';
 import { FormField } from '@clowdy/components/FormField';
 import { Input } from '@clowdy/components/Input';
 import { Modal, useModalContext } from '@clowdy/components/Modal';
 import { Text } from '@clowdy/components/Text';
 import { Textarea } from '@clowdy/components/Textarea';
+import { AttentionCircle } from '@clowdy/icons/14';
 import { folderNames } from '@clowdy/protocol';
 import { type FormEvent, useEffect, useId, useState } from 'react';
 
@@ -213,14 +215,22 @@ function FolderWorkspaceForm({ root, projectId, folderId, name }: FolderWorkspac
                         </div>
 
                         {git?.isRepository === false && (
-                            <Text variant="sm" color="warning" role="status">
-                                Worktrees need a git repository, and this folder is not one
-                            </Text>
+                            <Alert color="warning" role="status">
+                                <AlertIcon>
+                                    <AttentionCircle />
+                                </AlertIcon>
+                                <AlertDescription>
+                                    Worktrees need a git repository, and this folder is not one
+                                </AlertDescription>
+                            </Alert>
                         )}
                         {folder === undefined && (
-                            <Text color="danger" role="alert">
-                                This folder is no longer in the project
-                            </Text>
+                            <Alert color="danger">
+                                <AlertIcon>
+                                    <AttentionCircle />
+                                </AlertIcon>
+                                <AlertDescription>This folder is no longer in the project</AlertDescription>
+                            </Alert>
                         )}
 
                         {/* No Cancel: the window's close button, Escape and a click outside already close it. */}

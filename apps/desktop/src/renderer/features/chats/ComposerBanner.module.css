@@ -18,6 +18,17 @@
     background-color: var(--color-light-700);
 }
 
+/* Adjacent banners share the surface. The previous banner's bottom inset leaves 4px between headers. */
+.root + .root {
+    padding-block-start: 0;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+}
+
+.root + .root > .header {
+    margin-block-start: 0;
+}
+
 .status {
     position: relative;
     display: flex;

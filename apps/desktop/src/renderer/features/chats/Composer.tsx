@@ -125,6 +125,8 @@ export interface ComposerProps {
     editMode?: EditMode;
     /** What the line under the box holds at its start (where the chat works); the mode stands at its end. An edit frame has no line. */
     controls?: ReactNode;
+    /** Called when a valid new message is sent from this composer. */
+    onSendMessage?: () => void;
     ref?: Ref<ComposerHandle>;
 }
 
@@ -136,7 +138,7 @@ export interface ComposerProps {
  * is typed. Without a chat the first message makes one, on the model the picker holds, so opening the new-chat page again and again leaves no
  * empty chats behind; if the message then fails the chat stays, and the retry goes to it.
  */
-export function Composer({ chat, run, start, minLines, editMode, controls, ref }: ComposerProps) {
+export function Composer({ chat, run, start, minLines, editMode, controls, onSendMessage, ref }: ComposerProps) {
     const root = useRootStore();
     const field = useRef<RichInputHandle>(null);
     const box = useRef<HTMLDivElement>(null);
@@ -263,6 +265,7 @@ export function Composer({ chat, run, start, minLines, editMode, controls, ref }
         )
             return;
 
+        onSendMessage?.();
         edit(emptyComposerDoc());
 
         const files = takeFiles(key);

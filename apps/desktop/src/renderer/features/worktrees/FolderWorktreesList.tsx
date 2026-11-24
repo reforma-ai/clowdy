@@ -1,7 +1,9 @@
+import { Alert, AlertAction, AlertDescription, AlertIcon } from '@clowdy/components/Alert';
 import { Button } from '@clowdy/components/Button';
 import { For } from '@clowdy/components/For';
 import { useModalContext } from '@clowdy/components/Modal';
 import { Text } from '@clowdy/components/Text';
+import { AttentionCircle } from '@clowdy/icons/14';
 import { mainFolder } from '@clowdy/protocol';
 import { reaction, runInAction } from 'mobx';
 import { useEffect, useMemo } from 'react';
@@ -99,29 +101,24 @@ export function FolderWorktreesList({
                 </Text>
             )}
 
-            {failed && groups && (
-                <div className={styles.notice}>
-                    <Text variant="sm" color="warning" role="status">
-                        Couldn't refresh the list
-                    </Text>
-                    <Button size="xs" onPress={() => void reload()}>
-                        Try again
-                    </Button>
-                </div>
+            {failed && (
+                <Alert color={groups ? 'warning' : 'danger'} role={groups ? 'status' : 'alert'}>
+                    <AlertIcon>
+                        <AttentionCircle />
+                    </AlertIcon>
+                    <AlertDescription>
+                        {groups ? "Couldn't refresh the list" : "Couldn't load the worktrees"}
+                    </AlertDescription>
+                    <AlertAction>
+                        <Button size="xs" onPress={() => void reload()}>
+                            Try again
+                        </Button>
+                    </AlertAction>
+                </Alert>
             )}
 
             <div className={styles.groups}>
                 {groups === undefined && !failed && <WorktreesSkeleton />}
-                {groups === undefined && failed && (
-                    <div className={styles.message}>
-                        <Text color="danger" role="alert">
-                            Couldn't load the worktrees
-                        </Text>
-                        <Button size="sm" onPress={() => void reload()}>
-                            Try again
-                        </Button>
-                    </div>
-                )}
                 {groups && !groups.some(item => item.group.folderId === folderId) && (
                     <Text color="secondary" className={styles.message}>
                         This folder is not a git repository

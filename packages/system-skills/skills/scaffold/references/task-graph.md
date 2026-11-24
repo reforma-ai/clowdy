@@ -4,7 +4,7 @@ Plan it after the skeleton passes its check, so Owns paths are real. The task te
 
 ## Slice catalog
 
-Take only the slices the first milestone needs. A slice is a coherent outcome you can build and check on its own. Typical ones:
+Take only slices the first milestone needs. Each is a coherent outcome built and checked on its own:
 
 | Slice | Owns (typical) | Usually depends on |
 | --- | --- | --- |
@@ -17,7 +17,7 @@ Take only the slices the first milestone needs. A slice is a coherent outcome yo
 | Demo data and an example account | seed script | the data slice |
 | Background jobs, email, file uploads, payments | their own folder each | only when the milestone needs them |
 
-Split by owned paths, not by activity. "Write tests" and "write docs" are not slices: tests belong to the code's slice, and each slice updates `product.md` and `architecture.md` for what it changes.
+Split by outcome, dependencies and reviewability; assign compatible owned paths to parallel slices. "Write tests" and "write docs" are not slices: tests belong to the code's slice, and each slice updates `product.md` and `architecture.md` for what it changes.
 
 ## Description of each task
 
@@ -26,7 +26,7 @@ Use the five-part template of clowdy:orchestrate (Outcome, Owns, Needs, Check, O
 ## Dependencies
 
 - `--depends-on` only for real ordering: the task needs another's output, or must edit the same files after it.
-- Prefer removing a dependency by fixing the contract first. Write the API routes, the data tables and the shared types into `architecture.md` (Contracts). Then the API, the UI and the data slice do not wait for each other: the UI builds against the contract with fixture data, the API against the schema.
+- Prefer removing a dependency by fixing the contract first. Write shared API routes, data tables and types into `architecture.md` (Contracts). Parallelize only when the slices can be built and checked against those contracts without disposable production scaffolding.
 - The skeleton is Done before any slice starts, so listing it in `--depends-on` costs nothing and shows the order to the user.
 - A slice that others wait on is checked and set Done by you before its dependents start.
 
@@ -41,9 +41,8 @@ Lockfile, dependency manifest, route or module index, navigation, global styles,
 
 ## Size
 
-- Four to eight tasks for a first milestone. Past about twelve, group or stop at the milestone.
-- Each task is 30 to 120 minutes of agent work. Fold small parts into the slice that owns the code, or hand them to engine sub-agents inside it.
-- A task that would end as "partly done", or has no single Check, is too big. Split it by owned paths.
+- Size slices by outcome, dependencies and reviewability, not a target count. Fold small parts into the slice that owns the code, or delegate compatible work inside it.
+- A task that would end as "partly done", or has no single Check, is too big. Split it into coherent outcomes.
 
 ## Example: bakery ordering
 
@@ -67,4 +66,4 @@ You build CLW-2 first. CLW-3 and CLW-5 own other paths, so two threads build the
 
 ## Replanning
 
-Slices reveal facts. When one does (a missing table, a wrong contract, a slice that is bigger than thought), stop the affected threads (`clowdy thread stop`) and sub-agents, fix `architecture.md` Contracts first, tell the threads that go on what changed (`clowdy thread tell`), then replan as in clowdy:orchestrate. Do not let two slices keep building against different versions of a contract.
+When a slice reveals new facts (a missing table, a wrong contract, a larger slice than expected), stop the affected threads (`clowdy thread stop`) and sub-agents, fix `architecture.md` Contracts first, tell the threads that go on what changed (`clowdy thread tell`), then replan as in clowdy:orchestrate. Do not let two slices keep building against different versions of a contract.

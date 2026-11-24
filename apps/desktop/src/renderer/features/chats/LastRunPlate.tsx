@@ -97,7 +97,7 @@ function RunPlate({ changes, onOpen }: { changes: RepositoryChanges; onOpen: (pa
                                     </>
                                 }
                             >
-                                Changes
+                                Last run changes
                             </ComposerBannerHeader>
                         </CollapsibleTrigger>
                         {state.isExpanded && (

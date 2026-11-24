@@ -3,10 +3,14 @@
 /* The branch actions above the commit form supply the divider. */
 .root {
     display: flex;
-    flex-shrink: 0;
     flex-direction: column;
     gap: var(--spacing-sm);
+    min-height: 0;
     padding: var(--spacing-md) var(--spacing-lg) var(--spacing-lg);
+}
+
+.root > :not(.list, .mergeList) {
+    flex-shrink: 0;
 }
 
 /* What git and the agent say is the person's to copy. */
@@ -29,11 +33,25 @@
     white-space: nowrap;
 }
 
-/* Show five and a half rows so the checklist is visibly scrollable. */
-.list {
+/* Use the available height and shrink the files before the commit controls. */
+.list,
+.mergeList {
     flex: 0 1 auto;
-    max-height: calc(var(--spacing-30) * 5.5 + var(--spacing-xxs) * 5);
+    min-height: var(--spacing-30);
+}
+
+.list {
     margin-inline: calc(var(--spacing-lg) * -1);
+}
+
+.mergeList {
+    min-height: var(--spacing-64);
+}
+
+.mergeRows {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
 }
 
 .rows {
@@ -81,22 +99,24 @@
     }
 }
 
-.message {
-    width: 100%;
-}
-
-.actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--spacing-sm);
-}
-
-/* Keep Commit and its menu together when Generate is also offered. */
 .commitGroup {
     display: flex;
-    flex: 1 1 100%;
     gap: var(--spacing-sm);
     min-width: 0;
+}
+
+.generateProgress {
+    position: relative;
+}
+
+.generateProgress::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    width: var(--spacing-4);
+    height: var(--spacing-4);
+    margin: auto;
+    background: currentColor;
 }
 
 /* The Commit button's stop (`Unavailable`), when it is off and says why: it is the button's place in the group, and its focus ring follows the button's corners. */
@@ -134,7 +154,6 @@
     }
 }
 
-.generate[data-size][data-variant],
 .more[data-size][data-variant] {
     flex: 0 0 auto;
 }

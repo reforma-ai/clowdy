@@ -1242,12 +1242,6 @@
                     "name": "justify-space-evenly",
                     "sourceHash": "fb2ab562df282482651d2691a566264dc8a9eeda62c85c48af41b6bf7ca37ec2"
                 },
-                "11591:83392": {
-                    "file": "commit.svg",
-                    "fingerprint": "c16fdadd832cba3ff8c8834ab757e0db557ddd8400baa1ffe8d1c1b8e844d84a",
-                    "name": "commit",
-                    "sourceHash": "b8fef63f8223334cc589ab8230107ece79775176e2dde6dab2508e73edb2df48"
-                },
                 "2128:113914": {
                     "file": "underline.svg",
                     "fingerprint": "4e9ea811be23ccc73a26aa2ad62cc0121677ac5ed4547083f6423e4da811e9d4",
@@ -2052,12 +2046,6 @@
                     "name": "revert",
                     "sourceHash": "e9faf13ba9fdda66eb2fc46f163925d20278d181f3a436ba7d98a4d09b6bbc64"
                 },
-                "1461:15585": {
-                    "file": "split.svg",
-                    "fingerprint": "78ff084bca55a02cfb73f04cee6220b7a55b454919252341cadae3ae3813552a",
-                    "name": "split",
-                    "sourceHash": "3083e2190996a85572d4a7f005d05f9b4711d8104613ce4478b49b3c5e0097c8"
-                },
                 "4268:55515": {
                     "file": "upload.svg",
                     "fingerprint": "1589dc2621b6e41b22a02126a839f13975d77a2b71576f58583809de398aed8f",
@@ -2442,6 +2430,12 @@
                     "name": "iframe",
                     "sourceHash": "c7790945d193e23c199049fbb9021118250bb39fb7511c9f5f6805273cddd610"
                 },
+                "1461:15585": {
+                    "file": "split.svg",
+                    "fingerprint": "78ff084bca55a02cfb73f04cee6220b7a55b454919252341cadae3ae3813552a",
+                    "name": "split",
+                    "sourceHash": "3083e2190996a85572d4a7f005d05f9b4711d8104613ce4478b49b3c5e0097c8"
+                },
                 "11881:127129": {
                     "file": "version.svg",
                     "fingerprint": "716d8b31799f8b2eac990ed96c0123d93e50554269c9ce6a5bc2b814519b8f80",
@@ -2465,6 +2459,12 @@
                     "fingerprint": "4126d40263f474dd50b9ce312dec9895815cce617b2a4a6c7810ebb8be37a662",
                     "name": "vsc",
                     "sourceHash": "845b0f7608c04aa04f5b9bbb4b51f3dfc167c227df5d12cdbb6c0283e8b0c388"
+                },
+                "11591:83392": {
+                    "file": "commit.svg",
+                    "fingerprint": "c16fdadd832cba3ff8c8834ab757e0db557ddd8400baa1ffe8d1c1b8e844d84a",
+                    "name": "commit",
+                    "sourceHash": "b8fef63f8223334cc589ab8230107ece79775176e2dde6dab2508e73edb2df48"
                 },
                 "11881:142701": {
                     "file": "version-2.svg",

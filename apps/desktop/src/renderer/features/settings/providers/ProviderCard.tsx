@@ -1,5 +1,6 @@
 import { Switch } from '@clowdy/components/Switch';
 import { Text } from '@clowdy/components/Text';
+import { COMMIT_MESSAGE_SETTING_ID } from '@clowdy/protocol';
 
 import { SettingsBlock } from '../ui/SettingsBlock';
 import { SettingsCard } from '../ui/SettingsCard';
@@ -25,6 +26,7 @@ export function ProviderCard({ agent }: { agent: AgentInfo }) {
     const installed = agent.status !== 'missing' && agent.status !== 'needs-runtime';
     const isOn = agent.enabled && installed;
     const usage = isOn ? agent.usage : undefined;
+    const settings = agent.settings?.filter(setting => setting.id !== COMMIT_MESSAGE_SETTING_ID) ?? [];
 
     return (
         <SettingsCard as="section" divided aria-label={agent.name}>
@@ -80,9 +82,9 @@ export function ProviderCard({ agent }: { agent: AgentInfo }) {
                 </SettingsBlock>
             )}
 
-            {(agent.settings ?? []).length > 0 && (
+            {settings.length > 0 && (
                 <SettingsBlock data-dim={!isOn || undefined} className={styles.settings}>
-                    <ProviderSettings agent={agent} commands={commands} />
+                    <ProviderSettings name={agent.name} settings={settings} commands={commands} />
                 </SettingsBlock>
             )}
 

@@ -111,7 +111,7 @@ describe('the Last run plate', () => {
         await draw();
 
         expect(plate()).not.toBeNull();
-        expect(header()?.textContent).toBe('Changes7 files+178−29');
+        expect(header()?.textContent).toBe('Last run changes7 files+178−29');
         expect(header()?.getAttribute('aria-expanded')).toBe('false');
         expect(rows()).toHaveLength(0);
     });
@@ -146,7 +146,7 @@ describe('the Last run plate', () => {
         });
         await draw();
 
-        expect(header()?.textContent).toBe('Changes1 file+38−0');
+        expect(header()?.textContent).toBe('Last run changes1 file+38−0');
         expect(rows()).toHaveLength(0);
         await act(async () => header()!.click());
         expect(rows()).toHaveLength(1);

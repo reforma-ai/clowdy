@@ -205,9 +205,9 @@ describe('the control', () => {
         await press(chip()!);
 
         expect(textsOf(menuItems())).toEqual([
-            'Main worktreeWork in the folder as it ismain',
-            'New worktreeA separate checkout on a branch of its ownorigin/main',
-            'clowdy/ab12cd34Used in 0 chats',
+            'Main worktreeUse the project foldermain',
+            'New worktreeUse a new folder and branchFrom origin/main',
+            'clowdy/ab12cd34Worktree',
             'Folder settings…',
         ]);
         // Manage opens a dialog and does not select a place.
@@ -351,8 +351,8 @@ describe('the control', () => {
         await press(chip()!);
 
         expect(textsOf(menuItems())).toEqual([
-            'Main worktreeWork in the folder as it ismain',
-            'New worktreeA separate checkout on a branch of its ownorigin/main',
+            'Main worktreeUse the project foldermain',
+            'New worktreeUse a new folder and branchFrom origin/main',
             'Folder settings…',
         ]);
         expect(
@@ -387,7 +387,7 @@ describe('the control', () => {
 
         await press(chip()!);
 
-        expect(menuItem('Main worktree').textContent).toBe('Main worktreeWork in the folder as it is5c4d3e2');
+        expect(menuItem('Main worktree').textContent).toBe('Main worktreeUse the project folder5c4d3e2');
     });
 });
 
@@ -395,7 +395,7 @@ describe('the branch a new worktree starts from', () => {
     it('is the base at the end of the row of a new worktree, a press target of its own that opens the list of branches and leaves the row alone', async () => {
         await press(chip()!);
 
-        expect(baseButton()?.textContent).toBe('origin/main');
+        expect(baseButton()?.textContent).toBe('From origin/main');
         expect(baseButton()?.closest('[role="menuitemradio"]')?.textContent).toContain('New worktree');
 
         await press(baseButton()!);
@@ -572,7 +572,7 @@ describe('the branch a new worktree starts from', () => {
 
         await press(chip()!);
 
-        expect(baseButton()?.textContent).toBe('dev');
+        expect(baseButton()?.textContent).toBe('From dev');
     });
 
     it('ticks the base the new worktree starts from when the list is open again', async () => {
@@ -591,15 +591,15 @@ describe('Existing worktrees', () => {
         await start({ data: withFixtureWorkspace(createFixtureData()) });
         await openWorktrees();
 
-        expect(worktreeRows().map(row => row.textContent)).toEqual(['clowdy/ab12cd34Used in 1 chat']);
+        expect(worktreeRows().map(row => row.textContent)).toEqual(['clowdy/ab12cd34Worktree used in 1 chat']);
         expect(worktreeRows().map(iconsOf)).toEqual([1]);
         expect(document.body.textContent).not.toContain('Changes');
     });
 
-    it('show zero chats for an unused worktree', async () => {
+    it('labels an unused worktree without a chat count', async () => {
         await openWorktrees();
 
-        expect(worktreeRows().map(row => row.textContent)).toEqual(['clowdy/ab12cd34Used in 0 chats']);
+        expect(worktreeRows().map(row => row.textContent)).toEqual(['clowdy/ab12cd34Worktree']);
     });
 
     describe('the ones a chat works in and the ones none does', () => {
@@ -642,9 +642,9 @@ describe('Existing worktrees', () => {
             await openWorktrees();
 
             expect(worktreeRows().map(row => row.textContent)).toEqual([
-                'clowdy/ab12cd34Used in 1 chat',
-                'worktree-agent-a1Used in 0 chats',
-                'worktree-agent-a2Used in 0 chats',
+                'clowdy/ab12cd34Worktree used in 1 chat',
+                'worktree-agent-a1Worktree',
+                'worktree-agent-a2Worktree',
             ]);
         });
 
@@ -671,7 +671,7 @@ describe('Existing worktrees', () => {
         await start({ data });
         await openWorktrees();
 
-        expect(worktreeRow('clowdy/ab12cd34').textContent).toContain('Used in 4 chats');
+        expect(worktreeRow('clowdy/ab12cd34').textContent).toContain('Worktree used in 4 chats');
     });
 
     it('scroll when there are many, in a box that keeps the popover to a height', async () => {

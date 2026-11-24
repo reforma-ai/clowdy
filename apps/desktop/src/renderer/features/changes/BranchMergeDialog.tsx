@@ -1,8 +1,9 @@
+import { Alert, AlertDescription, AlertIcon } from '@clowdy/components/Alert';
 import { Button } from '@clowdy/components/Button';
 import { Modal, useModalContext } from '@clowdy/components/Modal';
 import { Spinner } from '@clowdy/components/Spinner';
 import { Text } from '@clowdy/components/Text';
-import { Close } from '@clowdy/icons/14';
+import { AttentionCircle, Close } from '@clowdy/icons/14';
 import { errorMessage } from '@clowdy/lib';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 
@@ -10,7 +11,6 @@ import { type Transport, TransportError } from '../../daemon/transport';
 import { tildePath } from '../../shared/displayPath';
 import { homeFolder } from '../../shared/homeFolder';
 import { PickerList, type PickerOption } from '../../shared/PickerPopover';
-import { canOpenPaths, chosenPrograms, openEffects, useOpenApps } from '../openWith';
 import styles from './BranchMergeDialog.module.css';
 import { commitsWords } from './changesActions';
 import { confirmAbortMerge } from './confirmAbortMerge';
@@ -79,18 +79,39 @@ const MODES: Record<GitBranchMergePreview['mode'], string> = {
     'merge-commit': 'Creates a merge commit',
 };
 
+function outgoingBlock({
+    source,
+    target,
+    targetPath,
+    mode,
+    conflictCheck,
+}: GitBranchMergePreview): Failure | undefined {
+    if (mode === 'up-to-date') return undefined;
+
+    if (!targetPath) return { message: `Check out ${target} before merging into it` };
+
+    if (conflictCheck === 'conflicts')
+        return {
+            message: `Can't merge into ${target} because the branches conflict`,
+            hint: `In a chat on ${target}, use Merge from branch to merge ${source} and resolve the conflicts`,
+        };
+
+    if (mode === 'merge-commit' && conflictCheck !== 'clean') return { message: "Couldn't check for merge conflicts" };
+}
+
 function FailureText({ failure }: { failure: Failure }) {
     return (
-        <div className={styles.error} role="alert">
-            <Text color="danger" select="text">
-                {failure.message}
-            </Text>
+        <Alert color="danger">
+            <AlertIcon>
+                <AttentionCircle />
+            </AlertIcon>
+            <AlertDescription className="select-text">{failure.message}</AlertDescription>
             {failure.hint && (
-                <Text color="secondary" select="text">
+                <Text variant="xs" color="secondary" select="text">
                     {failure.hint}
                 </Text>
             )}
-        </div>
+        </Alert>
     );
 }
 
@@ -119,7 +140,6 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
     const [result, setResult] = useState<MergeOutcome>();
     const [failure, setFailure] = useState<Failure>();
     const previewRound = useRef(0);
-    const apps = useOpenApps();
 
     const fetchOrigin = direction === 'from' && hasOrigin;
     const choices = useMemo(
@@ -215,8 +235,10 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
         }
     };
 
+    const blocked = preview && direction === 'into' ? outgoingBlock(preview) : undefined;
+
     const merge = () => {
-        if (!selection || !preview || preview.mode === 'up-to-date') return;
+        if (!selection || !preview || preview.mode === 'up-to-date' || blocked) return;
 
         void run({
             action: 'merge',
@@ -229,8 +251,15 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
     const source = preview?.source ?? (direction === 'from' ? (choice?.label ?? '…') : current);
     const target = preview?.target ?? (direction === 'into' ? (choice?.label ?? '…') : current);
     const isWorking = pending !== undefined;
-    const { editor, fileManager } = chosenPrograms(apps);
-    const openIn = canOpenPaths() ? (editor ?? fileManager) : undefined;
+    const empty = loading ? (
+        <Spinner
+            size="xxs"
+            className={styles.loading}
+            aria-label={fetchOrigin ? 'Fetching branches from origin' : 'Loading branches'}
+        />
+    ) : choices.length === 0 ? (
+        'No branches available'
+    ) : undefined;
 
     return (
         <div
@@ -261,38 +290,30 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
                     <Close />
                 </Button>
             </div>
-            {loading && (
-                <div className={styles.loading} role="status">
-                    <Spinner size="xs" aria-hidden />
-                    <Text color="secondary">
-                        {fetchOrigin ? 'Fetching branches from origin…' : 'Loading branches…'}
-                    </Text>
-                </div>
-            )}
-            {!result && listing && (
+            {!result && (loading || listing) && (
                 <div inert={isWorking}>
                     <PickerList
                         options={choices}
                         aria-label={direction === 'from' ? 'Source branch' : 'Destination branch'}
                         selectedIds={selected ? [selected] : []}
                         placeholder="Filter branches"
-                        empty={choices.length === 0 ? 'No branches available' : undefined}
+                        empty={empty}
+                        listClassName={styles.branches}
                         onPick={id => void pick(id)}
                     />
                 </div>
             )}
             {!result && fetchFailed && <FailureText failure={fetchFailed} />}
             {!result && selected && !preview && !failure && (
-                <Text color="secondary" role="status">
+                <Text variant="sm" color="secondary" role="status">
                     Comparing branches…
                 </Text>
             )}
             {!result && preview && (
                 <div className={styles.detail} role="status">
                     <Text variant="sm">
-                        {preview.mode === 'up-to-date'
-                            ? MODES[preview.mode]
-                            : `${commitsWords(preview.commits)} · ${MODES[preview.mode]}`}
+                        {preview.mode === 'up-to-date' ? MODES[preview.mode] : commitsWords(preview.commits)}
+                        {preview.mode !== 'up-to-date' && !blocked && ` · ${MODES[preview.mode]}`}
                     </Text>
                     {direction === 'into' && preview.targetPath && (
                         <Text color="secondary" variant="xs" title={preview.targetPath}>
@@ -301,11 +322,12 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
                     )}
                 </div>
             )}
+            {!result && blocked && <FailureText failure={blocked} />}
             {result?.state === 'conflicts' && (
                 <div className={styles.detail} role="status">
-                    <Text variant="sm" color="warning">
+                    <Text variant="sm" color={result.conflicts > 0 ? 'warning' : undefined}>
                         {result.conflicts === 0
-                            ? `Finish the merge in ${result.target}`
+                            ? `Complete the merge in ${result.target}`
                             : `${result.conflicts} ${result.conflicts === 1 ? 'conflict' : 'conflicts'} in ${result.target}`}
                     </Text>
                     <Text color="secondary" variant="xs" select="text">
@@ -322,7 +344,18 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
             )}
             {failure && <FailureText failure={failure} />}
             <div className={styles.actions}>
-                {result?.state === 'conflicts' && (
+                {!result && (
+                    <Button
+                        size="sm"
+                        color="contrast"
+                        isDisabled={!preview || preview.mode === 'up-to-date' || blocked !== undefined}
+                        isPending={pending === 'merge'}
+                        onPress={merge}
+                    >
+                        {`Merge ${source} to ${target}`}
+                    </Button>
+                )}
+                {result?.state === 'conflicts' && result.conflicts > 0 && (
                     <Button
                         size="sm"
                         variant="bordered"
@@ -342,38 +375,8 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
                         Abort merge
                     </Button>
                 )}
-                {(result?.state !== 'conflicts' || !openIn) && (
-                    <Button
-                        size="sm"
-                        variant="filled"
-                        color="secondary"
-                        isDisabled={isWorking}
-                        onPress={() => modal.cancel()}
-                    >
-                        {result ? 'Done' : 'Cancel'}
-                    </Button>
-                )}
-                {!result && choice && failure && (
-                    <Button size="sm" variant="bordered" onPress={() => void pick(choice.id)}>
-                        Refresh preview
-                    </Button>
-                )}
-                {result?.state === 'conflicts' && openIn && (
-                    <Button
-                        className={styles.action}
-                        size="sm"
-                        color="contrast"
-                        isDisabled={isWorking}
-                        onPress={() =>
-                            openEffects.openPath(result.targetPath, editor ? 'editor' : 'fileManager', openIn)
-                        }
-                    >
-                        {`Open ${result.target}`}
-                    </Button>
-                )}
                 {result?.state === 'done' && direction === 'into' && result.canPush && (
                     <Button
-                        className={styles.action}
                         size="sm"
                         color="contrast"
                         isPending={pending === 'push'}
@@ -382,18 +385,15 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
                         {`Push ${result.target}`}
                     </Button>
                 )}
-                {!result && (
-                    <Button
-                        className={styles.action}
-                        size="sm"
-                        color="contrast"
-                        isDisabled={!preview || preview.mode === 'up-to-date'}
-                        isPending={pending === 'merge'}
-                        onPress={merge}
-                    >
-                        {preview || choice || direction === 'from' ? `Merge into ${target}` : 'Merge'}
-                    </Button>
-                )}
+                <Button
+                    size="sm"
+                    variant="filled"
+                    color="secondary"
+                    isDisabled={isWorking}
+                    onPress={() => modal.cancel()}
+                >
+                    {result ? 'Done' : 'Cancel'}
+                </Button>
             </div>
         </div>
     );

@@ -1,14 +1,21 @@
 import { lstat, open } from 'node:fs/promises';
 import { join } from 'node:path';
+import { COMMIT_MESSAGE_PROVIDERS, COMMIT_MESSAGE_SETTING_ID } from '@clowdy/protocol';
 
 import { gitRead } from '../domain/git';
-import { exclusive, pathKey, placeOf } from '../domain/workspaces';
-import { COMMIT_MESSAGE_SETTING } from '../engine/acp/catalog';
-import { CommandError } from '../errors';
+import { exclusive, pathKey, placeOf, until } from '../domain/workspaces';
+import { CommandError, conflict } from '../errors';
 import { GenerateFailure } from '../providers/generate';
 import { selectChanged } from './selection';
 
-import type { GitChangedFile, GitChangeKind, GitErrorDetails, GitMessage, GitMessageFailure } from '@clowdy/protocol';
+import type {
+    CommitMessageProvider,
+    GitChangedFile,
+    GitChangeKind,
+    GitErrorDetails,
+    GitMessage,
+    GitMessageFailure,
+} from '@clowdy/protocol';
 import type { Place } from '../domain/places';
 import type { AgentRegistry } from '../engine/acp/registry';
 import type { TextGeneration } from '../providers/generate';
@@ -280,7 +287,7 @@ export function cleanSubject(answer: string): string | undefined {
 export interface CommitMessagesOptions {
     /** Where the one-at-a-time line of each place is kept (`exclusive`). */
     store: Store;
-    /** The agents' settings: which of them the person turned `Commit messages` on for. */
+    /** The stored choice of commit message provider. */
     agents: Pick<AgentRegistry, 'setting'>;
     /** Who is signed in. */
     providers: Pick<ProvidersService, 'signedIn'>;
@@ -290,15 +297,19 @@ export interface CommitMessagesOptions {
 const failed = (reason: GitMessageFailure, code: 'invalid' | 'unavailable' = 'unavailable') =>
     new CommandError(code, MESSAGE_FAILED, { reason } satisfies GitErrorDetails);
 
+interface MessageRun {
+    controller: AbortController;
+    result: Promise<GitMessage>;
+    waiters: number;
+}
+
 /**
- * The commit message of a place's ticked files (`POST /v1/projects/:id/git/message`): the changes are put into a prompt (`buildPrompt`) and the agent the person turned `Commit messages`
- * on for, and that is signed in, writes one subject in a run of its own with no tools (`TextGeneration`): Codex first, and Claude Code when Codex is off or signed out, or when its
- * run fails. Nothing runs until it is asked for: no timer, no change of a file, no run of an agent that the person did not choose. A place is asked once at a time, and a second request
- * for the same files while one is going on gets that one's answer.
+ * The selected provider writes one commit subject for the ticked files in a run of its own with no tools (`TextGeneration`). Only an explicit request starts a run.
+ * Requests for a place run one at a time. Two requests for the same files and provider share the same answer while one is pending.
  */
 export class CommitMessages {
     readonly #options: CommitMessagesOptions;
-    readonly #running = new Map<string, Promise<GitMessage>>();
+    readonly #running = new Map<string, MessageRun>();
 
     constructor(options: CommitMessagesOptions) {
         this.#options = options;
@@ -309,65 +320,85 @@ export class CommitMessages {
         this.#options.generation.stop();
     }
 
-    /**
-     * The agents that have the switch on and are signed in, in the order of the table (`TextGeneration.agents`: Codex, then Claude Code). The reason there is none is the error: `off` for
-     * no agent with the switch on (`invalid`: nothing to ask, the app shows no button) and `signed_out` for ones that are on and not signed in.
-     */
-    async #agents(): Promise<string[]> {
-        const on = this.#options.generation.agents.filter(
-            id => this.#options.agents.setting(id, COMMIT_MESSAGE_SETTING) === true
+    #selectedProvider(): CommitMessageProvider {
+        const provider = COMMIT_MESSAGE_PROVIDERS.find(id =>
+            this.#options.agents.setting(id, COMMIT_MESSAGE_SETTING_ID)
         );
+        if (!provider) throw failed('off', 'invalid');
 
-        if (on.length === 0) throw failed('off', 'invalid');
+        return provider;
+    }
 
-        const signedIn = await Promise.all(on.map(id => this.#options.providers.signedIn(id)));
-        const ready = on.filter((_, index) => signedIn[index]);
-
-        if (ready.length === 0) throw failed('signed_out');
-
-        return ready;
+    #checkProvider(provider: CommitMessageProvider): void {
+        if (this.#selectedProvider() !== provider)
+            throw conflict('Commit message provider changed. Try Generate again');
     }
 
     /** What the agent writes for these files, or the reason it could not (`MESSAGE_FAILED` with `details.reason`). */
-    generate(place: Place, paths: unknown): Promise<GitMessage> {
+    async generate(place: Place, paths: unknown, signal?: AbortSignal): Promise<GitMessage> {
+        signal?.throwIfAborted();
+
+        const provider = this.#selectedProvider();
         const line = `message:${pathKey(placeOf(place.path))}`;
-        const same = `${line}\0${Array.isArray(paths) ? paths.join('\0') : ''}`;
-        const running = this.#running.get(same);
+        const same = `${line}\0${provider}\0${Array.isArray(paths) ? paths.join('\0') : ''}`;
+        let run = this.#running.get(same);
 
-        if (running) return running;
+        if (!run) {
+            const controller = new AbortController();
+            const result = exclusive(this.#options.store, line, controller.signal, () =>
+                this.#write(place, paths, provider, controller.signal)
+            ).finally(() => {
+                if (this.#running.get(same)?.controller === controller) this.#running.delete(same);
+            });
 
-        const run = exclusive(this.#options.store, line, undefined, () => this.#write(place, paths)).finally(() =>
-            this.#running.delete(same)
-        );
+            run = { controller, result, waiters: 0 };
+            this.#running.set(same, run);
+        }
 
-        this.#running.set(same, run);
-
-        return run;
+        run.waiters++;
+        try {
+            return await until(run.result, signal);
+        } finally {
+            // A shared run stays alive until its last client stops waiting.
+            if (--run.waiters === 0 && this.#running.get(same) === run) {
+                this.#running.delete(same);
+                run.controller.abort();
+            }
+        }
     }
 
-    /**
-     * The first agent of those that are on and signed in answers; when its run fails, does not end in time or says nothing, the next one is asked once, and so on to the end of the list.
-     * With none left the error is the last one's reason. An agent that is off or signed out is never asked, and is not a failure to fall back from.
-     */
-    async #write(place: Place, paths: unknown): Promise<GitMessage> {
-        const agents = await this.#agents();
+    async #write(
+        place: Place,
+        paths: unknown,
+        provider: CommitMessageProvider,
+        signal: AbortSignal
+    ): Promise<GitMessage> {
+        signal.throwIfAborted();
+        this.#checkProvider(provider);
+        if (!(await this.#options.providers.signedIn(provider))) throw failed('signed_out');
+
+        signal.throwIfAborted();
         const selection = await selectChanged(place, paths);
         const [excerpt, recent] = await Promise.all([diffExcerpt(place, selection), recentSubjects(place.path)]);
         const prompt = buildPrompt({ files: selection.files, excerpt, recent });
-        let reason: GitMessageFailure = 'failed';
+        let answer: string;
 
-        for (const agent of agents) {
-            try {
-                const message = cleanSubject(await this.#options.generation.run(agent, prompt));
+        try {
+            answer = await this.#options.generation.run(provider, prompt, {
+                signal,
+                beforeStart: () => this.#checkProvider(provider),
+            });
+        } catch (error) {
+            signal.throwIfAborted();
+            if (error instanceof CommandError) throw error;
 
-                if (message !== undefined) return { message };
-
-                reason = 'failed';
-            } catch (error) {
-                reason = error instanceof GenerateFailure ? error.reason : 'failed';
-            }
+            throw failed(error instanceof GenerateFailure ? error.reason : 'failed');
         }
 
-        throw failed(reason);
+        const message = cleanSubject(answer);
+
+        if (message === undefined) throw failed('failed');
+
+        return { message };
     }
 }
