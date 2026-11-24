@@ -81,7 +81,9 @@ describe('status machine', () => {
         const runId = start(task('A').id);
 
         await waitFor(() => h.run(runId).status === 'running', 'the run to start');
-        expect(h.run(runId).startedAt).toBeNumber();
+        const firstStart = h.run(runId).startedAt;
+        expect(firstStart).toBeNumber();
+        expect(h.run(runId).activeSince).toBe(firstStart);
         expect(h.run(runId).finishedAt).toBeUndefined();
 
         expect(() => runs.setStatus(runId, 'queued')).toThrow(/Illegal run transition running -> queued/);
@@ -90,15 +92,23 @@ describe('status machine', () => {
         const waiting = runs.setStatus(runId, 'waiting_user', { reason: 'Waiting for your answer' });
 
         expect(waiting).toMatchObject({ status: 'waiting_user', statusReason: 'Waiting for your answer' });
+        expect(waiting.activeSince).toBe(firstStart);
         expect(runs.setStatus(runId, 'failed', { error: 'broke' })).toMatchObject({ status: 'failed', error: 'broke' });
         expect(h.run(runId).finishedAt).toBeNumber();
+        expect(h.run(runId).activeSince).toBeUndefined();
         expect(() => runs.setStatus(runId, 'running')).toThrow(/Illegal/);
 
+        await Bun.sleep(5);
         const resumed = runs.setStatus(runId, 'queued');
 
         expect(resumed.finishedAt).toBeUndefined();
         expect(resumed.error).toBeUndefined();
-        expect(resumed.startedAt).toBe(h.run(runId).startedAt);
+        expect(resumed.startedAt).toBe(firstStart);
+        expect(resumed.activeSince).toBeUndefined();
+        const restarted = runs.setStatus(runId, 'running');
+        expect(restarted.startedAt).toBe(firstStart);
+        expect(restarted.activeSince).toBeGreaterThan(firstStart!);
+        expect(h.run(runId).activeSince).toBe(restarted.activeSince);
     });
 
     test('every status change is one run.upserted event carrying the whole run', async () => {
@@ -220,6 +230,8 @@ describe('waiting for background work', () => {
     test('moves running to waiting_background to queued to running again, holding no slot while it waits, and ends from there', async () => {
         const { h, runs, create } = await runningRun();
         const runId = create();
+        const activeSince = h.run(runId).activeSince;
+        expect(activeSince).toBeNumber();
 
         expect(() => runs.setStatus(runId, 'waiting_background')).toThrow(/needs a status reason/);
         expect(runningCounts(h.store.db)).toEqual([{ engine: 'fake', projectId: h.run(runId).projectId, count: 1 }]);
@@ -230,6 +242,7 @@ describe('waiting for background work', () => {
         });
         expect(runningCounts(h.store.db)).toEqual([]);
         expect(h.run(runId).finishedAt).toBeUndefined();
+        expect(h.run(runId).activeSince).toBe(activeSince);
 
         // A repeat refreshes the reason; the same reason again changes nothing.
         expect(runs.setStatus(runId, 'waiting_background', { reason: 'Waiting for 2 background tasks' })).toMatchObject(
@@ -246,6 +259,7 @@ describe('waiting for background work', () => {
         expect(() => runs.setStatus(runId, 'running')).toThrow(/Illegal run transition waiting_background -> running/);
         expect(runs.setStatus(runId, 'queued')).toMatchObject({ status: 'queued', statusReason: QUEUE_REASON });
         expect(runs.setStatus(runId, 'running').status).toBe('running');
+        expect(h.run(runId).activeSince).toBe(activeSince);
         expect(runs.setStatus(runId, 'waiting_background', { reason: BACKGROUND_REASON }).status).toBe(
             'waiting_background'
         );
@@ -255,6 +269,7 @@ describe('waiting for background work', () => {
         });
         expect(h.run(runId).statusReason).toBeUndefined();
         expect(h.run(runId).finishedAt).toBeNumber();
+        expect(h.run(runId).activeSince).toBeUndefined();
     });
 
     test('ends as failed, cancelled or interrupted, and refuses every move that is not listed', async () => {

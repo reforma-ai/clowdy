@@ -545,10 +545,37 @@ describe('RunningAgents, threads', () => {
         await draw('c-6');
 
         expect(rows().map(row => buttons(row))).toEqual([
-            ['Fix the price rounding4 calls total', 'Stop'],
-            ['Load test the checkoutWaiting for background work2 calls total', 'Stop'],
+            [expect.stringMatching(/^Fix the price rounding\d+m \d+s · 4 calls total$/), 'Stop'],
+            [
+                expect.stringMatching(/^Load test the checkoutWaiting for background work\d+m \d+s · 2 calls total$/),
+                'Stop',
+            ],
         ]);
         expect(buttons(header())).toEqual([toggle().textContent]);
+    });
+
+    it('times the current period of work instead of the age of a resumed thread, including hours', async () => {
+        vi.useFakeTimers();
+
+        try {
+            const now = Date.now();
+            const run = runs().get('r-orch-6a')!;
+            put({
+                ...run,
+                startedAt: now - 72 * 60 * 60 * 1000,
+                activeSince: now - (20 * 60 + 5) * 60 * 1000,
+            });
+            await draw('c-6');
+            expect(rows()[0].textContent).toContain('20h 05m · 4 calls total');
+            await act(async () => vi.advanceTimersByTime(60_000));
+            expect(rows()[0].textContent).toContain('20h 06m · 4 calls total');
+
+            put({ ...run, activeSince: undefined });
+            await render('c-6');
+            expect(buttons(rows()[0])).toEqual(['Fix the price rounding4 calls total', 'Stop']);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('shows a live session total across turns only when the full stream is ready', async () => {
@@ -600,8 +627,8 @@ describe('RunningAgents, threads', () => {
         await draw('c-6');
 
         expect(rows().map(row => buttons(row))).toEqual([
-            ['Load test the checkoutWaiting for you2 calls total', 'Stop'],
-            ['Fix the price rounding4 calls total', 'Stop'],
+            [expect.stringMatching(/^Load test the checkoutWaiting for you\d+m \d+s · 2 calls total$/), 'Stop'],
+            [expect.stringMatching(/^Fix the price rounding\d+m \d+s · 4 calls total$/), 'Stop'],
         ]);
     });
 
@@ -611,7 +638,7 @@ describe('RunningAgents, threads', () => {
         await draw('c-6');
 
         expect(rows().map(row => buttons(row))).toEqual([
-            ['Load test the checkoutWaiting for you2 calls total', 'Stop'],
+            [expect.stringMatching(/^Load test the checkoutWaiting for you\d+m \d+s · 2 calls total$/), 'Stop'],
         ]);
         expect(header()!.textContent).toBe('Agents2 running');
 
@@ -667,7 +694,8 @@ describe('RunningAgents, threads', () => {
         container.style.width = '240px';
         await draw('c-6');
         const button = rows()[0].querySelector('button')!;
-        expect(button.getAttribute('aria-label')).toBe(`Open ${title}. Waiting for you. 2 calls total`);
+        expect(button.getAttribute('aria-label')).toContain(`Open ${title}. Waiting for you. `);
+        expect(button.getAttribute('aria-label')).toMatch(/\d+m \d+s · 2 calls total$/);
         expect(button.textContent).toContain('Waiting for you');
     });
 

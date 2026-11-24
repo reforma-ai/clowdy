@@ -297,8 +297,14 @@ export class FixtureTransport implements Transport {
         this.#branches = new FixtureGitBranches(branches);
 
         // `&branches=idle`: no run is working, so nothing but the tree stands in the way of a switch.
-        if (this.#branches.idle)
-            for (const run of data.runs) if (!isTerminalRunStatus(run.status)) run.status = 'succeeded';
+        if (this.#branches.idle) {
+            for (const run of data.runs) {
+                if (isTerminalRunStatus(run.status)) continue;
+
+                run.status = 'succeeded';
+                delete run.activeSince;
+            }
+        }
 
         this.#tasks = new FixtureTasks(data, {
             emit: (projectId, event) => this.#emit(projectId, event),
@@ -1480,6 +1486,9 @@ export class FixtureTransport implements Transport {
     }
 
     #saveRun(run: Run): void {
+        if (isTerminalRunStatus(run.status)) delete run.activeSince;
+        else if (run.status === 'running') run.activeSince ??= Date.now();
+
         this.#emit(run.projectId, { type: 'run.upserted', run });
     }
 

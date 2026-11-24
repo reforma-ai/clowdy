@@ -540,4 +540,11 @@ export const MIGRATIONS: Migration[] = [
             db.run('ALTER TABLE chats ADD COLUMN last_run TEXT');
         },
     },
+    {
+        version: 28,
+        up(db) {
+            // The current period of work (Run.activeSince). Older runs have no reliable start for this period.
+            db.run('ALTER TABLE runs ADD COLUMN active_since INTEGER');
+        },
+    },
 ];

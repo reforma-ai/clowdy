@@ -221,6 +221,35 @@ describe('migrations', () => {
         db.close();
     });
 
+    test('version 28 keeps the first start and stores the start of the current period separately', () => {
+        const path = join(tempDir(), 'clowdy.db');
+        const before = openDatabase(
+            path,
+            MIGRATIONS.filter(migration => migration.version < 28)
+        );
+        before
+            .query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)')
+            .run('prj_1', 'Old', 'OLD', 1);
+        before
+            .query(
+                'INSERT INTO runs (id, project_id, root_run_id, role, name, status, engine, created_at, started_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+            )
+            .run('run_1', 'prj_1', 'run_1', 'orchestrator', 'Orchestrator 01', 'running', 'claude', 1, 2);
+        before.close();
+
+        const db = openDatabase(path);
+        const run = getRun(db, 'run_1')!;
+        expect(version(db)).toBe(MIGRATIONS.length);
+        expect(run.startedAt).toBe(2);
+        expect(run).not.toHaveProperty('activeSince');
+
+        upsertRun(db, { ...run, activeSince: 100 });
+        expect(getRun(db, run.id)).toMatchObject({ startedAt: 2, activeSince: 100 });
+        upsertRun(db, { ...run, status: 'succeeded', finishedAt: 200 });
+        expect(getRun(db, run.id)).not.toHaveProperty('activeSince');
+        db.close();
+    });
+
     test("version 24 gives the folders of an older database a settings column that reads as none, and stores the settings of a folder with its project's row", () => {
         const path = join(tempDir(), 'clowdy.db');
         const before = openDatabase(
