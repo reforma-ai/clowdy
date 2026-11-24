@@ -45,7 +45,6 @@ function reset() {
     branchPrefix.setValue('');
     newChatDefaults.setEngine(undefined);
     newChatDefaults.setMode(undefined);
-    chatListPreferences.setSort('activity');
     chatListPreferences.setShowFinishedThreads(true);
 }
 
@@ -198,23 +197,12 @@ describe('ChatPage', () => {
         });
     });
 
-    it("offers the order of the chats and the finished threads of the Agents list, as the list's own menu does", () => {
-        expect(labels('Sort chats by')).toEqual(['Last activity', 'Created']);
-        expect(checked('Sort chats by')).toBe('Last activity');
+    it('keeps the finished threads filter and removes the automatic chat sort setting', () => {
+        expect(container.querySelector('[aria-label="Sort chats by"]')).toBeNull();
         expect(finished().checked).toBe(true);
-    });
 
-    it('keeps the order of the chats and the finished threads for the list, in every project', () => {
-        act(() => radio('Sort chats by', 'Created').click());
         act(() => finished().click());
-
-        expect([chatListPreferences.sort, chatListPreferences.showFinishedThreads]).toEqual(['created', false]);
-        expect(checked('Sort chats by')).toBe('Created');
+        expect(chatListPreferences.showFinishedThreads).toBe(false);
         expect(finished().checked).toBe(false);
-
-        act(() => radio('Sort chats by', 'Last activity').click());
-        act(() => finished().click());
-
-        expect([chatListPreferences.sort, chatListPreferences.showFinishedThreads]).toEqual(['activity', true]);
     });
 });

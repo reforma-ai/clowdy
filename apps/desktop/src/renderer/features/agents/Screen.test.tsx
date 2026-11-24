@@ -53,8 +53,8 @@ vi.mock('./RunDetail', () => ({
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 /*
- * The Agents screen on the fixture project. Chats by activity: c-1 (Simplify booking, orchestrator r-orch-1), c-4 (empty), c-6 (Ship the checkout,
- * at rest, with threads), c-5, c-3, c-2. The threads of c-6, oldest first: c-6a (Fix the price rounding, working, with the finished thread c-6a1),
+ * The Agents screen on the fixture project. Chats newest first: c-4 (empty), c-5, c-3, c-6 (Ship the checkout, at rest, with threads),
+ * c-1 (Simplify booking, orchestrator r-orch-1), c-2. The threads of c-6, oldest first: c-6a (Fix the price rounding, working, with the finished thread c-6a1),
  * c-6b (finished), c-6c (failed), c-6e (waiting for background work). Native sub-agents live in r-orch-1's session (r-na-01 to r-na-04): cards in its
  * stream, never rows. The test build has no MobX observer plugin, so the screen is drawn again by hand after a change, as the observer does in the app.
  */
@@ -108,7 +108,6 @@ const menuItem = (name: string) =>
     )!;
 
 beforeEach(async () => {
-    chatListPreferences.setSort('activity');
     chatListPreferences.setShowFinishedThreads(true);
     container = document.createElement('div');
     document.body.append(container);
@@ -122,7 +121,6 @@ afterEach(() => {
     act(() => reactRoot.unmount());
     container.remove();
     store.dispose();
-    chatListPreferences.setSort('activity');
     chatListPreferences.setShowFinishedThreads(true);
 });
 
@@ -135,7 +133,7 @@ describe('the list', () => {
 
     it('starts with the new-chat row, then the chats, and has no row for a run', () => {
         // The orchestrator is the chat, and a native sub-agent is a card on the call that started it: neither is a row.
-        expect(rowKeys()).toEqual(['@new-chat', MAIN_GROUP, 'c-1', 'c-4', 'c-6', 'c-5', 'c-3', 'c-2']);
+        expect(rowKeys()).toEqual(['@new-chat', MAIN_GROUP, 'c-4', 'c-5', 'c-3', 'c-6', 'c-1', 'c-2']);
     });
 
     it('marks a chat that started with the provider it runs on, and one that has not with the speech bubble', async () => {
@@ -158,31 +156,24 @@ describe('the list', () => {
         expect(providerOf('c-1')).toBeUndefined();
     });
 
-    it('sorts the chats by when they were made, as a list starts, until the Filters menu asks for the last activity', async () => {
+    it('keeps the hand-ordered list through activity and puts a newly created chat first', async () => {
         const chatKeys = () => rowKeys().filter(key => key?.startsWith('c-'));
 
-        // The list starts in the order they were made (the default of the preference); the rest of this file starts on the last activity.
-        await draw(() => chatListPreferences.setSort('created'));
-
         expect(chatKeys()).toEqual(['c-4', 'c-5', 'c-3', 'c-6', 'c-1', 'c-2']);
-
-        await press(container.querySelector<HTMLElement>('button[aria-label="Filters"]')!);
-
-        expect(document.body.textContent).toContain('Sort by');
-        expect(menuItem('Created').getAttribute('aria-checked')).toBe('true');
-        expect(menuItem('Last activity').getAttribute('aria-checked')).toBe('false');
-
-        // A message in a chat does not move it while the list is in the order they were made in.
-        await draw(() => {
-            project().chats.set('c-2', { ...project().chats.get('c-2')!, updatedAt: Date.now() });
-        });
-        expect(chatKeys()).toEqual(['c-4', 'c-5', 'c-3', 'c-6', 'c-1', 'c-2']);
-
-        await press(menuItem('Last activity'));
-        expect(chatListPreferences.sort).toBe('activity');
+        await press(rowOf('c-5').querySelector<HTMLElement>('button[aria-label="Chat actions"]')!);
+        await press(menuItem('Move up'));
         await draw();
-        // The chat that just got a message is at the top now.
-        expect(chatKeys()).toEqual(['c-2', 'c-1', 'c-4', 'c-6', 'c-5', 'c-3']);
+        expect(chatKeys()).toEqual(['c-5', 'c-4', 'c-3', 'c-6', 'c-1', 'c-2']);
+        expect(isSelected('c-4')).toBe(true);
+
+        await draw(() => {
+            const chat = project().chats.get('c-2')!;
+            const now = Date.now();
+
+            project().chats.set(chat.id, { ...chat, updatedAt: now });
+            project().chats.set('c-new', { ...chat, id: 'c-new', createdAt: now, updatedAt: now });
+        });
+        expect(chatKeys()).toEqual(['c-new', 'c-5', 'c-4', 'c-3', 'c-6', 'c-1', 'c-2']);
     });
 
     it('keeps the row of an open `⋯` menu as if hovered, since the pointer is in the menu and not on the row', async () => {
@@ -205,8 +196,8 @@ describe('the list', () => {
     });
 
     it('selects the first chat when nothing was opened', () => {
-        expect(isSelected('c-1')).toBe(true);
-        expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe('c-1');
+        expect(isSelected('c-4')).toBe(true);
+        expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe('c-4');
     });
 });
 
@@ -233,7 +224,7 @@ describe('what is open', () => {
     it('falls back to a chat when the remembered run is gone', async () => {
         await draw(() => ui().openRun('r-gone'));
 
-        expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe('c-1');
+        expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe('c-4');
     });
 });
 
@@ -421,23 +412,13 @@ describe('grouped by folder', () => {
 
     it('offers the switch to a project of one folder as well, on until it is turned off', async () => {
         // A project that kept no choice groups, whatever number of folders it has.
-        expect(await filtersMenu()).toEqual([
-            'Show finished sub-threads',
-            'Group chats by folder',
-            'Last activity',
-            'Created',
-        ]);
+        expect(await filtersMenu()).toEqual(['Show finished sub-threads', 'Group chats by folder']);
         expect(menuItem('Group chats by folder').getAttribute('aria-checked')).toBe('true');
         expect(rowKeys()).toContain(MAIN_GROUP);
 
         await restart({ grouping: null });
 
-        expect(await filtersMenu()).toEqual([
-            'Show finished sub-threads',
-            'Group chats by folder',
-            'Last activity',
-            'Created',
-        ]);
+        expect(await filtersMenu()).toEqual(['Show finished sub-threads', 'Group chats by folder']);
         expect(menuItem('Group chats by folder').getAttribute('aria-checked')).toBe('true');
         expect(rowKeys()).toContain(head(MAIN));
 
@@ -451,17 +432,17 @@ describe('grouped by folder', () => {
     it('groups a project of one folder too, and keeps the list flat once the switch is off', async () => {
         await draw(() => ui().setGroupByFolder(true));
 
-        expect(rowKeys()).toEqual(['@new-chat', MAIN_GROUP, 'c-1', 'c-4', 'c-6', 'c-5', 'c-3', 'c-2']);
+        expect(rowKeys()).toEqual(['@new-chat', MAIN_GROUP, 'c-4', 'c-5', 'c-3', 'c-6', 'c-1', 'c-2']);
 
         await draw(() => ui().setGroupByFolder(false));
 
-        expect(rowKeys()).toEqual(['@new-chat', 'c-1', 'c-4', 'c-6', 'c-5', 'c-3', 'c-2']);
+        expect(rowKeys()).toEqual(['@new-chat', 'c-4', 'c-5', 'c-3', 'c-6', 'c-1', 'c-2']);
     });
 
     it('lists a group for each folder, main first, with the chats that work in it below; a chat with no folder is in the main one', async () => {
         await restart();
 
-        expect(rowKeys()).toEqual(['@new-chat', head(MAIN), 'c-1', 'c-4', 'c-6', 'c-5', 'c-3', head(API.id), 'c-2']);
+        expect(rowKeys()).toEqual(['@new-chat', head(MAIN), 'c-4', 'c-5', 'c-3', 'c-6', 'c-1', head(API.id), 'c-2']);
         expect(rowOf(head(MAIN)).textContent).toContain('car-rental');
         expect(rowOf(head(API.id)).textContent).toContain('car-rental-api');
         // A group heading is no page: it is never the selected row.
@@ -478,11 +459,11 @@ describe('grouped by folder', () => {
         expect(rowKeys()).toEqual([
             '@new-chat',
             head(MAIN),
-            'c-1',
             'c-4',
-            'c-6',
             'c-5',
             'c-3',
+            'c-6',
+            'c-1',
             'c-2',
             head(API.id),
             `@empty:${API.id}`,
@@ -644,7 +625,7 @@ describe('grouped by folder', () => {
 
         expect(ui().collapsedFolders).toEqual([API.id]);
         await draw();
-        expect(rowKeys()).toEqual(['@new-chat', head(MAIN), 'c-1', 'c-4', 'c-6', 'c-5', 'c-3', head(API.id)]);
+        expect(rowKeys()).toEqual(['@new-chat', head(MAIN), 'c-4', 'c-5', 'c-3', 'c-6', 'c-1', head(API.id)]);
         expect(rowOf(head(API.id)).hasAttribute('data-collapsed')).toBe(true);
         expect(rowOf(head(API.id)).hasAttribute('data-plateless')).toBe(true);
         expect(buttonNamed('Expand car-rental-api').getAttribute('aria-expanded')).toBe('false');
@@ -691,7 +672,7 @@ describe('grouped by folder', () => {
             rowOf('@new-chat').focus();
 
             expect(await step('j')).toBe(head(MAIN));
-            expect(await step('j')).toBe('c-1');
+            expect(await step('j')).toBe('c-4');
 
             rowOf('c-2').focus();
 
@@ -1110,6 +1091,16 @@ describe('the archive', () => {
         await draw();
     }
 
+    it('restores a manually positioned chat to its slot after moving other chats', async () => {
+        await draw(() => ui().setChatOrder(['c-4', 'c-5', 'c-2', 'c-3', 'c-6', 'c-1']));
+        await archive('c-2', true);
+        await press(rowOf('c-5').querySelector<HTMLElement>('button[aria-label="Chat actions"]')!);
+        await press(menuItem('Move up'));
+        await archive('c-2', false);
+
+        expect(rowKeys().filter(key => key?.startsWith('c-'))).toEqual(['c-5', 'c-4', 'c-2', 'c-3', 'c-6', 'c-1']);
+    });
+
     // The rows of the archive's list, which is in a popover beside the screen and not in it. The title of a group is a row of its own, with no key.
     const archiveRows = () =>
         [...document.body.querySelectorAll<HTMLElement>('[role="row"][data-key]')].filter(
@@ -1123,7 +1114,7 @@ describe('the archive', () => {
         await archive('c-4', true);
 
         expect(rowKeys()).toEqual(expect.not.arrayContaining(['c-2', 'c-4']));
-        expect(rowKeys().filter(key => key?.startsWith('c-'))).toEqual(['c-1', 'c-6', 'c-5', 'c-3']);
+        expect(rowKeys().filter(key => key?.startsWith('c-'))).toEqual(['c-5', 'c-3', 'c-6', 'c-1']);
 
         await press(buttonNamed('History'));
 
@@ -1222,6 +1213,7 @@ describe('the archive', () => {
     });
 
     it('puts a chat back in the list from its menu, without opening it', async () => {
+        await draw(() => ui().openChat('c-1'));
         await archive('c-4', true);
         await press(buttonNamed('History'));
         await press(archiveRow('New chat').querySelector<HTMLElement>('button[aria-label^="Actions of"]')!);
@@ -1253,7 +1245,7 @@ describe('the archive', () => {
         await draw();
 
         expect(rowKeys()).not.toContain('c-4');
-        expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe('c-1');
+        expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe('c-5');
     });
 
     it('shows a green status in place of the archive shortcut while the chat works', () => {
@@ -1278,7 +1270,7 @@ describe('the archive', () => {
         await draw(() => ui().openChat('c-2'));
         await archive('c-2', true);
 
-        expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe('c-1');
+        expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe('c-4');
         expect(rowKeys()).not.toContain('c-2');
     });
 
@@ -1342,15 +1334,15 @@ describe('threads', () => {
         expect(rowKeys()).toEqual([
             '@new-chat',
             MAIN_GROUP,
-            'c-1',
             'c-4',
+            'c-5',
+            'c-3',
             'c-6',
             'c-6a',
             'c-6b',
             'c-6c',
             'c-6e',
-            'c-5',
-            'c-3',
+            'c-1',
             'c-2',
         ]);
         expect(['c-6', 'c-6a', 'c-6e'].map(depthOf)).toEqual(['0', '1', '1']);
@@ -1359,7 +1351,7 @@ describe('threads', () => {
         await act(async () => foldOf('c-6a')!.click());
         await draw();
 
-        expect(rowKeys().slice(4, 7)).toEqual(['c-6', 'c-6a', 'c-6a1']);
+        expect(rowKeys().slice(5, 8)).toEqual(['c-6', 'c-6a', 'c-6a1']);
         expect(depthOf('c-6a1')).toBe('2');
 
         // Folding the chat hides every thread below it, the thread's own threads too.
@@ -1384,10 +1376,9 @@ describe('threads', () => {
         expect(ui().expandedChats).toEqual([]);
     });
 
-    it('sorts only the chats the person made: threads keep the order they were made in, whatever the sort', async () => {
+    it('keeps sibling threads in creation order when their activity changes', async () => {
         await draw(() => {
             ui().toggleChatExpanded('c-6');
-            chatListPreferences.setSort('created');
             project().chats.set('c-6e', { ...project().chats.get('c-6e')!, updatedAt: Date.now() });
         });
 
@@ -1402,13 +1393,8 @@ describe('threads', () => {
         expect([...document.body.querySelectorAll('[role^="menuitem"]')].map(row => row.textContent)).toEqual([
             'Show finished sub-threads',
             'Group chats by folder',
-            'Last activity',
-            'Created',
         ]);
-        // A section that holds one check has no header; only the order does.
-        expect([...document.body.querySelectorAll('[role="menu"] header')].map(header => header.textContent)).toEqual([
-            'Sort by',
-        ]);
+        expect(document.body.querySelector('[role="menu"] header')).toBeNull();
 
         await press(menuItem('Show finished sub-threads'));
         expect(chatListPreferences.showFinishedThreads).toBe(false);
@@ -1460,7 +1446,7 @@ describe('threads', () => {
         // The thread rests for its background work while its agent asks: its card is the only sign (`Run.awaitingUser`).
         await draw(() => project().runs.set('r-orch-6e', { ...project().runs.get('r-orch-6e')!, awaitingUser: true }));
 
-        expect(rowKeys()).toEqual(['@new-chat', MAIN_GROUP, 'c-1', 'c-4', 'c-6', 'c-6e', 'c-5', 'c-3', 'c-2']);
+        expect(rowKeys()).toEqual(['@new-chat', MAIN_GROUP, 'c-4', 'c-5', 'c-3', 'c-6', 'c-6e', 'c-1', 'c-2']);
         expect(['c-6', 'c-6e'].map(depthOf)).toEqual(['0', '1']);
         expect(foldOf('c-6')?.getAttribute('aria-expanded')).toBe('false');
         expect(dotOf('c-6')).toBe('A thread is waiting for you');
@@ -1472,15 +1458,15 @@ describe('threads', () => {
         expect(rowKeys()).toEqual([
             '@new-chat',
             MAIN_GROUP,
-            'c-1',
             'c-4',
+            'c-5',
+            'c-3',
             'c-6',
             'c-6a',
             'c-6b',
             'c-6c',
             'c-6e',
-            'c-5',
-            'c-3',
+            'c-1',
             'c-2',
         ]);
 

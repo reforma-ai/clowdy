@@ -15,7 +15,6 @@ import {
 import { isRunActive } from '../chats/chatRun';
 
 import type { StatusTone } from '../../shared';
-import type { ChatSort } from './chatListPreferences';
 
 /** One line of the Agents list: a chat, at the depth of the thread tree it sits in (0 for a chat the person made). */
 export interface AgentRow {
@@ -117,18 +116,18 @@ export function agentRows({ roots, threadsOf, runs, expanded, showFinished, open
 }
 
 /**
- * The chats at the top of the list: the ones in use that the person made, newest first. A thread is never here: it is a row below the chat that
- * started it. A chat is either in the list or in the archive, which has its own list; there is no chat that is open and archived. `chatList`
- * comes by last activity; `sort` `created` puts the newest chat first instead. A thread whose parent is not in use (gone, or put away while the
- * thread came back on its own) stands here, so it is not lost.
+ * Roots in their manual order. Chats outside that order go above it, newest first.
+ * A thread whose parent is missing or archived stands here too, so it is not lost.
  */
-export function visibleChats(chatList: readonly Chat[], sort: ChatSort = 'activity'): Chat[] {
-    const ordered = sort === 'created' ? [...chatList].sort((a, b) => b.createdAt - a.createdAt) : chatList;
+export function visibleChats(chatList: readonly Chat[], order: readonly ChatId[] = []): Chat[] {
+    const rank = new Map(order.map((id, index) => [id, index]));
     const inUse = new Set(chatList.filter(chat => chat.archivedAt === undefined).map(chat => chat.id));
 
-    return ordered.filter(
-        chat => chat.archivedAt === undefined && (chat.parentChatId === undefined || !inUse.has(chat.parentChatId))
-    );
+    return chatList
+        .filter(
+            chat => chat.archivedAt === undefined && (chat.parentChatId === undefined || !inUse.has(chat.parentChatId))
+        )
+        .sort((a, b) => (rank.get(a.id) ?? -1) - (rank.get(b.id) ?? -1) || b.createdAt - a.createdAt);
 }
 
 /** One folder's part of the grouped list: its chats at depth 0, in the order `visibleChats` gave them. */
