@@ -30,7 +30,6 @@ vi.mock('./RemoteMenu', async importOriginal => ({
     RemoteMenu: observer((await importOriginal<typeof import('./RemoteMenu')>()).RemoteMenu),
 }));
 vi.mock('./CreatePullRequest', async importOriginal => ({
-    ...(await importOriginal<typeof import('./CreatePullRequest')>()),
     CreatePullRequest: observer((await importOriginal<typeof import('./CreatePullRequest')>()).CreatePullRequest),
 }));
 vi.mock('./CommitBox', async importOriginal => ({
@@ -518,13 +517,16 @@ describe('Create PR in the sidebar', () => {
         expect(buttonOf('Publish first')).toBeUndefined();
     });
 
-    it('says Publish first for a branch that is not on origin, publishes it on a press, and then opens the compare page against the base of the Changes tab', async () => {
-        await start({ tweak: noPullRequest });
+    it('shows a single Publish action for a clean unpublished branch and offers Create PR after publishing', async () => {
+        await start({ tweak: noPullRequest, gitWrites: { clean: true } });
 
         expect(buttonOf('Create PR')).toBeUndefined();
-        expect(buttonOf('Publish first')?.disabled).toBe(false);
+        expect(sidebar().querySelector('[aria-label="Commit"]')).toBeNull();
+        expect(
+            [...sidebar().querySelectorAll('button')].filter(button => /publish/i.test(button.textContent ?? ''))
+        ).toEqual([syncButton()]);
 
-        await press(buttonOf('Publish first')!);
+        await press(syncButton());
         await settle();
         await settle();
 
@@ -542,20 +544,29 @@ describe('Create PR in the sidebar', () => {
         vi.spyOn(transport, 'pushGit').mockRejectedValue(
             new TransportError('git@github.com: Permission denied (publickey).', 409)
         );
-        await press(buttonOf('Publish first')!);
+        await press(syncButton());
         await settle();
         await settle();
 
         expect(opened).toEqual([]);
-        expect(buttonOf('Publish first')).toBeDefined();
+        expect(syncButton().textContent).toContain('Publish branch');
+        expect(buttonOf('Create PR')).toBeUndefined();
         expect(alert()?.textContent).toBe('git@github.com: Permission denied (publickey).');
     });
 
-    it('says Push first for a branch with commits that are not on origin', async () => {
-        await start({ tweak: noPullRequest, gitWrites: { remote: 'signing' } });
+    it('offers Create PR after pushing the remaining commits through the sync button', async () => {
+        await start({ tweak: noPullRequest, gitWrites: { clean: true, remote: 'ahead' } });
 
-        expect(buttonOf('Push first')).toBeDefined();
         expect(buttonOf('Create PR')).toBeUndefined();
+        expect(buttonOf('Push first')).toBeUndefined();
+        expect(syncButton().getAttribute('data-sync')).toBe('push');
+
+        await press(syncButton());
+        await settle();
+        await settle();
+
+        expect(opened).toEqual([]);
+        expect(buttonOf('Create PR')?.disabled).toBe(false);
     });
 
     it('opens the page for a branch that is level with its upstream, or only behind it', async () => {
@@ -565,7 +576,7 @@ describe('Create PR in the sidebar', () => {
         expect(opened).toEqual(['https://github.com/acme/car-rental/compare/main...clowdy/ab12cd34?expand=1']);
     });
 
-    it('does not open the page of a branch that tracks a branch of another name, which GitHub does not have under its own: it says Publish first, and the page comes once it is published', async () => {
+    it('offers Create PR once a branch tracking another branch is published under its own name', async () => {
         await start({ tweak: noPullRequest, gitWrites: { remote: 'behind' } });
 
         const read = transport.getGitStatus.bind(transport);
@@ -586,7 +597,7 @@ describe('Create PR in the sidebar', () => {
 
         const push = vi.spyOn(transport, 'pushGit');
 
-        await press(buttonOf('Publish first')!);
+        await press(syncButton());
         await settle();
         await settle();
         expect(push).toHaveBeenCalledTimes(1);
@@ -602,20 +613,16 @@ describe('Create PR in the sidebar', () => {
         expect(opened).toEqual(['https://github.com/acme/car-rental/compare/main...clowdy/ab12cd34?expand=1']);
     });
 
-    it('is off, with the reason, for a branch that diverged', async () => {
+    it('hides Create PR when a branch diverged from origin', async () => {
         await start({ tweak: noPullRequest, gitWrites: { remote: 'diverged' } });
 
-        expect(buttonOf('Create PR')?.disabled).toBe(true);
-        await press(buttonOf('Create PR')!);
-        expect(opened).toEqual([]);
+        expect(buttonOf('Create PR')).toBeUndefined();
     });
 
-    it('is off, with "Switch to a feature branch", on the folder\'s own checkout, which is on the branch the work is compared with', async () => {
+    it('hides Create PR on the base branch', async () => {
         await start({ tweak: noPullRequest, key: CHECKOUT });
 
-        expect(buttonOf('Create PR')?.disabled).toBe(true);
-        await press(buttonOf('Create PR')!);
-        expect(opened).toEqual([]);
+        expect(buttonOf('Create PR')).toBeUndefined();
     });
 
     it('is the page of a GitHub Enterprise server the person is signed in to, and nothing for another site', async () => {

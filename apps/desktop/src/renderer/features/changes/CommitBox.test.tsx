@@ -15,7 +15,6 @@ import {
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { type Transport, TransportError } from '../../daemon/transport';
 import { RootStore, RootStoreProvider } from '../../stores';
-import { openEffects } from '../openWith';
 import { CommitBox } from './CommitBox';
 import { CommitDraft, commitDraftOf } from './CommitDraft';
 import { type GitPlaceKey, gitFactsOf } from './gitFacts';
@@ -24,7 +23,6 @@ import { type RemoteOutcome, remoteActionsOf } from './RemoteActions';
 
 import type { GitChangedFile, GitStatus } from '@clowdy/protocol';
 import type { FixtureGitWritesOptions } from '../../daemon/fixtureGitWrites';
-import type { Place } from '../sidePanel/currentPlace';
 import type { RemoteActionId } from './changesActions';
 import type { PlaceChanges } from './PlaceChanges';
 
@@ -111,24 +109,11 @@ async function start({
     await draw();
 }
 
-/** The place the box is drawn for: the folder's checkout, or the chat's worktree. */
-function placeOf(key: GitPlaceKey): Place {
-    const project = store.selectedProject!;
-    const folder = project.project.folders.find(candidate => candidate.id === key.folderId)!;
-
-    return key.workspaceId ? { folder, workspace: project.chats.get('c-9')!.workspace! } : { folder };
-}
-
 async function draw() {
     act(() =>
         root.render(
             <RootStoreProvider value={store}>
-                <Box
-                    model={model}
-                    place={placeOf(model.facts.key)}
-                    projectId={FIXTURE_PROJECT_ID}
-                    git={{ remoteUrl: 'git@github.com:acme/car-rental.git' }}
-                />
+                <Box model={model} />
             </RootStoreProvider>
         )
     );
@@ -446,7 +431,7 @@ describe('the commit box', () => {
         expect(box()?.textContent).not.toContain('Showing the first');
     });
 
-    it('says what the commit was when it took every file, and that there is nothing to commit for a place that is clean', async () => {
+    it('shows the commit result after committing every file', async () => {
         await start();
         await press(buttonOf('Generate')!);
         await settle();
@@ -455,15 +440,14 @@ describe('the commit box', () => {
         await draw();
 
         expect(box()?.textContent).toContain('Committed c0ffee0');
-        expect(box()?.textContent).toContain('No local changes');
+        expect(message()).toBeNull();
         expect(checkboxes()).toHaveLength(0);
     });
 
-    it("says there are no local changes in the folder's own checkout, which is clean", async () => {
+    it('hides the commit box in a clean checkout', async () => {
         await start({ key: { projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental' } });
 
-        expect(box()?.textContent).toContain('No local changes');
-        expect(box()?.textContent).not.toContain('Nothing to commit');
+        expect(box()).toBeNull();
     });
 
     it('draws nothing for a folder that is no repository', async () => {
@@ -561,7 +545,7 @@ describe('Commit & Push', () => {
             'Committed c0ffee0, push failed: ! [rejected] clowdy/ab12cd34 -> clowdy/ab12cd34 (fetch first)'
         );
         // The commit was made and the box is clear, and the branch has the commit to push.
-        expect(box()?.textContent).toContain('No local changes');
+        expect(message()).toBeNull();
         expect(await transport.getGitStatus(FIXTURE_PROJECT_ID, PLACE)).toMatchObject({
             upstream: { ahead: 2, behind: 0 },
         });
@@ -680,177 +664,6 @@ describe('the commit button and the line under the box', () => {
 
         expect(commitButton()?.textContent).toBe('Commit 3 files to main');
         expect(container.querySelector('[role="note"]')?.textContent).toBe('Committing to main, the base branch');
-    });
-});
-
-describe('the empty box, No local changes', () => {
-    const noPullRequest = (data: FixtureData) => {
-        data.pullRequests['/Users/dev/car-rental'] = { checkout: 'none', worktree: 'none' };
-    };
-    const stepButton = () =>
-        container.querySelector<HTMLButtonElement>('[aria-label="Commit"] button[class*="stepButton"]');
-    const quietButtons = () => [
-        ...container.querySelectorAll<HTMLElement>('[aria-label="Commit"] [aria-label="Open the place"] [role="row"]'),
-    ];
-    let opened: string[];
-
-    beforeEach(() => {
-        opened = [];
-        vi.spyOn(openEffects, 'openUrl').mockImplementation(url => {
-            opened.push(url);
-        });
-    });
-
-    afterEach(() => {
-        vi.restoreAllMocks();
-        window.desktop = undefined;
-    });
-
-    it('has the title, and for a worktree that is not on origin the first step: Publish your branch, which publishes it', async () => {
-        await start({ gitWrites: { clean: true } });
-
-        expect(box()?.textContent).toContain('No local changes');
-        expect(stepButton()?.textContent).toBe('Publish your branch');
-
-        const push = vi.spyOn(transport, 'pushGit');
-
-        await press(stepButton()!);
-        await settle();
-        await settle();
-
-        expect(push).toHaveBeenCalledTimes(1);
-        expect(await transport.getGitStatus(FIXTURE_PROJECT_ID, PLACE)).toMatchObject({
-            upstream: { name: 'origin/clowdy/ab12cd34' },
-        });
-    });
-
-    it('has Pull N commits from the origin remote for a branch that is behind, and a press pulls', async () => {
-        await start({ gitWrites: { clean: true, remote: 'behind' } });
-
-        expect(stepButton()?.textContent).toBe('Pull 2 commits from the origin remote');
-
-        const pull = vi.spyOn(transport, 'pullGit');
-
-        await press(stepButton()!);
-        await settle();
-        await settle();
-
-        expect(pull).toHaveBeenCalledTimes(1);
-        // What it pulled is said, and the step is the next one: nothing to pull, nothing to push, and the open pull request.
-        expect(stepButton()).toBeNull();
-    });
-
-    it('has Push N commits to the origin remote for a branch that is ahead, and a press pushes', async () => {
-        await start({ gitWrites: { clean: true, remote: 'ahead' } });
-
-        expect(stepButton()?.textContent).toBe('Push 2 commits to the origin remote');
-
-        const push = vi.spyOn(transport, 'pushGit');
-
-        await press(stepButton()!);
-        await settle();
-        await settle();
-
-        expect(push).toHaveBeenCalledTimes(1);
-    });
-
-    it('has Create a Pull Request from your current branch for a branch that is published and level and has none, which opens the compare page as Create PR does', async () => {
-        await start({ tweak: noPullRequest, gitWrites: { clean: true, remote: 'level' } });
-
-        expect(stepButton()?.textContent).toBe('Create a Pull Request from your current branch');
-        await press(stepButton()!);
-        expect(opened).toEqual(['https://github.com/acme/car-rental/compare/main...clowdy/ab12cd34?expand=1']);
-    });
-
-    it('has no step for a branch that has a pull request and for the base branch itself, and pulls one that diverged', async () => {
-        await start({ gitWrites: { clean: true, remote: 'level' } });
-        expect(stepButton()).toBeNull();
-
-        act(() => root.unmount());
-        stop();
-        store.dispose();
-        root = createRoot(container);
-        await start({ tweak: noPullRequest, gitWrites: { clean: true, remote: 'diverged' } });
-        expect(stepButton()?.textContent).toBe('Pull 2 commits from the origin remote');
-
-        act(() => root.unmount());
-        stop();
-        store.dispose();
-        root = createRoot(container);
-        await start({ tweak: noPullRequest, key: { projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental' } });
-        expect(box()?.textContent).toContain('No local changes');
-        expect(stepButton()).toBeNull();
-    });
-
-    it('holds the step while another action runs, and shows it working while its own does', async () => {
-        await start({ gitWrites: { clean: true, remote: 'slow' } });
-
-        let release: () => void = () => undefined;
-
-        vi.spyOn(transport, 'pushGit').mockImplementation(
-            () =>
-                new Promise(resolve => {
-                    release = () => resolve({ state: 'done', action: 'push', published: true });
-                })
-        );
-        await press(stepButton()!);
-        expect(stepButton()?.hasAttribute('data-pending')).toBe(true);
-        release();
-        await settle();
-        await settle();
-    });
-
-    it("has the repository on GitHub as a quiet way out, whatever the computer has, and the editor and the file manager where it has them, in the open menu's own words", async () => {
-        const openPath = vi.fn(async () => undefined);
-
-        window.desktop = {
-            getOpenApps: async () => ({
-                editors: [{ id: 'cursor', name: 'Cursor' }],
-                terminals: [],
-                fileManagers: [{ id: 'finder', name: 'Finder' }],
-            }),
-            openPath,
-        } as never;
-        await start({ gitWrites: { clean: true, remote: 'level' } });
-
-        expect(quietButtons().map(button => button.textContent)).toEqual([
-            'Open in Cursor',
-            'Show in Finder',
-            'Open in GitHub',
-        ]);
-
-        await press(quietButtons()[0]!);
-        await press(quietButtons()[1]!);
-        await press(quietButtons()[2]!);
-
-        expect(openPath).toHaveBeenNthCalledWith(1, '/Users/dev/Clowdy/workspaces/car-rental/ab12cd34/car-rental', {
-            kind: 'editor',
-            id: 'cursor',
-        });
-        expect(openPath).toHaveBeenNthCalledWith(2, '/Users/dev/Clowdy/workspaces/car-rental/ab12cd34/car-rental', {
-            kind: 'fileManager',
-            id: 'finder',
-        });
-        expect(opened).toEqual(['https://github.com/acme/car-rental']);
-    });
-
-    it('has only what this computer has: no editor and no file manager in a page that is not the desktop app', async () => {
-        await start({ gitWrites: { clean: true, remote: 'level' } });
-
-        expect(quietButtons().map(button => button.textContent)).toEqual(['Open in GitHub']);
-    });
-
-    it('says what the last commit was above the step, and keeps the step after a commit that took every file', async () => {
-        await start();
-        await type('feat: surcharge');
-        await press(commitButton()!);
-        await settle();
-        await settle();
-        await draw();
-
-        expect(box()?.textContent).toContain('No local changes');
-        expect(box()?.textContent).toContain('Committed c0ffee0');
-        expect(stepButton()?.textContent).toBe('Publish your branch');
     });
 });
 

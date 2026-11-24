@@ -162,31 +162,3 @@
 .fetch[data-size][data-variant] {
     margin-top: var(--spacing-xxs);
 }
-
-/* The empty box's next step: its title is the button, which wraps where the sidebar is narrow, and a phrase of why under it. */
-.step {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-xs);
-}
-
-.stepButton[data-size][data-variant] {
-    width: 100%;
-    height: auto;
-    min-height: var(--spacing-30);
-    padding-block: var(--spacing-sm);
-}
-
-.stepText {
-    min-width: 0;
-    line-height: 1.25;
-    text-align: center;
-    white-space: normal;
-}
-
-/* The three quiet ways out, rows of the design system's list, reaching out of the box as the checklist does. */
-.quiet {
-    width: auto;
-    margin-inline: calc(var(--spacing-lg) * -1);
-    padding-inline: var(--spacing-xs);
-}

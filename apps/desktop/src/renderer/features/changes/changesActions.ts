@@ -471,135 +471,17 @@ export function mergeBanner(status: GitStatus | undefined): { words: string; ask
     };
 }
 
-/** What Create PR is, for a place and its branch. */
-export type CreatePullRequestState =
-    /** The branch is on origin and has work: the button opens the compare page. */
-    | { kind: 'ready'; label: 'Create PR' }
-    /** The branch is not on origin: publishing it comes first, and then the page can be opened. */
-    | { kind: 'publish'; label: 'Publish first' }
-    /** The branch is on origin and has commits that are not: they are pushed first. */
-    | { kind: 'push'; label: 'Push first' }
-    /** Create PR is shown and cannot be pressed, with the reason. */
-    | { kind: 'blocked'; label: 'Create PR'; reason: string };
+/** Whether the published branch can be proposed against the base shown in Changes. */
+export function canCreatePullRequest(status: GitStatus | undefined): boolean {
+    if (status?.isRepository !== true || !status.origin || status.head.kind !== 'branch') return false;
 
-export interface CreatePullRequestInput {
-    status: GitStatus | undefined;
-    /** The branch already has a pull request: Create PR is then the chip's link and not a button. */
-    hasPullRequest: boolean;
-    /** The remote has a compare page: it is a GitHub one (`compareLink` builds the address of it). */
-    onGitHub: boolean;
-}
+    const { base, head } = status;
 
-/**
- * Whether Create PR is offered for a place, and in what state. Nothing (no button) for a place that is not a repository, one with no `origin` or a remote that is not on GitHub, a HEAD on no
- * branch, and a branch that has a pull request already. Otherwise: **blocked** on the branch the work is compared with (`Switch to a feature branch`), on one with no commits ahead of it, on
- * one that diverged from its upstream (it is pulled first, which merges) and on one that tracks another remote; **publish first** for a branch that is not on origin; **push first** for one with commits that are not; else **ready**.
- * The compare page is never offered for a branch GitHub does not have.
- */
-export function createPullRequest({
-    status,
-    hasPullRequest,
-    onGitHub,
-}: CreatePullRequestInput): CreatePullRequestState | undefined {
-    if (status?.isRepository !== true || !status.origin || hasPullRequest || !onGitHub) return undefined;
-
-    const branch = branchOf(status);
-
-    if (branch === undefined || status.head.kind === 'unborn') return undefined;
-
-    const { base } = status;
-    const tracking = trackingOf(status);
-
-    // The branch the work is compared with is the branch itself: there is no pull request to make from it.
-    if (githubBaseName(base) === branch)
-        return { kind: 'blocked', label: 'Create PR', reason: 'Switch to a feature branch' };
-
-    if (base.state === 'ready' && base.ahead === 0)
-        return { kind: 'blocked', label: 'Create PR', reason: `No commits ahead of ${base.name}` };
-
-    if (tracking.kind === 'foreign')
-        return { kind: 'blocked', label: 'Create PR', reason: foreignWords(tracking.upstream) };
-
-    // GitHub has the branch only once it is published under its own name: one that tracks another (`origin/main`) is not there.
-    if (tracking.kind !== 'published') return { kind: 'publish', label: 'Publish first' };
-
-    const { upstream: published } = tracking;
-
-    if (isDiverged(published)) return { kind: 'blocked', label: 'Create PR', reason: 'Pull first' };
-
-    return published.ahead > 0 ? { kind: 'push', label: 'Push first' } : { kind: 'ready', label: 'Create PR' };
-}
-
-/** What the empty state of the commit box suggests: the next thing to do with a branch that has nothing uncommitted. */
-export type NextStepKind = 'publish' | 'pull' | 'push' | 'pullRequest';
-
-export interface NextStep {
-    kind: NextStepKind;
-    /** GitHub Desktop's words for the action: `Publish your branch`, `Pull 2 commits from the origin remote`, `Push 1 commit to the origin remote`, `Create a Pull Request from your current branch`. */
-    title: string;
-    /** One phrase on why, under the action. */
-    description: string;
-}
-
-/**
- * The one step the empty state of the commit box suggests, as GitHub Desktop's `No local changes` does and in its order: **publish** a branch that is not on origin (or whose upstream is
- * gone, or is another branch's), **pull** the commits origin has, **push** the commits the branch has, and **create a pull request** from a branch that is published and level and has none. Nothing when none
- * applies: no `origin`, a HEAD on no branch or a branch with no commit, an upstream that is not on origin, and a branch that is level and
- * is the base or has a pull request. `pullRequest` is the state of Create PR for the place (`createPullRequest`): the last step is its `ready` state and no other, so it is offered
- * exactly where that button would open the compare page.
- */
-export function nextStep(
-    status: GitStatus | undefined,
-    pullRequest: CreatePullRequestState | undefined
-): NextStep | undefined {
-    if (status?.isRepository !== true || !status.origin) return undefined;
-
-    const branch = branchOf(status);
-
-    if (branch === undefined || status.head.kind === 'unborn') return undefined;
+    if (githubBaseName(base) === head.name || (base.state === 'ready' && base.ahead === 0)) return false;
 
     const tracking = trackingOf(status);
 
-    // What the branch tracks is not on origin: the app moves nothing of it, and publishing it is refused.
-    if (tracking.kind === 'foreign') return undefined;
-
-    if (tracking.kind !== 'published') {
-        return {
-            kind: 'publish',
-            title: 'Publish your branch',
-            description:
-                tracking.kind === 'renamed'
-                    ? `${branch} tracks ${tracking.upstream.name}, not a branch of its own`
-                    : `${branch} is not on ${ORIGIN} yet`,
-        };
-    }
-
-    const { upstream: published } = tracking;
-
-    if (published.behind > 0)
-        return {
-            kind: 'pull',
-            title: `Pull ${commitsWords(published.behind)} from the ${ORIGIN} remote`,
-            description:
-                published.ahead > 0
-                    ? `${branch} and ${ORIGIN} each have commits the other lacks`
-                    : `${ORIGIN} has ${published.behind === 1 ? 'a commit' : 'commits'} that ${branch} lacks`,
-        };
-
-    if (published.ahead > 0)
-        return {
-            kind: 'push',
-            title: `Push ${commitsWords(published.ahead)} to the ${ORIGIN} remote`,
-            description: `${published.ahead === 1 ? 'A commit is' : 'Commits are'} waiting to be sent to ${ORIGIN}`,
-        };
-
-    return pullRequest?.kind === 'ready'
-        ? {
-              kind: 'pullRequest',
-              title: 'Create a Pull Request from your current branch',
-              description: `${branch} is on ${ORIGIN}, ready to be proposed`,
-          }
-        : undefined;
+    return tracking.kind === 'published' && tracking.upstream.ahead === 0;
 }
 
 /** The most characters of a branch name the commit button shows: a longer one is cut in its middle, since its end is what tells branches of one family apart. */

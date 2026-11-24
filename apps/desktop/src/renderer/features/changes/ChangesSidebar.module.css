@@ -54,11 +54,6 @@
     min-height: var(--spacing-96);
 }
 
-/* The commit box as tall as it is, under the files. */
-.commitBox {
-    flex-shrink: 0;
-}
-
 /*
  * The title of a list, as the design system's list headers are (`ListBoxHeader`: small, medium, muted): a row as tall as the list's rows, its words in line with theirs (the list's
  * inset and a row's own padding).

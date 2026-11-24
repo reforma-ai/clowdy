@@ -255,9 +255,7 @@ export function ChangesSidebar({
                     )}
                 </section>
 
-                <div className={styles.commitBox}>
-                    <CommitBox model={model} place={place} projectId={projectId} git={git} />
-                </div>
+                <CommitBox model={model} />
             </div>
         </Panel>
     );
