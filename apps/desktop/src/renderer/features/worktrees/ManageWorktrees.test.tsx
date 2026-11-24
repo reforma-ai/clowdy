@@ -24,10 +24,10 @@ import type { Transport } from '../../daemon/transport';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const CLOWDY_WORKTREE = '/Users/dev/Clowdy/workspaces/car-rental/ab12cd34/car-rental';
-const FOUND_WORKTREE = '/Users/dev/orca/car-rental/search-filters';
+const FOUND_WORKTREE = '/Users/dev/worktrees/car-rental/search-filters';
 const LOCKED_WORKTREE = '/Users/dev/car-rental-hotfix';
 const MISSING_WORKTREE = '/Users/dev/car-rental-old';
-const DETACHED_WORKTREE = '/Users/dev/orca/car-rental-api/readme';
+const DETACHED_WORKTREE = '/Users/dev/worktrees/car-rental-api/readme';
 
 let store: RootStore;
 
@@ -298,7 +298,7 @@ describe('Manage worktrees', () => {
 
         const found = row(FOUND_WORKTREE);
 
-        expect(found.textContent).not.toContain('/Users/dev/orca');
+        expect(found.textContent).not.toContain('/Users/dev/worktrees');
 
         // The name takes the focus, which a keyboard reaches, and the tooltip opens on it.
         const name = [...found.querySelectorAll<HTMLElement>('[tabindex="0"]')].find(
@@ -310,7 +310,7 @@ describe('Manage worktrees', () => {
             name.focus();
         });
 
-        expect((await openTooltip()).textContent).toBe('~/orca/car-rental/search-filters');
+        expect((await openTooltip()).textContent).toBe('~/worktrees/car-rental/search-filters');
     });
 
     it('gives each row one badge at most, the one that matters most: Locked over Merged, Missing on disk over the rest', async () => {

@@ -22,14 +22,14 @@ import type { CommandInput, Transport } from '../../daemon/transport';
 
 const CAR_RENTAL = '/Users/dev/car-rental';
 const CLOWDY_WORKTREE = '/Users/dev/Clowdy/workspaces/car-rental/ab12cd34/car-rental';
-const FOUND_WORKTREE = '/Users/dev/orca/car-rental/search-filters';
+const FOUND_WORKTREE = '/Users/dev/worktrees/car-rental/search-filters';
 const MISSING_WORKTREE = '/Users/dev/car-rental-old';
-const DETACHED_MERGED = '/Users/dev/orca/car-rental-api/readme';
-const CLEAN_MERGED = '/Users/dev/orca/car-rental/done';
-const CLEAN_UNMERGED = '/Users/dev/orca/car-rental/wip';
-const ONE_CHANGE = '/Users/dev/orca/car-rental/one';
-const SUBMODULES_ONLY = '/Users/dev/orca/car-rental/vendor';
-const STRANDED = '/Users/dev/orca/car-rental/scratch';
+const DETACHED_MERGED = '/Users/dev/worktrees/car-rental-api/readme';
+const CLEAN_MERGED = '/Users/dev/worktrees/car-rental/done';
+const CLEAN_UNMERGED = '/Users/dev/worktrees/car-rental/wip';
+const ONE_CHANGE = '/Users/dev/worktrees/car-rental/one';
+const SUBMODULES_ONLY = '/Users/dev/worktrees/car-rental/vendor';
+const STRANDED = '/Users/dev/worktrees/car-rental/scratch';
 
 let store: RootStore;
 let command: ReturnType<typeof vi.fn<(input: CommandInput) => Promise<CommandResult>>>;
@@ -159,7 +159,7 @@ describe('Remove in Manage worktrees', () => {
 
             expect(window.textContent).toContain('Remove the worktree?');
             expect(window.textContent).toContain('feature/done');
-            expect(window.textContent).toContain('orca/car-rental/done');
+            expect(window.textContent).toContain('worktrees/car-rental/done');
             expect(checkbox()!.checked).toBe(true);
             expect(window.textContent).toContain('Delete branch feature/done');
             expect(window.textContent).not.toContain('Not merged');
@@ -305,12 +305,12 @@ describe('Remove in Manage worktrees', () => {
 
             // The fixture's base is `origin/main`: a worktree on the local `main` is merged into it, and deleting `main` keeps nothing of it anywhere else.
             data.worktrees![CAR_RENTAL]!.push({
-                path: '/Users/dev/orca/car-rental/trunk',
+                path: '/Users/dev/worktrees/car-rental/trunk',
                 branch: 'main',
                 head: 'fff7777',
             });
             await open({ data });
-            await askToRemove('/Users/dev/orca/car-rental/trunk');
+            await askToRemove('/Users/dev/worktrees/car-rental/trunk');
 
             expect(confirmation().textContent).toContain('Delete branch main');
             expect(confirmation().textContent).toContain('It is the base branch itself');
@@ -324,7 +324,7 @@ describe('Remove in Manage worktrees', () => {
                     type: 'workspace.remove',
                     projectId: FIXTURE_PROJECT_ID,
                     folderId: 'fld_car_rental',
-                    path: '/Users/dev/orca/car-rental/trunk',
+                    path: '/Users/dev/worktrees/car-rental/trunk',
                 },
             ]);
         });
@@ -333,12 +333,12 @@ describe('Remove in Manage worktrees', () => {
             const data = dataWithKinds();
 
             data.worktrees![CAR_RENTAL]!.push({
-                path: '/Users/dev/orca/car-rental/release',
+                path: '/Users/dev/worktrees/car-rental/release',
                 branch: 'release/1.0',
                 head: 'fff6666',
             });
             await open({ data });
-            await askToRemove('/Users/dev/orca/car-rental/release');
+            await askToRemove('/Users/dev/worktrees/car-rental/release');
 
             expect(confirmation().textContent).toContain('Delete branch release/1.0');
             expect(checkbox()!.checked).toBe(true);
