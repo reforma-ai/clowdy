@@ -123,7 +123,8 @@ export interface SyncView {
     action?: 'sync' | 'update' | 'fetch';
     reason?: string;
     tone?: 'warning';
-    title: string;
+    /** Extra detail for a tooltip, when the button's words alone do not explain the action or its counts. */
+    title?: string;
 }
 
 /** Show progress, then prefer the branch's origin over its base. Fetch is the fallback. */
@@ -137,7 +138,7 @@ export function syncButton(
 
     if (running !== undefined) {
         const label = phase ? SYNC_WORDS[phase] : RUNNING_WORDS[running];
-        return { kind: 'running', label, reason: 'An action is running', title: label };
+        return { kind: 'running', label, reason: 'An action is running' };
     }
 
     if (!status.origin)
@@ -146,36 +147,34 @@ export function syncButton(
             label: 'No origin',
             line: 'Nothing to sync with',
             reason: 'No origin',
-            title: `The repository has no remote called ${ORIGIN}, so there is nothing to sync with`,
+            title: 'Add an origin remote to sync this repository',
         };
 
     const { head, merging, rebasing } = status;
     const blocked =
         head.kind === 'detached'
-            ? 'HEAD is detached'
+            ? { line: 'HEAD is detached', title: 'Check out a branch before syncing' }
             : head.kind === 'unborn'
-              ? 'No commits yet'
+              ? { line: 'No commits yet', title: 'Make your first commit before syncing' }
               : rebasing
-                ? 'Continue or abort the rebase first'
-                : merging && 'Complete or abort the merge first';
+                ? { line: 'Rebase in progress', title: 'Continue or abort the rebase first' }
+                : merging && { line: 'Merge in progress', title: 'Complete or abort the merge first' };
 
-    if (blocked) return { kind: 'blocked', label: 'Sync', line: blocked, reason: blocked, title: blocked };
+    if (blocked) return { kind: 'blocked', label: 'Sync', ...blocked, reason: blocked.line };
 
     const tracking = trackingOf(status);
     const fetched = lastFetchedWords(status.lastFetchedAt, now);
     const update = updateFromBase(status);
     const updateView: SyncView | undefined = update && {
+        ...update,
         kind: 'update',
-        label: update.label,
         line: fetched,
-        behind: update.behind,
         action: 'update',
-        title: `${update.label} · ${commitsWords(update.behind)} to merge from the base`,
     };
 
     if (tracking.kind === 'foreign') {
         const line = foreignWords(tracking.upstream);
-        return updateView ?? { kind: 'fetch', label: 'Fetch origin', line, action: 'fetch', title: line };
+        return updateView ?? { kind: 'fetch', label: 'Fetch origin', line, action: 'fetch' };
     }
 
     const publish = `Publish as ${ORIGIN}/${branchOf(status)}`;
@@ -203,15 +202,13 @@ export function syncButton(
             title: publish,
         };
 
-    const { ahead, behind, name } = tracking.upstream;
+    const { ahead, behind } = tracking.upstream;
     if (ahead > 0 || behind > 0) {
         const kind = ahead > 0 ? (behind > 0 ? 'sync' : 'push') : 'pull';
         const label = kind === 'sync' ? 'Sync' : kind === 'push' ? 'Push origin' : 'Pull origin';
-        const details = [
-            behind > 0 && `${commitsWords(behind)} to pull`,
-            ahead > 0 && `${commitsWords(ahead)} to push`,
-            fetched,
-        ].filter(Boolean);
+        const details = [behind > 0 && `${commitsWords(behind)} to pull`, ahead > 0 && `${commitsWords(ahead)} to push`]
+            .filter(Boolean)
+            .join(' and ');
         return {
             kind,
             label,
@@ -219,7 +216,7 @@ export function syncButton(
             action: 'sync',
             ...(ahead > 0 && { ahead }),
             ...(behind > 0 && { behind }),
-            title: [`${label} · ${name}`, ...details].join(' · '),
+            title: details,
         };
     }
 
@@ -229,7 +226,6 @@ export function syncButton(
             label: 'Fetch origin',
             line: fetched,
             action: 'fetch',
-            title: `Fetch origin · ${fetched}`,
         }
     );
 }
@@ -288,7 +284,9 @@ export function githubBaseName(base: GitBase | undefined): string | undefined {
  * Update from the base, when the branch is behind the branch it is compared with and is not that branch. Nothing while a merge is in progress (the banner owns that), on a detached HEAD,
  * and when the base is not behind.
  */
-export function updateFromBase(status: GitStatus | undefined): { label: string; behind: number } | undefined {
+export function updateFromBase(
+    status: GitStatus | undefined
+): { label: string; behind: number; title: string } | undefined {
     if (status?.isRepository !== true || status.merging || status.rebasing || status.head.kind !== 'branch')
         return undefined;
 
@@ -304,7 +302,11 @@ export function updateFromBase(status: GitStatus | undefined): { label: string; 
     )
         return undefined;
 
-    return { label: `Update from ${name}`, behind: base.behind };
+    return {
+        label: `Update from ${name}`,
+        behind: base.behind,
+        title: `${commitsWords(base.behind)} to merge from ${name}`,
+    };
 }
 
 /** Whether the published branch can be proposed against the base shown in Changes. */
