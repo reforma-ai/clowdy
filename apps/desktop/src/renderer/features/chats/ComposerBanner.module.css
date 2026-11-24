@@ -205,13 +205,13 @@
 }
 
 @media (hover: hover) {
-    .status[data-pressable] .action {
+    .status[data-has-action] .action {
         opacity: 0;
         transition: opacity var(--transition-duration-fast);
     }
 
-    .status[data-pressable]:hover .action,
-    .status[data-pressable]:focus-within .action {
+    .status[data-has-action]:hover .action,
+    .status[data-has-action]:focus-within .action {
         opacity: 1;
     }
 }

@@ -54,7 +54,11 @@ afterEach(() => {
 const ui = () => store.ui.forProject(FIXTURE_PROJECT_ID);
 const lines = () =>
     [...container.querySelectorAll('[aria-label="Work in progress"] > div')].flatMap(line =>
-        line.className.includes('agentRows') ? [...line.children] : [line]
+        line.className.includes('agentRows')
+            ? [...line.children]
+            : line.textContent?.match(/^(Commands|Background work)\d+ running$/)
+              ? []
+              : [line]
     );
 /** The line over the agents' rows, when there is one. */
 const header = () => lines().find(line => line.querySelector('button[aria-expanded]'));
@@ -91,6 +95,10 @@ const render = (chatId: string) =>
 async function draw(chatId = 'c-1') {
     await render(chatId);
     await render(chatId);
+    const commands = [...container.querySelectorAll<HTMLButtonElement>('button[aria-expanded]')].find(button =>
+        /^(Commands|Background work)\d+ running$/.test(button.textContent ?? '')
+    );
+    if (commands?.getAttribute('aria-expanded') === 'false') await act(async () => commands.click());
 }
 
 describe('RunningAgents', () => {
@@ -243,7 +251,8 @@ describe('RunningAgents, the header', () => {
         expect(header()).toBeUndefined();
         expect(lines().map(line => line.textContent)).toEqual([
             'Command · bun run testStop',
-            'Background task runningStop',
+            'Command · bun run typecheck',
+            'Background task runningStop run',
         ]);
     });
 });
@@ -323,20 +332,21 @@ describe('RunningAgents, folding the rows', () => {
         ).toEqual(['Fix the price rounding', 'Load test the checkout']);
     });
 
-    it('folds the background rows under the line too, and does not fold them when there is no line to unfold them from', async () => {
+    it('keeps the commands section independent of the agents fold', async () => {
         put({
             ...runs().get('r-orch-1')!,
             background: [{ id: 'bg-1', kind: 'command', title: 'command 1', canStopAlone: true }],
         });
         ui().toggleAgentsFolded();
         await draw();
-        expect(lines()).toEqual([header()]);
+        expect(rows().map(row => row.textContent)).toEqual(['Command · command 1Stop']);
 
         await draw('c-5');
         expect(header()).toBeUndefined();
         expect(rows().map(row => row.textContent)).toEqual([
             'Command · bun run testStop',
-            'Background task runningStop',
+            'Command · bun run typecheck',
+            'Background task runningStop run',
         ]);
     });
 });
@@ -346,7 +356,11 @@ describe('RunningAgents, a sub-agent of a session that waits', () => {
         waitWithSubagent();
         await draw('c-5');
 
-        expect(rows().map(row => row.textContent)).toEqual(['Explore agentStop', 'Background task runningStop']);
+        expect(rows().map(row => row.textContent)).toEqual([
+            'Explore agentStop',
+            'Command · bun run test',
+            'Background task runningStop run',
+        ]);
         // One agent: its own Stop is enough, so there is no Stop all.
         expect(toggle().textContent).toBe('Agents1 running');
     });
@@ -379,7 +393,10 @@ describe('RunningAgents, a sub-agent of a session that waits', () => {
         put({ ...runs().get('r-na-05')!, status: 'succeeded' });
         await draw('c-5');
 
-        expect(rows().map(row => row.textContent)).toEqual(['2 background tasks runningStop']);
+        expect(rows().map(row => row.textContent)).toEqual([
+            'Command · bun run test',
+            '2 background tasks runningStop run',
+        ]);
         expect(header()).toBeUndefined();
     });
 
@@ -422,7 +439,11 @@ describe('RunningAgents, the background row', () => {
         unstoppable();
         await draw('c-5');
 
-        expect(rows().map(row => row.textContent)).toEqual(['2 background tasks runningStop']);
+        expect(rows().map(row => row.textContent)).toEqual([
+            'Command · bun run test',
+            'Command · bun run typecheck',
+            '2 background tasks runningStop run',
+        ]);
     });
 
     it('counts the rest after the commands that have a row of their own', async () => {
@@ -430,7 +451,8 @@ describe('RunningAgents, the background row', () => {
 
         expect(rows().map(row => row.textContent)).toEqual([
             'Command · bun run testStop',
-            'Background task runningStop',
+            'Command · bun run typecheck',
+            'Background task runningStop run',
         ]);
     });
 
@@ -438,7 +460,10 @@ describe('RunningAgents, the background row', () => {
         put({ ...runs().get('r-orch-5')!, background: background('bun run test') });
         await draw('c-5');
 
-        expect(rows().map(row => row.textContent)).toEqual(['Background task runningStop']);
+        expect(rows().map(row => row.textContent)).toEqual([
+            'Command · bun run test',
+            'Background task runningStop run',
+        ]);
     });
 
     it('stops the orchestrator, which ends the background work with it', async () => {
@@ -447,7 +472,7 @@ describe('RunningAgents, the background row', () => {
 
         const command = vi.spyOn(store, 'command');
 
-        await act(async () => rows()[0].querySelector('button')!.click());
+        await act(async () => rows().at(-1)!.querySelector('button')!.click());
         expect(command).toHaveBeenCalledWith({ type: 'run.cancel', runId: 'r-orch-5' });
 
         // The daemon clears the list with the run, and the row goes with it.
@@ -463,7 +488,8 @@ describe('RunningAgents, the background row', () => {
         expect(rows().map(row => row.textContent)).toEqual([
             expect.stringContaining('General agent'),
             expect.stringContaining('Explore agent'),
-            'Background task runningStop',
+            'Command · bun run test',
+            'Background task runningStop run',
         ]);
     });
 
@@ -472,7 +498,11 @@ describe('RunningAgents, the background row', () => {
         put({ ...runs().get('r-orch-5')!, status: 'running' });
         await draw('c-5');
 
-        expect(rows().map(row => row.textContent)).toEqual(['2 background tasks runningStop']);
+        expect(rows().map(row => row.textContent)).toEqual([
+            'Command · bun run test',
+            'Command · bun run typecheck',
+            '2 background tasks runningStop run',
+        ]);
     });
 
     it('is not drawn with nothing open, whether the list is empty or absent', async () => {
@@ -687,12 +717,51 @@ describe('RunningAgents, a command that can be stopped alone', () => {
         ...over,
     });
 
+    it('starts with a collapsed commands section and opens its rows', async () => {
+        put({ ...runs().get('r-orch-5')!, background: [command(1), command(2)] });
+        await render('c-5');
+        const disclosure = [...container.querySelectorAll<HTMLButtonElement>('button[aria-expanded]')].find(
+            button => button.textContent === 'Commands2 running'
+        )!;
+        expect(disclosure.getAttribute('aria-expanded')).toBe('false');
+        expect(container.textContent).not.toContain('Command · command 1');
+        await act(async () => disclosure.click());
+        expect(disclosure.getAttribute('aria-expanded')).toBe('true');
+        expect(container.textContent).toContain('Command · command 1');
+        expect(container.textContent).toContain('Command · command 2');
+    });
+
+    it('lists stoppable and non-stoppable commands with clear stop actions', async () => {
+        put({
+            ...runs().get('r-orch-5')!,
+            background: [command(1), command(2, { canStopAlone: false })],
+        });
+        await render('c-5');
+        const disclosure = [...container.querySelectorAll<HTMLButtonElement>('button[aria-expanded]')].find(
+            button => button.textContent === 'Commands2 running'
+        )!;
+        expect(disclosure.getAttribute('aria-expanded')).toBe('false');
+        expect(container.textContent).not.toContain('Background task running');
+        await act(async () => disclosure.click());
+        expect(rows().map(row => row.textContent)).toEqual([
+            'Command · command 1Stop',
+            'Command · command 2',
+            'Background task runningStop run',
+        ]);
+        expect(rows()[0].querySelector('button')?.getAttribute('aria-label')).toBe('Stop command: command 1');
+        expect(rows()[1].querySelector('button')).toBeNull();
+        const commandSpy = vi.spyOn(store, 'command');
+        await act(async () => rows().at(-1)!.querySelector('button')!.click());
+        expect(commandSpy).toHaveBeenCalledWith({ type: 'run.cancel', runId: 'r-orch-5' });
+    });
+
     it('has a row of its own with the command as its title and a Stop that stops that command only', async () => {
         await draw('c-5');
 
         expect(rows().map(row => row.textContent)).toEqual([
             'Command · bun run testStop',
-            'Background task runningStop',
+            'Command · bun run typecheck',
+            'Background task runningStop run',
         ]);
         expect(rows()[0].querySelector('svg')).not.toBeNull();
 
@@ -711,7 +780,10 @@ describe('RunningAgents, a command that can be stopped alone', () => {
             ).toEqual(['bg-2'])
         );
         await draw('c-5');
-        expect(rows().map(row => row.textContent)).toEqual(['Background task runningStop']);
+        expect(rows().map(row => row.textContent)).toEqual([
+            'Command · bun run typecheck',
+            'Background task runningStop run',
+        ]);
         expect(runs().get('r-orch-5')?.status).toBe('waiting_background');
     });
 
@@ -736,11 +808,11 @@ describe('RunningAgents, a command that can be stopped alone', () => {
                         ?.replace(/^Open /, '')
                         .split('.')[0] ?? row.textContent?.split(' · ')[0]
             )
-        ).toEqual(['General agent', 'Explore agent', 'Command']);
+        ).toEqual(['General agent', 'Explore agent', 'Stop command: command 1']);
         expect(buttons(header())).toEqual([toggle().textContent]);
     });
 
-    it('is capped at five rows, and the rest are counted with what cannot be stopped alone', async () => {
+    it('keeps every stoppable command available and counts only the rest', async () => {
         put({
             ...runs().get('r-orch-5')!,
             background: [
@@ -751,8 +823,9 @@ describe('RunningAgents, a command that can be stopped alone', () => {
         await draw('c-5');
 
         expect(rows().map(row => row.textContent)).toEqual([
-            ...Array.from({ length: 5 }, (_, index) => `Command · command ${index + 1}Stop`),
-            '3 background tasks runningStop',
+            ...Array.from({ length: 7 }, (_, index) => `Command · command ${index + 1}Stop`),
+            'Command · plain',
+            'Background task runningStop run',
         ]);
     });
 

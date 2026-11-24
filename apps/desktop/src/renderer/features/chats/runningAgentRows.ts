@@ -6,7 +6,7 @@ import { isRunActive } from './chatRun';
 
 import type { BackgroundItem, Chat, ChatId, Run, RunId } from '@clowdy/protocol';
 
-/** The rows the strip above the message box lists at most; the rest are counted on one line. */
+/** The maximum number of rows visible before scrolling. */
 export const MAX_AGENT_ROWS = 5;
 
 /**
@@ -52,18 +52,19 @@ export function unlistedBackground(
 
 /**
  * Splits the background items no agent row shows into the ones that get a row of their own and the ones the single background row counts. An item gets its
- * own row when its agent lets the person stop it alone (`BackgroundItem.canStopAlone`: a command whose terminal can be cancelled), up to `MAX_AGENT_ROWS`
- * of them; a stoppable item past that, and every item that cannot be stopped alone, is counted, and the Stop of the counting row ends the run.
+ * own row for each command and each task that the agent lets the person stop alone. Items that cannot be stopped alone are also counted;
+ * the Stop of the counting row ends the run, preserving a way to stop that work.
  */
 export function backgroundRows(
     items: readonly BackgroundItem[],
     agents: readonly Pick<Run, 'parentToolCallId'>[]
 ): { own: BackgroundItem[]; counted: BackgroundItem[] } {
     const unlisted = unlistedBackground(items, agents);
-    const stoppable = unlisted.filter(item => item.kind !== 'subagent' && item.canStopAlone === true);
-    const own = stoppable.slice(0, MAX_AGENT_ROWS);
+    const own = unlisted.filter(
+        item => item.kind === 'command' || (item.kind === 'task' && item.canStopAlone === true)
+    );
 
-    return { own, counted: unlisted.filter(item => !own.includes(item)) };
+    return { own, counted: unlisted.filter(item => item.canStopAlone !== true || item.kind === 'subagent') };
 }
 
 /** What a row of its own says of a background item: what kind it is and what it runs, `Command · bun run test`. */

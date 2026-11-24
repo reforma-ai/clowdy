@@ -53,6 +53,8 @@ export interface ComposerBannerStatusProps {
     progress?: ReactNode;
     /** The words of the row's button, such as `Stop`. No button without it. */
     action?: string;
+    /** Accessible name when the visible action needs context. */
+    actionLabel?: string;
     onAction?: () => void;
     /** A press anywhere on the row but the button. The button then shows on hover or focus. */
     onPress?: () => void;
@@ -67,6 +69,7 @@ export function ComposerBannerStatus({
     detail,
     progress,
     action,
+    actionLabel,
     onAction,
     onPress,
     pressLabel,
@@ -99,7 +102,11 @@ export function ComposerBannerStatus({
     );
 
     return (
-        <div className={styles.status} data-pressable={onPress ? true : undefined}>
+        <div
+            className={styles.status}
+            data-pressable={onPress ? true : undefined}
+            data-has-action={action ? true : undefined}
+        >
             {onPress ? (
                 <button type="button" className={styles.press} aria-label={pressLabel} onClick={onPress}>
                     {message}
@@ -113,6 +120,7 @@ export function ComposerBannerStatus({
                     variant="ghost"
                     color="secondary"
                     className={styles.action}
+                    aria-label={actionLabel}
                     isDisabled={!onAction}
                     onPress={onAction}
                 >
