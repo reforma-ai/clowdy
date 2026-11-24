@@ -415,7 +415,7 @@ describe('the commit button', () => {
     it('counts the selected files in the commit label', () => {
         expect(commitLabel(3)).toBe('Commit 3 files');
         expect(commitLabel(1)).toBe('Commit 1 file');
-        expect(commitLabel(0)).toBe('Commit');
+        expect(commitLabel(0)).toBe('Commit 0 files');
     });
 
     it("says why it cannot be pressed in GitHub Desktop's tooltips: the summary first, then the files", () => {

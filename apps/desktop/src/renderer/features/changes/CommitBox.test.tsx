@@ -200,7 +200,7 @@ describe('the commit box', () => {
                 .map(tick => tick.getAttribute('aria-label'))
         ).toEqual(['src/limits.ts']);
         expect(tickOf('src/limits.ts').checked).toBe(false);
-        expect(container.textContent).toContain('Committed c0ffee0');
+        expect(container.textContent).not.toContain('Committed c0ffee0');
     });
 
     it('writes a message for the ticked files into an empty box, and replaces it only while it is what Generate wrote', async () => {
@@ -437,7 +437,7 @@ describe('the commit box', () => {
         expect(box()?.textContent).not.toContain('Showing the first');
     });
 
-    it('shows the commit result after committing every file', async () => {
+    it('keeps an editable message and a disabled commit button after committing every file', async () => {
         await start();
         await press(buttonOf('Generate')!);
         await settle();
@@ -445,15 +445,57 @@ describe('the commit box', () => {
         await settle();
         await draw();
 
-        expect(box()?.textContent).toContain('Committed c0ffee0');
-        expect(message()).toBeNull();
-        expect(checkboxes()).toHaveLength(0);
+        expect(box()?.textContent).toContain('0 changed files');
+        expect(box()?.textContent).not.toContain('Committed c0ffee0');
+        expect(message().value).toBe('');
+        expect(message().readOnly).toBe(false);
+        expect(checkboxes()).toEqual([everyTick()]);
+        expect(everyTick().disabled).toBe(true);
+        expect(commitButton()?.textContent).toBe('Commit 0 files');
+        expect(commitButton()?.disabled).toBe(true);
     });
 
-    it('hides the commit box in a clean checkout', async () => {
+    it('accepts a draft in a clean checkout and keeps the button and shortcut disabled', async () => {
         await start({ key: { projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental' } });
+        const commit = vi.spyOn(transport, 'commitGit');
 
-        expect(box()).toBeNull();
+        expect(box()?.textContent).toContain('0 changed files');
+        await type('Draft for the next change');
+        expect(message().value).toBe('Draft for the next change');
+        expect(commitButton()?.textContent).toBe('Commit 0 files');
+        expect(commitButton()?.disabled).toBe(true);
+        expect(buttonOf('Generate')?.disabled).toBe(true);
+
+        act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', shiftKey: true })));
+        expect(commitButton()?.textContent).toBe('Commit 0 files');
+        act(() => window.dispatchEvent(new KeyboardEvent('keyup', { key: 'Shift' })));
+        await act(async () => {
+            message().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true }));
+        });
+        expect(commit).not.toHaveBeenCalled();
+    });
+
+    it('allows a resolved merge to finish without changed files', async () => {
+        const readStatus = FixtureTransport.prototype.getGitStatus;
+        const status = vi.spyOn(FixtureTransport.prototype, 'getGitStatus').mockImplementation(async function (
+            this: FixtureTransport,
+            ...args: Parameters<typeof readStatus>
+        ) {
+            const result = await readStatus.apply(this, args);
+
+            return result.isRepository ? { ...result, merging: { conflicts: 0, subject: 'Merge main' } } : result;
+        });
+
+        try {
+            await start({ key: { projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental' } });
+
+            expect(box()?.textContent).toContain('0 changed files');
+            expect(message().value).toBe('Merge main');
+            expect(commitButton()?.textContent).toBe('Commit merge');
+            expect(commitButton()?.disabled).toBe(false);
+        } finally {
+            status.mockRestore();
+        }
     });
 
     it('draws nothing for a folder that is no repository', async () => {
@@ -516,8 +558,8 @@ describe('Commit & Push', () => {
         );
         expect(push).toHaveBeenCalledTimes(1);
         expect(push).toHaveBeenCalledWith(FIXTURE_PROJECT_ID, PLACE);
-        // Nothing was left to commit, so the box says what was done; the branch is on origin now.
-        expect(box()?.textContent).toContain('Committed c0ffee0 and published');
+        expect(message().value).toBe('');
+        expect(commitButton()?.textContent).toBe('Commit 0 files');
         expect(alert()).toBeNull();
         expect(await transport.getGitStatus(FIXTURE_PROJECT_ID, PLACE)).toMatchObject({
             upstream: { name: 'origin/clowdy/ab12cd34', ahead: 0, behind: 0 },
@@ -536,7 +578,8 @@ describe('Commit & Push', () => {
         await settle();
 
         expect(push).toHaveBeenCalledTimes(1);
-        expect(box()?.textContent).toContain('Committed c0ffee0 and pushed');
+        expect(message().value).toBe('');
+        expect(alert()).toBeNull();
     });
 
     it("says the commit stands when the push fails, with git's own line, clears the box and leaves the branch to be pushed again", async () => {
@@ -551,7 +594,8 @@ describe('Commit & Push', () => {
             'Committed c0ffee0, push failed: ! [rejected] clowdy/ab12cd34 -> clowdy/ab12cd34 (fetch first)'
         );
         // The commit was made and the box is clear, and the branch has the commit to push.
-        expect(message()).toBeNull();
+        expect(message().value).toBe('');
+        expect(commitButton()?.disabled).toBe(true);
         expect(await transport.getGitStatus(FIXTURE_PROJECT_ID, PLACE)).toMatchObject({
             upstream: { ahead: 2, behind: 0 },
         });
@@ -594,7 +638,7 @@ describe('Commit & Push', () => {
         await settle();
 
         expect(push).not.toHaveBeenCalled();
-        expect(box()?.textContent).toContain('Committed c0ffee0');
+        expect(commitButton()?.textContent).toBe('Commit 0 files');
     });
 });
 
@@ -610,7 +654,7 @@ describe('the commit button and the line under the box', () => {
         await press(tickOf('notes.md'));
         expect(commitButton()?.textContent).toBe('Commit 1 file');
         await press(tickOf('src/booking/price.ts'));
-        expect(commitButton()?.textContent).toBe('Commit');
+        expect(commitButton()?.textContent).toBe('Commit 0 files');
     });
 
     it('switches the contrast button to Commit & Push while Shift is held', async () => {
@@ -727,7 +771,7 @@ describe('a push that origin turned down for newer commits, after a commit', () 
 
         expect(fetch).toHaveBeenCalledTimes(1);
         expect(alert()).toBeNull();
-        expect(box()?.textContent).toContain('Committed c0ffee0');
+        expect(commitButton()?.textContent).toBe('Commit 0 files');
     });
 
     it('has no Fetch origin button beside a push that failed for another cause', async () => {
@@ -829,7 +873,6 @@ describe('the draft of a commit', () => {
 
         expect(commitGit).toHaveBeenCalledWith(KEY.projectId, PLACE, ['a.ts', 'c.ts'], 'feat: add');
         expect(draft.message).toBe('');
-        expect(draft.committed?.shortSha).toBe('aaaaaaa');
         expect(refresh).toHaveBeenCalledTimes(1);
 
         commitGit.mockRejectedValueOnce(new TransportError('lint failed', 409));
@@ -838,18 +881,16 @@ describe('the draft of a commit', () => {
 
         expect(draft.message).toBe('feat: again');
         expect(draft.failure).toEqual({ what: 'commit', message: 'lint failed' });
-        expect(draft.committed).toBeUndefined();
         expect(refresh).toHaveBeenCalledTimes(2);
     });
 
-    it('sends the branch after the commit (a push when it is on origin, its publishing when it is not), and says so', async () => {
+    it('pushes the branch after the commit or publishes it when it has no upstream', async () => {
         const pushed = draftOver(['a.ts']);
 
         pushed.draft.setMessage('feat: add');
         await pushed.draft.commit(true);
 
         expect(pushed.remote.run).toHaveBeenCalledWith('push', { report: false });
-        expect(pushed.draft.sent).toBe('push');
         expect(pushed.draft.failure).toBeUndefined();
         expect(pushed.draft.message).toBe('');
         expect(pushed.refresh).toHaveBeenCalledTimes(1);
@@ -859,12 +900,7 @@ describe('the draft of a commit', () => {
         published.draft.setMessage('feat: add');
         await published.draft.commit(true);
         expect(published.remote.run).toHaveBeenCalledWith('publish', { report: false });
-        expect(published.draft.sent).toBe('publish');
-
-        // The line is about the last request: it goes with the next thing the person does.
-        published.draft.setMessage('next');
-        expect(published.draft.sent).toBeUndefined();
-        expect(published.draft.committed).toBeUndefined();
+        expect(published.draft.failure).toBeUndefined();
     });
 
     it("says the commit was made and the push was not, with git's own line and its hint, keeps the commit, and refreshes the place", async () => {
@@ -883,8 +919,6 @@ describe('the draft of a commit', () => {
             message: 'Committed aaaaaaa, push failed: ! [rejected] main -> main (fetch first)',
             hint: 'Pull first',
         });
-        expect(draft.committed?.shortSha).toBe('aaaaaaa');
-        expect(draft.sent).toBeUndefined();
         expect(draft.message).toBe('');
         expect(draft.busy).toBeUndefined();
         expect(refresh).toHaveBeenCalledTimes(1);

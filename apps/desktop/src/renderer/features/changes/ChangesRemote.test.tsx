@@ -508,7 +508,7 @@ describe('Create PR in the sidebar', () => {
         await start({ tweak: noPullRequest, gitWrites: { clean: true } });
 
         expect(buttonOf('Create PR')).toBeUndefined();
-        expect(sidebar().querySelector('[aria-label="Commit"]')).toBeNull();
+        expect(buttonOf('Commit 0 files')?.disabled).toBe(true);
         expect(
             [...sidebar().querySelectorAll('button')].filter(button => /publish/i.test(button.textContent ?? ''))
         ).toEqual([syncButton()]);

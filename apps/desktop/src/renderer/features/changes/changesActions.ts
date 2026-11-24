@@ -459,7 +459,7 @@ export function commitTarget(status: GitStatus | undefined): CommitTarget | unde
 }
 
 export function commitLabel(files: number): string {
-    return files > 0 ? `Commit ${files} ${files === 1 ? 'file' : 'files'}` : 'Commit';
+    return `Commit ${files} ${files === 1 ? 'file' : 'files'}`;
 }
 
 /** Why a commit is not taken, as GitHub Desktop's tooltips say it: no summary first, then no file ticked. Nothing when it can be made. */

@@ -625,7 +625,9 @@ describe('the scope', () => {
             ['notes.md', 'src/booking/price.ts', 'src/limits.ts'],
             'feat: from the branch scope'
         );
-        expect(commitBox()?.textContent).toContain('Committed c0ffee0');
+        expect(commitBox()?.textContent).toContain('0 changed files');
+        expect(commitBox()?.textContent).toContain('Commit 0 files');
+        expect(commitBox()?.textContent).not.toContain('Committed c0ffee0');
     });
 
     it("reads again only when the facts start a round of reads: a refresh of the store and the window's focus reach it, and nothing else does", async () => {
