@@ -43,7 +43,8 @@ export function cleanTempDirs(): void {
     }
 }
 
-const GIT_IDENTITY = ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgsign=false'];
+/** The identity every `git` of the tests runs with: a machine with no global one (a CI runner) cannot make a commit or a merge without it. */
+export const GIT_IDENTITY = ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgsign=false'];
 
 export function git(cwd: string, ...args: string[]): string {
     const result = Bun.spawnSync(['git', ...GIT_IDENTITY, ...args], { cwd, stdout: 'pipe', stderr: 'pipe' });

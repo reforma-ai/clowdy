@@ -16,7 +16,7 @@ import { parseDiff, placeChanges, placeFile } from '../src/git/changes';
 import { snapshotTree } from '../src/git/snapshot';
 import { folderGit } from '../src/git/state';
 import { mergeBaseOf, parseStatus, placeStatus, readBase, resolveRef } from '../src/git/status';
-import { cleanTempDirs, git, makeRepo, startHarness, tempDir } from './helpers';
+import { cleanTempDirs, GIT_IDENTITY, git, makeRepo, startHarness, tempDir } from './helpers';
 
 import type { GitChanges, GitFileSides, GitScope, GitStatus } from '@clowdy/protocol';
 import type { Place } from '../src/domain/places';
@@ -452,7 +452,8 @@ describe('placeStatus', () => {
         put(path, { 'lib.ts': lines('a', 'main', 'c') });
         commit(path, 'Change lib on main');
 
-        const merged = Bun.spawnSync(['git', 'merge', 'side', '--no-edit'], {
+        // The merge stops on the conflict, and only with an identity: without one git dies before it gets there.
+        const merged = Bun.spawnSync(['git', ...GIT_IDENTITY, 'merge', 'side', '--no-edit'], {
             cwd: path,
             stdout: 'pipe',
             stderr: 'pipe',
