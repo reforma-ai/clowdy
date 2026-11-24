@@ -1542,9 +1542,11 @@ describe('threads', () => {
         // The message is an element (the dialog may add a checkbox for the chat's worktree) that carries the words the confirmation says.
         expect(openConfirmModal).toHaveBeenCalledWith(
             expect.objectContaining({
+                title: 'Delete “Ship the checkout”?',
+                confirmLabel: 'Delete chat',
                 message: expect.objectContaining({
                     props: expect.objectContaining({
-                        text: '"Ship the checkout", its 5 threads and the runs of their agents are deleted for good. The tasks they made stay.',
+                        text: 'This will also delete 5 threads. You can’t undo this. Tasks stay in the project.',
                     }),
                 }),
             })

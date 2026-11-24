@@ -158,7 +158,9 @@ export function ConfirmModalContent({
             }}
         >
             <Box gap="md">
-                <Text variant="heading-3">{title}</Text>
+                <Text variant="heading-3" wrap="anywhere">
+                    {title}
+                </Text>
                 {typeof message === 'string' ? (
                     <Text variant="md" color="secondary">
                         {message}
