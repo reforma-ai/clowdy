@@ -3,7 +3,7 @@ import { type UsageTone, usageTone } from '../settings/providers/providerView';
 
 import type { RunContext } from '@clowdy/protocol';
 
-/** What the ring and its popover say of a reading. */
+/** What the ring and its tooltip say of a reading. */
 export interface ContextFill {
     /** How full the window is, as a whole percent between 0 and 100 (a window of no size is empty). */
     percent: number;
