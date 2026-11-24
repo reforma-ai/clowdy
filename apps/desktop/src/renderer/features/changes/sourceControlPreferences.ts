@@ -3,18 +3,19 @@ import { makeAutoObservable } from 'mobx';
 import { browserStorage, type KeyValueStorage, readStored, writeStored } from '../../stores/storage';
 
 const COLLAPSE_DIFFS_KEY = 'clowdy:collapse-diffs-by-default';
-const AUTO_PUSH_KEY = 'clowdy:push-after-commit-and-merge';
+// Keep the saved preference from the earlier Push after commit and merge setting.
+const AUTO_SYNC_KEY = 'clowdy:push-after-commit-and-merge';
 
 /** Source Control preferences for this device, shared by all projects. */
 export class SourceControlPreferences {
     collapseDiffs: boolean;
-    autoPush: boolean;
+    autoSync: boolean;
     readonly #storage: KeyValueStorage | undefined;
 
     constructor(storage?: KeyValueStorage) {
         this.#storage = storage;
         this.collapseDiffs = readStored(storage, COLLAPSE_DIFFS_KEY) !== false;
-        this.autoPush = readStored(storage, AUTO_PUSH_KEY) !== false;
+        this.autoSync = readStored(storage, AUTO_SYNC_KEY) !== false;
         makeAutoObservable(this);
     }
 
@@ -23,9 +24,9 @@ export class SourceControlPreferences {
         writeStored(this.#storage, COLLAPSE_DIFFS_KEY, collapse);
     }
 
-    setAutoPush(enabled: boolean): void {
-        this.autoPush = enabled;
-        writeStored(this.#storage, AUTO_PUSH_KEY, enabled);
+    setAutoSync(enabled: boolean): void {
+        this.autoSync = enabled;
+        writeStored(this.#storage, AUTO_SYNC_KEY, enabled);
     }
 }
 

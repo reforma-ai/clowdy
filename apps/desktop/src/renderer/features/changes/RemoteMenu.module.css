@@ -175,7 +175,7 @@
     }
 }
 
-/* Git's line and the Fetch origin button that goes with a push turned down for newer commits: the button goes under the line where there is no room beside it. */
+/* The retry moves below Git's error when there is no room beside it. */
 .failure {
     display: flex;
     flex-wrap: wrap;
@@ -188,7 +188,7 @@
     flex: 1 1 100%;
 }
 
-.failure > .fetch {
+.failure > .retry {
     flex: 0 0 auto;
     margin-top: var(--spacing-2);
 }

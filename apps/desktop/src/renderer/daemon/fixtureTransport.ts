@@ -93,6 +93,9 @@ import type {
     GitStatus,
     GitSwitchRequest,
     GitSwitchResult,
+    GitSyncProgress,
+    GitSyncResult,
+    GitSyncTarget,
     GitViewedMark,
     Health,
     Project,
@@ -445,6 +448,37 @@ export class FixtureTransport implements Transport {
 
     fetchGit(projectId: ProjectId, place: PlaceRef): Promise<GitRemoteResult> {
         return this.#remote('fetch', projectId, place);
+    }
+
+    async syncGit(
+        projectId: ProjectId,
+        place: PlaceRef,
+        target: GitSyncTarget,
+        onProgress?: (progress: GitSyncProgress) => void
+    ): Promise<GitSyncResult> {
+        const { folder, head, workspace } = this.#gitPlace(projectId, place);
+        let remotePlace = this.#remotePlace(head, workspace, place);
+        const { branch, commit } = target;
+
+        if (target.destination && branch !== remotePlace.branch) {
+            const listing = this.#branches.list(this.#branchPlace(projectId, folder, head, workspace));
+            const holder = listing.local.find(local => local.name === branch)?.heldBy;
+            if (!holder) throw new TransportError(`Check out ${branch} before syncing it`, 409);
+
+            remotePlace = {
+                branch,
+                key:
+                    holder.workspaceId !== undefined || holder.main
+                        ? `${folder.id}/${holder.workspaceId ?? ''}`
+                        : `${projectId}/${folder.id}/${branch}`,
+                worktree: holder.workspaceId !== undefined,
+            };
+        }
+
+        if (remotePlace.branch !== branch || this.#gitRemote.head !== undefined)
+            throw new TransportError(`Switch to ${branch} to sync it`, 409);
+
+        return this.#gitRemote.sync(remotePlace, branch, commit ?? 'a'.repeat(40), onProgress);
     }
 
     pullGit(projectId: ProjectId, place: PlaceRef): Promise<GitRemoteResult> {

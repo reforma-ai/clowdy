@@ -3,19 +3,16 @@ import { describe, expect, it } from 'vitest';
 import {
     branchOf,
     canCreatePullRequest,
-    commitAndPushBlock,
     commitBlock,
     commitLabel,
     commitTarget,
     githubBaseName,
-    isDiverged,
     isFetchFirst,
     lastFetchedWords,
-    pushOrPublish,
     RUNNING_WORDS,
     remoteActions,
-    remoteCall,
     remoteNotice,
+    syncBlock,
     syncButton,
     updateFromBase,
 } from './changesActions';
@@ -51,128 +48,48 @@ const menuStates = (value: GitStatus | undefined, busy = false) =>
     remoteActions(value, busy).map(action => [action.id, action.disabled, action.count ?? null]);
 
 describe('remoteActions', () => {
-    it('lists nothing for a place that is not a repository, and for one that has not been read', () => {
+    it('lists nothing for a place that is not a repository or has not been read', () => {
         expect(remoteActions({ isRepository: false }, false)).toEqual([]);
         expect(remoteActions(undefined, false)).toEqual([]);
     });
 
-    it('lists Fetch, Pull and Push for a branch that is on origin and level, disabling the two with nothing to do', () => {
+    it('keeps explicit Pull available before a fresh fetch knows about incoming commits', () => {
         expect(menuStates(status())).toEqual([
             ['fetch', false, null],
-            ['pull', true, null],
-            ['push', true, null],
+            ['pull', false, null],
         ]);
-    });
-
-    it('counts what Pull takes and Push sends, when they are available', () => {
-        expect(menuStates(status({}, { behind: 3 }))).toEqual([
-            ['fetch', false, null],
-            ['pull', false, 3],
-            ['push', true, null],
-        ]);
-        expect(menuStates(status({}, { ahead: 1 }))).toEqual([
-            ['fetch', false, null],
-            ['pull', true, null],
-            ['push', false, 1],
-        ]);
-    });
-
-    it('pulls a branch that diverged, which merges, and holds the push until that pull', () => {
         expect(menuStates(status({}, { ahead: 1, behind: 2 }))).toEqual([
             ['fetch', false, null],
             ['pull', false, 2],
-            ['push', true, 1],
         ]);
-        expect(isDiverged({ name: 'origin/feature', ahead: 1, behind: 2 })).toBe(true);
-        expect(isDiverged({ name: 'origin/feature', ahead: 1, behind: 0 })).toBe(false);
-        expect(isDiverged({ name: 'origin/feature', ahead: 1, behind: 2, gone: true })).toBe(false);
-        expect(isDiverged(undefined)).toBe(false);
+        expect(remoteActions(status(), false).map(action => action.label)).toEqual(['Fetch origin', 'Pull origin']);
     });
 
-    it('offers Publish in place of Push for a branch that is not on origin, with nothing to pull from', () => {
-        expect(menuStates(status({}, null))).toEqual([
-            ['fetch', false, null],
-            ['pull', true, null],
-            ['publish', false, null],
+    it('holds writes while switching, and requires a published branch for Pull', () => {
+        expect(menuStates(status({}, { behind: 2 }), true)).toEqual([
+            ['fetch', true, null],
+            ['pull', true, 2],
         ]);
-        // An upstream that is gone from origin is published again, not pushed.
-        expect(menuStates(status({}, { gone: true }))).toEqual([
-            ['fetch', false, null],
-            ['pull', true, null],
-            ['publish', false, null],
-        ]);
-    });
-
-    it('turns every action off when there is no origin, and all but Fetch for a HEAD that is on no branch', () => {
         expect(menuStates(status({ origin: false }, null))).toEqual([
             ['fetch', true, null],
             ['pull', true, null],
-            ['publish', true, null],
         ]);
-        expect(menuStates(status({ head: { kind: 'detached', commit: 'a'.repeat(40) } }, null))).toEqual([
-            ['fetch', false, null],
-            ['pull', true, null],
-            ['publish', true, null],
-        ]);
-        expect(menuStates(status({ head: { kind: 'unborn', name: 'main' } }, null))).toEqual([
-            ['fetch', false, null],
-            ['pull', true, null],
-            ['publish', true, null],
-        ]);
-    });
 
-    it('turns every action off while one runs', () => {
-        expect(menuStates(status({}, { ahead: 1 }), true)).toEqual([
-            ['fetch', true, null],
-            ['pull', true, null],
-            ['push', true, 1],
-        ]);
-    });
+        for (const value of [
+            status({}, null),
+            status({}, { gone: true }),
+            status({}, { name: 'origin/main', behind: 1 }),
+            status({}, { name: 'upstream/feature', behind: 1 }),
+            status({ head: { kind: 'detached', commit: 'a'.repeat(40) } }, null),
+            status({ head: { kind: 'unborn', name: 'main' } }, null),
+        ]) {
+            expect(menuStates(value)).toEqual([
+                ['fetch', false, null],
+                ['pull', true, null],
+            ]);
+        }
 
-    it('turns Pull and Push off for a branch that tracks something that is not on origin', () => {
-        expect(menuStates(status({}, { name: 'upstream/main', ahead: 1 }))).toEqual([
-            ['fetch', false, null],
-            ['pull', true, null],
-            ['push', true, 1],
-        ]);
-    });
-
-    it('does not offer to publish a branch whose upstream is gone from another remote', () => {
-        expect(menuStates(status({}, { name: 'upstream/main', gone: true }))).toEqual([
-            ['fetch', false, null],
-            ['pull', true, null],
-            ['publish', true, null],
-        ]);
-        // The same upstream gone from origin is published again.
-        expect(menuStates(status({}, { gone: true }))).toEqual([
-            ['fetch', false, null],
-            ['pull', true, null],
-            ['publish', false, null],
-        ]);
-    });
-
-    it('makes a call of each action, publishing being a push', () => {
-        expect([remoteCall('fetch'), remoteCall('pull'), remoteCall('push'), remoteCall('publish')]).toEqual([
-            'fetch',
-            'pull',
-            'push',
-            'push',
-        ]);
-    });
-});
-
-describe('the labels of the menu', () => {
-    it("are GitHub Desktop's words: Fetch origin, Pull origin, Push origin and Publish branch", () => {
-        expect(remoteActions(status({}, { ahead: 1 }), false).map(action => action.label)).toEqual([
-            'Fetch origin',
-            'Pull origin',
-            'Push origin',
-        ]);
-        expect(remoteActions(status({}, null), false).map(action => action.label)).toEqual([
-            'Fetch origin',
-            'Pull origin',
-            'Publish branch',
-        ]);
+        expect(menuStates(status({ merging: { conflicts: 1 } }, { behind: 2 }))[1]).toEqual(['pull', true, 2]);
     });
 });
 
@@ -211,169 +128,79 @@ describe('lastFetchedWords', () => {
 describe('syncButton', () => {
     const NOW = Date.UTC(2026, 10, 23, 12, 0, 0);
     const FETCHED = NOW - 3 * 60_000;
-    const sync = (value: GitStatus | undefined, running: Parameters<typeof syncButton>[1] = undefined) =>
-        syncButton(value, running, NOW);
+    const sync = (value: GitStatus | undefined) => syncButton(value, undefined, NOW);
 
-    it('is nothing for a place that is not a repository and for one that has not been read', () => {
+    it('hides the button before a repository is known', () => {
         expect(sync({ isRepository: false })).toBeUndefined();
         expect(sync(undefined)).toBeUndefined();
     });
 
-    it('says what is running, with the progress as its label, and cannot be pressed', () => {
-        expect(sync(status(), 'fetch')).toMatchObject({
-            kind: 'running',
-            label: 'Fetching origin',
-            reason: 'An action is running',
-        });
-        expect(sync(status(), 'pull')).toMatchObject({ kind: 'running', label: 'Pulling origin' });
-        expect(sync(status(), 'push')).toMatchObject({ kind: 'running', label: 'Pushing origin' });
-        expect(sync(status({}, null), 'publish')).toMatchObject({ kind: 'running', label: 'Publishing branch' });
-        expect(sync(status(), 'fetch')?.action).toBeUndefined();
+    it('shows the sync phase and holds the primary action while it runs', () => {
+        expect(syncButton(status(), 'sync', NOW)).toMatchObject({ kind: 'running', label: 'Syncing…' });
+        expect(syncButton(status(), 'sync', NOW, 'fetch')?.label).toBe('Fetching origin');
+        expect(syncButton(status(), 'sync', NOW, 'merge')?.label).toBe('Merging from origin');
+        expect(syncButton(status(), 'sync', NOW, 'push')?.label).toBe('Pushing origin');
+        expect(syncButton(status(), 'sync', NOW, 'push')?.action).toBeUndefined();
+        expect(syncButton(status(), 'pull', NOW)?.label).toBe('Pulling origin');
     });
 
-    it('says there is nothing to sync with when the repository has no origin, whatever the branch is', () => {
+    it('explains when Sync cannot run', () => {
         expect(sync(status({ origin: false }))).toMatchObject({
             kind: 'no_origin',
             label: 'No origin',
             line: 'Nothing to sync with',
-            reason: 'No origin',
         });
-        expect(sync(status({ origin: false }, null))?.action).toBeUndefined();
-        expect(sync(status({ origin: false }), 'fetch')).toMatchObject({ kind: 'running' });
-    });
-
-    it('is Publish branch, off with the reason, for a HEAD on no branch and for a branch with no commit yet', () => {
         expect(sync(status({ head: { kind: 'detached', commit: 'a'.repeat(40) } }, null))).toMatchObject({
             kind: 'blocked',
-            label: 'Publish branch',
             line: 'HEAD is detached',
-            reason: 'HEAD is detached',
         });
         expect(sync(status({ head: { kind: 'unborn', name: 'main' } }, null))).toMatchObject({
             kind: 'blocked',
-            label: 'Publish branch',
             line: 'No commits yet',
-            reason: 'No commits yet',
         });
-        expect(sync(status({ head: { kind: 'unborn', name: 'main' } }, null))?.action).toBeUndefined();
+        expect(sync(status({ merging: { conflicts: 0 } }))).toMatchObject({
+            kind: 'blocked',
+            line: 'Complete or abort the merge first',
+        });
+        expect(sync(status({ rebasing: true }))).toMatchObject({
+            kind: 'blocked',
+            line: 'Continue or abort the rebase first',
+        });
     });
 
-    it('is Publish branch for a branch that is not on origin, and again for one whose upstream is gone, which it says as a warning', () => {
-        expect(sync(status({}, null))).toMatchObject({
-            kind: 'publish',
-            label: 'Publish branch',
-            action: 'publish',
-            line: 'Publish this branch to origin',
+    it('uses the same Sync action whether origin is even, ahead or behind and shows both counts', () => {
+        expect(sync(status())).toMatchObject({ kind: 'sync', label: 'Sync', action: 'sync', line: 'Never fetched' });
+        expect(sync(status({}, { ahead: 3 }))?.ahead).toBe(3);
+        expect(sync(status({}, { behind: 2 }))?.behind).toBe(2);
+        expect(sync(status({ lastFetchedAt: FETCHED }, { ahead: 1, behind: 2 }))).toMatchObject({
+            kind: 'sync',
+            label: 'Sync',
+            action: 'sync',
+            line: 'Last fetched 3 minutes ago',
+            ahead: 1,
+            behind: 2,
         });
-        expect(sync(status({}, null))?.reason).toBeUndefined();
+    });
+
+    it('offers to publish under the local branch name and only fetches for a foreign upstream', () => {
+        expect(sync(status({}, null))).toMatchObject({
+            kind: 'sync',
+            action: 'sync',
+            line: 'Publish this branch to origin',
+            title: 'Publish as origin/feature',
+        });
         expect(sync(status({}, { gone: true }))).toMatchObject({
-            kind: 'publish',
-            label: 'Publish branch',
-            action: 'publish',
+            kind: 'sync',
+            action: 'sync',
             line: 'Upstream gone from origin',
             tone: 'warning',
         });
-    });
-
-    it('is Pull origin with the count for a branch that is behind, and says when the counts are from', () => {
-        expect(sync(status({ lastFetchedAt: FETCHED }, { behind: 2 }))).toMatchObject({
-            kind: 'pull',
-            label: 'Pull origin',
-            behind: 2,
-            action: 'pull',
-            line: 'Last fetched 3 minutes ago',
-        });
-        expect(sync(status({}, { behind: 1 }))).toMatchObject({ kind: 'pull', behind: 1, line: 'Never fetched' });
-        expect(sync(status({}, { behind: 1 }))?.ahead).toBeUndefined();
-    });
-
-    it('is Push origin with the count for a branch that is ahead', () => {
-        expect(sync(status({ lastFetchedAt: FETCHED }, { ahead: 1 }))).toMatchObject({
-            kind: 'push',
-            label: 'Push origin',
-            ahead: 1,
-            action: 'push',
-            line: 'Last fetched 3 minutes ago',
-        });
-        expect(sync(status({}, { ahead: 4 }))?.behind).toBeUndefined();
-    });
-
-    it('is Pull origin for a branch with commits on both sides, which merges, and shows how far', () => {
-        const view = sync(status({ lastFetchedAt: FETCHED }, { ahead: 1, behind: 2 }));
-
-        expect(view).toMatchObject({
-            kind: 'pull',
-            label: 'Pull origin',
-            ahead: 1,
-            behind: 2,
-            action: 'pull',
-            line: 'Last fetched 3 minutes ago',
-        });
-        expect(view?.title).toContain('Pull origin merges what origin/feature has.');
-        expect(JSON.stringify(view)).not.toMatch(/Force push/);
-    });
-
-    it('is Fetch origin with when the last fetch was for a branch that is level, or Never fetched', () => {
-        expect(sync(status({ lastFetchedAt: FETCHED }))).toMatchObject({
+        expect(sync(status({}, { name: 'upstream/feature', gone: true }))).toMatchObject({
             kind: 'fetch',
             label: 'Fetch origin',
             action: 'fetch',
-            line: 'Last fetched 3 minutes ago',
+            line: 'Tracks upstream/feature, not origin',
         });
-        expect(sync(status())).toMatchObject({
-            kind: 'fetch',
-            label: 'Fetch origin',
-            action: 'fetch',
-            line: 'Never fetched',
-        });
-        expect(sync(status())?.reason).toBeUndefined();
-        expect(sync(status({ lastFetchedAt: FETCHED }))?.title).toBe(
-            'Fetch origin to look for new commits: origin/feature is up to date, last fetched 3 minutes ago'
-        );
-    });
-
-    it('is Fetch origin, with what is in the way as its line, for a branch that tracks something that is not on origin', () => {
-        expect(sync(status({}, { name: 'upstream/main', ahead: 1 }))).toMatchObject({
-            kind: 'fetch',
-            label: 'Fetch origin',
-            action: 'fetch',
-            line: 'Tracks upstream/main, not origin',
-        });
-    });
-
-    it('is Fetch origin, not a Publish branch that the daemon would refuse, for an upstream that is gone from another remote', () => {
-        expect(sync(status({}, { name: 'upstream/main', gone: true }))).toMatchObject({
-            kind: 'fetch',
-            label: 'Fetch origin',
-            action: 'fetch',
-            line: 'Tracks upstream/main, not origin',
-        });
-    });
-
-    it('prioritizes progress, unavailable states, and upstream sync before updating from the base or fetching', () => {
-        const order = (value: GitStatus, running?: Parameters<typeof syncButton>[1]) => sync(value, running)?.kind;
-
-        expect(order(status({ origin: false }, null), 'fetch')).toBe('running');
-        expect(order(status({ origin: false, head: { kind: 'detached', commit: 'a'.repeat(40) } }, null))).toBe(
-            'no_origin'
-        );
-        expect(order(status({ head: { kind: 'detached', commit: 'a'.repeat(40) } }, { ahead: 1 }))).toBe('blocked');
-        expect(order(status({}, { name: 'upstream/x', ahead: 1, behind: 1 }))).toBe('fetch');
-        expect(order(status({}, { ahead: 1, behind: 1 }))).toBe('pull');
-        expect(order(status({}, { ahead: 1, behind: 1, gone: true }))).toBe('publish');
-        expect(order(status({}, { ahead: 3 }))).toBe('push');
-        expect(order(status({}, { behind: 3 }))).toBe('pull');
-        expect(order(status())).toBe('fetch');
-
-        const base = { ...READY, behind: 2 };
-
-        expect(sync(status({ base }))).toMatchObject({ kind: 'update', label: 'Update from main', action: 'update' });
-        expect(order(status({ base }, { name: 'upstream/feature' }))).toBe('update');
-        expect(order(status({ base }, { behind: 1 }))).toBe('pull');
-        expect(order(status({ base }, { ahead: 1 }))).toBe('push');
-        expect(order(status({ base }, null))).toBe('publish');
-        expect(order(status({ base, origin: false }))).toBe('no_origin');
-        expect(order(status({ base, merging: { conflicts: 1 } }))).toBe('fetch');
     });
 });
 
@@ -408,13 +235,10 @@ describe('the words of the sidebar', () => {
 
             for (const action of remoteActions(value, false)) texts.add(action.label);
 
-            const block = commitAndPushBlock(value);
+            const block = syncBlock(value);
 
             if (block) texts.add(block);
         }
-
-        // At least the tooltip of a pull that merges has two sentences, so the check is not about nothing.
-        expect([...texts].some(text => /\. [A-Z]/.test(text))).toBe(true);
 
         for (const text of texts) expect(/\. [A-Z]/.test(text) ? text.endsWith('.') : !text.endsWith('.')).toBe(true);
     });
@@ -545,32 +369,17 @@ describe('a branch that tracks a branch of another name', () => {
     const renamed = (fields: Partial<RepositoryStatus> = {}, upstream: Partial<GitUpstream> = {}) =>
         status(fields, { name: 'origin/main', ahead: 2, behind: 1, ...upstream });
 
-    it('is not published: Publish branch with what it tracks as its line, and Pull, Push and Diverged left out, whatever the counts against that other branch are', () => {
+    it('offers to sync under the local name and keeps Create PR hidden until the branch is published', () => {
         expect(syncButton(renamed(), undefined, 0)).toMatchObject({
-            kind: 'publish',
-            label: 'Publish branch',
-            action: 'publish',
+            kind: 'sync',
+            label: 'Sync',
+            action: 'sync',
             line: 'Tracks origin/main',
+            title: 'Publish as origin/feature',
         });
-        expect(syncButton(renamed(), undefined, 0)?.title).toContain('publish it as origin/feature');
-        expect(syncButton(renamed({}, { ahead: 0, behind: 3 }), undefined, 0)).toMatchObject({
-            kind: 'publish',
-            action: 'publish',
-        });
-        expect(syncButton(renamed({}, { gone: true }), undefined, 0)).toMatchObject({
-            kind: 'publish',
-            line: 'Tracks origin/main',
-        });
-        expect(menuStates(renamed())).toEqual([
-            ['fetch', false, null],
-            ['pull', true, null],
-            ['publish', false, null],
-        ]);
-    });
-
-    it('publishes a branch tracking another branch through Commit & Push and hides Create PR until then', () => {
-        expect(commitAndPushBlock(renamed())).toBeUndefined();
-        expect(pushOrPublish(renamed())).toBe('publish');
+        expect(syncButton(renamed(), undefined, 0)?.behind).toBeUndefined();
+        expect(syncButton(renamed(), undefined, 0)?.ahead).toBeUndefined();
+        expect(syncBlock(renamed())).toBeUndefined();
         expect(canCreatePullRequest(renamed())).toBe(false);
         expect(canCreatePullRequest(renamed({}, { ahead: 0, behind: 0 }))).toBe(false);
     });
@@ -585,14 +394,15 @@ describe('a branch that tracks a branch of another name', () => {
                 undefined,
                 0
             )
-        ).toMatchObject({ kind: 'push' });
+        ).toMatchObject({ kind: 'sync', ahead: 1 });
         // A name that only begins like the branch's is another branch.
         expect(syncButton(status({}, { name: 'origin/feature-2', ahead: 1 }), undefined, 0)).toMatchObject({
-            kind: 'publish',
+            kind: 'sync',
             line: 'Tracks origin/feature-2',
         });
         expect(syncButton(status({}, { name: 'origin/feature/x', ahead: 1 }), undefined, 0)).toMatchObject({
-            kind: 'publish',
+            kind: 'sync',
+            line: 'Tracks origin/feature/x',
         });
     });
 });
@@ -641,35 +451,25 @@ describe('canCreatePullRequest', () => {
     });
 });
 
-describe('commitAndPushBlock', () => {
-    it('is nothing where the push after a commit would be taken: a branch on origin that is level or ahead, one that is not published, one with no commit yet', () => {
-        expect(commitAndPushBlock(status())).toBeUndefined();
-        expect(commitAndPushBlock(status({}, { ahead: 3 }))).toBeUndefined();
-        expect(commitAndPushBlock(status({}, null))).toBeUndefined();
-        expect(commitAndPushBlock(status({ head: { kind: 'unborn', name: 'main' } }, null))).toBeUndefined();
+describe('syncBlock', () => {
+    it('allows Sync after a first commit, a resolved merge, or a commit on a branch adding to either side', () => {
+        expect(syncBlock(status())).toBeUndefined();
+        expect(syncBlock(status({}, { ahead: 3, behind: 2 }))).toBeUndefined();
+        expect(syncBlock(status({}, { behind: 2 }))).toBeUndefined();
+        expect(syncBlock(status({ merging: { conflicts: 0 } }))).toBeUndefined();
+        expect(syncBlock(status({}, null))).toBeUndefined();
+        expect(syncBlock(status({ head: { kind: 'unborn', name: 'main' } }, null))).toBeUndefined();
     });
 
-    it('says why not for no origin, a detached HEAD, another remote, a branch that is behind or has diverged, and a place that is no repository', () => {
-        expect(commitAndPushBlock(status({ origin: false }))).toBe('No origin');
-        expect(commitAndPushBlock(status({ head: { kind: 'detached', commit: 'a'.repeat(40) } }, null))).toBe(
+    it('gives the reason for no origin, detached HEAD, foreign upstream and unresolved conflicts', () => {
+        expect(syncBlock(status({ origin: false }))).toBe('No origin');
+        expect(syncBlock(status({ head: { kind: 'detached', commit: 'a'.repeat(40) } }, null))).toBe(
             'HEAD is detached'
         );
-        expect(commitAndPushBlock(status({}, { name: 'fork/feature' }))).toBe('Tracks fork/feature, not origin');
-        expect(commitAndPushBlock(status({}, { name: 'fork/feature', gone: true }))).toBe(
-            'Tracks fork/feature, not origin'
-        );
-        expect(commitAndPushBlock(status({}, { behind: 1 }))).toBe('1 commit to pull first');
-        expect(commitAndPushBlock(status({}, { behind: 2 }))).toBe('2 commits to pull first');
-        expect(commitAndPushBlock(status({}, { ahead: 1, behind: 2 }))).toBe('Pull first');
-        expect(commitAndPushBlock(status({ merging: { conflicts: 1 } }))).toBe('A merge is in progress');
-        expect(commitAndPushBlock({ isRepository: false })).toBe('Not a repository');
-        expect(commitAndPushBlock(undefined)).toBe('Not a repository');
-    });
-
-    it('sends a branch that is on origin with a push, and publishes one that is not', () => {
-        expect(pushOrPublish(status())).toBe('push');
-        expect(pushOrPublish(status({}, null))).toBe('publish');
-        expect(pushOrPublish(status({}, { gone: true }))).toBe('publish');
-        expect(pushOrPublish(undefined)).toBe('publish');
+        expect(syncBlock(status({}, { name: 'fork/feature', gone: true }))).toBe('Tracks fork/feature, not origin');
+        expect(syncBlock(status({ merging: { conflicts: 1 } }))).toBe('A merge is in progress');
+        expect(syncBlock(status({ rebasing: true }))).toBe('Continue or abort the rebase first');
+        expect(syncBlock({ isRepository: false })).toBe('Not a repository');
+        expect(syncBlock(undefined)).toBe('Not a repository');
     });
 });

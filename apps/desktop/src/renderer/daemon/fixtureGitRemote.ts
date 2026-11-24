@@ -1,7 +1,7 @@
 import { FIXTURE_SIGNING_HINT, FIXTURE_SIGNING_LINE } from './fixtureGitWrites';
 import { TransportError } from './transport';
 
-import type { GitRemoteAction, GitRemoteResult, GitUpstream } from '@clowdy/protocol';
+import type { GitRemoteAction, GitRemoteResult, GitSyncProgress, GitSyncResult, GitUpstream } from '@clowdy/protocol';
 
 /**
  * How the fixture's fetch, pull and push end, beyond going through: each starts the place in the state its name says, or fails the way git does.
@@ -132,6 +132,33 @@ export class FixtureGitRemote {
         const state = this.#stateOf(place);
 
         if (state.published) state.ahead++;
+    }
+
+    async sync(
+        place: FixtureRemotePlace,
+        branch: string,
+        commit: string,
+        onProgress?: (progress: GitSyncProgress) => void
+    ): Promise<GitSyncResult> {
+        onProgress?.({ phase: 'fetch' });
+        await this.run('fetch', place);
+
+        const state = this.#stateOf(place);
+        let pulled = 0;
+
+        if (state.published && state.tracks === undefined && state.behind > 0) {
+            onProgress?.({ phase: 'merge' });
+            const result = await this.run('pull', place);
+            if (result.state === 'done') pulled = result.pulled ?? 0;
+        }
+
+        const pushed = !state.published || state.tracks !== undefined || state.ahead > 0;
+        if (pushed) {
+            onProgress?.({ phase: 'push', commit });
+            await this.run('push', place);
+        }
+
+        return { state: 'done', branch, pulled, pushed };
     }
 
     async run(action: GitRemoteAction, place: FixtureRemotePlace): Promise<GitRemoteResult> {

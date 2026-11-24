@@ -1,9 +1,10 @@
 # Push after commits and branch merges in Source Control
 
-- Status: accepted
+- Status: superseded
 - Date: 2026-11-24
 - Decided by: user (semi-manual)
 - Related task: CLO-139
+- Superseded by: [Synchronize with origin after commits and branch merges](2026-11-24-sync-after-commit-and-merge.md)
 
 ## Decision
 

@@ -27,6 +27,9 @@ import type {
     GitStatus,
     GitSwitchRequest,
     GitSwitchResult,
+    GitSyncProgress,
+    GitSyncResult,
+    GitSyncTarget,
     GitViewedMark,
     Health,
     ProjectFileMatch,
@@ -178,6 +181,13 @@ export interface Transport {
      * has no `origin`, 503 for one that did not end in about two minutes (a fingerprint that was waited for). Not retried.
      */
     fetchGit: (projectId: ProjectId, place: PlaceRef) => Promise<GitRemoteResult>;
+    /** Fetches, integrates and publishes the chosen branch as one operation. Reports its phases while it runs. */
+    syncGit: (
+        projectId: ProjectId,
+        place: PlaceRef,
+        target: GitSyncTarget,
+        onProgress?: (progress: GitSyncProgress) => void
+    ) => Promise<GitSyncResult>;
     /**
      * Fetches origin and merges the place's branch with its upstream (`POST git/pull`): a fast-forward when the branch has nothing of its own, a merge commit when it does (`merged`). A merge that
      * stops on conflicts answers `{ state: 'conflicts' }`, which is not an error: the merge has started. Rejects as `fetchGit` does, and with 400 for a detached HEAD, a branch with no upstream or

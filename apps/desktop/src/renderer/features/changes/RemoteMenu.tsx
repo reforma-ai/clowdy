@@ -5,34 +5,23 @@ import { Spinner } from '@clowdy/components/Spinner';
 import { Text } from '@clowdy/components/Text';
 import { Tooltip } from '@clowdy/components/Tooltip';
 import { ArrowDown, ArrowDownRight, ArrowUp, ArrowUpRight, ChevronDown, Refresh, Vsc } from '@clowdy/icons/14';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 
 import { Unavailable } from '../../shared/Unavailable';
 import { useNow } from '../../shared/useNow';
 import { useRootStore } from '../../stores';
 import { MERGE_LABELS, openBranchMergeDialog } from './BranchMergeDialog';
 import { CommitCountBadge } from './CommitCountBadge';
-import {
-    commitsWords,
-    isFetchFirst,
-    type RemoteActionId,
-    remoteActions,
-    type SyncView,
-    syncButton,
-    updateFromBase,
-} from './changesActions';
+import { commitsWords, isFetchFirst, remoteActions, type SyncView, syncButton, updateFromBase } from './changesActions';
 import styles from './RemoteMenu.module.css';
 import { useRemoteActions } from './useRemoteActions';
 
 import type { ReactNode } from 'react';
 import type { PlaceFacts } from './gitFacts';
 
-/** Icons for the origin actions. Publishing sends the branch up as pushing does. */
-const ICONS: Record<Exclude<RemoteActionId, 'update' | 'abort'>, ReactNode> = {
+const ICONS: Record<'fetch' | 'pull', ReactNode> = {
     fetch: <Refresh />,
     pull: <ArrowDown />,
-    push: <ArrowUp />,
-    publish: <ArrowUp />,
 };
 
 /** How many commits each way, as the arrows GitHub Desktop draws beside its button: up for what the branch has, down for what origin has. */
@@ -107,19 +96,16 @@ function SyncWords({ label, line, tone }: SyncCopy) {
 }
 
 /**
- * The one button that moves the branch: its label is Publish, Pull or Push when the branch needs to sync. Otherwise it shows `Update from <base>` if the base is ahead, or `Fetch origin`.
- * Under the label is when the last fetch was (`Last fetched 3 minutes ago`, `Never fetched`) or the one thing to know of the state. A branch that diverged is `Pull origin`: the pull merges. It is
- * `syncButton`'s rule. The oldest pending action gets the main button's spinner. The dropdown still offers the other actions, with Fetch first.
- * When the base is ahead but an upstream action has priority, Update sits below the split button.
- * Git failures remain selectable and a push rejected for newer commits offers Fetch. Status and the pull request are read again when an action ends.
+ * Sync follows one branch on origin. The oldest pending action drives its spinner, while the menu keeps Fetch, Pull and branch merges available.
+ * An update from the base is a separate button.
  */
 export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
     const { transport } = useRootStore();
     const remote = useRemoteActions(facts);
     const now = useNow();
+    const detailId = useId();
     const status = facts.status.value;
-    const idleView = syncButton(status, undefined, now);
-    const view = remote.running === undefined ? idleView : syncButton(status, remote.running, now);
+    const view = syncButton(status, remote.running, now, remote.syncPhase);
 
     if (!view) return null;
 
@@ -132,8 +118,11 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
     const hasOrigin = status?.isRepository === true && status.origin;
     const updateCount = update ? `${commitsWords(update.behind)} to merge from the base` : undefined;
     const updateTooltip = update && `${update.label} · ${updateCount}`;
-    const tooltip = view.kind === 'update' ? updateTooltip : view.title;
     const updateBlocked = !hasOrigin || facts.switching || remote.isPending('update');
+    const detail = !off && view.title !== view.label ? view.title : undefined;
+    const sync = () => {
+        if (current !== undefined) void remote.sync({ branch: current });
+    };
 
     const run = (key: string) => {
         if (key === 'merge-from' || key === 'merge-into') {
@@ -147,8 +136,8 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
                     hasOrigin,
                 });
             }
-        } else {
-            void remote.run(key as RemoteActionId);
+        } else if (key === 'fetch' || key === 'pull' || key === 'update') {
+            void remote.run(key);
         }
     };
 
@@ -157,7 +146,7 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
             <div className={styles.split}>
                 <Unavailable label={view.label} hint={off ? offHint : undefined} className={styles.host}>
                     <Tooltip
-                        content={off || running !== undefined ? undefined : tooltip}
+                        content={off || running !== undefined ? undefined : view.title}
                         isDisabled={off || running !== undefined}
                         placement="bottom"
                     >
@@ -170,21 +159,25 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
                             isDisabled={off}
                             isPending={running !== undefined}
                             spinnerPlacement="none"
-                            aria-label={view.title}
-                            aria-description={view.kind === 'update' ? updateCount : undefined}
+                            aria-label={view.label}
+                            aria-describedby={detail ? detailId : undefined}
                             data-sync={view.kind}
-                            onPress={() => view.action && void remote.run(view.action)}
+                            onPress={() => {
+                                if (view.action === 'sync') sync();
+                                if (view.action === 'fetch') void remote.run('fetch');
+                            }}
                         >
                             <SyncWords label={view.label} line={view.line} tone={view.tone} />
-                            {view.kind === 'update' && update ? (
-                                <CommitCountBadge direction="down" count={update.behind} />
-                            ) : (
-                                <Counts ahead={view.ahead} behind={view.behind} />
-                            )}
+                            <Counts ahead={view.ahead} behind={view.behind} />
                             {running !== undefined && <Spinner size="xxs" className={styles.spinner} aria-hidden />}
                         </Button>
                     </Tooltip>
                 </Unavailable>
+                {detail && (
+                    <span id={detailId} hidden>
+                        {detail}
+                    </span>
+                )}
 
                 <MenuTrigger>
                     <Button
@@ -238,7 +231,7 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
                 </MenuTrigger>
             </div>
 
-            {update && hasOrigin && idleView?.kind !== 'update' && (
+            {update && hasOrigin && (
                 <Button
                     variant="bordered"
                     size="sm"
@@ -266,16 +259,16 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
                             {failure.hint}
                         </Text>
                     )}
-                    {isFetchFirst(failure.message) && (
+                    {failure.action === 'sync' && view.action === 'sync' && isFetchFirst(failure.message) && (
                         <Button
                             variant="bordered"
                             color="secondary"
                             size="xs"
-                            className={styles.fetch}
-                            isDisabled={facts.switching || remote.isPending('fetch')}
-                            onPress={() => void remote.run('fetch')}
+                            className={styles.retry}
+                            isDisabled={facts.switching || remote.isPending('sync')}
+                            onPress={sync}
                         >
-                            Fetch origin
+                            Retry Sync
                         </Button>
                     )}
                 </div>

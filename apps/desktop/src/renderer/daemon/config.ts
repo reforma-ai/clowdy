@@ -122,6 +122,7 @@ const unconfigured: Transport = {
     fetchGit: noDaemon,
     pullGit: noDaemon,
     pushGit: noDaemon,
+    syncGit: noDaemon,
     updateGit: noDaemon,
     abortGit: noDaemon,
     getGitBranches: noDaemon,

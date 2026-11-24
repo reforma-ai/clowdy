@@ -2,7 +2,7 @@
 
 ## Decisions
 
-- [Push after commits and branch merges](decisions/2026-11-24-push-after-commit-and-merge.md) records the default Source Control preference and the destination of each push. Status: accepted.
+- [Sync after commits and branch merges](decisions/2026-11-24-sync-after-commit-and-merge.md) records the shared Sync action and how it resolves branch divergence. Status: accepted.
 
 - [Changes tab render performance](decisions/2026-11-24-changes-tab-render-performance.md) records why far diff cards are empty boxes and unchanged git answers keep their objects. Status: accepted.
 
@@ -16,6 +16,8 @@
 - [One provider for commit messages](decisions/2026-11-24-choose-one-commit-provider.md) records the Source Control selector and how older settings map to it. Status: accepted.
 
 ## Checks
+
+- [Branch Sync](checks/2026-11-24-smart-sync.md) covers the origin exchange, conflict recovery, destination safety and streamed progress. Status: passed with limits.
 
 - [Source Control during fetch and push](checks/2026-11-24-source-control-during-sync.md) covers branch selection and queued actions while sync is pending. Status: passed.
 
@@ -44,6 +46,8 @@
 - [Stop commit message generation](checks/2026-11-24-stop-commit-message-generation.md) covers the stop control, retry and provider process cancellation. Status: passed.
 
 ## Superseded
+
+- [Push after commits and branch merges](decisions/2026-11-24-push-after-commit-and-merge.md) records the earlier push-only preference. Status: superseded.
 
 - [Provider question capabilities](decisions/2026-11-24-provider-question-capabilities.md) records the earlier ordinary-tool fallback. Status: superseded.
 
