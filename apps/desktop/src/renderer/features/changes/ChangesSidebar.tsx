@@ -116,13 +116,13 @@ export function ChangesSidebar({
                                     >
                                         {base.ahead > 0 && (
                                             <span className={styles.baseCount}>
-                                                <ArrowUp size={8} aria-hidden="true" />
+                                                <ArrowUp size={10} aria-hidden="true" />
                                                 {base.ahead}
                                             </span>
                                         )}
                                         {base.behind > 0 && (
                                             <span className={styles.baseCount}>
-                                                <ArrowDown size={8} aria-hidden="true" />
+                                                <ArrowDown size={10} aria-hidden="true" />
                                                 {base.behind}
                                             </span>
                                         )}

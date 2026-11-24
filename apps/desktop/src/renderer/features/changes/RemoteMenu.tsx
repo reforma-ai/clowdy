@@ -40,13 +40,13 @@ function Counts({ ahead, behind }: Pick<SyncView, 'ahead' | 'behind'>) {
         <span className={styles.counts} aria-hidden="true">
             {ahead ? (
                 <span className={styles.count}>
-                    <ArrowUp />
+                    <ArrowUp size={10} />
                     {ahead}
                 </span>
             ) : null}
             {behind ? (
                 <span className={styles.count}>
-                    <ArrowDown />
+                    <ArrowDown size={10} />
                     {behind}
                 </span>
             ) : null}

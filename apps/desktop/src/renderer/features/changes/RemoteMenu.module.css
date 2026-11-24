@@ -100,11 +100,6 @@
     font-weight: 500;
 }
 
-.count svg {
-    width: var(--spacing-12);
-    height: var(--spacing-12);
-}
-
 /* Stack the counts at narrow widths to leave room for the label. The tooltip carries the fetch detail. */
 @container (max-width: 12rem) {
     .counts {
