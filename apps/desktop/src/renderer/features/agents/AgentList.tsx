@@ -673,16 +673,30 @@ function RowEnd({
 /** The title as a field in the title's own place: Enter or leaving it renames, Escape keeps the old name. */
 function RenameField({ chat, onDone }: { chat: Chat; onDone: () => void }) {
     const root = useRootStore();
-    const edit = useCellEditMode();
     const [title, setTitle] = useState(chat.title);
+    const finished = useRef(false);
+    const inputRef = useRef<HTMLInputElement>(null);
 
     const commit = () => {
+        if (finished.current) return;
+        finished.current = true;
         const next = title.trim();
 
         onDone();
 
         if (next && next !== chat.title) void perform(root, { type: 'chat.rename', chatId: chat.id, title: next });
     };
+    const edit = useCellEditMode(event => {
+        if (event.isComposing) return;
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            commit();
+        } else if (event.key === 'Escape') {
+            event.preventDefault();
+            finished.current = true;
+            onDone();
+        }
+    }, inputRef);
 
     return (
         <Input
@@ -691,16 +705,13 @@ function RenameField({ chat, onDone }: { chat: Chat; onDone: () => void }) {
             aria-label="Chat title"
             autoFocus
             autoSelect
+            inputRef={inputRef}
             value={title}
             onChange={setTitle}
             onFocus={edit.onFocus}
             onBlur={event => {
                 edit.onBlur(event);
                 commit();
-            }}
-            onKeyDown={event => {
-                if (event.key === 'Enter') commit();
-                else if (event.key === 'Escape') onDone();
             }}
         />
     );
