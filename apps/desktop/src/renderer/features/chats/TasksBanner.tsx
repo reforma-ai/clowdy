@@ -15,6 +15,7 @@ export function TasksBanner({ progress }: { progress: ChatProgress }) {
     const ui = useProjectUi();
     const { done, total, tasks } = progress;
     const complete = done === total;
+    const doneLabel = done === 1 ? '1 done' : `All ${done} done`;
 
     return (
         <ComposerBanner role="group" aria-label="Chat tasks">
@@ -29,7 +30,7 @@ export function TasksBanner({ progress }: { progress: ChatProgress }) {
                             </span>
                         )}
                         <Text variant="xs" color="secondary">
-                            {complete ? `${done} done` : `${done} of ${total}`}
+                            {complete ? doneLabel : `${done} of ${total}`}
                         </Text>
                     </>
                 }

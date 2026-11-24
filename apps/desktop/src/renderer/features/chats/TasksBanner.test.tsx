@@ -37,7 +37,7 @@ it('opens the task list, updates progress, and navigates to a selected task', as
     expect(row.textContent).toContain(progress.tasks[0].key);
     expect(row.textContent).toContain(project.statuses.find(status => status.id === progress.tasks[0].statusId)!.name);
     await act(async () => render(progress.total));
-    expect(header.textContent).toContain(`${progress.total} done`);
+    expect(header.textContent).toContain(`All ${progress.total} done`);
     await act(async () => row.click());
     expect(store.ui.forProject(FIXTURE_PROJECT_ID).taskId).toBe(progress.tasks[0].id);
     await act(async () => header.click());
