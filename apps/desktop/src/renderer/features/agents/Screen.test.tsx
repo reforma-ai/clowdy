@@ -23,7 +23,6 @@ import { chatListPreferences } from './chatListPreferences';
 import { Screen } from './Screen';
 import { starCardPreferences } from './starCardState';
 
-import type { ProjectInfo } from '@clowdy/protocol';
 import type { Editor } from '@tiptap/core';
 import type { ReactNode } from 'react';
 import type { KeyValueStorage } from '../../stores/storage';
@@ -496,7 +495,7 @@ describe('grouped by folder', () => {
             await press(name(API.id)!);
             expect([ui().draft, ui().chatId]).toEqual([false, 'c-1']);
             expect(isSelected('c-1')).toBe(true);
-            expect(menuItems()).toEqual(['New chat', 'Copy path', 'Open in…', 'Manage worktrees…']);
+            expect(menuItems()).toEqual(['New chat', 'Copy path', 'Open in…', 'Folder settings…']);
 
             await press(menuItem('New chat'));
             await draw();
@@ -512,7 +511,7 @@ describe('grouped by folder', () => {
                 'Open in Terminal',
                 'Copy path',
                 'Open in…',
-                'Manage worktrees…',
+                'Folder settings…',
             ]);
 
             await press(menuItem('New chat'));
@@ -575,7 +574,7 @@ describe('grouped by folder', () => {
                 'New chat',
                 'Copy path',
                 'Open in…',
-                'Manage worktrees…',
+                'Folder settings…',
             ]);
             expect(item('New chat').getAttribute('aria-disabled')).toBe('true');
             await press(item('New chat'));
@@ -1541,9 +1540,9 @@ describe('threads', () => {
 });
 
 describe('a chat that works in a worktree', () => {
-    const mark = (key: string) => rowOf(key).querySelector<HTMLElement>('[role="img"][aria-label*="worktree"]');
+    async function restart() {
+        const transport = new FixtureTransport({ data: withFixtureWorkspace(createFixtureData()) });
 
-    async function restart(transport = new FixtureTransport({ data: withFixtureWorkspace(createFixtureData()) })) {
         act(() => reactRoot.unmount());
         store.dispose();
         reactRoot = createRoot(container);
@@ -1552,124 +1551,13 @@ describe('a chat that works in a worktree', () => {
         await draw();
     }
 
-    /** The fixture daemon with a chat in a worktree, and what it reads of the project's worktrees as `set` last said (`undefined`: nothing). */
-    function reading(workspaces: ProjectInfo['workspaces'], change?: (data: FixtureData) => void) {
-        const data = withFixtureWorkspace(createFixtureData());
-
-        change?.(data);
-
-        const transport = new FixtureTransport({ data });
-        const read = vi.spyOn(transport, 'getProjectsInfo');
-        let current = workspaces;
-
-        read.mockImplementation(async projectId =>
-            (await FixtureTransport.prototype.getProjectsInfo.call(transport, projectId)).map(entry =>
-                entry.projectId === FIXTURE_PROJECT_ID ? { ...entry, workspaces: current } : entry
-            )
-        );
-
-        return { transport, read, set: (next: ProjectInfo['workspaces']) => void (current = next) };
-    }
-
-    it("has a branch mark after its title, with its branch in the mark's title, and no other row has one", async () => {
+    it('shows the worktree below the composer without a worktree icon in the sidebar', async () => {
         await restart();
+        const row = rowOf(FIXTURE_WORKSPACE_CHAT_ID);
 
-        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.getAttribute('aria-label')).toBe(
-            'Works in a worktree on clowdy/ab12cd34'
-        );
-        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.querySelector('svg')).not.toBeNull();
-        expect(rowKeys().filter(key => key && mark(key))).toEqual([FIXTURE_WORKSPACE_CHAT_ID]);
-        // The title stays what the row is called, with the mark after it.
-        expect(rowOf(FIXTURE_WORKSPACE_CHAT_ID).textContent).toContain('Weekend surcharge in a worktree');
-        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.previousElementSibling?.textContent).toBe(
-            'Weekend surcharge in a worktree'
-        );
-    });
+        expect(row.textContent).toContain('Weekend surcharge in a worktree');
+        expect(row.querySelector('[role="img"][aria-label*="worktree" i]')).toBeNull();
 
-    it('says the branch the worktree has now, as the daemon read it, and not the one it was made with', async () => {
-        await restart(reading([{ workspaceId: 'wks_ab12cd34', exists: true, branch: 'feature/other' }]).transport);
-
-        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.getAttribute('aria-label')).toBe(
-            'Works in a worktree on feature/other'
-        );
-    });
-
-    it('reads what the daemon knows again when the window gets focus, for the branch an agent switched to meanwhile', async () => {
-        const { transport, read, set } = reading([
-            { workspaceId: 'wks_ab12cd34', exists: true, branch: 'feature/other' },
-        ]);
-
-        await restart(transport);
-
-        const everything = () => read.mock.calls.filter(([projectId]) => projectId === undefined).length;
-        const reads = everything();
-
-        set([{ workspaceId: 'wks_ab12cd34', exists: true, branch: 'hotfix' }]);
-        await act(async () => {
-            window.dispatchEvent(new Event('focus'));
-        });
-        await draw();
-
-        expect(everything()).toBeGreaterThan(reads);
-        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.getAttribute('aria-label')).toBe('Works in a worktree on hotfix');
-    });
-
-    it('says the worktree is gone when the daemon says it is no longer on the disk', async () => {
-        await restart(reading([{ workspaceId: 'wks_ab12cd34', exists: false }]).transport);
-
-        expect(rowOf(FIXTURE_WORKSPACE_CHAT_ID).querySelector('[role="img"]')?.getAttribute('aria-label')).toBe(
-            'The worktree no longer exists'
-        );
-    });
-
-    it('reads again when a worktree gets made, so a read taken while it was being made does not make the row call it gone', async () => {
-        await restart(new FixtureTransport({ data: createFixtureData() }));
-
-        const created = await store.command({
-            type: 'chat.create',
-            projectId: FIXTURE_PROJECT_ID,
-            workspace: { mode: 'new' },
-        });
-        const { chat } = (created as { data: { chat: { id: string } } }).data;
-
-        await vi.waitFor(() => expect(project().chats.get(chat.id)?.workspace?.ready).toBe(false));
-        await draw();
-
-        // The window gets focus while the worktree is being made: the read says there is none yet, and the row, which names the branch it will be made on, is not wrong.
-        await act(async () => {
-            window.dispatchEvent(new Event('focus'));
-        });
-        await draw();
-        expect(mark(chat.id)?.getAttribute('aria-label')).toBe(`Works in a worktree on clowdy/${chat.id.slice(-8)}`);
-
-        await store.command({ type: 'chat.send', chatId: chat.id, text: 'Go' });
-        await vi.waitFor(() => expect(project().chats.get(chat.id)?.workspace?.ready).toBe(true));
-        await draw();
-        await vi.waitFor(() =>
-            expect(mark(chat.id)?.getAttribute('aria-label')).toBe(`Works in a worktree on clowdy/${chat.id.slice(-8)}`)
-        );
-        expect(mark(chat.id)?.hasAttribute('data-gone')).toBe(false);
-    });
-
-    it('falls back to the branch it was made with when the read has no word on the worktree, and to a plain line when it was made with none', async () => {
-        await restart(reading(undefined).transport);
-
-        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.getAttribute('aria-label')).toBe(
-            'Works in a worktree on clowdy/ab12cd34'
-        );
-
-        await restart(
-            reading(
-                undefined,
-                data => void delete data.chats.find(chat => chat.id === FIXTURE_WORKSPACE_CHAT_ID)!.workspace!.branch
-            ).transport
-        );
-
-        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.getAttribute('aria-label')).toBe('Works in a worktree');
-    });
-
-    it("shows the chat's folder, where it works and the branch read only under its message box, from the chat's own workspace", async () => {
-        await restart();
         await draw(() => ui().openChat(FIXTURE_WORKSPACE_CHAT_ID));
 
         expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe(
