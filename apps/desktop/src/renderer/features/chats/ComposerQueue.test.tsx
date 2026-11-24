@@ -73,8 +73,9 @@ function chatWith(queue: QueuedMessage[], fields: Partial<Chat> = {}): Chat {
 }
 
 const previews = () => container.querySelectorAll<HTMLElement>('[aria-label^="Edit: "]');
+const previewOf = (label: string) => container.querySelector<HTMLElement>(`[aria-label="Edit: ${label}"]`)!;
 /** The row of a message: the preview is pressed to edit, and the row holds it with the status and the actions. */
-const rowOf = (label: string) => container.querySelector<HTMLElement>(`[aria-label="Edit: ${label}"]`)!.parentElement!;
+const rowOf = (label: string) => previewOf(label).parentElement!;
 const buttonIn = (scope: HTMLElement, name: string) =>
     [...scope.querySelectorAll<HTMLButtonElement>('button')].find(
         button => button.getAttribute('aria-label') === name || button.textContent === name
@@ -97,7 +98,7 @@ afterEach(() => {
 });
 
 describe('the queue in the composer', () => {
-    it('shows each waiting message with its files, and a steer as steering without Send now', async () => {
+    it('shows a paperclip before the text and uses an icon-only Steer action while busy', async () => {
         await mount(
             chatWith([
                 queued('q-1', 'Use the blue one', { mode: 'steer' }),
@@ -109,11 +110,17 @@ describe('the queue in the composer', () => {
         expect(container.querySelector('[aria-label="Queued messages"]')).not.toBeNull();
         expect(previews()).toHaveLength(3);
         expect(rowOf('Use the blue one').textContent).toContain('Steering…');
-        expect(buttonIn(rowOf('Use the blue one'), 'Send now')).toBeUndefined();
-        expect(rowOf('Then the footer').textContent).toContain('1 file');
-        expect(buttonIn(rowOf('Then the footer'), 'Send now')).toBeDefined();
-        // A message of files alone is named by them.
-        expect(rowOf('2 files')).toBeDefined();
+        expect(buttonIn(rowOf('Use the blue one'), 'Steer')).toBeUndefined();
+        const attached = previewOf('Then the footer');
+        expect(attached.firstElementChild?.tagName).toBe('svg');
+        expect(attached.textContent).toBe('Then the footer');
+        expect(attached.getAttribute('aria-description')).toBe('1 file attached');
+        const steer = buttonIn(rowOf('Then the footer'), 'Steer');
+        expect(steer?.querySelector('svg')).not.toBeNull();
+        expect(steer?.textContent).toBe('');
+        // A message with only files shows the clip and keeps the count in its accessible name.
+        expect(previewOf('2 files').children).toHaveLength(1);
+        expect(previewOf('2 files').firstElementChild?.tagName).toBe('svg');
         expect(rowOf('Use the blue one').hasAttribute('data-first')).toBe(true);
         expect(rowOf('Then the footer').hasAttribute('data-first')).toBe(false);
     });
@@ -128,21 +135,22 @@ describe('the queue in the composer', () => {
         await mount(chatWith([queued('q-1', 'Later')], { queuePaused: 'stopped' }), 'cancelled');
 
         expect(container.querySelector('[role="status"]')?.textContent).toBe(
-            'Queue paused after Stop. Use Send now on a message to resume.'
+            'Queue paused after Stop. Use the up arrow on a message to resume.'
         );
+        expect(buttonIn(rowOf('Later'), 'Send now')?.querySelector('svg')).not.toBeNull();
 
         await mount(chatWith([queued('q-1', 'Later')], { queuePaused: 'failed' }), 'failed');
 
         expect(container.querySelector('[role="status"]')?.textContent).toBe(
-            'Queue paused: the reply failed. Use Send now on a message to resume.'
+            'Queue paused: the reply failed. Use the up arrow on a message to resume.'
         );
     });
 
-    it('sends a message now, and removes one with its files', async () => {
+    it('steers with a queued message and removes one with its files', async () => {
         const chat = chatWith([queued('q-1', 'First'), queued('q-2', 'Second')]);
 
         await mount(chat);
-        await act(async () => buttonIn(rowOf('Second'), 'Send now')!.click());
+        await act(async () => buttonIn(rowOf('Second'), 'Steer')!.click());
         await act(async () => buttonIn(rowOf('First'), 'Remove')!.click());
 
         expect(sent).toEqual([
@@ -273,7 +281,7 @@ describe('the queue in the composer', () => {
             const chat = chatWith([notice]);
 
             await mount(chat);
-            await act(async () => buttonIn(noticeRow(), 'Send now')!.click());
+            await act(async () => buttonIn(noticeRow(), 'Steer')!.click());
             await act(async () => buttonIn(noticeRow(), 'Remove')!.click());
 
             expect(sent).toEqual([

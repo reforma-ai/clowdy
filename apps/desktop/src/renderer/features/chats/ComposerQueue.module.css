@@ -21,14 +21,10 @@
     align-items: center;
     gap: var(--spacing-10);
     min-height: calc(var(--spacing-30) + var(--spacing-4));
-    padding: var(--spacing-md) var(--spacing-xs) var(--spacing-md) var(--spacing-lg);
+    padding: var(--spacing-xs) var(--spacing-xs) var(--spacing-xs) var(--spacing-lg);
     border-radius: calc(var(--radius-sm) * var(--squircle-radius-factor));
     corner-shape: superellipse(var(--squircle-value));
     background-color: var(--color-secondary-light);
-}
-
-.item:has(.text):has(.files) {
-    align-items: flex-start;
 }
 
 .item:has(.preview:focus-visible) {
@@ -40,26 +36,20 @@
     @ruleset typography-text-md;
     display: flex;
     flex: 1;
-    flex-direction: column;
-    align-items: stretch;
-    gap: var(--spacing-md);
+    align-items: center;
+    gap: var(--spacing-xs);
     min-width: 0;
     overflow: hidden;
     outline: none;
     cursor: pointer;
 }
 
-/* Two lines of the message at most. */
 .text {
-    display: -webkit-box;
+    display: block;
     min-width: 0;
-    max-height: calc(var(--leading-md) * 2);
     overflow: hidden;
-    line-height: var(--leading-md);
-    overflow-wrap: anywhere;
-    line-clamp: 2;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 /* A compact item, or an item a thread sent, is not the person's message: nothing to press, and its mark before the words. */
@@ -67,32 +57,10 @@
     cursor: default;
 }
 
-.command {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-xs);
-    min-width: 0;
-}
-
-.command :global(svg) {
+.mark {
     display: block;
     flex-shrink: 0;
     color: var(--color-secondary-muted-text);
-}
-
-.files {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-xs);
-    min-width: 0;
-    min-height: var(--leading-md);
-    line-height: var(--leading-md);
-    color: var(--color-secondary-muted-text);
-}
-
-.files :global(svg) {
-    display: block;
-    flex-shrink: 0;
 }
 
 .status {
@@ -102,8 +70,8 @@
 }
 
 .actions {
+    align-items: center;
     flex-shrink: 0;
-    margin-block: calc(var(--spacing-4) * -1);
     transition: opacity var(--transition-duration-fast) ease;
 }
 

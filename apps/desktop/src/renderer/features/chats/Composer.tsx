@@ -166,7 +166,7 @@ export function Composer({ chat, run, start, minLines, editMode, controls, ref }
             : undefined;
     const target = chat ?? made;
     const running = isRunActive(run);
-    // A message to a busy orchestrator waits in the queue; the box says so, and Send now on a queued message steers.
+    // A message to a busy orchestrator waits in the queue, where its up arrow steers the current turn.
     const busy = isRunBusy(run);
     const model = useModelChoice({ chat, made, run, preferredEngine: start?.defaults?.engine });
     const attach = useComposerFiles(key, chat?.projectId ?? start?.projectId);
