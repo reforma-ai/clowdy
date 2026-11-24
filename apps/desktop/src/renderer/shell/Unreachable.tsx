@@ -23,7 +23,7 @@ export function Unreachable({ message, onRetry }: UnreachableProps) {
                     {message}
                 </Text>
             )}
-            <Button color="primary" onPress={onRetry}>
+            <Button color="contrast" onPress={onRetry}>
                 Retry
             </Button>
         </div>
