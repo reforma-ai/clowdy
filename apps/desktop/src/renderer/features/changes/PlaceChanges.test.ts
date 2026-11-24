@@ -725,6 +725,25 @@ describe('the viewed files', () => {
         expect(model.files.map(entry => entry.path)).toEqual(['src/a.ts', 'src/b.ts']);
     });
 
+    it('let a file asked for from the commit box through: the hidden viewed files and the filter give way, and a scope without it gives way to the uncommitted one', async () => {
+        const { model } = await viewedModel([{ path: 'src/a.ts', revision: 'r1' }]);
+
+        model.setHideViewed(true);
+        model.setFilter('*.md');
+        model.showFile('src/a.ts');
+        expect([model.effectiveScope, model.filter, model.hideViewed, model.revealRequest]).toEqual([
+            'all',
+            '',
+            false,
+            'src/a.ts',
+        ]);
+
+        model.setFilter('src/**');
+        model.pickCommit(NEWEST.sha);
+        model.showFile('src/a.ts');
+        expect([model.effectiveScope, model.filter]).toEqual(['uncommitted', 'src/**']);
+    });
+
     it('drop a card from the list as soon as its file is ticked while they are hidden, and show it again when the tick is taken back', async () => {
         const { model } = await viewedModel();
 

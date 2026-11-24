@@ -273,6 +273,11 @@ describe('AgentRegistry', () => {
         const reg = registry(dataDir);
         reg.add({ id: 'mine', name: 'Mine', command: 'my-agent', args: [], elicitation: true });
         expect(await registry(dataDir).resolve('mine')).toMatchObject({ ok: true, agent: { elicitation: true } });
+        expect(registry(dataDir).questionElicitation('mine')).toBe(true);
+        expect(registry(dataDir).questionElicitation('cursor')).toBe(false);
+        expect(registry(dataDir).questionElicitation('codex')).toBe(true);
+        expect(registry(dataDir).questionElicitation('claude')).toBe(true);
+        expect(registry(dataDir).questionElicitation('unknown')).toBeUndefined();
     });
 
     test("on macOS a run of Cursor keeps its state in a folder of Clowdy's own (owner only), and Cursor learns that the client can show a model's effort", async () => {

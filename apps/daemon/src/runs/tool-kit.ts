@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import type { QuestionOption } from '@clowdy/protocol';
 import type { ToolDefinition } from '../engine/types';
 import type { Store } from '../store';
 import type { RunService } from './service';
@@ -9,6 +10,10 @@ export interface ToolDeps {
     store: Store;
     runs: RunService;
     threads: ThreadService;
+    pauseQuestion?: (
+        runId: string,
+        question: { text: string; options: QuestionOption[]; recommended?: string }
+    ) => void;
 }
 
 /**

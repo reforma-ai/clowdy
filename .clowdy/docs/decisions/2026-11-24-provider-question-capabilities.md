@@ -1,6 +1,7 @@
 # Provider question capabilities
 
-Status: accepted
+Status: superseded
+Superseded by: decisions/2026-11-24-durable-provider-questions.md
 Date: 2026-11-24
 Decided by: user
 Related task: CLO-54
