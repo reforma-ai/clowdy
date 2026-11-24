@@ -211,8 +211,9 @@ export function WorktreeGroup({
     group,
     folder,
     onCreate,
+    createDisabled = false,
     ...actions
-}: Omit<WorktreeRowProps, 'worktree'> & { onCreate: () => void }) {
+}: Omit<WorktreeRowProps, 'worktree'> & { onCreate: () => void; createDisabled?: boolean }) {
     const headingId = useId();
 
     return (
@@ -234,7 +235,7 @@ export function WorktreeGroup({
                     )}
                 </For>
                 <li>
-                    <button type="button" className={styles.add} onClick={onCreate}>
+                    <button type="button" className={styles.add} onClick={onCreate} disabled={createDisabled}>
                         <Plus aria-hidden="true" />
                         New worktree
                     </button>

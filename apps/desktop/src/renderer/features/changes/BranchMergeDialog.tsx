@@ -2,6 +2,7 @@ import { Button } from '@clowdy/components/Button';
 import { Modal, useModalContext } from '@clowdy/components/Modal';
 import { Spinner } from '@clowdy/components/Spinner';
 import { Text } from '@clowdy/components/Text';
+import { Close } from '@clowdy/icons/14';
 import { errorMessage } from '@clowdy/lib';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 
@@ -12,6 +13,7 @@ import { PickerList, type PickerOption } from '../../shared/PickerPopover';
 import { canOpenPaths, chosenPrograms, openEffects, useOpenApps } from '../openWith';
 import styles from './BranchMergeDialog.module.css';
 import { commitsWords } from './changesActions';
+import { confirmAbortMerge } from './confirmAbortMerge';
 import { type GitPlaceKey, gitFactsOf, placeRef } from './gitFacts';
 
 import type {
@@ -48,18 +50,17 @@ function choicesOf(listing: GitBranches | undefined, current: string, includeOri
 
     const local = listing.local
         .filter(branch => branch.name !== current)
-        .map(({ name }) => ({ id: `refs/heads/${name}`, label: name, branch: name, group: 'Local' }));
+        .map(({ name }) => ({ id: `refs/heads/${name}`, label: name, branch: name }));
     const origin = includeOrigin
-        ? (listing.origin ?? listing.remote).map(({ name }) => ({
+        ? listing.remote.map(({ name }) => ({
               id: `refs/remotes/origin/${name}`,
               label: `origin/${name}`,
               branch: name,
-              group: 'Origin',
               remote: true as const,
           }))
         : [];
 
-    return [...origin, ...local];
+    return [...local, ...origin];
 }
 
 interface Failure {
@@ -225,12 +226,11 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
         });
     };
 
-    const title = direction === 'from' ? 'Merge from branch' : 'Merge into branch';
-    const source = preview?.source ?? (direction === 'from' ? (choice?.label ?? 'Source branch') : current);
-    const target = preview?.target ?? (direction === 'into' ? (choice?.label ?? 'Destination branch') : current);
+    const source = preview?.source ?? (direction === 'from' ? (choice?.label ?? '…') : current);
+    const target = preview?.target ?? (direction === 'into' ? (choice?.label ?? '…') : current);
     const isWorking = pending !== undefined;
     const { editor, fileManager } = chosenPrograms(apps);
-    const openIn = editor ?? fileManager;
+    const openIn = canOpenPaths() ? (editor ?? fileManager) : undefined;
 
     return (
         <div
@@ -247,9 +247,19 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
         >
             <div className={styles.heading}>
                 <Text id={headingId} as="h2" variant="heading-3">
-                    {title}
+                    {`Merge ${source} to ${target}`}
                 </Text>
-                <Text weight="medium">{`${source} → ${target}`}</Text>
+                <Button
+                    size="sm"
+                    variant="filling"
+                    color="secondary"
+                    iconOnly
+                    aria-label="Close"
+                    isDisabled={isWorking}
+                    onPress={() => modal.cancel()}
+                >
+                    <Close />
+                </Button>
             </div>
             {loading && (
                 <div className={styles.loading} role="status">
@@ -279,7 +289,7 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
             )}
             {!result && preview && (
                 <div className={styles.detail} role="status">
-                    <Text>
+                    <Text variant="sm">
                         {preview.mode === 'up-to-date'
                             ? MODES[preview.mode]
                             : `${commitsWords(preview.commits)} · ${MODES[preview.mode]}`}
@@ -293,7 +303,7 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
             )}
             {result?.state === 'conflicts' && (
                 <div className={styles.detail} role="status">
-                    <Text color="warning">
+                    <Text variant="sm" color="warning">
                         {result.conflicts === 0
                             ? `Finish the merge in ${result.target}`
                             : `${result.conflicts} ${result.conflicts === 1 ? 'conflict' : 'conflicts'} in ${result.target}`}
@@ -303,9 +313,13 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
                     </Text>
                 </div>
             )}
-            {result?.state === 'done' && <Text role="status">{`Merged into ${result.target}`}</Text>}
-            {result?.state === 'pushed' && <Text role="status">{`Pushed ${result.target} to origin`}</Text>}
-            {result?.state === 'aborted' && <Text role="status">{`Merge into ${result.target} aborted`}</Text>}
+            {result?.state === 'done' && <Text variant="sm" role="status">{`Merged into ${result.target}`}</Text>}
+            {result?.state === 'pushed' && (
+                <Text variant="sm" role="status">{`Pushed ${result.target} to origin`}</Text>
+            )}
+            {result?.state === 'aborted' && (
+                <Text variant="sm" role="status">{`Merge into ${result.target} aborted`}</Text>
+            )}
             {failure && <FailureText failure={failure} />}
             <div className={styles.actions}>
                 {result?.state === 'conflicts' && (
@@ -315,26 +329,36 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
                         isDisabled={isWorking}
                         isPending={pending === 'abort'}
                         onPress={() =>
-                            void run({
-                                action: 'abort',
-                                target: result.target,
-                                commit: result.commit,
-                                sourceCommit: result.sourceCommit,
-                            })
+                            confirmAbortMerge(() =>
+                                run({
+                                    action: 'abort',
+                                    target: result.target,
+                                    commit: result.commit,
+                                    sourceCommit: result.sourceCommit,
+                                })
+                            )
                         }
                     >
                         Abort merge
                     </Button>
                 )}
-                <Button size="sm" variant="filling" isDisabled={isWorking} onPress={() => modal.cancel()}>
-                    {result ? 'Done' : 'Cancel'}
-                </Button>
+                {(result?.state !== 'conflicts' || !openIn) && (
+                    <Button
+                        size="sm"
+                        variant="filled"
+                        color="secondary"
+                        isDisabled={isWorking}
+                        onPress={() => modal.cancel()}
+                    >
+                        {result ? 'Done' : 'Cancel'}
+                    </Button>
+                )}
                 {!result && choice && failure && (
                     <Button size="sm" variant="bordered" onPress={() => void pick(choice.id)}>
                         Refresh preview
                     </Button>
                 )}
-                {result?.state === 'conflicts' && openIn && canOpenPaths() && (
+                {result?.state === 'conflicts' && openIn && (
                     <Button
                         className={styles.action}
                         size="sm"

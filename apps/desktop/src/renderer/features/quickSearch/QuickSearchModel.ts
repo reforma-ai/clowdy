@@ -22,6 +22,7 @@ export interface FoundChat {
     chat: Chat;
     /** The run that answers the chat, for the icon of its row. */
     run: Run | undefined;
+    unread?: boolean;
     /** What the row says at its right: the folder of the chat, when the project has several. */
     note?: string;
 }

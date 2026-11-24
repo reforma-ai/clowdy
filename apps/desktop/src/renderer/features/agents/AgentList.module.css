@@ -30,15 +30,7 @@
     white-space: nowrap;
 }
 
-/* The title and, for a chat in a worktree, the branch mark after it: the title gives way, the mark keeps its size. */
-.titleLine {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-sm);
-    min-width: 0;
-}
-
-.titleLine[draggable='true'] {
+.title[draggable='true'] {
     cursor: grab;
 }
 
@@ -58,16 +50,6 @@
 
 .chatRow[data-drop-position='after']::after {
     inset-block-end: 0;
-}
-
-.worktree {
-    display: inline-flex;
-    flex-shrink: 0;
-    color: var(--color-secondary-muted-text);
-}
-
-.worktree[data-gone] {
-    color: var(--color-warning-text);
 }
 
 .end,

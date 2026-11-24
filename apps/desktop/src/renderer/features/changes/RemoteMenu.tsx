@@ -3,7 +3,7 @@ import { Menu, MenuItem, MenuSeparator, MenuTrigger } from '@clowdy/components/L
 import { Popover } from '@clowdy/components/Popover';
 import { Spinner } from '@clowdy/components/Spinner';
 import { Text } from '@clowdy/components/Text';
-import { ArrowDown, ArrowDownRight, ArrowUp, ArrowUpRight, ChevronDown, Refresh } from '@clowdy/icons/14';
+import { ArrowDown, ArrowDownRight, ArrowUp, ArrowUpRight, ChevronDown, Refresh, Vsc } from '@clowdy/icons/14';
 
 import { Unavailable } from '../../shared/Unavailable';
 import { useNow } from '../../shared/useNow';
@@ -16,6 +16,7 @@ import {
     remoteActions,
     type SyncView,
     syncButton,
+    updateFromBase,
 } from './changesActions';
 import styles from './RemoteMenu.module.css';
 import { useRemoteActions } from './useRemoteActions';
@@ -23,7 +24,7 @@ import { useRemoteActions } from './useRemoteActions';
 import type { ReactNode } from 'react';
 import type { PlaceFacts } from './gitFacts';
 
-/** The mark of each entry of the dropdown. Publishing sends the branch up as pushing does. Update and abort are not entries of it. */
+/** Icons for the origin actions. Publishing sends the branch up as pushing does. */
 const ICONS: Record<Exclude<RemoteActionId, 'update' | 'abort'>, ReactNode> = {
     fetch: <Refresh />,
     pull: <ArrowDown />,
@@ -39,13 +40,13 @@ function Counts({ ahead, behind }: Pick<SyncView, 'ahead' | 'behind'>) {
         <span className={styles.counts} aria-hidden="true">
             {ahead ? (
                 <span className={styles.count}>
-                    <ArrowUp />
+                    <ArrowUp size={10} />
                     {ahead}
                 </span>
             ) : null}
             {behind ? (
                 <span className={styles.count}>
-                    <ArrowDown />
+                    <ArrowDown size={10} />
                     {behind}
                 </span>
             ) : null}
@@ -54,8 +55,8 @@ function Counts({ ahead, behind }: Pick<SyncView, 'ahead' | 'behind'>) {
 }
 
 /**
- * The one button that moves the branch, with GitHub Desktop's words: its label is the next action (`Publish branch`, `Pull origin` or `Push origin` with the commits it moves, `Fetch origin`),
- * and under it is when the last fetch was (`Last fetched 3 minutes ago`, `Never fetched`) or the one thing to know of the state. A branch that diverged is `Pull origin`: the pull merges. It is
+ * The one button that moves the branch: its label is Publish, Pull or Push when the branch needs to sync. Otherwise it shows `Update from <base>` if the base is ahead, or `Fetch origin`.
+ * Under the label is when the last fetch was (`Last fetched 3 minutes ago`, `Never fetched`) or the one thing to know of the state. A branch that diverged is `Pull origin`: the pull merges. It is
  * `syncButton`'s rule. While an action runs the label is its progress with a spinner, and nothing can be pressed; where there is nothing to press (no origin, no branch) it is off, and its
  * tooltip says why. The words are cut by the sidebar's edge, narrow as it is dragged: the tooltip has all of them. Beside it a dropdown keeps every action with the reason it cannot run
  * (`remoteActions`: nothing to pull, nothing to push, not published, pull first, no origin), Fetch origin first and always. When an action ends a quiet line
@@ -73,6 +74,7 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
     if (!view) return null;
 
     const actions = remoteActions(status, remote.busy);
+    const update = updateFromBase(status);
     const { running, failure, notice } = remote;
     const off = view.action === undefined && running === undefined;
     const current = status?.isRepository && status.head.kind === 'branch' ? status.head.name : undefined;
@@ -135,7 +137,7 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
                             )}
                         </span>
                         <Counts ahead={view.ahead} behind={view.behind} />
-                        {running !== undefined && <Spinner size="xs" className={styles.spinner} aria-hidden />}
+                        {running !== undefined && <Spinner size="xxs" className={styles.spinner} aria-hidden />}
                     </Button>
                 </Unavailable>
 
@@ -171,6 +173,14 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
                                 />
                             ))}
                             <MenuSeparator />
+                            {update && (
+                                <MenuItem
+                                    id="update"
+                                    icon={<Vsc />}
+                                    text={update.label}
+                                    isDisabled={!hasOrigin || remote.busy}
+                                />
+                            )}
                             <MenuItem
                                 id="merge-from"
                                 icon={<ArrowDownRight />}

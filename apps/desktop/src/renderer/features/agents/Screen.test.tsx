@@ -23,7 +23,6 @@ import { chatListPreferences } from './chatListPreferences';
 import { Screen } from './Screen';
 import { starCardPreferences } from './starCardState';
 
-import type { ProjectInfo } from '@clowdy/protocol';
 import type { Editor } from '@tiptap/core';
 import type { ReactNode } from 'react';
 import type { KeyValueStorage } from '../../stores/storage';
@@ -504,7 +503,7 @@ describe('grouped by folder', () => {
             await press(name(API.id)!);
             expect([ui().draft, ui().chatId]).toEqual([false, FIXTURE_WORKSPACE_CHAT_ID]);
             expect(isSelected(FIXTURE_WORKSPACE_CHAT_ID)).toBe(true);
-            expect(menuItems()).toEqual(['New chat', 'Copy path', 'Open in…', 'Manage worktrees…']);
+            expect(menuItems()).toEqual(['New chat', 'Copy path', 'Open in…', 'Folder settings…']);
 
             await press(menuItem('New chat'));
             await draw();
@@ -521,7 +520,7 @@ describe('grouped by folder', () => {
                 'Open in Terminal',
                 'Copy path',
                 'Open in…',
-                'Manage worktrees…',
+                'Folder settings…',
             ]);
 
             await press(menuItem('New chat'));
@@ -584,7 +583,7 @@ describe('grouped by folder', () => {
                 'New chat',
                 'Copy path',
                 'Open in…',
-                'Manage worktrees…',
+                'Folder settings…',
             ]);
             expect(item('New chat').getAttribute('aria-disabled')).toBe('true');
             await press(item('New chat'));
@@ -1305,25 +1304,87 @@ describe('the archive', () => {
     });
 });
 
+describe('chat completion dots', () => {
+    const dotOf = (key: string) => rowOf(key).querySelector('[role="img"]')?.getAttribute('aria-label');
+
+    it('starts without dots for past successes and clears a new completion when its row is opened', async () => {
+        const focus = vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+
+        try {
+            expect(dotOf('c-2')).toBeUndefined();
+            const run = project().runs.get('r-orch-1')!;
+            await draw(() => project().runs.set(run.id, { ...run, status: 'succeeded', finishedAt: Date.now() + 1 }));
+            expect(dotOf('c-1')).toBe('Done');
+            await press(rowOf('c-1'));
+            await draw();
+            expect(isSelected('c-1')).toBe(true);
+            // Draw the read state changed by the effect, as the observer does in the app.
+            await draw();
+            expect(dotOf('c-1')).toBeUndefined();
+            await press(rowOf('c-2'));
+            await draw();
+            expect(dotOf('c-1')).toBeUndefined();
+        } finally {
+            focus.mockRestore();
+        }
+    });
+
+    it('keeps a completion unread in an unfocused window until the person returns', async () => {
+        const focus = vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+
+        try {
+            const run = project().runs.get('r-orch-1')!;
+            await draw(() => ui().openChat('c-1'));
+            await draw(() => project().runs.set(run.id, { ...run, status: 'succeeded', finishedAt: Date.now() + 1 }));
+            expect(dotOf('c-1')).toBe('Done');
+            focus.mockReturnValue(true);
+            await draw(() => window.dispatchEvent(new Event('focus')));
+            expect(dotOf('c-1')).toBeUndefined();
+        } finally {
+            focus.mockRestore();
+        }
+    });
+
+    it('keeps a completion unread until the chat is revealed by closing Settings', async () => {
+        const focus = vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+
+        try {
+            const run = project().runs.get('r-orch-1')!;
+            await draw(() => {
+                ui().openChat('c-1');
+                store.ui.openSettings();
+            });
+            await draw(() => project().runs.set(run.id, { ...run, status: 'succeeded', finishedAt: Date.now() + 1 }));
+            expect(dotOf('c-1')).toBe('Done');
+            await draw(() => store.ui.closeSettings());
+            await draw();
+            expect(dotOf('c-1')).toBeUndefined();
+        } finally {
+            focus.mockRestore();
+        }
+    });
+});
+
 describe('threads', () => {
     const foldOf = (key: string) =>
         rowOf(key).querySelector<HTMLButtonElement>('button[aria-label^="Expand"], button[aria-label^="Collapse"]');
     const depthOf = (key: string) => rowOf(key).getAttribute('data-depth');
     const dotOf = (key: string) => rowOf(key).querySelector('[role="img"]')?.getAttribute('aria-label');
 
-    it('updates the draft dot when text or attachments are added and cleared', async () => {
-        const tone = () => rowOf('c-4').querySelector('[role="img"] [data-tone]')?.getAttribute('data-tone');
+    it('shows the draft icon when text or attachments are added and hides it when cleared', async () => {
+        const icon = () => rowOf('c-4').querySelector('[aria-label="Unsent draft"] svg');
 
         expect(dotOf('c-4')).toBeUndefined();
         await act(async () => saveDraft('c-4', plainTextToDoc('Unsent')));
         expect(dotOf('c-4')).toBe('Unsent draft');
-        expect(tone()).toBe('neutral');
+        expect(icon()?.getAttribute('viewBox')).toBe('0 0 12 12');
         await act(async () => saveDraft('c-4', emptyComposerDoc()));
         expect(dotOf('c-4')).toBeUndefined();
         await act(async () =>
             setFiles('c-4', [{ key: 'file', name: 'a.txt', mediaType: 'text/plain', size: 1, status: 'ready' }])
         );
         expect(dotOf('c-4')).toBe('Unsent draft');
+        expect(icon()).not.toBeNull();
         await act(async () => setFiles('c-4', []));
         expect(dotOf('c-4')).toBeUndefined();
     });
@@ -1457,7 +1518,7 @@ describe('threads', () => {
         expect(dotOf('c-6')).toBe('Threads working');
         expect(dotOf('c-6a')).toBe('Working');
         expect(dotOf('c-6c')).toBe('Failed');
-        expect(dotOf('c-6b')).toBe('Done');
+        expect(dotOf('c-6b')).toBeUndefined();
         expect(rowOf('c-6e').querySelector('[data-provider]')?.getAttribute('data-provider')).toBe('codex');
     });
 
@@ -1560,9 +1621,9 @@ describe('threads', () => {
 });
 
 describe('a chat that works in a worktree', () => {
-    const mark = (key: string) => rowOf(key).querySelector<HTMLElement>('[role="img"][aria-label*="worktree"]');
+    async function restart() {
+        const transport = new FixtureTransport({ data: withFixtureWorkspace(createFixtureData()) });
 
-    async function restart(transport = new FixtureTransport({ data: withFixtureWorkspace(createFixtureData()) })) {
         act(() => reactRoot.unmount());
         store.dispose();
         reactRoot = createRoot(container);
@@ -1571,124 +1632,13 @@ describe('a chat that works in a worktree', () => {
         await draw();
     }
 
-    /** The fixture daemon with a chat in a worktree, and what it reads of the project's worktrees as `set` last said (`undefined`: nothing). */
-    function reading(workspaces: ProjectInfo['workspaces'], change?: (data: FixtureData) => void) {
-        const data = withFixtureWorkspace(createFixtureData());
-
-        change?.(data);
-
-        const transport = new FixtureTransport({ data });
-        const read = vi.spyOn(transport, 'getProjectsInfo');
-        let current = workspaces;
-
-        read.mockImplementation(async projectId =>
-            (await FixtureTransport.prototype.getProjectsInfo.call(transport, projectId)).map(entry =>
-                entry.projectId === FIXTURE_PROJECT_ID ? { ...entry, workspaces: current } : entry
-            )
-        );
-
-        return { transport, read, set: (next: ProjectInfo['workspaces']) => void (current = next) };
-    }
-
-    it("has a branch mark after its title, with its branch in the mark's title, and no other row has one", async () => {
+    it('shows the worktree below the composer without a worktree icon in the sidebar', async () => {
         await restart();
+        const row = rowOf(FIXTURE_WORKSPACE_CHAT_ID);
 
-        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.getAttribute('aria-label')).toBe(
-            'Works in a worktree on clowdy/ab12cd34'
-        );
-        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.querySelector('svg')).not.toBeNull();
-        expect(rowKeys().filter(key => key && mark(key))).toEqual([FIXTURE_WORKSPACE_CHAT_ID]);
-        // The title stays what the row is called, with the mark after it.
-        expect(rowOf(FIXTURE_WORKSPACE_CHAT_ID).textContent).toContain('Weekend surcharge in a worktree');
-        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.previousElementSibling?.textContent).toBe(
-            'Weekend surcharge in a worktree'
-        );
-    });
+        expect(row.textContent).toContain('Weekend surcharge in a worktree');
+        expect(row.querySelector('[role="img"][aria-label*="worktree" i]')).toBeNull();
 
-    it('says the branch the worktree has now, as the daemon read it, and not the one it was made with', async () => {
-        await restart(reading([{ workspaceId: 'wks_ab12cd34', exists: true, branch: 'feature/other' }]).transport);
-
-        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.getAttribute('aria-label')).toBe(
-            'Works in a worktree on feature/other'
-        );
-    });
-
-    it('reads what the daemon knows again when the window gets focus, for the branch an agent switched to meanwhile', async () => {
-        const { transport, read, set } = reading([
-            { workspaceId: 'wks_ab12cd34', exists: true, branch: 'feature/other' },
-        ]);
-
-        await restart(transport);
-
-        const everything = () => read.mock.calls.filter(([projectId]) => projectId === undefined).length;
-        const reads = everything();
-
-        set([{ workspaceId: 'wks_ab12cd34', exists: true, branch: 'hotfix' }]);
-        await act(async () => {
-            window.dispatchEvent(new Event('focus'));
-        });
-        await draw();
-
-        expect(everything()).toBeGreaterThan(reads);
-        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.getAttribute('aria-label')).toBe('Works in a worktree on hotfix');
-    });
-
-    it('says the worktree is gone when the daemon says it is no longer on the disk', async () => {
-        await restart(reading([{ workspaceId: 'wks_ab12cd34', exists: false }]).transport);
-
-        expect(rowOf(FIXTURE_WORKSPACE_CHAT_ID).querySelector('[role="img"]')?.getAttribute('aria-label')).toBe(
-            'The worktree no longer exists'
-        );
-    });
-
-    it('reads again when a worktree gets made, so a read taken while it was being made does not make the row call it gone', async () => {
-        await restart(new FixtureTransport({ data: createFixtureData() }));
-
-        const created = await store.command({
-            type: 'chat.create',
-            projectId: FIXTURE_PROJECT_ID,
-            workspace: { mode: 'new' },
-        });
-        const { chat } = (created as { data: { chat: { id: string } } }).data;
-
-        await vi.waitFor(() => expect(project().chats.get(chat.id)?.workspace?.ready).toBe(false));
-        await draw();
-
-        // The window gets focus while the worktree is being made: the read says there is none yet, and the row, which names the branch it will be made on, is not wrong.
-        await act(async () => {
-            window.dispatchEvent(new Event('focus'));
-        });
-        await draw();
-        expect(mark(chat.id)?.getAttribute('aria-label')).toBe(`Works in a worktree on clowdy/${chat.id.slice(-8)}`);
-
-        await store.command({ type: 'chat.send', chatId: chat.id, text: 'Go' });
-        await vi.waitFor(() => expect(project().chats.get(chat.id)?.workspace?.ready).toBe(true));
-        await draw();
-        await vi.waitFor(() =>
-            expect(mark(chat.id)?.getAttribute('aria-label')).toBe(`Works in a worktree on clowdy/${chat.id.slice(-8)}`)
-        );
-        expect(mark(chat.id)?.hasAttribute('data-gone')).toBe(false);
-    });
-
-    it('falls back to the branch it was made with when the read has no word on the worktree, and to a plain line when it was made with none', async () => {
-        await restart(reading(undefined).transport);
-
-        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.getAttribute('aria-label')).toBe(
-            'Works in a worktree on clowdy/ab12cd34'
-        );
-
-        await restart(
-            reading(
-                undefined,
-                data => void delete data.chats.find(chat => chat.id === FIXTURE_WORKSPACE_CHAT_ID)!.workspace!.branch
-            ).transport
-        );
-
-        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.getAttribute('aria-label')).toBe('Works in a worktree');
-    });
-
-    it("shows the chat's folder, where it works and the branch read only under its message box, from the chat's own workspace", async () => {
-        await restart();
         await draw(() => ui().openChat(FIXTURE_WORKSPACE_CHAT_ID));
 
         expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe(

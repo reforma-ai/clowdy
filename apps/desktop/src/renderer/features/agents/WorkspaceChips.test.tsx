@@ -201,14 +201,14 @@ describe('the control', () => {
         expect(dimParts()).toEqual([]);
     });
 
-    it('lists main, new and existing worktrees, followed by Manage worktrees…', async () => {
+    it('lists main, new and existing worktrees, followed by Folder settings…', async () => {
         await press(chip()!);
 
         expect(textsOf(menuItems())).toEqual([
             'Main worktreeWork in the folder as it ismain',
             'New worktreeA separate checkout on a branch of its ownorigin/main',
             'clowdy/ab12cd34Used in 0 chats',
-            'Manage worktrees…',
+            'Folder settings…',
         ]);
         // Manage opens a dialog and does not select a place.
         expect(menuItems().map(row => row.getAttribute('aria-checked'))).toEqual(['true', 'false', 'false', null]);
@@ -219,7 +219,7 @@ describe('the control', () => {
             'menuitem',
         ]);
         expect(menuItems().every(row => row.getAttribute('aria-disabled') !== 'true')).toBe(true);
-        // One separator stands between the three places to work in and Manage worktrees….
+        // One separator stands between the three places to work in and Folder settings….
         expect(document.body.querySelectorAll('[role="menu"] [role="separator"]')).toHaveLength(1);
 
         const rows = [...document.body.querySelectorAll<HTMLElement>('[role="menu"] > *')];
@@ -353,7 +353,7 @@ describe('the control', () => {
         expect(textsOf(menuItems())).toEqual([
             'Main worktreeWork in the folder as it ismain',
             'New worktreeA separate checkout on a branch of its ownorigin/main',
-            'Manage worktrees…',
+            'Folder settings…',
         ]);
         expect(
             [...document.body.querySelectorAll<HTMLElement>('[role="menu"] > *')].map(row => row.getAttribute('role'))
@@ -424,7 +424,7 @@ describe('the branch a new worktree starts from', () => {
         expect(baseButton()?.getAttribute('tabindex')).toBe('-1');
     });
 
-    it('opens the list of the base for the right arrow on the row of a new worktree, and on no row of Manage worktrees', async () => {
+    it('opens the list of the base for the right arrow on the row of a new worktree, and on no row of Folder settings', async () => {
         const key = async (target: HTMLElement) =>
             act(async () => {
                 target.focus();
@@ -440,7 +440,7 @@ describe('the branch a new worktree starts from', () => {
             });
 
         await press(chip()!);
-        await key(menuItem('Manage worktrees'));
+        await key(menuItem('Folder settings'));
         await settle();
 
         expect(options()).toEqual([]);
@@ -708,7 +708,7 @@ describe('Existing worktrees', () => {
     });
 });
 
-describe('Manage worktrees…', () => {
+describe('Folder settings…', () => {
     const opener = vi.mocked(openManageWorktrees);
     const twoFolders = () => {
         const data = createFixtureData();
@@ -730,9 +730,9 @@ describe('Manage worktrees…', () => {
     it('is the last row, behind a separator, and says what it is as a plain menu item', async () => {
         await press(chip()!);
 
-        const manage = menuItem('Manage worktrees');
+        const manage = menuItem('Folder settings');
 
-        expect(manage.textContent).toBe('Manage worktrees…');
+        expect(manage.textContent).toBe('Folder settings…');
         expect(menuItems().at(-1)).toBe(manage);
         expect(manage.getAttribute('role')).toBe('menuitem');
         expect(manage.getAttribute('aria-disabled')).not.toBe('true');
@@ -742,7 +742,7 @@ describe('Manage worktrees…', () => {
 
     it('opens the dialog of the project for the folder of the page, and shuts the menu', async () => {
         await press(chip()!);
-        await press(menuItem('Manage worktrees'));
+        await press(menuItem('Folder settings'));
         await settle();
 
         expect(opener).toHaveBeenCalledExactlyOnceWith({
@@ -756,7 +756,7 @@ describe('Manage worktrees…', () => {
     it('chooses no place: the choice that was made and what the pill says stay', async () => {
         await pickBase('dev');
         await press(chip()!);
-        await press(menuItem('Manage worktrees'));
+        await press(menuItem('Folder settings'));
         await settle();
 
         expect(opener).toHaveBeenCalledOnce();
@@ -780,7 +780,7 @@ describe('Manage worktrees…', () => {
         );
         await settle();
         await press(chip()!);
-        await press(menuItem('Manage worktrees'));
+        await press(menuItem('Folder settings'));
         await settle();
 
         expect(opener).toHaveBeenCalledExactlyOnceWith({
@@ -792,14 +792,14 @@ describe('Manage worktrees…', () => {
 
     it('opens for Enter and for Space, and shuts the menu for both', async () => {
         await press(chip()!);
-        await key(menuItem('Manage worktrees'), 'Enter', 'Enter');
+        await key(menuItem('Folder settings'), 'Enter', 'Enter');
         await settle();
 
         expect(opener).toHaveBeenCalledTimes(1);
         expect(menuItems()).toEqual([]);
 
         await press(chip()!);
-        await key(menuItem('Manage worktrees'), ' ', 'Space');
+        await key(menuItem('Folder settings'), ' ', 'Space');
         await settle();
 
         expect(opener).toHaveBeenCalledTimes(2);
@@ -810,15 +810,15 @@ describe('Manage worktrees…', () => {
         await press(chip()!);
         await key(worktreeRow('clowdy/ab12cd34'), 'ArrowDown', 'ArrowDown');
 
-        expect(document.activeElement).toBe(menuItem('Manage worktrees'));
+        expect(document.activeElement).toBe(menuItem('Folder settings'));
 
-        await key(menuItem('Manage worktrees'), 'ArrowDown', 'ArrowDown');
+        await key(menuItem('Folder settings'), 'ArrowDown', 'ArrowDown');
 
         expect(document.activeElement).toBe(menuItem('Main worktree'));
 
         await key(menuItem('Main worktree'), 'ArrowUp', 'ArrowUp');
 
-        expect(document.activeElement).toBe(menuItem('Manage worktrees'));
+        expect(document.activeElement).toBe(menuItem('Folder settings'));
     });
 
     it('gives focus back to the pill when the dialog is dismissed with Escape, though the row that opened it went with the menu', async () => {
@@ -828,18 +828,18 @@ describe('Manage worktrees…', () => {
 
         opener.mockImplementationOnce(openDialog);
         await press(chip()!);
-        await key(menuItem('Manage worktrees'), 'Enter', 'Enter');
+        await key(menuItem('Folder settings'), 'Enter', 'Enter');
         // The dialog notes the element to go back to once it has opened.
         await act(async () => {
             await new Promise(resolve => setTimeout(resolve, 400));
         });
 
-        expect(document.body.textContent).toContain("Each folder's worktrees");
+        expect(document.body.textContent).toContain('Name, worktree setup and worktrees of this folder');
         expect(document.activeElement).not.toBe(chip());
 
         await key(document.activeElement as HTMLElement, 'Escape', 'Escape');
         await vi.waitFor(() => expect(document.activeElement).toBe(chip()));
-        expect(document.body.textContent).not.toContain("Each folder's worktrees");
+        expect(document.body.textContent).not.toContain('Name, worktree setup and worktrees of this folder');
     });
 
     it('is in the menu of a repository with no commit too, where a new worktree is off', async () => {
@@ -854,9 +854,9 @@ describe('Manage worktrees…', () => {
         await start({ transport });
         await press(chip()!);
 
-        expect(menuItem('Manage worktrees').getAttribute('aria-disabled')).not.toBe('true');
+        expect(menuItem('Folder settings').getAttribute('aria-disabled')).not.toBe('true');
 
-        await press(menuItem('Manage worktrees'));
+        await press(menuItem('Folder settings'));
 
         expect(opener).toHaveBeenCalledOnce();
     });
@@ -868,7 +868,7 @@ describe('Manage worktrees…', () => {
         await start({ transport });
 
         expect(chip()).toBeNull();
-        expect(document.body.textContent).not.toContain('Manage worktrees');
+        expect(document.body.textContent).not.toContain('Folder settings');
         expect(opener).not.toHaveBeenCalled();
     });
 });

@@ -20,7 +20,7 @@ import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { openChat, unarchiveChat } from '../chats/archiveChat';
 import { deleteChat } from '../chats/deleteChat';
 import styles from './ArchiveButton.module.css';
-import { archivedChats, archiveGroups } from './agentTree';
+import { archivedChats, archiveGroups, orchestratorOf } from './agentTree';
 import { ChatIcon } from './ChatIcon';
 
 import type { Chat, ChatId } from '@clowdy/protocol';
@@ -69,46 +69,46 @@ export function ArchiveButton({ anchor }: { anchor: RefObject<HTMLElement | null
                             {groups.map(group => (
                                 <GridListSection key={group.id} aria-label={group.title}>
                                     <GridListHeader>{group.title}</GridListHeader>
-                                    {group.chats.map(chat => (
-                                        <GridListItem
-                                            key={chat.id}
-                                            id={chat.id}
-                                            text={chat.title}
-                                            data-open={menuOpenId === chat.id || undefined}
-                                            icon={
-                                                <ChatIcon
-                                                    chat={chat}
-                                                    run={
-                                                        chat.orchestratorRunId
-                                                            ? project.runs.get(chat.orchestratorRunId)
-                                                            : undefined
-                                                    }
-                                                />
-                                            }
-                                            endAffix={
-                                                <ArchivedEnd
-                                                    chat={chat}
-                                                    isOpen={menuOpenId === chat.id}
-                                                    onOpenChange={open => setMenuOpenId(open ? chat.id : null)}
-                                                    ago={formatElapsed(now - chat.archivedAt)}
-                                                    onUnarchive={() => void unarchiveChat(root, chat)}
-                                                    onDelete={() => {
-                                                        // A chat that ran asks first, saying how many threads go with it, and the dialog should not open over the list.
-                                                        setIsOpen(false);
-                                                        deleteChat(
-                                                            root,
-                                                            chat,
-                                                            chat.orchestratorRunId !== undefined &&
-                                                                project.runs.has(chat.orchestratorRunId),
-                                                            project.threadsBelow(chat.id).length
-                                                        );
-                                                    }}
-                                                />
-                                            }
-                                        >
-                                            <span className={styles.title}>{chat.title}</span>
-                                        </GridListItem>
-                                    ))}
+                                    {group.chats.map(chat => {
+                                        const run = orchestratorOf(chat, project.runs);
+
+                                        return (
+                                            <GridListItem
+                                                key={chat.id}
+                                                id={chat.id}
+                                                text={chat.title}
+                                                data-open={menuOpenId === chat.id || undefined}
+                                                icon={
+                                                    <ChatIcon
+                                                        chat={chat}
+                                                        run={run}
+                                                        unread={ui.hasUnreadCompletion(run)}
+                                                    />
+                                                }
+                                                endAffix={
+                                                    <ArchivedEnd
+                                                        chat={chat}
+                                                        isOpen={menuOpenId === chat.id}
+                                                        onOpenChange={open => setMenuOpenId(open ? chat.id : null)}
+                                                        ago={formatElapsed(now - chat.archivedAt)}
+                                                        onUnarchive={() => void unarchiveChat(root, chat)}
+                                                        onDelete={() => {
+                                                            // A chat that ran asks first, saying how many threads go with it, and the dialog should not open over the list.
+                                                            setIsOpen(false);
+                                                            deleteChat(
+                                                                root,
+                                                                chat,
+                                                                run !== undefined,
+                                                                project.threadsBelow(chat.id).length
+                                                            );
+                                                        }}
+                                                    />
+                                                }
+                                            >
+                                                <span className={styles.title}>{chat.title}</span>
+                                            </GridListItem>
+                                        );
+                                    })}
                                 </GridListSection>
                             ))}
                         </GridList>

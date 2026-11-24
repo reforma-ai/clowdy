@@ -1,10 +1,12 @@
+import { useEffect } from 'react';
+
 import { SidebarLayout } from '../../shared';
-import { useProjectState, useProjectUi } from '../../stores';
+import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { ChatView } from '../chats/ChatView';
 import { useProjectsInfo } from '../settings/projects/useProjectsInfo';
 import { useSidePanel } from '../sidePanel';
 import { AgentList } from './AgentList';
-import { chatFolder, resolveSelection, visibleChats } from './agentTree';
+import { chatFolder, orchestratorOf, resolveSelection, visibleChats } from './agentTree';
 import { ChatFolder } from './ChatFolder';
 import { DraftChat } from './DraftChat';
 import { RunDetail } from './RunDetail';
@@ -17,21 +19,32 @@ import styles from './Screen.module.css';
 export function Screen() {
     const project = useProjectState();
     const ui = useProjectUi();
+    const { settingsOpen } = useRootStore().ui;
     // The expanded side panel is drawn over the chat, which stays where it is: hidden, so it takes no click, no key and no reader.
     const { expanded } = useSidePanel();
     // A remembered chat or run may be gone: the chat that was open, or the first one listed, stands in.
     const chats = visibleChats([...project.chats.values()], ui.chatOrder);
     const selection = resolveSelection(project.chats, chats, project.runs, ui.chatId, ui.runId, ui.draft);
     const { chat, run } = selection;
-    // The folders gone from the disk are told from what the daemon last read, when the screen opens, when the projects change and when the window gets focus again. The list
-    // and the new-chat page share that one read: it costs a `git` call for each folder of each project, so each of them reading it would repeat it. The branches of the chats'
-    // worktrees (`ProjectInfo.workspaces`) are in it too, which is why it follows the focus (an agent switches branches in a terminal or in the background) and the worktrees that get
-    // made: a read taken while a worktree was being made says it is not there, and would make the list call it gone once it is.
-    const madeWorkspaces = [...project.chats.values()]
-        .flatMap(chat => (chat.workspace?.ready ? [chat.workspace.id] : []))
-        .sort()
-        .join();
-    const { info } = useProjectsInfo({ poll: false, refreshOnFocus: true, reloadKey: madeWorkspaces });
+    const chatRun = chat && orchestratorOf(chat, project.runs);
+    useEffect(() => {
+        if (expanded || settingsOpen || run || chatRun?.status !== 'succeeded') return;
+
+        const markSeen = () => {
+            if (document.visibilityState === 'visible' && document.hasFocus()) ui.markCompletionSeen(chatRun);
+        };
+
+        markSeen();
+        window.addEventListener('focus', markSeen);
+        document.addEventListener('visibilitychange', markSeen);
+        return () => {
+            window.removeEventListener('focus', markSeen);
+            document.removeEventListener('visibilitychange', markSeen);
+        };
+    }, [expanded, settingsOpen, run, chatRun, ui]);
+
+    // The list and the new-chat page share the read that detects folders gone from disk.
+    const { info } = useProjectsInfo({ poll: false, refreshOnFocus: true });
     const projectInfo = info.get(project.id);
     const missing = new Set(projectInfo?.folders.filter(folder => !folder.exists).map(folder => folder.folderId));
 
@@ -42,15 +55,7 @@ export function Screen() {
         <SidebarLayout
             screen="agents"
             defaultWidth={270}
-            sidebar={
-                <AgentList
-                    selection={selection}
-                    chats={chats}
-                    missing={missing}
-                    workspaces={projectInfo?.workspaces}
-                    isCovered={expanded}
-                />
-            }
+            sidebar={<AgentList selection={selection} chats={chats} missing={missing} isCovered={expanded} />}
         >
             <section
                 className={styles.main}

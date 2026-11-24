@@ -240,7 +240,7 @@ describe("the branch of the main worktree's row", () => {
 
     it('opens for the right arrow on the row, and for no other row', async () => {
         await press(chip()!);
-        await key(menuItem('Manage worktrees'), 'ArrowRight');
+        await key(menuItem('Folder settings'), 'ArrowRight');
         await settle();
 
         expect(options()).toEqual([]);

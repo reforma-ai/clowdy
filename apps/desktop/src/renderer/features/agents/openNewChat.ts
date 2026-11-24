@@ -1,7 +1,6 @@
 import { mainFolder } from '@clowdy/protocol';
 
 import { groupFolderOf, resolveSelection, visibleChats } from './agentTree';
-import { chatListPreferences } from './chatListPreferences';
 
 import type { FolderId } from '@clowdy/protocol';
 import type { ProjectState, ProjectUi } from '../../stores';
@@ -17,7 +16,7 @@ export function openNewChat(project: ProjectState | undefined, ui: ProjectUi, fo
     const main = mainFolder(project.project).id;
     const { chat } = resolveSelection(
         chats,
-        visibleChats(project.chatList, chatListPreferences.sort),
+        visibleChats(project.chatList, ui.chatOrder),
         runs,
         ui.chatId,
         ui.runId,

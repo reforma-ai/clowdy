@@ -7,6 +7,12 @@
     padding: var(--spacing-20);
 }
 
+.fields {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xxl);
+}
+
 .heading {
     display: flex;
     flex-direction: column;

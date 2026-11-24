@@ -142,7 +142,7 @@ export function ChatFolder({ name, folder, missing, workspace, showFolder = true
             checkout={{ workspace, onNewChat }}
         />
     ) : (
-        <WorkspaceLabel worktree={workspace?.path} git={git} />
+        <WorkspaceLabel worktree={undefined} git={git} />
     );
 }
 

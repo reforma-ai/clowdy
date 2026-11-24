@@ -89,6 +89,7 @@ const item = (label: string) => items().find(candidate => candidate.textContent?
 const isOff = (label: string) => item(label).getAttribute('aria-disabled') === 'true';
 const alert = () => container.querySelector('[role="alert"]');
 const status = () => container.querySelector('[role="status"]:not([aria-label])');
+const updateLabel = 'Update from main';
 const mergeLabels = ['Merge from branch…', 'Merge into branch…'];
 
 async function openMenu() {
@@ -168,6 +169,7 @@ afterEach(async () => {
     stop?.();
     store.dispose();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
 });
 
 describe('the sync button in the sidebar', () => {
@@ -183,6 +185,7 @@ describe('the sync button in the sidebar', () => {
             'Fetch origin',
             'Pull origin',
             'Publish branch',
+            updateLabel,
             ...mergeLabels,
         ]);
         expect(isOff('Fetch origin')).toBe(false);
@@ -190,7 +193,7 @@ describe('the sync button in the sidebar', () => {
         expect(isOff('Publish branch')).toBe(false);
     });
 
-    it('publishes the branch on a press, says so, and is then Fetch origin with when the repository last fetched', async () => {
+    it('publishes the branch on a press, says so, and offers to update from the base', async () => {
         await start();
 
         const push = vi.spyOn(transport, 'pushGit');
@@ -204,14 +207,15 @@ describe('the sync button in the sidebar', () => {
             workspaceId: 'wks_ab12cd34',
         });
         expect(status()?.textContent).toBe('Published to origin');
-        expect(syncButton().getAttribute('data-sync')).toBe('fetch');
-        expect(syncButton().textContent).toBe('Fetch originLast fetched 3 minutes ago');
+        expect(syncButton().getAttribute('data-sync')).toBe('update');
+        expect(syncButton().textContent).toBe('Update from mainLast fetched 3 minutes ago');
 
         await openMenu();
         expect(items().map(candidate => candidate.textContent)).toEqual([
             'Fetch origin',
             'Pull origin',
             'Push origin',
+            updateLabel,
             ...mergeLabels,
         ]);
     });
@@ -286,7 +290,7 @@ describe('the sync button in the sidebar', () => {
         });
         expect(pull).not.toHaveBeenCalled();
         expect(status()?.textContent).toBe('Published to origin');
-        expect(syncButton().getAttribute('data-sync')).toBe('fetch');
+        expect(syncButton().getAttribute('data-sync')).toBe('update');
         expect(
             await transport.getGitStatus(FIXTURE_PROJECT_ID, {
                 folderId: 'fld_car_rental',
@@ -303,6 +307,7 @@ describe('the sync button in the sidebar', () => {
             'Fetch origin',
             'Pull origin',
             'Publish branch',
+            updateLabel,
             ...mergeLabels,
         ]);
         expect(isOff('Pull origin')).toBe(true);
@@ -326,6 +331,7 @@ describe('the sync button in the sidebar', () => {
             'Fetch origin',
             'Pull origin2 commits',
             'Push origin',
+            updateLabel,
             ...mergeLabels,
         ]);
         await press(item('Pull origin'));
@@ -336,7 +342,7 @@ describe('the sync button in the sidebar', () => {
         expect(reads.status).toHaveBeenCalled();
         expect(reads.pullRequest).toHaveBeenCalled();
         expect(status()?.textContent).toBe('Pulled 2 commits');
-        expect(syncButton().getAttribute('data-sync')).toBe('fetch');
+        expect(syncButton().getAttribute('data-sync')).toBe('update');
     });
 
     it('is Push origin with the count for a branch that is ahead, and a press pushes it', async () => {
@@ -352,7 +358,7 @@ describe('the sync button in the sidebar', () => {
 
         expect(push).toHaveBeenCalledTimes(1);
         expect(status()?.textContent).toBe('Pushed to origin');
-        expect(syncButton().getAttribute('data-sync')).toBe('fetch');
+        expect(syncButton().getAttribute('data-sync')).toBe('update');
     });
 
     it('is Pull origin for a branch that diverged, which merges, and holds Push until the pull', async () => {
@@ -510,9 +516,11 @@ describe('the sync button in the sidebar', () => {
             'Fetch origin',
             'Pull origin',
             'Push origin',
+            updateLabel,
             ...mergeLabels,
         ]);
         expect(items().map(candidate => candidate.getAttribute('aria-disabled') === 'true')).toEqual([
+            true,
             true,
             true,
             true,
@@ -520,10 +528,58 @@ describe('the sync button in the sidebar', () => {
             false,
         ]);
     });
+
+    it('updates from the main button, keeps Fetch in the menu, and offers Push when the merge adds a commit', async () => {
+        await start({ gitWrites: { clean: true, remote: 'level' } });
+        const readStatus = transport.getGitStatus.bind(transport);
+        let updated = false;
+        vi.spyOn(transport, 'getGitStatus').mockImplementation(async (projectId, place) => {
+            const current = await readStatus(projectId, place);
+
+            if (updated && current.isRepository && current.base.state === 'ready' && current.upstream) {
+                current.base.behind = 0;
+                current.upstream.ahead = 1;
+            }
+
+            return current;
+        });
+        let finish: (result: GitRemoteResult) => void = () => undefined;
+        const update = vi.spyOn(transport, 'updateGit').mockImplementation(
+            () =>
+                new Promise(resolve => {
+                    finish = resolve;
+                })
+        );
+
+        expect(syncButton().textContent).toContain(updateLabel);
+        await openMenu();
+        expect(isOff('Fetch origin')).toBe(false);
+        expect(isOff(updateLabel)).toBe(false);
+        await press(item('Fetch origin'));
+        await settle();
+        await press(syncButton());
+        await settle();
+
+        expect(update).toHaveBeenCalledExactlyOnceWith(FIXTURE_PROJECT_ID, {
+            folderId: WORKTREE.folderId,
+            workspaceId: WORKTREE.workspaceId,
+        });
+        expect(syncButton().textContent).toBe('Updating');
+        await openMenu();
+        expect(isOff(updateLabel)).toBe(true);
+
+        updated = true;
+        finish({ state: 'done', action: 'update', pulled: 1 });
+        await settle();
+        await settle();
+        expect(status()?.textContent).toBe('Updated with 1 commit');
+        expect(syncButton().getAttribute('data-sync')).toBe('push');
+    });
 });
 
 describe('merging branches from the sync menu', () => {
     const dialog = () => document.querySelector<HTMLElement>('[data-modal-window] [role="dialog"]')!;
+    const heading = () => dialog().querySelector('h2')?.textContent;
     const options = () => [...dialog().querySelectorAll<HTMLElement>('[role="option"]')];
     const option = (name: string) => options().find(candidate => candidate.textContent?.trim() === name)!;
     const button = (name: string) =>
@@ -533,6 +589,26 @@ describe('merging branches from the sync menu', () => {
         await press(item(label));
         await settle();
     };
+    const conflict = async () => {
+        await open('Merge from branch…');
+        await press(option('origin/feature/search'));
+        await settle();
+        await press(button('Merge into clowdy/ab12cd34'));
+        await settle();
+    };
+    const confirmButton = (name: string) =>
+        vi.waitFor(async () => {
+            await settle();
+            const confirmation = [...document.querySelectorAll('[data-modal-window]')].find(panel =>
+                panel.textContent?.includes('Abort merge?')
+            );
+            const button = [...(confirmation?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find(
+                element => element.textContent === name
+            );
+
+            expect(button, `Abort confirmation button: ${name}`).toBeDefined();
+            return button!;
+        });
 
     it('fetches origin before listing source branches and previews the selected ref before merging', async () => {
         await start({ gitWrites: { clean: true, remote: 'level' } });
@@ -547,19 +623,21 @@ describe('merging branches from the sync menu', () => {
         expect(fetch.mock.invocationCallOrder[0]!).toBeLessThan(branches.mock.invocationCallOrder[0]!);
         expect(merge).not.toHaveBeenCalled();
         expect(button('Merge into clowdy/ab12cd34').disabled).toBe(true);
+        expect(heading()).toBe('Merge … to clowdy/ab12cd34');
+        expect(option('origin/main')).toBeUndefined();
+        expect(option('origin/dev')).toBeUndefined();
 
-        await press(option('origin/main'));
+        await press(option('main'));
         await settle();
 
-        expect(dialog().textContent).toContain('origin/main → clowdy/ab12cd34');
-        expect(dialog().textContent).toContain('Creates a merge commit');
+        expect(heading()).toBe('Merge main to clowdy/ab12cd34');
+        expect(dialog().textContent).toContain('Fast-forward');
         expect(merge).toHaveBeenCalledTimes(1);
         expect(merge.mock.calls[0]?.[2]).toEqual({
             action: 'preview',
             direction: 'from',
             current: 'clowdy/ab12cd34',
             branch: 'main',
-            remote: true,
         });
 
         await press(button('Merge into clowdy/ab12cd34'));
@@ -570,7 +648,6 @@ describe('merging branches from the sync menu', () => {
             direction: 'from',
             current: 'clowdy/ab12cd34',
             branch: 'main',
-            remote: true,
             sourceCommit: expect.stringMatching(/^[0-9a-f]+$/),
             targetCommit: expect.stringMatching(/^[0-9a-f]+$/),
         });
@@ -578,7 +655,7 @@ describe('merging branches from the sync menu', () => {
     });
 
     it('keeps the source checkout and pushes only the selected destination on a separate press', async () => {
-        await start({ gitWrites: { clean: true, remote: 'level' } });
+        await start({ gitWrites: { clean: true, remote: 'level' }, branches: ['remote'] });
         const fetch = vi.spyOn(transport, 'fetchGit');
         const merge = vi.spyOn(transport, 'branchMergeGit');
         const push = vi.spyOn(transport, 'pushGit');
@@ -586,10 +663,12 @@ describe('merging branches from the sync menu', () => {
         await open('Merge into branch…');
         expect(fetch).not.toHaveBeenCalled();
         expect(option('origin/main')).toBeUndefined();
+        expect(option('origin/feature/search')).toBeUndefined();
+        expect(heading()).toBe('Merge clowdy/ab12cd34 to …');
 
         await press(option('main'));
         await settle();
-        expect(dialog().textContent).toContain('clowdy/ab12cd34 → main');
+        expect(heading()).toBe('Merge clowdy/ab12cd34 to main');
 
         await press(button('Merge into main'));
         await settle();
@@ -641,18 +720,42 @@ describe('merging branches from the sync menu', () => {
     });
 
     it('identifies the destination checkout after a conflict and aborts only that merge', async () => {
+        // The nested confirmation needs a visible parent window. Happy DOM has no layout.
+        vi.spyOn(Element.prototype, 'getClientRects').mockReturnValue([{}] as unknown as DOMRectList);
+        vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 640, 480));
+        const openPath = vi.fn();
+        vi.stubGlobal('desktop', {
+            openPath,
+            getOpenApps: async () => ({
+                editors: [{ id: 'cursor', name: 'Cursor' }],
+                terminals: [],
+                fileManagers: [],
+            }),
+        });
         await start({ gitWrites: { clean: true, remote: 'level' }, branches: ['remote'] });
         const merge = vi.spyOn(transport, 'branchMergeGit');
 
-        await open('Merge from branch…');
-        await press(option('origin/feature/search'));
-        await settle();
-        await press(button('Merge into clowdy/ab12cd34'));
-        await settle();
+        await conflict();
 
+        expect(heading()).toBe('Merge origin/feature/search to clowdy/ab12cd34');
+        expect(merge.mock.calls[0]?.[2]).toMatchObject({ branch: 'feature/search', remote: true });
         expect(dialog().querySelector('[role="status"]')?.textContent).toContain('1 conflict in clowdy/ab12cd34');
         expect(dialog().querySelector('[role="status"]')?.textContent).toContain(currentPlace.workspace?.path);
+        expect(button('Done')).toBeUndefined();
+        await press(button('Open clowdy/ab12cd34'));
+        expect(openPath).toHaveBeenCalledWith(currentPlace.workspace?.path, { kind: 'editor', id: 'cursor' });
+
         await press(button('Abort merge'));
+        const cancel = await confirmButton('Cancel');
+        expect(cancel.dataset.variant).toBe('filled');
+        expect(merge).toHaveBeenCalledTimes(2);
+        await press(cancel);
+        await settle();
+        expect(dialog().querySelector('[role="status"]')?.textContent).toContain('1 conflict in clowdy/ab12cd34');
+        expect(merge).toHaveBeenCalledTimes(2);
+
+        await press(button('Abort merge'));
+        await press(await confirmButton('Abort merge'));
         await settle();
 
         expect(merge.mock.calls[2]?.[2]).toMatchObject({
@@ -663,6 +766,33 @@ describe('merging branches from the sync menu', () => {
         });
         expect(dialog().querySelector('[role="status"]')?.textContent).toBe('Merge into clowdy/ab12cd34 aborted');
     });
+
+    it('asks before aborting from the sidebar and leaves conflicts alone on Cancel', async () => {
+        await start({ gitWrites: { clean: true, remote: 'level' }, branches: ['remote'] });
+        const abort = vi.spyOn(transport, 'abortGit').mockResolvedValue({ state: 'done', action: 'abort' });
+
+        await conflict();
+        expect(button('Done')).toBeDefined();
+        expect(button('Open clowdy/ab12cd34')).toBeUndefined();
+        await press(dialog().querySelector('button[aria-label="Close"]')!);
+        await settle();
+        await press(buttonOf('Abort merge')!);
+        const cancel = await confirmButton('Cancel');
+        expect(cancel.dataset.variant).toBe('filled');
+        expect(abort).not.toHaveBeenCalled();
+        await press(cancel);
+        await settle();
+        expect(abort).not.toHaveBeenCalled();
+        expect(buttonOf('Abort merge')).toBeDefined();
+
+        await press(buttonOf('Abort merge')!);
+        await press(await confirmButton('Abort merge'));
+        await settle();
+        expect(abort).toHaveBeenCalledExactlyOnceWith(FIXTURE_PROJECT_ID, {
+            folderId: WORKTREE.folderId,
+            workspaceId: WORKTREE.workspaceId,
+        });
+    });
 });
 
 describe('Create PR in the sidebar', () => {
@@ -670,8 +800,24 @@ describe('Create PR in the sidebar', () => {
         await start();
 
         expect(container.querySelector('[aria-label="Pull request"]')?.textContent).toContain('PR #128');
+        expect(container.querySelector('button svg[data-state="open"]')).not.toBeNull();
         expect(buttonOf('Create PR')).toBeUndefined();
         expect(buttonOf('Publish first')).toBeUndefined();
+    });
+
+    it('shows a merged pull request with a state icon and its checks', async () => {
+        await start({
+            tweak: data => {
+                data.pullRequests[CAR_RENTAL] = { worktree: 'merged' };
+            },
+        });
+
+        const pr = container.querySelector('[aria-label="Pull request"]')!;
+        const link = pr.querySelector('button[aria-label*="Merged"]')!;
+
+        expect(link.textContent).toBe('PR #31');
+        expect(link.querySelector('svg[data-state="merged"]')).not.toBeNull();
+        expect(pr.querySelectorAll('ul[aria-label="Checks"] a')).toHaveLength(3);
     });
 
     it('shows a single Publish action for a clean unpublished branch and offers Create PR after publishing', async () => {

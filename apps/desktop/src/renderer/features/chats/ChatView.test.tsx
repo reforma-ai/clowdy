@@ -752,7 +752,10 @@ describe('Reply in a chat', () => {
             // The editor takes the focus on a frame of its own.
             await act(async () => frames.splice(0).forEach(callback => callback(0)));
 
-            expect(written()).toBe(`> ${node.textContent!.slice(6, 15)}\n`);
+            const quoted = node.textContent!.slice(6, 15);
+
+            expect(field()?.querySelector('blockquote')?.textContent).toBe(quoted);
+            expect(written()).toBe(`${quoted}\n`);
             expect(window.getSelection()!.isCollapsed).toBe(true);
             expect(document.activeElement).toBe(field());
             expect(document.body.querySelector('[role="toolbar"]')).toBeNull();

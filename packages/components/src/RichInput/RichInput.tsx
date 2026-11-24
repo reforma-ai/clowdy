@@ -1,7 +1,7 @@
 'use client';
 
 import { clamp, cn } from '@clowdy/lib';
-import { mergeAttributes } from '@tiptap/core';
+import { mergeAttributes, Node } from '@tiptap/core';
 import Bold from '@tiptap/extension-bold';
 import Code from '@tiptap/extension-code';
 import Document from '@tiptap/extension-document';
@@ -116,6 +116,15 @@ type Bridge = {
 };
 
 const EMPTY_TRIGGERS: readonly RichInputTrigger[] = [];
+
+const ComposerQuote = Node.create({
+    name: 'composerQuote',
+    group: 'block',
+    content: 'inline*',
+    defining: true,
+    parseHTML: () => [{ tag: 'blockquote[data-composer-quote]' }],
+    renderHTML: () => ['blockquote', { 'data-composer-quote': '' }, 0],
+});
 
 function createBridge(setMenu: (menu: MenuState | null) => void): Bridge {
     let menu: MenuState | null = null;
@@ -433,6 +442,7 @@ export function RichInput({
                 Document,
                 Paragraph,
                 Text,
+                ComposerQuote,
                 HardBreak.extend({
                     addKeyboardShortcuts() {
                         return {};

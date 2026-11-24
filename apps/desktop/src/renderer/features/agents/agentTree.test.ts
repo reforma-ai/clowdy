@@ -324,9 +324,10 @@ describe('chatDotTone', () => {
         expect(chatDotTone(run('r', 'queued'))).toBe('neutral');
     });
 
-    it('is yellow after a successful run and absent for an unstarted or stopped chat', () => {
+    it('is yellow only for an unread success and absent for an unstarted or stopped chat', () => {
         expect(chatDotTone(undefined)).toBeUndefined();
-        expect(chatDotTone(run('r', 'succeeded'))).toBe('warning');
+        expect(chatDotTone(run('r', 'succeeded'))).toBeUndefined();
+        expect(chatDotTone(run('r', 'succeeded'), undefined, false, true)).toBe('warning');
 
         for (const status of ['cancelled', 'interrupted'] as const)
             expect(chatDotTone(run('r', status))).toBeUndefined();
@@ -338,7 +339,7 @@ describe('chatDotTone', () => {
 
         expect(chatDotTone(run('r', 'failed'), 'working')).toBe('danger');
         expect(chatDotTone(run('r', 'waiting_user'), 'working')).toBe('warning');
-        expect(chatDotTone(run('r', 'succeeded'), undefined)).toBe('warning');
+        expect(chatDotTone(run('r', 'succeeded'), 'working', false, true)).toBe('success');
     });
 
     it('is yellow for a chat whose thread waits for the person, and keeps a failure or a block', () => {
@@ -352,7 +353,7 @@ describe('chatDotTone', () => {
 
     it('shows drafts in gray unless work or an attention state takes priority', () => {
         expect(chatDotTone(undefined, undefined, true)).toBe('neutral');
-        expect(chatDotTone(run('r', 'succeeded'), undefined, true)).toBe('neutral');
+        expect(chatDotTone(run('r', 'succeeded'), undefined, true, true)).toBe('neutral');
         expect(chatDotTone(run('r', 'running'), undefined, true)).toBe('success');
         expect(chatDotTone(run('r', 'waiting_user'), undefined, true)).toBe('warning');
         expect(chatDotTone(run('r', 'succeeded'), 'working', true)).toBe('success');

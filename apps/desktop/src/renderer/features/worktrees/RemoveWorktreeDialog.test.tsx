@@ -69,9 +69,10 @@ function dataWithKinds(): FixtureData {
 interface OpenOptions {
     data?: FixtureData;
     overrides?: Partial<Transport>;
+    folderId?: string;
 }
 
-async function open({ data = dataWithKinds(), overrides = {} }: OpenOptions = {}) {
+async function open({ data = dataWithKinds(), overrides = {}, folderId }: OpenOptions = {}) {
     const base = new FixtureTransport({ data });
 
     command = vi.fn((input: CommandInput) => base.command(input));
@@ -84,7 +85,7 @@ async function open({ data = dataWithKinds(), overrides = {} }: OpenOptions = {}
     await act(async () => {
         await new Promise(resolve => setTimeout(resolve, 0));
     });
-    act(() => openManageWorktrees({ root: store, projectId: FIXTURE_PROJECT_ID }));
+    act(() => openManageWorktrees({ root: store, projectId: FIXTURE_PROJECT_ID, folderId }));
     await settle();
 }
 
@@ -415,7 +416,7 @@ describe('Remove in Manage worktrees', () => {
 
     describe('a detached HEAD', () => {
         it('offers no branch to delete, and says nothing is lost when its commits are in the base', async () => {
-            await open();
+            await open({ folderId: 'fld_api' });
             await askToRemove(DETACHED_MERGED);
 
             expect(checkbox()).toBeNull();

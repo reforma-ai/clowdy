@@ -34,6 +34,7 @@
     flex: 1;
     flex-direction: column;
     min-height: 0;
+    overflow-y: auto;
 }
 
 /* The base and how far the branch is from it, the row of the upstream with its menu, and the pull request or Create PR. */

@@ -12,7 +12,7 @@ import viewStyles from './ChangesView.module.css';
 import { CommitBox } from './CommitBox';
 import { CreatePullRequest } from './CreatePullRequest';
 import { accessHint, accessHintTitle, aheadBehindCounts } from './gitSummary';
-import { MergeBanner, UpdateFromBase } from './MergeBanner';
+import { MergeBanner } from './MergeBanner';
 import { PullRequestChip } from './PullRequestChip';
 import { RemoteMenu } from './RemoteMenu';
 
@@ -101,10 +101,11 @@ export function ChangesSidebar({
             <div className={styles.body}>
                 {(base || pr || hint || status?.isRepository === true) && (
                     <div className={styles.facts}>
+                        <RemoteMenu facts={facts} />
                         {base && (
                             <div className={styles.baseRow} title={`${base.name}, ${counts}`}>
                                 <Text variant="xs" color="secondary" truncate>
-                                    {`→ ${base.name}`}
+                                    {`Base: ${base.name}`}
                                 </Text>
                                 {(base.ahead > 0 || base.behind > 0) && (
                                     <Text
@@ -116,13 +117,13 @@ export function ChangesSidebar({
                                     >
                                         {base.ahead > 0 && (
                                             <span className={styles.baseCount}>
-                                                <ArrowUp size={8} aria-hidden="true" />
+                                                <ArrowUp size={10} aria-hidden="true" />
                                                 {base.ahead}
                                             </span>
                                         )}
                                         {base.behind > 0 && (
                                             <span className={styles.baseCount}>
-                                                <ArrowDown size={8} aria-hidden="true" />
+                                                <ArrowDown size={10} aria-hidden="true" />
                                                 {base.behind}
                                             </span>
                                         )}
@@ -130,9 +131,7 @@ export function ChangesSidebar({
                                 )}
                             </div>
                         )}
-                        <UpdateFromBase facts={facts} />
                         <MergeBanner facts={facts} />
-                        <RemoteMenu facts={facts} />
                         {pr ? (
                             <PullRequestChip pr={pr} stale={facts.pullRequest.stale} />
                         ) : (

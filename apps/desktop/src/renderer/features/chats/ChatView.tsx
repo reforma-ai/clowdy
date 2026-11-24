@@ -20,11 +20,11 @@ import { canCompactChat, chatProvider, chatWritability, handoffAgents } from './
 import { isRunActive, liveLine, overflowed } from './chatRun';
 import { perform } from './commands';
 import { LastRunPlate } from './LastRunPlate';
-import { ProgressCard } from './ProgressCard';
 import { chatProgress } from './progress';
 import { ReadOnlyNotice } from './ReadOnlyNotice';
 import { RunningAgents } from './RunningAgents';
 import { swipeToReply } from './swipeReplyPreference';
+import { TasksBanner } from './TasksBanner';
 import { useCompact } from './useCompact';
 import { useEditMessage } from './useEditMessage';
 import { useFork } from './useFork';
@@ -85,8 +85,6 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
         writable: writability.writable,
         attachmentBlob: links.attachmentBlob,
     });
-    // The card follows the orchestrator's latest message, where the person is looking.
-    const cardAfter = items.findLast(item => item.body.kind === 'assistant')?.id;
     // The conversation outgrew the model's window: the failure offers Compact, when the chat can still be written to and its agent can compact.
     const overflowAt =
         overflowed(run) && writability.writable && canCompactChat(chat, run, agents)
@@ -170,7 +168,6 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
                     }
                     forkedFrom={origin}
                     emptyState={<EmptyChat />}
-                    decorate={item => (progress && item.id === cardAfter ? <ProgressCard progress={progress} /> : null)}
                     errorAction={item => (item.id === overflowAt ? <CompactAction chatId={chat.id} /> : null)}
                     // A question the orchestrator no longer waits on (stopped, interrupted) is shown but cannot be answered.
                     onAnswer={
@@ -192,6 +189,7 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
             )}
 
             <ContentColumn className={styles.composer}>
+                {progress && <TasksBanner key={chat.id} progress={progress} />}
                 <RunningAgents chat={chat} />
                 {/* What the chat's latest run changed, once it is at rest and the person has not written since; for a read only chat too. */}
                 <LastRunPlate chat={chat} run={run} items={stream?.status === 'ready' ? items : undefined} />

@@ -27,7 +27,7 @@ describe('withQuoteLast', () => {
         const next = withQuoteLast(emptyComposerDoc(), '  hello world  ');
 
         expect(next.content).toEqual([
-            { type: 'paragraph', content: [{ type: 'text', text: '> hello world' }] },
+            { type: 'composerQuote', content: [{ type: 'text', text: 'hello world' }] },
             { type: 'paragraph' },
         ]);
     });
@@ -69,7 +69,7 @@ describe('withQuoteLast', () => {
         expect(written(withQuoteLast(emptyComposerDoc(), 'one\n   \ntwo'))).toBe('> one\n>\n> two\n\n');
     });
 
-    it('puts the quote in a paragraph of its own after the words that are there, with a blank line between', () => {
+    it('serializes the quote after the words that are there, with a blank line between', () => {
         expect(written(withQuoteLast(plainTextToDoc('existing reply'), 'quoted'))).toBe(
             'existing reply\n\n> quoted\n\n'
         );
@@ -131,29 +131,24 @@ describe('withQuoteLast', () => {
 
         expect(next.content).toHaveLength(3);
         expect(next.content![0]).toBe(draft.content![0]);
-        expect(next.content![1]).toEqual({ type: 'paragraph', content: [{ type: 'text', text: '> context' }] });
+        expect(next.content![1]).toEqual({ type: 'composerQuote', content: [{ type: 'text', text: 'context' }] });
         expect(next.content![0].content).toEqual([{ type: 'text', text: 'Look at ' }, mention]);
         // The draft that came in is not touched.
         expect(draft.content).toHaveLength(1);
     });
 
-    it('writes the lines as hard breaks of one paragraph, never as a newline inside a text node or a paragraph per line', () => {
+    it('keeps all lines and hard breaks in one quote block', () => {
         const next = withQuoteLast(emptyComposerDoc(), 'one\ntwo\n\nthree');
         const inline = next.content![0].content!;
 
         expect(next.content).toHaveLength(2);
-        expect(inline.filter(node => node.type === 'text').map(node => node.text)).toEqual([
-            '> one',
-            '> two',
-            '>',
-            '> three',
-        ]);
+        expect(inline.filter(node => node.type === 'text').map(node => node.text)).toEqual(['one', 'two', 'three']);
         expect(inline.filter(node => node.type === 'hardBreak')).toHaveLength(3);
         expect(inline.some(node => node.type === 'text' && node.text?.includes('\n'))).toBe(false);
         expect(inline.at(-1)?.type).toBe('text');
     });
 
-    it('puts the quote in a paragraph of its own after a list', () => {
+    it('puts the quote in a block of its own after a list', () => {
         const list: ComposerDoc = {
             type: 'doc',
             content: [
@@ -172,7 +167,7 @@ describe('withQuoteLast', () => {
 
         expect(next.content).toHaveLength(3);
         expect(next.content![0]).toBe(list.content![0]);
-        expect(next.content![1].type).toBe('paragraph');
+        expect(next.content![1].type).toBe('composerQuote');
         expect(written(next)).toBe('- item\n\n> quoted\n\n');
     });
 

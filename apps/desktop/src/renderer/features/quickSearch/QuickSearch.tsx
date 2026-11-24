@@ -96,11 +96,11 @@ function Row({
     );
 }
 
-function ChatRow({ found: { chat, run, note }, query }: { found: FoundChat; query: string }) {
+function ChatRow({ found: { chat, run, unread, note }, query }: { found: FoundChat; query: string }) {
     return (
         <>
             <span className={styles.chatIcon}>
-                <ChatIcon chat={chat} run={run} />
+                <ChatIcon chat={chat} run={run} unread={unread} />
             </span>
             <span className={styles.main}>
                 <Marked text={chat.title} ranges={wordRanges(chat.title, query)} />

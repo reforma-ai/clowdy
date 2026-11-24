@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { COLLAPSED_TASKS_LIMIT, COMMENT_DRAFTS_LIMIT, initialUiFromSearch, UiStore } from './UiStore';
 
+import type { Run } from '@clowdy/protocol';
 import type { KeyValueStorage } from './storage';
 
 function memoryStorage(initial: Record<string, string> = {}): KeyValueStorage & { data: Record<string, string> } {
@@ -16,6 +17,31 @@ function memoryStorage(initial: Record<string, string> = {}): KeyValueStorage & 
 }
 
 describe('UiStore', () => {
+    it('keeps completion read state after restart and shows another completion in the same chat', () => {
+        const storage = memoryStorage();
+        const ui = new UiStore(storage).forProject('p1');
+        const finishedAt = Date.now() + 1;
+        const run: Run = {
+            id: 'r1',
+            rootRunId: 'r1',
+            chatId: 'c1',
+            projectId: 'p1',
+            role: 'orchestrator',
+            name: 'Orchestrator',
+            summary: '',
+            engine: 'codex',
+            status: 'succeeded',
+            createdAt: 0,
+            finishedAt,
+        };
+
+        expect(new UiStore(storage).forProject('p1').hasUnreadCompletion(run)).toBe(true);
+        ui.markCompletionSeen(run);
+        const restored = new UiStore(storage).forProject('p1');
+        expect(restored.hasUnreadCompletion(run)).toBe(false);
+        expect(restored.hasUnreadCompletion({ ...run, finishedAt: finishedAt + 1 })).toBe(true);
+    });
+
     it('opens a place of a project from elsewhere: a task (in the side panel), a run, a chat', () => {
         const ui = new UiStore().forProject('p1');
 
@@ -1336,7 +1362,7 @@ describe('UiStore', () => {
         ui.forgetProject('p1');
 
         expect(ui.settingsProjectId).toBeNull();
-        expect(storage.data['clowdy:ui:p1']).toBeUndefined();
+        expect(storage.data).toEqual({});
         expect(ui.forProject('p1').chatId).toBeNull();
     });
 });

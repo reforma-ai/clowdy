@@ -15,6 +15,7 @@ export type OpenConfirmModalOptions = {
     message: ReactNode;
     confirmLabel?: string;
     cancelLabel?: string;
+    cancelVariant?: 'bordered' | 'filled';
     /** Omit Cancel. The confirm button is the only action. */
     showCancel?: boolean;
     destructive?: boolean;
@@ -102,6 +103,7 @@ export function ConfirmModalContent({
     message,
     confirmLabel = 'Confirm',
     cancelLabel = 'Cancel',
+    cancelVariant = 'bordered',
     showCancel = true,
     destructive,
     initialFocus = 'confirm',
@@ -186,7 +188,7 @@ export function ConfirmModalContent({
             >
                 <Show when={showCancel}>
                     <Button
-                        variant="bordered"
+                        variant={cancelVariant}
                         autoFocus={initialFocus === 'cancel'}
                         isDisabled={isPending}
                         onPress={() => modal.cancel()}

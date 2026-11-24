@@ -357,23 +357,9 @@ describe('ProjectsPage project', () => {
         expect(container.textContent).not.toContain('Change folder');
     });
 
-    it("has a button for the project's worktrees that opens Manage worktrees over Settings, and none for the personal space", async () => {
-        const button = () =>
-            [...container.querySelectorAll<HTMLButtonElement>('button')].find(
-                candidate => candidate.textContent === 'Manage worktrees'
-            );
-        await open(FIXTURE_PERSONAL_PROJECT_ID);
-
-        expect(button()).toBeUndefined();
-
+    it('does not show a project-wide worktrees section', async () => {
         await open(FIXTURE_PROJECT_ID);
-
-        expect(document.body.querySelector('[data-modal-window]')).toBeNull();
-
-        await click(button()!);
-        await flush();
-
-        expect(document.body.querySelector('[data-modal-window]')?.textContent).toContain('Manage worktrees');
+        expect(container.textContent).not.toContain('Manage worktrees');
     });
 
     it('renames on blur, and puts the name back on Escape', async () => {
@@ -988,7 +974,7 @@ describe('ProjectsPage workspace', () => {
         store.projects.find(project => project.id === projectId)?.folders.find(folder => folder.id === folderId)
             ?.settings;
     const openButton = (name: string) =>
-        container.querySelector<HTMLButtonElement>(`button[aria-label="Workspace of ${name}"]`);
+        container.querySelector<HTMLButtonElement>(`button[aria-label="Folder settings: ${name}"]`);
     const form = () =>
         document.body.querySelector<HTMLInputElement>('input[aria-label="Base branch"]')?.closest('form') ?? null;
     const field = (label: string) =>
@@ -1034,20 +1020,20 @@ describe('ProjectsPage workspace', () => {
         await open(FIXTURE_PROJECT_ID, {}, folders());
 
         expect(
-            rows().map(item => item.querySelector('button[aria-label^="Workspace of"]')?.getAttribute('aria-label'))
-        ).toEqual(['Workspace of car-rental', 'Workspace of car-rental-api', 'Workspace of notes']);
+            rows().map(item => item.querySelector('button[aria-label^="Folder settings:"]')?.getAttribute('aria-label'))
+        ).toEqual(['Folder settings: car-rental', 'Folder settings: car-rental-api', 'Folder settings: notes']);
         // Beside Open in GitHub, which a folder with a remote has.
         expect(rows()[0]!.querySelector('a[href="https://github.com/acme/car-rental"]')).not.toBeNull();
 
         await open(FIXTURE_PERSONAL_PROJECT_ID);
 
-        expect(container.querySelector('button[aria-label^="Workspace of"]')).toBeNull();
+        expect(container.querySelector('button[aria-label^="Folder settings:"]')).toBeNull();
     });
 
     it("opens with what the folder has set, and with the repository's default branch as the placeholder of the base branch", async () => {
         await openDialog('car-rental-api', {}, folders(SETTINGS));
 
-        expect(form()!.textContent).toContain('Workspace of car-rental-api');
+        expect(form()!.textContent).toContain('Settings of car-rental-api');
         expect(baseBranch().value).toBe('dev');
         expect(field('Files to copy').value).toBe('.env\n.env*');
         expect(field('Command').value).toBe('bun install\nbun run build');
