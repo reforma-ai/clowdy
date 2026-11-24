@@ -131,8 +131,8 @@ export function ChangesSidebar({
                             </div>
                         )}
                         <UpdateFromBase facts={facts} />
-                        <MergeBanner facts={facts} />
                         <RemoteMenu facts={facts} />
+                        <MergeBanner facts={facts} />
                         {pr ? (
                             <PullRequestChip pr={pr} stale={facts.pullRequest.stale} />
                         ) : (
