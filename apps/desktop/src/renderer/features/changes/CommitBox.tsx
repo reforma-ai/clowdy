@@ -370,7 +370,8 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
                 endAction={
                     ((!merging && !draft.rebasing) || generating) && (
                         <Button
-                            variant="filling"
+                            variant="ghost"
+                            color="primary"
                             size="xs"
                             iconOnly
                             isDisabled={!generating && canWrite && !draft.canGenerate}
