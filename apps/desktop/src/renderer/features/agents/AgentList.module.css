@@ -79,6 +79,10 @@
     }
 }
 
+.chatRow:is(:hover, :focus-within, [data-hovered], [data-selected], [data-open]) .archiveStatus {
+    display: none;
+}
+
 /*
  * The shortcut's capsule is as far from the row's right edge as from its top and bottom. The list's own rule for a hotkey in a row is for a
  * 30px row; the rows here are 36px, so the capsule (an xs hotkey: a line of `--leading-xs` and its padding) has more room above and below.
