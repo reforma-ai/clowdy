@@ -285,6 +285,8 @@ export type GitStatus =
            * message git prepared.
            */
           merging?: { conflicts: number; subject?: string };
+          /** A rebase is paused in this checkout. */
+          rebasing?: true;
           base: GitBase;
       };
 
@@ -559,6 +561,9 @@ export type GitBranches =
           truncated?: true;
       };
 
+export const GIT_BRANCH_MERGE_STRATEGIES = ['merge', 'fast-forward-only', 'squash', 'rebase'] as const;
+export type GitBranchMergeStrategy = (typeof GIT_BRANCH_MERGE_STRATEGIES)[number];
+
 export interface GitBranchMergeSelection {
     direction: 'from' | 'into';
     /** The branch checked out when the dialog opened. */
@@ -566,6 +571,8 @@ export interface GitBranchMergeSelection {
     branch: string;
     /** The selected source is a ref on origin. The destination is always local. */
     remote?: true;
+    /** Defaults to a regular merge with fast-forward when possible. */
+    strategy?: GitBranchMergeStrategy;
 }
 
 /** The body of POST /v1/projects/:id/git/merge, together with the place. */
@@ -573,7 +580,7 @@ export type GitBranchMergeRequest =
     | (GitBranchMergeSelection & { action: 'preview' })
     | (GitBranchMergeSelection & { action: 'merge'; sourceCommit: string; targetCommit: string })
     | { action: 'push'; target: string; commit: string }
-    | { action: 'abort'; target: string; commit: string; sourceCommit: string };
+    | { action: 'abort'; target: string; commit: string; sourceCommit: string; operation?: 'rebase' };
 
 export interface GitBranchMergePreview {
     state: 'preview';
@@ -582,10 +589,12 @@ export interface GitBranchMergePreview {
     sourceCommit: string;
     targetCommit: string;
     commits: number;
-    mode: 'up-to-date' | 'fast-forward' | 'merge-commit';
+    mode: 'up-to-date' | 'fast-forward' | 'merge-commit' | 'squash' | 'rebase';
+    /** Destination commits that would be replayed in a rebase. */
+    replayCommits?: number;
     /** Existing checkout of the destination, when there is one. */
     targetPath?: string;
-    /** Preflight for an outgoing merge commit in the existing destination checkout. */
+    /** Preflight for a squash or outgoing merge in the existing destination checkout. */
     conflictCheck?: 'clean' | 'conflicts';
 }
 
@@ -599,8 +608,10 @@ export type GitBranchMergeResult =
           sourceCommit: string;
           targetPath: string;
           conflicts: number;
+          operation?: 'rebase';
       }
-    | { state: 'pushed' | 'aborted'; target: string };
+    | { state: 'pushed'; target: string }
+    | { state: 'aborted'; target: string; operation?: 'rebase' };
 
 /** Where a new branch starts: at the place's HEAD, or at the repository's default branch. */
 export type GitSwitchStart = 'current' | 'default';

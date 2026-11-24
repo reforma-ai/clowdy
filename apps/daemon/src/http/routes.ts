@@ -1,4 +1,11 @@
-import { commandSchema, MAX_ATTACHMENT_BYTES, mainFolder, PROTOCOL_VERSION, parseGitScope } from '@clowdy/protocol';
+import {
+    commandSchema,
+    GIT_BRANCH_MERGE_STRATEGIES,
+    MAX_ATTACHMENT_BYTES,
+    mainFolder,
+    PROTOCOL_VERSION,
+    parseGitScope,
+} from '@clowdy/protocol';
 import { z } from 'zod';
 
 import { contentDisposition, servedMediaType } from '../attachments/names';
@@ -108,6 +115,7 @@ const gitMergeSelection = {
     current: z.string(),
     branch: z.string(),
     remote: z.literal(true).optional(),
+    strategy: z.enum(GIT_BRANCH_MERGE_STRATEGIES).optional(),
 };
 const gitCommitHash = z.string().regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/);
 const gitMergeTarget = { ...gitRemoteBody.shape, target: z.string(), commit: gitCommitHash };
@@ -121,7 +129,12 @@ const gitMergeBody = z.discriminatedUnion('action', [
         targetCommit: gitCommitHash,
     }),
     z.object({ ...gitMergeTarget, action: z.literal('push') }),
-    z.object({ ...gitMergeTarget, action: z.literal('abort'), sourceCommit: gitCommitHash }),
+    z.object({
+        ...gitMergeTarget,
+        action: z.literal('abort'),
+        sourceCommit: gitCommitHash,
+        operation: z.literal('rebase').optional(),
+    }),
 ]);
 
 /** The body of `POST .../git/switch` (`GitSwitchRequest`): the place, the branch and, for a new one, where it starts; what is wrong with the name or the start is the switch's to say. */

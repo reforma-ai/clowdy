@@ -5,7 +5,7 @@ import { MAX_GIT_COMMITS, MAX_GIT_STATUS_ENTRIES } from '@clowdy/protocol';
 import { gitLine, gitRead, gitRecords } from '../domain/git';
 import { unavailable } from '../errors';
 import { lastFetchedAt } from './lastFetch';
-import { baseOf, workingTreeRoot } from './state';
+import { baseOf, rebaseUnderWay, workingTreeRoot } from './state';
 
 import type {
     GitBase,
@@ -343,6 +343,7 @@ export async function placeStatus(place: Place, options: BaseOptions = {}): Prom
     if (!status.ok) throw unavailable('git did not answer');
 
     const { commit, branch, upstream, entries } = parseStatus(status.records);
+    const rebasing = branch === undefined && (await rebaseUnderWay(cwd));
     const head: GitHead =
         branch === undefined
             ? { kind: 'detached', commit: commit ?? '' }
@@ -361,6 +362,7 @@ export async function placeStatus(place: Place, options: BaseOptions = {}): Prom
         entries: entries.slice(0, MAX_GIT_STATUS_ENTRIES),
         ...(truncated && { truncated: true as const }),
         ...(merging && { merging }),
+        ...(rebasing && { rebasing: true as const }),
         base,
     };
 }

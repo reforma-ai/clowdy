@@ -188,6 +188,20 @@ export async function isOnDisk(path: string): Promise<boolean> {
     }
 }
 
+export async function rebaseUnderWay(cwd: string): Promise<boolean> {
+    const paths = await gitRead(cwd, ['rev-parse', '--git-path', 'rebase-merge', '--git-path', 'rebase-apply']);
+    if (!paths.ok) throw unavailable('git did not answer');
+
+    const state = await Promise.all(
+        paths.stdout
+            .trimEnd()
+            .split('\n')
+            .filter(Boolean)
+            .map(path => isOnDisk(resolve(cwd, path)))
+    );
+    return state.some(Boolean);
+}
+
 /**
  * How many files of a worktree have uncommitted changes, a new file or a changed submodule too, whatever the person's git configuration says of untracked files and of
  * submodules (a renamed file is one, and a new folder is one: `--untracked-files=normal`). Nothing when the `status` fails, is cut short or does not answer in time.

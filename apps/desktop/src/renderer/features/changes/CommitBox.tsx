@@ -272,7 +272,7 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
     const mergeStatus = status?.isRepository && status.merging ? status : undefined;
     const merging = mergeStatus?.merging;
 
-    if (model.isRepository === false || (!draft.known && !merging)) return null;
+    if (model.isRepository === false || (!draft.known && !merging && !draft.rebasing)) return null;
 
     const { files, failure } = draft;
     const mergeFiles = mergeStatus ? mergeChecklist(mergeStatus.entries, files) : undefined;
@@ -298,6 +298,11 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
 
     return (
         <section className={styles.root} aria-label="Commit">
+            {draft.rebasing && (
+                <Text variant="xs" color="warning" role="status">
+                    Rebase paused. Continue or abort the rebase in this checkout
+                </Text>
+            )}
             <div className={styles.header}>
                 <Checkbox
                     size="sm"
@@ -363,7 +368,7 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
                 isReadOnly={draft.busy !== undefined}
                 alwaysShowEndAction
                 endAction={
-                    (!merging || generating) && (
+                    ((!merging && !draft.rebasing) || generating) && (
                         <Button
                             variant="filling"
                             size="xs"
