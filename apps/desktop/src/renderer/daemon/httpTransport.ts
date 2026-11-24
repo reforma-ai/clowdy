@@ -26,6 +26,8 @@ import type {
     FolderGit,
     FolderId,
     FolderWorktrees,
+    GitBranchDeleteRequest,
+    GitBranchDeleteResult,
     GitBranches,
     GitBranchMergeRequest,
     GitBranchMergeResult,
@@ -322,6 +324,14 @@ export class HttpTransport implements Transport {
 
     getGitBranches(projectId: ProjectId, place: PlaceRef): Promise<GitBranches> {
         return this.#read(`${ROUTES.projectGitBranches(projectId)}?${placeQuery(place)}`);
+    }
+
+    deleteGitBranch(
+        projectId: ProjectId,
+        place: PlaceRef,
+        request: GitBranchDeleteRequest
+    ): Promise<GitBranchDeleteResult> {
+        return this.#write(ROUTES.projectGitBranchDelete(projectId), { ...place, ...request });
     }
 
     switchGitBranch(

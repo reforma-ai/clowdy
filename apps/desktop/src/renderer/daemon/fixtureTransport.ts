@@ -75,6 +75,8 @@ import type {
     FolderGit,
     FolderId,
     FolderWorktrees,
+    GitBranchDeleteRequest,
+    GitBranchDeleteResult,
     GitBranches,
     GitBranchMergePreview,
     GitBranchMergeRequest,
@@ -551,6 +553,25 @@ export class FixtureTransport implements Transport {
         if (!head?.branch) return { isRepository: false };
 
         return structuredClone(this.#branches.list(this.#branchPlace(projectId, folder, head, workspace)));
+    }
+
+    async deleteGitBranch(
+        projectId: ProjectId,
+        place: PlaceRef,
+        request: GitBranchDeleteRequest
+    ): Promise<GitBranchDeleteResult> {
+        const { folder, head, workspace } = this.#gitPlace(projectId, place);
+        if (!head?.branch) throw new TransportError('The folder is not the root of a git repository', 400);
+
+        const branchPlace = this.#branchPlace(projectId, folder, head, workspace);
+        if (workspace) {
+            const status = await this.getGitStatus(projectId, place);
+            if (status.isRepository) branchPlace.changes = status.entries.length;
+        }
+
+        return this.#branches.deleteBranch(branchPlace, request, branch =>
+            this.switchGitBranch(projectId, place, branch)
+        );
     }
 
     async branchMergeGit(

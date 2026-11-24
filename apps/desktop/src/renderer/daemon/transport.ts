@@ -12,6 +12,8 @@ import type {
     FolderGit,
     FolderId,
     FolderWorktrees,
+    GitBranchDeleteRequest,
+    GitBranchDeleteResult,
     GitBranches,
     GitBranchMergeRequest,
     GitBranchMergeResult,
@@ -218,6 +220,12 @@ export interface Transport {
      * terminal or by an agent. Rejects as `getGitStatus` does.
      */
     getGitBranches: (projectId: ProjectId, place: PlaceRef) => Promise<GitBranches>;
+
+    deleteGitBranch: (
+        projectId: ProjectId,
+        place: PlaceRef,
+        request: GitBranchDeleteRequest
+    ) => Promise<GitBranchDeleteResult>;
     /**
      * Changes the branch of the folder's own checkout (`POST git/switch`): to an existing local branch, to one only `origin` has (a local branch that tracks it), or with `create` to a new branch
      * cut from the current branch or the default one. Never for a chat's worktree. Nothing is stashed or carried along: a change in the tree, a merge or rebase under way, a run working in the

@@ -2,6 +2,8 @@
 
 ## Decisions
 
+- [Delete branches from Source Control](decisions/2026-11-24-delete-branches.md) records the branch menu, confirmation and origin option. Status: accepted.
+
 - [Source Control action priority](decisions/2026-11-24-source-control-action-priority.md) records which action wins and how base updates follow automatic Sync. Status: accepted.
 
 - [Sync after commits and branch merges](decisions/2026-11-24-sync-after-commit-and-merge.md) records the shared Sync action and how it resolves branch divergence. Status: accepted.
@@ -18,6 +20,8 @@
 - [One provider for commit messages](decisions/2026-11-24-choose-one-commit-provider.md) records the Source Control selector and how older settings map to it. Status: accepted.
 
 ## Checks
+
+- [Branch deletion](checks/2026-11-24-delete-branches.md) covers the context menu, confirmation, branch switching and protection against stale or unsafe deletions. Status: passed.
 
 - [Branch merge choices](checks/2026-11-24-branch-merge-choices.md) verifies the three modes and the result of the destination's Git policy. Status: passed with limits.
 
