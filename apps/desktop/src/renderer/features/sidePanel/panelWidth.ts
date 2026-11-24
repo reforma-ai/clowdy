@@ -28,7 +28,7 @@ export const WINDOW_MIN_WIDTH = SIDEBAR_MIN_WIDTH + MAIN_MIN_WIDTH + PAGE_FRAME_
 export const TREE_PANEL_MIN_WIDTH = Math.max(FILE_MANAGER_MIN_WIDTH, CHANGES_MIN_WIDTH) + PANEL_FRAME_WIDTH;
 
 /**
- * The window's width from which the panel with a tree fits beside the chat: the rail, the left part and the panel, each at its least (1140). Under it Files and Docs
+ * The window's width from which the panel with a tree fits beside the chat: the rail, the left part and the panel, each at its least. Under it Files and Docs
  * are in the chat's place, as the Tasks tab always is (`ProjectUi.sidePanelTabIsFull`), and so is Changes. The other tabs are narrow enough to fit beside the chat in any window: the window
  * itself is not narrower than the rail, the left part and `SIDE_PANEL_MIN_WIDTH`.
  */

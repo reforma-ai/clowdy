@@ -21,6 +21,8 @@
 
 - [Branch merge choices](checks/2026-11-24-branch-merge-choices.md) verifies the three modes and the result of the destination's Git policy. Status: passed with limits.
 
+- [Sidebar widths and merge file rows](checks/2026-11-24-sidebar-widths-and-merge-rows.md) covers the shared minimum, saved widths and merge file selection. Status: passed with limits.
+
 - [Source Control action priority](checks/2026-11-24-source-control-action-priority.md) covers Push, Update, Fetch and the automatic Sync preference. Status: passed with limits.
 
 - [Branch Sync](checks/2026-11-24-smart-sync.md) covers the origin exchange, conflict recovery, destination safety and streamed progress. Status: passed with limits.

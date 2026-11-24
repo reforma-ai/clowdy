@@ -1,9 +1,10 @@
+import { SIDEBAR_MIN_WIDTH } from '@clowdy/file-manager/layout';
 import { makeAutoObservable } from 'mobx';
 
 import { browserStorage, type KeyValueStorage, readStored, writeStored } from '../../stores/storage';
 
 /** The edge the person drags between the editor and the file tree: how narrow the tree can be, and the width it opens at. */
-export const TREE_MIN_WIDTH = 160;
+export const TREE_MIN_WIDTH = SIDEBAR_MIN_WIDTH;
 export const TREE_DEFAULT_WIDTH = 240;
 
 const OPEN_KEY = 'clowdy:files-tree-open';

@@ -106,14 +106,15 @@ function CommitFileRow({
             textValue={file.path}
             isDisabled={draft.writing}
             icon={
-                <Checkbox
-                    size="sm"
-                    isSelected={mergeGroup === undefined ? draft.isTicked(file.path) : mergeGroup === 'staged'}
-                    isReadOnly={mergeGroup !== undefined}
-                    isDisabled={draft.writing}
-                    aria-label={file.path}
-                    onChange={on => draft.setTicked(file.path, on)}
-                />
+                mergeGroup === undefined ? (
+                    <Checkbox
+                        size="sm"
+                        isSelected={draft.isTicked(file.path)}
+                        isDisabled={draft.writing}
+                        aria-label={file.path}
+                        onChange={on => draft.setTicked(file.path, on)}
+                    />
+                ) : undefined
             }
             endAffix={
                 file.additions !== undefined && file.deletions !== undefined ? (
@@ -310,24 +311,23 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
                 </Text>
             )}
             <div className={styles.header}>
-                <Checkbox
-                    size="sm"
-                    isSelected={mergeFiles ? hasFiles : draft.allTicked}
-                    isIndeterminate={!mergeFiles && !draft.allTicked && !draft.noneTicked}
-                    isReadOnly={mergeFiles !== undefined}
-                    isDisabled={(!hasFiles && conflicts === 0) || draft.writing}
-                    aria-label={mergeFiles ? 'Staged files' : 'Tick every file'}
-                    onChange={on => draft.setAll(on)}
-                />
+                {!mergeFiles && (
+                    <Checkbox
+                        size="sm"
+                        isSelected={draft.allTicked}
+                        isIndeterminate={!draft.allTicked && !draft.noneTicked}
+                        isDisabled={!hasFiles || draft.writing}
+                        aria-label="Tick every file"
+                        onChange={on => draft.setAll(on)}
+                    />
+                )}
                 <Text variant="xs" weight="medium" color="secondary" truncate>
                     {heading}
                 </Text>
                 {hasFiles && (
-                    <Text
-                        variant="xs"
-                        color="secondary"
-                        className={styles.count}
-                    >{`${ticked} of ${commitFiles.length}`}</Text>
+                    <Text variant="xs" color="secondary" className={styles.count}>
+                        {mergeFiles ? commitFiles.length : `${ticked} of ${commitFiles.length}`}
+                    </Text>
                 )}
             </div>
 

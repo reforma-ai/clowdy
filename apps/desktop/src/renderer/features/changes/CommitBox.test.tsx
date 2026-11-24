@@ -581,24 +581,14 @@ describe('the commit box', () => {
             await start();
             const commit = vi.spyOn(transport, 'commitGit');
             const list = (label: string) => box()?.querySelector(`[role="grid"][aria-label="${label}"]`);
-            const conflictTick = tickOf('src/limits.ts');
-            const stagedTick = tickOf('src/booking/price.ts');
-            const conflictRow = conflictTick.closest('[role="row"]')!;
-            const stagedRow = stagedTick.closest('[role="row"]')!;
+            const conflictRow = list('Conflicting files')!.querySelector('[role="row"][data-key="src/limits.ts"]')!;
+            const stagedRow = list('Files to commit')!.querySelector('[role="row"][data-key="src/booking/price.ts"]')!;
 
-            expect(list('Conflicting files')?.contains(conflictRow)).toBe(true);
-            expect(list('Files to commit')?.contains(stagedRow)).toBe(true);
             expect(list('Files to commit')?.textContent).not.toMatch(/limits\.ts|notes\.md/);
             expect(conflictRow.textContent).toContain('limits.ts');
             expect(box()?.querySelector('details')).toBeNull();
             expect(buttonOf('Abort merge')).toBeDefined();
-            expect(checkboxes()).toHaveLength(3);
-            expect(conflictTick.checked).toBe(false);
-            expect(stagedTick.checked).toBe(true);
-            await press(conflictTick);
-            await press(stagedTick);
-            expect(conflictTick.checked).toBe(false);
-            expect(stagedTick.checked).toBe(true);
+            expect(checkboxes()).toHaveLength(0);
             await press(stagedRow);
             expect(model.revealRequest).toBe('src/booking/price.ts');
             await press(conflictRow);
@@ -625,7 +615,7 @@ describe('the commit box', () => {
             await settle();
             expect(list('Conflicting files')).toBeNull();
             expect(list('Files to commit')?.textContent).toContain('limits.ts');
-            expect(tickOf('src/limits.ts').checked).toBe(true);
+            expect(checkboxes()).toHaveLength(0);
             expect(box()?.textContent).not.toContain('Conflicts resolved');
             expect(buttonOf('Abort merge')).toBeUndefined();
             expect(buttonOf('Complete merge & Sync')?.disabled).toBe(false);
