@@ -1,4 +1,4 @@
-import { makeAutoObservable, observableRef, reaction } from 'mobx';
+import { makeAutoObservable, observable, observableRef, reaction } from 'mobx';
 
 import { type KeyValueStorage, readStored, removeStored, writeStored } from './storage';
 import { type RevealTasks, revealTask } from './taskReveal';
@@ -9,6 +9,7 @@ import type {
     ChatWorkspaceChoice,
     FolderId,
     ProjectId,
+    Run,
     RunId,
     Task,
     TaskId,
@@ -80,6 +81,11 @@ interface StoredProjectUi {
     tasksCollapsed: TaskId[];
 }
 
+interface StoredChatCompletions {
+    since: number;
+    seen: Record<RunId, number>;
+}
+
 /** The most folded tasks a project keeps: the newest folds stay, so a project that folded tasks for months does not carry them all. */
 export const COLLAPSED_TASKS_LIMIT = 200;
 
@@ -87,6 +93,7 @@ export const COLLAPSED_TASKS_LIMIT = 200;
 export const COMMENT_DRAFTS_LIMIT = 20;
 
 const uiKey = (projectId: ProjectId) => `clowdy:ui:${projectId}`;
+const completionsKey = (projectId: ProjectId) => `${uiKey(projectId)}:chat-completions`;
 
 const idOrNull = (value: unknown): string | null => (typeof value === 'string' ? value : null);
 
@@ -212,6 +219,8 @@ export class ProjectUi {
     readonly #windowFitsHalf: () => boolean;
     /** Tasks: the comment each task's composer holds and has not sent, the one written last at the end. Not kept between sessions, and no place of the history. */
     readonly #commentDrafts = new Map<TaskId, string>();
+    readonly #chatCompletionsSince: number;
+    readonly #seenChatCompletions = observable.map<RunId, number>();
 
     constructor(
         readonly projectId: ProjectId,
@@ -221,9 +230,20 @@ export class ProjectUi {
         windowFitsHalf: () => boolean = () => true
     ) {
         const key = uiKey(projectId);
+        const completionKey = completionsKey(projectId);
+        const completions = readStored(storage, completionKey) as Partial<StoredChatCompletions> | undefined;
+        const since = completions?.since;
+        const tracksCompletions = typeof since === 'number' && Number.isFinite(since);
 
         this.#tasks = tasks;
         this.#windowFitsHalf = windowFitsHalf;
+        // On upgrade there is no read history. Start with the old completions already seen.
+        this.#chatCompletionsSince = tracksCompletions ? since : Date.now();
+        if (tracksCompletions && completions?.seen && typeof completions.seen === 'object') {
+            this.#seenChatCompletions.merge(
+                Object.entries(completions.seen).filter(([, finishedAt]) => Number.isFinite(finishedAt))
+            );
+        }
         const stored = readStored(storage, key) as Partial<Record<keyof StoredProjectUi, unknown>> | undefined;
 
         if (stored && typeof stored === 'object') {
@@ -286,6 +306,28 @@ export class ProjectUi {
             }),
             value => writeStored(storage, key, value)
         );
+        reaction(
+            (): StoredChatCompletions => ({
+                since: this.#chatCompletionsSince,
+                seen: Object.fromEntries(this.#seenChatCompletions),
+            }),
+            value => writeStored(storage, completionKey, value),
+            { fireImmediately: !tracksCompletions }
+        );
+    }
+
+    hasUnreadCompletion(run: Run | undefined): boolean {
+        return (
+            run?.status === 'succeeded' &&
+            run.finishedAt !== undefined &&
+            run.finishedAt > (this.#seenChatCompletions.get(run.id) ?? this.#chatCompletionsSince)
+        );
+    }
+
+    markCompletionSeen(run: Run): void {
+        if (run.finishedAt !== undefined && this.hasUnreadCompletion(run)) {
+            this.#seenChatCompletions.set(run.id, run.finishedAt);
+        }
     }
 
     /** The place the window shows, as a value that can be kept and shown again with `show`. */
@@ -738,5 +780,6 @@ export class UiStore {
         if (this.settingsProjectId === projectId) this.settingsProjectId = null;
 
         removeStored(this.storage, uiKey(projectId));
+        removeStored(this.storage, completionsKey(projectId));
     }
 }

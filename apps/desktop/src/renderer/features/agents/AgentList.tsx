@@ -356,7 +356,15 @@ export function AgentList({
               ? ('working' as const)
               : undefined;
         const draft = messageOf(draftOf(chat.id)) !== '' || filesOf(chat.id).length > 0;
-        const status = <ChatStatus run={run} threads={threads} draft={draft} className={styles.archiveStatus} />;
+        const status = (
+            <ChatStatus
+                run={run}
+                threads={threads}
+                draft={draft}
+                unread={ui.hasUnreadCompletion(run)}
+                className={styles.archiveStatus}
+            />
+        );
         const icon = <ChatIcon chat={chat} run={run} threads={threads} showStatus={false} />;
 
         return (

@@ -1285,6 +1285,67 @@ describe('the archive', () => {
     });
 });
 
+describe('chat completion dots', () => {
+    const dotOf = (key: string) => rowOf(key).querySelector('[role="img"]')?.getAttribute('aria-label');
+
+    it('starts without dots for past successes and clears a new completion when its row is opened', async () => {
+        const focus = vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+
+        try {
+            expect(dotOf('c-2')).toBeUndefined();
+            const run = project().runs.get('r-orch-1')!;
+            await draw(() => project().runs.set(run.id, { ...run, status: 'succeeded', finishedAt: Date.now() + 1 }));
+            expect(dotOf('c-1')).toBe('Done');
+            await press(rowOf('c-1'));
+            await draw();
+            expect(isSelected('c-1')).toBe(true);
+            // Draw the read state changed by the effect, as the observer does in the app.
+            await draw();
+            expect(dotOf('c-1')).toBeUndefined();
+            await press(rowOf('c-2'));
+            await draw();
+            expect(dotOf('c-1')).toBeUndefined();
+        } finally {
+            focus.mockRestore();
+        }
+    });
+
+    it('keeps a completion unread in an unfocused window until the person returns', async () => {
+        const focus = vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+
+        try {
+            const run = project().runs.get('r-orch-1')!;
+            await draw(() => ui().openChat('c-1'));
+            await draw(() => project().runs.set(run.id, { ...run, status: 'succeeded', finishedAt: Date.now() + 1 }));
+            expect(dotOf('c-1')).toBe('Done');
+            focus.mockReturnValue(true);
+            await draw(() => window.dispatchEvent(new Event('focus')));
+            expect(dotOf('c-1')).toBeUndefined();
+        } finally {
+            focus.mockRestore();
+        }
+    });
+
+    it('keeps a completion unread until the chat is revealed by closing Settings', async () => {
+        const focus = vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+
+        try {
+            const run = project().runs.get('r-orch-1')!;
+            await draw(() => {
+                ui().openChat('c-1');
+                store.ui.openSettings();
+            });
+            await draw(() => project().runs.set(run.id, { ...run, status: 'succeeded', finishedAt: Date.now() + 1 }));
+            expect(dotOf('c-1')).toBe('Done');
+            await draw(() => store.ui.closeSettings());
+            await draw();
+            expect(dotOf('c-1')).toBeUndefined();
+        } finally {
+            focus.mockRestore();
+        }
+    });
+});
+
 describe('threads', () => {
     const foldOf = (key: string) =>
         rowOf(key).querySelector<HTMLButtonElement>('button[aria-label^="Expand"], button[aria-label^="Collapse"]');
@@ -1437,7 +1498,7 @@ describe('threads', () => {
         expect(dotOf('c-6')).toBe('Threads working');
         expect(dotOf('c-6a')).toBe('Working');
         expect(dotOf('c-6c')).toBe('Failed');
-        expect(dotOf('c-6b')).toBe('Done');
+        expect(dotOf('c-6b')).toBeUndefined();
         expect(rowOf('c-6e').querySelector('[data-provider]')?.getAttribute('data-provider')).toBe('codex');
     });
 

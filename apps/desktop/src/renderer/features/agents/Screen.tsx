@@ -1,10 +1,12 @@
+import { useEffect } from 'react';
+
 import { SidebarLayout } from '../../shared';
-import { useProjectState, useProjectUi } from '../../stores';
+import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { ChatView } from '../chats/ChatView';
 import { useProjectsInfo } from '../settings/projects/useProjectsInfo';
 import { useSidePanel } from '../sidePanel';
 import { AgentList } from './AgentList';
-import { chatFolder, resolveSelection, visibleChats } from './agentTree';
+import { chatFolder, orchestratorOf, resolveSelection, visibleChats } from './agentTree';
 import { ChatFolder } from './ChatFolder';
 import { DraftChat } from './DraftChat';
 import { RunDetail } from './RunDetail';
@@ -17,12 +19,30 @@ import styles from './Screen.module.css';
 export function Screen() {
     const project = useProjectState();
     const ui = useProjectUi();
+    const { settingsOpen } = useRootStore().ui;
     // The expanded side panel is drawn over the chat, which stays where it is: hidden, so it takes no click, no key and no reader.
     const { expanded } = useSidePanel();
     // A remembered chat or run may be gone: the chat that was open, or the first one listed, stands in.
     const chats = visibleChats([...project.chats.values()], ui.chatOrder);
     const selection = resolveSelection(project.chats, chats, project.runs, ui.chatId, ui.runId, ui.draft);
     const { chat, run } = selection;
+    const chatRun = chat && orchestratorOf(chat, project.runs);
+    useEffect(() => {
+        if (expanded || settingsOpen || run || chatRun?.status !== 'succeeded') return;
+
+        const markSeen = () => {
+            if (document.visibilityState === 'visible' && document.hasFocus()) ui.markCompletionSeen(chatRun);
+        };
+
+        markSeen();
+        window.addEventListener('focus', markSeen);
+        document.addEventListener('visibilitychange', markSeen);
+        return () => {
+            window.removeEventListener('focus', markSeen);
+            document.removeEventListener('visibilitychange', markSeen);
+        };
+    }, [expanded, settingsOpen, run, chatRun, ui]);
+
     // The list and the new-chat page share the read that detects folders gone from disk.
     const { info } = useProjectsInfo({ poll: false, refreshOnFocus: true });
     const projectInfo = info.get(project.id);

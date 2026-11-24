@@ -17,11 +17,13 @@ export function ChatIcon({
     run,
     threads,
     showStatus = true,
+    unread = false,
 }: {
     chat: Chat;
     run: Run | undefined;
     threads?: ThreadsActivity;
     showStatus?: boolean;
+    unread?: boolean;
 }) {
     const engine = chat.engine ?? run?.engine;
     const icon =
@@ -30,12 +32,12 @@ export function ChatIcon({
         ) : (
             <Message />
         );
-    if (!showStatus || !chatDotTone(run, threads)) return icon;
+    if (!showStatus || !chatDotTone(run, threads, false, unread)) return icon;
 
     return (
         <span className={styles.icon}>
             {icon}
-            <ChatStatus run={run} threads={threads} className={styles.dot} />
+            <ChatStatus run={run} threads={threads} unread={unread} className={styles.dot} />
         </span>
     );
 }
@@ -45,18 +47,23 @@ export function ChatStatus({
     threads,
     className,
     draft = false,
+    unread = false,
 }: {
     run: Run | undefined;
     threads?: ThreadsActivity;
     className?: string;
     draft?: boolean;
+    unread?: boolean;
 }) {
-    const tone = chatDotTone(run, threads, draft);
+    const tone = chatDotTone(run, threads, draft, unread);
 
     if (!tone) return null;
 
     // A thread's question takes priority over a completed or working run.
-    const own = run !== undefined && chatDotTone(run) === tone && threads !== 'asking' ? run : undefined;
+    const own =
+        run !== undefined && chatDotTone(run, undefined, false, unread) === tone && threads !== 'asking'
+            ? run
+            : undefined;
     const ownStatus = own && shownRunStatus(own);
     const label = ownStatus
         ? RUN_STATUS_VIEW[ownStatus].label
